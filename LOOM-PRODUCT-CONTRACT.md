@@ -28,6 +28,7 @@ Loom'un güvenilirliği, az kaynak tüketimiyle birlikte değerlendirilir. Yaln�
 | [Görsel sözleşme](design/DESIGN.md) | Korunacak arayüz öğeleri, ölçüler, renkler, kısayollar ve eski uygulamanın davranış envanteri. Envanter Loom gereksinimi değildir; çelişkide bu dosya esas alınır. |
 | `design/` | Referans görseller ve `legacy-code/` altındaki eski Swift arayüz kaynakları. Eski çizim kodunun, terminal motorunun veya mimarinin aynen kullanılması şart değil. |
 | `assets/` | Uygulama simgesi, sağlayıcı simgeleri ve `brand/` altında marka kaynakları ile telif notları. |
+| `plans/` | Checkpoint planları ve sonuçları. |
 
 İlk araştırma raporu, eski spec ve Herdr kaldırma kaydı bu dosyaya ve görsel sözleşmeye taşındıktan sonra repodan çıkarıldı.
 
@@ -42,6 +43,8 @@ Bu belgede **kabul edilen davranışlar**, **teknik adaylar** ve **açık kararl
 | Uygulamadan tam çıkış | Loom'a ait işler durdurulabilir. Normal çıkış tamamlandığında Loom'a ait çalışan süreç kalmamalı. |
 | Claude Agent View | Süreç sahipliğini korumak için Loom'un başlattığı Claude oturumlarında kapatılabilir. Bu kabul edilmiş bir CLI özellik istisnasıdır. |
 | Sağlayıcı sürümleri | Claude veya Codex sürümü sabitlenmeyecek. |
+| Çekirdek dili | Swift; çekirdek bu repoda yazılır ve checkpoint kodu uygulamanın çekirdeği olur. Terminal motoru ve arayüz teknolojisi ayrıca seçilecek. |
+| Deney izolasyonu | Checkpoint deneyleri izole CLI profillerinde (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) yapılır. Kullanıcının gerçek profilleri ve oturumları yalnızca etkilenmediklerini doğrulamak için okunur. |
 | Oturumlar arası iletişim | Kullanıcının görevlendirmesi ve yetkilendirdiği kapsam içinde gerçekleşecek. |
 | Codex önbelleği | Görüşmede açıklanan, ayrılmış thread'in 30 dakikaya kadar bellekte kalması kabul edildi. Bu, çalışan iş bırakma izni değildir. |
 | Stale içerik önizlemesi | Yapılması zor veya maliyetliyse ilk sürümün şartı değil. |
@@ -204,7 +207,7 @@ Kesin yerel veri envanteri ve kullanıcıya sunulacak silme ifadesi, silme check
 
 ## 9. Mimari yön ve güncelleme stratejisi
 
-**Teknik aday:** Loom içinde modüler bir koordinatör; ayrı süreç sahipliği, katalog, yaşam döngüsü, sağlayıcı uyarlayıcıları ve terminal sunumu sorumlulukları. Küçük bir kalıcı katalog için SQLite; macOS arayüzü için SwiftUI/AppKit adaydır. Bunlar henüz ölçümle seçilmiş teknoloji kararları değildir.
+**Teknik aday:** Loom içinde modüler bir koordinatör; ayrı süreç sahipliği, katalog, yaşam döngüsü, sağlayıcı uyarlayıcıları ve terminal sunumu sorumlulukları. Çekirdek dili Swift olarak kabul edildi (§3). Küçük bir kalıcı katalog için SQLite; macOS arayüzü için SwiftUI/AppKit adaydır. Bunlar henüz ölçümle seçilmiş teknoloji kararları değildir.
 
 Terminalin her karakterini mesaj kuyruğu veya JSON katmanından geçirmek zorunlu değil. Sürekli çalışan ayrı Loom daemon'ı başlangıç ihtiyacı olarak kabul edilmedi. Uygulamaya bağlı bir yardımcı gerektiği kanıtlanırsa kendi kaynak ve kapanma maliyetiyle değerlendirilir.
 
