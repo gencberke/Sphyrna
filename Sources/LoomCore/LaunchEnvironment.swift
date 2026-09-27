@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 public enum LaunchEnvironment {
-    public enum LaunchOrigin { case launchServices, development }
+    public enum LaunchOrigin: Sendable { case launchServices, development }
 
     /// LaunchServices identity alone does not prove a clean environment: `open` can
     /// forward its caller's variables. Conservatively reject known shell/agent contexts.

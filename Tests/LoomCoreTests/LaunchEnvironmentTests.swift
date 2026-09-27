@@ -93,23 +93,22 @@ struct LaunchEnvironmentTests {
         #expect(missingAgent.warnings == ["launchd session variable SSH_AUTH_SOCK is unavailable"])
     }
 
-    @MainActor
-    @Test func startupBackgroundJobIsOwnedUntilShutdownWithoutCoalition() throws {
+    @Test func startupBackgroundJobIsOwnedUntilShutdownWithoutCoalition() async throws {
         let directory = try fixture("/bin/sleep 60 &!\nexport LOOM_TEST_HELPER_PID=$!\n")
         defer { try? FileManager.default.removeItem(at: directory) }
-        let coordinator = try ShutdownCoordinator(ledger: OwnershipLedger(coalition:
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition:
             CoalitionCapability(resourceID: nil, detail: "Development startup test")))
-        defer { _ = coordinator.shutdown() }
-        let result = try LaunchEnvironment.resolve(parent: parent(home: directory), session: [:], testZDOTDIR: directory,
-            runID: coordinator.ledger.runID, onSpawn: coordinator.registerEnvironmentShell,
-            onPoll: { _ = try coordinator.sample() })
+        let result = try await supervisor.terminalEnvironment(
+            parent: parent(home: directory), session: [:],
+            testZDOTDIR: directory, timeout: 30
+        )
         let pid = try #require(result.environment["LOOM_TEST_HELPER_PID"].flatMap(Int32.init))
         let identity = try #require(try ProcessTable.snapshot().first { $0.identity.pid == pid }?.identity)
         // Identity-checked test cleanup also runs if the ownership regression returns.
         defer { try? ProcessTable.signal(identity, SIGKILL) }
-        #expect(try coordinator.sample().contains { $0.identity == identity })
+        #expect(try await supervisor.ownedProcesses().contains { $0.identity == identity })
         #expect(kill(pid, 0) == 0)
-        let report = coordinator.shutdown()
+        let report = await supervisor.shutdown()
         #expect(report.succeeded)
         #expect(report.signals.contains { $0.identity == identity })
         #expect(try !ProcessTable.snapshot().contains { $0.identity == identity })

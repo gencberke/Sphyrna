@@ -11,8 +11,8 @@ extension Probe {
 
     @MainActor private static var showedEnvironmentWarnings = false
 
-    @MainActor static func resolveTerminalEnvironment(coordinator: ShutdownCoordinator) throws -> LaunchEnvironment.Resolution {
-        let result = try coordinator.terminalEnvironment(origin: launchOrigin)
+    @MainActor static func resolveTerminalEnvironment(supervisor: ProbeSupervisor) throws -> LaunchEnvironment.Resolution {
+        let result = try supervisor.terminalEnvironment(origin: launchOrigin)
         if !showedEnvironmentWarnings {
             for warning in result.warnings { fputs("loom-probe environment warning: \(warning)\n", stderr) }
             showedEnvironmentWarnings = true
@@ -24,9 +24,9 @@ extension Probe {
     @MainActor static func environmentExperiment(directory: URL) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
-        let coordinator = try ShutdownCoordinator()
-        defer { _ = coordinator.shutdown() }
-        let resolution = try resolveTerminalEnvironment(coordinator: coordinator)
+        let supervisor = try ProbeSupervisor()
+        defer { _ = supervisor.shutdown() }
+        let resolution = try resolveTerminalEnvironment(supervisor: supervisor)
         let base = resolution.environment
         let environment = LaunchEnvironment.make(base: base, runID: UUID(), sessionID: UUID())
         let childOutput = try capture("/usr/bin/env", ["-0"], environment: environment)
@@ -49,7 +49,7 @@ extension Probe {
         try child.run(); child.waitUntilExit()
         let report: [String: Any] = ["sshAddStatus": Int(child.terminationStatus),
                                       "agentReachable": [0, 1].contains(child.terminationStatus),
-                                      "cachedEnvironmentIdentical": try coordinator.terminalEnvironment(origin: launchOrigin) == resolution,
+                                      "cachedEnvironmentIdentical": try supervisor.terminalEnvironment(origin: launchOrigin) == resolution,
                                       "launchOrigin": launchOrigin == .launchServices ? "launchServices" : "development",
                                       "warningCount": resolution.warnings.count,
                                       "childHasSSHAgentSocket": observed["SSH_AUTH_SOCK"] != nil,

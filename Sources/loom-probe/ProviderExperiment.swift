@@ -7,9 +7,9 @@ import LoomCore
 final class ProviderExperiment {
     let root: URL
     let directory: URL
-    let coordinator: ShutdownCoordinator
+    let supervisor: ProbeSupervisor
     let terminalEnvironment: [String: String]
-    var terminals: [String: PTYProcess] = [:]
+    var terminals: [String: ProbeTerminal] = [:]
     var logs: [String: FileHandle] = [:]
     var queryBuffers: [String: String] = [:]
     var clients: [String: ProbeRPCClient] = [:]
@@ -26,14 +26,14 @@ final class ProviderExperiment {
         let ledger = OwnershipLedger()
         directory = root.appendingPathComponent("runs/\(ledger.runID.uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        coordinator = try ShutdownCoordinator(ledger: ledger, ledgerURL: directory.appendingPathComponent("ledger.json"))
+        supervisor = try ProbeSupervisor(ledger: ledger, ledgerURL: directory.appendingPathComponent("ledger.json"))
         // Recovery metadata must exist before rc can start any background helpers.
         guard let owner = try ProcessTable.snapshot().first(where: { $0.identity.pid == getpid() }) else {
             throw LoomError.message("Probe identity unavailable")
         }
         try Probe.encoder.encode(owner.identity).write(to: directory.appendingPathComponent("owner.json"))
-        do { terminalEnvironment = try Probe.resolveTerminalEnvironment(coordinator: coordinator).environment }
-        catch { _ = coordinator.shutdown(); throw error }
+        do { terminalEnvironment = try Probe.resolveTerminalEnvironment(supervisor: supervisor).environment }
+        catch { _ = supervisor.shutdown(); throw error }
         baseline = try ProcessTable.snapshot()
         externalBaseline = baseline.filter { record in
             guard ProcessTable.runID(pid: record.identity.pid) == nil,
@@ -75,8 +75,8 @@ final class ProviderExperiment {
         case "launch": try launch(action, slot: slot)
         case "fixture":
             guard terminals[slot] == nil else { throw LoomError.message("Duplicate fixture slot") }
-            let environment = LaunchEnvironment.make(base: terminalEnvironment, runID: coordinator.ledger.runID, sessionID: UUID())
-            terminals[slot] = try coordinator.launch(executable: variables["fixture"]!, arguments: [action["mode"] as? String ?? "escape"], environment: environment, directory: root.appendingPathComponent("workspace").path)
+            let environment = LaunchEnvironment.make(base: terminalEnvironment, runID: supervisor.ownershipRunID, sessionID: UUID())
+            terminals[slot] = try supervisor.launch(executable: variables["fixture"]!, arguments: [action["mode"] as? String ?? "escape"], environment: environment, directory: root.appendingPathComponent("workspace").path)
             let url = directory.appendingPathComponent("\(slot)-terminal.txt")
             FileManager.default.createFile(atPath: url.path, contents: nil)
             logs[slot] = try FileHandle(forWritingTo: url)
@@ -143,7 +143,7 @@ final class ProviderExperiment {
         guard terminals[slot] == nil else { throw LoomError.message("Duplicate terminal slot") }
         let provider = action["provider"] as? String ?? "codex"
         let sessionID = UUID()
-        let base = LaunchEnvironment.make(base: terminalEnvironment, runID: coordinator.ledger.runID, sessionID: sessionID)
+        let base = LaunchEnvironment.make(base: terminalEnvironment, runID: supervisor.ownershipRunID, sessionID: sessionID)
         var isolated = base
         isolated["CODEX_HOME"] = root.appendingPathComponent("codex-home").resolvingSymlinksInPath().path
         isolated["CLAUDE_CONFIG_DIR"] = root.appendingPathComponent("claude-config").path
@@ -171,8 +171,9 @@ final class ProviderExperiment {
         if action["agentView"] as? Bool == true { environment.removeValue(forKey: "CLAUDE_CODE_DISABLE_AGENT_VIEW") }
         let arguments = profile.arguments + ((action["arguments"] as? [String]) ?? []).map(expand)
         let executable = try resolve(provider)
-        let child = try coordinator.launch(executable: executable, arguments: arguments, environment: environment,
-            directory: root.appendingPathComponent("workspace").path, rows: 40, columns: 120)
+        let child = try supervisor.launch(executable: executable, arguments: arguments, environment: environment,
+            directory: root.appendingPathComponent("workspace").path,
+            provider: provider == "codex" ? .codex : .claude, rows: 40, columns: 120)
         terminals[slot] = child
         let logURL = directory.appendingPathComponent("\(slot)-terminal.txt")
         FileManager.default.createFile(atPath: logURL.path, contents: nil)
@@ -190,7 +191,7 @@ final class ProviderExperiment {
         throw LoomError.message("Executable not found: \(program)")
     }
 
-    func write(_ data: Data, to terminal: PTYProcess) throws {
+    func write(_ data: Data, to terminal: ProbeTerminal) throws {
         var offset = 0
         let deadline = Date().addingTimeInterval(3)
         while offset < data.count {
@@ -206,7 +207,7 @@ final class ProviderExperiment {
         var nextSample = Date.distantPast
         repeat {
             for (slot, terminal) in terminals {
-                let output = try terminal.readAvailable()
+                let output = terminal.readAvailable()
                 if !output.isEmpty {
                     try logs[slot]?.write(contentsOf: output)
                     var queries = (queryBuffers[slot] ?? "") + String(decoding: output, as: UTF8.self)
@@ -234,7 +235,10 @@ final class ProviderExperiment {
                     try file.close()
                 }
             }
-            if Date() >= nextSample { try coordinator.sample(); nextSample = Date().addingTimeInterval(0.05) }
+            if Date() >= nextSample {
+                _ = try supervisor.sample()
+                nextSample = Date().addingTimeInterval(0.05)
+            }
             usleep(5_000)
         } while Date() < deadline
     }
@@ -255,13 +259,13 @@ final class ProviderExperiment {
     }
 
     func snapshot(label: String) throws {
-        let records = try coordinator.sample()
+        let records = try supervisor.sample()
         let encoded = try JSONSerialization.jsonObject(with: Probe.encoder.encode(records)) as! [[String: Any]]
         let evidence: [[String: Any]] = zip(records, encoded).map { record, object in
             var entry = object
             entry["executable"] = ProcessTable.executablePath(pid: record.identity.pid)
             entry["physicalFootprint"] = ProcessTable.physicalFootprint(pid: record.identity.pid)
-            entry["marked"] = ProcessTable.runID(pid: record.identity.pid) == coordinator.ledger.runID.uuidString
+            entry["marked"] = ProcessTable.runID(pid: record.identity.pid) == supervisor.ownershipRunID.uuidString
             return entry
         }
         let sample: [String: Any] = ["label": label, "processes": evidence, "time": Date().timeIntervalSince1970]
@@ -273,7 +277,7 @@ final class ProviderExperiment {
     func finish() throws {
         guard !stopped else { return }
         try snapshot(label: "before-quit")
-        let report = coordinator.shutdown(graceSeconds: 0.4)
+        let report = supervisor.shutdown(graceSeconds: 0.4)
         stopped = true
         try Probe.encoder.encode(report).write(to: directory.appendingPathComponent("shutdown.json"))
         let after = try ProcessTable.snapshot()

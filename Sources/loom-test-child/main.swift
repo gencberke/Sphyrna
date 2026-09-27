@@ -92,14 +92,20 @@ do {
         try emit(["pid": getpid(), "mode": "burst-exit", "bytes": 512 * 1024])
         try FileHandle.standardOutput.write(contentsOf: Data(repeating: 0x5a, count: 512 * 1024))
         exit(0)
-    case "group", "escape", "apple-escape":
+    case "large-burst-exit":
+        let byteCount = 8 * 1024 * 1024
+        try emit(["pid": getpid(), "mode": "large-burst-exit", "bytes": byteCount])
+        try FileHandle.standardOutput.write(contentsOf: Data(repeating: 0x59, count: byteCount))
+        exit(0)
+    case "group", "escape", "escape-exit", "apple-escape":
         let mode = CommandLine.arguments[1]
         let descendant = try spawn(escape: mode != "group", apple: mode == "apple-escape")
         try emit(["pid": getpid(), "descendantPID": descendant, "mode": mode])
+        if mode == "escape-exit" { exit(0) }
         loom_fixture_wait(0)
     default:
         throw NSError(domain: "LoomTestChild", code: 1,
-                      userInfo: [NSLocalizedDescriptionKey: "Expected inspect, stubborn, quick-exit, burst-exit, group, escape, apple-escape, or mcp"])
+                      userInfo: [NSLocalizedDescriptionKey: "Expected inspect, stubborn, quick-exit, burst-exit, large-burst-exit, group, escape, escape-exit, apple-escape, or mcp"])
     }
 } catch {
     try? FileHandle.standardError.write(contentsOf: Data("loom-test-child: \(error)\n".utf8))

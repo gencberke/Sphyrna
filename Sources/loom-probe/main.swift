@@ -54,9 +54,9 @@ struct Probe {
             let directory = root.appendingPathComponent("runs/capabilities-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
                                                     attributes: [.posixPermissions: 0o700])
-            let coordinator = try ShutdownCoordinator()
-            defer { _ = coordinator.shutdown() }
-            let terminalEnvironment = try resolveTerminalEnvironment(coordinator: coordinator).environment
+            let supervisor = try ProbeSupervisor()
+            defer { _ = supervisor.shutdown() }
+            let terminalEnvironment = try resolveTerminalEnvironment(supervisor: supervisor).environment
             var environment = LaunchEnvironment.make(base: terminalEnvironment, runID: UUID(), sessionID: UUID())
             environment["CODEX_HOME"] = root.appendingPathComponent("codex-home").path
             environment["CLAUDE_CONFIG_DIR"] = root.appendingPathComponent("claude-config").path
@@ -75,8 +75,8 @@ struct Probe {
         }
         if args.first == "recover", args.count == 2 {
             let url = URL(fileURLWithPath: args[1])
-            let coordinator = try ShutdownCoordinator(ledger: OwnershipLedger.load(from: url), ledgerURL: url)
-            let report = coordinator.shutdown()
+            let supervisor = try ProbeSupervisor(ledger: OwnershipLedger.load(from: url), ledgerURL: url)
+            let report = supervisor.shutdown()
             print(String(decoding: try encoder.encode(report), as: UTF8.self))
             if !report.succeeded { exit(1) }
             return
@@ -94,27 +94,29 @@ struct Probe {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         let ledgerURL = directory.appendingPathComponent("ledger.json")
-        let coordinator = try ShutdownCoordinator(ledger: ledger, ledgerURL: ledgerURL)
+        let supervisor = try ProbeSupervisor(ledger: ledger, ledgerURL: ledgerURL)
         guard let owner = try ProcessTable.snapshot().first(where: { $0.identity.pid == getpid() }) else {
             throw LoomError.message("Cannot record probe owner identity")
         }
         try encoder.encode(owner.identity).write(to: directory.appendingPathComponent("owner.json"), options: .atomic)
         let executable = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
             .deletingLastPathComponent().appendingPathComponent("loom-test-child").path
-        defer { if !coordinator.isStopping { _ = coordinator.shutdown() } }
-        let environment = LaunchEnvironment.make(base: try resolveTerminalEnvironment(coordinator: coordinator).environment, runID: ledger.runID, sessionID: UUID())
+        defer { if !supervisor.isStopping { _ = supervisor.shutdown() } }
+        let environment = LaunchEnvironment.make(base: try resolveTerminalEnvironment(supervisor: supervisor).environment, runID: ledger.runID, sessionID: UUID())
         do {
-            let child = try coordinator.launch(executable: executable, arguments: [mode], environment: environment,
+            let child = try supervisor.launch(executable: executable, arguments: [mode], environment: environment,
                                                directory: directory.path)
             var output = Data()
             let deadline = Date().addingTimeInterval(0.5)
             repeat {
-                output.append(try child.readAvailable())
-                if args.first != "crash-fixture" && mode != "apple-escape" { try coordinator.sample() }
+                output.append(child.readAvailable())
+                if args.first != "crash-fixture" && mode != "apple-escape" {
+                    _ = try supervisor.sample()
+                }
                 usleep(10_000)
             } while Date() < deadline
             // The final ownership scan can consume the sampling window after the child writes.
-            output.append(try child.readAvailable())
+            output.append(child.readAvailable())
             try output.write(to: directory.appendingPathComponent("terminal.txt"))
             if args.first == "crash-fixture" {
                 // This internal mode deliberately dies; the next invocation must recover its marked descendants.
@@ -131,9 +133,9 @@ struct Probe {
             if ["group", "escape", "apple-escape"].contains(mode), oracle == nil {
                 throw LoomError.message("Fixture descendant was not observed; scenario is unverified")
             }
-            let found = try coordinator.sample()
+            let found = try supervisor.sample()
             try encoder.encode(found).write(to: directory.appendingPathComponent("before-shutdown.json"))
-            let report = coordinator.shutdown()
+            let report = supervisor.shutdown()
             let oracleRemaining = try ProcessTable.snapshot().filter { $0.identity == oracle?.identity && !$0.zombie }
             let passed = report.succeeded && oracleRemaining.isEmpty
             try encoder.encode(report).write(to: directory.appendingPathComponent("shutdown.json"), options: .atomic)
@@ -146,7 +148,7 @@ struct Probe {
             if !passed { exit(1) }
             try Data().write(to: directory.appendingPathComponent("completed"))
         } catch {
-            let report = coordinator.shutdown()
+            let report = supervisor.shutdown()
             try? encoder.encode(report).write(to: directory.appendingPathComponent("shutdown.json"))
             throw error
         }
@@ -166,10 +168,10 @@ struct Probe {
             let owner = try JSONDecoder().decode(ProcessIdentity.self, from: Data(contentsOf: ownerURL))
             if identities.contains(owner) { continue } // A concurrent, live probe owns this run.
             let ledgerURL = directory.appendingPathComponent("ledger.json")
-            let coordinator = try ShutdownCoordinator(ledger: OwnershipLedger.load(from: ledgerURL), ledgerURL: ledgerURL)
-            let before = try coordinator.sample()
+            let supervisor = try ProbeSupervisor(ledger: OwnershipLedger.load(from: ledgerURL), ledgerURL: ledgerURL)
+            let before = try supervisor.sample()
             try encoder.encode(before).write(to: directory.appendingPathComponent("recovery-before.json"), options: .atomic)
-            let report = coordinator.shutdown()
+            let report = supervisor.shutdown()
             try encoder.encode(report).write(to: directory.appendingPathComponent("recovery.json"), options: .atomic)
             guard report.succeeded else { throw LoomError.message("Recovery incomplete: \(directory.path)") }
             try Data().write(to: directory.appendingPathComponent("recovered"))

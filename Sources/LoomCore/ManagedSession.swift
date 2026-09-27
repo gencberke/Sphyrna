@@ -44,6 +44,11 @@ public struct ManagedRun: Codable, Equatable, Sendable {
     public internal(set) var descendants: Set<ProcessIdentity>
 }
 
+public struct ManagedSessionLaunch: Sendable {
+    public let session: ManagedSession
+    public let terminal: TerminalEndpoint
+}
+
 public struct SessionStopReport: Codable, Sendable {
     public let sessionID: UUID
     public let runID: UUID

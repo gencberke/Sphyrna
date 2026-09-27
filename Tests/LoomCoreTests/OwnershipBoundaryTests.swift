@@ -6,7 +6,6 @@ import Testing
 private final class OwnershipTestBundleAnchor: NSObject {}
 
 @Suite(.serialized)
-@MainActor
 struct OwnershipBoundaryTests {
     @Test func foreignUIDDescendantsAreReportedAndNeverSelectedForSignals() throws {
         let leader = ProcessIdentity(pid: 2_000_001, startSeconds: 1, startMicroseconds: 0)
@@ -27,23 +26,24 @@ struct OwnershipBoundaryTests {
         #expect(!report.succeeded)
     }
 
-    @Test func forcedCapabilityFailureReportsNarrowerGuaranteeAndLedgerRoundTrips() throws {
+    @Test func forcedCapabilityFailureReportsNarrowerGuaranteeAndLedgerRoundTrips() async throws {
         let capability = CoalitionCapability.probe(forceFailure: true)
         #expect(capability.resourceID == nil)
         let ledger = OwnershipLedger(coalition: capability)
         let decoded = try JSONDecoder().decode(OwnershipLedger.self, from: JSONEncoder().encode(ledger))
         #expect(decoded.coalition?.detail == capability.detail)
-        let coordinator = try ShutdownCoordinator(ledger: decoded)
-        let report = coordinator.shutdown()
+        let supervisor = try ProcessSupervisor(ledger: decoded)
+        let report = await supervisor.shutdown()
         #expect(report.succeeded)
         #expect(report.ownershipGuarantee.contains("Narrowed"))
     }
 
-    @Test func legacyLedgerRemainsRecoverable() throws {
+    @Test func legacyLedgerRemainsRecoverable() async throws {
         let data = Data("{\"runID\":\"\(UUID())\",\"descendants\":[],\"sessionLeaders\":[]}".utf8)
         let ledger = try JSONDecoder().decode(OwnershipLedger.self, from: data)
         #expect(ledger.coalition == nil)
-        #expect(try ShutdownCoordinator(ledger: ledger).shutdown().ownershipGuarantee.contains("legacy"))
+        let supervisor = try ProcessSupervisor(ledger: ledger)
+        #expect(await supervisor.shutdown().ownershipGuarantee.contains("legacy"))
     }
     @Test func staleRecoveryFailureDoesNotBlockAnotherCommand() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-recovery-\(UUID())")
@@ -118,6 +118,63 @@ struct OwnershipBoundaryTests {
         _ = ledger.observe([])
         #expect(ledger.descendants.isEmpty)
         #expect(ledger.sessionLeaders.isEmpty)
+    }
+
+    @Test func metadataIsReadOncePerLiveIdentityAndPrunedAfterExit() throws {
+        let original = ProcessIdentity(pid: 2_000_040, startSeconds: 1, startMicroseconds: 0)
+        let replacement = ProcessIdentity(pid: original.pid, startSeconds: 2, startMicroseconds: 0)
+        func record(_ identity: ProcessIdentity) -> ProcessRecord {
+            ProcessRecord(identity: identity, parentPID: 1, processGroup: identity.pid,
+                          sessionID: identity.pid, userID: getuid(), zombie: false)
+        }
+        var ledger = OwnershipLedger(coalition: CoalitionCapability(resourceID: 42, detail: "test"))
+        let unchanged = ledger
+        var runReads = 0
+        var coalitionReads = 0
+        func observe(_ records: [ProcessRecord]) -> [ProcessRecord] {
+            ledger.observe(records, readRunID: { _ in runReads += 1; return nil },
+                           readCoalition: { _ in coalitionReads += 1; return 99 },
+                           confirmSnapshot: { records })
+        }
+        #expect(observe([record(original)]).isEmpty)
+        #expect(observe([record(original)]).isEmpty)
+        #expect(runReads == 1)
+        #expect(coalitionReads == 1)
+        // Unrelated metadata changes neither persisted state nor its equality.
+        #expect(ledger == unchanged)
+        let encoded = try JSONEncoder().encode(ledger)
+        #expect(!String(decoding: encoded, as: UTF8.self).contains("metadataCache"))
+        var recovered = try JSONDecoder().decode(OwnershipLedger.self, from: encoded)
+        _ = recovered.observe([record(original)], readRunID: { _ in runReads += 1; return nil },
+                              readCoalition: { _ in coalitionReads += 1; return 99 },
+                              confirmSnapshot: { [record(original)] })
+        #expect(runReads == 2)
+        #expect(coalitionReads == 2)
+
+        #expect(observe([record(replacement)]).isEmpty)
+        #expect(runReads == 3)
+        #expect(coalitionReads == 3)
+        #expect(observe([]).isEmpty)
+        // Reintroducing an identity in this synthetic snapshot proves its cache was evicted.
+        #expect(observe([record(replacement)]).isEmpty)
+        #expect(runReads == 4)
+        #expect(coalitionReads == 4)
+    }
+
+    @Test func cachedMetadataStillRequiresIdentityConfirmationBeforeClaimingProcess() {
+        let identity = ProcessIdentity(pid: 2_000_050, startSeconds: 1, startMicroseconds: 0)
+        let record = ProcessRecord(identity: identity, parentPID: 1, processGroup: identity.pid,
+                                   sessionID: identity.pid, userID: getuid(), zombie: false)
+        var ledger = OwnershipLedger(coalition: .probe(forceFailure: true))
+        let marker = ledger.runID.uuidString
+        var reads = 0
+        #expect(ledger.observe([record], readRunID: { _ in reads += 1; return marker },
+                               readCoalition: { _ in nil }, confirmSnapshot: { nil }).isEmpty)
+        #expect(ledger.observationIssue != nil)
+        #expect(ledger.observe([record], readRunID: { _ in reads += 1; return marker },
+                               readCoalition: { _ in nil }, confirmSnapshot: { [record] }) == [record])
+        #expect(reads == 1)
+        #expect(ledger.observationIssue == nil)
     }
 
 }

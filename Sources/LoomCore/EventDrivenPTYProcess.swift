@@ -44,8 +44,6 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
     private static let queue = DispatchQueue(
         label: "dev.loom.pty-events", qos: .userInitiated, attributes: .concurrent
     )
-    private static let outputLimit = 4 * 1024 * 1024
-
     let pid: Int32
     private let terminalQueue: DispatchQueue
     private let readSource: DispatchSourceRead
@@ -53,19 +51,20 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
     private let readCancellation = CompletionLatch()
     private let processCancellation = CompletionLatch()
     private let processExit = CompletionLatch()
+    private let onOutput: @Sendable (Data) -> Void
     private let onExit: @Sendable (Int32) -> Void
 
     // Access only on terminalQueue.
     private var terminalFD: Int32
     private var terminalOpen = true
-    private var readSuspended = false
-    private var output = Data()
     private var status: Int32?
     private var failure: TerminalTransportError?
 
-    init(process: PTYProcess, onExit: @escaping @Sendable (Int32) -> Void) {
+    init(process: PTYProcess, onOutput: @escaping @Sendable (Data) -> Void,
+         onExit: @escaping @Sendable (Int32) -> Void) {
         pid = process.pid
         terminalFD = process.detachTerminal()
+        self.onOutput = onOutput
         self.onExit = onExit
         terminalQueue = DispatchQueue(
             label: "dev.loom.pty-events.\(process.pid)", target: Self.queue
@@ -97,27 +96,8 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
     }
 
     deinit {
-        if readSuspended { readSource.resume() }
         readSource.cancel()
         processSource.cancel()
-    }
-
-    func drainOutput() async throws -> Data {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, any Error>) in
-            terminalQueue.async { [self] in
-                if output.isEmpty, let failure {
-                    continuation.resume(throwing: failure)
-                    return
-                }
-                let result = output
-                output.removeAll(keepingCapacity: true)
-                if readSuspended && terminalOpen {
-                    readSuspended = false
-                    readSource.resume()
-                }
-                continuation.resume(returning: result)
-            }
-        }
     }
 
     func write(_ data: Data) async throws -> Int {
@@ -160,10 +140,6 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
             terminalQueue.async { [self] in
                 if terminalOpen {
                     terminalOpen = false
-                    if readSuspended {
-                        readSuspended = false
-                        readSource.resume()
-                    }
                     readSource.cancel()
                 }
                 continuation.resume()
@@ -173,7 +149,11 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
     }
 
     /// Call only after ownership sampling says the leader no longer exists.
-    func finish() async throws -> Int32 {
+    func finish(outputDrainSeconds: Double) async throws -> Int32 {
+        let deadline = ProcessInfo.processInfo.systemUptime + max(0, outputDrainSeconds)
+        while await isTerminalOpen(), ProcessInfo.processInfo.systemUptime < deadline {
+            try? await Task.sleep(for: .milliseconds(2))
+        }
         await closeTerminal()
         await processExit.wait()
         processSource.cancel()
@@ -187,19 +167,25 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
         }
     }
 
+    func exitStatus() async -> Int32? {
+        await withCheckedContinuation { continuation in
+            terminalQueue.async { [self] in continuation.resume(returning: status) }
+        }
+    }
+
+    private func isTerminalOpen() async -> Bool {
+        await withCheckedContinuation { continuation in
+            terminalQueue.async { [self] in continuation.resume(returning: terminalOpen) }
+        }
+    }
+
     private func readReady() {
         guard terminalOpen else { return }
         for _ in 0..<16 {
-            let capacity = Self.outputLimit - output.count
-            if capacity == 0 {
-                readSuspended = true
-                readSource.suspend()
-                return
-            }
-            var bytes = [UInt8](repeating: 0, count: min(16_384, capacity))
+            var bytes = [UInt8](repeating: 0, count: 16_384)
             let count = Darwin.read(terminalFD, &bytes, bytes.count)
             if count > 0 {
-                output.append(contentsOf: bytes.prefix(count))
+                onOutput(Data(bytes.prefix(count)))
                 continue
             }
             if count == 0 || errno == EIO {

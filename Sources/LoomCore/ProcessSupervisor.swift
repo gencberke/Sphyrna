@@ -9,9 +9,9 @@ public actor ProcessSupervisor {
     private struct Runtime {
         var sessionID: UUID
         var run: ManagedRun
-        var process: EventDrivenPTYProcess
+        var terminal: TerminalEndpoint
         var outsideOwnership: [ProcessRecord]
-        var catalogErrors: [String]
+        var catalogStarted: Bool
     }
 
     private var ledger: OwnershipLedger
@@ -23,7 +23,10 @@ public actor ProcessSupervisor {
     private var markerInspected: Set<ProcessIdentity> = []
     private var managedRunMarkers: [ProcessIdentity: UUID] = [:]
     private var stoppingRuns: Set<UUID> = []
-    private var environmentShell: ProcessIdentity?
+    private var lastStopReports: [UUID: SessionStopReport] = [:]
+    private var pendingCatalogWrites: [UUID: Task<Void, Never>] = [:]
+    private var catalogWriteErrors: [UUID: String] = [:]
+    private var environmentJobs: [UUID: EnvironmentResolutionJob] = [:]
     private var stopping = false
 
     public init(ledger: OwnershipLedger = OwnershipLedger(), ledgerURL: URL? = nil,
@@ -57,6 +60,7 @@ public actor ProcessSupervisor {
         reservedSessions.insert(session.id)
         defer { reservedSessions.remove(session.id) }
         if let catalog { try await catalog.insertSession(session) }
+        guard !stopping else { throw SessionManagementError.shutdownStarted }
         sessions[session.id] = session
     }
 
@@ -66,21 +70,73 @@ public actor ProcessSupervisor {
         sessions.values.sorted { $0.id.uuidString < $1.id.uuidString }
     }
 
+    public func lastStopReport(sessionID: UUID) -> SessionStopReport? {
+        lastStopReports[sessionID]
+    }
+
     public func ledgerSnapshot() -> OwnershipLedger { ledger }
+
+    /// App-wide ownership view used by recovery and the checkpoint probe. Run
+    /// lifecycle code should prefer the session-scoped sampler below.
+    public func ownedProcesses() throws -> [ProcessRecord] { try sampleOwnership() }
 
     public func isStopping() -> Bool { stopping }
 
     /// Resolves the user's terminal environment on the supervisor actor rather
     /// than MainActor. The synchronous resolver remains bounded and its spawned
     /// shell participates in the same ownership ledger.
-    public func terminalEnvironment(origin: LaunchEnvironment.LaunchOrigin) throws -> LaunchEnvironment.Resolution {
+    public func terminalEnvironment(
+        origin: LaunchEnvironment.LaunchOrigin
+    ) async throws -> LaunchEnvironment.Resolution {
+        try await resolveEnvironment { runID, job in
+            try LaunchEnvironment.terminal(
+                origin: origin, runID: runID,
+                onSpawn: job.register, onPoll: job.sample
+            )
+        }
+    }
+
+    /// Deterministic seam for proving that a slow shell capture does not occupy
+    /// the supervisor actor or a terminal's IO queue.
+    func terminalEnvironment(
+        parent: [String: String], session: [String: String],
+        testZDOTDIR: URL, timeout: TimeInterval
+    ) async throws -> LaunchEnvironment.Resolution {
+        try await resolveEnvironment { runID, job in
+            try LaunchEnvironment.resolve(
+                parent: parent, session: session, testZDOTDIR: testZDOTDIR,
+                timeout: timeout, runID: runID,
+                onSpawn: job.register, onPoll: job.sample
+            )
+        }
+    }
+
+    private func resolveEnvironment(
+        _ operation: @escaping @Sendable (
+            UUID, EnvironmentResolutionJob
+        ) throws -> LaunchEnvironment.Resolution
+    ) async throws -> LaunchEnvironment.Resolution {
         guard !stopping else { throw SessionManagementError.shutdownStarted }
-        defer { environmentShell = nil }
-        return try LaunchEnvironment.terminal(
-            origin: origin, runID: ownershipRunID,
-            onSpawn: registerEnvironmentShell,
-            onPoll: { _ = try self.sampleOwnership() }
+        let jobID = UUID()
+        let runID = ownershipRunID
+        let job = EnvironmentResolutionJob(
+            runID: runID, coalition: ledger.coalition ?? .probe(forceFailure: true)
         )
+        environmentJobs[jobID] = job
+        defer { environmentJobs[jobID] = nil }
+        do {
+            let result = try await Task.detached {
+                try operation(runID, job)
+            }.value
+            ledger.recordDescendants(Array(job.observedIdentities()))
+            _ = try sampleOwnership()
+            guard !stopping else { throw SessionManagementError.shutdownStarted }
+            return result
+        } catch {
+            ledger.recordDescendants(Array(job.observedIdentities()))
+            _ = try? sampleOwnership()
+            throw error
+        }
     }
 
     /// Launches a new OS run for an existing durable conversation. The caller
@@ -89,7 +145,8 @@ public actor ProcessSupervisor {
     @discardableResult
     public func launch(sessionID: UUID, executable: String, arguments: [String] = [],
                        environment: [String: String], rows: UInt16 = 24,
-                       columns: UInt16 = 80) async throws -> ManagedSession {
+                       columns: UInt16 = 80,
+                       outputSink: (any TerminalOutputSink)? = nil) async throws -> ManagedSessionLaunch {
         guard !stopping else { throw SessionManagementError.shutdownStarted }
         guard var session = sessions[sessionID] else {
             throw SessionManagementError.sessionNotFound(sessionID)
@@ -125,19 +182,13 @@ public actor ProcessSupervisor {
         let run = ManagedRun(id: runID, leader: leader.identity, startedAt: Date(),
                              state: .running, exitStatus: nil,
                              descendants: [leader.identity])
-        do {
-            if let catalog { try await catalog.startRun(run, sessionID: sessionID) }
-        } catch {
-            process.terminateUnregisteredChild()
-            throw error
-        }
-        let transport = EventDrivenPTYProcess(process: process) { [weak self] status in
+        let terminal = TerminalEndpoint(process: process, outputSink: outputSink) { [weak self] status in
             Task { await self?.recordLeaderExit(runID: runID, status: status) }
         }
         session.currentRun = run
         sessions[sessionID] = session
-        runtimes[runID] = Runtime(sessionID: sessionID, run: run, process: transport,
-                                  outsideOwnership: [], catalogErrors: [])
+        runtimes[runID] = Runtime(sessionID: sessionID, run: run, terminal: terminal,
+                                  outsideOwnership: [], catalogStarted: catalog == nil)
         markerInspected.insert(leader.identity)
         managedRunMarkers[leader.identity] = runID
 
@@ -148,23 +199,35 @@ public actor ProcessSupervisor {
         do { try persistLedger() }
         catch {
             let persistenceError = error
-            _ = await stop(sessionID: sessionID, runID: runID, graceSeconds: 0.2)
+            _ = await stop(sessionID: sessionID, runID: runID, graceSeconds: 0.2,
+                           endReason: .requested, waitForCatalog: true)
             throw persistenceError
         }
-        return session
-    }
-
-    public func readAvailable(sessionID: UUID) async throws -> Data {
-        try await runtime(for: sessionID).process.drainOutput()
-    }
-
-    /// Returns the accepted byte count; callers retain and retry the remainder.
-    public func write(_ data: Data, sessionID: UUID) async throws -> Int {
-        try await runtime(for: sessionID).process.write(data)
-    }
-
-    public func resize(sessionID: UUID, rows: UInt16, columns: UInt16) async throws {
-        try await runtime(for: sessionID).process.resize(rows: rows, columns: columns)
+        if let catalog {
+            do { try await catalog.startRun(run, sessionID: sessionID) }
+            catch {
+                _ = await stop(sessionID: sessionID, runID: runID, graceSeconds: 0.2,
+                               endReason: .requested, waitForCatalog: true)
+                throw error
+            }
+            if var runtime = runtimes[runID] {
+                runtime.catalogStarted = true
+                runtimes[runID] = runtime
+            } else {
+                try await catalog.finishRun(
+                    runID, reason: stopping ? .applicationQuit : .processExited,
+                    exitStatus: await terminal.exitStatus()
+                )
+            }
+        }
+        if stopping {
+            if runtimes[runID] != nil {
+                _ = await stop(sessionID: sessionID, runID: runID, graceSeconds: 0.2,
+                               endReason: .applicationQuit, waitForCatalog: true)
+            }
+            throw SessionManagementError.shutdownStarted
+        }
+        return ManagedSessionLaunch(session: sessions[sessionID] ?? session, terminal: terminal)
     }
 
     @discardableResult
@@ -187,60 +250,115 @@ public actor ProcessSupervisor {
         guard let runID = session.currentRun?.id else {
             throw SessionManagementError.sessionNotRunning(sessionID)
         }
-        return await stop(sessionID: sessionID, runID: runID, graceSeconds: graceSeconds)
+        return await stop(sessionID: sessionID, runID: runID, graceSeconds: graceSeconds,
+                          endReason: .requested, waitForCatalog: true)
     }
 
-    /// Applies the single-session contract to every run, then performs the CP1
-    /// app-wide recovery sweep for anything a session-scoped marker could not see.
-    public func shutdown(graceSeconds: Double = 0.2) async -> ShutdownReport {
+    /// Applies one app-wide signal schedule, then records completion separately
+    /// for every run. The ownership sweep also catches escaped marked processes.
+    public func shutdown(graceSeconds: Double = 0.2,
+                         pendingOperationGraceSeconds: Double = 2.1) async -> ShutdownReport {
         stopping = true
-        // Actor methods are reentrant while catalog writes are awaited. Let any
-        // create/launch that began before shutdown publish (or fail) first, so
-        // its process cannot appear after the active-run snapshot below.
-        while !reservedSessions.isEmpty {
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        LaunchEnvironment.forget(runID: ownershipRunID)
+        for job in environmentJobs.values { job.cancel() }
         let start = Date()
         var attempts: [SignalAttempt] = []
         var errors: [String] = []
+        // Actor methods are reentrant while catalog writes are awaited. Let any
+        // create/launch that began before shutdown publish (or fail) first, so
+        // its process cannot appear after the active-run snapshot below.
+        let pendingDeadline = ProcessInfo.processInfo.systemUptime
+            + max(0.02, pendingOperationGraceSeconds)
+        while (!reservedSessions.isEmpty || !environmentJobs.isEmpty),
+              ProcessInfo.processInfo.systemUptime < pendingDeadline {
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+        if !reservedSessions.isEmpty || !environmentJobs.isEmpty {
+            errors.append(
+                "Timed out waiting for pending operations; sessions=\(reservedSessions.map(\.uuidString).sorted()), environmentJobs=\(environmentJobs.count)"
+            )
+        }
+        LaunchEnvironment.forget(runID: ownershipRunID)
 
         let active = sessions.values.compactMap { session in
             session.currentRun.map { (session.id, $0.id) }
         }
+        var sessionIdentities: [UUID: Set<ProcessIdentity>] = [:]
+        var sessionErrors: [UUID: [String]] = [:]
+        let shutdownSnapshot: [ProcessRecord]?
+        do { shutdownSnapshot = try ProcessTable.snapshot() }
+        catch {
+            shutdownSnapshot = nil
+            errors.append(String(describing: error))
+        }
         for (sessionID, runID) in active {
-            let report = await stop(sessionID: sessionID, runID: runID, graceSeconds: graceSeconds)
-            attempts += report.signals
-            errors += report.errors
-            if !report.outsideOwnership.isEmpty {
-                errors.append("Session \(sessionID) has processes outside the current user")
+            do {
+                if let shutdownSnapshot {
+                    _ = try sample(runID: runID, snapshot: shutdownSnapshot)
+                }
+                sessionIdentities[runID] = runtimes[runID]?.run.descendants ?? []
+            } catch {
+                sessionErrors[runID, default: []].append(String(describing: error))
+            }
+            if var runtime = runtimes[runID] {
+                runtime.run.state = .stopping
+                runtimes[runID] = runtime
+                if var session = sessions[sessionID] {
+                    session.currentRun = runtime.run
+                    sessions[sessionID] = session
+                }
+                stoppingRuns.insert(runID)
             }
         }
 
-        var remaining = (try? sampleOwnership()) ?? []
-        for signal in [SIGHUP, SIGTERM, SIGKILL] where !remaining.isEmpty {
-            let deadline = ProcessInfo.processInfo.systemUptime + max(0.02, graceSeconds)
-            var signaled: Set<ProcessIdentity> = []
-            repeat {
-                do {
-                    remaining = try sampleOwnership()
-                    for record in remaining where !record.zombie && !signaled.contains(record.identity) {
-                        do {
-                            try ProcessTable.signal(record.identity, signal)
-                            attempts.append(SignalAttempt(identity: record.identity, signal: signal))
-                            signaled.insert(record.identity)
-                        } catch { errors.append(String(describing: error)) }
-                    }
-                } catch {
-                    errors.append(String(describing: error))
-                    break
-                }
-                if remaining.isEmpty { break }
-                try? await Task.sleep(for: .milliseconds(10))
-            } while ProcessInfo.processInfo.systemUptime < deadline
+        // Quit has one app-wide escalation clock. This sends each signal to all
+        // owned runs before waiting, instead of paying a full grace window per
+        // session. The per-run completion below still retains separate reports.
+        let sharedTermination = await terminate(graceSeconds: graceSeconds) {
+            try sampleOwnership()
         }
-        do { remaining = try sampleOwnership() }
-        catch { errors.append(String(describing: error)) }
+        attempts += sharedTermination.attempts
+        errors += sharedTermination.errors
+        let remaining = sharedTermination.remaining
+
+        let reports = await withTaskGroup(of: SessionStopReport.self) { group in
+            for (sessionID, runID) in active {
+                let owned = sessionIdentities[runID] ?? []
+                let runErrors = sessionErrors[runID] ?? []
+                let runAttempts = sharedTermination.attempts
+                let runRemaining = remaining
+                group.addTask {
+                    await self.completeShutdownRun(
+                        sessionID: sessionID, runID: runID,
+                        ownedIdentities: owned,
+                        sharedAttempts: runAttempts,
+                        sharedRemaining: runRemaining,
+                        errors: runErrors
+                    )
+                }
+            }
+            var reports: [SessionStopReport] = []
+            for await report in group { reports.append(report) }
+            return reports
+        }
+        for report in reports {
+            errors += report.errors
+            if !report.outsideOwnership.isEmpty {
+                errors.append("Session \(report.sessionID) has processes outside the current user")
+            }
+        }
+        let catalogDeadline = ProcessInfo.processInfo.systemUptime
+            + max(0.02, pendingOperationGraceSeconds)
+        while !pendingCatalogWrites.isEmpty,
+              ProcessInfo.processInfo.systemUptime < catalogDeadline {
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        if !pendingCatalogWrites.isEmpty {
+            errors.append(
+                "Timed out waiting for catalog writes: \(pendingCatalogWrites.keys.map(\.uuidString).sorted())"
+            )
+        }
+        errors += catalogWriteErrors.values.sorted()
+        catalogWriteErrors.removeAll()
         if let issue = ledger.observationIssue { errors.append(issue) }
         return ShutdownReport(
             elapsedSeconds: Date().timeIntervalSince(start), signals: attempts,
@@ -251,24 +369,60 @@ public actor ProcessSupervisor {
         )
     }
 
-    private func runtime(for sessionID: UUID) throws -> Runtime {
-        guard let session = sessions[sessionID] else {
-            throw SessionManagementError.sessionNotFound(sessionID)
+    private func completeShutdownRun(
+        sessionID: UUID, runID: UUID,
+        ownedIdentities: Set<ProcessIdentity>,
+        sharedAttempts: [SignalAttempt],
+        sharedRemaining: [ProcessRecord],
+        errors initialErrors: [String]
+    ) async -> SessionStopReport {
+        let start = Date()
+        defer { stoppingRuns.remove(runID) }
+        guard let runtime = runtimes[runID] else {
+            return SessionStopReport(
+                sessionID: sessionID, runID: runID, elapsedSeconds: 0,
+                signals: [], remaining: [], errors: initialErrors,
+                outsideOwnership: []
+            )
         }
-        guard let runID = session.currentRun?.id, let runtime = runtimes[runID] else {
-            throw SessionManagementError.sessionNotRunning(sessionID)
+        var errors = initialErrors
+        let remaining = sharedRemaining.filter { ownedIdentities.contains($0.identity) }
+        let outside = runtime.outsideOwnership
+        let signals = sharedAttempts.filter { ownedIdentities.contains($0.identity) }
+        if remaining.isEmpty && outside.isEmpty {
+            var exitStatus = runtime.run.exitStatus
+            do { exitStatus = try await runtime.terminal.finish() }
+            catch { errors.append(String(describing: error)) }
+            if runtimes[runID]?.catalogStarted == true {
+                queueCatalogFinish(
+                    runID: runID, reason: .applicationQuit, exitStatus: exitStatus
+                )
+            }
+            runtimes[runID] = nil
+            if var session = sessions[sessionID], session.currentRun?.id == runID {
+                session.currentRun = nil
+                sessions[sessionID] = session
+            }
         }
-        guard runtime.run.state != .stopping else {
-            throw SessionManagementError.sessionStopping(sessionID)
-        }
-        return runtime
+        let report = SessionStopReport(
+            sessionID: sessionID, runID: runID,
+            elapsedSeconds: Date().timeIntervalSince(start), signals: signals,
+            remaining: remaining, errors: errors, outsideOwnership: outside
+        )
+        lastStopReports[sessionID] = report
+        return report
     }
 
     private func sample(runID: UUID) throws -> [ProcessRecord] {
+        try sample(runID: runID, snapshot: ProcessTable.snapshot())
+    }
+
+    private func sample(
+        runID: UUID, snapshot: [ProcessRecord]
+    ) throws -> [ProcessRecord] {
         guard var runtime = runtimes[runID] else {
             throw SessionManagementError.runNotFound(runID)
         }
-        let snapshot = try ProcessTable.snapshot()
         let byPID = Dictionary(uniqueKeysWithValues: snapshot.map { ($0.identity.pid, $0) })
         let live = Set(snapshot.map(\.identity))
         runtime.run.descendants.formIntersection(live)
@@ -325,7 +479,9 @@ public actor ProcessSupervisor {
         return snapshot.filter { selected.contains($0.identity) && $0.userID == getuid() }
     }
 
-    private func stop(sessionID: UUID, runID: UUID, graceSeconds: Double) async -> SessionStopReport {
+    private func stop(sessionID: UUID, runID: UUID, graceSeconds: Double,
+                      endReason: ManagedRunEndReason,
+                      waitForCatalog: Bool) async -> SessionStopReport {
         let start = Date()
         if stoppingRuns.contains(runID) {
             while stoppingRuns.contains(runID) {
@@ -359,20 +515,79 @@ public actor ProcessSupervisor {
             session.currentRun = runtime.run
             sessions[sessionID] = session
         }
-        await runtime.process.closeTerminal()
+        let termination = await terminate(graceSeconds: graceSeconds) {
+            try sample(runID: runID)
+        }
+        attempts += termination.attempts
+        errors += termination.errors
+        remaining = termination.remaining
+        let outside = runtimes[runID]?.outsideOwnership ?? []
 
+        if remaining.isEmpty && outside.isEmpty {
+            var exitStatus = runtimes[runID]?.run.exitStatus
+            if let terminal = runtimes[runID]?.terminal {
+                do { exitStatus = try await terminal.finish() }
+                catch { errors.append(String(describing: error)) }
+            }
+            if runtimes[runID]?.catalogStarted == true {
+                queueCatalogFinish(
+                    runID: runID, reason: endReason, exitStatus: exitStatus
+                )
+                if waitForCatalog {
+                    let deadline = ProcessInfo.processInfo.systemUptime + 2.1
+                    while pendingCatalogWrites[runID] != nil,
+                          ProcessInfo.processInfo.systemUptime < deadline {
+                        try? await Task.sleep(for: .milliseconds(2))
+                    }
+                    if pendingCatalogWrites[runID] != nil {
+                        errors.append("Timed out waiting for catalog run \(runID)")
+                    }
+                    if let error = catalogWriteErrors.removeValue(forKey: runID) {
+                        errors.append(error)
+                    }
+                }
+            }
+            runtimes[runID] = nil
+            if var session = sessions[sessionID], session.currentRun?.id == runID {
+                session.currentRun = nil
+                sessions[sessionID] = session
+            }
+        }
+        let report = SessionStopReport(
+            sessionID: sessionID, runID: runID,
+            elapsedSeconds: Date().timeIntervalSince(start), signals: attempts,
+            remaining: remaining, errors: errors, outsideOwnership: outside
+        )
+        lastStopReports[sessionID] = report
+        return report
+    }
+
+    /// The one escalation loop for both a session stop and the final app-wide
+    /// recovery sweep. The caller supplies only the ownership scope.
+    private func terminate(
+        graceSeconds: Double,
+        sample: () throws -> [ProcessRecord]
+    ) async -> (attempts: [SignalAttempt], remaining: [ProcessRecord], errors: [String]) {
+        var attempts: [SignalAttempt] = []
+        var errors: [String] = []
+        var remaining: [ProcessRecord] = []
         for signal in [SIGHUP, SIGTERM, SIGKILL] {
             let deadline = ProcessInfo.processInfo.systemUptime + max(0.02, graceSeconds)
             var signaled: Set<ProcessIdentity> = []
             repeat {
                 do {
-                    remaining = try sample(runID: runID)
-                    for record in remaining where !record.zombie && !signaled.contains(record.identity) {
+                    remaining = try sample()
+                    for record in remaining where !record.zombie
+                        && !signaled.contains(record.identity) {
                         do {
                             try ProcessTable.signal(record.identity, signal)
-                            attempts.append(SignalAttempt(identity: record.identity, signal: signal))
+                            attempts.append(SignalAttempt(
+                                identity: record.identity, signal: signal
+                            ))
                             signaled.insert(record.identity)
-                        } catch { errors.append(String(describing: error)) }
+                        } catch {
+                            errors.append(String(describing: error))
+                        }
                     }
                 } catch {
                     errors.append(String(describing: error))
@@ -383,55 +598,18 @@ public actor ProcessSupervisor {
             } while ProcessInfo.processInfo.systemUptime < deadline
             if remaining.isEmpty { break }
         }
-        do { remaining = try sample(runID: runID) }
+        do { remaining = try sample() }
         catch { errors.append(String(describing: error)) }
-        let outside = runtimes[runID]?.outsideOwnership ?? []
-
-        if remaining.isEmpty && outside.isEmpty {
-            var exitStatus = runtimes[runID]?.run.exitStatus
-            if let process = runtimes[runID]?.process {
-                do { exitStatus = try await process.finish() }
-                catch { errors.append(String(describing: error)) }
-            }
-            if let catalog {
-                let reason: ManagedRunEndReason = stopping ? .applicationQuit : .requested
-                do { try await catalog.finishRun(runID, reason: reason, exitStatus: exitStatus) }
-                catch { errors.append(String(describing: error)) }
-            }
-            errors += runtimes[runID]?.catalogErrors ?? []
-            runtimes[runID] = nil
-            if var session = sessions[sessionID], session.currentRun?.id == runID {
-                session.currentRun = nil
-                sessions[sessionID] = session
-            }
-        }
-        return SessionStopReport(
-            sessionID: sessionID, runID: runID,
-            elapsedSeconds: Date().timeIntervalSince(start), signals: attempts,
-            remaining: remaining, errors: errors, outsideOwnership: outside
-        )
+        return (attempts, remaining, errors)
     }
 
     @discardableResult
     private func sampleOwnership() throws -> [ProcessRecord] {
         let before = ledger
         let snapshot = try ProcessTable.snapshot()
-        if let shell = environmentShell, snapshot.contains(where: { $0.identity == shell }) {
-            ledger.recordDescendants(snapshot.filter { $0.processGroup == shell.pid }.map(\.identity))
-        }
         let records = ledger.observe(snapshot)
         if ledger != before { try persistLedger() }
         return records
-    }
-
-    private func registerEnvironmentShell(_ pid: Int32) throws {
-        guard let record = try ProcessTable.snapshot().first(where: { $0.identity.pid == pid }) else {
-            throw LoomError.message("Environment shell identity unavailable")
-        }
-        let before = ledger
-        ledger.recordDescendants([record.identity])
-        environmentShell = record.identity
-        if ledger != before { try persistLedger() }
     }
 
     private func persistLedger() throws {
@@ -442,21 +620,37 @@ public actor ProcessSupervisor {
         guard var runtime = runtimes[runID] else { return }
         runtime.run.exitStatus = status
         if runtime.run.state == .running { runtime.run.state = .exited }
-        let reason: ManagedRunEndReason = runtime.run.state == .stopping
-            ? (stopping ? .applicationQuit : .requested)
-            : .processExited
         runtimes[runID] = runtime
         if var session = sessions[runtime.sessionID], session.currentRun?.id == runID {
             session.currentRun = runtime.run
             sessions[runtime.sessionID] = session
         }
-        guard let catalog else { return }
-        do { try await catalog.finishRun(runID, reason: reason, exitStatus: status) }
-        catch {
-            guard var current = runtimes[runID] else { return }
-            current.catalogErrors.append(String(describing: error))
-            runtimes[runID] = current
+        let reason: ManagedRunEndReason = stopping ? .applicationQuit : .processExited
+        _ = await stop(sessionID: runtime.sessionID, runID: runID,
+                       graceSeconds: 0.2, endReason: reason, waitForCatalog: true)
+    }
+
+    private func queueCatalogFinish(
+        runID: UUID, reason: ManagedRunEndReason, exitStatus: Int32?
+    ) {
+        guard let catalog, pendingCatalogWrites[runID] == nil else { return }
+        pendingCatalogWrites[runID] = Task { [weak self] in
+            let completionError: String?
+            do {
+                try await catalog.finishRun(
+                    runID, reason: reason, exitStatus: exitStatus
+                )
+                completionError = nil
+            } catch let caughtError {
+                completionError = String(describing: caughtError)
+            }
+            await self?.catalogWriteCompleted(runID: runID, error: completionError)
         }
+    }
+
+    private func catalogWriteCompleted(runID: UUID, error: String?) {
+        pendingCatalogWrites[runID] = nil
+        if let error { catalogWriteErrors[runID] = error }
     }
 
     private func restoreCatalogSessions() async throws {
