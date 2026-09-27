@@ -48,6 +48,9 @@ Bu belgede **kabul edilen davranışlar**, **teknik adaylar** ve **açık kararl
 | Süreç sahipliği güvencesi | macOS'un süreçleri başlatan uygulamaya göre grupladığı resource coalition bilgisi, belgelenmemiş olsa da ek güvence katmanı olarak kullanılır. Çalışma anında sınanır; çalışmazsa Loom mevcut yöntemlere döner ve garanti kapsamının daraldığını açıkça bildirir. Sorun çıkarsa düzeltilerek ilerlenir. |
 | Yönetilen CLI ortamı | Loom'un açtığı CLI'lar kullanıcının terminalindeki ortamı alır. Yalnızca Loom'un kendi üst oturumundan sızabilecek değişkenler dışarıda kalır ve Loom işaretleri eklenir. Terminal gibi davranılır: shell başlangıç dosyalarındaki hatalar ve uyarılar oturum açmayı durdurmaz, görünür uyarı olarak gösterilir. Ortam hiç alınamazsa açık hata verilir ve uygulama yeniden başlatılmadan tekrar denenebilir. |
 | Oturumlar arası iletişim | Kullanıcının görevlendirmesi ve yetkilendirdiği kapsam içinde gerçekleşecek. |
+| Checkpoint sırası | Durum ve devam → ilk pencere (terminal motoru ve arayüz) → silme ve saklama → yetkilendirilmiş koordinasyon. Pencere, Loom'un erken kullanılabilmesi için öne alındı. Koordinasyon, durum takibine dayandığı ve en belirsiz iş olduğu için sona kaldı. |
+| Codex çalışma yolu | Loom'a ait app-server + remote TUI (yol a). CP1 örnekleminde yaklaşık 110 MiB ek sabit bellek maliyeti var; oturum durumunun doğrudan görülmesi karşılığında kabul edildi. CP2'de beklenen görünürlüğü sağlamazsa yeniden değerlendirilir. |
+| Yeni sohbet komutları | Claude `/clear` ya da Codex `/new` sonrası yeni sohbet ayrı bir kayıt olur; eski sohbet kaybolmaz. |
 | Codex önbelleği | Görüşmede açıklanan, ayrılmış thread'in 30 dakikaya kadar bellekte kalması kabul edildi. Bu, çalışan iş bırakma izni değildir. |
 | Stale içerik önizlemesi | Yapılması zor veya maliyetliyse ilk sürümün şartı değil. |
 | Aylık temizlik hedefi | `idle` değil, uygun `stale` oturumlar. |
@@ -141,7 +144,7 @@ Codex için iki yol deneyle karşılaştırılacak:
 1. Loom'a ait app-server ve ona bağlanan gerçek Codex TUI.
 2. Paylaşılan daemon kullanımını kapatan doğrudan Codex TUI.
 
-27 Eylül 2026 tarihli [Checkpoint 1 deneylerinde](plans/CHECKPOINT-1.md) codex-cli 0.157.1'in düz TUI yolunda izole daemon bileşenlerini kendiliğinden başlattığı doğrulandı. `--no-daemon` ve Loom'a ait app-server + remote TUI yolları, sınanan aktif tur/arka plan işi koşullarında temiz kapandı. CP2 için teknik öneri, kimlik/durum/onay olaylarını gözlemek amacıyla ayrı app-server yoludur; ölçülen kaynak maliyeti daha yüksek ve nihai seçim yapılmadı. Boş `thread/start` sonucunu ilk turdan önce TUI `resume` ile açma deneyi başarısızdı; TUI'nin oluşturduğu kimliği `thread/started` olayından almak ayrıca doğrulandı.
+27 Eylül 2026 tarihli [Checkpoint 1 deneylerinde](plans/CHECKPOINT-1.md) codex-cli 0.157.1'in düz TUI yolunda izole daemon bileşenlerini kendiliğinden başlattığı doğrulandı. `--no-daemon` ve Loom'a ait app-server + remote TUI yolları, sınanan aktif tur/arka plan işi koşullarında temiz kapandı. CP2 için teknik öneri, kimlik/durum/onay olaylarını gözlemek amacıyla ayrı app-server yoludur; ölçülen kaynak maliyeti daha yüksek. Kullanıcı kararıyla bu yol seçildi (§3). Boş `thread/start` sonucunu ilk turdan önce TUI `resume` ile açma deneyi başarısızdı; TUI'nin oluşturduğu kimliği `thread/started` olayından almak ayrıca doğrulandı.
 
 Başka uygulamaların veya kullanıcının terminalinin paylaşılan Codex sunucusu Loom'a ait kabul edilmez. Önlenemeyen veya sahipliği belirsiz daemon davranışında “nasıl olsa çıkışta öldürürüz” yaklaşımı uygulanmaz.
 
@@ -273,14 +276,16 @@ Her checkpoint sonucu **doğrulanan / başarısız / doğrulanmayan** olarak kay
 | 4 — Silme ve saklama | Yerel veri kapsamı tamamlanmış; başka oturumun verisine zarar vermeden silme; yarım işlemden kurtarma; geç olayla geri gelmeme; stale/istisna/takvim kuralları örnek zaman çizelgelerinde doğru. |
 | 5 — Görsel deneyim ve performans | Tasarım/ikon hedefi korunmuş; kaynak ve gecikme ölçümleri kabul edilen bütçelerde; geçmiş büyümesi ve gizli pencere davranışı doğrulanmış. GPU deneyi diğer checkpoint'lerden bağımsız yürütülebilir. |
 
-Bu sıra, tüm uygulamayı kurmadan yüksek riskli iddiaları dar deneylerle sınamak içindir. Bir sonraki adıma geçmek, önceki checkpoint'in bilinmeyenlerini gizlemek anlamına gelmez.
+Numaralar checkpoint kimlikleridir. Uygulama sırası kullanıcı kararıyla (§3): 1 → 2 → 5'in terminal motoru ve ilk pencere kısmı → 4 → 3. GPU deneyi pencereyle birlikte yapılır.
+
+Checkpoint'ler, tüm uygulamayı kurmadan yüksek riskli iddiaları dar deneylerle sınamak içindir. Bir sonraki adıma geçmek, önceki checkpoint'in bilinmeyenlerini gizlemek anlamına gelmez.
 
 ## 12. Kalan kararlar
 
 Ürün amacı ve temel davranışlar büyük ölçüde net. Uygulamadan önce bütün teknik ayrıntıları seçmek gerekmiyor; fakat şu sonuçlar açık bırakılmamalı:
 
 1. **Çıkış sınırı:** Normal Quit dışında çökme/Force Quit için hangi garanti gerçekten verilebiliyor; pencere kapatma nasıl davranacak?
-2. **Başlatma ve iletişim yolu:** Hangi Codex çalışma yolu ve Claude teslim mekanizması, sahiplik ve güncelleme şartlarını birlikte karşılıyor?
+2. **İletişim yolu:** Hangi Claude teslim mekanizması, sahiplik ve güncelleme şartlarını birlikte karşılıyor? (Codex çalışma yolu kararlaştırıldı, §3.)
 3. **Veri sözleşmesi:** Güvenli tek sohbet silmenin kesin yerel kapsamı, ortak dosyaların yönetimi ve sağlayıcı retention uyumu.
 4. **Temizlik hesabı:** Aylık takvim, stale görüntülemesinin sayaca etkisi ve uzun kapalı kalma eşiği.
 5. **Ölçülebilir bütçeler:** Kabul edilen kaynak, ölçek ve etkileşim sınırları.
