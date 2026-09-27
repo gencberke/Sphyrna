@@ -1,7 +1,8 @@
 # Checkpoint 2 — Durum ve devam
 
 **Tarih:** 27 Eylül 2026  
-**Durum:** Plan onaylandı; uygulanmadı. Bu checkpoint'ten sonra ilk pencere gelir (sözleşme §3, checkpoint sırası).  
+**Durum:** Uygulama sürüyor. S1'in oturum/çalıştırma modeli, olay tabanlı PTY omurgası ve SQLite katalog temeli doğrulandı. S1–S4 ölçümleri, sağlayıcı entegrasyonları, idle/stale ve resume uygulanmadı. Bu checkpoint'ten sonra ilk pencere gelir (sözleşme §3, checkpoint sırası).
+
 **Dayanak:** [Ürün sözleşmesi](../LOOM-PRODUCT-CONTRACT.md) §4, §9 ve §11'deki 2. checkpoint; [CP1](CHECKPOINT-1.md) §12.4 ve kod review'ı.
 
 ## 1. Amaç
@@ -155,3 +156,31 @@ Her sonuç **doğrulandı / başarısız / doğrulanmadı** olarak, komut ve kan
 - Codex app-server protokolü "experimental" etiketli; alan ve olaylar kurulu sürümün ürettiği şemayla sınanmalı, bilinmeyenlere toleranslı olunmalı.
 - Resume'un çalışma dizinine bağımlılığı ve sağlayıcıların kendi saklama politikaları.
 - Süreç tabanlı sessizlik kontrolü, yerleşik yardımcıları yanlış sınıflandırabilir. Sınıflandırma kuralı testle sabitlenmeli.
+
+## 13. Uygulama durumu
+
+27 Eylül 2026, S1–S4 yapısal dilimi ve katalog temeli:
+
+- **Doğrulandı:** `ManagedSession` içindeki Loom sohbet kimliği, sağlayıcı sohbet kimliği ve çalışma dizini; bunlardan ayrı `ManagedRun` kimliği eklendi. Uygulama sahiplik `runID`'si ile oturum çalıştırma kimliği ayrıdır.
+- **Doğrulandı:** Actor tabanlı `ProcessSupervisor`, iki eşzamanlı sentetik oturumdan birini lideri ve yeniden ebeveynlenmiş torunuyla kapatırken diğerini çalışır bıraktı. Tek oturum seçimi coalition kullanmıyor; coalition tam çıkış/kurtarma katmanında kalıyor.
+- **Doğrulandı:** `LOOM_MANAGED_RUN_ID`, süreç ortamından okunarak yeniden ebeveynlenmiş çalıştırmaları ayırıyor; çıplak PID ile okunan işaret ikinci anlık görüntüyle kimlik açısından doğrulanıyor. İşaret okuması actor içinde yeni süreç kimliği başına bir kez yapılıyor.
+- **Doğrulandı:** Ölen ledger kimlikleri, Unix session'da seçili bir torun kalmadıktan sonra ayıklanıyor; CP1 koordinatörü ledger'ı yalnız değiştiğinde yazıyor.
+- **Doğrulandı:** Ortam zaman aşımı ve desteklenmeyen shell tipli hatalara dönüştürüldü; sağlayıcı geçmişi yokluğu için tipli hata tanımlandı.
+- **Doğrulandı:** PTY okuma ve lider çıkışı `DispatchSource` ile olay tabanlıdır. Tek okuyucu ve tek `waitpid` sahibi vardır; fd yalnız cancel handler'da kapanır. 512 KiB'lık burst çıktı, yoklama ve veri kaybı olmadan alındı. Süreç ve IO işi `ProcessSupervisor` actor'ında/özel queue'larda kalır; `LaunchEnvironment` cache'i artık `MainActor`'a bağlı değildir.
+- **Doğrulandı:** Sistem `libsqlite3`'ü kullanan sürümlü katalog; WAL, uygulama kimliği, foreign-key ve açılış bütünlük kontrolüyle oluşturuluyor. Sohbet içeriği tutulmuyor. Bozuk dosya reddedilip byte düzeyinde değiştirilmeden bırakıldı.
+- **Doğrulandı:** Oturum, sağlayıcı kimliği değişimi ve run başlangıç/bitişi kataloglanıyor. Quit, bekleyen katalog yazılarıyla yarışmıyor. Yeniden açılışta sohbet ve bitmiş run korunuyor, eski `currentRun` geri yüklenmiyor ve otomatik süreç başlamıyor.
+- **Kontrol:** `swift build` geçti. Swift 6.4 komut satırı araçlarının `TestingMacros` eklentisini otomatik yüklememesi nedeniyle test komutuna eklenti yolu açıkça verildi; bu komutla 46 test geçti:
+  `swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib`
+- **Doğrulanmadı:** 10 boşta oturumda CPU/uyanma ölçümü, binlerce torun uzun çalışma deneyi, actor ortam çözümlemesinin ayrı MainActor responsiveness ölçümü ve A9a–A9f gerçek sağlayıcı matrisi. Bunlar S1–S4'ün kalan kabulüdür. Katalogdaki lifecycle/last-used geçişleri provider olayları ve idle motoruyla birlikte uygulanacak.
+
+## 14. Review: yapısal dilim (27 Eylül 2026)
+
+Review'da `swift test` hem düz hem de eklenti yolu verilerek çalıştırıldı: 46/46 geçti. Oturum ile çalıştırmanın ayrılması, tek oturum durdurma, olay tabanlı PTY, katalog ve ledger'ın küçülmesi doğru yönde. Aşağıdakiler, Claude hook'ları ve Codex istemcisi bu yapının üzerine kurulmadan önce düzeltilmeli (1–3) ya da bu dilim içinde kapatılmalı (4–7).
+
+1. **Quit oturum sayısıyla doğrusal uzuyor.** `ProcessSupervisor.shutdown` oturumları sırayla durduruyor (`ProcessSupervisor.swift:211`); her biri HUP/TERM/KILL bekleme sürelerinin tamamını bekleyebilir. §8'deki gerçekçi sağlayıcı bekleme süreleriyle 10 oturumda Quit onlarca saniyeye çıkabilir. Beklenen: bütün çalıştırmalara sinyaller aynı anda gider, bekleme ortak yapılır; her oturumun raporu yine ayrı tutulur. Kabul: 10 inatçı sentetik oturumda Quit süresi ≈ tek oturumun süresi.
+2. **Terminal IO, yaşam döngüsü işleriyle aynı actor'dan geçiyor.** `write`, `readAvailable` ve `resize` supervisor actor'ı üzerinden çalışıyor (`ProcessSupervisor.swift:157-168`). Aynı actor, 30 sn'ye kadar süren senkron ortam çözümlemesini (`:76-84`) ve tam süreç taramalarını da yürütüyor; bu sırada tuş vuruşları ve çıktı bekler. Beklenen: çalıştırma açıldıktan sonra IO, actor'a uğramadan terminal nesnesinin kendi kuyruğundan yapılır; supervisor yalnızca yaşam döngüsünü yönetir. Ortam çözümlemesi supervisor actor'ını bloklamaz. Kabul: ortam çözümlemesi ya da tarama sürerken bir oturuma yazma ve okuma gecikmesi ölçülür ve bloklanmadığı gösterilir.
+3. **Okunmayan oturum takılır.** Çıktı çekme modeliyle tamponlanıyor. 4 MiB dolunca okuma askıya alınıyor (`EventDrivenPTYProcess.swift:193-197`), CLI yazamaz ve bekler. CP1 kuralına göre yaşayan her oturumun çıktısı, gizli olsa da, sürekli işlenmelidir. Beklenen: çıktı her oturumun tüketicisine (ileride terminal motoru) itilir. Görünürlüğe bağlı geri basınç uygulanmaz; bellek, tüketicinin sınırlı scrollback'iyle sınırlanır. Bu, pencere parçasının terminal motoru arayüzünün temelidir.
+4. **CLI kendiliğinden kapanınca oturum takılı kalıyor.** Kullanıcı `/exit` yazarsa `currentRun` `.exited` olarak kalıyor. Yeni `launch` reddediliyor (`:97`) ve CLI'ın arkada bıraktığı torunlar, biri `stop` çağırana kadar temizlenmiyor. Idle/resume diliminde kural tanımlanmalı: lider çıkınca kalan torunlar aynı sözleşmeyle kapatılır ya da görünür olarak raporlanır; ardından oturum yeniden açılabilir.
+5. **İki yönetici ve üç kopya döngü.** `ShutdownCoordinator` (probe ve CP1 testleri) ile `ProcessSupervisor` yan yana duruyor. HUP/TERM/KILL + yeniden tarama döngüsü üç yerde kopya. Tek bir sonlandırma rutini kullanılmalı; probe supervisor'a taşınmalı ve eski koordinatör kaldırılmalı.
+6. **S3 kısmen tamamlandı.** Ledger ölen kimlikleri ayıklıyor ve yalnızca değişince yazılıyor. Yeni PID başına tek işaret okuması ise yalnızca çalıştırma işareti (`LOOM_MANAGED_RUN_ID`) için geçerli. Uygulama geneli `OwnershipLedger.observe` her çağrıda bütün süreçlerde run işaretini ve coalition'ı yeniden okuyor. Ortam çözümlemesi sırasında 20 ms'de bir tam tarama devam ediyor (`LaunchEnvironment.swift:299`). §13'teki ilgili "doğrulandı" maddesi bu kapsamla okunmalı.
+7. **Quit başında sınırsız bekleme.** `shutdown`, `reservedSessions` boşalana kadar 1 ms aralıklarla bekliyor (`:200`). Takılan bir katalog yazımı Quit'i süresiz bekletir. Süre sınırı ve raporlama eklenmeli.

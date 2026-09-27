@@ -34,15 +34,14 @@ public enum LaunchEnvironment {
         }
     }
 
-    @MainActor private static var caches: [UUID: TerminalEnvironmentCache] = [:]
+    private static let caches = TerminalEnvironmentCacheStore()
 
     /// Successful resolution and its warnings are cached; a failed call can be retried.
     /// The caller establishes launch origin from its app identity and parent process.
-    @MainActor public static func terminal(origin: LaunchOrigin, runID: UUID,
-                                           onSpawn: @escaping (pid_t) throws -> Void,
-                                           onPoll: @escaping () throws -> Void) throws -> Resolution {
-        let cache = caches[runID] ?? TerminalEnvironmentCache()
-        caches[runID] = cache
+    public static func terminal(origin: LaunchOrigin, runID: UUID,
+                                onSpawn: @escaping (pid_t) throws -> Void,
+                                onPoll: @escaping () throws -> Void) throws -> Resolution {
+        let cache = caches.cache(for: runID)
         return try cache.value {
             let parent = ProcessInfo.processInfo.environment
             let session = sessionEnvironment(origin: origin, parent: parent)
@@ -52,7 +51,7 @@ public enum LaunchEnvironment {
         }
     }
 
-    @MainActor static func forget(runID: UUID) { caches[runID] = nil }
+    static func forget(runID: UUID) { caches.remove(runID: runID) }
 
     /// Keep the user's complete resolved environment; only terminal identity is added here.
     public static func make(base: [String: String], runID: UUID, sessionID: UUID) -> [String: String] {
@@ -135,7 +134,7 @@ public enum LaunchEnvironment {
         if let runID { base["LOOM_RUN_ID"] = runID.uuidString }
         let shell = base["SHELL"] ?? "/bin/zsh"
         guard URL(fileURLWithPath: shell).resolvingSymlinksInPath().path == "/bin/zsh" else {
-            throw LoomError.message("Terminal environment resolution currently supports macOS /bin/zsh; unsupported shell: \(shell)")
+            throw LoomError.unsupportedShell(shell)
         }
         let token = "LOOM-\(UUID().uuidString)"
         let start = Data(("\u{1e}" + token + "\0").utf8)
@@ -313,18 +312,20 @@ public enum LaunchEnvironment {
             }
             if waited < 0 && errno != EINTR { throw LoomError.system("Terminal startup wait", errno) }
             guard ProcessInfo.processInfo.systemUptime < deadline else {
-                throw LoomError.message("Terminal shell startup timed out; check startup files for hangs or input prompts")
+                throw LoomError.environmentTimeout
             }
             usleep(5_000)
         }
     }
 }
 
-@MainActor
-final class TerminalEnvironmentCache {
+final class TerminalEnvironmentCache: @unchecked Sendable {
+    private let lock = NSLock()
     private var cached: LaunchEnvironment.Resolution?
 
     func value(resolve: () throws -> LaunchEnvironment.Resolution) throws -> LaunchEnvironment.Resolution {
+        lock.lock()
+        defer { lock.unlock() }
         if let cached { return cached }
         let result = try resolve()
         cached = result
@@ -332,14 +333,43 @@ final class TerminalEnvironmentCache {
     }
 }
 
+private final class TerminalEnvironmentCacheStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [UUID: TerminalEnvironmentCache] = [:]
+
+    func cache(for runID: UUID) -> TerminalEnvironmentCache {
+        lock.lock()
+        defer { lock.unlock() }
+        if let value = values[runID] { return value }
+        let value = TerminalEnvironmentCache()
+        values[runID] = value
+        return value
+    }
+
+    func remove(runID: UUID) {
+        lock.lock()
+        values[runID] = nil
+        lock.unlock()
+    }
+}
+
 public enum LoomError: Error, CustomStringConvertible {
     case system(String, Int32)
     case message(String)
+    case environmentTimeout
+    case unsupportedShell(String)
+    case providerHistoryUnavailable(provider: ManagedSession.Provider, conversationID: String)
 
     public var description: String {
         switch self {
         case let .system(operation, code): "\(operation): \(String(cString: strerror(code))) (\(code))"
         case let .message(message): message
+        case .environmentTimeout:
+            "Terminal shell startup timed out; check startup files for hangs or input prompts"
+        case let .unsupportedShell(shell):
+            "Terminal environment resolution currently supports macOS /bin/zsh; unsupported shell: \(shell)"
+        case let .providerHistoryUnavailable(provider, conversationID):
+            "Provider history unavailable for \(provider.rawValue) conversation \(conversationID)"
         }
     }
 }

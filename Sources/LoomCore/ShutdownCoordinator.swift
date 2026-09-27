@@ -44,9 +44,10 @@ public final class ShutdownCoordinator {
         guard let record = try ProcessTable.snapshot().first(where: { $0.identity.pid == pid }) else {
             throw LoomError.message("Environment shell identity unavailable")
         }
+        let before = ledger
         ledger.recordDescendants([record.identity])
         environmentShell = record.identity
-        if let ledgerURL { try ledger.save(to: ledgerURL) }
+        try persistLedger(ifChangedFrom: before)
     }
 
     public func launch(executable: String, arguments: [String] = [], environment: [String: String],
@@ -59,14 +60,16 @@ public final class ShutdownCoordinator {
         let child = try PTYProcess(executable: executable, arguments: arguments, environment: environment,
                                    directory: directory, rows: rows, columns: columns)
         children.append(child)
+        let before = ledger
         let snapshot = try ProcessTable.snapshot()
         if let record = snapshot.first(where: { $0.identity.pid == child.pid }) { ledger.register(record.identity) }
         _ = ledger.observe(snapshot)
-        if let ledgerURL { try ledger.save(to: ledgerURL) }
+        try persistLedger(ifChangedFrom: before)
         return child
     }
 
     @discardableResult public func sample() throws -> [ProcessRecord] {
+        let before = ledger
         children.forEach { $0.pollExit() }
         let snapshot = try ProcessTable.snapshot()
         // The resolver retains its exited shell with WNOWAIT until its final sample.
@@ -75,8 +78,12 @@ public final class ShutdownCoordinator {
             ledger.recordDescendants(snapshot.filter { $0.processGroup == shell.pid }.map(\.identity))
         }
         let records = ledger.observe(snapshot)
-        if let ledgerURL { try ledger.save(to: ledgerURL) }
+        try persistLedger(ifChangedFrom: before)
         return records
+    }
+
+    private func persistLedger(ifChangedFrom previous: OwnershipLedger) throws {
+        if ledger != previous, let ledgerURL { try ledger.save(to: ledgerURL) }
     }
 
     /// Synchronous bounded shutdown for the checkpoint host.

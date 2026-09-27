@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-public struct OwnershipLedger: Codable, Sendable {
+public struct OwnershipLedger: Codable, Equatable, Sendable {
     public let runID: UUID
     public private(set) var coalition: CoalitionCapability?
     public private(set) var observationIssue: String?
@@ -80,7 +80,15 @@ public struct OwnershipLedger: Codable, Sendable {
                 }
             }
         }
-        descendants.formUnion(selected)
+        // Persist only currently live owned identities. A dead session leader is
+        // retained only while a selected member of that Unix session survives;
+        // once the session is empty it cannot later create another descendant.
+        descendants = selected
+        sessionLeaders = sessionLeaders.filter { leader in
+            selected.contains(leader) || candidates.contains {
+                $0.sessionID == leader.pid && selected.contains($0.identity)
+            }
+        }
         outsideOwnership = candidates.filter { selected.contains($0.identity) && $0.userID != getuid() }
         return candidates.filter { selected.contains($0.identity) && $0.userID == getuid() }
     }

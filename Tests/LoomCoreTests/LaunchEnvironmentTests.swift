@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import LoomCore
 
-@MainActor
 struct LaunchEnvironmentTests {
     private func fixture(_ rc: String, profile: String = "") throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("loom-environment-\(UUID())")
@@ -94,6 +93,7 @@ struct LaunchEnvironmentTests {
         #expect(missingAgent.warnings == ["launchd session variable SSH_AUTH_SOCK is unavailable"])
     }
 
+    @MainActor
     @Test func startupBackgroundJobIsOwnedUntilShutdownWithoutCoalition() throws {
         let directory = try fixture("/bin/sleep 60 &!\nexport LOOM_TEST_HELPER_PID=$!\n")
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -167,8 +167,11 @@ struct LaunchEnvironmentTests {
         do {
             _ = try LaunchEnvironment.resolve(parent: parent(home: directory), session: [:], testZDOTDIR: directory, timeout: 0.2)
             Issue.record("Hung startup unexpectedly produced an environment")
-        } catch {
-            #expect(String(describing: error).contains("timed out"))
+        } catch let error as LoomError {
+            guard case .environmentTimeout = error else {
+                Issue.record("Expected typed environment timeout, got \(error)")
+                return
+            }
         }
         #expect(ProcessInfo.processInfo.systemUptime - started < 2)
         let text = try String(contentsOf: directory.appendingPathComponent("sleeper.pid"), encoding: .utf8)
@@ -195,8 +198,12 @@ struct LaunchEnvironmentTests {
         do {
             _ = try LaunchEnvironment.resolve(parent: inherited, session: [:])
             Issue.record("Unsupported shell unexpectedly produced an environment")
-        } catch {
-            #expect(String(describing: error).contains("unsupported shell: \(shell)"))
+        } catch let error as LoomError {
+            guard case let .unsupportedShell(value) = error else {
+                Issue.record("Expected typed unsupported-shell error, got \(error)")
+                return
+            }
+            #expect(value == shell)
         }
     }
 

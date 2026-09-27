@@ -2,8 +2,7 @@ import CLoomPOSIX
 import Darwin
 import Foundation
 
-/// Access through the coordinator's serialized lifecycle. Closing the PTY does not imply all descendants exited.
-@MainActor
+/// Access through a serialized lifecycle owner. Closing the PTY does not imply all descendants exited.
 public final class PTYProcess {
     public let pid: Int32
     public private(set) var masterFD: Int32
@@ -71,5 +70,21 @@ public final class PTYProcess {
 
     public func closeTerminal() {
         if masterFD >= 0 { Darwin.close(masterFD); masterFD = -1 }
+    }
+
+    func detachTerminal() -> Int32 {
+        precondition(masterFD >= 0)
+        let descriptor = masterFD
+        masterFD = -1
+        return descriptor
+    }
+
+    /// Safe immediately after spawn while this object still owns the unreaped
+    /// child and therefore keeps its PID reserved against reuse.
+    func terminateUnregisteredChild() {
+        _ = Darwin.kill(pid, SIGKILL)
+        while waitpid(pid, nil, 0) < 0 && errno == EINTR {}
+        exitStatus = SIGKILL
+        closeTerminal()
     }
 }

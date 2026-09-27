@@ -99,4 +99,25 @@ struct OwnershipBoundaryTests {
         #expect(ledger.observationIssue?.contains("cleanup is unverified") == true)
     }
 
+    @Test func deadIdentitiesArePrunedAfterTheirUnixSessionEmpties() {
+        let leader = ProcessIdentity(pid: 2_000_030, startSeconds: 1, startMicroseconds: 0)
+        let child = ProcessIdentity(pid: 2_000_031, startSeconds: 1, startMicroseconds: 0)
+        func record(_ identity: ProcessIdentity, parent: Int32) -> ProcessRecord {
+            ProcessRecord(identity: identity, parentPID: parent, processGroup: leader.pid,
+                          sessionID: leader.pid, userID: getuid(), zombie: false)
+        }
+        var ledger = OwnershipLedger(coalition: .probe(forceFailure: true))
+        ledger.register(leader)
+        _ = ledger.observe([record(leader, parent: 1), record(child, parent: leader.pid)])
+        #expect(ledger.descendants == [leader, child])
+
+        _ = ledger.observe([record(child, parent: 1)])
+        #expect(ledger.descendants == [child])
+        #expect(ledger.sessionLeaders == [leader])
+
+        _ = ledger.observe([])
+        #expect(ledger.descendants.isEmpty)
+        #expect(ledger.sessionLeaders.isEmpty)
+    }
+
 }

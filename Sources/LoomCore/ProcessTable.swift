@@ -8,7 +8,7 @@ public struct ProcessIdentity: Codable, Hashable, Sendable {
     public let startMicroseconds: Int64
 }
 
-public struct ProcessRecord: Codable, Sendable {
+public struct ProcessRecord: Codable, Equatable, Sendable {
     public let identity: ProcessIdentity
     public let parentPID: Int32
     public let processGroup: Int32
@@ -58,6 +58,12 @@ public enum ProcessTable {
     public static func runID(pid: Int32) -> String? {
         var buffer = [CChar](repeating: 0, count: 128)
         guard loom_read_run_id(pid, &buffer, buffer.count) == 1 else { return nil }
+        return buffer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
+    }
+
+    public static func managedRunID(pid: Int32) -> String? {
+        var buffer = [CChar](repeating: 0, count: 128)
+        guard loom_read_managed_run_id(pid, &buffer, buffer.count) == 1 else { return nil }
         return buffer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
     }
 

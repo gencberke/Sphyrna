@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 /// Resource coalition ownership is additive; shared launch contexts must never be claimed.
-public struct CoalitionCapability: Codable, Sendable {
+public struct CoalitionCapability: Codable, Equatable, Sendable {
     public let resourceID: UInt64?
     public let bootSessionID: String?
     public let detail: String

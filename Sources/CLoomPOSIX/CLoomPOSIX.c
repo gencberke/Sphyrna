@@ -264,10 +264,13 @@ int loom_boot_session_uuid(char *buffer, size_t capacity) {
     return 0;
 }
 
-int loom_read_run_id(pid_t pid, char *buffer, size_t capacity) {
+static int read_environment_value(pid_t pid, const char *name,
+                                  char *buffer, size_t capacity) {
     if (buffer == NULL || capacity == 0) { errno = EINVAL; return -1; }
     buffer[0] = '\0';
-    if (pid <= 0) { errno = EINVAL; return -1; }
+    if (pid <= 0 || name == NULL || name[0] == '\0' || strchr(name, '=') != NULL) {
+        errno = EINVAL; return -1;
+    }
     int argmax = 0;
     size_t size = sizeof(argmax);
     int max_mib[] = { CTL_KERN, KERN_ARGMAX };
@@ -297,12 +300,13 @@ int loom_read_run_id(pid_t pid, char *buffer, size_t capacity) {
     while (cursor < end && *cursor != '\0') {
         nul = memchr(cursor, '\0', (size_t)(end - cursor));
         if (nul == NULL) { goto done; }
-        const char prefix[] = "LOOM_RUN_ID=";
+        size_t name_length = strlen(name);
         size_t length = (size_t)(nul - cursor);
-        if (length >= sizeof(prefix) - 1 && memcmp(cursor, prefix, sizeof(prefix) - 1) == 0) {
-            size_t value_length = length - (sizeof(prefix) - 1);
+        if (length > name_length && cursor[name_length] == '=' &&
+            memcmp(cursor, name, name_length) == 0) {
+            size_t value_length = length - name_length - 1;
             if (value_length >= capacity) { saved = ERANGE; goto done; }
-            memcpy(buffer, cursor + sizeof(prefix) - 1, value_length);
+            memcpy(buffer, cursor + name_length + 1, value_length);
             buffer[value_length] = '\0';
             result = 1; goto done;
         }
@@ -313,6 +317,14 @@ done:
     free(data);
     if (result < 0) { errno = saved; }
     return result;
+}
+
+int loom_read_run_id(pid_t pid, char *buffer, size_t capacity) {
+    return read_environment_value(pid, "LOOM_RUN_ID", buffer, capacity);
+}
+
+int loom_read_managed_run_id(pid_t pid, char *buffer, size_t capacity) {
+    return read_environment_value(pid, "LOOM_MANAGED_RUN_ID", buffer, capacity);
 }
 
 int loom_signal_if_matches(pid_t pid, int64_t start_sec, int64_t start_usec,

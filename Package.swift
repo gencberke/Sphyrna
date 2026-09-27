@@ -13,7 +13,7 @@ let package = Package(
     targets: [
         .target(name: "CLoomPOSIX"),
         .target(name: "CLoomTestSupport"),
-        .target(name: "LoomCore", dependencies: ["CLoomPOSIX"]),
+        .target(name: "LoomCore", dependencies: ["CLoomPOSIX"], linkerSettings: [.linkedLibrary("sqlite3")]),
         .executableTarget(name: "loom-probe", dependencies: ["LoomCore"]),
         .executableTarget(name: "loom-test-child", dependencies: ["CLoomTestSupport"]),
         .testTarget(name: "LoomCoreTests", dependencies: ["LoomCore"]),

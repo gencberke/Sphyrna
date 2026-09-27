@@ -61,6 +61,11 @@ int loom_boot_session_uuid(char *buffer, size_t capacity);
  * capacity is insufficient (ERANGE). Output is empty unless the result is 1. */
 int loom_read_run_id(pid_t pid, char *buffer, size_t capacity);
 
+/* Reads only LOOM_MANAGED_RUN_ID from KERN_PROCARGS2, with the same return
+ * contract as loom_read_run_id. This marker distinguishes concurrently or
+ * successively managed terminal runs inside one Loom ownership run. */
+int loom_read_managed_run_id(pid_t pid, char *buffer, size_t capacity);
+
 /* Re-read PID start time immediately before kill. Returns 0 on success or -1
  * with errno (ESRCH for identity mismatch, EPERM if the target's effective UID
  * differs from the caller's real UID). This narrows but cannot eliminate
