@@ -1,0 +1,85 @@
+{
+  "status": "verified",
+  "pathEqual": true,
+  "differences": [
+    {
+      "key": "COLORTERM",
+      "loomPresent": false,
+      "terminalPresent": true,
+      "allowed": true,
+      "reason": "Terminal color capability hint"
+    },
+    {
+      "key": "LOOM_RUN_ID",
+      "loomPresent": true,
+      "terminalPresent": false,
+      "allowed": true,
+      "reason": "Loom ownership marker"
+    },
+    {
+      "key": "LOOM_SESSION_ID",
+      "loomPresent": true,
+      "terminalPresent": false,
+      "allowed": true,
+      "reason": "Loom ownership marker"
+    },
+    {
+      "key": "OSLogRateLimit",
+      "loomPresent": false,
+      "terminalPresent": true,
+      "allowed": true,
+      "reason": "macOS application launcher logging throttle"
+    },
+    {
+      "key": "TERM_PROGRAM",
+      "loomPresent": false,
+      "terminalPresent": true,
+      "allowed": true,
+      "reason": "Terminal/session identity"
+    },
+    {
+      "key": "TERM_PROGRAM_VERSION",
+      "loomPresent": false,
+      "terminalPresent": true,
+      "allowed": true,
+      "reason": "Terminal/session identity"
+    },
+    {
+      "key": "TERM_SESSION_ID",
+      "loomPresent": false,
+      "terminalPresent": true,
+      "allowed": true,
+      "reason": "Terminal/session identity"
+    },
+    {
+      "key": "XPC_FLAGS",
+      "loomPresent": false,
+      "terminalPresent": true,
+      "allowed": true,
+      "reason": "macOS application launcher IPC flags"
+    },
+    {
+      "key": "XPC_SERVICE_NAME",
+      "loomPresent": false,
+      "terminalPresent": true,
+      "allowed": true,
+      "reason": "macOS application launcher service identity"
+    },
+    {
+      "key": "__CFBundleIdentifier",
+      "loomPresent": false,
+      "terminalPresent": true,
+      "allowed": true,
+      "reason": "Terminal/session identity"
+    }
+  ],
+  "environmentChecks": {
+    "agentReachable": true,
+    "cachedEnvironmentIdentical": true,
+    "childHasSSHAgentSocket": true,
+    "childLauncherKeys": [],
+    "launchOrigin": "launchServices",
+    "sshAddStatus": 1,
+    "warningCount": 0
+  }
+}

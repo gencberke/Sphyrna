@@ -1,0 +1,9 @@
+{
+  "label": "B1 baseline Codex startup",
+  "actions": [
+    {"op":"launch", "provider":"codex", "route":"baseline"},
+    {"op":"wait", "seconds":5},
+    {"op":"snapshot", "label":"idle"},
+    {"op":"quit"}
+  ]
+}

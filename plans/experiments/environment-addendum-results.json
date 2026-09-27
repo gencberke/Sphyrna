@@ -1,0 +1,446 @@
+{
+  "status": "verified",
+  "tests": {
+    "passed": 33,
+    "suites": 4,
+    "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/evidence/environment-addendum/20260927-223727/swift-test.log"
+  },
+  "F1": "Natural startup; only observed stderr/status yields bounded warnings; silent false is accepted by user.",
+  "F2": "Exit, timeout, child cleanup, incomplete/empty/oversized environment tests passed.",
+  "F3": "Read EOF continues to export.",
+  "F4": {
+    "applicationComparisons": {
+      "app": {
+        "status": "verified",
+        "pathEqual": true,
+        "differences": [
+          {
+            "key": "COLORTERM",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal color capability hint"
+          },
+          {
+            "key": "LOOM_RUN_ID",
+            "loomPresent": true,
+            "terminalPresent": false,
+            "allowed": true,
+            "reason": "Loom ownership marker"
+          },
+          {
+            "key": "LOOM_SESSION_ID",
+            "loomPresent": true,
+            "terminalPresent": false,
+            "allowed": true,
+            "reason": "Loom ownership marker"
+          },
+          {
+            "key": "OSLogRateLimit",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "macOS application launcher logging throttle"
+          },
+          {
+            "key": "TERM_PROGRAM",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal/session identity"
+          },
+          {
+            "key": "TERM_PROGRAM_VERSION",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal/session identity"
+          },
+          {
+            "key": "TERM_SESSION_ID",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal/session identity"
+          },
+          {
+            "key": "XPC_FLAGS",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "macOS application launcher IPC flags"
+          },
+          {
+            "key": "XPC_SERVICE_NAME",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "macOS application launcher service identity"
+          },
+          {
+            "key": "__CFBundleIdentifier",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal/session identity"
+          }
+        ],
+        "environmentChecks": {
+          "agentReachable": true,
+          "cachedEnvironmentIdentical": true,
+          "childHasSSHAgentSocket": true,
+          "childLauncherKeys": [],
+          "launchOrigin": "development",
+          "sshAddStatus": 1,
+          "warningCount": 3
+        }
+      },
+      "clean-app": {
+        "status": "verified",
+        "pathEqual": true,
+        "differences": [
+          {
+            "key": "COLORTERM",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal color capability hint"
+          },
+          {
+            "key": "LOOM_RUN_ID",
+            "loomPresent": true,
+            "terminalPresent": false,
+            "allowed": true,
+            "reason": "Loom ownership marker"
+          },
+          {
+            "key": "LOOM_SESSION_ID",
+            "loomPresent": true,
+            "terminalPresent": false,
+            "allowed": true,
+            "reason": "Loom ownership marker"
+          },
+          {
+            "key": "OSLogRateLimit",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "macOS application launcher logging throttle"
+          },
+          {
+            "key": "TERM_PROGRAM",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal/session identity"
+          },
+          {
+            "key": "TERM_PROGRAM_VERSION",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal/session identity"
+          },
+          {
+            "key": "TERM_SESSION_ID",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal/session identity"
+          },
+          {
+            "key": "XPC_FLAGS",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "macOS application launcher IPC flags"
+          },
+          {
+            "key": "XPC_SERVICE_NAME",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "macOS application launcher service identity"
+          },
+          {
+            "key": "__CFBundleIdentifier",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal/session identity"
+          }
+        ],
+        "environmentChecks": {
+          "agentReachable": true,
+          "cachedEnvironmentIdentical": true,
+          "childHasSSHAgentSocket": true,
+          "childLauncherKeys": [],
+          "launchOrigin": "launchServices",
+          "sshAddStatus": 1,
+          "warningCount": 0
+        }
+      },
+      "terminal": {
+        "status": "verified",
+        "pathEqual": true,
+        "differences": [
+          {
+            "key": "COLORTERM",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal color capability hint"
+          },
+          {
+            "key": "LOOM_RUN_ID",
+            "loomPresent": true,
+            "terminalPresent": false,
+            "allowed": true,
+            "reason": "Loom ownership marker"
+          },
+          {
+            "key": "LOOM_SESSION_ID",
+            "loomPresent": true,
+            "terminalPresent": false,
+            "allowed": true,
+            "reason": "Loom ownership marker"
+          },
+          {
+            "key": "OSLogRateLimit",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "macOS application launcher logging throttle"
+          },
+          {
+            "key": "TERM_PROGRAM",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal/session identity"
+          },
+          {
+            "key": "TERM_PROGRAM_VERSION",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal/session identity"
+          },
+          {
+            "key": "TERM_SESSION_ID",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal/session identity"
+          },
+          {
+            "key": "XPC_FLAGS",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "macOS application launcher IPC flags"
+          },
+          {
+            "key": "XPC_SERVICE_NAME",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "macOS application launcher service identity"
+          },
+          {
+            "key": "__CFBundleIdentifier",
+            "loomPresent": false,
+            "terminalPresent": true,
+            "allowed": true,
+            "reason": "Terminal/session identity"
+          }
+        ],
+        "environmentChecks": {
+          "agentReachable": true,
+          "cachedEnvironmentIdentical": true,
+          "childHasSSHAgentSocket": true,
+          "childLauncherKeys": [],
+          "launchOrigin": "development",
+          "sshAddStatus": 1,
+          "warningCount": 3
+        }
+      }
+    },
+    "actualClaude": {
+      "allNamedParentCategoriesPresent": true,
+      "assertions": {
+        "childExitedSuccessfully": true,
+        "parentClaudeVariablesAbsentInChild": true,
+        "rcCustomVariablePreserved": true,
+        "runMarkerMatches": true,
+        "sessionMarkerMatches": true,
+        "terminalTypeMatches": true
+      },
+      "assertionsPassed": true,
+      "childClaudeKeys": [],
+      "childEnvironmentKeys": [
+        "HOME",
+        "LANG",
+        "LOGNAME",
+        "LOOM_E2_RC_CUSTOM",
+        "LOOM_RUN_ID",
+        "LOOM_SESSION_ID",
+        "OLDPWD",
+        "PATH",
+        "PWD",
+        "SHELL",
+        "SHLVL",
+        "TERM",
+        "TMPDIR",
+        "USER",
+        "ZDOTDIR",
+        "_"
+      ],
+      "childExitStatus": 0,
+      "childPID": 487,
+      "parentClaudeKeys": [
+        "CLAUDECODE",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_DISABLE_AGENT_VIEW",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_MESSAGING_SOCKET",
+        "CLAUDE_CODE_MESSAGING_TOKEN",
+        "CLAUDE_CODE_SESSION_ATTENDED",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CONFIG_DIR",
+        "CLAUDE_ENV_FILE",
+        "CLAUDE_PID",
+        "CLAUDE_PROJECT_DIR"
+      ],
+      "parentCoverage": {
+        "CLAUDE_CODE_MESSAGING_prefix": true,
+        "CLAUDE_CODE_SESSION_ID": true,
+        "CLAUDECODE": true
+      },
+      "parentEnvironmentKeys": [
+        "AI_AGENT",
+        "CLAUDECODE",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_DISABLE_AGENT_VIEW",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_MESSAGING_SOCKET",
+        "CLAUDE_CODE_MESSAGING_TOKEN",
+        "CLAUDE_CODE_SESSION_ATTENDED",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CONFIG_DIR",
+        "CLAUDE_ENV_FILE",
+        "CLAUDE_PID",
+        "CLAUDE_PROJECT_DIR",
+        "COLUMNS",
+        "COREPACK_ENABLE_AUTO_PIN",
+        "FPATH",
+        "HOME",
+        "HOMEBREW_CELLAR",
+        "HOMEBREW_PREFIX",
+        "HOMEBREW_REPOSITORY",
+        "INFOPATH",
+        "JAVA_HOME",
+        "LANG",
+        "LINES",
+        "LOGNAME",
+        "LOOM_RUN_ID",
+        "LOOM_SESSION_ID",
+        "NoDefaultCurrentDirectoryInExePath",
+        "PATH",
+        "PWD",
+        "SHELL",
+        "SHLVL",
+        "SSH_AUTH_SOCK",
+        "TERM",
+        "TMPDIR",
+        "USER",
+        "_",
+        "__CF_USER_TEXT_ENCODING"
+      ],
+      "parentPID": 456,
+      "pid": 475,
+      "schemaVersion": 1,
+      "stage": "complete",
+      "warningCount": 0
+    },
+    "run": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/AA0A1364-53DF-4DCA-BF62-49A4AEE0BBAD",
+    "shutdown": {
+      "elapsedSeconds": 0.010535001754760742,
+      "errors": [],
+      "outsideOwnership": [],
+      "ownershipGuarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Shared coalition 21204; another process is present.",
+      "remaining": [],
+      "signals": []
+    }
+  },
+  "F5": "Missing locale fallback and unset bootstrap tests passed; system /etc/zprofile may subsequently set LANG.",
+  "F6": "Successful warnings cached; failure then rc fix retries in same process.",
+  "F7": {
+    "pathEqual": true,
+    "differenceKeys": [
+      "COLORTERM",
+      "LOOM_RUN_ID",
+      "LOOM_SESSION_ID",
+      "OSLogRateLimit",
+      "TERM_PROGRAM",
+      "TERM_PROGRAM_VERSION",
+      "TERM_SESSION_ID",
+      "XPC_FLAGS",
+      "XPC_SERVICE_NAME",
+      "__CFBundleIdentifier"
+    ]
+  },
+  "coalition": {
+    "status": "passed",
+    "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/evidence/coalition/20260927-224229-693fdf3f/results.json",
+    "artifactSHA256": {
+      ".build/LoomProbe.app/Contents/MacOS/loom-probe": "bc3a0e0e381381503a4a371dc72a6b202fe112b8733ce0cbc3bc3c513535ba59",
+      ".build/debug/loom-probe": "bc3a0e0e381381503a4a371dc72a6b202fe112b8733ce0cbc3bc3c513535ba59",
+      "plans/experiments/verify-coalition.py": "01c6277a3c74b9e5454f36bcae791447e1efdfd79bc6974599f0cb89e9756228"
+    },
+    "scenarios": {
+      "A9a": {
+        "status": "passed",
+        "errorCount": 0,
+        "outsideOwnershipCount": 0,
+        "remainingCount": 0,
+        "ownershipGuarantee": "Exclusive resource coalition plus session, observed ancestry and readable run markers. Exclusive coalition 25402 verified before launch."
+      },
+      "A9b": {
+        "status": "passed",
+        "errorCount": 0,
+        "outsideOwnershipCount": 0,
+        "remainingCount": 0,
+        "ownershipGuarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Shared coalition 21204; another process is present."
+      },
+      "A9c": {
+        "status": "passed",
+        "errorCount": 0,
+        "outsideOwnershipCount": 0,
+        "remainingCount": 0,
+        "ownershipGuarantee": "Exclusive resource coalition plus session, observed ancestry and readable run markers. Exclusive coalition 25404 verified before launch."
+      },
+      "A9d": {
+        "status": "passed"
+      },
+      "A9e": {
+        "status": "passed",
+        "errorCount": 0,
+        "outsideOwnershipCount": 0,
+        "remainingCount": 0,
+        "ownershipGuarantee": "Exclusive resource coalition plus session, observed ancestry and readable run markers. Exclusive coalition 25406 verified before launch."
+      },
+      "A9f": {
+        "status": "passed",
+        "errorCount": 0,
+        "outsideOwnershipCount": 0,
+        "remainingCount": 0,
+        "ownershipGuarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Coalition capability failure forced."
+      }
+    },
+    "ownedIdentityCountCheckedAfterHarness": 12,
+    "ownedLeftoversAfterHarness": []
+  },
+  "evidenceRoot": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/evidence/environment-addendum/20260927-223727",
+  "rawEnvironmentExportsDeleted": true
+}

@@ -1,0 +1,97 @@
+{
+  "artifactSHA256": {
+    ".build/LoomProbe.app/Contents/MacOS/loom-probe": "8ba6a0600843a9e94ece771fd32f9746fcad90e0aac29af2e818660215ee8d6d",
+    ".build/debug/loom-probe": "8ba6a0600843a9e94ece771fd32f9746fcad90e0aac29af2e818660215ee8d6d",
+    "plans/experiments/verify-coalition.py": "ea1f4416a69de086a4d0449d8f19852198ff7d475ad358d43a269181edf14d00"
+  },
+  "evidence": "~/Library/Application Support/Loom-Dev/probe/evidence/coalition/20260927-221800-36c6d3ce/results.json",
+  "evidenceRoot": "Default ~/Library/Application Support/Loom-Dev/probe; future runs use $LOOM_PROBE_ROOT when set, then evidence/coalition/<run>/.",
+  "externalControl": {
+    "absentFromEverySignalReport": true,
+    "cleanup": "Identity-checked SIGTERM after final unchanged-identity assertion; child reaped by harness.",
+    "identity": {
+      "pid": 96614,
+      "startMicroseconds": 452812,
+      "startSeconds": 1790536680
+    },
+    "resourceCoalition": 21204,
+    "unchangedThroughAllScenarios": true
+  },
+  "migrationManifest": "~/Library/Application Support/Loom-Dev/probe/evidence/coalition/migration-sha256-manifest.json",
+  "ownedIdentityCountCheckedAfterHarness": 12,
+  "ownedLeftoversAfterHarness": [],
+  "scenarios": {
+    "A9a": {
+      "elapsedSeconds": 0.027688980102539062,
+      "errorCount": 0,
+      "outsideOwnershipCount": 0,
+      "ownershipGuarantee": "Exclusive resource coalition plus session, observed ancestry and readable run markers. Exclusive coalition 25060 verified before launch.",
+      "remainingCount": 0,
+      "status": "passed"
+    },
+    "A9b": {
+      "elapsedSeconds": 0.024482011795043945,
+      "errorCount": 0,
+      "outsideOwnershipCount": 0,
+      "ownershipGuarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Shared coalition 21204; another process is present.",
+      "remainingCount": 0,
+      "status": "passed"
+    },
+    "A9c": {
+      "elapsedSeconds": 0.24028801918029785,
+      "errorCount": 0,
+      "independentOracle": {
+        "executable": "/bin/sleep",
+        "identity": {
+          "pid": 96673,
+          "startMicroseconds": 84688,
+          "startSeconds": 1790536682
+        },
+        "parentPID": 1,
+        "resourceCoalition": 25062,
+        "runMarkerReadResult": 0,
+        "sessionID": 96672,
+        "userID": 501,
+        "zombie": false
+      },
+      "outsideOwnershipCount": 0,
+      "ownershipGuarantee": "Exclusive resource coalition plus session, observed ancestry and readable run markers. Exclusive coalition 25062 verified before launch.",
+      "remainingCount": 0,
+      "status": "passed"
+    },
+    "A9d": {
+      "status": "passed"
+    },
+    "A9e": {
+      "elapsedSeconds": 0.2521439790725708,
+      "errorCount": 0,
+      "independentOracle": {
+        "executable": "/bin/sleep",
+        "identity": {
+          "pid": 96693,
+          "startMicroseconds": 12119,
+          "startSeconds": 1790536683
+        },
+        "parentPID": 1,
+        "resourceCoalition": 25064,
+        "runMarkerReadResult": 0,
+        "sessionID": 96692,
+        "userID": 501,
+        "zombie": false
+      },
+      "outsideOwnershipCount": 0,
+      "ownershipGuarantee": "Exclusive resource coalition plus session, observed ancestry and readable run markers. Exclusive coalition 25064 verified before launch.",
+      "remainingCount": 0,
+      "status": "passed"
+    },
+    "A9f": {
+      "elapsedSeconds": 0.031852006912231445,
+      "errorCount": 0,
+      "outsideOwnershipCount": 0,
+      "ownershipGuarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Coalition capability failure forced.",
+      "remainingCount": 0,
+      "status": "passed"
+    }
+  },
+  "status": "passed"
+}

@@ -1,0 +1,34 @@
+{
+  "label": "B8 remote idle owner SIGKILL",
+  "actions": [
+    {
+      "op": "launch",
+      "slot": "server",
+      "provider": "codex",
+      "route": "server"
+    },
+    {
+      "op": "wait",
+      "seconds": 1
+    },
+    {
+      "op": "launch",
+      "slot": "tui",
+      "provider": "codex",
+      "route": "remote",
+      "arguments": [
+        "-m",
+        "gpt-6-luna",
+        "-c",
+        "model_reasoning_effort=\"low\""
+      ]
+    },
+    {
+      "op": "wait",
+      "seconds": 4
+    },
+    {
+      "op": "crash"
+    }
+  ]
+}

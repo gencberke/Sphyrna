@@ -1,0 +1,27 @@
+{
+  "label": "C1 Claude idle",
+  "actions": [
+    {
+      "op": "launch",
+      "provider": "claude",
+      "arguments": [
+        "--model",
+        "haiku",
+        "--effort",
+        "low",
+        "--no-chrome"
+      ]
+    },
+    {
+      "op": "wait",
+      "seconds": 5
+    },
+    {
+      "op": "snapshot",
+      "label": "idle"
+    },
+    {
+      "op": "quit"
+    }
+  ]
+}

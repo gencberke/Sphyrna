@@ -1,0 +1,22 @@
+{
+  "label": "codex-direct",
+  "actions": [
+    {
+      "op": "launch",
+      "provider": "codex",
+      "arguments": [],
+      "route": "direct"
+    },
+    {
+      "op": "wait",
+      "seconds": 6
+    },
+    {
+      "op": "snapshot",
+      "label": "idle"
+    },
+    {
+      "op": "quit"
+    }
+  ]
+}

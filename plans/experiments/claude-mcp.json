@@ -1,0 +1,31 @@
+{
+  "label": "C4 synthetic stdio MCP lifecycle",
+  "actions": [
+    {
+      "op": "launch",
+      "provider": "claude",
+      "arguments": [
+        "--model",
+        "haiku",
+        "--effort",
+        "low",
+        "--no-chrome",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "{\"mcpServers\": {\"loom-test\": {\"command\": \"${fixture}\", \"args\": [\"mcp\"]}}}"
+      ]
+    },
+    {
+      "op": "wait",
+      "seconds": 5
+    },
+    {
+      "op": "snapshot",
+      "label": "mcp-running"
+    },
+    {
+      "op": "control",
+      "seconds": 45
+    }
+  ]
+}

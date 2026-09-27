@@ -1,0 +1,32 @@
+{
+  "label": "B2 B7 direct TUI after explicit workspace trust",
+  "actions": [
+    {
+      "op": "launch",
+      "provider": "codex",
+      "route": "direct",
+      "arguments": [
+        "-m",
+        "gpt-6-luna",
+        "-c",
+        "model_reasoning_effort=\"low\""
+      ]
+    },
+    {
+      "op": "wait",
+      "seconds": 4
+    },
+    {
+      "op": "wait",
+      "seconds": 5
+    },
+    {
+      "op": "snapshot",
+      "label": "trusted-idle"
+    },
+    {
+      "op": "control",
+      "seconds": 180
+    }
+  ]
+}

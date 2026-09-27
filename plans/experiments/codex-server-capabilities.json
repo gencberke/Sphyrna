@@ -1,0 +1,11 @@
+{
+  "label":"B4 server transport and model discovery",
+  "actions":[
+    {"op":"launch","slot":"server","provider":"codex","route":"server"},
+    {"op":"wait","seconds":2},
+    {"op":"rpc-connect","slot":"rpc"},
+    {"op":"rpc-request","slot":"rpc","method":"model/list","params":{},"save":"models"},
+    {"op":"snapshot","label":"server-idle"},
+    {"op":"quit"}
+  ]
+}

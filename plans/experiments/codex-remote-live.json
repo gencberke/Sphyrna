@@ -1,0 +1,68 @@
+{
+  "label": "B4 B6 B7 explicit server and fresh remote TUI",
+  "actions": [
+    {
+      "op": "launch",
+      "slot": "server",
+      "provider": "codex",
+      "route": "server"
+    },
+    {
+      "op": "wait",
+      "seconds": 1
+    },
+    {
+      "op": "rpc-connect",
+      "slot": "rpc"
+    },
+    {
+      "op": "launch",
+      "slot": "tui",
+      "provider": "codex",
+      "route": "remote",
+      "arguments": [
+        "-m",
+        "gpt-6-luna",
+        "-c",
+        "model_reasoning_effort=\"low\""
+      ]
+    },
+    {
+      "op": "wait",
+      "seconds": 4
+    },
+    {
+      "op": "snapshot",
+      "label": "known-thread-tui"
+    },
+    {
+      "op": "write",
+      "slot": "tui",
+      "text": "Reply exactly REMOTE_OK. Do not use tools."
+    },
+    {
+      "op": "wait",
+      "seconds": 0.3
+    },
+    {
+      "op": "write",
+      "slot": "tui",
+      "text": "\r"
+    },
+    {
+      "op": "wait",
+      "seconds": 8
+    },
+    {
+      "op": "rpc-request",
+      "slot": "rpc",
+      "method": "thread/loaded/list",
+      "params": {},
+      "save": "loaded-threads"
+    },
+    {
+      "op": "control",
+      "seconds": 240
+    }
+  ]
+}

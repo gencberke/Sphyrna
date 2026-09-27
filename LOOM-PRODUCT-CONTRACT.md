@@ -45,6 +45,8 @@ Bu belgede **kabul edilen davranışlar**, **teknik adaylar** ve **açık kararl
 | Sağlayıcı sürümleri | Claude veya Codex sürümü sabitlenmeyecek. |
 | Çekirdek dili | Swift; çekirdek bu repoda yazılır ve checkpoint kodu uygulamanın çekirdeği olur. Terminal motoru ve arayüz teknolojisi ayrıca seçilecek. |
 | Deney izolasyonu | Checkpoint deneyleri izole CLI profillerinde (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) yapılır. Kullanıcının gerçek profilleri ve oturumları yalnızca etkilenmediklerini doğrulamak için okunur. |
+| Süreç sahipliği güvencesi | macOS'un süreçleri başlatan uygulamaya göre grupladığı resource coalition bilgisi, belgelenmemiş olsa da ek güvence katmanı olarak kullanılır. Çalışma anında sınanır; çalışmazsa Loom mevcut yöntemlere döner ve garanti kapsamının daraldığını açıkça bildirir. Sorun çıkarsa düzeltilerek ilerlenir. |
+| Yönetilen CLI ortamı | Loom'un açtığı CLI'lar kullanıcının terminalindeki ortamı alır. Yalnızca Loom'un kendi üst oturumundan sızabilecek değişkenler dışarıda kalır ve Loom işaretleri eklenir. Terminal gibi davranılır: shell başlangıç dosyalarındaki hatalar ve uyarılar oturum açmayı durdurmaz, görünür uyarı olarak gösterilir. Ortam hiç alınamazsa açık hata verilir ve uygulama yeniden başlatılmadan tekrar denenebilir. |
 | Oturumlar arası iletişim | Kullanıcının görevlendirmesi ve yetkilendirdiği kapsam içinde gerçekleşecek. |
 | Codex önbelleği | Görüşmede açıklanan, ayrılmış thread'in 30 dakikaya kadar bellekte kalması kabul edildi. Bu, çalışan iş bırakma izni değildir. |
 | Stale içerik önizlemesi | Yapılması zor veya maliyetliyse ilk sürümün şartı değil. |
@@ -139,11 +141,15 @@ Codex için iki yol deneyle karşılaştırılacak:
 1. Loom'a ait app-server ve ona bağlanan gerçek Codex TUI.
 2. Paylaşılan daemon kullanımını kapatan doğrudan Codex TUI.
 
-Kurulu codex-cli 0.157.1'de `daemon_auto_start` özelliği açık ve `--no-daemon` seçeneği bulunuyor; düz `codex` komutunun paylaşılan daemon'ı kendiliğinden başlatıp başlatmadığı doğrulanmadı. Bu, 1. checkpoint'in ilk sorusudur.
+27 Eylül 2026 tarihli [Checkpoint 1 deneylerinde](plans/CHECKPOINT-1.md) codex-cli 0.157.1'in düz TUI yolunda izole daemon bileşenlerini kendiliğinden başlattığı doğrulandı. `--no-daemon` ve Loom'a ait app-server + remote TUI yolları, sınanan aktif tur/arka plan işi koşullarında temiz kapandı. CP2 için teknik öneri, kimlik/durum/onay olaylarını gözlemek amacıyla ayrı app-server yoludur; ölçülen kaynak maliyeti daha yüksek ve nihai seçim yapılmadı. Boş `thread/start` sonucunu ilk turdan önce TUI `resume` ile açma deneyi başarısızdı; TUI'nin oluşturduğu kimliği `thread/started` olayından almak ayrıca doğrulandı.
 
 Başka uygulamaların veya kullanıcının terminalinin paylaşılan Codex sunucusu Loom'a ait kabul edilmez. Önlenemeyen veya sahipliği belirsiz daemon davranışında “nasıl olsa çıkışta öldürürüz” yaklaşımı uygulanmaz.
 
 Süreç grupları, PID + başlangıç zamanı ve ortam işaretleri inceleme adaylarıdır. **Bunlar tek başına tüm süreçlerin bulunup kapatılacağını kanıtlamaz.** Ön kontrolde ortam işareti, aynı kullanıcıya ait Apple dışı bir binary'de `KERN_PROCARGS2` ile okunabildi; `/bin/sleep` gibi Apple platform binary'lerinde görünmedi. Bu yüzden işaret taraması tek başına yeterli değildir. Üst sürecin ölmesi çocukları doğrudan sonlandırmaz; terminal kapanması da bütün torunlar için garanti değildir. [POSIX süreç sonlandırma](https://pubs.opengroup.org/onlinepubs/9799919799/functions/_exit.html)
+
+Checkpoint 1'de genel sahiplik garantisini engelleyen sınır da tekrarlandı: ilk anlık görüntüden önce session dışına kaçan `/bin/sleep`, ortam işareti okunamadığında ve ledger'a girmediğinde bulunamıyor. Gerçek sağlayıcı ve birleşik deneylerin kalıntısız bitmesi bu A5 açığını kapatmıyor; checkpoint'e tam kabul verilmedi.
+
+Review sırasında yapılan tek örneklemlik denemede, `setsid` ve çift fork ile launchd'ye geçen bir `/bin/sleep` başlatanın resource coalition'ında kaldı; ilgisiz bir uygulama farklı coalition'daydı. Bu bilgi public SDK'da olmayan bir `proc_pidinfo` türüyle okunuyor. Ek güvence katmanı olarak kullanılması kabul edildi (§3). Katman yalnızca Loom kendi coalition'ına sahipse, yani LaunchServices ile uygulama olarak açıldıysa çalışır. Terminalden başlatılan bir süreç terminal uygulamasının coalition'ını paylaştığı için bu durumda katman kendini kapatmalı ve bunu bildirmelidir. Kapanış deneyleri [CP1 planı](plans/CHECKPOINT-1.md) §12'dedir.
 
 Normal Quit, uygulama çökmesi ve Force Quit ayrı test senaryolarıdır. Sonraki açılışta kalıntı temizlemek bir kurtarma yolu olabilir; kapalı kalınan sürede sıfır kaynak garantisi sayılmaz. Çökme sonrası davranış kanıtlanmadan normal çıkış testinin sonucu bu senaryoya genellenmez.
 
@@ -228,7 +234,7 @@ Oturuma özel entegrasyon için belgelenmiş, henüz Loom akışında sınanmam�
 
 ### Herdr Desktop'tan taşınan teknik dersler
 
-- **Ortam mirası gerçek hata kaynağıdır:** Loom bir Claude oturumunun içinden açılırsa `CLAUDE_CODE_*` gibi üst oturum değişkenleri (oturum kimliği, mesajlaşma soketi ve token'ı dahil) başlatılan CLI'lara sızabilir. Loom'un kendi oturum sınırı açık kurulmalı; yönetilen süreçlerin ortamı bilinçli oluşturulmalı.
+- **Ortam mirası gerçek hata kaynağıdır:** Loom bir Claude oturumunun içinden açılırsa `CLAUDE_CODE_*` gibi üst oturum değişkenleri (oturum kimliği, mesajlaşma soketi ve token'ı dahil) başlatılan CLI'lara sızabilir. Loom'un kendi oturum sınırı açık kurulmalı; yönetilen süreçlerin ortamı bilinçli oluşturulmalı. Dar bir izin listesi bu sızıntıyı önler ama SSH ajanı, proxy, kullanıcının `.zshrc` ayarları ve kendi değişkenleri gibi CLI'ların ihtiyaç duyduğu ortamı da düşürür. Kabul edilen yaklaşım (§3): ortam, temizlenmiş bir başlangıç ortamıyla açılan kullanıcı shell'inden alınır; böylece terminaldeki ortam korunur, üst oturum değişkenleri taşınmaz.
 - **Başlatma ve kapatma tek işlem zinciridir:** Başlatma başarısızsa hayalet canlı kayıt kalmamalı; çıkış, silme ve arka plan kayıt yazımı yarışmamalı. Süreç ağacının yeniden ebeveynlenmesi ve yeni Unix session açılması test edilmeli.
 - **Hook sayısı mimari tercihtir:** Olay başına süreç başlatan ve dosya yazan hook'lar ek maliyettir. Codex her hook kaydını ayrı güven onayına tabi tutabilir; kayıtları tek dosyada toplamak onayları birleştirmez. Terminal ekranından durum çıkarmak ise CLI arayüzü değişince bozulabilir. Karma yöntem seçilirse hangi durumun hangi kaynaktan geldiği ve çakışma kuralı açık olmalı.
 - **İzin UX'i ürünün parçasıdır:** Otomatik güven verme, sağlayıcının güven veya izin kontrolünü atlama ya da kullanıcıya açıklanmamış çoklu onay çıkarmak kabul edilmez.

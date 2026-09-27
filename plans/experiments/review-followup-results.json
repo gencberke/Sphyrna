@@ -1,0 +1,45 @@
+{
+  "status": "completed-with-agreed-isolation-followup",
+  "startupTimeoutSeconds": 30,
+  "slowRCRegressionSeconds": 5.2,
+  "swiftTestsPassed": 36,
+  "testSuites": 4,
+  "evidenceRoot": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/evidence/review-followup/20260927-225444",
+  "environmentChecks": {
+    "agentReachable": true,
+    "cachedEnvironmentIdentical": true,
+    "childHasSSHAgentSocket": true,
+    "childLauncherKeys": [],
+    "launchOrigin": "development",
+    "sshAddStatus": 1,
+    "warningCount": 0
+  },
+  "coalition": {
+    "status": "passed",
+    "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/evidence/coalition/20260927-225602-0859f93f/results.json",
+    "ownedIdentityCount": 17,
+    "ownedLeftovers": [],
+    "scenarios": {
+      "A9a": "passed",
+      "A9b": "passed",
+      "A9c": "passed",
+      "A9d": "passed",
+      "A9e": "passed",
+      "A9f": "passed"
+    },
+    "artifactSHA256": {
+      ".build/LoomProbe.app/Contents/MacOS/loom-probe": "b49dafbb49430fd04cd81865289351433e005836cc58ac5550dd07dd39ab7f60",
+      ".build/debug/loom-probe": "b49dafbb49430fd04cd81865289351433e005836cc58ac5550dd07dd39ab7f60",
+      "plans/experiments/verify-coalition.py": "01c6277a3c74b9e5454f36bcae791447e1efdfd79bc6974599f0cb89e9756228"
+    }
+  },
+  "startupBackgroundGroupCleanup": "verified; regression fails without group ownership recording",
+  "detachedSSHAgentIsolation": {
+    "status": "deferred-by-user",
+    "plan": "plans/DEVELOPMENT-STARTUP-ISOLATION.md",
+    "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/evidence/review-followup/20260927-225444/ssh-agent-isolation-limit.log",
+    "limit": "Rapid daemonization and unreadable run markers can escape ownership in shared development coalition."
+  },
+  "oldEvidenceLink": "Updated CP1 section 13.2 to durable repeated Claude experiment",
+  "rawEnvironmentExportsDeleted": true
+}
