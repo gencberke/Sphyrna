@@ -131,7 +131,7 @@ public final class TerminalEndpoint: @unchecked Sendable {
         try await transport.resize(rows: rows, columns: columns)
     }
 
-    func closeTerminal() async { await transport.closeTerminal() }
+    func closeTerminal() async throws { try await transport.closeTerminal() }
 
     func finish(outputDrainSeconds: Double = 0.5) async throws -> Int32 {
         try await transport.finish(outputDrainSeconds: outputDrainSeconds)

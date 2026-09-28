@@ -6,6 +6,7 @@ enum TerminalTransportError: Error, CustomStringConvertible, Sendable {
     case closed
     case readFailed(Int32)
     case waitFailed(Int32)
+    case timedOut(String)
 
     var description: String {
         switch self {
@@ -15,17 +16,38 @@ enum TerminalTransportError: Error, CustomStringConvertible, Sendable {
             "Terminal read failed: \(String(cString: strerror(code))) (\(code))"
         case let .waitFailed(code):
             "Terminal process wait failed: \(String(cString: strerror(code))) (\(code))"
+        case let .timedOut(operation):
+            "Terminal timed out while \(operation)"
         }
     }
 }
 
-private actor CompletionLatch {
+actor CompletionLatch {
     private var completed = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private struct Waiter {
+        let continuation: CheckedContinuation<Void, any Error>
+        let timer: Task<Void, Never>
+    }
+    private var waiters: [UUID: Waiter] = [:]
 
-    func wait() async {
+    func wait(operation: String, timeoutSeconds: Double) async throws {
         if completed { return }
-        await withCheckedContinuation { waiters.append($0) }
+        let id = UUID()
+        try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                let timer = Task<Void, Never> { [weak self] in
+                    try? await Task.sleep(for: .seconds(max(0.01, timeoutSeconds)))
+                    await self?.expire(id: id, operation: operation)
+                }
+                waiters[id] = Waiter(continuation: continuation, timer: timer)
+            }
+        }, onCancel: {
+            Task { await self.cancel(id: id) }
+        })
     }
 
     func finish() {
@@ -33,7 +55,21 @@ private actor CompletionLatch {
         completed = true
         let pending = waiters
         waiters.removeAll()
-        for waiter in pending { waiter.resume() }
+        for waiter in pending.values {
+            waiter.timer.cancel()
+            waiter.continuation.resume()
+        }
+    }
+
+    private func expire(id: UUID, operation: String) {
+        guard let waiter = waiters.removeValue(forKey: id) else { return }
+        waiter.continuation.resume(throwing: TerminalTransportError.timedOut(operation))
+    }
+
+    private func cancel(id: UUID) {
+        guard let waiter = waiters.removeValue(forKey: id) else { return }
+        waiter.timer.cancel()
+        waiter.continuation.resume(throwing: CancellationError())
     }
 }
 
@@ -53,6 +89,7 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
     private let processExit = CompletionLatch()
     private let onOutput: @Sendable (Data) -> Void
     private let onExit: @Sendable (Int32) -> Void
+    private let reap: @Sendable (Int32, UnsafeMutablePointer<Int32>) -> Int32
 
     // Access only on terminalQueue.
     private var terminalFD: Int32
@@ -61,11 +98,15 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
     private var failure: TerminalTransportError?
 
     init(process: PTYProcess, onOutput: @escaping @Sendable (Data) -> Void,
-         onExit: @escaping @Sendable (Int32) -> Void) {
+         onExit: @escaping @Sendable (Int32) -> Void,
+         reap: @escaping @Sendable (Int32, UnsafeMutablePointer<Int32>) -> Int32 = {
+             waitpid($0, $1, WNOHANG)
+         }) {
         pid = process.pid
         terminalFD = process.detachTerminal()
         self.onOutput = onOutput
         self.onExit = onExit
+        self.reap = reap
         terminalQueue = DispatchQueue(
             label: "dev.loom.pty-events.\(process.pid)", target: Self.queue
         )
@@ -83,7 +124,9 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
         }
 
         let processCancellation = processCancellation
-        processSource.setEventHandler { [weak self] in self?.reapIfExited() }
+        processSource.setEventHandler { [weak self] in
+            self?.reapIfExited(retryDeadline: .now() + .milliseconds(1_500))
+        }
         processSource.setCancelHandler {
             Task { await processCancellation.finish() }
         }
@@ -135,7 +178,7 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
         }
     }
 
-    func closeTerminal() async {
+    func closeTerminal() async throws {
         await withCheckedContinuation { continuation in
             terminalQueue.async { [self] in
                 if terminalOpen {
@@ -145,7 +188,9 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
                 continuation.resume()
             }
         }
-        await readCancellation.wait()
+        try await readCancellation.wait(
+            operation: "closing terminal \(pid)", timeoutSeconds: 2
+        )
     }
 
     /// Call only after ownership sampling says the leader no longer exists.
@@ -154,10 +199,19 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
         while await isTerminalOpen(), ProcessInfo.processInfo.systemUptime < deadline {
             try? await Task.sleep(for: .milliseconds(2))
         }
-        await closeTerminal()
-        await processExit.wait()
+        try await closeTerminal()
+        // A process event can arrive before waitpid can collect the child. A
+        // final explicit reap also covers a missed or early one-shot event.
+        terminalQueue.async { [weak self] in
+            self?.reapIfExited(retryDeadline: .now() + .milliseconds(1_500))
+        }
+        try await processExit.wait(
+            operation: "reaping process \(pid)", timeoutSeconds: 2
+        )
         processSource.cancel()
-        await processCancellation.wait()
+        try await processCancellation.wait(
+            operation: "cancelling process source \(pid)", timeoutSeconds: 2
+        )
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int32, any Error>) in
             terminalQueue.async { [self] in
                 if let failure { continuation.resume(throwing: failure) }
@@ -202,18 +256,30 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
         }
     }
 
-    private func reapIfExited() {
+    private func reapIfExited(retryDeadline: DispatchTime? = nil) {
         guard status == nil else { return }
         var childStatus: Int32 = 0
         while true {
-            let result = waitpid(pid, &childStatus, WNOHANG)
+            let result = reap(pid, &childStatus)
             if result == pid {
                 status = childStatus
                 onExit(childStatus)
                 Task { await processExit.finish() }
                 return
             }
-            if result == 0 { return }
+            if result == 0 {
+                if let retryDeadline {
+                    if DispatchTime.now().uptimeNanoseconds < retryDeadline.uptimeNanoseconds {
+                        terminalQueue.asyncAfter(deadline: .now() + .milliseconds(10)) { [weak self] in
+                            self?.reapIfExited(retryDeadline: retryDeadline)
+                        }
+                    } else {
+                        failure = failure ?? .timedOut("reaping process \(pid)")
+                        Task { await processExit.finish() }
+                    }
+                }
+                return
+            }
             if errno == EINTR { continue }
             failure = .waitFailed(errno)
             Task { await processExit.finish() }

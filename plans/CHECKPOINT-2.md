@@ -1,7 +1,7 @@
 # Checkpoint 2 — Durum ve devam
 
 **Tarih:** 27 Eylül 2026  
-**Durum:** Tamamlandı. Kalıcı oturum/run kataloğu, Claude hook durumu, Codex app-server + remote TUI durumu, güvenli idle/stale geçişleri ve aynı sağlayıcı sohbetinden resume uygulandı; §9 matrisi ve gerçek sağlayıcı zincirleri doğrulandı. Bu checkpoint'ten sonra ilk pencere gelir (sözleşme §3, checkpoint sırası).
+**Durum:** Tamamlandı; review'larla kapandı (son review §28). Kalıcı oturum/run kataloğu, Claude hook durumu, Codex app-server + remote TUI durumu, güvenli idle/stale geçişleri ve aynı sağlayıcı sohbetinden resume uygulandı; §9 matrisi ve gerçek sağlayıcı zincirleri doğrulandı. Sonraki dilim ilk penceredir (sözleşme §3, checkpoint sırası); girdileri §22.2'de toplandı.
 
 **Dayanak:** [Ürün sözleşmesi](../LOOM-PRODUCT-CONTRACT.md) §4, §9 ve §11'deki 2. checkpoint; [CP1](CHECKPOINT-1.md) §12.4 ve kod review'ı.
 
@@ -444,3 +444,44 @@ Tam paket komutu: `swift test -j 1 -Xswiftc -load-plugin-library -Xswiftc /Libra
    - Stop başarısız raporlanıyor ve `currentRun` kalıyor; oturum yeniden açılamıyor.
    - Arayüzde "durdurma doğrulanamadı" durumu gerekecek.
    - Kullanıcıya "tekrar dene" ve "yine de kapat" seçenekleri sunulmalı; ikincisinin sonucu rapora dürüstçe yazılmalı.
+
+## 27. §26 madde 1 kapanışı (28 Eylül 2026)
+
+**Takılan testin kimliği:** Review'daki iki özgün takılmanın loglarında tamamlanmamış `started` satırları saklanmadığı için o testlerin adı **doğrulanmadı**. Düzeltme öncesi belgelenmiş komutla yapılan 30 tanı tekrarı da takılmadı (20 normal, 10 üç CPU yükü altında; loglar `/tmp/loom-cp2-section-27/baseline-*.log`). Kontrol altında aynı bekleme yolunu kullanan `EventDrivenPTYProcessTests.earlyExitNoticeRetriesUntilChildCanBeReaped()` testi belirlendi: yeniden deneme geçici olarak kapatıldığında logunda `started` satırından sonra `Terminal timed out while reaping process` hatası var; run `0D7F08E4-F0B4-4672-AC33-970FFD32548C`, 2,126 sn, **başarısız**. Önceki süresiz latch ile bu yolun süre sınırı da olmayacaktı. Bu, özgün iki takılmanın aynı testten geldiğini kanıtlamaz.
+
+**Kök neden ve düzeltme:** `EventDrivenPTYProcess.reapIfExited` çıkış bildirimi sırasında `waitpid(WNOHANG)` 0 döndüğünde yeniden denemiyordu; `finish` ise `processExit` latch'inde süresiz bekliyordu. Yeni test ilk 20 reap çağrısına kontrollü olarak 0 döndürüyor; 10 ms aralıklarla sınırlı yeniden deneme sayesinde geçiyor ve yalnız yeniden deneme kaldırılınca yukarıdaki gibi başarısız oluyor. Çıkış olayı ve `finish` en çok 1,5 sn reap deniyor. `processExit`, okuma kaynağı iptali ve süreç kaynağı iptali latch'leri süre sınırlı ve iptali gözlüyor; süre aşımı başarı yerine `TerminalTransportError.timedOut` olarak stop/Quit raporuna geçiyor. `latchTimeoutAndCancellationResumeWaiters` hem zaman aşımını hem beklemeye girdikten sonraki iptali sınıyor.
+
+**Kabul sonucu — doğrulandı:** `agents/README.md`'deki `swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib` komutu `-j 1` olmadan arka arkaya 20 kez çalıştı. Her çalıştırma 90 sn dış sınır altında 90 test/11 suite geçti; en uzun toplam komut 24,32 sn sürdü. Her bitişten sonra `ps` ile `swiftpm-testing-helper`, `loom-test-child`, `loom-probe` ve `LoomCoreTests` süreçleri denetlendi; 20/20 kontrolde artık süreç **0**. Run logları `/tmp/loom-cp2-section-27/final-*.log`, makinece okunabilir sonuçlar `final-results.json` dosyasındadır.
+
+| Tekrar | Run kimliği | Komut süresi | Sonuç |
+| --- | --- | --- | --- |
+| 1 | `4CA57897-835D-4BCD-913B-2D7E26488BAE` | 15,91 sn | Geçti; 0 artık süreç |
+| 2 | `A5AF1409-601E-4F35-A171-37CD6C239429` | 15,90 sn | Geçti; 0 artık süreç |
+| 3 | `33D8BE67-0956-4A12-AE36-53057BA22D55` | 21,77 sn | Geçti; 0 artık süreç |
+| 4 | `96A1FB9D-5E75-4AC4-9AC5-95B0B2AF304C` | 22,09 sn | Geçti; 0 artık süreç |
+| 5 | `7C6D2845-2A65-40A3-8B5D-4D81F5D620BC` | 16,56 sn | Geçti; 0 artık süreç |
+| 6 | `744EB21B-CAC0-4076-8E7F-E1A2CC214A42` | 17,07 sn | Geçti; 0 artık süreç |
+| 7 | `C3AAC446-BD91-4287-BFBA-FA672A8079ED` | 24,32 sn | Geçti; 0 artık süreç |
+| 8 | `78DB5AFD-5AFD-4A09-9B63-8A01D9CB6478` | 22,77 sn | Geçti; 0 artık süreç |
+| 9 | `192585CB-F310-4634-AAEA-B67AAF427C63` | 15,98 sn | Geçti; 0 artık süreç |
+| 10 | `56472703-008D-4AD9-9053-6F277C402561` | 15,88 sn | Geçti; 0 artık süreç |
+| 11 | `070E60D7-162D-41EE-92EF-CD9264C5C624` | 16,02 sn | Geçti; 0 artık süreç |
+| 12 | `3C53B7E7-D765-465D-850F-DCAD9C3E4F0B` | 15,83 sn | Geçti; 0 artık süreç |
+| 13 | `CCF2FB14-7DEA-453C-AF83-A656CA20B8C4` | 16,12 sn | Geçti; 0 artık süreç |
+| 14 | `9D37138E-2B7E-4A9C-99D9-37819A53A75C` | 21,82 sn | Geçti; 0 artık süreç |
+| 15 | `B70BB06C-7940-40BC-849D-3265103F80E0` | 16,06 sn | Geçti; 0 artık süreç |
+| 16 | `5909C8EE-3095-47BF-921A-4C56FD31A4D3` | 22,31 sn | Geçti; 0 artık süreç |
+| 17 | `7C5E031D-BCA9-4B49-808A-DD26E8C023C1` | 22,64 sn | Geçti; 0 artık süreç |
+| 18 | `E14B83D5-86C7-4A10-A247-792DF047FA63` | 22,21 sn | Geçti; 0 artık süreç |
+| 19 | `F5145FA8-0870-4A4B-806E-E7A722ED6804` | 18,03 sn | Geçti; 0 artık süreç |
+| 20 | `4A8A124C-9026-4379-95BD-5FB7F450CDA6` | 23,98 sn | Geçti; 0 artık süreç |
+
+`swift build` ve `git diff --check` başarılı. §26 madde 1'in kabul kapısı geçti; CP2 kapandı. Özgün review takılmalarının test adları ve aynı mekanizmadan kaynaklandıkları **doğrulanmadı**. Değişiklikler review için commit edilmedi; pencere dilimine geçilmedi.
+
+## 28. Review: §27 kapanışı — CP2 kapandı (28 Eylül 2026)
+
+- **Kök neden düzeltmesi doğrulandı:** Çıkış olayında süreç henüz toplanamıyorsa 10 ms aralıklarla en fazla 1,5 sn yeniden deneniyor (`EventDrivenPTYProcess.reapIfExited`). `finish` ayrıca kendisi de toplama deniyor. `CompletionLatch` beklemeleri süre sınırlı ve iptali gözlüyor; süre aşımı `TerminalTransportError.timedOut` olarak rapora geçiyor. Kontrollü regresyon testi, yeniden deneme kaldırılınca başarısız oluyor.
+- **Başka süresiz bekleme kalmadı:** Kodda başka süresiz bekleme noktası görülmedi. Codex istekleri de süre sınırlı ve iptal destekli (`CodexAppServerClient.request`, varsayılan 20 sn).
+- **Kabul (review'da tekrarlandı):** Belgelenmiş komutla, `-j 1` olmadan, 90 sn dış sınır altında tam paket 5/5 geçti. Her çalıştırmada 90 test ve 11 suite vardı; bitişte sahipsiz test süreci ya da fixture kalmadı. Önceki review'da aynı komutla 5 çalıştırmanın 2'si takılmıştı. §27'deki 20/20 sonucuyla birlikte kabul sağlandı.
+- **Sınır:** Özgün iki takılmanın hangi testte olduğu ve bu mekanizmadan kaynaklandığı doğrulanamadı. Ancak ilgili bütün beklemeler artık süre sınırlı olduğundan, aynı sınıftan bir sorun artık süresiz takılma değil, raporlanan bir hata olarak görünür.
+- **Sonuç:** CP2 kapandı. Sonraki dilim ilk penceredir; girdileri §22.2'de ve §26 madde 2'de.
