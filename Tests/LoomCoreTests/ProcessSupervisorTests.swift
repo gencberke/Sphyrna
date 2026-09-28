@@ -38,8 +38,11 @@ struct ProcessSupervisorTests {
 
     private func launch(_ mode: String, sessionID: UUID,
                         supervisor: ProcessSupervisor,
-                        outputSink: (any TerminalOutputSink)? = nil) async throws -> ManagedSessionLaunch {
-        let session = ManagedSession(id: sessionID, provider: .synthetic,
+                        outputSink: (any TerminalOutputSink)? = nil,
+                        provider: ManagedSession.Provider = .synthetic,
+                        providerConversationID: String? = nil) async throws -> ManagedSessionLaunch {
+        let session = ManagedSession(id: sessionID, provider: provider,
+                                     providerConversationID: providerConversationID,
                                      workingDirectory: FileManager.default.temporaryDirectory.path)
         try await supervisor.createSession(session)
         let environment = LaunchEnvironment.make(
@@ -391,5 +394,289 @@ struct ProcessSupervisorTests {
             perSessionSignalCount += sessionReport?.signals.count ?? 0
         }
         #expect(report.signals.count == perSessionSignalCount)
+    }
+
+    @Test func claudeClearAndResumeMoveOneRunAcrossDurableConversations() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("loom-claude-transition-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
+        let supervisor = try ProcessSupervisor(
+            ledger: OwnershipLedger(coalition: .probe(forceFailure: true)),
+            catalog: catalog
+        )
+        let launchSessionID = UUID()
+        let launch = try await launch(
+            "stubborn", sessionID: launchSessionID, supervisor: supervisor,
+            provider: .claude
+        )
+        _ = try await ready(terminal: launch.terminal)
+        let runID = try #require(launch.session.currentRun?.id)
+
+        let startup = try claudeEnvelope(
+            launchSessionID: launchSessionID, runID: runID,
+            providerSessionID: "claude-one", event: "SessionStart",
+            fields: ["source": "startup"]
+        )
+        _ = try await supervisor.receiveClaudeHook(startup)
+        #expect(await supervisor.session(id: launchSessionID)?.providerConversationID
+                == "claude-one")
+
+        let promptAt = Date(timeIntervalSince1970: 500)
+        _ = try await supervisor.receiveClaudeHook(try claudeEnvelope(
+            launchSessionID: launchSessionID, runID: runID,
+            providerSessionID: "claude-one", event: "UserPromptSubmit"
+        ), receivedAt: promptAt)
+        #expect(try await catalog.session(id: launchSessionID)?.lastUsedAt == promptAt)
+
+        let clearAt = Date(timeIntervalSince1970: 510)
+        _ = try await supervisor.receiveClaudeHook(try claudeEnvelope(
+            launchSessionID: launchSessionID, runID: runID,
+            providerSessionID: "claude-two", event: "SessionStart",
+            fields: ["source": "clear"]
+        ), receivedAt: clearAt)
+        let clearedSessionID = try #require(await supervisor.activeSessionID(runID: runID))
+        #expect(clearedSessionID != launchSessionID)
+        #expect(await supervisor.session(id: launchSessionID)?.currentRun == nil)
+        #expect(await supervisor.session(id: clearedSessionID)?.currentRun?.id == runID)
+        #expect(try await catalog.session(id: launchSessionID)?.lifecycle == .idle)
+        #expect(try await catalog.session(id: clearedSessionID)?.lifecycle == .active)
+
+        _ = try await supervisor.receiveClaudeHook(try claudeEnvelope(
+            launchSessionID: launchSessionID, runID: runID,
+            providerSessionID: "claude-one", event: "SessionStart",
+            fields: ["source": "resume"]
+        ), receivedAt: Date(timeIntervalSince1970: 520))
+        #expect(await supervisor.activeSessionID(runID: runID) == launchSessionID)
+        #expect(await supervisor.session(id: launchSessionID)?.currentRun?.id == runID)
+        #expect(await supervisor.session(id: clearedSessionID)?.currentRun == nil)
+        #expect((try await catalog.runSessionLinks(runID: runID)).count == 3)
+        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+    }
+
+    @Test func lateClaudeEventCannotMutateRelaunchedConversation() async throws {
+        let supervisor = try ProcessSupervisor(
+            ledger: OwnershipLedger(coalition: .probe(forceFailure: true))
+        )
+        let sessionID = UUID()
+        let first = try await launch(
+            "stubborn", sessionID: sessionID, supervisor: supervisor,
+            provider: .claude, providerConversationID: "claude-one"
+        )
+        _ = try await ready(terminal: first.terminal)
+        let oldRunID = try #require(first.session.currentRun?.id)
+        let oldPrompt = try claudeEnvelope(
+            launchSessionID: sessionID, runID: oldRunID,
+            providerSessionID: "claude-one", event: "UserPromptSubmit"
+        )
+        _ = try await supervisor.receiveClaudeHook(oldPrompt)
+        #expect((try await supervisor.stop(sessionID: sessionID, graceSeconds: 0.05)).succeeded)
+
+        let environment = LaunchEnvironment.make(
+            path: "/usr/bin:/bin", runID: supervisor.ownershipRunID,
+            sessionID: sessionID
+        )
+        let second = try await supervisor.launch(
+            sessionID: sessionID, executable: childPath,
+            arguments: ["stubborn"], environment: environment
+        )
+        _ = try await ready(terminal: second.terminal)
+        let newRunID = try #require(second.session.currentRun?.id)
+        #expect(newRunID != oldRunID)
+        #expect(try await supervisor.receiveClaudeHook(oldPrompt) == .staleRun)
+        #expect(await supervisor.claudeStatus(sessionID: sessionID) == ClaudeSessionStatus())
+        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+    }
+
+    @Test func codexBindingAndNewThreadPreserveOldConversation() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("loom-codex-transition-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
+        let supervisor = try ProcessSupervisor(
+            ledger: OwnershipLedger(coalition: .probe(forceFailure: true)),
+            catalog: catalog
+        )
+        let sessionID = UUID()
+        let launch = try await launch(
+            "stubborn", sessionID: sessionID, supervisor: supervisor,
+            provider: .codex
+        )
+        _ = try await ready(terminal: launch.terminal)
+        let runID = try #require(launch.session.currentRun?.id)
+        try await supervisor.bindCodexThread(
+            sessionID: sessionID, runID: runID, threadID: "thread-one",
+            after: 5, at: Date(timeIntervalSince1970: 100)
+        )
+        let turnTime = Date(timeIntervalSince1970: 110)
+        #expect(try await supervisor.receiveCodexEvent(
+            .event(sequence: 6, .turnStarted(
+                threadID: "thread-one", turnID: "turn-one"
+            )), runID: runID, receivedAt: turnTime
+        ) == .applied)
+        #expect(await supervisor.codexStatus(sessionID: sessionID)?.activity == .working)
+        #expect(try await catalog.session(id: sessionID)?.lastUsedAt == turnTime)
+
+        let newSessionID = try await supervisor.transitionCodexConversation(
+            runID: runID, to: "thread-two", after: 7,
+            at: Date(timeIntervalSince1970: 120)
+        )
+        #expect(newSessionID != sessionID)
+        #expect(await supervisor.activeSessionID(runID: runID) == newSessionID)
+        #expect(await supervisor.session(id: sessionID)?.currentRun == nil)
+        #expect(await supervisor.session(id: newSessionID)?.currentRun?.id == runID)
+        #expect(try await catalog.session(id: sessionID)?.lifecycle == .idle)
+        #expect(try await catalog.session(id: newSessionID)?.session.providerConversationID
+                == "thread-two")
+        #expect(try await supervisor.receiveCodexEvent(
+            .event(sequence: 7, .turnCompleted(
+                threadID: "thread-one", turnID: "old",
+                outcome: .completed, lastAssistantMessage: "stale"
+            )), runID: runID
+        ) == .staleSequence)
+        #expect((try await catalog.runSessionLinks(runID: runID)).count == 2)
+        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+    }
+
+    @Test func unexpectedProviderExitArchivesUnknownInsteadOfSuccess() async throws {
+        let supervisor = try ProcessSupervisor(
+            ledger: OwnershipLedger(coalition: .probe(forceFailure: true))
+        )
+        let sessionID = UUID()
+        let launch = try await launch(
+            "quick-exit", sessionID: sessionID, supervisor: supervisor,
+            provider: .claude, providerConversationID: "claude-crash"
+        )
+        _ = try await ready(terminal: launch.terminal)
+        let deadline = ProcessInfo.processInfo.systemUptime + 2
+        while await supervisor.session(id: sessionID)?.currentRun != nil,
+              ProcessInfo.processInfo.systemUptime < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(await supervisor.claudeStatus(sessionID: sessionID)?.activity == .unknown)
+        #expect(await supervisor.lastStopReport(sessionID: sessionID)?.succeeded == true)
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    @Test func internalServiceUsesOwnershipWithoutPollutingConversationCatalog() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("loom-internal-service-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
+        let supervisor = try ProcessSupervisor(
+            ledger: OwnershipLedger(coalition: .probe(forceFailure: true)),
+            catalog: catalog
+        )
+        let service = ManagedSession(
+            provider: .synthetic, workingDirectory: root.path
+        )
+        try await supervisor.createInternalSession(service)
+        let environment = LaunchEnvironment.make(
+            path: "/usr/bin:/bin", runID: supervisor.ownershipRunID,
+            sessionID: service.id
+        )
+        let launch = try await supervisor.launch(
+            sessionID: service.id, executable: childPath,
+            arguments: ["stubborn"], environment: environment
+        )
+        _ = try await ready(terminal: launch.terminal)
+        #expect(await supervisor.managedSessions().isEmpty)
+        #expect(try await catalog.sessions().isEmpty)
+        #expect(try await catalog.runs().isEmpty)
+        #expect((try await supervisor.stop(
+            sessionID: service.id, graceSeconds: 0.05
+        )).succeeded)
+        try await supervisor.discardInternalSession(service.id)
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    @Test func sameProviderConversationCannotBeOpenedTwice() async throws {
+        let supervisor = try ProcessSupervisor(
+            ledger: OwnershipLedger(coalition: .probe(forceFailure: true))
+        )
+        let firstID = UUID(), duplicateID = UUID()
+        let first = try await launch(
+            "stubborn", sessionID: firstID, supervisor: supervisor,
+            provider: .codex, providerConversationID: "same-thread"
+        )
+        _ = try await ready(terminal: first.terminal)
+        try await supervisor.createSession(ManagedSession(
+            id: duplicateID, provider: .codex,
+            providerConversationID: "same-thread",
+            workingDirectory: FileManager.default.temporaryDirectory.path
+        ))
+        let environment = LaunchEnvironment.make(
+            path: "/usr/bin:/bin", runID: supervisor.ownershipRunID,
+            sessionID: duplicateID
+        )
+        do {
+            _ = try await supervisor.launch(
+                sessionID: duplicateID, executable: childPath,
+                arguments: ["stubborn"], environment: environment
+            )
+            Issue.record("Duplicate provider conversation was launched")
+        } catch let error as SessionManagementError {
+            #expect(error == .conversationAlreadyRunning(
+                provider: .codex, conversationID: "same-thread"
+            ))
+        }
+        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+    }
+
+    @Test func inTUIResumeCannotClaimAnotherLiveClaudeConversation() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("loom-live-resume-conflict-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
+        let supervisor = try ProcessSupervisor(
+            ledger: OwnershipLedger(coalition: .probe(forceFailure: true)),
+            catalog: catalog
+        )
+        let firstID = UUID(), secondID = UUID()
+        let first = try await launch(
+            "stubborn", sessionID: firstID, supervisor: supervisor,
+            provider: .claude, providerConversationID: "claude-one"
+        )
+        let second = try await launch(
+            "stubborn", sessionID: secondID, supervisor: supervisor,
+            provider: .claude, providerConversationID: "claude-two"
+        )
+        _ = try await ready(terminal: first.terminal)
+        _ = try await ready(terminal: second.terminal)
+        let firstRun = try #require(first.session.currentRun?.id)
+        let secondRun = try #require(second.session.currentRun?.id)
+
+        do {
+            _ = try await supervisor.receiveClaudeHook(try claudeEnvelope(
+                launchSessionID: secondID, runID: secondRun,
+                providerSessionID: "claude-one", event: "SessionStart",
+                fields: ["source": "resume"]
+            ))
+            Issue.record("A live Claude conversation was claimed by a second run")
+        } catch let error as SessionManagementError {
+            #expect(error == .conversationAlreadyRunning(
+                provider: .claude, conversationID: "claude-one"
+            ))
+        }
+        #expect(await supervisor.activeSessionID(runID: firstRun) == firstID)
+        #expect(await supervisor.activeSessionID(runID: secondRun) == secondID)
+        #expect(await supervisor.claudeStatus(sessionID: secondID)?.providerSessionID == nil)
+        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+    }
+
+    private func claudeEnvelope(
+        launchSessionID: UUID, runID: UUID, providerSessionID: String,
+        event: String, fields: [String: Any] = [:]
+    ) throws -> ClaudeHookEnvelope {
+        var object: [String: Any] = [
+            "session_id": providerSessionID,
+            "hook_event_name": event,
+            "cwd": FileManager.default.temporaryDirectory.path,
+        ]
+        object.merge(fields) { _, new in new }
+        return ClaudeHookEnvelope(
+            sessionID: launchSessionID, managedRunID: runID,
+            payload: try JSONSerialization.data(withJSONObject: object)
+        )
     }
 }

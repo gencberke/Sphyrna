@@ -14,7 +14,7 @@ struct Probe {
         // Probe exclusivity before recovery or shell resolution launches any children.
         _ = CoalitionCapability.current
         let args = Array(CommandLine.arguments.dropFirst())
-        if ["prepare", "capabilities", "synthetic", "crash-fixture", "recover-stale", "experiment"].contains(args.first ?? "") {
+        if ["prepare", "capabilities", "synthetic", "crash-fixture", "recover-stale", "experiment", "codex-core-client", "codex-core-resume", "idle-metrics"].contains(args.first ?? "") {
             try recoverStaleRuns(root: root)
         }
         if args.first == "recover-stale" { return }
@@ -27,6 +27,23 @@ struct Probe {
             guard let script = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw LoomError.message("Invalid experiment script") }
             let experiment = try ProviderExperiment(root: root, label: script["label"] as? String ?? "provider")
             try experiment.run(script: script)
+            return
+        }
+        if args.first == "codex-core-client" {
+            let result = try blockingAwait { try await codexCoreClient(root: root) }
+            print(result.path)
+            return
+        }
+        if args.first == "codex-core-resume", args.count == 2 {
+            let result = try blockingAwait {
+                try await codexCoreResume(root: root, threadID: args[1])
+            }
+            print(result.path)
+            return
+        }
+        if args.first == "idle-metrics" {
+            let result = try blockingAwait { try await idleMetrics(root: root) }
+            print(result.path)
             return
         }
         if args.first == "prepare" {
@@ -82,7 +99,7 @@ struct Probe {
             return
         }
         guard args.first == "synthetic" || args.first == "crash-fixture" else {
-            print("Usage: loom-probe prepare | capabilities | experiment <script.json> | recover-stale | synthetic [inspect|stubborn|group|escape|apple-escape] | recover <ledger.json>")
+            print("Usage: loom-probe prepare | capabilities | idle-metrics | codex-core-client | codex-core-resume <thread-id> | experiment <script.json> | recover-stale | synthetic [inspect|stubborn|group|escape|apple-escape] | recover <ledger.json>")
             return
         }
         let mode = args.count > 1 ? args[1] : "inspect"
@@ -194,6 +211,340 @@ struct Probe {
         process.waitUntilExit()
         guard process.terminationStatus == 0 else { throw LoomError.message("Capability check failed: \(program) \(arguments)") }
         return String(decoding: data, as: UTF8.self)
+    }
+
+    static func codexCoreClient(root: URL) async throws -> URL {
+        let ledger = OwnershipLedger()
+        let directory = root.appendingPathComponent("runs/\(ledger.runID.uuidString)")
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        let supervisor = try ProcessSupervisor(
+            ledger: ledger, ledgerURL: directory.appendingPathComponent("ledger.json")
+        )
+        guard let owner = try ProcessTable.snapshot().first(where: {
+            $0.identity.pid == getpid()
+        }) else { throw LoomError.message("Cannot record probe owner identity") }
+        try encoder.encode(owner.identity).write(
+            to: directory.appendingPathComponent("owner.json"), options: .atomic
+        )
+        do {
+            let resolution = try await supervisor.terminalEnvironment(origin: .development)
+            var capabilityEnvironment = resolution.environment
+            capabilityEnvironment["CODEX_HOME"] = root.appendingPathComponent("codex-home").path
+            let version = try capture("codex", ["--version"], environment: capabilityEnvironment)
+            let help = try capture("codex", ["--help"], environment: capabilityEnvironment)
+            let serverHelp = try capture(
+                "codex", ["app-server", "--help"], environment: capabilityEnvironment
+            )
+            let capabilities = ProviderCapabilities(
+                version: version, help: help, serverHelp: serverHelp
+            )
+            guard let executable = resolution.environment["PATH"]?.split(separator: ":")
+                .map({ URL(fileURLWithPath: String($0)).appendingPathComponent("codex").path })
+                .first(where: { access($0, X_OK) == 0 }) else {
+                throw LoomError.message("Codex executable not found")
+            }
+            let socket = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".loom-dev/core-\(ledger.runID.uuidString.prefix(8)).sock")
+            let manager = CodexAppServerManager(
+                supervisor: supervisor,
+                configuration: CodexAppServerConfiguration(
+                    executable: executable, capabilities: capabilities,
+                    home: root.appendingPathComponent("codex-home"),
+                    baseEnvironment: resolution.environment,
+                    workingDirectory: root.appendingPathComponent("workspace").path,
+                    socketPath: socket.path, clientVersion: "probe-\(version)"
+                )
+            )
+            let leaseID = UUID()
+            let client = try await manager.acquire(for: leaseID)
+            let result = try await client.request(method: "thread/loaded/list")
+            try encoder.encode(result).write(
+                to: directory.appendingPathComponent("loaded-threads.json"), options: .atomic
+            )
+            let serverSessionID = await manager.internalSessionID()
+            let visibleSessions = await supervisor.managedSessions()
+            let release = try await manager.release(for: leaseID, graceSeconds: 0.2)
+            let shutdown = await supervisor.shutdown(graceSeconds: 0.2)
+            let summary: [String: JSONValue] = [
+                "serverSessionID": serverSessionID.map { .string($0.uuidString) } ?? .null,
+                "visibleSessionCount": .number(Double(visibleSessions.count)),
+                "releaseSucceeded": .bool(release?.succeeded == true),
+                "shutdownSucceeded": .bool(shutdown.succeeded),
+            ]
+            try encoder.encode(summary).write(
+                to: directory.appendingPathComponent("summary.json"), options: .atomic
+            )
+            guard release?.succeeded == true, shutdown.succeeded,
+                  visibleSessions.isEmpty else {
+                throw LoomError.message("Core Codex app-server lifecycle failed")
+            }
+            try Data().write(to: directory.appendingPathComponent("completed"))
+            return directory
+        } catch {
+            let report = await supervisor.shutdown(graceSeconds: 0.2)
+            try? encoder.encode(report).write(
+                to: directory.appendingPathComponent("shutdown-error.json"), options: .atomic
+            )
+            throw error
+        }
+    }
+
+    static func codexCoreResume(root: URL, threadID: String) async throws -> URL {
+        let ledger = OwnershipLedger()
+        let directory = root.appendingPathComponent("runs/\(ledger.runID.uuidString)")
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        let catalog = try SessionCatalog(
+            url: directory.appendingPathComponent("sessions.sqlite3")
+        )
+        let supervisor = try ProcessSupervisor(
+            ledger: ledger, ledgerURL: directory.appendingPathComponent("ledger.json"),
+            catalog: catalog
+        )
+        guard let owner = try ProcessTable.snapshot().first(where: {
+            $0.identity.pid == getpid()
+        }) else { throw LoomError.message("Cannot record probe owner identity") }
+        try encoder.encode(owner.identity).write(
+            to: directory.appendingPathComponent("owner.json"), options: .atomic
+        )
+        do {
+            let resolution = try await supervisor.terminalEnvironment(origin: .development)
+            var capabilityEnvironment = resolution.environment
+            let home = root.appendingPathComponent("codex-home")
+            capabilityEnvironment["CODEX_HOME"] = home.path
+            let version = try capture("codex", ["--version"], environment: capabilityEnvironment)
+            let help = try capture("codex", ["--help"], environment: capabilityEnvironment)
+            let serverHelp = try capture(
+                "codex", ["app-server", "--help"], environment: capabilityEnvironment
+            )
+            let capabilities = ProviderCapabilities(
+                version: version, help: help, serverHelp: serverHelp
+            )
+            guard let executable = resolution.environment["PATH"]?.split(separator: ":")
+                .map({ URL(fileURLWithPath: String($0)).appendingPathComponent("codex").path })
+                .first(where: { access($0, X_OK) == 0 }) else {
+                throw LoomError.message("Codex executable not found")
+            }
+            let socket = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".loom-dev/core-\(ledger.runID.uuidString.prefix(8)).sock")
+            let manager = CodexAppServerManager(
+                supervisor: supervisor,
+                configuration: CodexAppServerConfiguration(
+                    executable: executable, capabilities: capabilities, home: home,
+                    baseEnvironment: resolution.environment,
+                    workingDirectory: root.appendingPathComponent("workspace").path,
+                    socketPath: socket.path, clientVersion: "probe-\(version)"
+                )
+            )
+            let session = ManagedSession(
+                provider: .codex, providerConversationID: threadID,
+                workingDirectory: root.appendingPathComponent("workspace").path
+            )
+            try await supervisor.createSession(session)
+            let client = try await manager.acquire(for: session.id)
+            let coordinator = CodexSessionCoordinator(
+                client: client, supervisor: supervisor
+            )
+            await coordinator.start()
+            let environment = LaunchEnvironment.make(
+                base: resolution.environment, runID: supervisor.ownershipRunID,
+                sessionID: session.id
+            )
+            let profile = try ProviderResumePlanner.codex(
+                session: session, socketPath: socket.path,
+                capabilities: capabilities, home: home, environment: environment
+            )
+            let launch = try await supervisor.launch(
+                sessionID: session.id, executable: executable,
+                arguments: profile.arguments + [
+                    "-m", "gpt-6-luna", "-c", "model_reasoning_effort=\"low\"",
+                ], environment: profile.environment, rows: 40, columns: 120
+            )
+            let runID = try launch.session.currentRun?.id
+                ?? { throw LoomError.message("Codex run identity missing") }()
+            try await coordinator.bindResume(
+                sessionID: session.id, managedRunID: runID,
+                threadID: threadID, workingDirectory: session.workingDirectory
+            )
+            var terminalOutput = Data()
+            var queryBuffer = ""
+            try await pumpCodexTerminal(
+                launch.terminal, seconds: 4, output: &terminalOutput,
+                queryBuffer: &queryBuffer
+            )
+            _ = try await launch.terminal.write(
+                Data("Reply exactly CODEX_CORE_OK. Do not use tools.".utf8)
+            )
+            try await Task.sleep(for: .milliseconds(300))
+            _ = try await launch.terminal.write(Data("\r".utf8))
+            let deadline = ProcessInfo.processInfo.systemUptime + 20
+            var status = await supervisor.codexStatus(sessionID: session.id)
+            repeat {
+                try await pumpCodexTerminal(
+                    launch.terminal, seconds: 0.1, output: &terminalOutput,
+                    queryBuffer: &queryBuffer
+                )
+                status = await supervisor.codexStatus(sessionID: session.id)
+                if status?.lastAssistantMessage?.contains("CODEX_CORE_OK") == true { break }
+            } while ProcessInfo.processInfo.systemUptime < deadline
+            try terminalOutput.write(to: directory.appendingPathComponent("terminal.txt"))
+            let issues = await coordinator.issues()
+            let statusObject: [String: JSONValue] = [
+                "threadID": .string(status?.providerThreadID ?? ""),
+                "lastAssistantMessage": status?.lastAssistantMessage.map(JSONValue.string) ?? .null,
+                "backgroundTerminalCount": .number(Double(status?.backgroundTerminalCount ?? -1)),
+                "issues": .array(issues.map(JSONValue.string)),
+            ]
+            try encoder.encode(statusObject).write(
+                to: directory.appendingPathComponent("status.json"), options: .atomic
+            )
+            await coordinator.stop()
+            let tuiStop = try await supervisor.stop(
+                sessionID: session.id, graceSeconds: 0.2
+            )
+            let serverStop = try await manager.release(
+                for: session.id, graceSeconds: 0.2
+            )
+            let shutdown = await supervisor.shutdown(graceSeconds: 0.2)
+            guard status?.providerThreadID == threadID,
+                  status?.lastAssistantMessage?.contains("CODEX_CORE_OK") == true,
+                  issues.isEmpty, tuiStop.succeeded,
+                  serverStop?.succeeded == true, shutdown.succeeded else {
+                throw LoomError.message("Core Codex resume/status verification failed")
+            }
+            try Data().write(to: directory.appendingPathComponent("completed"))
+            return directory
+        } catch {
+            let report = await supervisor.shutdown(graceSeconds: 0.2)
+            try? encoder.encode(report).write(
+                to: directory.appendingPathComponent("shutdown-error.json"), options: .atomic
+            )
+            throw error
+        }
+    }
+
+    static func pumpCodexTerminal(
+        _ terminal: TerminalEndpoint, seconds: Double,
+        output: inout Data, queryBuffer: inout String
+    ) async throws {
+        let deadline = ProcessInfo.processInfo.systemUptime + seconds
+        repeat {
+            let chunk = terminal.readAvailable()
+            if !chunk.isEmpty {
+                output.append(chunk)
+                queryBuffer += String(decoding: chunk, as: UTF8.self)
+                let responses = [
+                    ("\u{1b}[6n", "\u{1b}[1;1R"),
+                    ("\u{1b}[c", "\u{1b}[?1;2c"),
+                    ("\u{1b}[>0c", "\u{1b}[>0;0;0c"),
+                    ("\u{1b}[?u", "\u{1b}[?0u"),
+                    ("\u{1b}]10;?\u{7}", "\u{1b}]10;rgb:ffff/ffff/ffff\u{7}"),
+                    ("\u{1b}]11;?\u{7}", "\u{1b}]11;rgb:0000/0000/0000\u{7}"),
+                ]
+                for (query, response) in responses {
+                    while let range = queryBuffer.range(of: query) {
+                        _ = try await terminal.write(Data(response.utf8))
+                        queryBuffer.removeSubrange(range)
+                    }
+                }
+                queryBuffer = String(queryBuffer.suffix(32))
+            }
+            try await Task.sleep(for: .milliseconds(5))
+        } while ProcessInfo.processInfo.systemUptime < deadline
+    }
+
+    static func idleMetrics(root: URL) async throws -> URL {
+        let ledger = OwnershipLedger()
+        let directory = root.appendingPathComponent("runs/\(ledger.runID.uuidString)")
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        let supervisor = try ProcessSupervisor(
+            ledger: ledger, ledgerURL: directory.appendingPathComponent("ledger.json")
+        )
+        guard let owner = try ProcessTable.snapshot().first(where: {
+            $0.identity.pid == getpid()
+        }) else { throw LoomError.message("Cannot record probe owner identity") }
+        try encoder.encode(owner.identity).write(
+            to: directory.appendingPathComponent("owner.json"), options: .atomic
+        )
+        let executable = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
+            .deletingLastPathComponent().appendingPathComponent("loom-test-child").path
+        do {
+            let resolution = try await supervisor.terminalEnvironment(origin: .development)
+            let emptyUsage = try ProcessTable.resourceUsage(pid: getpid())
+                ?? { throw LoomError.message("Process usage unavailable") }()
+            var terminals: [TerminalEndpoint] = []
+            for _ in 0..<10 {
+                let session = ManagedSession(
+                    provider: .synthetic, workingDirectory: directory.path
+                )
+                try await supervisor.createSession(session)
+                let environment = LaunchEnvironment.make(
+                    base: resolution.environment, runID: supervisor.ownershipRunID,
+                    sessionID: session.id
+                )
+                terminals.append(try await supervisor.launch(
+                    sessionID: session.id, executable: executable,
+                    arguments: ["stubborn", "--silent"], environment: environment
+                ).terminal)
+            }
+            try await Task.sleep(for: .milliseconds(250))
+            let before = try ProcessTable.resourceUsage(pid: getpid())
+                ?? { throw LoomError.message("Process usage unavailable") }()
+            let intervalStart = ProcessInfo.processInfo.systemUptime
+            try await Task.sleep(for: .seconds(2))
+            let elapsed = ProcessInfo.processInfo.systemUptime - intervalStart
+            let after = try ProcessTable.resourceUsage(pid: getpid())
+                ?? { throw LoomError.message("Process usage unavailable") }()
+            let cpuNanoseconds = (after.userTimeNanoseconds - before.userTimeNanoseconds)
+                + (after.systemTimeNanoseconds - before.systemTimeNanoseconds)
+            let result: [String: JSONValue] = [
+                "sessionCount": .number(10),
+                "measurementSeconds": .number(elapsed),
+                "cpuMilliseconds": .number(Double(cpuNanoseconds) / 1_000_000),
+                "averageCPUPercent": .number(
+                    Double(cpuNanoseconds) / 1_000_000_000 / elapsed * 100
+                ),
+                "packageIdleWakeups": .number(Double(
+                    after.packageIdleWakeups - before.packageIdleWakeups
+                )),
+                "interruptWakeups": .number(Double(
+                    after.interruptWakeups - before.interruptWakeups
+                )),
+                "footprintIncreaseBytes": .number(Double(
+                    before.physicalFootprintBytes >= emptyUsage.physicalFootprintBytes
+                        ? before.physicalFootprintBytes - emptyUsage.physicalFootprintBytes : 0
+                )),
+                "scrollbackAllocatedBytes": .number(Double(
+                    terminals.reduce(0) { $0 + ($1.scrollback?.allocatedByteCount ?? 0) }
+                )),
+            ]
+            try encoder.encode(result).write(
+                to: directory.appendingPathComponent("idle-metrics.json"), options: .atomic
+            )
+            let shutdown = await supervisor.shutdown(graceSeconds: 0.05)
+            try encoder.encode(shutdown).write(
+                to: directory.appendingPathComponent("shutdown.json"), options: .atomic
+            )
+            guard shutdown.succeeded else {
+                throw LoomError.message("Idle metrics cleanup failed")
+            }
+            try Data().write(to: directory.appendingPathComponent("completed"))
+            return directory
+        } catch {
+            let report = await supervisor.shutdown(graceSeconds: 0.05)
+            try? encoder.encode(report).write(
+                to: directory.appendingPathComponent("shutdown-error.json"), options: .atomic
+            )
+            throw error
+        }
     }
 
     static var encoder: JSONEncoder { let value = JSONEncoder(); value.outputFormatting = [.prettyPrinted, .sortedKeys]; return value }

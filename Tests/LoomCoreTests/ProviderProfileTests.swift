@@ -64,4 +64,26 @@ struct ProviderProfileTests {
         #expect(endHandlers.first?["async"] == nil)
         #expect(endHandlers.first?["timeout"] as? Int == 1)
     }
+
+    @Test func resumeRoutesNeverFallBackToANewConversation() throws {
+        let capabilities = ProviderCapabilities(
+            version: "test",
+            help: "--remote <ADDR> --session-id <id> --settings <settings>"
+        )
+        let claude = try ProviderLaunchProfile.claude(
+            route: .resume("provider-session"), capabilities: capabilities,
+            config: URL(fileURLWithPath: "/isolated"), environment: [:]
+        )
+        #expect(Array(claude.arguments.prefix(2)) == ["--resume", "provider-session"])
+        #expect(!claude.arguments.contains("--session-id"))
+
+        let codex = try ProviderLaunchProfile.codex(
+            route: .remote(socket: "/tmp/app.sock", threadID: "thread-id"),
+            capabilities: capabilities, home: URL(fileURLWithPath: "/isolated"),
+            environment: [:]
+        )
+        #expect(codex.arguments == [
+            "resume", "thread-id", "--remote", "unix:///tmp/app.sock",
+        ])
+    }
 }

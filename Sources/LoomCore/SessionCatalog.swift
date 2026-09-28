@@ -9,6 +9,7 @@ public enum SessionLifecycle: String, Codable, Sendable {
 
 public enum ManagedRunEndReason: String, Codable, Sendable {
     case requested
+    case idle
     case applicationQuit
     case processExited
 }
@@ -30,6 +31,13 @@ public struct CatalogRun: Equatable, Sendable {
     public let endedAt: Date?
     public let endReason: ManagedRunEndReason?
     public let exitStatus: Int32?
+}
+
+public struct CatalogRunSessionLink: Equatable, Sendable {
+    public let runID: UUID
+    public let sessionID: UUID
+    public let linkedAt: Date
+    public let unlinkedAt: Date?
 }
 
 public enum SessionCatalogError: Error, CustomStringConvertible, Sendable {
@@ -118,6 +126,92 @@ public actor SessionCatalog {
         }
     }
 
+    public func session(id: UUID) throws -> CatalogSession? {
+        try readSession(where: "id = ?", value: id.uuidString)
+    }
+
+    public func session(provider: ManagedSession.Provider,
+                        conversationID: String) throws -> CatalogSession? {
+        try database.withStatement("""
+            SELECT id, provider, provider_conversation_id, working_directory, title,
+                   created_at, last_used_at, lifecycle, pinned
+            FROM sessions
+            WHERE provider = ? AND provider_conversation_id = ?
+            ORDER BY created_at DESC LIMIT 1
+            """) { statement in
+            try database.bind(provider.rawValue, at: 1, to: statement)
+            try database.bind(conversationID, at: 2, to: statement)
+            guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+            return try decodeSession(statement)
+        }
+    }
+
+    /// Records a user prompt or deliberate view. A stale row remains stale
+    /// until the caller explicitly reactivates it; merely viewing history must
+    /// not make it look live again.
+    public func markUsed(sessionID: UUID, at date: Date = Date(),
+                         reactivate: Bool = false) throws {
+        try database.withStatement("""
+            UPDATE sessions
+            SET last_used_at = ?,
+                lifecycle = CASE
+                    WHEN lifecycle = 'stale' AND ? = 0 THEN lifecycle
+                    ELSE 'active'
+                END
+            WHERE id = ?
+            """) { statement in
+            sqlite3_bind_double(statement, 1, date.timeIntervalSince1970)
+            sqlite3_bind_int(statement, 2, reactivate ? 1 : 0)
+            try database.bind(sessionID.uuidString, at: 3, to: statement)
+            try database.stepDone(statement, operation: "mark session used")
+        }
+        try requireChangedSession(sessionID, operation: "mark session used")
+    }
+
+    public func updateLifecycle(sessionID: UUID, lifecycle: SessionLifecycle) throws {
+        try database.withStatement(
+            "UPDATE sessions SET lifecycle = ? WHERE id = ?"
+        ) { statement in
+            try database.bind(lifecycle.rawValue, at: 1, to: statement)
+            try database.bind(sessionID.uuidString, at: 2, to: statement)
+            try database.stepDone(statement, operation: "update session lifecycle")
+        }
+        try requireChangedSession(sessionID, operation: "update session lifecycle")
+    }
+
+    /// Classifies only stopped/idle conversations. A live conversation is not
+    /// made stale merely because its last user prompt is old.
+    @discardableResult
+    public func classifyStale(before cutoff: Date) throws -> [UUID] {
+        let candidates: [UUID] = try database.withStatement("""
+            SELECT id FROM sessions
+            WHERE lifecycle = 'idle' AND last_used_at < ?
+            ORDER BY id
+            """) { statement in
+            sqlite3_bind_double(statement, 1, cutoff.timeIntervalSince1970)
+            var result: [UUID] = []
+            var stepResult = sqlite3_step(statement)
+            while stepResult == SQLITE_ROW {
+                guard let id = UUID(uuidString: try database.text(statement, column: 0)) else {
+                    throw SessionCatalogError.invalidRow("invalid stale session identity")
+                }
+                result.append(id)
+                stepResult = sqlite3_step(statement)
+            }
+            try database.requireDone(stepResult, operation: "read stale sessions")
+            return result
+        }
+        guard !candidates.isEmpty else { return [] }
+        try database.withStatement("""
+            UPDATE sessions SET lifecycle = 'stale'
+            WHERE lifecycle = 'idle' AND last_used_at < ?
+            """) { statement in
+            sqlite3_bind_double(statement, 1, cutoff.timeIntervalSince1970)
+            try database.stepDone(statement, operation: "classify stale sessions")
+        }
+        return candidates
+    }
+
     public func updateProviderConversationID(sessionID: UUID, newID: String,
                                              changedAt: Date = Date()) throws {
         try database.transaction {
@@ -179,6 +273,77 @@ public actor SessionCatalog {
         }
     }
 
+    /// Atomically moves a live PTY run to a newly-created durable conversation.
+    /// The old conversation remains in the catalog and becomes idle history.
+    public func transitionRun(
+        _ runID: UUID, from oldSessionID: UUID,
+        to newSession: ManagedSession, at date: Date = Date()
+    ) throws {
+        try database.transaction {
+            try requireActiveLink(runID: runID, sessionID: oldSessionID)
+            try insertSessionRow(
+                newSession, title: nil, createdAt: date, lastUsedAt: date,
+                lifecycle: .active, pinned: false
+            )
+            try closeAndInsertRunLink(
+                runID: runID, oldSessionID: oldSessionID,
+                newSessionID: newSession.id, at: date
+            )
+        }
+    }
+
+    /// Atomically moves a live run back to an existing durable conversation.
+    public func transitionRun(
+        _ runID: UUID, from oldSessionID: UUID,
+        toExistingSessionID newSessionID: UUID, at date: Date = Date()
+    ) throws {
+        try database.transaction {
+            try requireActiveLink(runID: runID, sessionID: oldSessionID)
+            guard try sessionExists(newSessionID) else {
+                throw SessionCatalogError.invalidRow("session \(newSessionID) does not exist")
+            }
+            try closeAndInsertRunLink(
+                runID: runID, oldSessionID: oldSessionID,
+                newSessionID: newSessionID, at: date
+            )
+        }
+    }
+
+    public func runSessionLinks(runID: UUID? = nil) throws -> [CatalogRunSessionLink] {
+        let sql: String
+        if runID == nil {
+            sql = """
+                SELECT run_id, session_id, linked_at, unlinked_at
+                FROM run_sessions ORDER BY linked_at, session_id
+                """
+        } else {
+            sql = """
+                SELECT run_id, session_id, linked_at, unlinked_at
+                FROM run_sessions WHERE run_id = ? ORDER BY linked_at, session_id
+                """
+        }
+        return try database.withStatement(sql) { statement in
+            if let runID { try database.bind(runID.uuidString, at: 1, to: statement) }
+            var links: [CatalogRunSessionLink] = []
+            var stepResult = sqlite3_step(statement)
+            while stepResult == SQLITE_ROW {
+                guard let storedRunID = UUID(uuidString: try database.text(statement, column: 0)),
+                      let sessionID = UUID(uuidString: try database.text(statement, column: 1)) else {
+                    throw SessionCatalogError.invalidRow("invalid run/session link identity")
+                }
+                links.append(CatalogRunSessionLink(
+                    runID: storedRunID, sessionID: sessionID,
+                    linkedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
+                    unlinkedAt: database.optionalDouble(statement, column: 3)
+                        .map(Date.init(timeIntervalSince1970:))
+                ))
+                stepResult = sqlite3_step(statement)
+            }
+            try database.requireDone(stepResult, operation: "read run session links")
+            return links
+        }
+    }
+
     public func finishRun(_ runID: UUID, endedAt: Date = Date(),
                           reason: ManagedRunEndReason,
                           exitStatus: Int32?) throws {
@@ -237,6 +402,126 @@ public actor SessionCatalog {
             }
             try database.requireDone(stepResult, operation: "read runs")
             return result
+        }
+    }
+
+    private func readSession(where predicate: String, value: String) throws -> CatalogSession? {
+        try database.withStatement("""
+            SELECT id, provider, provider_conversation_id, working_directory, title,
+                   created_at, last_used_at, lifecycle, pinned
+            FROM sessions WHERE \(predicate) LIMIT 1
+            """) { statement in
+            try database.bind(value, at: 1, to: statement)
+            guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+            return try decodeSession(statement)
+        }
+    }
+
+    private func decodeSession(_ statement: OpaquePointer) throws -> CatalogSession {
+        guard let id = UUID(uuidString: try database.text(statement, column: 0)),
+              let provider = ManagedSession.Provider(rawValue: try database.text(statement, column: 1)),
+              let lifecycle = SessionLifecycle(rawValue: try database.text(statement, column: 7)) else {
+            throw SessionCatalogError.invalidRow("unknown session identity, provider, or lifecycle")
+        }
+        return CatalogSession(
+            session: ManagedSession(
+                id: id, provider: provider,
+                providerConversationID: database.optionalText(statement, column: 2),
+                workingDirectory: try database.text(statement, column: 3)
+            ),
+            title: database.optionalText(statement, column: 4),
+            createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 5)),
+            lastUsedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 6)),
+            lifecycle: lifecycle,
+            pinned: sqlite3_column_int(statement, 8) != 0
+        )
+    }
+
+    private func insertSessionRow(
+        _ session: ManagedSession, title: String?, createdAt: Date,
+        lastUsedAt: Date, lifecycle: SessionLifecycle, pinned: Bool
+    ) throws {
+        try database.withStatement("""
+            INSERT INTO sessions (
+                id, provider, provider_conversation_id, working_directory, title,
+                created_at, last_used_at, lifecycle, pinned
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """) { statement in
+            try database.bind(session.id.uuidString, at: 1, to: statement)
+            try database.bind(session.provider.rawValue, at: 2, to: statement)
+            try database.bind(session.providerConversationID, at: 3, to: statement)
+            try database.bind(session.workingDirectory, at: 4, to: statement)
+            try database.bind(title, at: 5, to: statement)
+            sqlite3_bind_double(statement, 6, createdAt.timeIntervalSince1970)
+            sqlite3_bind_double(statement, 7, lastUsedAt.timeIntervalSince1970)
+            try database.bind(lifecycle.rawValue, at: 8, to: statement)
+            sqlite3_bind_int(statement, 9, pinned ? 1 : 0)
+            try database.stepDone(statement, operation: "insert session")
+        }
+    }
+
+    private func requireActiveLink(runID: UUID, sessionID: UUID) throws {
+        let linked = try database.withStatement("""
+            SELECT 1 FROM run_sessions
+            WHERE run_id = ? AND session_id = ? AND unlinked_at IS NULL
+            LIMIT 1
+            """) { statement in
+            try database.bind(runID.uuidString, at: 1, to: statement)
+            try database.bind(sessionID.uuidString, at: 2, to: statement)
+            return sqlite3_step(statement) == SQLITE_ROW
+        }
+        guard linked else {
+            throw SessionCatalogError.invalidRow(
+                "run \(runID) is not actively linked to session \(sessionID)"
+            )
+        }
+    }
+
+    private func sessionExists(_ sessionID: UUID) throws -> Bool {
+        try database.withStatement("SELECT 1 FROM sessions WHERE id = ?") { statement in
+            try database.bind(sessionID.uuidString, at: 1, to: statement)
+            return sqlite3_step(statement) == SQLITE_ROW
+        }
+    }
+
+    private func closeAndInsertRunLink(
+        runID: UUID, oldSessionID: UUID, newSessionID: UUID, at date: Date
+    ) throws {
+        try database.withStatement("""
+            UPDATE run_sessions SET unlinked_at = ?
+            WHERE run_id = ? AND session_id = ? AND unlinked_at IS NULL
+            """) { statement in
+            sqlite3_bind_double(statement, 1, date.timeIntervalSince1970)
+            try database.bind(runID.uuidString, at: 2, to: statement)
+            try database.bind(oldSessionID.uuidString, at: 3, to: statement)
+            try database.stepDone(statement, operation: "unlink run session")
+        }
+        try database.withStatement("""
+            INSERT INTO run_sessions (run_id, session_id, linked_at)
+            VALUES (?, ?, ?)
+            """) { statement in
+            try database.bind(runID.uuidString, at: 1, to: statement)
+            try database.bind(newSessionID.uuidString, at: 2, to: statement)
+            sqlite3_bind_double(statement, 3, date.timeIntervalSince1970)
+            try database.stepDone(statement, operation: "link replacement session")
+        }
+        try database.withStatement(
+            "UPDATE sessions SET lifecycle = 'idle' WHERE id = ?"
+        ) { statement in
+            try database.bind(oldSessionID.uuidString, at: 1, to: statement)
+            try database.stepDone(statement, operation: "idle previous session")
+        }
+        try database.withStatement(
+            "UPDATE sessions SET lifecycle = 'active' WHERE id = ?"
+        ) { statement in
+            try database.bind(newSessionID.uuidString, at: 1, to: statement)
+            try database.stepDone(statement, operation: "activate replacement session")
+        }
+    }
+
+    private func requireChangedSession(_ sessionID: UUID, operation: String) throws {
+        guard sqlite3_changes(database.handle) == 1 else {
+            throw SessionCatalogError.invalidRow("\(operation): session \(sessionID) does not exist")
         }
     }
 }

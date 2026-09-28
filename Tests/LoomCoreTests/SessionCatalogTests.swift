@@ -129,6 +129,80 @@ struct SessionCatalogTests {
         #expect(try scalarInt("PRAGMA application_id", database: reopenedHandle) == 0)
     }
 
+    @Test func runConversationTransitionIsAtomicAndPreservesHistory() async throws {
+        let url = temporaryCatalogURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let catalog = try SessionCatalog(url: url)
+        let first = ManagedSession(
+            provider: .claude, providerConversationID: "claude-one",
+            workingDirectory: "/tmp/workspace"
+        )
+        let second = ManagedSession(
+            provider: .claude, providerConversationID: "claude-two",
+            workingDirectory: first.workingDirectory
+        )
+        let leader = ProcessIdentity(pid: 42, startSeconds: 1, startMicroseconds: 2)
+        let run = ManagedRun(
+            id: UUID(), leader: leader, startedAt: Date(timeIntervalSince1970: 100),
+            state: .running, exitStatus: nil, descendants: [leader]
+        )
+        try await catalog.insertSession(first, createdAt: Date(timeIntervalSince1970: 90))
+        try await catalog.startRun(run, sessionID: first.id)
+        let transitionTime = Date(timeIntervalSince1970: 110)
+        try await catalog.transitionRun(
+            run.id, from: first.id, to: second, at: transitionTime
+        )
+
+        let sessions = try await catalog.sessions()
+        #expect(sessions.count == 2)
+        #expect(sessions.first { $0.session.id == first.id }?.lifecycle == .idle)
+        #expect(sessions.first { $0.session.id == second.id }?.lifecycle == .active)
+        #expect(try await catalog.session(
+            provider: .claude, conversationID: "claude-one"
+        )?.session.id == first.id)
+        #expect(try await catalog.session(
+            provider: .claude, conversationID: "claude-two"
+        )?.session.id == second.id)
+
+        let links = try await catalog.runSessionLinks(runID: run.id)
+        #expect(links.count == 2)
+        #expect(links.first { $0.sessionID == first.id }?.unlinkedAt == transitionTime)
+        #expect(links.first { $0.sessionID == second.id }?.unlinkedAt == nil)
+    }
+
+    @Test func staleClassificationRequiresExplicitReactivation() async throws {
+        let url = temporaryCatalogURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let catalog = try SessionCatalog(url: url)
+        let old = ManagedSession(provider: .codex, workingDirectory: "/tmp/old")
+        let live = ManagedSession(provider: .codex, workingDirectory: "/tmp/live")
+        try await catalog.insertSession(
+            old, createdAt: Date(timeIntervalSince1970: 10),
+            lastUsedAt: Date(timeIntervalSince1970: 10), lifecycle: .idle
+        )
+        try await catalog.insertSession(
+            live, createdAt: Date(timeIntervalSince1970: 10),
+            lastUsedAt: Date(timeIntervalSince1970: 10), lifecycle: .active
+        )
+
+        #expect(try await catalog.classifyStale(
+            before: Date(timeIntervalSince1970: 20)
+        ) == [old.id])
+        try await catalog.markUsed(
+            sessionID: old.id, at: Date(timeIntervalSince1970: 30)
+        )
+        #expect(try await catalog.session(id: old.id)?.lifecycle == .stale)
+        #expect(try await catalog.session(id: old.id)?.lastUsedAt
+                == Date(timeIntervalSince1970: 30))
+
+        try await catalog.markUsed(
+            sessionID: old.id, at: Date(timeIntervalSince1970: 40),
+            reactivate: true
+        )
+        #expect(try await catalog.session(id: old.id)?.lifecycle == .active)
+        #expect(try await catalog.session(id: live.id)?.lifecycle == .active)
+    }
+
     private func scalarInt(_ sql: String, database: OpaquePointer) throws -> Int32 {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,

@@ -177,4 +177,38 @@ struct OwnershipBoundaryTests {
         #expect(ledger.observationIssue == nil)
     }
 
+    @Test func thousandsOfShortLivedDescendantsDoNotGrowDurableLedger() throws {
+        let leader = ProcessIdentity(
+            pid: 2_100_000, startSeconds: 1, startMicroseconds: 0
+        )
+        func record(_ identity: ProcessIdentity, parent: Int32) -> ProcessRecord {
+            ProcessRecord(
+                identity: identity, parentPID: parent,
+                processGroup: leader.pid, sessionID: leader.pid,
+                userID: getuid(), zombie: false
+            )
+        }
+        let leaderRecord = record(leader, parent: 1)
+        var ledger = OwnershipLedger(coalition: .probe(forceFailure: true))
+        ledger.register(leader)
+        for index in 0..<5_000 {
+            let child = ProcessIdentity(
+                pid: Int32(2_100_001 + index),
+                startSeconds: Int64(index + 2), startMicroseconds: 0
+            )
+            _ = ledger.observe(
+                [leaderRecord, record(child, parent: leader.pid)],
+                readRunID: { _ in nil }, readCoalition: { _ in nil },
+                confirmSnapshot: { [leaderRecord, record(child, parent: leader.pid)] }
+            )
+            #expect(ledger.descendants.count <= 2)
+        }
+        _ = ledger.observe(
+            [leaderRecord], readRunID: { _ in nil },
+            readCoalition: { _ in nil }, confirmSnapshot: { [leaderRecord] }
+        )
+        #expect(ledger.descendants == [leader])
+        #expect(try JSONEncoder().encode(ledger).count < 1_024)
+    }
+
 }

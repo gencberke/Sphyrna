@@ -70,7 +70,9 @@ public enum SessionManagementError: Error, CustomStringConvertible, Equatable, S
     case sessionAlreadyRunning(UUID)
     case sessionStopping(UUID)
     case sessionNotRunning(UUID)
+    case runAlreadyExists(UUID)
     case runNotFound(UUID)
+    case conversationAlreadyRunning(provider: ManagedSession.Provider, conversationID: String)
     case invalidOwnershipMarkers(sessionID: UUID)
     case leaderIdentityUnavailable(Int32)
 
@@ -88,8 +90,12 @@ public enum SessionManagementError: Error, CustomStringConvertible, Equatable, S
             "Managed session is stopping: \(id)"
         case let .sessionNotRunning(id):
             "Managed session is not running: \(id)"
+        case let .runAlreadyExists(id):
+            "Managed run already exists: \(id)"
         case let .runNotFound(id):
             "Managed run not found: \(id)"
+        case let .conversationAlreadyRunning(provider, conversationID):
+            "Provider conversation is already running: \(provider.rawValue)/\(conversationID)"
         case let .invalidOwnershipMarkers(id):
             "Launch requires this supervisor and managed session's ownership markers: \(id)"
         case let .leaderIdentityUnavailable(pid):

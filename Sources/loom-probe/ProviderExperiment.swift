@@ -172,7 +172,12 @@ final class ProviderExperiment {
             case "baseline": route = .baseline
             case "disable-auto-start": route = .disableAutoStart
             case "server": route = .server(socket: variables["socket"]!)
-            case "remote": route = .remote(socket: variables["socket"]!, threadID: variables["thread"])
+            case "remote":
+                let explicit = (action["threadID"] as? String).map(expand)
+                route = .remote(
+                    socket: variables["socket"]!,
+                    threadID: explicit ?? variables["thread"]
+                )
             case "direct": route = .direct
             default: throw LoomError.message("Unknown Codex route")
             }
@@ -193,11 +198,19 @@ final class ProviderExperiment {
                     authenticationToken: hookAuthenticationToken
                 )
             }
-            profile = try .claude(
-                capabilities: capabilities,
-                config: root.appendingPathComponent("claude-config"),
-                sessionID: sessionID, environment: base, hooks: hooks
-            )
+            if let resumeSessionID = (action["resumeSessionID"] as? String).map(expand) {
+                profile = try .claude(
+                    route: .resume(resumeSessionID), capabilities: capabilities,
+                    config: root.appendingPathComponent("claude-config"),
+                    environment: base, hooks: hooks
+                )
+            } else {
+                profile = try .claude(
+                    capabilities: capabilities,
+                    config: root.appendingPathComponent("claude-config"),
+                    sessionID: sessionID, environment: base, hooks: hooks
+                )
+            }
         } else { throw LoomError.message("Unknown provider") }
         var environment = profile.environment
         if action["agentView"] as? Bool == true { environment.removeValue(forKey: "CLAUDE_CODE_DISABLE_AGENT_VIEW") }

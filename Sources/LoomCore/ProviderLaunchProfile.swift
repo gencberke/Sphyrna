@@ -26,8 +26,18 @@ public struct ProviderLaunchProfile: Sendable {
     public let arguments: [String]
     public let environment: [String: String]
 
+    public init(arguments: [String], environment: [String: String]) {
+        self.arguments = arguments
+        self.environment = environment
+    }
+
     public enum CodexRoute: Sendable {
         case baseline, direct, disableAutoStart, server(socket: String), remote(socket: String, threadID: String?)
+    }
+
+    public enum ClaudeRoute: Equatable, Sendable {
+        case new(UUID)
+        case resume(String)
     }
 
     public static func codex(route: CodexRoute, capabilities: ProviderCapabilities,
@@ -56,8 +66,32 @@ public struct ProviderLaunchProfile: Sendable {
     public static func claude(capabilities: ProviderCapabilities, config: URL, sessionID: UUID,
                               environment: [String: String],
                               hooks: ClaudeHookLaunchConfiguration? = nil) throws -> Self {
-        guard capabilities.supportsSessionID, capabilities.supportsSettings else {
-            throw LoomError.message("Claude lacks required --session-id/--settings options")
+        try claude(
+            route: .new(sessionID), capabilities: capabilities, config: config,
+            environment: environment, hooks: hooks
+        )
+    }
+
+    public static func claude(
+        route: ClaudeRoute, capabilities: ProviderCapabilities, config: URL,
+        environment: [String: String],
+        hooks: ClaudeHookLaunchConfiguration? = nil
+    ) throws -> Self {
+        guard capabilities.supportsSettings else {
+            throw LoomError.message("Claude lacks required --settings option")
+        }
+        let routeArguments: [String]
+        switch route {
+        case let .new(sessionID):
+            guard capabilities.supportsSessionID else {
+                throw LoomError.message("Claude lacks required --session-id option")
+            }
+            routeArguments = ["--session-id", sessionID.uuidString]
+        case let .resume(providerSessionID):
+            guard !providerSessionID.isEmpty else {
+                throw LoomError.message("Claude resume requires a provider session identity")
+            }
+            routeArguments = ["--resume", providerSessionID]
         }
         var env = environment
         env["CLAUDE_CONFIG_DIR"] = config.path
@@ -67,7 +101,7 @@ public struct ProviderLaunchProfile: Sendable {
             env["LOOM_HOOK_TOKEN"] = hooks.authenticationToken
         }
         let settings = try claudeSettings(hooks: hooks)
-        return Self(arguments: ["--session-id", sessionID.uuidString, "--settings", settings],
+        return Self(arguments: routeArguments + ["--settings", settings],
                     environment: env)
     }
 

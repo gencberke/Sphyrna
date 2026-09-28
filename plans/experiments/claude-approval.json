@@ -1,0 +1,50 @@
+{
+  "label": "CP2 Claude approval waiting hook",
+  "actions": [
+    {
+      "op": "launch",
+      "provider": "claude",
+      "hooks": true,
+      "arguments": [
+        "--model",
+        "haiku",
+        "--effort",
+        "low",
+        "--no-chrome"
+      ]
+    },
+    {
+      "op": "wait",
+      "seconds": 3
+    },
+    {
+      "op": "write",
+      "text": "\r"
+    },
+    {
+      "op": "hook-expect",
+      "events": ["SessionStart"],
+      "seconds": 5
+    },
+    {
+      "op": "write",
+      "text": "Use Bash to run touch approval-proof.txt in the current directory. Do not use another tool."
+    },
+    {
+      "op": "wait",
+      "seconds": 0.3
+    },
+    {
+      "op": "write",
+      "text": "\r"
+    },
+    {
+      "op": "hook-expect",
+      "events": ["UserPromptSubmit", "PermissionRequest"],
+      "seconds": 15
+    },
+    {
+      "op": "quit"
+    }
+  ]
+}

@@ -7,7 +7,8 @@ public actor ProcessSupervisor {
     public nonisolated let ownershipRunID: UUID
 
     private struct Runtime {
-        var sessionID: UUID
+        let launchSessionID: UUID
+        var activeSessionID: UUID
         var run: ManagedRun
         var terminal: TerminalEndpoint
         var outsideOwnership: [ProcessRecord]
@@ -18,6 +19,7 @@ public actor ProcessSupervisor {
     private let ledgerURL: URL?
     private let catalog: SessionCatalog?
     private var sessions: [UUID: ManagedSession] = [:]
+    private var internalSessionIDs: Set<UUID> = []
     private var runtimes: [UUID: Runtime] = [:]
     private var reservedSessions: Set<UUID> = []
     private var markerInspected: Set<ProcessIdentity> = []
@@ -27,6 +29,11 @@ public actor ProcessSupervisor {
     private var pendingCatalogWrites: [UUID: Task<Void, Never>] = [:]
     private var catalogWriteErrors: [UUID: String] = [:]
     private var environmentJobs: [UUID: EnvironmentResolutionJob] = [:]
+    private var claudeTrackers: [UUID: ClaudeHookStateTracker] = [:]
+    private var codexTrackers: [UUID: CodexEventStateTracker] = [:]
+    private var lastClaudeStatuses: [UUID: ClaudeSessionStatus] = [:]
+    private var lastCodexStatuses: [UUID: CodexSessionStatus] = [:]
+    private var transitioningRuns: Set<UUID> = []
     private var stopping = false
 
     public init(ledger: OwnershipLedger = OwnershipLedger(), ledgerURL: URL? = nil,
@@ -64,14 +71,84 @@ public actor ProcessSupervisor {
         sessions[session.id] = session
     }
 
+    /// Registers an app-owned helper (for example the shared Codex app-server)
+    /// under the same process ownership contract without exposing it as a user
+    /// conversation or persisting it in the conversation catalog.
+    public func createInternalSession(_ session: ManagedSession) throws {
+        guard !stopping else { throw SessionManagementError.shutdownStarted }
+        guard sessions[session.id] == nil, !reservedSessions.contains(session.id) else {
+            throw SessionManagementError.sessionAlreadyExists(session.id)
+        }
+        sessions[session.id] = session
+        internalSessionIDs.insert(session.id)
+    }
+
+    public func discardInternalSession(_ sessionID: UUID) throws {
+        guard internalSessionIDs.contains(sessionID) else {
+            throw SessionManagementError.sessionNotFound(sessionID)
+        }
+        guard sessions[sessionID]?.currentRun == nil else {
+            throw SessionManagementError.sessionAlreadyRunning(sessionID)
+        }
+        sessions[sessionID] = nil
+        internalSessionIDs.remove(sessionID)
+        lastStopReports[sessionID] = nil
+    }
+
     public func session(id: UUID) -> ManagedSession? { sessions[id] }
 
     public func managedSessions() -> [ManagedSession] {
-        sessions.values.sorted { $0.id.uuidString < $1.id.uuidString }
+        sessions.values.filter { !internalSessionIDs.contains($0.id) }
+            .sorted { $0.id.uuidString < $1.id.uuidString }
     }
 
     public func lastStopReport(sessionID: UUID) -> SessionStopReport? {
         lastStopReports[sessionID]
+    }
+
+    public func activeSessionID(runID: UUID) -> UUID? {
+        runtimes[runID]?.activeSessionID
+    }
+
+    public func claudeStatus(sessionID: UUID) async -> ClaudeSessionStatus? {
+        guard let runtime = runtimes.values.first(where: {
+            $0.activeSessionID == sessionID
+        }), let tracker = claudeTrackers[runtime.run.id] else {
+            return lastClaudeStatuses[sessionID]
+        }
+        return await tracker.status()
+    }
+
+    public func codexStatus(sessionID: UUID) async -> CodexSessionStatus? {
+        guard let runtime = runtimes.values.first(where: {
+            $0.activeSessionID == sessionID
+        }), let tracker = codexTrackers[runtime.run.id] else {
+            return lastCodexStatuses[sessionID]
+        }
+        return await tracker.status()
+    }
+
+    public func providerWorkState(sessionID: UUID) async -> ProviderWorkState? {
+        guard let runtime = runtimes.values.first(where: {
+            $0.activeSessionID == sessionID
+        }) else { return nil }
+        if let tracker = claudeTrackers[runtime.run.id] {
+            let status = await tracker.status()
+            return ProviderWorkState(
+                activity: status.activity,
+                pendingProviderWorkCount:
+                    status.backgroundTaskCount + status.scheduledTaskCount
+            )
+        }
+        if let tracker = codexTrackers[runtime.run.id] {
+            let status = await tracker.status()
+            return ProviderWorkState(
+                activity: status.activity,
+                pendingProviderWorkCount:
+                    status.pendingRequestCount + status.backgroundTerminalCount
+            )
+        }
+        return nil
     }
 
     public func ledgerSnapshot() -> OwnershipLedger { ledger }
@@ -146,13 +223,24 @@ public actor ProcessSupervisor {
     public func launch(sessionID: UUID, executable: String, arguments: [String] = [],
                        environment: [String: String], rows: UInt16 = 24,
                        columns: UInt16 = 80,
-                       outputSink: (any TerminalOutputSink)? = nil) async throws -> ManagedSessionLaunch {
+                       outputSink: (any TerminalOutputSink)? = nil,
+                       managedRunID requestedRunID: UUID? = nil) async throws -> ManagedSessionLaunch {
         guard !stopping else { throw SessionManagementError.shutdownStarted }
         guard var session = sessions[sessionID] else {
             throw SessionManagementError.sessionNotFound(sessionID)
         }
         guard session.currentRun == nil, !reservedSessions.contains(sessionID) else {
             throw SessionManagementError.sessionAlreadyRunning(sessionID)
+        }
+        if let conversationID = session.providerConversationID,
+           sessions.values.contains(where: {
+               $0.id != sessionID && $0.provider == session.provider
+                   && $0.providerConversationID == conversationID
+                   && $0.currentRun != nil
+           }) {
+            throw SessionManagementError.conversationAlreadyRunning(
+                provider: session.provider, conversationID: conversationID
+            )
         }
         guard environment["LOOM_RUN_ID"] == ownershipRunID.uuidString,
               environment["LOOM_SESSION_ID"] == sessionID.uuidString else {
@@ -161,7 +249,10 @@ public actor ProcessSupervisor {
         reservedSessions.insert(sessionID)
         defer { reservedSessions.remove(sessionID) }
 
-        let runID = UUID()
+        let runID = requestedRunID ?? UUID()
+        guard runtimes[runID] == nil else {
+            throw SessionManagementError.runAlreadyExists(runID)
+        }
         var runEnvironment = environment
         runEnvironment["LOOM_MANAGED_RUN_ID"] = runID.uuidString
         let process = try PTYProcess(executable: executable, arguments: arguments,
@@ -187,8 +278,17 @@ public actor ProcessSupervisor {
         }
         session.currentRun = run
         sessions[sessionID] = session
-        runtimes[runID] = Runtime(sessionID: sessionID, run: run, terminal: terminal,
-                                  outsideOwnership: [], catalogStarted: catalog == nil)
+        runtimes[runID] = Runtime(
+            launchSessionID: sessionID, activeSessionID: sessionID,
+            run: run, terminal: terminal, outsideOwnership: [],
+            catalogStarted: catalog == nil
+        )
+        if session.provider == .claude {
+            lastClaudeStatuses[sessionID] = nil
+            claudeTrackers[runID] = ClaudeHookStateTracker(
+                sessionID: sessionID, managedRunID: runID
+            )
+        }
         markerInspected.insert(leader.identity)
         managedRunMarkers[leader.identity] = runID
 
@@ -203,7 +303,7 @@ public actor ProcessSupervisor {
                            endReason: .requested, waitForCatalog: true)
             throw persistenceError
         }
-        if let catalog {
+        if let catalog, !internalSessionIDs.contains(sessionID) {
             do { try await catalog.startRun(run, sessionID: sessionID) }
             catch {
                 _ = await stop(sessionID: sessionID, runID: runID, graceSeconds: 0.2,
@@ -230,6 +330,279 @@ public actor ProcessSupervisor {
         return ManagedSessionLaunch(session: sessions[sessionID] ?? session, terminal: terminal)
     }
 
+    /// Applies an authenticated Claude event to transient status and the
+    /// durable run-to-conversation mapping. The launch marker remains fixed for
+    /// the PTY lifetime even when /clear or /resume selects another conversation.
+    @discardableResult
+    public func receiveClaudeHook(
+        _ envelope: ClaudeHookEnvelope, receivedAt: Date = Date()
+    ) async throws -> ClaudeHookDisposition {
+        guard let initialRuntime = runtimes[envelope.managedRunID] else {
+            return .staleRun
+        }
+        guard initialRuntime.launchSessionID == envelope.sessionID else {
+            return .wrongSession
+        }
+        guard let tracker = claudeTrackers[envelope.managedRunID] else {
+            return .wrongSession
+        }
+        let event = try ClaudeHookEvent(payload: envelope.payload)
+
+        while transitioningRuns.contains(envelope.managedRunID) {
+            try await Task.sleep(for: .milliseconds(1))
+            guard runtimes[envelope.managedRunID]?.launchSessionID == envelope.sessionID else {
+                return .staleRun
+            }
+        }
+        transitioningRuns.insert(envelope.managedRunID)
+        defer { transitioningRuns.remove(envelope.managedRunID) }
+        guard let runtime = runtimes[envelope.managedRunID],
+              runtime.launchSessionID == envelope.sessionID else {
+            return .staleRun
+        }
+
+        // Durable identity movement must succeed before the transient reducer
+        // adopts a SessionStart identity. Otherwise a rejected duplicate resume
+        // would leave status and catalog pointing at different conversations.
+        if case let .sessionStart(source) = event.kind {
+            try await applyClaudeIdentity(
+                event.providerSessionID, source: source,
+                runID: envelope.managedRunID, at: receivedAt
+            )
+        }
+        let disposition = try await tracker.receive(envelope, receivedAt: receivedAt)
+        guard case .applied = disposition else { return disposition }
+
+        switch event.kind {
+        case .sessionStart:
+            break
+        case .userPromptSubmit:
+            if let catalog {
+                try await catalog.markUsed(
+                    sessionID: runtime.activeSessionID, at: receivedAt,
+                    reactivate: true
+                )
+            }
+        default:
+            break
+        }
+        return disposition
+    }
+
+    private func applyClaudeIdentity(
+        _ providerSessionID: String, source: String?, runID: UUID, at date: Date
+    ) async throws {
+        guard var runtime = runtimes[runID],
+              var current = sessions[runtime.activeSessionID] else {
+            throw SessionManagementError.runNotFound(runID)
+        }
+        if current.providerConversationID == providerSessionID { return }
+
+        let createsNewConversation = source == "clear" || source == "fork"
+        let resumesConversation = source == "resume"
+        if !createsNewConversation && !resumesConversation
+            && current.providerConversationID == nil {
+            if let catalog {
+                try await catalog.updateProviderConversationID(
+                    sessionID: current.id, newID: providerSessionID,
+                    changedAt: date
+                )
+            }
+            current.providerConversationID = providerSessionID
+            sessions[current.id] = current
+            return
+        }
+
+        let existing: ManagedSession?
+        if resumesConversation {
+            if let catalog {
+                existing = try await catalog.session(
+                    provider: .claude, conversationID: providerSessionID
+                )?.session
+            } else {
+                existing = sessions.values.first {
+                    $0.provider == .claude
+                        && $0.providerConversationID == providerSessionID
+                }
+            }
+        } else {
+            existing = nil
+        }
+
+        let destination: ManagedSession
+        if var matched = existing {
+            // Catalog rows deliberately do not carry transient currentRun.
+            // Reconcile with actor memory before allowing an in-TUI /resume,
+            // otherwise two live PTYs could claim the same provider session.
+            if let inMemory = sessions[matched.id] {
+                matched = inMemory
+            }
+            if matched.currentRun != nil {
+                throw SessionManagementError.conversationAlreadyRunning(
+                    provider: .claude, conversationID: providerSessionID
+                )
+            }
+            if let catalog {
+                try await catalog.transitionRun(
+                    runID, from: current.id,
+                    toExistingSessionID: matched.id, at: date
+                )
+            }
+            matched.currentRun = runtime.run
+            destination = matched
+        } else {
+            var created = ManagedSession(
+                provider: .claude,
+                providerConversationID: providerSessionID,
+                workingDirectory: current.workingDirectory
+            )
+            if let catalog {
+                try await catalog.transitionRun(
+                    runID, from: current.id, to: created, at: date
+                )
+            }
+            created.currentRun = runtime.run
+            destination = created
+        }
+
+        current.currentRun = nil
+        sessions[current.id] = current
+        sessions[destination.id] = destination
+        runtime.activeSessionID = destination.id
+        runtimes[runID] = runtime
+    }
+
+    /// Binds the known or serialized-new app-server thread to a remote TUI run.
+    public func bindCodexThread(
+        sessionID: UUID, runID: UUID, threadID: String,
+        after sequence: UInt64, at date: Date = Date()
+    ) async throws {
+        guard let runtime = runtimes[runID], runtime.activeSessionID == sessionID,
+              var session = sessions[sessionID], session.provider == .codex else {
+            throw SessionManagementError.runNotFound(runID)
+        }
+        if let existing = sessions.values.first(where: {
+            $0.id != sessionID && $0.provider == .codex
+                && $0.providerConversationID == threadID && $0.currentRun != nil
+        }) {
+            throw SessionManagementError.conversationAlreadyRunning(
+                provider: existing.provider, conversationID: threadID
+            )
+        }
+        if session.providerConversationID == nil {
+            if let catalog {
+                try await catalog.updateProviderConversationID(
+                    sessionID: sessionID, newID: threadID, changedAt: date
+                )
+            }
+            session.providerConversationID = threadID
+            sessions[sessionID] = session
+        } else if session.providerConversationID != threadID {
+            throw SessionManagementError.conversationAlreadyRunning(
+                provider: .codex,
+                conversationID: session.providerConversationID ?? threadID
+            )
+        }
+        lastCodexStatuses[sessionID] = nil
+        codexTrackers[runID] = CodexEventStateTracker(
+            threadID: threadID, managedRunID: runID, after: sequence
+        )
+    }
+
+    /// Applies Codex `/new` after the router has uniquely associated the new
+    /// thread with one live TUI. Ambiguous same-cwd starts never call this API.
+    @discardableResult
+    public func transitionCodexConversation(
+        runID: UUID, to threadID: String, after sequence: UInt64,
+        at date: Date = Date()
+    ) async throws -> UUID {
+        while transitioningRuns.contains(runID) {
+            try await Task.sleep(for: .milliseconds(1))
+            guard runtimes[runID] != nil else {
+                throw SessionManagementError.runNotFound(runID)
+            }
+        }
+        transitioningRuns.insert(runID)
+        defer { transitioningRuns.remove(runID) }
+        guard var runtime = runtimes[runID],
+              var current = sessions[runtime.activeSessionID],
+              current.provider == .codex else {
+            throw SessionManagementError.runNotFound(runID)
+        }
+        var created = ManagedSession(
+            provider: .codex, providerConversationID: threadID,
+            workingDirectory: current.workingDirectory
+        )
+        if let catalog {
+            try await catalog.transitionRun(
+                runID, from: current.id, to: created, at: date
+            )
+        }
+        created.currentRun = runtime.run
+        current.currentRun = nil
+        sessions[current.id] = current
+        sessions[created.id] = created
+        runtime.activeSessionID = created.id
+        runtimes[runID] = runtime
+        codexTrackers[runID] = CodexEventStateTracker(
+            threadID: threadID, managedRunID: runID, after: sequence
+        )
+        return created.id
+    }
+
+    @discardableResult
+    public func receiveCodexEvent(
+        _ inbound: CodexAppServerInbound, runID: UUID,
+        receivedAt: Date = Date()
+    ) async throws -> CodexEventDisposition {
+        guard let runtime = runtimes[runID] else { return .staleRun }
+        guard let tracker = codexTrackers[runID] else { return .unbound }
+        let disposition = await tracker.receive(
+            inbound, for: runID, receivedAt: receivedAt
+        )
+        guard disposition == .applied else { return disposition }
+        if case .event(_, .turnStarted) = inbound, let catalog {
+            try await catalog.markUsed(
+                sessionID: runtime.activeSessionID, at: receivedAt,
+                reactivate: true
+            )
+        }
+        return disposition
+    }
+
+    @discardableResult
+    public func resolveCodexRequest(
+        runID: UUID, requestSequence: UInt64, receivedAt: Date = Date()
+    ) async -> CodexEventDisposition {
+        guard runtimes[runID] != nil else { return .staleRun }
+        guard let tracker = codexTrackers[runID] else { return .unbound }
+        await tracker.requestResolved(
+            requestSequence: requestSequence, receivedAt: receivedAt
+        )
+        return .applied
+    }
+
+    @discardableResult
+    public func refreshCodexThread(
+        _ snapshot: CodexThreadSnapshot, runID: UUID, after sequence: UInt64,
+        backgroundTerminalCount: Int, receivedAt: Date = Date()
+    ) async throws -> CodexEventDisposition {
+        guard let runtime = runtimes[runID] else { return .staleRun }
+        guard let tracker = codexTrackers[runID] else { return .unbound }
+        let disposition = await tracker.refresh(
+            snapshot, after: sequence, receivedAt: receivedAt
+        )
+        guard disposition == .applied else { return disposition }
+        await tracker.setBackgroundTerminalCount(backgroundTerminalCount)
+        if let lastUsedAt = snapshot.lastTurnStartedAt, let catalog {
+            try await catalog.markUsed(
+                sessionID: runtime.activeSessionID, at: lastUsedAt,
+                reactivate: true
+            )
+        }
+        return disposition
+    }
+
     @discardableResult
     public func sample(sessionID: UUID) throws -> [ProcessRecord] {
         guard let session = sessions[sessionID] else {
@@ -252,6 +625,23 @@ public actor ProcessSupervisor {
         }
         return await stop(sessionID: sessionID, runID: runID, graceSeconds: graceSeconds,
                           endReason: .requested, waitForCatalog: true)
+    }
+
+    /// The lifecycle controller uses a distinct durable reason so an automatic
+    /// idle transition cannot be confused with an explicit user stop.
+    public func stopForIdle(
+        sessionID: UUID, graceSeconds: Double = 0.2
+    ) async throws -> SessionStopReport {
+        guard let session = sessions[sessionID] else {
+            throw SessionManagementError.sessionNotFound(sessionID)
+        }
+        guard let runID = session.currentRun?.id else {
+            throw SessionManagementError.sessionNotRunning(sessionID)
+        }
+        return await stop(
+            sessionID: sessionID, runID: runID, graceSeconds: graceSeconds,
+            endReason: .idle, waitForCatalog: true
+        )
     }
 
     /// Applies one app-wide signal schedule, then records completion separately
@@ -390,6 +780,9 @@ public actor ProcessSupervisor {
         let outside = runtime.outsideOwnership
         let signals = sharedAttempts.filter { ownedIdentities.contains($0.identity) }
         if remaining.isEmpty && outside.isEmpty {
+            await archiveProviderStatus(
+                runID: runID, sessionID: sessionID, reason: .applicationQuit
+            )
             var exitStatus = runtime.run.exitStatus
             do { exitStatus = try await runtime.terminal.finish() }
             catch { errors.append(String(describing: error)) }
@@ -399,6 +792,8 @@ public actor ProcessSupervisor {
                 )
             }
             runtimes[runID] = nil
+            claudeTrackers[runID] = nil
+            codexTrackers[runID] = nil
             if var session = sessions[sessionID], session.currentRun?.id == runID {
                 session.currentRun = nil
                 sessions[sessionID] = session
@@ -472,9 +867,9 @@ public actor ProcessSupervisor {
             selected.contains($0.identity) && $0.userID != getuid()
         }
         runtimes[runID] = runtime
-        if var session = sessions[runtime.sessionID] {
+        if var session = sessions[runtime.activeSessionID] {
             session.currentRun = runtime.run
-            sessions[runtime.sessionID] = session
+            sessions[runtime.activeSessionID] = session
         }
         return snapshot.filter { selected.contains($0.identity) && $0.userID == getuid() }
     }
@@ -524,6 +919,9 @@ public actor ProcessSupervisor {
         let outside = runtimes[runID]?.outsideOwnership ?? []
 
         if remaining.isEmpty && outside.isEmpty {
+            await archiveProviderStatus(
+                runID: runID, sessionID: sessionID, reason: endReason
+            )
             var exitStatus = runtimes[runID]?.run.exitStatus
             if let terminal = runtimes[runID]?.terminal {
                 do { exitStatus = try await terminal.finish() }
@@ -548,6 +946,8 @@ public actor ProcessSupervisor {
                 }
             }
             runtimes[runID] = nil
+            claudeTrackers[runID] = nil
+            codexTrackers[runID] = nil
             if var session = sessions[sessionID], session.currentRun?.id == runID {
                 session.currentRun = nil
                 sessions[sessionID] = session
@@ -621,12 +1021,12 @@ public actor ProcessSupervisor {
         runtime.run.exitStatus = status
         if runtime.run.state == .running { runtime.run.state = .exited }
         runtimes[runID] = runtime
-        if var session = sessions[runtime.sessionID], session.currentRun?.id == runID {
+        if var session = sessions[runtime.activeSessionID], session.currentRun?.id == runID {
             session.currentRun = runtime.run
-            sessions[runtime.sessionID] = session
+            sessions[runtime.activeSessionID] = session
         }
         let reason: ManagedRunEndReason = stopping ? .applicationQuit : .processExited
-        _ = await stop(sessionID: runtime.sessionID, runID: runID,
+        _ = await stop(sessionID: runtime.activeSessionID, runID: runID,
                        graceSeconds: 0.2, endReason: reason, waitForCatalog: true)
     }
 
@@ -645,6 +1045,31 @@ public actor ProcessSupervisor {
                 completionError = String(describing: caughtError)
             }
             await self?.catalogWriteCompleted(runID: runID, error: completionError)
+        }
+    }
+
+    private func archiveProviderStatus(
+        runID: UUID, sessionID: UUID, reason: ManagedRunEndReason
+    ) async {
+        if let tracker = claudeTrackers[runID] {
+            var status = await tracker.status()
+            if reason == .processExited {
+                switch status.activity {
+                case .failed, .sessionEnded: break
+                default: status.activity = .unknown
+                }
+            }
+            lastClaudeStatuses[sessionID] = status
+        }
+        if let tracker = codexTrackers[runID] {
+            var status = await tracker.status()
+            if reason == .processExited {
+                switch status.activity {
+                case .failed, .sessionEnded: break
+                default: status.activity = .unknown
+                }
+            }
+            lastCodexStatuses[sessionID] = status
         }
     }
 

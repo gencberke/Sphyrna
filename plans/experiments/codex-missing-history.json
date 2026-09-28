@@ -1,0 +1,22 @@
+{
+  "label": "CP2 Codex missing remote history",
+  "actions": [
+    {
+      "op": "launch",
+      "slot": "server",
+      "provider": "codex",
+      "route": "server"
+    },
+    { "op": "wait", "seconds": 1 },
+    {
+      "op": "launch",
+      "slot": "tui",
+      "provider": "codex",
+      "route": "remote",
+      "threadID": "00000000-0000-4000-8000-000000000001",
+      "arguments": ["-m", "gpt-6-luna", "-c", "model_reasoning_effort=\"low\""]
+    },
+    { "op": "wait", "seconds": 5 },
+    { "op": "quit" }
+  ]
+}

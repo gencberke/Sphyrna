@@ -106,7 +106,7 @@ Yeni promptla devam etmek yeni bir OS süreci gerektirebilir. Sohbet kimliği, �
 
 Codex app-server, son abonelik kaldırıldıktan sonra belirli koşullarda thread'i hemen boşaltmıyor; araştırmada 30 dakikalık bekleme belgelenmişti. Bu davranış kabul edildi. [Codex App Server](https://learn.chatgpt.com/docs/app-server)
 
-Bu yüzden idle için “mutlak sıfır bellek” iddiası kullanılmaz. Kapatılan oturumun aktif işi ve terminali sonlanmalı; ortak sağlayıcının tuttuğu geçici bellek ayrı ölçülmelidir. Loom'a ait sunucuya ihtiyaç kalmadığında sunucunun da kapatılması aday davranıştır; başka canlı oturumları etkilemediği kanıtlanmalıdır.
+Bu yüzden idle için “mutlak sıfır bellek” iddiası kullanılmaz. Kapatılan oturumun aktif işi ve terminali sonlanmalı; ortak sağlayıcının tuttuğu geçici bellek ayrı ölçülmelidir. CP2'de Loom'a ait ortak sunucunun ilk Codex oturumuyla başladığı, son Codex oturumu bırakılınca kapandığı ve başka canlı oturumları etkilemediği doğrulandı. Sunucu kullanıcı sohbeti olarak kataloğa yazılmaz ama aynı süreç sahipliği ve Quit sözleşmesine tabidir.
 
 ## 5. Stale ve saklama politikası
 
@@ -144,7 +144,7 @@ Codex için iki yol deneyle karşılaştırılacak:
 1. Loom'a ait app-server ve ona bağlanan gerçek Codex TUI.
 2. Paylaşılan daemon kullanımını kapatan doğrudan Codex TUI.
 
-27 Eylül 2026 tarihli [Checkpoint 1 deneylerinde](plans/CHECKPOINT-1.md) codex-cli 0.157.1'in düz TUI yolunda izole daemon bileşenlerini kendiliğinden başlattığı doğrulandı. `--no-daemon` ve Loom'a ait app-server + remote TUI yolları, sınanan aktif tur/arka plan işi koşullarında temiz kapandı. CP2 için teknik öneri, kimlik/durum/onay olaylarını gözlemek amacıyla ayrı app-server yoludur; ölçülen kaynak maliyeti daha yüksek. Kullanıcı kararıyla bu yol seçildi (§3). Boş `thread/start` sonucunu ilk turdan önce TUI `resume` ile açma deneyi başarısızdı; TUI'nin oluşturduğu kimliği `thread/started` olayından almak ayrıca doğrulandı.
+27 Eylül 2026 tarihli [Checkpoint 1 deneylerinde](plans/CHECKPOINT-1.md) codex-cli 0.157.1'in düz TUI yolunda izole daemon bileşenlerini kendiliğinden başlattığı doğrulandı. `--no-daemon` ve Loom'a ait app-server + remote TUI yolları, sınanan aktif tur/arka plan işi koşullarında temiz kapandı. Kullanıcı kararıyla Loom'a ait app-server + remote TUI yolu seçildi (§3) ve CP2'de ürün çekirdeğine uygulandı. Boş `thread/start` sonucunu ilk turdan önce TUI `resume` ile açma deneyi başarısızdı; TUI'nin oluşturduğu kimlik `thread/started` olayından alınır. Olayda PTY/run ayıracı olmadığı için yeni TUI başlatmaları sıraya alınır. Başka istemcinin başlattığı remote TUI her turn/item ayrıntısını yayınlamadığında son durum ve yanıt `thread/read`, arka plan işi `thread/backgroundTerminals/list` ile hydrate edilir; durum ve approval olayları doğrudan izlenir.
 
 Başka uygulamaların veya kullanıcının terminalinin paylaşılan Codex sunucusu Loom'a ait kabul edilmez. Önlenemeyen veya sahipliği belirsiz daemon davranışında “nasıl olsa çıkışta öldürürüz” yaklaşımı uygulanmaz.
 
@@ -230,10 +230,10 @@ Sağlayıcı entegrasyonlarında:
 - Kullanıcının global CLI ayarları sahiplenilmez; Loom entegrasyonu oturuma özel ve kaldırılabilir olmalıdır.
 - Gerçek sohbet kimliği, Loom katalog kimliği ve o anki çalıştırma kimliği ayrı tutulur. Aynı sohbetin eşzamanlı sahiplenilmesi ve eski çalıştırmadan gelen olaylar ele alınır.
 
-Oturuma özel entegrasyon için belgelenmiş, henüz Loom akışında sınanmamış adaylar:
+CP2'de uygulanan oturuma özel entegrasyonlar:
 
-- **Claude:** `--session-id` ile kimliği başlangıçta atamak; `--settings` ile yalnızca o oturuma hook ve ayar vermek; her olayda süreç başlatmayan `http` hook tipi; `Stop` hook'undaki `last_assistant_message` alanı.
-- **Codex:** `thread/status/changed` olayındaki onay/girdi bekleme bilgisi; arka plan işleri için `thread/backgroundTerminals/*`; silme için `thread/delete` veya `codex delete`.
+- **Claude:** Yeni sohbet kimliği `--session-id`, devam kimliği yalnız `--resume` ile verilir. `--settings` sadece bu oturumun hook ve ayarlarını taşır. `SessionStart` HTTP hook desteklemediği için tek taşıma hattı olarak küçük `loom-hook` command helper'ı ve kimlik doğrulamalı owner-only Unix soketi kullanılır. `Stop` son yanıt varlığını, `PermissionRequest`/`Notification` bekleme durumunu, `SessionStart(clear/fork/resume)` kimlik geçişini sağlar. Kullanıcının global ayarına yazılmaz.
+- **Codex:** Tipli async app-server istemcisi `thread/status/changed`, approval/input server request'leri, `thread/read` ve `thread/backgroundTerminals/*` kaynaklarını birleştirir. Eski run olayları sequence/run bariyeriyle reddedilir; `/new` belirsiz eşleşmede katalog değişikliği yapmaz. Silme için `thread/delete` veya `codex delete` hâlâ silme checkpoint'inin konusudur.
 
 ### Herdr Desktop'tan taşınan teknik dersler
 
@@ -275,6 +275,8 @@ Her checkpoint sonucu **doğrulanan / başarısız / doğrulanmayan** olarak kay
 | 3 — Yetkilendirilmiş koordinasyon | Kullanıcının verdiği görev kapsamında iki yönde teslim ve sonuç takibi; hedef çalışırken, beklerken ve yeniden bağlanırken doğru davranış; belirsiz teslim ve çift çalıştırma yönetiliyor. Belirleyici durum: canlı ve istemde boşta bekleyen Claude TUI'sine yalnızca belgelenmiş arayüzlerle teslim. Yetkisiz oturumlar arası mesajın engellendiği de gösterilir. |
 | 4 — Silme ve saklama | Yerel veri kapsamı tamamlanmış; başka oturumun verisine zarar vermeden silme; yarım işlemden kurtarma; geç olayla geri gelmeme; stale/istisna/takvim kuralları örnek zaman çizelgelerinde doğru. |
 | 5 — Görsel deneyim ve performans | Tasarım/ikon hedefi korunmuş; kaynak ve gecikme ölçümleri kabul edilen bütçelerde; geçmiş büyümesi ve gizli pencere davranışı doğrulanmış. GPU deneyi diğer checkpoint'lerden bağımsız yürütülebilir. |
+
+**28 Eylül 2026 durumu:** Checkpoint 2 tamamlandı. Kimlik/tur/onay kaynakları, güvenli idle/stale geçişleri, aynı Claude/Codex sohbetinden resume, eksik geçmişte fallback yapmama ve aktif tur sırasında Quit sonrası yeniden açılış [CP2 sonuç matrisiyle](plans/CHECKPOINT-2.md#19-kabul-matrisi-sonucu) doğrulandı. İlk pencere bu çekirdek sözleşmenin tüketicisidir; yaşam döngüsü veya sağlayıcı kimliği UI state'ine yeniden modellenmemelidir.
 
 Numaralar checkpoint kimlikleridir. Uygulama sırası kullanıcı kararıyla (§3): 1 → 2 → 5'in terminal motoru ve ilk pencere kısmı → 4 → 3. GPU deneyi pencereyle birlikte yapılır.
 

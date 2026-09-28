@@ -43,6 +43,19 @@ int loom_process_path(pid_t pid, char *buffer, size_t capacity);
  * valid output pointer is set to zero; zero alone must not imply success. */
 int loom_physical_footprint(pid_t pid, uint64_t *bytes);
 
+typedef struct {
+    uint64_t user_time_ns;
+    uint64_t system_time_ns;
+    uint64_t package_idle_wakeups;
+    uint64_t interrupt_wakeups;
+    uint64_t physical_footprint_bytes;
+} loom_process_usage;
+
+/* Returns cumulative CPU time, wakeups, and physical footprint for a process.
+ * Values come from proc_pid_rusage RUSAGE_INFO_V4 and are suitable for delta
+ * measurements. Returns 0 on success or -1 with errno. */
+int loom_process_resource_usage(pid_t pid, loom_process_usage *usage);
+
 /* Query the private XNU resource-coalition ABI. Returns 0 with a nonzero ID,
  * or -1 with errno and a zero output (when non-NULL). ENOTSUP means the reply
  * does not match the known ABI or has no resource coalition. This is only a

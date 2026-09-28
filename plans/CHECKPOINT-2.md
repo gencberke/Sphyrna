@@ -1,7 +1,7 @@
 # Checkpoint 2 — Durum ve devam
 
 **Tarih:** 27 Eylül 2026  
-**Durum:** Uygulama sürüyor. S1'in oturum/çalıştırma modeli, olay tabanlı PTY omurgası ve SQLite katalog temeli doğrulandı. Claude hook taşıması ve tipli durum reducer'ı uygulanmaya başlandı; idle/stale, resume ve Codex entegrasyonu uygulanmadı. Bu checkpoint'ten sonra ilk pencere gelir (sözleşme §3, checkpoint sırası).
+**Durum:** Tamamlandı. Kalıcı oturum/run kataloğu, Claude hook durumu, Codex app-server + remote TUI durumu, güvenli idle/stale geçişleri ve aynı sağlayıcı sohbetinden resume uygulandı; §9 matrisi ve gerçek sağlayıcı zincirleri doğrulandı. Bu checkpoint'ten sonra ilk pencere gelir (sözleşme §3, checkpoint sırası).
 
 **Dayanak:** [Ürün sözleşmesi](../LOOM-PRODUCT-CONTRACT.md) §4, §9 ve §11'deki 2. checkpoint; [CP1](CHECKPOINT-1.md) §12.4 ve kod review'ı.
 
@@ -219,3 +219,100 @@ Review'da `swift test` hem düz hem de eklenti yolu verilerek çalıştırıldı
 6. **Tipli durum reducer'ı uygulandı.** Çalışıyor, onay bekliyor, girdi bekliyor, tur tamamlandı, hata, session sonu ve bilinmiyor birbirinden ayrıldı. `Stop` içindeki arka plan görevleri ve session cron sayısı ayrı tutuluyor. Eski managed run veya yanlış Loom session event'i aktif durumu değiştirmiyor; bilinmeyen event başarı sayılmıyor.
 7. **Sıradaki dilim:** `SessionStart(clear/resume/fork)` için run içindeki aktif Loom sohbet eşlemesini ve G2'deki ayrı kayıt kuralını kataloğa bağlamak; ardından `last_used_at` yazımı ve T1–T4'ün kalan gerçek senaryoları. Mevcut katalog kimliğini yerinde değiştirmek G2'yi ihlal edeceği için bu geçiş ayrı ve atomik uygulanacak.
 8. **Kontrol:** Eklenti yolu verilen `swift test` ile 60/60 test geçti. Gerçek tekrar komutları `loom-probe experiment plans/experiments/claude-hooks.json`, `claude-active-quit.json` ve `combined.json`; üçü de önceden hazırlanmış izole provider profili altında çalıştırıldı. `git diff --check` temiz.
+
+## 18. Tamamlanan CP2 mimarisi (28 Eylül 2026)
+
+- **Kalıcı kimlik ve geçmiş:** Bir Loom oturumu, sağlayıcı sohbeti ve OS run'ı ayrı kimliklerdir. `run_sessions` bağlantıları bir PTY'nin `/clear`, `/new` veya resume ile hangi kalıcı sohbet kayıtlarına bağlı olduğunu tarihçesiyle korur. Geçiş tek SQLite transaction'ıdır; eski sohbet silinmez ve idle geçmiş olur.
+- **Claude:** Oturuma özel `--settings`, owner-only Unix soketi ve `loom-hook` yardımcısı kullanılır. Hook zarfı hem Loom session hem managed run kimliğini taşır. `SessionStart(clear/fork/resume)` aktif sohbet eşlemesini değiştirir; prompt, stop, hata, onay/girdi ve arka plan iş bilgileri tipli reducer'a gider. Eski run olayı reddedilir.
+- **Codex:** İlk Codex lease'inde tek Loom app-server'ı başlar, son lease bırakıldığında aynı sahiplik sözleşmesiyle kapanır. Core istemci async ve tiplidir; Unix WebSocket upgrade, masking, fragment, ping/close ve 16 MiB sınırı uygulanır. Bilinmeyen alan/olaylar protokolü düşürmez. Yeni TUI başlatmaları `thread/started` olayında ayırt edici run alanı olmadığı için sıraya alınır. `/new`, yalnızca aynı cwd'de tek olası çalışan TUI varsa eşlenir; belirsizlikte katalog tahminle değiştirilmez.
+- **Codex olay sınırı:** Başka istemcinin başlattığı remote TUI turunda `thread/status/changed` yayınlanıyor; kurulu 0.157.1 sürümü her yeni tur/item/final-answer olayını ikinci app-server istemcisine yayınlamıyor. Koordinatör idle durumunda `thread/read` ve `thread/backgroundTerminals/list` ile kesin durumu hydrate eder. Onay server-request'i ve arka plan terminal listesi gerçek TUI ile ayrıca görüldü. Böylece ekran ayrıştırması yapılmadan G1 görünürlüğü korunuyor.
+- **Yaşam döngüsü:** Idle değerlendirmesi son kullanımı, tipli ajan durumunu, bekleyen sağlayıcı işini, UI'ın önce kaydettiği prompt teslimini ve başlangıç baseline'ından sonra oluşan torunları birlikte kontrol eder. Kontrollü stop ve sıfır kalıntıdan sonra run nedeni `idle` ve session yaşam döngüsü `idle` yazılır. Stop sırasında prompt gelirse aynı durable session aktif kalır, prompt kimliği saklanır ve ikinci süreç açılmaz.
+- **Resume:** Claude yalnız `--resume <id>`, Codex yalnız `resume <id> --remote ...` kullanır; hiçbir hata yolu yeni sohbete düşmez. Resume aynı Loom kaydını, çalışma dizinini ve provider kimliğini korur. Katalog lifecycle yazısı başarısız olursa yeni PTY kapatılır. Aynı provider sohbetinin Loom içinde iki canlı kopyası engellenir.
+- **Stale:** Yalnız idle kayıt 15 günlük eşiği geçince stale olur. Görüntüleme stale kaydı canlandırmaz; açık `reactivate` gerekir ve tek başına süreç başlatmaz.
+
+## 19. Kabul matrisi sonucu
+
+| # | Sonuç | Kanıt |
+| --- | --- | --- |
+| S1–S4 | **Doğrulandı** | CP1 regresyonları ve 81 test geçti. 10 sessiz oturumda 2,034 sn pencerede CPU %0,00028, package idle wakeup 0, terminal scrollback allocation 0 byte, footprint artışı 589.824 byte; run `37B28524-05B3-4E48-8C21-A74A22D45348`. 5.000 kısa ömürlü torunda durable ledger her adımda en çok yaşayan kimlikleri tuttu ve final JSON 1 KiB altında kaldı. MainActor dışı ortam çözümleme/IO ve ortak Quit penceresi testleri geçti. A9a–A9f sahiplik matrisi CP1'deki sonucu koruyor. |
+| G1 | **Doğrulandı** | Gerçek remote TUI'de `working`, `waitingOnApproval`, approval request ve `/bin/sleep 90` background terminali görüldü; run `32F1416E-0A2C-448B-A6B7-994682421AAC`. Product client resume/hydration son yanıtı `CODEX_CORE_OK` ve background count 0 olarak okudu; run `BD7B880F-06AA-4CD3-BF74-E541BED2D5B6`. Yayın sınırı ve hydration kuralı §18'de açıklandı. |
+| I1 | **Doğrulandı** | Claude hook kimliği run/session zarfıyla kesin. Codex yeni başlatmaları serialized matcher ile eşliyor; iki rezervasyon testi geçti. Gerçek `/new` run'ında aynı cwd'de iki farklı `thread/started` kimliği görüldü: `69F5B840-023E-4715-8B45-A66EB7D2EC23`. |
+| I2 | **Doğrulandı** | Claude `/clear`, `F453…` kimliğini `131C…` kimliğine aynı run'da taşıdı; `EF080943-74A7-432F-A2CB-5D3AB271014B`. Codex `/new` gerçek kimlik değişimi yukarıdaki run'da görüldü. Her iki provider için eski/yeni katalog kayıtları ve run link geçmişi birim testlerinde doğrulandı. |
+| T1 | **Doğrulandı** | Claude `SessionStart → UserPromptSubmit → Stop` ve son yanıt varlığı gerçek hook ile; `9299D9DC-FDD8-41BA-B515-CBAE3433162B`. Codex remote status + `thread/read` ile `CODEX_CORE_OK`; `BD7B…`. |
+| T2 | **Doğrulandı** | Claude `PermissionRequest(Bash)` ve çalıştırılmamış komut: `44F14A0F-7FDA-4871-93EA-DB3EAF199129`. Codex `waitingOnApproval` + `item/commandExecution/requestApproval` + decline sonrası durum: `32F1416E…`. Loom kullanıcı yerine karar vermedi. |
+| T3 | **Doğrulandı** | Beklenmeyen provider exit başarıya değil `unknown` durumuna arşivleniyor; error/thread-closed ve bilinmeyen olay fixture'ları reducer testlerinde. Gerçek crash/cleanup CP1 sağlayıcı deneyleriyle, süreç tarafı ayrıca doğrulandı. |
+| T4 | **Doğrulandı** | Run sequence barrier ve Claude managed-run kontrolü; eski run olayı yeni launch'ı değiştirmedi. |
+| L1 | **Doğrulandı** | Sessiz oturum controlled stop sonrası `idle` end reason aldı; ikinci canlı oturum etkilenmedi ve aynı sohbet yeniden açıldı. |
+| L2 | **Doğrulandı** | Approval, provider background işi ve baseline sonrası oluşan torun ayrı blocker olarak kaydedildi; süreç kapanmadı. |
+| L3 | **Doğrulandı** | Stop sırasında kaydedilen prompt ID korundu, lifecycle active kaldı, OS run sıfıra indi ve ikinci süreç açılmadı. |
+| L4 | **Doğrulandı** | Test saatiyle idle → stale; görüntüleme stale bıraktı, yalnız açık reactivation active yaptı. |
+| R1 | **Doğrulandı** | Claude aynı `8AAC4338-24FA-4781-AE5E-A5D0D6751BA0` kimliğiyle resume: `B019C521-CD20-42F4-A8C7-B23632C967AE`. Codex aynı `01a0e414-6e51-7d43-a3b3-e9e5ea72d53e` thread'iyle remote resume: `C68D387E-EDD2-4D72-A2EC-E16909570E6D`; product core tekrarında `BD7B…`. |
+| R2 | **Doğrulandı** | SQLite reopen testi aynı session/provider kimliği, çalışma dizini ve bitmiş run'ı yükledi; `currentRun == nil`, otomatik süreç yok. |
+| R3 | **Doğrulandı** | Claude eksik UUID: `No conversation found`, run `A2F9DA0A-31CB-4AC1-8EEE-0DCB7E10CB56`; Codex eksik UUID: `No saved session found`, run `E7014FA7-ED45-4363-BA66-85C0F0388F92`. İkisi de yeni sohbet açmadan bitti; gerçek metinler tipli `providerHistoryUnavailable` eşlemesine alındı. |
+| Q1 | **Doğrulandı** | Claude aynı sohbeti aktif approval sırasında kapattı (`6402AA53-057E-46E0-B3F0-99891E9BC4B9`), yeniden açtı (`B2AAB03E-1BB9-457D-A088-16C6A2CF5138`) ve önceki tamamlanmış yanıtı `CLAUDE_RESUME_OK` olarak geri çağırdı. Codex aktif `/bin/sleep 90` turu `32F1416E…` ile kapandı; aynı rollout/thread daha sonra `C68D…` ve product core `BD7B…` ile açıldı, önceki kayıtlar korunurken yeni tur tamamlandı. Her çıkışta kalıntı 0. |
+
+## 20. Quit ölçümü ve sağlayıcı davranışı
+
+Deneylerde kullanılan ortak grace penceresi 0,4 sn'dir. Sonuç, sabit bir sağlayıcı varsayımından ziyade gözlenen eskalasyonu kaydeder:
+
+| Sağlayıcı/koşul | HUP sonucu | Toplam controlled Quit |
+| --- | --- | --- |
+| Claude, tamamlanmış tur sonrası | 0,4 sn içinde kapanmadı; bir süreç TERM istedi | 0,815 sn (`B019C521…`) |
+| Claude, aktif approval | 0,4 sn içinde kapanmadı; bir süreç TERM istedi | 0,783 sn (`6402AA53…`) |
+| Codex remote, tamamlanmış tur + app-server | yalnız HUP yeterli | 0,032 sn (`C68D387E…`) |
+| Codex remote, aktif turn/background terminal + app-server | TUI tarafında TERM gerekti | 0,429 sn (`32F1416E…`) |
+| Birleşik iki Claude + iki Codex + server + sentetik | ortak HUP/TERM/KILL saati, seri bekleme yok | 0,835 sn (`64595959-7BF6-4B7B-BCBE-D108EB524DA9`) |
+
+Bu nedenle ürün tek bir “nazik sinyal yeter” iddiası kullanmıyor. Sağlayıcılar ortak bounded HUP → TERM → KILL sözleşmesine giriyor; başarı ancak süreç yokluğu doğrulanınca yazılıyor.
+
+## 21. Son kontrol ve açık sınırlar
+
+- `swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib`: **81/81 test, 9 suite geçti** (9,306 sn).
+- `git diff --check` temizdir. Gerçek deneylerin tümünde `remaining`, `errors` ve `outsideOwnership` boş kaldı.
+- Dışarıda açılmış aynı provider sohbetini güvenilir biçimde saptayan ortak, belgelenmiş bir kilit API'si yok. Loom kendi kataloğu içindeki çift canlı sohbeti kesin engelliyor; başka uygulamadaki olası kopyayı tespit etmiş gibi davranmıyor. Bu garanti sınırı sessiz fallback üretmiyor.
+- Codex app-server protokolü sürüme bağlıdır. İstemci bilinmeyen alanlara toleranslıdır; gerekli RPC/olay yoksa görünür entegrasyon hatası vermeli, terminal ekranından durum tahmin etmemelidir.
+- CP2 tamamlandı. Sonraki uygulama dilimi sözleşmedeki sıraya göre terminal motoru ve ilk penceredir; silme/retention ile oturumlar arası koordinasyon bu checkpoint'in kapsamı değildir.
+
+## 22. Tamamlanma review'ı (28 Eylül 2026)
+
+Review'da `swift test` 81/81 geçti. §19'daki kanıtlar run kimlikleriyle tutarlı. §16'daki iki not kapanmış: scrollback artık tembel ayrılıyor; gerçek Claude, master kapatılmadan yapılan yeni kapanışta Q1 dahil kalıntısız bitiyor. Gerçek run terminal kayıtlarında Claude `hook error` bildirimi yok. Pencere dilimine geçmeden önce aşağıdaki iki açık kapatılmalı; 3–4 pencere diliminin tasarım girdisidir.
+
+1. **Codex tek oturum durdurma, sunucudaki işi büyük olasılıkla durdurmuyor.** Yol (a)'da tur ve komutlar paylaşılan app-server'da çalışır; TUI yalnızca bir istemcidir. `stop` / `stopForIdle` yalnızca TUI süreç ağacını kapatıyor; `turn/interrupt`, `thread/backgroundTerminals/terminate` ya da `thread/unsubscribe` çağrılmıyor (`ProcessSupervisor.swift:619-644`; kaynakta hiçbir çağrı yok). Başka bir Codex oturumu sunucuyu açık tutuyorsa, durdurulan oturumun aktif turu ve başlattığı komutlar (örneğin bir dev server) sunucu altında sürebilir. Stop raporu buna rağmen başarılı döner. Quit'te sunucu kapandığı için sorun yok; idle yolu da arka plan terminali varsa bloklanıyor.
+   - **Önce doğrulama:** İki Codex oturumu açılır; birinde uzun bir tur başlatılır (örneğin `sleep 60 && touch <marker>`). Bu oturum, diğeri açıkken durdurulur. Ardından `thread/read`, arka plan terminalleri ve marker ile turun sürüp sürmediğine bakılır.
+   - **Doğrulanırsa beklenen:** Oturum durdurma sırası şöyle olur: aktif tur varsa `turn/interrupt` → `thread/backgroundTerminals/terminate` → `thread/read` ile aktif tur ve arka plan terminali kalmadığının doğrulanması → TUI kapanışı → abonelikten çıkma. Doğrulanamazsa stop başarılı sayılmaz.
+2. **Belirsiz Codex `/new`, idle motorunun çalışan oturumu kapatmasına yol açabilir.** Aynı çalışma dizininde iki Codex TUI varken `/new` gelirse `thread/started` `.ambiguous` olur ve yalnızca iç bir `recordedIssues` metnine yazılır (`CodexSessionCoordinator.swift:174-178`). Etkilenen oturum eski thread'e bağlı kalır; eski thread `turnComplete` göründüğü için idle blocker üretmez (`SessionLifecycleController.swift:135-146`). Yol (a)'da komutlar TUI'nin değil sunucunun çocuğu olduğundan süreç baseline'ı da işi göremez. Yeni thread'de kullanıcı girdisi olmadan süren uzun bir tur, idle süresi dolunca kesilebilir. Beklenen:
+   - Belirsizliğe düşen aday oturumlar "kimlik belirsiz" olarak işaretlenir. Bu durum idle blocker'dır ve arayüzde görünür.
+   - Belirsizlik çözülmeden bu oturumlar otomatik idle'a alınmaz.
+   - Kabul testi aynı senaryoyu sentetik olay dizisiyle kurar.
+3. **Sağlayıcı mantığı süreç yöneticisinin içinde.** `ProcessSupervisor` 1.090 satır ve Claude hook'larını (`receiveClaudeHook`, `applyClaudeIdentity`), Codex eşleşmesini ve olaylarını (`bindCodexThread`, `transitionCodexConversation`, `receiveCodexEvent`, `resolveCodexRequest`, `refreshCodexThread`) ve sağlayıcı durumlarını barındırıyor. Sözleşme sağlayıcı entegrasyonlarını ayrı sorumluluk sayıyor (§1, §9); her yeni sağlayıcı bu sınıfı büyütür. Pencere katmanı bu API'lere bağlanmadan önce sağlayıcı adaptörü sınırı çizilmeli: supervisor süreç/run'ı yönetir, adaptörler sağlayıcı olaylarını tipli oturum olaylarına çevirir.
+4. **Arayüz için itme tabanlı durum akışı yok.** Durum `claudeStatus` / `codexStatus` / `providerWorkState` ile çekiliyor; `evaluateIdle` host tarafından çağrılmalı. Pencere dilimi için tek, tipli bir oturum olayları akışı (durum, yaşam döngüsü, kimlik, run başlangıç/bitiş) ve bir sonraki idle zamanına kurulan tek bir zamanlayıcı gerekiyor; sidebar yoklama yapmamalı.
+
+**Bilgi:** Hook token'ı ortam değişkeninde olduğu için Claude'un çalıştırdığı komutlar da onu görebilir; aynı kullanıcı kodu sahte durum olayı gönderebilir. Aynı kullanıcı kodu zaten süreçleri de kapatabildiğinden risk düşük; sahte olaylar yalnızca kendi run kimliğiyle eşlenebildiği sürece kabul edilebilir. Soket yolları çağıran tarafça veriliyor; ürün host'u kısa ve özel bir dizin seçmelidir (Darwin `sun_path` sınırı).
+
+### 22.1. Uygulama sırası ve kabul (kullanıcı kararı: dört madde de kapatılmadan pencere dilimine geçilmez)
+
+0. **Başlangıç:** Mevcut çalışma ağacı ayrı bir commit olarak kaydedilir; bu dilimin değişiklikleri review'a kadar commit edilmez.
+1. **Madde 1 — Codex oturum durdurma:**
+   - Önce §22.1'deki doğrulama deneyi izole profilde yapılır; sonuç kayda geçer.
+   - Tur ya da komut sunucuda sürüyorsa düzeltme uygulanır: `turn/interrupt` → `thread/backgroundTerminals/terminate` → `thread/read` ile doğrulama → TUI kapanışı → `thread/unsubscribe`.
+   - Doğrulanamayan durdurma başarı olarak raporlanmaz.
+   - Aynı sözleşme `stopForIdle` ve lider çıkışı için de geçerlidir.
+   - Kabul: iki Codex oturumlu gerçek deneyde durdurulan oturumun marker'ı oluşmaz, aktif turu ve arka plan terminali kalmaz, diğer oturum etkilenmez.
+2. **Madde 2 — belirsiz Codex `/new`:**
+   - Aday oturumlar kalıcı olmayan bir "kimlik belirsiz" durumuna alınır.
+   - Bu durum idle blocker'dır, oturum durum API'sinde görünür, `recordedIssues` metnine gömülmez.
+   - Kabul: sentetik olay dizisiyle aynı cwd'de iki TUI + `/new` + süre dolumu senaryosunda iki oturum da idle'a alınmaz ve blocker nedeni okunabilir.
+3. **Madde 3 — sağlayıcı adaptörü sınırı:**
+   - `ProcessSupervisor` yalnızca oturum/run/süreç sahipliğini ve IO uç noktalarını yönetir.
+   - Claude hook ve Codex app-server mantığı sağlayıcı adaptörlerine taşınır. Adaptörler sağlayıcı olaylarını tipli ortak oturum olaylarına çevirir ve supervisor'a yalnızca sağlayıcıdan bağımsız API ile konuşur.
+   - Yeni bir sağlayıcı eklemek supervisor'ı değiştirmeyi gerektirmemelidir.
+   - Kabul: davranış değişmez; mevcut testler geçer; supervisor kaynağında Claude'a ya da Codex'e özel tip veya çağrı kalmaz.
+4. **Madde 4 — oturum olay akışı ve idle zamanlayıcısı:**
+   - Tek, tipli bir oturum olayları akışı sağlanır: durum, yaşam döngüsü, kimlik ve kimlik belirsizliği, run başlangıç/bitiş, blocker değişimi.
+   - Tüketici yoksa ya da yavaşsa sınırlı kalır; en son durumu kaybetmeden birleştirir.
+   - Idle ve stale değerlendirmesi, bir sonraki vade zamanına kurulan tek bir zamanlayıcıyla yapılır. Oturum başına timer ve periyodik yoklama olmaz.
+   - Kabul: 10 boşta oturumda uyanma sayısı yeniden ölçülür ve CP2'deki değerden kötüleşmez; olay akışı durum değişikliklerini sırayla ve kayıpsız son durumla verir.
+5. **Kapanış:**
+   - `swift build`, bütün testler, `git diff --check`.
+   - Gerçek sağlayıcı duman testi: Claude ve Codex için Q1 (aktif iş + Quit + yeniden açılış + resume) yeni yapıyla tekrarlanır.
+   - Sonuçlar bu dosyada yeni bir §23'e doğrulandı / başarısız / doğrulanmadı olarak, run kimlikleriyle yazılır.

@@ -1,0 +1,51 @@
+{
+  "label": "CP2 Claude resume existing conversation",
+  "actions": [
+    {
+      "op": "launch",
+      "provider": "claude",
+      "hooks": true,
+      "resumeSessionID": "8AAC4338-24FA-4781-AE5E-A5D0D6751BA0",
+      "arguments": [
+        "--model",
+        "haiku",
+        "--effort",
+        "low",
+        "--no-chrome"
+      ]
+    },
+    {
+      "op": "wait",
+      "seconds": 3
+    },
+    {
+      "op": "write",
+      "text": "\r"
+    },
+    {
+      "op": "hook-expect",
+      "events": ["SessionStart"],
+      "seconds": 5
+    },
+    {
+      "op": "write",
+      "text": "Reply exactly CLAUDE_RESUME_OK. Do not use tools."
+    },
+    {
+      "op": "wait",
+      "seconds": 0.3
+    },
+    {
+      "op": "write",
+      "text": "\r"
+    },
+    {
+      "op": "hook-expect",
+      "events": ["UserPromptSubmit", "Stop"],
+      "seconds": 15
+    },
+    {
+      "op": "quit"
+    }
+  ]
+}

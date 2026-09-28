@@ -208,6 +208,22 @@ int loom_physical_footprint(pid_t pid, uint64_t *bytes) {
     return 0;
 }
 
+int loom_process_resource_usage(pid_t pid, loom_process_usage *usage) {
+    if (usage == NULL) { errno = EINVAL; return -1; }
+    memset(usage, 0, sizeof(*usage));
+    if (pid <= 0) { errno = EINVAL; return -1; }
+    struct rusage_info_v4 raw = {0};
+    if (proc_pid_rusage(pid, RUSAGE_INFO_V4, (rusage_info_t *)&raw) < 0) {
+        return -1;
+    }
+    usage->user_time_ns = raw.ri_user_time;
+    usage->system_time_ns = raw.ri_system_time;
+    usage->package_idle_wakeups = raw.ri_pkg_idle_wkups;
+    usage->interrupt_wakeups = raw.ri_interrupt_wkups;
+    usage->physical_footprint_bytes = raw.ri_phys_footprint;
+    return 0;
+}
+
 /* Private ABI verified against Apple's published XNU sources on 2026-09-27:
  * https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/proc_info_private.h
  *   PROC_PIDCOALITIONINFO = 20; two IDs followed by three reserved uint64_t's.

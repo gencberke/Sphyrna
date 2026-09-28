@@ -17,6 +17,14 @@ public struct ProcessRecord: Codable, Equatable, Sendable {
     public let zombie: Bool
 }
 
+public struct ProcessResourceUsage: Codable, Equatable, Sendable {
+    public let userTimeNanoseconds: UInt64
+    public let systemTimeNanoseconds: UInt64
+    public let packageIdleWakeups: UInt64
+    public let interruptWakeups: UInt64
+    public let physicalFootprintBytes: UInt64
+}
+
 public enum ProcessTable {
     public static func bootSessionID() -> String? {
         var buffer = [CChar](repeating: 0, count: 64)
@@ -40,6 +48,18 @@ public enum ProcessTable {
         var bytes: UInt64 = 0
         guard loom_physical_footprint(pid, &bytes) == 0 else { return nil }
         return bytes
+    }
+
+    public static func resourceUsage(pid: Int32) -> ProcessResourceUsage? {
+        var usage = loom_process_usage()
+        guard loom_process_resource_usage(pid, &usage) == 0 else { return nil }
+        return ProcessResourceUsage(
+            userTimeNanoseconds: usage.user_time_ns,
+            systemTimeNanoseconds: usage.system_time_ns,
+            packageIdleWakeups: usage.package_idle_wakeups,
+            interruptWakeups: usage.interrupt_wakeups,
+            physicalFootprintBytes: usage.physical_footprint_bytes
+        )
     }
 
     public static func snapshot() throws -> [ProcessRecord] {
