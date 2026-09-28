@@ -1,7 +1,7 @@
 # Checkpoint 2 — Durum ve devam
 
 **Tarih:** 27 Eylül 2026  
-**Durum:** Uygulama sürüyor. S1'in oturum/çalıştırma modeli, olay tabanlı PTY omurgası ve SQLite katalog temeli doğrulandı. S1–S4 ölçümleri, sağlayıcı entegrasyonları, idle/stale ve resume uygulanmadı. Bu checkpoint'ten sonra ilk pencere gelir (sözleşme §3, checkpoint sırası).
+**Durum:** Uygulama sürüyor. S1'in oturum/çalıştırma modeli, olay tabanlı PTY omurgası ve SQLite katalog temeli doğrulandı. Claude hook taşıması ve tipli durum reducer'ı uygulanmaya başlandı; idle/stale, resume ve Codex entegrasyonu uygulanmadı. Bu checkpoint'ten sonra ilk pencere gelir (sözleşme §3, checkpoint sırası).
 
 **Dayanak:** [Ürün sözleşmesi](../LOOM-PRODUCT-CONTRACT.md) §4, §9 ve §11'deki 2. checkpoint; [CP1](CHECKPOINT-1.md) §12.4 ve kod review'ı.
 
@@ -56,9 +56,10 @@ Yol (a)'da durum akışı (`thread/status/changed`, onay ve girdi bekleme), arka
 | `Notification` (`permission_prompt`, `idle_prompt`) / `PermissionRequest` | Onay veya girdi bekleniyor |
 | `SessionEnd` | Oturum bitti (neden ile) |
 
-- **Hook taşıma yolu:** İki aday ölçümle seçilir. Seçim ölçütleri: olay başına maliyet, Claude'u yavaşlatmama, yalnızca Loom oturumlarının yazabilmesi.
-  - async `command` hook + küçük bir `loom-hook` yardımcısı → Loom'un Unix soketi.
-  - `http` hook → `127.0.0.1` + oturum token'ı.
+- **Hook taşıma yolu (seçildi):** async `command` hook + küçük `loom-hook` yardımcısı → Loom'un Unix soketi. [Güncel Claude hook sözleşmesinde](https://code.claude.com/docs/en/hooks) kimliğin başlangıç kaynağı olan `SessionStart`, HTTP hook desteklemiyor; HTTP adayı aynı olay kümesini taşıyamadığı için elendi. İki farklı taşıma hattı kurulmadı.
+  - `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure`, `Notification` ve `PermissionRequest` async çalışır. Claude teardown'da async hook'u öldürebildiği için `SessionEnd`, 1 sn sınırla senkrondur.
+  - Soket dizini `0700`, soket `0600`; app-run token'ı argümana ya da settings'e değil ortama verilir. Yardımcı yalnızca miras aldığı Loom oturum/run kimliğini ve en fazla 1 MiB hook JSON'unu iletir, stdout üretmez.
+  - Gerçek Claude 2.1.280 ölçümünde debug'daki hook başlatma zamanı ile helper'ın gönderme zamanı arası 5,5–8 ms; helper → receiver teslimi 0,37–0,87 ms oldu (`9299D9DC-FDD8-41BA-B515-CBAE3433162B`).
 - **Eşleşme:** Hook süreci Claude'un ortamını, dolayısıyla `LOOM_SESSION_ID`'yi taşır; olay ile oturum eşleşmesi kesindir.
 
 **Codex:** Yol (a) olayları; eşleşme ve istemci §3'te.
@@ -166,7 +167,7 @@ Her sonuç **doğrulandı / başarısız / doğrulanmadı** olarak, komut ve kan
 - **Doğrulandı:** `LOOM_MANAGED_RUN_ID`, süreç ortamından okunarak yeniden ebeveynlenmiş çalıştırmaları ayırıyor; çıplak PID ile okunan işaret ikinci anlık görüntüyle kimlik açısından doğrulanıyor. İşaret okuması actor içinde yeni süreç kimliği başına bir kez yapılıyor.
 - **Doğrulandı:** Ölen ledger kimlikleri, Unix session'da seçili bir torun kalmadıktan sonra ayıklanıyor; `ProcessSupervisor` ledger'ı yalnız değiştiğinde yazıyor.
 - **Doğrulandı:** Ortam zaman aşımı ve desteklenmeyen shell tipli hatalara dönüştürüldü; sağlayıcı geçmişi yokluğu için tipli hata tanımlandı.
-- **Doğrulandı:** PTY okuma ve lider çıkışı `DispatchSource` ile olay tabanlıdır. Tek okuyucu ve tek `waitpid` sahibi vardır; fd yalnız cancel handler'da kapanır. Terminal IO için run-scoped `TerminalEndpoint` supervisor actor'ını atlar. Çıktı görünürlükten bağımsız olarak sink'e itilir; varsayılan 4 MiB scrollback eski byte'ları atarak sınırlı kalır. 8 MiB'lık okunmayan burst CLI'ı durdurmadan bütünüyle işlendi.
+- **Doğrulandı:** PTY okuma ve lider çıkışı `DispatchSource` ile olay tabanlıdır. Tek okuyucu ve tek `waitpid` sahibi vardır; fd yalnız cancel handler'da kapanır. Terminal IO için run-scoped `TerminalEndpoint` supervisor actor'ını atlar. Çıktı görünürlükten bağımsız olarak sink'e itilir; varsayılan scrollback yazıldıkça büyür ve 4 MiB üst sınırında eski byte'ları atar. Harici terminal sink'i geçmişi üstlenince ikinci byte scrollback oluşturulmaz. 8 MiB'lık okunmayan burst CLI'ı durdurmadan bütünüyle işlendi.
 - **Doğrulandı:** Sistem `libsqlite3`'ü kullanan sürümlü katalog; WAL, uygulama kimliği, foreign-key ve açılış bütünlük kontrolüyle oluşturuluyor. Sohbet içeriği tutulmuyor. Bozuk dosya reddedilip byte düzeyinde değiştirilmeden bırakıldı.
 - **Doğrulandı:** Oturum, sağlayıcı kimliği değişimi ve run başlangıç/bitişi kataloglanıyor. Quit, bekleyen katalog yazılarıyla yarışmıyor. Yeniden açılışta sohbet ve bitmiş run korunuyor, eski `currentRun` geri yüklenmiyor ve otomatik süreç başlamıyor.
 - **Kontrol:** `swift build` geçti. Swift 6.4 komut satırı araçlarının `TestingMacros` eklentisini otomatik yüklememesi nedeniyle test komutuna eklenti yolu açıkça verildi; bu komutla 53 test geçti:
@@ -205,3 +206,16 @@ Review'da `swift test` hem düz hem de eklenti yolu verilerek çalıştırıldı
 1. **Boşta oturum başına 4 MiB bellek.** `TerminalScrollback`, açılışta `capacity` kadar sıfırlanmış dizi ayırıyor (`TerminalEndpoint.swift:22`). Review ölçümünde 10 boş tampon, çıktı olmadan +40 MiB physical footprint ekledi. Terminal motoru sink olarak bağlandığında bu tampon ikinci bir kopya olur. Beklenen: tampon yazıldıkça büyür (üst sınır aynı kalır); bir sink geçmişi kendisi tutuyorsa byte scrollback tutulmaz ya da küçük tutulur. Kabul: boşta 10 oturumda tampon kaynaklı artış ihmal edilebilir.
 2. **CP1 gerçek Claude kapanış düzeltmesi yeniden doğrulanmalı.** CP1'de gerçek Claude'un doğrudan çocuğu, PTY master'ı açık ve okunmazken zombie durumunda reap edilemiyordu. Düzeltme, sinyallerden önce master'ı kapatmaktı. Yeni `stop` ve `shutdown`, sinyalleri master açıkken gönderiyor ve terminali `finish` içinde sonradan kapatıyor. Push okuma sürekli çalıştığı için eski koşul muhtemelen oluşmuyor, ama bu gerçek Claude ile sınanmadı. Gerçek sağlayıcı matrisinde C3 (aktif tur + arka plan işi + Quit) ve D1 (birleşik Quit) yeni supervisor ile tekrarlanmalı.
 3. **Bilgi (ürün davranışı):** Lider kendiliğinden çıkınca (`/exit`), run'ın hâlâ yaşayan torunları 0,2 sn eskalasyonla kapatılıyor. Örneğin Claude'un başlattığı bir dev server, Claude'dan çıkınca kapanır. Bu, sözleşmedeki "Loom'a ait iş arkada kalmaz" kuralıyla tutarlıdır. Arayüzde görünür olmalı.
+
+## 17. İkinci review uygulama sonucu ve Claude hook başlangıcı (28 Eylül 2026)
+
+İkinci review bulguları kapatıldı ve uygulama sırasındaki 3. adıma geçildi:
+
+1. **Çözüldü — boş scrollback artık bellek ayırmıyor.** `TerminalScrollback` ilk byte gelene kadar 0 byte backing storage kullanıyor, sonrasında kapasiteye kadar geometrik büyüyor. On sessiz oturum testi her endpoint için 0 allocation şart koşuyor. Terminal motoru gibi harici sink verildiğinde `scrollback == nil`; aynı çıktı iki geçmişte tutulmuyor. Yeni ve eski byte sırasının ring büyümesinde korunduğu ayrıca test edildi.
+2. **Doğrulandı — C3 gerçek Claude kapanışı.** Haiku/low gerçek TUI, arka plan `sleep 120` ve aktif turla 4 sahipli süreçten 0'a 0,561 sn'de kapandı. PTY master sinyaller sırasında açık, push reader etkinken zombie/reap regresyonu oluşmadı. Run `DBE03716-F79E-42D6-92A3-C7CD6EFE63F1`; `remaining`, `errors`, `outsideOwnership` ve `missing-external` boş.
+3. **Doğrulandı — D1 birleşik kapanış.** İki Claude, iki remote Codex, ortak app-server ve sentetik kaçakla 7 sahipli süreçten 0'a 0,835 sn'de kapandı. Run `64595959-7BF6-4B7B-BCBE-D108EB524DA9`; dış süreç kimliği kaybı yok.
+4. **Ürün davranışı görünürlüğü:** CP2 arayüz içermiyor. Çekirdek doğal lider çıkışını `processExited`, ayrı `SessionStopReport` ve temizlenmiş run olarak zaten koruyor; ilk pencere bu nedeni ve torunların beraber kapatıldığını görünür kılacak. Bu davranış sessizce "başarıyla tamamlandı" durumuna çevrilmeyecek.
+5. **Claude taşıması uygulandı ve gerçek sağlayıcıyla doğrulandı.** `loom-hook`, owner-only Unix soketine app-run token'ı, `LOOM_SESSION_ID`, `LOOM_MANAGED_RUN_ID` ve ham event'i gönderiyor. Receiver token/protokol/boyut kontrolünden sonra event'i teslim ediyor. Gerçek akışta `SessionStart(startup) → UserPromptSubmit → Stop → SessionEnd(other)` aynı provider session ve managed run kimliğiyle geldi; run `9299D9DC-FDD8-41BA-B515-CBAE3433162B`.
+6. **Tipli durum reducer'ı uygulandı.** Çalışıyor, onay bekliyor, girdi bekliyor, tur tamamlandı, hata, session sonu ve bilinmiyor birbirinden ayrıldı. `Stop` içindeki arka plan görevleri ve session cron sayısı ayrı tutuluyor. Eski managed run veya yanlış Loom session event'i aktif durumu değiştirmiyor; bilinmeyen event başarı sayılmıyor.
+7. **Sıradaki dilim:** `SessionStart(clear/resume/fork)` için run içindeki aktif Loom sohbet eşlemesini ve G2'deki ayrı kayıt kuralını kataloğa bağlamak; ardından `last_used_at` yazımı ve T1–T4'ün kalan gerçek senaryoları. Mevcut katalog kimliğini yerinde değiştirmek G2'yi ihlal edeceği için bu geçiş ayrı ve atomik uygulanacak.
+8. **Kontrol:** Eklenti yolu verilen `swift test` ile 60/60 test geçti. Gerçek tekrar komutları `loom-probe experiment plans/experiments/claude-hooks.json`, `claude-active-quit.json` ve `combined.json`; üçü de önceden hazırlanmış izole provider profili altında çalıştırıldı. `git diff --check` temiz.

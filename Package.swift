@@ -7,6 +7,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "LoomCore", targets: ["LoomCore"]),
+        .executable(name: "loom-hook", targets: ["loom-hook"]),
         .executable(name: "loom-probe", targets: ["loom-probe"]),
         .executable(name: "loom-test-child", targets: ["loom-test-child"]),
     ],
@@ -14,6 +15,7 @@ let package = Package(
         .target(name: "CLoomPOSIX"),
         .target(name: "CLoomTestSupport"),
         .target(name: "LoomCore", dependencies: ["CLoomPOSIX"], linkerSettings: [.linkedLibrary("sqlite3")]),
+        .executableTarget(name: "loom-hook", dependencies: ["LoomCore"]),
         .executableTarget(name: "loom-probe", dependencies: ["LoomCore"]),
         .executableTarget(name: "loom-test-child", dependencies: ["CLoomTestSupport"]),
         .testTarget(name: "LoomCoreTests", dependencies: ["LoomCore"]),

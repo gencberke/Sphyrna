@@ -65,6 +65,42 @@ struct ProcessSupervisorTests {
         throw LoomError.message("Fixture not ready: \(String(decoding: data, as: UTF8.self))")
     }
 
+    @Test func scrollbackAllocatesLazilyAndPreservesNewestBytes() {
+        let scrollback = TerminalScrollback(capacity: 8)
+        #expect(scrollback.allocatedByteCount == 0)
+        scrollback.receive(Data("abc".utf8))
+        #expect(scrollback.count == 3)
+        #expect(scrollback.allocatedByteCount == 8)
+        scrollback.receive(Data("defghijk".utf8))
+        #expect(String(decoding: scrollback.drain(), as: UTF8.self) == "defghijk")
+        #expect(scrollback.count == 0)
+    }
+
+    @Test func tenSilentSessionsDoNotPreallocateScrollbackCapacity() async throws {
+        let supervisor = try ProcessSupervisor(
+            ledger: OwnershipLedger(coalition: .probe(forceFailure: true))
+        )
+        var terminals: [TerminalEndpoint] = []
+        for _ in 0..<10 {
+            let sessionID = UUID()
+            try await supervisor.createSession(ManagedSession(
+                id: sessionID, provider: .synthetic,
+                workingDirectory: FileManager.default.temporaryDirectory.path
+            ))
+            let environment = LaunchEnvironment.make(
+                path: "/usr/bin:/bin", runID: supervisor.ownershipRunID,
+                sessionID: sessionID
+            )
+            terminals.append(try await supervisor.launch(
+                sessionID: sessionID, executable: childPath,
+                arguments: ["stubborn", "--silent"], environment: environment
+            ).terminal)
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(terminals.allSatisfy { $0.scrollback?.allocatedByteCount == 0 })
+        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+    }
+
     @Test func managedRunMarkerIsDistinctFromAppOwnershipRun() async throws {
         let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition: .probe(forceFailure: true)))
         let sessionID = UUID()
@@ -146,8 +182,9 @@ struct ProcessSupervisorTests {
         let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition: .probe(forceFailure: true)))
         let sessionID = UUID()
         let sink = CountingOutputSink(byte: 0x59)
-        _ = try await launch("large-burst-exit", sessionID: sessionID,
-                             supervisor: supervisor, outputSink: sink)
+        let launch = try await launch("large-burst-exit", sessionID: sessionID,
+                                      supervisor: supervisor, outputSink: sink)
+        #expect(launch.terminal.scrollback == nil)
         let expected = 8 * 1024 * 1024
         let deadline = ProcessInfo.processInfo.systemUptime + 4
         while sink.count < expected, ProcessInfo.processInfo.systemUptime < deadline {

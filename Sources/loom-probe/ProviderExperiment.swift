@@ -15,6 +15,10 @@ final class ProviderExperiment {
     var clients: [String: ProbeRPCClient] = [:]
     var messages: [String: [[String: Any]]] = [:]
     var variables: [String: String] = [:]
+    var hookServer: ClaudeHookServer?
+    let hookRecorder: HookRecorder
+    let hookAuthenticationToken = UUID().uuidString
+    let hookDirectory: URL
     var sequence = 0
     var samples: [[String: Any]] = []
     let baseline: [ProcessRecord]
@@ -26,6 +30,11 @@ final class ProviderExperiment {
         let ledger = OwnershipLedger()
         directory = root.appendingPathComponent("runs/\(ledger.runID.uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        hookDirectory = URL(
+            fileURLWithPath: "/tmp/lh-\(ledger.runID.uuidString.prefix(8))",
+            isDirectory: true
+        )
+        hookRecorder = HookRecorder(outputURL: directory.appendingPathComponent("claude-hooks.jsonl"))
         supervisor = try ProbeSupervisor(ledger: ledger, ledgerURL: directory.appendingPathComponent("ledger.json"))
         // Recovery metadata must exist before rc can start any background helpers.
         guard let owner = try ProcessTable.snapshot().first(where: { $0.identity.pid == getpid() }) else {
@@ -45,6 +54,9 @@ final class ProviderExperiment {
         let probe = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
         variables["probe"] = probe.path
         variables["fixture"] = probe.deletingLastPathComponent().appendingPathComponent("loom-test-child").path
+        variables["hookHelper"] = probe.deletingLastPathComponent().appendingPathComponent("loom-hook").path
+        variables["hookSocket"] = hookDirectory.appendingPathComponent("events.sock").path
+        variables["run"] = directory.path
         variables["workspace"] = root.appendingPathComponent("workspace").path
         // Darwin sockaddr_un paths cannot use the long run directory.
         variables["socket"] = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".loom-dev/\(ledger.runID.uuidString.prefix(8)).sock").path
@@ -104,6 +116,7 @@ final class ProviderExperiment {
             guard let terminal = terminals[slot] else { throw LoomError.message("Missing terminal") }
             try terminal.resize(rows: UInt16(action["rows"] as? Int ?? 32), columns: UInt16(action["columns"] as? Int ?? 100))
         case "snapshot": try snapshot(label: action["label"] as? String ?? "snapshot")
+        case "hook-expect": try expectHooks(action, slot: slot)
         case "rpc-connect":
             let client = try ProbeRPCClient(socketPath: expand(action["socket"] as? String ?? "${socket}"))
             clients[slot] = client; messages[slot] = []
@@ -165,7 +178,26 @@ final class ProviderExperiment {
             }
             profile = try .codex(route: route, capabilities: capabilities, home: URL(fileURLWithPath: isolated["CODEX_HOME"]!), environment: base)
         } else if provider == "claude" {
-            profile = try .claude(capabilities: capabilities, config: root.appendingPathComponent("claude-config"), sessionID: sessionID, environment: base)
+            var hooks: ClaudeHookLaunchConfiguration?
+            if action["hooks"] as? Bool == true {
+                if hookServer == nil {
+                    hookServer = try ClaudeHookServer(
+                        socketPath: variables["hookSocket"]!,
+                        authenticationToken: hookAuthenticationToken,
+                        handler: hookRecorder.receive
+                    )
+                }
+                hooks = ClaudeHookLaunchConfiguration(
+                    helperPath: variables["hookHelper"]!,
+                    socketPath: variables["hookSocket"]!,
+                    authenticationToken: hookAuthenticationToken
+                )
+            }
+            profile = try .claude(
+                capabilities: capabilities,
+                config: root.appendingPathComponent("claude-config"),
+                sessionID: sessionID, environment: base, hooks: hooks
+            )
         } else { throw LoomError.message("Unknown provider") }
         var environment = profile.environment
         if action["agentView"] as? Bool == true { environment.removeValue(forKey: "CLAUDE_CODE_DISABLE_AGENT_VIEW") }
@@ -199,6 +231,23 @@ final class ProviderExperiment {
             if Date() > deadline { throw LoomError.message("PTY input stalled") }
             if offset < data.count { usleep(1_000) }
         }
+    }
+
+    func expectHooks(_ action: [String: Any], slot: String) throws {
+        guard let terminal = terminals[slot],
+              let required = action["events"] as? [String], !required.isEmpty else {
+            throw LoomError.message("hook-expect needs a terminal and event names")
+        }
+        let deadline = Date().addingTimeInterval(min(30, action["seconds"] as? Double ?? 5))
+        var observed: Set<String> = []
+        repeat {
+            try pump(seconds: 0.02)
+            observed = hookRecorder.eventNames(runID: terminal.managedRunID)
+            if Set(required).isSubset(of: observed) { return }
+        } while Date() < deadline
+        throw LoomError.message(
+            "Missing Claude hook events \(Set(required).subtracting(observed).sorted()); observed \(observed.sorted())"
+        )
     }
 
     func pump(seconds: Double) throws {
@@ -279,6 +328,12 @@ final class ProviderExperiment {
         try snapshot(label: "before-quit")
         let report = supervisor.shutdown(graceSeconds: 0.4)
         stopped = true
+        // SessionEnd is synchronous, but its socket handler completes on a
+        // separate queue after the provider process exits.
+        usleep(50_000)
+        hookServer?.stop()
+        hookServer = nil
+        try? FileManager.default.removeItem(at: hookDirectory)
         try Probe.encoder.encode(report).write(to: directory.appendingPathComponent("shutdown.json"))
         let after = try ProcessTable.snapshot()
         let missingExternal = externalBaseline.filter { record in

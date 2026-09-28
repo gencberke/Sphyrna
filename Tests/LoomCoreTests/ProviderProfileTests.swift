@@ -26,4 +26,42 @@ struct ProviderProfileTests {
         #expect(codex.arguments == ["--no-daemon"])
         #expect(codex.environment["CODEX_HOME"] == "/isolated")
     }
+
+    @Test func claudeHookSettingsUseOneAuthenticatedCommandTransport() throws {
+        let id = UUID()
+        let capabilities = ProviderCapabilities(
+            version: "test", help: "--session-id <id> --settings <settings>"
+        )
+        let profile = try ProviderLaunchProfile.claude(
+            capabilities: capabilities,
+            config: URL(fileURLWithPath: "/isolated"),
+            sessionID: id,
+            environment: [:],
+            hooks: ClaudeHookLaunchConfiguration(
+                helperPath: "/Applications/Loom.app/Contents/MacOS/loom-hook",
+                socketPath: "/tmp/loom-hook.sock",
+                authenticationToken: "secret"
+            )
+        )
+        #expect(profile.environment["LOOM_HOOK_SOCKET"] == "/tmp/loom-hook.sock")
+        #expect(profile.environment["LOOM_HOOK_TOKEN"] == "secret")
+        let settingsIndex = try #require(profile.arguments.firstIndex(of: "--settings"))
+        let settings = try #require(
+            JSONSerialization.jsonObject(with: Data(profile.arguments[settingsIndex + 1].utf8))
+                as? [String: Any]
+        )
+        let hooks = try #require(settings["hooks"] as? [String: Any])
+        #expect(Set(hooks.keys) == [
+            "SessionStart", "UserPromptSubmit", "Stop", "StopFailure",
+            "Notification", "PermissionRequest", "SessionEnd",
+        ])
+        let startGroups = try #require(hooks["SessionStart"] as? [[String: Any]])
+        let startHandlers = try #require(startGroups.first?["hooks"] as? [[String: Any]])
+        #expect(startHandlers.first?["command"] as? String == "/Applications/Loom.app/Contents/MacOS/loom-hook")
+        #expect(startHandlers.first?["async"] as? Bool == true)
+        let endGroups = try #require(hooks["SessionEnd"] as? [[String: Any]])
+        let endHandlers = try #require(endGroups.first?["hooks"] as? [[String: Any]])
+        #expect(endHandlers.first?["async"] == nil)
+        #expect(endHandlers.first?["timeout"] as? Int == 1)
+    }
 }

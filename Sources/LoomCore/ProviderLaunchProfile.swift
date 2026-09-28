@@ -54,14 +54,64 @@ public struct ProviderLaunchProfile: Sendable {
     }
 
     public static func claude(capabilities: ProviderCapabilities, config: URL, sessionID: UUID,
-                              environment: [String: String]) throws -> Self {
+                              environment: [String: String],
+                              hooks: ClaudeHookLaunchConfiguration? = nil) throws -> Self {
         guard capabilities.supportsSessionID, capabilities.supportsSettings else {
             throw LoomError.message("Claude lacks required --session-id/--settings options")
         }
         var env = environment
         env["CLAUDE_CONFIG_DIR"] = config.path
         env["CLAUDE_CODE_DISABLE_AGENT_VIEW"] = "1"
-        return Self(arguments: ["--session-id", sessionID.uuidString, "--settings", "{\"crossSessionInbound\":\"refuse\"}"],
+        if let hooks {
+            env["LOOM_HOOK_SOCKET"] = hooks.socketPath
+            env["LOOM_HOOK_TOKEN"] = hooks.authenticationToken
+        }
+        let settings = try claudeSettings(hooks: hooks)
+        return Self(arguments: ["--session-id", sessionID.uuidString, "--settings", settings],
                     environment: env)
+    }
+
+    private static func claudeSettings(hooks: ClaudeHookLaunchConfiguration?) throws -> String {
+        var settings: [String: Any] = ["crossSessionInbound": "refuse"]
+        if let hooks {
+            let asynchronous: [String: Any] = [
+                "type": "command", "command": hooks.helperPath,
+                "args": [], "async": true,
+            ]
+            let sessionEnd: [String: Any] = [
+                "type": "command", "command": hooks.helperPath,
+                "args": [], "timeout": 1,
+            ]
+            var eventHooks: [String: Any] = [:]
+            for event in [
+                "SessionStart", "UserPromptSubmit", "Stop", "StopFailure",
+                "Notification", "PermissionRequest",
+            ] {
+                eventHooks[event] = [["hooks": [asynchronous]]]
+            }
+            // Claude may terminate async processes during teardown. Keep the
+            // tiny SessionEnd delivery synchronous and under its 1.5 s budget.
+            eventHooks["SessionEnd"] = [["hooks": [sessionEnd]]]
+            settings["hooks"] = eventHooks
+        }
+        let data = try JSONSerialization.data(
+            withJSONObject: settings, options: [.sortedKeys]
+        )
+        guard let value = String(data: data, encoding: .utf8) else {
+            throw LoomError.message("Could not encode Claude session settings")
+        }
+        return value
+    }
+}
+
+public struct ClaudeHookLaunchConfiguration: Equatable, Sendable {
+    public let helperPath: String
+    public let socketPath: String
+    public let authenticationToken: String
+
+    public init(helperPath: String, socketPath: String, authenticationToken: String) {
+        self.helperPath = helperPath
+        self.socketPath = socketPath
+        self.authenticationToken = authenticationToken
     }
 }

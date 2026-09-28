@@ -26,8 +26,12 @@ func blockingAwait<Value: Sendable>(
 @MainActor
 final class ProbeTerminal {
     private let endpoint: TerminalEndpoint
+    let managedRunID: UUID
 
-    init(_ endpoint: TerminalEndpoint) { self.endpoint = endpoint }
+    init(_ endpoint: TerminalEndpoint, managedRunID: UUID) {
+        self.endpoint = endpoint
+        self.managedRunID = managedRunID
+    }
 
     var pid: Int32 { endpoint.pid }
 
@@ -81,7 +85,10 @@ final class ProbeSupervisor {
                 environment: environment, rows: rows, columns: columns
             )
         }
-        return ProbeTerminal(launch.terminal)
+        guard let runID = launch.session.currentRun?.id else {
+            throw LoomError.message("Managed run identity missing after launch")
+        }
+        return ProbeTerminal(launch.terminal, managedRunID: runID)
     }
 
     func sample() throws -> [ProcessRecord] {
