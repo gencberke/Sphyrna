@@ -191,10 +191,11 @@ struct CodexAppServerTests {
             workingDirectory: "/tmp/shared"
         )
         await router.register(two)
-        guard case let .ambiguous(candidates) = await router.route(newThread) else {
+        guard case let .ambiguous(candidates, threadID) = await router.route(newThread) else {
             Issue.record("Same-cwd /new was guessed instead of reported ambiguous")
             return
         }
+        #expect(threadID == "thread-new")
         #expect(Set(candidates.map(\.threadID)) == ["thread-one", "thread-two"])
     }
 

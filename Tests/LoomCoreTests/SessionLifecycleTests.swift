@@ -4,7 +4,7 @@ import Testing
 
 private final class LifecycleTestBundleAnchor: NSObject {}
 
-@Suite(.serialized)
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct SessionLifecycleTests {
     private var childPath: String {
         Bundle(for: LifecycleTestBundleAnchor.self).bundleURL.deletingLastPathComponent()
@@ -66,7 +66,7 @@ struct SessionLifecycleTests {
         #expect(resumed.session.providerConversationID == "claude-conversation")
         #expect(resumed.session.workingDirectory == context.root.path)
         #expect(try await context.catalog.session(id: firstID)?.lifecycle == .active)
-        #expect((await context.supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await context.supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     @Test func approvalBackgroundWorkAndLateDescendantBlockIdle() async throws {
@@ -118,7 +118,7 @@ struct SessionLifecycleTests {
             return
         }
         #expect(approvalBlockers.contains(.waitingForApproval))
-        #expect((await context.supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await context.supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     @Test func promptRegisteredDuringStopIsRetainedForResumeWithoutSecondProcess() async throws {
@@ -296,13 +296,14 @@ struct SessionLifecycleTests {
                 originator: "loom", source: "vscode"
             ))
         ))
-        guard case let .ambiguous(candidates) = decision else {
+        guard case let .ambiguous(candidates, threadID) = decision else {
             Issue.record("Same-cwd /new was not ambiguous")
             return
         }
+        #expect(threadID == "new-thread")
         #expect(Set(candidates.map(\.managedRunID))
                 == Set(bindings.map(\.managedRunID)))
-        try await adapter.markAmbiguous(candidates)
+        try await adapter.markAmbiguous(candidates, threadID: threadID)
         for binding in bindings {
             #expect(await context.supervisor.identityState(
                 sessionID: binding.sessionID
@@ -323,7 +324,32 @@ struct SessionLifecycleTests {
         #expect(bindings.allSatisfy {
             snapshot.sessions[$0.sessionID]?.identity == .ambiguous
         })
-        #expect((await context.supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        let first = bindings[0]
+        try await context.supervisor.registerStopHooks(
+            runID: first.managedRunID,
+            hooks: ManagedRunStopHooks(
+                prepare: {
+                    try await adapter.verifyAmbiguousStop(runID: first.managedRunID) { id in
+                        CodexThreadSnapshot(
+                            threadID: id, lastTurnID: "active-turn",
+                            lastTurnStartedAt: nil, lastTurnOutcome: nil,
+                            lastAssistantMessage: nil, isActive: true,
+                            status: .active([])
+                        )
+                    }
+                },
+                completed: {}
+            )
+        )
+        let stop = try await context.supervisor.stop(
+            sessionID: first.sessionID, graceSeconds: 0.2
+        )
+        #expect(!stop.succeeded)
+        #expect(stop.errors.contains {
+            $0.contains("may belong to another session and is still running")
+        })
+        #expect(await context.supervisor.session(id: first.sessionID)?.currentRun != nil)
+        #expect((await context.supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     @Test func tenFutureIdleDeadlinesUseOneSleepingTimer() async throws {
@@ -349,7 +375,7 @@ struct SessionLifecycleTests {
         try await Task.sleep(for: .milliseconds(200))
         #expect(await context.lifecycle.timerFireCount() == 0)
         await context.lifecycle.stopAutomaticEvaluation()
-        #expect((await context.supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await context.supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     @Test func automaticTimerTransitionsIdleThenStale() async throws {
@@ -385,7 +411,7 @@ struct SessionLifecycleTests {
         #expect(await context.supervisor.session(id: session.id)?.currentRun == nil)
         #expect(await context.lifecycle.timerFireCount() >= 1)
         await context.lifecycle.stopAutomaticEvaluation()
-        #expect((await context.supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await context.supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     private struct Context {

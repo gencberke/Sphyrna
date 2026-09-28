@@ -151,11 +151,17 @@ public struct CodexThreadSnapshot: Equatable, Sendable {
     public let lastAssistantMessage: String?
     public let isActive: Bool
     public let isIdle: Bool
+    public let status: CodexThreadStatus
+
+    public var hasNoActiveTurn: Bool {
+        isIdle || status == .systemError || status == .notLoaded
+    }
 
     public init(
         threadID: String, lastTurnID: String?, lastTurnStartedAt: Date?,
         lastTurnOutcome: CodexTurnOutcome?, lastAssistantMessage: String?,
-        isActive: Bool = false, isIdle: Bool = false
+        isActive: Bool = false, isIdle: Bool = false,
+        status: CodexThreadStatus = .unknown("missing")
     ) {
         self.threadID = threadID
         self.lastTurnID = lastTurnID
@@ -164,6 +170,7 @@ public struct CodexThreadSnapshot: Equatable, Sendable {
         self.lastAssistantMessage = lastAssistantMessage
         self.isActive = isActive
         self.isIdle = isIdle
+        self.status = status
     }
 }
 
@@ -293,7 +300,8 @@ public actor CodexAppServerClient {
             lastTurnOutcome: lastTurn.map(Self.decodeOutcome),
             lastAssistantMessage: lastTurn.flatMap(Self.lastAssistantMessage),
             isActive: thread["status"]?.object?["type"]?.string == "active",
-            isIdle: thread["status"]?.object?["type"]?.string == "idle"
+            isIdle: thread["status"]?.object?["type"]?.string == "idle",
+            status: Self.decodeStatus(thread["status"])
         )
     }
 
@@ -324,8 +332,38 @@ public actor CodexAppServerClient {
     /// The server owns remote turns and background commands after the TUI exits.
     /// Keep the PTY alive until the server confirms both have stopped.
     public func stopThreadWork(_ threadID: String) async throws {
-        let initial = try await readThread(threadID)
-        guard initial.isActive || initial.isIdle else {
+        try await Self.stopThreadWork(
+            threadID,
+            read: { try await self.readThread($0) },
+            terminals: { try await self.backgroundTerminals(threadID: $0) },
+            interrupt: { threadID, turnID in
+                _ = try await self.request(
+                    method: "turn/interrupt",
+                    params: .object([
+                        "threadId": .string(threadID), "turnId": .string(turnID),
+                    ])
+                )
+            },
+            terminate: { threadID, processID in
+                _ = try await self.request(
+                    method: "thread/backgroundTerminals/terminate",
+                    params: .object([
+                        "threadId": .string(threadID), "processId": .string(processID),
+                    ])
+                )
+            }
+        )
+    }
+
+    static func stopThreadWork(
+        _ threadID: String,
+        read: @Sendable (String) async throws -> CodexThreadSnapshot,
+        terminals: @Sendable (String) async throws -> [String],
+        interrupt: @Sendable (String, String) async throws -> Void,
+        terminate: @Sendable (String, String) async throws -> Void
+    ) async throws {
+        let initial = try await read(threadID)
+        guard initial.isActive || initial.hasNoActiveTurn else {
             throw CodexAppServerError.protocolViolation(
                 "thread \(threadID) has an unrecognized status"
             )
@@ -337,30 +375,20 @@ public actor CodexAppServerClient {
                 )
             }
             do {
-                _ = try await request(
-                    method: "turn/interrupt",
-                    params: .object([
-                        "threadId": .string(threadID), "turnId": .string(turnID),
-                    ])
-                )
+                try await interrupt(threadID, turnID)
             } catch {
                 // The turn may finish between read and interrupt. Verify below.
-                guard try await readThread(threadID).isIdle else { throw error }
+                guard try await read(threadID).hasNoActiveTurn else { throw error }
             }
         }
-        for processID in try await backgroundTerminals(threadID: threadID) {
-            _ = try await request(
-                method: "thread/backgroundTerminals/terminate",
-                params: .object([
-                    "threadId": .string(threadID), "processId": .string(processID),
-                ])
-            )
+        for processID in try await terminals(threadID) {
+            try await terminate(threadID, processID)
         }
         let deadline = ProcessInfo.processInfo.systemUptime + 5
         repeat {
-            let snapshot = try await readThread(threadID)
-            let terminals = try await backgroundTerminals(threadID: threadID)
-            if snapshot.isIdle && terminals.isEmpty { return }
+            let snapshot = try await read(threadID)
+            let remainingTerminals = try await terminals(threadID)
+            if snapshot.hasNoActiveTurn && remainingTerminals.isEmpty { return }
             try await Task.sleep(for: .milliseconds(50))
         } while ProcessInfo.processInfo.systemUptime < deadline
         throw CodexAppServerError.timeout("verifying stopped thread \(threadID)")

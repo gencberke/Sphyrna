@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 
+@Suite(.timeLimit(.minutes(1)))
 struct LaunchEnvironmentTests {
     private func fixture(_ rc: String, profile: String = "") throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("loom-environment-\(UUID())")

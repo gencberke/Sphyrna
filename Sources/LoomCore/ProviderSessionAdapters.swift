@@ -96,14 +96,34 @@ public actor CodexSessionAdapter {
     private let supervisor: ProcessSupervisor
     private var trackers: [UUID: CodexEventStateTracker] = [:]
     private var lastStatuses: [UUID: CodexSessionStatus] = [:]
+    private var ambiguousThreads: [UUID: Set<String>] = [:]
 
     public init(supervisor: ProcessSupervisor) { self.supervisor = supervisor }
 
-    public func markAmbiguous(_ candidates: [CodexRunBinding]) async throws {
+    public func markAmbiguous(_ candidates: [CodexRunBinding], threadID: String) async throws {
         for candidate in candidates {
+            ambiguousThreads[candidate.managedRunID, default: []].insert(threadID)
             try await supervisor.setIdentityState(
                 .ambiguous, runID: candidate.managedRunID
             )
+        }
+    }
+
+    public func clearAmbiguousThreads(runID: UUID) {
+        ambiguousThreads[runID] = nil
+    }
+
+    public func verifyAmbiguousStop(
+        runID: UUID,
+        read: @Sendable (String) async throws -> CodexThreadSnapshot
+    ) async throws {
+        for threadID in (ambiguousThreads[runID] ?? []).sorted() {
+            let snapshot = try await read(threadID)
+            if snapshot.isActive {
+                throw CodexAppServerError.protocolViolation(
+                    "Ambiguous new conversation \(threadID) may belong to another session and is still running"
+                )
+            }
         }
     }
 
@@ -134,6 +154,7 @@ public actor CodexSessionAdapter {
             runID: runID, conversationID: threadID,
             transition: .bind, at: date
         )
+        ambiguousThreads[runID] = nil
         trackers[runID] = CodexEventStateTracker(
             threadID: threadID, managedRunID: runID, after: sequence
         )
@@ -149,6 +170,7 @@ public actor CodexSessionAdapter {
             runID: runID, conversationID: threadID,
             transition: .new, at: date
         )
+        ambiguousThreads[runID] = nil
         trackers[runID] = CodexEventStateTracker(
             threadID: threadID, managedRunID: runID, after: sequence
         )

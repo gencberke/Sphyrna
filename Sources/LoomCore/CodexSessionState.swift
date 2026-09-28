@@ -302,7 +302,7 @@ public enum CodexRouteDecision: Equatable, Sendable {
     case routed(CodexRunBinding)
     case newConversation(previous: CodexRunBinding, identity: CodexThreadIdentity)
     case unmatched
-    case ambiguous([CodexRunBinding])
+    case ambiguous([CodexRunBinding], threadID: String)
 }
 
 /// Routes the shared app-server stream without guessing. `/new` can be tied to
@@ -356,7 +356,7 @@ public actor CodexSessionRouter {
             return .newConversation(previous: candidates[0], identity: identity)
         }
         if candidates.isEmpty { return .unmatched }
-        return .ambiguous(candidates)
+        return .ambiguous(candidates, threadID: identity.id)
     }
 
     private static func threadID(_ event: CodexAppServerEvent) -> String? {

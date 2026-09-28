@@ -5,8 +5,22 @@ import Testing
 
 private final class TestBundleAnchor: NSObject {}
 
-@Suite(.serialized)
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct ProcessLifecycleTests {
+    private func killAndReap(_ process: Process) {
+        let pid = process.processIdentifier
+        guard pid > 0 else { return }
+        _ = Darwin.kill(pid, SIGKILL)
+        let deadline = ProcessInfo.processInfo.systemUptime + 1
+        repeat {
+            let result = waitpid(pid, nil, WNOHANG)
+            if result == pid || result == -1 && errno == ECHILD { return }
+            if result == -1 && errno != EINTR { break }
+            usleep(10_000)
+        } while ProcessInfo.processInfo.systemUptime < deadline
+        Issue.record("Fixture process \(pid) was not reaped within one second")
+    }
+
     private var childPath: String {
         Bundle(for: TestBundleAnchor.self).bundleURL.deletingLastPathComponent()
             .appendingPathComponent("loom-test-child").path
@@ -73,7 +87,7 @@ struct ProcessLifecycleTests {
     @Test func escalatesStubbornChild() async throws {
         let supervisor = try ProcessSupervisor()
         _ = try await ready((try await start("stubborn", supervisor: supervisor)).terminal)
-        let report = await supervisor.shutdown(graceSeconds: 0.05)
+        let report = await supervisor.shutdown(graceSeconds: 0.2)
         #expect(report.succeeded)
         #expect(report.signals.contains { $0.signal == SIGKILL })
     }
@@ -107,13 +121,13 @@ struct ProcessLifecycleTests {
         external.executableURL = URL(fileURLWithPath: "/bin/sleep")
         external.arguments = ["30"]
         try external.run()
-        defer { external.terminate(); external.waitUntilExit() }
+        defer { killAndReap(external) }
         let before = try #require(ProcessTable.snapshot().first {
             $0.identity.pid == external.processIdentifier
         })
         let supervisor = try ProcessSupervisor()
         _ = try await ready((try await start("stubborn", supervisor: supervisor)).terminal)
-        #expect((await supervisor.shutdown(graceSeconds: 0.03)).succeeded)
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
         let after = try #require(ProcessTable.snapshot().first {
             $0.identity.pid == external.processIdentifier
         })
@@ -150,7 +164,7 @@ struct ProcessLifecycleTests {
         external.executableURL = URL(fileURLWithPath: "/bin/sleep")
         external.arguments = ["30"]
         try external.run()
-        defer { external.terminate(); external.waitUntilExit() }
+        defer { killAndReap(external) }
         let record = try #require(ProcessTable.snapshot().first {
             $0.identity.pid == external.processIdentifier
         })

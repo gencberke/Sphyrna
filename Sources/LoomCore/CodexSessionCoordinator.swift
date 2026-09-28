@@ -101,6 +101,7 @@ public actor CodexSessionCoordinator {
 
     public func unbind(runID: UUID) async {
         await router.remove(runID: runID)
+        await adapter.clearAmbiguousThreads(runID: runID)
         pendingRequests.removeAll { $0.binding.managedRunID == runID }
     }
 
@@ -188,8 +189,8 @@ public actor CodexSessionCoordinator {
                     workingDirectory: identity.workingDirectory
                         ?? previous.workingDirectory
                 ))
-            case let .ambiguous(candidates):
-                try await adapter.markAmbiguous(candidates)
+            case let .ambiguous(candidates, threadID):
+                try await adapter.markAmbiguous(candidates, threadID: threadID)
             case .unmatched:
                 break
             }
@@ -200,10 +201,16 @@ public actor CodexSessionCoordinator {
 
     private func registerStopHooks(runID: UUID, threadID: String) async throws {
         let client = self.client
+        let adapter = self.adapter
         try await supervisor.registerStopHooks(
             runID: runID,
             hooks: ManagedRunStopHooks(
-                prepare: { try await client.stopThreadWork(threadID) },
+                prepare: {
+                    try await adapter.verifyAmbiguousStop(runID: runID) {
+                        try await client.readThread($0)
+                    }
+                    try await client.stopThreadWork(threadID)
+                },
                 completed: { try await client.unsubscribe(threadID: threadID) }
             )
         )

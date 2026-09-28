@@ -383,3 +383,64 @@ CP2 kapanmadan önce aşağıdaki üç madde kapatılmalı.
    - Kabul: sentetik `systemError` ve `notLoaded` durumlarıyla stop başarılı olur ve TUI kapanır.
 
 **Not:** Review'da düz `swift test` de bir kez derlendi ve çalıştı. Makro eklentisinin bulunamaması ortama bağlı ve ara ara görülüyor. Belgelenmiş eklentili komut kullanılmaya devam edilmeli (agents/README.md).
+
+## 25. §24 kapanışı (28 Eylül 2026)
+
+| §24 kabul maddesi | Sonuç | Kanıt |
+| --- | --- | --- |
+| 1. Kararlı tam test paketi ve sınırlı reap | **Doğrulandı** | `ProcessLifecycleTests` dış süreci `SIGKILL` + sınırlı `waitpid(WNOHANG)` ile temizliyor. Süreç başlatan suite'lerde her teste yayılan 1 dakikalık sınır var. `ProcessSupervisor` son `SIGKILL` sonrasında en çok 1,5 saniye yeniden örnekliyor; zombi süreçleri canlı `remaining` olarak raporlamıyor. Dar başarı süreleri 0,2 saniyeye çıkarıldı. Aşağıdaki 10 ardışık tam paket çalıştırmasının her biri 88 testi/10 suite'i geçti; hiçbir test veya komut zaman sınırına takılmadı. |
+| 2. Belirsiz `/new` sonrası stop | **Doğrulandı** | Yönlendirici belirsiz olayla yeni thread kimliğini taşıyor; adaptör aday run başına kimlikleri saklıyor. Durdurma kancası aktif belirsiz thread için hata döndürüyor; oturumun TUI süreci açık kalıyor ve rapor yeni sohbetin başka oturuma ait olabileceğini ve hâlâ çalıştığını söylüyor. Sentetik olay ve stop testi `ambiguousNewThreadBlocksBothSameDirectorySessions`, aşağıdaki tüm çalıştırmalarda geçti. |
+| 3. `systemError` / `notLoaded` stop | **Doğrulandı** | Bu durumlarda aktif tur beklenmiyor; arka plan terminali kapatılıp sıfır sayısı doğrulandıktan sonra TUI durduruluyor. Her iki sentetik durumun süreçli testi `failedCodexThreadStatusesStopBackgroundWorkAndTUI`, aşağıdaki tüm çalıştırmalarda geçti. |
+| Başarısız kabul maddesi | **Yok** | 10 tekrarda test başarısızlığı veya zaman aşımı yok. |
+| Doğrulanmayan kapsam | **Canlı sağlayıcı davranışı** | Bu kapanışta gerçek Codex app-server oturumu çalıştırılmadı; §24 kabulü sentetik durumlar istiyordu. |
+
+Tam paket komutu: `swift test -j 1 -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib`. Her komuta 90 saniyelik dış sınır uygulandı; loglar `/tmp/loom-cp2-section-25/` altında. Süreler derleme/planlama dahil toplam komut süresidir.
+
+| Tekrar | Run kimliği | Sonuç | Süre |
+| --- | --- | --- | --- |
+| 1 | `AA4752B4-16A6-4269-BEBA-2B63D2E97891` | Geçti | 39,16 sn |
+| 2 | `95D9E4F0-5713-4513-A14A-B49B353B07A0` | Geçti | 15,96 sn |
+| 3 | `E02F8B62-5698-4FC1-A1E4-054FA06C4B40` | Geçti | 16,05 sn |
+| 4 | `282D6D5E-C038-4EC6-ACAB-765591D1FFE3` | Geçti | 36,65 sn |
+| 5 | `9222E6BC-D6FD-42BD-B05C-D86AA0D85EC5` | Geçti | 36,52 sn |
+| 6 | `C9B53DD6-55B4-4D29-AC2E-F553FCB7AC69` | Geçti | 15,95 sn |
+| 7 | `964A4B31-94CB-4AB4-B09A-FDAB8A05A1F7` | Geçti | 36,58 sn |
+| 8 | `B738FA65-2CFF-496B-9823-CDE49B44A90F` | Geçti | 37,12 sn |
+| 9 | `85BAA288-992A-4FCF-87C6-E20013F34676` | Geçti | 15,91 sn |
+| 10 | `20B72CD8-3E87-4AD3-8E66-DB33E668734B` | Geçti | 38,31 sn |
+
+`swift build` ve `git diff --check` başarılı. §24'ün üç kabul maddesi karşılandı; CP2 kapandı. Bu dilimin değişiklikleri review için commit edilmeden bırakıldı.
+
+## 26. Review: §25 kapanışı (28 Eylül 2026)
+
+Üç düzeltme kodda doğrulandı:
+
+- **Reap beklemesi:** Son `SIGKILL` sonrasında en fazla 1,5 sn yeniden örnekleniyor; zombiler canlı süreç sayılmıyor (`ProcessSupervisor.terminate`).
+- **Belirsiz thread:** Belirsiz thread aktifken oturum durdurma başarısız raporlanıyor (`ProviderSessionAdapters.verifyAmbiguousStop`). Quit bundan etkilenmiyor; tam çıkış sağlayıcı durdurma kancalarını çağırmıyor.
+- **Hata durumları:** `systemError` ve `notLoaded` durumları "aktif tur yok" sayılıyor (`CodexThreadSnapshot.hasNoActiveTurn`).
+
+§25'teki 10 kayıtta test süresi her seferinde yaklaşık 15 sn. Toplam komut süresindeki 16/37 sn farkı testlerden değil, SwiftPM'in kendi ek yükünden geliyor.
+
+1. **Engelleyici: tam test paketi hâlâ ara ara sonsuza kadar takılıyor.**
+   - **Gözlem:** Review'da tam paket, `agents/README.md`'deki belgelenmiş eklentili komutla (`-j 1` olmadan) 5 kez çalıştırıldı; 2'si 120 sn'lik dış sınıra takıldı. Dış komut öldürüldükten sonra sahipsiz kalan `swiftpm-testing-helper` süreçleri 4,5 dakika sonra hâlâ bekliyordu.
+   - **`sample` çıktısı:** Tek iş parçacığı var ve ana kuyruk boşta. Yani test, hiç devam ettirilmeyen bir bekleme noktasında (continuation) askıda.
+   - **Zaman sınırı neden kesmiyor:** Suite'lerdeki `.timeLimit(.minutes(1))` bunu kesemiyor, çünkü iptali gözlemeyen `withCheckedContinuation` beklemeleri iptal edilemez.
+   - **§25 sonucuyla fark:** §25'in 10/10 sonucu `swift test -j 1` ile alındı. Farkın nedeni kanıtlanmadı; kabul, belgelenmiş komutla sağlanmalı.
+   - **Takılan test belirlenemedi:** Review sırasında araç izinleri geçici olarak engellendiği için takılan testin adı kayıtta yakalanamadı.
+   - **Olası kaynak (kodda görüldü, doğrulanmadı):**
+     - `EventDrivenPTYProcess.finish` içindeki `processExit.wait()` süresiz bekliyor.
+     - `reapIfExited`, çıkış olayında `waitpid(WNOHANG)` 0 dönerse tekrar denemiyor; ikinci bir çıkış olayı da gelmiyor (`EventDrivenPTYProcess.swift:205-216`).
+     - Çıkış bildirimi ile sürecin toplanabilir olması arasında kısa bir aralık varsa latch hiç tamamlanmaz. CP1'deki "zombie ama `waitpid(WNOHANG)` henüz dönmüyor" gözlemi bununla uyumlu.
+     - Aynı yol üründe `stop`'u ve Quit'i de süresiz bekletebilir.
+   - **Beklenen:**
+     - Takılan test Swift Testing'in `started` satırlarıyla belirlenir ve kayda geçer.
+     - Çıkış olayı geldiğinde süreç henüz toplanamıyorsa, kısa aralıklarla ve sınırlı süre yeniden denenir.
+     - `finish` ve diğer latch beklemeleri süre sınırlı ve iptali gözleyen hale gelir; süre aşımı başarı değil, hata olarak raporlanır.
+   - **Kabul:**
+     - Belgelenmiş komutla (`-j 1` olmadan), her biri dış süre sınırı altında, tam paket arka arkaya 20 kez takılmadan geçer.
+     - Hiçbir çalıştırmadan sonra sahipsiz `swiftpm-testing-helper` ya da fixture kalmaz.
+     - Kök neden bulunduysa, ona karşı yazılan regresyon testi düzeltme olmadan başarısız olmalıdır.
+2. **Bilgi, pencere dilimine girdi.** Lider kendiliğinden çıktığında (`/exit`) sağlayıcı işinin durdurulması doğrulanamazsa (örneğin aktif bir belirsiz thread varsa):
+   - Stop başarısız raporlanıyor ve `currentRun` kalıyor; oturum yeniden açılamıyor.
+   - Arayüzde "durdurma doğrulanamadı" durumu gerekecek.
+   - Kullanıcıya "tekrar dene" ve "yine de kapat" seçenekleri sunulmalı; ikincisinin sonucu rapora dürüstçe yazılmalı.

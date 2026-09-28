@@ -25,7 +25,7 @@ private final class HookEnvelopeCollector: @unchecked Sendable {
     }
 }
 
-@Suite(.serialized)
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct ClaudeHookTests {
     @Test func authenticatedUnixSocketDeliversOnlyValidMessages() throws {
         let root = URL(fileURLWithPath: "/tmp/lh-\(UUID().uuidString.prefix(8))", isDirectory: true)

@@ -868,7 +868,19 @@ public actor ProcessSupervisor {
             } while ProcessInfo.processInfo.systemUptime < deadline
             if remaining.isEmpty { break }
         }
-        do { remaining = try sample() }
+        // SIGKILL is asynchronous. Give killed processes a bounded chance to
+        // exit and be reaped before deciding whether live work remains.
+        let reapDeadline = ProcessInfo.processInfo.systemUptime + 1.5
+        while remaining.contains(where: { !$0.zombie }),
+              ProcessInfo.processInfo.systemUptime < reapDeadline {
+            try? await Task.sleep(for: .milliseconds(10))
+            do { remaining = try sample() }
+            catch {
+                errors.append(String(describing: error))
+                break
+            }
+        }
+        do { remaining = try sample().filter { !$0.zombie } }
         catch { errors.append(String(describing: error)) }
         return (attempts, remaining, errors)
     }

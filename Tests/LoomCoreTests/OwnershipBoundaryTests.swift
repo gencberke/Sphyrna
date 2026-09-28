@@ -5,7 +5,7 @@ import Testing
 
 private final class OwnershipTestBundleAnchor: NSObject {}
 
-@Suite(.serialized)
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct OwnershipBoundaryTests {
     @Test func foreignUIDDescendantsAreReportedAndNeverSelectedForSignals() throws {
         let leader = ProcessIdentity(pid: 2_000_001, startSeconds: 1, startMicroseconds: 0)

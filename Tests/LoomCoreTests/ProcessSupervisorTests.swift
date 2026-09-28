@@ -29,7 +29,27 @@ private final class CountingOutputSink: TerminalOutputSink, @unchecked Sendable 
     }
 }
 
-@Suite(.serialized)
+private actor StoppedCodexFixture {
+    let status: CodexThreadStatus
+    private var terminalIDs = ["background-one"]
+
+    init(status: CodexThreadStatus) { self.status = status }
+
+    func read(_ threadID: String) -> CodexThreadSnapshot {
+        CodexThreadSnapshot(
+            threadID: threadID, lastTurnID: nil, lastTurnStartedAt: nil,
+            lastTurnOutcome: nil, lastAssistantMessage: nil, status: status
+        )
+    }
+
+    func terminals(_ threadID: String) -> [String] { terminalIDs }
+
+    func terminate(_ threadID: String, processID: String) {
+        terminalIDs.removeAll { $0 == processID }
+    }
+}
+
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct ProcessSupervisorTests {
     private var childPath: String {
         Bundle(for: SupervisorTestBundleAnchor.self).bundleURL.deletingLastPathComponent()
@@ -101,7 +121,7 @@ struct ProcessSupervisorTests {
         }
         try await Task.sleep(for: .milliseconds(50))
         #expect(terminals.allSatisfy { $0.scrollback?.allocatedByteCount == 0 })
-        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     @Test func managedRunMarkerIsDistinctFromAppOwnershipRun() async throws {
@@ -129,7 +149,7 @@ struct ProcessSupervisorTests {
         let firstDescendant = try #require(first["descendantPID"] as? Int32)
         let secondLeader = try #require(second["pid"] as? Int32)
 
-        let report = try await supervisor.stop(sessionID: firstID, graceSeconds: 0.05)
+        let report = try await supervisor.stop(sessionID: firstID, graceSeconds: 0.2)
         #expect(report.succeeded)
         let snapshot = try ProcessTable.snapshot()
         #expect(!snapshot.contains { [firstLeader, firstDescendant].contains($0.identity.pid) && !$0.zombie })
@@ -140,7 +160,7 @@ struct ProcessSupervisorTests {
         #expect(stoppedSession?.currentRun == nil)
         #expect(runningSession?.currentRun != nil)
 
-        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     @Test func unverifiedProviderStopLeavesRunAlive() async throws {
@@ -161,7 +181,7 @@ struct ProcessSupervisorTests {
             )
         )
         let failed = try await supervisor.stop(
-            sessionID: sessionID, graceSeconds: 0.05
+            sessionID: sessionID, graceSeconds: 0.2
         )
         #expect(!failed.succeeded)
         #expect(failed.signals.isEmpty)
@@ -171,9 +191,9 @@ struct ProcessSupervisorTests {
             hooks: ManagedRunStopHooks(prepare: {}, completed: {})
         )
         #expect((try await supervisor.stop(
-            sessionID: sessionID, graceSeconds: 0.05
+            sessionID: sessionID, graceSeconds: 0.2
         )).succeeded)
-        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     @Test func outputAndLeaderExitAreDeliveredWithoutSampling() async throws {
@@ -291,7 +311,7 @@ struct ProcessSupervisorTests {
             arguments: ["stubborn"], environment: environment
         )
         _ = try await ready(terminal: second.terminal)
-        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     @Test func launchRequiresTheMatchingConversationMarker() async throws {
@@ -327,7 +347,7 @@ struct ProcessSupervisorTests {
         let launch = try await launch("stubborn", sessionID: sessionID, supervisor: supervisor)
         _ = try await ready(terminal: launch.terminal)
 
-        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
         let runs = try await catalog.runs()
         let run = try #require(runs.first)
         #expect(runs.count == 1)
@@ -416,10 +436,10 @@ struct ProcessSupervisorTests {
             _ = try await ready(terminal: launch.terminal)
         }
         let started = ProcessInfo.processInfo.systemUptime
-        let report = await supervisor.shutdown(graceSeconds: 0.05)
+        let report = await supervisor.shutdown(graceSeconds: 0.2)
         let elapsed = ProcessInfo.processInfo.systemUptime - started
         #expect(report.succeeded)
-        #expect(elapsed < 0.75)
+        #expect(elapsed < 2.5)
         var perSessionSignalCount = 0
         for sessionID in sessionIDs {
             let sessionReport = await supervisor.lastStopReport(sessionID: sessionID)
@@ -427,6 +447,48 @@ struct ProcessSupervisorTests {
             perSessionSignalCount += sessionReport?.signals.count ?? 0
         }
         #expect(report.signals.count == perSessionSignalCount)
+    }
+
+    @Test func failedCodexThreadStatusesStopBackgroundWorkAndTUI() async throws {
+        for status in [CodexThreadStatus.systemError, .notLoaded] {
+            let supervisor = try ProcessSupervisor(
+                ledger: OwnershipLedger(coalition: .probe(forceFailure: true))
+            )
+            let sessionID = UUID()
+            let launch = try await launch(
+                "stubborn", sessionID: sessionID, supervisor: supervisor,
+                provider: .codex
+            )
+            _ = try await ready(terminal: launch.terminal)
+            let runID = try #require(launch.session.currentRun?.id)
+            let fixture = StoppedCodexFixture(status: status)
+            try await supervisor.registerStopHooks(
+                runID: runID,
+                hooks: ManagedRunStopHooks(
+                    prepare: {
+                        try await CodexAppServerClient.stopThreadWork(
+                            "failed-thread",
+                            read: { await fixture.read($0) },
+                            terminals: { await fixture.terminals($0) },
+                            interrupt: { _, _ in
+                                throw LoomError.message("Unexpected active turn")
+                            },
+                            terminate: { await fixture.terminate($0, processID: $1) }
+                        )
+                    },
+                    completed: {}
+                )
+            )
+            let report = try await supervisor.stop(
+                sessionID: sessionID, graceSeconds: 0.2
+            )
+            #expect(report.succeeded)
+            #expect(await fixture.terminals("failed-thread").isEmpty)
+            #expect(await supervisor.session(id: sessionID)?.currentRun == nil)
+            #expect(try !ProcessTable.snapshot().contains {
+                $0.identity.pid == launch.terminal.pid && !$0.zombie
+            })
+        }
     }
 
     @Test func claudeClearAndResumeMoveOneRunAcrossDurableConversations() async throws {
@@ -485,7 +547,7 @@ struct ProcessSupervisorTests {
         #expect(await supervisor.session(id: launchSessionID)?.currentRun?.id == runID)
         #expect(await supervisor.session(id: clearedSessionID)?.currentRun == nil)
         #expect((try await catalog.runSessionLinks(runID: runID)).count == 3)
-        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     @Test func lateClaudeEventCannotMutateRelaunchedConversation() async throws {
@@ -505,7 +567,7 @@ struct ProcessSupervisorTests {
             providerSessionID: "claude-one", event: "UserPromptSubmit"
         )
         _ = try await claude.receive(oldPrompt)
-        #expect((try await supervisor.stop(sessionID: sessionID, graceSeconds: 0.05)).succeeded)
+        #expect((try await supervisor.stop(sessionID: sessionID, graceSeconds: 0.2)).succeeded)
 
         let environment = LaunchEnvironment.make(
             path: "/usr/bin:/bin", runID: supervisor.ownershipRunID,
@@ -520,7 +582,7 @@ struct ProcessSupervisorTests {
         #expect(newRunID != oldRunID)
         #expect(try await claude.receive(oldPrompt) == .staleRun)
         #expect(await claude.status(sessionID: sessionID) == ClaudeSessionStatus())
-        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     @Test func codexBindingAndNewThreadPreserveOldConversation() async throws {
@@ -571,7 +633,7 @@ struct ProcessSupervisorTests {
             )), runID: runID
         ) == .staleSequence)
         #expect((try await catalog.runSessionLinks(runID: runID)).count == 2)
-        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     @Test func unexpectedProviderExitArchivesUnknownInsteadOfSuccess() async throws {
@@ -621,7 +683,7 @@ struct ProcessSupervisorTests {
         #expect(try await catalog.sessions().isEmpty)
         #expect(try await catalog.runs().isEmpty)
         #expect((try await supervisor.stop(
-            sessionID: service.id, graceSeconds: 0.05
+            sessionID: service.id, graceSeconds: 0.2
         )).succeeded)
         try await supervisor.discardInternalSession(service.id)
         #expect((await supervisor.shutdown()).succeeded)
@@ -657,7 +719,7 @@ struct ProcessSupervisorTests {
                 provider: .codex, conversationID: "same-thread"
             ))
         }
-        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     @Test func inTUIResumeCannotClaimAnotherLiveClaudeConversation() async throws {
@@ -699,7 +761,7 @@ struct ProcessSupervisorTests {
         #expect(await supervisor.activeSessionID(runID: firstRun) == firstID)
         #expect(await supervisor.activeSessionID(runID: secondRun) == secondID)
         #expect(await claude.status(sessionID: secondID)?.providerSessionID == nil)
-        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
     private func claudeEnvelope(
