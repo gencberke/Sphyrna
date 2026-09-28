@@ -9,6 +9,7 @@ public actor CodexSessionCoordinator {
 
     private let client: CodexAppServerClient
     private let supervisor: ProcessSupervisor
+    private let adapter: CodexSessionAdapter
     private let router: CodexSessionRouter
     private let requestContinuation: AsyncStream<CodexServerRequest>.Continuation
     private var consumerTask: Task<Void, Never>?
@@ -22,10 +23,12 @@ public actor CodexSessionCoordinator {
 
     public init(
         client: CodexAppServerClient, supervisor: ProcessSupervisor,
+        adapter: CodexSessionAdapter,
         router: CodexSessionRouter = CodexSessionRouter()
     ) {
         self.client = client
         self.supervisor = supervisor
+        self.adapter = adapter
         self.router = router
         var continuation: AsyncStream<CodexServerRequest>.Continuation!
         requests = AsyncStream(bufferingPolicy: .bufferingNewest(256)) {
@@ -84,10 +87,12 @@ public actor CodexSessionCoordinator {
         workingDirectory: String
     ) async throws {
         let sequence = await client.latestSequence()
-        try await supervisor.bindCodexThread(
+        try await adapter.bind(
             sessionID: sessionID, runID: managedRunID,
             threadID: threadID, after: sequence
         )
+        try await supervisor.setIdentityState(.known, runID: managedRunID)
+        try await registerStopHooks(runID: managedRunID, threadID: threadID)
         await router.register(CodexRunBinding(
             sessionID: sessionID, managedRunID: managedRunID,
             threadID: threadID, workingDirectory: workingDirectory
@@ -116,7 +121,7 @@ public actor CodexSessionCoordinator {
         let pending = pendingRequests[index]
         try await client.respond(id: request.id, result: result)
         pendingRequests.remove(at: index)
-        _ = await supervisor.resolveCodexRequest(
+        _ = await adapter.resolveRequest(
             runID: pending.binding.managedRunID,
             requestSequence: pending.sequence
         )
@@ -127,14 +132,20 @@ public actor CodexSessionCoordinator {
         do {
             switch decision {
             case let .initialLaunchMatched(binding, sequence):
-                try await supervisor.bindCodexThread(
+                try await adapter.bind(
                     sessionID: binding.sessionID,
                     runID: binding.managedRunID,
                     threadID: binding.threadID, after: sequence
                 )
+                try await supervisor.setIdentityState(
+                    .known, runID: binding.managedRunID
+                )
+                try await registerStopHooks(
+                    runID: binding.managedRunID, threadID: binding.threadID
+                )
                 await router.register(binding)
             case let .routed(binding):
-                let disposition = try await supervisor.receiveCodexEvent(
+                let disposition = try await adapter.receive(
                     inbound, runID: binding.managedRunID
                 )
                 guard disposition == .applied else { return }
@@ -160,9 +171,15 @@ public actor CodexSessionCoordinator {
                 switch inbound {
                 case let .event(value, _), let .request(value, _): sequence = value
                 }
-                let newSessionID = try await supervisor.transitionCodexConversation(
+                let newSessionID = try await adapter.transition(
                     runID: previous.managedRunID, to: identity.id,
                     after: sequence
+                )
+                try await supervisor.setIdentityState(
+                    .known, runID: previous.managedRunID
+                )
+                try await registerStopHooks(
+                    runID: previous.managedRunID, threadID: identity.id
                 )
                 await router.register(CodexRunBinding(
                     sessionID: newSessionID,
@@ -172,16 +189,24 @@ public actor CodexSessionCoordinator {
                         ?? previous.workingDirectory
                 ))
             case let .ambiguous(candidates):
-                recordedIssues.append(
-                    "Ambiguous Codex thread start for runs: "
-                    + candidates.map { $0.managedRunID.uuidString }.joined(separator: ",")
-                )
+                try await adapter.markAmbiguous(candidates)
             case .unmatched:
                 break
             }
         } catch {
             recordedIssues.append(String(describing: error))
         }
+    }
+
+    private func registerStopHooks(runID: UUID, threadID: String) async throws {
+        let client = self.client
+        try await supervisor.registerStopHooks(
+            runID: runID,
+            hooks: ManagedRunStopHooks(
+                prepare: { try await client.stopThreadWork(threadID) },
+                completed: { try await client.unsubscribe(threadID: threadID) }
+            )
+        )
     }
 
     private func hydrateIdleThread(
@@ -193,7 +218,7 @@ public actor CodexSessionCoordinator {
         // Use the status event being hydrated as the barrier. The client's
         // latest sequence may already include events buffered behind this
         // coordinator call; advancing to it would incorrectly discard them.
-        _ = try await supervisor.refreshCodexThread(
+        _ = try await adapter.refresh(
             thread, runID: binding.managedRunID, after: sequence,
             backgroundTerminalCount: terminalCount
         )

@@ -14,7 +14,7 @@ struct Probe {
         // Probe exclusivity before recovery or shell resolution launches any children.
         _ = CoalitionCapability.current
         let args = Array(CommandLine.arguments.dropFirst())
-        if ["prepare", "capabilities", "synthetic", "crash-fixture", "recover-stale", "experiment", "codex-core-client", "codex-core-resume", "idle-metrics"].contains(args.first ?? "") {
+        if ["prepare", "capabilities", "synthetic", "crash-fixture", "recover-stale", "experiment", "codex-core-client", "codex-core-resume", "codex-core-recall", "codex-core-active-quit", "codex-two-stop", "claude-core-q1", "idle-metrics"].contains(args.first ?? "") {
             try recoverStaleRuns(root: root)
         }
         if args.first == "recover-stale" { return }
@@ -38,6 +38,33 @@ struct Probe {
             let result = try blockingAwait {
                 try await codexCoreResume(root: root, threadID: args[1])
             }
+            print(result.path)
+            return
+        }
+        if args.first == "codex-core-recall", args.count == 2 {
+            let result = try blockingAwait {
+                try await codexCoreResume(
+                    root: root, threadID: args[1],
+                    prompt: "What exact all-caps token did you reply with in the completed turn before the interrupted command? Reply only with that token. Do not use tools."
+                )
+            }
+            print(result.path)
+            return
+        }
+        if args.first == "codex-core-active-quit", args.count == 2 {
+            let result = try blockingAwait {
+                try await codexCoreActiveQuit(root: root, threadID: args[1])
+            }
+            print(result.path)
+            return
+        }
+        if args.first == "codex-two-stop" {
+            let result = try blockingAwait { try await codexTwoSessionStop(root: root) }
+            print(result.path)
+            return
+        }
+        if args.first == "claude-core-q1" {
+            let result = try blockingAwait { try await claudeCoreQ1(root: root) }
             print(result.path)
             return
         }
@@ -292,7 +319,10 @@ struct Probe {
         }
     }
 
-    static func codexCoreResume(root: URL, threadID: String) async throws -> URL {
+    static func codexCoreResume(
+        root: URL, threadID: String,
+        prompt: String = "Reply exactly CODEX_CORE_OK. Do not use tools."
+    ) async throws -> URL {
         let ledger = OwnershipLedger()
         let directory = root.appendingPathComponent("runs/\(ledger.runID.uuidString)")
         try FileManager.default.createDirectory(
@@ -347,8 +377,9 @@ struct Probe {
             )
             try await supervisor.createSession(session)
             let client = try await manager.acquire(for: session.id)
+            let adapter = CodexSessionAdapter(supervisor: supervisor)
             let coordinator = CodexSessionCoordinator(
-                client: client, supervisor: supervisor
+                client: client, supervisor: supervisor, adapter: adapter
             )
             await coordinator.start()
             let environment = LaunchEnvironment.make(
@@ -378,18 +409,18 @@ struct Probe {
                 queryBuffer: &queryBuffer
             )
             _ = try await launch.terminal.write(
-                Data("Reply exactly CODEX_CORE_OK. Do not use tools.".utf8)
+                Data(prompt.utf8)
             )
             try await Task.sleep(for: .milliseconds(300))
             _ = try await launch.terminal.write(Data("\r".utf8))
             let deadline = ProcessInfo.processInfo.systemUptime + 20
-            var status = await supervisor.codexStatus(sessionID: session.id)
+            var status = await adapter.status(sessionID: session.id)
             repeat {
                 try await pumpCodexTerminal(
                     launch.terminal, seconds: 0.1, output: &terminalOutput,
                     queryBuffer: &queryBuffer
                 )
-                status = await supervisor.codexStatus(sessionID: session.id)
+                status = await adapter.status(sessionID: session.id)
                 if status?.lastAssistantMessage?.contains("CODEX_CORE_OK") == true { break }
             } while ProcessInfo.processInfo.systemUptime < deadline
             try terminalOutput.write(to: directory.appendingPathComponent("terminal.txt"))
@@ -465,8 +496,16 @@ struct Probe {
             at: directory, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
+        let catalog = try SessionCatalog(
+            url: directory.appendingPathComponent("sessions.sqlite3")
+        )
         let supervisor = try ProcessSupervisor(
-            ledger: ledger, ledgerURL: directory.appendingPathComponent("ledger.json")
+            ledger: ledger, ledgerURL: directory.appendingPathComponent("ledger.json"),
+            catalog: catalog
+        )
+        let lifecycle = SessionLifecycleController(
+            supervisor: supervisor, catalog: catalog,
+            policy: SessionIdlePolicy(idleAfter: 3_600)
         )
         guard let owner = try ProcessTable.snapshot().first(where: {
             $0.identity.pid == getpid()
@@ -495,6 +534,7 @@ struct Probe {
                     arguments: ["stubborn", "--silent"], environment: environment
                 ).terminal)
             }
+            try await lifecycle.startAutomaticEvaluation()
             try await Task.sleep(for: .milliseconds(250))
             let before = try ProcessTable.resourceUsage(pid: getpid())
                 ?? { throw LoomError.message("Process usage unavailable") }()
@@ -525,10 +565,14 @@ struct Probe {
                 "scrollbackAllocatedBytes": .number(Double(
                     terminals.reduce(0) { $0 + ($1.scrollback?.allocatedByteCount ?? 0) }
                 )),
+                "idleTimerFires": .number(Double(
+                    await lifecycle.timerFireCount()
+                )),
             ]
             try encoder.encode(result).write(
                 to: directory.appendingPathComponent("idle-metrics.json"), options: .atomic
             )
+            await lifecycle.stopAutomaticEvaluation()
             let shutdown = await supervisor.shutdown(graceSeconds: 0.05)
             try encoder.encode(shutdown).write(
                 to: directory.appendingPathComponent("shutdown.json"), options: .atomic

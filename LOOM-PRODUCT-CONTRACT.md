@@ -29,6 +29,7 @@ Loom'un güvenilirliği, az kaynak tüketimiyle birlikte değerlendirilir. Yaln�
 | `design/` | Referans görseller ve `legacy-code/` altındaki eski Swift arayüz kaynakları. Eski çizim kodunun, terminal motorunun veya mimarinin aynen kullanılması şart değil. |
 | `assets/` | Uygulama simgesi, sağlayıcı simgeleri ve `brand/` altında marka kaynakları ile telif notları. |
 | `plans/` | Checkpoint planları ve sonuçları. |
+| [`agents/`](agents/README.md) | Ajan rolleri (reviewer, implementer, optimizer) ve plan dosyaları üzerinden çalışma protokolü. |
 
 İlk araştırma raporu, eski spec ve Herdr kaldırma kaydı bu dosyaya ve görsel sözleşmeye taşındıktan sonra repodan çıkarıldı.
 

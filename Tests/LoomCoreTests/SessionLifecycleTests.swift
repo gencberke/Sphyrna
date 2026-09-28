@@ -27,7 +27,7 @@ struct SessionLifecycleTests {
         try await makeClaudeQuiet(
             launchSessionID: firstID,
             runID: try #require(first.session.currentRun?.id),
-            conversationID: "claude-conversation", supervisor: context.supervisor
+            conversationID: "claude-conversation", adapter: context.claude
         )
         try await context.lifecycle.captureProcessBaseline(sessionID: firstID)
         try await context.catalog.markUsed(
@@ -84,7 +84,7 @@ struct SessionLifecycleTests {
             sessionID: sessionID, at: Date(timeIntervalSince1970: 10),
             reactivate: true
         )
-        _ = try await context.supervisor.receiveClaudeHook(try hook(
+        _ = try await context.claude.receive(try hook(
             launchSessionID: sessionID, runID: runID,
             conversationID: "claude-busy", event: "Stop",
             fields: ["background_tasks": [["id": "task"]]]
@@ -106,7 +106,7 @@ struct SessionLifecycleTests {
         })
         #expect(await context.supervisor.session(id: sessionID)?.currentRun != nil)
 
-        _ = try await context.supervisor.receiveClaudeHook(try hook(
+        _ = try await context.claude.receive(try hook(
             launchSessionID: sessionID, runID: runID,
             conversationID: "claude-busy", event: "PermissionRequest"
         ))
@@ -133,7 +133,7 @@ struct SessionLifecycleTests {
         let runID = try #require(launch.session.currentRun?.id)
         try await makeClaudeQuiet(
             launchSessionID: sessionID, runID: runID,
-            conversationID: "claude-race", supervisor: context.supervisor
+            conversationID: "claude-race", adapter: context.claude
         )
         try await context.lifecycle.captureProcessBaseline(sessionID: sessionID)
         try await context.catalog.markUsed(
@@ -244,10 +244,155 @@ struct SessionLifecycleTests {
         #expect(codexID == "missing")
     }
 
+    @Test func ambiguousNewThreadBlocksBothSameDirectorySessions() async throws {
+        let context = try await makeContext(idleAfter: 1)
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        let adapter = CodexSessionAdapter(supervisor: context.supervisor)
+        let router = CodexSessionRouter()
+        var bindings: [CodexRunBinding] = []
+        for index in 0..<2 {
+            let plannedRunID = UUID(uuidString: [
+                "22222222-2222-4222-8222-000000000001",
+                "22222222-2222-4222-8222-000000000002",
+            ][index])!
+            let session = ManagedSession(
+                provider: .codex, workingDirectory: context.root.path
+            )
+            try await context.supervisor.createSession(session)
+            let environment = LaunchEnvironment.make(
+                path: "/usr/bin:/bin",
+                runID: context.supervisor.ownershipRunID, sessionID: session.id
+            )
+            let launch = try await context.supervisor.launch(
+                sessionID: session.id, executable: childPath,
+                arguments: ["stubborn"], environment: environment,
+                managedRunID: plannedRunID
+            )
+            _ = try await ready(launch.terminal)
+            let runID = try #require(launch.session.currentRun?.id)
+            let binding = CodexRunBinding(
+                sessionID: session.id, managedRunID: runID,
+                threadID: "old-\(index)", workingDirectory: context.root.path
+            )
+            bindings.append(binding)
+            try await adapter.bind(
+                sessionID: session.id, runID: runID,
+                threadID: binding.threadID, after: 0
+            )
+            try await context.supervisor.updateProviderWorkState(
+                runID: runID, state: ProviderWorkState(activity: .turnComplete)
+            )
+            try await context.lifecycle.captureProcessBaseline(sessionID: session.id)
+            try await context.catalog.markUsed(
+                sessionID: session.id, at: Date(timeIntervalSince1970: 10),
+                reactivate: true
+            )
+            await router.register(binding)
+        }
+        let decision = await router.route(.event(
+            sequence: 10,
+            .threadStarted(CodexThreadIdentity(
+                id: "new-thread", workingDirectory: context.root.path,
+                originator: "loom", source: "vscode"
+            ))
+        ))
+        guard case let .ambiguous(candidates) = decision else {
+            Issue.record("Same-cwd /new was not ambiguous")
+            return
+        }
+        #expect(Set(candidates.map(\.managedRunID))
+                == Set(bindings.map(\.managedRunID)))
+        try await adapter.markAmbiguous(candidates)
+        for binding in bindings {
+            #expect(await context.supervisor.identityState(
+                sessionID: binding.sessionID
+            ) == .ambiguous)
+            let result = try await context.lifecycle.evaluateIdle(
+                sessionID: binding.sessionID,
+                at: Date(timeIntervalSince1970: 20)
+            )
+            guard case let .blocked(blockers) = result else {
+                Issue.record("Ambiguous session was stopped")
+                continue
+            }
+            #expect(blockers.contains(.ambiguousIdentity))
+            #expect(await context.supervisor.session(id: binding.sessionID)?
+                    .currentRun != nil)
+        }
+        let snapshot = await context.supervisor.events.snapshot()
+        #expect(bindings.allSatisfy {
+            snapshot.sessions[$0.sessionID]?.identity == .ambiguous
+        })
+        #expect((await context.supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+    }
+
+    @Test func tenFutureIdleDeadlinesUseOneSleepingTimer() async throws {
+        let context = try await makeContext(idleAfter: 3_600)
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        for _ in 0..<10 {
+            let session = ManagedSession(
+                provider: .synthetic, workingDirectory: context.root.path
+            )
+            try await context.supervisor.createSession(session)
+            let environment = LaunchEnvironment.make(
+                path: "/usr/bin:/bin",
+                runID: context.supervisor.ownershipRunID, sessionID: session.id
+            )
+            let launch = try await context.supervisor.launch(
+                sessionID: session.id, executable: childPath,
+                arguments: ["stubborn"], environment: environment
+            )
+            _ = try await ready(launch.terminal)
+            try await context.lifecycle.captureProcessBaseline(sessionID: session.id)
+        }
+        try await context.lifecycle.startAutomaticEvaluation()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(await context.lifecycle.timerFireCount() == 0)
+        await context.lifecycle.stopAutomaticEvaluation()
+        #expect((await context.supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+    }
+
+    @Test func automaticTimerTransitionsIdleThenStale() async throws {
+        let context = try await makeContext(idleAfter: 0.1, staleAfter: 0.25)
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        let session = ManagedSession(
+            provider: .synthetic, workingDirectory: context.root.path
+        )
+        try await context.supervisor.createSession(session)
+        let environment = LaunchEnvironment.make(
+            path: "/usr/bin:/bin", runID: context.supervisor.ownershipRunID,
+            sessionID: session.id
+        )
+        let launch = try await context.supervisor.launch(
+            sessionID: session.id, executable: childPath,
+            arguments: ["stubborn"], environment: environment
+        )
+        _ = try await ready(launch.terminal)
+        let runID = try #require(launch.session.currentRun?.id)
+        try await context.supervisor.updateProviderWorkState(
+            runID: runID, state: ProviderWorkState(activity: .turnComplete)
+        )
+        try await context.lifecycle.captureProcessBaseline(sessionID: session.id)
+        try await context.lifecycle.startAutomaticEvaluation()
+        let deadline = ProcessInfo.processInfo.systemUptime + 2
+        var lifecycle = try await context.catalog.session(id: session.id)?.lifecycle
+        while lifecycle != .stale,
+              ProcessInfo.processInfo.systemUptime < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+            lifecycle = try await context.catalog.session(id: session.id)?.lifecycle
+        }
+        #expect(lifecycle == .stale)
+        #expect(await context.supervisor.session(id: session.id)?.currentRun == nil)
+        #expect(await context.lifecycle.timerFireCount() >= 1)
+        await context.lifecycle.stopAutomaticEvaluation()
+        #expect((await context.supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+    }
+
     private struct Context {
         let root: URL
         let catalog: SessionCatalog
         let supervisor: ProcessSupervisor
+        let claude: ClaudeSessionAdapter
         let lifecycle: SessionLifecycleController
     }
 
@@ -264,6 +409,7 @@ struct SessionLifecycleTests {
         )
         return Context(
             root: root, catalog: catalog, supervisor: supervisor,
+            claude: ClaudeSessionAdapter(supervisor: supervisor),
             lifecycle: SessionLifecycleController(
                 supervisor: supervisor, catalog: catalog,
                 policy: SessionIdlePolicy(
@@ -324,9 +470,9 @@ struct SessionLifecycleTests {
 
     private func makeClaudeQuiet(
         launchSessionID: UUID, runID: UUID, conversationID: String,
-        supervisor: ProcessSupervisor
+        adapter: ClaudeSessionAdapter
     ) async throws {
-        _ = try await supervisor.receiveClaudeHook(try hook(
+        _ = try await adapter.receive(try hook(
             launchSessionID: launchSessionID, runID: runID,
             conversationID: conversationID, event: "Stop"
         ))

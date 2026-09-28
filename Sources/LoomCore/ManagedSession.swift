@@ -49,6 +49,32 @@ public struct ManagedSessionLaunch: Sendable {
     public let terminal: TerminalEndpoint
 }
 
+public enum SessionIdentityState: String, Equatable, Sendable {
+    case known
+    case ambiguous
+}
+
+public enum ConversationTransition: Sendable {
+    case bind
+    case automatic
+    case new
+    case resume
+}
+
+public struct ManagedRunContext: Sendable {
+    public let launchSessionID: UUID
+    public let activeSessionID: UUID
+    public let session: ManagedSession
+
+    public init(
+        launchSessionID: UUID, activeSessionID: UUID, session: ManagedSession
+    ) {
+        self.launchSessionID = launchSessionID
+        self.activeSessionID = activeSessionID
+        self.session = session
+    }
+}
+
 public struct SessionStopReport: Codable, Sendable {
     public let sessionID: UUID
     public let runID: UUID
@@ -60,6 +86,21 @@ public struct SessionStopReport: Codable, Sendable {
 
     public var succeeded: Bool {
         remaining.isEmpty && errors.isEmpty && outsideOwnership.isEmpty
+    }
+}
+
+/// Optional provider cleanup around one run's OS process stop. A failed
+/// preparation leaves the process alive and makes the stop report unsuccessful.
+public struct ManagedRunStopHooks: Sendable {
+    public let prepare: @Sendable () async throws -> Void
+    public let completed: @Sendable () async throws -> Void
+
+    public init(
+        prepare: @escaping @Sendable () async throws -> Void,
+        completed: @escaping @Sendable () async throws -> Void
+    ) {
+        self.prepare = prepare
+        self.completed = completed
     }
 }
 

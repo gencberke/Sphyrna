@@ -275,7 +275,7 @@ Bu nedenle ürün tek bir “nazik sinyal yeter” iddiası kullanmıyor. Sağla
 
 ## 22. Tamamlanma review'ı (28 Eylül 2026)
 
-Review'da `swift test` 81/81 geçti. §19'daki kanıtlar run kimlikleriyle tutarlı. §16'daki iki not kapanmış: scrollback artık tembel ayrılıyor; gerçek Claude, master kapatılmadan yapılan yeni kapanışta Q1 dahil kalıntısız bitiyor. Gerçek run terminal kayıtlarında Claude `hook error` bildirimi yok. Pencere dilimine geçmeden önce aşağıdaki iki açık kapatılmalı; 3–4 pencere diliminin tasarım girdisidir.
+Review'da `swift test` 81/81 geçti. §19'daki kanıtlar run kimlikleriyle tutarlı. §16'daki iki not kapanmış: scrollback artık tembel ayrılıyor; gerçek Claude, master kapatılmadan yapılan yeni kapanışta Q1 dahil kalıntısız bitiyor. Gerçek run terminal kayıtlarında Claude `hook error` bildirimi yok. Pencere dilimine geçmeden önce aşağıdaki dört açık kapatılmalı; 3–4 pencere diliminin tasarım girdisidir.
 
 1. **Codex tek oturum durdurma, sunucudaki işi büyük olasılıkla durdurmuyor.** Yol (a)'da tur ve komutlar paylaşılan app-server'da çalışır; TUI yalnızca bir istemcidir. `stop` / `stopForIdle` yalnızca TUI süreç ağacını kapatıyor; `turn/interrupt`, `thread/backgroundTerminals/terminate` ya da `thread/unsubscribe` çağrılmıyor (`ProcessSupervisor.swift:619-644`; kaynakta hiçbir çağrı yok). Başka bir Codex oturumu sunucuyu açık tutuyorsa, durdurulan oturumun aktif turu ve başlattığı komutlar (örneğin bir dev server) sunucu altında sürebilir. Stop raporu buna rağmen başarılı döner. Quit'te sunucu kapandığı için sorun yok; idle yolu da arka plan terminali varsa bloklanıyor.
    - **Önce doğrulama:** İki Codex oturumu açılır; birinde uzun bir tur başlatılır (örneğin `sleep 60 && touch <marker>`). Bu oturum, diğeri açıkken durdurulur. Ardından `thread/read`, arka plan terminalleri ve marker ile turun sürüp sürmediğine bakılır.
@@ -316,3 +316,70 @@ Review'da `swift test` 81/81 geçti. §19'daki kanıtlar run kimlikleriyle tutar
    - `swift build`, bütün testler, `git diff --check`.
    - Gerçek sağlayıcı duman testi: Claude ve Codex için Q1 (aktif iş + Quit + yeniden açılış + resume) yeni yapıyla tekrarlanır.
    - Sonuçlar bu dosyada yeni bir §23'e doğrulandı / başarısız / doğrulanmadı olarak, run kimlikleriyle yazılır.
+
+### 22.2. Pencere dilimi için toplanan girdiler
+
+Sonraki dilimin (terminal motoru ve ilk pencere) planı yazılırken kullanılacak, bu checkpoint'te biriken maddeler:
+
+- **Olay akışı ve zamanlayıcı:** §22 madde 4: tek tipli oturum olay akışı ve tek idle zamanlayıcısı. Sidebar yoklama yapmaz.
+- **Terminal motoru:** Terminal motoru seçilir; `TerminalOutputSink` bu motorun girişidir. Motor geçmişi kendisi tutuyorsa byte scrollback ikinci kopya olmamalıdır (§16 madde 1).
+- **Renk bildirimi:** `COLORTERM`, motor destekliyorsa ayarlanır (CP1 §12.4).
+- **GPU deneyi:** Sözleşme §10'daki cam/opak × boşta/çıktı deneyi, görünür ve örtülü pencere koşullarında yapılır. Xcode/Instruments yok; yöntem buna göre seçilir.
+- **Soketler:** Hook ve app-server soketleri kısa, sahibine özel bir dizinde durur (Darwin `sun_path` sınırı; §22 bilgi notu).
+- **Quit sırası:** Hook alıcısı, oturumlardan sonra kapanır. Aksi halde Claude `SessionEnd` hook'u "hook error" bildirimi üretir.
+- **Görünür davranış:** CLI'dan `/exit` ile çıkınca, CLI'ın başlattığı işlerin de kapatıldığı arayüzde görünür olmalı (§16 madde 3).
+- **Dağıtım:** Geliştirme ve günlük kullanım ayrı bundle kimliği ve veri dizini kullanır; sabit yerel imza (sözleşme §9 dersleri). Coalition katmanı yalnızca uygulama LaunchServices ile açıldığında etkindir.
+- **Kullanıcı kararları:**
+  - minimum macOS sürümü,
+  - v1 özellik kapsamı (`design/DESIGN.md` §4 envanterinden seçim),
+  - pencere kapatma düğmesinin davranışı (sözleşme §6).
+
+## 23. CP2 review açıklarının kapanışı (28 Eylül 2026)
+
+Başlangıç çalışma ağacı `a801f21` commit'iyle ayrı kaydedildi. Aşağıdaki dilim commit edilmedi. Deneyler yalnız Loom-Dev probe profili veya `/tmp/loom-cp2-review` altındaki yeni profille yapıldı; gerçek kullanıcı profili ve oturumları kullanılmadı.
+
+| Kabul | Sonuç | Kanıt |
+| --- | --- | --- |
+| 1 — önceki davranışın doğrulanması | **Doğrulandı (açık vardı)** | İki TUI ve paylaşılan sunuculu `F4479222-0801-4AF4-8A46-9F751CC6709C` run'ında A TUI'si kapandıktan 18 saniye sonra `thread/read` A turunu hâlâ `active/waitingOnApproval` gösterdi; B açık kaldı. Komut onay beklediği için bu ilk run marker davranışını **doğrulamadı**. |
+| 1 — düzeltilmiş tek oturum stop | **Doğrulandı** | Ürün `ProcessSupervisor.stop` yoluyla iki oturumlu son run `546CA00D-8157-4CC3-B23A-0664B3996B6E`: A'nın `sleep 12; touch` komutu süreç tablosunda canlı görüldü; stop başarılı, A turu idle, arka plan terminali 0, 14 saniye sonra marker yok; B'nin run'ı ve thread'i çalışıyor, paylaşılan sunucu açık. İlk başarılı uygulama run'ı `C45CF3DA-4793-4821-ADB6-79E8B86EC3DB`. Stop hazırlığı doğrulanmazsa TUI'yi açık bırakıp başarısız raporlayan regresyon testi geçti. Aynı stop fonksiyonu açık stop, `stopForIdle` ve lider çıkışında kullanılıyor. |
+| 2 — aynı cwd'de iki TUI + `/new` | **Doğrulandı** | `ambiguousNewThreadBlocksBothSameDirectorySessions` sentetik olay testi, run kimlikleri `22222222-2222-4222-8222-000000000001` ve `22222222-2222-4222-8222-000000000002`: iki adayın tipli kimlik durumu `ambiguous`, olay akışı görünümü aynı, ikisi de süre dolumunda `.ambiguousIdentity` blocker ile çalışır kaldı. Belirsizlik `recordedIssues` metnine eklenmiyor. |
+| 3 — sağlayıcı adaptörü sınırı | **Doğrulandı** | Claude hook ve Codex app-server durum/kimlik indirgemesi `ClaudeSessionAdapter` ile `CodexSessionAdapter` içinde. `ProcessSupervisor.swift` kaynağında Claude/Codex tipi veya çağrısı yok; genel konuşma, iş durumu ve stop-hook API'leri var. Davranış regresyonları 87/87 geçti; gerçek adaptör yolları Claude Q1 `3C524E3B-4FD9-4457-9405-8802BEA3EA73` ve Codex Q1 `4F02421A-8677-4EE2-86D2-4909DAC2FEFF` ile çalıştı. |
+| 4 — tipli olay akışı ve tek timer | **Doğrulandı** | `SessionEventHub` durum, yaşam döngüsü, kimlik/belirsizlik, run başlangıç/bitiş ve blocker değişimlerini sıralı revision ile yayımlıyor. Tüketici başına son bir frame tutuluyor; frame tüm oturumların son durumunu içeriyor. Hızlı/yavaş tüketici testleri ve otomatik idle→stale testi geçti. On boşta oturum ölçümü `0C79A53D-346D-4CDC-B312-350051D5F035`: 2,057 sn, package idle wakeup **0** (CP2 referansı **0**), idle timer fire **0**, scrollback allocation **0**; CPU %0,000325. |
+| Kapanış — Claude Q1 | **Doğrulandı** | İzole Loom-Dev probe run'ı `3C524E3B-4FD9-4457-9405-8802BEA3EA73`: tamamlanmış `CLAUDE_Q1_3C524E3B` turu, aktif approval sırasında başarılı Quit (run `BCCFC121-F1E7-4C79-B0EA-949DB037EDCA`), yeniden açılış ve aynı sohbetten önceki token'ın geri çağrılması (run `24E40C01-8956-4E8C-B472-35B35785F490`), ikinci temiz Quit. |
+| Kapanış — Codex Q1 | **Doğrulandı** | Tamamlanmış `CODEX_CORE_OK` turu `2E561F90-FACE-453D-80FD-8D8D83BE62DE`; aynı thread'in aktif `sleep 12` komutu sırasında temiz Quit `4F02421A-8677-4EE2-86D2-4909DAC2FEFF` (OS run `C4B2807D-8013-4F5A-A078-78B094471253`, uyuyan süreç kalıntısı 0); aynı thread'in yeniden açılıp önceki token'ı geri çağırması `00078EEA-4479-4329-9302-859185A57530`. Thread `01a0e7aa-bc52-7c81-9123-58e572ca7420`. |
+| Kapanış — derleme ve test | **Doğrulandı** | `swift build` başarılı; tüm 87 test 10 suite içinde geçti; `git diff --check` temiz. Bu makinedeki Command Line Tools `swift test` çağrısında `TestingMacros` kütüphanesini otomatik bulamadı ve derleme **başarısız** oldu. Aynı tüm testler `-Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib` ile geçti. |
+
+İlk kopya Claude profilindeki kimlik bilgisi `auth status` açısından geçerli olmadığından `E9BD4F04-FD53-4096-9E27-FBD6A3ABB019` run'ı **doğrulanmadı** (`authentication_failed`); yukarıdaki başarılı Claude Q1, önceden ayrılmış Loom-Dev probe profilinde yeni bir sohbetle tekrarlandı. Codex'in boş geçmişli B thread'inde `thread/read(includeTurns: true)` `list_turns is not supported yet` döndürdü; istemci yalnız bu durumda `includeTurns: false` ile durum okuyor. Son iki oturumlu kabul run'ı bu düzeltmeyle geçti.
+
+## 24. Review: §23 kapanışı (28 Eylül 2026)
+
+§22'nin dört maddesi kodda doğrulandı:
+
+- **Madde 1:** Codex durdurma sırası `interrupt` → arka plan terminallerini kapatma → doğrulama → TUI kapanışı → abonelikten çıkma (`CodexAppServer.swift:326-367`). `/new` sonrası durdurma kancası yeni thread'e yeniden bağlanıyor. Ajanın ön deneyi (`F4479222…`) açığın gerçek olduğunu gösterdi.
+- **Madde 2:** Belirsizlik tipli kimlik durumuna dönüşüyor ve idle blocker oluyor.
+- **Madde 3:** `ProcessSupervisor.swift` içinde Claude ya da Codex referansı kalmadı (942 satır).
+- **Madde 4:** `SessionEventHub` tüketici başına son kareyi tutuyor. Idle zamanlayıcısı tek; yeniden kurulurken eskisi iptal ediliyor; bloklanan oturum, durum değişikliğinde yeniden değerlendiriliyor.
+
+CP2 kapanmadan önce aşağıdaki üç madde kapatılmalı.
+
+1. **Test paketi kararsız ve bir test kilitleniyor (engelleyici).** Review'da tam paket 10 kez çalıştırıldı: 7 geçti, 2 başarısız oldu, 1 kilitlendi.
+   - **Kilitlenme:** `ProcessLifecycleTests.leavesExternalProcessUntouched`, 8,5 dakika boyunca `defer` içindeki `external.waitUntilExit()` çağrısında bekledi (`ProcessLifecycleTests.swift:110`; `sample` yığını bu satırı gösterdi). Async ve `@MainActor` bir testte Foundation `Process`'i bloklayarak beklemek güvenli değil. `LoomCore` `Process` kullanmıyor; sorun yalnızca testte.
+   - **Başarısızlıklar:** Tam paket çalışırken iki test ara ara başarısız oldu. Tek başlarına, 4 çekirdek CPU yükü altında 4 kez çalıştırıldıklarında sorun çıkmadı. Başarısız olanlar:
+     - `tenSilentSessionsDoNotPreallocateScrollbackCapacity`: `shutdown(graceSeconds: 0.05).succeeded` false döndü.
+     - `shutdownStopsTenStubbornSessionsWithinOneSharedSignalWindow`: 4 sorun.
+   - **Olası neden:** Son `SIGKILL` penceresi sonunda öldürülmüş ama henüz reap edilmemiş süreçler `remaining` sayılıyor; paralel çalışan suite'lerin yükü bunu tetikliyor. Aynı durum üründe de, süreçler zaten ölürken Quit'in başarısız raporlanmasına yol açabilir.
+   - **Beklenen:**
+     - Test süreçleri async bekleme ya da `kill` + `waitpid` ile ve zaman sınırıyla kapatılır.
+     - `SIGKILL` sonrasında, öldürülen süreçlerin kaybolması için sınırlı bir reap beklemesi eklenir (en fazla 1–2 sn). Rapor, zaten öldürülmüş olanları canlı süreçlerden ayırır.
+     - Testler 0,05 sn gibi dar sürelerle başarı iddia etmez.
+     - Süreç başlatan testlerin her birinde zaman sınırı bulunur.
+   - **Kabul:** Tam paket, eklentili komutla arka arkaya 10 kez yeşil geçer; hiçbir çalıştırma zaman sınırına takılmaz.
+2. **Belirsiz `/new` sonrası durdurma yeni thread'i durdurmuyor.** `markAmbiguous` yalnızca kimlik durumunu işaretliyor (`ProviderSessionAdapters.swift:102-108`). Durdurma kancaları eski thread'e bağlı kalıyor (`CodexSessionCoordinator.swift:201-209`). Belirsiz oturum durdurulduğunda yeni thread sunucuda çalışmayı sürdürebilir ve stop yine de başarılı döner. Beklenen:
+   - Aday run'lar için belirsiz thread kimlikleri saklanır.
+   - Durdurmada bu thread'lerden biri aktifse stop başarılı sayılmaz. Rapor, yeni sohbetin başka bir oturuma ait olabileceğini ve hâlâ çalıştığını söyler.
+   - Kabul: sentetik olay dizisi + aktif belirsiz thread durumunda stop raporu başarısız ya da doğrulanmadı olarak döner.
+3. **`systemError` ya da `notLoaded` durumundaki Codex thread'i durdurulamıyor.** `stopThreadWork` yalnızca `active` ve `idle` durumlarını kabul ediyor, doğrulama da `idle` bekliyor (`CodexAppServer.swift:327-366`). Hata durumuna düşmüş bir thread'in oturumu Quit dışında hiç kapatılamaz. Beklenen:
+   - Bu durumlarda aktif tur yoktur; arka plan terminalleri kapatılır, terminal sayısı 0 doğrulanır ve durdurma sürer.
+   - Kabul: sentetik `systemError` ve `notLoaded` durumlarıyla stop başarılı olur ve TUI kapanır.
+
+**Not:** Review'da düz `swift test` de bir kez derlendi ve çalıştı. Makro eklentisinin bulunamaması ortama bağlı ve ara ara görülüyor. Belgelenmiş eklentili komut kullanılmaya devam edilmeli (agents/README.md).

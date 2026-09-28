@@ -143,6 +143,39 @@ struct ProcessSupervisorTests {
         #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
     }
 
+    @Test func unverifiedProviderStopLeavesRunAlive() async throws {
+        let supervisor = try ProcessSupervisor(
+            ledger: OwnershipLedger(coalition: .probe(forceFailure: true))
+        )
+        let sessionID = UUID()
+        let launch = try await launch(
+            "stubborn", sessionID: sessionID, supervisor: supervisor
+        )
+        _ = try await ready(terminal: launch.terminal)
+        let runID = try #require(launch.session.currentRun?.id)
+        try await supervisor.registerStopHooks(
+            runID: runID,
+            hooks: ManagedRunStopHooks(
+                prepare: { throw LoomError.message("server still active") },
+                completed: {}
+            )
+        )
+        let failed = try await supervisor.stop(
+            sessionID: sessionID, graceSeconds: 0.05
+        )
+        #expect(!failed.succeeded)
+        #expect(failed.signals.isEmpty)
+        #expect(await supervisor.session(id: sessionID)?.currentRun?.id == runID)
+        try await supervisor.registerStopHooks(
+            runID: runID,
+            hooks: ManagedRunStopHooks(prepare: {}, completed: {})
+        )
+        #expect((try await supervisor.stop(
+            sessionID: sessionID, graceSeconds: 0.05
+        )).succeeded)
+        #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
+    }
+
     @Test func outputAndLeaderExitAreDeliveredWithoutSampling() async throws {
         let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition: .probe(forceFailure: true)))
         let sessionID = UUID()
@@ -413,24 +446,25 @@ struct ProcessSupervisorTests {
         _ = try await ready(terminal: launch.terminal)
         let runID = try #require(launch.session.currentRun?.id)
 
+        let claude = ClaudeSessionAdapter(supervisor: supervisor)
         let startup = try claudeEnvelope(
             launchSessionID: launchSessionID, runID: runID,
             providerSessionID: "claude-one", event: "SessionStart",
             fields: ["source": "startup"]
         )
-        _ = try await supervisor.receiveClaudeHook(startup)
+        _ = try await claude.receive(startup)
         #expect(await supervisor.session(id: launchSessionID)?.providerConversationID
                 == "claude-one")
 
         let promptAt = Date(timeIntervalSince1970: 500)
-        _ = try await supervisor.receiveClaudeHook(try claudeEnvelope(
+        _ = try await claude.receive(try claudeEnvelope(
             launchSessionID: launchSessionID, runID: runID,
             providerSessionID: "claude-one", event: "UserPromptSubmit"
         ), receivedAt: promptAt)
         #expect(try await catalog.session(id: launchSessionID)?.lastUsedAt == promptAt)
 
         let clearAt = Date(timeIntervalSince1970: 510)
-        _ = try await supervisor.receiveClaudeHook(try claudeEnvelope(
+        _ = try await claude.receive(try claudeEnvelope(
             launchSessionID: launchSessionID, runID: runID,
             providerSessionID: "claude-two", event: "SessionStart",
             fields: ["source": "clear"]
@@ -442,7 +476,7 @@ struct ProcessSupervisorTests {
         #expect(try await catalog.session(id: launchSessionID)?.lifecycle == .idle)
         #expect(try await catalog.session(id: clearedSessionID)?.lifecycle == .active)
 
-        _ = try await supervisor.receiveClaudeHook(try claudeEnvelope(
+        _ = try await claude.receive(try claudeEnvelope(
             launchSessionID: launchSessionID, runID: runID,
             providerSessionID: "claude-one", event: "SessionStart",
             fields: ["source": "resume"]
@@ -465,11 +499,12 @@ struct ProcessSupervisorTests {
         )
         _ = try await ready(terminal: first.terminal)
         let oldRunID = try #require(first.session.currentRun?.id)
+        let claude = ClaudeSessionAdapter(supervisor: supervisor)
         let oldPrompt = try claudeEnvelope(
             launchSessionID: sessionID, runID: oldRunID,
             providerSessionID: "claude-one", event: "UserPromptSubmit"
         )
-        _ = try await supervisor.receiveClaudeHook(oldPrompt)
+        _ = try await claude.receive(oldPrompt)
         #expect((try await supervisor.stop(sessionID: sessionID, graceSeconds: 0.05)).succeeded)
 
         let environment = LaunchEnvironment.make(
@@ -483,8 +518,8 @@ struct ProcessSupervisorTests {
         _ = try await ready(terminal: second.terminal)
         let newRunID = try #require(second.session.currentRun?.id)
         #expect(newRunID != oldRunID)
-        #expect(try await supervisor.receiveClaudeHook(oldPrompt) == .staleRun)
-        #expect(await supervisor.claudeStatus(sessionID: sessionID) == ClaudeSessionStatus())
+        #expect(try await claude.receive(oldPrompt) == .staleRun)
+        #expect(await claude.status(sessionID: sessionID) == ClaudeSessionStatus())
         #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
     }
 
@@ -504,20 +539,21 @@ struct ProcessSupervisorTests {
         )
         _ = try await ready(terminal: launch.terminal)
         let runID = try #require(launch.session.currentRun?.id)
-        try await supervisor.bindCodexThread(
+        let codex = CodexSessionAdapter(supervisor: supervisor)
+        try await codex.bind(
             sessionID: sessionID, runID: runID, threadID: "thread-one",
             after: 5, at: Date(timeIntervalSince1970: 100)
         )
         let turnTime = Date(timeIntervalSince1970: 110)
-        #expect(try await supervisor.receiveCodexEvent(
+        #expect(try await codex.receive(
             .event(sequence: 6, .turnStarted(
                 threadID: "thread-one", turnID: "turn-one"
             )), runID: runID, receivedAt: turnTime
         ) == .applied)
-        #expect(await supervisor.codexStatus(sessionID: sessionID)?.activity == .working)
+        #expect(await codex.status(sessionID: sessionID)?.activity == .working)
         #expect(try await catalog.session(id: sessionID)?.lastUsedAt == turnTime)
 
-        let newSessionID = try await supervisor.transitionCodexConversation(
+        let newSessionID = try await codex.transition(
             runID: runID, to: "thread-two", after: 7,
             at: Date(timeIntervalSince1970: 120)
         )
@@ -528,7 +564,7 @@ struct ProcessSupervisorTests {
         #expect(try await catalog.session(id: sessionID)?.lifecycle == .idle)
         #expect(try await catalog.session(id: newSessionID)?.session.providerConversationID
                 == "thread-two")
-        #expect(try await supervisor.receiveCodexEvent(
+        #expect(try await codex.receive(
             .event(sequence: 7, .turnCompleted(
                 threadID: "thread-one", turnID: "old",
                 outcome: .completed, lastAssistantMessage: "stale"
@@ -543,6 +579,7 @@ struct ProcessSupervisorTests {
             ledger: OwnershipLedger(coalition: .probe(forceFailure: true))
         )
         let sessionID = UUID()
+        let claude = ClaudeSessionAdapter(supervisor: supervisor)
         let launch = try await launch(
             "quick-exit", sessionID: sessionID, supervisor: supervisor,
             provider: .claude, providerConversationID: "claude-crash"
@@ -553,7 +590,7 @@ struct ProcessSupervisorTests {
               ProcessInfo.processInfo.systemUptime < deadline {
             try await Task.sleep(for: .milliseconds(5))
         }
-        #expect(await supervisor.claudeStatus(sessionID: sessionID)?.activity == .unknown)
+        #expect(await claude.status(sessionID: sessionID)?.activity == .unknown)
         #expect(await supervisor.lastStopReport(sessionID: sessionID)?.succeeded == true)
         #expect((await supervisor.shutdown()).succeeded)
     }
@@ -646,8 +683,9 @@ struct ProcessSupervisorTests {
         let firstRun = try #require(first.session.currentRun?.id)
         let secondRun = try #require(second.session.currentRun?.id)
 
+        let claude = ClaudeSessionAdapter(supervisor: supervisor)
         do {
-            _ = try await supervisor.receiveClaudeHook(try claudeEnvelope(
+            _ = try await claude.receive(try claudeEnvelope(
                 launchSessionID: secondID, runID: secondRun,
                 providerSessionID: "claude-one", event: "SessionStart",
                 fields: ["source": "resume"]
@@ -660,7 +698,7 @@ struct ProcessSupervisorTests {
         }
         #expect(await supervisor.activeSessionID(runID: firstRun) == firstID)
         #expect(await supervisor.activeSessionID(runID: secondRun) == secondID)
-        #expect(await supervisor.claudeStatus(sessionID: secondID)?.providerSessionID == nil)
+        #expect(await claude.status(sessionID: secondID)?.providerSessionID == nil)
         #expect((await supervisor.shutdown(graceSeconds: 0.05)).succeeded)
     }
 

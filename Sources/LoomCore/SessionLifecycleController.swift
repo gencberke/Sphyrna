@@ -36,6 +36,8 @@ public enum SessionIdleBlocker: Hashable, Sendable {
     case pendingPromptDelivery(Int)
     case baselineNotCaptured
     case nonBaselineDescendants(Int)
+    case ambiguousIdentity
+    case stopUnverified
 }
 
 public enum SessionIdleEvaluation: Sendable {
@@ -62,6 +64,11 @@ public actor SessionLifecycleController {
     private var baselines: [UUID: Baseline] = [:]
     private var pendingPrompts: [UUID: Set<UUID>] = [:]
     private var generations: [UUID: UInt64] = [:]
+    private var timer: Task<Void, Never>?
+    private var eventTask: Task<Void, Never>?
+    private var blockedDue: [UUID: Date] = [:]
+    private var timerFires = 0
+    private var scheduleGeneration: UInt64 = 0
 
     public init(
         supervisor: ProcessSupervisor, catalog: SessionCatalog,
@@ -70,6 +77,99 @@ public actor SessionLifecycleController {
         self.supervisor = supervisor
         self.catalog = catalog
         self.policy = policy
+    }
+
+    deinit {
+        timer?.cancel()
+        eventTask?.cancel()
+    }
+
+    /// One event listener and one timer serve every session. The timer is
+    /// scheduled for the next idle or stale deadline, never on a fixed tick.
+    public func startAutomaticEvaluation() async throws {
+        guard eventTask == nil else { return }
+        let stream = await supervisor.events.subscribe()
+        eventTask = Task { [weak self] in
+            for await frame in stream {
+                guard !Task.isCancelled else { break }
+                await self?.handle(frame)
+            }
+        }
+        try await reschedule()
+    }
+
+    public func stopAutomaticEvaluation() {
+        eventTask?.cancel()
+        eventTask = nil
+        timer?.cancel()
+        timer = nil
+    }
+
+    public func timerFireCount() -> Int { timerFires }
+
+    private func handle(_ frame: SessionEventFrame) async {
+        switch frame.change {
+        case .runStarted, .runEnded, .runDetached, .status,
+             .conversationIdentity, .identityState, .lifecycle:
+            if let id = frame.sessionID { blockedDue[id] = nil }
+            try? await reschedule()
+        case .snapshot, .blockers: break
+        }
+    }
+
+    private func reschedule() async throws {
+        guard eventTask != nil else { return }
+        scheduleGeneration &+= 1
+        let generation = scheduleGeneration
+        timer?.cancel()
+        timer = nil
+        let records = try await catalog.sessions()
+        var next: Date?
+        for record in records {
+            let due: Date?
+            switch record.lifecycle {
+            case .active:
+                guard await supervisor.session(id: record.session.id)?.currentRun != nil,
+                      blockedDue[record.session.id] != record.lastUsedAt else { continue }
+                due = record.lastUsedAt.addingTimeInterval(policy.idleAfter)
+            case .idle:
+                due = record.lastUsedAt.addingTimeInterval(policy.staleAfter)
+            case .stale: due = nil
+            }
+            if let due, next == nil || due < next! { next = due }
+        }
+        guard generation == scheduleGeneration, let next else { return }
+        let delay = max(0, next.timeIntervalSinceNow)
+        timer = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            await self?.timerFired()
+        }
+    }
+
+    private func timerFired() async {
+        timerFires += 1
+        let now = Date()
+        do {
+            for record in try await catalog.sessions() where
+                record.lifecycle == .active
+                    && record.lastUsedAt.addingTimeInterval(policy.idleAfter) <= now
+                    && blockedDue[record.session.id] != record.lastUsedAt {
+                let outcome = try await evaluateIdle(
+                    sessionID: record.session.id, at: now
+                )
+                if case .blocked = outcome {
+                    blockedDue[record.session.id] = record.lastUsedAt
+                }
+                if case .stopFailed = outcome {
+                    blockedDue[record.session.id] = record.lastUsedAt
+                }
+            }
+            _ = try await classifyStale(at: now)
+            try await reschedule()
+        } catch {
+            // A later state change reschedules after a transient catalog error.
+        }
     }
 
     /// Call after provider startup helpers (including baseline MCP servers)
@@ -82,6 +182,8 @@ public actor SessionLifecycleController {
         baselines[sessionID] = Baseline(
             runID: run.id, identities: Set(records.map(\.identity))
         )
+        blockedDue[sessionID] = nil
+        try await reschedule()
     }
 
     @discardableResult
@@ -95,6 +197,8 @@ public actor SessionLifecycleController {
         pendingPrompts[sessionID]?.remove(id)
         if pendingPrompts[sessionID]?.isEmpty == true { pendingPrompts[sessionID] = nil }
         generations[sessionID, default: 0] &+= 1
+        blockedDue[sessionID] = nil
+        Task { try? await self.reschedule() }
     }
 
     public func pendingPromptIDs(sessionID: UUID) -> Set<UUID> {
@@ -103,17 +207,25 @@ public actor SessionLifecycleController {
 
     public func markViewed(sessionID: UUID, at date: Date = Date()) async throws {
         try await catalog.markUsed(sessionID: sessionID, at: date, reactivate: false)
+        try await reschedule()
     }
 
     public func reactivate(sessionID: UUID, at date: Date = Date()) async throws {
         try await catalog.markUsed(sessionID: sessionID, at: date, reactivate: true)
+        blockedDue[sessionID] = nil
+        await supervisor.events.publish(sessionID: sessionID, change: .lifecycle(.active))
+        try await reschedule()
     }
 
     @discardableResult
     public func classifyStale(at date: Date = Date()) async throws -> [UUID] {
-        try await catalog.classifyStale(
+        let changed = try await catalog.classifyStale(
             before: date.addingTimeInterval(-policy.staleAfter)
         )
+        for id in changed {
+            await supervisor.events.publish(sessionID: id, change: .lifecycle(.stale))
+        }
+        return changed
     }
 
     public func evaluateIdle(
@@ -129,6 +241,9 @@ public actor SessionLifecycleController {
               let run = session.currentRun else { return .notRunning }
 
         var blockers: Set<SessionIdleBlocker> = []
+        if await supervisor.identityState(sessionID: sessionID) == .ambiguous {
+            blockers.insert(.ambiguousIdentity)
+        }
         if date.timeIntervalSince(catalogSession.lastUsedAt) < policy.idleAfter {
             blockers.insert(.notDue)
         }
@@ -159,20 +274,35 @@ public actor SessionLifecycleController {
         } else {
             blockers.insert(.baselineNotCaptured)
         }
+        await supervisor.events.publish(
+            sessionID: sessionID, change: .blockers(blockers)
+        )
         guard blockers.isEmpty else { return .blocked(blockers) }
 
         let generation = generations[sessionID, default: 0]
         let report = try await supervisor.stopForIdle(
             sessionID: sessionID, graceSeconds: policy.stopGraceSeconds
         )
-        guard report.succeeded else { return .stopFailed(report) }
+        guard report.succeeded else {
+            await supervisor.events.publish(
+                sessionID: sessionID,
+                change: .blockers([.stopUnverified])
+            )
+            return .stopFailed(report)
+        }
         baselines[sessionID] = nil
         let pending = pendingPrompts[sessionID] ?? []
         if generations[sessionID, default: 0] != generation || !pending.isEmpty {
             try await catalog.updateLifecycle(sessionID: sessionID, lifecycle: .active)
+            await supervisor.events.publish(
+                sessionID: sessionID, change: .lifecycle(.active)
+            )
             return .interruptedByNewWork(report, pendingPromptIDs: pending)
         }
         try await catalog.updateLifecycle(sessionID: sessionID, lifecycle: .idle)
+        await supervisor.events.publish(
+            sessionID: sessionID, change: .lifecycle(.idle)
+        )
         return .transitioned(report)
     }
 
@@ -190,6 +320,9 @@ public actor SessionLifecycleController {
         do {
             try await catalog.markUsed(
                 sessionID: sessionID, at: date, reactivate: true
+            )
+            await supervisor.events.publish(
+                sessionID: sessionID, change: .lifecycle(.active)
             )
         } catch {
             // Do not leave an untracked resumed process alive when the durable
