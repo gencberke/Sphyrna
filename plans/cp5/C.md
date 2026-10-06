@@ -277,7 +277,7 @@ Kalıcı kanıt: `~/Library/Application Support/Loom-Dev/probe/runs/cp5-c-review
 
 **Başarısız:** bu review'un dar kontrollerinde yok. **Doğrulanmadı:** gerçek Claude/Codex, izin ilkesi ön kontrolü, Codex onayının Loom bağlantısına gelmesi, OWN-1 ve ertelenmiş A/D kaynak/görsel kabulü. Sentetik geçiş bunları kapatmaz.
 
-**Test kapsamı kararı:** kullanıcının bu tur talimatıyla [geliştirme rehberi](../../DEVELOPMENT.md#kontroller) güncellendi. Rutin revizelerde değişen ve etkilenmesinden endişe edilen davranışların testleri yeterlidir; tam suite checkpoint kapanışında veya büyük revizyon/implementasyonda çalışır. Önceki tur kayıtları tarihsel kanıt olarak korunur.
+**Test kapsamı kararı:** kullanıcının bu tur talimatıyla [geliştirme rehberi](../../DEVELOPMENT.md#2-build-and-test) güncellendi. Rutin revizelerde değişen ve etkilenmesinden endişe edilen davranışların testleri yeterlidir; tam suite checkpoint kapanışında veya büyük revizyon/implementasyonda çalışır. Önceki tur kayıtları tarihsel kanıt olarak korunur.
 
 **Sonraki adım — kullanıcı kararı:** [hazır gerçek sağlayıcı düzeneği](../experiments/cp5-c-real-provider-setup.md) için **8 model turu (Claude 4 + Codex 4), yeniden deneme payı 0** önerisi artık karar için hazır. Yeni/devam/kimlik devri/onay/aktif turda Quit senaryoları; izole profiller ve 0 tur izin ön kontrolü düzenekte tanımlı. Yetki verilmeden çalıştırılmaz. Bütçe onaylanırsa kullanıcı uygulayıcıyı yönlendirir; sonuç §11'e yazılır ve planner-reviewer C1–C5/D3 gerçek kabulünü değerlendirir. Bu oturum implementer başlatmaz/mesaj göndermez. C tamamlanmadan D veya checkpoint optimizer kapanışı açılmaz.
 

@@ -1,5 +1,5 @@
 #!/bin/zsh
-# CP5 §6 starting measurements for the A slice (one synthetic terminal).
+# CHECKPOINT-5-HISTORY §6 starting measurements for the A slice (one synthetic terminal).
 # Usage: scripts/cp5-a-measure.sh [repetitions=3] [path/to/Loom Dev.app]
 # (default: ~/Library/Application Support/Loom-Dev/app; a path under ~/Documents is refused)
 # Per scenario: warm-up (10 s), then a sample (60 s) bounded by two app

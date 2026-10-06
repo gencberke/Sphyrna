@@ -1,80 +1,70 @@
-# Loom — görsel sözleşme
+# Loom visual contract and design rules
 
-**Durum:** Tasarım ve ikonlar sabit kabul edildi ([ürün sözleşmesi](../LOOM-PRODUCT-CONTRACT.md) §3). Bu dosya, önceki `SPEC.md`'nin görsel sözleşmesini ve eski uygulamanın davranış envanterini taşır. Eski çizim kodunun, terminal motorunun veya mimarinin aynen kullanılması şart değildir.
+**Status:** The design and icons are accepted as fixed ([product contract](../LOOM-PRODUCT-CONTRACT.md) §3). This file is the canonical visual contract: references, the elements to keep, sizes and colors, and the status language. It states the *current* rule; where a rule comes from a user decision, the date follows in parentheses. For where each surface lives in code and how to verify it, see [UI-MAP.md](UI-MAP.md). The old Herdr Desktop behavior list moved to [LEGACY-INVENTORY.md](LEGACY-INVENTORY.md) (reference only). Brand identity: direction A · Night Fleece was chosen on 6 Oct 2026 ([D-22](../DECISIONS.md), [proposal](IDENTITY-PROPOSAL.md)); new work follows its identity rules, while the values in this file stay authoritative until stage I folds the tokens in. The legacy drawing code, terminal engine and architecture need not be reused as-is.
 
-## 1. Referanslar
+## 1. References
 
-Birincil hedef, kullanıcının 27 Eylül 2026 tarihli `Herdr Desktop Appshot 2026-09-27T09-44-26.434Z.png` ekidir: solda aktivite listesi, sağda geniş terminal, koyu cam pencere. Ekin özgün dosyası yerelde bulunamadı. Aşağıdaki dosyalar bunun yerine geçirilmiş farklı bir tasarım değildir; mevcut uygulamadan korunan yardımcı referanslardır:
+The primary target is the user's 27 Sep 2026 attachment `Herdr Desktop Appshot 2026-09-27T09-44-26.434Z.png`: activity list on the left, wide terminal on the right, dark glass window. The original file could not be found locally. The files below are not a substitute design; they are helper references kept from the previous app:
 
-- [Kaldırmadan önce mevcut pencere](installed-before-removal.png): aynı UI, oturumlar sonlanmışken alınan görüntü; orijinal ekteki canlı terminal içeriği yoktur.
-- [Aktivite görünümü referansı](activity-view-reference.png) ve [proje görünümü referansı](project-view-reference.png): önceki yerel görsel kontroller.
-- [Görsel uygulama kaynakları](legacy-code/DesktopView.swift), [pencere/menüler](legacy-code/App.swift), [çalışma göstergesi](legacy-code/WorkingIndicator.swift), [terminal sunumu](legacy-code/TerminalHost.swift): boyut ve davranış referansı; yeni mimariye taşınacak üretim kodu değildir.
+- [Window before removal](installed-before-removal.png): the same UI captured with sessions ended; it lacks the live terminal content of the original attachment.
+- [Activity view reference](activity-view-reference.png) and [project view reference](project-view-reference.png): earlier local visual checks.
+- Legacy sources for size and behavior reference only (not production code to port): [views](legacy-code/DesktopView.swift), [window/menus](legacy-code/App.swift), [working indicator](legacy-code/WorkingIndicator.swift), [terminal presentation](legacy-code/TerminalHost.swift).
 
-## 2. Korunacak öğeler
+## 2. Elements to keep
 
-1. Native kırmızı/sarı/yeşil pencere düğmeleri; üst solda sidebar düğmesi, klasör/saat görünüm seçimi, üç nokta menüsü.
-2. Koyu, yarı saydam sidebar; opak koyu terminal paneli; ince sınır, yumuşak köşeler ve sık yerleşim.
-3. Sidebar arama alanı; aktivite görünümünde Today/Thursday benzeri gün başlıkları.
-4. İki satırlı konuşma kartı: üstte durum, başlık ve süre; altta solda branch, sağda proje ve renkli sağlayıcı simgesi. Seçili kartta hafif açık zemin ve ince çerçeve.
-5. Sol altta proje ekleme, sağ altta ayarlar. Ayarlanabilir sidebar; alanın çoğu terminale ayrılır.
-6. Terminal üstünde renkli sağlayıcı simgesi, konuşma başlığı ve sağda üç nokta. Terminal metni gerçek CLI arayüzüdür; yeni bir chat arayüzüyle değiştirilmez.
-7. Mevcut koç simgesi korunur: [ICNS](../assets/Loom.icns), [PNG](../assets/Loom.png), [SVG](../assets/Loom.svg), [ham işaret](../assets/Loom-mark.svg), [menü çubuğu işareti](../assets/Loom-menubar.svg). Dosyalar yeniden çizilmeden kopyalandı. Sağlayıcı simgeleri [assets/harness](../assets/harness), orijinalleri ve kaynakları [assets/brand](../assets/brand/README.md) altındadır.
-8. macOS Hareketi Azalt ve Saydamlığı Azalt tercihlerine uyum sürer.
+1. Native red/yellow/green window buttons; top-left sidebar toggle, folder (group by project) and clock (recent activity) view selection, and a three-dot menu. The top bar (navbar) layout is pending a separate discussion with the user (5 Oct 2026); nothing here changes it.
+2. A dark sidebar and an opaque dark terminal panel; thin border, soft corners, dense layout. The sidebar glass is dark-tone dominant: it must not visibly leak wallpaper color (5 Oct 2026; tint 0.86, see section 3). The app is dark only.
+3. Sidebar search field (always visible); day headings (Today, Yesterday, weekday, date) in the activity view.
+4. Two-row conversation card. Top: small colored status indicator, title, relative time. Bottom: branch on the left; project name (activity view only) and the colored provider icon on the right. Selected card: light fill and thin border. The status label text is not drawn on the card.
+5. Bottom left: a `+` menu (new Claude conversation, new Codex conversation while it exists in dev builds, Add Project); bottom right: Settings. The sidebar is resizable; most of the width goes to the terminal.
+6. Above the terminal: colored provider icon, conversation title, status indicator and label, a Stop button when stoppable, and a three-dot actions menu. The terminal text is the real CLI; it is never replaced by a custom chat UI.
+7. The existing ram icon is kept: [ICNS](../assets/Loom.icns), [PNG](../assets/Loom.png), [SVG](../assets/Loom.svg), [raw mark](../assets/Loom-mark.svg), [menu-bar mark](../assets/Loom-menubar.svg). Files were copied without redrawing. Provider icons are in [assets/harness](../assets/harness); originals and sources in [assets/brand](../assets/brand/README.md).
+8. Accessibility: honor Reduce Transparency (opaque sidebar). Reduce Motion: the small working indicator keeps animating (see section 4); any other motion must follow Reduce Motion. Focus ring only with keyboard navigation (see UI-MAP).
 
-## 3. Ölçüler ve renkler
+## 3. Sizes and colors
 
-Kaynak koddan alınan başlangıç ölçüleri: sidebar varsayılan 300 pt, aralık 220–520 pt; minimum terminal genişliği 480 pt; üst çubuk 52 pt; pencere ilk boyutu 1220×780, minimum 780×500; panel dış boşluğu 8 pt, köşe yarıçapı 10 pt. Bunlar pt değerleridir; Retina ekran görüntüsünün piksel ölçüleriyle karıştırılmaz.
+All sizes are points, not Retina pixels. The code is the source of truth; constants live in `Sources/LoomCatalogUI/CatalogTheme.swift` unless noted.
 
-Kaynak renkleri (RGB): sidebar `(0.043, 0.055, 0.086)`, terminal paneli `(0.114, 0.110, 0.133)`, vurgu `(0.53, 0.57, 0.81)`, ana metin `(0.88, 0.86, 0.92)`, ikincil metin `(0.46, 0.48, 0.55)`. Cam malzeme, arka plan ve opacity son görünümü etkiler; bu değerler tek başına ekran görüntüsündeki rengi garanti etmez.
-
-Görsel kabul: referansla aynı pencere boyutu ve ölçek altında karşılaştırma; sidebar, tipografi, simge, cam ve terminal geometrisi kontrolü.
-
-## 4. Eski uygulamanın davranış envanteri
-
-Bu bölüm Herdr Desktop'ta bulunan davranışları, tasarımdaki öğelerin ne işe yaradığını anlamak ve v1 kapsamını planlamak için listeler. **Loom gereksinimi değildir;** her satır ayrıca kapsama alınmalıdır. [Ürün sözleşmesiyle](../LOOM-PRODUCT-CONTRACT.md) çelişen satırlarda sözleşme esas alınır.
-
-| Alan | Mevcut davranış | Sınır / önemli ayrım |
+| Item | Value | Where |
 | --- | --- | --- |
-| Sağlayıcılar | Claude Code, Codex, OpenCode, Antigravity ve normal shell | Yerel CLI kurulumlarını ve mevcut girişlerini kullanır; model backend'i veya API anahtarı yönetmez. |
-| Projeler | Klasör ekle, daralt/genişlet, sürükleyerek sırala, boş projeyi kaldır | Konuşması bulunan proje önce boşaltılmalıdır. Proje kaldırmak proje dosyalarını silmez. |
-| Projesiz çalışma | Home dizininde yeni oturum; `Sessions` grubu | Grup boşken gizlenebilir. |
-| Yeni oturum | Sağlayıcı seçerek proje içinde veya projesiz başlat | Eksik CLI devre dışı görünür; başlatma hatası bildirilir. |
-| Görünüm seçimi | Projeye göre gruplama veya son aktiviteye göre gün grupları | Proje içi liste oluşturulma zamanına göre sabittir; seçim satırı yukarı taşımaz. Aktivite görünümü son aktiviteye göre sıralar. |
-| Kart metaverisi | Başlık, sağlayıcı, proje, branch, göreli süre | Süre son çalışma başlangıcından türetilir; token/çalışma süresi ölçümü değildir. |
-| Branch | `.git/HEAD` ve worktree gitdir üzerinden branch bilgisi | Git subprocess'i çalıştırmaz. Oturum olayları ve uygulama öne gelişiyle yenilenir. |
-| Arama | Başlık, sağlayıcı ve ilgili çocuk görevlerde arama | Arama kutusu mevcut kodda 8'den fazla konuşmada görünür. Tam transkript araması değildir. |
-| Oturum değiştirme | Canlı terminali göster; normal girdi, çıktı, resize, scroll ve seçim | Her canlı oturum kendi PTY/terminal tamponunu taşır. |
-| Geçmişten devam | Native kimliği bilinen konuşmayı sağlayıcının resume komutuyla aç | Uygulama açılırken otomatik süreç başlatılmaz. Geçmiş ana konuşmaya tıklamak resume başlatabilir; kimlik yoksa devam edemez. Shell yeni süreç olarak açılır. |
-| Kimlik değişimi | `/new` sonrası eski konuşmayı tarihçede koru, yeni native kimliği ayrı kaydet | Terminalin çalışma kimliği ile sağlayıcının konuşma kimliği farklıdır. |
-| Yeniden adlandırma | Özel başlık ata; sonraki otomatik başlıkla ezme | Mevcut metin sınırı 160 karakter. |
-| Durum | Çalışıyor, giriş/onay bekliyor, boşta/bitmiş, sonlanmış/geçmiş | Mevcut hook kapsamı bütün sağlayıcı geçişlerini garanti etmez. Durum, süreç canlılığı ve okunmamışlık aynı şey değildir. |
-| Dikkat işaretleri | Çalışma animasyonu, turuncu bekleme, bakılmamış bitiş için mavi nokta | Seçili ve görünür konuşma okundu sayılır. Hata ayrı uygulama mesajıdır. |
-| Dock / menü çubuğu | Dikkat gerektiren oturum sayısı ve oturuma geçiş listesi | Liste ilk 12 kaydı gösterir. Model çağrısı yoktur. |
-| Claude çocuk görevleri | Uygulama içinden başlatılan yeni `claude -p` görevini ana konuşmanın altında göster; sayaç ve aç/kapat | Tüm sağlayıcılara yayılan genel subagent sistemi değildir. Çalışan görev bulunduğu süreçten taşınmaz. |
-| Çocuk transkripti | Yerel Claude transkriptini oku; bitince `Resume in Terminal` | Görünüm sınırlı son metni okur (800 KB / son 120 giriş); sınırsız dosya yüklemez. |
-| Dosya bırakma | Finder'dan birden çok dosya/klasör yolunu prompta alıntılı ekle | Enter göndermez; dosya yükleme servisi değildir. |
-| Konuşma yolu | Claude/Codex satırını terminale sürükle, çift tıkla veya menüden geçmiş yolunu kopyala | Native kimlik ve mevcut yerel dosya gerektirir; içeriği otomatik prompta eklemez. |
-| Metin/görsel paste | Çok satırlı bracketed paste; yalnızca görsel panoda ise Cmd+V'yi Ctrl+V'ye aktar | Görseli okuma CLI desteğine bağlıdır. |
-| Bağlantılar | HTTP(S) ve mevcut yerel dosya bağlantısını aç | Rastgele URL scheme çalıştırmaz. |
-| Durdur | İlgili terminal ve ilişkili çocukları durdur, kapanmayı doğrula | PID doğum kimliğiyle kontrol; TERM ardından sınırlı bekleme ve gerektiğinde KILL. Bağımsız Unix session açan kaçak çocuklar bir risktir. |
-| Listeden sil | Oturumu/alt görevlerini durdurup katalogdan çıkar | Sağlayıcının sohbet dosyalarını silmekle aynı işlem değildir. |
-| Kalıcı sil | Desteklenen Claude konuşma ve alt görev yerel dosyalarını sil | Ortak history.jsonl ve bulut kopyaları kalır. Codex/OpenCode'da silmenin yayılımı belirsiz olduğundan sunulmaz; Antigravity kendi silme ekranına yönlendirilir. |
-| Pencere kapatma | Pencere kapanır; uygulama ve işler çalışmayı sürdürür | Quit ile farklıdır. |
-| Uygulamadan çıkış | Sahip olunan terminal/çocukları durdur, bekleyen katalog işlemlerini bitir, kaydet | Kapanma doğrulanamıyorsa hata verir; başka uygulamaların süreçlerini öldürmemelidir. |
-| Katalog | Proje, başlık, provider/native kimlik, sıra, seçili kayıt ve ayarları kalıcı tut | Bozuk katalog üzerine yazılmaz. Sağlayıcıların tüm geçmişi otomatik içe alınmaz. |
-| Ayarlar | Terminal fontu 11–20 pt; sağlayıcı kurulum durumu | Hesap/usage yönetimi yoktur. Sidebar genişliği mevcut kodda yeniden açılışta 300 pt olur. |
-| Erişilebilirlik | Native pencere, klavye kısayolları, anlamlı kontrol etiketleri, hareket/saydamlık tercihleri | Tam erişilebilirlik denetimi yapıldığı iddia edilmez. |
-| Tanılama | Son eklenen Performance menüsü: CPU/bellek gösterimi, 5 sn örnekleme, JSONL, manuel sorun işareti, aç/kapat, 20 MiB döndürme | Bu uygulama da kaldırılıyor. GPU ölçmez; kısa süreç/sıçramaları kaçırır. Loom'un tanılama tasarımı olarak kabul edilmiş değildir. |
+| Window | initial 1220×780, minimum 780×500 | `AppDelegate.makeWindow` |
+| Sidebar width | default 300, range 220-520; persisted | `UIPreferences.sidebarWidthRange`, `defaultSidebarWidth` |
+| Detail pane minimum | 480 | `MainSplitViewController` |
+| Header row | 52 (sidebar `CatalogTheme.headerHeight`); detail row 36 + 16 bottom padding = 52 (`detailRowHeight`) | `CatalogTheme` |
+| Title bar centerline | 26 from the window top; native buttons, sidebar toggle and detail row share it. An empty unified `NSToolbar` makes AppKit center the buttons there | `AppDelegate.makeWindow` |
+| Button clearance | 76 (sidebar header), 66 (detail header, only when the sidebar is collapsed and not full screen) | `sidebarButtonsGap`, `detailButtonsGap` |
+| Panel | 8 outer inset, 10 corner radius, 1 hairline; terminal inset 6 | `DetailView`, `TerminalContainerView` |
+| Cards / controls | card radius 10; search 30 high, radius 8; footer 38 high; chrome button 26×24 (radius 6) | `SidebarView.swift` |
+| Sidebar tint | 0.86 dark tone over the behind-window sidebar material | `SidebarBackground.tintOpacity` |
 
-Kısayollar: Cmd+O proje ekle; Cmd+N yeni konuşma; Ctrl+Cmd+S sidebar; Cmd+, ayarlar; Cmd+W pencere; Cmd+Q uygulamadan çıkış; standart macOS kopyala/yapıştır/tümünü seç ve tam ekran kısayolları.
+| Color | Value |
+| --- | --- |
+| Sidebar | RGB (0.043, 0.055, 0.086) |
+| Terminal panel | `TerminalTheme.background` sRGB (29, 28, 34) = (0.114, 0.110, 0.133) |
+| Text / secondary text | (0.88, 0.86, 0.92) / (0.46, 0.48, 0.55) |
+| Attention (orange) | (1.0, 0.62, 0.04) |
+| Unviewed (blue) | (0.36, 0.55, 1.0) |
+| Failure (red) | (0.95, 0.38, 0.36) |
+| Hairline / selection | white 0.10 / white 0.07 |
 
-## 5. Durum dili (5 Ekim 2026, kullanıcı kararı)
+`CatalogTheme.accent` (0.53, 0.57, 0.81) from the old contract is defined but unused; default-action buttons currently take the system accent. Material, background and opacity change the final look, so these values alone do not guarantee a screenshot color.
 
-Kullanıcı paket G geri bildirimiyle §2'deki bazı öğeleri değiştirdi ([UI planı](../plans/cp5/UI.md)). Bunlar §2 ile çeliştiğinde bu bölüm geçerlidir.
+Visual acceptance: compare against the reference at the same window size and scale; check sidebar, typography, icons, glass and terminal geometry. Glass leakage, hover and focus states cannot be seen in evidence screenshots; they need the user's eyes (see UI-MAP).
 
-- Durum göstergeleri Unpeel tarzında küçük ve renklidir: çalışıyor = küçük noktaların dikdörtgen çevresinde birbirini izlediği animasyon; onay/girdi bekliyor = turuncu nokta; bakılmamış bitiş = renkli nokta; hata = kırmızı işaret; boşta = gösterge yok. Bu dil sidebar, başlık ve diğer durum yüzeylerinde tutarlı kullanılır. Animasyon render sunucusunda çalışan küçük bir katman animasyonudur; [sözleşme §10](../LOOM-PRODUCT-CONTRACT.md#10-kaynak-ve-performans-kabulü) gereği gizli veya etkin olmayan pencerede ve sidebar kapalıyken durağandır. Kullanıcı kararıyla (6 Ekim 2026) bu küçük gösterge, macOS'un kendi küçük ilerleme göstergeleri gibi Hareketi Azalt açıkken de döner; diğer hareketler §2.8'e uyar.
-- Proje satırında sohbet sayısı gösterilmez; projedeki bir sohbet dikkat istiyor veya bakılmamış bitiş taşıyorsa renkli nokta görünür.
-- Proje görünümünde kart proje adını tekrarlamaz; aktivite görünümünde gösterir.
-- Proje satırının sağ tık menüsü yeni Claude / Codex sohbeti başlatabilir.
-- Sidebar camı duvar kâğıdı rengini belirgin biçimde sızdırmaz; koyu ton baskındır.
-- Üst navbar düzeni ayrıca konuşulacak; bu karar onu değiştirmez.
+## 4. Status language
+
+(User decisions 5 Oct 2026, UI feedback package G, [UI plan](../plans/cp5/UI.md); 6 Oct 2026 for Reduce Motion and Codex.)
+
+- Indicators follow the Unpeel style: small and colored. The same language is used in the sidebar, the detail header and every other status surface.
+- **Working** = small dots chasing around a rectangle (8 dots on a rounded rectangle, 12 pt, 10 steps per second). It is a render-server layer animation (`CAKeyframeAnimation`), so it costs the app no wakeups. It is static when the window is hidden or inactive, and in the sidebar when the sidebar is collapsed ([contract §10](../LOOM-PRODUCT-CONTRACT.md#10-resource-and-performance-acceptance)). By user decision (6 Oct 2026) it keeps animating when macOS Reduce Motion is on, like the system's own small progress indicators; other motion follows Reduce Motion.
+- **Needs approval / Waiting for you** = orange dot. **Finished** (nobody looked yet) = blue dot. **Failed / Stop not verified / Problem** = red dot. **Idle, Ready, Stale, ended** = no indicator (Stale also dims the title). **State unknown** = hollow gray ring; **Identity unclear** = hollow orange ring. Exact mapping and derivation order: [UI-MAP.md](UI-MAP.md#status-to-visual-mapping).
+- Project rows show no conversation count. A colored dot (red, then orange, then blue by priority) appears when a conversation in the project fails, needs attention or finished unviewed.
+- In the project view a conversation card does not repeat the project name; the activity view shows it.
+- A project row's right-click menu starts a new Claude conversation, and a new Codex conversation while Codex exists in dev builds. Codex is not part of the first production release (user decision 6 Oct 2026); its start path is exposed but no new Codex behavior is written (5 Oct 2026).
+- The navbar (top bar) layout is pending a separate discussion; none of the above changes it.
+
+## 5. Open design items
+
+- Navbar "more solid" layout (user feedback item 6, 5 Oct 2026): undecided.
+- Brand identity and tone: direction A · Night Fleece chosen (6 Oct 2026, [D-22](../DECISIONS.md)); see [IDENTITY-PROPOSAL.md](IDENTITY-PROPOSAL.md). Its tokens and rules are folded into this file in roadmap stage I; until then the values above stay authoritative.
+- Other open items and the user eye-check list: [UI-MAP.md](UI-MAP.md#open-ui-items-and-pending-decisions).

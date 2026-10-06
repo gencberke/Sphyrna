@@ -66,7 +66,7 @@ struct ProviderIcon: View {
     }
 }
 
-/// design/DESIGN.md §5: small colored indicators. Working is eight dots chasing
+/// design/DESIGN.md §4: small colored indicators. Working is eight dots chasing
 /// around a rounded rectangle; attention and results are single dots.
 extension EnvironmentValues {
     /// Whether working indicators may animate: the window is visible and

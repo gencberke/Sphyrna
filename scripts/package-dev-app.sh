@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds "Loom Dev.app" (local.loom.desktop.dev) from a release build (CP5 §5).
+# Builds "Loom Dev.app" (local.loom.desktop.dev) from a release build (CHECKPOINT-5-HISTORY §5).
 # Usage: scripts/package-dev-app.sh [output-directory]
 #   default: ~/Library/Application Support/Loom-Dev/app. A directory under
 #   ~/Documents is refused: run hosts are separate TCC-responsible apps and

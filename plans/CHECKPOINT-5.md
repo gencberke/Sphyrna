@@ -1,5 +1,14 @@
 # Checkpoint 5 — Terminal motoru ve ilk pencere
 
+> **CLOSED (6 Oct 2026) by user decision — [closure record](cp5/CLOSURE.md#cp5-closure-6-oct-2026), Codex-only items in the [Codex backlog](cp5/CODEX-BACKLOG.md).**
+>
+> **Current state (6 Oct 2026, English summary; the Turkish text below is the original map and some of its status cells are older).**
+> - All slices are implemented. Package I is verified: release suite 377/377 (one intended known issue), CPU40 passed (stream1 app ~24 %, total ~25.5 %), spinner1 12.6–14.7 %, hidden stream 3.5 %, p95 ~20 ms, working indicator ≈0.005 %, real Claude check 11/11 ([PERF](cp5/PERF.md#son-paket-doğrulaması-6-ekim-2026-paket-i), [UI](cp5/UI.md#sonuçlar)). The PERF row below ("CPU40 still failing", "P3 next") and the D/A rows citing D23 are superseded by these results.
+> - A UI slice ([cp5/UI.md](cp5/UI.md)) ran on 5–6 Oct from user feedback; it is not in the slice table below.
+> - Codex development is paused since 4 Oct and Codex is not in the first production release ([D-08, D-14](../DECISIONS.md)); Codex-only acceptance items moved to the [Codex backlog](cp5/CODEX-BACKLOG.md) at closure (D-23).
+> - Optimizer passes 1–3 are done; pass 3 found no closing blockers ([CLOSURE](cp5/CLOSURE.md)).
+> - At closure: O-02 resolved (Codex items to the backlog); O-01 budgets moved to stage R; R-A moved to stage I.
+
 Güncel iş konumu [STATUS.md](../STATUS.md), birleşik kabul ve revizyonlar [kapanış kaydındadır](cp5/CLOSURE.md). Bu belge checkpoint hedefi, kabul ölçütleri ve açık işlerin haritasıdır; tur raporları buraya eklenmez.
 
 ## Hedef ve kapsam
@@ -53,7 +62,7 @@ Aşağıdaki kimlikler korunmuştur. Satırlar hedefleri gösterir; tamamlanma k
 | OWN-1 | Sabit yerel imza ve sertifikaya bağlı owner requirement doğrulandı; farklı iki binary paketi arasında Belgeler erişimi tekrar izin istemedi. Canlı compiler XPC şartlı OWN-A4 iki tekrar ve tam suite'te geçti. Son native Quit 10/10 ve çökme 13/13; kapsam/host kalıntısı 0. | [OWN](cp5/OWN.md), [imza](experiments/cp5-stable-signing.json), [native](experiments/cp5-final-signed-native.json) |
 | A kaynak kabulü | Son run-host paketinde 43 kaynak koşusu ve 2000 gecikme örneği geçerli. Paket C host dahil iki 600 sn yükte sürekli büyüme yok; gizli çizim 0. Yeni D23 valid/CPU40 başarısız ve ASCII adayının runtime kabulü açık. GPU dört görünür hücre geçerli; dört örtülü hücre ve sayısal bütçeler son kabulde açıktır; eski run-host öncesi kaynak kanıtı bu mimariye genellenmez. | [Kaynak](experiments/cp5-final-runscope-resource.json), [gecikme](experiments/cp5-final-runscope-latency.json), [FINAL-ACCEPTANCE](cp5/FINAL-ACCEPTANCE.md) |
 | D birleşik kabulü | Reduce Motion native kabulü ve tercih geri yüklemesi geçti. Finder çoklu drop/no-Enter ve dört linkin native açılışı CUA drag/modifier-click araç sınırı nedeniyle doğrulanmadı. Dört örtülü GPU hücresi ve sayısal bütçe kabulü açık. | D1–D6 ve [son kabul](cp5/FINAL-ACCEPTANCE.md) |
-| Birleşik inceleme | Paket C native suite 322/322 korunur; yeni CPU/Codex düzeltmeleri ve fixture teardown sonrası son kaynak suite 334/334. Astra/high kaynak review geçti; paket D23 valid fakat yoğun CPU %40 başarısız. ASCII adayı source review ve yeni334 testten geçti; imza/runtime kabulü Mac kilidi nedeniyle doğrulanmadı. Önceki strict/Herdr/Orca ve GPU hazırlık düzeltmesi kayıtları korunur; açık kapılar kapanmadan CP5 kapanmaz. | [Kapanış](cp5/CLOSURE.md), [ortak akış](../AGENTS.md#checkpoint-kapanışı) |
+| Birleşik inceleme | Paket C native suite 322/322 korunur; yeni CPU/Codex düzeltmeleri ve fixture teardown sonrası son kaynak suite 334/334. Astra/high kaynak review geçti; paket D23 valid fakat yoğun CPU %40 başarısız. ASCII adayı source review ve yeni334 testten geçti; imza/runtime kabulü Mac kilidi nedeniyle doğrulanmadı. Önceki strict/Herdr/Orca ve GPU hazırlık düzeltmesi kayıtları korunur; açık kapılar kapanmadan CP5 kapanmaz. | [Kapanış](cp5/CLOSURE.md), [ortak akış](../AGENTS.md#checkpoint-closure) |
 
 Model deneyi: **2 Ekim 2026 kullanıcı kararıyla gerçek CLI/model testleri izin istenmeden çalıştırılır; yalnız büyük bütçeli işler sorulur** ([geliştirme rehberi](../DEVELOPMENT.md)). Önceki tur sayaçları (Claude Haiku 2/2, Codex 6/6) tarihsel kayıttır ve artık kapı değildir. [C §15](cp5/C.md#15-codex-deney-yetkisi-ve-uygulama-sırası-29-eylül-2026) uygulama sırası korunur. İlk sayısal kaynak hedefleri ürün bütçesi olarak onaylanmış değildir; GPU/bütçe açıkken tam kaynak kabulü verilmez.
 

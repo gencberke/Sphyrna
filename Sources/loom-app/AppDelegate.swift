@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var evidence: DevelopmentEvidence?
     private var quitAlert: NSAlert?
     /// Bounded visibility log so measurements can reject intervals in which
-    /// the window was shown, hidden or occluded (CP5 §13 madde 6).
+    /// the window was shown, hidden or occluded (CHECKPOINT-5-HISTORY §13 madde 6).
     private(set) var visibilityEvents: [[String: Any]] = []
 
     init(arguments: [String]) { self.options = LaunchOptions(arguments: arguments) }
@@ -352,7 +352,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let warnings = await runtime?.environmentWarnings() ?? []
             if !warnings.isEmpty, model.ownershipNotice == nil { model.ownershipNotice = warnings.joined(separator: " ") }
 
-            // Acceptance only (CP5 §18.1 madde 3): the first quit reports a
+            // Acceptance only (CHECKPOINT-5-HISTORY §18.1 madde 3): the first quit reports a
             // failure without stopping anything, so the real alert and Try Again
             // path can be exercised. Requires --evidence.
             let failFirstQuit = options.isEvidence && arguments.contains("--fail-first-quit")
@@ -512,7 +512,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ])
         panel.layoutSubtreeIfNeeded()
         window?.makeFirstResponder(view)
-        // CP5 §3.2 renderer experiment only; the product ships one path.
+        // CHECKPOINT-5-HISTORY §3.2 renderer experiment only; the product ships one path.
         if evidenceMode, arguments.contains("--metal") {
             do { try view.setUseMetal(true) }
             catch { showError("Metal rendering is unavailable.", detail: String(describing: error)) }

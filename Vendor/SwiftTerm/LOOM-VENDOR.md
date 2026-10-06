@@ -1,13 +1,13 @@
 # Vendored SwiftTerm
 
 - Upstream: https://github.com/migueldeicaza/SwiftTerm
-- Commit: `fe4fb45d5888ce33ff3788d6873870a73894a41b` (untagged `main`, 26 Sep 2026), chosen in `plans/CHECKPOINT-5.md` §3.1.
+- Commit: `fe4fb45d5888ce33ff3788d6873870a73894a41b` (untagged `main`, 26 Sep 2026), chosen in `plans/CHECKPOINT-5-HISTORY.md` §3.1.
 - License: `LICENSE` (MIT, unchanged).
 - Copied: `Sources/SwiftTerm`, `Sources/SwiftTermBuildInfoGenerator`, `Plugins/SwiftTermBuildInfoPlugin`, `swifterm-terminfo`, `LICENSE`. Not copied: tests, fuzz/termcast/wasm targets, apps, docs, `.git`.
 
 ## Local changes
 
-1. `patches/swiftterm-inline-image-quota.patch` (repo root): per-screen byte and count quota for inline images (Sixel, iTerm2 OSC 1337), oldest first. CP5 §13 madde 3.
+1. `patches/swiftterm-inline-image-quota.patch` (repo root): per-screen byte and count quota for inline images (Sixel, iTerm2 OSC 1337), oldest first. CHECKPOINT-5-HISTORY §13 item 3.
 2. `Package.swift`: reduced to the library, generator and plugin; target settings unchanged.
 3. `Plugins/SwiftTermBuildInfoPlugin` and `Sources/SwiftTermBuildInfoGenerator/BuildInfoGenerator.swift`: pin branch/commit/dirty and an explicitly empty tag, because git run inside this copy would describe the enclosing Loom checkout. The generator treats a present-but-empty `SWIFTTERM_BUILD_TAG` as "no tag" instead of running `git describe`.
 

@@ -16,7 +16,7 @@ let package = Package(
         .executable(name: "loom-fake-provider", targets: ["loom-fake-provider"]),
     ],
     dependencies: [
-        // CP5 §3.1 revision plus Loom's inline-image quota; see Vendor/SwiftTerm/LOOM-VENDOR.md.
+        // Pinned revision (plans/CHECKPOINT-5-HISTORY.md §3.1) plus Loom's local patches; see Vendor/SwiftTerm/LOOM-VENDOR.md.
         .package(path: "Vendor/SwiftTerm"),
     ],
     targets: [

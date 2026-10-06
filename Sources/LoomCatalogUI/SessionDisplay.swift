@@ -93,7 +93,7 @@ public enum SessionIndicator: Equatable, Sendable {
     }
 }
 
-/// What a project row signals about its conversations (DESIGN §5). Priority:
+/// What a project row signals about its conversations (DESIGN §4). Priority:
 /// failure, then attention, then an unviewed completion.
 public enum ProjectAttention: Int, Comparable, Sendable {
     case unviewed = 1, attention, failure

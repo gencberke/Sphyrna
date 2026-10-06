@@ -11,4 +11,4 @@ Sources retrieved 2026-09-22:
 
 `../harness/` holds transparent 128 px PNG renders of these marks for the 14–32 pt UI at Retina scale.
 
-The Loom app icon (`../Loom.*`, `../Loom-mark.svg`, `../Loom-menubar.svg`) is original user-supplied artwork, preserved unchanged from Herdr Desktop.
+The Loom app icon (`../Loom.*`, `../Loom-mark.svg`, `../Loom-menubar.svg`) is original user-supplied artwork, preserved from Herdr Desktop; only the SVG accessibility label was renamed from "Herdr" to "Loom" (user decision, 6 Oct 2026).

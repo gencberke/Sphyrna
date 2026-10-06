@@ -3,7 +3,7 @@ import LoomCatalogUI
 import SwiftUI
 
 /// The one main window's content: a native sidebar (SwiftUI catalog) beside the
-/// detail pane (CP5 §4.1: sidebar 300 pt in 220–520 pt, detail at least 480 pt).
+/// detail pane (CHECKPOINT-5-HISTORY §4.1: sidebar 300 pt in 220–520 pt, detail at least 480 pt).
 /// Width and collapse state are persisted through the model's preferences.
 @MainActor
 final class MainSplitViewController: NSSplitViewController {

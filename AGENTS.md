@@ -1,46 +1,72 @@
-# Loom çalışma akışı
+# Loom agent workflow
 
-## Başlangıç ve roller
+Loom is a native macOS 27 app that hosts real Claude Code terminals in one dark-glass window ([README](README.md)). This file is the process authority for every agent session in this repo. The user's chat request wins over it; it wins over personal defaults.
 
-1. Ana ajan planner-reviewer'dır: planlar, işi subagent'lara delege eder ve kabul review'unu yapar. Kullanıcının açık rol veya görev ataması önceliklidir.
-2. [STATUS.md](STATUS.md), [rol dosyan](agents/README.md) ve status'un işaret ettiği plan bölümünü oku. En yüksek checkpoint numarasını güncel iş sayma. Subagent işini planner-reviewer'ın brief'inden alır; status'tan kendine iş seçmez.
-3. `git status` ile mevcut değişiklikleri gör ve koru. İlgili ürün/tasarım maddelerini ve gerektiğinde [geliştirme rehberini](DEVELOPMENT.md) oku.
+## Start of every session
 
-## Delegasyon ve iletişim
+1. Read [STATUS.md](STATUS.md) (where we are), this file, and [ROADMAP.md](ROADMAP.md) (where we are going). Check [DECISIONS.md](DECISIONS.md) before assuming scope, budgets or permissions.
+2. Read what the task needs, and no more: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for code, [design/DESIGN.md](design/DESIGN.md) and [design/UI-MAP.md](design/UI-MAP.md) for UI, [DEVELOPMENT.md](DEVELOPMENT.md) before building, testing, packaging or measuring, the [product contract](LOOM-PRODUCT-CONTRACT.md) for product behavior. History in `plans/` is read only when a task points to it ([plans/README.md](plans/README.md)).
+3. Run `git status`; keep every change you did not make.
+4. A subagent takes its work only from its Brief, never from STATUS.
 
-Planner-reviewer implementer, araştırmacı ve optimizer subagent'larını doğrudan görevlendirir; ilerleme, teknik sorular, sonuçlar ve düzeltmeler doğrudan mesajlarla iletilir. Kullanıcının ajanlar arasında prompt taşıması veya dosyaya yanıt eklenmesini beklemek gerekmez. Subagent yeni ajan başlatmaz; koordinasyon ve kabul kararı planner-reviewer'da kalır.
+## Roles
 
-Brief kısa ve işi yapmaya yeterli olsun: **Goal / Context / Scope / Done when / Checks**. Hedefi, gerekli kaynakları ve kararları, dosya sahipliğini, kapsam dışını, kabul ölçütlerini ve kontrolleri belirt. Varsa deney yetkisini/bütçesini açıkça aktar. Subagent'ın başka ajanlarla aynı çalışma ağacını paylaştığını ve onların değişikliklerini koruması gerektiğini söyle. Geçmiş sohbeti veya bütün plan arşivini okumasına güvenme.
+| Role | Who | Claude Code agent type |
+| --- | --- | --- |
+| Planner-reviewer ([role](agents/reviewer.md)) | The main session. Plans, delegates, accepts or rejects, owns the canonical records. | main session |
+| Implementer ([role](agents/implementer.md)) | Delivers one bounded change in its assigned write area and verifies it. | `implementer` |
+| Researcher | Read-only investigation of code, evidence or external sources. | `explorer` |
+| Optimizer ([role](agents/optimizer.md)) | Mandatory read-only structure and resource review before a checkpoint closes. | `strict-reviewer` with the optimizer Brief |
 
-Subagent sonucu **Status / Result / Evidence / Unverified / Needs** başlıklarıyla doğrudan planner-reviewer'a verir; kısa işte her başlık bir satır olabilir. Eksik bilgi ve engeller de mesajla iletilir. Kanıtı **doğrulandı / başarısız / doğrulanmadı** diye ayır. Implementasyonun raporlanması kabul edildiği anlamına gelmez.
+The optimizer runs on `gpt-6-astra` / `high`, or in Claude Code on Opus 5.5 / `xhigh` ([D-06](DECISIONS.md)); never lower. If neither setting is available, tell the user; a review on another model does not count as the closing optimizer review. The planner-reviewer starts implementers, researchers and the closing optimizer without asking the user; other review roles (`reviewer`, `verifier`, `advisor`) start only when the user asks. Subagents never start agents. Claude Code does not load `agents/*.md`, so the Brief restates the role rules a subagent needs.
 
-Bağımsız işler ayrık yazma alanlarıyla paralel yürüyebilir; sıkı bağlı işleri bölme. Birleşik kontrollerin tek sahibi planner-reviewer tarafından belirlenir. Planner-reviewer değişiklikleri ve belirleyici kanıtları inceler, eksikleri doğrudan ilgili subagent'a döner. Rutin teknik kararları ajan verir; kullanıcıya yalnız ürün tercihi, kapsam veya yetki gerektiren karar gider.
+## Delegation
 
-## Kalıcı kayıt ve durum
+**Brief:** Goal / Context / Scope (write ownership and out-of-scope) / Done when / Checks. Include the decisions and file paths needed to act, any experiment or real-model budget, and the reminder that other agents share the tree. Do not rely on the subagent reading chat history or plan archives.
 
-Dosyalar haberleşme kanalı değil, sonraki oturumun işi sürdürebilmesi için kısa plan ve karar kaydıdır. Bu kayıtları planner-reviewer günceller; subagent'lar plan, checkpoint haritası ve status'a yazmaz.
+**Report:** Status / Result / Evidence / Unverified / Needs (one line each for short work), plus **Doc impact**: which canonical docs the change makes untrue. Evidence is labelled verified, failed or unverified. A reported implementation is not an accepted one.
 
-- `plans/CHECKPOINT-<n>.md`: hedef, slice sırası, kabul ölçütleri, açık işler ve kayıt bağlantıları. Tur raporu veya yazışma eklenmez.
-- `plans/cp<n>/<slice>.md`: slice planı, önemli kapsam/uygulama kararları, açık bulgular ve kabul sonuçları; gereken kanıta bağlantı verir. Her mesaj veya ajan turu için bölüm ekleme. Checkpoint kapanışı gerektiğinde aynı klasörde `CLOSURE.md` içinde tutulur.
-- Deney dosyaları: ayrıntılı ölçüm ve kanıt. Subagent kendi brief'inde atanmış kanıt dosyalarına yazabilir; ham log ve bütün diff anlatısı slice'a kopyalanmaz.
-- Eski slice bölümleri ve kapanmış kayıtlar korunur. Düzeltmeler ilgili eski bulguya referans veren kısa bir yeni kayıtla yapılır. Eski dosyadan devir/yazışma talimatları tarihsel kayıttır; güncel çalışma biçimi bu dosyadır. Ürün kabulü, açık bulgular ve deney yetkisi bu geçişle değişmez.
+Independent work runs in parallel only with disjoint write areas; tightly coupled work is not split. The planner-reviewer reviews changes and decisive evidence, sends gaps back to the same subagent, and makes routine technical decisions itself. Only product choices, scope and permissions go to the user.
 
-Planner-reviewer tur sonunda gerekli karar/sonuç kaydını tamamlar, ardından `STATUS.md` dosyasını günceller. Status yalnız checkpoint, slice, durum, sıradaki rol/iş sahibi, iş bağlantısı, son sonuç bağlantısı ve varsa engeli içerir; geçmiş ve test dökümü biriktirilmez. Konum değişmediyse korunur. Güncel iş konumunun tek kaynağı status'tur.
+## Multi-agent and swarm rules
 
-Durumlar: **planlama bekleniyor**, **implementasyon bekleniyor**, **review bekleniyor**, **optimizasyon bekleniyor**, **kullanıcı kararı bekleniyor**, **tamamlandı**. Implementasyon veya optimizasyon beklenmesi ayrı bir kullanıcı oturumu beklendiği anlamına gelmez; yetkili kapsam içinde planner-reviewer subagent'ı başlatır ve sonucunu takip eder. Devam ederken önce mevcut subagent'ların durumunu kontrol et; aynı işi tekrar başlatma. Kayıt yazmadan önce son içeriği yeniden oku ve araya giren değişikliği hesaba kat.
+- **Write ownership.** Every Brief names the files or directories an agent may edit. Default areas: `Sources/LoomCore` + `Sources/CLoomPOSIX` + `Sources/CLoomTestSupport`, `Sources/LoomTerminal` + `Vendor/` + `patches/`, `Sources/LoomCatalogUI`, `Sources/loom-app` + `Sources/LoomLaunchOptions`, helper executables, `scripts/`, and the matching `Tests/` targets. `Package.swift`, `Vendor/SwiftTerm/LOOM-VENDOR.md` and canonical docs have one owner per round.
+- **Shared tree.** Never `git stash`, `checkout`, `reset`, `clean` or revert work you did not make. No commits, pushes or PRs unless the user asked in chat ([D-16](DECISIONS.md)); a plan that calls for one is not authority.
+- **Builds and heat** ([D-13](DECISIONS.md)). No parallel builds. Each agent uses its own `--scratch-path` outside `~/Documents`. One named agent runs the full suite on the combined result. Heavy measurements and tests that put windows on screen run only when the user says the computer is idle. Details: [DEVELOPMENT.md](DEVELOPMENT.md).
+- **User data.** Real `~/.claude` and `~/.codex`, the installed `Loom Dev.app`, the default dev catalog, and the daily `Loom.app` with its data are never test material. The clean loom tree is written only by the promote step ([DEVELOPMENT.md §10](DEVELOPMENT.md#10-loom-dev-and-the-clean-loom-tree)).
+- **Workflows.** A scripted multi-agent run has a named owner (the main session) who alone writes STATUS, ROADMAP, DECISIONS and plans, and who reviews the combined result before anything counts as accepted.
 
-## Checkpoint kapanışı
+## Keeping docs true
 
-Her slice planner-reviewer'ın davranış/kabul review'undan geçer. Optimizer her slice'ta rutin çalıştırılmaz; checkpoint kapanmadan önce zorunludur. Planner-reviewer optimizer subagent'ını görevlendirir, belirleyici bulgularını doğrular ve sonucu checkpoint kapanış kaydına ekler. Daha erken inceleme yalnız somut bir yapı/kaynak sorunu gerektiriyorsa yapılır.
+Docs are the memory that lets the next session continue; they are not a message channel. Each doc has an owner and a trigger:
 
-Optimizer için zorunlu model **`gpt-6-astra`**, reasoning effort **`high`** (3 Ekim 2026 kullanıcı kararı); Claude Code oturumunda **Opus 5.5 / `xhigh`** de kabul edilir (3 Ekim 2026 kullanıcı izni). Planner-reviewer optimizer'ı bu ayarlardan biriyle başlatır; daha düşük model/effort'a kendiliğinden düşmez. İstenen ayar kullanılamıyorsa sınırlamayı kullanıcıya bildirir; başka modelin incelemesini checkpoint sonu optimizer kabulü saymaz.
+| Doc | Owner | Update when |
+| --- | --- | --- |
+| STATUS.md | planner-reviewer | End of every round: position, next owner, links, blocker. Position only, no history or numbers. |
+| ROADMAP.md | planner-reviewer | A stage opens or closes, or scope changes. |
+| DECISIONS.md | planner-reviewer | The user decides something in chat. |
+| LOOM-PRODUCT-CONTRACT.md | planner-reviewer | Product decision by the user; §3 changes only with the user's decision. |
+| docs/ARCHITECTURE.md | implementer who changes structure, checked at review | New target, moved responsibility, new process type, new vendor patch. |
+| design/DESIGN.md, design/UI-MAP.md | UI implementer, checked at review; rule changes only with a user decision | New or changed surface, token, state or interaction. |
+| DEVELOPMENT.md, scripts/README.md | whoever changes tooling, checked at review | New command, flag, script, path or policy. |
+| plans/CHECKPOINT-n.md, plans/cpn/*.md | planner-reviewer | Plan, slice decisions, acceptance results, closure. |
 
-Checkpoint, kabul ölçütleri doğrulanıp optimizer incelemesi tamamlandıktan ve engelleyici bulgular kapandıktan sonra kapanır. Düzeltme yapılırsa etkilenen kabul ve optimizer bulgusu yeniden doğrulanır; ilgisiz incelemeler tekrarlanmaz. İyileştirme önerileri kendiliğinden yeni kapsam veya kapanış engeli sayılmaz; planner-reviewer etkisini ve önceliğini gerekçelendirir.
+A subagent edits a canonical doc only inside its Brief's write area; otherwise it lists the needed change under Doc impact and the planner-reviewer applies it. Changing a design rule (not just describing the UI) needs a user decision. Before writing any record, re-read its latest content.
 
-## Kaynaklar ve sınırlar
+Record content rules:
+- `STATUS.md` is the single source of the current position: date, stage or checkpoint, slice, state, next owner, work link, latest result link, blocker. If the position did not change, leave it. No history, numbers or decisions.
+- `plans/CHECKPOINT-n.md`: goal, slice order, acceptance criteria, open work and record links. `plans/cpn/<slice>.md`: slice plan, important scope or implementation decisions, open findings and acceptance results with evidence links; closure in `plans/cpn/CLOSURE.md`.
+- Experiment files under `plans/experiments/` (or the probe directory) hold detailed measurements and evidence; a subagent may write the evidence files its Brief assigns. Raw logs and whole-diff narratives are not copied into plans.
+- Records state the current truth; a superseded entry gets a short new entry pointing at the old one instead of being rewritten. No per-message or per-round reports. Hand-off or correspondence instructions in old plan files are historical; this file is the current way of working.
 
-- [Ürün sözleşmesi](LOOM-PRODUCT-CONTRACT.md): ürün kararları ve teknik sınırlar. §3 değişiklikleri kullanıcı kararı gerektirir.
-- [Görsel sözleşme](design/DESIGN.md): tasarım hedefleri.
-- [Geliştirme rehberi](DEVELOPMENT.md): kontroller, izolasyon ve kanıt yöntemi.
+## Status values
 
-Kullanıcıyla kısa ve sade Türkçe konuş; teknik kanıta kalıcı kayıttan bağlantı ver. Commit, push ve PR yalnız kullanıcı isteyince yapılır; planın bunları istemesi tek başına kullanıcı yetkisi değildir.
+**waiting for planning**, **waiting for implementation**, **waiting for review**, **waiting for optimization**, **waiting for user decision**, **done**. "Waiting for implementation" does not mean waiting for a separate user session: within authorized scope the planner-reviewer starts the subagent and follows it. On resume, check running subagents before starting new ones and never restart the same work.
+
+## Checkpoint closure
+
+Every slice passes the planner-reviewer's behavior and acceptance review. The optimizer is not run per slice; it is mandatory before a checkpoint closes, and an earlier review happens only for a concrete structural or resource problem. The planner-reviewer verifies its decisive findings and records the result in the checkpoint's closure record. A checkpoint closes when acceptance is verified, the optimizer review is done and blocking findings are closed. After a fix, re-verify only the affected acceptance and findings. Improvement suggestions are not new scope or closure blockers unless the planner-reviewer justifies it.
+
+## Language and communication
+
+Repository docs, code, identifiers and commit messages are English ([D-15](DECISIONS.md)). Talk to the user in short, plain Turkish and link evidence in the records. Older plan and history files remain in Turkish as written.

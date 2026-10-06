@@ -208,3 +208,12 @@ Kapsam: 2. turdan sonra gelen ve optimizer görmemiş değişiklikler. Önceki b
 | R-A | Göstergenin WindowServer (render sunucusu) maliyeti ölçülmedi; app tarafı ≈%0,005 | Ölçüm açığı, engelleyici değil: kullanıcı bilgisayarı kullanmadığında dönen/durağan WindowServer CPU farkı ölçülür; anlamlıysa animasyona 10 fps `preferredFrameRateRange` |
 
 İncelenmeyen alanlar optimizer raporunda: Codex, navbar, ertelenenler, `EvidenceResourcePool`, loom-probe, run-host, Metal, Settings.
+
+## CP5 closure (6 Oct 2026)
+
+**Closed by user decision** ("CP5'i kapatalım, stabiliz"; [D-23](../../DECISIONS.md)). Basis: package I verified (release suite 377/377 with one intended known issue; CPU40 passed, stream1 total 25.4–25.6 %; spinner1 12.6–14.7 %; hidden 3.5 %; p95 ~20 ms; working indicator ≈0.005 %; real Claude 11/11 — [PERF](PERF.md#son-paket-doğrulaması-6-ekim-2026-paket-i)), optimizer pass 3 with no blocking finding (above), and the user using the app as stable.
+
+- **Codex-only items** are moved to the [Codex backlog](CODEX-BACKLOG.md) (O-02 resolved).
+- **Resource budgets beyond CPU40** (O-01) do not block CP5; they move to roadmap stage R (release readiness).
+- **Carried forward, not blockers:** R-A (WindowServer cost of the indicator) and S-B (dead theme constants, removed by the theme rewrite) to stage I; S-C and the post-stable optimizer items (F6, F8–F10, S2, S4) to stage F; Finder drop/links, occluded GPU cells, Metal fast path and the spinner layer split stay deferred (O-07).
+- The user's eye check of package I was not recorded item by item; the user reported the app stable in daily use.

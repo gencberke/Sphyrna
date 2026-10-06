@@ -1,0 +1,28 @@
+# scripts
+
+Rules for when and how to run these are in [DEVELOPMENT.md](../DEVELOPMENT.md). "Heavy" means sustained CPU, a release build, or an app window on screen for minutes: run it only when the user says the Mac is idle and the Loom window may stay visible. Every script that needs an app takes a package under `~/Library` (never `~/Documents`). The `perf/*` runners require `--app` and refuse the installed dev app; the older `cp5-*` scripts still default to it, so always pass a package under `Loom-Dev/packages/`, never run them while the user's own Loom Dev instance is open (only the `.sh` scripts check this for any instance; the Python runners check only their own package binary, and `cp5-d-measure.py` does not check), and never touch the default dev catalog.
+
+| Script | Purpose | Heavy | Safe to run when |
+|---|---|---|---|
+| `dev-paths.sh` | Sourced helpers: `loom_refuse_documents`, `loom_scratch_path`, `loom_command_channel`, `loom_send_command` | no | any time (sourced, not run) |
+| `package-dev-app.sh [dir]` | Release build, sign, verify, swap `Loom Dev.app` | yes (release build) | single build owner, target app not running, screen unlocked |
+| `cp5-a-acceptance.sh [app]` | A slice smoke through LaunchServices (synthetic `--fixture interactive` terminal, no model) | yes (window) | idle Mac, app not the user's running copy |
+| `cp5-a-measure.sh [reps] [app]` | A slice starting measurements, 10 s warm-up + 60 s per scenario | yes | Mac idle, window visible |
+| `cp5-b-acceptance.sh [app]` | B acceptance on isolated data (migration, catalog); builds fixtures | yes (debug build) | single build owner, idle Mac |
+| `cp5-b-summary.py <run>` | Turns a B run's `checks.json` into `summary.json` | no | any time |
+| `cp5-c-acceptance.sh [app]` | C synthetic acceptance with `--fake-providers`; builds fixtures | yes (release build) | single build owner, idle Mac |
+| `cp5-c-observer-smoke.py` | Codex (paused) model-free fake app-server observer smoke; needs `.build/debug/loom-fake-provider` and `.build/debug/loom-probe` (repo-local `.build`, conflicts with per-agent scratch paths) | no (needs a prior debug build) | any time the product exists |
+| `cp5-d-measure.py` | Isolated resource driver (scenarios: smoke, idle*, stream1, spinner1, stream10, burst, cycles, latency, instrument) | yes (except `smoke`, `--self-test`) | Mac idle, window visible, no concurrent build |
+| `cp5-d-check-quit.py <evidence> [app]` | Verifies one evidence run's normal Quit and leftovers | no | after a run ended |
+| `cp5-scope-probe.py snapshot\|verify\|hosts <app>` | Finds run-host scope members; no signals sent | no | any time |
+| `cp5-own-native.py <app> quit\|kill` | Run-scope ownership with the escape fixture (SIGKILLs the app in `kill`) | yes (window) | idle Mac, isolated package |
+| `cp5-own-real.py <app>` | Real Claude (and Codex) ownership gates; real model turns | yes + model turns | user says the Mac is idle (short real-Claude turns are pre-authorized, D-04); Claude only (Codex paused) |
+| `cp5-remaining-native.py --prepare\|--check` | Prepare Finder/link fixtures, validate native observations; launches nothing | no | any time |
+| `cp5-gpu-attribution.py` | Resource-coalition GPU time evidence (no per-PID GPU claim) | light | beside a measurement run |
+| `cp5-gpu-sample.py` / `cp5-gpu-sample.c` | Device-total IOReport GPU sampler (compiles the C file with clang) | light | beside a measurement run |
+| `perf/run-final-matrix.py` | Short CPU matrix (3x stream1, 3x spinner1, hidden, 2x latency), 90 s cooldowns, wraps `cp5-d-measure.py`; `--reference-app` alternates a reference package | yes (~25 min) | Mac idle, window visible |
+| `perf/indicator_cost.py <fixtures>` | Working-indicator CPU/wakeups (fake Claude, `proc_pid_rusage`); fixtures dir needs `loom-fake-provider` and `loom-test-child` | yes (~12 min) | Mac idle, window visible |
+| `perf/claude_real.py` | Real-Claude check: 2 short turns, transcript-proven submission, Stop/Quit scope, idle observer cost | yes + 2 model turns | user says the Mac is idle (2 short real-Claude turns are pre-authorized, D-04) |
+| `perf/indicator_cost_lib.py`, `perf/perf_paths.py` | Libraries for the three runners (rusage struct with both diskio fields; `~/Documents` refusal; default paths) | no | imported only |
+
+`perf/*` options: `--run-dir` (default `~/Library/Application Support/Loom-Dev/probe/runs/<name>-<timestamp>`), `--app` (required: a package under `Loom-Dev/packages/`; the installed dev app is refused); `claude_real.py --probe-root`; `run-final-matrix.py --reference-app`.

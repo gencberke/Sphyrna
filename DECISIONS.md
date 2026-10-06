@@ -1,0 +1,54 @@
+# Decisions
+
+Dated user decisions that steer scope, process and budgets, plus the decisions still open. Product behavior decisions live in [the product contract §3](LOOM-PRODUCT-CONTRACT.md#3-accepted-decisions) and visual rules in [design/DESIGN.md](design/DESIGN.md); this log points to them instead of restating them.
+
+Rules: only the main agent (planner-reviewer) writes this file, and only for decisions the user actually made in chat. Never record a guess or a task instruction as a decision. A new decision that changes an old one gets a new row naming the row it supersedes; old rows stay.
+
+## Decided
+
+| ID | Date | Decision | Where it applies |
+| --- | --- | --- | --- |
+| D-01 | 2026-09-28 | Minimum macOS is 27. | Contract §3 |
+| D-02 | 2026-09-27 | Checkpoint order: 1 → 2 → 5 (terminal engine and first window) → 4 → 3. | Contract §3, §11; [ROADMAP](ROADMAP.md) |
+| D-03 | 2026-09-28 | First-window scope and window-close/Quit behavior as written in contract §3. | Contract §3 |
+| D-04 | 2026-10-02 | Real-provider tests may run without asking, in isolated CLI profiles; large budgets need the user. Narrowed by D-08 and D-13. | [DEVELOPMENT.md](DEVELOPMENT.md) |
+| D-05 | 2026-10-02 | Run scope per managed run; each live Codex session owns its app-server in that scope; the run host stops its scope if Loom disappears. | Contract §3, §6 |
+| D-06 | 2026-10-03 | Checkpoint optimizer runs on `gpt-6-astra` / `high`, or in Claude Code on Opus 5.5 / `xhigh`; never lower. | [AGENTS.md](AGENTS.md) |
+| D-07 | 2026-10-03 | CPU gate: Loom total (app + fixture + run-scope hosts) ≤ 40 % of one core at 1 MiB/s visible output. | Contract §10 |
+| D-08 | 2026-10-04 | Codex development is paused; focus is Claude, and real-provider tests run through Claude. | All plans |
+| D-09 | 2026-10-04 | No heavy tests during development; one combined final test. Superseded by D-13. | — |
+| D-10 | 2026-10-05 | UI feedback on package G accepted as rules: Unpeel-style status language, attention dot instead of conversation count, no project name on cards in project view, project right-click starts conversations, dark glass without blue glow, vivid terminal colors. Navbar layout is discussed separately. | design/DESIGN.md |
+| D-11 | 2026-10-05 | Clear UI/UX, code and optimization improvements found along the way may be made without asking; ambiguous design choices go to the user. Given during the CP5 UI round. | plans/cp5/UI.md |
+| D-12 | 2026-10-06 | The small working indicator keeps animating when Reduce Motion is on; other motion follows Reduce Motion. | design/DESIGN.md |
+| D-13 | 2026-10-06 | Test and heat policy for multi-agent work: no parallel builds; one agent owns and runs the full suite for a combined change; heavy measurements and screen-flashing UI tests only when the user says the computer is idle. Supersedes D-09. | DEVELOPMENT.md, AGENTS.md |
+| D-14 | 2026-10-06 | Codex is not part of the first production release. Codex code may stay in development builds, paused. | Contract §3; ROADMAP |
+| D-15 | 2026-10-06 | Repository documentation is written in English. Conversation with the user stays in Turkish. | AGENTS.md |
+| D-16 | 2026-10-06 | CP5 work is checkpointed on branch `checkpoint/cp5` (commit `0d3141e`, tag `cp5-package-i`) before the documentation baseline and the multi-agent run. Commits, pushes and PRs still need the user's request. | git |
+| D-17 | 2026-10-06 | Loom gets a distinct identity (tone, design language, character) that new features follow. The direction was open (O-04); chosen by D-22. | [design/IDENTITY-PROPOSAL.md](design/IDENTITY-PROPOSAL.md) |
+| D-18 | 2026-09-30 | Direct delegation: the main agent is the planner-reviewer and runs implementer and optimizer work through subagent Briefs and direct messages, not through files or user relays. | AGENTS.md ([source](plans/cp5/C.md)) |
+| D-19 | 2026-10-03 | Measurement definition ("both"): the 40 % total ceiling stays; the stream fixture produces the same bytes without string formatting; Loom app CPU is reported separately; the ≤ 30 % app ceiling is not approved (O-01). | [PERF](plans/cp5/PERF.md), DEVELOPMENT.md |
+| D-20 | 2026-10-03 | Any setting that changes Claude CLI behavior (animations, update checks, feature processes) is a user decision. | [PERF](plans/cp5/PERF.md) C1 |
+| D-21 | by 2026-10-04 | Finder drop and links, and occluded-window GPU cells, are deferred past CP5 (scheduling is O-07). | STATUS.md before 6 Oct (git history) |
+| D-22 | 2026-10-06 | Identity direction A · Night Fleece (today's look, codified around the ram mark's fleece hue). The optional borrowings and sub-decisions in the proposal stay open and default to A's values. Resolves O-04. | [design/IDENTITY-PROPOSAL.md](design/IDENTITY-PROPOSAL.md) |
+| D-23 | 2026-10-06 | CP5 is closed; the app is stable. Codex-only items move to the Codex backlog (resolves O-02); budgets beyond CPU40 (O-01) move to release readiness. | [CP5 closure](plans/cp5/CLOSURE.md#cp5-closure-6-oct-2026), [Codex backlog](plans/cp5/CODEX-BACKLOG.md) |
+| D-24 | 2026-10-06 | The app mark's accessibility label is "Loom" (was the inherited "Herdr"). | assets/brand/README.md |
+| D-25 | 2026-10-06 | Two trees: this repository is **loom-dev** (development; may be messy, holds tests, plans, tooling and dev builds); a separate clean **loom** tree holds only what the production app needs and is the only source of the daily-use Loom.app. Stable releases are tested in loom-dev, then promoted into loom and built there. Setup details are proposed in ROADMAP stage L. | [DEVELOPMENT.md](DEVELOPMENT.md#10-loom-dev-and-the-clean-loom-tree), [ROADMAP](ROADMAP.md) |
+
+Standing rules and setup facts from earlier sessions: commit, push and PR only on the user's request (a plan asking for one is not authority); development packages are signed with the local `Loom Dev Code Signing` identity (set up 3 Oct 2026); real `~/.claude` and `~/.codex` are read-only; the user's installed Loom Dev app and default dev catalog are never used for tests.
+
+## Open
+
+Resolved: O-02 by D-23, O-04 by D-22.
+
+| ID | Question | Context | Blocks |
+| --- | --- | --- | --- |
+| O-01 | Resource budgets beyond CPU40: app CPU ceiling (proposal ≤ 30 % at 1 MiB/s), memory, idle wakeups, latency. | [Proposal](plans/cp5/RESOURCE-BUDGET-PROPOSAL.md) (reference column predates package I; current numbers in [the package I summary](plans/experiments/cp5-final-matrix-I-20261006.json)) | Release readiness (stage R); no longer blocks CP5 (D-23) |
+| O-03 | Navbar / title bar layout. Direction A keeps a transparent header; the proposal's alternative is C's solid band with a status chip. | design/DESIGN.md, [identity proposal](design/IDENTITY-PROPOSAL.md) §5 | Stage I |
+| O-05 | Which of CP4 (deletion and retention) and CP3 (authorized coordination) are required for the first production release. | [ROADMAP](ROADMAP.md) | Release plan |
+| O-06 | First-release distribution: Developer ID signing, notarization, production bundle identity, update mechanism. | ROADMAP | Release plan |
+| O-07 | Deferred CP5 items: Finder drop and links, occluded-window GPU cells, Metal fast path (development only today), spinner layer split. | PERF, CLOSURE | Scheduling |
+| O-08 | Contract §3 rows that look outdated: "terminal engine and UI technology to be selected" (SwiftTerm, SwiftUI and AppKit are in use), the Codex memory figure, the Codex cache row versus §4.4. | Contract §3, [audit](plans/experiments/doc-audit-20261006/freshness.md) §4 | Contract accuracy |
+| O-09 | Contract §12 remaining decisions: crash and Force Quit guarantee, Claude delivery path, deletion data contract, cleanup arithmetic. | Contract §12 | CP4, CP3 |
+| O-10 | Contract statements marked "status to confirm" (lines with that note in §6, §9, §12, §13): Codex two-path comparison wording, the A5 gap, SQLite/SwiftUI/AppKit called candidates, crash-guarantee and budget items, the chat-ordering idea. | Contract, [audit](plans/experiments/doc-audit-20261006/freshness.md) §4 | Contract accuracy |
+| O-11 | Clean loom tree details: location, git history per promoted release, versioning, signing identity for the daily app, whether dev/evidence code must be stripped before the first daily build. | [ROADMAP](ROADMAP.md) stage L | Stage L |
+| O-12 | Identity sub-decisions under D-22: the optional borrowings (B's failure diamond, C's header band) and the proposal's §5 items 2–9; until decided, A's values apply. | [identity proposal](design/IDENTITY-PROPOSAL.md) §4–§5 | Stage I |

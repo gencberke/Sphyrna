@@ -4,7 +4,7 @@ import LoomCore
 import SwiftTerm
 import Synchronization
 
-/// CP5 §3.2 starting limits. Kitty and inline-image (Sixel, iTerm2) storage
+/// CHECKPOINT-5-HISTORY §3.2 starting limits. Kitty and inline-image (Sixel, iTerm2) storage
 /// are per screen (main + alternate): 8 MiB each keeps each store at 16 MiB.
 /// Inline bytes are counted from reported image dimensions (see §18).
 public enum TerminalSurfaceLimits {
@@ -315,7 +315,7 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
     }
 }
 
-/// Engine view with Loom's paste rule (CP5 §4.1): an image-only clipboard
+/// Engine view with Loom's paste rule (CHECKPOINT-5-HISTORY §4.1): an image-only clipboard
 /// is forwarded as Ctrl+V for CLIs that read clipboard images themselves.
 public final class LoomTerminalView: TerminalView {
     static func quotedPaths(_ urls: [URL]) -> String {

@@ -1,11 +1,12 @@
-# Loom ajan rolleri
+# Loom agent roles
 
-Ortak başlangıç, doğrudan delegasyon ve kayıt kuralları [AGENTS.md](../AGENTS.md) dosyasındadır. Güncel iş [STATUS.md](../STATUS.md), teknik çalışma bilgileri [DEVELOPMENT.md](../DEVELOPMENT.md) içindedir.
+Shared start, delegation and record rules are in [AGENTS.md](../AGENTS.md). Current work is in [STATUS.md](../STATUS.md); technical working rules are in [DEVELOPMENT.md](../DEVELOPMENT.md).
 
-| Rol | Sorumluluk |
-| --- | --- |
-| [Planner-reviewer](reviewer.md) | Ana ajan; planlar, subagent'ları görevlendirir, sonuçları review eder ve kalıcı kayıtları günceller. |
-| [Implementer](implementer.md) | Brief kapsamındaki işi uygular, kontrolleri yapar ve sonucu doğrudan planner-reviewer'a döner. |
-| [Optimizer](optimizer.md) | `gpt-6-astra` / `high` veya Claude Code'da Opus 5.5 / `xhigh`; checkpoint sonunda kod yapısını, bakım kolaylığını ve kaynak tüketimini inceler; bulgularını doğrudan planner-reviewer'a döner. |
+| Role | Responsibility | Claude Code agent type |
+| --- | --- | --- |
+| [Planner-reviewer](reviewer.md) | Main agent: plans, delegates, reviews results, keeps the canonical records. | main session |
+| [Implementer](implementer.md) | Delivers the Brief's change, runs its checks, reports back. | `implementer` |
+| Researcher | Read-only investigation; reports findings with evidence. | `explorer` |
+| [Optimizer](optimizer.md) | Before checkpoint closure: structure, maintainability and resource review. `gpt-6-astra` / `high`, or Opus 5.5 / `xhigh` in Claude Code. | `strict-reviewer` with the optimizer Brief |
 
-Planner-reviewer ile subagent'lar mesajla haberleşir; slice dosyaları yazışma kuyruğu değildir. `reviewer.md` mevcut referansları korumak için aynı dosya adını kullanır; rolün adı planner-reviewer'dır.
+Claude Code does not load these files; the planner-reviewer restates the needed role rules in each Brief. `reviewer.md` keeps its file name for old links; the role is the planner-reviewer.
