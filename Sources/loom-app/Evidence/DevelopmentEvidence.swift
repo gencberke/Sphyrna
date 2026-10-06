@@ -1,3 +1,4 @@
+#if LOOM_EVIDENCE
 import AppKit
 import LoomCatalogUI
 import LoomCore
@@ -20,8 +21,8 @@ import LoomTerminal
 /// `sidebar-width:<pt>`, `resize:<w>x<h>`, `screenshot:<label>`. Conversation commands (CP5 C) drive the model intents the buttons use: `start:<claude|codex>:<project id|none>`, `resume:<id>`, `stop:<id>`, `answer:<id>:<accept|deny>`, and `type:<id>:<text>` (through the terminal delegate, not a native key event).
 @MainActor
 final class DevelopmentEvidence {
-    private let directory: URL
-    private weak var app: AppDelegate?
+    let directory: URL
+    weak var app: AppDelegate?
     private var observer: NSObjectProtocol?
     private var resourcePool: EvidenceResourcePool?
     private var resourceOperation: String?
@@ -170,140 +171,6 @@ final class DevelopmentEvidence {
         }
     }
 
-    private func handleCatalogCommand(_ name: String, _ argument: String) async {
-        guard let app, let model = app.model else { return }
-        func id(_ text: String) -> UUID? { UUID(uuidString: String(text.prefix(36))) }
-        func rest(_ text: String) -> String { String(text.dropFirst(37)) }
-        switch name {
-        case "toggle-sidebar": app.toggleSidebarForEvidence()
-        case "select": model.select(argument == "none" ? nil : id(argument))
-        case "search": model.setSearchText(argument)
-        case "view-mode": if let mode = CatalogViewMode(rawValue: argument) { model.setViewMode(mode) }
-        case "add-project": await model.addProject(path: argument)
-        case "remove-project": if let id = id(argument) { await model.removeProject(id) }
-        case "move-project":
-            if let id = id(argument), let delta = Int(rest(argument)) { await model.moveProject(id, by: delta) }
-        case "toggle-project": if let id = id(argument) { await model.toggleCollapsed(id) }
-        case "rename":
-            if let id = id(argument) { try? await model.rename(sessionID: id, to: rest(argument)) }
-        case "begin-rename": if let id = id(argument) { model.beginRename(id) }
-        case "rename-text": model.renameDraft?.text = argument
-        case "rename-commit": await model.commitRename()
-        case "open-add-project-panel": model.presentAddProject()
-        case "close-panel": app.closeSheetForEvidence()
-        case "panel-choose": app.chooseFolderInPanelForEvidence(argument)
-        case "start":
-            // start:<claude|codex>:<project id|none>
-            let parts = argument.split(separator: ":").map(String.init)
-            if parts.count == 2, let provider = ManagedSession.Provider(rawValue: parts[0]),
-               provider == .claude || provider == .codex {
-                model.startConversation(provider, projectID: parts[1] == "none" ? nil : UUID(uuidString: parts[1]))
-            }
-        case "double-start":
-            // Two clicks in the same run-loop turn, like a fast double click.
-            let parts = argument.split(separator: ":").map(String.init)
-            if parts.count == 2, let provider = ManagedSession.Provider(rawValue: parts[0]),
-               provider == .claude || provider == .codex {
-                let project = parts[1] == "none" ? nil : UUID(uuidString: parts[1])
-                model.startConversation(provider, projectID: project)
-                model.startConversation(provider, projectID: project)
-            }
-        case "resume": if let id = id(argument) { model.resumeConversation(id) }
-        case "stop": if let id = id(argument) { model.stopConversation(id) }
-        case "type": if let id = id(argument) { _ = app.typeForEvidence(rest(argument), intoSession: id) }
-        case "answer":
-            // answer:<session id>:<accept|deny>; answers the first request on that card.
-            if let id = id(argument), let request = model.selectedRow?.live?.userRequests.first,
-               model.selectedSessionID == id {
-                model.answerRequest(sessionID: id, requestID: request.id, accept: rest(argument) == "accept")
-            }
-        case "terminal-title":
-            if let id = id(argument) { await model.terminalTitleChanged(sessionID: id, title: rest(argument)) }
-        case "sidebar-width": if let width = Double(argument) { app.setSidebarWidthForEvidence(width) }
-        case "resize":
-            let parts = argument.split(separator: "x").compactMap { Double($0) }
-            if parts.count == 2 { app.resizeForEvidence(width: parts[0], height: parts[1]) }
-        case "buttons": write("buttons-\(argument.filter { $0.isLetter || $0.isNumber || $0 == "-" })", app.windowButtonsEvidence())
-        case "feed": app.feedForEvidence(path: argument)
-        case "toggle-fullscreen": app.toggleFullScreenForEvidence()
-        case "screenshot":
-            // A picture of a real provider's terminal would put its content on disk.
-            guard !app.redactsContent else { return }
-            let label = argument.filter { $0.isLetter || $0.isNumber || $0 == "-" }
-            await model.settle()
-            try? await Task.sleep(for: .milliseconds(300))
-            app.saveScreenshot(to: directory.appendingPathComponent("screenshot-\(label).png"))
-        default: return
-        }
-        await model.settle()
-    }
-
-    /// Input→draw: from handing one key to the engine's input path until the
-    /// first completed terminal draw after its PTY echo reached the engine
-    /// (CoreGraphics draw return or Metal present callback; not the
-    /// compositor or the physical display). `interactive` fixture, canonical
-    /// echo, sequential samples. The result is valid only when every sample
-    /// was measured and the window stayed visible and unoccluded throughout.
-    private func measureInputToDisplay(samples: Int, surface: TerminalSurface?) async {
-        guard let app, let surface else {
-            write("latency", ["valid": false, "invalidReasons": ["no terminal surface"], "samples": samples])
-            return
-        }
-        let renderer = surface.view.isUsingMetalRenderer ? "metal" : "coregraphics"
-        let runID = surface.statistics.runID
-        let before = app.evidenceState
-        let startUptime = ProcessInfo.processInfo.systemUptime
-        var latencies: [Double] = []
-        var timeouts = 0
-        for _ in 0..<samples {
-            let start = DispatchTime.now().uptimeNanoseconds
-            surface.view.send(data: [UInt8(ascii: "x")][...])
-            let deadline = start + 1_000_000_000
-            var presented: UInt64?
-            while presented == nil, DispatchTime.now().uptimeNanoseconds < deadline {
-                try? await Task.sleep(for: .milliseconds(1))
-                let echoed = surface.statistics.lastOutputUptimeNanoseconds
-                if echoed > start { presented = TerminalPresentationLog.firstPresentation(after: echoed) }
-            }
-            if let presented { latencies.append(Double(presented - start) / 1_000_000) } else { timeouts += 1 }
-            try? await Task.sleep(for: .milliseconds(30))
-        }
-        surface.view.send(data: [0x15][...]) // Ctrl-U clears the typed line.
-        let endUptime = ProcessInfo.processInfo.systemUptime
-        let after = app.evidenceState
-        let rendererAfter = surface.view.isUsingMetalRenderer ? "metal" : "coregraphics"
-        let runIDAfter = surface.statistics.runID
-        var invalid: [String] = []
-        if renderer != rendererAfter { invalid.append("terminal renderer changed during latency run") }
-        if runID == nil || runID != runIDAfter { invalid.append("terminal run identity missing or changed during latency run") }
-        if latencies.count != samples { invalid.append("\(samples - latencies.count) of \(samples) samples missing") }
-        if timeouts > 0 { invalid.append("\(timeouts) timeouts") }
-        for (label, state) in [("start", before), ("end", after)] {
-            if state["windowVisible"] as? Bool != true || state["windowOcclusionVisible"] as? Bool != true {
-                invalid.append("window not visible/unoccluded at \(label)")
-            }
-        }
-        let events = (after["visibilityEvents"] as? [[String: Any]] ?? []).filter {
-            guard let uptime = $0["uptime"] as? Double else { return false }
-            return uptime >= startUptime && uptime <= endUptime
-        }
-        if !events.isEmpty { invalid.append("\(events.count) visibility change(s) during latency run") }
-        let sorted = latencies.sorted()
-        func percentile(_ p: Double) -> Double {
-            sorted.isEmpty ? -1 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * p))]
-        }
-        write("latency", [
-            "valid": invalid.isEmpty, "invalidReasons": invalid,
-            "renderer": rendererAfter, "rendererAtStart": renderer,
-            "runID": runIDAfter.map { $0.uuidString as Any } ?? NSNull(),
-            "samples": samples, "measured": sorted.count, "timeouts": timeouts,
-            "startUptime": startUptime, "endUptime": endUptime,
-            "p50Milliseconds": percentile(0.5), "p95Milliseconds": percentile(0.95),
-            "maxMilliseconds": sorted.last ?? -1,
-            "definition": "key sent to engine input path -> first completed terminal draw after the echo was fed (not compositor/display)",
-        ])
-    }
-
     private actor QuitAttempts {
         private var count = 0
         func next() -> Int { count += 1; return count }
@@ -338,7 +205,7 @@ final class DevelopmentEvidence {
         }
     }
 
-    private func write(_ name: String, _ object: [String: Any]) {
+    func write(_ name: String, _ object: [String: Any]) {
         Self.write(name, object, directory: directory)
     }
 
@@ -349,3 +216,4 @@ final class DevelopmentEvidence {
         try? data.write(to: directory.appendingPathComponent("\(name).json"), options: .atomic)
     }
 }
+#endif

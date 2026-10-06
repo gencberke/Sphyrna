@@ -29,7 +29,10 @@ let package = Package(
         .target(name: "LoomCatalogUI", dependencies: ["LoomCore", "LoomTerminal"]),
         // Pure launch-option rules (data root, evidence channel), testable without AppKit.
         .target(name: "LoomLaunchOptions"),
-        .executableTarget(name: "loom-app", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomLaunchOptions"]),
+        // LOOM_EVIDENCE compiles Sources/loom-app/Evidence (acceptance tooling) into the development flavor only;
+        // the release manifest and the clean loom tree have neither the define nor that directory.
+        .executableTarget(name: "loom-app", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomLaunchOptions"],
+                          swiftSettings: [.define("LOOM_EVIDENCE")]),
         // Development/acceptance only: writes an isolated catalog. Never bundled.
         .executableTarget(name: "loom-catalog-fixture", dependencies: ["LoomCore"]),
         .executableTarget(name: "loom-hook", dependencies: ["LoomCore"]),

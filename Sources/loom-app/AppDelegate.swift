@@ -4,39 +4,40 @@ import LoomCatalogUI
 import LoomCore
 import LoomLaunchOptions
 import LoomTerminal
-import Synchronization
 import SwiftUI
 
 /// One native window: the catalog sidebar (CP5 B) beside a detail pane. The
-/// A-slice synthetic run stays available as a development terminal. Cmd+W and
+/// development flavor (`LOOM_EVIDENCE`, `Evidence/`) adds a synthetic terminal and
+/// the acceptance tooling through the seams in `DevelopmentSeams.swift`. Cmd+W and
 /// the close button only close the window; Cmd+Q waits for the shared
 /// supervisor shutdown and stays open when it cannot be verified. Opening the
 /// app or selecting a conversation starts no provider, PTY or terminal.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    private let options: LaunchOptions
+    let options: LaunchOptions
     /// Production or development, read once; the only source of identity-derived names.
     let identity = BuildIdentity(bundleIdentifier: Bundle.main.bundleIdentifier)
-    private var arguments: [String] { options.arguments }
-    private var window: NSWindow?
+    private(set) var window: NSWindow?
     private var settingsWindow: NSWindow?
-    private var resourcePreviousDevTerminal: Bool?
-    private var terminalPanel: NSView?
     private(set) var model: CatalogModel?
-    private var splitController: MainSplitViewController?
-    private var controller: TerminalRunController?
-    private var shutdownCoordinator: AppShutdownCoordinator?
-    private var supervisor: ProcessSupervisor?
-    private var runtime: SessionRuntime?
-    private var conversations: ConversationController?
+    private(set) var splitController: MainSplitViewController?
+    /// The development flavor's synthetic terminal; always nil in the release flavor.
+    var controller: TerminalRunController?
+    private(set) var shutdownCoordinator: AppShutdownCoordinator?
+    private(set) var supervisor: ProcessSupervisor?
+    private(set) var runtime: SessionRuntime?
+    private(set) var conversations: ConversationController?
     private var startupTask: Task<Void, Never>?
     private var startupFinished = false
-    private var runDirectory: URL?
-    private var evidence: DevelopmentEvidence?
-    private var quitAlert: NSAlert?
-    /// Bounded visibility log so measurements can reject intervals in which
-    /// the window was shown, hidden or occluded (CHECKPOINT-5-HISTORY §13 madde 6).
-    private(set) var visibilityEvents: [[String: Any]] = []
+    private(set) var runDirectory: URL?
+    private(set) var quitAlert: NSAlert?
+#if LOOM_EVIDENCE
+    // State of the development-only evidence tooling (Evidence/).
+    var evidence: DevelopmentEvidence?
+    var resourcePreviousDevTerminal: Bool?
+    var terminalPanel: NSView?
+    var visibilityEvents: [[String: Any]] = []
+#endif
 
     init(arguments: [String]) { self.options = LaunchOptions(arguments: arguments) }
 
@@ -73,13 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             preferences: UIPreferencesStore(url: root.appendingPathComponent("ui-preferences.json")),
             startableProviders: Set(identity.startableProviders.compactMap(ManagedSession.Provider.init(rawValue:)))
         )
-        if options.isEvidence {
-            switch value(after: "--evidence-transparency") {
-            case "glass": model.sidebarTransparencyOverride = false
-            case "opaque": model.sidebarTransparencyOverride = true
-            default: break // system is the normal behavior; no OS setting is changed.
-            }
-        }
+        configureEvidenceAtLaunch(model: model)
         self.model = model
         model.onShowSettings = { [weak self] in self?.showSettings(nil) }
         model.onTerminalFontSizeChange = { [weak self] size in
@@ -94,26 +89,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.activate()
         traceWindowCall("launch-after-show")
         updateWindowActivity()
-        if let directory = options.evidenceDirectory {
-            evidence = DevelopmentEvidence(directory: URL(fileURLWithPath: directory), app: self)
-        }
+        startEvidenceChannel()
         // The runtime is built off the launch path; opening the app starts no
         // provider, PTY or terminal, and Quit waits for this to finish first.
         startupTask = Task { @MainActor in
             if refusal == nil { await startRuntime(root: root, hub: hub, catalog: catalog, model: model) }
             await model.start()
             startupFinished = true
-            // A development run may ask for a fixture; normal launch starts nothing.
-            if evidenceMode, let index = arguments.firstIndex(of: "--fixture") {
-                newTerminal(fixtureArguments: Array(arguments[(index + 1)...].prefix { !$0.hasPrefix("--") }))
-            }
+            evidenceStartupFinished()
         }
     }
 
     /// `~/Library/Application Support/Loom-Dev` (or `Loom`) for a normal launch.
     /// Evidence runs always use an isolated root (`--data-root` or
     /// `<evidence>/data`); see `LaunchOptions.resolveDataRoot`.
-    private func dataRoot() -> LaunchOptions.DataRoot {
+    func dataRoot() -> LaunchOptions.DataRoot {
         let defaultRoot = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/\(identity.dataDirectoryName)", isDirectory: true)
         return options.resolveDataRoot(defaultRoot: defaultRoot)
@@ -148,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         conversations?.quitStarted()
         model?.statusMessage = "Stopping owned processes…"
         let started = ProcessInfo.processInfo.systemUptime
-        let recordQuit = evidence?.quitRecorder(runtime: runtime, started: started)
+        let recordQuit = evidenceQuitRecorder(started: started)
         shutdownCoordinator.requestQuit(prepareReply: recordQuit) { [weak self] report in
             self?.quitFinished(report)
         }
@@ -183,9 +173,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.setContentSize(NSSize(width: 1220, height: 780))
         window.center()
         splitController = split
-        // The terminal view of a development run is hosted in this transparent panel.
-        let panel = NSView()
-        terminalPanel = panel
         let center = NotificationCenter.default
         for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didBecomeKeyNotification,
                      NSWindow.didResignKeyNotification, NSWindow.didMiniaturizeNotification,
@@ -229,11 +216,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Every run starts in its own run-host scope. Without the bundled host
     /// nothing can start safely, so starts fail visibly instead of narrowing.
     private func runScopeLauncher() -> RunScopeLauncher {
-        var host = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/LoomRunHost.app")
-        // Acceptance only: prove that a missing host refuses starts honestly.
-        if options.isEvidence, ProcessInfo.processInfo.environment["LOOM_FORCE_SCOPE_FAILURE"] == "1" {
-            host = host.appendingPathComponent("missing")
-        }
+        let host = evidenceRunHost(Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/LoomRunHost.app"))
         let sockets = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("\(identity.socketDirectoryName)/scopes", isDirectory: true)
         return RunScopeLauncher(hostBundle: host, socketDirectory: sockets)
@@ -260,37 +243,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         recordVisibility("close")
         model?.setWindowActive(false)
-    }
-
-    private func traceWindowCall(_ reason: String, hasVisibleWindows: Bool? = nil) {
-        guard options.isEvidence else { return }
-        recordVisibility(reason, hasVisibleWindows: hasVisibleWindows)
-    }
-
-    private func recordVisibility(_ reason: String, hasVisibleWindows: Bool? = nil) {
-        guard let window else { return }
-        if visibilityEvents.count >= 200 { visibilityEvents.removeFirst() }
-        var event: [String: Any] = [
-            "uptime": ProcessInfo.processInfo.systemUptime, "reason": reason,
-            "visible": window.isVisible, "occlusionVisible": window.occlusionState.contains(.visible),
-        ]
-        if options.isEvidence {
-            event["applicationActive"] = NSApp.isActive
-            event["applicationHidden"] = NSApp.isHidden
-            event["windowKey"] = window.isKeyWindow
-            if let hasVisibleWindows { event["hasVisibleWindows"] = hasVisibleWindows }
-            // Only numeric envelope metadata; no event payload or sender profile.
-            // AppKit may invoke a callback outside Apple-event dispatch, in which
-            // case the absent metadata is deliberately unavailable.
-            if let appleEvent = NSAppleEventManager.shared().currentAppleEvent {
-                var envelope: [String: Any] = ["class": Int(appleEvent.eventClass), "id": Int(appleEvent.eventID)]
-                // SDK AEDataModel.h keySenderPIDAttr ('spid'), returned as SInt32.
-                envelope["senderPID"] = appleEvent.attributeDescriptor(forKeyword: 0x73706964)
-                    .map { Int($0.int32Value) } as Any? ?? NSNull()
-                event["appleEvent"] = envelope
-            } else { event["appleEvent"] = NSNull() }
-        }
-        visibilityEvents.append(event)
     }
 
     // MARK: Runs
@@ -354,93 +306,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let warnings = await runtime?.environmentWarnings() ?? []
             if !warnings.isEmpty, model.ownershipNotice == nil { model.ownershipNotice = warnings.joined(separator: " ") }
 
-            // Acceptance only (CHECKPOINT-5-HISTORY §18.1 madde 3): the first quit reports a
-            // failure without stopping anything, so the real alert and Try Again
-            // path can be exercised. Requires --evidence.
-            let failFirstQuit = options.isEvidence && arguments.contains("--fail-first-quit")
-            let quitAttempts = Mutex(0)
-            let controller = TerminalRunController(
-                events: hub,
-                launch: TerminalRunController.syntheticLaunch(
-                    supervisor: supervisor,
-                    executable: Bundle.main.executableURL!.deletingLastPathComponent()
-                        .appendingPathComponent("loom-test-child").path,
-                    directory: FileManager.default.homeDirectoryForCurrentUser.path
-                )
-            )
+            let injectedFailure = evidenceInjectedShutdownFailure()
             shutdownCoordinator = AppShutdownCoordinator(
                 shutdown: { [runtime] in
-                    let attempt = quitAttempts.withLock { $0 += 1; return $0 }
-                    if failFirstQuit, attempt == 1 {
-                        return ShutdownReport(remainingCountVerified: false,
-                            elapsedSeconds: 0, signals: [], remaining: [],
-                            errors: ["Forced first-quit failure (--fail-first-quit)"],
-                            outsideOwnership: [], ownershipGuarantee: "not attempted"
-                        )
-                    }
+                    if let report = injectedFailure?() { return report }
                     // Everything the app owns goes through the runtime's one shutdown.
                     if let runtime { return await runtime.shutdown() }
                     return await supervisor.shutdown()
                 }
             )
-            controller.onStateChange = { [weak self] state in
-                if case .ended = state {
-                    self?.model?.statusMessage = "Process exited. Option+Cmd+N starts a new synthetic terminal."
-                }
-            }
-            controller.onLaunchError = { [weak self] error in
-                self?.showError("The synthetic terminal could not start.", detail: String(describing: error))
-            }
-            controller.terminalFontSize = model.terminalFontSize
-            self.controller = controller
+            installDevelopmentTerminal(hub: hub, supervisor: supervisor, model: model)
         } catch {
             showError("Loom could not start its process supervisor.", detail: String(describing: error))
         }
     }
 
-    /// Provider CLIs come from the user's real terminal environment. Acceptance
-    /// runs (`--evidence`) may substitute fixture providers and isolated
-    /// profiles; a normal launch cannot.
+    /// Provider CLIs come from the user's real terminal environment; only the development
+    /// flavor's acceptance runs (`--evidence`) may substitute fixture providers and isolated profiles.
     private func runtimeConfiguration(root: URL, supervisor: ProcessSupervisor) -> SessionRuntimeConfiguration {
         let helpers = Bundle.main.executableURL!.deletingLastPathComponent()
         let socketDirectory = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(identity.socketDirectoryName, isDirectory: true)
-        let acceptance = options.isEvidence
-        let toolchains: ProviderToolchainResolver
-        if acceptance, let fixtures = value(after: "--fake-providers") {
-            let fake = URL(fileURLWithPath: fixtures).appendingPathComponent("loom-fake-provider").path
-            let state = root.appendingPathComponent("fake-state", isDirectory: true)
-            // Acceptance: a slow environment resolution, so Quit can land mid-start.
-            let delay = value(after: "--fake-toolchain-delay").flatMap(Double.init) ?? 0
-            toolchains = { provider in
-                if delay > 0 { try await Task.sleep(for: .seconds(delay)) }
-                return ProviderToolchain(
-                    provider: provider, executable: fake,
-                    capabilities: ProviderCapabilities(
-                        version: "fixture",
-                        help: "--settings <settings> --session-id <id> --remote <ADDR>",
-                        serverHelp: "--listen <URL>"
-                    ),
-                    environment: ["PATH": "/usr/bin:/bin", "HOME": NSHomeDirectory(),
-                                  "LOOM_FAKE_STATE": state.path],
-                    profileDirectory: root.appendingPathComponent(
-                        provider == .codex ? "codex-home" : "claude-config", isDirectory: true
-                    )
-                )
+        let origin = LaunchEnvironment.origin(
+            parent: ProcessInfo.processInfo.environment,
+            bundleIdentifier: Bundle.main.bundleIdentifier, parentPID: getppid()
+        )
+        let toolchains: ProviderToolchainResolver = evidenceToolchains(root: root, supervisor: supervisor, origin: origin)
+            ?? { [system = SystemProviderToolchains(supervisor: supervisor, origin: origin)] provider in
+                try await system.toolchain(for: provider)
             }
-        } else {
-            let origin = LaunchEnvironment.origin(
-                parent: ProcessInfo.processInfo.environment,
-                bundleIdentifier: Bundle.main.bundleIdentifier, parentPID: getppid()
-            )
-            let isolatedClaude = acceptance ? value(after: "--claude-config").map { URL(fileURLWithPath: $0) } : nil
-            let isolatedCodex = acceptance ? value(after: "--codex-home").map { URL(fileURLWithPath: $0) } : nil
-            let system = SystemProviderToolchains(
-                supervisor: supervisor, origin: origin,
-                claudeProfile: isolatedClaude, codexHome: isolatedCodex
-            )
-            toolchains = { provider in try await system.toolchain(for: provider) }
-        }
         return SessionRuntimeConfiguration(
             toolchains: toolchains, hookHelperPath: helpers.appendingPathComponent("loom-hook").path,
             socketDirectory: socketDirectory,
@@ -448,7 +342,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
     }
 
-    @objc func newTerminalFromMenu(_ sender: Any?) { newTerminal(fixtureArguments: []) }
     @objc func newClaudeFromMenu(_ sender: Any?) {
         model?.startConversation(.claude, projectID: model?.contextProjectID)
     }
@@ -486,81 +379,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func showActivityView(_ sender: Any?) { model?.setViewMode(.activity) }
     @objc func showProjectView(_ sender: Any?) { model?.setViewMode(.projects) }
 
-    /// A slice: one launching or live synthetic run at a time.
-    func newTerminal(fixtureArguments: [String]) {
-        guard evidenceMode, let controller else { return }
-        // A started shutdown never admits new work, even after it failed.
-        guard shutdownCoordinator?.state == .idle,
-              let surface = controller.newTerminal(
-                  arguments: fixtureArguments.isEmpty ? ["interactive"] : fixtureArguments
-              )
-        else {
-            NSSound.beep()
-            return
-        }
-        surface.onTitle = { [weak self] title in self?.model?.statusMessage = title }
-        surface.onInputError = { [weak self] error in self?.model?.statusMessage = error.description }
-        show(surface)
-        model?.showDevTerminal(DevTerminal(panel: terminalPanel ?? NSView()))
-    }
-
-    private func show(_ surface: TerminalSurface) {
-        guard let panel = terminalPanel else { return }
-        panel.subviews.forEach { $0.removeFromSuperview() }
-        let view = surface.view
-        view.translatesAutoresizingMaskIntoConstraints = false
-        panel.addSubview(view)
-        NSLayoutConstraint.activate([
-            view.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 6),
-            view.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -6),
-            view.topAnchor.constraint(equalTo: panel.topAnchor, constant: 6),
-            view.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -6),
-        ])
-        panel.layoutSubtreeIfNeeded()
-        window?.makeFirstResponder(view)
-        // CHECKPOINT-5-HISTORY §3.2 renderer experiment only; the product ships one path.
-        if evidenceMode, arguments.contains("--metal") {
-            do { try view.setUseMetal(true) }
-            catch { showError("Metal rendering is unavailable.", detail: String(describing: error)) }
-        }
-    }
-
-    // Evidence-only resource pool bridge; normal launches expose no supervisor.
-    var resourceSupervisorForEvidence: ProcessSupervisor? {
-        !options.isEvidence ? nil : supervisor
-    }
-
-    var resourceFixtureForEvidence: String? {
-        guard options.isEvidence else { return nil }
-        return Bundle.main.executableURL?.deletingLastPathComponent()
-            .appendingPathComponent("loom-test-child").path
-    }
-
-    var resourceDirectoryForEvidence: String {
-        guard case .root(let root) = dataRoot() else { return NSTemporaryDirectory() }
-        return root.appendingPathComponent("evidence-resources", isDirectory: true).path
-    }
-
-    func showResourceSurfaceForEvidence(_ surface: TerminalSurface?) {
-        guard options.isEvidence else { return }
-        if let surface {
-            if resourcePreviousDevTerminal == nil { resourcePreviousDevTerminal = model?.showsDevTerminal ?? false }
-            show(surface)
-            model?.showDevTerminal(DevTerminal(panel: terminalPanel ?? NSView()))
-        } else {
-            if let panel = terminalPanel, let responder = window?.firstResponder as? NSView,
-               responder === panel || responder.isDescendant(of: panel) {
-                window?.makeFirstResponder(nil)
-            }
-            terminalPanel?.subviews.forEach { $0.removeFromSuperview() }
-            if resourcePreviousDevTerminal == true, let original = controller?.surface {
-                show(original)
-                model?.showDevTerminal(DevTerminal(panel: terminalPanel ?? NSView()))
-            } else { model?.select(model?.selectedSessionID) }
-            resourcePreviousDevTerminal = nil
-        }
-    }
-
     // MARK: Quit
 
     private func quitFinished(_ report: ShutdownReport) {
@@ -593,7 +411,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    private func showError(_ message: String, detail: String) {
+    func showError(_ message: String, detail: String) {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = message
@@ -653,13 +471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                                     keyEquivalent: ".")
         stop.target = self
         fileMenu.addItem(.separator())
-        if evidenceMode {
-            let synthetic = fileMenu.addItem(withTitle: "New Synthetic Terminal (Development)",
-                                             action: #selector(newTerminalFromMenu(_:)), keyEquivalent: "n")
-            synthetic.keyEquivalentModifierMask = [.command, .option]
-            synthetic.target = self
-            fileMenu.addItem(.separator())
-        }
+        installDevelopmentMenuItems(in: fileMenu)
         fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileItem.submenu = fileMenu
         main.addItem(fileItem)
@@ -694,261 +506,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         main.addItem(windowItem)
         NSApp.mainMenu = main
         NSApp.windowsMenu = windowMenu
-    }
-
-    /// Development and fixture paths (`--fixture`, `--metal`, the synthetic
-    /// terminal) exist only behind `--evidence`.
-    private var evidenceMode: Bool { options.isEvidence }
-
-    private func value(after flag: String) -> String? { options.value(after: flag) }
-
-    // MARK: Development evidence
-
-    /// Real providers (no `--fake-providers`): evidence carries no terminal
-    /// text, titles or request text; only expected tokens' presence
-    /// (`--evidence-tokens A,B`). Fixture runs keep the raw screen.
-    var redactsContent: Bool { value(after: "--fake-providers") == nil }
-    private var evidenceTokens: [String] {
-        value(after: "--evidence-tokens")?.split(separator: ",").map(String.init) ?? []
-    }
-
-    var evidenceState: [String: Any] {
-        var state: [String: Any] = [
-            "pid": Int(getpid()),
-            "uptime": ProcessInfo.processInfo.systemUptime,
-            "windowVisible": window?.isVisible ?? false,
-            "windowOcclusionVisible": window?.occlusionState.contains(.visible) ?? false,
-            "windowCount": NSApp.windows.filter { $0.identifier?.rawValue == "loom-main" }.count,
-            "visibilityEvents": visibilityEvents,
-            "ownershipNoticeShown": model?.ownershipNotice != nil && window?.isVisible == true,
-            "terminalState": controller.map { String(describing: $0.state) } ?? NSNull(),
-            "quitState": shutdownCoordinator.map { String(describing: $0.state) } ?? NSNull(),
-            "quitAlert": quitAlert.map { [
-                "message": $0.messageText, "attachedAsSheet": window?.attachedSheet === $0.window,
-                "buttons": $0.buttons.map(\.title),
-            ] as [String: Any] } ?? NSNull(),
-            "renderer": evidenceMode && arguments.contains("--metal") ? "metal" : "coregraphics",
-            "sidebarMaterial": model?.effectiveSidebarMaterial ?? "unknown",
-            "effectiveReduceTransparency": model?.effectiveReduceTransparency ?? true,
-            "chaseIndicators": window?.contentView.map { IndicatorEvidence.chases(in: $0) } ?? [:],
-            "systemReduceMotion": NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-            "transparencyOverride": model?.sidebarTransparencyOverride.map { $0 ? "opaque" : "glass" } ?? "system",
-            "runDirectory": runDirectory?.path ?? NSNull(),
-        ]
-        if let model {
-            let statistics = model.statistics
-            state["catalog"] = [
-                "ready": model.isReady, "startupError": model.startupError ?? NSNull(),
-                "viewMode": model.viewMode.rawValue, "search": model.searchText,
-                "selectedSessionID": model.selectedSessionID?.uuidString ?? NSNull(),
-                "selectedTitle": redactsContent ? NSNull() : (model.selectedRow.map { model.title(of: $0) } ?? NSNull()),
-                "projects": model.projects.map {
-                    ["id": $0.id.uuidString, "name": $0.name, "collapsed": $0.collapsed,
-                     "count": model.sessionCounts[$0.id] ?? 0] as [String: Any]
-                },
-                "unassignedCount": model.sessionCounts[nil] ?? 0,
-                "activityRows": model.list(for: .activity).rows.count,
-                "activityFirstTitles": redactsContent ? [] : model.list(for: .activity).rows.prefix(3).map { model.title(of: $0) },
-                "activityHasMore": model.list(for: .activity).hasMore,
-                "projectRows": model.projects.map { model.list(for: .project($0.id)).rows.count },
-                "errorMessage": model.errorMessage ?? NSNull(), "infoMessage": model.infoMessage ?? NSNull(),
-                "windowIsActive": model.windowIsActive, "sidebarCollapsed": model.sidebarCollapsed,
-                "actionsAvailable": model.actionsAvailable, "quitting": model.quitting,
-                "busy": model.busy.map { ["id": $0.key.uuidString, "state": String(describing: $0.value)] },
-                "startingKeys": model.startingKeys.map { "\($0.provider.rawValue):\($0.projectID?.uuidString ?? "none")" },
-                "selectedIndicator": model.selectedRow?.indicator.label ?? NSNull(),
-                "selectedProvider": model.selectedRow?.record.session.provider.rawValue ?? NSNull(),
-                "selectedProjectID": model.selectedRow?.record.projectID?.uuidString ?? NSNull(),
-                "selectedLifecycle": model.selectedRow?.record.lifecycle.rawValue ?? NSNull(),
-                "selectedRunID": model.selectedRow?.live?.runID?.uuidString ?? NSNull(),
-                "selectedIssue": model.selectedRow?.live?.issue ?? NSNull(),
-                "selectedStopFailure": model.selectedRow?.live?.stopFailure ?? NSNull(),
-                "selectedRequests": (model.selectedRow?.live?.userRequests ?? []).map {
-                    ["id": $0.id, "summary": redactsContent ? "" : $0.summary, "answerable": $0.isAnswerable,
-                     "failure": $0.failure ?? ""] as [String: Any]
-                },
-                "selectedHasTerminalView": model.selectedSessionID.flatMap { model.terminalView(for: $0) } != nil,
-                "activityRowDetails": model.list(for: .activity).rows.prefix(12).map { row in
-                    ["id": row.id.uuidString, "provider": row.record.session.provider.rawValue,
-                     "title": redactsContent ? "" : model.title(of: row), "indicator": row.indicator.label ?? "",
-                     "live": row.live?.runID != nil, "lifecycle": row.record.lifecycle.rawValue,
-                     "conversationID": row.record.session.providerConversationID ?? "",
-                     "lastUsed": row.record.lastUsedAt.timeIntervalSince1970,
-                     "issue": row.live?.issue ?? ""] as [String: Any]
-                },
-                "showsDevTerminal": model.showsDevTerminal,
-                "pageQueries": statistics.pageQueries, "framesApplied": statistics.framesApplied,
-                "fastPathFrames": statistics.fastPathFrames, "fullReconciles": statistics.fullReconciles,
-                "rowModels": statistics.rowModels, "loadedRows": statistics.loadedRows,
-                "startMilliseconds": statistics.startMilliseconds,
-                "preferences": [
-                    "viewMode": model.preferencesSnapshot.viewMode.rawValue,
-                    "selectedSessionID": model.preferencesSnapshot.selectedSessionID?.uuidString ?? NSNull(),
-                    "sidebarWidth": model.preferencesSnapshot.sidebarWidth,
-                    "sidebarCollapsed": model.preferencesSnapshot.sidebarCollapsed,
-                ] as [String: Any],
-            ] as [String: Any]
-        }
-        if let window {
-            state["windowContentSize"] = [Double(window.contentLayoutRect.width), Double(window.contentLayoutRect.height)]
-            state["sidebarWidth"] = splitController?.sidebarWidth ?? NSNull()
-            state["attachedSheet"] = window.attachedSheet.map { String(describing: type(of: $0)) } ?? NSNull()
-            state["appActive"] = NSApp.isActive
-            state["windowIsKey"] = window.isKeyWindow
-            state["windowFrameSize"] = [Double(window.frame.width), Double(window.frame.height)]
-            state["openPanelVisible"] = NSApp.windows.contains { $0 is NSOpenPanel && $0.isVisible }
-            state["renameDraftText"] = model?.renameDraft?.text ?? NSNull()
-        }
-        state["terminalSurfaceExists"] = controller?.surface != nil
-        state["conversationTerminals"] = (conversations?.terminalEvidence(
-            redacted: redactsContent, tokens: evidenceTokens
-        ) ?? []).map {
-            ["runID": $0.runID.uuidString, "owner": $0.owner.uuidString,
-             "screenTail": $0.screenTail ?? NSNull(), "tokenPresence": $0.tokenPresence,
-             "outputBytes": $0.outputBytes, "pendingInputBytes": $0.pendingInputBytes,
-             "inputErrors": $0.inputErrors] as [String: Any]
-        }
-        if let surface = controller?.surface, let data = try? JSONEncoder().encode(surface.statistics),
-           let object = try? JSONSerialization.jsonObject(with: data) {
-            state["terminal"] = object
-        }
-        return state
-    }
-
-    func runtimeEvidence() async -> [String: Any] { await conversations?.runtimeEvidence() ?? [:] }
-    func typeForEvidence(_ text: String, intoSession id: UUID) -> Bool {
-        conversations?.typeForEvidence(text, intoSession: id) ?? false
-    }
-    func closeWindowForEvidence() {
-        traceWindowCall("evidence-close-before")
-        window?.performClose(nil)
-        traceWindowCall("evidence-close-after")
-    }
-    /// The folder panel, whether attached as a sheet or standalone.
-    private var openPanelForEvidence: NSOpenPanel? {
-        if let panel = window?.attachedSheet as? NSOpenPanel { return panel }
-        return NSApp.windows.compactMap { $0 as? NSOpenPanel }.first { $0.isVisible }
-    }
-    func closeSheetForEvidence() {
-        if let panel = openPanelForEvidence { panel.cancel(nil); return }
-        guard let window, let sheet = window.attachedSheet else { return }
-        window.endSheet(sheet, returnCode: .cancel)
-    }
-    /// Ends the real folder panel and hands the chosen folder to the same
-    /// handler its completion uses. NSOpenPanel's `ok:` must not be called
-    /// directly (AppKit raises), and no key events can be synthesized here, so
-    /// the URL AppKit itself would return is not exercised.
-    func chooseFolderInPanelForEvidence(_ path: String) {
-        closeSheetForEvidence()
-        model?.folderPanelFinished(accepted: true, url: URL(fileURLWithPath: path, isDirectory: true))
-    }
-    func toggleSidebarForEvidence() { splitController?.toggleSidebar(nil) }
-    func setSidebarWidthForEvidence(_ width: Double) { splitController?.setSidebarWidth(width) }
-    func resizeForEvidence(width: Double, height: Double) {
-        window?.setContentSize(NSSize(width: width, height: height))
-    }
-
-    /// Renders the window's content view (the app's own pixels, no screen
-    /// recording permission needed).
-    func saveScreenshot(to url: URL) {
-        Self.writePNG(of: window?.contentView, to: url)
-        // The window frame view also holds the titlebar and the traffic lights,
-        // which the content view alone never shows.
-        let framed = url.deletingPathExtension().appendingPathExtension("window.png")
-        Self.writePNG(of: window?.contentView?.superview, to: framed)
-    }
-
-    private static func writePNG(of view: NSView?, to url: URL) {
-        guard let view, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: bitmap)
-        try? bitmap.representation(using: .png, properties: [:])?.write(to: url, options: .atomic)
-    }
-
-    /// Evidence only: hands a file's bytes to the development terminal's engine
-    /// as if the program had printed them (color and rendering samples).
-    func feedForEvidence(path: String) {
-        guard let surface = controller?.surface, let data = FileManager.default.contents(atPath: path) else { return }
-        surface.outputSink.receive(data)
-    }
-    /// Evidence: where the window buttons are relative to their container and
-    /// whether a real hit test at their center and near their bottom edge lands on them.
-    func windowButtonsEvidence() -> [String: Any] {
-        guard let window, let frameView = window.contentView?.superview else { return [:] }
-        var result: [String: Any] = ["windowContent": "\(window.contentView?.bounds.size ?? .zero)",
-                                     "fullScreen": window.styleMask.contains(.fullScreen)]
-        for (name, kind) in [("close", NSWindow.ButtonType.closeButton), ("mini", .miniaturizeButton), ("zoom", .zoomButton)] {
-            guard let button = window.standardWindowButton(kind), let container = button.superview else { continue }
-            func hit(_ y: CGFloat) -> String {
-                let point = frameView.convert(NSPoint(x: button.bounds.midX, y: y), from: button)
-                let view = frameView.hitTest(point)
-                return view === button ? "button" : "\(view.map { String(describing: type(of: $0)) } ?? "nil")"
-            }
-            let inside = container.bounds.contains(button.frame)
-            result[name] = ["frame": "\(button.frame)", "container": "\(type(of: container))",
-                            "containerBounds": "\(container.bounds)", "fullyInside": inside,
-                            "hitCenter": button.isHidden ? "hidden" : hit(button.bounds.midY),
-                            "hitNearBottom": button.isHidden ? "hidden" : hit(button.bounds.minY + 1),
-                            "hitNearTop": button.isHidden ? "hidden" : hit(button.bounds.maxY - 1)]
-        }
-        result["controls"] = controlHitTests(frameView: frameView)
-        return result
-    }
-
-    /// Hit-tests the center of every header control through the window's frame
-    /// view, like a click would; each must land in the SwiftUI hosting view and
-    /// not in the toolbar view that spans the titlebar. Centers come from the
-    /// header layout (sidebar row 26 pt below the top; 26 pt wide controls, 4 pt
-    /// apart, 10 pt padding; detail row padded 8 + 14), then a sweep along the
-    /// header center line reports every x range that does not reach a hosting view.
-    private func controlHitTests(frameView: NSView) -> [String: Any] {
-        guard let window, let model else { return [:] }
-        let width = window.frame.width
-        let y = window.frame.height - 26
-        func hit(_ x: CGFloat) -> (type: String, hosting: Bool, toolbar: Bool) {
-            let point = frameView.convert(NSPoint(x: x, y: y), from: nil)
-            let view = frameView.hitTest(point)
-            var ancestor = view
-            var hosting = false, toolbar = false
-            while let current = ancestor {
-                let name = String(describing: type(of: current))
-                if name.contains("HostingView") { hosting = true }
-                if name.contains("Toolbar") { toolbar = true }
-                ancestor = current.superview
-            }
-            return (view.map { String(describing: type(of: $0)) } ?? "nil", hosting, toolbar)
-        }
-        var points: [(String, CGFloat)] = []
-        let sidebarWidth = CGFloat(splitController?.sidebarWidth ?? 0)
-        if !model.sidebarCollapsed {
-            let leading: CGFloat = window.styleMask.contains(.fullScreen) ? 0 : 76
-            points += [("sidebar toggle", 10 + leading + 13), ("sidebar ellipsis", sidebarWidth - 10 - 13),
-                       ("sidebar activity mode", sidebarWidth - 10 - 26 - 4 - 13),
-                       ("sidebar projects mode", sidebarWidth - 10 - 2 * (26 + 4) - 13)]
-        } else {
-            points.append(("detail toggle", 8 + 14 + 66 + 8 + 13))
-        }
-        points.append(("detail ellipsis", width - 8 - 14 - 13))
-        let controls = points.map { name, x -> [String: Any] in
-            let result = hit(x)
-            return ["control": name, "x": Double(x), "hit": result.type,
-                    "inSwiftUIHostingView": result.hosting, "inToolbarView": result.toolbar]
-        }
-        // Sweep: every 4 pt along the header center line outside the native buttons.
-        var bad: [String] = []
-        var x: CGFloat = 84
-        while x < width - 2 {
-            let result = hit(x)
-            if !result.hosting || result.toolbar { bad.append("\(Int(x)):\(result.type)") }
-            x += 4
-        }
-        return ["points": controls, "sweepFrom84NotHosting": bad, "centerLineYFromTop": 26]
-    }
-    func toggleFullScreenForEvidence() { window?.toggleFullScreen(nil) }
-    func newTerminalForEvidence() { newTerminal(fixtureArguments: []) }
-    var surfaceForEvidence: TerminalSurface? { controller?.surface }
-    /// Clicks a button of the visible quit-failure alert, as the user would.
-    func pressQuitAlertButton(_ index: Int) {
-        guard let alert = quitAlert, alert.buttons.indices.contains(index) else { return }
-        alert.buttons[index].performClick(nil)
     }
 }

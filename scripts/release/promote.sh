@@ -27,22 +27,10 @@ version_re='^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
 
 fail() { echo "promote: $*" >&2; exit 1; }
 
-# --- Allowlist: the only paths exported from the loom-dev tag. ---------------
-allow=(
-  Package.resolved
-  Sources/CLoomPOSIX Sources/LoomCore Sources/LoomTerminal Sources/LoomCatalogUI
-  Sources/LoomLaunchOptions Sources/loom-app Sources/loom-run-host Sources/loom-hook
-  # Vendored SwiftTerm as patched: library, build-info generator + plugin, the
-  # terminfo entry the generator reads, its manifest and license. Tests, samples,
-  # LOOM-VENDOR.md and Sources/SwiftTerm/Documentation.docc (excluded in the
-  # archive command below) are not needed by the build.
-  Vendor/SwiftTerm/Package.swift Vendor/SwiftTerm/LICENSE
-  Vendor/SwiftTerm/Sources Vendor/SwiftTerm/Plugins Vendor/SwiftTerm/swifterm-terminfo
-  # Assets the app bundles (icon, provider marks).
-  assets/Loom.icns assets/harness/harness-claude.png assets/harness/harness-codex.png
-)
-# Top-level entries the finished tree may contain.
-allowed_top=(.git .gitignore Package.swift Package.resolved README.md VERSION build.sh Sources Vendor assets)
+# --- Allowlist: the only paths exported from the loom-dev tag (shared with scripts/check.sh). ---
+source "$here/allowlist.sh"
+allow=($release_allow)
+allowed_top=($release_allowed_top)
 
 # --- Validation (nothing written yet) ----------------------------------------
 git -C "$dev" rev-parse --git-dir >/dev/null 2>&1 || fail "$dev is not a git checkout"
@@ -71,7 +59,7 @@ fi
 # --- Stage: export from the tag, add generated files, check everything -------
 stage=$(mktemp -d "${TMPDIR:-/tmp}/loom-promote.XXXXXX")
 trap 'rm -rf "$stage"' EXIT
-git -C "$dev" archive --format=tar "$tag" -- $allow ':(exclude)Vendor/SwiftTerm/Sources/SwiftTerm/Documentation.docc' | tar -x -C "$stage"
+git -C "$dev" archive --format=tar "$tag" -- $allow $release_exclude | tar -x -C "$stage"
 
 # Release manifest: drift guard against the tagged dev manifest.
 git -C "$dev" show "${tag}:Package.swift" > "$stage/dev-Package.swift"
@@ -106,6 +94,12 @@ def targets(text):
     return set(split_top(text[i:j]))
 dev, rel = norm(sys.argv[1]), norm(sys.argv[2])
 errors = []
+# The dev manifest builds loom-app with the evidence flavor; the release flavor has no such define. The one
+# dev-only setting is stripped before the comparison, so any other build-setting drift still fails.
+dev_only = ',swiftSettings:[.define("LOOM_EVIDENCE")]'
+if dev_only not in dev: errors.append("the loom-dev manifest no longer defines LOOM_EVIDENCE on loom-app; update the drift normalizer")
+dev = dev.replace(dev_only, "")
+if "LOOM_EVIDENCE" in rel: errors.append("the release manifest must not define LOOM_EVIDENCE")
 tools = lambda path: open(path).readline().strip()
 if tools(sys.argv[1]) != tools(sys.argv[2]): errors.append("swift-tools-version differs")
 for needle in ['platforms:[.macOS("27.0")]', '.package(path:"Vendor/SwiftTerm")']:
@@ -151,7 +145,9 @@ for entry in $stage/*(N) $stage/.[!.]*(N); do
 done
 unexpected=$(cd "$stage" && find . -type f \( -path '*/Tests/*' -o -path '*/plans/*' -o -path '*/design/*' -o -path '*/docs/*' \
   -o -name 'loom-probe*' -o -name 'loom-test-child*' -o -name 'loom-fake-provider*' -o -name 'loom-catalog-fixture*' \
-  -o -name 'CLoomTestSupport*' -o -name 'LOOM-VENDOR.md' -o -path '*/Documentation.docc/*' -o -name '*.patch' \) || true)
+  -o -name 'CLoomTestSupport*' -o -name 'LOOM-VENDOR.md' -o -path '*/Documentation.docc/*' -o -name '*.patch' \
+  -o -path '*/loom-app/Evidence/*' -o -name 'DevelopmentEvidence*' -o -name 'EvidenceResourcePool*' \) || true)
+[[ ! -e $stage/Sources/loom-app/Evidence ]] || fail "staged tree contains Sources/loom-app/Evidence (development-only evidence tooling)"
 (( ${#bad} == 0 )) || fail "staged tree has unexpected top-level entries: ${bad[*]}"
 [[ -z $unexpected ]] || fail "staged tree has dev-only files: $unexpected"
 files=$(cd "$stage" && find . -type f | wc -l | tr -d ' ')

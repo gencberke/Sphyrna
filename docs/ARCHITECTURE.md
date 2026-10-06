@@ -176,14 +176,23 @@ directory when every scope is shown empty; leftovers surface as `CatalogModel.ow
 
 ## 7. Dev and evidence code in the app target
 
-- Gating lives in `LoomLaunchOptions`: `--evidence <dir>` enables everything below; `--data-root` is valid only together
-  with it; a malformed flag refuses the catalog instead of falling back to the default root.
-- Evidence-only: `DevelopmentEvidence` (command channel via distributed notification
-  `local.loom.desktop.dev.command.<16 hex of SHA-256(realpath(dir))>`, state snapshots, screenshots), `EvidenceResourcePool`,
-  the evidence members at the end of `AppDelegate`, `--metal`, `--fixture`, `--fake-providers`, `--fake-toolchain-delay`,
-  `--claude-config`, `--codex-home`, `--fail-first-quit`, `LOOM_FORCE_SCOPE_FAILURE`.
+- Compiled only in the development flavor: `Package.swift` gives `loom-app` `swiftSettings: [.define("LOOM_EVIDENCE")]`, and
+  everything evidence-only lives in `Sources/loom-app/Evidence/` (each file wrapped in `#if LOOM_EVIDENCE`).
+  `Sources/loom-app/DevelopmentSeams.swift` holds the call seams `AppDelegate` uses, as no-op stubs under `#if !LOOM_EVIDENCE`.
+  The release flavor (the clean loom tree) excludes the `Evidence/` directory and the define, so a release binary has no
+  command channel, fixture providers or resource pool, and `--evidence` does nothing there beyond the data-root rule in
+  `LoomLaunchOptions` (`--data-root` is valid only together with it; a malformed flag refuses the catalog instead of falling
+  back to the default root). `scripts/check.sh --release-tree` builds the exported release tree and checks the binary.
+- Evidence-only (development flavor, active only with `--evidence <dir>`): `DevelopmentEvidence` (command channel via
+  distributed notification `local.loom.desktop.dev.command.<16 hex of SHA-256(realpath(dir))>`, state snapshots, screenshots),
+  `EvidenceResourcePool`, the `AppDelegate` evidence extensions (`AppDelegate+Evidence*.swift`), `--metal`, `--fixture`,
+  `--fake-providers`, `--fake-toolchain-delay`, `--claude-config`, `--codex-home`, `--fail-first-quit`, `LOOM_FORCE_SCOPE_FAILURE`,
+  and the synthetic terminal (menu item, controller). Inert library-side seams remain in both flavors: `TerminalPresentationLog`,
+  `ConversationController.terminalEvidence`/`typeForEvidence`/`runtimeEvidence`, `IndicatorEvidence`.
 - A normal launch never subscribes to the command channel and cannot substitute fixture providers. Command list: doc comment
-  at the top of `DevelopmentEvidence.swift` plus the `case`s of its command switch (the header omits `buttons:`, `toggle-fullscreen`, `feed`, `double-start` and `resource:`); scripts and method: `DEVELOPMENT.md` and `scripts/` (`cp5-*.sh|py`, `dev-paths.sh`).
+  at the top of `Evidence/DevelopmentEvidence.swift` plus the `case`s of its command switch and of
+  `Evidence/EvidenceCatalogCommands.swift` (the header omits `buttons:`, `toggle-fullscreen`, `feed`, `double-start` and `resource:`);
+  scripts and method: `DEVELOPMENT.md` and `scripts/` (`cp5-*.sh|py`, `dev-paths.sh`).
 
 ## 8. Codex: paused, not in first release
 

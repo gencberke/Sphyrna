@@ -1,3 +1,4 @@
+#if LOOM_EVIDENCE
 import AppKit
 import CryptoKit
 import Foundation
@@ -279,3 +280,4 @@ final class EvidenceStreamAudit: TerminalOutputSink, @unchecked Sendable {
         }
     }
 }
+#endif
