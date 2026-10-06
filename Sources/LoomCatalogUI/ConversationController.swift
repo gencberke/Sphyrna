@@ -137,7 +137,10 @@ public final class ConversationController: ConversationIntents {
     }
 
     /// Quit has started: no new work, buttons off.
-    public func quitStarted() { model?.quitting = true }
+    public func quitStarted() {
+        model?.quitting = true
+        model?.flushPreferences()
+    }
 
     // MARK: ConversationIntents
 
@@ -161,12 +164,12 @@ public final class ConversationController: ConversationIntents {
                         pendingSessionID = launch.sessionID
                         self.adopt(launch, surface: surface)
                         model.setBusy(launch.sessionID, .starting)
-                        model.select(launch.sessionID)
+                        model.showStarted(launch.sessionID)
                     }
                 )
                 if pendingSessionID == nil {
                     adopt(launch, surface: surface)
-                    model.select(launch.sessionID)
+                    model.showStarted(launch.sessionID)
                 }
             } catch {
                 surface.runEnded()
@@ -189,7 +192,7 @@ public final class ConversationController: ConversationIntents {
                     outputSink: surface.outputSink
                 )
                 adopt(launch, surface: surface)
-                model.select(launch.sessionID)
+                model.showStarted(launch.sessionID)
             } catch {
                 surface.runEnded()
                 report(error, "The conversation could not be resumed")
@@ -288,6 +291,7 @@ public final class ConversationController: ConversationIntents {
                 // The user is looking at this terminal: it stays in front, now
                 // as the new conversation. Someone who already moved to another
                 // card keeps that choice.
+                model?.tabOwnerMoved(from: entry.owner, to: owner)
                 if model?.selectedSessionID == entry.owner { model?.select(owner) }
             }
         }

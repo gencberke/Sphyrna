@@ -183,6 +183,12 @@ public final class CatalogModel {
     /// Test seam: runs after a refresh read finished, before it is published as done.
     @ObservationIgnored var afterRefreshRead: (() async -> Void)?
     @ObservationIgnored private var viewingTask: Task<Void, Never>?
+    @ObservationIgnored private var preferenceWriteTask: Task<Void, Never>?
+    /// How long selection changes wait before the preferences file is written,
+    /// so rapid tab switching costs one write. Tests shorten it.
+    @ObservationIgnored var preferenceWriteDelay: Duration = .milliseconds(300)
+    /// Pinned conversation tabs (D-33); the selected conversation joins them as a transient tab.
+    public let tabs: ConversationTabs
 
     /// `catalog == nil` means the catalog could not be opened (`startupError`
     /// says why); nothing is created or overwritten in that state.
@@ -196,12 +202,14 @@ public final class CatalogModel {
         selectedSessionID = preferences.current.selectedSessionID
         sidebarCollapsed = preferences.current.sidebarCollapsed
         terminalFontSize = preferences.current.terminalFontSize
+        tabs = ConversationTabs(pinned: preferences.current.openTabs)
     }
 
     deinit {
         eventTask?.cancel()
         searchTask?.cancel()
         refreshTask?.cancel()
+        preferenceWriteTask?.cancel()
     }
 
     public var preferencesSnapshot: UIPreferences { preferences.current }
@@ -220,6 +228,7 @@ public final class CatalogModel {
         let began = ContinuousClock.now
         await refreshProjects()
         await reloadVisibleLists(force: true)
+        await ensureTabRows()
         if selectedSessionID != nil { await ensureSelectedRow() }
         let elapsed = ContinuousClock.now - began
         statistics.startMilliseconds = Double(elapsed.components.seconds) * 1_000
@@ -238,6 +247,7 @@ public final class CatalogModel {
     public func stop() {
         eventTask?.cancel()
         eventTask = nil
+        flushPreferences()
     }
 
     /// Like `stop()`, but returns only after the event consumer has ended.
@@ -252,6 +262,7 @@ public final class CatalogModel {
         await searchTask?.value
         await refreshTask?.value
         await viewingTask?.value
+        await preferenceWriteTask?.value
     }
 
     // MARK: Lists
@@ -390,6 +401,7 @@ public final class CatalogModel {
     private func pruneRowModels() {
         var keep = Set(lists.values.flatMap { $0.rows.map(\.id) })
         if let selectedSessionID { keep.insert(selectedSessionID) }
+        keep.formUnion(tabs.pinned)
         // A live conversation keeps its project known for the project dot after its row is gone.
         for (id, row) in rowModels where !keep.contains(id) && liveStates[id] != nil {
             liveRecords[id] = row.record
@@ -436,7 +448,7 @@ public final class CatalogModel {
         if id != selectedSessionID {
             selectedSessionID = id
             selectedRow = id.flatMap { rowModels[$0] }
-            persist { $0.selectedSessionID = id }
+            persistSelection(id)
             if id != nil, selectedRow == nil { Task { await ensureSelectedRow() } }
         }
         updateViewing()
@@ -448,6 +460,7 @@ public final class CatalogModel {
         do {
             statistics.pageQueries += 1
             guard let record = try await catalog.session(id: id) else {
+                forgetTab(id)
                 if selectedSessionID == id { select(nil) }
                 return
             }
@@ -455,6 +468,88 @@ public final class CatalogModel {
             selectedRow = row(for: record)
         } catch {
             report(error, "The selected conversation could not be read")
+        }
+    }
+
+    // MARK: Conversation tabs
+
+    /// Pinned tabs plus the selected conversation as one transient tab.
+    public var visibleTabIDs: [UUID] { tabs.visible(selected: selectedSessionID) }
+
+    /// The row behind a tab (title and indicator); nil only while it is still being read.
+    public func tabRow(_ id: UUID) -> SessionRowModel? { rowModels[id] }
+
+    /// "Open in Tab": pins the conversation and shows it. Never starts anything.
+    /// When the strip is full of running or attention tabs the pin is refused
+    /// with a reason; the conversation is still shown as the transient tab.
+    @discardableResult
+    public func openTab(_ id: UUID) -> TabPinResult {
+        let result = pinTab(id)
+        if case let .refused(reason) = result { infoMessage = reason }
+        select(id)
+        return result
+    }
+
+    /// Closing only unpins; a run stays alive. Closing the selected tab shows
+    /// its right neighbor, else its left, else nothing.
+    public func closeTab(_ id: UUID) {
+        let next = id == selectedSessionID ? tabs.neighbor(ofClosing: id, selected: selectedSessionID) : nil
+        if tabs.unpin(id) { persistTabs() }
+        if id == selectedSessionID { select(next) }
+    }
+
+    /// A conversation was deleted (CP4): its tab goes away like a closed tab.
+    public func forget(sessionID id: UUID) { closeTab(id) }
+
+    /// A started or resumed conversation takes a tab (best effort: a full strip
+    /// of running tabs leaves it as the transient tab) and is shown.
+    func showStarted(_ id: UUID) {
+        pinTab(id)
+        select(id)
+    }
+
+    /// `/clear` or `/new` moved the terminal to a new card: a pinned old owner
+    /// is replaced in place by it.
+    func tabOwnerMoved(from old: UUID, to new: UUID) {
+        guard tabs.replace(old, with: new) else { return }
+        persistTabs()
+        Task { await ensureTabRows() }
+    }
+
+    @discardableResult
+    private func pinTab(_ id: UUID) -> TabPinResult {
+        let result = tabs.pin(id, canEvict: canEvictTab)
+        if case .pinned = result { persistTabs() }
+        return result
+    }
+
+    /// Only a tab that is not running and does not need the user may make room.
+    private func canEvictTab(_ id: UUID) -> Bool {
+        if busy[id] != nil { return false }
+        let live = liveStates[id]
+        if live?.runID != nil { return false }
+        guard let record = rowModels[id]?.record ?? liveRecords[id] else { return live == nil }
+        return !SessionIndicator(record: record, live: live).needsAttention
+    }
+
+    private func forgetTab(_ id: UUID) {
+        if tabs.forget(id) { persistTabs() }
+    }
+
+    /// Reads the rows of pinned tabs the lists do not hold (at most one point
+    /// lookup each); a tab whose conversation is gone is dropped.
+    private func ensureTabRows() async {
+        guard let catalog else { return }
+        for id in tabs.pinned where rowModels[id] == nil {
+            do {
+                statistics.pageQueries += 1
+                guard let record = try await catalog.session(id: id) else { forgetTab(id); continue }
+                guard tabs.isPinned(id) else { continue }
+                _ = row(for: record)
+            } catch {
+                report(error, "A tab's conversation could not be read")
+                forgetTab(id)
+            }
         }
     }
 
@@ -819,6 +914,32 @@ public final class CatalogModel {
 
     private func report(_ error: (any Error)?, _ context: String) {
         errorMessage = error.map { "\(context): \($0)" } ?? context
+    }
+
+    /// Tab order is not high-frequency: written at once.
+    private func persistTabs() {
+        let pinned = tabs.pinned
+        persist { $0.openTabs = pinned }
+    }
+
+    /// Selection changes in quick succession (tab switching) coalesce into one write.
+    private func persistSelection(_ id: UUID?) {
+        preferences.apply { $0.selectedSessionID = id }
+        preferenceWriteTask?.cancel()
+        preferenceWriteTask = Task { [weak self] in
+            guard let delay = self?.preferenceWriteDelay else { return }
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            self?.flushPreferences()
+        }
+    }
+
+    /// Writes pending preference changes now (Quit, `stop()`).
+    public func flushPreferences() {
+        preferenceWriteTask?.cancel()
+        preferenceWriteTask = nil
+        do { try preferences.flush() }
+        catch { report(error, "Preferences could not be saved") }
     }
 
     private func persist(_ change: (inout UIPreferences) -> Void) {

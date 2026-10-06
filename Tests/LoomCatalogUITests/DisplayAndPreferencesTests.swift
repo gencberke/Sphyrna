@@ -107,6 +107,45 @@ struct DisplayAndPreferencesTests {
         #expect(store.current.sidebarWidth == 220)
     }
 
+    @Test func openTabsPersistAndDecodeTolerantly() throws {
+        let url = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let ids = (0..<10).map { _ in UUID() }
+        let store = UIPreferencesStore(url: url)
+        #expect(store.current.openTabs.isEmpty)
+        // Duplicates collapse (first wins) and the list is capped when written.
+        try store.update { $0.openTabs = [ids[0], ids[1], ids[0]] + ids }
+        #expect(store.current.openTabs == Array(ids.prefix(UIPreferences.maxOpenTabs)))
+        #expect(UIPreferencesStore(url: url).current.openTabs == store.current.openTabs)
+
+        // A hand-edited file: bad entries drop only themselves; a wrong type or a missing key means no tabs.
+        let tolerant = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: tolerant.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: tolerant.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let json = #"{"openTabs": ["\#(ids[2])", "not-a-uuid", 7, "\#(ids[2])", "\#(ids[3])"] }"#
+        try Data(json.utf8).write(to: tolerant)
+        #expect(UIPreferencesStore(url: tolerant).current.openTabs == [ids[2], ids[3]])
+        try Data(#"{"openTabs": "nope"}"#.utf8).write(to: tolerant)
+        #expect(UIPreferencesStore(url: tolerant).current.openTabs.isEmpty)
+        try Data(#"{"viewMode": "projects"}"#.utf8).write(to: tolerant)
+        let missing = UIPreferencesStore(url: tolerant)
+        #expect(missing.current.openTabs.isEmpty && missing.current.viewMode == .projects)
+    }
+
+    @Test func deferredPreferenceChangesStayInMemoryUntilFlushed() throws {
+        let url = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = UIPreferencesStore(url: url)
+        let id = UUID()
+        store.apply { $0.selectedSessionID = id }
+        #expect(store.current.selectedSessionID == id)
+        #expect(!FileManager.default.fileExists(atPath: url.path) && store.writeCount == 0)
+        try store.flush()
+        try store.flush() // nothing new: no second write
+        #expect(store.writeCount == 1)
+        #expect(UIPreferencesStore(url: url).current.selectedSessionID == id)
+    }
+
     @Test func unreadablePreferencesAreKeptAsideAndDefaultsUsed() throws {
         let url = temporaryFile()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

@@ -379,6 +379,74 @@ struct ConversationControllerTests {
         }
     }
 
+    // MARK: U3 conversation tabs
+
+    @Test func startAndResumePinATabAndStopThenCloseKeepsTheCardOnly() async throws {
+        try await withFixture { fixture in
+            fixture.model.startConversation(.claude, projectID: nil)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 })
+            let sessionID = try #require(fixture.model.selectedSessionID)
+            #expect(fixture.model.tabs.pinned == [sessionID])
+            #expect(fixture.model.visibleTabIDs == [sessionID])
+
+            // Closing the tab never stops the run: the terminal stays.
+            fixture.model.closeTab(sessionID)
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(fixture.model.tabs.pinned.isEmpty)
+            #expect(fixture.controller.terminalCount == 1)
+            #expect(fixture.model.terminalView(for: sessionID) != nil)
+
+            fixture.model.stopConversation(sessionID)
+            #expect(await waitUntil { fixture.controller.terminalCount == 0 && fixture.model.busy[sessionID] == nil })
+            fixture.model.resumeConversation(sessionID)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 })
+            #expect(await waitUntil { fixture.model.tabs.pinned == [sessionID] })
+            #expect(fixture.model.selectedSessionID == sessionID)
+        }
+    }
+
+    @Test func clearReplacesThePinnedTabInPlaceAndNeighborsStay() async throws {
+        try await withFixture { fixture in
+            let neighbor = ManagedSession(provider: .claude, workingDirectory: "/tmp")
+            try await fixture.catalog.insertSession(neighbor, title: "Neighbor", lifecycle: .idle)
+            fixture.model.openTab(neighbor.id)
+            fixture.model.startConversation(.claude, projectID: nil)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 })
+            let oldID = try #require(fixture.model.selectedSessionID)
+            #expect(fixture.model.tabs.pinned == [neighbor.id, oldID])
+            let terminalSurface = try #require(surface(fixture, for: oldID))
+            #expect(await waitUntil { terminalSurface.screenText().contains("FAKE-CLAUDE READY") })
+            type("before clear", into: terminalSurface)
+            #expect(try await waitUntil { try await fixture.catalog.session(id: oldID)?.session.providerConversationID != nil })
+
+            type("/clear", into: terminalSurface)
+            #expect(try await waitUntil { try await fixture.catalog.sessions().count == 3 })
+            let newID = try #require(try await fixture.catalog.sessions()
+                .first { $0.session.id != oldID && $0.session.id != neighbor.id }?.session.id)
+            #expect(await waitUntil { fixture.model.tabs.pinned == [neighbor.id, newID] })
+            #expect(await waitUntil { fixture.model.selectedSessionID == newID })
+            #expect(fixture.model.visibleTabIDs == [neighbor.id, newID])
+            #expect(await waitUntil { fixture.model.tabRow(newID) != nil })
+        }
+    }
+
+    @Test func selectingAndOpeningTabsOfStoppedConversationsCreatesNoTerminal() async throws {
+        try await withFixture { fixture in
+            var created: [UUID] = []
+            for index in 0..<3 {
+                let session = ManagedSession(provider: .claude, workingDirectory: "/tmp")
+                created.append(session.id)
+                try await fixture.catalog.insertSession(session, title: "Old \(index)", lifecycle: .idle)
+            }
+            for id in created { fixture.model.openTab(id) }
+            for id in created.reversed() { fixture.model.select(id) }
+            fixture.model.closeTab(created[0])
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(fixture.controller.terminalCount == 0)
+            #expect(await fixture.supervisor.runningSessionIDs().isEmpty)
+        }
+    }
+
     // MARK: C3 viewing
 
     @Test func onlyAVisibleActiveSelectionUpdatesUseTimeAndStaleStaysStale() async throws {

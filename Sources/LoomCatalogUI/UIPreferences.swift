@@ -18,15 +18,21 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     public var sidebarWidth: Double
     public var sidebarCollapsed: Bool
     public var terminalFontSize: Double
+    /// Pinned conversation tabs, in strip order (D-33). De-duplicated and capped.
+    public var openTabs: [UUID]
+
+    public static let maxOpenTabs = 8
 
     public init(viewMode: CatalogViewMode = .activity, selectedSessionID: UUID? = nil,
                 sidebarWidth: Double = UIPreferences.defaultSidebarWidth,
-                sidebarCollapsed: Bool = false, terminalFontSize: Double = UIPreferences.defaultTerminalFontSize) {
+                sidebarCollapsed: Bool = false, terminalFontSize: Double = UIPreferences.defaultTerminalFontSize,
+                openTabs: [UUID] = []) {
         self.viewMode = viewMode
         self.selectedSessionID = selectedSessionID
         self.sidebarWidth = Self.clamped(sidebarWidth)
         self.sidebarCollapsed = sidebarCollapsed
         self.terminalFontSize = Self.clampedFontSize(terminalFontSize)
+        self.openTabs = Self.normalizedTabs(openTabs)
     }
 
     public init(from decoder: any Decoder) throws {
@@ -39,8 +45,22 @@ public struct UIPreferences: Codable, Equatable, Sendable {
                 ?? Self.defaultSidebarWidth,
             sidebarCollapsed: (try? container.decodeIfPresent(Bool.self, forKey: .sidebarCollapsed)) ?? false,
             terminalFontSize: (try? container.decodeIfPresent(Double.self, forKey: .terminalFontSize))
-                ?? Self.defaultTerminalFontSize
+                ?? Self.defaultTerminalFontSize,
+            // One unreadable entry drops only itself, not the whole list.
+            openTabs: ((try? container.decodeIfPresent([Lossy<UUID>].self, forKey: .openTabs)) ?? nil)?
+                .compactMap(\.value) ?? []
         )
+    }
+
+    private struct Lossy<Value: Decodable>: Decodable {
+        let value: Value?
+        init(from decoder: any Decoder) throws { value = try? Value(from: decoder) }
+    }
+
+    /// First occurrence wins; at most `maxOpenTabs` entries.
+    static func normalizedTabs(_ ids: [UUID]) -> [UUID] {
+        var seen = Set<UUID>()
+        return Array(ids.filter { seen.insert($0).inserted }.prefix(maxOpenTabs))
     }
 
     public static func clampedFontSize(_ size: Double) -> Double {
@@ -63,6 +83,8 @@ public final class UIPreferencesStore {
     /// Set when an unreadable file was moved aside at load time.
     public private(set) var loadNotice: String?
     private var lastSaved: UIPreferences?
+    /// Number of successful file writes (tests and evidence).
+    public private(set) var writeCount = 0
 
     public init(url: URL) {
         self.url = url
@@ -88,12 +110,25 @@ public final class UIPreferencesStore {
     /// Throws when the write fails; the in-memory value is kept either way so
     /// the window stays consistent, and the caller reports the failure.
     public func update(_ change: (inout UIPreferences) -> Void) throws {
+        apply(change)
+        try flush()
+    }
+
+    /// Applies the change in memory only; `flush()` (or the next `update`)
+    /// writes it. Lets rapid changes such as tab switching coalesce into one write.
+    public func apply(_ change: (inout UIPreferences) -> Void) {
         var updated = current
         change(&updated)
         updated.sidebarWidth = UIPreferences.clamped(updated.sidebarWidth)
         updated.terminalFontSize = UIPreferences.clampedFontSize(updated.terminalFontSize)
+        updated.openTabs = UIPreferences.normalizedTabs(updated.openTabs)
         current = updated
-        guard updated != lastSaved else { return }
+    }
+
+    /// Writes the current value when it differs from what is on disk.
+    public func flush() throws {
+        guard current != lastSaved else { return }
+        let updated = current
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
@@ -102,5 +137,6 @@ public final class UIPreferencesStore {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(updated).write(to: url, options: .atomic)
         lastSaved = updated
+        writeCount += 1
     }
 }
