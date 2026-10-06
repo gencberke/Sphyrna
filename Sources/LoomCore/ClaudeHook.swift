@@ -183,9 +183,8 @@ public final class ClaudeHookServer: @unchecked Sendable {
     private let socketPath: String
     private let authenticationToken: String
     private let handler: @Sendable (ClaudeHookEnvelope) -> Void
-    private let workerQueue = DispatchQueue(
-        label: "dev.loom.claude-hooks.receive", qos: .utility,
-        attributes: .concurrent
+    private let receiveQueue = DispatchQueue(
+        label: "dev.loom.claude-hooks.receive", qos: .utility
     )
     private let stateLock = NSLock()
     private var source: DispatchSourceRead?
@@ -255,8 +254,7 @@ public final class ClaudeHookServer: @unchecked Sendable {
             }
 
             let source = DispatchSource.makeReadSource(
-                fileDescriptor: descriptor,
-                queue: DispatchQueue(label: "dev.loom.claude-hooks.accept", qos: .utility)
+                fileDescriptor: descriptor, queue: receiveQueue
             )
             source.setEventHandler { [weak self] in self?.acceptAvailable(descriptor: descriptor) }
             source.setCancelHandler {
@@ -287,6 +285,7 @@ public final class ClaudeHookServer: @unchecked Sendable {
 
     private func acceptAvailable(descriptor: Int32) {
         while true {
+            guard !stateLock.withLock({ stopped }) else { return }
             let connection = Darwin.accept(descriptor, nil, nil)
             if connection >= 0 {
                 guard fcntl(connection, F_SETFL, O_NONBLOCK) == 0,
@@ -294,13 +293,9 @@ public final class ClaudeHookServer: @unchecked Sendable {
                     Darwin.close(connection)
                     continue
                 }
-                workerQueue.async { [weak self] in
-                    guard let self else {
-                        Darwin.close(connection)
-                        return
-                    }
-                    self.receive(connection: connection)
-                }
+                // Receive on this dedicated serial utility queue. At most one
+                // accepted FD is retained; the kernel listen backlog is 16.
+                receive(connection: connection)
             } else if errno == EINTR {
                 continue
             } else if errno == EAGAIN || errno == EWOULDBLOCK {
@@ -316,6 +311,7 @@ public final class ClaudeHookServer: @unchecked Sendable {
         let deadline = ProcessInfo.processInfo.systemUptime + 1
         var data = Data()
         while true {
+            guard ProcessInfo.processInfo.systemUptime < deadline else { return }
             var buffer = [UInt8](repeating: 0, count: 16 * 1024)
             let count = Darwin.recv(connection, &buffer, buffer.count, 0)
             if count > 0 {
@@ -365,6 +361,7 @@ public struct ClaudeHookEvent: Equatable, Sendable {
 
     public let providerSessionID: String
     public let promptID: String?
+    public let agentID: String?
     public let transcriptPath: String?
     public let workingDirectory: String?
     public let lastAssistantMessage: String?
@@ -394,6 +391,7 @@ public struct ClaudeHookEvent: Equatable, Sendable {
         }
         self.providerSessionID = providerSessionID
         promptID = object["prompt_id"] as? String
+        agentID = (object["agent_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         transcriptPath = object["transcript_path"] as? String
         workingDirectory = object["cwd"] as? String
         lastAssistantMessage = object["last_assistant_message"] as? String
@@ -464,6 +462,11 @@ public enum ClaudeHookDisposition: Equatable, Sendable {
     case applied(ClaudeHookEvent)
     case staleRun
     case wrongSession
+    case wrongConversation
+    case retiredConversation
+    case duplicateSessionStart
+    case childAgent
+    case unreliable
 }
 
 /// Reduces provider events independently from durable lifecycle and process
@@ -473,27 +476,131 @@ public actor ClaudeHookStateTracker {
     public let sessionID: UUID
     private var managedRunID: UUID
     private var currentStatus = ClaudeSessionStatus()
+    private var activeProviderSessionID: String?
+    private var retiredSessionIDs: Set<String> = []
+    private var inputGeneration: UUID?
+    private var inputWatermark: Double?
+    private var inputAwaitsApproval = false
+    private var hookEmissionWatermark: Double?
+    private var inputClockAmbiguous = false
+    static let maximumHookReorderMilliseconds = 500.0
+    private var registryStartedAt: Double?
+    private var registryTimestamp: Double?
 
-    public init(sessionID: UUID, managedRunID: UUID) {
+    func registryGeneration() -> UUID? { inputGeneration }
+
+    /// Millisecond provider metadata is a bounded freshness aid, not a total
+    /// order. Ambiguous clocks remain unknown and cannot permit automatic idle.
+    func receiveRegistry(_ result: ClaudeRegistryRead, generation: UUID?, now: Date) -> String? {
+        guard let generation, generation == inputGeneration else { return nil }
+        guard case let .snapshot(snapshot) = result else {
+            currentStatus.activity = .unknown
+            return "Claude session metadata is unavailable; input state cannot be verified."
+        }
+        guard snapshot.sessionID.caseInsensitiveCompare(activeProviderSessionID ?? "") == .orderedSame else { return nil }
+        if let previous = registryStartedAt, previous != snapshot.startedAt { return nil }
+        registryStartedAt = snapshot.startedAt
+        guard let timestamp = snapshot.statusUpdatedAt, let status = snapshot.status,
+              let watermark = inputWatermark else {
+            currentStatus.activity = .unknown
+            return "Claude session metadata is incomplete; input state cannot be verified."
+        }
+        let nowMS = now.timeIntervalSince1970 * 1_000
+        // Only a clock that really jumped (a large rollback between hooks, or
+        // stamps in the future) makes the order unknowable.
+        if inputClockAmbiguous || timestamp > nowMS || watermark > nowMS {
+            currentStatus.activity = .unknown
+            return "Claude session metadata clock is ambiguous; input state cannot be verified."
+        }
+        // Real Claude writes the registry a few ms before the matching hook,
+        // stamps its first record before `startedAt`, and runs hook helpers as
+        // concurrent processes. A sample that is not strictly newer than every
+        // hook seen, or older than an earlier sample, or tied to the
+        // millisecond, is stale: keep the hook state and wait for a later write.
+        let newest = max(watermark, hookEmissionWatermark ?? watermark)
+        if let previous = registryTimestamp, timestamp < previous { return nil }
+        if timestamp == floor(newest) { return nil }
+        registryTimestamp = timestamp
+        guard timestamp > newest else { return nil }
+        switch status {
+        case "idle": currentStatus.activity = .waitingForInput
+        case "busy": currentStatus.activity = .working
+        case "waiting": if inputAwaitsApproval { currentStatus.activity = .waitingForApproval }
+        default: currentStatus.activity = .unknown
+        }
+        return nil
+    }
+
+    public init(sessionID: UUID, managedRunID: UUID, providerSessionID: String? = nil) {
         self.sessionID = sessionID
         self.managedRunID = managedRunID
+        activeProviderSessionID = providerSessionID
     }
 
     public func beginRun(_ runID: UUID) {
         managedRunID = runID
         currentStatus = ClaudeSessionStatus()
+        activeProviderSessionID = nil
+        retiredSessionIDs.removeAll()
+        inputGeneration = nil; inputWatermark = nil
+        registryStartedAt = nil; registryTimestamp = nil
+        hookEmissionWatermark = nil; inputClockAmbiguous = false
     }
 
     public func status() -> ClaudeSessionStatus { currentStatus }
+
+    /// Classification runs before durable adoption. Native identity, never
+    /// helper timestamps, fences late events from a previous conversation.
+    public func disposition(for envelope: ClaudeHookEnvelope) throws -> ClaudeHookDisposition {
+        guard envelope.sessionID == sessionID else { return .wrongSession }
+        guard envelope.managedRunID == managedRunID else { return .staleRun }
+        let event = try ClaudeHookEvent(payload: envelope.payload)
+        // Child hook payloads share launch credentials; agent_id identifies a
+        // different execution context and has no parent-conversation authority.
+        guard event.agentID == nil else { return .childAgent }
+        if case let .sessionStart(source) = event.kind {
+            if currentStatus.providerSessionID == event.providerSessionID { return .duplicateSessionStart }
+            if retiredSessionIDs.contains(event.providerSessionID), source != "resume" { return .retiredConversation }
+        } else if activeProviderSessionID != event.providerSessionID {
+            return .wrongConversation
+        }
+        return .applied(event)
+    }
 
     @discardableResult
     public func receive(
         _ envelope: ClaudeHookEnvelope,
         receivedAt: Date = Date()
     ) throws -> ClaudeHookDisposition {
-        guard envelope.sessionID == sessionID else { return .wrongSession }
-        guard envelope.managedRunID == managedRunID else { return .staleRun }
-        let event = try ClaudeHookEvent(payload: envelope.payload)
+        let disposition = try disposition(for: envelope)
+        guard case let .applied(event) = disposition else { return disposition }
+        if case .sessionStart = event.kind {
+            if let previous = activeProviderSessionID, previous != event.providerSessionID { retiredSessionIDs.insert(previous) }
+            retiredSessionIDs.remove(event.providerSessionID)
+            activeProviderSessionID = event.providerSessionID
+            currentStatus = ClaudeSessionStatus()
+        }
+        inputGeneration = nil
+        inputWatermark = nil
+        inputAwaitsApproval = false
+        registryTimestamp = nil
+        if case .sessionStart = event.kind { registryStartedAt = nil }
+        switch event.kind {
+        case .permissionRequest:
+            inputGeneration = UUID(); inputWatermark = envelope.sentAt.timeIntervalSince1970 * 1_000; inputAwaitsApproval = true
+        case .userPromptSubmit:
+            inputGeneration = UUID(); inputWatermark = envelope.sentAt.timeIntervalSince1970 * 1_000
+        default: break
+        }
+        if case .notification("permission_prompt") = event.kind {
+            inputGeneration = UUID(); inputWatermark = envelope.sentAt.timeIntervalSince1970 * 1_000; inputAwaitsApproval = true
+        }
+        let emission = envelope.sentAt.timeIntervalSince1970 * 1_000
+        // Helpers for concurrent hooks may deliver slightly out of order; only a
+        // larger step back means the clock itself moved.
+        inputClockAmbiguous = !emission.isFinite
+            || (hookEmissionWatermark.map { emission < $0 - Self.maximumHookReorderMilliseconds } ?? false)
+        if emission.isFinite { hookEmissionWatermark = max(hookEmissionWatermark ?? emission, emission) }
         currentStatus.lastEventAt = receivedAt
         switch event.kind {
         case .sessionStart:

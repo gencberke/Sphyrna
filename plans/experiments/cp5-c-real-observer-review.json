@@ -1,0 +1,103 @@
+{
+  "checkpoint": 5,
+  "slice": "C",
+  "result": "Partial real verification: resumed observer B receives approval; complete A/B negative comparison and product C4 remain unverified",
+  "run_directory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-real-observer-verification-5b7242c6-30d6-4d77-ae9a-0bce79a6c767",
+  "independent_checks": {
+    "sources_match": true,
+    "ready": {
+      "AInitialized": true,
+      "AReadMatched": true,
+      "ASequence": 6,
+      "BInitialized": true,
+      "BResumeMatched": true,
+      "BSequence": 6,
+      "ready": true
+    },
+    "observationCompleted": true,
+    "comparisonWindowValid": false,
+    "connections": {
+      "A": {
+        "dropped": 0,
+        "failures": [],
+        "requestEntries": [],
+        "turnStartEntries": []
+      },
+      "B": {
+        "dropped": 0,
+        "failures": [],
+        "requestEntries": [
+          {
+            "connection": "B",
+            "decode": "request",
+            "envelope": "request",
+            "idType": "number",
+            "method": "item/commandExecution/requestApproval",
+            "routing": "target-run",
+            "sequence": 16,
+            "threadMatch": true,
+            "turnLabel": "e1de7ad85a2d919c"
+          }
+        ],
+        "turnStartEntries": [
+          {
+            "connection": "B",
+            "decode": "event",
+            "envelope": "notification",
+            "idType": "absent",
+            "method": "turn/started",
+            "routing": "target-run",
+            "sequence": 11,
+            "threadMatch": true,
+            "turnLabel": "e1de7ad85a2d919c"
+          }
+        ]
+      }
+    },
+    "loom": {
+      "selectedRequestsCount": 0,
+      "selectedIndicator": "Needs approval"
+    },
+    "quit_summary": {
+      "succeeded": true,
+      "remaining": 0,
+      "liveRuns": 0,
+      "codexServerRunning": false,
+      "codexLeases": 0,
+      "errors_count": 0
+    },
+    "pids": {
+      "79644": "absent",
+      "79695": "absent",
+      "79696": "absent",
+      "79761": "absent"
+    },
+    "socketAbsent": true,
+    "approvalTargetAbsent": true,
+    "probe_and_app_binary_hashes_match": true
+  },
+  "native_observation": "Verifier observed one prompt then native TUI approval within the active observer window; parent did not replay the UI.",
+  "interpretation": {
+    "verified": "B received commandExecution/requestApproval after readiness with the same target-thread/turn label as its turn/started event.",
+    "observed": "A has no turn-start or request entry; main Loom selectedRequests stayed empty.",
+    "not_established": "comparisonWindowValid is false because A lacks same-turn correlation. No general fanout, causality, replay or product response/completion claim."
+  },
+  "preparation_limit": "Fresh blank TUI preparation failed before ready; no prompt sent. A cloned catalog and previously completed isolated thread were then resumed. The failed snapshot does not establish the exact preparation failure cause.",
+  "budget": {
+    "codex_limit": 6,
+    "codex_spent": 5,
+    "this_work": 1,
+    "remaining_active_quit": 1,
+    "retry": 0,
+    "claude_extra": 0
+  },
+  "unverified": [
+    "C4 delivery and user answer through the main Loom coordinator",
+    "New-thread first approval and pending-request replay",
+    "Active-command Quit and external process preservation",
+    "C/D/OWN-1/resources/optimizer full acceptance"
+  ],
+  "source_code_changes": false,
+  "checks_not_repeated": "No unit/full suite rerun; accepted harness source hashes remain unchanged.",
+  "verifier_evidence": "plans/experiments/cp5-c-real-observer-verification.json"
+}

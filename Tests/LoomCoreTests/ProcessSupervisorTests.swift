@@ -6,6 +6,60 @@ import Testing
 
 private final class SupervisorTestBundleAnchor: NSObject {}
 
+private actor StopTransitionGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private(set) var entered = false
+    func wait() async {
+        entered = true
+        await withCheckedContinuation { continuation = $0 }
+    }
+    func release() { continuation?.resume(); continuation = nil }
+}
+
+private actor ConcurrentLaunchProbe {
+    private(set) var finished = false
+    private(set) var error: SessionManagementError?
+    func resolve(_ error: SessionManagementError?) {
+        self.error = error
+        finished = true
+    }
+}
+
+private actor StopPhaseProbe {
+    private(set) var preparations = 0
+    private(set) var completions = 0
+    private let failureOnce: Bool
+    init(failureOnce: Bool = false) { self.failureOnce = failureOnce }
+    func prepare() { preparations += 1 }
+    func complete() throws {
+        completions += 1
+        if failureOnce && completions == 1 { throw LoomError.message("completed fail once") }
+    }
+}
+
+private final class CatalogTransitionGate: @unchecked Sendable {
+    private let condition = NSCondition()
+    private var waiting = false
+    private var released = false
+    var entered: Bool { condition.withLock { waiting } }
+    func hold() {
+        condition.lock()
+        waiting = true
+        while !released { condition.wait() }
+        condition.unlock()
+    }
+    func release() {
+        condition.lock()
+        released = true
+        condition.broadcast()
+        condition.unlock()
+    }
+}
+
+private extension SessionCatalog {
+    func holdForTransitionTest(_ gate: CatalogTransitionGate) { gate.hold() }
+}
+
 private final class CountingOutputSink: TerminalOutputSink, @unchecked Sendable {
     private let lock = NSLock()
     private let byte: UInt8
@@ -88,6 +142,14 @@ struct ProcessSupervisorTests {
         throw LoomError.message("Fixture not ready: \(String(decoding: data, as: UTF8.self))")
     }
 
+    private func executeCatalogSQL(_ sql: String, at url: URL) throws {
+        var connection: OpaquePointer?
+        try #require(sqlite3_open(url.path, &connection) == SQLITE_OK)
+        defer { sqlite3_close(connection) }
+        sqlite3_busy_timeout(connection, 1_000)
+        try #require(sqlite3_exec(connection, sql, nil, nil, nil) == SQLITE_OK)
+    }
+
     @Test func scrollbackAllocatesLazilyAndPreservesNewestBytes() {
         let scrollback = TerminalScrollback(capacity: 8)
         #expect(scrollback.allocatedByteCount == 0)
@@ -101,7 +163,7 @@ struct ProcessSupervisorTests {
 
     @Test func tenSilentSessionsDoNotPreallocateScrollbackCapacity() async throws {
         let supervisor = try ProcessSupervisor(
-            ledger: OwnershipLedger(coalition: .probe(forceFailure: true))
+            ledger: OwnershipLedger()
         )
         var terminals: [TerminalEndpoint] = []
         for _ in 0..<10 {
@@ -125,7 +187,7 @@ struct ProcessSupervisorTests {
     }
 
     @Test func managedRunMarkerIsDistinctFromAppOwnershipRun() async throws {
-        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition: .probe(forceFailure: true)))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
         let sessionID = UUID()
         let launch = try await launch("inspect", sessionID: sessionID, supervisor: supervisor)
         let result = try await ready(terminal: launch.terminal)
@@ -139,7 +201,7 @@ struct ProcessSupervisorTests {
     }
 
     @Test func stoppingOneSessionLeavesTheOtherSessionRunning() async throws {
-        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition: .probe(forceFailure: true)))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
         let firstID = UUID(), secondID = UUID()
         let firstLaunch = try await launch("escape", sessionID: firstID, supervisor: supervisor)
         let secondLaunch = try await launch("stubborn", sessionID: secondID, supervisor: supervisor)
@@ -165,7 +227,7 @@ struct ProcessSupervisorTests {
 
     @Test func unverifiedProviderStopLeavesRunAlive() async throws {
         let supervisor = try ProcessSupervisor(
-            ledger: OwnershipLedger(coalition: .probe(forceFailure: true))
+            ledger: OwnershipLedger()
         )
         let sessionID = UUID()
         let launch = try await launch(
@@ -196,8 +258,75 @@ struct ProcessSupervisorTests {
         #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
+    @Test func unverifiedStopStaysInLatestEventStateUntilAVerifiedStop() async throws {
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
+        let sessionID = UUID()
+        let launch = try await launch("interactive", sessionID: sessionID, supervisor: supervisor)
+        let runID = try #require(launch.session.currentRun?.id)
+        try await supervisor.registerStopHooks(
+            runID: runID,
+            hooks: ManagedRunStopHooks(
+                prepare: { throw LoomError.message("server still active") },
+                completed: {}
+            )
+        )
+        // A consumer that never reads intermediate frames.
+        let stream = await supervisor.events.subscribe()
+        var iterator = stream.makeAsyncIterator()
+        _ = await iterator.next()
+        #expect(!(try await supervisor.stop(sessionID: sessionID, graceSeconds: 0.2)).succeeded)
+        var state = try #require(await iterator.next()?.sessions[sessionID])
+        #expect(state.runID == runID)
+        #expect(state.stopFailure?.contains("Provider prepare failed (providerError)") == true)
+        #expect(state.stopFailure?.contains("server still active") == false)
+
+        try await supervisor.registerStopHooks(
+            runID: runID, hooks: ManagedRunStopHooks(prepare: {}, completed: {})
+        )
+        #expect((try await supervisor.stop(sessionID: sessionID, graceSeconds: 0.2)).succeeded)
+        state = try #require(await supervisor.events.snapshot().sessions[sessionID])
+        #expect(state.runID == nil)
+        #expect(state.stopFailure == nil)
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
+    }
+
+    @Test func leaderExitWithUnverifiedStopIsPersistentForEveryConsumer() async throws {
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
+        let sessionID = UUID()
+        let launch = try await launch("interactive", sessionID: sessionID, supervisor: supervisor)
+        let runID = try #require(launch.session.currentRun?.id)
+        try await supervisor.registerStopHooks(
+            runID: runID,
+            hooks: ManagedRunStopHooks(
+                prepare: { throw LoomError.message("background work still running") },
+                completed: {}
+            )
+        )
+        // Ctrl-D ends the interactive fixture: the leader exits by itself.
+        _ = try await launch.terminal.write(Data([0x04]))
+        var state = await supervisor.events.snapshot().sessions[sessionID]
+        let deadline = ProcessInfo.processInfo.systemUptime + 3
+        while state?.stopFailure == nil, ProcessInfo.processInfo.systemUptime < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+            state = await supervisor.events.snapshot().sessions[sessionID]
+        }
+        #expect(state?.stopFailure?.contains("Provider prepare failed (providerError)") == true)
+        #expect(state?.stopFailure?.contains("background work still running") == false)
+        #expect(state?.runID == runID)
+        // A consumer that subscribes afterwards still sees it.
+        let late = await supervisor.events.subscribe()
+        var iterator = late.makeAsyncIterator()
+        #expect(await iterator.next()?.sessions[sessionID]?.stopFailure != nil)
+        try await supervisor.registerStopHooks(
+            runID: runID, hooks: ManagedRunStopHooks(prepare: {}, completed: {})
+        )
+        _ = try await supervisor.stop(sessionID: sessionID, graceSeconds: 0.2)
+        #expect(await supervisor.events.snapshot().sessions[sessionID]?.stopFailure == nil)
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
+    }
+
     @Test func outputAndLeaderExitAreDeliveredWithoutSampling() async throws {
-        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition: .probe(forceFailure: true)))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
         let sessionID = UUID()
         let launch = try await launch("quick-exit", sessionID: sessionID, supervisor: supervisor)
         let output = try await ready(terminal: launch.terminal)
@@ -215,7 +344,7 @@ struct ProcessSupervisorTests {
     }
 
     @Test func eventReaderDrainsOutputLargerThanOneHandlerBudget() async throws {
-        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition: .probe(forceFailure: true)))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
         let sessionID = UUID()
         let launch = try await launch("burst-exit", sessionID: sessionID, supervisor: supervisor)
         let expected = 512 * 1024
@@ -235,7 +364,7 @@ struct ProcessSupervisorTests {
     }
 
     @Test func hiddenSessionContinuouslyDrainsOutputBeyondScrollbackCapacity() async throws {
-        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition: .probe(forceFailure: true)))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
         let sessionID = UUID()
         let sink = CountingOutputSink(byte: 0x59)
         let launch = try await launch("large-burst-exit", sessionID: sessionID,
@@ -256,7 +385,7 @@ struct ProcessSupervisorTests {
     }
 
     @Test func slowEnvironmentCaptureDoesNotBlockTerminalIOOrSupervisorQueries() async throws {
-        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition: .probe(forceFailure: true)))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
         let sessionID = UUID()
         let launch = try await launch("stubborn", sessionID: sessionID, supervisor: supervisor)
         _ = try await ready(terminal: launch.terminal)
@@ -289,7 +418,7 @@ struct ProcessSupervisorTests {
     }
 
     @Test func naturalExitCleansEscapedDescendantAndAllowsRelaunch() async throws {
-        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition: .probe(forceFailure: true)))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
         let sessionID = UUID()
         let first = try await launch("escape-exit", sessionID: sessionID, supervisor: supervisor)
         let result = try await ready(terminal: first.terminal)
@@ -315,7 +444,7 @@ struct ProcessSupervisorTests {
     }
 
     @Test func launchRequiresTheMatchingConversationMarker() async throws {
-        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition: .probe(forceFailure: true)))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
         let sessionID = UUID()
         try await supervisor.createSession(ManagedSession(
             id: sessionID, provider: .synthetic,
@@ -340,7 +469,7 @@ struct ProcessSupervisorTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
         let supervisor = try ProcessSupervisor(
-            ledger: OwnershipLedger(coalition: .probe(forceFailure: true)),
+            ledger: OwnershipLedger(),
             catalog: catalog
         )
         let sessionID = UUID()
@@ -356,7 +485,7 @@ struct ProcessSupervisorTests {
         #expect(run.exitStatus != nil)
 
         let reopened = try await ProcessSupervisor.restoring(
-            ledger: OwnershipLedger(coalition: .probe(forceFailure: true)),
+            ledger: OwnershipLedger(),
             catalog: catalog
         )
         let restored = await reopened.managedSessions()
@@ -373,7 +502,7 @@ struct ProcessSupervisorTests {
         let databaseURL = root.appendingPathComponent("sessions.sqlite3")
         let catalog = try SessionCatalog(url: databaseURL)
         let supervisor = try ProcessSupervisor(
-            ledger: OwnershipLedger(coalition: .probe(forceFailure: true)),
+            ledger: OwnershipLedger(),
             catalog: catalog
         )
         let sessionID = UUID()
@@ -427,7 +556,7 @@ struct ProcessSupervisorTests {
     }
 
     @Test func shutdownStopsTenStubbornSessionsWithinOneSharedSignalWindow() async throws {
-        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition: .probe(forceFailure: true)))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
         var sessionIDs: [UUID] = []
         for _ in 0..<10 {
             let sessionID = UUID()
@@ -452,7 +581,7 @@ struct ProcessSupervisorTests {
     @Test func failedCodexThreadStatusesStopBackgroundWorkAndTUI() async throws {
         for status in [CodexThreadStatus.systemError, .notLoaded] {
             let supervisor = try ProcessSupervisor(
-                ledger: OwnershipLedger(coalition: .probe(forceFailure: true))
+                ledger: OwnershipLedger()
             )
             let sessionID = UUID()
             let launch = try await launch(
@@ -497,7 +626,7 @@ struct ProcessSupervisorTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
         let supervisor = try ProcessSupervisor(
-            ledger: OwnershipLedger(coalition: .probe(forceFailure: true)),
+            ledger: OwnershipLedger(),
             catalog: catalog
         )
         let launchSessionID = UUID()
@@ -550,9 +679,433 @@ struct ProcessSupervisorTests {
         #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
+    @Test func pendingResumeReservesDestinationAgainstLaunchAndAnotherAdoption() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-adopt-target-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let gate = CatalogTransitionGate()
+        defer { gate.release() }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"),
+                                        existingRunTransitionFailpoint: { gate.hold() })
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(), catalog: catalog)
+        let target = UUID(), source = UUID(), competing = UUID()
+        let previous = try await launch("stubborn", sessionID: target, supervisor: supervisor,
+                                        provider: .claude, providerConversationID: "A")
+        _ = try await ready(terminal: previous.terminal)
+        #expect(try await supervisor.stop(sessionID: target, graceSeconds: 0.02).succeeded)
+        let live = try await launch("stubborn", sessionID: source, supervisor: supervisor,
+                                   provider: .claude, providerConversationID: "B")
+        let other = try await launch("stubborn", sessionID: competing, supervisor: supervisor,
+                                    provider: .claude, providerConversationID: "C")
+        _ = try await ready(terminal: live.terminal)
+        _ = try await ready(terminal: other.terminal)
+        let run = try #require(live.session.currentRun?.id)
+        let otherRun = try #require(other.session.currentRun?.id)
+        let adoption = Task { try await supervisor.adoptConversation(runID: run, conversationID: "A", transition: .resume) }
+        for _ in 0..<1_000 where !gate.entered { try await Task.sleep(for: .milliseconds(1)) }
+        try #require(gate.entered)
+        let probe = ConcurrentLaunchProbe()
+        let environment = LaunchEnvironment.make(path: "/usr/bin:/bin", runID: supervisor.ownershipRunID, sessionID: target)
+        let rejectedLaunch = Task {
+            do {
+                _ = try await supervisor.launch(sessionID: target, executable: childPath,
+                                                 arguments: ["stubborn"], environment: environment)
+                await probe.resolve(nil)
+            } catch { await probe.resolve(error as? SessionManagementError) }
+        }
+        for _ in 0..<1_000 {
+            let finished = await probe.finished
+            let running = await supervisor.session(id: target)?.currentRun != nil
+            if finished || running { break }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        #expect(await probe.finished)
+        #expect(await probe.error == .sessionAlreadyRunning(target))
+        #expect(await supervisor.session(id: target)?.currentRun == nil)
+        let rejectedAdoption = Task { try await supervisor.adoptConversation(runID: otherRun, conversationID: "A", transition: .resume) }
+        gate.release()
+        #expect(try await adoption.value == target)
+        await rejectedLaunch.value
+        await #expect(throws: SessionManagementError.conversationAlreadyRunning(provider: .claude, conversationID: "A")) {
+            try await rejectedAdoption.value
+        }
+        #expect(await supervisor.session(id: target)?.currentRun?.id == run)
+        #expect(await supervisor.session(id: source)?.currentRun == nil)
+        let links = try await catalog.runSessionLinks(runID: run)
+        #expect(links.count == 2)
+        #expect(links.filter { $0.unlinkedAt == nil }.map(\.sessionID) == [target])
+        #expect(try await supervisor.stop(sessionID: target, graceSeconds: 0.02).succeeded)
+        #expect(try await supervisor.stop(sessionID: competing, graceSeconds: 0.02).succeeded)
+        let shutdown = await supervisor.shutdown()
+        #expect(shutdown.succeeded && shutdown.remaining.isEmpty)
+        #expect(await supervisor.runningSessionIDs().isEmpty)
+    }
+
+    @Test func failedResumeReleasesDestinationReservationWithoutChangingOwner() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-adopt-target-failure-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"),
+                                        existingRunTransitionFailpoint: { throw LoomError.message("transition failpoint") })
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(), catalog: catalog)
+        let target = ManagedSession(provider: .claude, providerConversationID: "A", workingDirectory: root.path)
+        try await supervisor.createSession(target)
+        let source = UUID()
+        let live = try await launch("stubborn", sessionID: source, supervisor: supervisor,
+                                   provider: .claude, providerConversationID: "B")
+        _ = try await ready(terminal: live.terminal)
+        let run = try #require(live.session.currentRun?.id)
+        await #expect(throws: (any Error).self) {
+            try await supervisor.adoptConversation(runID: run, conversationID: "A", transition: .resume)
+        }
+        #expect(await supervisor.activeSessionID(runID: run) == source)
+        #expect(await supervisor.session(id: target.id)?.currentRun == nil)
+        #expect(try await catalog.runSessionLinks(runID: run).count == 1)
+        let environment = LaunchEnvironment.make(path: "/usr/bin:/bin", runID: supervisor.ownershipRunID, sessionID: target.id)
+        let next = try await supervisor.launch(sessionID: target.id, executable: childPath,
+                                               arguments: ["stubborn"], environment: environment)
+        _ = try await ready(terminal: next.terminal)
+        #expect((await supervisor.shutdown()).succeeded)
+        #expect(await supervisor.runningSessionIDs().isEmpty)
+    }
+
+    @Test func completedFailurePreservesRunAndConcurrentStopDoesNotConsumeRetry() async throws {
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
+        let id = UUID()
+        let live = try await launch("stubborn", sessionID: id, supervisor: supervisor, provider: .claude, providerConversationID: "A")
+        _ = try await ready(terminal: live.terminal)
+        let run = try #require(live.session.currentRun?.id)
+        let probe = StopPhaseProbe(failureOnce: true), gate = StopTransitionGate()
+        try await supervisor.registerStopHooks(runID: run, hooks: ManagedRunStopHooks(
+            prepare: { await probe.prepare() }, completed: {
+                if await probe.completions == 0 { await gate.wait() }
+                try await probe.complete()
+            }))
+        let first = Task { try await supervisor.stop(sessionID: id, graceSeconds: 0.02) }
+        for _ in 0..<1_000 where !(await gate.entered) { try await Task.sleep(for: .milliseconds(1)) }
+        try #require(await gate.entered)
+        let second = Task { try await supervisor.stop(sessionID: id, graceSeconds: 0.02) }
+        try await Task.sleep(for: .milliseconds(20))
+        await gate.release()
+        let firstReport = try await first.value, secondReport = try await second.value
+        #expect(!firstReport.succeeded && !secondReport.succeeded)
+        #expect(firstReport.runID == secondReport.runID)
+        #expect(secondReport.providerStages?.last?.outcome == "failed")
+        #expect(firstReport.remainingCountVerified == true && firstReport.remaining.isEmpty)
+        #expect(await supervisor.session(id: id)?.currentRun?.id == run)
+        #expect(await supervisor.session(id: id)?.currentRun?.state == .stopping)
+        #expect(await supervisor.runContext(runID: run) != nil)
+        // A real PTY exit callback must not silently retry completed().
+        for _ in 0..<100 where await live.terminal.exitStatus() == nil { try await Task.sleep(for: .milliseconds(5)) }
+        try #require(await live.terminal.exitStatus() != nil)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await probe.preparations == 1)
+        #expect(await probe.completions == 1)
+        await #expect(throws: SessionManagementError.runNotFound(run)) {
+            try await supervisor.adoptConversation(runID: run, conversationID: "B", transition: .new)
+        }
+        let retried = try? await supervisor.stop(sessionID: id, graceSeconds: 0.02)
+        #expect(retried?.succeeded == true)
+        #expect(await probe.preparations == 1)
+        #expect(await probe.completions == 2)
+        #expect(await supervisor.lastStopReport(sessionID: id)?.succeeded == true)
+        #expect(await supervisor.events.snapshot().sessions[id]?.stopFailure == nil)
+        #expect(await supervisor.runContext(runID: run) == nil)
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    @Test(arguments: [false, true])
+    func unknownOwnershipCountPreservesContextUntilVerifiedRetry(quitting: Bool) async throws {
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
+        let id = UUID()
+        let live = try await launch("stubborn", sessionID: id, supervisor: supervisor)
+        _ = try await ready(terminal: live.terminal)
+        let run = try #require(live.session.currentRun?.id), probe = StopPhaseProbe()
+        try await supervisor.registerStopHooks(runID: run, hooks: ManagedRunStopHooks(
+            prepare: { await probe.prepare() }, completed: { try await probe.complete() }))
+        await supervisor.setOwnershipSamplingFailpointForTesting { throw LoomError.message("ownership sample failpoint") }
+        if quitting {
+            let report = await supervisor.shutdown(graceSeconds: 0.02)
+            #expect(!report.succeeded && report.remainingCountVerified == false)
+        }
+        else { #expect(!(try await supervisor.stop(sessionID: id, graceSeconds: 0.02)).succeeded) }
+        #expect(await supervisor.lastStopReport(sessionID: id)?.remainingCountVerified == false)
+        #expect(await supervisor.runContext(runID: run) != nil)
+        #expect(await supervisor.session(id: id)?.currentRun?.id == run)
+        #expect(await probe.completions == 0)
+        #expect(await supervisor.lastStopReport(sessionID: id)?.signals.isEmpty == true)
+        #expect(await live.terminal.exitStatus() == nil)
+        await supervisor.setOwnershipSamplingFailpointForTesting(nil)
+        if quitting { #expect((await supervisor.shutdown(graceSeconds: 0.02)).succeeded) }
+        else {
+            let retried = try? await supervisor.stop(sessionID: id, graceSeconds: 0.02)
+            #expect(retried?.succeeded == true)
+            #expect(await probe.preparations == 2)
+            #expect(await probe.completions == 1)
+        }
+        #expect(await supervisor.runningSessionIDs().isEmpty)
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    @Test(arguments: [false, true])
+    func catalogFinishTimeoutRetainsContextUntilExplicitVerifiedRetry(quitting: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-stop-catalog-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(), catalog: catalog)
+        let id = UUID()
+        let live = try await launch("stubborn", sessionID: id, supervisor: supervisor)
+        _ = try await ready(terminal: live.terminal)
+        let run = try #require(live.session.currentRun?.id), probe = StopPhaseProbe(), gate = CatalogTransitionGate()
+        defer { gate.release() }
+        try await supervisor.registerStopHooks(runID: run, hooks: ManagedRunStopHooks(
+            prepare: { await probe.prepare() }, completed: { try await probe.complete() }))
+        let hold = Task.detached { await catalog.holdForTransitionTest(gate) }
+        for _ in 0..<1_000 where !gate.entered { try await Task.sleep(for: .milliseconds(1)) }
+        try #require(gate.entered)
+        if quitting { #expect(!(await supervisor.shutdown(graceSeconds: 0.02, pendingOperationGraceSeconds: 0.05)).succeeded) }
+        else { #expect(!(try await supervisor.stop(sessionID: id, graceSeconds: 0.02)).succeeded) }
+        #expect(await supervisor.runContext(runID: run) != nil)
+        #expect(await supervisor.session(id: id)?.currentRun?.id == run)
+        #expect(await supervisor.lastStopReport(sessionID: id)?.succeeded == false)
+        gate.release()
+        await hold.value
+        for _ in 0..<100 {
+            if try await catalog.runs().first(where: { $0.id == run })?.endedAt != nil { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(try await catalog.runs().first { $0.id == run }?.endedAt != nil)
+        // A late successful write alone must not replace the failed Stop report.
+        #expect(await supervisor.lastStopReport(sessionID: id)?.succeeded == false)
+        if quitting { #expect((await supervisor.shutdown(graceSeconds: 0.02)).succeeded) }
+        else {
+            #expect((try? await supervisor.stop(sessionID: id, graceSeconds: 0.02))?.succeeded == true)
+            #expect(await probe.preparations == 1)
+            #expect(await probe.completions == 1)
+        }
+        #expect(await supervisor.lastStopReport(sessionID: id)?.succeeded == true)
+        #expect(await supervisor.runContext(runID: run) == nil)
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    @Test(arguments: [false, true])
+    func settledCatalogFailureNeedsFreshDurableSuccessBeforeExplicitStopRetry(quitting: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-finish-error-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("sessions.sqlite3"), catalog = try SessionCatalog(url: url)
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(), catalog: catalog)
+        let id = UUID()
+        let live = try await launch("stubborn", sessionID: id, supervisor: supervisor)
+        _ = try await ready(terminal: live.terminal)
+        let run = try #require(live.session.currentRun?.id), probe = StopPhaseProbe()
+        try await supervisor.registerStopHooks(runID: run, hooks: ManagedRunStopHooks(
+            prepare: { await probe.prepare() }, completed: { try await probe.complete() }))
+        try executeCatalogSQL("CREATE TRIGGER fail_finish BEFORE UPDATE OF ended_at ON runs BEGIN SELECT RAISE(FAIL, 'finish failpoint'); END", at: url)
+        if quitting { #expect(!(await supervisor.shutdown(graceSeconds: 0.02)).succeeded) }
+        else { #expect(!(try await supervisor.stop(sessionID: id, graceSeconds: 0.02)).succeeded) }
+        #expect(await supervisor.runContext(runID: run) != nil)
+        #expect(await supervisor.lastStopReport(sessionID: id)?.succeeded == false)
+        #expect(try await catalog.runs().first { $0.id == run }?.endedAt == nil)
+        try executeCatalogSQL("DROP TRIGGER fail_finish", at: url)
+        // Even after failed Quit, Keep Open permits explicit Stop. Verified
+        // global destruction must avoid calling the closed provider's hooks.
+        #expect((try? await supervisor.stop(sessionID: id, graceSeconds: 0.02))?.succeeded == true)
+        #expect(await probe.preparations == (quitting ? 0 : 1))
+        #expect(await probe.completions == (quitting ? 0 : 1))
+        #expect(try await catalog.runs().first { $0.id == run }?.endedAt != nil)
+        #expect(await supervisor.lastStopReport(sessionID: id)?.succeeded == true)
+        #expect(await supervisor.runContext(runID: run) == nil)
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    @Test func quitWaitsForOngoingStopAndRejectsNewStopFinalizers() async throws {
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
+        let id = UUID()
+        let live = try await launch("stubborn", sessionID: id, supervisor: supervisor)
+        _ = try await ready(terminal: live.terminal)
+        let run = try #require(live.session.currentRun?.id), gate = StopTransitionGate()
+        try await supervisor.registerStopHooks(runID: run, hooks: ManagedRunStopHooks(prepare: { await gate.wait() }, completed: {}))
+        let stop = Task { try await supervisor.stop(sessionID: id, graceSeconds: 0.02) }
+        for _ in 0..<1_000 where !(await gate.entered) { try await Task.sleep(for: .milliseconds(1)) }
+        try #require(await gate.entered)
+        let quitTask = Task { await supervisor.shutdown(graceSeconds: 0.02, pendingOperationGraceSeconds: 0.2) }
+        // The pre-existing launch admission guard exposes when this fresh
+        // supervisor has entered shutdown, without a new product getter.
+        var shutdownEntered = false
+        for _ in 0..<100 {
+            do {
+                _ = try await supervisor.launch(sessionID: UUID(), executable: childPath,
+                                                 environment: [:])
+            } catch let error as SessionManagementError {
+                if error == .shutdownStarted { shutdownEntered = true; break }
+            }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        try #require(shutdownEntered)
+        await #expect(throws: SessionManagementError.shutdownStarted) {
+            try await supervisor.stop(sessionID: id, graceSeconds: 0.02)
+        }
+        let quit = await quitTask.value
+        #expect(!quit.succeeded && quit.signals.isEmpty)
+        #expect(quit.errors.contains { $0.contains("stop") })
+        #expect(await supervisor.runContext(runID: run) != nil)
+        // Keep Open after a failed Quit must permit an explicit Stop retry.
+        let explicitRetry = Task { try await supervisor.stop(sessionID: id, graceSeconds: 0.02) }
+        try await Task.sleep(for: .milliseconds(20))
+        await gate.release()
+        #expect(try await stop.value.succeeded)
+        #expect((try? await explicitRetry.value)?.succeeded == true)
+        #expect(await supervisor.lastStopReport(sessionID: id)?.succeeded == true)
+        #expect(await supervisor.events.snapshot().sessions[id]?.stopFailure == nil)
+        #expect((await supervisor.shutdown(graceSeconds: 0.02)).succeeded)
+        #expect(await supervisor.runningSessionIDs().isEmpty)
+    }
+
+    @Test func unknownCountReportsRejectSuccessAndLegacyShutdownJSONStillDecodes() throws {
+        let legacy = Data(#"{"elapsedSeconds":0,"signals":[],"remaining":[],"errors":[],"outsideOwnership":[],"ownershipGuarantee":"legacy"}"#.utf8)
+        #expect(try JSONDecoder().decode(ShutdownReport.self, from: legacy).succeeded)
+        let unknown = Data(#"{"remainingCountVerified":false,"elapsedSeconds":0,"signals":[],"remaining":[],"errors":[],"outsideOwnership":[],"ownershipGuarantee":"unknown"}"#.utf8)
+        #expect(try !JSONDecoder().decode(ShutdownReport.self, from: unknown).succeeded)
+        let stop = SessionStopReport(remainingCountVerified: false, sessionID: UUID(), runID: UUID(),
+                                    elapsedSeconds: 0, signals: [], remaining: [], errors: [], outsideOwnership: [])
+        #expect(!stop.succeeded)
+    }
+
+    @Test func adoptionCannotMoveRunAfterStopHasBegun() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-adopt-stop-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(), catalog: catalog)
+        let id = UUID()
+        let launch = try await launch("stubborn", sessionID: id, supervisor: supervisor,
+                                      provider: .claude, providerConversationID: "A")
+        _ = try await ready(terminal: launch.terminal)
+        let runID = try #require(launch.session.currentRun?.id)
+        let gate = StopTransitionGate()
+        try await supervisor.registerStopHooks(runID: runID, hooks: ManagedRunStopHooks(
+            prepare: { await gate.wait() }, completed: {}
+        ))
+        let stop = Task { try await supervisor.stop(sessionID: id, graceSeconds: 0.02) }
+        while !(await gate.entered) { try await Task.sleep(for: .milliseconds(1)) }
+        await #expect(throws: (any Error).self) {
+            try await supervisor.adoptConversation(runID: runID, conversationID: "B", transition: .new)
+        }
+        await gate.release()
+        #expect(try await stop.value.succeeded)
+        #expect(await supervisor.managedSessions().allSatisfy { $0.currentRun == nil })
+        #expect(await supervisor.events.snapshot().sessions.values.allSatisfy { $0.runID == nil })
+        #expect(try await catalog.runs().first { $0.id == runID }?.endedAt != nil)
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    @Test(arguments: [false, true])
+    func pendingAdoptionSerializesStopAndBoundedShutdown(quitting: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-pending-adopt-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(), catalog: catalog)
+        let id = UUID()
+        let launch = try await launch("stubborn", sessionID: id, supervisor: supervisor,
+                                      provider: .claude, providerConversationID: "A")
+        _ = try await ready(terminal: launch.terminal)
+        let runID = try #require(launch.session.currentRun?.id)
+        let gate = CatalogTransitionGate()
+        defer { gate.release() }
+        let hold = Task.detached { await catalog.holdForTransitionTest(gate) }
+        while !gate.entered { try await Task.sleep(for: .milliseconds(1)) }
+        let adoption = Task { try await supervisor.adoptConversation(runID: runID, conversationID: "B", transition: .new) }
+        while await supervisor.pendingConversationTransitionCount() == 0 { try await Task.sleep(for: .milliseconds(1)) }
+        if quitting {
+            let shutdown = await supervisor.shutdown(graceSeconds: 0.02, pendingOperationGraceSeconds: 0.03)
+            #expect(!shutdown.succeeded)
+            #expect(shutdown.errors.contains { $0.contains("transition") })
+            #expect(await supervisor.session(id: id)?.currentRun != nil)
+            gate.release()
+            await hold.value
+            let destination = try await adoption.value
+            #expect(await supervisor.session(id: destination)?.currentRun?.id == runID)
+            #expect((await supervisor.shutdown(graceSeconds: 0.02)).succeeded)
+        } else {
+            let stopped = Task { try await supervisor.stop(sessionID: id, graceSeconds: 0.02) }
+            while await supervisor.pendingStopCount() == 0 { try await Task.sleep(for: .milliseconds(1)) }
+            gate.release()
+            await hold.value
+            let destination = try await adoption.value
+            let report = try await stopped.value
+            #expect(report.succeeded)
+            #expect(report.sessionID == destination)
+        }
+        #expect(await supervisor.managedSessions().allSatisfy { $0.currentRun == nil })
+        #expect(await supervisor.events.snapshot().sessions.values.allSatisfy { $0.runID == nil })
+        #expect(try await catalog.runs().first { $0.id == runID }?.endedAt != nil)
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    @Test func transitionTimeoutRecordsUnverifiedStopAndRetryCanComplete() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-transition-timeout-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(), catalog: catalog)
+        let id = UUID()
+        let launch = try await launch("stubborn", sessionID: id, supervisor: supervisor,
+                                      provider: .claude, providerConversationID: "A")
+        _ = try await ready(terminal: launch.terminal)
+        let runID = try #require(launch.session.currentRun?.id)
+        let gate = CatalogTransitionGate()
+        defer { gate.release() }
+        let hold = Task.detached { await catalog.holdForTransitionTest(gate) }
+        while !gate.entered { try await Task.sleep(for: .milliseconds(1)) }
+        let adoption = Task { try await supervisor.adoptConversation(runID: runID, conversationID: "B", transition: .new) }
+        while await supervisor.pendingConversationTransitionCount() == 0 { try await Task.sleep(for: .milliseconds(1)) }
+        let report = try await supervisor.stop(sessionID: id, graceSeconds: 0.02)
+        #expect(!report.succeeded)
+        #expect(report.signals.isEmpty)
+        #expect(report.remainingCountVerified == true)
+        #expect(await supervisor.lastStopReport(sessionID: id)?.succeeded == false)
+        #expect(await supervisor.events.snapshot().sessions[id]?.stopFailure != nil)
+        gate.release()
+        await hold.value
+        let destination = try await adoption.value
+        #expect(try await supervisor.stop(sessionID: destination, graceSeconds: 0.02).succeeded)
+        #expect(await supervisor.managedSessions().allSatisfy { $0.currentRun == nil })
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    @Test func lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-late-hook-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(), catalog: catalog)
+        let id = UUID()
+        let run = try await launch("stubborn", sessionID: id, supervisor: supervisor, provider: .claude)
+        _ = try await ready(terminal: run.terminal)
+        let runID = try #require(run.session.currentRun?.id)
+        let adapter = ClaudeSessionAdapter(supervisor: supervisor)
+        for (native, source) in [("A", "startup"), ("B", "clear")] {
+            _ = try await adapter.receive(try claudeEnvelope(launchSessionID: id, runID: runID,
+                providerSessionID: native, event: "SessionStart", fields: ["source": source]))
+        }
+        let active = try #require(await supervisor.activeSessionID(runID: runID))
+        _ = try await adapter.receive(try claudeEnvelope(launchSessionID: id, runID: runID,
+            providerSessionID: "B", event: "UserPromptSubmit"))
+        let baseline = try #require(try await catalog.session(id: active))
+        let status = await adapter.status(sessionID: active)
+        for (native, kind, fields) in [
+            ("A", "Stop", [:]), ("A", "PermissionRequest", [:]), ("A", "UserPromptSubmit", [:]),
+            ("A", "SessionStart", ["source": "clear"]), ("A", "SessionStart", ["source": "startup"]),
+            ("B", "Stop", ["agent_id": "child"]), ("B", "SessionStart", ["agent_id": "child", "source": "clear"]),
+        ] {
+            _ = try await adapter.receive(try claudeEnvelope(launchSessionID: id, runID: runID,
+                providerSessionID: native, event: kind, fields: fields), receivedAt: Date().addingTimeInterval(500))
+            #expect(await supervisor.activeSessionID(runID: runID) == active)
+            #expect(await adapter.status(sessionID: active) == status)
+            #expect(try await catalog.session(id: active)?.lastUsedAt == baseline.lastUsedAt)
+            #expect(try await catalog.session(id: active)?.session.providerConversationID == "B")
+        }
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
+    }
+
     @Test func lateClaudeEventCannotMutateRelaunchedConversation() async throws {
         let supervisor = try ProcessSupervisor(
-            ledger: OwnershipLedger(coalition: .probe(forceFailure: true))
+            ledger: OwnershipLedger()
         )
         let sessionID = UUID()
         let first = try await launch(
@@ -591,7 +1144,7 @@ struct ProcessSupervisorTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
         let supervisor = try ProcessSupervisor(
-            ledger: OwnershipLedger(coalition: .probe(forceFailure: true)),
+            ledger: OwnershipLedger(),
             catalog: catalog
         )
         let sessionID = UUID()
@@ -638,7 +1191,7 @@ struct ProcessSupervisorTests {
 
     @Test func unexpectedProviderExitArchivesUnknownInsteadOfSuccess() async throws {
         let supervisor = try ProcessSupervisor(
-            ledger: OwnershipLedger(coalition: .probe(forceFailure: true))
+            ledger: OwnershipLedger()
         )
         let sessionID = UUID()
         let claude = ClaudeSessionAdapter(supervisor: supervisor)
@@ -663,7 +1216,7 @@ struct ProcessSupervisorTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
         let supervisor = try ProcessSupervisor(
-            ledger: OwnershipLedger(coalition: .probe(forceFailure: true)),
+            ledger: OwnershipLedger(),
             catalog: catalog
         )
         let service = ManagedSession(
@@ -691,7 +1244,7 @@ struct ProcessSupervisorTests {
 
     @Test func sameProviderConversationCannotBeOpenedTwice() async throws {
         let supervisor = try ProcessSupervisor(
-            ledger: OwnershipLedger(coalition: .probe(forceFailure: true))
+            ledger: OwnershipLedger()
         )
         let firstID = UUID(), duplicateID = UUID()
         let first = try await launch(
@@ -728,7 +1281,7 @@ struct ProcessSupervisorTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
         let supervisor = try ProcessSupervisor(
-            ledger: OwnershipLedger(coalition: .probe(forceFailure: true)),
+            ledger: OwnershipLedger(),
             catalog: catalog
         )
         let firstID = UUID(), secondID = UUID()

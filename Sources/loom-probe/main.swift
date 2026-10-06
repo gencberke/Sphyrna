@@ -11,13 +11,30 @@ struct Probe {
     @MainActor static func run() throws {
         let root = ProcessInfo.processInfo.environment["LOOM_PROBE_ROOT"].map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Loom-Dev/probe")
-        // Probe exclusivity before recovery or shell resolution launches any children.
-        _ = CoalitionCapability.current
         let args = Array(CommandLine.arguments.dropFirst())
         if ["prepare", "capabilities", "synthetic", "crash-fixture", "recover-stale", "experiment", "codex-core-client", "codex-core-resume", "codex-core-recall", "codex-core-active-quit", "codex-two-stop", "claude-core-q1", "idle-metrics"].contains(args.first ?? "") {
             try recoverStaleRuns(root: root)
         }
         if args.first == "recover-stale" { return }
+        if args.first == "codex-observers" {
+            guard args.count >= 6, args[1] == "--enable-content-free-diagnostics",
+                  let seconds = Double(args[5]), seconds.isFinite, seconds > 0, seconds <= 300,
+                  args.count <= 7, args.count != 7 || Int(args[6]) != nil else {
+                throw LoomError.message("Usage: codex-observers --enable-content-free-diagnostics <socket> <thread-id> <new-output-directory> <seconds:1..300> [capacity:1..4096]")
+            }
+            try blockingAwait {
+                try await codexObservers(socket: args[2], thread: args[3], directory: URL(fileURLWithPath: args[4]),
+                                         seconds: seconds, capacity: args.count == 7 ? Int(args[6])! : 256)
+            }
+            return
+        }
+        if args.first == "codex-observer-measure", args.count >= 3, ["optout", "none", "bogus", "edges"].contains(args[1]) {
+            try blockingAwait {
+                try await codexObserverMeasure(root: root, mode: args[1], approval: args.count == 4 && args[3] == "approval",
+                                               outputDirectory: URL(fileURLWithPath: args[2]))
+            }
+            return
+        }
         if args.first == "environment", args.count == 2 {
             try environmentExperiment(directory: URL(fileURLWithPath: args[1]))
             return
@@ -285,15 +302,14 @@ struct Probe {
                     socketPath: socket.path, clientVersion: "probe-\(version)"
                 )
             )
-            let leaseID = UUID()
-            let client = try await manager.acquire(for: leaseID)
+            let client = try await manager.start()
             let result = try await client.request(method: "thread/loaded/list")
             try encoder.encode(result).write(
                 to: directory.appendingPathComponent("loaded-threads.json"), options: .atomic
             )
             let serverSessionID = await manager.internalSessionID()
             let visibleSessions = await supervisor.managedSessions()
-            let release = try await manager.release(for: leaseID, graceSeconds: 0.2)
+            let release = await manager.stop(graceSeconds: 0.2)
             let shutdown = await supervisor.shutdown(graceSeconds: 0.2)
             let summary: [String: JSONValue] = [
                 "serverSessionID": serverSessionID.map { .string($0.uuidString) } ?? .null,
@@ -376,7 +392,7 @@ struct Probe {
                 workingDirectory: root.appendingPathComponent("workspace").path
             )
             try await supervisor.createSession(session)
-            let client = try await manager.acquire(for: session.id)
+            let client = try await manager.start()
             let adapter = CodexSessionAdapter(supervisor: supervisor)
             let coordinator = CodexSessionCoordinator(
                 client: client, supervisor: supervisor, adapter: adapter
@@ -438,9 +454,7 @@ struct Probe {
             let tuiStop = try await supervisor.stop(
                 sessionID: session.id, graceSeconds: 0.2
             )
-            let serverStop = try await manager.release(
-                for: session.id, graceSeconds: 0.2
-            )
+            let serverStop = await manager.stop(graceSeconds: 0.2)
             let shutdown = await supervisor.shutdown(graceSeconds: 0.2)
             guard status?.providerThreadID == threadID,
                   status?.lastAssistantMessage?.contains("CODEX_CORE_OK") == true,

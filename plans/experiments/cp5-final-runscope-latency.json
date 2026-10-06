@@ -1,0 +1,206 @@
+{
+  "date": "2026-10-03",
+  "package": {
+    "app": "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+    "appSHA256": "0e64c4c08a11ddc3bd9cab0e5feadcaeead0306c4126964d6a243425bb33a1f8",
+    "hostSHA256": "aedb43897c5864d9af3715dca394ba6bcc37426b83a89569013b280891887916",
+    "fixtureSHA256": "b9ab6e7ebe465ce488a05b00677e7a84cfd3fdf082871e3643ed1f4af1a2c6c2",
+    "appRequirement": "Executable=/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/MacOS/Loom Dev\n",
+    "hostRequirement": "Executable=/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/Helpers/LoomRunHost.app/Contents/MacOS/loom-run-host\n",
+    "strictExit": 0
+  },
+  "renderers": {
+    "coregraphics": {
+      "repeats": 5,
+      "samples": 1000,
+      "timeouts": 0,
+      "raw": [
+        {
+          "definition": "key sent to engine input path -> first completed terminal draw after the echo was fed (not compositor/display)",
+          "endUptime": 35004.01332316667,
+          "invalidReasons": [],
+          "maxMilliseconds": 27.919208,
+          "measured": 200,
+          "p50Milliseconds": 18.054375,
+          "p95Milliseconds": 20.851625,
+          "renderer": "coregraphics",
+          "rendererAtStart": "coregraphics",
+          "runID": "5390578F-BBE7-4C4F-9537-61CECF98E4A5",
+          "samples": 200,
+          "startUptime": 34994.016463375,
+          "timeouts": 0,
+          "valid": true
+        },
+        {
+          "definition": "key sent to engine input path -> first completed terminal draw after the echo was fed (not compositor/display)",
+          "endUptime": 35025.795757458334,
+          "invalidReasons": [],
+          "maxMilliseconds": 22.035458,
+          "measured": 200,
+          "p50Milliseconds": 17.973083,
+          "p95Milliseconds": 20.4405,
+          "renderer": "coregraphics",
+          "rendererAtStart": "coregraphics",
+          "runID": "F7F397E5-CA36-4E98-83E3-BAA451EBE370",
+          "samples": 200,
+          "startUptime": 35015.825227375004,
+          "timeouts": 0,
+          "valid": true
+        },
+        {
+          "definition": "key sent to engine input path -> first completed terminal draw after the echo was fed (not compositor/display)",
+          "endUptime": 35047.278858708334,
+          "invalidReasons": [],
+          "maxMilliseconds": 23.087916,
+          "measured": 200,
+          "p50Milliseconds": 17.918167,
+          "p95Milliseconds": 20.188042,
+          "renderer": "coregraphics",
+          "rendererAtStart": "coregraphics",
+          "runID": "337F0869-90A1-49BA-A8BF-47728056E17E",
+          "samples": 200,
+          "startUptime": 35037.30308970834,
+          "timeouts": 0,
+          "valid": true
+        },
+        {
+          "definition": "key sent to engine input path -> first completed terminal draw after the echo was fed (not compositor/display)",
+          "endUptime": 35069.063446458335,
+          "invalidReasons": [],
+          "maxMilliseconds": 26.152666,
+          "measured": 200,
+          "p50Milliseconds": 18.144333,
+          "p95Milliseconds": 20.73575,
+          "renderer": "coregraphics",
+          "rendererAtStart": "coregraphics",
+          "runID": "29087226-9661-428E-ABE6-D9DC7E060657",
+          "samples": 200,
+          "startUptime": 35059.05359033334,
+          "timeouts": 0,
+          "valid": true
+        },
+        {
+          "definition": "key sent to engine input path -> first completed terminal draw after the echo was fed (not compositor/display)",
+          "endUptime": 35090.815788541666,
+          "invalidReasons": [],
+          "maxMilliseconds": 25.58975,
+          "measured": 200,
+          "p50Milliseconds": 18.065208,
+          "p95Milliseconds": 20.2705,
+          "renderer": "coregraphics",
+          "rendererAtStart": "coregraphics",
+          "runID": "FE4ECD0B-092B-4737-96F5-7AE295B25DE4",
+          "samples": 200,
+          "startUptime": 35080.82028370834,
+          "timeouts": 0,
+          "valid": true
+        }
+      ],
+      "evidence": [
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r1",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r2",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r3",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r4",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r5"
+      ]
+    },
+    "metal": {
+      "repeats": 5,
+      "samples": 1000,
+      "timeouts": 0,
+      "raw": [
+        {
+          "definition": "key sent to engine input path -> first completed terminal draw after the echo was fed (not compositor/display)",
+          "endUptime": 35112.422880375,
+          "invalidReasons": [],
+          "maxMilliseconds": 19.634417,
+          "measured": 200,
+          "p50Milliseconds": 16.6875,
+          "p95Milliseconds": 18.88575,
+          "renderer": "metal",
+          "rendererAtStart": "metal",
+          "runID": "AD5CC116-0C75-42A9-ACAC-99E426BED536",
+          "samples": 200,
+          "startUptime": 35102.55743954167,
+          "timeouts": 0,
+          "valid": true
+        },
+        {
+          "definition": "key sent to engine input path -> first completed terminal draw after the echo was fed (not compositor/display)",
+          "endUptime": 35133.97327804167,
+          "invalidReasons": [],
+          "maxMilliseconds": 19.852833,
+          "measured": 200,
+          "p50Milliseconds": 16.612167,
+          "p95Milliseconds": 18.687041,
+          "renderer": "metal",
+          "rendererAtStart": "metal",
+          "runID": "C8D5D232-66A7-4DBB-BAAB-537A28EA0EB2",
+          "samples": 200,
+          "startUptime": 35124.129642125,
+          "timeouts": 0,
+          "valid": true
+        },
+        {
+          "definition": "key sent to engine input path -> first completed terminal draw after the echo was fed (not compositor/display)",
+          "endUptime": 35155.42292641667,
+          "invalidReasons": [],
+          "maxMilliseconds": 19.397458,
+          "measured": 200,
+          "p50Milliseconds": 16.625916,
+          "p95Milliseconds": 18.756958,
+          "renderer": "metal",
+          "rendererAtStart": "metal",
+          "runID": "BECCAC4B-8570-482E-A534-32568FEEBC29",
+          "samples": 200,
+          "startUptime": 35145.557562500006,
+          "timeouts": 0,
+          "valid": true
+        },
+        {
+          "definition": "key sent to engine input path -> first completed terminal draw after the echo was fed (not compositor/display)",
+          "endUptime": 35176.989355625,
+          "invalidReasons": [],
+          "maxMilliseconds": 19.533875,
+          "measured": 200,
+          "p50Milliseconds": 16.7245,
+          "p95Milliseconds": 18.699708,
+          "renderer": "metal",
+          "rendererAtStart": "metal",
+          "runID": "E6449A9E-9A10-41CD-8D13-CD64CB654E60",
+          "samples": 200,
+          "startUptime": 35167.182915125,
+          "timeouts": 0,
+          "valid": true
+        },
+        {
+          "definition": "key sent to engine input path -> first completed terminal draw after the echo was fed (not compositor/display)",
+          "endUptime": 35198.388745625,
+          "invalidReasons": [],
+          "maxMilliseconds": 19.005125,
+          "measured": 200,
+          "p50Milliseconds": 16.554875,
+          "p95Milliseconds": 18.421167,
+          "renderer": "metal",
+          "rendererAtStart": "metal",
+          "runID": "0F19CDB9-64BF-4FE9-A564-4D95C5B16168",
+          "samples": 200,
+          "startUptime": 35188.545223,
+          "timeouts": 0,
+          "valid": true
+        }
+      ],
+      "evidence": [
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r1",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r2",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r3",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r4",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r5"
+      ]
+    }
+  },
+  "limits": [
+    "Engine input -> PTY echo -> completed terminal draw; compositor/physical display latency unmeasured.",
+    "Five runs x200 per renderer; numeric budget unapproved."
+  ]
+}

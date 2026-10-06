@@ -1,0 +1,376 @@
+{
+ "slice": "CP5 PERF T1+T2",
+ "date": "2026-10-03",
+ "codex": "codex-cli 0.160.0",
+ "profile": "isolated CODEX_HOME (~/.loom-dev/codex-home)",
+ "rawLogs": "~/Library/Application Support/Loom-Dev/probe/runs/cp5-perf-20261003/measure-*.json",
+ "method": "loom-probe codex-observer-measure <none|optout|bogus> <dir> [approval]: Loom's own CodexAppServerManager/CodexAppServerClient (real code path) starts a Loom-owned app-server, thread/start, one or two short model turns, counts every inbound frame on Loom's connection via CodexInboundObserver. 'none' = no optOutNotificationMethods (before); 'optout' = CodexAppServerClient.productOptOutNotificationMethods (after). Values only.",
+ "modelTurnsSpent": {
+  "none-plain": 1,
+  "optout-plain": 1,
+  "none-approval": 2,
+  "optout-approval": 2,
+  "bogus": 0,
+  "total": 6
+ },
+ "runs": {
+  "none-plain": {
+   "modelTurns": 1,
+   "totalFrames": 31,
+   "totalBytes": 15090,
+   "notificationFrames": 17,
+   "notificationBytes": 5920,
+   "perNotificationMethod": {
+    "account/rateLimits/updated": {
+     "count": 1,
+     "bytes": 408
+    },
+    "account/updated": {
+     "count": 1,
+     "bytes": 109
+    },
+    "deprecationNotice": {
+     "count": 1,
+     "bytes": 258
+    },
+    "item/agentMessage/delta": {
+     "count": 1,
+     "bytes": 252
+    },
+    "item/completed": {
+     "count": 2,
+     "bytes": 766
+    },
+    "item/started": {
+     "count": 2,
+     "bytes": 756
+    },
+    "mcpServer/startupStatus/updated": {
+     "count": 2,
+     "bytes": 411
+    },
+    "remoteControl/status/changed": {
+     "count": 1,
+     "bytes": 217
+    },
+    "thread/started": {
+     "count": 1,
+     "bytes": 1147
+    },
+    "thread/status/changed": {
+     "count": 2,
+     "bytes": 315
+    },
+    "thread/tokenUsage/updated": {
+     "count": 1,
+     "bytes": 507
+    },
+    "turn/completed": {
+     "count": 1,
+     "bytes": 477
+    },
+    "turn/started": {
+     "count": 1,
+     "bytes": 297
+    }
+   },
+   "transitions": [
+    "status:active(Set([]))",
+    "turnStarted",
+    "status:idle",
+    "turnCompleted:completed"
+   ],
+   "requestMethods": [],
+   "completedMessagesMatchLegacyRead": true,
+   "lastTurnIDMatchesLegacyRead": true,
+   "newReadOutcome": "Optional(LoomCore.CodexTurnOutcome.completed)",
+   "startedAtPresent": true
+  },
+  "optout-plain": {
+   "modelTurns": 1,
+   "totalFrames": 24,
+   "totalBytes": 12401,
+   "notificationFrames": 10,
+   "notificationBytes": 3231,
+   "perNotificationMethod": {
+    "account/updated": {
+     "count": 1,
+     "bytes": 109
+    },
+    "deprecationNotice": {
+     "count": 1,
+     "bytes": 258
+    },
+    "mcpServer/startupStatus/updated": {
+     "count": 2,
+     "bytes": 411
+    },
+    "remoteControl/status/changed": {
+     "count": 1,
+     "bytes": 217
+    },
+    "thread/started": {
+     "count": 1,
+     "bytes": 1147
+    },
+    "thread/status/changed": {
+     "count": 2,
+     "bytes": 315
+    },
+    "turn/completed": {
+     "count": 1,
+     "bytes": 477
+    },
+    "turn/started": {
+     "count": 1,
+     "bytes": 297
+    }
+   },
+   "transitions": [
+    "status:active(Set([]))",
+    "turnStarted",
+    "status:idle",
+    "turnCompleted:completed"
+   ],
+   "requestMethods": [],
+   "completedMessagesMatchLegacyRead": true,
+   "lastTurnIDMatchesLegacyRead": true,
+   "newReadOutcome": "Optional(LoomCore.CodexTurnOutcome.completed)",
+   "startedAtPresent": true
+  },
+  "none-approval": {
+   "modelTurns": 2,
+   "totalFrames": 78,
+   "totalBytes": 31355,
+   "notificationFrames": 63,
+   "notificationBytes": 20577,
+   "perNotificationMethod": {
+    "account/rateLimits/updated": {
+     "count": 3,
+     "bytes": 1224
+    },
+    "account/updated": {
+     "count": 1,
+     "bytes": 109
+    },
+    "deprecationNotice": {
+     "count": 1,
+     "bytes": 258
+    },
+    "item/agentMessage/delta": {
+     "count": 27,
+     "bytes": 6878
+    },
+    "item/commandExecution/requestApproval": {
+     "count": 1,
+     "bytes": 781
+    },
+    "item/completed": {
+     "count": 6,
+     "bytes": 2716
+    },
+    "item/started": {
+     "count": 6,
+     "bytes": 2566
+    },
+    "mcpServer/startupStatus/updated": {
+     "count": 2,
+     "bytes": 411
+    },
+    "remoteControl/status/changed": {
+     "count": 1,
+     "bytes": 217
+    },
+    "serverRequest/resolved": {
+     "count": 1,
+     "bytes": 138
+    },
+    "thread/started": {
+     "count": 1,
+     "bytes": 1147
+    },
+    "thread/status/changed": {
+     "count": 6,
+     "bytes": 983
+    },
+    "thread/tokenUsage/updated": {
+     "count": 3,
+     "bytes": 1525
+    },
+    "turn/completed": {
+     "count": 2,
+     "bytes": 1030
+    },
+    "turn/started": {
+     "count": 2,
+     "bytes": 594
+    }
+   },
+   "transitions": [
+    "status:active(Set([]))",
+    "turnStarted",
+    "status:idle",
+    "turnCompleted:completed",
+    "status:active(Set([]))",
+    "turnStarted",
+    "status:active(Set([LoomCore.CodexThreadActiveFlag.waitingOnApproval]))",
+    "request",
+    "serverRequestResolved",
+    "status:active(Set([]))",
+    "status:idle",
+    "turnCompleted:completed"
+   ],
+   "requestMethods": [
+    "item/commandExecution/requestApproval"
+   ],
+   "completedMessagesMatchLegacyRead": true,
+   "lastTurnIDMatchesLegacyRead": true,
+   "newReadOutcome": "Optional(LoomCore.CodexTurnOutcome.completed)",
+   "startedAtPresent": true
+  },
+  "optout-approval": {
+   "modelTurns": 2,
+   "totalFrames": 33,
+   "totalBytes": 16354,
+   "notificationFrames": 18,
+   "notificationBytes": 5645,
+   "perNotificationMethod": {
+    "account/updated": {
+     "count": 1,
+     "bytes": 109
+    },
+    "deprecationNotice": {
+     "count": 1,
+     "bytes": 258
+    },
+    "item/commandExecution/requestApproval": {
+     "count": 1,
+     "bytes": 781
+    },
+    "mcpServer/startupStatus/updated": {
+     "count": 2,
+     "bytes": 411
+    },
+    "remoteControl/status/changed": {
+     "count": 1,
+     "bytes": 217
+    },
+    "serverRequest/resolved": {
+     "count": 1,
+     "bytes": 138
+    },
+    "thread/started": {
+     "count": 1,
+     "bytes": 1147
+    },
+    "thread/status/changed": {
+     "count": 6,
+     "bytes": 983
+    },
+    "turn/completed": {
+     "count": 2,
+     "bytes": 1007
+    },
+    "turn/started": {
+     "count": 2,
+     "bytes": 594
+    }
+   },
+   "transitions": [
+    "status:active(Set([]))",
+    "turnStarted",
+    "status:idle",
+    "turnCompleted:completed",
+    "status:active(Set([]))",
+    "turnStarted",
+    "status:active(Set([LoomCore.CodexThreadActiveFlag.waitingOnApproval]))",
+    "request",
+    "serverRequestResolved",
+    "status:active(Set([]))",
+    "status:idle",
+    "turnCompleted:completed"
+   ],
+   "requestMethods": [
+    "item/commandExecution/requestApproval"
+   ],
+   "completedMessagesMatchLegacyRead": true,
+   "lastTurnIDMatchesLegacyRead": true,
+   "newReadOutcome": "Optional(LoomCore.CodexTurnOutcome.completed)",
+   "startedAtPresent": true
+  }
+ },
+ "plainTurnDelta": {
+  "notificationFrames": [
+   17,
+   10
+  ],
+  "notificationBytes": [
+   5920,
+   3231
+  ],
+  "totalFrames": [
+   31,
+   24
+  ],
+  "totalBytes": [
+   15090,
+   12401
+  ]
+ },
+ "approvalTwoTurnDelta": {
+  "notificationFrames": [
+   63,
+   18
+  ],
+  "notificationBytes": [
+   20577,
+   5645
+  ],
+  "totalFrames": [
+   78,
+   33
+  ],
+  "totalBytes": [
+   31355,
+   16354
+  ]
+ },
+ "note": "Frames are [before, after]. The turns are tiny (one word); deltas scale with output length, so streaming-heavy turns save proportionally more. Remaining notifications are startup one-shots plus what Loom consumes.",
+ "serverBehaviourUnknownNames": {
+  "result": "initialize and thread/start succeeded with two nonexistent names appended (loom/nonexistent/method, item/futureDelta); no error, names are ignored",
+  "initializeOk": true,
+  "optOutNeedsExperimentalApi": "No: optOutNotificationMethods is in the stable (non-experimental) InitializeCapabilities schema; Loom still sends experimentalApi true as before. Not tested without experimentalApi against the real server."
+ },
+ "freshThreadAndMissingThread": {
+  "freshThreadTurnsList": "RPC -32600 'thread ... is not materialized yet; thread/turns/list is unavailable before first user message' (both summary and notLoaded views)",
+  "freshThreadLegacyIncludeTurnsTrue": "RPC -32601 'list_turns is not supported yet'",
+  "freshThreadReadWithoutTurns": "ok, status idle, turns []",
+  "missingThreadTurnsList": "RPC -32600 'thread not loaded: <id>'"
+ },
+ "turnsListItemsView": "summary (default); keeps userMessage and the final agentMessage after a turn that attempted a command; turn carries id, startedAt, completedAt, durationMs, status, error",
+ "result": "verified on 0.160 for plain and approval turns",
+ "followUpPERF-C1": {
+  "modelTurnsSpent": 0,
+  "rawLog": "measure-edges.json (same run directory)",
+  "persistedNotLoadedThread": {
+   "persistedThreadsListed": 16,
+   "loadedThreadsBefore": 0,
+   "threadReadNoTurns": "ok (status notLoaded, turns [])",
+   "threadTurnsList": "ok without resume: returns newest turn page (id, startedAt, completedAt, durationMs, status, items summary, nextCursor present)",
+   "oldFullRead": "ok",
+   "newReadThread": "status notLoaded, lastTurnID/startedAt/outcome completed/lastAssistantMessage populated; last turn is the newest (approval) turn of the two-turn thread",
+   "fixNeeded": false
+  },
+  "unknownThread": {
+   "newReadThread": "RPC -32600 'thread not loaded: <id>'",
+   "oldIncludeTurnsTrue": "RPC -32600 'thread not loaded: <id>'",
+   "readNoTurns": "RPC -32600 'thread not loaded: <id>'",
+   "turnsList": "RPC -32600 'thread not loaded: <id>'",
+   "isThreadNotFound": {
+    "new": false,
+    "old": false
+   },
+   "note": "Code, message and classification are identical to before. Real Codex says 'not loaded', not 'not found', so isThreadNotFound is false on the old path as well (pre-existing; fake server says 'not found'). Not changed."
+  }
+ }
+}

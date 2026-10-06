@@ -1,0 +1,93 @@
+{
+  "date": "2026-10-03",
+  "item": "PERF-1 partial (matrix stopped at cell 10)",
+  "package": {
+    "app": "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+    "appSHA256": "c7815294f56018ca8c606277f0097f1b6525ad995a1c8bb308c3116c271cb9f3",
+    "hostSHA256": "5e80593fc6378ee58b707b638b2b9c7fec7d510ec7dbc8f3ed71c0d0ea950c77",
+    "fixtureSHA256": "fe25c1b8a8d1b704ac998a0d24f018b132df37e9361b399933451195fb7dc0b6",
+    "hookSHA256": "c5c4ae7c2ad6a61f822383c35d0007cd96077fe5238792ebf59a045b960a4a3a",
+    "identity": "223E8AC2708373C99E1D8CF82AF2D23114F884AD (Loom Dev Code Signing)",
+    "deepStrict": true,
+    "name": "E"
+  },
+  "method": "Frozen 23-cell CPU40 matrix (same commands as D), Terminal windows minimized so the Loom window is not occluded; controller stops at the first invalid cell.",
+  "coregraphicsVisibleStream1": {
+    "appCPU": {
+      "n": 5,
+      "median": 27.401,
+      "minimum": 24.747,
+      "maximum": 28.948
+    },
+    "totalCPU": {
+      "n": 5,
+      "median": 40.421,
+      "minimum": 37.605,
+      "maximum": 42.226
+    },
+    "perRunTotal": [
+      37.605,
+      40.324,
+      40.421,
+      40.56,
+      42.226
+    ],
+    "everyRunAtMost40": false
+  },
+  "metalVisibleStream1": {
+    "appCPU": {
+      "n": 4,
+      "median": 34.532,
+      "minimum": 33.167,
+      "maximum": 34.622
+    },
+    "totalCPU": {
+      "n": 4,
+      "median": 47.864,
+      "minimum": 46.563,
+      "maximum": 48.471
+    },
+    "validRuns": 4
+  },
+  "DReference": {
+    "coregraphicsApp": {
+      "median": 31.529,
+      "minimum": 31.179,
+      "maximum": 32.762
+    },
+    "coregraphicsTotal": {
+      "median": 44.812,
+      "minimum": 43.485,
+      "maximum": 45.374
+    },
+    "metalTotal": {
+      "median": 45.455,
+      "minimum": 45.138,
+      "maximum": 46.802
+    },
+    "source": "plans/experiments/cp5-cpu40-optimization.json"
+  },
+  "invalid": [
+    {
+      "name": "metal-r5-stream1-visible",
+      "reasons": [
+        "Initial window visibility/occlusion readiness timed out"
+      ]
+    }
+  ],
+  "cleanup": "all valid cells quitSucceeded, remaining identities 0, run hosts 0",
+  "attempts": {
+    "matrix": "first CG cell valid with the Loom window partly covered and inactive (app 29.02 / total 42.29), Metal cell occluded",
+    "matrix2": "first cell occluded; stopped"
+  },
+  "observations": [
+    "CG totals rise across runs (37.6 -> 42.2) and Metal similarly; fanless Mac14,2 thermal drift is plausible but not measured.",
+    "Window activation/occlusion state changes app CPU materially; the occluded attempts are excluded."
+  ],
+  "limits": [
+    "Not interleaved with D; D-E differences are descriptive.",
+    "Latency, hidden, idle and 100-cycle cells not yet run on E.",
+    "Metal is reachable only with the development --metal flag; the product renders with Core Graphics."
+  ],
+  "rawProgress": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-perf-20261003/matrix3/perf-progress.jsonl"
+}

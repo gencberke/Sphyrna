@@ -2,7 +2,9 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/ptrace.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 struct child_message { pid_t pid; int error; };
@@ -113,4 +115,33 @@ void loom_fixture_wait(int stubborn) {
     unsigned int remaining = alarm(0);
     alarm(remaining && remaining < 29 ? remaining : 29);
     for (;;) pause();
+}
+
+pid_t loom_fixture_start_churn(int lifetime_seconds) {
+    const time_t end = time(NULL) + lifetime_seconds;
+    pid_t first = fork();
+    if (first != 0) { return first; }
+    signal(SIGHUP, SIG_IGN);
+    signal(SIGTERM, SIG_IGN);
+    for (;;) {
+        if (time(NULL) >= end) { _exit(0); }
+        pid_t next = fork();
+        if (next > 0) { _exit(0); }            /* each generation dies at once */
+        if (next < 0) { usleep(5000); continue; }
+        setsid();
+        pid_t detached = fork();
+        if (detached > 0) { _exit(0); }
+        if (detached < 0) { usleep(5000); continue; }
+        if (fork() == 0) {
+            char *const argv[] = { "sleep", "20", NULL };
+            execv("/bin/sleep", argv);
+            _exit(127);
+        }
+        usleep(5000);
+    }
+}
+
+int loom_fixture_trace(pid_t pid, int attach) {
+    int result = attach ? ptrace(PT_ATTACHEXC, pid, NULL, 0) : ptrace(PT_DETACH, pid, (caddr_t)1, 0);
+    return result == 0 ? 0 : errno;
 }

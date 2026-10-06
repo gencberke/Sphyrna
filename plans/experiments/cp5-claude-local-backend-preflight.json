@@ -1,0 +1,23 @@
+{
+  "date": "2026-09-30",
+  "command": "python3 /tmp/loom-claude-local-probe.py",
+  "cliVersion": "Claude Code 2.1.284",
+  "source": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-claude-local-backend-preflight-20260930/probe.py",
+  "sourceSHA256": "0c3de87deb438d212d809557a7f6ebbeb221bf660de5d00837a633ac48f4cb06",
+  "result": {
+    "exit": 0,
+    "expectedToken": true,
+    "stderrBytes": 0,
+    "localMessagesRequests": 1,
+    "realModelTurns": 0
+  },
+  "sources": [
+    "https://code.claude.com/docs/en/env-vars",
+    "https://code.claude.com/docs/en/llm-gateway-connect",
+    "https://platform.claude.com/docs/en/build-with-claude/streaming"
+  ],
+  "limitations": [
+    "Preflight uses --bare, which skips hooks. This verifies local Messages SSE transport only, not native UI/hooks/approval.",
+    "Isolated profile, local dummy API key, nonessential traffic disabled; no real provider model call."
+  ]
+}

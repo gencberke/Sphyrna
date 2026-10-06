@@ -1,0 +1,79 @@
+{
+  "run": "cp5-c-haiku-20260929",
+  "respondsTo": "CP5/C §11",
+  "status": "failed before model selection",
+  "budget": {
+    "authorizedClaudeHaikuTurns": 2,
+    "usedModelTurns": 0,
+    "remainingTurns": 2,
+    "retriesUsed": 0,
+    "authorizedRetries": 0,
+    "codexTurns": 0
+  },
+  "method": "Native Loom project menu; LaunchServices with isolated profile/data/workspace; no prompt submitted",
+  "model": "not selected or verified; no model request submitted",
+  "sessions": [
+    {
+      "id": "E0157AEA-E170-464C-AAD6-C619F8C1284C",
+      "provider": "claude",
+      "provider_conversation_id": null,
+      "working_directory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-haiku-20260929/workspace",
+      "lifecycle": "active",
+      "project_id": "76262318-A16C-4157-8F97-D6FF2CA10B28"
+    }
+  ],
+  "runs": [
+    {
+      "id": "3E5B41D3-385D-45F2-BB4C-72B1A6017273",
+      "initial_session_id": "E0157AEA-E170-464C-AAD6-C619F8C1284C",
+      "leader_pid": 39867,
+      "leader_start_seconds": 1790684397,
+      "leader_start_microseconds": 484145,
+      "started_at": 1790684397.493493,
+      "ended_at": 1790684402.8052092,
+      "end_reason": "processExited",
+      "exit_status": 256,
+      "decodedExitCode": 1,
+      "durationSeconds": 5.311716079711914
+    }
+  ],
+  "quit": {
+    "errors": [],
+    "guarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Coalition capability failure forced.",
+    "remaining": 0,
+    "seconds": 0.009250250004697591,
+    "signals": 0,
+    "succeeded": true
+  },
+  "checks": {
+    "emptyIsolatedWorkspace": true,
+    "providerIdentityAssigned": false,
+    "newConversationResponse": "not run",
+    "resume": "not run",
+    "clear": "not run",
+    "normalQuit": "passed"
+  },
+  "diagnosis": "Exit code 1 recorded; startup terminal output no longer available in UI, so exact cause is unverified. No launch or model retry performed.",
+  "profileStats": {
+    "claudeUnchanged": true,
+    "codexUnchanged": false,
+    "note": "Codex is concurrently active outside this experiment; changed stats alone do not establish attribution. Experiment launched no Codex provider."
+  },
+  "evidenceDirectory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-haiku-20260929",
+  "unverified": [
+    "Haiku readiness",
+    "Claude new/resume model behavior",
+    "provider startup failure cause",
+    "Claude approval/active-turn Quit",
+    "Codex acceptance",
+    "full C acceptance"
+  ],
+  "hashes": {
+    "Sources/LoomCore/SessionRuntime.swift": "740d00f0f05f84d839efdf5a8dd3fec8024ac72f32fb037ddf224b6753c513d0",
+    "Sources/LoomCore/SessionLifecycleController.swift": "830e437c03db53d5fd658e0ecb36e71bc7fc02fe29fe90bc7699080d9371376f",
+    "Sources/LoomCore/ProviderLaunchProfile.swift": "e556f06ed3811b994fa88d7e30493bc83e25c25f423dfaea6a35a4735580f30b",
+    "Sources/loom-app/AppDelegate.swift": "8f4f45230c79e1f2efcd4edbe34164d6733ae8e1970070507b32dc30084d29a8",
+    ".build/app/Loom Dev.app/Contents/MacOS/Loom Dev": "307e6e3f1bc08965394bfed7a1449f361ef4acf8b50be0a209d0038ecb6eb19c",
+    ".build/app/Loom Dev.app/Contents/MacOS/loom-hook": "5c93dc1ec31f7b7d1ed0e93f7175a0d1c867c3e497dc579971bba51b41f6c1d6"
+  }
+}

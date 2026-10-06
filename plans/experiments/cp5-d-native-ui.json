@@ -1,0 +1,55 @@
+{
+  "date": "2026-09-30",
+  "status": "partial native D1 acceptance",
+  "evidenceDirectory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-d-native-ui-175d9e4c-07b6-4e68-b901-7423ddd3f08c",
+  "appSHA256": "aeea91d16ba858d5ceee5367c72bbe8e06941027dcd82ae03be853ad8f95631d",
+  "checks": {
+    "nativeCmdComma": true,
+    "nativeSettingsGear": true,
+    "nativeFont20ExistingSurface": true,
+    "nativeFont11ExistingAndNewSurface": true,
+    "fontPersistedAcrossRestart": true,
+    "nativeProjectAndActivityControls": true,
+    "nativeSidebarShortcutToggle": true,
+    "glassEffective": true,
+    "opaqueEffective": true,
+    "restartNoLiveProviders": true,
+    "normalQuit": true
+  },
+  "observations": [
+    "Native Settings shows 11\u201320 pt; Cmd+, and gear open same Settings window.",
+    "20 pt resized existing text; 11 pt applies to existing and newly opened synthetic terminal and persists after restart.",
+    "Project/activity views at 1220\u00d7780 and 780\u00d7500 retained sidebar controls and bounded terminal panel; terminal text wraps at minimum size.",
+    "Glass uses native material; evidence-only opaque mode removes it without changing system preferences.",
+    "CUA multiline paste reported clipboard timeout but actual terminal received Unicode and both lines; this simple fixture did not enable bracketed-paste mode, so no bracketed behavior acceptance inferred.",
+    "Normal Cmd+Q exited with remaining0; reopened catalog launched no providers."
+  ],
+  "sourceSHA256": {
+    "Sources/LoomCatalogUI/SidebarBackground.swift": "d24ad09e4c8ed44de68e4c021044a5c01c341b90c09a22bb0487cf515048ad12",
+    "Sources/LoomCatalogUI/SidebarView.swift": "ceecd835ddca4e1503d666db14e8124744482aa399b44c7ffcf63be3e57b5e85",
+    "Sources/LoomCatalogUI/SettingsView.swift": "1b351b2ab9ab1348f98511fdef24048f4653ad4094758d8acd75381197602979",
+    "Sources/LoomCatalogUI/UIPreferences.swift": "d85c3f3b7a809d34350acdba5bebddec31bc8c68fb7f08780c2cf166bd82ee77",
+    "Sources/LoomTerminal/TerminalSurface.swift": "4876f0cc71caa2fdb7a5c2e236845019bac1b6e179214cda5d1bcb3bb565f71f"
+  },
+  "limitations": [
+    "Separate debug probe bundle, not final combined release.",
+    "Actual Finder drag and NSWorkspace link launch not verified natively; regression and PTY tests are recorded separately.",
+    "Reduced motion and system preference notification changes not exercised; opaque evidence override covers material removal only.",
+    "Reference compared structurally; original user attachment unavailable and helper reference differs in pixel scale/content/background, so no exact pixel-match claim.",
+    "Synthetic terminal used; no remote model calls."
+  ],
+  "additionalNativeAttempt": {
+    "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-d-native-drop-1c1587c7-51b8-4d6d-8936-bb8921777460/result.json",
+    "accepted": false,
+    "reason": "Requested launch evidence and data roots empty; active instance isolation unverified. Native drop/link not completed; paste observation not promoted to acceptance."
+  },
+  "finalBVisualInspection": {
+    "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-b-20260930T141926/main",
+    "images": [
+      "screenshot-projects-780x500.png",
+      "screenshot-activity-1220x780.png"
+    ],
+    "result": "Main visually inspected existing artifacts: sidebar controls/title layout intact, long detail wraps within scrollable body; no original-reference pixel-match claim.",
+    "source": "DetailView.swift201 ScrollView; no layout change for CPU unit correction."
+  }
+}

@@ -1,0 +1,84 @@
+diff --git a/Sources/SwiftTerm/Buffer.swift b/Sources/SwiftTerm/Buffer.swift
+index 51b8f6b..7304ca7 100644
+--- a/Sources/SwiftTerm/Buffer.swift
++++ b/Sources/SwiftTerm/Buffer.swift
+@@ -53,6 +53,18 @@ public final class Buffer {
+     var xDisp, _yDisp, xBase: Int
+     private var _x, _y, _yBase: Int
+     private var _linesWithImagesCount: Int = 0
++
++    /// Inline images in attach order, for the per-screen quota. Entries whose
++    /// image already left its line (overwritten, cleared, recycled) are
++    /// skipped when reached; identity, not line position, decides removal.
++    private struct StoredInlineImage {
++        weak var line: BufferLine?
++        weak var image: AnyObject?
++        let bytes: Int
++    }
++    private var storedInlineImages: [StoredInlineImage] = []
++    private var storedInlineImagesHead = 0
++    private var storedInlineImageBytes = 0
+     
+     // this keeps incrementing even as we run out of space in _lines and trim out
+     // old lines.
+@@ -260,6 +272,41 @@ public final class Buffer {
+         if !hadImages {
+             _linesWithImagesCount += 1
+         }
++        enforceInlineImageQuota(adding: image, to: line)
++    }
++
++    private func enforceInlineImageQuota(adding image: TerminalImage, to line: BufferLine) {
++        guard let options = terminal?.options,
++              options.inlineImageStorageLimitBytesPerScreen != nil
++                || options.inlineImageLimitPerScreen != nil else { return }
++        // Reported sizes are truncated while bitmaps are built from the
++        // ceiling (MacTerminalView.bitmapContext); +1 keeps this an upper bound.
++        let bytes = (max(0, image.pixelWidth) + 1) * (max(0, image.pixelHeight) + 1) * 4
++        storedInlineImages.append(StoredInlineImage(line: line, image: image as AnyObject, bytes: bytes))
++        storedInlineImageBytes += bytes
++        let byteLimit = options.inlineImageStorageLimitBytesPerScreen ?? .max
++        let countLimit = options.inlineImageLimitPerScreen ?? .max
++        while storedInlineImagesHead < storedInlineImages.count,
++              storedInlineImageBytes > byteLimit
++                || storedInlineImages.count - storedInlineImagesHead > countLimit {
++            let oldest = storedInlineImages[storedInlineImagesHead]
++            storedInlineImagesHead += 1
++            storedInlineImageBytes -= oldest.bytes
++            guard let owner = oldest.line, let target = oldest.image,
++                  var images = owner.images,
++                  let position = images.firstIndex(where: { ($0 as AnyObject) === target }) else { continue }
++            images.remove(at: position)
++            if images.isEmpty {
++                owner.images = nil
++                _linesWithImagesCount -= 1
++            } else {
++                owner.images = images
++            }
++        }
++        if storedInlineImagesHead > 1_024, storedInlineImagesHead * 2 > storedInlineImages.count {
++            storedInlineImages.removeFirst(storedInlineImagesHead)
++            storedInlineImagesHead = 0
++        }
+     }
+ 
+     /// Clears images from the line at the given index, tracking the count of lines with images
+diff --git a/Sources/SwiftTerm/TerminalOptions.swift b/Sources/SwiftTerm/TerminalOptions.swift
+index 46b1dcf..ce07723 100644
+--- a/Sources/SwiftTerm/TerminalOptions.swift
++++ b/Sources/SwiftTerm/TerminalOptions.swift
+@@ -186,6 +186,14 @@ public struct TerminalOptions: Sendable {
+     /// supported only when this contains both ``KittyClipboardPolicy/read`` and
+     /// ``KittyClipboardPolicy/write`` and the host offers the matching services.
+     public var kittyClipboardPolicy: KittyClipboardPolicy
++    /// Total decoded bytes kept for inline images (Sixel and iTerm2 OSC 1337)
++    /// on each screen, counted as an RGBA upper bound of ``TerminalImage``
++    /// pixel dimensions rounded up. When exceeded, the oldest images are removed first. Nil keeps the
++    /// previous unbounded behavior.
++    public var inlineImageStorageLimitBytesPerScreen: Int? = nil
++    /// Maximum inline image stripes kept on each screen; the oldest are removed
++    /// first. Nil keeps the previous unbounded behavior.
++    public var inlineImageLimitPerScreen: Int? = nil
+     /// Maximum decoded bytes in one Kitty clipboard write transaction.
+     ///
+     /// The protocol requires at least 64 MiB, so a smaller value reads back

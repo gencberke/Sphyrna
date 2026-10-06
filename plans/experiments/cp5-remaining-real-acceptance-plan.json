@@ -1,0 +1,227 @@
+{
+  "status": "prepared-only-not-authorized",
+  "recordedAt": "2026-09-30T11:46:12.282202+00:00",
+  "budget": {
+    "currentCodexSpent": 6,
+    "currentCodexRemaining": 0,
+    "currentClaudeExtraRemaining": 0,
+    "proposedAdditionalUserTurns": {
+      "codex": 1,
+      "claude": 2
+    },
+    "retries": 0,
+    "spentInPreparation": 0,
+    "note": "A user turn may contain multiple model requests/tool continuations. No token/price/model-version estimate; proposal does not grant authorization."
+  },
+  "isolation": {
+    "newRunPattern": "probe/runs/cp5-remaining-real-<UUID>/<case>/{evidence,data,workspace}",
+    "codexProfile": "/Users/gencberke/.loom-dev/codex-home",
+    "claudeProfileCandidate": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/claude-config",
+    "claudeProfileGate": "Historical isolated path must be confirmed by main before execution; never read/copy auth or use real ~/.claude. Missing authentication is blocked, not permission to copy credentials.",
+    "appArgs": [
+      "--evidence",
+      "<case>/evidence",
+      "--data-root",
+      "<case>/data",
+      "--codex-home",
+      "<existing-isolated-codex-profile>",
+      "--claude-config",
+      "<existing-isolated-claude-profile>"
+    ],
+    "appGate": "Capture executable/source hashes; no --fake-providers and no local gateway override. Direct launch PID must match launched.json PID/birth. Existing app => abort before spending.",
+    "outsideControl": "Own /bin/sleep 600 start_new_session, record exact OSbirth. It must remain same-birth alive after Loom Quit; only driver cleans it afterward. Never signal unidentified PID."
+  },
+  "commonNativeSteps": [
+    "Create own project through purpose-built add-project:<own-workspace>; start:<provider>:<projectID>. No launch starts a model turn by itself.",
+    "CUA selects current native terminal and submits the fixed prompt exactly once. After actual Return, atomically record nonce/runID/inputReallySent=true/submittedTurns=1 and update spent ledger even if later checks fail. No retry or follow-up prompt.",
+    "Approval interactions only for this exact first request: native Loom Deny for Codex; native Claude TUI No for Claude. No automatic provider decision or invented request identity.",
+    "Use redacted purpose-built state/resource snapshot and read-only owncatalog run leader PID/birth. Never persist raw terminal/prompt/token/auth/transcript. Fixed prompt is allowed in prepared brief.",
+    "Each case overall deadline180s; approval90s, denial resolution30s, normal Quit45s. Missing oracle => fail/unverified; stop without extra model turn."
+  ],
+  "cases": [
+    {
+      "id": "codex-first-answerable-deny",
+      "proposedTurns": 1,
+      "shellCommand": "touch loom-cp5-codex-denied-marker",
+      "prompt": "Use the shell tool to run exactly this command and nothing else: touch loom-cp5-codex-denied-marker. If the sandbox blocks it, request approval for that exact command. If denied, do not retry, choose another tool, or write any file; stop.",
+      "preflight": "Ownworkspace marker absent; isolated approval_policy=on-request, sandbox_mode=read-only from nonsecret keys only. Permission policy is not changed in preparation.",
+      "native": "Observe first new request in Loom selectedRequests, same run/nativeID and answerable=true; click its native Deny once. No fallback to terminal denial if answerable is absent.",
+      "oracles": [
+        "First request rendered answerable in correct card",
+        "Deny completed through existing approval completion evidence, request closes and no replay/backlog",
+        "Own marker absent after resolution",
+        "No acceptance if first approval never arrives; budget remains spent if prompt was submitted"
+      ],
+      "completion": "Normal Quit, remaining0/runtimeempty, registered app/TUI/server/children exactbirth gone and outsider survives."
+    },
+    {
+      "id": "claude-first-approval-manual-no",
+      "proposedTurns": 1,
+      "shellCommand": "touch loom-cp5-claude-denied-marker",
+      "prompt": "Use the Bash tool to run exactly this command and nothing else: touch loom-cp5-claude-denied-marker. If denied, do not retry, choose another tool, or write any file; stop.",
+      "preflight": "Ownworkspace marker absent; isolated nonsecret settings permission ask includes Bash(touch:*), no overlapping allow bypass. Main may authorize isolated policy adjustment as part of future execution; no edits now.",
+      "haiku": "Before sending the prompt, use native Claude /model menu and choose the currently offered Haiku entry. Record human-observed menu selection only. If unavailable, ambiguous, or menu requires a model request, stop before turn. No version identifier or price is guessed; native menu choice is not a second natural-language turn.",
+      "native": "Observe Loom Needs approval with no Loom-generated automatic answer. Select No in native Claude dialog once.",
+      "oracles": [
+        "Native ownCLI permission request observed",
+        "Manual No leads Waiting for you, selectedRequests empty and denied marker absent",
+        "Metadata transition does not synthesize turnComplete/success or zero work counts; verify preserved known background/scheduled counts",
+        "No user follow-up merely to make state settle"
+      ],
+      "completion": "Normal Quit verified0, exactbirth gone, outsider survives."
+    },
+    {
+      "id": "claude-active-command-quit",
+      "proposedTurns": 1,
+      "shellCommand": "/bin/sleep 40",
+      "prompt": "Run exactly this shell command and wait for it: /bin/sleep 40. Then reply DONE.",
+      "preflight": "New owncatalog/workspace/run; native Haiku selection before prompt as above. Reuse existing pure process identity/ancestry helpers, not prior spent Codex runner --run.",
+      "native": "Submit once; if native permission appears, authorize only this exact sleep command within the same turn. Do not issue another prompt.",
+      "oracles": [
+        "Owncatalog leader birth matches live managed CLI",
+        "Observe exact argv [/bin/sleep,40], own-descendant ancestry and live OSbirth; record immediately",
+        "Working plus sleep age0<=age<30 at Quit gate; Ready or sleep already exited is not activeQuit acceptance",
+        "Native Cmd+Q normal path or existing purpose-built Quit; succeeded=true, remaining0 verified, no errors/runtimeempty",
+        "Registered app/CLI/sleep/knownchildren exactbirth gone; samebirth outsider alive"
+      ],
+      "completion": "After recording outsider-survival, driver signals only its own original outsider birth and verifies cleanup; failure may attempt bounded normal Quit once, never model retry or broad kill."
+    }
+  ],
+  "executionReadyBoundary": "This is a reviewable brief plus pure oracle, not an executable remote runner. Main must obtain additional3userturn authorization and then bind owncase paths/current package/native Haiku profile. No budget is approved by this file.",
+  "sourceReuse": {
+    "activeQuitDriver": "/tmp/loom-cp5-real-active-quit.py (birth/ancestry/argv/activeWindow/quitErrors helpers only; --run exhausted)",
+    "localClaudeDriver": "/tmp/loom-cp5-native-claude-local.py (native phases and own marker checks only; do not reuse local gateway/dummykey settings)"
+  },
+  "checks": {
+    "pyCompile": "PASS",
+    "pureNegativeOracles": "PASS: denied marker/answerability/completion/state, active Working/argv/ancestry/birth/window, and cleanup missing-or-false fields reject",
+    "nativeBuildModelStarted": 0
+  },
+  "spentMark": {
+    "path": "<case>/submitted.json",
+    "fields": {
+      "nonce": "<own UUID>",
+      "case": "<caseID>",
+      "provider": "<provider>",
+      "runID": "<observed managedrun>",
+      "inputReallySent": true,
+      "submittedTurns": 1
+    },
+    "rule": "Write after CUA actual Return. Missing confirmation remains unknown, never a free retry; main reconciles visible native input before any additional action. No shell script types prompts."
+  },
+  "sourceSHA256": {
+    "/tmp/loom-cp5-remaining-real-acceptance.py": "91b5471191f113d0664bfba629aa16fd14faa1f42f1632d2bd923569e538b0f3",
+    "/tmp/loom-cp5-real-active-quit.py": "8e1748848afd9b3870a5560b07d77c6466a6bcb88f5732f485f471821a2bf0bb",
+    "/tmp/loom-cp5-native-claude-local.py": "fb238ccd8393230baf1ad9ed1704fd8d07d7c28548cdc8ed4a86516568a9a8b4",
+    "Sources/LoomCore/ProviderLaunchProfile.swift": "ff46c70594527b23db3f0200b4f5da5a61a27b46226a1e0a010a0f362dce1419",
+    "/tmp/loom-cp5-remaining-real-driver.py": "b06ebfba4cbd8be590594eb5ba91c70a5ea23b4ada0dd20d8117e034e0782d27"
+  },
+  "preparedDriver": {
+    "recordedAt": "2026-09-30T13:02:29.188799+00:00",
+    "path": "/tmp/loom-cp5-remaining-real-driver.py",
+    "sha256": "b06ebfba4cbd8be590594eb5ba91c70a5ea23b4ada0dd20d8117e034e0782d27",
+    "status": "prepared-only-not-authorized",
+    "executionStarted": 0,
+    "appCLIModelStarted": 0,
+    "spentInPreparation": 0,
+    "commandsChecked": [
+      "python3 -m py_compile /tmp/loom-cp5-remaining-real-driver.py",
+      "python3 /tmp/loom-cp5-remaining-real-driver.py --self-test",
+      "python3 /tmp/loom-cp5-remaining-real-driver.py (default plan only)"
+    ],
+    "checks": "PASS: pure existing negative oracles, wrong/missing authority, wrong native nonce/run/actual Return, exclusive duplicate spent mark, own thread sequence completion, unknown/null/false owned count, foreign/missing executable path guard, Claude No without invented ID.",
+    "log": "/tmp/loom-cp5-remaining-real-driver-selfcheck.log",
+    "executionCommand": "python3 /tmp/loom-cp5-remaining-real-driver.py --run --authorization <exact-main-accepted-json> --case <one-case-id>",
+    "authorizationTemplate": {
+      "acceptedByMain": false,
+      "userAuthorizationReference": "<main records actual additional user authorization>",
+      "cases": [
+        "codex-first-answerable-deny",
+        "claude-first-approval-manual-no",
+        "claude-active-command-quit"
+      ],
+      "additionalUserTurns": {
+        "codex": 1,
+        "claude": 2
+      },
+      "retries": 0,
+      "root": "<absolute probe/runs/cp5-remaining-real-UUID>",
+      "appExecutable": "<exact executable absolute path>",
+      "appSHA256": "<exact lowercase SHA256>",
+      "profiles": {
+        "codex": {
+          "path": "<main-confirmed-existing-isolated-path>",
+          "existingIsolatedProfileConfirmedByMain": false,
+          "authMetadataConfirmedByMain": false,
+          "noLocalGatewayOverride": false,
+          "approvalPolicy": "on-request",
+          "sandboxMode": "read-only"
+        },
+        "claude": {
+          "path": "<main-confirmed-existing-isolated-path>",
+          "existingIsolatedProfileConfirmedByMain": false,
+          "authMetadataConfirmedByMain": false,
+          "noLocalGatewayOverride": false,
+          "askExactTouch": false,
+          "noOverlappingAllow": false
+        }
+      }
+    },
+    "handoffCommand": "python3 /tmp/loom-cp5-remaining-real-driver.py --record <model-selected|submitted|action|sleep-approved> --directory <own-case-root> --proof <redacted-main-CUA-JSON>",
+    "handoffIdentityFields": [
+      "nonce",
+      "case",
+      "runID",
+      "nativeCUA=true"
+    ],
+    "handoffFields": {
+      "model-selected": [
+        "haikuOffered=true",
+        "haikuSelected=true",
+        "noModelRequest=true"
+      ],
+      "submitted": [
+        "inputReallySent=true",
+        "submittedTurns=1"
+      ],
+      "codexAction": [
+        "action=Loom Deny",
+        "requestID=<observed selectedRequests.id>",
+        "correctCardRun=true",
+        "firstRequest=true",
+        "answerable=true"
+      ],
+      "claudeAction": [
+        "action=Claude No",
+        "exactCommand=touch loom-cp5-claude-denied-marker",
+        "correctCardRun=true",
+        "firstRequest=true",
+        "noAutomaticAppAnswer=true"
+      ],
+      "optionalSleepPermission": [
+        "action=Claude Yes",
+        "exactCommand=/bin/sleep 40"
+      ]
+    },
+    "cleanup": "Each case180s overall. Independent45s cleanup result/ownbirth deadline after failure, single normalQuit only; never force-kill app or provider. Outsider original birth alone signaled after survival observation, max5s wait.",
+    "budgetLedger": "Per-case exclusive root reservation before launch and submitted.json after CUA actual Return; reserved case never rerun. Prompt-ready without submitted mark remains budgetIndeterminate, never grants free retry.",
+    "completionOracle": "Codex actual matching owner/thread request sequence then later turnCompleted routing and empty requests plus Finished/Ready, marker absent. Native denial proof cannot invent completion.",
+    "limitations": [
+      "Remote execution, app/CLI/native/CUA paths not exercised; authorization still absent.",
+      "Claude native work counts and invented-completion semantics are not exposed in snapshot. Driver reports these native observations unverified and fullAcceptance=false; main may separately combine existing independent source/regression evidence, never represent it as native counts.",
+      "Main supplies exact isolated profile metadata/policy attestation; preparation reads no profile/auth files. No profile policy edits or credential copying.",
+      "Native CUA alone selects Haiku, types exactly one prompt, and handles the first denial/optional exact sleep approval. Runner never types or sends prompt/answers.",
+      "Process inventory fails closed on unknown process identity/path; platform/preflight query failure aborts rather than claiming no existing app."
+    ],
+    "durableArtifacts": {
+      "loom-cp5-remaining-real-driver.py": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-remaining-real-driver-preparation-20260930/loom-cp5-remaining-real-driver.py",
+        "sha256": "b06ebfba4cbd8be590594eb5ba91c70a5ea23b4ada0dd20d8117e034e0782d27"
+      },
+      "loom-cp5-remaining-real-driver-selfcheck.log": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-remaining-real-driver-preparation-20260930/loom-cp5-remaining-real-driver-selfcheck.log",
+        "sha256": "df9b3ad9423b25d9aea3224c6d756748269d2783e0245f6628720b2be8db88c8"
+      }
+    }
+  }
+}

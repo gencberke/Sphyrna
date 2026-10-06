@@ -1,0 +1,23 @@
+{
+  "checkpoint": 5,
+  "slice": "C",
+  "response_to": "33",
+  "result": "diagnosis and fixture accepted; finding13 real acceptance remains open",
+  "independent_checks": {
+    "source_hashes": "6/6 match",
+    "runtime_tests_passed": 23,
+    "test_exit": 0,
+    "cp2_control": "thread/resume once, turn/start zero",
+    "cp2_wire": "reply line14, request line23 id0, resolution line24 share same thread",
+    "installed_schema": "running thread resume rejoins; does not guarantee approval fanout/replay",
+    "git_diff_check": "passed"
+  },
+  "evidence_directory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-review10-20260930",
+  "model_turns": 0,
+  "next": "Prepare isolated content-free two-observer diagnostic harness, no real provider run yet",
+  "unverified": [
+    "0.158.0 actual delivery semantics",
+    "C4 and real resolution",
+    "Active-work Quit and outside-process preservation"
+  ]
+}

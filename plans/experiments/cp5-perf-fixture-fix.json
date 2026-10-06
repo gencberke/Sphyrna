@@ -1,0 +1,29 @@
+{
+  "title": "CP5 PERF F-fix: allocation/format-free stream fixture and spinner1 scenario",
+  "date": "2026-10-04",
+  "environment": {"os": "Darwin 27.0.0", "toolchain": "Swift 6.4 SwiftPM, Command Line Tools", "scratchPath": ".build/ffix", "oldFixture": "release build of pre-change main.swift in a minimal package at /tmp/ffix-old", "newFixture": "release build, .build/ffix", "consumer": "python pipe reader (kept short; heavy runs withdrawn by coordinator for thermal reasons)"},
+  "scopeNote": "Heavy runs (CPU >=30 s, 20 MiB, repeated, long pacing) were stopped on coordinator instruction; only short functional checks ran.",
+  "changes": ["Sources/loom-test-child/main.swift: stream hot path without String(format:) (in-place decimal counter, reusable buffer, single write per tick); new `spinner <fps> <frames>` mode", "scripts/cp5-d-measure.py: spinner oracle, spinner1 scenario, validate_run spinner branch, self-test", "Sources/loom-app/DevelopmentEvidence.swift: new `openspinner:count:fps:frames:payloadBytes` operation (existing `open` unchanged)", "Sources/loom-app/EvidenceResourcePool.swift: optional spinnerFrames launch argument and row field `spinnerFrames` (null for existing rows)"],
+  "checks": {
+    "build": {"command": "swift build --scratch-path .build/ffix", "result": "Build complete (whole package incl. loom-app)"},
+    "selfTest": {"command": "python3 scripts/cp5-d-measure.py --self-test", "result": "PASS incl. spinner oracle, screen model, corrupted-digest and wrong-pacing rejection"},
+    "gitDiffCheck": "clean on touched files",
+    "streamOldVsNew": {
+      "method": "stdout payload SHA-256 (footer excluded; footer holds wall seconds) and write(2) sizes via DYLD_INSERT_LIBRARIES interposer on write, old build vs new build",
+      "cases": [
+        {"rate": 0, "total": 262145, "payloadSHA16": "1b1879e741fb56b7", "equal": true, "writeSizesEqual": true, "writes": "262144,1"},
+        {"rate": 0, "total": 1000003, "payloadSHA16": "e415f0b72ac69c58", "equal": true, "writeSizesEqual": true},
+        {"rate": 1048576, "total": 262145, "payloadSHA16": "1b1879e741fb56b7", "equal": true, "writeSizesEqual": true, "writes": "26 x ~10496 B, seconds=0.250"},
+        {"rate": 102400, "total": 50001, "payloadSHA16": "38e171c3dc68f59a", "equal": true, "writeSizesEqual": true, "writes": "50 x 1024, seconds=0.490"},
+        {"rate": 65, "total": 200, "payloadSHA16": "2002e7b0e8ee3137", "equal": true, "writeSizesEqual": true, "writes": "64 x3 + 8"}
+      ],
+      "oracleNote": "Python record generator prefix hashes matched for 262145, 1000003, 50001"
+    },
+    "spinner": {"command": "loom-test-child spinner 30 120 (piped)", "payloadSHA256": "6cff2ce591a806c58d956a2d1195227cef2d8ab82832ba1179cfb3ce03e64062", "bytes": 80372, "footer": "END bytes=80372 seconds=4.005", "oracleMatch": true, "screenModel": "24-row model: 0 scrolls after setup, final cursor row 23 incl. footer", "framePeriodMs": {"mean": 33.37, "min": 23.11, "max": 51.94}}
+  },
+  "deferred": [
+    {"check": "byte+write equality at full size", "command": "bash /tmp/ffix/cmp.sh (1 MiB/s x 21 MiB, burst 20 MiB; needs /tmp/ffix-old build and /tmp/ffix/{run.py,interpose.dylib})"},
+    {"check": "fixture CPU old vs new, >=30 s at 1 MiB/s, >=5 alternating runs", "command": "/usr/bin/time -l <fixture> stream 1048576 31457280 >/dev/null-like reader, alternate old/new"},
+    {"check": "spinner1 through the app", "command": "scripts/cp5-d-measure.py --app <packaged app> --scenario spinner1 (requires repackaging the app)"}
+  ]
+}

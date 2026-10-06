@@ -1,0 +1,71 @@
+{
+  "finding": 9,
+  "status": "implemented; review pending",
+  "implementation": {
+    "earlyPTYCallback": true,
+    "sameSurfaceAfterIdentity": true,
+    "interactiveIdentityDeadline": null,
+    "headlessDeadlinePreserved": true,
+    "stopQuitExitConnectionCleanup": true,
+    "automaticTrustOrApproval": false
+  },
+  "checks": {
+    "swiftBuild": "passed",
+    "packageReleaseBuildAndSignature": "passed (ad-hoc)",
+    "tests": {
+      "total": 34,
+      "core": 22,
+      "controller": 12,
+      "commandFilter": "ConversationControllerTests|SessionRuntimeCodexTests|CodexAppServerTests"
+    },
+    "gitDiffCheck": "passed"
+  },
+  "regressionBeforeFix": {
+    "source": "plans/experiments/cp5-c-identity-review.json",
+    "terminalCountWhileInputBlocked": 0,
+    "liveRuns": 1,
+    "result": "identity timeout; shutdown succeeded",
+    "note": "Existing independent pre-fix repro retained; not rerun on the shared workspace."
+  },
+  "nativeSmoke": {
+    "fixtureOnly": true,
+    "inputPromptVisibleBeforeIdentity": true,
+    "startingLabelAndStopVisible": true,
+    "nativeInput": "continue + Return",
+    "identityBefore": null,
+    "identityAssignedAfter": true,
+    "sameSession": true,
+    "sameRun": true,
+    "samePID": true,
+    "noIdentityTimeoutBeforeInput": true,
+    "nativeStop": "Not running; Stop disabled; Resume enabled",
+    "unfinishedRunsAfterQuit": 0,
+    "quit": {
+      "errors": [],
+      "guarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Coalition capability failure forced.",
+      "remaining": 0,
+      "seconds": 0.016746624984079972,
+      "signals": 0,
+      "succeeded": true
+    },
+    "appAndTuiAbsent": true
+  },
+  "sourceSHA256": {
+    "Sources/LoomCore/SessionRuntime.swift": "20e51c60757741f793d94ce62b4caf1165e849c18bf95cd86ecb328578953a77",
+    "Sources/LoomCore/CodexSessionState.swift": "f812764558394f2e201219da9fcc6b2498306611f33fc82a55debc58453c64d1",
+    "Sources/LoomCore/CodexSessionCoordinator.swift": "d0dd4d9bd239a5bdf650438edcb342541f23e33884b32e61c35c153d147a1387",
+    "Sources/LoomCatalogUI/ConversationController.swift": "98fc03aea1af531753bd5872de764229c55576dc1dbda28eb80b89c8f6d875f6",
+    "Sources/LoomCatalogUI/DetailView.swift": "0c96d6483589dbbc211b00cc5deedfda82f94abec5e72eb2235793d568d7dd23",
+    "Sources/loom-fake-provider/CodexFixture.swift": "88c6294e88aad49e6bba28f1ece926f1d01e22720e68d864df96efe1db3645d4",
+    "Tests/LoomCatalogUITests/ConversationControllerTests.swift": "2c01f04316c0f7cc7747092f2718a1ca240d5fe7e8ad3eb2d521beb5b136312c",
+    "Tests/LoomCoreTests/CodexAppServerTests.swift": "5905bf5b824b7d319f56150dbbd5c884288135dfd1b817eac6eca9c9a22a8496"
+  },
+  "appSHA256": "e2cb68e12b634413a4e7b9e13c95b5301b754152273b952a3fb8be235e76ffba",
+  "modelTurnsUsed": 0,
+  "realProviderStarted": false,
+  "unverified": [
+    "Real Codex startup prompt and root cause",
+    "remaining real provider acceptance"
+  ],
+  "evidenceDirectory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-identity-fix-20260929"
+}

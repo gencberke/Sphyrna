@@ -1,0 +1,744 @@
+{
+  "date": "2026-10-03",
+  "status": "four visible cells valid; four occluded cells unverified; numeric budget unapproved",
+  "package": {
+    "app": "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+    "appSHA256": "0e64c4c08a11ddc3bd9cab0e5feadcaeead0306c4126964d6a243425bb33a1f8",
+    "hostSHA256": "aedb43897c5864d9af3715dca394ba6bcc37426b83a89569013b280891887916",
+    "fixtureSHA256": "b9ab6e7ebe465ce488a05b00677e7a84cfd3fdf082871e3643ed1f4af1a2c6c2",
+    "appRequirement": "Executable=/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/MacOS/Loom Dev\n",
+    "hostRequirement": "Executable=/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/Helpers/LoomRunHost.app/Contents/MacOS/loom-run-host\n",
+    "strictExit": 0,
+    "appDesignatedRequirement": "Executable=/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/MacOS/Loom Dev\ndesignated => identifier \"local.loom.desktop.dev\" and certificate leaf = H\"223e8ac2708373c99e1d8cf82af2d23114f884ad\"\n",
+    "appDesignatedRequirementExit": 0,
+    "hostDesignatedRequirement": "Executable=/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/Helpers/LoomRunHost.app/Contents/MacOS/loom-run-host\ndesignated => identifier \"local.loom.desktop.dev.run-host\" and certificate leaf = H\"223e8ac2708373c99e1d8cf82af2d23114f884ad\"\n",
+    "hostDesignatedRequirementExit": 0
+  },
+  "frozenInputs": {
+    "package": {
+      "app": "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+      "appSHA256": "0e64c4c08a11ddc3bd9cab0e5feadcaeead0306c4126964d6a243425bb33a1f8",
+      "hostSHA256": "aedb43897c5864d9af3715dca394ba6bcc37426b83a89569013b280891887916",
+      "fixtureSHA256": "b9ab6e7ebe465ce488a05b00677e7a84cfd3fdf082871e3643ed1f4af1a2c6c2",
+      "appRequirement": "Executable=/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/MacOS/Loom Dev\n",
+      "hostRequirement": "Executable=/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/Helpers/LoomRunHost.app/Contents/MacOS/loom-run-host\n",
+      "strictExit": 0,
+      "appDesignatedRequirement": "Executable=/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/MacOS/Loom Dev\ndesignated => identifier \"local.loom.desktop.dev\" and certificate leaf = H\"223e8ac2708373c99e1d8cf82af2d23114f884ad\"\n",
+      "appDesignatedRequirementExit": 0,
+      "hostDesignatedRequirement": "Executable=/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/Helpers/LoomRunHost.app/Contents/MacOS/loom-run-host\ndesignated => identifier \"local.loom.desktop.dev.run-host\" and certificate leaf = H\"223e8ac2708373c99e1d8cf82af2d23114f884ad\"\n",
+      "hostDesignatedRequirementExit": 0
+    },
+    "sourceSHA256": {
+      "scripts/cp5-gpu-sample.py": "3868c5b91d0ddfc4c75e6e863e941c8cea2c2d78fdbcd98c64f9f133f45cc0df",
+      "scripts/cp5-gpu-attribution.py": "b4e2c7cb913a279c1da6e3f3c50f6c2c8a025479683d0b00bab926694681288d",
+      "scripts/cp5-gpu-sample.c": "f21519f8a3284de41c1e5a6ad886b53de5619974129d0e871a94b809acefe761",
+      "scripts/cp5-d-measure.py": "dbee4d22e1ce91e46d8767d0043fdb764ac2b18f8e5c72b2acd644ffb5eabf57"
+    },
+    "machine": {
+      "macOS": "27.0.1",
+      "hardwareModel": "Mac14,2",
+      "cpu": "Apple M2",
+      "memoryBytes": 17179869184,
+      "logicalCPUs": 8,
+      "reduceMotion": "1",
+      "reduceTransparency": "0",
+      "powerSleepAssertion": "lifetime-scoped caffeinate -di; ends with controller",
+      "windowFramePoints": [
+        1220,
+        780
+      ],
+      "source": "local CLI read-only; no serial numbers"
+    }
+  },
+  "validCells": 4,
+  "occludedCellsVerified": 0,
+  "openCells": [
+    {
+      "material": "glass",
+      "scenario": "idle1",
+      "visibility": "occluded"
+    },
+    {
+      "material": "glass",
+      "scenario": "stream1",
+      "visibility": "occluded"
+    },
+    {
+      "material": "opaque",
+      "scenario": "idle1",
+      "visibility": "occluded"
+    },
+    {
+      "material": "opaque",
+      "scenario": "stream1",
+      "visibility": "occluded"
+    }
+  ],
+  "cells": [
+    {
+      "name": "gpu-glass-idle1-visible",
+      "material": "glass",
+      "scenario": "idle1",
+      "visibility": "visible",
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/gpu-matrix/gpu-glass-idle1-visible",
+      "valid": true,
+      "sampleSeconds": 60.13319437500468,
+      "sampleCount": 13,
+      "terminalDraws": 0,
+      "GPUCoalitions": [
+        {
+          "role": "loom-app-and-system-xpc",
+          "coalitionID": 7479,
+          "liveMembers": [
+            {
+              "pid": 80690,
+              "startSeconds": 1791027285,
+              "startMicroseconds": 342882
+            },
+            {
+              "pid": 80691,
+              "startSeconds": 1791027285,
+              "startMicroseconds": 617505
+            },
+            {
+              "pid": 80702,
+              "startSeconds": 1791027286,
+              "startMicroseconds": 353229
+            }
+          ],
+          "gpuNanosecondsDelta": 0,
+          "sampleSeconds": 60.12947933399846,
+          "gpuMillisecondsPerSecond": 0.0
+        },
+        {
+          "role": "WindowServer",
+          "coalitionID": 373,
+          "liveMembers": [
+            {
+              "pid": 606,
+              "startSeconds": 1790946146,
+              "startMicroseconds": 443251
+            },
+            {
+              "pid": 1147,
+              "startSeconds": 1790946183,
+              "startMicroseconds": 874675
+            }
+          ],
+          "gpuNanosecondsDelta": 44074844190,
+          "sampleSeconds": 60.12948308400519,
+          "gpuMillisecondsPerSecond": 732.998887225162
+        },
+        {
+          "role": "run-host",
+          "coalitionID": 7485,
+          "liveMembers": [
+            {
+              "pid": 80699,
+              "startSeconds": 1791027286,
+              "startMicroseconds": 36032
+            },
+            {
+              "pid": 80700,
+              "startSeconds": 1791027286,
+              "startMicroseconds": 88598
+            }
+          ],
+          "gpuNanosecondsDelta": 0,
+          "sampleSeconds": 60.12949245799973,
+          "gpuMillisecondsPerSecond": 0.0
+        }
+      ],
+      "deviceTotal": {
+        "matchedCompleteBucketSeconds": 54.996496209000014,
+        "modeledGPUAverageMilliwatts": 1548.5804122202017,
+        "GPUPHNonOFFResidencyPercent": 83.78455128575472,
+        "definition": "Whole device modeled energy and power-state residency; not Loom utilization"
+      },
+      "classificationPreparationCost": {
+        "wallSeconds": 0.14815583300514845,
+        "observerCPUSeconds": 0.010965000000000003,
+        "observerHelperCPUSeconds": 0.096834
+      },
+      "appCoalitionStartupMetadata": [
+        {
+          "identity": {
+            "pid": 80690,
+            "startSeconds": 1791027285,
+            "startMicroseconds": 342882
+          },
+          "path": "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/MacOS/Loom Dev",
+          "classification": "loom-app"
+        },
+        {
+          "identity": {
+            "pid": 80691,
+            "startSeconds": 1791027285,
+            "startMicroseconds": 617505
+          },
+          "path": "/System/Library/PrivateFrameworks/CascadeSets.framework/Versions/A/XPCServices/SetStoreUpdateService.xpc/Contents/MacOS/SetStoreUpdateService",
+          "classification": "known-Apple-system-XPC",
+          "signatureRequirement": "anchor apple and identifier \"com.apple.SetStoreUpdateService\"",
+          "signatureVerified": true,
+          "resourceEnvelopeVerified": true,
+          "signatureVerificationScope": "code-and-resources"
+        },
+        {
+          "identity": {
+            "pid": 80702,
+            "startSeconds": 1791027286,
+            "startMicroseconds": 353229
+          },
+          "path": "/System/Volumes/Preboot/Cryptexes/OS/System/Library/PrivateFrameworks/SafariPlatformSupport.framework/Versions/A/XPCServices/com.apple.SafariPlatformSupport.Helper.xpc/Contents/MacOS/com.apple.SafariPlatformSupport.Helper",
+          "classification": "known-Apple-system-XPC",
+          "signatureRequirement": "anchor apple and identifier \"com.apple.SafariPlatformSupport.Helper\"",
+          "signatureVerified": true,
+          "resourceEnvelopeVerified": false,
+          "signatureVerificationScope": "code-and-sealed-Info-identity",
+          "bundleIdentifier": "com.apple.SafariPlatformSupport.Helper",
+          "XPCServiceType": "Application",
+          "resourceEnvelopeLimit": "Apple custom omit rules; resource contents are not validated"
+        }
+      ],
+      "cleanup": {
+        "quitSucceeded": true,
+        "remainingRegisteredIdentities": 0,
+        "recordedScopeMembers": 1,
+        "runHostsLeft": 0,
+        "appCoalitionMembersLeft": []
+      }
+    },
+    {
+      "name": "gpu-glass-stream1-visible-r2",
+      "material": "glass",
+      "scenario": "stream1",
+      "visibility": "visible",
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/gpu-matrix/gpu-glass-stream1-visible-r2",
+      "valid": true,
+      "sampleSeconds": 60.13051408332831,
+      "sampleCount": 13,
+      "terminalDraws": 3608,
+      "GPUCoalitions": [
+        {
+          "role": "loom-app-and-system-xpc",
+          "coalitionID": 7560,
+          "liveMembers": [
+            {
+              "pid": 80972,
+              "startSeconds": 1791027587,
+              "startMicroseconds": 391550
+            },
+            {
+              "pid": 80974,
+              "startSeconds": 1791027587,
+              "startMicroseconds": 580466
+            },
+            {
+              "pid": 80986,
+              "startSeconds": 1791027588,
+              "startMicroseconds": 286230
+            }
+          ],
+          "gpuNanosecondsDelta": 5414236225,
+          "sampleSeconds": 60.133218040995416,
+          "gpuMillisecondsPerSecond": 90.03736040384335
+        },
+        {
+          "role": "WindowServer",
+          "coalitionID": 373,
+          "liveMembers": [
+            {
+              "pid": 606,
+              "startSeconds": 1790946146,
+              "startMicroseconds": 443251
+            },
+            {
+              "pid": 1147,
+              "startSeconds": 1790946183,
+              "startMicroseconds": 874675
+            }
+          ],
+          "gpuNanosecondsDelta": 44618977131,
+          "sampleSeconds": 60.13322524999967,
+          "gpuMillisecondsPerSecond": 742.0020620131338
+        },
+        {
+          "role": "run-host",
+          "coalitionID": 7564,
+          "liveMembers": [
+            {
+              "pid": 80980,
+              "startSeconds": 1791027587,
+              "startMicroseconds": 957399
+            },
+            {
+              "pid": 80981,
+              "startSeconds": 1791027588,
+              "startMicroseconds": 10822
+            }
+          ],
+          "gpuNanosecondsDelta": 0,
+          "sampleSeconds": 60.13323266599764,
+          "gpuMillisecondsPerSecond": 0.0
+        }
+      ],
+      "deviceTotal": {
+        "matchedCompleteBucketSeconds": 54.997744749999995,
+        "modeledGPUAverageMilliwatts": 1084.2326568308968,
+        "GPUPHNonOFFResidencyPercent": 86.42699247726819,
+        "definition": "Whole device modeled energy and power-state residency; not Loom utilization"
+      },
+      "classificationPreparationCost": {
+        "wallSeconds": 0.16843887499999255,
+        "observerCPUSeconds": 0.011945000000000004,
+        "observerHelperCPUSeconds": 0.10992199999999999
+      },
+      "appCoalitionStartupMetadata": [
+        {
+          "identity": {
+            "pid": 80972,
+            "startSeconds": 1791027587,
+            "startMicroseconds": 391550
+          },
+          "path": "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/MacOS/Loom Dev",
+          "classification": "loom-app"
+        },
+        {
+          "identity": {
+            "pid": 80974,
+            "startSeconds": 1791027587,
+            "startMicroseconds": 580466
+          },
+          "path": "/System/Library/PrivateFrameworks/CascadeSets.framework/Versions/A/XPCServices/SetStoreUpdateService.xpc/Contents/MacOS/SetStoreUpdateService",
+          "classification": "known-Apple-system-XPC",
+          "signatureRequirement": "anchor apple and identifier \"com.apple.SetStoreUpdateService\"",
+          "signatureVerified": true,
+          "resourceEnvelopeVerified": true,
+          "signatureVerificationScope": "code-and-resources"
+        },
+        {
+          "identity": {
+            "pid": 80986,
+            "startSeconds": 1791027588,
+            "startMicroseconds": 286230
+          },
+          "path": "/System/Volumes/Preboot/Cryptexes/OS/System/Library/PrivateFrameworks/SafariPlatformSupport.framework/Versions/A/XPCServices/com.apple.SafariPlatformSupport.Helper.xpc/Contents/MacOS/com.apple.SafariPlatformSupport.Helper",
+          "classification": "known-Apple-system-XPC",
+          "signatureRequirement": "anchor apple and identifier \"com.apple.SafariPlatformSupport.Helper\"",
+          "signatureVerified": true,
+          "resourceEnvelopeVerified": false,
+          "signatureVerificationScope": "code-and-sealed-Info-identity",
+          "bundleIdentifier": "com.apple.SafariPlatformSupport.Helper",
+          "XPCServiceType": "Application",
+          "resourceEnvelopeLimit": "Apple custom omit rules; resource contents are not validated"
+        }
+      ],
+      "cleanup": {
+        "quitSucceeded": true,
+        "remainingRegisteredIdentities": 0,
+        "recordedScopeMembers": 1,
+        "runHostsLeft": 0,
+        "appCoalitionMembersLeft": []
+      }
+    },
+    {
+      "name": "gpu-opaque-idle1-visible",
+      "material": "opaque",
+      "scenario": "idle1",
+      "visibility": "visible",
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/gpu-matrix/gpu-opaque-idle1-visible",
+      "valid": true,
+      "sampleSeconds": 60.140991458327335,
+      "sampleCount": 13,
+      "terminalDraws": 0,
+      "GPUCoalitions": [
+        {
+          "role": "loom-app-and-system-xpc",
+          "coalitionID": 7594,
+          "liveMembers": [
+            {
+              "pid": 81193,
+              "startSeconds": 1791027738,
+              "startMicroseconds": 208334
+            },
+            {
+              "pid": 81196,
+              "startSeconds": 1791027738,
+              "startMicroseconds": 385684
+            },
+            {
+              "pid": 81206,
+              "startSeconds": 1791027739,
+              "startMicroseconds": 90760
+            }
+          ],
+          "gpuNanosecondsDelta": 0,
+          "sampleSeconds": 60.14561295799649,
+          "gpuMillisecondsPerSecond": 0.0
+        },
+        {
+          "role": "WindowServer",
+          "coalitionID": 373,
+          "liveMembers": [
+            {
+              "pid": 606,
+              "startSeconds": 1790946146,
+              "startMicroseconds": 443251
+            },
+            {
+              "pid": 1147,
+              "startSeconds": 1790946183,
+              "startMicroseconds": 874675
+            }
+          ],
+          "gpuNanosecondsDelta": 45453471354,
+          "sampleSeconds": 60.14562166699761,
+          "gpuMillisecondsPerSecond": 755.7236934993838
+        },
+        {
+          "role": "run-host",
+          "coalitionID": 7602,
+          "liveMembers": [
+            {
+              "pid": 81203,
+              "startSeconds": 1791027738,
+              "startMicroseconds": 762934
+            },
+            {
+              "pid": 81204,
+              "startSeconds": 1791027738,
+              "startMicroseconds": 813735
+            }
+          ],
+          "gpuNanosecondsDelta": 0,
+          "sampleSeconds": 60.14563116699719,
+          "gpuMillisecondsPerSecond": 0.0
+        }
+      ],
+      "deviceTotal": {
+        "matchedCompleteBucketSeconds": 54.999423625,
+        "modeledGPUAverageMilliwatts": 901.2553705648038,
+        "GPUPHNonOFFResidencyPercent": 87.4475655369736,
+        "definition": "Whole device modeled energy and power-state residency; not Loom utilization"
+      },
+      "classificationPreparationCost": {
+        "wallSeconds": 0.1681555000031949,
+        "observerCPUSeconds": 0.012053000000000001,
+        "observerHelperCPUSeconds": 0.10963999999999999
+      },
+      "appCoalitionStartupMetadata": [
+        {
+          "identity": {
+            "pid": 81193,
+            "startSeconds": 1791027738,
+            "startMicroseconds": 208334
+          },
+          "path": "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/MacOS/Loom Dev",
+          "classification": "loom-app"
+        },
+        {
+          "identity": {
+            "pid": 81196,
+            "startSeconds": 1791027738,
+            "startMicroseconds": 385684
+          },
+          "path": "/System/Library/PrivateFrameworks/CascadeSets.framework/Versions/A/XPCServices/SetStoreUpdateService.xpc/Contents/MacOS/SetStoreUpdateService",
+          "classification": "known-Apple-system-XPC",
+          "signatureRequirement": "anchor apple and identifier \"com.apple.SetStoreUpdateService\"",
+          "signatureVerified": true,
+          "resourceEnvelopeVerified": true,
+          "signatureVerificationScope": "code-and-resources"
+        },
+        {
+          "identity": {
+            "pid": 81206,
+            "startSeconds": 1791027739,
+            "startMicroseconds": 90760
+          },
+          "path": "/System/Volumes/Preboot/Cryptexes/OS/System/Library/PrivateFrameworks/SafariPlatformSupport.framework/Versions/A/XPCServices/com.apple.SafariPlatformSupport.Helper.xpc/Contents/MacOS/com.apple.SafariPlatformSupport.Helper",
+          "classification": "known-Apple-system-XPC",
+          "signatureRequirement": "anchor apple and identifier \"com.apple.SafariPlatformSupport.Helper\"",
+          "signatureVerified": true,
+          "resourceEnvelopeVerified": false,
+          "signatureVerificationScope": "code-and-sealed-Info-identity",
+          "bundleIdentifier": "com.apple.SafariPlatformSupport.Helper",
+          "XPCServiceType": "Application",
+          "resourceEnvelopeLimit": "Apple custom omit rules; resource contents are not validated"
+        }
+      ],
+      "cleanup": {
+        "quitSucceeded": true,
+        "remainingRegisteredIdentities": 0,
+        "recordedScopeMembers": 1,
+        "runHostsLeft": 0,
+        "appCoalitionMembersLeft": []
+      }
+    },
+    {
+      "name": "gpu-opaque-stream1-visible",
+      "material": "opaque",
+      "scenario": "stream1",
+      "visibility": "visible",
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/gpu-matrix/gpu-opaque-stream1-visible",
+      "valid": true,
+      "sampleSeconds": 60.137078374995326,
+      "sampleCount": 13,
+      "terminalDraws": 3608,
+      "GPUCoalitions": [
+        {
+          "role": "loom-app-and-system-xpc",
+          "coalitionID": 7618,
+          "liveMembers": [
+            {
+              "pid": 81268,
+              "startSeconds": 1791027888,
+              "startMicroseconds": 934855
+            },
+            {
+              "pid": 81270,
+              "startSeconds": 1791027889,
+              "startMicroseconds": 101442
+            },
+            {
+              "pid": 81279,
+              "startSeconds": 1791027889,
+              "startMicroseconds": 792518
+            }
+          ],
+          "gpuNanosecondsDelta": 5515757158,
+          "sampleSeconds": 60.13716100000602,
+          "gpuMillisecondsPerSecond": 91.71961340176082
+        },
+        {
+          "role": "WindowServer",
+          "coalitionID": 373,
+          "liveMembers": [
+            {
+              "pid": 606,
+              "startSeconds": 1790946146,
+              "startMicroseconds": 443251
+            },
+            {
+              "pid": 1147,
+              "startSeconds": 1790946183,
+              "startMicroseconds": 874675
+            }
+          ],
+          "gpuNanosecondsDelta": 46743417835,
+          "sampleSeconds": 60.13716804100113,
+          "gpuMillisecondsPerSecond": 777.279997673496
+        },
+        {
+          "role": "run-host",
+          "coalitionID": 7622,
+          "liveMembers": [
+            {
+              "pid": 81276,
+              "startSeconds": 1791027889,
+              "startMicroseconds": 475015
+            },
+            {
+              "pid": 81277,
+              "startSeconds": 1791027889,
+              "startMicroseconds": 528668
+            }
+          ],
+          "gpuNanosecondsDelta": 0,
+          "sampleSeconds": 60.1371782089991,
+          "gpuMillisecondsPerSecond": 0.0
+        }
+      ],
+      "deviceTotal": {
+        "matchedCompleteBucketSeconds": 54.997505833,
+        "modeledGPUAverageMilliwatts": 977.9145189476724,
+        "GPUPHNonOFFResidencyPercent": 90.43999894244055,
+        "definition": "Whole device modeled energy and power-state residency; not Loom utilization"
+      },
+      "classificationPreparationCost": {
+        "wallSeconds": 0.1690525840022019,
+        "observerCPUSeconds": 0.012240999999999998,
+        "observerHelperCPUSeconds": 0.10998999999999998
+      },
+      "appCoalitionStartupMetadata": [
+        {
+          "identity": {
+            "pid": 81268,
+            "startSeconds": 1791027888,
+            "startMicroseconds": 934855
+          },
+          "path": "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/MacOS/Loom Dev",
+          "classification": "loom-app"
+        },
+        {
+          "identity": {
+            "pid": 81270,
+            "startSeconds": 1791027889,
+            "startMicroseconds": 101442
+          },
+          "path": "/System/Library/PrivateFrameworks/CascadeSets.framework/Versions/A/XPCServices/SetStoreUpdateService.xpc/Contents/MacOS/SetStoreUpdateService",
+          "classification": "known-Apple-system-XPC",
+          "signatureRequirement": "anchor apple and identifier \"com.apple.SetStoreUpdateService\"",
+          "signatureVerified": true,
+          "resourceEnvelopeVerified": true,
+          "signatureVerificationScope": "code-and-resources"
+        },
+        {
+          "identity": {
+            "pid": 81279,
+            "startSeconds": 1791027889,
+            "startMicroseconds": 792518
+          },
+          "path": "/System/Volumes/Preboot/Cryptexes/OS/System/Library/PrivateFrameworks/SafariPlatformSupport.framework/Versions/A/XPCServices/com.apple.SafariPlatformSupport.Helper.xpc/Contents/MacOS/com.apple.SafariPlatformSupport.Helper",
+          "classification": "known-Apple-system-XPC",
+          "signatureRequirement": "anchor apple and identifier \"com.apple.SafariPlatformSupport.Helper\"",
+          "signatureVerified": true,
+          "resourceEnvelopeVerified": false,
+          "signatureVerificationScope": "code-and-sealed-Info-identity",
+          "bundleIdentifier": "com.apple.SafariPlatformSupport.Helper",
+          "XPCServiceType": "Application",
+          "resourceEnvelopeLimit": "Apple custom omit rules; resource contents are not validated"
+        }
+      ],
+      "cleanup": {
+        "quitSucceeded": true,
+        "remainingRegisteredIdentities": 0,
+        "recordedScopeMembers": 1,
+        "runHostsLeft": 0,
+        "appCoalitionMembersLeft": []
+      }
+    }
+  ],
+  "excludedFailedTrials": [
+    {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/gpu-matrix/gpu-glass-idle1-occluded/report.json",
+      "invalidReasons": [
+        "Missing valid acknowledgement/snapshot: ack-ff7d0ce0-c555-41fd-94ba-4b25e554425d.json"
+      ],
+      "cleanup": {
+        "quitSucceeded": true,
+        "remainingRegisteredIdentities": 0,
+        "recordedScopeMembers": 0,
+        "runHostsLeft": 0
+      }
+    },
+    {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/gpu-matrix/gpu-glass-idle1-occluded-r3/report.json",
+      "invalidReasons": [
+        "Initial window visibility/occlusion readiness timed out"
+      ],
+      "cleanup": {
+        "quitSucceeded": true,
+        "remainingRegisteredIdentities": 0,
+        "recordedScopeMembers": 0,
+        "runHostsLeft": 0
+      }
+    },
+    {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/gpu-matrix/gpu-glass-idle1-occluded-r2/report.json",
+      "invalidReasons": [
+        "Initial window visibility/occlusion readiness timed out"
+      ],
+      "cleanup": {
+        "quitSucceeded": true,
+        "remainingRegisteredIdentities": 0,
+        "recordedScopeMembers": 0,
+        "runHostsLeft": 0
+      }
+    },
+    {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/gpu-matrix/gpu-glass-stream1-visible/report.json",
+      "invalidReasons": [
+        "PID 80848 coalition identity unavailable: size=0, errno=3"
+      ],
+      "cleanup": {
+        "quitSucceeded": true,
+        "remainingRegisteredIdentities": 0,
+        "recordedScopeMembers": 1,
+        "runHostsLeft": 0,
+        "appCoalitionMembersLeft": []
+      }
+    }
+  ],
+  "positiveAccountingCalibration": {
+    "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/gpu-calibration-metal-r5/report.json",
+    "renderer": "metal",
+    "GPUCoalitions": [
+      {
+        "role": "loom-app-and-system-xpc",
+        "coalitionID": 7373,
+        "liveMembers": [
+          {
+            "pid": 80142,
+            "startSeconds": 1791026612,
+            "startMicroseconds": 719214
+          },
+          {
+            "pid": 80145,
+            "startSeconds": 1791026613,
+            "startMicroseconds": 58835
+          },
+          {
+            "pid": 80156,
+            "startSeconds": 1791026613,
+            "startMicroseconds": 840798
+          }
+        ],
+        "gpuNanosecondsDelta": 566817611,
+        "sampleSeconds": 20.13126475000172,
+        "gpuMillisecondsPerSecond": 28.15608547396167
+      },
+      {
+        "role": "WindowServer",
+        "coalitionID": 373,
+        "liveMembers": [
+          {
+            "pid": 606,
+            "startSeconds": 1790946146,
+            "startMicroseconds": 443251
+          },
+          {
+            "pid": 1147,
+            "startSeconds": 1790946183,
+            "startMicroseconds": 874675
+          }
+        ],
+        "gpuNanosecondsDelta": 15078625111,
+        "sampleSeconds": 20.131277541993768,
+        "gpuMillisecondsPerSecond": 749.0148143626774
+      },
+      {
+        "role": "run-host",
+        "coalitionID": 7381,
+        "liveMembers": [
+          {
+            "pid": 80153,
+            "startSeconds": 1791026613,
+            "startMicroseconds": 508280
+          },
+          {
+            "pid": 80154,
+            "startSeconds": 1791026613,
+            "startMicroseconds": 570025
+          }
+        ],
+        "gpuNanosecondsDelta": 0,
+        "sampleSeconds": 20.131285541996476,
+        "gpuMillisecondsPerSecond": 0.0
+      }
+    ],
+    "valid": true
+  },
+  "limits": [
+    "Coalition GPU time is not per-PID utilization or device-total busy percentage.",
+    "WindowServer coalition includes all reported members and all window clients.",
+    "Loom coalition includes all classified Apple XPC members; their GPU work is not subtracted.",
+    "Exact Safari platform helper uses code/sealed-Info identity verification; its resource envelope is not validated.",
+    "Zero delta alone cannot distinguish unsupported accounting from no submitted GPU work.",
+    "Numeric budgets remain unknown; device IOReport energy is modeled.",
+    "Each matrix condition is one descriptive trial; no quantitative relative gain claim without five matched repeats.",
+    "GPUPH non-OFF state residency is not GPU engine utilization.",
+    "GPU coalition contains all classified members; WindowServer/device include all desktop clients.",
+    "One helper code/sealed-Info identity verified; its resource contents are not validated.",
+    "Zero CoreGraphics delta means no accounted work observed, not a zero compositor/device GPU cost."
+  ]
+}

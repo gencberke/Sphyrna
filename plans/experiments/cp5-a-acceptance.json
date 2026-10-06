@@ -1,0 +1,254 @@
+{
+  "hidden-quit": {
+    "afterQuit": [
+      "app exited",
+      "fixture 28665 gone"
+    ],
+    "children": 1,
+    "guarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Shared coalition 32932; another process is present.",
+    "quitAttempts": [
+      {
+        "errors": [],
+        "remaining": 0,
+        "succeeded": true
+      }
+    ],
+    "states": {
+      "launched": {
+        "frames": null,
+        "outputBytes": null,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": false,
+        "quitState": "idle",
+        "renders": null,
+        "terminalState": "idle",
+        "windowCount": 1,
+        "windowVisible": true
+      },
+      "state-hidden": {
+        "frames": 100,
+        "outputBytes": 3915008,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": false,
+        "quitState": "idle",
+        "renders": 101,
+        "terminalState": "live",
+        "windowCount": 1,
+        "windowVisible": false
+      }
+    }
+  },
+  "ownership-notice": {
+    "afterQuit": [
+      "app exited",
+      "fixture 28854 gone"
+    ],
+    "children": 1,
+    "guarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Coalition capability failure forced.",
+    "quitAttempts": [
+      {
+        "errors": [],
+        "remaining": 0,
+        "succeeded": true
+      }
+    ],
+    "states": {
+      "launched": {
+        "frames": null,
+        "outputBytes": null,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": false,
+        "quitState": "idle",
+        "renders": null,
+        "terminalState": "idle",
+        "windowCount": 1,
+        "windowVisible": true
+      },
+      "state-after-requests": {
+        "frames": 4,
+        "outputBytes": 56,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": false,
+        "quitState": "idle",
+        "renders": 3,
+        "terminalState": "live",
+        "windowCount": 1,
+        "windowVisible": true
+      },
+      "state-reopened": {
+        "frames": 5,
+        "outputBytes": 56,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": false,
+        "quitState": "idle",
+        "renders": 3,
+        "terminalState": "live",
+        "windowCount": 1,
+        "windowVisible": true
+      }
+    }
+  },
+  "quit-during-launch": {
+    "afterQuit": [
+      "app exited",
+      "fixture 28805 gone"
+    ],
+    "children": 1,
+    "guarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Shared coalition 32932; another process is present.",
+    "quitAttempts": [
+      {
+        "errors": [],
+        "remaining": 0,
+        "succeeded": true
+      }
+    ],
+    "states": {
+      "launched": {
+        "frames": null,
+        "outputBytes": null,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": false,
+        "quitState": "idle",
+        "renders": null,
+        "terminalState": "idle",
+        "windowCount": 1,
+        "windowVisible": true
+      }
+    }
+  },
+  "quit-failure-retry": {
+    "afterQuit": [
+      "app exited",
+      "fixture 28952 gone"
+    ],
+    "children": 1,
+    "guarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Shared coalition 32932; another process is present.",
+    "quitAttempts": [
+      {
+        "errors": [
+          "Forced first-quit failure (--fail-first-quit)"
+        ],
+        "remaining": 0,
+        "succeeded": false
+      },
+      {
+        "errors": [],
+        "remaining": 0,
+        "succeeded": true
+      }
+    ],
+    "states": {
+      "launched": {
+        "frames": null,
+        "outputBytes": null,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": false,
+        "quitState": "idle",
+        "renders": null,
+        "terminalState": "idle",
+        "windowCount": 1,
+        "windowVisible": true
+      },
+      "state-after-failed-quit": {
+        "frames": 3,
+        "outputBytes": 56,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": true,
+        "quitState": "failed",
+        "renders": 2,
+        "terminalState": "live",
+        "windowCount": 1,
+        "windowVisible": true
+      }
+    }
+  },
+  "run": "cp5-a-20260928T221906",
+  "window-cycle": {
+    "afterQuit": [
+      "app exited",
+      "fixture 28175 gone"
+    ],
+    "children": 1,
+    "guarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Shared coalition 32932; another process is present.",
+    "quitAttempts": [
+      {
+        "errors": [],
+        "remaining": 0,
+        "succeeded": true
+      }
+    ],
+    "states": {
+      "launched": {
+        "frames": null,
+        "outputBytes": null,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": false,
+        "quitState": "idle",
+        "renders": null,
+        "terminalState": "idle",
+        "windowCount": 1,
+        "windowVisible": true
+      },
+      "state-hidden-a": {
+        "frames": 410,
+        "outputBytes": 9342464,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": false,
+        "quitState": "idle",
+        "renders": 410,
+        "terminalState": "live",
+        "windowCount": 1,
+        "windowVisible": false
+      },
+      "state-hidden-b": {
+        "frames": 410,
+        "outputBytes": 19923456,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": false,
+        "quitState": "idle",
+        "renders": 410,
+        "terminalState": "live",
+        "windowCount": 1,
+        "windowVisible": false
+      },
+      "state-reopened": {
+        "frames": 504,
+        "outputBytes": 21663744,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": false,
+        "quitState": "idle",
+        "renders": 502,
+        "terminalState": "live",
+        "windowCount": 1,
+        "windowVisible": true
+      },
+      "state-visible-a": {
+        "frames": 101,
+        "outputBytes": 1773824,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": false,
+        "quitState": "idle",
+        "renders": 101,
+        "terminalState": "live",
+        "windowCount": 1,
+        "windowVisible": true
+      },
+      "state-visible-b": {
+        "frames": 407,
+        "outputBytes": 7105792,
+        "ownershipNoticeShown": true,
+        "quitAlertShown": false,
+        "quitState": "idle",
+        "renders": 407,
+        "terminalState": "live",
+        "windowCount": 1,
+        "windowVisible": true
+      }
+    }
+  },
+  "cpuUnitValidityFollowup": {
+    "status": "unverified",
+    "reason": "ProcessTable/loom_process_resource_usage copied Mach ticks as nanoseconds before cp5-cpu-unit-fix. All CPU claims produced through that wrapper need corrected-source remeasurement; memory/render/byte/lifecycle evidence is not invalidated solely by this unit error.",
+    "replacement": "plans/experiments/cp5-cpu-unit-fix.json; final resource matrix pending"
+  }
+}

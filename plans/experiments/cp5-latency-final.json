@@ -1,0 +1,98 @@
+{
+  "status": "10 final selected-pool latency runs passed; 2000 samples; no timeouts; missing-selection negative passed",
+  "matrix": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-latency-selected-20260930",
+  "frozen": {
+    "app": "8a4a01fd4efcf4994f219e568c73738bb69d37b1727c8178d3d26c4daab6ed03",
+    "driver": "5be02e5614b52bde97e5755462fb146a5c3093df76d80f178345bc8ddb10dab2",
+    "runner": "12c0c21219f668f581fd6f14c01ef7bea564c87b92c90ac21b4aa0a4521fc54f"
+  },
+  "definition": "engine input -> PTY echo -> first completed terminal draw; not compositor or physical display",
+  "groups": {
+    "coregraphics": {
+      "repeats": 5,
+      "samples": 1000,
+      "p95AcrossRunsMilliseconds": {
+        "median": 18.758791,
+        "min": 18.186375,
+        "max": 18.800292
+      },
+      "worstSampleMilliseconds": 19.892292,
+      "timeouts": 0
+    },
+    "metal": {
+      "repeats": 5,
+      "samples": 1000,
+      "p95AcrossRunsMilliseconds": {
+        "median": 20.015416,
+        "min": 18.311083,
+        "max": 20.1285
+      },
+      "worstSampleMilliseconds": 49.837833,
+      "timeouts": 0
+    }
+  },
+  "earlierInvalidHarness": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-latency-20260930",
+  "excluded": [
+    {
+      "renderer": "coregraphics",
+      "repeat": 1,
+      "valid": false,
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-latency-selected-20260930/coregraphics-1-92458190-2570-425a-8647-7e546790c6a0/result.json",
+      "latency": {
+        "definition": "key sent to engine input path -> first completed terminal draw after the echo was fed (not compositor/display)",
+        "endUptime": 307728.89132295834,
+        "invalidReasons": [],
+        "maxMilliseconds": 34.277291,
+        "measured": 200,
+        "p50Milliseconds": 17.108334,
+        "p95Milliseconds": 18.62275,
+        "renderer": "coregraphics",
+        "rendererAtStart": "coregraphics",
+        "runID": "6C9EB5DF-2D56-4A18-82A0-E8490CD37CEC",
+        "samples": 200,
+        "startUptime": 307719.3877705417,
+        "timeouts": 0,
+        "valid": true
+      },
+      "mainExclusion": "Stale CUA closure opened accepted normal app42333 while evidence app42288 ran; single-app condition violated. Tool latency valid is preserved but not accepted."
+    },
+    {
+      "renderer": "coregraphics",
+      "repeat": 1,
+      "valid": false,
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-latency-selected-20260930/coregraphics-1-f701fe9f-d896-4390-9d88-db41e8b2e2bf/result.json",
+      "latency": {
+        "definition": "key sent to engine input path -> first completed terminal draw after the echo was fed (not compositor/display)",
+        "endUptime": 307819.0879630417,
+        "invalidReasons": [
+          "3 visibility change(s) during latency run"
+        ],
+        "maxMilliseconds": 24.758167,
+        "measured": 200,
+        "p50Milliseconds": 17.056208,
+        "p95Milliseconds": 18.426166,
+        "renderer": "coregraphics",
+        "rendererAtStart": "coregraphics",
+        "runID": "D42D3515-A453-4AA9-A805-8D5CF7D43A2A",
+        "samples": 200,
+        "startUptime": 307809.52307341667,
+        "timeouts": 0,
+        "valid": false
+      }
+    }
+  ],
+  "revisionEvidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-pool-latency-plumbing-20260930/result.json",
+  "mainReview": "Selected surface passed directly; no fallback when no selection; legacy controller caller preserved. Main checked patch and final source hashes. Duplicate import removed before final package. Separate evidence package retains prior accepted0415 unchanged.",
+  "limits": [
+    "Numerical thresholds remain proposals, not user-approved budgets.",
+    "Caller-trace diagnostic is included in latency package; generic visibility-event guard is conservative and rejects benign reopen traces too."
+  ],
+  "missingSelectionNegative": "latency failed: Resource latency requires a selected terminal surface",
+  "allCleanupAndWeakZero": true,
+  "sourceSHA256": {
+    "Sources/loom-app/DevelopmentEvidence.swift": "f1c8d03e8310a527bfd2d38192e81b90c65c2be5e2de4fff1875508bfce1cee4",
+    "Sources/loom-app/EvidenceResourcePool.swift": "425de677d3c5c7f739efb28e3c0cd6aba54508996e43f7b32294a1b077049c91",
+    "Sources/loom-app/AppDelegate.swift": "fb900096ad711b5ebd453487583a82f5732f8e976ac04d79fc44cd070210f424"
+  },
+  "indexSHA256": "eee496b99d817fa937e02810259c59546bd9bcc4642d615eacef3597a5f3081f"
+}

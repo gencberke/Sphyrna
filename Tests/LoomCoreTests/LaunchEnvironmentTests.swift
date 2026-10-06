@@ -64,6 +64,7 @@ struct LaunchEnvironmentTests {
             #expect(environment[key] == nil)
         }
         #expect(environment["TERM"] == "xterm-256color")
+        #expect(environment["COLORTERM"] == "truecolor")
         #expect(environment["LOOM_RUN_ID"] == run.uuidString)
         #expect(environment["LOOM_SESSION_ID"] == session.uuidString)
     }
@@ -97,8 +98,7 @@ struct LaunchEnvironmentTests {
     @Test func startupBackgroundJobIsOwnedUntilShutdownWithoutCoalition() async throws {
         let directory = try fixture("/bin/sleep 60 &!\nexport LOOM_TEST_HELPER_PID=$!\n")
         defer { try? FileManager.default.removeItem(at: directory) }
-        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(coalition:
-            CoalitionCapability(resourceID: nil, detail: "Development startup test")))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
         let result = try await supervisor.terminalEnvironment(
             parent: parent(home: directory), session: [:],
             testZDOTDIR: directory, timeout: 30

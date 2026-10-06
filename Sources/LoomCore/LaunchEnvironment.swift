@@ -1,3 +1,4 @@
+import CLoomPOSIX
 import Darwin
 import Foundation
 
@@ -41,12 +42,18 @@ public enum LaunchEnvironment {
     public static func terminal(origin: LaunchOrigin, runID: UUID,
                                 onSpawn: @escaping (pid_t) throws -> Void,
                                 onPoll: @escaping () throws -> Void) throws -> Resolution {
+        try terminal(origin: origin, runID: runID, spawner: .local, onSpawn: onSpawn, onPoll: onPoll)
+    }
+
+    static func terminal(origin: LaunchOrigin, runID: UUID, spawner: HelperSpawner,
+                         onSpawn: @escaping (pid_t) throws -> Void,
+                         onPoll: @escaping () throws -> Void) throws -> Resolution {
         let cache = caches.cache(for: runID)
         return try cache.value {
             let parent = ProcessInfo.processInfo.environment
             let session = sessionEnvironment(origin: origin, parent: parent)
             let resolved = try resolve(parent: parent, session: session.environment, runID: runID,
-                                       onSpawn: onSpawn, onPoll: onPoll)
+                                       spawner: spawner, onSpawn: onSpawn, onPoll: onPoll)
             return Resolution(environment: resolved.environment, warnings: session.warnings + resolved.warnings)
         }
     }
@@ -57,6 +64,8 @@ public enum LaunchEnvironment {
     public static func make(base: [String: String], runID: UUID, sessionID: UUID) -> [String: String] {
         var result = base
         result["TERM"] = "xterm-256color"
+        // The engine renders 24-bit color; without this providers downsample to 256 colors.
+        result["COLORTERM"] = "truecolor"
         result["LOOM_RUN_ID"] = runID.uuidString
         result["LOOM_SESSION_ID"] = sessionID.uuidString
         return result
@@ -113,6 +122,7 @@ public enum LaunchEnvironment {
                         testZDOTDIR: URL? = nil, timeout: TimeInterval = 30,
                         currentLocale: String = Locale.current.identifier,
                         availableLocales: [String]? = nil, runID: UUID? = nil,
+                        spawner: HelperSpawner = .local,
                         onSpawn: ((pid_t) throws -> Void)? = nil,
                         onPoll: (() throws -> Void)? = nil) throws -> Resolution {
         var base = bootstrap(parent: parent)
@@ -145,11 +155,10 @@ public enum LaunchEnvironment {
         // process group while stdin is EOF, allowing bounded failure cleanup.
         let output = try capture(shell, ["+m", "-l", "-i", "-c", framed],
                                  environment: base, directory: base["HOME"], timeout: timeout,
-                                 onSpawn: onSpawn, onPoll: onPoll)
+                                 spawner: spawner, onSpawn: onSpawn, onPoll: onPoll)
         var complete = false
         defer {
-            if !complete { kill(-output.pid, SIGKILL) }
-            reap(output.pid)
+            if complete { spawner.release(output.pid) } else { spawner.abort(output.pid) }
         }
         guard let first = output.stdout.range(of: start),
               let last = output.stdout.range(of: end, in: first.upperBound..<output.stdout.endIndex) else {
@@ -217,65 +226,55 @@ public enum LaunchEnvironment {
         String(decoding: data.prefix(2048), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// A short helper command (`--version`, `--help`) run through the same
+    /// bounded capture as the environment shell: own process group, output
+    /// quota, one deadline for the whole call, and the caller's spawn/poll
+    /// hooks so the supervisor can track and cancel it. Whatever the leader
+    /// left behind in its group is killed before returning.
+    static func runHelper(_ executable: String, _ arguments: [String], environment: [String: String],
+                          timeout: TimeInterval, spawner: HelperSpawner = .local,
+                          onSpawn: @escaping (pid_t) throws -> Void,
+                          onPoll: @escaping () throws -> Void) throws -> String {
+        let output = try capture(executable, arguments, environment: environment, timeout: timeout,
+                                 spawner: spawner, onSpawn: onSpawn, onPoll: onPoll)
+        defer { spawner.abort(output.pid) }
+        guard output.status == 0 else {
+            let detail = String(decoding: (output.stderr.isEmpty ? output.stdout : output.stderr).prefix(300), as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            throw LoomError.message("exit status \(output.status >> 8)" + (detail.isEmpty ? "" : ": \(detail)"))
+        }
+        return String(decoding: output.stdout, as: UTF8.self)
+    }
+
     private static func reap(_ pid: pid_t) {
         while waitpid(pid, nil, 0) < 0 && errno == EINTR {}
     }
 
     // Successful capture transfers an exited, unreaped child to the caller. Keeping
     // its PID reserved lets validation clean up its process group without PID reuse.
-    private static func capture(_ executable: String, _ arguments: [String], environment: [String: String],
+    static func capture(_ executable: String, _ arguments: [String], environment: [String: String],
                                 directory: String? = nil, timeout: TimeInterval,
+                                spawner: HelperSpawner = .local,
                                 onSpawn: ((pid_t) throws -> Void)? = nil,
                                 onPoll: (() throws -> Void)? = nil) throws -> (stdout: Data, stderr: Data, status: Int32, pid: pid_t) {
         var output: [Int32] = [0, 0]
         var errors: [Int32] = [0, 0]
         guard pipe(&output) == 0 else { throw LoomError.system("Environment pipe", errno) }
-        defer { output.forEach { Darwin.close($0) } }
+        defer { output.filter { $0 >= 0 }.forEach { Darwin.close($0) } }
         guard pipe(&errors) == 0 else { throw LoomError.system("Environment error pipe", errno) }
-        defer { errors.forEach { Darwin.close($0) } }
+        defer { errors.filter { $0 >= 0 }.forEach { Darwin.close($0) } }
         for fd in output + errors {
             guard fcntl(fd, F_SETFD, FD_CLOEXEC) == 0 else { throw LoomError.system("Environment pipe flags", errno) }
         }
         for fd in [output[0], errors[0]] {
             guard fcntl(fd, F_SETFL, O_NONBLOCK) == 0 else { throw LoomError.system("Environment pipe mode", errno) }
         }
-        var actions: posix_spawn_file_actions_t?
-        var attributes: posix_spawnattr_t?
-        func check(_ error: Int32) throws {
-            guard error == 0 else { throw LoomError.system("Environment spawn setup", error) }
-        }
-        try check(posix_spawn_file_actions_init(&actions))
-        defer { posix_spawn_file_actions_destroy(&actions) }
-        try check(posix_spawnattr_init(&attributes))
-        defer { posix_spawnattr_destroy(&attributes) }
-        try check(posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0))
-        try check(posix_spawn_file_actions_adddup2(&actions, output[1], STDOUT_FILENO))
-        try check(posix_spawn_file_actions_adddup2(&actions, errors[1], STDERR_FILENO))
-        for fd in output + errors { try check(posix_spawn_file_actions_addclose(&actions, fd)) }
-        if let directory {
-            if #available(macOS 26, *) { try check(posix_spawn_file_actions_addchdir(&actions, directory)) }
-            else { try check(posix_spawn_file_actions_addchdir_np(&actions, directory)) }
-        }
-        try check(posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT)))
-        try check(posix_spawnattr_setpgroup(&attributes, 0))
-        let argv = ([executable] + arguments).map { strdup($0) }
-        let envp = environment.map { strdup("\($0.key)=\($0.value)") }
-        defer { argv.forEach { free($0) }; envp.forEach { free($0) } }
-        var pid: pid_t = 0
-        let spawnError = (argv + [nil]).withUnsafeBufferPointer { args in
-            (envp + [nil]).withUnsafeBufferPointer { env in
-                posix_spawn(&pid, executable, &actions, &attributes, args.baseAddress!, env.baseAddress!)
-            }
-        }
-        guard spawnError == 0 else { throw LoomError.system("Terminal environment launch", spawnError) }
+        let pid = try spawner.spawn(executable, arguments, environment, directory, output[1], errors[1])
+        // Only the child keeps the write ends; EOF then means it exited.
+        Darwin.close(output[1]); output[1] = -1
+        Darwin.close(errors[1]); errors[1] = -1
         var transferred = false
-        defer {
-            if !transferred {
-                kill(-pid, SIGKILL)
-                kill(pid, SIGKILL)
-                while waitpid(pid, nil, 0) < 0 && errno == EINTR {}
-            }
-        }
+        defer { if !transferred { spawner.abort(pid) } }
         try onSpawn?(pid)
         let deadline = ProcessInfo.processInfo.systemUptime + timeout
         var nextObservation = ProcessInfo.processInfo.systemUptime
@@ -300,22 +299,110 @@ public enum LaunchEnvironment {
             }
             try readAvailable(output[0], into: &stdout)
             try readAvailable(errors[0], into: &stderr)
-            var information = siginfo_t()
-            let waited = waitid(P_PID, id_t(pid), &information, WEXITED | WNOHANG | WNOWAIT)
-            if waited == 0, information.si_pid == pid {
+            if let status = try spawner.status(pid) {
                 try onPoll?()
                 try readAvailable(output[0], into: &stdout, final: true)
                 try readAvailable(errors[0], into: &stderr, final: true)
-                let status = information.si_code == CLD_EXITED ? information.si_status << 8 : information.si_status
                 transferred = true
                 return (stdout, stderr, status, pid)
             }
-            if waited < 0 && errno != EINTR { throw LoomError.system("Terminal startup wait", errno) }
             guard ProcessInfo.processInfo.systemUptime < deadline else {
                 throw LoomError.environmentTimeout
             }
             usleep(5_000)
         }
+    }
+
+    static func spawnLocal(_ executable: String, _ arguments: [String], environment: [String: String],
+                           directory: String?, output: Int32, error: Int32) throws -> pid_t {
+        var actions: posix_spawn_file_actions_t?
+        var attributes: posix_spawnattr_t?
+        func check(_ error: Int32) throws {
+            guard error == 0 else { throw LoomError.system("Environment spawn setup", error) }
+        }
+        try check(posix_spawn_file_actions_init(&actions))
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        try check(posix_spawnattr_init(&attributes))
+        defer { posix_spawnattr_destroy(&attributes) }
+        try check(posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0))
+        try check(posix_spawn_file_actions_adddup2(&actions, output, STDOUT_FILENO))
+        try check(posix_spawn_file_actions_adddup2(&actions, error, STDERR_FILENO))
+        if let directory {
+            if #available(macOS 26, *) { try check(posix_spawn_file_actions_addchdir(&actions, directory)) }
+            else { try check(posix_spawn_file_actions_addchdir_np(&actions, directory)) }
+        }
+        try check(posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT)))
+        try check(posix_spawnattr_setpgroup(&attributes, 0))
+        let argv = ([executable] + arguments).map { strdup($0) }
+        let envp = environment.map { strdup("\($0.key)=\($0.value)") }
+        defer { argv.forEach { free($0) }; envp.forEach { free($0) } }
+        var pid: pid_t = 0
+        let spawnError = (argv + [nil]).withUnsafeBufferPointer { args in
+            (envp + [nil]).withUnsafeBufferPointer { env in
+                posix_spawn(&pid, executable, &actions, &attributes, args.baseAddress!, env.baseAddress!)
+            }
+        }
+        guard spawnError == 0 else { throw LoomError.system("Terminal environment launch", spawnError) }
+        return pid
+    }
+}
+
+/// How a bounded capture starts its process and later removes everything the
+/// process left. Locally Loom is the parent and owns a process group; in a run
+/// scope the host is the parent and the whole scope is the cleanup boundary.
+struct HelperSpawner: Sendable {
+    let spawn: @Sendable (_ executable: String, _ arguments: [String], _ environment: [String: String],
+                          _ directory: String?, _ output: Int32, _ error: Int32) throws -> pid_t
+    /// waitpid-encoded status once the process exited; nil while it runs.
+    let status: @Sendable (pid_t) throws -> Int32?
+    /// After a successful capture: release the exited process's PID only;
+    /// work it left running stays owned and is stopped by Quit.
+    let release: @Sendable (pid_t) -> Void
+    /// After a failed capture or a one-shot helper: stop everything it left.
+    let abort: @Sendable (pid_t) -> Void
+
+    static let local = HelperSpawner(
+        spawn: { executable, arguments, environment, directory, output, error in
+            try LaunchEnvironment.spawnLocal(executable, arguments, environment: environment,
+                                             directory: directory, output: output, error: error)
+        },
+        status: { pid in
+            var information = siginfo_t()
+            // WNOWAIT keeps the PID (and so its process group) reserved for finish.
+            let waited = waitid(P_PID, id_t(pid), &information, WEXITED | WNOHANG | WNOWAIT)
+            if waited == 0, information.si_pid == pid {
+                return information.si_code == CLD_EXITED ? information.si_status << 8 : information.si_status
+            }
+            if waited < 0 && errno != EINTR { throw LoomError.system("Terminal startup wait", errno) }
+            return nil
+        },
+        release: { pid in while waitpid(pid, nil, 0) < 0 && errno == EINTR {} },
+        abort: { pid in
+            kill(-pid, SIGKILL)
+            kill(pid, SIGKILL)
+            while waitpid(pid, nil, 0) < 0 && errno == EINTR {}
+        }
+    )
+
+    /// Every helper process and anything it forked lives in `scope`, which
+    /// is dedicated to this capture; finish stops all of the scope's forked work.
+    static func scoped(_ scope: RunScope) -> HelperSpawner {
+        HelperSpawner(
+            spawn: { executable, arguments, environment, directory, output, error in
+                let input = open("/dev/null", O_RDONLY | O_CLOEXEC)
+                guard input >= 0 else { throw LoomError.system("Environment input", errno) }
+                defer { Darwin.close(input) }
+                return try scope.spawnBlocking(
+                    executable: executable, arguments: arguments, environment: environment,
+                    directory: directory ?? "", stdio: .descriptors(input: input, output: output, error: error)
+                )
+            },
+            status: { pid in scope.exitStatus(of: pid) },
+            // The host reaped the child; its PID may already be reused, so no
+            // PID or process-group signal is sent here.
+            release: { _ in },
+            abort: { _ in _ = loom_kill_scope_forked_members(scope.coalitionID, 0, 2) }
+        )
     }
 }
 

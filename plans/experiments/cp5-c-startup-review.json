@@ -1,0 +1,24 @@
+{
+  "finding8": "closed within tested startup diagnosis scope",
+  "checks": {
+    "targetedTests": 21,
+    "exitCode": 0,
+    "originalRepro": {
+      "reportedExitCode": 42,
+      "elapsedSeconds": 0.14252400398254395,
+      "rawOutputWithheld": true,
+      "leases": 0,
+      "runningSessions": 0,
+      "shutdownSucceeded": true
+    },
+    "sourceHashesMatch": true
+  },
+  "modelTurnsUsed": 0,
+  "realProviderRetry": false,
+  "unverified": [
+    "real Codex startup cause",
+    "packaged native UI after revision",
+    "unrecognized provider diagnostic detail"
+  ],
+  "evidenceDirectory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-startup-review-20260929"
+}

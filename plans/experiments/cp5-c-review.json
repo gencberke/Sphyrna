@@ -1,0 +1,87 @@
+{
+  "run": "cp5-c-review-20260929",
+  "decision": "changes_requested",
+  "modelTurns": 0,
+  "productionSourcesUnchangedDuringReview": true,
+  "checks": {
+    "build": "passed",
+    "tests": {
+      "passed": 191,
+      "terminal": 13,
+      "core": 148,
+      "ui": 30
+    },
+    "releasePackage": "passed",
+    "signing": "ad-hoc",
+    "gitDiffCheck": "passed",
+    "nativeFixtureUI": "partial_pass_clear_selection_failed"
+  },
+  "findings": [
+    {
+      "id": "4.1.1",
+      "priority": "P1",
+      "result": "reproduced",
+      "issue": "Accepted PTY input lost on automatic idle before provider reads it"
+    },
+    {
+      "id": "4.1.2",
+      "priority": "P1",
+      "result": "reproduced_with_synthetic_unreported_child",
+      "issue": "First turn baseline includes running user child, automatic idle kills it"
+    },
+    {
+      "id": "4.1.3",
+      "priority": "P1",
+      "result": "reproduced",
+      "issue": "Capability probe survives successful runtime shutdown; inherited pipe bypasses timeout"
+    },
+    {
+      "id": "4.1.4",
+      "priority": "P2",
+      "result": "native_UI_reproduced",
+      "issue": "Clear keeps old selection and replaces terminal with history"
+    },
+    {
+      "id": "4.1.5",
+      "priority": "P2",
+      "result": "source_verified",
+      "issue": "Resolved CODEX_HOME ignored without explicit override"
+    },
+    {
+      "id": "4.1.6",
+      "priority": "P2",
+      "result": "source_and_plan_verified",
+      "issue": "Real experiment sequence, approval preconditions and screen-output redaction incomplete"
+    }
+  ],
+  "stalePrecondition": {
+    "result": "accepted",
+    "buildMode": "debug",
+    "repeats": "1 warmup + 5 measured",
+    "historyRows": [
+      1000,
+      10000
+    ],
+    "bulkMedianMs": [
+      2.448625,
+      27.639209
+    ],
+    "eventMedianUs": [
+      1.843916,
+      1.885458
+    ],
+    "controlMedianUs": [
+      1.812625,
+      1.816834
+    ],
+    "mapAfterBulk": 0,
+    "mapAfterEvents": 1
+  },
+  "unverified": [
+    "Real providers and model acceptance",
+    "OWN-1",
+    "Long A/GPU/signing/D acceptance",
+    "Complete native UI and accessibility matrix"
+  ],
+  "evidenceDirectory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-review-20260929"
+}

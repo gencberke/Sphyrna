@@ -1,0 +1,152 @@
+{
+  "status": "prepared-native-execution-required",
+  "recordedAt": "2026-10-03T06:13:48.168020+00:00",
+  "scope": "CP5 D Finder/link/Reduce Motion, real Claude manual denial, OWN-A4",
+  "changedFiles": [
+    "scripts/cp5-remaining-native.py",
+    "Tests/LoomCoreTests/RunScopeTests.swift",
+    "Sources/loom-test-child/main.swift"
+  ],
+  "commands": {
+    "prepare": "python3 scripts/cp5-remaining-native.py --prepare <new absolute directory strictly below ~/Library/Application Support/Loom-Dev/probe>",
+    "check": "python3 scripts/cp5-remaining-native.py --check <redacted-main-observations.json>",
+    "OWN-A4": "swift test --filter RunScopeTests/requestedAppleXPCIsNeverSignaledAndScopeEmpties (main shared check owner)",
+    "nativeLinksLaunch": "Main isolated signed app launch with --evidence <own-evidence> --data-root <own-data> --fixture native-links <prepared absolute own-file>; same source hashes as final package required"
+  },
+  "verified": [
+    "python3 scripts/cp5-remaining-native.py --self-test: passed empty/incomplete oracle rejection, Finder no-Enter/quote/order, missing/wrong link, Reduce Motion pulse rejection, Claude foreign-run/marker/Finished rejection",
+    "Python AST parse: passed",
+    "Temporary own fixture smoke: all files/folder exist, exclusive directory rejects reuse, six OSC8 markers, zsh -f quoted paths roundtrip exact",
+    "git diff --check -- Sources/loom-test-child/main.swift Tests/LoomCoreTests/RunScopeTests.swift: passed",
+    "Static boundary read: helper sends no process signal, starts no app/provider, changes no native preference; A4 fixture only requests Metal compiler and waits; own root creation is exclusive",
+    "Static signal selection: ProcessSupervisor scoped identity set excludes launchdSpawned; C frozen kill skips launchd_spawned before SIGSTOP and SIGKILL"
+  ],
+  "nativeSequence": [
+    "Isolated evidence app --fixture interactive, own prepared fixtures selected in Finder; native multi-item drag, inspect quoted paths in actual Finder order before Return (no echo: output), native Return once, inspect exact completed echo.",
+    "Launch bounded synthetic native-links <prepared existing absolute regular own-file> in isolated evidence app. Observe four separate OSC8 labels CP5_HTTP/CP5_HTTPS/CP5_LOCAL/CP5_ABSOLUTE and native Cmd-click each, recording rendered and actual destination artifacts. Native clipboard paste strips ESC and cannot deliver OSC8 output. CP5_RAW_PATH detection is separate and remains unverified absent a native raw-path observation.",
+    "Active/key working fake-provider card, pulse off/on native Reduce Motion preference with short videos; restore original preference.",
+    "Real isolated Claude fresh same-run first exact own marker Bash request; native No once; same selectedSessionID and selectedRunID -> Waiting for you, empty requests, marker absent, no issue or stop failure. Count submitted model turn after actual native Return.",
+    "Main build and targeted OWN-A4 test; requires observed live launchd-spawned MTLCompilerService inside run coalition, no signal attempt to observed XPC identity, verified Stop, XPC gone, empty coalition. No service observed fails instead of passing vacuously."
+  ],
+  "unverified": [
+    "All native Finder/link/motion/real Claude UI paths: not executed",
+    "Swift build/new OWN-A4 run-scope test: not executed per assigned shared-check ownership",
+    "OWN-A4 nonempty Apple service/retry branch: no deterministic Apple service persistence fixture; existing release failure/retry tests are separate evidence",
+    "OWN-A4 test exercises product supervisor/run host code but is not packaged-app signal trace evidence",
+    "Claude native background/scheduled count preservation and absence of synthetic turnComplete are not exposed by snapshots; combine independent source/tracker evidence, do not claim native verification",
+    "Native observations checker validates main-supplied observation shape/values; main must independently inspect real image/video/destination evidence, not treat attested booleans as independently observed"
+  ],
+  "modelTurnsSpent": 0,
+  "sourceSHA256": {
+    "scripts/cp5-remaining-native.py": "7e40e9c607e69650e081e44a1ff17118ed8848a83bca1c8a53e86c83bc46931b",
+    "Tests/LoomCoreTests/RunScopeTests.swift": "420f72777fe61aa61edfe3273cb47ee2da881b7e67389785f190ba9ed95aa66d",
+    "Sources/loom-test-child/main.swift": "a3219d614ebbfd3a0ee0a88a45da94b28530e38e6c510ee7a79c6c7faf9ea4f7"
+  },
+  "fixtureFollowup": {
+    "recordedAt": "2026-10-03T06:21:35.653120+00:00",
+    "reason": "Main reported targeted OWN-A4 pass, then combined test missing compiler XPC after identical shader cache hit; no product failure concluded.",
+    "changes": [
+      "OWN-A4 shader symbol includes PID+monotonic nanoseconds; shader uint constant also changes per run to avoid library/compiler cache hit",
+      "tcc-read-probe <absolute Documents descendant directory>: directory metadata and enumerate only; stdout contains mode/pid/pathIsDocuments/success, no names/content/path/error"
+    ],
+    "verified": [
+      "git diff --check -- Sources/loom-test-child/main.swift passed",
+      "Static read: inner TCC metadata/enumeration errors are swallowed and only boolean outcome emitted; original fixture29s alarm remains"
+    ],
+    "unverified": [
+      "Swift build and two targeted reruns plus combined suite delegated to main",
+      "Real signed package TCC continuity between two different binaries is not executed by this agent"
+    ],
+    "freezePlan": "After fixture source is final, main owns build/signed packages and Documents native access proof across two binaries with same fixed signing identity. Final package SHA256 app/host/helper and designated requirement are recorded before closing resource measurements; later binary changes require repeating affected evidence."
+  },
+  "linkInstructionCorrection": {
+    "recordedAt": "2026-10-03T06:40:56.428345+00:00",
+    "sourceEvidence": "Sources/loom-app/AppDelegate.swift typeForEvidence delegates only to conversations; synthetic interactive fixture cannot be addressed by type:<dev-owner>.",
+    "result": "Corrected prepare comment/steps and nativeSequence; prepared link-payload.txt contains exact UTF-8 OSC8 bytes without a trailing newline. Native Cmd+V+Return route remains unexecuted; link oracle now requires nativeLinkRendered=true and renderedArtifact for each link.",
+    "verified": [
+      "python3 scripts/cp5-remaining-native.py --self-test passed including absent native rendered-link negative oracle",
+      "Python AST parse passed",
+      "Own temporary prepare smoke: payload file exactly matches plan string bytes, no newline, six OSC8 introducers/terminators; native paste instructions present; whitespace passed"
+    ],
+    "unverified": [
+      "Native clipboard/paste/PTY preservation and actual link rendering/opening not exercised; main must inspect real rendered terminal before accepting"
+    ],
+    "needs": "Main copies prepared payload to native clipboard, pastes/returns in focused synthetic terminal, then records native rendered and destination artifacts.",
+    "supersededBy": "nativeLinkOutputFixture: main native observation found clipboard ESC filtering; paste route is not executable OSC8 preparation"
+  },
+  "nativeLinkOutputFixture": {
+    "recordedAt": "2026-10-03T06:44:00.758868+00:00",
+    "reason": "Main observed actual native paste+Return echo with ESC bytes stripped and literal ]8;;...; no OSC8 native acceptance concluded.",
+    "result": "native-links fixture emits actual OSC8 bytes directly on stdout, one labelled link per CRLF line, bounded300s alarm. Existing modes preserved. Helper uses launch arguments and four label/target map; no clipboard OSC payload route.",
+    "guards": [
+      "exact single absolute-file argument",
+      "standardize and resolve symlinks",
+      "strictly below resolved current-user Library/Application Support/Loom-Dev/probe",
+      "existing regular file",
+      "path contains no ASCII control/DEL characters; no arbitrary OSC8 injection"
+    ],
+    "wire": "ESC ]8;; <target> ESC backslash <label> ESC ]8;; ESC backslash CR LF",
+    "labels": {
+      "CP5_HTTP": "http://example.com/?loom-cp5-native=http",
+      "CP5_HTTPS": "https://example.com/?loom-cp5-native=https",
+      "CP5_LOCAL": "resolved own file URL absoluteString",
+      "CP5_ABSOLUTE": "resolved own absolute path OSC8 target"
+    },
+    "verified": [
+      "swiftc -frontend -parse Sources/loom-test-child/main.swift passed (syntax parse only)",
+      "python3 scripts/cp5-remaining-native.py --self-test passed including wrong/missing native rendered label rejection",
+      "Python AST parse passed",
+      "Own temporary probe-area prepare smoke passed arguments/4labels/targets and outside+symlink path rejection",
+      "git diff --check fixture and helper whitespace passed"
+    ],
+    "unverified": [
+      "Swift compile/link, packaged native output/click behavior not executed by this agent",
+      "Raw unlinked path recognition is separate from CP5_ABSOLUTE OSC8 target, remains unverified absent main native evidence"
+    ],
+    "needs": "Main owns shared build, signed package, and native screen/destination observations; package final hash must account for this fixture source edit before closure measurements."
+  },
+  "mainChecks": {
+    "combinedSuite": {
+      "status": "verified",
+      "passed": 322,
+      "core": 261,
+      "terminal": 20,
+      "ui": 41,
+      "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/full-suite-final.log"
+    },
+    "OWN-A4": {
+      "status": "verified",
+      "twoFreshCompilerRunsPassed": true,
+      "logs": [
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/own-a4-repeat1.log",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/own-a4-repeat2.log"
+      ],
+      "failedCachedShaderRunPreserved": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/full-suite.log"
+    },
+    "reduceMotion": {
+      "status": "verified",
+      "nativeObservations": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/native-observations.json"
+    },
+    "nativeLinks": {
+      "status": "native dispatch unverified",
+      "renderStatus": "four OSC8 link labels rendered in package C",
+      "evidence": "plans/experiments/cp5-final-signed-native.json",
+      "artifact": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/native-links-final/rendered.png",
+      "reason": "CUA offers no mouse modifier for native Cmd-click; earlier ESC paste failure is historical"
+    },
+    "finderDrop": {
+      "status": "unverified",
+      "reason": "CUA drag did not produce a native movement; user input requested"
+    },
+    "realClaudeManualNo": {
+      "status": "verified",
+      "CLI": "Claude Code 2.1.287",
+      "model": "Haiku 4.5",
+      "modelTurnsSpentByMain": 1,
+      "evidence": "plans/experiments/cp5-final-signed-native.json",
+      "artifact": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/real-denial/result.json",
+      "limits": "native tracker counts/background preservation not exposed; No state/marker verified"
+    }
+  },
+  "mainAcceptanceStatus": "OWN-A4, Reduce Motion, real Claude native No verified; Finder drop/link dispatch unverified"
+}

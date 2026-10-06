@@ -1,0 +1,222 @@
+--- a/Sources/SwiftTerm/Apple/TerminalSnapshot.swift
++++ b/Sources/SwiftTerm/Apple/TerminalSnapshot.swift
+@@ -310,6 +310,17 @@
+     var kitty = SnapshotKitty()
+     var ansiColors: [Color] = []
+     var cgRegion: CGRect?
++    /// Visible row indices whose content, bidi layout or images changed in the
++    /// last refresh (Loom partial row invalidation); nil when no row changed.
++    private(set) var changedRowSpan: ClosedRange<Int>?
++    /// True when per-row correctness of a partial redraw is not provable for the
++    /// last refresh: scroll, geometry or buffer change, a frozen
++    /// (synchronized output) interval, images, double-size rows or any
++    /// style change. The whole view must then be redrawn.
++    private(set) var requiresFullRedraw = true
++    private var previousLayout: (yDisp: Int, rows: Int, cols: Int, alt: Bool)?
++    private var followsFrozenFrame = false
++    private var previousHadImages = false
+     var rangeChanged: (start: Int, end: Int)?
+     /// True when view-dependent appearance changed without a cell-content
+     /// change. Core Graphics uses this to invalidate the visible surface.
+@@ -339,6 +350,7 @@
+                   deferBidiTypesetting: Bool = false) -> RefreshResult {
+         terminal.terminalLock.preconditionLocked()
+         guard !terminal.synchronizedOutputActive else {
++            followsFrozenFrame = true
+             return .frozen
+         }
+ 
+@@ -407,6 +419,8 @@
+                                                   snapshotArena: snapshotArena))
+         }
+ 
++        var changedSpan: ClosedRange<Int>?
++        var hasDoubleSizeRow = false
+         for index in 0..<visibleCount {
+             let absoluteRow = firstRow + index
+             let source = buffer.lines[absoluteRow]
+@@ -487,11 +501,29 @@
+             }
+             if contentChanged || bidiChanged || styleChanged || imagesChanged {
+                 destination.revision &+= 1
++            }
++            if contentChanged || bidiChanged || imagesChanged {
++                changedSpan = changedSpan.map { min($0.lowerBound, index)...max($0.upperBound, index) }
++                    ?? index...index
+             }
++            if destination.line.renderMode != .single {
++                hasDoubleSizeRow = true
++            }
+         }
+ 
+         kitty = SnapshotKitty(renderSnapshot: terminal.kittyGraphicsRenderSnapshot())
+ 
++        let layout = (yDisp: buffer.yDisp, rows: buffer.rows, cols: buffer.cols,
++                      alt: terminal.isCurrentBufferAlternate)
++        changedRowSpan = changedSpan
++        requiresFullRedraw = previousLayout.map { $0 != layout } != false ||
++            buffer.yDisp != buffer.yBase || followsFrozenFrame || styleChanged ||
++            bidiInputsChanged || hasDoubleSizeRow || buffer.hasAnyImages ||
++            !kitty.renderSnapshot.placements.isEmpty || previousHadImages
++        previousHadImages = buffer.hasAnyImages || !kitty.renderSnapshot.placements.isEmpty
++        previousLayout = layout
++        followsFrozenFrame = false
++
+         // Built here rather than by the caller: the caret's attributes need it,
+         // and everything it reads — style, palette, cols — is final by this
+         // point. One context per refresh, reused by whoever draws the frame.
+--- a/Sources/SwiftTerm/Apple/TerminalRenderOwner.swift
++++ b/Sources/SwiftTerm/Apple/TerminalRenderOwner.swift
+@@ -531,55 +531,50 @@
+                 let region: CGRect
+ 
+ #if os(macOS)
+-                var redrawStart = rowStart
+-                var redrawEnd = rowEnd
+-                if !buffer.lines.isEmpty, rowStart >= 0, rowEnd >= rowStart,
+-                   rowEnd < terminal.rows {
+-                    let maxRow = buffer.lines.count - 1
+-                    let absoluteStart = max(0, min(buffer.yDisp + rowStart, maxRow))
+-                    let absoluteEnd = max(
+-                        absoluteStart,
+-                        min(buffer.yDisp + rowEnd, maxRow))
+-                    let dependencies = TerminalBidi.renderingDependencyRange(
+-                        rows: absoluteStart...absoluteEnd,
+-                        buffer: buffer,
+-                        maximumRows: terminal.options.maximumBidiParagraphRows)
+-                    redrawStart = max(0, dependencies.lowerBound - buffer.yDisp)
+-                    redrawEnd = min(
+-                        terminal.rows - 1,
+-                        dependencies.upperBound - buffer.yDisp)
+-                }
+-
+-                if buffer.yDisp != buffer.yBase {
++                // Only rows whose content actually changed are invalidated: the
++                // terminal update range also spans every row the cursor
++                // travelled over. Anything a partial redraw cannot prove
++                // (scroll, resize, style, images, double-size rows,
++                // end of synchronized output) invalidates the whole view.
++                let fullRedraw = resizedTo != nil ||
++                    session.snapshot.requiresFullRedraw
++                if fullRedraw || buffer.yDisp != buffer.yBase || buffer.lines.isEmpty {
+                     region = request.viewState.viewBounds
+-                } else {
++                } else if var span = session.snapshot.changedRowSpan {
++                    if span.lowerBound >= 0, span.upperBound < terminal.rows {
++                        let maxRow = buffer.lines.count - 1
++                        let absoluteStart = max(0, min(buffer.yDisp + span.lowerBound, maxRow))
++                        let absoluteEnd = max(
++                            absoluteStart,
++                            min(buffer.yDisp + span.upperBound, maxRow))
++                        let dependencies = TerminalBidi.renderingDependencyRange(
++                            rows: absoluteStart...absoluteEnd,
++                            buffer: buffer,
++                            maximumRows: terminal.options.maximumBidiParagraphRows)
++                        span = max(0, dependencies.lowerBound - buffer.yDisp)...min(
++                            terminal.rows - 1,
++                            dependencies.upperBound - buffer.yDisp)
++                    }
+                     let cellHeight = request.viewState.cellDimension.height
+                     let width = request.viewState.viewBounds.width
+-                    var dirtyRegion = CGRect(
+-                        x: 0,
+-                        y: request.viewState.viewFrameHeight -
+-                            (cellHeight + CGFloat(redrawEnd) * cellHeight),
+-                        width: width,
+-                        height: CGFloat(redrawEnd - redrawStart + 1) * cellHeight)
+-                    if redrawEnd == terminal.rows - 1 {
+-                        dirtyRegion = CGRect(
+-                            x: 0, y: 0, width: width,
+-                            height: dirtyRegion.height + dirtyRegion.origin.y)
+-                    } else {
+-                        let newY = max(0, dirtyRegion.origin.y - cellHeight)
+-                        dirtyRegion = CGRect(
+-                            x: 0, y: newY, width: width,
+-                            height: dirtyRegion.maxY - newY)
+-                    }
+-                    region = dirtyRegion
++                    let top = request.viewState.viewFrameHeight -
++                        (cellHeight + CGFloat(span.upperBound) * cellHeight)
++                    // One row of margin below (descenders); the last row
++                    // extends to the view's bottom edge.
++                    let bottom = span.upperBound == terminal.rows - 1 ? 0 : max(0, top - cellHeight)
++                    let maxY = request.viewState.viewFrameHeight - CGFloat(span.lowerBound) * cellHeight
++                    region = CGRect(x: 0, y: bottom, width: width, height: maxY - bottom)
++                } else {
++                    // The cursor moved over unchanged rows: the caret is its own view.
++                    region = .null
+                 }
+ #else
+                 region = request.viewState.viewBounds
+ #endif
+-                session.snapshot.cgRegion = region
++                session.snapshot.cgRegion = region.isNull ? nil : region
+                 session.snapshot.rangeChanged = changed
+                 result = TerminalView.PreparedFrame(
+-                    region: region,
++                    region: region.isNull ? nil : region,
+                     rangeChanged: changed,
+                     notifyAccessibility: request.notifyAccessibility,
+                     needsMetalDisplay: metalActive,
+--- a/Sources/SwiftTerm/Apple/AppleTerminalView.swift
++++ b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
+@@ -3136,7 +3136,10 @@
+         }
+     }
+ 
+-    // TODO: this should not render any lines outside the dirtyRect
++    /// Test hook: absolute row the draw leaves out, to prove the pixel
++    /// comparison notices a dropped dirty row.
++    nonisolated(unsafe) static var skipRowForTesting: Int?
++
+     func drawTerminalContents (dirtyRect: TTRect, context: CGContext, bufferOffset: Int)
+     {
+         // The Core Graphics draw: glyph shaping and painting from the snapshot,
+@@ -3179,8 +3182,10 @@
+         // On Mac, we are drawing the terminal buffer
+         let cellHeight = cellDimension.height
+         let boundsMaxY = bounds.maxY
+-        let firstRow = snapshot.yDisp+Int ((boundsMaxY-dirtyRect.maxY)/cellHeight)
+-        let lastRow = snapshot.yDisp+Int((boundsMaxY-dirtyRect.minY)/cellHeight)
++        // One row of margin each way: glyph overhang of a neighbour can reach
++        // into the dirty rect, and the clip below keeps pixels outside it intact.
++        let firstRow = snapshot.yDisp+Int ((boundsMaxY-dirtyRect.maxY)/cellHeight) - 1
++        let lastRow = snapshot.yDisp+Int((boundsMaxY-dirtyRect.minY)/cellHeight) + 1
+         #endif
+ 
+         let kittyRenderSnapshot = snapshot.kitty.renderSnapshot
+@@ -3287,10 +3292,13 @@
+         // scroll region, line insert/delete) otherwise keeps stale glyphs/backgrounds.
+         // Clear to transparent — not fill — so a translucent background is preserved.
+         context.clear(dirtyRect)
++        context.saveGState()
++        context.clip(to: dirtyRect)
++        defer { context.restoreGState() }
+         #endif
+ 
+         for row in firstRow...lastRow {
+-            if row < 0 {
++            if row < 0 || row == TerminalView.skipRowForTesting {
+                 continue
+             }
+             guard let snapshotRow = snapshot.row(atAbsolute: row) else {
+--- a/Sources/SwiftTerm/Mac/MacTerminalView.swift
++++ b/Sources/SwiftTerm/Mac/MacTerminalView.swift
+@@ -529,6 +529,9 @@
+     /// https://gist.github.com/lukaskubanek/9a61ac71dc0db8bb04db2028f2635779
+     /// https://developer.apple.com/forums/thread/663256?answerId=646653022#646653022
+     public var disableFullRedrawOnAnyChanges = false
++
++    /// Test hook: receives the dirty rect AppKit passed to `draw(_:)`.
++    var drawRectObserver: ((CGRect) -> Void)?
+     var fontSet: FontSet
+ 
+     /// Options used to create the `Terminal` that backs this view; set by `init(frame:font:options:)`,
+@@ -1689,6 +1692,7 @@
+         guard let currentContext = getCurrentGraphicsContext() else {
+             return
+         }
++        drawRectObserver?(dirtyRect)
+         drawTerminalContents (dirtyRect: dirtyRect, context: currentContext, bufferOffset: 0)
+         TerminalView.onFramePresented?()
+     }

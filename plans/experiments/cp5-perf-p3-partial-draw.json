@@ -1,0 +1,21 @@
+{
+  "slice": "CP5 PERF P3 partial row invalidation",
+  "date": "2026-10-04",
+  "build": "debug, --scratch-path .build/p3",
+  "tests": {
+    "file": "Tests/LoomTerminalTests/TerminalPartialDrawTests.swift",
+    "command": "swift test --scratch-path .build/p3 -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib --filter TerminalPartialDrawTests",
+    "incrementalDrawEqualsFullRedraw": "passed: byte-identical to full redraw after every step (colors, descenders, spinner rewrites, cursor moves, mid-row update, scroll, selection, double-width line); >= 6 partial regions",
+    "singleRowUpdateInvalidatesOnlyThatRow": "passed: region = row + one-row margin below (height 2 cells, maxY at the row top); cursor-only move -> no region",
+    "droppedDirtyRowIsDetected": "known issue recorded as expected: 3260 bytes differ when one dirty row is skipped",
+    "layerBackingStorePreservesPixelsOutsideTheDirtyRect": "passed: real NSWindow, layer-backed view, default layerContentsRedrawPolicy (duringViewResize), wantsLayer. AppKit delivered the exact partial rect (0,0,641,48 of 192) for 4 frames. WindowServer composite after partial updates vs after forced full redraw: 317 of ~504k bytes differ, all in the untouched rows, max channel delta 1 (compositing rounding); no content difference."
+  },
+  "notes": {
+    "layerContentsType": "layer.contents is NSViewBackingLayerContents (private display list), not an IOSurface; CALayer.render(in:) triggers a redraw so it is not usable as proof; CGWindowListCreateImage (dlsym) used instead",
+    "previousRegionExample": "CUP to row 12 after cursor at row 3 gave update range 2..11 and a 10-row dirty rect; now row 12 only"
+  },
+  "deferred": [
+    "release micro-benchmark partialDrawCostBenchmark (written, compiled, not run): LOOM_RENDER_BENCH=1 swift test -c release --scratch-path .build/p3r -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib --filter TerminalPartialDrawTests/partialDrawCostBenchmark",
+    "full LoomTerminalTests and TerminalDirectGlyphTests"
+  ]
+}

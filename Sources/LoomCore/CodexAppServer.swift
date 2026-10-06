@@ -60,6 +60,13 @@ public enum CodexAppServerError: Error, CustomStringConvertible, Equatable, Send
     case closed
     case rpc(code: Int?, message: String, data: JSONValue?)
 
+    /// The server answered that it has no such thread: there is no work of
+    /// that thread to stop or unsubscribe.
+    public var isThreadNotFound: Bool {
+        guard case let .rpc(_, message, _) = self else { return false }
+        return message.lowercased().contains("not found")
+    }
+
     public var description: String {
         switch self {
         case let .system(operation, code):
@@ -127,6 +134,7 @@ public enum CodexAppServerEvent: Equatable, Sendable {
                        outcome: CodexTurnOutcome, lastAssistantMessage: String?)
     case error(threadID: String, turnID: String?, message: String?, willRetry: Bool)
     case threadClosed(threadID: String)
+    case serverRequestResolved(threadID: String, requestID: JSONValue)
     case unknown(method: String)
 }
 
@@ -142,6 +150,10 @@ public enum CodexAppServerInbound: Equatable, Sendable {
     case event(sequence: UInt64, CodexAppServerEvent)
     case request(sequence: UInt64, CodexServerRequest)
 }
+
+/// Development measurement hook: called with each inbound frame's JSON-RPC
+/// method (nil for responses) and byte count. The product leaves it unset.
+public typealias CodexInboundObserver = @Sendable (_ method: String?, _ bytes: Int) -> Void
 
 public struct CodexThreadSnapshot: Equatable, Sendable {
     public let threadID: String
@@ -183,12 +195,24 @@ public actor CodexAppServerClient {
     private let transport: CodexWebSocketTransport
     private let eventContinuation: AsyncStream<CodexAppServerInbound>.Continuation
     private var readerTask: Task<Void, Never>?
-    private var pending: [Int: CheckedContinuation<JSONValue, any Error>] = [:]
+    private struct PendingRequest {
+        let continuation: CheckedContinuation<JSONValue, any Error>
+        let deadline: Task<Void, Never>
+    }
+    private var pending: [Int: PendingRequest] = [:]
+    private var deadlineTaskCount = 0
+    private let wireDiagnostics: CodexWireDiagnostics?
+    private let inboundObserver: CodexInboundObserver?
     private var nextRequestID = 1
     private var sequence: UInt64 = 0
     private var terminalError: (any Error)?
 
-    private init(transport: CodexWebSocketTransport) {
+    private init(
+        transport: CodexWebSocketTransport, wireDiagnostics: CodexWireDiagnostics?,
+        inboundObserver: CodexInboundObserver? = nil
+    ) {
+        self.wireDiagnostics = wireDiagnostics
+        self.inboundObserver = inboundObserver
         self.transport = transport
         var continuation: AsyncStream<CodexAppServerInbound>.Continuation!
         events = AsyncStream(bufferingPolicy: .bufferingNewest(4_096)) {
@@ -197,26 +221,68 @@ public actor CodexAppServerClient {
         eventContinuation = continuation
     }
 
+    /// Notifications the product connection never consumes. Loom reads only
+    /// thread/started, thread/status/changed, turn/started, turn/completed, error,
+    /// serverRequest/resolved and thread/closed (plus server requests, which are
+    /// not notifications and cannot be opted out). Everything here is either a
+    /// high-frequency stream or item/hook/realtime/account detail that the
+    /// decoder maps to `.unknown`, which the router drops as unmatched. The
+    /// list is per connection: the TUI's own connection is unaffected. Names the
+    /// server does not know are ignored, so version skew cannot fail initialize.
+    public static let productOptOutNotificationMethods: [String] = [
+        "item/started", "item/completed",
+        "item/agentMessage/delta", "item/plan/delta",
+        "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded",
+        "item/reasoning/textDelta",
+        "item/commandExecution/outputDelta", "item/commandExecution/terminalInteraction",
+        "item/fileChange/outputDelta", "item/fileChange/patchUpdated",
+        "item/mcpToolCall/progress",
+        "command/exec/outputDelta", "process/outputDelta",
+        "thread/tokenUsage/updated", "turn/diff/updated", "turn/plan/updated",
+        "account/rateLimits/updated", "model/safetyBuffering/updated",
+        "hook/started", "hook/completed",
+        "thread/realtime/itemAdded", "thread/realtime/item/started",
+        "thread/realtime/item/transcript/delta", "thread/realtime/item/completed",
+        "thread/realtime/transcript/delta", "thread/realtime/transcript/done",
+        "thread/realtime/outputAudio/delta",
+    ]
+
+    /// `optOutNotificationMethods` defaults to none so diagnostic and probe
+    /// connections keep seeing everything the server sends.
     public static func connect(
         socketPath: String, clientName: String = "loom",
-        clientVersion: String, timeout: TimeInterval = 5
+        clientVersion: String, timeout: TimeInterval = 5,
+        wireDiagnostics: CodexWireDiagnostics? = nil,
+        optOutNotificationMethods: [String] = [],
+        inboundObserver: CodexInboundObserver? = nil
     ) async throws -> CodexAppServerClient {
         let transport = try await Task.detached {
             try CodexWebSocketTransport(socketPath: socketPath, timeout: timeout)
         }.value
-        let client = CodexAppServerClient(transport: transport)
+        let client = CodexAppServerClient(
+            transport: transport, wireDiagnostics: wireDiagnostics, inboundObserver: inboundObserver)
         await client.startReader()
-        _ = try await client.request(
-            method: "initialize",
-            params: .object([
-                "clientInfo": .object([
-                    "name": .string(clientName), "version": .string(clientVersion),
-                ]),
-                "capabilities": .object(["experimentalApi": .bool(true)]),
-            ]), timeout: timeout
-        )
-        try await client.notify(method: "initialized", params: .object([:]))
-        return client
+        do {
+            var capabilities: [String: JSONValue] = ["experimentalApi": .bool(true)]
+            if !optOutNotificationMethods.isEmpty {
+                capabilities["optOutNotificationMethods"] = .array(optOutNotificationMethods.map(JSONValue.string))
+            }
+            _ = try await client.request(
+                method: "initialize",
+                params: .object([
+                    "clientInfo": .object([
+                        "name": .string(clientName), "version": .string(clientVersion),
+                    ]),
+                    "capabilities": .object(capabilities),
+                ]), timeout: timeout
+            )
+            try await client.notify(method: "initialized", params: .object([:]))
+            return client
+        } catch {
+            wireDiagnostics?.invalidate("preparation")
+            await client.close()
+            throw error
+        }
     }
 
     deinit {
@@ -227,16 +293,43 @@ public actor CodexAppServerClient {
 
     public func latestSequence() -> UInt64 { sequence }
 
+    // Internal socket-pair entry point and lifecycle counters for deterministic
+    // transport tests; the public connection still performs the WebSocket upgrade.
+    static func connectedSocket(descriptor: Int32, bufferedFrames: [UInt8] = []) async throws -> CodexAppServerClient {
+        let client = CodexAppServerClient(
+            transport: try CodexWebSocketTransport(descriptor: descriptor, bufferedFrames: bufferedFrames), wireDiagnostics: nil)
+        await client.startReader()
+        return client
+    }
+
+    func requestWorkCounts() -> (pending: Int, deadlines: Int) {
+        (pending.count, deadlineTaskCount)
+    }
+
+    nonisolated func readWaitCounts() -> (waiting: Bool, wakeups: Int) {
+        transport.readWaitCounts()
+    }
+
     public func request(
         method: String, params: JSONValue = .object([:]),
         timeout: TimeInterval = 20
     ) async throws -> JSONValue {
+        try Task.checkCancellation()
         if let terminalError { throw terminalError }
         let id = nextRequestID
         nextRequestID += 1
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                pending[id] = continuation
+                deadlineTaskCount += 1
+                let deadline = Task { [weak self] in
+                    let expired: Bool
+                    do {
+                        try await Task.sleep(for: .seconds(max(0.02, timeout)))
+                        expired = true
+                    } catch { expired = false }
+                    await self?.deadlineEnded(id: id, method: method, expired: expired)
+                }
+                pending[id] = PendingRequest(continuation: continuation, deadline: deadline)
                 let transport = self.transport
                 Task.detached {
                     do {
@@ -248,12 +341,6 @@ public actor CodexAppServerClient {
                     } catch {
                         await self.failRequest(id: id, error: error)
                     }
-                }
-                Task { [weak self] in
-                    try? await Task.sleep(for: .seconds(max(0.02, timeout)))
-                    await self?.failRequest(
-                        id: id, error: CodexAppServerError.timeout(method)
-                    )
                 }
             }
         } onCancel: {
@@ -270,28 +357,28 @@ public actor CodexAppServerClient {
         try await Task.detached { try transport.send(data) }.value
     }
 
+    /// Status comes from a history-free `thread/read`; the last turn (id, start,
+    /// outcome, last assistant message) from the newest page of `thread/turns/list`,
+    /// so a long conversation is never transferred or decoded in full. A thread
+    /// without persisted turns reports no last turn; an unknown thread still fails.
     public func readThread(_ threadID: String) async throws -> CodexThreadSnapshot {
-        let result: JSONValue
-        do {
-            result = try await request(
-                method: "thread/read",
-                params: .object([
-                    "threadId": .string(threadID), "includeTurns": .bool(true),
-                ])
-            )
-        } catch CodexAppServerError.rpc(-32601, let message, _)
-            where message.contains("list_turns") {
-            // A newly created TUI thread has no persisted turns yet.
-            result = try await request(
-                method: "thread/read",
-                params: .object([
-                    "threadId": .string(threadID), "includeTurns": .bool(false),
-                ])
-            )
+        var snapshot = try await readThreadOnce(threadID)
+        // The two reads are not atomic. Status and the newest turn disagree only
+        // while a turn starts or ends between them, so one retry settles it.
+        if snapshot.isActive != (snapshot.lastTurnOutcome == .unknown("inProgress"))
+            && snapshot.lastTurnID != nil {
+            snapshot = try await readThreadOnce(threadID)
         }
-        let thread = result.object?["thread"]?.object ?? [:]
-        let turns = thread["turns"]?.array ?? []
-        let lastTurn = turns.last?.object
+        return snapshot
+    }
+
+    private func readThreadOnce(_ threadID: String) async throws -> CodexThreadSnapshot {
+        let statusResult = try await request(
+            method: "thread/read",
+            params: .object(["threadId": .string(threadID), "includeTurns": .bool(false)])
+        )
+        let thread = statusResult.object?["thread"]?.object ?? [:]
+        let lastTurn = try await newestTurn(threadID)
         return CodexThreadSnapshot(
             threadID: thread["id"]?.string ?? threadID,
             lastTurnID: lastTurn?["id"]?.string,
@@ -303,6 +390,24 @@ public actor CodexAppServerClient {
             isIdle: thread["status"]?.object?["type"]?.string == "idle",
             status: Self.decodeStatus(thread["status"])
         )
+    }
+
+    private func newestTurn(_ threadID: String) async throws -> [String: JSONValue]? {
+        do {
+            let page = try await request(
+                method: "thread/turns/list",
+                params: .object([
+                    "threadId": .string(threadID), "limit": .number(1),
+                    "sortDirection": .string("desc"), "itemsView": .string("summary"),
+                ])
+            )
+            return page.object?["data"]?.array?.first?.object
+        } catch CodexAppServerError.rpc(let code, let message, _)
+            where (code == -32600 && message.contains("not materialized"))
+                || (code == -32601 && message.contains("list_turns")) {
+            // A newly created TUI thread has no persisted turns yet.
+            return nil
+        }
     }
 
     public func backgroundTerminals(threadID: String) async throws -> [String] {
@@ -394,6 +499,15 @@ public actor CodexAppServerClient {
         throw CodexAppServerError.timeout("verifying stopped thread \(threadID)")
     }
 
+    /// Joining is deliberately limited to identity: native TUI settings remain authoritative.
+    public func joinThread(_ threadID: String, timeout: TimeInterval = 20) async throws {
+        let result = try await request(method: "thread/resume",
+            params: .object(["threadId": .string(threadID)]), timeout: timeout)
+        guard result.object?["thread"]?.object?["id"]?.string == threadID else {
+            throw CodexAppServerError.protocolViolation("thread/resume returned a missing or different thread identity")
+        }
+    }
+
     public func unsubscribe(threadID: String) async throws {
         _ = try await request(
             method: "thread/unsubscribe",
@@ -413,6 +527,7 @@ public actor CodexAppServerClient {
         readerTask?.cancel()
         readerTask = nil
         transport.close()
+        if terminalError == nil { terminalError = CodexAppServerError.closed }
         failAll(CodexAppServerError.closed)
         eventContinuation.finish()
     }
@@ -423,7 +538,7 @@ public actor CodexAppServerClient {
         readerTask = Task.detached { [weak self] in
             do {
                 while !Task.isCancelled {
-                    let messages = try transport.receive(timeout: 0.25)
+                    let messages = try await transport.receive()
                     for message in messages { await self?.receive(message) }
                 }
             } catch {
@@ -432,14 +547,25 @@ public actor CodexAppServerClient {
         }
     }
 
-    private func receive(_ data: Data) {
+    private func receive(_ data: Data) async {
+        let diagnosticToken = wireDiagnostics?.observe(data)
+        if let inboundObserver {
+            let head = try? JSONDecoder().decode(JSONValue.self, from: data)
+            inboundObserver(head?.object?["method"]?.string, data.count)
+        }
+        func decoded(_ outcome: String) {
+            if let diagnosticToken { wireDiagnostics?.decoded(diagnosticToken, outcome: outcome) }
+        }
         do {
             let value = try JSONDecoder().decode(JSONValue.self, from: data)
             guard let object = value.object else {
                 throw CodexAppServerError.protocolViolation("expected JSON object")
             }
             if let id = Self.integer(object["id"]), object["method"] == nil {
-                guard let continuation = pending.removeValue(forKey: id) else { return }
+                decoded("response")
+                guard let request = pending.removeValue(forKey: id) else { return }
+                request.deadline.cancel()
+                let continuation = request.continuation
                 if let error = object["error"]?.object {
                     continuation.resume(throwing: CodexAppServerError.rpc(
                         code: Self.integer(error["code"]),
@@ -457,30 +583,46 @@ public actor CodexAppServerClient {
             sequence &+= 1
             let params = object["params"] ?? .object([:])
             if let id = object["id"] {
-                yieldInbound(.request(
+                decoded("request")
+                let inbound = CodexAppServerInbound.request(
                     sequence: sequence,
                     CodexServerRequest(
                         id: id, method: method, params: params,
                         threadID: params.object?["threadId"]?.string,
                         kind: Self.requestKind(method)
                     )
-                ))
+                )
+                if let diagnosticToken { await wireDiagnostics?.route(inbound, token: diagnosticToken) }
+                yieldInbound(inbound)
             } else {
-                yieldInbound(.event(
-                    sequence: sequence, Self.decodeEvent(method: method, params: params)
-                ))
+                let event = Self.decodeEvent(method: method, params: params)
+                if case .unknown = event { decoded("unknown-event") } else { decoded("event") }
+                let inbound = CodexAppServerInbound.event(sequence: sequence, event)
+                if let diagnosticToken { await wireDiagnostics?.route(inbound, token: diagnosticToken) }
+                yieldInbound(inbound)
             }
         } catch {
+            decoded("failed")
             readerStopped(error)
         }
     }
 
     private func failRequest(id: Int, error: any Error) {
-        pending.removeValue(forKey: id)?.resume(throwing: error)
+        if let request = pending.removeValue(forKey: id) {
+            request.deadline.cancel()
+            if case CodexAppServerError.timeout = error { wireDiagnostics?.invalidate("timeout") }
+            request.continuation.resume(throwing: error)
+        }
+    }
+
+    private func deadlineEnded(id: Int, method: String, expired: Bool) {
+        deadlineTaskCount -= 1
+        if expired { failRequest(id: id, error: CodexAppServerError.timeout(method)) }
     }
 
     private func yieldInbound(_ inbound: CodexAppServerInbound) {
         if case .dropped = eventContinuation.yield(inbound) {
+            wireDiagnostics?.invalidate("stream-drop")
             readerStopped(CodexAppServerError.protocolViolation(
                 "event consumer fell more than 4096 messages behind"
             ))
@@ -489,15 +631,20 @@ public actor CodexAppServerClient {
 
     private func readerStopped(_ error: any Error) {
         guard terminalError == nil else { return }
+        wireDiagnostics?.invalidate(error is CodexAppServerError && (error as? CodexAppServerError) == .closed ? "disconnect" : "protocol")
         terminalError = error
+        transport.close()
         failAll(error)
         eventContinuation.finish()
     }
 
     private func failAll(_ error: any Error) {
-        let continuations = pending.values
+        let requests = pending.values
         pending.removeAll()
-        for continuation in continuations { continuation.resume(throwing: error) }
+        for request in requests {
+            request.deadline.cancel()
+            request.continuation.resume(throwing: error)
+        }
     }
 
     private static func integer(_ value: JSONValue?) -> Int? {
@@ -565,6 +712,15 @@ public actor CodexAppServerClient {
                 message: object["error"]?.object?["message"]?.string,
                 willRetry: object["willRetry"]?.bool ?? false
             )
+        case "serverRequest/resolved":
+            guard let threadID = object["threadId"]?.string,
+                  let requestID = object["requestId"] else { return .unknown(method: method) }
+            switch requestID {
+            case .string: break
+            case let .number(value) where value.isFinite && value.rounded() == value: break
+            default: return .unknown(method: method)
+            }
+            return .serverRequestResolved(threadID: threadID, requestID: requestID)
         case "thread/closed":
             guard let threadID = object["threadId"]?.string else {
                 return .unknown(method: method)
@@ -624,6 +780,30 @@ private final class CodexWebSocketTransport: @unchecked Sendable {
     private var input: [UInt8] = []
     private var fragments: [UInt8]?
     private var closed = false
+    private var readSource: (any DispatchSourceRead)?
+    private var readSourceSuspended = true
+    private var readWaiter: CheckedContinuation<Void, any Error>?
+    private var testReadWakeups: Int?
+
+    init(descriptor: Int32, bufferedFrames: [UInt8]) throws {
+        self.descriptor = descriptor
+        input = bufferedFrames
+        do {
+            var enabled: Int32 = 1
+            guard fcntl(descriptor, F_SETFL, O_NONBLOCK) == 0,
+                  fcntl(descriptor, F_SETFD, FD_CLOEXEC) == 0,
+                  setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &enabled,
+                             socklen_t(MemoryLayout.size(ofValue: enabled))) == 0 else {
+                throw CodexAppServerError.system(operation: "socket setup", code: errno)
+            }
+            testReadWakeups = 0
+            installReadSource()
+        } catch {
+            Darwin.close(descriptor)
+            self.descriptor = -1
+            throw error
+        }
+    }
 
     init(socketPath: String, timeout: TimeInterval) throws {
         var address = sockaddr_un()
@@ -669,6 +849,7 @@ private final class CodexWebSocketTransport: @unchecked Sendable {
                 }
             }
             try upgrade(deadline: deadline)
+            installReadSource()
         } catch {
             Darwin.close(descriptor)
             descriptor = -1
@@ -683,8 +864,61 @@ private final class CodexWebSocketTransport: @unchecked Sendable {
         let fd = descriptor
         descriptor = -1
         closed = true
+        let source = readSource
+        readSource = nil
+        let waiter = readWaiter
+        readWaiter = nil
+        if let source {
+            if readSourceSuspended { source.resume() }
+            source.cancel()
+        }
         lock.unlock()
-        if fd >= 0 { Darwin.close(fd) }
+        waiter?.resume(throwing: CodexAppServerError.closed)
+        // Once installed, the source's cancel handler exclusively owns close.
+        if source == nil, fd >= 0 { Darwin.close(fd) }
+    }
+
+    private func installReadSource() {
+        let fd = descriptor
+        let source = DispatchSource.makeReadSource(
+            fileDescriptor: fd, queue: DispatchQueue(label: "loom.codex.socket-read"))
+        source.setEventHandler { [weak self] in self?.readReady() }
+        source.setCancelHandler { Darwin.close(fd) }
+        readSource = source
+    }
+
+    private func readReady() {
+        let waiter: CheckedContinuation<Void, any Error>? = lock.withLock {
+            guard !closed, let source = readSource, !readSourceSuspended else { return nil }
+            source.suspend()
+            readSourceSuspended = true
+            if let count = testReadWakeups { testReadWakeups = count + 1 }
+            let waiter = readWaiter
+            readWaiter = nil
+            return waiter
+        }
+        waiter?.resume()
+    }
+
+    func readWaitCounts() -> (waiting: Bool, wakeups: Int) {
+        lock.withLock { (readWaiter != nil, testReadWakeups ?? 0) }
+    }
+
+    private func waitForRead() async throws {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (waiter: CheckedContinuation<Void, any Error>) in
+                lock.withLock {
+                    guard !closed, let source = readSource else {
+                        waiter.resume(throwing: CodexAppServerError.closed)
+                        return
+                    }
+                    precondition(readWaiter == nil, "Only one socket reader is allowed")
+                    readWaiter = waiter
+                    readSourceSuspended = false
+                    source.resume()
+                }
+            }
+        } onCancel: { self.close() }
     }
 
     func send(_ data: Data) throws {
@@ -696,15 +930,22 @@ private final class CodexWebSocketTransport: @unchecked Sendable {
         try sendFrameLocked(opcode: 1, payload: Array(data))
     }
 
-    func receive(timeout: TimeInterval) throws -> [Data] {
+    func receive() async throws -> [Data] {
+        while true {
+            try Task.checkCancellation()
+            let messages = try receiveReady()
+            if !messages.isEmpty { return messages }
+            try await waitForRead()
+        }
+    }
+
+    private func receiveReady() throws -> [Data] {
+        var messages: [Data] = []
         lock.lock()
         defer { lock.unlock() }
         guard descriptor >= 0, !closed else { throw CodexAppServerError.closed }
-        var messages: [Data] = []
         try parseFramesLocked(into: &messages)
         if !messages.isEmpty { return messages }
-        let deadline = ProcessInfo.processInfo.systemUptime + max(0.001, timeout)
-        guard try waitIfReady(for: Int16(POLLIN), deadline: deadline) else { return [] }
         var bytes = [UInt8](repeating: 0, count: 16_384)
         let count = Darwin.recv(descriptor, &bytes, bytes.count, 0)
         if count > 0 {
@@ -903,11 +1144,12 @@ private final class CodexWebSocketTransport: @unchecked Sendable {
         }
     }
 
-    private func waitIfReady(for events: Int16, deadline: TimeInterval) throws -> Bool {
+    private func waitIfReady(for events: Int16, deadline: TimeInterval,
+                             on waitDescriptor: Int32? = nil) throws -> Bool {
         while true {
             let remaining = deadline - ProcessInfo.processInfo.systemUptime
             guard remaining > 0 else { return false }
-            var descriptor = pollfd(fd: self.descriptor, events: events, revents: 0)
+            var descriptor = pollfd(fd: waitDescriptor ?? self.descriptor, events: events, revents: 0)
             let result = poll(&descriptor, 1, Int32(min(remaining * 1000 + 1, 5_000)))
             if result > 0 {
                 guard descriptor.revents & Int16(POLLNVAL) == 0 else {

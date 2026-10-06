@@ -1,0 +1,174 @@
+{
+  "finding": "proc_pid_rusage CPU Mach ticks incorrectly exposed as nanoseconds",
+  "recordedUTC": "2026-09-30T11:36:42.769251+00:00",
+  "status": "implemented; final package/measurement owned by main",
+  "scope": [
+    "Sources/CLoomPOSIX/CLoomPOSIX.c",
+    "Sources/CLoomPOSIX/include/CLoomPOSIX.h",
+    "Tests/LoomCoreTests/ProcessLifecycleTests.swift"
+  ],
+  "sourceHashes": {
+    "Sources/CLoomPOSIX/CLoomPOSIX.c": "8e6af5ef1af531dcae601a5a127befa1ab58c25b2ed0a42c4a7663d51a99440b",
+    "Sources/CLoomPOSIX/include/CLoomPOSIX.h": "9d395a573519f748e782b5812aacdacccb94e1926f9febb9fc2498aa544a14be",
+    "Tests/LoomCoreTests/ProcessLifecycleTests.swift": "7c271b1c8b5044720a258102cafd2ef6da2327bf00a54ec48abca608a5b0f75e"
+  },
+  "beforeCLoomPOSIXSHA256": "d51030b946f85c279e6469ab9a8044d279df7fc73d6a1db6ab9a17633960f98f",
+  "patch": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-cpu-unit-fix-20260930/cpu.patch",
+  "localSDK": {
+    "header": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/resource.h",
+    "declarations": "rusage_info_v4 ri_user_time/ri_system_time are uint64_t without a public unit annotation; unit decision based on local independent calibration.",
+    "timebase": "mach_timebase_info() numer 125 / denom 3"
+  },
+  "independentCalibration": {
+    "command": "clang -Wall -Wextra -Werror calibrate.c -o calibrate; ./calibrate",
+    "durationSeconds": 1.2,
+    "reference": "getrusage RUSAGE_SELF timeval seconds+microseconds AND CLOCK_PROCESS_CPUTIME_ID timespec seconds+nanoseconds",
+    "before": {
+      "pid": 13845,
+      "timebaseNumer": 125,
+      "timebaseDenom": 3,
+      "rawCPUdelta": 28766216,
+      "getrusageDeltaNs": 1198585000,
+      "processClockDeltaNs": 1198573000,
+      "rawOverGetrusage": 0.024000147,
+      "convertedOverGetrusage": 1.000006118,
+      "work": 10311615245628243841
+    },
+    "after": [
+      {
+        "pid": 14345,
+        "timebaseNumer": 125,
+        "timebaseDenom": 3,
+        "rawCPUdelta": 28773764,
+        "getrusageDeltaNs": 1198907000,
+        "processClockDeltaNs": 1198909000,
+        "rawOverGetrusage": 0.023999997,
+        "convertedOverGetrusage": 0.999999861,
+        "work": 5260851220611131313
+      },
+      {
+        "loomCPUdeltaNs": 1198908625,
+        "loomOverGetrusage": 1.000001355
+      }
+    ],
+    "actualProductionAfterCommand": "clang -Wall -Wextra -Werror -I Sources/CLoomPOSIX/include calibrate-fixed.c Sources/CLoomPOSIX/CLoomPOSIX.c -o calibrate-fixed; ./calibrate-fixed",
+    "actualProductionAfterExit": 0,
+    "conclusion": "raw counters are Mach ticks on this host; old CPU values were approximately 41.6667 times too low. Converted actual production counter agrees with independent getrusage ratio 1.000001355."
+  },
+  "implementation": "Private Mach tick conversion uses mach_timebase_info and __uint128_t intermediate; EIO on unavailable/invalid timebase, ERANGE if converted result exceeds UINT64_MAX. Public output is populated only after both conversions succeed; failure remains zero with error return. No cache/fallback or lifecycle changes. Header documents nanoseconds and failure contract.",
+  "checks": [
+    {
+      "phase": "red",
+      "command": "swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib --filter 'ProcessLifecycleTests/processResourceCPUUsesNanosecondsLikeGetrusage'",
+      "exit": 1,
+      "issues": 1,
+      "ratio": 0.023916931381846397,
+      "result": "Independent getrusage ratio assertion fails; own CPU work and all other test preconditions pass."
+    },
+    {
+      "phase": "green",
+      "command": "swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib --filter 'ProcessLifecycleTests/processResourceCPUUsesNanosecondsLikeGetrusage'",
+      "exit": 0,
+      "tests": 1,
+      "seconds": 0.15
+    },
+    {
+      "phase": "affected",
+      "command": "swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib --filter 'ProcessLifecycleTests'",
+      "exit": 0,
+      "tests": 10,
+      "seconds": 4.625
+    },
+    {
+      "phase": "C strict compile",
+      "command": "clang -Wall -Wextra -Werror -I Sources/CLoomPOSIX/include -c Sources/CLoomPOSIX/CLoomPOSIX.c -o /tmp/loom-cpu-calibration/CLoomPOSIX.o",
+      "exit": 0
+    },
+    {
+      "phase": "private bounds harness",
+      "command": "clang -Wall -Wextra -Werror -I Sources/CLoomPOSIX/include /tmp/loom-cpu-calibration/bounds.c -o /tmp/loom-cpu-calibration/bounds; /tmp/loom-cpu-calibration/bounds",
+      "exit": 0,
+      "cases": [
+        "24 ticks125/3\u21921000ns",
+        "truncation1tick\u219241ns",
+        "identitytimebaseUINT64MAX valid",
+        "UINT64MAX\u00d7UINT32MAX overflowERANGE",
+        "zero denominatorEIO",
+        "zero numeratorEIO",
+        "invalidPID EINVAL and public outputzero"
+      ]
+    },
+    {
+      "phase": "build",
+      "command": "swift build",
+      "exit": 0,
+      "seconds": 14.28
+    },
+    {
+      "phase": "whitespace",
+      "command": "git diff --check",
+      "exit": 0
+    }
+  ],
+  "artifacts": {
+    "bounds.c": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-cpu-unit-fix-20260930/bounds.c",
+      "sha256": "10f0e8a173c11755eee6ecbbe0d8acc08f7662d1a8e96d15cd13b614519c546a"
+    },
+    "red.log": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-cpu-unit-fix-20260930/red.log",
+      "sha256": "0486231d969fd47b66385a1851cab477f79414896438db18ac4ce26f7b1ad5af"
+    },
+    "raw.json": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-cpu-unit-fix-20260930/raw.json",
+      "sha256": "eedaa80fd6a4b6fe26685b8efdaee3220e62aacc6e19dd911fea5f85e496cb4c"
+    },
+    "green.log": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-cpu-unit-fix-20260930/green.log",
+      "sha256": "2254d8898e225a592bf17403349dc24e319dffb82b654cd5660c345d49c57cb7"
+    },
+    "calibrate.c": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-cpu-unit-fix-20260930/calibrate.c",
+      "sha256": "3fda719fa42cc2a628ea3d7ff1d80b56201c327c6ed408d0bddedbe963b4c083"
+    },
+    "fixed.jsonl": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-cpu-unit-fix-20260930/fixed.jsonl",
+      "sha256": "d9108e4582fdf7bd07a0b6b1fb0729702c5fdf0c8d0bff05242ff6476ed3e609"
+    },
+    "CLoomPOSIX.before.c": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-cpu-unit-fix-20260930/CLoomPOSIX.before.c",
+      "sha256": "d51030b946f85c279e6469ab9a8044d279df7fc73d6a1db6ab9a17633960f98f"
+    },
+    "affected.log": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-cpu-unit-fix-20260930/affected.log",
+      "sha256": "bf46f67645d665aa3fb631dad9accaee2d9174d628880270ad8f0545b7da947a"
+    },
+    "bounds.log": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-cpu-unit-fix-20260930/bounds.log",
+      "sha256": "0f7da09faf0a40f2a8214a3700902c47d30820cd2377067d22f8acb330ec71f9"
+    },
+    "cpu.patch": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-cpu-unit-fix-20260930/cpu.patch",
+      "sha256": "ee54c9d36abf450733d7b3f66b217b1a1dae5f35aa1add0dede379672694ef4b"
+    },
+    "calibrate-fixed.c": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-cpu-unit-fix-20260930/calibrate-fixed.c",
+      "sha256": "ca6cd60f64affb05d8b58558022a562924174bc388f0398b03d854db87bea0fc"
+    },
+    "build.log": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-cpu-unit-fix-20260930/build.log",
+      "sha256": "f5d2377cf5c2b191add1a944cac2314959a0e67066f4d621f2d9e65a89a6d236"
+    }
+  },
+  "unverified": [
+    "Old native app CPU resource runs remain unverified; main must repackage and repeat measurements. No quantitative resource-budget result from old values is claimed.",
+    "No native application or model run for this revision.",
+    "mach_timebase_info kernel failure branch is source-checked; invalid ratio/overflow arithmetic is exercised via private source-including standalone C test."
+  ],
+  "notes": [
+    "Getrusage compares total CPU for the same process, including all threads, so the Swift regression does not assume wall-time CPU utilization.",
+    "Package required for metrics change; prior lifecycle/native acceptance remains evidence of its original binary, not re-executed here.",
+    "ProcessTable and Python delta denominator already use nanoseconds correctly and were not changed.",
+    "Existing unrelated Swift/linker warnings remain."
+  ]
+}

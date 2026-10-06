@@ -32,7 +32,7 @@ public struct ProviderLaunchProfile: Sendable {
     }
 
     public enum CodexRoute: Sendable {
-        case baseline, direct, disableAutoStart, server(socket: String), remote(socket: String, threadID: String?)
+        case baseline, direct, disableAutoStart, server(socket: String), remote(socket: String, threadID: String?, workingDirectory: String)
     }
 
     public enum ClaudeRoute: Equatable, Sendable {
@@ -54,10 +54,10 @@ public struct ProviderLaunchProfile: Sendable {
         case let .server(socket):
             guard capabilities.supportsListen else { throw LoomError.message("Codex app-server lacks --listen") }
             arguments = ["app-server", "--listen", "unix://\(socket)"]
-        case let .remote(socket, threadID):
+        case let .remote(socket, threadID, workingDirectory):
             guard capabilities.supportsRemote else { throw LoomError.message("Codex lacks --remote") }
             arguments = threadID.map { ["resume", $0] } ?? []
-            arguments += ["--remote", "unix://\(socket)"]
+            arguments += ["--remote", "unix://\(socket)", "--cd", workingDirectory]
         }
         var env = environment; env["CODEX_HOME"] = home.path
         return Self(arguments: arguments, environment: env)
@@ -108,24 +108,20 @@ public struct ProviderLaunchProfile: Sendable {
     private static func claudeSettings(hooks: ClaudeHookLaunchConfiguration?) throws -> String {
         var settings: [String: Any] = ["crossSessionInbound": "refuse"]
         if let hooks {
-            let asynchronous: [String: Any] = [
-                "type": "command", "command": hooks.helperPath,
-                "args": [], "async": true,
-            ]
-            let sessionEnd: [String: Any] = [
+            // These authority events only forward local IPC. Keep helpers
+            // synchronous and bounded so Loom does not reorder identity/state
+            // by racing helper startup; helpers return no provider decision.
+            let bounded: [String: Any] = [
                 "type": "command", "command": hooks.helperPath,
                 "args": [], "timeout": 1,
             ]
             var eventHooks: [String: Any] = [:]
             for event in [
                 "SessionStart", "UserPromptSubmit", "Stop", "StopFailure",
-                "Notification", "PermissionRequest",
+                "Notification", "PermissionRequest", "SessionEnd",
             ] {
-                eventHooks[event] = [["hooks": [asynchronous]]]
+                eventHooks[event] = [["hooks": [bounded]]]
             }
-            // Claude may terminate async processes during teardown. Keep the
-            // tiny SessionEnd delivery synchronous and under its 1.5 s budget.
-            eventHooks["SessionEnd"] = [["hooks": [sessionEnd]]]
             settings["hooks"] = eventHooks
         }
         let data = try JSONSerialization.data(

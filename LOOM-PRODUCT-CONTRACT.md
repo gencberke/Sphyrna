@@ -1,6 +1,6 @@
 # Loom — ürün sözleşmesi ve geliştirme kararları
 
-**Güncelleme:** 27 Eylül 2026  
+**Güncelleme:** 2 Ekim 2026\
 **Durum:** Ürün yönü ve kabul edilen kararlar tanımlı; uygulama ve teknik kabul deneyleri henüz tamamlanmadı.
 
 Bu dosya Loom için güncel başlangıç belgesidir. Kullanıcının beklentilerini, Claude ile yapılan görüşmede alınan kararları ve sonraki teknik değerlendirmeyi birleştirir. Bir davranışın burada hedeflenmesi, uygulanmış veya test edilmiş olduğu anlamına gelmez.
@@ -28,8 +28,10 @@ Loom'un güvenilirliği, az kaynak tüketimiyle birlikte değerlendirilir. Yaln�
 | [Görsel sözleşme](design/DESIGN.md) | Korunacak arayüz öğeleri, ölçüler, renkler, kısayollar ve eski uygulamanın davranış envanteri. Envanter Loom gereksinimi değildir; çelişkide bu dosya esas alınır. |
 | `design/` | Referans görseller ve `legacy-code/` altındaki eski Swift arayüz kaynakları. Eski çizim kodunun, terminal motorunun veya mimarinin aynen kullanılması şart değil. |
 | `assets/` | Uygulama simgesi, sağlayıcı simgeleri ve `brand/` altında marka kaynakları ile telif notları. |
-| `plans/` | Checkpoint planları ve sonuçları. |
-| [`agents/`](agents/README.md) | Ajan rolleri (reviewer, implementer, optimizer) ve plan dosyaları üzerinden çalışma protokolü. |
+| `plans/` | Kısa checkpoint ve slice planları, karar/kabul kayıtları, ayrı deney kanıtları ve korunmuş geçmiş yazışmalar. |
+| [Çalışma akışı](AGENTS.md) ve [ajan rolleri](agents/README.md) | Planner-reviewer yönetiminde doğrudan subagent delegasyonu ve rollerin sorumlulukları. |
+| [Güncel durum](STATUS.md) | Aktif checkpoint/slice, sıradaki rol ve ilgili plan bölümü. |
+| [Geliştirme rehberi](DEVELOPMENT.md) | Kontroller, deney izolasyonu ve kanıt yöntemi. |
 
 İlk araştırma raporu, eski spec ve Herdr kaldırma kaydı bu dosyaya ve görsel sözleşmeye taşındıktan sonra repodan çıkarıldı.
 
@@ -41,12 +43,17 @@ Bu belgede **kabul edilen davranışlar**, **teknik adaylar** ve **açık kararl
 | --- | --- |
 | Temel deneyim | Claude Code ve Codex'in gerçek CLI/terminal deneyimi korunacak. |
 | Görsel hedef | Mevcut tasarım ve ikonlar korunacak. |
+| Minimum macOS | macOS 27 ve sonrası (28 Eylül 2026 kullanıcı kararı). |
+| İlk pencere kapsamı | Claude ve Codex; proje/projesiz sohbet, aktivite/proje listesi, arama, yeniden adlandırma, durum göstergeleri, devam/durdur ve temel terminal işlemleri. Diğer sağlayıcılar, çocuk görev görünümü, Dock/menü çubuğu bildirimleri ve silme sonraya bırakılır (28 Eylül 2026 kullanıcı kararı). |
+| Pencere kapatma | Kırmızı kapatma düğmesi ve Cmd+W pencereyi kapatır; uygulama ve işler çalışmayı sürdürür. Cmd+Q, sahip olunan işleri durdurarak uygulamadan çıkar (28 Eylül 2026 kullanıcı kararı). |
 | Uygulamadan tam çıkış | Loom'a ait işler durdurulabilir. Normal çıkış tamamlandığında Loom'a ait çalışan süreç kalmamalı. |
 | Claude Agent View | Süreç sahipliğini korumak için Loom'un başlattığı Claude oturumlarında kapatılabilir. Bu kabul edilmiş bir CLI özellik istisnasıdır. |
 | Sağlayıcı sürümleri | Claude veya Codex sürümü sabitlenmeyecek. |
 | Çekirdek dili | Swift; çekirdek bu repoda yazılır ve checkpoint kodu uygulamanın çekirdeği olur. Terminal motoru ve arayüz teknolojisi ayrıca seçilecek. |
 | Deney izolasyonu | Checkpoint deneyleri izole CLI profillerinde (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) yapılır. Kullanıcının gerçek profilleri ve oturumları yalnızca etkilenmediklerini doğrulamak için okunur. |
-| Süreç sahipliği güvencesi | macOS'un süreçleri başlatan uygulamaya göre grupladığı resource coalition bilgisi, belgelenmemiş olsa da ek güvence katmanı olarak kullanılır. Çalışma anında sınanır; çalışmazsa Loom mevcut yöntemlere döner ve garanti kapsamının daraldığını açıkça bildirir. Sorun çıkarsa düzeltilerek ilerlenir. |
+| Süreç sahipliği güvencesi | Her yönetilen run, LaunchServices ile açılan küçük bir run yardımcısının yeni resource coalition'ında başlar ve sahiplik sınırı bu run kapsamıdır (§6). Loom'un kendi uygulama coalition'ı sahiplik tohumu değildir. Kapsam kurulamazsa oturum normal başlatılmaz, görünür hata verilir. Coalition ve soy bilgisi belgelenmemiş `proc_pidinfo` türleriyle okunur; okunamaz veya biçimi değişmişse sonuç başarı sayılmaz (2 Ekim 2026 kullanıcı kararı). |
+| Codex sunucusu ve kapsam | Her canlı Codex oturumu kendi app-server'ını, TUI'siyle aynı run kapsamında çalıştırır; tek oturum Stop'u o oturumun bütün işini kapsar (2 Ekim 2026 kullanıcı kararı). |
+| Loom çökmesi | Run yardımcısı, Loom bağlantısı düzenli çıkış olmadan koparsa kendi kapsamındaki çatallanmış işi durdurup çıkar (2 Ekim 2026 kullanıcı kararı). |
 | Yönetilen CLI ortamı | Loom'un açtığı CLI'lar kullanıcının terminalindeki ortamı alır. Yalnızca Loom'un kendi üst oturumundan sızabilecek değişkenler dışarıda kalır ve Loom işaretleri eklenir. Terminal gibi davranılır: shell başlangıç dosyalarındaki hatalar ve uyarılar oturum açmayı durdurmaz, görünür uyarı olarak gösterilir. Ortam hiç alınamazsa açık hata verilir ve uygulama yeniden başlatılmadan tekrar denenebilir. |
 | Oturumlar arası iletişim | Kullanıcının görevlendirmesi ve yetkilendirdiği kapsam içinde gerçekleşecek. |
 | Checkpoint sırası | Durum ve devam → ilk pencere (terminal motoru ve arayüz) → silme ve saklama → yetkilendirilmiş koordinasyon. Pencere, Loom'un erken kullanılabilmesi için öne alındı. Koordinasyon, durum takibine dayandığı ve en belirsiz iş olduğu için sona kaldı. |
@@ -107,7 +114,7 @@ Yeni promptla devam etmek yeni bir OS süreci gerektirebilir. Sohbet kimliği, �
 
 Codex app-server, son abonelik kaldırıldıktan sonra belirli koşullarda thread'i hemen boşaltmıyor; araştırmada 30 dakikalık bekleme belgelenmişti. Bu davranış kabul edildi. [Codex App Server](https://learn.chatgpt.com/docs/app-server)
 
-Bu yüzden idle için “mutlak sıfır bellek” iddiası kullanılmaz. Kapatılan oturumun aktif işi ve terminali sonlanmalı; ortak sağlayıcının tuttuğu geçici bellek ayrı ölçülmelidir. CP2'de Loom'a ait ortak sunucunun ilk Codex oturumuyla başladığı, son Codex oturumu bırakılınca kapandığı ve başka canlı oturumları etkilemediği doğrulandı. Sunucu kullanıcı sohbeti olarak kataloğa yazılmaz ama aynı süreç sahipliği ve Quit sözleşmesine tabidir.
+Bu yüzden idle için “mutlak sıfır bellek” iddiası kullanılmaz. Kapatılan oturumun aktif işi ve terminali sonlanmalı; ortak sağlayıcının tuttuğu geçici bellek ayrı ölçülmelidir. CP2'de Loom'a ait ortak sunucunun ilk Codex oturumuyla başladığı, son Codex oturumu bırakılınca kapandığı ve başka canlı oturumları etkilemediği doğrulandı. 2 Ekim 2026 kararıyla her canlı Codex oturumu kendi sunucusunu çalıştırır (§3). Oturum durunca sunucusu da kapanır; durmuş bir oturum için sunucu önbelleği kalmaz. Sunucu kullanıcı sohbeti olarak kataloğa yazılmaz ama aynı süreç sahipliği ve Quit sözleşmesine tabidir.
 
 ## 5. Stale ve saklama politikası
 
@@ -145,7 +152,7 @@ Codex için iki yol deneyle karşılaştırılacak:
 1. Loom'a ait app-server ve ona bağlanan gerçek Codex TUI.
 2. Paylaşılan daemon kullanımını kapatan doğrudan Codex TUI.
 
-27 Eylül 2026 tarihli [Checkpoint 1 deneylerinde](plans/CHECKPOINT-1.md) codex-cli 0.157.1'in düz TUI yolunda izole daemon bileşenlerini kendiliğinden başlattığı doğrulandı. `--no-daemon` ve Loom'a ait app-server + remote TUI yolları, sınanan aktif tur/arka plan işi koşullarında temiz kapandı. Kullanıcı kararıyla Loom'a ait app-server + remote TUI yolu seçildi (§3) ve CP2'de ürün çekirdeğine uygulandı. Boş `thread/start` sonucunu ilk turdan önce TUI `resume` ile açma deneyi başarısızdı; TUI'nin oluşturduğu kimlik `thread/started` olayından alınır. Olayda PTY/run ayıracı olmadığı için yeni TUI başlatmaları sıraya alınır. Başka istemcinin başlattığı remote TUI her turn/item ayrıntısını yayınlamadığında son durum ve yanıt `thread/read`, arka plan işi `thread/backgroundTerminals/list` ile hydrate edilir; durum ve approval olayları doğrudan izlenir.
+27 Eylül 2026 tarihli [Checkpoint 1 deneylerinde](plans/CHECKPOINT-1.md) codex-cli 0.157.1'in düz TUI yolunda izole daemon bileşenlerini kendiliğinden başlattığı doğrulandı. `--no-daemon` ve Loom'a ait app-server + remote TUI yolları, sınanan aktif tur/arka plan işi koşullarında temiz kapandı. Kullanıcı kararıyla Loom'a ait app-server + remote TUI yolu seçildi (§3) ve CP2'de ürün çekirdeğine uygulandı. Boş `thread/start` sonucunu ilk turdan önce TUI `resume` ile açma deneyi başarısızdı; TUI'nin oluşturduğu kimlik `thread/started` olayından alınır. Olayda PTY/run ayıracı olmadığı için CP2'de ortak sunucuda yeni TUI başlatmaları sıraya alınıyordu; oturum başına sunucuda her sunucu yalnız kendi TUI'sini görür. Başka istemcinin başlattığı remote TUI her turn/item ayrıntısını yayınlamadığında son durum ve yanıt `thread/read`, arka plan işi `thread/backgroundTerminals/list` ile hydrate edilir; durum ve approval olayları doğrudan izlenir.
 
 Başka uygulamaların veya kullanıcının terminalinin paylaşılan Codex sunucusu Loom'a ait kabul edilmez. Önlenemeyen veya sahipliği belirsiz daemon davranışında “nasıl olsa çıkışta öldürürüz” yaklaşımı uygulanmaz.
 
@@ -153,11 +160,18 @@ Süreç grupları, PID + başlangıç zamanı ve ortam işaretleri inceleme aday
 
 Checkpoint 1'de genel sahiplik garantisini engelleyen sınır da tekrarlandı: ilk anlık görüntüden önce session dışına kaçan `/bin/sleep`, ortam işareti okunamadığında ve ledger'a girmediğinde bulunamıyor. Gerçek sağlayıcı ve birleşik deneylerin kalıntısız bitmesi bu A5 açığını kapatmıyor; checkpoint'e tam kabul verilmedi.
 
-Review sırasında yapılan tek örneklemlik denemede, `setsid` ve çift fork ile launchd'ye geçen bir `/bin/sleep` başlatanın resource coalition'ında kaldı; ilgisiz bir uygulama farklı coalition'daydı. Bu bilgi public SDK'da olmayan bir `proc_pidinfo` türüyle okunuyor. Ek güvence katmanı olarak kullanılması kabul edildi (§3). Katman yalnızca Loom kendi coalition'ına sahipse, yani LaunchServices ile uygulama olarak açıldıysa çalışır. Terminalden başlatılan bir süreç terminal uygulamasının coalition'ını paylaştığı için bu durumda katman kendini kapatmalı ve bunu bildirmelidir. Kapanış deneyleri [CP1 planı](plans/CHECKPOINT-1.md) §12'dedir.
+**Run kapsamı (2 Ekim 2026).** Uygulama coalition'ı temiz bir sınır değildir: Apple XPC servis örnekleri her uygulamanın coalition'ına sonradan katılır. Loom coalition oluşturamaz veya çocuğunu başka coalition'a koyamaz; bu işlemler XNU'da ayrıcalıklıdır. LaunchServices ile açılan AppKit'siz run yardımcısı ise her açılışta yeni ve tek üyeli bir coalition alır. Coalition üyeliği fork'ta miras kalır ve yetkisiz süreç tarafından değiştirilemez. Bu yüzden `setsid`, çift fork ve launchd'ye yeniden ebeveynlenme kapsamdan çıkarmaz.
+
+- **Çatallanmış iş ve launchd üyeleri:** Süreç tablosundaki `p_orig_ppidversion` alanı fork anındaki ebeveyni exec ve yeniden ebeveynlenmeden sonra da korur. Bu alanla çatallanmış iş, launchd'nin başlattığı üyelerden (yardımcının kendisi, istek üzerine açılan Apple XPC örnekleri) ayrılır.
+- **Durdurma:** Stop/Quit çatallanmış üyeleri dondurur, kimliklerini yeniden doğrular ve durdurur. Launchd üyelerine sinyal gönderilmez. Başarı için kapsamın tamamen boşalması gerekir.
+- **Kapsam dışı (yapısı gereği):** LaunchServices veya launchd'ye devredilen iş (`open -a`, `launchctl`, `brew services`, Docker daemon işleri); bir terminalde de aynı sınır vardır. Başka UID'ye geçmiş süreçler durdurulamazsa başarısızlık olarak raporlanır.
+- **İzinler:** Run yardımcısı ayrı bir uygulama olduğundan, yönetilen CLI'ların korumalı klasör (ör. Belgeler) erişimi macOS'ta yardımcıya atfedilir. Kalıcı izin için sabit imza gerekir.
+
+Kanıt: [run kapsamı araştırması](plans/experiments/cp5-own-run-scope-research.json) ve [OWN planı](plans/cp5/OWN.md). Eski tek örneklemlik uygulama coalition denemesi [CP1 planı](plans/CHECKPOINT-1.md) §12'de tarihsel kayıttır.
 
 Normal Quit, uygulama çökmesi ve Force Quit ayrı test senaryolarıdır. Sonraki açılışta kalıntı temizlemek bir kurtarma yolu olabilir; kapalı kalınan sürede sıfır kaynak garantisi sayılmaz. Çökme sonrası davranış kanıtlanmadan normal çıkış testinin sonucu bu senaryoya genellenmez.
 
-Pencere kapatma düğmesinin tam çıkışla aynı mı farklı mı davranacağı hâlâ açık ürün kararıdır.
+Pencere kapatma düğmesi ve Cmd+W yalnızca pencereyi kapatır; uygulama ve işler sürer. Tam çıkış Cmd+Q ile yapılır (§3).
 
 ## 7. Kullanıcının yönetiminde oturumlar arası koordinasyon
 
@@ -263,7 +277,9 @@ Kontrol edilecek davranışlar:
 
 Eski Herdr GPU sorununun kök nedeni kanıtlanmış değil. Aynı terminal yüküyle **cam/opak arka plan × boşta/çıktı** deneyi, görünür ve örtülü pencere koşullarında yapılmalı. Gerekirse animasyon etkisi ayrı deneyle ölçülür. CPU gözlemlerinden GPU sonucu çıkarılmaz. [Apple çizim verimliliği](https://developer.apple.com/documentation/xcode/improving-your-app-s-rendering-efficiency)
 
-Sayısal bellek, CPU, GPU ve gecikme bütçeleri henüz belirlenmedi. İlk ölçüm checkpoint'inde kaydedilip kabul edilmeden “hafiflik doğrulandı” denmez.
+3 Ekim 2026 kullanıcı kararı: yoğun terminal CPU üst sınırı %40. Mevcut CP5 sentetik ölçümünde %100 bir mantıksal çekirdektir; 1 MiB/sn yükte her 60 sn koşunun ortalama app + fixture + run-scope/host toplamı bu tavanla değerlendirilir. Sağlayıcı/fixture maliyeti ile Loom'un kendi ek yükü ayrıca gösterilir; bu tavanın tutulması tek başına Loom'un minimal ek yükünü kanıtlamaz. Kullanıcı Loom'un kaynak yükünün minimum olmasını, gerçek CLI deneyimi ve sahiplik güvencesi korunarak mümkünse sağlayıcı maliyetinin de azaltılmasını istedi. Loom'un eklediği Codex app-server gibi native sağlayıcı süreçlerinin maliyeti de entegrasyon ek yükü olarak ayrıca gösterilir; yalnız binary'nin sağlayıcıya ait olması bu maliyeti Loom değerlendirmesinden çıkarmaz.
+
+Bellek, GPU ve gecikme için diğer [sayısal öneriler](plans/cp5/RESOURCE-BUDGET-PROPOSAL.md) henüz onaylanmadı. Kabul edilmiş kapsam ve ölçüm olmadan “hafiflik doğrulandı” denmez.
 
 ## 11. Geliştirme checkpoint'leri
 
@@ -281,13 +297,15 @@ Her checkpoint sonucu **doğrulanan / başarısız / doğrulanmayan** olarak kay
 
 Numaralar checkpoint kimlikleridir. Uygulama sırası kullanıcı kararıyla (§3): 1 → 2 → 5'in terminal motoru ve ilk pencere kısmı → 4 → 3. GPU deneyi pencereyle birlikte yapılır.
 
+İlk pencere planı: [Checkpoint 5](plans/CHECKPOINT-5.md). Bu dilim bütün v1 özelliklerinin ya da tüm performans kabulünün tamamlandığı anlamına gelmez.
+
 Checkpoint'ler, tüm uygulamayı kurmadan yüksek riskli iddiaları dar deneylerle sınamak içindir. Bir sonraki adıma geçmek, önceki checkpoint'in bilinmeyenlerini gizlemek anlamına gelmez.
 
 ## 12. Kalan kararlar
 
 Ürün amacı ve temel davranışlar büyük ölçüde net. Uygulamadan önce bütün teknik ayrıntıları seçmek gerekmiyor; fakat şu sonuçlar açık bırakılmamalı:
 
-1. **Çıkış sınırı:** Normal Quit dışında çökme/Force Quit için hangi garanti gerçekten verilebiliyor; pencere kapatma nasıl davranacak?
+1. **Çıkış sınırı:** Normal Quit dışında çökme/Force Quit için hangi garanti gerçekten verilebiliyor? Pencere kapatma davranışı kararlaştırıldı (§3).
 2. **İletişim yolu:** Hangi Claude teslim mekanizması, sahiplik ve güncelleme şartlarını birlikte karşılıyor? (Codex çalışma yolu kararlaştırıldı, §3.)
 3. **Veri sözleşmesi:** Güvenli tek sohbet silmenin kesin yerel kapsamı, ortak dosyaların yönetimi ve sağlayıcı retention uyumu.
 4. **Temizlik hesabı:** Aylık takvim, stale görüntülemesinin sayaca etkisi ve uzun kapalı kalma eşiği.

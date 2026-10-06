@@ -56,7 +56,7 @@ extension Probe {
                 workingDirectory: root.appendingPathComponent("workspace").path
             )
             try await supervisor.createSession(session)
-            let client = try await manager.acquire(for: session.id)
+            let client = try await manager.start()
             let adapter = CodexSessionAdapter(supervisor: supervisor)
             let coordinator = CodexSessionCoordinator(
                 client: client, supervisor: supervisor, adapter: adapter

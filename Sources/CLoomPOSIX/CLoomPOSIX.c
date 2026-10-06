@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <libproc.h>
 #include <limits.h>
+#include <mach/mach_time.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -139,6 +140,24 @@ fail: {
     }
 }
 
+int loom_open_pty(unsigned short rows, unsigned short cols, int *master_fd, int *slave_fd) {
+    if (master_fd == NULL || slave_fd == NULL || rows == 0 || cols == 0) { errno = EINVAL; return -1; }
+    *master_fd = -1; *slave_fd = -1;
+    int master = -1, slave = -1;
+    struct winsize size = { .ws_row = rows, .ws_col = cols };
+    if (openpty(&master, &slave, NULL, NULL, &size) < 0) { return -1; }
+    master = private_fd(master);
+    if (master < 0) { int saved = errno; close(slave); errno = saved; return -1; }
+    slave = private_fd(slave);
+    if (slave < 0) { int saved = errno; close(master); errno = saved; return -1; }
+    int flags = fcntl(master, F_GETFL);
+    if (flags < 0 || fcntl(master, F_SETFL, flags | O_NONBLOCK) < 0) {
+        int saved = errno; close(master); close(slave); errno = saved; return -1;
+    }
+    *master_fd = master; *slave_fd = slave;
+    return 0;
+}
+
 int loom_processes(loom_process_info **processes, size_t *count) {
     if (processes == NULL || count == NULL) { errno = EINVAL; return -1; }
     *processes = NULL; *count = 0;
@@ -179,6 +198,25 @@ int loom_processes(loom_process_info **processes, size_t *count) {
 
 void loom_free_processes(loom_process_info *processes) { free(processes); }
 
+int loom_process_for_pid(pid_t pid, loom_process_info *out) {
+    if (out == NULL || pid <= 0) { errno = EINVAL; return -1; }
+    int mib[] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, pid };
+    struct kinfo_proc raw;
+    size_t bytes = sizeof(raw);
+    memset(&raw, 0, sizeof(raw));
+    if (sysctl(mib, 4, &raw, &bytes, NULL, 0) < 0) { return -1; }
+    if (bytes < sizeof(raw) || raw.kp_proc.p_pid != pid) { errno = ESRCH; return -1; }
+    out->pid = raw.kp_proc.p_pid;
+    out->ppid = raw.kp_eproc.e_ppid;
+    out->pgid = raw.kp_eproc.e_pgid;
+    out->sid = getsid(pid);
+    out->uid = raw.kp_eproc.e_ucred.cr_uid;
+    out->status = raw.kp_proc.p_stat;
+    out->start_sec = raw.kp_proc.p_starttime.tv_sec;
+    out->start_usec = raw.kp_proc.p_starttime.tv_usec;
+    return 0;
+}
+
 int loom_process_path(pid_t pid, char *buffer, size_t capacity) {
     if (buffer == NULL || capacity == 0) { errno = EINVAL; return -1; }
     buffer[0] = '\0';
@@ -208,6 +246,15 @@ int loom_physical_footprint(pid_t pid, uint64_t *bytes) {
     return 0;
 }
 
+static int mach_ticks_to_nanoseconds(uint64_t ticks, mach_timebase_info_data_t timebase,
+                                     uint64_t *nanoseconds) {
+    if (timebase.numer == 0 || timebase.denom == 0) { errno = EIO; return -1; }
+    __uint128_t converted = (__uint128_t)ticks * timebase.numer / timebase.denom;
+    if (converted > UINT64_MAX) { errno = ERANGE; return -1; }
+    *nanoseconds = (uint64_t)converted;
+    return 0;
+}
+
 int loom_process_resource_usage(pid_t pid, loom_process_usage *usage) {
     if (usage == NULL) { errno = EINVAL; return -1; }
     memset(usage, 0, sizeof(*usage));
@@ -216,8 +263,15 @@ int loom_process_resource_usage(pid_t pid, loom_process_usage *usage) {
     if (proc_pid_rusage(pid, RUSAGE_INFO_V4, (rusage_info_t *)&raw) < 0) {
         return -1;
     }
-    usage->user_time_ns = raw.ri_user_time;
-    usage->system_time_ns = raw.ri_system_time;
+    mach_timebase_info_data_t timebase = {0};
+    if (mach_timebase_info(&timebase) != KERN_SUCCESS) { errno = EIO; return -1; }
+    uint64_t user_ns = 0, system_ns = 0;
+    if (mach_ticks_to_nanoseconds(raw.ri_user_time, timebase, &user_ns) < 0 ||
+        mach_ticks_to_nanoseconds(raw.ri_system_time, timebase, &system_ns) < 0) {
+        return -1;
+    }
+    usage->user_time_ns = user_ns;
+    usage->system_time_ns = system_ns;
     usage->package_idle_wakeups = raw.ri_pkg_idle_wkups;
     usage->interrupt_wakeups = raw.ri_interrupt_wkups;
     usage->physical_footprint_bytes = raw.ri_phys_footprint;

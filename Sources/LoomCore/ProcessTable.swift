@@ -75,6 +75,16 @@ public enum ProcessTable {
         }
     }
 
+    /// One process by PID without sampling the whole table; nil when it is gone.
+    public static func record(pid: Int32) -> ProcessRecord? {
+        var info = loom_process_info()
+        guard loom_process_for_pid(pid, &info) == 0 else { return nil }
+        return ProcessRecord(
+            identity: ProcessIdentity(pid: info.pid, startSeconds: info.start_sec, startMicroseconds: info.start_usec),
+            parentPID: info.ppid, processGroup: info.pgid, sessionID: info.sid,
+            userID: info.uid, zombie: info.status == SZOMB)
+    }
+
     public static func runID(pid: Int32) -> String? {
         var buffer = [CChar](repeating: 0, count: 128)
         guard loom_read_run_id(pid, &buffer, buffer.count) == 1 else { return nil }

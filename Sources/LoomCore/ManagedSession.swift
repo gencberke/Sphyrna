@@ -75,7 +75,48 @@ public struct ManagedRunContext: Sendable {
     }
 }
 
+/// Provider failure text may contain user content. Retain only a fixed category
+/// and numeric RPC code, independently from OS process verification.
+public struct ProviderStopStage: Codable, Sendable, Equatable {
+    public let stage: String
+    public let threadID: String?
+    public let outcome: String
+    public let errorCategory: String?
+    public let rpcCode: Int?
+
+    init(stage: String, threadID: String?, error: (any Error)? = nil) {
+        self.stage = stage
+        self.threadID = threadID
+        outcome = error == nil ? "succeeded" : "failed"
+        var category: String?
+        var code: Int?
+        if let error {
+            switch error {
+            case let value as CodexAppServerError:
+                switch value {
+                case let .rpc(value, _, _): category = "rpc"; code = value
+                case .closed: category = "connectionClosed"
+                case .timeout: category = "timeout"
+                case .protocolViolation: category = "protocolViolation"
+                case .system: category = "system"
+                }
+            case is CancellationError: category = "cancelled"
+            default: category = "providerError"
+            }
+        }
+        errorCategory = category
+        rpcCode = code
+    }
+
+    public var failureDescription: String {
+        "Provider \(stage) failed (\(errorCategory ?? "unknown")" +
+            (rpcCode.map { ", RPC \($0)" } ?? "") + ")"
+    }
+}
+
 public struct SessionStopReport: Codable, Sendable {
+    public var remainingCountVerified: Bool? = nil
+    public var providerStages: [ProviderStopStage]? = nil
     public let sessionID: UUID
     public let runID: UUID
     public let elapsedSeconds: Double
@@ -85,20 +126,32 @@ public struct SessionStopReport: Codable, Sendable {
     public let outsideOwnership: [ProcessRecord]
 
     public var succeeded: Bool {
-        remaining.isEmpty && errors.isEmpty && outsideOwnership.isEmpty
+        remainingCountVerified != false && remaining.isEmpty && errors.isEmpty && outsideOwnership.isEmpty
     }
 }
 
 /// Optional provider cleanup around one run's OS process stop. A failed
 /// preparation leaves the process alive and makes the stop report unsuccessful.
+/// Thrown by a stop hook only when the provider process that owned the
+/// conversation's work is verified gone, so no RPC can reach it. The stop then
+/// relies on verified process destruction alone (the same rule Quit uses).
+public struct ProviderUnavailableError: Error, CustomStringConvertible, Sendable {
+    public let detail: String
+    public init(_ detail: String) { self.detail = detail }
+    public var description: String { "Provider unavailable: \(detail)" }
+}
+
 public struct ManagedRunStopHooks: Sendable {
+    public let threadID: String?
     public let prepare: @Sendable () async throws -> Void
     public let completed: @Sendable () async throws -> Void
 
     public init(
+        threadID: String? = nil,
         prepare: @escaping @Sendable () async throws -> Void,
         completed: @escaping @Sendable () async throws -> Void
     ) {
+        self.threadID = threadID
         self.prepare = prepare
         self.completed = completed
     }

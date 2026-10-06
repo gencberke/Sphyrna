@@ -1,0 +1,1740 @@
+{
+  "status": "prepared; no UI/resource/latency/GPU measurement launched by implementer",
+  "baseline": {
+    "appSHA256Prefix": "4ff7781e",
+    "runHostSHA256Prefix": "11ee787d",
+    "suiteReportedByBrief": 321
+  },
+  "changes": [
+    "Checked/bounded independent ps host oracle",
+    "Run-host binary hash in manifest",
+    "Reject incomplete/duplicate scope inventory and transient member changes",
+    "Stop output must match registered pool run IDs and birth identities",
+    "Scope plus fixture plus app footprint per sample",
+    "D selected-pool latency scenario; A latency routed through it"
+  ],
+  "checks": {
+    "verified": [
+      "python3 scripts/cp5-d-measure.py --self-test",
+      "python3 -m py_compile scripts/cp5-d-measure.py scripts/cp5-gpu-sample.py",
+      "zsh -n scripts/cp5-a-measure.sh",
+      "clang -std=c11 -Wall -Wextra -Werror -fsyntax-only scripts/cp5-gpu-sample.c",
+      "git diff --check",
+      "No-UI selected-pool latency protocol smoke with mocked app operations: valid flow plus incomplete/render/run/Stop negatives",
+      "GPU inline runner compile(source, ..., exec) syntax"
+    ],
+    "failed": [],
+    "unverified": [
+      "Runtime latency flow",
+      "Final package resource runs",
+      "GPU aligned runner",
+      "Visible/occluded native setup"
+    ]
+  },
+  "sourceSHA256": {
+    "scripts/cp5-d-measure.py": "eb773aa8fe69df1ca51564b9636d0af2462a8d7e5047cf64ba13fd3721eb827e",
+    "scripts/cp5-a-measure.sh": "358f4ce712675c70e711c5771f5d1e32c1dbfffefa88d7e0547f2e219c83203b",
+    "scripts/cp5-gpu-sample.c": "f21519f8a3284de41c1e5a6ad886b53de5619974129d0e871a94b809acefe761",
+    "scripts/cp5-gpu-sample.py": "3868c5b91d0ddfc4c75e6e863e941c8cea2c2d78fdbcd98c64f9f133f45cc0df",
+    "Sources/loom-app/EvidenceResourcePool.swift": "4acda47d87309597993f6bdc5f449bbe1048e11db3b787853470d11158b1d95c",
+    "Sources/loom-app/DevelopmentEvidence.swift": "b837a6fbbc6956424a5ebeccc9a3ca798677c8390e0162e6e3c7f9a17273d343",
+    "scripts/cp5-gpu-attribution.py": "b4e2c7cb913a279c1da6e3f3c50f6c2c8a025479683d0b00bab926694681288d"
+  },
+  "outputRoot": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003",
+  "resourceAndLatencyCommands": [
+    {
+      "name": "baseline-hidden-r1-idle0",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle0",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r1-idle0"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle0 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r1-idle0'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r1-idle1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle1",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r1-idle1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle1 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r1-idle1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r1-stream1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r1-stream1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r1-stream1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r2-idle0",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle0",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r2-idle0"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle0 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r2-idle0'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r2-idle1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle1",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r2-idle1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle1 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r2-idle1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r2-stream1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r2-stream1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r2-stream1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r3-idle0",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle0",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r3-idle0"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle0 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r3-idle0'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r3-idle1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle1",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r3-idle1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle1 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r3-idle1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r3-stream1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r3-stream1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r3-stream1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r4-idle0",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle0",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r4-idle0"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle0 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r4-idle0'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r4-idle1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle1",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r4-idle1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle1 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r4-idle1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r4-stream1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r4-stream1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r4-stream1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r5-idle0",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle0",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r5-idle0"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle0 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r5-idle0'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r5-idle1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle1",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r5-idle1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle1 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r5-idle1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-hidden-r5-stream1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "hidden",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r5-stream1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility hidden --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-hidden-r5-stream1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r1-idle0",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle0",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r1-idle0"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle0 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r1-idle0'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r1-idle1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r1-idle1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle1 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r1-idle1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r1-stream1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r1-stream1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r1-stream1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r2-idle0",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle0",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r2-idle0"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle0 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r2-idle0'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r2-idle1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r2-idle1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle1 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r2-idle1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r2-stream1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r2-stream1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r2-stream1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r3-idle0",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle0",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r3-idle0"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle0 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r3-idle0'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r3-idle1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r3-idle1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle1 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r3-idle1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r3-stream1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r3-stream1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r3-stream1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r4-idle0",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle0",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r4-idle0"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle0 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r4-idle0'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r4-idle1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r4-idle1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle1 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r4-idle1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r4-stream1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r4-stream1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r4-stream1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r5-idle0",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle0",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r5-idle0"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle0 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r5-idle0'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r5-idle1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r5-idle1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle1 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r5-idle1'",
+      "status": "unverified"
+    },
+    {
+      "name": "baseline-visible-r5-stream1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r5-stream1"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/baseline-visible-r5-stream1'",
+      "status": "unverified"
+    },
+    {
+      "name": "metal-r1-stream1-visible",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "metal",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/metal-r1-stream1-visible"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility visible --renderer metal --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/metal-r1-stream1-visible'",
+      "status": "unverified"
+    },
+    {
+      "name": "metal-r2-stream1-visible",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "metal",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/metal-r2-stream1-visible"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility visible --renderer metal --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/metal-r2-stream1-visible'",
+      "status": "unverified"
+    },
+    {
+      "name": "metal-r3-stream1-visible",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "metal",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/metal-r3-stream1-visible"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility visible --renderer metal --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/metal-r3-stream1-visible'",
+      "status": "unverified"
+    },
+    {
+      "name": "metal-r4-stream1-visible",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "metal",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/metal-r4-stream1-visible"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility visible --renderer metal --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/metal-r4-stream1-visible'",
+      "status": "unverified"
+    },
+    {
+      "name": "metal-r5-stream1-visible",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "metal",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/metal-r5-stream1-visible"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility visible --renderer metal --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/metal-r5-stream1-visible'",
+      "status": "unverified"
+    },
+    {
+      "name": "idle10",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle10",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/idle10"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle10 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/idle10'",
+      "status": "unverified"
+    },
+    {
+      "name": "idle50",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "idle50",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/idle50"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario idle50 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/idle50'",
+      "status": "unverified"
+    },
+    {
+      "name": "stream10",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream10",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/stream10"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream10 --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/stream10'",
+      "status": "unverified"
+    },
+    {
+      "name": "burst",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "burst",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/burst"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario burst --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/burst'",
+      "status": "unverified"
+    },
+    {
+      "name": "cycles",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "cycles",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/cycles",
+        "--cycles",
+        "100"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario cycles --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/cycles' --cycles 100",
+      "status": "unverified"
+    },
+    {
+      "name": "instrument",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "instrument",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/instrument"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario instrument --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/instrument'",
+      "status": "unverified"
+    },
+    {
+      "name": "stream1-long600",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream1",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "600",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/stream1-long600"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream1 --visibility visible --renderer coregraphics --warmup 10 --duration 600 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/stream1-long600'",
+      "status": "unverified"
+    },
+    {
+      "name": "stream10-long600",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "stream10",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "600",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/stream10-long600"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario stream10 --visibility visible --renderer coregraphics --warmup 10 --duration 600 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/stream10-long600'",
+      "status": "unverified"
+    },
+    {
+      "name": "latency-coregraphics-r1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "latency",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r1",
+        "--latency-samples",
+        "200"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario latency --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r1' --latency-samples 200",
+      "status": "unverified"
+    },
+    {
+      "name": "latency-coregraphics-r2",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "latency",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r2",
+        "--latency-samples",
+        "200"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario latency --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r2' --latency-samples 200",
+      "status": "unverified"
+    },
+    {
+      "name": "latency-coregraphics-r3",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "latency",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r3",
+        "--latency-samples",
+        "200"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario latency --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r3' --latency-samples 200",
+      "status": "unverified"
+    },
+    {
+      "name": "latency-coregraphics-r4",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "latency",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r4",
+        "--latency-samples",
+        "200"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario latency --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r4' --latency-samples 200",
+      "status": "unverified"
+    },
+    {
+      "name": "latency-coregraphics-r5",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "latency",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "coregraphics",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r5",
+        "--latency-samples",
+        "200"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario latency --visibility visible --renderer coregraphics --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-coregraphics-r5' --latency-samples 200",
+      "status": "unverified"
+    },
+    {
+      "name": "latency-metal-r1",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "latency",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "metal",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r1",
+        "--latency-samples",
+        "200"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario latency --visibility visible --renderer metal --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r1' --latency-samples 200",
+      "status": "unverified"
+    },
+    {
+      "name": "latency-metal-r2",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "latency",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "metal",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r2",
+        "--latency-samples",
+        "200"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario latency --visibility visible --renderer metal --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r2' --latency-samples 200",
+      "status": "unverified"
+    },
+    {
+      "name": "latency-metal-r3",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "latency",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "metal",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r3",
+        "--latency-samples",
+        "200"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario latency --visibility visible --renderer metal --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r3' --latency-samples 200",
+      "status": "unverified"
+    },
+    {
+      "name": "latency-metal-r4",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "latency",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "metal",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r4",
+        "--latency-samples",
+        "200"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario latency --visibility visible --renderer metal --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r4' --latency-samples 200",
+      "status": "unverified"
+    },
+    {
+      "name": "latency-metal-r5",
+      "command": [
+        "python3",
+        "/Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py",
+        "--app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "--scenario",
+        "latency",
+        "--visibility",
+        "visible",
+        "--renderer",
+        "metal",
+        "--warmup",
+        "10",
+        "--duration",
+        "60",
+        "--sample-every",
+        "5",
+        "--output",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r5",
+        "--latency-samples",
+        "200"
+      ],
+      "shell": "python3 /Users/gencberke/Documents/github/loom/scripts/cp5-d-measure.py --app '/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app' --scenario latency --visibility visible --renderer metal --warmup 10 --duration 60 --sample-every 5 --output '/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/latency-metal-r5' --latency-samples 200",
+      "status": "unverified"
+    }
+  ],
+  "gpuCommands": [
+    {
+      "name": "gpu-glass-idle1-visible",
+      "command": [
+        "python3",
+        "-c",
+        "import argparse, importlib.util, json, subprocess, sys, time\nfrom pathlib import Path\nrepo, app, directory, material, visibility, scenario = sys.argv[1:]\nrepo, app, directory = Path(repo), Path(app), Path(directory)\ndirectory.mkdir(parents=True, exist_ok=False)\nspec = importlib.util.spec_from_file_location('cp5d', repo / 'scripts/cp5-d-measure.py')\nmodule = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\nargs = argparse.Namespace(app=app, output=directory / 'resource', scenario=scenario, renderer='coregraphics',\n                          visibility=visibility, material=material, warmup=10, duration=60, sample_every=5,\n                          ack_timeout=30, drain_timeout=30, cycles=100, latency_samples=200)\nargs.output.mkdir()\ndriver = module.Driver(args, args.output)\ngpu_directory = directory / 'gpu'\ngpu = subprocess.Popen(['python3', str(repo / 'scripts/cp5-gpu-sample.py'), '--duration', '150', '--interval', '5', '--output', str(gpu_directory)])\nreport = {'valid': False, 'invalidReasons': [], 'GPUAttribution': 'unavailable; device total only'}\ntry:\n    # The sampler compiles and publishes its manifest before launching its child.\n    # Compile/tool startup therefore precedes app launch; retained buckets exclude warmup/drain.\n    module.wait_json(gpu_directory / 'manifest.json', 30)\n    resource = driver.run()\n    report['resource'] = resource\n    if gpu.wait(timeout=160) != 0: raise ValueError('GPU sampler capability/cadence failed')\n    gpu_result = json.loads((gpu_directory / 'result.json').read_text())\n    if gpu_result.get('available') is not True: raise ValueError('GPU unavailable')\n    snapshots = json.loads((args.output / 'samples.json').read_text())\n    start, end = snapshots[0]['result']['uptime'], snapshots[-1]['result']['uptime']\n    records = [json.loads(line) for line in (gpu_directory / 'samples.jsonl').read_text().splitlines()]\n    retained = [row for row in records if row.get('type') == 'sample' and row['startUptimeSeconds'] >= start and row['endUptimeSeconds'] <= end]\n    seconds = sum(row['elapsedSeconds'] for row in retained)\n    if seconds < 49.9: raise ValueError('Fewer than 50 aligned GPU seconds')\n    energy = sum(channel['delta'] for row in retained for channel in row['channels'] if channel['unit'] == 'nJ')\n    report.update(retainedSeconds=seconds, modeledAverageMilliwatts=energy / seconds / 1e6,\n                  alignedGPUIntervals=retained, valid=True)\nexcept Exception as error:\n    report['invalidReasons'].append(str(error))\nfinally:\n    try: report['cleanup'] = driver.cleanup()\n    except Exception as error: report['invalidReasons'].append('Cleanup: ' + str(error))\n    # Only this direct unreaped sampler child is terminated on orchestration failure.\n    if gpu.poll() is None:\n        gpu.terminate(); gpu.wait(timeout=5)\n    report['valid'] = report['valid'] and not report['invalidReasons']\n    (directory / 'report.json').write_text(json.dumps(report, indent=2))\n    print(directory)\nsys.exit(0 if report['valid'] else 1)\n",
+        "/Users/gencberke/Documents/github/loom",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/gpu-glass-idle1-visible",
+        "glass",
+        "visible",
+        "idle1"
+      ],
+      "status": "unverified"
+    },
+    {
+      "name": "gpu-glass-stream1-visible",
+      "command": [
+        "python3",
+        "-c",
+        "import argparse, importlib.util, json, subprocess, sys, time\nfrom pathlib import Path\nrepo, app, directory, material, visibility, scenario = sys.argv[1:]\nrepo, app, directory = Path(repo), Path(app), Path(directory)\ndirectory.mkdir(parents=True, exist_ok=False)\nspec = importlib.util.spec_from_file_location('cp5d', repo / 'scripts/cp5-d-measure.py')\nmodule = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\nargs = argparse.Namespace(app=app, output=directory / 'resource', scenario=scenario, renderer='coregraphics',\n                          visibility=visibility, material=material, warmup=10, duration=60, sample_every=5,\n                          ack_timeout=30, drain_timeout=30, cycles=100, latency_samples=200)\nargs.output.mkdir()\ndriver = module.Driver(args, args.output)\ngpu_directory = directory / 'gpu'\ngpu = subprocess.Popen(['python3', str(repo / 'scripts/cp5-gpu-sample.py'), '--duration', '150', '--interval', '5', '--output', str(gpu_directory)])\nreport = {'valid': False, 'invalidReasons': [], 'GPUAttribution': 'unavailable; device total only'}\ntry:\n    # The sampler compiles and publishes its manifest before launching its child.\n    # Compile/tool startup therefore precedes app launch; retained buckets exclude warmup/drain.\n    module.wait_json(gpu_directory / 'manifest.json', 30)\n    resource = driver.run()\n    report['resource'] = resource\n    if gpu.wait(timeout=160) != 0: raise ValueError('GPU sampler capability/cadence failed')\n    gpu_result = json.loads((gpu_directory / 'result.json').read_text())\n    if gpu_result.get('available') is not True: raise ValueError('GPU unavailable')\n    snapshots = json.loads((args.output / 'samples.json').read_text())\n    start, end = snapshots[0]['result']['uptime'], snapshots[-1]['result']['uptime']\n    records = [json.loads(line) for line in (gpu_directory / 'samples.jsonl').read_text().splitlines()]\n    retained = [row for row in records if row.get('type') == 'sample' and row['startUptimeSeconds'] >= start and row['endUptimeSeconds'] <= end]\n    seconds = sum(row['elapsedSeconds'] for row in retained)\n    if seconds < 49.9: raise ValueError('Fewer than 50 aligned GPU seconds')\n    energy = sum(channel['delta'] for row in retained for channel in row['channels'] if channel['unit'] == 'nJ')\n    report.update(retainedSeconds=seconds, modeledAverageMilliwatts=energy / seconds / 1e6,\n                  alignedGPUIntervals=retained, valid=True)\nexcept Exception as error:\n    report['invalidReasons'].append(str(error))\nfinally:\n    try: report['cleanup'] = driver.cleanup()\n    except Exception as error: report['invalidReasons'].append('Cleanup: ' + str(error))\n    # Only this direct unreaped sampler child is terminated on orchestration failure.\n    if gpu.poll() is None:\n        gpu.terminate(); gpu.wait(timeout=5)\n    report['valid'] = report['valid'] and not report['invalidReasons']\n    (directory / 'report.json').write_text(json.dumps(report, indent=2))\n    print(directory)\nsys.exit(0 if report['valid'] else 1)\n",
+        "/Users/gencberke/Documents/github/loom",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/gpu-glass-stream1-visible",
+        "glass",
+        "visible",
+        "stream1"
+      ],
+      "status": "unverified"
+    },
+    {
+      "name": "gpu-opaque-idle1-visible",
+      "command": [
+        "python3",
+        "-c",
+        "import argparse, importlib.util, json, subprocess, sys, time\nfrom pathlib import Path\nrepo, app, directory, material, visibility, scenario = sys.argv[1:]\nrepo, app, directory = Path(repo), Path(app), Path(directory)\ndirectory.mkdir(parents=True, exist_ok=False)\nspec = importlib.util.spec_from_file_location('cp5d', repo / 'scripts/cp5-d-measure.py')\nmodule = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\nargs = argparse.Namespace(app=app, output=directory / 'resource', scenario=scenario, renderer='coregraphics',\n                          visibility=visibility, material=material, warmup=10, duration=60, sample_every=5,\n                          ack_timeout=30, drain_timeout=30, cycles=100, latency_samples=200)\nargs.output.mkdir()\ndriver = module.Driver(args, args.output)\ngpu_directory = directory / 'gpu'\ngpu = subprocess.Popen(['python3', str(repo / 'scripts/cp5-gpu-sample.py'), '--duration', '150', '--interval', '5', '--output', str(gpu_directory)])\nreport = {'valid': False, 'invalidReasons': [], 'GPUAttribution': 'unavailable; device total only'}\ntry:\n    # The sampler compiles and publishes its manifest before launching its child.\n    # Compile/tool startup therefore precedes app launch; retained buckets exclude warmup/drain.\n    module.wait_json(gpu_directory / 'manifest.json', 30)\n    resource = driver.run()\n    report['resource'] = resource\n    if gpu.wait(timeout=160) != 0: raise ValueError('GPU sampler capability/cadence failed')\n    gpu_result = json.loads((gpu_directory / 'result.json').read_text())\n    if gpu_result.get('available') is not True: raise ValueError('GPU unavailable')\n    snapshots = json.loads((args.output / 'samples.json').read_text())\n    start, end = snapshots[0]['result']['uptime'], snapshots[-1]['result']['uptime']\n    records = [json.loads(line) for line in (gpu_directory / 'samples.jsonl').read_text().splitlines()]\n    retained = [row for row in records if row.get('type') == 'sample' and row['startUptimeSeconds'] >= start and row['endUptimeSeconds'] <= end]\n    seconds = sum(row['elapsedSeconds'] for row in retained)\n    if seconds < 49.9: raise ValueError('Fewer than 50 aligned GPU seconds')\n    energy = sum(channel['delta'] for row in retained for channel in row['channels'] if channel['unit'] == 'nJ')\n    report.update(retainedSeconds=seconds, modeledAverageMilliwatts=energy / seconds / 1e6,\n                  alignedGPUIntervals=retained, valid=True)\nexcept Exception as error:\n    report['invalidReasons'].append(str(error))\nfinally:\n    try: report['cleanup'] = driver.cleanup()\n    except Exception as error: report['invalidReasons'].append('Cleanup: ' + str(error))\n    # Only this direct unreaped sampler child is terminated on orchestration failure.\n    if gpu.poll() is None:\n        gpu.terminate(); gpu.wait(timeout=5)\n    report['valid'] = report['valid'] and not report['invalidReasons']\n    (directory / 'report.json').write_text(json.dumps(report, indent=2))\n    print(directory)\nsys.exit(0 if report['valid'] else 1)\n",
+        "/Users/gencberke/Documents/github/loom",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/gpu-opaque-idle1-visible",
+        "opaque",
+        "visible",
+        "idle1"
+      ],
+      "status": "unverified"
+    },
+    {
+      "name": "gpu-opaque-stream1-visible",
+      "command": [
+        "python3",
+        "-c",
+        "import argparse, importlib.util, json, subprocess, sys, time\nfrom pathlib import Path\nrepo, app, directory, material, visibility, scenario = sys.argv[1:]\nrepo, app, directory = Path(repo), Path(app), Path(directory)\ndirectory.mkdir(parents=True, exist_ok=False)\nspec = importlib.util.spec_from_file_location('cp5d', repo / 'scripts/cp5-d-measure.py')\nmodule = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\nargs = argparse.Namespace(app=app, output=directory / 'resource', scenario=scenario, renderer='coregraphics',\n                          visibility=visibility, material=material, warmup=10, duration=60, sample_every=5,\n                          ack_timeout=30, drain_timeout=30, cycles=100, latency_samples=200)\nargs.output.mkdir()\ndriver = module.Driver(args, args.output)\ngpu_directory = directory / 'gpu'\ngpu = subprocess.Popen(['python3', str(repo / 'scripts/cp5-gpu-sample.py'), '--duration', '150', '--interval', '5', '--output', str(gpu_directory)])\nreport = {'valid': False, 'invalidReasons': [], 'GPUAttribution': 'unavailable; device total only'}\ntry:\n    # The sampler compiles and publishes its manifest before launching its child.\n    # Compile/tool startup therefore precedes app launch; retained buckets exclude warmup/drain.\n    module.wait_json(gpu_directory / 'manifest.json', 30)\n    resource = driver.run()\n    report['resource'] = resource\n    if gpu.wait(timeout=160) != 0: raise ValueError('GPU sampler capability/cadence failed')\n    gpu_result = json.loads((gpu_directory / 'result.json').read_text())\n    if gpu_result.get('available') is not True: raise ValueError('GPU unavailable')\n    snapshots = json.loads((args.output / 'samples.json').read_text())\n    start, end = snapshots[0]['result']['uptime'], snapshots[-1]['result']['uptime']\n    records = [json.loads(line) for line in (gpu_directory / 'samples.jsonl').read_text().splitlines()]\n    retained = [row for row in records if row.get('type') == 'sample' and row['startUptimeSeconds'] >= start and row['endUptimeSeconds'] <= end]\n    seconds = sum(row['elapsedSeconds'] for row in retained)\n    if seconds < 49.9: raise ValueError('Fewer than 50 aligned GPU seconds')\n    energy = sum(channel['delta'] for row in retained for channel in row['channels'] if channel['unit'] == 'nJ')\n    report.update(retainedSeconds=seconds, modeledAverageMilliwatts=energy / seconds / 1e6,\n                  alignedGPUIntervals=retained, valid=True)\nexcept Exception as error:\n    report['invalidReasons'].append(str(error))\nfinally:\n    try: report['cleanup'] = driver.cleanup()\n    except Exception as error: report['invalidReasons'].append('Cleanup: ' + str(error))\n    # Only this direct unreaped sampler child is terminated on orchestration failure.\n    if gpu.poll() is None:\n        gpu.terminate(); gpu.wait(timeout=5)\n    report['valid'] = report['valid'] and not report['invalidReasons']\n    (directory / 'report.json').write_text(json.dumps(report, indent=2))\n    print(directory)\nsys.exit(0 if report['valid'] else 1)\n",
+        "/Users/gencberke/Documents/github/loom",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/gpu-opaque-stream1-visible",
+        "opaque",
+        "visible",
+        "stream1"
+      ],
+      "status": "unverified"
+    },
+    {
+      "name": "gpu-glass-idle1-occluded",
+      "command": [
+        "python3",
+        "-c",
+        "import argparse, importlib.util, json, subprocess, sys, time\nfrom pathlib import Path\nrepo, app, directory, material, visibility, scenario = sys.argv[1:]\nrepo, app, directory = Path(repo), Path(app), Path(directory)\ndirectory.mkdir(parents=True, exist_ok=False)\nspec = importlib.util.spec_from_file_location('cp5d', repo / 'scripts/cp5-d-measure.py')\nmodule = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\nargs = argparse.Namespace(app=app, output=directory / 'resource', scenario=scenario, renderer='coregraphics',\n                          visibility=visibility, material=material, warmup=10, duration=60, sample_every=5,\n                          ack_timeout=30, drain_timeout=30, cycles=100, latency_samples=200)\nargs.output.mkdir()\ndriver = module.Driver(args, args.output)\ngpu_directory = directory / 'gpu'\ngpu = subprocess.Popen(['python3', str(repo / 'scripts/cp5-gpu-sample.py'), '--duration', '150', '--interval', '5', '--output', str(gpu_directory)])\nreport = {'valid': False, 'invalidReasons': [], 'GPUAttribution': 'unavailable; device total only'}\ntry:\n    # The sampler compiles and publishes its manifest before launching its child.\n    # Compile/tool startup therefore precedes app launch; retained buckets exclude warmup/drain.\n    module.wait_json(gpu_directory / 'manifest.json', 30)\n    resource = driver.run()\n    report['resource'] = resource\n    if gpu.wait(timeout=160) != 0: raise ValueError('GPU sampler capability/cadence failed')\n    gpu_result = json.loads((gpu_directory / 'result.json').read_text())\n    if gpu_result.get('available') is not True: raise ValueError('GPU unavailable')\n    snapshots = json.loads((args.output / 'samples.json').read_text())\n    start, end = snapshots[0]['result']['uptime'], snapshots[-1]['result']['uptime']\n    records = [json.loads(line) for line in (gpu_directory / 'samples.jsonl').read_text().splitlines()]\n    retained = [row for row in records if row.get('type') == 'sample' and row['startUptimeSeconds'] >= start and row['endUptimeSeconds'] <= end]\n    seconds = sum(row['elapsedSeconds'] for row in retained)\n    if seconds < 49.9: raise ValueError('Fewer than 50 aligned GPU seconds')\n    energy = sum(channel['delta'] for row in retained for channel in row['channels'] if channel['unit'] == 'nJ')\n    report.update(retainedSeconds=seconds, modeledAverageMilliwatts=energy / seconds / 1e6,\n                  alignedGPUIntervals=retained, valid=True)\nexcept Exception as error:\n    report['invalidReasons'].append(str(error))\nfinally:\n    try: report['cleanup'] = driver.cleanup()\n    except Exception as error: report['invalidReasons'].append('Cleanup: ' + str(error))\n    # Only this direct unreaped sampler child is terminated on orchestration failure.\n    if gpu.poll() is None:\n        gpu.terminate(); gpu.wait(timeout=5)\n    report['valid'] = report['valid'] and not report['invalidReasons']\n    (directory / 'report.json').write_text(json.dumps(report, indent=2))\n    print(directory)\nsys.exit(0 if report['valid'] else 1)\n",
+        "/Users/gencberke/Documents/github/loom",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/gpu-glass-idle1-occluded",
+        "glass",
+        "occluded",
+        "idle1"
+      ],
+      "status": "unverified"
+    },
+    {
+      "name": "gpu-glass-stream1-occluded",
+      "command": [
+        "python3",
+        "-c",
+        "import argparse, importlib.util, json, subprocess, sys, time\nfrom pathlib import Path\nrepo, app, directory, material, visibility, scenario = sys.argv[1:]\nrepo, app, directory = Path(repo), Path(app), Path(directory)\ndirectory.mkdir(parents=True, exist_ok=False)\nspec = importlib.util.spec_from_file_location('cp5d', repo / 'scripts/cp5-d-measure.py')\nmodule = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\nargs = argparse.Namespace(app=app, output=directory / 'resource', scenario=scenario, renderer='coregraphics',\n                          visibility=visibility, material=material, warmup=10, duration=60, sample_every=5,\n                          ack_timeout=30, drain_timeout=30, cycles=100, latency_samples=200)\nargs.output.mkdir()\ndriver = module.Driver(args, args.output)\ngpu_directory = directory / 'gpu'\ngpu = subprocess.Popen(['python3', str(repo / 'scripts/cp5-gpu-sample.py'), '--duration', '150', '--interval', '5', '--output', str(gpu_directory)])\nreport = {'valid': False, 'invalidReasons': [], 'GPUAttribution': 'unavailable; device total only'}\ntry:\n    # The sampler compiles and publishes its manifest before launching its child.\n    # Compile/tool startup therefore precedes app launch; retained buckets exclude warmup/drain.\n    module.wait_json(gpu_directory / 'manifest.json', 30)\n    resource = driver.run()\n    report['resource'] = resource\n    if gpu.wait(timeout=160) != 0: raise ValueError('GPU sampler capability/cadence failed')\n    gpu_result = json.loads((gpu_directory / 'result.json').read_text())\n    if gpu_result.get('available') is not True: raise ValueError('GPU unavailable')\n    snapshots = json.loads((args.output / 'samples.json').read_text())\n    start, end = snapshots[0]['result']['uptime'], snapshots[-1]['result']['uptime']\n    records = [json.loads(line) for line in (gpu_directory / 'samples.jsonl').read_text().splitlines()]\n    retained = [row for row in records if row.get('type') == 'sample' and row['startUptimeSeconds'] >= start and row['endUptimeSeconds'] <= end]\n    seconds = sum(row['elapsedSeconds'] for row in retained)\n    if seconds < 49.9: raise ValueError('Fewer than 50 aligned GPU seconds')\n    energy = sum(channel['delta'] for row in retained for channel in row['channels'] if channel['unit'] == 'nJ')\n    report.update(retainedSeconds=seconds, modeledAverageMilliwatts=energy / seconds / 1e6,\n                  alignedGPUIntervals=retained, valid=True)\nexcept Exception as error:\n    report['invalidReasons'].append(str(error))\nfinally:\n    try: report['cleanup'] = driver.cleanup()\n    except Exception as error: report['invalidReasons'].append('Cleanup: ' + str(error))\n    # Only this direct unreaped sampler child is terminated on orchestration failure.\n    if gpu.poll() is None:\n        gpu.terminate(); gpu.wait(timeout=5)\n    report['valid'] = report['valid'] and not report['invalidReasons']\n    (directory / 'report.json').write_text(json.dumps(report, indent=2))\n    print(directory)\nsys.exit(0 if report['valid'] else 1)\n",
+        "/Users/gencberke/Documents/github/loom",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/gpu-glass-stream1-occluded",
+        "glass",
+        "occluded",
+        "stream1"
+      ],
+      "status": "unverified"
+    },
+    {
+      "name": "gpu-opaque-idle1-occluded",
+      "command": [
+        "python3",
+        "-c",
+        "import argparse, importlib.util, json, subprocess, sys, time\nfrom pathlib import Path\nrepo, app, directory, material, visibility, scenario = sys.argv[1:]\nrepo, app, directory = Path(repo), Path(app), Path(directory)\ndirectory.mkdir(parents=True, exist_ok=False)\nspec = importlib.util.spec_from_file_location('cp5d', repo / 'scripts/cp5-d-measure.py')\nmodule = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\nargs = argparse.Namespace(app=app, output=directory / 'resource', scenario=scenario, renderer='coregraphics',\n                          visibility=visibility, material=material, warmup=10, duration=60, sample_every=5,\n                          ack_timeout=30, drain_timeout=30, cycles=100, latency_samples=200)\nargs.output.mkdir()\ndriver = module.Driver(args, args.output)\ngpu_directory = directory / 'gpu'\ngpu = subprocess.Popen(['python3', str(repo / 'scripts/cp5-gpu-sample.py'), '--duration', '150', '--interval', '5', '--output', str(gpu_directory)])\nreport = {'valid': False, 'invalidReasons': [], 'GPUAttribution': 'unavailable; device total only'}\ntry:\n    # The sampler compiles and publishes its manifest before launching its child.\n    # Compile/tool startup therefore precedes app launch; retained buckets exclude warmup/drain.\n    module.wait_json(gpu_directory / 'manifest.json', 30)\n    resource = driver.run()\n    report['resource'] = resource\n    if gpu.wait(timeout=160) != 0: raise ValueError('GPU sampler capability/cadence failed')\n    gpu_result = json.loads((gpu_directory / 'result.json').read_text())\n    if gpu_result.get('available') is not True: raise ValueError('GPU unavailable')\n    snapshots = json.loads((args.output / 'samples.json').read_text())\n    start, end = snapshots[0]['result']['uptime'], snapshots[-1]['result']['uptime']\n    records = [json.loads(line) for line in (gpu_directory / 'samples.jsonl').read_text().splitlines()]\n    retained = [row for row in records if row.get('type') == 'sample' and row['startUptimeSeconds'] >= start and row['endUptimeSeconds'] <= end]\n    seconds = sum(row['elapsedSeconds'] for row in retained)\n    if seconds < 49.9: raise ValueError('Fewer than 50 aligned GPU seconds')\n    energy = sum(channel['delta'] for row in retained for channel in row['channels'] if channel['unit'] == 'nJ')\n    report.update(retainedSeconds=seconds, modeledAverageMilliwatts=energy / seconds / 1e6,\n                  alignedGPUIntervals=retained, valid=True)\nexcept Exception as error:\n    report['invalidReasons'].append(str(error))\nfinally:\n    try: report['cleanup'] = driver.cleanup()\n    except Exception as error: report['invalidReasons'].append('Cleanup: ' + str(error))\n    # Only this direct unreaped sampler child is terminated on orchestration failure.\n    if gpu.poll() is None:\n        gpu.terminate(); gpu.wait(timeout=5)\n    report['valid'] = report['valid'] and not report['invalidReasons']\n    (directory / 'report.json').write_text(json.dumps(report, indent=2))\n    print(directory)\nsys.exit(0 if report['valid'] else 1)\n",
+        "/Users/gencberke/Documents/github/loom",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/gpu-opaque-idle1-occluded",
+        "opaque",
+        "occluded",
+        "idle1"
+      ],
+      "status": "unverified"
+    },
+    {
+      "name": "gpu-opaque-stream1-occluded",
+      "command": [
+        "python3",
+        "-c",
+        "import argparse, importlib.util, json, subprocess, sys, time\nfrom pathlib import Path\nrepo, app, directory, material, visibility, scenario = sys.argv[1:]\nrepo, app, directory = Path(repo), Path(app), Path(directory)\ndirectory.mkdir(parents=True, exist_ok=False)\nspec = importlib.util.spec_from_file_location('cp5d', repo / 'scripts/cp5-d-measure.py')\nmodule = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\nargs = argparse.Namespace(app=app, output=directory / 'resource', scenario=scenario, renderer='coregraphics',\n                          visibility=visibility, material=material, warmup=10, duration=60, sample_every=5,\n                          ack_timeout=30, drain_timeout=30, cycles=100, latency_samples=200)\nargs.output.mkdir()\ndriver = module.Driver(args, args.output)\ngpu_directory = directory / 'gpu'\ngpu = subprocess.Popen(['python3', str(repo / 'scripts/cp5-gpu-sample.py'), '--duration', '150', '--interval', '5', '--output', str(gpu_directory)])\nreport = {'valid': False, 'invalidReasons': [], 'GPUAttribution': 'unavailable; device total only'}\ntry:\n    # The sampler compiles and publishes its manifest before launching its child.\n    # Compile/tool startup therefore precedes app launch; retained buckets exclude warmup/drain.\n    module.wait_json(gpu_directory / 'manifest.json', 30)\n    resource = driver.run()\n    report['resource'] = resource\n    if gpu.wait(timeout=160) != 0: raise ValueError('GPU sampler capability/cadence failed')\n    gpu_result = json.loads((gpu_directory / 'result.json').read_text())\n    if gpu_result.get('available') is not True: raise ValueError('GPU unavailable')\n    snapshots = json.loads((args.output / 'samples.json').read_text())\n    start, end = snapshots[0]['result']['uptime'], snapshots[-1]['result']['uptime']\n    records = [json.loads(line) for line in (gpu_directory / 'samples.jsonl').read_text().splitlines()]\n    retained = [row for row in records if row.get('type') == 'sample' and row['startUptimeSeconds'] >= start and row['endUptimeSeconds'] <= end]\n    seconds = sum(row['elapsedSeconds'] for row in retained)\n    if seconds < 49.9: raise ValueError('Fewer than 50 aligned GPU seconds')\n    energy = sum(channel['delta'] for row in retained for channel in row['channels'] if channel['unit'] == 'nJ')\n    report.update(retainedSeconds=seconds, modeledAverageMilliwatts=energy / seconds / 1e6,\n                  alignedGPUIntervals=retained, valid=True)\nexcept Exception as error:\n    report['invalidReasons'].append(str(error))\nfinally:\n    try: report['cleanup'] = driver.cleanup()\n    except Exception as error: report['invalidReasons'].append('Cleanup: ' + str(error))\n    # Only this direct unreaped sampler child is terminated on orchestration failure.\n    if gpu.poll() is None:\n        gpu.terminate(); gpu.wait(timeout=5)\n    report['valid'] = report['valid'] and not report['invalidReasons']\n    (directory / 'report.json').write_text(json.dumps(report, indent=2))\n    print(directory)\nsys.exit(0 if report['valid'] else 1)\n",
+        "/Users/gencberke/Documents/github/loom",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-resource-runscope-20261003/gpu-opaque-stream1-occluded",
+        "opaque",
+        "occluded",
+        "stream1"
+      ],
+      "status": "unverified"
+    }
+  ],
+  "gpuRunnerSource": "import argparse, importlib.util, json, subprocess, sys, time\nfrom pathlib import Path\nrepo, app, directory, material, visibility, scenario = sys.argv[1:]\nrepo, app, directory = Path(repo), Path(app), Path(directory)\ndirectory.mkdir(parents=True, exist_ok=False)\nspec = importlib.util.spec_from_file_location('cp5d', repo / 'scripts/cp5-d-measure.py')\nmodule = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\nargs = argparse.Namespace(app=app, output=directory / 'resource', scenario=scenario, renderer='coregraphics',\n                          visibility=visibility, material=material, warmup=10, duration=60, sample_every=5,\n                          ack_timeout=30, drain_timeout=30, cycles=100, latency_samples=200)\nargs.output.mkdir()\ndriver = module.Driver(args, args.output)\ngpu_directory = directory / 'gpu'\ngpu = subprocess.Popen(['python3', str(repo / 'scripts/cp5-gpu-sample.py'), '--duration', '150', '--interval', '5', '--output', str(gpu_directory)])\nreport = {'valid': False, 'invalidReasons': [], 'GPUAttribution': 'unavailable; device total only'}\ntry:\n    # The sampler compiles and publishes its manifest before launching its child.\n    # Compile/tool startup therefore precedes app launch; retained buckets exclude warmup/drain.\n    module.wait_json(gpu_directory / 'manifest.json', 30)\n    resource = driver.run()\n    report['resource'] = resource\n    if gpu.wait(timeout=160) != 0: raise ValueError('GPU sampler capability/cadence failed')\n    gpu_result = json.loads((gpu_directory / 'result.json').read_text())\n    if gpu_result.get('available') is not True: raise ValueError('GPU unavailable')\n    snapshots = json.loads((args.output / 'samples.json').read_text())\n    start, end = snapshots[0]['result']['uptime'], snapshots[-1]['result']['uptime']\n    records = [json.loads(line) for line in (gpu_directory / 'samples.jsonl').read_text().splitlines()]\n    retained = [row for row in records if row.get('type') == 'sample' and row['startUptimeSeconds'] >= start and row['endUptimeSeconds'] <= end]\n    seconds = sum(row['elapsedSeconds'] for row in retained)\n    if seconds < 49.9: raise ValueError('Fewer than 50 aligned GPU seconds')\n    energy = sum(channel['delta'] for row in retained for channel in row['channels'] if channel['unit'] == 'nJ')\n    report.update(retainedSeconds=seconds, modeledAverageMilliwatts=energy / seconds / 1e6,\n                  alignedGPUIntervals=retained, valid=True)\nexcept Exception as error:\n    report['invalidReasons'].append(str(error))\nfinally:\n    try: report['cleanup'] = driver.cleanup()\n    except Exception as error: report['invalidReasons'].append('Cleanup: ' + str(error))\n    # Only this direct unreaped sampler child is terminated on orchestration failure.\n    if gpu.poll() is None:\n        gpu.terminate(); gpu.wait(timeout=5)\n    report['valid'] = report['valid'] and not report['invalidReasons']\n    (directory / 'report.json').write_text(json.dumps(report, indent=2))\n    print(directory)\nsys.exit(0 if report['valid'] else 1)\n",
+  "timing": {
+    "resourceBaseline35Minutes": "45-55 (35 \u00d7 warmup10/sample60 plus stream drain15/launch/quit)",
+    "supplementalIncludingInstrumentMinutes": "6-10",
+    "long2Minutes": "21-23",
+    "latency10Minutes": "3-5 (2000 samples, warmup10 each)",
+    "GPU8Minutes": "20-24 (150s bounded sampler per cell)",
+    "totalMinutes": "95-120 excluding native setup/rejected runs"
+  },
+  "runInstructions": [
+    "Run shared build/test/native first; freeze package and script hashes before launch.",
+    "Only main runs these commands, serially, with no concurrent build/test/provider work.",
+    "Use lifetime-scoped caffeinate -di; preserve display/native visible or occluded state; setup can Raise before sampling only.",
+    "Each output directory must be fresh. Failed runs are retained and excluded; retry into a new directory.",
+    "For occluded GPU cells cover the native window with an independent opaque window within ack-timeout; keep it covered through cleanup.",
+    "GPU inline runner is supplied as argv to python3 -c; execute command arrays without shell interpolation.",
+    "Record medians/min/max of five resource or latency repeats; single boundary/GPU cells are descriptive.",
+    "If GPU setup exceeds the 150s sampler, aligned buckets fail honestly; rerun a fresh cell after native setup adjustment."
+  ],
+  "limits": [
+    "GPU is device total; Loom/WindowServer PID attribution unavailable; no root measurement.",
+    "Numerical CPU/memory/GPU/latency budgets remain user-decision unknown.",
+    "Latency measures engine input -> PTY echo -> completed draw, not compositor/physical display.",
+    "Host inventory labels include launchd-started scope services, not just the host executable.",
+    "Byte oracle verifies finite stream digest and banner; latency echo checks audit/engine equality only.",
+    "No source/build/test/UI/native acceptance ownership outside Brief was touched."
+  ],
+  "regressionEvidence": {
+    "host_scan_fail_open": {
+      "exit": 1,
+      "assertion": "AssertionError: Failed host process scan was accepted as empty"
+    },
+    "only_endpoint_scope_guard": {
+      "exit": 1,
+      "assertion": "AssertionError: Transient scope member change was accepted"
+    }
+  },
+  "gpuCoalitionCorrection": {
+    "status": "Known Apple UI XPC coalition scope supported by short native metadata; final GPU workload unverified",
+    "nativeMetadataPath": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-coalition-metadata-24d60d3c-9ba2-404b-8777-70fdcc9d4ad9/coalition-metadata.json",
+    "appIdentity": {
+      "pid": 75050,
+      "startSeconds": 1791015071,
+      "startMicroseconds": 905580
+    },
+    "coalitionID": 5823,
+    "fullNativeCensus": [
+      {
+        "identity": {
+          "pid": 75050,
+          "startSeconds": 1791015071,
+          "startMicroseconds": 905580
+        },
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/app/Loom Dev.app/Contents/MacOS/Loom Dev"
+      },
+      {
+        "identity": {
+          "pid": 75051,
+          "startSeconds": 1791015072,
+          "startMicroseconds": 89643
+        },
+        "path": "/System/Library/PrivateFrameworks/CascadeSets.framework/Versions/A/XPCServices/SetStoreUpdateService.xpc/Contents/MacOS/SetStoreUpdateService"
+      },
+      {
+        "identity": {
+          "pid": 75058,
+          "startSeconds": 1791015077,
+          "startMicroseconds": 64442
+        },
+        "path": "/System/Library/Frameworks/AppKit.framework/Versions/C/XPCServices/ThemeWidgetControlViewService.xpc/Contents/MacOS/ThemeWidgetControlViewService"
+      },
+      {
+        "identity": {
+          "pid": 75060,
+          "startSeconds": 1791015077,
+          "startMicroseconds": 233784
+        },
+        "path": "/System/Library/PrivateFrameworks/CascadeSets.framework/Versions/A/XPCServices/SetStoreUpdateService.xpc/Contents/MacOS/SetStoreUpdateService"
+      }
+    ],
+    "AppleSignatureVerification": [
+      {
+        "path": "/System/Library/PrivateFrameworks/CascadeSets.framework/Versions/A/XPCServices/SetStoreUpdateService.xpc/Contents/MacOS/SetStoreUpdateService",
+        "requirement": "anchor apple and identifier \"com.apple.SetStoreUpdateService\"",
+        "exit": 0
+      },
+      {
+        "path": "/System/Library/Frameworks/AppKit.framework/Versions/C/XPCServices/ThemeWidgetControlViewService.xpc/Contents/MacOS/ThemeWidgetControlViewService",
+        "requirement": "anchor apple and identifier \"com.apple.appkit.xpc.ThemeWidgetControlViewService\"",
+        "exit": 0
+      }
+    ],
+    "startupFixtureRuns": 0,
+    "nativeWindowState": {
+      "windowVisible": true,
+      "windowOcclusionVisible": true
+    },
+    "cleanup": {
+      "quitSucceeded": true,
+      "remainingRegisteredIdentities": 0,
+      "recordedScopeMembers": 0,
+      "runHostsLeft": 0,
+      "appCoalitionLiveMembersAfterQuit": []
+    },
+    "primaryMembershipSource": "https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/kern/coalition.c",
+    "behavior": [
+      "One metadata/signature classification before first measured workload baseline, no per-sample codesign",
+      "Only two exact known Apple-system-XPC paths/identifiers allowed; anchor apple signature and birth after app required",
+      "Retain all coalition members and GPU time; no helper subtraction or per-PID claim",
+      "Full census, identity, membership and tasks_started/tasks_exited pinned across measured interval",
+      "Explicit --device-only preserves device-total matrix and reports coalition attribution unavailable"
+    ],
+    "checksVerified": [
+      "Native metadata-only startup; empty fixture pool; normal Quit and no app/runhost/coalition members left",
+      "Exact Apple requirement verification on both known XPC executables",
+      "GPU self-test: full inclusion plus unknown/older/unsigned/reset/member/identity/task/clock negatives",
+      "Python syntax and git diff --check"
+    ],
+    "unverified": [
+      "Final GPU active/idle support calibration",
+      "GPU8 matrix",
+      "Runtime explicit device-only path"
+    ],
+    "limit": "App resource coalition includes complete listed UI XPC work; not app PID time or exclusive GPU utilization"
+  },
+  "gpuPreparationBaselineFix": {
+    "status": "Source corrected; pure regression verified; native runtime unverified",
+    "change": "First workload snapshot that performs classification is recorded only as preparation; both resource ack and GPU counters are freshly read after its completion",
+    "costEvidence": "classificationPreparation records unmeasured snapshot, CLOCK_UPTIME_RAW start/completed/wall time, observer CPU and helper CPU seconds",
+    "guards": [
+      "Resource snapshot uptime must follow preparation completion",
+      "GPU collector start uptime must follow preparation completion",
+      "Subsequent samples perform one resource/GPU read and no signatures"
+    ],
+    "verified": [
+      "GPU self-test validates fresh CPU/GPU counters, old preparation preserved separately, preparation wall time, one signature classification, single subsequent reads",
+      "Stale resource and stale GPU baseline timestamps rejected",
+      "RED: removing refresh returns preparation counters and fails self-test exit1 AssertionError",
+      "Python syntax and whitespace checks"
+    ],
+    "unverified": [
+      "Native first-baseline timing and GPU runtime calibration"
+    ],
+    "scope": "Only GPU collector and assigned evidence; frozen D/package/resource matrix untouched"
+  },
+  "gpuSafariXPCProfile": {
+    "status": "Exact per-application Apple helper classification prepared; runtime verification left to main",
+    "canonicalExecutable": "/System/Volumes/Preboot/Cryptexes/OS/System/Library/PrivateFrameworks/SafariPlatformSupport.framework/Versions/A/XPCServices/com.apple.SafariPlatformSupport.Helper.xpc/Contents/MacOS/com.apple.SafariPlatformSupport.Helper",
+    "InfoPlist": "/System/Volumes/Preboot/Cryptexes/OS/System/Library/PrivateFrameworks/SafariPlatformSupport.framework/Versions/A/XPCServices/com.apple.SafariPlatformSupport.Helper.xpc/Contents/Info.plist",
+    "bundleIdentifier": "com.apple.SafariPlatformSupport.Helper",
+    "XPCService": {
+      "JoinExistingSession": true,
+      "RunLoopType": "_NSApplicationMain",
+      "ServiceType": "Application"
+    },
+    "signatureProof": {
+      "fullResourceVerification": {
+        "command": [
+          "codesign",
+          "--verify",
+          "--strict",
+          "-R",
+          "=anchor apple and identifier \"com.apple.SafariPlatformSupport.Helper\"",
+          "/System/Volumes/Preboot/Cryptexes/OS/System/Library/PrivateFrameworks/SafariPlatformSupport.framework/Versions/A/XPCServices/com.apple.SafariPlatformSupport.Helper.xpc/Contents/MacOS/com.apple.SafariPlatformSupport.Helper"
+        ],
+        "exit": 1,
+        "error": "/System/Volumes/Preboot/Cryptexes/OS/System/Library/PrivateFrameworks/SafariPlatformSupport.framework/Versions/A/XPCServices/com.apple.SafariPlatformSupport.Helper.xpc/Contents/MacOS/com.apple.SafariPlatformSupport.Helper: resource envelope is obsolete (custom omit rules)"
+      },
+      "exactCodeIdentityVerification": {
+        "command": [
+          "codesign",
+          "--verify",
+          "--strict",
+          "--ignore-resources",
+          "-R",
+          "=anchor apple and identifier \"com.apple.SafariPlatformSupport.Helper\"",
+          "/System/Volumes/Preboot/Cryptexes/OS/System/Library/PrivateFrameworks/SafariPlatformSupport.framework/Versions/A/XPCServices/com.apple.SafariPlatformSupport.Helper.xpc/Contents/MacOS/com.apple.SafariPlatformSupport.Helper"
+        ],
+        "exit": 0,
+        "error": ""
+      }
+    },
+    "resourceEnvelopeVerified": false,
+    "signatureVerificationScope": "code-and-sealed-Info-identity; resource contents unverified (Apple custom omit rules)",
+    "decision": "Main authorized exact canonical path profile; other known profiles keep full strict resource validation",
+    "failedCalibration": {
+      "report": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/gpu-calibration-metal-r4/report.json",
+      "appACK": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-20261003/gpu-calibration-metal-r4/resource/ack-7271042b-5f9f-407b-ae1e-9b8f4c2743a5.json",
+      "appIdentity": {
+        "pid": 79751,
+        "startMicroseconds": 200844,
+        "startSeconds": 1791019794
+      },
+      "helperIdentity": {
+        "pid": 79773,
+        "startSeconds": 1791019795,
+        "startMicroseconds": 198516
+      },
+      "appCoalitionID": null,
+      "coalitionIDLimit": "Failed r4 ACK/report never persisted app coalition ID; dead-process ID not reconstructable and not inferred",
+      "cleanup": {
+        "quitSucceeded": true,
+        "remainingRegisteredIdentities": 0,
+        "recordedScopeMembers": 1,
+        "runHostsLeft": 0,
+        "appCoalitionMembersLeft": []
+      }
+    },
+    "newFailureEvidence": "Collector report now persists appCoalitionID even on classification errors",
+    "verified": [
+      "Exact Apple code identity exit0 vs full-resource custom-omit rejection exit1",
+      "Info ServiceType=Application and fresh helper birth after app from r4 report/ACK",
+      "GPU self-test denies unknown paths, failed signatures, preexisting strict/code-only members and non-Application Safari metadata",
+      "GPU self-test preserves classification-before-fresh-baseline regression and all counter/member/churn guards",
+      "Python syntax, whitespace and git diff --check"
+    ],
+    "unverified": [
+      "Native GPU runner with the new third-helper profile"
+    ],
+    "limits": [
+      "All coalition GPU time and members retained",
+      "No app-PID or exclusive-utilization claim",
+      "No system security settings, permissions, product/package/D edits"
+    ]
+  }
+}

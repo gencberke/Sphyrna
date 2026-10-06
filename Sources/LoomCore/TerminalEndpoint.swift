@@ -107,18 +107,21 @@ public final class TerminalEndpoint: @unchecked Sendable {
     private let transport: EventDrivenPTYProcess
 
     init(process: PTYProcess, outputSink: (any TerminalOutputSink)?,
-        onExit: @escaping @Sendable (Int32) -> Void) {
+         reap: (@Sendable (Int32, UnsafeMutablePointer<Int32>) -> Int32)? = nil,
+         onExit: @escaping @Sendable (Int32?) -> Void) {
         pid = process.pid
         let scrollback = outputSink == nil ? TerminalScrollback() : nil
         self.scrollback = scrollback
-        transport = EventDrivenPTYProcess(
-            process: process,
-            onOutput: { data in
-                scrollback?.receive(data)
-                outputSink?.receive(data)
-            },
-            onExit: onExit
-        )
+        let onOutput: @Sendable (Data) -> Void = { data in
+            scrollback?.receive(data)
+            outputSink?.receive(data)
+        }
+        if let reap {
+            transport = EventDrivenPTYProcess(process: process, onOutput: onOutput, onExit: onExit,
+                                              reap: reap, reapGrace: 10)
+        } else {
+            transport = EventDrivenPTYProcess(process: process, onOutput: onOutput, onExit: onExit)
+        }
     }
 
     public func readAvailable() -> Data { scrollback?.drain() ?? Data() }
@@ -133,7 +136,7 @@ public final class TerminalEndpoint: @unchecked Sendable {
 
     func closeTerminal() async throws { try await transport.closeTerminal() }
 
-    func finish(outputDrainSeconds: Double = 0.5) async throws -> Int32 {
+    func finish(outputDrainSeconds: Double = 0.5) async throws -> Int32? {
         try await transport.finish(outputDrainSeconds: outputDrainSeconds)
     }
 

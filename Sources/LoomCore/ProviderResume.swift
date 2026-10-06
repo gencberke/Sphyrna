@@ -28,7 +28,7 @@ public enum ProviderResumePlanner {
             throw LoomError.message("Codex session has no provider conversation identity")
         }
         return try .codex(
-            route: .remote(socket: socketPath, threadID: conversationID),
+            route: .remote(socket: socketPath, threadID: conversationID, workingDirectory: session.workingDirectory),
             capabilities: capabilities, home: home, environment: environment
         )
     }

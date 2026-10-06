@@ -1,0 +1,109 @@
+{
+  "checkpoint": 5,
+  "slice": "C",
+  "response_to": "32.1 / finding13",
+  "run_directory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-approval-diagnosis-20260930",
+  "result": "diagnosis complete for review; observer attachment difference established, exact provider delivery cause unverified",
+  "comparison": {
+    "cp2": {
+      "cli": "0.157.1",
+      "observer": "loom_probe",
+      "experimentalApi": true,
+      "observer_resume_control_line": 2,
+      "resume_reply_wire_line": 14,
+      "approval_wire_line": 23,
+      "resolution_wire_line": 24,
+      "resume_and_approval_same_thread": true,
+      "observer_turn_start_calls": 0,
+      "policy": "on-request / workspaceWrite",
+      "source": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/32F1416E-0A2C-448B-A6B7-994682421AAC"
+    },
+    "cp5": {
+      "cli": "0.158.0",
+      "observer": "loom",
+      "experimentalApi": true,
+      "observer_resume_calls_in_core": 0,
+      "hydration": "thread/read plus thread/backgroundTerminals/list",
+      "policy": "on-request / read-only",
+      "observed": "TUI approval prompt; Loom waitingForApproval with empty request list"
+    },
+    "limits": [
+      "CP2 initialize capability supported by source/history, not outbound wire record",
+      "Remote TUI initialize capability not captured",
+      "Version, sandbox and observer attachment all differ; no causal isolation"
+    ]
+  },
+  "schema": {
+    "command": "CODEX_HOME=<isolated> codex app-server generate-json-schema --experimental --out <run>/schema",
+    "exit": 0,
+    "resume": "v2/ThreadResumeParams.json description says running thread is rejoined",
+    "read": "v2/ThreadReadParams.json describes history hydration, no subscription guarantee",
+    "initialize": "v1/InitializeParams.json capabilities list contains experimental opt-in and notification opt-out; no generic approval-subscription capability",
+    "limit": "Schema does not establish approval fanout or pending-request replay on resume"
+  },
+  "trace": [
+    {
+      "source": "Sources/LoomCore/CodexAppServer.swift:443",
+      "boundary": "JSON object; method+id => request, method without id => typed/unknown event; response consumes pending RPC; malformed stream closes"
+    },
+    {
+      "source": "Sources/LoomCore/CodexSessionState.swift:350",
+      "boundary": "bounded router ring logs requests including unmatched; threadId selects run binding"
+    },
+    {
+      "source": "Sources/LoomCore/CodexSessionCoordinator.swift:226",
+      "boundary": "only routed and applied request enters pending snapshot; matched resolution removes it"
+    },
+    {
+      "source": "Sources/LoomCore/SessionRuntime.swift:780",
+      "boundary": "current coordinator/revision plus active run/session/thread ownership required before card publication"
+    }
+  ],
+  "changes": [
+    "Fixture can send identical commandExecution approval envelope only to initiating TUI connection while broadcasting status",
+    "Runtime test verifies TUI marker, correct waiting state, empty Loom request, no auto answer, wrong-card rejection, other-client resolution and sibling preservation",
+    "No production path, CLI version, policy or real TUI changed"
+  ],
+  "checks": {
+    "build": "passed; build.log; existing SDK search-path warnings",
+    "tests": "49 passed: 35 decoder/router/runtime tests in 2 suites and 14 controller tests; tests.log",
+    "new_test": "tuiOnlyApprovalStatusDoesNotInventACardRequestOrAnswer passed",
+    "positive_control": "existing approvalRequestReachesTheRightCardAndIsAnsweredOnlyByTheUser passed with delivered request and one user response",
+    "first_attempt": "plain swift test could not locate Testing macro; documented explicit plugin invocation passed",
+    "full_suite": "not run",
+    "whitespace_and_document_checks": "passed"
+  },
+  "verified": [
+    "CP2 observer explicitly resumed same thread before approval delivery; turn initiated via TUI, not observer turn/start",
+    "CP5 observer does not issue thread/resume; TUI resume is a separate connection",
+    "Both fixture delivery paths preserve downstream card/request ownership"
+  ],
+  "unverified": [
+    "Actual 0.158.0 per-connection request delivery and attachment semantics",
+    "Whether CP5 unknown notification represents an approval-related wire form",
+    "Real resolution broadcast and C4 acceptance",
+    "Active-work Quit / external process control"
+  ],
+  "next_observation": {
+    "before_model": "Reviewer should require bounded content-free per-connection wire classification in an isolated diagnostic harness: method allowlist class, id presence/type, decode result, sequence, routing result. No params/command/prompt/raw envelopes. Existing ring alone cannot distinguish unknown notification shapes.",
+    "smallest_conditional_real_experiment": "Only with new explicit approval-turn budget: one short approval turn, record observer waiting state; while same approval is pending, diagnostic observer rejoins same thread with thread/resume and observes whether request is delivered. No auto answer or second prompt. If pending replay is absent, negative result is inconclusive and stop; do not infer subscription failure or spend another turn.",
+    "authorization": "Proposal only. Remaining one turn is reserved for active-work Quit and is not used here."
+  },
+  "budget": {
+    "model_turns_this_task": 0,
+    "real_provider_starts": 0,
+    "codex_spent": 4,
+    "codex_limit": 5,
+    "codex_remaining": 1,
+    "retry": 0,
+    "claude_extra": 0
+  },
+  "source_sha256": {
+    "Sources/loom-fake-provider/CodexFixture.swift": "48656029f63568c4db1c0807b856f86537f8df64387ac9c8c978ff8e78a81b3f",
+    "Tests/LoomCoreTests/SessionRuntimeCodexTests.swift": "445f4ba8c013b95a32427289e13005e7704e665ee91edbe90d9950d7e3185a57",
+    "Sources/LoomCore/CodexAppServer.swift": "d75c76ef2c9512b70ccd908711ddf19ee0f20ddf4a6c4182eac7bb27bf8ff07c",
+    "Sources/LoomCore/CodexSessionState.swift": "fd7c48232db28a2af4b5cca51c1f5d565c4fa3a18a65b3227f54aedfd2761a17",
+    "Sources/LoomCore/CodexSessionCoordinator.swift": "454e950af6d37560d1ed424277b7b56cc5351c14e0d7e13ab14031e7ae526e75",
+    "Sources/LoomCore/SessionRuntime.swift": "6f50e8ecb4b994beba953779830cfe56cde5dfd3009a5592910017d4bd2e4744"
+  }
+}

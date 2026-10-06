@@ -1,0 +1,118 @@
+--- a/Sources/SwiftTerm/Apple/AppleTerminalView.swift
++++ b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
+@@ -3083,7 +3083,7 @@
+         let keys = cache.runAttributeKeys
+         let attributes = run.attributes.objectiveC
+         guard let font = attributes.object(forKey: keys.font) as? TTFont,
+-              let table = cache.directGlyphs.glyphs(for: font) else {
++              let (table, spaceIsBlank) = cache.directGlyphs.drawingGlyphs(for: font) else {
+             preconditionFailure("direct glyph run without a verified font")
+         }
+         let count = run.count
+@@ -3100,27 +3100,39 @@
+         let firstCode = Int(DirectGlyphTable.firstCode)
+         let column = run.column
+         let codeStart = run.codeStart
++        // Blank spaces are left out: they paint nothing, but each recorded
++        // glyph costs a bounds computation when Core Animation renders the
++        // view's display list.
++        let skippedCode: Int = spaceIsBlank ? Int(DirectGlyphTable.firstCode) : -1
+         cache.directGlyphBuffer.withUnsafeMutableBufferPointer { glyphs in
+             cache.directPositionBuffer.withUnsafeMutableBufferPointer { positions in
++                var drawn = 0
+                 codes.withUnsafeBufferPointer { codes in
+                     table.withUnsafeBufferPointer { table in
+                         for i in 0..<count {
+-                            glyphs[i] = table[Int(codes[codeStart + i]) - firstCode]
+-                            positions[i] = CGPoint(
++                            let code = Int(codes[codeStart + i])
++                            if code == skippedCode { continue }
++                            glyphs[drawn] = table[code - firstCode]
++                            positions[drawn] = CGPoint(
+                                 x: lineOrigin.x + CGFloat(column + i) * cellWidth, y: y)
++                            drawn += 1
+                         }
+                     }
+                 }
+-                CTFontDrawGlyphs(font as CTFont, glyphs.baseAddress!, positions.baseAddress!,
+-                                 count, context)
++                if drawn > 0 {
++                    CTFontDrawGlyphs(font as CTFont, glyphs.baseAddress!, positions.baseAddress!,
++                                     drawn, context)
++                }
+             }
+         }
+         cache.directGlyphCells += count
+         if attributes.object(forKey: keys.underlineStyle) != nil
+             || attributes.object(forKey: keys.strikethroughStyle) != nil {
+-            drawRunAttributes(run.attributes.values,
+-                              glyphPositions: Array(cache.directPositionBuffer[0..<count]),
+-                              in: context)
++            // Decorations span every cell of the run, blanks included.
++            let positions = (0..<count).map {
++                CGPoint(x: lineOrigin.x + CGFloat(column + $0) * cellWidth, y: y)
++            }
++            drawRunAttributes(run.attributes.values, glyphPositions: positions, in: context)
+         }
+     }
+ 
+--- a/Sources/SwiftTerm/Apple/DirectGlyphPath.swift
++++ b/Sources/SwiftTerm/Apple/DirectGlyphPath.swift
+@@ -54,6 +54,7 @@
+     private struct Entry {
+         let font: TTFont
+         let glyphs: [CGGlyph]?
++        let spaceIsBlank: Bool
+     }
+ 
+     /// The four style faces of a context plus any earlier font set; bounded.
+@@ -72,17 +73,46 @@
+     /// eligible. Fonts are compared by identity; the render context keeps
+     /// the same font objects until the view's font changes.
+     func glyphs(for font: TTFont) -> [CGGlyph]? {
++        entry(for: font).glyphs
++    }
++
++    /// The glyphs plus whether the space glyph has no outline, so drawing it
++    /// paints nothing and the renderer may leave it out. Core Animation
++    /// computes outline bounds for every recorded glyph, blank or not.
++    func drawingGlyphs(for font: TTFont) -> (glyphs: [CGGlyph], spaceIsBlank: Bool)? {
++        let entry = entry(for: font)
++        return entry.glyphs.map { ($0, entry.spaceIsBlank) }
++    }
++
++    private func entry(for font: TTFont) -> Entry {
+         for entry in entries where entry.font === font {
+-            return entry.glyphs
++            return entry
+         }
+         if entries.count >= 16 {
+             entries.removeAll(keepingCapacity: true)
+         }
+         let glyphs = Self.verifiedGlyphs(for: font)
+-        entries.append(Entry(font: font, glyphs: glyphs))
+-        return glyphs
++        let spaceIsBlank = glyphs.map { Self.isBlank(font: font, glyph: $0[0]) } ?? false
++        let entry = Entry(font: font, glyphs: glyphs, spaceIsBlank: spaceIsBlank)
++        entries.append(entry)
++        return entry
+     }
+ 
++    /// True when the glyph has no outline and is not a color/bitmap glyph,
++    /// i.e. filling it paints no pixel.
++    static func isBlank(font: TTFont, glyph: CGGlyph) -> Bool {
++        let ctFont = font as CTFont
++        if CTFontGetSymbolicTraits(ctFont).contains(.traitColorGlyphs) {
++            return false
++        }
++        var g = glyph
++        var rect = CGRect.zero
++        CTFontGetBoundingRectsForGlyphs(ctFont, .horizontal, &g, &rect, 1)
++        guard rect.isEmpty else { return false }
++        guard let path = CTFontCreatePathForGlyph(ctFont, glyph, nil) else { return true }
++        return path.isEmpty
++    }
++
+     /// Every ordered pair of printable ASCII characters, followed by every
+     /// triple of non-alphanumeric printable ASCII characters (the sequences
+     /// programming ligatures use) separated by spaces.

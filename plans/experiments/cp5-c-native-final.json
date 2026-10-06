@@ -1,0 +1,22 @@
+{
+  "status": "PASS final release native real CLI with local synthetic backend",
+  "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-native-local-9305f363-b4cb-4636-b2a2-98e4719ae4f9/result.json",
+  "resultSHA256": "3cc02e16c0eb5e81f7da85cb35da2320c75f9814bd997dec6dfb0b143ccaf751",
+  "checks": {
+    "appEvidenceReady": true,
+    "noOnboardingBeforePrompt": true,
+    "newApprovalAnswerable": true,
+    "newNeedsApproval": true,
+    "noMarkerAfterDenial": true,
+    "resumeSameCard": true,
+    "resumeApprovalAnswerable": true,
+    "quitSucceeded": true
+  },
+  "appSHA256": "8a83845f71b558e0c9b4829626bf3d379b8caac2a4d00b7e3f9db86c6f27c130",
+  "realModelTurns": 0,
+  "syntheticTurns": 2,
+  "limitations": [
+    "Real CLI and native Loom app with synthetic local model, not remote model acceptance.",
+    "Prompt submitted manually through native CUA key events; test decisions use the app evidence API."
+  ]
+}

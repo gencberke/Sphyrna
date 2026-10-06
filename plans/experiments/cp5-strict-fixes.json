@@ -1,0 +1,187 @@
+{
+  "recordedAt": "2026-09-30T09:48:47.983260+00:00",
+  "status": "implementation and regression checks passed; native acceptance pending",
+  "scope": [
+    "SR-CLAUDE-1 identity guard before adoption, duplicate idempotence, child agent exclusion; legitimate same-run resume retained",
+    "All seven authority profile hooks synchronous/bounded; serial bounded accept+receive FIFO, one accepted FD + kernel backlog16; no timestamp ordering claim",
+    "SR-IDLE-2 full snapshot lifecycle projection deduplication; skipped deltas no longer strand idle",
+    "SR-STOP-ID-3 adoption/Stop serialization, bounded shutdown transition waiting, fresh runtime merge",
+    "SR-STOP-ID-3b timeout stop report and event recorded, count verification accurate",
+    "SR-HOOK-DROP-5 monotonic run unreliability on dropped authenticated ingress envelope; unknown/visible issue/automatic idle final gate; explicit Stop allowed",
+    "Evidence-only resource surface/supervisor/fixture/directory and object inventory bridge; read-only actual normal/alternate buffer occupancy/capacity and pending resize",
+    "Native sidebar behind-window material, opaque terminal, reduced-transparency opaque bypass; evidence override glass/opaque/system only under --evidence"
+  ],
+  "logs": [
+    {
+      "log": "/tmp/loom-strict-red.log",
+      "sha256": "8e6ec1c6653504ae5f6bd1e2a67aad2e3527c6ae4327ecf1af5476fe7b05836b",
+      "durableResultLines": [
+        "✘ Test conversationTransitionsRejectLateEventsAndDuplicateStartsKeepWork() recorded an issue at ClaudeHookTests.swift:170:9: Expectation failed: await tracker.status().backgroundTaskCount == 0",
+        "✘ Test conversationTransitionsRejectLateEventsAndDuplicateStartsKeepWork() recorded an issue at ClaudeHookTests.swift:171:9: Expectation failed: await tracker.status().scheduledTaskCount == 0",
+        "✘ Test conversationTransitionsRejectLateEventsAndDuplicateStartsKeepWork() recorded an issue at ClaudeHookTests.swift:176:9: Expectation failed: await tracker.status() == current",
+        "✘ Test conversationTransitionsRejectLateEventsAndDuplicateStartsKeepWork() recorded an issue at ClaudeHookTests.swift:179:13: Expectation failed: await tracker.status() == current",
+        "✘ Test conversationTransitionsRejectLateEventsAndDuplicateStartsKeepWork() recorded an issue at ClaudeHookTests.swift:179:13: Expectation failed: await tracker.status() == current",
+        "✘ Test conversationTransitionsRejectLateEventsAndDuplicateStartsKeepWork() recorded an issue at ClaudeHookTests.swift:179:13: Expectation failed: await tracker.status() == current",
+        "✘ Test conversationTransitionsRejectLateEventsAndDuplicateStartsKeepWork() recorded an issue at ClaudeHookTests.swift:179:13: Expectation failed: await tracker.status() == current",
+        "✘ Test childAgentPayloadCannotMutateParentStatus() recorded an issue at ClaudeHookTests.swift:196:13: Expectation failed: await tracker.status() == current",
+        "✘ Test childAgentPayloadCannotMutateParentStatus() recorded an issue at ClaudeHookTests.swift:196:13: Expectation failed: await tracker.status() == current",
+        "✘ Test childAgentPayloadCannotMutateParentStatus() recorded an issue at ClaudeHookTests.swift:196:13: Expectation failed: await tracker.status() == current",
+        "✘ Test childAgentPayloadCannotMutateParentStatus() recorded an issue at ClaudeHookTests.swift:196:13: Expectation failed: await tracker.status() == current",
+        "✘ Test connectionAcceptanceOrderSurvivesDelayedFirstPayloadAndEOF() recorded an issue at ClaudeHookTests.swift:218:9: Expectation failed: collector.waitForCount(1, timeout: 0.05).isEmpty",
+        "✘ Test connectionAcceptanceOrderSurvivesDelayedFirstPayloadAndEOF() recorded an issue at ClaudeHookTests.swift:222:9: Expectation failed: collector.waitForCount(2, timeout: 1) == [first, second]",
+        "✘ Test adoptionCannotMoveRunAfterStopHasBegun() recorded an issue at ProcessSupervisorTests.swift:669:15: Expectation failed: an error was expected but none was thrown and \"51058BDC-3733-49E3-87C8-2C0A85148EE7\" was returned",
+        "✘ Test coalescedCompletionReopensBlockedIdleAndRepeatedSnapshotsDoNoWork() recorded an issue at SessionLifecycleTests.swift:445:9: Expectation failed: await context.lifecycle.automaticScheduleRevision() > prior",
+        "✘ Test adoptionCannotMoveRunAfterStopHasBegun() recorded an issue at ProcessSupervisorTests.swift:674:9: Expectation failed: await supervisor.managedSessions().allSatisfy { $0.currentRun == nil }",
+        "✘ Test adoptionCannotMoveRunAfterStopHasBegun() recorded an issue at ProcessSupervisorTests.swift:675:9: Expectation failed: await supervisor.events.snapshot().sessions.values.allSatisfy { $0.runID == nil }",
+        "✘ Test adoptionCannotMoveRunAfterStopHasBegun() recorded an issue at ProcessSupervisorTests.swift:676:9: Expectation failed: try await catalog.runSessionLinks(runID: runID).allSatisfy { $0.unlinkedAt != nil }",
+        "✘ Test adoptionCannotMoveRunAfterStopHasBegun() recorded an issue at ProcessSupervisorTests.swift:677:9: Expectation failed: (await supervisor.shutdown()).succeeded",
+        "✘ Test pendingAdoptionSerializesStopAndBoundedShutdown(quitting:) recorded an issue with 1 argument quitting → false at ProcessSupervisorTests.swift:715:13: Expectation failed: report.sessionID == destination",
+        "✘ Test pendingAdoptionSerializesStopAndBoundedShutdown(quitting:) recorded an issue with 1 argument quitting → false at ProcessSupervisorTests.swift:717:9: Expectation failed: await supervisor.managedSessions().allSatisfy { $0.currentRun == nil }",
+        "✘ Test pendingAdoptionSerializesStopAndBoundedShutdown(quitting:) recorded an issue with 1 argument quitting → false at ProcessSupervisorTests.swift:718:9: Expectation failed: await supervisor.events.snapshot().sessions.values.allSatisfy { $0.runID == nil }",
+        "✘ Test pendingAdoptionSerializesStopAndBoundedShutdown(quitting:) recorded an issue with 1 argument quitting → false at ProcessSupervisorTests.swift:719:9: Expectation failed: try await catalog.runSessionLinks(runID: runID).allSatisfy { $0.unlinkedAt != nil }",
+        "✘ Test pendingAdoptionSerializesStopAndBoundedShutdown(quitting:) recorded an issue with 1 argument quitting → false at ProcessSupervisorTests.swift:720:9: Expectation failed: (await supervisor.shutdown()).succeeded",
+        "✘ Test pendingAdoptionSerializesStopAndBoundedShutdown(quitting:) recorded an issue with 1 argument quitting → true at ProcessSupervisorTests.swift:700:13: Expectation failed: shutdown.errors.contains { $0.contains(\"transition\") }",
+        "✘ Test pendingAdoptionSerializesStopAndBoundedShutdown(quitting:) recorded an issue with 1 argument quitting → true at ProcessSupervisorTests.swift:701:13: Expectation failed: await supervisor.session(id: id)?.currentRun != nil",
+        "✘ Test pendingAdoptionSerializesStopAndBoundedShutdown(quitting:) recorded an issue with 1 argument quitting → true at ProcessSupervisorTests.swift:719:9: Expectation failed: try await catalog.runSessionLinks(runID: runID).allSatisfy { $0.unlinkedAt != nil }",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:750:13: Expectation failed: await adapter.status(sessionID: active) == status",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:750:13: Expectation failed: await adapter.status(sessionID: active) == status",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:750:13: Expectation failed: await adapter.status(sessionID: active) == status",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:751:13: Expectation failed: try await catalog.session(id: active)?.lastUsedAt == baseline.lastUsedAt",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:749:13: Expectation failed: await supervisor.activeSessionID(runID: runID) == active",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:750:13: Expectation failed: await adapter.status(sessionID: active) == status",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:751:13: Expectation failed: try await catalog.session(id: active)?.lastUsedAt == baseline.lastUsedAt",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:749:13: Expectation failed: await supervisor.activeSessionID(runID: runID) == active",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:750:13: Expectation failed: await adapter.status(sessionID: active) == status",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:751:13: Expectation failed: try await catalog.session(id: active)?.lastUsedAt == baseline.lastUsedAt",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:749:13: Expectation failed: await supervisor.activeSessionID(runID: runID) == active",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:750:13: Expectation failed: await adapter.status(sessionID: active) == status",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:751:13: Expectation failed: try await catalog.session(id: active)?.lastUsedAt == baseline.lastUsedAt",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:749:13: Expectation failed: await supervisor.activeSessionID(runID: runID) == active",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:750:13: Expectation failed: await adapter.status(sessionID: active) == status",
+        "✘ Test lateClaudeConversationHooksCannotMutateOrReadoptCurrentCard() recorded an issue at ProcessSupervisorTests.swift:751:13: Expectation failed: try await catalog.session(id: active)?.lastUsedAt == baseline.lastUsedAt",
+        "✘ Test coalescedCompletionReopensBlockedIdleAndRepeatedSnapshotsDoNoWork() recorded an issue at SessionLifecycleTests.swift:451:9: Expectation failed: await context.supervisor.session(id: id)?.currentRun == nil",
+        "✘ Test coalescedRunStartInIssueFrameSchedulesWithoutPolling() recorded an issue at SessionLifecycleTests.swift:479:9: Expectation failed: await context.lifecycle.automaticScheduleRevision() > before",
+        "✘ Test run with 8 tests in 3 suites failed after 3.022 seconds with 45 issues."
+      ]
+    },
+    {
+      "log": "/tmp/loom-strict-three-fixes.log",
+      "sha256": "78bc43fe4e34d518294a5fedbec5b4a471ef3b6463413f54d9387542569e31f3",
+      "durableResultLines": [
+        "✔ Test run with 49 tests in 4 suites passed after 16.441 seconds."
+      ]
+    },
+    {
+      "log": "/tmp/loom-hook-drop-red.log",
+      "sha256": "3cadf00fee810806875ea8ecead6b6d2458153276acfec5289e6fa53d9669748",
+      "durableResultLines": [
+        "✘ Test overflowedAuthorityIngressStaysUnknownBlocksIdleAndRejectsFurtherHooks() recorded an issue at SessionLifecycleTests.swift:507:9: Expectation failed: await context.supervisor.providerWorkState(sessionID: id)?.activity == .unknown",
+        "✘ Test overflowedAuthorityIngressStaysUnknownBlocksIdleAndRejectsFurtherHooks() recorded an issue at SessionLifecycleTests.swift:512:9: Expectation failed: await context.supervisor.activeSessionID(runID: runID) == id",
+        "✘ Test overflowedAuthorityIngressStaysUnknownBlocksIdleAndRejectsFurtherHooks() recorded an issue at SessionLifecycleTests.swift:516:28: Issue recorded",
+        "✘ Test overflowedAuthorityIngressStaysUnknownBlocksIdleAndRejectsFurtherHooks() recorded an issue at SessionLifecycleTests.swift:522:9: Expectation failed: await context.supervisor.events.snapshot().sessions[id]?.issue != nil",
+        "✘ Test run with 1 test in 1 suite failed after 2.281 seconds with 4 issues."
+      ]
+    },
+    {
+      "log": "/tmp/loom-strict-drop-green.log",
+      "sha256": "4b6ad89234cf1919884362bbda284f570e478bdcdf99d28a7a70895e73c9a452",
+      "durableResultLines": [
+        "✔ Test run with 4 tests in 1 suite passed after 0.159 seconds.",
+        "✔ Test run with 51 tests in 4 suites passed after 16.431 seconds."
+      ]
+    },
+    {
+      "log": "/tmp/loom-strict-timeout-red.log",
+      "sha256": "fec27e07011b048075d2a5fcc5fd8ddbe86213d74eaa7f2150201b0623e56e2e",
+      "durableResultLines": [
+        "✘ Test transitionTimeoutRecordsUnverifiedStopAndRetryCanComplete() recorded an issue at ProcessSupervisorTests.swift:742:9: Expectation failed: report.remainingCountVerified == true",
+        "✘ Test transitionTimeoutRecordsUnverifiedStopAndRetryCanComplete() recorded an issue at ProcessSupervisorTests.swift:743:9: Expectation failed: await supervisor.lastStopReport(sessionID: id)?.succeeded == false",
+        "✘ Test transitionTimeoutRecordsUnverifiedStopAndRetryCanComplete() recorded an issue at ProcessSupervisorTests.swift:744:9: Expectation failed: await supervisor.events.snapshot().sessions[id]?.stopFailure != nil",
+        "✘ Test run with 1 test in 1 suite failed after 2.544 seconds with 3 issues."
+      ]
+    },
+    {
+      "log": "/tmp/loom-strict-all-final.log",
+      "sha256": "690b00d684bac8e2317f50d3b5b908675b67f6fba81bdc2e0fb93cf7b8aa7ecc",
+      "durableResultLines": [
+        "✔ Test run with 4 tests in 1 suite passed after 0.179 seconds.",
+        "✔ Test run with 52 tests in 4 suites passed after 18.806 seconds.",
+        "✔ Test run with 24 tests in 3 suites passed after 5.133 seconds."
+      ]
+    },
+    {
+      "log": "/tmp/loom-strict-runtime-final.log",
+      "sha256": "b34ebece65bd60cc5d68776d952906b34e4e4a6327043bc551944ff88f16974f",
+      "durableResultLines": [
+        "✘ Test failedStopStaysOnTheCardAndARetryClearsIt() recorded an issue at SessionRuntimeTests.swift:616:9: Expectation failed: await context.events.snapshot().sessions[launch.sessionID]?.stopFailure?",
+        "✘ Test run with 23 tests in 1 suite failed after 31.562 seconds with 1 issue."
+      ]
+    },
+    {
+      "log": "/tmp/loom-strict-runtime-final2.log",
+      "sha256": "45efbbe321bfd878a329a2ff0bc61f3ae8931078adb3c19aa52e531f796f2337",
+      "durableResultLines": [
+        "Build complete! (22,72 sec)",
+        "✔ Test run with 23 tests in 1 suite passed after 31.243 seconds."
+      ]
+    },
+    {
+      "log": "/tmp/loom-strict-build-final.log",
+      "sha256": "020ff12bb93af4947a0dbb500d625c48b47eee8d9e68ab58e8a9bfff24dbaf77",
+      "durableResultLines": [
+        "Build complete! (6,61 sec)"
+      ]
+    }
+  ],
+  "sourceSHA256": {
+    "Sources/LoomCore/ClaudeHook.swift": "012bfd81f8bc4959fd4710549fb846f95caec12fed0a6bee96e694f40d66eb89",
+    "Sources/LoomCore/ProviderSessionAdapters.swift": "82b47a088374d2c5b4192e013b494444c5cfe4c5876a21b67961b30f39f16352",
+    "Sources/LoomCore/ProviderLaunchProfile.swift": "ff46c70594527b23db3f0200b4f5da5a61a27b46226a1e0a010a0f362dce1419",
+    "Sources/LoomCore/SessionLifecycleController.swift": "0807e8a8cafc798a6b59de9c26cbeb4bd210321982bfe75a1cb55bc6ff6d9b76",
+    "Sources/LoomCore/ProcessSupervisor.swift": "10c42bd6d8871cdf90c312d54e2f8de327e78cd4af359858613159170bd342f4",
+    "Sources/LoomCore/SessionRuntime.swift": "7eaa74bb8c3d4faaa21e33b6800cd1a9f32ff80cf706f74d126a80e5fae10399",
+    "Sources/LoomCatalogUI/SidebarBackground.swift": "d24ad09e4c8ed44de68e4c021044a5c01c341b90c09a22bb0487cf515048ad12",
+    "Sources/LoomCatalogUI/SidebarView.swift": "ceecd835ddca4e1503d666db14e8124744482aa399b44c7ffcf63be3e57b5e85",
+    "Sources/LoomCatalogUI/CatalogModel.swift": "0616258077ba40f1ee47007ae0cd15148acd842aafeab9a99aa213b118fce6fa",
+    "Sources/loom-app/AppDelegate.swift": "9d9cb4e961045de67f67b9a679b3005d29c47bebb339a9f8e71a7149e327dc45",
+    "Sources/LoomTerminal/TerminalSurface.swift": "4876f0cc71caa2fdb7a5c2e236845019bac1b6e179214cda5d1bcb3bb565f71f",
+    "Vendor/SwiftTerm/Sources/SwiftTerm/Apple/AppleTerminalView.swift": "c2f8eba66753578203027ca239b082ce9d4e7d1cd9b4a37852e0f4d0d007dc0a",
+    "Vendor/SwiftTerm/Sources/SwiftTerm/Apple/TerminalRenderOwner.swift": "7833cef675601eaa2406f1e53b11daf166c2415d1d5d0ab184dd3f999d144454",
+    "Vendor/SwiftTerm/LOOM-VENDOR.md": "da40c49ded3074137ba5f17469ba7b1ba9c750e027766b21da46021fb75c1b0c",
+    "patches/swiftterm-buffer-diagnostics.patch": "56f6d7436932d86d1f1a3aa09218b901fcbff7700b85e3eeefd44eb42c575fef",
+    "Tests/LoomCoreTests/ClaudeHookTests.swift": "e0facafed38687352d140f1221c3261876aaefc625c9b1634c9b84642150291f",
+    "Tests/LoomCoreTests/ProviderProfileTests.swift": "7043833819090884e47a56d8a02603c74c6b8c206e32c30943df53772827b25c",
+    "Tests/LoomCoreTests/SessionLifecycleTests.swift": "9832d17b766f76cb358fd1bba4873f60297ab1d8ffd3928db99598acf59ba4f5",
+    "Tests/LoomCoreTests/ProcessSupervisorTests.swift": "a61fbd7efee59baa6f82b5ad45e94bf7e5aca2a411f65801792e79c55bc02603",
+    "Tests/LoomCoreTests/SessionRuntimeTests.swift": "cd094bbd2bf3814011e5144d1b90d9da2f9bcd0388a5d8d4d5b613aaeb6b89e2",
+    "Tests/LoomTerminalTests/TerminalProductTests.swift": "0ae4160e4ced2bac561a7ee2d721a0d101c992f02c3c4a73364771fba2c6e9c0"
+  },
+  "regressionBeforeAfter": {
+    "identityIdleStop": "8 regressions failed with45 issues before fixes;49 related tests passed after fixes",
+    "overflow": "capacity1 paused consumer failed4 issues before fix;51 related core tests plus4 terminal tests passed after fix",
+    "timeoutReport": "failed3 issues before report fix;52 related core tests plus4 terminal/24UI passed after fix"
+  },
+  "testFixtureCorrections": [
+    "Catalog run stop preserves ownership history run_sessions link; actual durable end oracle is runs.endedAt. Assertions corrected to real schema rather than production schema changed.",
+    "Tracker nativeID seed is private guard only; providerSessionID status stays nil until applied SessionStart, preserving existing rejected-resume behavior.",
+    "Runtime failed prepare previously expected arbitrary raw provider message; current ProviderStopStage intentionally stores fixed category and numericRPC only. Test updated to fixed providerError + no signals, retaining card failure/retry checks."
+  ],
+  "checks": {
+    "finalRelated": "52 tests/4 core suites,4 terminal tests/1suite,24 UI tests/3suites PASS",
+    "whitespace": "git diff --check PASS",
+    "vendorPatch": "git apply --reverse --check --directory=Vendor/SwiftTerm patches/swiftterm-buffer-diagnostics.patch PASS",
+    "runtime": "SessionRuntimeTests 23 tests/1 suite PASS after privacy-safe error expectation correction",
+    "finalBuild": "swift build PASS (6.61sec)",
+    "ownedWhitespace": "No added source trailing whitespace; original upstream Vendor whitespace/context preserved. git diff --check PASS."
+  },
+  "unverified": [
+    "Native glass/opaque screenshots and final actual Claude CLI profile acceptance belong to planner-reviewer",
+    "No forced ProcessTable sample failure test seam; false verification branch inspected only",
+    "Provider invocation order beyond Loom own synchronous helpers/serial IPC is not claimed; same-prompt unordered semantics not invented",
+    "Native manual denial may lack Stop hook (SR-CLAUDE-DENY-6), separate authority research; no TUI parsing/polling fix in this scope"
+  ],
+  "budget": {
+    "remoteModels": 0,
+    "userProfilesModified": 0
+  }
+}

@@ -28,6 +28,13 @@ public final class PTYProcess {
         masterFD = fd
     }
 
+    /// A child that a run host started on the slave side of `masterFD`. Loom is
+    /// not its parent: exit statuses arrive from the host, not waitpid.
+    init(adoptingPID pid: Int32, masterFD: Int32) {
+        self.pid = pid
+        self.masterFD = masterFD
+    }
+
     deinit { if masterFD >= 0 { Darwin.close(masterFD) } }
 
     public func resize(rows: UInt16, columns: UInt16) throws {

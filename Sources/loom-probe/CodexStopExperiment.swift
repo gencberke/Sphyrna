@@ -57,8 +57,7 @@ extension Probe {
             let second = ManagedSession(provider: .codex, workingDirectory: workspace.path)
             try await supervisor.createSession(first)
             try await supervisor.createSession(second)
-            let client = try await manager.acquire(for: first.id)
-            _ = try await manager.acquire(for: second.id)
+            let client = try await manager.start()
             let adapter = CodexSessionAdapter(supervisor: supervisor)
             let coordinator = CodexSessionCoordinator(
                 client: client, supervisor: supervisor, adapter: adapter
@@ -78,7 +77,7 @@ extension Probe {
                     runID: supervisor.ownershipRunID, sessionID: session.id
                 )
                 let profile = try ProviderLaunchProfile.codex(
-                    route: .remote(socket: socket.path, threadID: nil),
+                    route: .remote(socket: socket.path, threadID: nil, workingDirectory: workspace.path),
                     capabilities: capabilities, home: home,
                     environment: environment
                 )
@@ -166,7 +165,7 @@ extension Probe {
             )
             let terminalsAfter = try await client.backgroundTerminals(threadID: firstThread)
             let other = try await client.readThread(secondThread)
-            let serverStayed = await manager.activeSessionCount() == 2
+            let serverStayed = await manager.internalSessionID() != nil
             let otherRunning = await supervisor.session(id: second.id)?.currentRun != nil
             try await Task.sleep(for: .seconds(14))
             let markerExists = FileManager.default.fileExists(atPath: marker.path)
@@ -194,9 +193,8 @@ extension Probe {
                 throw LoomError.message("Two-session stop acceptance failed")
             }
             if let runID = runs[first.id] { await coordinator.unbind(runID: runID) }
-            _ = try await manager.release(for: first.id)
             let secondStop = try await supervisor.stop(sessionID: second.id)
-            _ = try await manager.release(for: second.id)
+            _ = await manager.stopServer()
             await coordinator.stop()
             let shutdown = await supervisor.shutdown()
             guard secondStop.succeeded, shutdown.succeeded else {

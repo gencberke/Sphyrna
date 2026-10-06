@@ -1,0 +1,79 @@
+{
+  "recordedUTC": "2026-09-30T12:22:25.121468+00:00",
+  "question": "Does a thread/resume by a separate client fan out thread/started to an initialized unsubscribed observer before Loom registers its binding?",
+  "conclusion": "Not reproduced in installed codex-cli 0.159.2. New thread/start fans out once; loaded, all-clients-unsubscribed and cold-server persisted thread/resume succeeded without any thread/started delivered to the unrelated observer. No speculative prelaunch routing layer added.",
+  "realModelTurns": 0,
+  "syntheticLocalTurns": 3,
+  "artifacts": [
+    {
+      "run": "cp5-thread-fanout-0b590080-8ad7-4f4a-9a37-372c926de279",
+      "result": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-thread-fanout-0b590080-8ad7-4f4a-9a37-372c926de279/result.json",
+      "resultSHA256": "1309c3a19e907c146a3659cd9fc3e99fdbe6c98b7e9d829aaa1a1cba33496f2a",
+      "probeSHA256": "318e62fe61d107453013f1ded9e683d25bd6ce7ff658f7406487558f9cda0a5e",
+      "outcomes": {
+        "httpRequests": 0,
+        "resumeSuccess": false,
+        "resumeError": "no rollout found for thread id 01a0f241-8bf6-7f02-81da-c86bb98ffbd5",
+        "serverReaped": true,
+        "remainingOwnedGroupPIDs": []
+      }
+    },
+    {
+      "run": "cp5-thread-fanout-persisted-825933e1-35a8-40cc-9621-3db3759c8a22",
+      "result": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-thread-fanout-persisted-825933e1-35a8-40cc-9621-3db3759c8a22/result.json",
+      "resultSHA256": "438fe2b430ba61eacbe27db7a03ec2109829808a44a97443e322c45aa479dc2f",
+      "probeSHA256": "045b0e7fe59089ac64e0e5f589a1eb69c8bfe19c26d7470d72dee94f37318ad8",
+      "outcomes": {
+        "httpRequests": 2,
+        "unsubscribedInitialStarts": 1,
+        "lateResumeSuccess": true,
+        "unsubscribedResumeStarts": 0,
+        "markerCreated": false,
+        "serverReaped": true,
+        "remainingOwnedGroupPIDs": []
+      }
+    },
+    {
+      "run": "cp5-thread-fanout-unloaded-c6d460c6-c9c3-438f-9294-db1397bd34db",
+      "result": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-thread-fanout-unloaded-c6d460c6-c9c3-438f-9294-db1397bd34db/result.json",
+      "resultSHA256": "b86af996810e42cf85a373a68fd749488328aea3019b0eccf92efcdce4154c19",
+      "probeSHA256": "d733b820b0e01c3581cfd817299b266b019969e48956593ae970329572eb44e9",
+      "outcomes": {
+        "httpRequests": 2,
+        "unsubscribedInitialStarts": 1,
+        "lateResumeSuccess": true,
+        "unsubscribedResumeStarts": 0,
+        "unloadedResumeSuccess": true,
+        "unsubscribedUnloadedResumeStarts": 0,
+        "markerCreated": false,
+        "serverReaped": true,
+        "remainingOwnedGroupPIDs": []
+      }
+    },
+    {
+      "run": "cp5-thread-fanout-cold-102c05fe-7a4f-4779-8ac8-278b7ea097cd",
+      "result": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-thread-fanout-cold-102c05fe-7a4f-4779-8ac8-278b7ea097cd/result.json",
+      "resultSHA256": "d6e2ab9a46e2f0d08b49d855caf9ca7076fbeb56b3790bfd9ca229f42772497a",
+      "probeSHA256": "6624825dcf5a67a11276f673930c7fa3e3cc2c9b471ae5f08d38672864c30cd1",
+      "outcomes": {
+        "httpRequests": 2,
+        "unsubscribedInitialStarts": 1,
+        "lateResumeSuccess": true,
+        "unsubscribedResumeStarts": 0,
+        "firstServerReaped": true,
+        "coldResumeSuccess": true,
+        "unsubscribedColdResumeStarts": 0,
+        "markerCreated": false,
+        "serverReaped": true,
+        "remainingOwnedGroupPIDs": []
+      }
+    }
+  ],
+  "limitations": [
+    "Models-free localhost synthetic backend and raw real app-server websocket clients; no native TUI ordering claim.",
+    "Unsubscribe does not prove immediate unload; separate cold-server restart probe forces persisted reload.",
+    "Bounded one-second quiet drains after synchronous RPC result; not a guarantee for arbitrary future versions or delayed external events.",
+    "Blank thread resume failed no-rollout as expected and provides no successful resume evidence.",
+    "Cleanup evidence is controlled server reap plus final owned process-group snapshot. Cold probe also reaped the first server before restart, but did not persist a separate first-group snapshot; this is not a full descendants/OWN-1 proof."
+  ]
+}

@@ -1,0 +1,467 @@
+{
+  "date": "2026-09-30",
+  "status": "research-complete-product-unmodified",
+  "modelTurnsSpent": 0,
+  "nativeTUIStarted": false,
+  "cliUpgradedByThisTask": false,
+  "runDirectory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-join-research-a44d2f1d-5c30-4f6e-bca1-85d416cc39ac",
+  "probeSource": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-join-research-a44d2f1d-5c30-4f6e-bca1-85d416cc39ac/blank-probe.py",
+  "schemaSummary": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-join-research-a44d2f1d-5c30-4f6e-bca1-85d416cc39ac/schema-summary.json",
+  "runs": [
+    {
+      "purpose": "Isolated model-free blank thread read/resume research",
+      "binary": "/Users/gencberke/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/bin/codex",
+      "binarySHA256": "16593cc2f422d5f398a8e40f550ebbaf1245392528957be342c295920a300704",
+      "version": "codex-cli 0.159.2",
+      "modelTurns": 0,
+      "nativeTUI": false,
+      "authCopied": false,
+      "profile": "/tmp/loom-join-lsi0y3dg/profile",
+      "workspace": "/tmp/loom-join-lsi0y3dg/workspace",
+      "steps": [
+        {
+          "phase": "creator/start-no-turn",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null,
+          "threadNamed": true,
+          "threadMatches": true,
+          "turnCount": 0,
+          "hasPath": true,
+          "status": "idle"
+        },
+        {
+          "phase": "observer/read-summary-before-first-turn",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null,
+          "threadNamed": true,
+          "threadMatches": true,
+          "turnCount": 0,
+          "hasPath": true,
+          "status": "idle"
+        },
+        {
+          "phase": "observer/resume-before-first-turn",
+          "ok": false,
+          "errorCode": -32600,
+          "errorClass": "no-rollout"
+        },
+        {
+          "phase": "observer/unsubscribe",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null
+        },
+        {
+          "phase": "creator/unsubscribe",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null
+        }
+      ],
+      "sentMethods": [
+        {
+          "client": "creator",
+          "method": "initialize"
+        },
+        {
+          "client": "creator",
+          "method": "thread/start"
+        },
+        {
+          "client": "observer",
+          "method": "initialize"
+        },
+        {
+          "client": "observer",
+          "method": "thread/read"
+        },
+        {
+          "client": "observer",
+          "method": "thread/resume"
+        },
+        {
+          "client": "observer",
+          "method": "thread/unsubscribe"
+        },
+        {
+          "client": "creator",
+          "method": "thread/unsubscribe"
+        }
+      ],
+      "serverPID": 81953,
+      "serverReaped": true,
+      "remainingOwnedGroupPIDs": [],
+      "limitations": [
+        "No native TUI: thread/start was sent directly by a research client.",
+        "No model turn or approval request; replay and first native approval remain unverified.",
+        "Current installed binary differs from the earlier 0.158.0 approval experiment."
+      ],
+      "command": "python3 /tmp/loom-cp5-c-blank-probe.py",
+      "scriptSHA256": "6264a0d0768a7bf4dfebd93d40b137b4887c603367eafddafc2e077cc6728bc1",
+      "temporaryRootRemoved": true,
+      "serverAbsentAtFinalCheck": true
+    },
+    {
+      "purpose": "Isolated model-free blank thread read/resume research",
+      "binary": "/Users/gencberke/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/bin/codex",
+      "binarySHA256": "788a818fbb9596869c7a487554507cb8bdca17584b8671112b23f9e225ba35c8",
+      "version": "codex-cli 0.158.0",
+      "modelTurns": 0,
+      "nativeTUI": false,
+      "authCopied": false,
+      "profile": "/tmp/loom-join-l_ten0ht/profile",
+      "workspace": "/tmp/loom-join-l_ten0ht/workspace",
+      "steps": [
+        {
+          "phase": "creator/start-no-turn",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null,
+          "threadNamed": true,
+          "threadMatches": true,
+          "turnCount": 0,
+          "hasPath": true,
+          "status": "idle"
+        },
+        {
+          "phase": "observer/read-summary-before-first-turn",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null,
+          "threadNamed": true,
+          "threadMatches": true,
+          "turnCount": 0,
+          "hasPath": true,
+          "status": "idle"
+        },
+        {
+          "phase": "observer/resume-before-first-turn",
+          "ok": false,
+          "errorCode": -32600,
+          "errorClass": "no-rollout"
+        },
+        {
+          "phase": "observer/unsubscribe",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null
+        },
+        {
+          "phase": "creator/unsubscribe",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null
+        }
+      ],
+      "sentMethods": [
+        {
+          "client": "creator",
+          "method": "initialize"
+        },
+        {
+          "client": "creator",
+          "method": "thread/start"
+        },
+        {
+          "client": "observer",
+          "method": "initialize"
+        },
+        {
+          "client": "observer",
+          "method": "thread/read"
+        },
+        {
+          "client": "observer",
+          "method": "thread/resume"
+        },
+        {
+          "client": "observer",
+          "method": "thread/unsubscribe"
+        },
+        {
+          "client": "creator",
+          "method": "thread/unsubscribe"
+        }
+      ],
+      "serverPID": 82003,
+      "serverReaped": true,
+      "remainingOwnedGroupPIDs": [],
+      "limitations": [
+        "No native TUI: thread/start was sent directly by a research client.",
+        "No model turn or approval request; replay and first native approval remain unverified.",
+        "Current installed binary differs from the earlier 0.158.0 approval experiment."
+      ],
+      "command": "python3 /tmp/loom-cp5-c-blank-probe.py /Users/gencberke/.codex/packages/standalone/releases/0.158.0-aarch64-apple-darwin/bin/codex /Users/gencberke/Documents/github/loom/plans/experiments/cp5-c-blank-join-0158-research.json",
+      "scriptSHA256": "726523dbfbbd666bee43272fda281acba4b46b4b8da689b2387251d621708a26",
+      "temporaryRootRemoved": true,
+      "serverAbsentAtFinalCheck": true
+    },
+    {
+      "purpose": "Isolated model-free blank thread read/resume research",
+      "binary": "/Users/gencberke/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/bin/codex",
+      "binarySHA256": "16593cc2f422d5f398a8e40f550ebbaf1245392528957be342c295920a300704",
+      "version": "codex-cli 0.159.2",
+      "modelTurns": 0,
+      "nativeTUI": false,
+      "authCopied": false,
+      "profile": "/tmp/loom-join-2p42ta8o/profile",
+      "workspace": "/tmp/loom-join-2p42ta8o/workspace",
+      "steps": [
+        {
+          "phase": "creator/start-no-turn",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null,
+          "threadNamed": true,
+          "threadMatches": true,
+          "turnCount": 0,
+          "hasPath": true,
+          "status": "idle"
+        },
+        {
+          "phase": "observer/read-summary-before-first-turn",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null,
+          "threadNamed": true,
+          "threadMatches": true,
+          "turnCount": 0,
+          "hasPath": true,
+          "status": "idle"
+        },
+        {
+          "phase": "observer/resume-before-first-turn",
+          "ok": false,
+          "errorCode": -32600,
+          "errorClass": "no-rollout"
+        },
+        {
+          "phase": "observer/resume-excludeTurns-before-first-turn",
+          "ok": false,
+          "errorCode": -32600,
+          "errorClass": "no-rollout"
+        },
+        {
+          "phase": "observer/unsubscribe",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null
+        },
+        {
+          "phase": "creator/unsubscribe",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null
+        }
+      ],
+      "sentMethods": [
+        {
+          "client": "creator",
+          "method": "initialize"
+        },
+        {
+          "client": "creator",
+          "method": "thread/start"
+        },
+        {
+          "client": "observer",
+          "method": "initialize"
+        },
+        {
+          "client": "observer",
+          "method": "thread/read"
+        },
+        {
+          "client": "observer",
+          "method": "thread/resume"
+        },
+        {
+          "client": "observer",
+          "method": "thread/resume"
+        },
+        {
+          "client": "observer",
+          "method": "thread/unsubscribe"
+        },
+        {
+          "client": "creator",
+          "method": "thread/unsubscribe"
+        }
+      ],
+      "serverPID": 82108,
+      "serverReaped": true,
+      "remainingOwnedGroupPIDs": [],
+      "limitations": [
+        "No native TUI: thread/start was sent directly by a research client.",
+        "No model turn or approval request; replay and first native approval remain unverified.",
+        "Current installed binary differs from the earlier 0.158.0 approval experiment."
+      ],
+      "command": "python3 /tmp/loom-cp5-c-blank-probe.py /Users/gencberke/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/bin/codex /tmp/loom-join-01592-exclude.json",
+      "scriptSHA256": "df7dcacccb12c99fa97de1cc0f3a2be870714ef2c7e42b742c3cef37c62614e7",
+      "temporaryRootRemoved": true,
+      "serverAbsentAtFinalCheck": true
+    },
+    {
+      "purpose": "Isolated model-free blank thread read/resume research",
+      "binary": "/Users/gencberke/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/bin/codex",
+      "binarySHA256": "16593cc2f422d5f398a8e40f550ebbaf1245392528957be342c295920a300704",
+      "version": "codex-cli 0.159.2",
+      "modelTurns": 0,
+      "nativeTUI": false,
+      "authCopied": false,
+      "profile": "/tmp/loom-join-9wm41441/profile",
+      "workspace": "/tmp/loom-join-9wm41441/workspace",
+      "steps": [
+        {
+          "phase": "creator/start-no-turn",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null,
+          "threadNamed": true,
+          "threadMatches": true,
+          "turnCount": 0,
+          "hasPath": true,
+          "status": "idle"
+        },
+        {
+          "phase": "observer/baseline-unsubscribe",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null,
+          "unsubscribeStatus": "notSubscribed"
+        },
+        {
+          "phase": "observer/read-summary-before-first-turn",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null,
+          "threadNamed": true,
+          "threadMatches": true,
+          "turnCount": 0,
+          "hasPath": true,
+          "status": "idle"
+        },
+        {
+          "phase": "observer/resume-before-first-turn",
+          "ok": false,
+          "errorCode": -32600,
+          "errorClass": "no-rollout"
+        },
+        {
+          "phase": "observer/resume-excludeTurns-before-first-turn",
+          "ok": false,
+          "errorCode": -32600,
+          "errorClass": "no-rollout"
+        },
+        {
+          "phase": "observer/unsubscribe",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null,
+          "unsubscribeStatus": "notSubscribed"
+        },
+        {
+          "phase": "creator/unsubscribe",
+          "ok": true,
+          "errorCode": null,
+          "errorClass": null,
+          "unsubscribeStatus": "unsubscribed"
+        }
+      ],
+      "sentMethods": [
+        {
+          "client": "creator",
+          "method": "initialize"
+        },
+        {
+          "client": "creator",
+          "method": "thread/start"
+        },
+        {
+          "client": "observer",
+          "method": "initialize"
+        },
+        {
+          "client": "observer",
+          "method": "thread/unsubscribe"
+        },
+        {
+          "client": "observer",
+          "method": "thread/read"
+        },
+        {
+          "client": "observer",
+          "method": "thread/resume"
+        },
+        {
+          "client": "observer",
+          "method": "thread/resume"
+        },
+        {
+          "client": "observer",
+          "method": "thread/unsubscribe"
+        },
+        {
+          "client": "creator",
+          "method": "thread/unsubscribe"
+        }
+      ],
+      "serverPID": 82263,
+      "serverReaped": true,
+      "remainingOwnedGroupPIDs": [],
+      "limitations": [
+        "No native TUI: thread/start was sent directly by a research client.",
+        "No model turn or approval request; replay and first native approval remain unverified.",
+        "Current installed binary differs from the earlier 0.158.0 approval experiment."
+      ],
+      "command": "python3 /tmp/loom-cp5-c-blank-probe.py /Users/gencberke/.codex/packages/standalone/releases/0.159.2-aarch64-apple-darwin/bin/codex /tmp/loom-join-01592-final.json",
+      "scriptSHA256": "b68944d8837d6e0dd5f0a6aaafde132f1d44d419896fc62bbe50964510d0cb8f",
+      "temporaryRootRemoved": true,
+      "serverAbsentAtFinalCheck": true
+    }
+  ],
+  "verified": [
+    "Installed symlink currently resolves to 0.159.2; prior model experiment recorded 0.158.0.",
+    "Direct creator thread/start without a turn succeeds and observer thread/read succeeds in both tested versions.",
+    "Blank observer thread/resume fails with -32600/no-rollout in both versions.",
+    "0.159.2 excludeTurns:true still fails; observer unsubscribe returns notSubscribed after failed resumes; creator unsubscribe returns unsubscribed.",
+    "No model-turn or approval-response method sent. All isolated server process groups reaped and temporary profile/workspace roots removed."
+  ],
+  "unverified": [
+    "No native TUI in these probes; this does not establish the exact cause of the previous native blank preflight failure.",
+    "First active status versus rollout persistence ordering.",
+    "Pending server-request replay on successful late resume.",
+    "Effective native model/policy invariance on successful observer resume.",
+    "C4 first-new-thread and resumed-thread user answer/tool result/resolution."
+  ],
+  "officialSources": [
+    {
+      "url": "https://developers.openai.com/codex/app-server",
+      "retrieved": "2026-09-30",
+      "finding": "thread/read does not subscribe; resume opens a stored thread. The fetched page does not establish pending-request replay."
+    },
+    {
+      "url": "https://developers.openai.com/codex/changelog",
+      "retrieved": "2026-09-30",
+      "finding": "0.159.2 release notes describe Windows console suppression. Blank draft/archive/list fixes do not establish blank observer-resume support."
+    }
+  ],
+  "sourceSHA256": {
+    "Sources/LoomCore/CodexAppServer.swift": "f177659d0201a1f8b6864e05118634b2096719fa02bf05da1a3915b3d5fcac28",
+    "Sources/LoomCore/CodexSessionCoordinator.swift": "454e950af6d37560d1ed424277b7b56cc5351c14e0d7e13ab14031e7ae526e75",
+    "Sources/LoomCore/CodexSessionState.swift": "fd7c48232db28a2af4b5cca51c1f5d565c4fa3a18a65b3227f54aedfd2761a17",
+    "Sources/LoomCore/SessionRuntime.swift": "6f50e8ecb4b994beba953779830cfe56cde5dfd3009a5592910017d4bd2e4744",
+    "Sources/LoomCore/ProcessSupervisor.swift": "ba41b90881f1de432c6844382ca05f06e12d1b23a275ee4bb85ee19e9a3da9d3",
+    "Sources/LoomCore/SessionLifecycleController.swift": "830e437c03db53d5fd658e0ecb36e71bc7fc02fe29fe90bc7699080d9371376f"
+  },
+  "checks": {
+    "productSourceHashesUnchanged": 6,
+    "planStatusLinksAndAnchors": "passed",
+    "evidenceJSON": "passed",
+    "gitDiffCheck": "passed",
+    "newDocumentationWhitespace": "passed",
+    "productBuildAndTests": "not rerun; product sources unchanged"
+  }
+}

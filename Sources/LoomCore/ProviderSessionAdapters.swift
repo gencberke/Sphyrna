@@ -7,12 +7,93 @@ public actor ClaudeSessionAdapter {
     private var trackers: [UUID: ClaudeHookStateTracker] = [:]
     private var lastStatuses: [UUID: ClaudeSessionStatus] = [:]
     private var transitioningRuns: Set<UUID> = []
+    private struct RegistryObservation {
+        let watch: ClaudeRegistryWatch
+        let continuation: AsyncStream<(UUID, UUID?, ClaudeRegistryRead)>.Continuation
+        let consumer: Task<Void, Never>
+    }
+    private var registryWatches: [UUID: RegistryObservation] = [:]
+    private var registryIssues: [UUID: String] = [:]
+
+    func observeRegistry(runID: UUID, reader: ClaudeRegistryReader) async {
+        stopRegistry(runID: runID, discardTracker: false)
+        // These are replaceable full snapshots, not identity/permission deltas.
+        let pair = AsyncStream<(UUID, UUID?, ClaudeRegistryRead)>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let watch = ClaudeRegistryWatch(reader: reader) { watchID, generation, result in
+            pair.continuation.yield((watchID, generation, result))
+        }
+        let consumer = Task { [weak self] in
+            for await (watchID, generation, result) in pair.stream {
+                guard !Task.isCancelled else { break }
+                await self?.receiveRegistry(runID: runID, watchID: watchID, generation: generation, result: result)
+            }
+        }
+        registryWatches[runID] = RegistryObservation(watch: watch, continuation: pair.continuation, consumer: consumer)
+        watch.request(generation: await trackers[runID]?.registryGeneration())
+    }
+
+    func stopRegistry(runID: UUID, discardTracker: Bool = true) {
+        if let observation = registryWatches.removeValue(forKey: runID) {
+            observation.watch.stop(); observation.continuation.finish(); observation.consumer.cancel()
+        }
+        registryIssues[runID] = nil
+        if discardTracker { trackers[runID] = nil }
+    }
+
+    private func receiveRegistry(runID: UUID, watchID: UUID, generation: UUID?, result: ClaudeRegistryRead) async {
+        while transitioningRuns.contains(runID) {
+            guard !Task.isCancelled, registryWatches[runID]?.watch.id == watchID else { return }
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+        guard !Task.isCancelled, registryWatches[runID]?.watch.id == watchID,
+              supervisor.providerWorkStateIsReliable(runID: runID),
+              let context = await supervisor.runContext(runID: runID),
+              let tracker = trackers[runID] else { return }
+        transitioningRuns.insert(runID)
+        defer { transitioningRuns.remove(runID) }
+        let issue = await tracker.receiveRegistry(result, generation: generation, now: Date())
+        guard registryWatches[runID]?.watch.id == watchID,
+              supervisor.providerWorkStateIsReliable(runID: runID),
+              let latest = await supervisor.runContext(runID: runID),
+              latest.activeSessionID == context.activeSessionID else { return }
+        let status = await tracker.status()
+        lastStatuses[latest.activeSessionID] = status
+        try? await supervisor.updateProviderWorkState(runID: runID, state: ProviderWorkState(
+            activity: status.activity, pendingProviderWorkCount: status.backgroundTaskCount + status.scheduledTaskCount))
+        if let issue {
+            registryIssues[runID] = issue
+            await supervisor.events.publish(sessionID: latest.activeSessionID, change: .issue(issue))
+        } else if let previous = registryIssues[runID], status.activity == .waitingForInput {
+            registryIssues[runID] = nil
+            if await supervisor.events.snapshot().sessions[latest.activeSessionID]?.issue == previous {
+                await supervisor.events.publish(sessionID: latest.activeSessionID, change: .issue(nil))
+            }
+        }
+    }
 
     public init(supervisor: ProcessSupervisor) { self.supervisor = supervisor }
 
+    /// Called synchronously by bounded ingress, outside the lossy delta queue.
+    nonisolated func noteHookLoss(runID: UUID) {
+        guard supervisor.invalidateProviderWorkState(runID: runID) else { return }
+        Task { await publishHookLoss(runID: runID) }
+    }
+
+    private func publishHookLoss(runID: UUID) async {
+        guard let context = await supervisor.runContext(runID: runID) else {
+            supervisor.clearProviderWorkInvalidation(runID: runID)
+            return
+        }
+        try? await supervisor.updateProviderWorkState(runID: runID, state: ProviderWorkState(activity: .unknown))
+        await supervisor.events.publish(sessionID: context.activeSessionID,
+            change: .issue("Claude hook events were lost; state is unknown. Stop and resume this conversation to restore reliable tracking."))
+    }
+
     public func status(sessionID: UUID) async -> ClaudeSessionStatus? {
         if let runID = await supervisor.session(id: sessionID)?.currentRun?.id {
-            return await trackers[runID]?.status() ?? ClaudeSessionStatus()
+            var status = await trackers[runID]?.status() ?? ClaudeSessionStatus()
+            if !supervisor.providerWorkStateIsReliable(runID: runID) { status.activity = .unknown }
+            return status
         }
         guard var status = lastStatuses[sessionID] else {
             guard await supervisor.session(id: sessionID) != nil else { return nil }
@@ -35,6 +116,7 @@ public actor ClaudeSessionAdapter {
             return .staleRun
         }
         guard initial.launchSessionID == envelope.sessionID else { return .wrongSession }
+        guard supervisor.providerWorkStateIsReliable(runID: envelope.managedRunID) else { return .unreliable }
         let event = try ClaudeHookEvent(payload: envelope.payload)
         while transitioningRuns.contains(envelope.managedRunID) {
             try await Task.sleep(for: .milliseconds(1))
@@ -46,14 +128,18 @@ public actor ClaudeSessionAdapter {
         defer { transitioningRuns.remove(envelope.managedRunID) }
         guard let context = await supervisor.runContext(runID: envelope.managedRunID),
               context.launchSessionID == envelope.sessionID else { return .staleRun }
+        guard supervisor.providerWorkStateIsReliable(runID: envelope.managedRunID) else { return .unreliable }
         let tracker: ClaudeHookStateTracker
         if let existing = trackers[envelope.managedRunID] { tracker = existing }
         else {
             tracker = ClaudeHookStateTracker(
-                sessionID: envelope.sessionID, managedRunID: envelope.managedRunID
+                sessionID: envelope.sessionID, managedRunID: envelope.managedRunID,
+                providerSessionID: context.session.providerConversationID
             )
             trackers[envelope.managedRunID] = tracker
         }
+        let accepted = try await tracker.disposition(for: envelope)
+        guard case .applied = accepted else { return accepted }
         if case let .sessionStart(source) = event.kind {
             let transition: ConversationTransition
             switch source {
@@ -67,13 +153,20 @@ public actor ClaudeSessionAdapter {
                 transition: transition, at: receivedAt
             )
         }
+        guard supervisor.providerWorkStateIsReliable(runID: envelope.managedRunID) else {
+            await publishHookLoss(runID: envelope.managedRunID)
+            return .unreliable
+        }
         let disposition = try await tracker.receive(envelope, receivedAt: receivedAt)
         guard case .applied = disposition else { return disposition }
         if case .userPromptSubmit = event.kind {
+            // This is a usage timestamp only. An asynchronous helper may run
+            // after user work starts, so it cannot establish a process baseline.
             try await supervisor.markProviderUsed(
-                runID: envelope.managedRunID, at: receivedAt
+                runID: envelope.managedRunID, at: min(receivedAt, envelope.sentAt)
             )
         }
+        registryWatches[envelope.managedRunID]?.watch.request(generation: await tracker.registryGeneration())
         let status = await tracker.status()
         let activeSessionID = await supervisor.activeSessionID(runID: envelope.managedRunID)
             ?? context.activeSessionID

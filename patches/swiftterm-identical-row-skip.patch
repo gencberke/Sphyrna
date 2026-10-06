@@ -1,0 +1,158 @@
+--- a/Sources/SwiftTerm/BufferLine.swift
++++ b/Sources/SwiftTerm/BufferLine.swift
+@@ -838,6 +838,28 @@
+         semanticHardContinuationGroup = nil
+         images = nil
+         bump()
++    }
++
++    /// True when `line` renders exactly as this snapshot copy: same cells,
++    /// width and line flags. Rows with grapheme clusters or payload atoms
++    /// (hyperlinks) never match: their packed cell only references arena
++    /// content, so equal cells would not prove equal text. Lets a frame skip
++    /// rows an application rewrote with identical content.
++    func snapshotRendersLike (_ line: BufferLine) -> Bool
++    {
++        guard line !== self, storage.count == line.storage.count,
++              isWrapped == line.isWrapped, renderMode == line.renderMode,
++              bidiStateValue == line.bidiStateValue else {
++            return false
++        }
++        for index in 0..<storage.count {
++            let cell = storage.rawCell(at: index)
++            guard cell == line.storage.rawCell(at: index),
++                  cell.contentTag != .grapheme, cell.payloadCode == 0 else {
++                return false
++            }
++        }
++        return true
+     }
+ 
+     /// Returns the trimmed length in terms of cells used from the BufferLine
+--- a/Sources/SwiftTerm/Apple/TerminalSnapshot.swift
++++ b/Sources/SwiftTerm/Apple/TerminalSnapshot.swift
+@@ -147,6 +147,7 @@
+         }
+         var sourceGeneration: UInt64
+         var bidiParagraphRevision: Int
++        var bidiSingleRowParagraph = false
+         var bidiLayout: BidiRowLayout?
+         var needsDirectionOverride: Bool
+         var resolvedCharacters: [Int: Character]
+@@ -425,14 +426,34 @@
+             let absoluteRow = firstRow + index
+             let source = buffer.lines[absoluteRow]
+             let destination = rows[index]
+-            let contentChanged = destination.sourceIdentity !=
++            var identicalRewrite = false
++            var contentChanged = destination.sourceIdentity !=
+                 ObjectIdentifier(source.renderIdentity) ||
+                 destination.sourceGeneration != source.generation
++            if contentChanged,
++               destination.sourceIdentity == ObjectIdentifier(source.renderIdentity),
++               destination.line.snapshotRendersLike(source) {
++                // Rewritten with identical content (a TUI redrawing its whole
++                // dynamic region): keep the copy, only follow the generation.
++                destination.recordSource(source)
++                contentChanged = false
++                identicalRewrite = true
++            }
+             let bidiRevision = TerminalBidi.layoutRevision(
+                 row: absoluteRow, buffer: buffer,
+                 maximumRows: maximumBidiParagraphRows)
+-            let bidiChanged = contentChanged || bidiInputsChanged ||
++            let singleRowParagraph = !source.isWrapped &&
++                !(absoluteRow + 1 < buffer.lines.count && buffer.lines[absoluteRow + 1].isWrapped)
++            var bidiChanged = contentChanged || bidiInputsChanged ||
+                 destination.bidiParagraphRevision != bidiRevision
++            if bidiChanged, identicalRewrite, !bidiInputsChanged,
++               singleRowParagraph, destination.bidiSingleRowParagraph {
++                // The revision hashes the line generation, which an identical
++                // rewrite bumps; a one-row paragraph's layout depends on the
++                // row's own cells alone.
++                destination.bidiParagraphRevision = bidiRevision
++                bidiChanged = false
++            }
+ 
+             if contentChanged {
+                 destination.line.copyForSnapshot(from: source, arena: snapshotArena)
+@@ -460,6 +481,7 @@
+             }
+ 
+             if bidiChanged {
++                destination.bidiSingleRowParagraph = singleRowParagraph
+                 destination.bidiParagraphRevision = bidiRevision
+                 // Rows of one paragraph share a job. Without this the cell
+                 // extraction — O(paragraph) — would run once per visible row
+--- a/Sources/SwiftTerm/Apple/BoxDrawingRenderer.swift
++++ b/Sources/SwiftTerm/Apple/BoxDrawingRenderer.swift
+@@ -85,6 +85,19 @@
+                      scale: CGFloat,
+                      color: TTColor,
+                      baseThicknessPx: Int) {
++        draw(codePoint: codePoint, in: context, cellOrigin: cellOrigin, cellSize: cellSize,
++             scale: scale, cgColor: color.cgColor, baseThicknessPx: baseThicknessPx)
++    }
++
++    /// Same drawing with an already converted color: converting an `NSColor`
++    /// costs more than a simple box glyph, so callers convert once per run.
++    static func draw(codePoint: UInt32,
++                     in context: CGContext,
++                     cellOrigin: CGPoint,
++                     cellSize: CGSize,
++                     scale: CGFloat,
++                     cgColor: CGColor,
++                     baseThicknessPx: Int) {
+         let cellWidthPx = max(1, Int(round(cellSize.width * scale)))
+         let cellHeightPx = max(1, Int(round(cellSize.height * scale)))
+         let minStrokePx = max(1, Int(round(scale)))
+@@ -99,8 +112,8 @@
+         let lightPx = max(1, max(baseThicknessPx, minStrokePx))
+         let heavyPx = max(1, lightPx * 2)
+ 
+-        context.setFillColor(color.cgColor)
+-        context.setStrokeColor(color.cgColor)
++        context.setFillColor(cgColor)
++        context.setStrokeColor(cgColor)
+ 
+         switch codePoint {
+         case 0x2500: linesChar(lines: Lines(up: .none, right: .light, down: .none, left: .light), canvas: canvas, baseThicknessPx: baseThicknessPx)
+--- a/Sources/SwiftTerm/Apple/AppleTerminalView.swift
++++ b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
+@@ -3004,20 +3004,32 @@
+         let lineOriginPxX = round(lineOrigin.x * scale)
+         let lineOriginPxY = round(lineOrigin.y * scale)
+ 
++        // Neighbouring cells of a border share one color object; converting
++        // an NSColor to a CGColor (and re-deriving its alpha) per cell cost
++        // more than drawing the glyph.
++        var lastColor: TTColor?
++        var lastCGColor: CGColor?
+         for item in items {
+             let cellWidthPx = baseCellWidthPx * item.columnWidth
+             let cellWidth = CGFloat(cellWidthPx) / scale
+             let cellOrigin = CGPoint(x: (lineOriginPxX + CGFloat(item.column * baseCellWidthPx)) / scale,
+                                      y: lineOriginPxY / scale)
+-            let baseAlpha = item.foregroundColor.cgColor.alpha
+-            let resolvedAlpha = max(0, min(1, baseAlpha))
+-            let color = item.foregroundColor.withAlphaComponent(resolvedAlpha)
++            let cgColor: CGColor
++            if let lastColor, let lastCGColor, lastColor === item.foregroundColor {
++                cgColor = lastCGColor
++            } else {
++                let base = item.foregroundColor.cgColor
++                let resolvedAlpha = max(0, min(1, base.alpha))
++                cgColor = resolvedAlpha == base.alpha ? base : base.copy(alpha: resolvedAlpha) ?? base
++                lastColor = item.foregroundColor
++                lastCGColor = cgColor
++            }
+             BoxDrawingRenderer.draw(codePoint: item.codePoint,
+                                     in: context,
+                                     cellOrigin: cellOrigin,
+                                     cellSize: CGSize(width: cellWidth, height: cellHeight),
+                                     scale: scale,
+-                                    color: color,
++                                    cgColor: cgColor,
+                                     baseThicknessPx: baseThicknessPx)
+         }
+ 

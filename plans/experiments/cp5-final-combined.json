@@ -1,0 +1,175 @@
+{
+  "status": "Post-optimizer full suite passed; final release native and resource acceptance pending",
+  "command": "swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib",
+  "exitCode": 0,
+  "suites": [
+    {
+      "tests": 19,
+      "suites": 4,
+      "seconds": 14.654
+    },
+    {
+      "tests": 213,
+      "suites": 20,
+      "seconds": 46.546
+    },
+    {
+      "tests": 39,
+      "suites": 4,
+      "seconds": 7.861
+    }
+  ],
+  "totalTests": 271,
+  "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-combined-20260930/full-suite.log",
+  "logSHA256": "153f982d6043a391c19d96d0fabd0b8da6066e4be7724d36173a38cfa99da4a9",
+  "limitations": [
+    "UTC literal regression added after this build; its RED/GREEN and affected build recorded separately.",
+    "Passing regression documenting OWN-1 escape does not mean ownership gold standard passed.",
+    "Native final package, long-run resources and external gates remain open."
+  ],
+  "nativeSyntheticCombined": {
+    "command": "zsh scripts/cp5-c-acceptance.sh",
+    "exitCode": 0,
+    "checks": 22,
+    "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-20260930T133706",
+    "appSHA256": "8a83845f71b558e0c9b4829626bf3d379b8caac2a4d00b7e3f9db86c6f27c130"
+  },
+  "releasePackage": {
+    "command": "zsh scripts/package-dev-app.sh",
+    "exitCode": 0,
+    "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-combined-20260930/release-package.log",
+    "logSHA256": "4056f28600a7f05bb1ef9066da7aafa9f63b347f6865c55dfced562e51038df2",
+    "appSHA256": "8a83845f71b558e0c9b4829626bf3d379b8caac2a4d00b7e3f9db86c6f27c130",
+    "signing": "ad-hoc; permission continuity not established"
+  },
+  "optimizerFollowup": "OPT-Quit source regression and independent review closed; final release/native/resource checks follow.",
+  "postOptimizerFullFirst": {
+    "exitCode": 1,
+    "tests": 274,
+    "issues": 1,
+    "failedTest": "vnodeCreationPartialWriteRetryAndCleanupHaveNoIdlePolling",
+    "observation": "collector count2 vs initial1 in quiet interval; test config parent is shared temporary directory, so other suites create real vnode events",
+    "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-combined-20260930/post-optimizer-full-first.log",
+    "logSHA256": "13fc9306cb8f94adad3fd9fbc1ede4dc1e823a35139638937d82437380c5cdc1",
+    "followup": "Test fixture isolation and first callback synchronization assigned; no product change planned."
+  },
+  "postOptimizerFullPassed": {
+    "tests": 274,
+    "suites": 28,
+    "exitCode": 0,
+    "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-combined-20260930/post-optimizer-full-passed.log",
+    "logSHA256": "60d5de316b1af2006caae75c7fe6482625d64abb9989774263d0aa5fb3d278e5",
+    "fixtureIsolation": "Private config parent and bounded first notification; product sources unchanged."
+  },
+  "postOptimizerPackage": {
+    "command": "zsh scripts/package-dev-app.sh",
+    "exitCode": 0,
+    "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-combined-20260930/post-optimizer-package.log",
+    "logSHA256": "8ed01ecf55404a98e4168410d4ada0e63afa6e038b2f8d6c9e3151fd2195c49f",
+    "appSHA256": "3268bacdcffbf93e50b117faabc9c85a02a2b27bc254c4fc748efe3cdd9636fe",
+    "signing": "ad-hoc; strict verification passed; permission continuity unverified"
+  },
+  "postOptimizerNativeSynthetic": {
+    "command": "zsh scripts/cp5-c-acceptance.sh",
+    "exitCode": 0,
+    "checks": 22,
+    "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-20260930T141049",
+    "appSHA256": "3268bacdcffbf93e50b117faabc9c85a02a2b27bc254c4fc748efe3cdd9636fe"
+  },
+  "postOptimizerRealCodexActiveQuit": {
+    "record": "plans/experiments/cp5-c-real-active-quit-final.json",
+    "checks": 4,
+    "passed": true,
+    "remoteTurns": 1
+  },
+  "postOptimizerB10k": {
+    "checks": 38,
+    "exitCode": 0,
+    "command": "zsh scripts/cp5-b-acceptance.sh",
+    "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-b-20260930T141926",
+    "appSHA256": "3268bacdcffbf93e50b117faabc9c85a02a2b27bc254c4fc748efe3cdd9636fe",
+    "limitations": "Synthetic evidence mode; does not by itself prove pixel comparison, Finder drop/link or OS accessibility settings."
+  },
+  "cpuCorrectedPackage": {
+    "command": "zsh scripts/package-dev-app.sh",
+    "exitCode": 0,
+    "strictCodesignVerify": true,
+    "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-combined-20260930/cpu-correct-package.log",
+    "logSHA256": "aa4395442ef037c83ffaae5993ffea33a3af800f4dee4a5ef7cc9f78a727721a",
+    "appSHA256": "b24ed027ccfde1c0811c2f0745fcba450907e1ce5cb608ff3ffbf79a64933b2e",
+    "scope": "CPU unit conversion only; prior native lifecycle/layout behavior source unchanged. Existing accepted evidence retains original hashes."
+  },
+  "sr10PreProducerFull": {
+    "status": "failed",
+    "tests": 290,
+    "suites": 28,
+    "failure": "CodexAppServerManagerTests.quitDuringStartupCancelsAndCleansUp:95 retained runningSessionIDs after server.stop; next runtime.shutdown succeeded",
+    "coreTests": 232,
+    "terminalTests": 19,
+    "uiTests": 39,
+    "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-combined-20260930/sr10-pre-producer-full.log",
+    "sha256": "c394d6cc4a4fb9d6247103d2605800db910b527e4a17305f177ed016151e7c5a",
+    "sourceSnapshot": "cp5-supervisor-final-strict-fixes.json SR-STOP-RETRY-10.sha256; before producer-proof revision",
+    "next": "Implementer root-cause investigation; final full suite after changed inputs"
+  },
+  "producerProofFull": {
+    "status": "failed",
+    "tests": 293,
+    "suites": 28,
+    "terminalTests": 19,
+    "coreTests": 235,
+    "uiTests": 39,
+    "failure": "SessionLifecycleTests.coalescedCompletionReopensBlockedIdleAndRepeatedSnapshotsDoNoWork:469 automaticScheduleRevision == settled",
+    "priorManagerFailure": "passed",
+    "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-combined-20260930/producer-proof-full.log",
+    "sha256": "9b2a2f0a8bdfb17ae83ad8582fb1f447ab135b55ef48c9bb9b5b3f8b6a526fdb",
+    "next": "Narrow diagnosis of product vs test completion synchronization; optimizer source review continues elsewhere"
+  },
+  "lifecycleCompletionBarrier": {
+    "status": "main-source-and-evidence-accepted",
+    "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-lifecycle-final-20260930/result.json",
+    "sourceHashes": {
+      "Sources/LoomCore/SessionLifecycleController.swift": "e42703840506459eb4800be27486b1eae0ae3db448f83fc775f9ad3b67534bf6",
+      "Tests/LoomCoreTests/SessionLifecycleTests.swift": "425205334db5eecebd9cf6d0de300f8f2d67e0c696a5a4ec67a7974da89617ba"
+    },
+    "narrowTests": 1,
+    "affectedTests": 12,
+    "buildSeconds": 15.31,
+    "scope": "Internal completion counter and bounded test barrier; scheduling/public API unchanged; duplicate snapshot revision+decodedRows expectations preserved.",
+    "verification": "Main matched2source hashes, read exact revision.diff and actual log endings. Original failure retained; historical exact interleaving not instrumented.",
+    "fullSuite": "PASS293"
+  },
+  "finalFullSuite": {
+    "status": "passed",
+    "tests": 293,
+    "suites": 28,
+    "terminalTests": 19,
+    "terminalSeconds": 13.439,
+    "coreTests": 235,
+    "coreSeconds": 54.688,
+    "uiTests": 39,
+    "uiSeconds": 8.001,
+    "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-combined-20260930/final-293-passed.log",
+    "sha256": "79a62e5d88cdab76cd2b6f272adef25b1cd98c192705ca87c27eb31ca9547584",
+    "sourceEvidence": [
+      "cp5-supervisor-final-strict-fixes.json SR10.preparedLiveRevision",
+      "cp5-codex-final-strict-fixes.json SR10Coordinator.producerBoundaryRevision",
+      "lifecycleCompletionBarrier.sourceHashes"
+    ]
+  },
+  "finalPackage": {
+    "status": "passed",
+    "app": "/Users/gencberke/Documents/github/loom/.build/app/Loom Dev.app",
+    "appSHA256": "0415fb935c8554df57feb334fbf9238f38c042142169bda6e789e61d338598cd",
+    "signing": "ad-hoc; codesign --verify --strict passed",
+    "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-combined-20260930/final-package.log",
+    "logSHA256": "acfc77e9751d6cde322c37012f54c926b6dc6e24123dcfe24519f4f88cdb7898",
+    "nativeAcceptance": {
+      "status": "passed",
+      "checks": 22,
+      "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-20260930T164639",
+      "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-20260930T164639/driver-output.log",
+      "note": "Existing forced failed Quit oracle now also requires remaining=null and remainingCountVerified=false."
+    }
+  }
+}

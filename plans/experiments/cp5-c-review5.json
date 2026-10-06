@@ -1,0 +1,33 @@
+{
+  "review": 5,
+  "acceptedScope": "Claude new/resume, clear identity transition, explicit Stop and idle Quit; bounded by experiment evidence",
+  "fullSliceAccepted": false,
+  "sourceChanged": false,
+  "modelTurnsThisReview": 0,
+  "remainingAuthorizedTurns": 0,
+  "independentlyChecked": {
+    "catalogSessionCount": 2,
+    "catalogRunCount": 2,
+    "runLinks": 3,
+    "sameProject": true,
+    "sameInitialSessionAcrossResume": true,
+    "runsEndedRequested": true,
+    "quitSucceeded": true,
+    "remainingProcessesReported": 0
+  },
+  "reportedNativeObservations": [
+    "Haiku 4.5 before both turns",
+    "fresh response matches token after resume",
+    "selection follows clear"
+  ],
+  "notReplayed": [
+    "model selection and model responses"
+  ],
+  "unverified": [
+    "Claude tool approval",
+    "Claude active-turn Quit",
+    "real Codex",
+    "OWN-1 and deferred A/D"
+  ],
+  "evidence": "cp5-c-haiku-retry-20260929"
+}

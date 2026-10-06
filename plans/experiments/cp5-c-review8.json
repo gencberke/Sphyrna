@@ -1,0 +1,40 @@
+{
+  "checkpoint": 5,
+  "slice": "C",
+  "response_to": "29",
+  "result": "findings 11 and 12 accepted; real C acceptance remains open",
+  "independent_checks": {
+    "tests_passed": 54,
+    "breakdown": {
+      "decoder_router_tracker": 12,
+      "codex_runtime": 22,
+      "controller": 14,
+      "quit_terminal": 6
+    },
+    "command": "LOOM_FORCE_COALITION_FAILURE=1 swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib --filter 'CodexAppServerTests|SessionRuntimeCodexTests|ConversationControllerTests|TerminalRunControllerTests'",
+    "exit_code": 0,
+    "source_hashes": "12/12 match implementation evidence",
+    "package_binary_hash": "matches implementation evidence",
+    "git_diff_check": "passed"
+  },
+  "reviewed_native_evidence": {
+    "source": "cp5-c-review7-fix-20260930",
+    "success": "one attempt; succeeded; remaining0; runningSessions empty",
+    "failure_retry": "first attempt failed with running session retained; second succeeded; remaining0; runningSessions empty",
+    "rerun_this_review": false
+  },
+  "evidence_directory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-review8-20260930",
+  "unverified": [
+    "Real remote-TUI resolution broadcast",
+    "Historical identity/Stop causes",
+    "Remaining real C acceptance",
+    "Full CP5, D, OWN-1, resources and optimizer closure"
+  ],
+  "model_turns_this_review": 0,
+  "budget": {
+    "codex_spent": 1,
+    "codex_remaining": 3,
+    "codex_retry": 0,
+    "claude_extra": 0
+  }
+}

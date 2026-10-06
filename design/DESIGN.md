@@ -67,3 +67,14 @@ Bu bölüm Herdr Desktop'ta bulunan davranışları, tasarımdaki öğelerin ne 
 | Tanılama | Son eklenen Performance menüsü: CPU/bellek gösterimi, 5 sn örnekleme, JSONL, manuel sorun işareti, aç/kapat, 20 MiB döndürme | Bu uygulama da kaldırılıyor. GPU ölçmez; kısa süreç/sıçramaları kaçırır. Loom'un tanılama tasarımı olarak kabul edilmiş değildir. |
 
 Kısayollar: Cmd+O proje ekle; Cmd+N yeni konuşma; Ctrl+Cmd+S sidebar; Cmd+, ayarlar; Cmd+W pencere; Cmd+Q uygulamadan çıkış; standart macOS kopyala/yapıştır/tümünü seç ve tam ekran kısayolları.
+
+## 5. Durum dili (5 Ekim 2026, kullanıcı kararı)
+
+Kullanıcı paket G geri bildirimiyle §2'deki bazı öğeleri değiştirdi ([UI planı](../plans/cp5/UI.md)). Bunlar §2 ile çeliştiğinde bu bölüm geçerlidir.
+
+- Durum göstergeleri Unpeel tarzında küçük ve renklidir: çalışıyor = küçük noktaların dikdörtgen çevresinde birbirini izlediği animasyon; onay/girdi bekliyor = turuncu nokta; bakılmamış bitiş = renkli nokta; hata = kırmızı işaret; boşta = gösterge yok. Bu dil sidebar, başlık ve diğer durum yüzeylerinde tutarlı kullanılır. Animasyon render sunucusunda çalışan küçük bir katman animasyonudur; [sözleşme §10](../LOOM-PRODUCT-CONTRACT.md#10-kaynak-ve-performans-kabulü) gereği gizli veya etkin olmayan pencerede ve sidebar kapalıyken durağandır. Kullanıcı kararıyla (6 Ekim 2026) bu küçük gösterge, macOS'un kendi küçük ilerleme göstergeleri gibi Hareketi Azalt açıkken de döner; diğer hareketler §2.8'e uyar.
+- Proje satırında sohbet sayısı gösterilmez; projedeki bir sohbet dikkat istiyor veya bakılmamış bitiş taşıyorsa renkli nokta görünür.
+- Proje görünümünde kart proje adını tekrarlamaz; aktivite görünümünde gösterir.
+- Proje satırının sağ tık menüsü yeni Claude / Codex sohbeti başlatabilir.
+- Sidebar camı duvar kâğıdı rengini belirgin biçimde sızdırmaz; koyu ton baskındır.
+- Üst navbar düzeni ayrıca konuşulacak; bu karar onu değiştirmez.

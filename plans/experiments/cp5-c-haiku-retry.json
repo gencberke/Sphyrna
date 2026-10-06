@@ -1,0 +1,143 @@
+{
+  "run": "cp5-c-haiku-retry-20260929",
+  "provider": "Claude",
+  "cliVersion": "2.1.284",
+  "verifiedModel": "Haiku 4.5",
+  "modelSelection": {
+    "cli": "--model haiku",
+    "loom": "isolated settings.json model=haiku; /model selection verified before each turn",
+    "isolatedModelSettingRestored": true
+  },
+  "authorization": "User explicitly requested learning correct invocation and retrying; remaining two short Haiku turns retained.",
+  "turns": {
+    "claudeHaiku": 2,
+    "remaining": 0,
+    "codex": 0,
+    "additionalModelRetries": 0
+  },
+  "startupPreflight": {
+    "modelTurns": 0,
+    "isolatedWorkspaceTrustConfirmed": true,
+    "externalImportsAllowed": false,
+    "normalExit": true
+  },
+  "previousFailure": {
+    "cause": "unverified",
+    "likelyExplanation": "Previous extra Enter could have accepted the initial default No, exit workspace-trust choice; that choice was observed in the current zero-turn preflight. Not claimed as proven historical cause."
+  },
+  "observations": {
+    "firstResponseMatchesToken": true,
+    "firstCardReady": true,
+    "resumeSameCardAndProviderIdentity": true,
+    "resumeNewResponseMatchesPreviousToken": true,
+    "resumeCardReady": true,
+    "clearNewCardSameRunAndProject": true,
+    "stopBeforeResume": true,
+    "stopAfterClear": true,
+    "method": "native CUA menu/buttons/keyboard; live model selector and response visual observation; read-only SQLite identity checks"
+  },
+  "firstStart": [
+    {
+      "id": "8759D26D-38AC-4E0B-88CE-AD0D98582AE4",
+      "provider_conversation_id": "8759D26D-38AC-4E0B-88CE-AD0D98582AE4",
+      "working_directory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-haiku-20260929/workspace",
+      "project_id": "724FA9D5-EA9E-4D39-B249-848A7F0BE659"
+    }
+  ],
+  "afterResume": {
+    "sessions": [
+      {
+        "id": "8759D26D-38AC-4E0B-88CE-AD0D98582AE4",
+        "provider_conversation_id": "8759D26D-38AC-4E0B-88CE-AD0D98582AE4",
+        "working_directory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-haiku-20260929/workspace",
+        "project_id": "724FA9D5-EA9E-4D39-B249-848A7F0BE659"
+      }
+    ],
+    "runs": [
+      {
+        "id": "048DCB89-BF0D-4029-8FF2-55CF22E3F6B2",
+        "initial_session_id": "8759D26D-38AC-4E0B-88CE-AD0D98582AE4",
+        "end_reason": "requested"
+      },
+      {
+        "id": "D0A38703-5768-4F4B-9B91-87895685CC9A",
+        "initial_session_id": "8759D26D-38AC-4E0B-88CE-AD0D98582AE4",
+        "end_reason": null
+      }
+    ]
+  },
+  "afterClear": {
+    "sessions": [
+      {
+        "id": "8759D26D-38AC-4E0B-88CE-AD0D98582AE4",
+        "provider_conversation_id": "8759D26D-38AC-4E0B-88CE-AD0D98582AE4",
+        "project_id": "724FA9D5-EA9E-4D39-B249-848A7F0BE659"
+      },
+      {
+        "id": "6E1D5A24-A3BC-4A26-843E-665EF75E59FB",
+        "provider_conversation_id": "c919c171-5c86-407e-8f79-74d294969e90",
+        "project_id": "724FA9D5-EA9E-4D39-B249-848A7F0BE659"
+      }
+    ],
+    "runLinks": [
+      {
+        "run_id": "048DCB89-BF0D-4029-8FF2-55CF22E3F6B2",
+        "session_id": "8759D26D-38AC-4E0B-88CE-AD0D98582AE4",
+        "linked_at": 1790684714.558069,
+        "unlinked_at": null
+      },
+      {
+        "run_id": "D0A38703-5768-4F4B-9B91-87895685CC9A",
+        "session_id": "8759D26D-38AC-4E0B-88CE-AD0D98582AE4",
+        "linked_at": 1790684770.424655,
+        "unlinked_at": 1790684804.9523978
+      },
+      {
+        "run_id": "D0A38703-5768-4F4B-9B91-87895685CC9A",
+        "session_id": "6E1D5A24-A3BC-4A26-843E-665EF75E59FB",
+        "linked_at": 1790684804.9523978,
+        "unlinked_at": null
+      }
+    ]
+  },
+  "finalRuns": [
+    {
+      "id": "048DCB89-BF0D-4029-8FF2-55CF22E3F6B2",
+      "initial_session_id": "8759D26D-38AC-4E0B-88CE-AD0D98582AE4",
+      "leader_pid": 40169,
+      "leader_start_seconds": 1790684714,
+      "leader_start_microseconds": 547955,
+      "started_at": 1790684714.558069,
+      "ended_at": 1790684757.112468,
+      "end_reason": "requested",
+      "exit_status": 33024
+    },
+    {
+      "id": "D0A38703-5768-4F4B-9B91-87895685CC9A",
+      "initial_session_id": "8759D26D-38AC-4E0B-88CE-AD0D98582AE4",
+      "leader_pid": 40211,
+      "leader_start_seconds": 1790684770,
+      "leader_start_microseconds": 402816,
+      "started_at": 1790684770.424655,
+      "ended_at": 1790684818.018477,
+      "end_reason": "requested",
+      "exit_status": 33024
+    }
+  ],
+  "quit": {
+    "errors": [],
+    "guarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Coalition capability failure forced.",
+    "remaining": 0,
+    "seconds": 0.010969708353513852,
+    "signals": 0,
+    "succeeded": true
+  },
+  "evidenceDirectory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-haiku-retry-20260929",
+  "unverified": [
+    "Claude approval flow",
+    "active-turn Quit",
+    "Codex real acceptance",
+    "full C acceptance",
+    "OWN-1 and deferred A/D acceptance"
+  ]
+}

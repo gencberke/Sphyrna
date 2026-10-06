@@ -1,0 +1,72 @@
+{
+  "status": "cwd fix implemented; review pending; broader real acceptance blocked",
+  "change": "Require workingDirectory in remote route and pass --cd for new and resume; shared app-server cwd unchanged",
+  "localCLIHelp": "codex 0.158.0 --help and resume --help support -C/--cd <DIR>",
+  "checks": {
+    "swiftBuild": "passed",
+    "narrowTests": {
+      "passed": 32,
+      "core": 20,
+      "controller": 12
+    },
+    "packageReleaseAndSignature": "passed; ad-hoc",
+    "gitDiffCheck": "passed"
+  },
+  "beforeFixEvidence": "plans/experiments/cp5-c-real-after-identity.json",
+  "real": {
+    "startupAttempts": 1,
+    "trustPrompt": "Only newly created empty experiment workspace trusted through native UI",
+    "correctDirectoryVisible": true,
+    "initialIdentityBound": true,
+    "model": "GPT-6-Astra (visible TUI label)",
+    "modelPromptsSent": 1,
+    "expectedResponseObserved": true,
+    "expectedToken": "LOOM_C_R5",
+    "uiWorkingObserved": true,
+    "withoutNewCommandRunMovedToSecondCard": true,
+    "secondCardIndicator": "Problem",
+    "stopIndicator": "Stop not verified; 0 process(es) still running",
+    "stopCause": "unverified; detail not captured",
+    "quit": {
+      "errors": [],
+      "guarantee": "Narrowed ownership: session, observed ancestry and readable run markers only; unobserved unmarked escapes may remain. Coalition capability failure forced.",
+      "remaining": 0,
+      "seconds": 0.06568191666156054,
+      "signals": 1,
+      "succeeded": true
+    },
+    "catalogCounts": {
+      "projects": 1,
+      "sessions": 2,
+      "runs": 1,
+      "run_sessions": 2
+    },
+    "unfinishedRuns": 0,
+    "appAndTuiAbsent": true
+  },
+  "budget": {
+    "authorizedModelTurns": 4,
+    "spent": 1,
+    "remaining": 3,
+    "retries": 0,
+    "claudeExtra": 0
+  },
+  "sourceSHA256": {
+    "Sources/LoomCore/ProviderLaunchProfile.swift": "141bfc7a8df541a6ba3d1e4939308260637bb9d6e79d3c62d925e080f78dcc1e",
+    "Sources/LoomCore/ProviderResume.swift": "b8e8102a35ccceea15e5093d6fad1e357d6a81d5b41ee5b231220def02ad0e73",
+    "Sources/LoomCore/SessionRuntime.swift": "bd1f841c5b661bbfecad9096a079c309fce00144d5a0a576f29906f6fd6ce048",
+    "Sources/loom-fake-provider/main.swift": "2b5d22e56d797eafcb163a0aa2323630ddceff24488ce6fde73177cb91b7562b",
+    "Sources/loom-fake-provider/CodexFixture.swift": "2e710b62a3b5ad1b83a21ea2c03f965a0c3d1648c96acef45db3ec635704dc42",
+    "Tests/LoomCoreTests/ProviderProfileTests.swift": "a0da5b348241e6a5191c4b05ac616cfe5e3129520ba6ee1cefe1438ff2a38df0",
+    "Sources/loom-probe/CodexStopExperiment.swift": "871e633e7c7380bd0d47bc7c5fe1303e2f91aec55c3a82f0730338340de9eddd",
+    "Sources/loom-probe/ProviderExperiment.swift": "587d23c08eb2a17ba2ddc9455cc9da08cd7c8b5ed7729dd6fc0c7347c1cd77d2"
+  },
+  "appSHA256": "31f9dbd5ab0e0043681bc6cf193b9076ceca9bbfb0589a00c9741d36f034f5c4",
+  "evidenceDirectory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-cwd-fix-20260929",
+  "unverified": [
+    "Unexpected identity transition and Problem cause",
+    "Stop verification failure cause",
+    "real resume, approval and active-turn Quit"
+  ],
+  "contentPolicy": "No raw real terminal/model answer or credentials persisted; expected-token observation and structural catalog records only"
+}

@@ -27,8 +27,57 @@ private final class DelayedReap: @unchecked Sendable {
     }
 }
 
+private final class OutputCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var bytes = Data()
+    private(set) var chunks = 0
+
+    func append(_ data: Data) {
+        lock.lock()
+        bytes.append(data)
+        chunks += 1
+        lock.unlock()
+    }
+
+    var data: Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return bytes
+    }
+}
+
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct EventDrivenPTYProcessTests {
+    /// Many reads per handler budget, position-dependent bytes and EOF: the
+    /// reused read buffer must never leak stale or later bytes into an
+    /// earlier chunk, and the stream must end with the child's status.
+    @Test func burstOfDistinctBytesArrivesExactlyThroughEOF() async throws {
+        let lines = 120_000
+        let process = try PTYProcess(
+            // Output post-processing off: ONLCR occasionally emits a doubled
+            // CR under load, which would make a CRLF oracle flaky.
+            executable: "/bin/sh",
+            arguments: ["-c", "stty -opost; exec /usr/bin/seq 1 \(lines)"],
+            environment: ["PATH": "/usr/bin:/bin"], directory: "/tmp",
+            rows: 24, columns: 80
+        )
+        defer {
+            _ = Darwin.kill(process.pid, SIGKILL)
+            _ = Darwin.waitpid(process.pid, nil, WNOHANG)
+        }
+        let collector = OutputCollector()
+        let transport = EventDrivenPTYProcess(
+            process: process, onOutput: { collector.append($0) }, onExit: { _ in }
+        )
+        let status = try await transport.finish(outputDrainSeconds: 20)
+        #expect(status == 0)
+        let expected = Data((1...lines).map { "\($0)\n" }.joined().utf8)
+        let received = collector.data
+        #expect(received.count == expected.count)
+        #expect(received == expected)
+        #expect(collector.chunks > 16, "\(collector.chunks) chunks: not a multi-read burst")
+    }
+
     @Test func earlyExitNoticeRetriesUntilChildCanBeReaped() async throws {
         let process = try PTYProcess(
             executable: "/usr/bin/true", arguments: [],

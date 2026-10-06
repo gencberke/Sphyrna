@@ -8,8 +8,13 @@ final class EnvironmentResolutionJob: @unchecked Sendable {
     private var shell: ProcessIdentity?
     private var ledger: OwnershipLedger
 
-    init(runID: UUID, coalition: CoalitionCapability) {
-        ledger = OwnershipLedger(runID: runID, coalition: coalition)
+    /// In run-scope mode the scope already owns everything the shell starts;
+    /// the job then only provides cancellation, not process observation.
+    private let observes: Bool
+
+    init(runID: UUID, observes: Bool) {
+        ledger = OwnershipLedger(runID: runID)
+        self.observes = observes
     }
 
     func cancel() {
@@ -32,6 +37,7 @@ final class EnvironmentResolutionJob: @unchecked Sendable {
 
     func sample() throws {
         try checkCancellation()
+        guard observes else { return }
         let snapshot = try ProcessTable.snapshot()
         lock.lock()
         defer { lock.unlock() }

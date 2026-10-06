@@ -1,0 +1,76 @@
+{
+  "checkpoint": 5,
+  "slice": "C",
+  "response_to": "28.2–28.4 / findings 11 and 12",
+  "run_directory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-review7-fix-20260930",
+  "result": "implemented; planner-reviewer acceptance pending",
+  "finding11": {
+    "baseline": "cp5-c-review7-20260930/repro.log: direct nested-run-loop reply true; previous AppDelegate Task hop false",
+    "change": "Detached async diagnostics preparation followed by synchronous common-mode reply; AppDelegate no longer creates or awaits a MainActor task on final delivery.",
+    "verified": [
+      "Evidence on/off, nested main queue, failure→retry and exactly one reply regression",
+      "Release package/signature passed",
+      "Actual packaged AppDelegate normal Quit and forced failure→sheet retry both exited with remaining0; diagnostic and attempt files preserved"
+    ],
+    "native_evidence": "native-summary.json, native-commands.json, native-quit-smoke.log, success/, failure-retry/",
+    "scope": "LaunchServices plus evidence commands invoke real app termination/sheet actions with synthetic child. No native keystroke claim. Quit sources unchanged after smoke; later response transaction test seam covered by final combined build."
+  },
+  "finding12": {
+    "baseline": "resolution-red.log: production decoder/router/tracker regression failed 3 expectations before fix",
+    "change": "Typed thread/request-ID resolution; pending occurrences bound to run/thread/sequence; coordinator clears only matching request and tracker blocker, versioned complete snapshots update runtime/UI. Local response cleanup revalidates occurrence instead of retaining array index over awaits.",
+    "verified": [
+      "Integer/string IDs distinct; malformed/unknown/duplicate/wrong-thread and stale run/sequence harmless",
+      "TUI-like input/permissions resolution removes coordinator, tracker and card records without manufacturing tool success; separate completion permits idle",
+      "Two requests and sibling thread remain isolated; interruption cleanup clears pending state",
+      "Suspended local response overlapped by resolution, for both successful and failed writes: sibling survives, failure not resurrected, duplicate write rejected",
+      "Resume reusing provider request ID cannot be answered by old run request token",
+      "Controller selected terminal remains stable and resolved request disappears from card"
+    ]
+  },
+  "checks": {
+    "distinct_tests_passed": 54,
+    "breakdown": {
+      "decoder_router_tracker": 12,
+      "codex_runtime": 22,
+      "controller": 14,
+      "quit_terminal": 6
+    },
+    "logs": [
+      "tests.log",
+      "final-runtime-tests.log",
+      "quit-tests.log"
+    ],
+    "build": "passed (build.log); existing SDK path warnings",
+    "git_diff_check": "passed",
+    "scoped_diff": "scoped.diff"
+  },
+  "unverified": [
+    "Real remote-TUI resolution broadcast",
+    "Historical real identity transition and Stop causes",
+    "Remaining real C acceptance: resume/approval/active-turn Quit",
+    "Full suite and C/D/optimizer acceptance"
+  ],
+  "budget": {
+    "model_turns_this_revision": 0,
+    "real_provider_starts_this_revision": 0,
+    "codex_spent": 1,
+    "codex_remaining": 3,
+    "codex_retry": 0,
+    "claude_extra": 0
+  },
+  "source_sha256": {
+    "Sources/LoomCore/CodexAppServer.swift": "d75c76ef2c9512b70ccd908711ddf19ee0f20ddf4a6c4182eac7bb27bf8ff07c",
+    "Sources/LoomCore/CodexSessionCoordinator.swift": "454e950af6d37560d1ed424277b7b56cc5351c14e0d7e13ab14031e7ae526e75",
+    "Sources/LoomCore/CodexSessionState.swift": "fd7c48232db28a2af4b5cca51c1f5d565c4fa3a18a65b3227f54aedfd2761a17",
+    "Sources/LoomCore/SessionRuntime.swift": "6f50e8ecb4b994beba953779830cfe56cde5dfd3009a5592910017d4bd2e4744",
+    "Sources/LoomTerminal/TerminalRunController.swift": "873466fe1a36e07a4d5b7434f77fe017b5798c9931a577727e873ee0f73db72d",
+    "Sources/loom-app/AppDelegate.swift": "bdfd095f0c617f9752fed454f8d7ce1b4c6856487b858c13b9e73dc7981584b2",
+    "Sources/loom-app/DevelopmentEvidence.swift": "8cdf01a1aa06a90cdbf2451686e69fb4f0c0f3989f8e4e8adf9ae79befd53ba9",
+    "Sources/loom-fake-provider/CodexFixture.swift": "b00466c74f725873faef7306edf442eb06c21a3992a8603279bd9cd66936b383",
+    "Tests/LoomCatalogUITests/ConversationControllerTests.swift": "4b9afba789dc99966c8c86e0bef590b764c80baa05bc344d08f02c72a7ba8572",
+    "Tests/LoomCoreTests/CodexAppServerTests.swift": "bebc9f357db644112b1023abd8fea40ef62b1e4a84ec13706a88aa0ddd3dbc96",
+    "Tests/LoomCoreTests/SessionRuntimeCodexTests.swift": "b9316b255aadf285e4c29e0adec54317dfefca743bfb4b10dfca1d72074dfde4",
+    "Tests/LoomTerminalTests/TerminalRunControllerTests.swift": "b1695b1d447e477044a32be6d7d2bb8b9568724bc9a7c8eb38cc927572d10e21"
+  },
+  "package_binary_sha256": "5f3ef3c001aae24c9a40987bd57dc7d81e73f591e2e21ab1cd2aed5c723e814d"
+}

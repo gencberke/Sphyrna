@@ -1,0 +1,968 @@
+{
+  "status": "final accepted package baseline30 and supplemental10 PASS; latency10 separate evidence package PASS; GPU visible4 PASS/occluded4 pending; prior corrected long2 retained",
+  "matrix": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-matrix-d8c8cd32-ac4d-4887-80ca-b8b2ae0c233a",
+  "appSHA256": "b24ed027ccfde1c0811c2f0745fcba450907e1ce5cb608ff3ffbf79a64933b2e",
+  "cpuCalibration": "cp5-cpu-unit-fix.json",
+  "runnerSHA256": "7d6fb4c05a38e13b5487ad9dea74781cc7eb121cf51140bca32f1dbf764fd225",
+  "environment": "Lifetime-scoped caffeinate -di; user agreed to keep visible long-test window unoccluded. First corrected launch timed out before sampling; native Raise established visibility for successful retry.",
+  "firstLong": {
+    "scenario": "stream1",
+    "seconds": 600.1012453333242,
+    "cpuPercentOneCore": 28.734967218609825,
+    "firstLastMinuteFootprintDeltaMiB": 3.5625,
+    "continuousGrowthLastFiveMinutes": false,
+    "bytesVerified": true,
+    "weakObjectsRemaining": 0,
+    "registeredProcessesRemaining": 0
+  },
+  "limits": [
+    "Numerical targets are proposals, not user-approved product budgets.",
+    "Terminal pool does not cover full provider/runtime metadata map lifetime.",
+    "GPU attribution and ownership gold standard remain separate gates."
+  ],
+  "longResults": [
+    {
+      "name": "stream1-long600",
+      "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-matrix-d8c8cd32-ac4d-4887-80ca-b8b2ae0c233a/stream1-long600-eb3bdcdc-b518-4a26-a555-98e77e94ca3f/result.json",
+      "seconds": 600.1012453333242,
+      "cpuPercentOneCore": 28.734967218609825,
+      "firstLastMinuteFootprintDeltaMiB": 3.5625,
+      "continuousGrowthLastFiveMinutes": false,
+      "minuteFootprintMiB": {
+        "0": 99.407,
+        "1": 99.36,
+        "2": 99.36,
+        "3": 99.407,
+        "4": 99.36,
+        "5": 99.36,
+        "6": 102.97,
+        "7": 102.97,
+        "8": 102.97,
+        "9": 102.97
+      },
+      "bytesVerified": true,
+      "weakAlive": {
+        "auditSink": 0,
+        "endpoint": 0,
+        "surface": 0,
+        "surfaceOwned-TerminalInputQueue": 0,
+        "surfaceOwned-TerminalOutputBridge": 0,
+        "surfaceSink": 0,
+        "view": 0
+      },
+      "cleanup": {
+        "quitSucceeded": true,
+        "remainingRegisteredIdentities": 0
+      }
+    },
+    {
+      "name": "stream10-long600",
+      "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-matrix-d8c8cd32-ac4d-4887-80ca-b8b2ae0c233a/stream10-long600-4dce75e6-8691-42e7-bc32-b30ef7b25e70/result.json",
+      "seconds": 600.0983077916317,
+      "cpuPercentOneCore": 31.300918001292082,
+      "firstLastMinuteFootprintDeltaMiB": -3.1875,
+      "continuousGrowthLastFiveMinutes": false,
+      "minuteFootprintMiB": {
+        "0": 133.063,
+        "1": 133.063,
+        "2": 129.782,
+        "3": 129.782,
+        "4": 129.798,
+        "5": 129.813,
+        "6": 129.876,
+        "7": 129.845,
+        "8": 129.845,
+        "9": 129.876
+      },
+      "bytesVerified": true,
+      "weakAlive": {
+        "auditSink": 0,
+        "endpoint": 0,
+        "surface": 0,
+        "surfaceOwned-TerminalInputQueue": 0,
+        "surfaceOwned-TerminalOutputBridge": 0,
+        "surfaceSink": 0,
+        "view": 0
+      },
+      "cleanup": {
+        "quitSucceeded": true,
+        "remainingRegisteredIdentities": 0
+      }
+    }
+  ],
+  "finalShortMatrix": {
+    "matrix": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-matrix-649b5405-116d-47d9-938f-3ea2c8451ccd",
+    "appSHA256": "0415fb935c8554df57feb334fbf9238f38c042142169bda6e789e61d338598cd",
+    "driverSHA256": "5be02e5614b52bde97e5755462fb146a5c3093df76d80f178345bc8ddb10dab2",
+    "validCurrentRuns": 40,
+    "visibleBaseline": {
+      "completed": 15,
+      "repeatsPerScenario": 5
+    },
+    "supplemental": {
+      "completed": 10,
+      "cases": "Metal stream5, idle10, idle50, stream10, burst20MiB, cycles100"
+    },
+    "summary": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-final-matrix-649b5405-116d-47d9-938f-3ea2c8451ccd/summary.json",
+    "summarySHA256": "651c12781264dc1a55b434fb7092399908ffdfdceff6ca420113392741f1d42c",
+    "groups": {
+      "idle1-hidden": {
+        "repeats": 5,
+        "sampledAppActivity": [
+          {
+            "job": "baseline-r1-idle1-hidden",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "baseline-r2-idle1-hidden",
+            "states": [
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r3-idle1-hidden",
+            "states": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r4-idle1-hidden",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "baseline-r5-idle1-hidden",
+            "states": [
+              "False"
+            ]
+          }
+        ],
+        "cpuPercentOneCore": {
+          "n": 5,
+          "median": 0.07231572421375158,
+          "min": 0.0694095949588739,
+          "max": 0.13281541462426188
+        },
+        "footprintMiB": {
+          "n": 5,
+          "median": 31.953994750976562,
+          "min": 28.82897186279297,
+          "max": 33.56334686279297
+        },
+        "terminalRenderTotals": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "allCleanupVerified": true,
+        "allWeakObjectsZero": true,
+        "interruptWakeupsPerSecond": {
+          "n": 5,
+          "median": 0.09981145187004227,
+          "min": 0.066551354059847,
+          "max": 0.9487548534713112
+        },
+        "packageIdleWakeupsPerSecond": {
+          "n": 5,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.03326727342269848
+        },
+        "feedP95UpperBoundMilliseconds": null,
+        "observerCPUSeconds": {
+          "n": 5,
+          "median": 0.065423,
+          "min": 0.047972,
+          "max": 0.06899599999999999
+        },
+        "observerHelperCPUSeconds": {
+          "n": 5,
+          "median": 0.782159,
+          "min": 0.703535,
+          "max": 0.807905
+        }
+      },
+      "stream1-hidden": {
+        "repeats": 5,
+        "sampledAppActivity": [
+          {
+            "job": "baseline-r1-stream1-hidden",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "baseline-r2-stream1-hidden",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "baseline-r3-stream1-hidden",
+            "states": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r4-stream1-hidden",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "baseline-r5-stream1-hidden",
+            "states": [
+              "False"
+            ]
+          }
+        ],
+        "cpuPercentOneCore": {
+          "n": 5,
+          "median": 6.384448260969094,
+          "min": 4.95857168489422,
+          "max": 7.4395351656763795
+        },
+        "footprintMiB": {
+          "n": 5,
+          "median": 34.17272186279297,
+          "min": 30.875869750976562,
+          "max": 38.45397186279297
+        },
+        "terminalRenderTotals": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "allCleanupVerified": true,
+        "allWeakObjectsZero": true,
+        "interruptWakeupsPerSecond": {
+          "n": 5,
+          "median": 0.06658025118770239,
+          "min": 0.0499089821676131,
+          "max": 2.146241960136537
+        },
+        "packageIdleWakeupsPerSecond": {
+          "n": 5,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.016637534574701834
+        },
+        "feedP95UpperBoundMilliseconds": {
+          "n": 5,
+          "median": 0.064,
+          "min": 0.064,
+          "max": 0.128
+        },
+        "observerCPUSeconds": {
+          "n": 5,
+          "median": 0.046083999999999986,
+          "min": 0.037821999999999995,
+          "max": 0.062097
+        },
+        "observerHelperCPUSeconds": {
+          "n": 5,
+          "median": 0.730332,
+          "min": 0.670488,
+          "max": 0.817303
+        }
+      },
+      "idle1-visible": {
+        "repeats": 5,
+        "sampledAppActivity": [
+          {
+            "job": "baseline-r1-idle1-visible",
+            "states": [
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r2-idle1-visible",
+            "states": [
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r3-idle1-visible",
+            "states": [
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r4-idle1-visible",
+            "states": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r5-idle1-visible",
+            "states": [
+              "False"
+            ]
+          }
+        ],
+        "cpuPercentOneCore": {
+          "n": 5,
+          "median": 0.08867332731087596,
+          "min": 0.07784419560890819,
+          "max": 0.23458850712506926
+        },
+        "footprintMiB": {
+          "n": 5,
+          "median": 57.157188415527344,
+          "min": 53.01654052734375,
+          "max": 57.62596130371094
+        },
+        "terminalRenderTotals": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "allCleanupVerified": true,
+        "allWeakObjectsZero": true,
+        "interruptWakeupsPerSecond": {
+          "n": 5,
+          "median": 0.4824160731070768,
+          "min": 0.39928201717677203,
+          "max": 2.179179889104334
+        },
+        "packageIdleWakeupsPerSecond": {
+          "n": 5,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.03327350143139767
+        },
+        "feedP95UpperBoundMilliseconds": null,
+        "observerCPUSeconds": {
+          "n": 5,
+          "median": 0.05327500000000002,
+          "min": 0.046060000000000004,
+          "max": 0.05838600000000001
+        },
+        "observerHelperCPUSeconds": {
+          "n": 5,
+          "median": 0.8272790000000001,
+          "min": 0.80206,
+          "max": 0.8445169999999997
+        }
+      },
+      "idle0-visible": {
+        "repeats": 5,
+        "sampledAppActivity": [
+          {
+            "job": "baseline-r1-idle0-visible",
+            "states": [
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r2-idle0-visible",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "baseline-r3-idle0-visible",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "baseline-r4-idle0-visible",
+            "states": [
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r5-idle0-visible",
+            "states": [
+              "False"
+            ]
+          }
+        ],
+        "cpuPercentOneCore": {
+          "n": 5,
+          "median": 0.07475637815034492,
+          "min": 0.07204847635151787,
+          "max": 0.15732306472635765
+        },
+        "footprintMiB": {
+          "n": 5,
+          "median": 27.719619750976562,
+          "min": 27.34459686279297,
+          "max": 30.42272186279297
+        },
+        "terminalRenderTotals": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "allCleanupVerified": true,
+        "allWeakObjectsZero": true,
+        "interruptWakeupsPerSecond": {
+          "n": 5,
+          "median": 0.1330937040344902,
+          "min": 0.11644070410042857,
+          "max": 0.2661796637992454
+        },
+        "packageIdleWakeupsPerSecond": {
+          "n": 5,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.01663559320386155
+        },
+        "feedP95UpperBoundMilliseconds": null,
+        "observerCPUSeconds": {
+          "n": 5,
+          "median": 0.051261000000000057,
+          "min": 0.047949,
+          "max": 0.055451999999999974
+        },
+        "observerHelperCPUSeconds": {
+          "n": 5,
+          "median": 0.818798,
+          "min": 0.8157259999999997,
+          "max": 0.8333019999999998
+        }
+      },
+      "stream1-visible": {
+        "repeats": 5,
+        "sampledAppActivity": [
+          {
+            "job": "baseline-r1-stream1-visible",
+            "states": [
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r2-stream1-visible",
+            "states": [
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r3-stream1-visible",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "baseline-r4-stream1-visible",
+            "states": [
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r5-stream1-visible",
+            "states": [
+              "False"
+            ]
+          }
+        ],
+        "cpuPercentOneCore": {
+          "n": 5,
+          "median": 29.50331734435805,
+          "min": 27.215157049493584,
+          "max": 31.445025271285655
+        },
+        "footprintMiB": {
+          "n": 5,
+          "median": 99.71973419189453,
+          "min": 98.04783630371094,
+          "max": 104.57910919189453
+        },
+        "terminalRenderTotals": [
+          3603,
+          3605,
+          3606,
+          3606,
+          3606
+        ],
+        "allCleanupVerified": true,
+        "allWeakObjectsZero": true,
+        "interruptWakeupsPerSecond": {
+          "n": 5,
+          "median": 120.92066032222682,
+          "min": 120.1992125576479,
+          "max": 121.41421057843183
+        },
+        "packageIdleWakeupsPerSecond": {
+          "n": 5,
+          "median": 1.4311693664898915,
+          "min": 1.0482520578924497,
+          "max": 2.9452259360168087
+        },
+        "feedP95UpperBoundMilliseconds": {
+          "n": 5,
+          "median": 0.032,
+          "min": 0.016,
+          "max": 0.032
+        },
+        "observerCPUSeconds": {
+          "n": 5,
+          "median": 0.037246000000000015,
+          "min": 0.036123,
+          "max": 0.038405999999999996
+        },
+        "observerHelperCPUSeconds": {
+          "n": 5,
+          "median": 0.6915070000000001,
+          "min": 0.6892799999999997,
+          "max": 0.7389330000000001
+        }
+      },
+      "metal-stream1-visible": {
+        "repeats": 5,
+        "sampledAppActivity": [
+          {
+            "job": "metal-r1-stream1-visible",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "metal-r2-stream1-visible",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "metal-r3-stream1-visible",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "metal-r4-stream1-visible",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "metal-r5-stream1-visible",
+            "states": [
+              "False"
+            ]
+          }
+        ],
+        "cpuPercentOneCore": {
+          "n": 5,
+          "median": 32.50395363666119,
+          "min": 31.756309575719012,
+          "max": 33.75422426196752
+        },
+        "footprintMiB": {
+          "n": 5,
+          "median": 91.89151763916016,
+          "min": 87.56339263916016,
+          "max": 92.20401763916016
+        },
+        "terminalRenderTotals": [
+          3605,
+          3603,
+          3602,
+          3605,
+          3605
+        ],
+        "allCleanupVerified": true,
+        "allWeakObjectsZero": true,
+        "interruptWakeupsPerSecond": {
+          "n": 5,
+          "median": 122.91050980594999,
+          "min": 122.62780826045338,
+          "max": 123.2369129499167
+        },
+        "packageIdleWakeupsPerSecond": {
+          "n": 5,
+          "median": 2.296459565830097,
+          "min": 1.3312009297114114,
+          "max": 2.4960217313647726
+        },
+        "feedP95UpperBoundMilliseconds": {
+          "n": 5,
+          "median": 0.032,
+          "min": 0.032,
+          "max": 0.032
+        },
+        "observerCPUSeconds": {
+          "n": 5,
+          "median": 0.03633800000000001,
+          "min": 0.03551599999999999,
+          "max": 0.03658
+        },
+        "observerHelperCPUSeconds": {
+          "n": 5,
+          "median": 0.653777,
+          "min": 0.6404529999999999,
+          "max": 0.671392
+        }
+      },
+      "idle10-visible": {
+        "repeats": 1,
+        "sampledAppActivity": [
+          {
+            "job": "idle10-visible",
+            "states": [
+              "False"
+            ]
+          }
+        ],
+        "cpuPercentOneCore": {
+          "n": 1,
+          "median": 0.12548654091128916,
+          "min": 0.12548654091128916,
+          "max": 0.12548654091128916
+        },
+        "footprintMiB": {
+          "n": 1,
+          "median": 61.079017639160156,
+          "min": 61.079017639160156,
+          "max": 61.079017639160156
+        },
+        "terminalRenderTotals": [
+          0
+        ],
+        "allCleanupVerified": true,
+        "allWeakObjectsZero": true,
+        "interruptWakeupsPerSecond": {
+          "n": 1,
+          "median": 0.44915046900524813,
+          "min": 0.44915046900524813,
+          "max": 0.44915046900524813
+        },
+        "packageIdleWakeupsPerSecond": {
+          "n": 1,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "feedP95UpperBoundMilliseconds": null,
+        "observerCPUSeconds": {
+          "n": 1,
+          "median": 0.05907100000000001,
+          "min": 0.05907100000000001,
+          "max": 0.05907100000000001
+        },
+        "observerHelperCPUSeconds": {
+          "n": 1,
+          "median": 0.8270840000000002,
+          "min": 0.8270840000000002,
+          "max": 0.8270840000000002
+        }
+      },
+      "idle50-visible": {
+        "repeats": 1,
+        "sampledAppActivity": [
+          {
+            "job": "idle50-visible",
+            "states": [
+              "False"
+            ]
+          }
+        ],
+        "cpuPercentOneCore": {
+          "n": 1,
+          "median": 0.26078058445525387,
+          "min": 0.26078058445525387,
+          "max": 0.26078058445525387
+        },
+        "footprintMiB": {
+          "n": 1,
+          "median": 76.75096130371094,
+          "min": 76.75096130371094,
+          "max": 76.75096130371094
+        },
+        "terminalRenderTotals": [
+          0
+        ],
+        "allCleanupVerified": true,
+        "allWeakObjectsZero": true,
+        "interruptWakeupsPerSecond": {
+          "n": 1,
+          "median": 0.39919734305090054,
+          "min": 0.39919734305090054,
+          "max": 0.39919734305090054
+        },
+        "packageIdleWakeupsPerSecond": {
+          "n": 1,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "feedP95UpperBoundMilliseconds": null,
+        "observerCPUSeconds": {
+          "n": 1,
+          "median": 0.064553,
+          "min": 0.064553,
+          "max": 0.064553
+        },
+        "observerHelperCPUSeconds": {
+          "n": 1,
+          "median": 0.8403920000000002,
+          "min": 0.8403920000000002,
+          "max": 0.8403920000000002
+        }
+      },
+      "stream10-visible": {
+        "repeats": 1,
+        "sampledAppActivity": [
+          {
+            "job": "stream10-visible",
+            "states": [
+              "False"
+            ]
+          }
+        ],
+        "cpuPercentOneCore": {
+          "n": 1,
+          "median": 30.686763852141922,
+          "min": 30.686763852141922,
+          "max": 30.686763852141922
+        },
+        "footprintMiB": {
+          "n": 1,
+          "median": 120.87596130371094,
+          "min": 120.87596130371094,
+          "max": 120.87596130371094
+        },
+        "terminalRenderTotals": [
+          3604
+        ],
+        "allCleanupVerified": true,
+        "allWeakObjectsZero": true,
+        "interruptWakeupsPerSecond": {
+          "n": 1,
+          "median": 120.17642516491584,
+          "min": 120.17642516491584,
+          "max": 120.17642516491584
+        },
+        "packageIdleWakeupsPerSecond": {
+          "n": 1,
+          "median": 0.8818151091984687,
+          "min": 0.8818151091984687,
+          "max": 0.8818151091984687
+        },
+        "feedP95UpperBoundMilliseconds": {
+          "n": 10,
+          "median": 0.032,
+          "min": 0.032,
+          "max": 0.064
+        },
+        "observerCPUSeconds": {
+          "n": 1,
+          "median": 0.039636000000000005,
+          "min": 0.039636000000000005,
+          "max": 0.039636000000000005
+        },
+        "observerHelperCPUSeconds": {
+          "n": 1,
+          "median": 0.6802599999999996,
+          "min": 0.6802599999999996,
+          "max": 0.6802599999999996
+        }
+      },
+      "burst20m": {
+        "repeats": 1,
+        "sampledAppActivity": [
+          {
+            "job": "burst20m",
+            "states": [
+              "False"
+            ]
+          }
+        ],
+        "cpuPercentOneCore": null,
+        "footprintMiB": {
+          "n": 1,
+          "median": 104.03218841552734,
+          "min": 104.03218841552734,
+          "max": 104.03218841552734
+        },
+        "terminalRenderTotals": [
+          0
+        ],
+        "allCleanupVerified": true,
+        "allWeakObjectsZero": true,
+        "interruptWakeupsPerSecond": null,
+        "packageIdleWakeupsPerSecond": null,
+        "feedP95UpperBoundMilliseconds": null,
+        "observerCPUSeconds": {
+          "n": 1,
+          "median": 4.999999999977245e-06,
+          "min": 4.999999999977245e-06,
+          "max": 4.999999999977245e-06
+        },
+        "observerHelperCPUSeconds": {
+          "n": 1,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "cycles100": {
+        "repeats": 1,
+        "sampledAppActivity": [
+          null
+        ],
+        "cpuPercentOneCore": null,
+        "footprintMiB": null,
+        "terminalRenderTotals": [
+          0
+        ],
+        "allCleanupVerified": true,
+        "allWeakObjectsZero": true,
+        "interruptWakeupsPerSecond": null,
+        "packageIdleWakeupsPerSecond": null,
+        "feedP95UpperBoundMilliseconds": null,
+        "observerCPUSeconds": null,
+        "observerHelperCPUSeconds": null
+      },
+      "idle0-hidden": {
+        "repeats": 5,
+        "sampledAppActivity": [
+          {
+            "job": "baseline-r1-idle0-hidden",
+            "states": [
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r2-idle0-hidden",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "baseline-r3-idle0-hidden",
+            "states": [
+              "False",
+              "True"
+            ]
+          },
+          {
+            "job": "baseline-r4-idle0-hidden",
+            "states": [
+              "False"
+            ]
+          },
+          {
+            "job": "baseline-r5-idle0-hidden",
+            "states": [
+              "False"
+            ]
+          }
+        ],
+        "cpuPercentOneCore": {
+          "n": 5,
+          "median": 0.06890046416310998,
+          "min": 0.0661485502783394,
+          "max": 0.10224471206520899
+        },
+        "footprintMiB": {
+          "n": 5,
+          "median": 28.578994750976562,
+          "min": 28.45397186279297,
+          "max": 31.032119750976562
+        },
+        "terminalRenderTotals": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "allCleanupVerified": true,
+        "allWeakObjectsZero": true,
+        "interruptWakeupsPerSecond": {
+          "n": 5,
+          "median": 0.1497616672027501,
+          "min": 0.08320964439267792,
+          "max": 0.43253744610947936
+        },
+        "packageIdleWakeupsPerSecond": {
+          "n": 5,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "feedP95UpperBoundMilliseconds": null,
+        "observerCPUSeconds": {
+          "n": 5,
+          "median": 0.058449,
+          "min": 0.037911,
+          "max": 0.065655
+        },
+        "observerHelperCPUSeconds": {
+          "n": 5,
+          "median": 0.734999,
+          "min": 0.671989,
+          "max": 0.765311
+        }
+      }
+    },
+    "excluded": [
+      {
+        "name": "baseline-r1-idle0-hidden",
+        "reasons": [
+          "Window visibility/occlusion does not match scenario"
+        ]
+      },
+      {
+        "name": "baseline-r1-idle0-hidden",
+        "reasons": [
+          "Window visibility/occlusion does not match scenario"
+        ]
+      },
+      {
+        "name": "baseline-r1-idle1-visible",
+        "reasons": [
+          "Window visibility/occlusion does not match scenario"
+        ]
+      },
+      {
+        "name": "baseline-r2-idle0-visible",
+        "reasons": [
+          "Window visibility/occlusion does not match scenario"
+        ]
+      },
+      {
+        "name": "baseline-r2-idle0-visible",
+        "reasons": [
+          "Initial window visibility/occlusion readiness timed out"
+        ]
+      },
+      {
+        "name": "baseline-r3-idle0-visible",
+        "reasons": [
+          "Initial window visibility/occlusion readiness timed out"
+        ]
+      },
+      {
+        "name": "baseline-r3-idle1-visible",
+        "reasons": [
+          "Window visibility/occlusion does not match scenario"
+        ]
+      }
+    ],
+    "allValidCleanupAndWeakZero": true,
+    "nativeStartup": "Native Raise/click used for visible setup; no deliberate visibility rescue after a failing measured sample. All valid runs satisfy strict visible/unoccluded and no-visibility-event guards. App activity observations retained per run; activation timing not independently proven for every run. Visibility blocks ran separately due user availability; renderer/visibility differences are descriptive, not isolated causal gains.",
+    "remaining": "GPU occluded4; approved numerical budgets and GPU attribution unavailable.",
+    "hiddenBaseline": {
+      "completed": 15,
+      "repeatsPerScenario": 5
+    }
+  }
+}

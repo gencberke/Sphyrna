@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-02",
+  "command": "scripts/cp5-own-real.py <Loom Dev.app outside ~/Documents>",
+  "evidence": "~/Library/Application Support/Loom-Dev/probe/runs/cp5-own-real-c955f4dd-5f8b-47e3-81f9-55817db91dbd/result.json",
+  "providers": { "claudeCode": "2.1.287 (isolated profile, model haiku, ask rules for nohup/sleep/touch)", "codex": "0.160.0 (isolated profile, approval on-request, sandbox read-only)" },
+  "modelTurns": { "claude": 2, "codex": 3 },
+  "passed": true,
+  "checks": 17,
+  "summary": [
+    "Claude: Bash approval reached the Loom card; Claude's own run_in_background job ran inside the run scope (host, claude, zsh, sleep); Stop ended it and the scope was verified empty with no stop failure.",
+    "Codex: the first approval reached the card and was answered there (file created); per-conversation server and TUI share one run scope; Stop emptied it.",
+    "Active work in both providers, window closed, normal Quit: succeeded, every scope empty, no active command or run host left, outside control process alive."
+  ],
+  "findingsFromRealRuns": {
+    "REAL-1": "Claude 2.1.287 stamps its initial registry status before startedAt; the tracker marked a normal flow as an ambiguous clock. Fixed (R2).",
+    "REAL-2": "Concurrent hook helpers and racing registry reads (out-of-order by ms, backwards or equal-ms samples) produced the same false Problem in a second conversation. Fixed: only rollbacks over 500 ms or future stamps are ambiguous; stale samples are ignored; a sample must be newer than every hook seen.",
+    "driver": "Real TUIs treat text plus an immediate Return as a paste; '/' opens Claude's completion menu; input before the TUI draws its prompt is lost. The driver sends Return separately until work starts and waits for readiness.",
+    "codexDetachedJob": "Codex reaps a command's own background children when the command ends, so a detached job could not be observed to outlive it; the server-escape case remains covered by the scoped fake-provider test (OWN-B1)."
+  },
+  "unverified": [
+    "Manual denial in the TUI with the fixed tracker on the real CLI (covered by replay tests)",
+    "Real model turns with remote default models other than haiku/gpt default",
+    "Stable-signing TCC continuity and the strong form of the host owner check"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+ "package": "I (app 80de9038, hook 6a2dd9ef, test-child 705e387f)",
+ "probeRun": "probe/runs/cp5-final2-20261006/",
+ "matrix": {
+  "valid": "9/9, cooldown 90 s, coregraphics",
+  "stream1Visible": {"appCPU": [23.79, 23.99, 24.02], "totalCPU": [25.37, 25.57, 25.40], "packageH": {"appMedian": 25.4, "totalMedian": 26.8}},
+  "spinner1Visible": {"appCPU": [14.68, 14.41, 12.60], "packageH": [17.76, 18.00, 18.45]},
+  "stream1Hidden": {"appCPU": 3.52, "totalCPU": 5.16, "packageH": 4.21},
+  "latency": {"p95Ms": [20.02, 20.56], "samples": 200, "timeouts": 0, "packageH": "18.8-19.7 ms, 1000 samples"}
+ },
+ "indicator": {
+  "systemReduceMotion": true,
+  "animatingVisibleActive": {"chaseRunning": "2/2", "appCPU": [0.0078, 0.0028, 0.0026], "idleWakeupsPerSec": [0.0, 0.017, 0.0]},
+  "sidebarCollapsed": 0.0125,
+  "appInactive": {"appCPU": 0.0133, "chaseRunning": "0/2"},
+  "threeWorking": 0.0069,
+  "idleNoSession": 0.0078
+ },
+ "realClaude": {
+  "checks": "11/11 (assistantReplied, workingIndicatorShown [State unknown, Working, Ready], turnCompletedIndicator, colortermTruecolor, approvalReachedCard, assistantRepliedBackground, backgroundJobInScope, stopEmptiedScope, stopNoFailure, appQuit, outsiderUntouched)",
+  "modelTurns": 2,
+  "idleObserverOneClaude": {"appCPU": 0.044, "idleWakeupsPerSec": 0.0},
+  "notes": "attempt1: script missed a ~1 s turn (submission now proven from the provider transcript); attempt2: python segfault from a short rusage_info_v2 ctypes struct in the probe script, leftover evidence app closed by normal quit with no owned process left; colortermTruecolor matches any claude process, LaunchEnvironmentTests is the strong evidence"
+ },
+ "defaultCatalogUnchanged": true
+}

@@ -1,0 +1,43 @@
+--- a/Sources/SwiftTerm/Apple/AppleTerminalView.swift
++++ b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
+@@ -4021,6 +4021,11 @@
+         /// Each one is a main-queue block that may take the terminal lock, so a
+         /// large value relative to `frames` means callback amplification.
+         public var mainHops: Int = 0
++        /// Copied under the terminal lock; no buffer text is materialized.
++        public var mainBufferLines: Int? = nil
++        public var alternateBufferLines: Int? = nil
++        public var mainBufferCapacity: Int? = nil
++        public var alternateBufferCapacity: Int? = nil
+         /// Frames prepared and drawn on the render loop rather than on the main
+         /// thread. Zero when no render loop is running.
+         public var renderLoopFrames: Int = 0
+@@ -4075,6 +4080,11 @@
+     /// A snapshot of the current diagnostics. Safe to read from any thread.
+     public var diagnostics: Diagnostics {
+         var result = diagnosticsState.withLock { $0 }
++        let bufferCounts = renderOwner.bufferCounts()
++        result.mainBufferLines = bufferCounts?.main
++        result.alternateBufferLines = bufferCounts?.alternate
++        result.mainBufferCapacity = bufferCounts?.mainCapacity
++        result.alternateBufferCapacity = bufferCounts?.alternateCapacity
+         let frameCounters = frameDriver?.currentCounters ?? FrameDriverCounters()
+         result.ticks = frameCounters.ticks
+         result.frames = frameCounters.frames
+--- a/Sources/SwiftTerm/Apple/TerminalRenderOwner.swift
++++ b/Sources/SwiftTerm/Apple/TerminalRenderOwner.swift
+@@ -341,6 +341,14 @@
+         guard let terminal = currentSession()?.terminal else { return }
+         terminal.terminalLock.withLock {
+             terminal.setTerminalVisibility(visibility)
++        }
++    }
++
++    func bufferCounts() -> (main: Int, alternate: Int, mainCapacity: Int, alternateCapacity: Int)? {
++        guard let terminal = currentSession()?.terminal else { return nil }
++        return terminal.terminalLock.withLock {
++            (terminal.normalBuffer.lines.count, terminal.altBuffer.lines.count,
++             terminal.normalBuffer.lines.maxLength, terminal.altBuffer.lines.maxLength)
+         }
+     }
+ 

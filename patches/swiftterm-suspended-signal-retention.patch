@@ -1,0 +1,63 @@
+--- a/Sources/SwiftTerm/Apple/FrameDriver.swift
++++ b/Sources/SwiftTerm/Apple/FrameDriver.swift
+@@ -37,6 +37,7 @@
+         var pending: Events = []
+         var deliveryScheduled = false
+         var cadenceActive = false
++        var visibilitySuspended = false
+         var shutdownRequested = false
+         var sinkConfigured = false
+         var sink: Sink?
+@@ -110,17 +111,30 @@
+     /// A running source consumes dirty events at its next cadence tick. When
+     /// it parks, transfer any pending work back to main-actor delivery under
+     /// the same lock producers use, including work published just before pause.
++    /// Dirty-only work stays retained while visibility is suspended.
+     @MainActor
+     func setCadenceActive(_ active: Bool) {
+         var sink: Sink?
+         state.withLock { state in
+             state.cadenceActive = active
+             guard !active, !state.pending.isEmpty, !state.deliveryScheduled,
++                  !(state.visibilitySuspended && state.pending == [.dirty]),
+                   let configuredSink = state.sink else { return }
+             state.deliveryScheduled = true
+             sink = configuredSink
+         }
+         schedule(sink)
++    }
++
++    /// While visibility is suspended nothing can draw, so dirty-only events are
++    /// retained like during cadence instead of waking the main actor per feed.
++    /// Leaving suspension does not schedule delivery: the caller consumes the
++    /// retained state synchronously via `takePendingEvents`.
++    @MainActor
++    func setVisibilitySuspended(_ suspended: Bool) {
++        state.withLock { state in
++            state.visibilitySuspended = suspended
++        }
+     }
+ 
+     @MainActor
+@@ -137,7 +151,8 @@
+         state.withLock { state in
+             guard !state.shutdownRequested else { return }
+             state.pending.formUnion(events)
+-            guard !state.cadenceActive || state.pending != [.dirty] else { return }
++            let retainsDirty = state.cadenceActive || state.visibilitySuspended
++            guard !retainsDirty || state.pending != [.dirty] else { return }
+             guard !state.deliveryScheduled, let configuredSink = state.sink else { return }
+             state.deliveryScheduled = true
+             sink = configuredSink
+@@ -499,8 +514,11 @@
+             running = false
+         }
+         guard changed else { return }
++        signal.setVisibilitySuspended(shouldSuspend)
+ 
+         if !shouldSuspend {
++            // Dirty events retained while suspended become one pending frame.
++            consumeSignalOnMain()
+             if resumeOnMainIfNeeded() {
+                 tickAfterResumeIfDue()
+             }

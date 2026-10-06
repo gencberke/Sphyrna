@@ -1,0 +1,86 @@
+{
+  "review": 7,
+  "date": "2026-09-30",
+  "response_to": "C \u00a726",
+  "accepted": [
+    "finding10 ephemeral/exec exclusion and conservative missing-metadata routing",
+    "bounded structural routing and provider-stage Stop diagnostics"
+  ],
+  "open_findings": [
+    {
+      "id": 11,
+      "priority": 1,
+      "summary": "AppDelegate Task hop loses Quit reply while a nested main-queue run loop waits",
+      "evidence": {
+        "actual_controller_direct_callback": true,
+        "actual_controller_with_AppDelegate_task_hop": false,
+        "nested_mode": "default",
+        "deadline_seconds": 1,
+        "scope": "linked production TerminalRunController with callback wiring reproduction; full native app not launched"
+      }
+    },
+    {
+      "id": 12,
+      "priority": 2,
+      "summary": "serverRequest/resolved is decoded as unknown and not routed; resolved requests retain pending count",
+      "evidence": {
+        "installed_cli": "0.158.0",
+        "installed_schema_has_notification": true,
+        "decode": "unknown",
+        "route": "unmatched",
+        "pending_after_resolution": 1,
+        "pending_after_idle": 1,
+        "activity_after_idle": "turnComplete",
+        "control_explicit_resolution_pending": 0,
+        "scope": "production decoder/router/tracker linked synthetic repro; remote TUI broadcast not rerun"
+      }
+    }
+  ],
+  "checks": {
+    "targeted_tests": 66,
+    "main_core": 51,
+    "controller": 13,
+    "quit_controller": 2,
+    "all_test_exit_codes": 0,
+    "repro_compilation_exit_code": 0,
+    "repro_observations_verified": true,
+    "implementation_source_hashes_match": true,
+    "git_diff_check": "passed",
+    "full_suite": "not run",
+    "build": "implementation build accepted by matching hashes; independent targeted test/repro compilation passed"
+  },
+  "unverified": [
+    "historical real identity transition and Stop error cause",
+    "real remote TUI resolution broadcast delivery",
+    "full native AppDelegate Quit execution",
+    "same-cwd unrelated interactive thread ownership guarantee",
+    "OWN-1 and C real provider acceptance"
+  ],
+  "model_turns_this_review": 0,
+  "budget": {
+    "codex_spent": 1,
+    "codex_remaining": 3,
+    "codex_retry": 0,
+    "claude_extra": 0
+  },
+  "evidence_directory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-review7-20260930",
+  "source_sha256": {
+    "Sources/LoomCatalogUI/ConversationController.swift": "ebc42d62f73151263eef29879cd1808bfd28a04d4a3ea9c1bcab8c55d65fdae6",
+    "Sources/LoomCore/CodexSessionCoordinator.swift": "87424feb8ff259c3029ca929b4fed10214a3ad7ffb7a2b2ac860c928f5d2c8f5",
+    "Sources/LoomCore/CodexSessionState.swift": "218fa8f8a3f64828386e302085344991a1daaa677db57ec173bf0994142a48da",
+    "Sources/LoomCore/ManagedSession.swift": "5b32b9a9eec4dbb89dc79c3e3b6ae4b51eddd1b19eb924a64ee6a6de5c1d2cd3",
+    "Sources/LoomCore/ProcessSupervisor.swift": "ba41b90881f1de432c6844382ca05f06e12d1b23a275ee4bb85ee19e9a3da9d3",
+    "Sources/LoomCore/SessionRuntime.swift": "cff1d0d5f08d13e179d5946ff6799c92fd99fd55516f3f400a5d879bc7489966",
+    "Sources/loom-app/AppDelegate.swift": "e4c1e15ed07bf4972f64e3aef587cab1680d1a350272c91a6a72fa43fcc46335",
+    "Sources/loom-app/DevelopmentEvidence.swift": "a1d80cb2ddbb8bb4d47e6b94f3fc563cba1a47a7c788223dd6b63a0f31939b20",
+    "Sources/loom-fake-provider/CodexFixture.swift": "0d8001e9c96f22cb7f798c15bf1e7d3b17a3acaf8308983906042ae1ce278097",
+    "Tests/LoomCatalogUITests/ConversationControllerTests.swift": "978252fa25d6db89985df73345c900b1a5bedae3304ad161cd5b1a2242336eb2",
+    "Tests/LoomCoreTests/CodexAppServerTests.swift": "505a33ae8bb8f21050e8ab8e6b43384bcb5f8b7842b20c4cdf736b0bd1969f7e",
+    "Tests/LoomCoreTests/ProcessSupervisorTests.swift": "e22f56a5aef021e812ca0e677cb41e3f60cabfa037b3dcb8e94e807a1804e35c",
+    "Tests/LoomCoreTests/SessionRuntimeCodexTests.swift": "2d1585c8b85909414a7ac68336e994d55062fa7890470baa1778ca52ec13e8af",
+    "Sources/LoomCore/CodexRoutingDiagnostics.swift": "0b3cf5ace5c283fa80840bb495d5f355685334edd911b22a3856a6a280e85d01",
+    "Sources/LoomCore/CodexAppServer.swift": "e2a8c469cdafbfe5a25a6e4ab1cb05f317dfb6cc6146d95b10463914b4f04306",
+    "Sources/LoomTerminal/TerminalRunController.swift": "0fc434c7b0e5b1e46595668062c896b9d82232bd4937ebffc53ea8c2277ef9b4",
+    "Sources/LoomCore/ProviderSessionAdapters.swift": "929d2ac85fcb042ceb8f1d69e82a75dba0246fa31f32149cf5ac281d2c65f553"
+  }
+}

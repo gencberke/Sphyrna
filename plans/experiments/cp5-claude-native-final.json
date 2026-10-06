@@ -1,0 +1,30 @@
+{
+  "status": "PASS local synthetic backend with real native CLI; remote acceptance remains separate",
+  "evidence": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-native-claude-local-0d9291a2-cc6e-4d20-a724-2c7f0a36ddbe/result.json",
+  "resultSHA256": "02d1d2fe20822507636e2f47f82cf04da6c28e42659f05fc8ebdf2ae7a3dab1d",
+  "appSHA256": "8a83845f71b558e0c9b4829626bf3d379b8caac2a4d00b7e3f9db86c6f27c130",
+  "checks": {
+    "appReady": true,
+    "nativeWorkingBeforeInterrupt": true,
+    "nativeInterruptedToInput": true,
+    "firstApprovalHook": true,
+    "noClaudeAppAnswer": true,
+    "deniedMarkerAbsent": true,
+    "resumeSameCard": true,
+    "resumeApprovalHook": true,
+    "secondDeniedMarkerAbsent": true,
+    "clearMovedCard": true,
+    "clearNewApprovalHook": true,
+    "quitSucceeded": true
+  },
+  "syntheticTurns": 4,
+  "realModelTurns": 0,
+  "quit": {
+    "succeeded": true,
+    "remaining": 0
+  },
+  "limitations": [
+    "Real Claude Code CLI and native Loom with synthetic local model, not remote-model acceptance.",
+    "Prompt, denial and /clear require native CUA interaction. API key is an isolated local dummy and no real profile is modified."
+  ]
+}

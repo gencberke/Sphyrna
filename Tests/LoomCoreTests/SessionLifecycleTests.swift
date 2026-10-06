@@ -2,6 +2,18 @@ import Foundation
 import Testing
 @testable import LoomCore
 
+private actor IdleReliabilityGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var released = false
+    private(set) var entered = false
+    func wait() async {
+        entered = true
+        guard !released else { return }
+        await withCheckedContinuation { continuation = $0 }
+    }
+    func release() { released = true; continuation?.resume(); continuation = nil }
+}
+
 private final class LifecycleTestBundleAnchor: NSObject {}
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
@@ -193,6 +205,34 @@ struct SessionLifecycleTests {
         #expect((await context.supervisor.shutdown()).succeeded)
     }
 
+    /// Contract section 5: stale follows time since last use, not how the
+    /// conversation ended. A stopped (never idle) conversation ages out; a live
+    /// run never does; viewing keeps stale.
+    @Test func conversationsEndedByStopAgeIntoStaleButLiveRunsDoNot() async throws {
+        let context = try await makeContext(idleAfter: 1, staleAfter: 15)
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        let ended = ManagedSession(
+            provider: .codex, providerConversationID: "thread-ended", workingDirectory: context.root.path
+        )
+        try await context.supervisor.createSession(ended)
+        try await context.catalog.markUsed(
+            sessionID: ended.id, at: Date(timeIntervalSince1970: 10), reactivate: true
+        )
+        let liveID = UUID()
+        let live = try await launchSynthetic(sessionID: liveID, mode: "stubborn", context: context)
+        _ = try await ready(live.terminal)
+        try await context.catalog.markUsed(
+            sessionID: liveID, at: Date(timeIntervalSince1970: 10), reactivate: true
+        )
+        #expect(try await context.catalog.session(id: ended.id)?.lifecycle == .active)
+
+        #expect(try await context.lifecycle.classifyStale(at: Date(timeIntervalSince1970: 30)) == [ended.id])
+        #expect(try await context.catalog.session(id: liveID)?.lifecycle == .active)
+        try await context.lifecycle.markViewed(sessionID: ended.id, at: Date(timeIntervalSince1970: 40))
+        #expect(try await context.catalog.session(id: ended.id)?.lifecycle == .stale)
+        #expect((await context.supervisor.shutdown()).succeeded)
+    }
+
     @Test func resumeProfilesKeepProviderIdentityAndMissingHistoryIsTyped() throws {
         let capabilities = ProviderCapabilities(
             version: "test",
@@ -217,7 +257,8 @@ struct SessionLifecycleTests {
             environment: [:]
         )
         #expect(Array(codexProfile.arguments.prefix(2)) == ["resume", "thread-id"])
-        #expect(codexProfile.arguments.suffix(2) == ["--remote", "unix:///tmp/app.sock"])
+        #expect(Array(codexProfile.arguments.dropFirst(2).prefix(2)) == ["--remote", "unix:///tmp/app.sock"])
+        #expect(codexProfile.arguments.suffix(2) == ["--cd", "/tmp/workspace"])
 
         let error = ProviderResumeDiagnostics.error(
             provider: .claude, conversationID: "missing",
@@ -345,11 +386,75 @@ struct SessionLifecycleTests {
             sessionID: first.sessionID, graceSeconds: 0.2
         )
         #expect(!stop.succeeded)
-        #expect(stop.errors.contains {
-            $0.contains("may belong to another session and is still running")
-        })
+        #expect(stop.providerStages?.first?.stage == "prepare")
+        #expect(stop.providerStages?.first?.outcome == "failed")
+        #expect(stop.providerStages?.first?.errorCategory == "protocolViolation")
         #expect(await context.supervisor.session(id: first.sessionID)?.currentRun != nil)
         #expect((await context.supervisor.shutdown(graceSeconds: 0.2)).succeeded)
+    }
+
+    // MARK: O-2 F2: a persistent child must not keep the idle check spinning
+
+    private func descendantContext(
+        extraHook: [String: Any]
+    ) async throws -> (Context, UUID) {
+        let context = try await makeContext(
+            idleAfter: 0.05, recheck: .init(initial: 0.02, cap: 0.32)
+        )
+        let id = UUID()
+        let launch = try await launchClaude(
+            sessionID: id, conversationID: "claude-child", mode: "spawn-on-input", context: context
+        )
+        _ = try await ready(launch.terminal)
+        let runID = try #require(launch.session.currentRun?.id)
+        try await context.lifecycle.captureProcessBaseline(sessionID: id)
+        try await context.catalog.markUsed(sessionID: id, at: Date().addingTimeInterval(-10), reactivate: true)
+        _ = try await context.claude.receive(try hook(
+            launchSessionID: id, runID: runID, conversationID: "claude-child",
+            event: "Stop", fields: extraHook
+        ))
+        _ = try await launch.terminal.write(Data("spawn\n".utf8))
+        try await Task.sleep(for: .milliseconds(80))
+        return (context, id)
+    }
+
+    @Test func persistentChildAsSoleBlockerIsRecheckedWithBackoffNotEveryInterval() async throws {
+        let (context, id) = try await descendantContext(extraHook: [:])
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        let parked = AsyncStream<SessionEventFrame>.makeStream()
+        try await context.lifecycle.startAutomaticEvaluation(stream: parked.stream)
+        // 0.6 s at this scale stands for the 5, 10, 20, 40 ... s schedule over
+        // a minute: a handful of checks, not one per base interval (~30).
+        try await Task.sleep(for: .milliseconds(600))
+        let fires = await context.lifecycle.timerFireCount()
+        #expect(fires >= 3, "the child must still be re-checked")
+        #expect(fires <= 7, "re-checks must back off, got \(fires)")
+        #expect(await context.supervisor.session(id: id)?.currentRun != nil)
+        await context.lifecycle.stopAutomaticEvaluation()
+        parked.continuation.finish()
+        #expect((await context.supervisor.shutdown(graceSeconds: 0.2)).succeeded)
+    }
+
+    @Test func eventDrivenBlockersAreNotRecheckedEvenWithAChildAlive() async throws {
+        let (context, _) = try await descendantContext(
+            extraHook: ["background_tasks": [["id": "task"]]]
+        )
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        let parked = AsyncStream<SessionEventFrame>.makeStream()
+        try await context.lifecycle.startAutomaticEvaluation(stream: parked.stream)
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(await context.lifecycle.timerFireCount() == 1)
+        await context.lifecycle.stopAutomaticEvaluation()
+        parked.continuation.finish()
+        #expect((await context.supervisor.shutdown(graceSeconds: 0.2)).succeeded)
+    }
+
+    @Test func recheckScheduleDoublesFromFiveToThreeHundredSeconds() {
+        let schedule = SessionLifecycleController.DescendantRecheckSchedule()
+        var interval: TimeInterval?
+        var seen: [TimeInterval] = []
+        for _ in 0..<9 { interval = schedule.next(after: interval); seen.append(interval!) }
+        #expect(seen == [5, 10, 20, 40, 80, 160, 300, 300, 300])
     }
 
     @Test func tenFutureIdleDeadlinesUseOneSleepingTimer() async throws {
@@ -414,6 +519,149 @@ struct SessionLifecycleTests {
         #expect((await context.supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
+    @Test func coalescedCompletionReopensBlockedIdleAndRepeatedSnapshotsDoNoWork() async throws {
+        let context = try await makeContext(idleAfter: 0.05, staleAfter: 3600)
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        let id = UUID()
+        let launch = try await launchSynthetic(sessionID: id, mode: "stubborn", context: context)
+        _ = try await ready(launch.terminal)
+        let runID = try #require(launch.session.currentRun?.id)
+        try await context.lifecycle.captureProcessBaseline(sessionID: id)
+        try await context.catalog.markUsed(sessionID: id, at: Date().addingTimeInterval(-10), reactivate: true)
+        // Keep the controller's consumer parked. The real hub still supplies
+        // a newest(1) stream whose status event is overwritten before delivery.
+        let parked = AsyncStream<SessionEventFrame>.makeStream()
+        try await context.lifecycle.startAutomaticEvaluation(stream: parked.stream)
+        let deadline = ProcessInfo.processInfo.systemUptime + 2
+        while await context.lifecycle.automaticEvaluationCompletionCount() == 0,
+              ProcessInfo.processInfo.systemUptime < deadline {
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        #expect(await context.lifecycle.timerFireCount() == 1)
+        #expect(await context.lifecycle.automaticEvaluationCompletionCount() == 1)
+        let buffered = await context.supervisor.events.subscribe()
+        try await context.supervisor.updateProviderWorkState(runID: runID, state: ProviderWorkState(activity: .turnComplete))
+        await context.supervisor.events.publish(sessionID: id, change: .issue("fixture issue"))
+        var iterator = buffered.makeAsyncIterator()
+        let delivered = try #require(await iterator.next())
+        #expect(delivered.change == .issue("fixture issue"))
+        let prior = await context.lifecycle.automaticScheduleRevision()
+        await context.lifecycle.handle(delivered)
+        #expect(await context.lifecycle.automaticScheduleRevision() > prior)
+        let stopDeadline = ProcessInfo.processInfo.systemUptime + 2
+        // currentRun becomes nil inside evaluateIdle's awaited Stop, before
+        // catalog lifecycle publication and the timer's final reschedule. Wait
+        // for that complete evaluation, so its legitimate work cannot be
+        // attributed to either duplicate snapshot below.
+        while await context.lifecycle.automaticEvaluationCompletionCount() < 2,
+              ProcessInfo.processInfo.systemUptime < stopDeadline {
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(await context.lifecycle.automaticEvaluationCompletionCount() == 2)
+        #expect(await context.supervisor.session(id: id)?.currentRun == nil)
+        #expect(try await context.catalog.session(id: id)?.lifecycle == .idle)
+        let snapshot = await context.supervisor.events.snapshot()
+        await context.lifecycle.handle(snapshot)
+        let settled = await context.lifecycle.automaticScheduleRevision()
+        let reads = await context.catalog.decodedSessionRows
+        await context.lifecycle.handle(snapshot)
+        #expect(await context.lifecycle.automaticScheduleRevision() == settled)
+        #expect(await context.catalog.decodedSessionRows == reads)
+        await context.lifecycle.stopAutomaticEvaluation()
+        parked.continuation.finish()
+        #expect((await context.supervisor.shutdown()).succeeded)
+    }
+
+    @Test func coalescedRunStartInIssueFrameSchedulesWithoutPolling() async throws {
+        let context = try await makeContext(idleAfter: 3600)
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        let parked = AsyncStream<SessionEventFrame>.makeStream()
+        try await context.lifecycle.startAutomaticEvaluation(stream: parked.stream)
+        let stream = await context.supervisor.events.subscribe()
+        let id = UUID()
+        let launch = try await launchSynthetic(sessionID: id, mode: "stubborn", context: context)
+        _ = try await ready(launch.terminal)
+        await context.supervisor.events.publish(sessionID: id, change: .issue("fixture issue"))
+        var iterator = stream.makeAsyncIterator()
+        let frame = try #require(await iterator.next())
+        #expect(frame.change == .issue("fixture issue"))
+        let before = await context.lifecycle.automaticScheduleRevision()
+        await context.lifecycle.handle(frame)
+        #expect(await context.lifecycle.automaticScheduleRevision() > before)
+        let revision = await context.lifecycle.automaticScheduleRevision()
+        let reads = await context.catalog.decodedSessionRows
+        await context.lifecycle.handle(frame)
+        #expect(await context.lifecycle.automaticScheduleRevision() == revision)
+        #expect(await context.catalog.decodedSessionRows == reads)
+        #expect(await context.lifecycle.timerFireCount() == 0)
+        await context.lifecycle.stopAutomaticEvaluation()
+        parked.continuation.finish()
+        #expect((await context.supervisor.shutdown(graceSeconds: 0.02)).succeeded)
+    }
+
+    @Test func overflowedAuthorityIngressStaysUnknownBlocksIdleAndRejectsFurtherHooks() async throws {
+        let context = try await makeContext(idleAfter: 1)
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        let id = UUID()
+        let launch = try await launchClaude(sessionID: id, conversationID: "A", mode: "stubborn", context: context)
+        _ = try await ready(launch.terminal)
+        let runID = try #require(launch.session.currentRun?.id)
+        _ = try await context.claude.receive(try hook(launchSessionID: id, runID: runID, conversationID: "A", event: "SessionStart"))
+        try await makeClaudeQuiet(launchSessionID: id, runID: runID, conversationID: "A", adapter: context.claude)
+        try await context.lifecycle.captureProcessBaseline(sessionID: id)
+        try await context.catalog.markUsed(sessionID: id, at: Date().addingTimeInterval(-10), reactivate: true)
+        let ingress = ClaudeHookIngress(adapter: context.claude, capacity: 1)
+        // No consumer is running: a newer envelope overwrites the identity
+        // delta and the fault must survive independently of that bounded queue.
+        ingress.receive(try hook(launchSessionID: id, runID: runID, conversationID: "A", event: "UserPromptSubmit"))
+        ingress.receive(try hook(launchSessionID: id, runID: runID, conversationID: "B", event: "SessionStart", fields: ["source": "clear"]))
+        #expect(await context.supervisor.providerWorkState(sessionID: id)?.activity == .unknown)
+        var iterator = ingress.stream.makeAsyncIterator()
+        let latest = try #require(await iterator.next())
+        _ = try await context.claude.receive(latest)
+        _ = try await context.claude.receive(try hook(launchSessionID: id, runID: runID, conversationID: "B", event: "Stop"))
+        #expect(await context.supervisor.activeSessionID(runID: runID) == id)
+        #expect(await context.claude.status(sessionID: id)?.activity == .unknown)
+        let result = try await context.lifecycle.evaluateIdle(sessionID: id)
+        if case let .blocked(reasons) = result { #expect(reasons.contains(.unknownAgentState)) }
+        else { Issue.record("Overflow must block automatic idle, even after later completion hooks") }
+        let warningDeadline = ProcessInfo.processInfo.systemUptime + 2
+        while await context.supervisor.events.snapshot().sessions[id]?.issue == nil,
+              ProcessInfo.processInfo.systemUptime < warningDeadline {
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        #expect(await context.supervisor.events.snapshot().sessions[id]?.issue != nil)
+        #expect((await context.supervisor.shutdown(graceSeconds: 0.02)).succeeded)
+    }
+
+    @Test func hookLossDuringIdlePreparationRefusesSignalsButExplicitStopStillWorks() async throws {
+        let context = try await makeContext(idleAfter: 1)
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        let id = UUID()
+        let launch = try await launchClaude(sessionID: id, conversationID: "A", mode: "stubborn", context: context)
+        _ = try await ready(launch.terminal)
+        let runID = try #require(launch.session.currentRun?.id)
+        try await makeClaudeQuiet(launchSessionID: id, runID: runID, conversationID: "A", adapter: context.claude)
+        try await context.lifecycle.captureProcessBaseline(sessionID: id)
+        try await context.catalog.markUsed(sessionID: id, at: Date().addingTimeInterval(-10), reactivate: true)
+        let gate = IdleReliabilityGate()
+        try await context.supervisor.registerStopHooks(runID: runID, hooks: ManagedRunStopHooks(
+            prepare: { await gate.wait() }, completed: {}
+        ))
+        let evaluation = Task { try await context.lifecycle.evaluateIdle(sessionID: id) }
+        while !(await gate.entered) { try await Task.sleep(for: .milliseconds(1)) }
+        context.claude.noteHookLoss(runID: runID)
+        await gate.release()
+        let outcome = try await evaluation.value
+        if case let .stopFailed(report) = outcome {
+            #expect(report.signals.isEmpty)
+            #expect(report.errors.contains { $0.contains("unreliable") })
+        } else { Issue.record("Late hook loss must refuse the automatic stop") }
+        #expect(await context.supervisor.session(id: id)?.currentRun?.id == runID)
+        #expect(try await context.supervisor.stop(sessionID: id, graceSeconds: 0.02).succeeded)
+        #expect((await context.supervisor.shutdown()).succeeded)
+    }
+
     private struct Context {
         let root: URL
         let catalog: SessionCatalog
@@ -424,13 +672,14 @@ struct SessionLifecycleTests {
 
     private func makeContext(
         idleAfter: TimeInterval, staleAfter: TimeInterval = 15 * 24 * 60 * 60,
-        stopGrace: Double = 0.05
+        stopGrace: Double = 0.05,
+        recheck: SessionLifecycleController.DescendantRecheckSchedule = .init()
     ) async throws -> Context {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loom-lifecycle-\(UUID())", isDirectory: true)
         let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
         let supervisor = try ProcessSupervisor(
-            ledger: OwnershipLedger(coalition: .probe(forceFailure: true)),
+            ledger: OwnershipLedger(),
             catalog: catalog
         )
         return Context(
@@ -441,7 +690,8 @@ struct SessionLifecycleTests {
                 policy: SessionIdlePolicy(
                     idleAfter: idleAfter, staleAfter: staleAfter,
                     stopGraceSeconds: stopGrace
-                )
+                ),
+                recheckSchedule: recheck
             )
         )
     }

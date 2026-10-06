@@ -186,7 +186,7 @@ struct SessionCatalogTests {
         )
 
         #expect(try await catalog.classifyStale(
-            before: Date(timeIntervalSince1970: 20)
+            before: Date(timeIntervalSince1970: 20), excluding: [live.id]
         ) == [old.id])
         try await catalog.markUsed(
             sessionID: old.id, at: Date(timeIntervalSince1970: 30)
@@ -201,6 +201,32 @@ struct SessionCatalogTests {
         )
         #expect(try await catalog.session(id: old.id)?.lifecycle == .active)
         #expect(try await catalog.session(id: live.id)?.lifecycle == .active)
+    }
+
+    /// CP5 C3: a deliberate view refreshes the use date but never changes an
+    /// idle or stale conversation into an active one; only an explicit
+    /// reactivation (a prompt, a resume) does.
+    @Test func viewingKeepsIdleAndStaleStateAndOnlyReactivationMakesItActive() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("loom-view-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
+        let idle = ManagedSession(provider: .claude, workingDirectory: "/tmp")
+        let stale = ManagedSession(provider: .codex, workingDirectory: "/tmp")
+        for (session, state) in [(idle, SessionLifecycle.idle), (stale, .stale)] {
+            try await catalog.insertSession(
+                session, createdAt: Date(timeIntervalSince1970: 10),
+                lastUsedAt: Date(timeIntervalSince1970: 10), lifecycle: state
+            )
+        }
+        for session in [idle, stale] {
+            try await catalog.markUsed(sessionID: session.id, at: Date(timeIntervalSince1970: 50))
+        }
+        #expect(try await catalog.session(id: idle.id)?.lifecycle == .idle)
+        #expect(try await catalog.session(id: stale.id)?.lifecycle == .stale)
+        #expect(try await catalog.session(id: idle.id)?.lastUsedAt == Date(timeIntervalSince1970: 50))
+        try await catalog.markUsed(sessionID: idle.id, at: Date(timeIntervalSince1970: 60), reactivate: true)
+        #expect(try await catalog.session(id: idle.id)?.lifecycle == .active)
     }
 
     private func scalarInt(_ sql: String, database: OpaquePointer) throws -> Int32 {

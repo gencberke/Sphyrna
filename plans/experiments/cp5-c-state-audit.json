@@ -1,0 +1,90 @@
+{
+  "checkpoint": 5,
+  "slice": "C",
+  "date": "2026-09-30",
+  "result": "Current code agrees with recorded position; two-observer harness remains unimplemented at handoff.",
+  "diagnosis_sources": {
+    "Sources/loom-fake-provider/CodexFixture.swift": {
+      "matches": true,
+      "sha256": "48656029f63568c4db1c0807b856f86537f8df64387ac9c8c978ff8e78a81b3f"
+    },
+    "Tests/LoomCoreTests/SessionRuntimeCodexTests.swift": {
+      "matches": true,
+      "sha256": "445f4ba8c013b95a32427289e13005e7704e665ee91edbe90d9950d7e3185a57"
+    },
+    "Sources/LoomCore/CodexAppServer.swift": {
+      "matches": true,
+      "sha256": "d75c76ef2c9512b70ccd908711ddf19ee0f20ddf4a6c4182eac7bb27bf8ff07c"
+    },
+    "Sources/LoomCore/CodexSessionState.swift": {
+      "matches": true,
+      "sha256": "fd7c48232db28a2af4b5cca51c1f5d565c4fa3a18a65b3227f54aedfd2761a17"
+    },
+    "Sources/LoomCore/CodexSessionCoordinator.swift": {
+      "matches": true,
+      "sha256": "454e950af6d37560d1ed424277b7b56cc5351c14e0d7e13ab14031e7ae526e75"
+    },
+    "Sources/LoomCore/SessionRuntime.swift": {
+      "matches": true,
+      "sha256": "6f50e8ecb4b994beba953779830cfe56cde5dfd3009a5592910017d4bd2e4744"
+    }
+  },
+  "real_acceptance_source_matches": {
+    "Sources/LoomCore/CodexAppServer.swift": true,
+    "Sources/LoomCore/CodexSessionCoordinator.swift": true,
+    "Sources/LoomCore/CodexSessionState.swift": true,
+    "Sources/LoomCore/SessionRuntime.swift": true,
+    "Sources/LoomTerminal/TerminalRunController.swift": true,
+    "Sources/loom-app/AppDelegate.swift": true,
+    "Sources/loom-app/DevelopmentEvidence.swift": true,
+    "Sources/loom-fake-provider/CodexFixture.swift": false,
+    "Tests/LoomCatalogUITests/ConversationControllerTests.swift": true,
+    "Tests/LoomCoreTests/CodexAppServerTests.swift": true,
+    "Tests/LoomCoreTests/SessionRuntimeCodexTests.swift": false,
+    "Tests/LoomTerminalTests/TerminalRunControllerTests.swift": true
+  },
+  "explained_changes": [
+    "Sources/loom-fake-provider/CodexFixture.swift and Tests/LoomCoreTests/SessionRuntimeCodexTests.swift differ from real acceptance snapshot but exactly match the later accepted diagnosis."
+  ],
+  "historical_evidence_rechecked": {
+    "runtime_test_log": "cp5-c-review10-20260930/tests.log: 23 tests passed",
+    "approval_selected_requests": [],
+    "routing_dropped": 0,
+    "routing_event_classes": [
+      "threadStarted",
+      "threadStatusChanged",
+      "unknown"
+    ]
+  },
+  "code_findings": [
+    {
+      "path": "Sources/LoomCore/CodexAppServer.swift",
+      "finding": "receive separates method+id requests from notifications; no pre-decode bounded wire diagnostics yet."
+    },
+    {
+      "path": "Sources/LoomCore/CodexSessionCoordinator.swift",
+      "finding": "bindResume binds locally; hydrateIdleThread reads state/background terminals, no observer thread/resume."
+    },
+    {
+      "path": "Sources/LoomCore/CodexRoutingDiagnostics.swift",
+      "finding": "256-entry decoded routing ring with drop count; cannot identify original unknown envelope class/id."
+    },
+    {
+      "path": "Sources/loom-probe/ProviderExperiment.swift",
+      "finding": "Existing general RPC experiment logs raw envelopes; unsuitable as-is for this content-free comparison."
+    },
+    {
+      "path": "Sources/loom-app/AppDelegate.swift",
+      "finding": "Quit callback still directly invokes quitFinished; accepted fix retained."
+    }
+  ],
+  "tests_this_audit": "No rerun: unchanged inputs and inspected existing passing evidence. Implementer owns build, narrow tests and fixture smoke for upcoming changes.",
+  "unverified": [
+    "Real provider request distribution and C4",
+    "Active-command Quit and external process preservation",
+    "Full C/D/OWN-1/resource/optimizer closure"
+  ],
+  "delegation": "cp5_c_observer_harness: bounded opt-in wire diagnostics, A read / B resume same initialize, readiness gate, no answer/turn, isolated fixture tests and runnable conditional commands.",
+  "real_provider_starts": 0,
+  "model_turns": 0
+}

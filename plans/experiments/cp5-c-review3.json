@@ -1,0 +1,32 @@
+{
+  "review": 3,
+  "modelTurns": 0,
+  "finding2": "closed",
+  "finding7": "open: child exit does not rearm automatic idle after nonBaselineDescendants",
+  "checks": {
+    "build": "passed",
+    "fullTests": {
+      "total": 202,
+      "failedTests": 2,
+      "issues": 5,
+      "exitCode": 1
+    },
+    "narrowRetest": {
+      "tests": 2,
+      "passed": 2
+    },
+    "sourceChangedDuringReview": []
+  },
+  "repro": {
+    "liveChild": "idle blocked, child preserved",
+    "afterChildExit": {
+      "sampleContainsOnlyLeader": true,
+      "timerFireCountBefore": 1,
+      "timerFireCountAfter": 1,
+      "liveRuns": 1,
+      "staleBlocker": "nonBaselineDescendants(1)"
+    },
+    "shutdownSucceeded": true
+  },
+  "evidenceDirectory": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-c-review3-20260929"
+}

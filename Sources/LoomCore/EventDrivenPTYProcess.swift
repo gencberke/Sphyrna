@@ -88,20 +88,31 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
     private let processCancellation = CompletionLatch()
     private let processExit = CompletionLatch()
     private let onOutput: @Sendable (Data) -> Void
-    private let onExit: @Sendable (Int32) -> Void
+    private let onExit: @Sendable (Int32?) -> Void
+    /// waitpid-shaped: pid with status, 0 while running, -1 with errno on
+    /// failure, or -2 when the process is gone but its status is unknowable.
     private let reap: @Sendable (Int32, UnsafeMutablePointer<Int32>) -> Int32
+    /// How long an exit event may precede a reapable status. A run host
+    /// reports statuses over a socket, so its window is longer than waitpid's.
+    private let reapGrace: Double
 
     // Access only on terminalQueue.
     private var terminalFD: Int32
     private var terminalOpen = true
     private var status: Int32?
+    private var exitedWithoutStatus = false
     private var failure: TerminalTransportError?
+    /// One read buffer for the process lifetime; the Data handed to onOutput
+    /// is the only copy of each read.
+    private var readBuffer = [UInt8](repeating: 0, count: 16_384)
 
     init(process: PTYProcess, onOutput: @escaping @Sendable (Data) -> Void,
-         onExit: @escaping @Sendable (Int32) -> Void,
+         onExit: @escaping @Sendable (Int32?) -> Void,
          reap: @escaping @Sendable (Int32, UnsafeMutablePointer<Int32>) -> Int32 = {
              waitpid($0, $1, WNOHANG)
-         }) {
+         },
+         reapGrace: Double = 1.5) {
+        self.reapGrace = reapGrace
         pid = process.pid
         terminalFD = process.detachTerminal()
         self.onOutput = onOutput
@@ -124,8 +135,9 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
         }
 
         let processCancellation = processCancellation
+        let grace = DispatchTimeInterval.milliseconds(Int(reapGrace * 1_000))
         processSource.setEventHandler { [weak self] in
-            self?.reapIfExited(retryDeadline: .now() + .milliseconds(1_500))
+            self?.reapIfExited(retryDeadline: .now() + grace)
         }
         processSource.setCancelHandler {
             Task { await processCancellation.finish() }
@@ -194,7 +206,7 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
     }
 
     /// Call only after ownership sampling says the leader no longer exists.
-    func finish(outputDrainSeconds: Double) async throws -> Int32 {
+    func finish(outputDrainSeconds: Double) async throws -> Int32? {
         let deadline = ProcessInfo.processInfo.systemUptime + max(0, outputDrainSeconds)
         while await isTerminalOpen(), ProcessInfo.processInfo.systemUptime < deadline {
             try? await Task.sleep(for: .milliseconds(2))
@@ -203,19 +215,24 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
         // A process event can arrive before waitpid can collect the child. A
         // final explicit reap also covers a missed or early one-shot event.
         terminalQueue.async { [weak self] in
-            self?.reapIfExited(retryDeadline: .now() + .milliseconds(1_500))
+            guard let self else { return }
+            self.reapIfExited(retryDeadline: .now() + .milliseconds(Int(self.reapGrace * 1_000)))
         }
         try await processExit.wait(
-            operation: "reaping process \(pid)", timeoutSeconds: 2
+            operation: "reaping process \(pid)", timeoutSeconds: reapGrace + 0.5
         )
         processSource.cancel()
         try await processCancellation.wait(
             operation: "cancelling process source \(pid)", timeoutSeconds: 2
         )
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int32, any Error>) in
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int32?, any Error>) in
             terminalQueue.async { [self] in
+                // A status that arrived after an earlier reap timed out still
+                // finishes the run; a timeout is not a permanent verdict.
+                if case .timedOut? = failure, status == nil, !exitedWithoutStatus { retryLateReap() }
                 if let failure { continuation.resume(throwing: failure) }
                 else if let status { continuation.resume(returning: status) }
+                else if exitedWithoutStatus { continuation.resume(returning: nil) }
                 else { continuation.resume(throwing: TerminalTransportError.waitFailed(ECHILD)) }
             }
         }
@@ -236,10 +253,12 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
     private func readReady() {
         guard terminalOpen else { return }
         for _ in 0..<16 {
-            var bytes = [UInt8](repeating: 0, count: 16_384)
-            let count = Darwin.read(terminalFD, &bytes, bytes.count)
+            let descriptor = terminalFD
+            let count = readBuffer.withUnsafeMutableBytes {
+                Darwin.read(descriptor, $0.baseAddress, $0.count)
+            }
             if count > 0 {
-                onOutput(Data(bytes.prefix(count)))
+                onOutput(readBuffer.withUnsafeBytes { Data(bytes: $0.baseAddress!, count: count) })
                 continue
             }
             if count == 0 || errno == EIO {
@@ -256,14 +275,37 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
         }
     }
 
+    /// One immediate reap attempt on terminalQueue after a timed-out wait.
+    private func retryLateReap() {
+        var childStatus: Int32 = 0
+        let result = reap(pid, &childStatus)
+        if result == pid {
+            status = childStatus
+            failure = nil
+            onExit(childStatus)
+        } else if result == -2 {
+            exitedWithoutStatus = true
+            failure = nil
+            onExit(nil)
+        }
+    }
+
     private func reapIfExited(retryDeadline: DispatchTime? = nil) {
-        guard status == nil else { return }
+        guard status == nil, !exitedWithoutStatus else { return }
         var childStatus: Int32 = 0
         while true {
             let result = reap(pid, &childStatus)
             if result == pid {
                 status = childStatus
+                if case .timedOut? = failure { failure = nil }
                 onExit(childStatus)
+                Task { await processExit.finish() }
+                return
+            }
+            if result == -2 {
+                exitedWithoutStatus = true
+                if case .timedOut? = failure { failure = nil }
+                onExit(nil)
                 Task { await processExit.finish() }
                 return
             }

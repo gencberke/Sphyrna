@@ -176,7 +176,8 @@ final class ProviderExperiment {
                 let explicit = (action["threadID"] as? String).map(expand)
                 route = .remote(
                     socket: variables["socket"]!,
-                    threadID: explicit ?? variables["thread"]
+                    threadID: explicit ?? variables["thread"],
+                    workingDirectory: root.appendingPathComponent("workspace").path
                 )
             case "direct": route = .direct
             default: throw LoomError.message("Unknown Codex route")

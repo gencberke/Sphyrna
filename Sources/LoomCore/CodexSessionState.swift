@@ -36,7 +36,7 @@ public actor CodexEventStateTracker {
     private var managedRunID: UUID
     private var minimumSequence: UInt64
     private var currentStatus: CodexSessionStatus
-    private var pendingRequestSequences: Set<UInt64> = []
+    private var pendingRequestSequences: [UInt64: JSONValue] = [:]
 
     public init(threadID: String, managedRunID: UUID, after sequence: UInt64) {
         self.threadID = threadID
@@ -104,7 +104,8 @@ public actor CodexEventStateTracker {
                 return .differentThread
             }
             currentStatus.lastEventAt = receivedAt
-            pendingRequestSequences.insert(sequence)
+            pendingRequestSequences = pendingRequestSequences.filter { $0.value != request.id }
+            pendingRequestSequences[sequence] = request.id
             currentStatus.pendingRequestCount = pendingRequestSequences.count
             switch request.kind {
             case .userInput: currentStatus.activity = .waitingForInput
@@ -118,7 +119,7 @@ public actor CodexEventStateTracker {
     }
 
     public func requestResolved(requestSequence: UInt64, receivedAt: Date = Date()) {
-        guard pendingRequestSequences.remove(requestSequence) != nil else { return }
+        guard pendingRequestSequences.removeValue(forKey: requestSequence) != nil else { return }
         currentStatus.lastEventAt = receivedAt
         currentStatus.pendingRequestCount = pendingRequestSequences.count
         if pendingRequestSequences.isEmpty,
@@ -158,10 +159,15 @@ public actor CodexEventStateTracker {
             }
         case let .error(_, _, message, willRetry):
             currentStatus.activity = willRetry ? .working : .failed(message)
+        case let .serverRequestResolved(_, requestID):
+            for sequence in pendingRequestSequences.filter({ $0.value == requestID }).keys {
+                requestResolved(requestSequence: sequence, receivedAt: receivedAt)
+            }
         case .threadClosed:
             currentStatus.activity = .sessionEnded("closed")
         case .threadStarted:
-            currentStatus.activity = .unknown
+            // A resume can announce the already bound thread again.
+            break
         case .unknown:
             currentStatus.activity = .unknown
         }
@@ -174,6 +180,7 @@ public actor CodexEventStateTracker {
         case let .turnStarted(threadID, _): threadID
         case let .turnCompleted(threadID, _, _, _): threadID
         case let .error(threadID, _, _, _): threadID
+        case let .serverRequestResolved(threadID, _): threadID
         case let .threadClosed(threadID): threadID
         case .unknown: nil
         }
@@ -192,9 +199,10 @@ public enum CodexLaunchMatchingError: Error, Equatable, Sendable {
     case timeout
 }
 
-/// New remote TUI launches are intentionally serialized. The app-server does
-/// not include a PTY/run marker in thread/started, so accepting two unmatched
-/// starts concurrently would make identity assignment nondeterministic.
+/// Matches a new TUI's `thread/started` to its launch by cwd. The runtime
+/// gives every TUI its own app-server and coordinator, so one reservation is
+/// pending per matcher; concurrent reservations on one matcher are still
+/// serialized because thread/started carries no PTY/run marker.
 public actor CodexLaunchMatcher {
     private struct Pending {
         let reservation: CodexLaunchReservation
@@ -231,6 +239,13 @@ public actor CodexLaunchMatcher {
         return reservation
     }
 
+    func pendingBinding() -> CodexRunBinding? {
+        guard let pending else { return nil }
+        return CodexRunBinding(sessionID: pending.reservation.sessionID,
+                               managedRunID: pending.reservation.managedRunID,
+                               threadID: "", workingDirectory: pending.workingDirectory)
+    }
+
     @discardableResult
     public func receive(
         _ inbound: CodexAppServerInbound
@@ -238,7 +253,7 @@ public actor CodexLaunchMatcher {
         guard var current = pending,
               case let .event(sequence, .threadStarted(identity)) = inbound,
               sequence > current.afterSequence,
-              identity.ephemeral != true,
+              identity.isInteractiveConversation,
               let directory = identity.workingDirectory,
               URL(fileURLWithPath: directory).standardizedFileURL.path
                 == current.workingDirectory else { return nil }
@@ -251,7 +266,7 @@ public actor CodexLaunchMatcher {
     }
 
     public func waitForMatch(
-        _ reservation: CodexLaunchReservation, timeout: TimeInterval = 10
+        _ reservation: CodexLaunchReservation, timeout: TimeInterval? = 10
     ) async throws -> String {
         guard var current = pending, current.reservation == reservation else {
             throw CodexLaunchMatchingError.invalidReservation
@@ -263,9 +278,11 @@ public actor CodexLaunchMatcher {
         return try await withCheckedThrowingContinuation { continuation in
             current.continuation = continuation
             pending = current
-            Task { [weak self] in
-                try? await Task.sleep(for: .seconds(max(0.02, timeout)))
-                await self?.expire(reservation)
+            if let timeout {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(max(0.02, timeout)))
+                    await self?.expire(reservation)
+                }
             }
         }
     }
@@ -305,15 +322,19 @@ public enum CodexRouteDecision: Equatable, Sendable {
     case ambiguous([CodexRunBinding], threadID: String)
 }
 
-/// Routes the shared app-server stream without guessing. `/new` can be tied to
-/// an existing TUI when exactly one live binding has the same cwd. If multiple
-/// TUI sessions share that cwd, the event is reported as ambiguous and no
-/// durable identity is changed.
+/// Routes one app-server's stream without guessing. `/new` can be tied to an
+/// existing TUI when exactly one live binding has the same cwd. If several
+/// bindings could own it (not reachable through the runtime, which binds one
+/// run per server), the event is reported as ambiguous and no durable identity
+/// is changed.
 public actor CodexSessionRouter {
     public let launchMatcher: CodexLaunchMatcher
+    public nonisolated let diagnostics: CodexRoutingDiagnostics
     private var bindingsByThread: [String: CodexRunBinding] = [:]
 
-    public init(launchMatcher: CodexLaunchMatcher = CodexLaunchMatcher()) {
+    public init(launchMatcher: CodexLaunchMatcher = CodexLaunchMatcher(),
+                diagnostics: CodexRoutingDiagnostics = CodexRoutingDiagnostics()) {
+        self.diagnostics = diagnostics
         self.launchMatcher = launchMatcher
     }
 
@@ -330,14 +351,55 @@ public actor CodexSessionRouter {
     }
 
     public func route(_ inbound: CodexAppServerInbound) async -> CodexRouteDecision {
-        if let (reservation, identity, sequence) = await launchMatcher.receive(inbound) {
-            return .initialLaunchMatched(CodexRunBinding(
-                sessionID: reservation.sessionID,
-                managedRunID: reservation.managedRunID,
-                threadID: identity.id,
-                workingDirectory: identity.workingDirectory ?? ""
-            ), sequence: sequence)
+        let pending = await launchMatcher.pendingBinding()
+        let decision = await decide(inbound, pending: pending)
+        let sequence: UInt64
+        let eventName: String
+        let threadID: String?
+        var identity: CodexThreadIdentity?
+        switch inbound {
+        case let .request(value, request):
+            sequence = value; eventName = "request"; threadID = request.threadID
+        case let .event(value, event):
+            sequence = value; threadID = Self.threadID(event)
+            switch event {
+            case let .threadStarted(value): eventName = "threadStarted"; identity = value
+            case .threadStatusChanged: eventName = "threadStatusChanged"
+            case .turnStarted: eventName = "turnStarted"
+            case .turnCompleted: eventName = "turnCompleted"
+            case .error: eventName = "error"
+            case .threadClosed: eventName = "threadClosed"
+            case .serverRequestResolved: eventName = "serverRequestResolved"
+            case .unknown: eventName = "unknown"
+            }
         }
+        var candidates = identity.map { cwdCandidates($0) } ?? []
+        if let pending, let cwd = identity?.workingDirectory,
+           Self.normalized(cwd) == Self.normalized(pending.workingDirectory) {
+            candidates.append(pending)
+        }
+        let cwdMatch = identity?.workingDirectory == nil ? nil : !candidates.isEmpty
+        let label: String
+        switch decision {
+        case let .initialLaunchMatched(binding, _): label = "initialLaunchMatched"; candidates = [binding]
+        case let .routed(binding): label = "routed"; candidates = [binding]
+        case .newConversation: label = "newConversation"
+        case .ambiguous: label = "ambiguous"
+        case .unmatched: label = identity?.ephemeral == true ? "ignoredEphemeral" : "unmatched"
+        }
+        await diagnostics.record(CodexRoutingDiagnostic(
+            sequence: sequence, event: eventName, threadID: threadID,
+            sessionIDs: candidates.map(\.sessionID), runIDs: candidates.map(\.managedRunID),
+            cwdMatch: cwdMatch,
+            ephemeral: identity?.ephemeral, source: identity?.sourceClass ?? "missing",
+            originator: identity?.originatorClass ?? "missing", decision: label
+        ))
+        return decision
+    }
+
+    private func decide(_ inbound: CodexAppServerInbound, pending: CodexRunBinding?) async -> CodexRouteDecision {
+        if case let .event(_, .threadStarted(identity)) = inbound,
+           identity.ephemeral == true || identity.source == "exec" { return .unmatched }
         let threadID: String?
         switch inbound {
         case let .request(_, request): threadID = request.threadID
@@ -346,17 +408,39 @@ public actor CodexSessionRouter {
         if let threadID, let binding = bindingsByThread[threadID] {
             return .routed(binding)
         }
+        if let (reservation, identity, sequence) = await launchMatcher.receive(inbound) {
+            return .initialLaunchMatched(CodexRunBinding(
+                sessionID: reservation.sessionID,
+                managedRunID: reservation.managedRunID,
+                threadID: identity.id,
+                workingDirectory: identity.workingDirectory ?? ""
+            ), sequence: sequence)
+        }
         guard case let .event(_, .threadStarted(identity)) = inbound,
               let directory = identity.workingDirectory else { return .unmatched }
-        let normalized = URL(fileURLWithPath: directory).standardizedFileURL.path
-        let candidates = bindingsByThread.values.filter {
-            URL(fileURLWithPath: $0.workingDirectory).standardizedFileURL.path == normalized
-        }.sorted { $0.threadID < $1.threadID }
+        var candidates = cwdCandidates(identity)
+        if !identity.isInteractiveConversation {
+            if let pending, Self.normalized(directory) == Self.normalized(pending.workingDirectory) {
+                candidates.append(pending)
+            }
+            return candidates.isEmpty ? .unmatched : .ambiguous(candidates, threadID: identity.id)
+        }
         if candidates.count == 1 {
             return .newConversation(previous: candidates[0], identity: identity)
         }
         if candidates.isEmpty { return .unmatched }
         return .ambiguous(candidates, threadID: identity.id)
+    }
+
+    private static func normalized(_ directory: String) -> String {
+        URL(fileURLWithPath: directory).standardizedFileURL.path
+    }
+
+    private func cwdCandidates(_ identity: CodexThreadIdentity) -> [CodexRunBinding] {
+        guard let directory = identity.workingDirectory else { return [] }
+        return bindingsByThread.values.filter {
+            Self.normalized($0.workingDirectory) == Self.normalized(directory)
+        }.sorted { $0.threadID < $1.threadID }
     }
 
     private static func threadID(_ event: CodexAppServerEvent) -> String? {
@@ -366,6 +450,7 @@ public actor CodexSessionRouter {
         case let .turnStarted(threadID, _): threadID
         case let .turnCompleted(threadID, _, _, _): threadID
         case let .error(threadID, _, _, _): threadID
+        case let .serverRequestResolved(threadID, _): threadID
         case let .threadClosed(threadID): threadID
         case .unknown: nil
         }

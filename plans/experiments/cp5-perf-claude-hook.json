@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-03",
+  "item": "PERF T3 / PERF-5",
+  "binary": "installed package D Contents/MacOS/loom-hook",
+  "method": "40 sequential spawns of the real helper with a UserPromptSubmit-shaped payload into a local accepting unix socket; first 5 discarded; CPU from RUSAGE_CHILDREN deltas, wall from perf_counter around spawn+exit",
+  "script": "~/Library/Application Support/Loom-Dev/probe/runs/cp5-perf-20261003/claude-hook-cost/bench.py",
+  "result": {
+    "n": 35,
+    "exitCodes": [0],
+    "messagesReceived": 40,
+    "cpuMilliseconds": {"median": 3.835, "min": 3.703, "max": 4.413},
+    "wallMilliseconds": {"median": 5.961, "min": 5.710, "max": 6.718},
+    "maxRSSMiB": 6.5
+  },
+  "interpretation": "A normal Claude turn fires two Loom hooks (UserPromptSubmit, Stop): about 8 ms CPU and 12 ms wall per turn, transient 6.5 MiB. No tool-level hooks are registered. A smaller helper would save a few milliseconds per turn; not worth a new component.",
+  "limits": [
+    "Measured while two SwiftPM builds were running; wall time is an upper-biased estimate, CPU time is less affected.",
+    "Excludes Claude's own hook dispatch cost and Loom's receive-side processing.",
+    "Synthetic payload; real payload sizes are similar order (small JSON)."
+  ],
+  "decision": "T3 closed without code change"
+}

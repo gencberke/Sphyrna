@@ -1,0 +1,138 @@
+--- a/Sources/SwiftTerm/Apple/FrameDriver.swift
++++ b/Sources/SwiftTerm/Apple/FrameDriver.swift
+@@ -22,7 +22,7 @@
+ /// event set also limits publication to one pending main-actor task. A producer
+ /// can keep this handle without keeping the terminal view or its driver alive.
+ final class FrameDriverSignal: Sendable {
+-    fileprivate struct Events: OptionSet, Sendable {
++    struct Events: OptionSet, Sendable {
+         let rawValue: UInt8
+ 
+         static let dirty = Events(rawValue: 1 << 0)
+@@ -36,12 +36,20 @@
+     private struct State: Sendable {
+         var pending: Events = []
+         var deliveryScheduled = false
++        var cadenceActive = false
+         var shutdownRequested = false
+         var sinkConfigured = false
+         var sink: Sink?
+     }
+ 
+     private let state = Locked(State())
++    private let deliver: @Sendable (@escaping Sink) -> Void
++
++    init(deliver: @escaping @Sendable (@escaping Sink) -> Void = { sink in
++        Task { @MainActor in sink() }
++    }) {
++        self.deliver = deliver
++    }
+ 
+     /// Installs the only sink this signal will use.
+     @MainActor
+@@ -57,7 +65,7 @@
+             }
+         }
+         if mustDeliver {
+-            Task { @MainActor in sink() }
++            deliver(sink)
+         }
+     }
+ 
+@@ -85,18 +93,34 @@
+         schedule(sink)
+     }
+ 
+-    fileprivate func publishDisplayLinkTick() {
++    func publishDisplayLinkTick() {
+         publish([.displayLink])
+     }
+ 
+     @MainActor
+-    fileprivate func takePendingEvents() -> Events {
++    func takePendingEvents() -> Events {
+         state.withLock { state in
+             let pending = state.pending
+             state.pending = []
+             state.deliveryScheduled = false
+             return pending
+         }
++    }
++
++    /// A running source consumes dirty events at its next cadence tick. When
++    /// it parks, transfer any pending work back to main-actor delivery under
++    /// the same lock producers use, including work published just before pause.
++    @MainActor
++    func setCadenceActive(_ active: Bool) {
++        var sink: Sink?
++        state.withLock { state in
++            state.cadenceActive = active
++            guard !active, !state.pending.isEmpty, !state.deliveryScheduled,
++                  let configuredSink = state.sink else { return }
++            state.deliveryScheduled = true
++            sink = configuredSink
++        }
++        schedule(sink)
+     }
+ 
+     @MainActor
+@@ -113,6 +137,7 @@
+         state.withLock { state in
+             guard !state.shutdownRequested else { return }
+             state.pending.formUnion(events)
++            guard !state.cadenceActive || state.pending != [.dirty] else { return }
+             guard !state.deliveryScheduled, let configuredSink = state.sink else { return }
+             state.deliveryScheduled = true
+             sink = configuredSink
+@@ -122,7 +147,7 @@
+ 
+     private func schedule(_ sink: Sink?) {
+         guard let sink else { return }
+-        Task { @MainActor in sink() }
++        deliver(sink)
+     }
+ }
+ 
+@@ -290,8 +315,7 @@
+         configureSignal(signal)
+     }
+ 
+-    init(tickSource: ManualTickSource) {
+-        let signal = FrameDriverSignal()
++    init(tickSource: ManualTickSource, signal: FrameDriverSignal = FrameDriverSignal()) {
+         self.signal = signal
+         manualTickSource = tickSource
+         displayLinkTarget.driver = self
+@@ -539,6 +563,7 @@
+         startBackendOnMain()
+         if !invalidated {
+             running = true
++            signal.setCadenceActive(true)
+             idleTickCount = 0
+             return true
+         }
+@@ -570,6 +595,7 @@
+     }
+ 
+     private func pauseBackendOnMain() {
++        signal.setCadenceActive(false)
+         manualTickSource?.stop()
+         displayLinkBackend?.stop()
+ #if os(macOS)
+@@ -584,6 +610,8 @@
+         invalidated = true
+         dirty = false
+         running = false
++
++        signal.setCadenceActive(false)
+ 
+         manualTickSource?.invalidate()
+         manualTickSource = nil
+@@ -705,6 +733,7 @@
+     }
+ 
+     private func destroyMacBackend() {
++        signal.setCadenceActive(false)
+         displayLinkBackend?.invalidate()
+         displayLinkBackend = nil
+         if let cvDisplayLink {

@@ -7,6 +7,33 @@ private final class TestBundleAnchor: NSObject {}
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct ProcessLifecycleTests {
+    @Test func processResourceCPUUsesNanosecondsLikeGetrusage() throws {
+        // getrusage timeval is an independent seconds/microseconds oracle,
+        // rather than another read of proc_pid_rusage's Mach tick counters.
+        func cpuNanoseconds(_ value: rusage) -> Double {
+            (Double(value.ru_utime.tv_sec) + Double(value.ru_stime.tv_sec)) * 1_000_000_000
+                + (Double(value.ru_utime.tv_usec) + Double(value.ru_stime.tv_usec)) * 1_000
+        }
+        var before = rusage()
+        #expect(getrusage(RUSAGE_SELF, &before) == 0)
+        let first = try #require(ProcessTable.resourceUsage(pid: getpid()))
+        let deadline = ProcessInfo.processInfo.systemUptime + 0.15
+        var work: UInt64 = 1
+        repeat {
+            for _ in 0..<1_000 { work = work &* 6_364_136_223_846_793_005 &+ 1 }
+        } while ProcessInfo.processInfo.systemUptime < deadline
+        let last = try #require(ProcessTable.resourceUsage(pid: getpid()))
+        var after = rusage()
+        #expect(getrusage(RUSAGE_SELF, &after) == 0)
+        #expect(work != 0)
+        let reference = cpuNanoseconds(after) - cpuNanoseconds(before)
+        let measured = Double(last.userTimeNanoseconds - first.userTimeNanoseconds)
+            + Double(last.systemTimeNanoseconds - first.systemTimeNanoseconds)
+        #expect(reference > 10_000_000)
+        let ratio = measured / reference
+        #expect((0.9...1.1).contains(ratio))
+    }
+
     private func killAndReap(_ process: Process) {
         let pid = process.processIdentifier
         guard pid > 0 else { return }

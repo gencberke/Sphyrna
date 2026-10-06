@@ -1,0 +1,50 @@
+--- a/Sources/SwiftTerm/Apple/SnapshotTextBuilder.swift
++++ b/Sources/SwiftTerm/Apple/SnapshotTextBuilder.swift
+@@ -383,6 +383,7 @@
+         // Open direct run: first visual column, offset in directCodes and
+         // its batch attributes. While a run is open `builder` is nil.
+         var openDirectRun: (column: Int, codeStart: Int, attributes: SnapshotTextAttributes)?
++        var directRunOpen = false
+         // Whether the batch dictionary identified here has a verified font.
+         var directEligibleBatch: NSDictionary?
+         var directBatchEligible = false
+@@ -394,6 +395,7 @@
+                                              count: codes.count - open.codeStart,
+                                              attributes: open.attributes))
+             openDirectRun = nil
++            directRunOpen = false
+         }
+ 
+         while true {
+@@ -410,6 +412,23 @@
+             let ch = line.packedView(at: col)
+             let width = max(1, Int(ch.width))
+             let styleKey = ch.attributeKey
++            // Continuing an open direct run: a simple cell with the run's
++            // style key, link and selection state reaches the same batch in
++            // the direct branch below, which then only appends its code.
++            // Appending here skips the per-cell attribute copies. Blink is
++            // part of the style key; BiDi rows never open a run.
++            if directRunOpen, styleKey == lastStyleKey, ch.width == 1, ch.isSimpleRune,
++               context.glyphFallbackProvider == nil,
++               let directCode = DirectGlyphTable.code(for: ch.code),
++               snapshotRow.resolvedText.isEmpty || snapshotRow.resolvedText[col] == nil,
++               shouldUnderlineLink(row: absoluteRow, column: col, width: 1,
++                                   cell: ch, context: context) == lastHasUrl,
++               isColumnSelected(selectionColumns, column: col, width: 1) == lastIsSelected {
++                codes.append(directCode)
++                col += 1
++                visualCol += 1
++                continue
++            }
+             let attr: Attribute
+             if decodedStyleKey == styleKey {
+                 attr = decodedAttribute
+@@ -496,6 +515,7 @@
+                         }
+                         builder = nil
+                         openDirectRun = (visualCol, codes.count, batch)
++                        directRunOpen = true
+                     }
+                 }
+                 if openDirectRun != nil {

@@ -1,0 +1,602 @@
+--- a/Sources/SwiftTerm/Apple/AppleTerminalView.swift
++++ b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
+@@ -388,6 +388,17 @@
+     }
+     private var ctLines: [CTLineCacheKey: CTLine] = [:]
+ 
++    /// Loom direct glyph path (DirectGlyphPath.swift). Disabling it routes
++    /// every cell through the attributed-string path; tests and benchmarks
++    /// compare the two.
++    var directGlyphRunsEnabled = true
++    let directGlyphs = DirectGlyphTable()
++    /// Cells drawn by the direct path since creation; diagnostics only.
++    var directGlyphCells = 0
++    /// Reused per direct run: glyph IDs and grid positions.
++    var directGlyphBuffer: [CGGlyph] = []
++    var directPositionBuffer: [CGPoint] = []
++
+     @inline(__always)
+     func cgColor(for color: TTColor) -> CGColor {
+         if let cg = cgColors[color] {
+@@ -3040,6 +3051,79 @@
+     }
+ 
+     
++    /// Direct-path counterpart of the background pass: one fill over the
++    /// run's columns, from the same attributes a CTRun of the run would carry.
++    private func drawDirectRunBackground(_ run: DirectGlyphRun, lineOrigin: CGPoint,
++                                         in context: CGContext) {
++        let keys = coreGraphicsRenderCache.runAttributeKeys
++        let attributes = run.attributes.objectiveC
++        let selectionBackground = attributes.object(forKey: keys.selectionBackground) as? TTColor
++        guard selectionBackground != nil || attributes.object(forKey: keys.explicitBackground) != nil,
++              let backgroundColor = selectionBackground
++                ?? attributes.object(forKey: keys.background) as? TTColor else {
++            return
++        }
++        let rect = CGRect(
++            x: lineOrigin.x + (CGFloat(run.column) * cellDimension.width),
++            y: lineOrigin.y,
++            width: CGFloat(run.count) * cellDimension.width,
++            height: cellDimension.height)
++        context.setFillColor(coreGraphicsRenderCache.cgColor(for: backgroundColor))
++        context.fill(rect)
++    }
++
++    /// Direct-path counterpart of the glyph pass: cached glyph IDs at grid
++    /// positions (one glyph per cell, baseline offset 0 as verified by
++    /// `DirectGlyphTable`), then the same decorations.
++    private func drawDirectRunGlyphs(_ run: DirectGlyphRun, codes: [UInt8],
++                                     lineOrigin: CGPoint, yOffset: CGFloat,
++                                     defaultForeground: TTColor,
++                                     in context: CGContext) {
++        let cache = coreGraphicsRenderCache
++        let keys = cache.runAttributeKeys
++        let attributes = run.attributes.objectiveC
++        guard let font = attributes.object(forKey: keys.font) as? TTFont,
++              let table = cache.directGlyphs.glyphs(for: font) else {
++            preconditionFailure("direct glyph run without a verified font")
++        }
++        let count = run.count
++        if cache.directGlyphBuffer.count < count {
++            cache.directGlyphBuffer = [CGGlyph](repeating: 0, count: count)
++            cache.directPositionBuffer = [CGPoint](repeating: .zero, count: count)
++        }
++        let foreground = attributes.object(forKey: keys.foreground) as? TTColor ?? defaultForeground
++        context.setFillColor(cache.cgColor(for: foreground))
++        // Same expressions as the attributed path; its CoreText y offset
++        // is 0 for every verified glyph.
++        let cellWidth = cellDimension.width
++        let y = lineOrigin.y + yOffset
++        let firstCode = Int(DirectGlyphTable.firstCode)
++        let column = run.column
++        let codeStart = run.codeStart
++        cache.directGlyphBuffer.withUnsafeMutableBufferPointer { glyphs in
++            cache.directPositionBuffer.withUnsafeMutableBufferPointer { positions in
++                codes.withUnsafeBufferPointer { codes in
++                    table.withUnsafeBufferPointer { table in
++                        for i in 0..<count {
++                            glyphs[i] = table[Int(codes[codeStart + i]) - firstCode]
++                            positions[i] = CGPoint(
++                                x: lineOrigin.x + CGFloat(column + i) * cellWidth, y: y)
++                        }
++                    }
++                }
++                CTFontDrawGlyphs(font as CTFont, glyphs.baseAddress!, positions.baseAddress!,
++                                 count, context)
++            }
++        }
++        cache.directGlyphCells += count
++        if attributes.object(forKey: keys.underlineStyle) != nil
++            || attributes.object(forKey: keys.strikethroughStyle) != nil {
++            drawRunAttributes(run.attributes.values,
++                              glyphPositions: Array(cache.directPositionBuffer[0..<count]),
++                              in: context)
++        }
++    }
++
+     // TODO: this should not render any lines outside the dirtyRect
+     func drawTerminalContents (dirtyRect: TTRect, context: CGContext, bufferOffset: Int)
+     {
+@@ -3253,8 +3337,13 @@
+                 continue
+             } 
+             #endif
+-            let lineInfo = textBuilder.buildAttributedString(row: snapshotRow, absoluteRow: row,
+-                                                             context: renderContext)
++            let lineInfo = textBuilder.buildAttributedString(
++                row: snapshotRow, absoluteRow: row, context: renderContext,
++                directGlyphs: coreGraphicsRenderCache.directGlyphRunsEnabled
++                    ? coreGraphicsRenderCache.directGlyphs : nil)
++            // Simple-cell runs, in column order; drawn interleaved with the
++            // attributed segments so paint order matches the original path.
++            let directRuns = textBuilder.directRuns
+             let rowBase = lineOrigin.y + cellDimension.height
+             var otherImages: [SnapshotImage] = []
+             if let images = lineInfo.images {
+@@ -3317,7 +3406,14 @@
+             context.setLineCap(.square)
+             context.setLineWidth(0)
+ 
++            var directBackgroundIndex = 0
+             for prepared in preparedSegments {
++                while directBackgroundIndex < directRuns.count,
++                      directRuns[directBackgroundIndex].column < prepared.segment.column {
++                    drawDirectRunBackground(directRuns[directBackgroundIndex],
++                                            lineOrigin: lineOrigin, in: context)
++                    directBackgroundIndex += 1
++                }
+                 var processedGlyphs = 0
+                 for preparedRun in prepared.runs {
+                     let run = preparedRun.run
+@@ -3380,6 +3476,11 @@
+                     }
+                 }
+             }
++            while directBackgroundIndex < directRuns.count {
++                drawDirectRunBackground(directRuns[directBackgroundIndex],
++                                        lineOrigin: lineOrigin, in: context)
++                directBackgroundIndex += 1
++            }
+ 
+             context.restoreGState()
+ 
+@@ -3413,7 +3514,17 @@
+             #endif
+ 
+             // Glyph drawing loop — reuses cached CTLines
++            var directGlyphIndex = 0
+             for prepared in preparedSegments {
++                while directGlyphIndex < directRuns.count,
++                      directRuns[directGlyphIndex].column < prepared.segment.column {
++                    drawDirectRunGlyphs(directRuns[directGlyphIndex],
++                                        codes: textBuilder.directCodes,
++                                        lineOrigin: lineOrigin, yOffset: yOffset,
++                                        defaultForeground: renderContext.effectiveForegroundColor,
++                                        in: context)
++                    directGlyphIndex += 1
++                }
+                 var processedGlyphs = 0
+                 for preparedRun in prepared.runs {
+                     let run = preparedRun.run
+@@ -3540,6 +3651,14 @@
+                         drawRunAttributes(runAttributes, glyphPositions: positions, in: context)
+                     }
+                 }
++            }
++            while directGlyphIndex < directRuns.count {
++                drawDirectRunGlyphs(directRuns[directGlyphIndex],
++                                    codes: textBuilder.directCodes,
++                                    lineOrigin: lineOrigin, yOffset: yOffset,
++                                    defaultForeground: renderContext.effectiveForegroundColor,
++                                    in: context)
++                directGlyphIndex += 1
+             }
+ 
+             if !lineInfo.kittyPlaceholders.isEmpty {
+--- a/Sources/SwiftTerm/Apple/SnapshotTextBuilder.swift
++++ b/Sources/SwiftTerm/Apple/SnapshotTextBuilder.swift
+@@ -78,6 +78,13 @@
+     private var packedAttributeCache: [PackedAttributeCacheKey: SnapshotTextAttributes] = [:]
+     private(set) var attributeCacheContextID: UInt64 = .max
+ 
++    /// Direct glyph runs of the last `buildAttributedString` call, in column
++    /// order; empty unless that call received a `DirectGlyphTable`. The
++    /// storage is reused for every row.
++    private(set) var directRuns: [DirectGlyphRun] = []
++    /// Printable ASCII bytes of `directRuns`; each run indexes a range.
++    private(set) var directCodes: [UInt8] = []
++
+     private func resolvedFont(for character: Character, base: TTFont) -> TTFont {
+         let key = FallbackFontKey(baseFont: ObjectIdentifier(base), character: character)
+         if let cached = fallbackFonts[key] {
+@@ -312,10 +319,22 @@
+ 
+ 
+ 
++    /// With `directGlyphs`, maximal runs of simple cells (see
++    /// `DirectGlyphRun`) go to `directRuns` instead of `segments`; every other
++    /// cell takes the unchanged attributed-string path. Without it (Metal,
++    /// accessibility) the result is the attributed-string path for all cells.
+     func buildAttributedString (row snapshotRow: TerminalSnapshot.Row, absoluteRow: Int,
+-                                context: SnapshotRenderContext) -> ViewLineInfo
++                                context: SnapshotRenderContext,
++                                directGlyphs: DirectGlyphTable? = nil) -> ViewLineInfo
+     {
+         var segments: [ViewLineSegment] = []
++        directRuns.removeAll(keepingCapacity: true)
++        // Appended per cell: a local (moved out and back) avoids a class
++        // property access per cell while keeping the storage.
++        var codes = directCodes
++        directCodes = []
++        codes.removeAll(keepingCapacity: true)
++        defer { directCodes = codes }
+         let line = snapshotRow.line
+         let cols = context.cols
+         let selectionColumns = context.selection.columns(forRow: absoluteRow)
+@@ -361,6 +380,22 @@
+             }
+         }
+ 
++        // Open direct run: first visual column, offset in directCodes and
++        // its batch attributes. While a run is open `builder` is nil.
++        var openDirectRun: (column: Int, codeStart: Int, attributes: SnapshotTextAttributes)?
++        // Whether the batch dictionary identified here has a verified font.
++        var directEligibleBatch: NSDictionary?
++        var directBatchEligible = false
++
++        func closeDirectRun() {
++            guard let open = openDirectRun else { return }
++            directRuns.append(DirectGlyphRun(column: open.column,
++                                             codeStart: open.codeStart,
++                                             count: codes.count - open.codeStart,
++                                             attributes: open.attributes))
++            openDirectRun = nil
++        }
++
+         while true {
+             var displayOverride: Character? = nil
+             if let bidiLayout {
+@@ -397,6 +432,7 @@
+             }
+             guard let attributes else {
+                 flushPending()
++                closeDirectRun()
+                 if let finished = builder?.buildIfNeeded() {
+                     segments.append(finished)
+                 }
+@@ -410,6 +446,69 @@
+                 continue
+             }
+ 
++            let isSelected = isColumnSelected(selectionColumns, column: col, width: width)
++            let blinkHidden = !context.textBlinkVisible && attr.style.contains(.blink)
++
++            // Direct glyph path: a single-width printable ASCII cell with no
++            // grapheme cluster, no BiDi handling, no blink and no host glyph
++            // fallback. Its batch attributes are exactly the ones the
++            // attributed-string path below would use.
++            if let directGlyphs, bidiLayout == nil, !needsDirectionOverride, !blinkHidden,
++               ch.width == 1, ch.isSimpleRune,
++               let directCode = DirectGlyphTable.code(for: ch.code),
++               snapshotRow.resolvedText.isEmpty || snapshotRow.resolvedText[col] == nil,
++               context.glyphFallbackProvider == nil
++                || resolveGlyphFallback(
++                    character: Character(Unicode.Scalar(directCode)),
++                    styleFont: (attributes[.font] as? TTFont) ?? context.fonts.normal,
++                    context: context) == nil {
++                if styleKey != lastStyleKey || hasUrl != lastHasUrl || isSelected != lastIsSelected
++                    || lastBlinkHidden
++                    || lastGlyphFallbackFont != nil
++                    || lastGlyphFallbackPolicy != nil
++                    || pendingAttrs == nil {
++                    flushPending()
++                    closeDirectRun()
++                    lastStyleKey = styleKey
++                    lastHasUrl = hasUrl
++                    lastIsSelected = isSelected
++                    lastBlinkHidden = false
++                    lastGlyphFallbackFont = nil
++                    lastGlyphFallbackPolicy = nil
++                    pendingAttrs = batchAttributes(attributes, isSelected: isSelected,
++                                                   blinkHidden: false,
++                                                   needsDirectionOverride: false,
++                                                   glyphFallback: nil, context: context)
++                }
++                // An open run always has the current batch: a batch change
++                // or an attributed cell closes it.
++                if openDirectRun == nil {
++                    let batch = pendingAttrs!
++                    if directEligibleBatch !== batch.objectiveC {
++                        directEligibleBatch = batch.objectiveC
++                        directBatchEligible = (batch[.font] as? TTFont)
++                            .map { directGlyphs.glyphs(for: $0) != nil } ?? false
++                    }
++                    if directBatchEligible {
++                        flushPending()
++                        if let finished = builder?.buildIfNeeded() {
++                            segments.append(finished)
++                        }
++                        builder = nil
++                        openDirectRun = (visualCol, codes.count, batch)
++                    }
++                }
++                if openDirectRun != nil {
++                    codes.append(directCode)
++                    previousPlaceholder = nil
++                    previousPlaceholderAttribute = nil
++                    col += width
++                    visualCol += width
++                    continue
++                }
++            }
++            closeDirectRun()
++
+             if builder == nil || builder!.columnWidth != width {
+                 flushPending()
+                 if let finished = builder?.buildIfNeeded() {
+@@ -418,9 +517,6 @@
+                 builder = TerminalView.ViewLineSegmentBuilder(column: visualCol, columnWidth: width)
+             }
+ 
+-            let isSelected = isColumnSelected(selectionColumns, column: col, width: width)
+-            let blinkHidden = !context.textBlinkVisible && attr.style.contains(.blink)
+-
+             let text: String
+             let character: Character
+             if let displayOverride {
+@@ -461,42 +557,10 @@
+                 lastBlinkHidden = blinkHidden
+                 lastGlyphFallbackFont = glyphFallback?.font
+                 lastGlyphFallbackPolicy = glyphFallback?.policy
+-                if isSelected || blinkHidden || needsDirectionOverride || glyphFallback != nil {
+-                    var batchAttributes = attributes.values
+-                    if isSelected {
+-                        batchAttributes[.selectionBackgroundColor] = context.selectedTextBackgroundColor
+-                        batchAttributes[.foregroundColor] = context.selectedTextForegroundColor
+-                        if batchAttributes[.underlineColor] != nil {
+-                            batchAttributes[.underlineColor] = context.selectedTextForegroundColor
+-                        }
+-                        if batchAttributes[.strikethroughColor] != nil {
+-                            batchAttributes[.strikethroughColor] = context.selectedTextForegroundColor
+-                        }
+-                    }
+-                    if blinkHidden {
+-                        batchAttributes[.foregroundColor] = TTColor.clear
+-                        batchAttributes.removeValue(forKey: .underlineColor)
+-                        batchAttributes.removeValue(forKey: .underlineStyle)
+-                        batchAttributes.removeValue(forKey: .strikethroughColor)
+-                        batchAttributes.removeValue(forKey: .strikethroughStyle)
+-                        batchAttributes.removeValue(forKey: SwiftTermUnderlineStyleKey)
+-                    }
+-                    if needsDirectionOverride {
+-                        // SwiftTerm owns cell placement. A BiDi layout is already in
+-                        // visual order, and rows with RTL content on the legacy and
+-                        // explicit-LTR paths must keep logical cell order. The LTR
+-                        // override stops CoreText from applying a second,
+-                        // renderer-specific ordering pass.
+-                        batchAttributes[ltrWritingDirectionKey] = ltrWritingDirectionValue
+-                    }
+-                    if let glyphFallback {
+-                        batchAttributes[.font] = glyphFallback.font
+-                        batchAttributes[SwiftTermGlyphPolicyKey] = glyphFallback.policy
+-                    }
+-                    pendingAttrs = SnapshotTextAttributes(batchAttributes)
+-                } else {
+-                    pendingAttrs = attributes
+-                }
++                pendingAttrs = batchAttributes(attributes, isSelected: isSelected,
++                                               blinkHidden: blinkHidden,
++                                               needsDirectionOverride: needsDirectionOverride,
++                                               glyphFallback: glyphFallback, context: context)
+             }
+             let currentAttributes = pendingAttrs!
+ 
+@@ -610,6 +674,7 @@
+             visualCol += width
+         }
+         flushPending()
++        closeDirectRun()
+         
+         if let finished = builder?.buildIfNeeded() {
+             segments.append(finished)
+@@ -621,6 +686,50 @@
+                             blockElements: blockElements,
+                             boxDrawings: boxDrawings,
+                             powerlineGlyphs: powerlineGlyphs)
++    }
++
++    /// The batch dictionary for a run of cells sharing `attributes` and these
++    /// per-cell states. Unmodified batches share the cached dictionary.
++    private func batchAttributes(_ attributes: SnapshotTextAttributes, isSelected: Bool,
++                                 blinkHidden: Bool, needsDirectionOverride: Bool,
++                                 glyphFallback: (font: TTFont, policy: TerminalGlyphPlacementPolicy)?,
++                                 context: SnapshotRenderContext) -> SnapshotTextAttributes
++    {
++        guard isSelected || blinkHidden || needsDirectionOverride || glyphFallback != nil else {
++            return attributes
++        }
++        var batchAttributes = attributes.values
++        if isSelected {
++            batchAttributes[.selectionBackgroundColor] = context.selectedTextBackgroundColor
++            batchAttributes[.foregroundColor] = context.selectedTextForegroundColor
++            if batchAttributes[.underlineColor] != nil {
++                batchAttributes[.underlineColor] = context.selectedTextForegroundColor
++            }
++            if batchAttributes[.strikethroughColor] != nil {
++                batchAttributes[.strikethroughColor] = context.selectedTextForegroundColor
++            }
++        }
++        if blinkHidden {
++            batchAttributes[.foregroundColor] = TTColor.clear
++            batchAttributes.removeValue(forKey: .underlineColor)
++            batchAttributes.removeValue(forKey: .underlineStyle)
++            batchAttributes.removeValue(forKey: .strikethroughColor)
++            batchAttributes.removeValue(forKey: .strikethroughStyle)
++            batchAttributes.removeValue(forKey: SwiftTermUnderlineStyleKey)
++        }
++        if needsDirectionOverride {
++            // SwiftTerm owns cell placement. A BiDi layout is already in
++            // visual order, and rows with RTL content on the legacy and
++            // explicit-LTR paths must keep logical cell order. The LTR
++            // override stops CoreText from applying a second,
++            // renderer-specific ordering pass.
++            batchAttributes[ltrWritingDirectionKey] = ltrWritingDirectionValue
++        }
++        if let glyphFallback {
++            batchAttributes[.font] = glyphFallback.font
++            batchAttributes[SwiftTermGlyphPolicyKey] = glyphFallback.policy
++        }
++        return SnapshotTextAttributes(batchAttributes)
+     }
+ 
+     func shouldUnderlineLink(row: Int, column: Int, width: Int, cell: PackedCellView,
+--- /dev/null
++++ b/Sources/SwiftTerm/Apple/DirectGlyphPath.swift
+@@ -0,0 +1,166 @@
++//
++//  DirectGlyphPath.swift
++//  SwiftTerm
++//
++//  Loom patch (patches/swiftterm-direct-glyph-runs.patch): the Core Graphics
++//  renderer draws maximal runs of simple cells from cached glyph IDs instead
++//  of building an NSAttributedString and a CTLine for them every frame.
++//
++//  A simple cell is single width printable ASCII (U+0020...U+007E, or an
++//  empty cell drawn as a space) with no grapheme cluster, in a row without
++//  BiDi layout or direction override, not blinking and without host glyph
++//  fallback. Box/block/Powerline code points are outside that range, so their
++//  dedicated renderers keep those cells. Everything else takes the unchanged
++//  attributed-string path. The run carries the same batch attribute
++//  dictionary that path would use, so fonts, colors, dim, inverse, selection
++//  and decorations resolve identically.
++//
++
++#if !SWIFTTERM_EMBEDDED
++#if os(macOS) || os(iOS) || os(visionOS) || os(macCatalyst)
++import Foundation
++import CoreGraphics
++import CoreText
++
++#if os(macOS)
++import AppKit
++#else
++import UIKit
++#endif
++
++/// One maximal run of simple cells with one batch attribute dictionary.
++struct DirectGlyphRun {
++    /// First visual column of the run.
++    let column: Int
++    /// Offset of the run's bytes in `SnapshotTextBuilder.directCodes`.
++    let codeStart: Int
++    /// Number of cells, one glyph per cell.
++    let count: Int
++    let attributes: SnapshotTextAttributes
++}
++
++/// Glyph IDs of printable ASCII per font, owned by one renderer.
++///
++/// A font is used only when CoreText shaping provably reproduces its
++/// character-to-glyph map on the probe below: one glyph per character, the
++/// cmap glyph, the font itself (no cascade) and a zero baseline offset. That
++/// excludes fonts whose ligatures or contextual alternates change ASCII
++/// glyphs; such fonts keep the attributed-string path for every cell.
++final class DirectGlyphTable {
++    static let firstCode: UInt8 = 0x20
++    static let lastCode: UInt8 = 0x7E
++    static let codeCount = Int(lastCode - firstCode) + 1
++
++    private struct Entry {
++        let font: TTFont
++        let glyphs: [CGGlyph]?
++    }
++
++    /// The four style faces of a context plus any earlier font set; bounded.
++    private var entries: [Entry] = []
++
++    /// The byte a simple cell's code draws, or nil when it is not printable
++    /// ASCII. Code 0 is an empty cell, which the attributed path draws as " ".
++    @inline(__always)
++    static func code(for cellCode: Int32) -> UInt8? {
++        if cellCode == 0 { return firstCode }
++        guard cellCode >= Int32(firstCode), cellCode <= Int32(lastCode) else { return nil }
++        return UInt8(cellCode)
++    }
++
++    /// Glyphs indexed by `code - firstCode`, or nil when the font is not
++    /// eligible. Fonts are compared by identity; the render context keeps
++    /// the same font objects until the view's font changes.
++    func glyphs(for font: TTFont) -> [CGGlyph]? {
++        for entry in entries where entry.font === font {
++            return entry.glyphs
++        }
++        if entries.count >= 16 {
++            entries.removeAll(keepingCapacity: true)
++        }
++        let glyphs = Self.verifiedGlyphs(for: font)
++        entries.append(Entry(font: font, glyphs: glyphs))
++        return glyphs
++    }
++
++    /// Every ordered pair of printable ASCII characters, followed by every
++    /// triple of non-alphanumeric printable ASCII characters (the sequences
++    /// programming ligatures use) separated by spaces.
++    static let shapingProbe: [UniChar] = {
++        let printable = (UniChar(firstCode)...UniChar(lastCode)).map { $0 }
++        let symbols = printable.filter { code in
++            !(0x30...0x39).contains(code) && !(0x41...0x5A).contains(code)
++                && !(0x61...0x7A).contains(code) && code != 0x20
++        }
++        var probe: [UniChar] = []
++        probe.reserveCapacity(printable.count * printable.count * 2
++                              + symbols.count * symbols.count * symbols.count * 4)
++        for first in printable {
++            for second in printable {
++                probe.append(first)
++                probe.append(second)
++            }
++        }
++        for first in symbols {
++            for second in symbols {
++                for third in symbols {
++                    probe.append(first)
++                    probe.append(second)
++                    probe.append(third)
++                    probe.append(0x20)
++                }
++            }
++        }
++        return probe
++    }()
++
++    static func verifiedGlyphs(for font: TTFont) -> [CGGlyph]? {
++        let ctFont = font as CTFont
++        var characters = (UniChar(firstCode)...UniChar(lastCode)).map { $0 }
++        var glyphs = [CGGlyph](repeating: 0, count: codeCount)
++        guard CTFontGetGlyphsForCharacters(ctFont, &characters, &glyphs, codeCount),
++              !glyphs.contains(0) else {
++            return nil
++        }
++
++        let probe = shapingProbe
++        guard let string = CFStringCreateWithCharacters(nil, probe, probe.count) else {
++            return nil
++        }
++        let attributes = [kCTFontAttributeName as String: ctFont] as CFDictionary
++        guard let attributed = CFAttributedStringCreate(nil, string, attributes) else {
++            return nil
++        }
++        let line = CTLineCreateWithAttributedString(attributed)
++        guard let runs = CTLineGetGlyphRuns(line) as? [CTRun] else { return nil }
++        var shapedCount = 0
++        for run in runs {
++            let count = CTRunGetGlyphCount(run)
++            guard count > 0 else { continue }
++            let runAttributes = CTRunGetAttributes(run) as NSDictionary
++            guard let runFont = runAttributes.object(forKey: kCTFontAttributeName) else {
++                return nil
++            }
++            // A cascade font in the run would mean the font lacks a glyph.
++            guard CFEqual(runFont as CFTypeRef, ctFont) else { return nil }
++            var runGlyphs = [CGGlyph](repeating: 0, count: count)
++            var indices = [CFIndex](repeating: 0, count: count)
++            var positions = [CGPoint](repeating: .zero, count: count)
++            CTRunGetGlyphs(run, CFRange(), &runGlyphs)
++            CTRunGetStringIndices(run, CFRange(), &indices)
++            CTRunGetPositions(run, CFRange(), &positions)
++            for i in 0..<count {
++                let index = indices[i]
++                guard index == shapedCount + i, index < probe.count,
++                      runGlyphs[i] == glyphs[Int(probe[index]) - Int(firstCode)],
++                      positions[i].y == 0 else {
++                    return nil
++                }
++            }
++            shapedCount += count
++        }
++        return shapedCount == probe.count ? glyphs : nil
++    }
++}
++#endif
++#endif // !SWIFTTERM_EMBEDDED

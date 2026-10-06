@@ -1,0 +1,348 @@
+{
+  "recordedUTC": "2026-09-30T12:15:44.938034+00:00",
+  "status": "implemented; main/strict acceptance pending",
+  "scope": [
+    "Sources/LoomCore/SessionRuntime.swift",
+    "Sources/LoomCore/CodexSessionState.swift",
+    "Tests/LoomCoreTests/SessionRuntimeCodexTests.swift",
+    "Tests/LoomCoreTests/CodexAppServerTests.swift"
+  ],
+  "sourceHashes": {
+    "Sources/LoomCore/SessionRuntime.swift": "cd53274f8e434cec464b7e677ef95c5f28652211771693ee4fd01b401fc97729",
+    "Sources/LoomCore/CodexSessionState.swift": "e0917e959378a460a7e1cb70a6edb7467bd2359739aa1f4b571b15f41c96bb0f",
+    "Tests/LoomCoreTests/SessionRuntimeCodexTests.swift": "589541708d169253ecdad869fe0884e1072ea34c48fb47429060e5b1d002303b",
+    "Tests/LoomCoreTests/CodexAppServerTests.swift": "6e8de4fb5aa145c1136c212e0a08f91aea0b78d873ad7fae54f3bc4f15ed6c71"
+  },
+  "beforeSemanticSourceHashes": {
+    "SessionRuntime.before.swift": "96cfe7f12a729288769cb9c30e39fd2171bb113d1e4062b4d5b07412af5f1712",
+    "CodexSessionState.before.swift": "4a71fe43dd5659b4c97fc9769f18d4506a870d17eef94cd68a25fa04322c0e9f"
+  },
+  "beforeHashLimit": "Baseline sources were captured before the deterministic nil-default setup observer was inserted. RED compilation included that observer; an exact RED source hash was not separately captured. Baseline files, final patches and actual RED logs are preserved.",
+  "findings": {
+    "SR-CODEX-INIT-7": {
+      "red": {
+        "command": "swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib --filter 'SessionRuntimeCodexTests/concurrentFirstCodexStartsShareReadyCoordinatorAndApprovalRouting'",
+        "exit": 1,
+        "tests": 1,
+        "issues": 5,
+        "seconds": 10.881,
+        "result": "Both identities arrived, but 2 coordinators installed; sibling answerable approval missing, active coordinator request owner set had only first run, and sibling approved footer missing. More than a hook-count assertion."
+      },
+      "fix": "Runtime actor publishes a single setup id/client/task before its first await. Same-client callers await shared ready result; different-client setup waits prior task. Coordinator and request consumer publish only after old stop, handlers and start complete. Shutdown invalidates/cancels/drains setup; each install suspension checks cancellation/id/shutdown. Individual cancelled waiter releases only its lease. Old coordinator issue/connection callbacks require matching published coordinator, including after their suspensions.",
+      "testSeam": "Internal optional default-nil observer at installing/waiting boundaries; no public config/API or production fallback. Held first installer plus second setup waiter or old bypassing installer gives deterministic competing launch ordering."
+    },
+    "SR-CODEX-MATCH-8": {
+      "red": {
+        "command": "swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib --filter 'CodexAppServerTests/knownThreadReplayDoesNotClaimAnotherSameCwdLaunch'",
+        "exit": 1,
+        "tests": 1,
+        "issues": 1,
+        "result": "Duplicate known A thread/started incorrectly initialLaunchMatched pending B."
+      },
+      "fix": "Keep ephemeral/exec ignore first; route exact known binding before launchMatcher.receive. Unknown initial identities still use reservations before same-cwd ambiguity."
+    }
+  },
+  "checks": [
+    {
+      "phase": "green",
+      "command": "swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib --filter 'SessionRuntimeCodexTests/(concurrentFirstCodexStartsShareReadyCoordinatorAndApprovalRouting|quitDuringCodexSetupCannotPublishALateCoordinator|cancellingOneSetupWaiterPreservesTheOtherLeaseAndApproval)|CodexAppServerTests/knownThreadReplayDoesNotClaimAnotherSameCwdLaunch'",
+      "exit": 0,
+      "tests": 4,
+      "seconds": 1.172
+    },
+    {
+      "phase": "affected",
+      "command": "swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib --filter 'CodexAppServerTests|SessionRuntimeCodexTests|SessionRuntimeTests'",
+      "exit": 0,
+      "tests": 75,
+      "suites": 3,
+      "seconds": 44.857
+    },
+    {
+      "phase": "build",
+      "command": "swift build",
+      "exit": 0,
+      "seconds": 6.72
+    },
+    {
+      "phase": "whitespace",
+      "command": "git diff --check",
+      "exit": 0
+    }
+  ],
+  "verified": [
+    "Concurrent first starts in different project directories get two distinct durable identities and answerable approvals through one coordinator. Both user accepts produce approved terminal footer. Stop one leaves other command usable with one lease; Quit leaves no running session/run.",
+    "Shutdown while first install is held prevents late coordinator publication; starting fails and no catalog card/server/process/lease survives.",
+    "Cancelling one shared-setup waiter leaves first caller lease/identity/approval intact and no cancelled conversation card.",
+    "Known A replay preserves pending same-cwd B for genuinely new B identity. Neighboring ephemeral/exec/unknown/ambiguity/router and resume/start/stop tests passed in affected suites."
+  ],
+  "artifacts": {
+    "green.log": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-final-strict-fixes-20260930/green.log",
+      "sha256": "4fe770480bf01274d0660d0c2d3d2a044749a2763e9e5dce368bf0224cac2995"
+    },
+    "init-red.log": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-final-strict-fixes-20260930/init-red.log",
+      "sha256": "4e5935f5aee7611514b2a73116ec78a3f989d293ad350df80561412440a0d099"
+    },
+    "match-red.log": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-final-strict-fixes-20260930/match-red.log",
+      "sha256": "c1b146d0ba4e765dd8a69c2963b6fba8196b852d6536114d1871d82e8b021801"
+    },
+    "SessionRuntime.patch": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-final-strict-fixes-20260930/SessionRuntime.patch",
+      "sha256": "938ed312a8d2bc173e1e72330759ea5c9ddefda2532c1159b01d643965b3bbe6"
+    },
+    "SessionRuntime.before.swift": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-final-strict-fixes-20260930/SessionRuntime.before.swift",
+      "sha256": "96cfe7f12a729288769cb9c30e39fd2171bb113d1e4062b4d5b07412af5f1712"
+    },
+    "CodexSessionState.before.swift": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-final-strict-fixes-20260930/CodexSessionState.before.swift",
+      "sha256": "4a71fe43dd5659b4c97fc9769f18d4506a870d17eef94cd68a25fa04322c0e9f"
+    },
+    "affected.log": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-final-strict-fixes-20260930/affected.log",
+      "sha256": "deb99cdfca28225d26f999c62688e74b797110000be0513ce047118170d0e30e"
+    },
+    "CodexSessionState.patch": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-final-strict-fixes-20260930/CodexSessionState.patch",
+      "sha256": "db2357a6519b83b6f4ac9c92177269de5cb1583ad1e2f9b17b53a125d32f8888"
+    },
+    "build.log": {
+      "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-final-strict-fixes-20260930/build.log",
+      "sha256": "774c79d5370bd06360a25da097c4c2ec581b8cdbf44d746b0cdc4e55a21b88fb"
+    }
+  },
+  "unverified": [
+    "No native application/model run for this revision; main owns final combined package acceptance.",
+    "Server replacement during an unfinished setup is guarded in source; existing completed-stop/resume replacement scenarios passed, but no separate deterministic unfinished replacement test was added.",
+    "Main/strict stopped-resume neighbor candidate has no existing fake TUI thread/started broadcast or real cross-client fanout evidence; no speculative mechanism added."
+  ],
+  "excludedSetupFailures": "A preliminary GREEN test read catalog identity immediately after matcher launch wakeup; fixed test waits existing durable binding commit. An async-autoclosure syntax correction was made before final GREEN. Neither counted as product regression.",
+  "notes": [
+    "No CodexSessionCoordinator/AppServerManager changes in SR7/8. No CPU/terminal/render/material paths changed.",
+    "Prior evidence/hash history files remain unchanged. Shared build slot released to D after final checks."
+  ],
+  "plannerAcceptance": {
+    "recordedUTC": "2026-09-30T12:21:08.627792+00:00",
+    "status": "SR7/SR8 code findings accepted; integrated native acceptance remains open",
+    "evidence": "Planner independently read before/final patches, matched four source and nine artifact hashes, inspected actual RED and GREEN/affected/build log endings. Actual strict-reviewer independently inspected setup ownership/cancellation/shutdown and known-binding routing/test semantics; no confirmed additional regression.",
+    "rerunPolicy": "Same-source tests were not duplicated; final combined check follows SR9/SR10 integration."
+  },
+  "SR10Coordinator": {
+    "recordedUTC": "2026-09-30T12:44:02.971832+00:00",
+    "status": "coordinator implemented and narrow verified; supervisor integration GREEN pending D",
+    "scope": [
+      "Sources/LoomCore/CodexSessionCoordinator.swift",
+      "Tests/LoomCoreTests/SessionRuntimeCodexTests.swift",
+      "Sources/loom-fake-provider/CodexFixture.swift"
+    ],
+    "sourceHashes": {
+      "Sources/LoomCore/CodexSessionCoordinator.swift": "6b3a98d2b37d0d8498dea002848c33d9bd8bbcd54b9a5f743173747b6f352334",
+      "Tests/LoomCoreTests/SessionRuntimeCodexTests.swift": "e9442a528e7715af886767af934e5cdef2a50ac3deeb2ae04a31dc65b19dd73e",
+      "Sources/loom-fake-provider/CodexFixture.swift": "2968b21c4853f0e186b30f8c54695532feb592e7b2fa80c98c56169162b0d722"
+    },
+    "redSourceHashes": {
+      "SessionRuntimeCodexTests.red.swift": "9a33590f665c13c3a4709eafd59d46bc2eb8be942a8c23acf92ef66db87596a5",
+      "CodexFixture.red.swift": "2968b21c4853f0e186b30f8c54695532feb592e7b2fa80c98c56169162b0d722",
+      "CodexSessionCoordinator.red.swift": "530b76faffc67ff3ae4a52609eb5782b1113143c6de5be98c86cf61d54f3297a"
+    },
+    "coordinatorBeforeSHA256": "f6f54001805c4d53fc40fd18400767c2ba085ed15cab6b7ccec50cbe0dc5c004",
+    "patch": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-completed-retry-20260930/coordinator.patch",
+    "implementation": "Existing cleanup task/id gains explicit phase: drainingJoin\u2192waitingCompletion\u2192unsubscribing\u2192unsubscribeRejected. Phase can advance only after prior barrier and join task authoritatively settle. Own unsubscribe .rpc rejection sets retry permission only for matching cleanup ID; timeout/closed/protocol/unknown/prior failures cannot. A later completed call may create one fresh unsubscribe task. Joins-nil prepare user retry may await failed cleanup then refresh its own authoritative rejection once; initial prepare does not hide failure. Success removes task/id/phase together.",
+    "testSeam": "Only existing prepareJoinStop and completeJoinStop internal visibility; no public API or wrapper. Real fixture completed-once and combined prepare-completed-once extend existing failure mode; persistent completed remains unchanged. Wire unsubscribe-attempt log records failed and successful actual RPCs.",
+    "checks": [
+      {
+        "phase": "coordinator RED",
+        "command": "swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib --filter 'SessionRuntimeCodexTests/(settledJoinUnsubscribeRejectionRetriesOnlyTheCompletedRPC|failedPreparationCanRetryItsAuthoritativelyRejectedUnsubscribe)'",
+        "exit": 1,
+        "tests": 2,
+        "issues": 7,
+        "seconds": 1.599,
+        "result": "Once unsubscribe rejection stays cached (missing success and wire count1); persistent case does not issue real second RPC; actual prepare failure\u2192user Stop retry also stays locked with count1."
+      },
+      {
+        "phase": "coordinator GREEN",
+        "command": "swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib --filter 'SessionRuntimeCodexTests/(settledJoinUnsubscribeRejectionRetriesOnlyTheCompletedRPC|failedPreparationCanRetryItsAuthoritativelyRejectedUnsubscribe|timedOutJoinNeverClaimsCleanupAndKeepsSiblingConnectionAlive)'",
+        "exit": 0,
+        "tests": 3,
+        "parameterizedCompletedModes": 2,
+        "seconds": 26.602,
+        "result": "Once completed retries actual RPC and succeeds; persistent retries actual RPC and still throws; prepare-failure explicit Stop retry succeeds; real timeout rejects 2 completed retries with zero unsubscribe wire attempts; siblings approvals remain answerable."
+      },
+      {
+        "phase": "integrated supervisor RED",
+        "command": "swift test -Xswiftc -load-plugin-library -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib --filter 'SessionRuntimeCodexTests/completedFailureRetainsRunUntilExplicitStopRetry'",
+        "exit": 1,
+        "tests": 1,
+        "parameterizedModes": 2,
+        "issues": 19,
+        "seconds": 1.258,
+        "result": "Current supervisor releases completed-failure run/lease too early; explicit Stop retry is notRunning and no second RPC. This RED is handed to D supervisor owner, not claimed coordinator GREEN."
+      },
+      {
+        "phase": "build",
+        "command": "swift build",
+        "exit": 0,
+        "seconds": 15.66
+      },
+      {
+        "phase": "whitespace",
+        "command": "git diff --check",
+        "exit": 0
+      }
+    ],
+    "validTimeoutEvidence": {
+      "syntheticServerResponseDelaySeconds": 25,
+      "clientTimeoutSeconds": 20,
+      "lateJoinAwaitBoundSeconds": 7,
+      "assertions": [
+        "provider prepare outcome failed",
+        "actual errorCategory timeout",
+        "late server joined effect observed",
+        "no unsubscribe success",
+        "two direct completed retries throw",
+        "no unsubscribe-attempt wire log",
+        "sibling run survives"
+      ],
+      "preliminaryInvalidRun": "With former delay21 this run received actual successful server response before timeout handling, so timeout premise did not hold (8 assertions). It was not accepted as barrier evidence. Single margin revision to25 yielded real timeout and no-RPC proof; no repeated margin escalation."
+    },
+    "integrationTestCriteria": [
+      "Initial completed RPC failure with verified empty process list keeps supervisor run/currentRun, runtime record and lease; remains unsuccessful.",
+      "150ms real leader-exit callback opportunity does not auto-consume fail-once recovery; actual wire count remains1.",
+      "Explicit user Stop invokes second real RPC. Once mode succeeds and releases one run/lease; persistent mode remains failure with empty owned processes but retained context/lease.",
+      "Sibling command approval still answerable after retry. Final global verified server/PTY destruction leaves no sessions or runtime records."
+    ],
+    "artifacts": {
+      "red.log": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-completed-retry-20260930/red.log",
+        "sha256": "745a24ead319e3efa31ea257ab461345db327e563fdf94c08573f9463552da80"
+      },
+      "CodexSessionCoordinator.before.swift": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-completed-retry-20260930/CodexSessionCoordinator.before.swift",
+        "sha256": "f6f54001805c4d53fc40fd18400767c2ba085ed15cab6b7ccec50cbe0dc5c004"
+      },
+      "green.log": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-completed-retry-20260930/green.log",
+        "sha256": "32e49bbd48519d09d4c5f693222bd61996b8df2f5059997490bb15d23bf9b629"
+      },
+      "integrated-red.log": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-completed-retry-20260930/integrated-red.log",
+        "sha256": "271fadb9603bd81d67d79b59b20755aeb6612c9d7f366e99e95930654f2f9f40"
+      },
+      "SessionRuntimeCodexTests.red.swift": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-completed-retry-20260930/SessionRuntimeCodexTests.red.swift",
+        "sha256": "9a33590f665c13c3a4709eafd59d46bc2eb8be942a8c23acf92ef66db87596a5"
+      },
+      "CodexFixture.red.swift": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-completed-retry-20260930/CodexFixture.red.swift",
+        "sha256": "2968b21c4853f0e186b30f8c54695532feb592e7b2fa80c98c56169162b0d722"
+      },
+      "CodexSessionCoordinator.red.swift": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-completed-retry-20260930/CodexSessionCoordinator.red.swift",
+        "sha256": "530b76faffc67ff3ae4a52609eb5782b1113143c6de5be98c86cf61d54f3297a"
+      },
+      "CodexSessionCoordinator.final.swift": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-completed-retry-20260930/CodexSessionCoordinator.final.swift",
+        "sha256": "6b3a98d2b37d0d8498dea002848c33d9bd8bbcd54b9a5f743173747b6f352334"
+      },
+      "coordinator.patch": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-completed-retry-20260930/coordinator.patch",
+        "sha256": "6fa524865ba9c1e918e10ade114b783bbe217b8ed844e54e51dcde7684f49dc2"
+      },
+      "SessionRuntimeCodexTests.final.swift": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-completed-retry-20260930/SessionRuntimeCodexTests.final.swift",
+        "sha256": "e9442a528e7715af886767af934e5cdef2a50ac3deeb2ae04a31dc65b19dd73e"
+      },
+      "CodexFixture.final.swift": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-completed-retry-20260930/CodexFixture.final.swift",
+        "sha256": "2968b21c4853f0e186b30f8c54695532feb592e7b2fa80c98c56169162b0d722"
+      },
+      "build.log": {
+        "path": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-completed-retry-20260930/build.log",
+        "sha256": "5402a134de219650b471248bcac668b7fa9af163d78de62d7b6e89b9a13eb36d"
+      }
+    },
+    "unverified": [
+      "Integrated supervisor GREEN and combined affected suites belong to D and were not run here after its future finalization fix.",
+      "No native application/model run.",
+      "Prior-barrier failure is protected by explicit phase source ordering; no separate direct synthetic prior-failure regression was added."
+    ],
+    "notes": [
+      "Global shutdown hook-bypass and separate verified owned-server destruction authority remain; no generic .closed success shortcut.",
+      "Three production/test files are frozen; shared build slot transferred to D immediately after checks.",
+      "Historical SR7/8 hash records are retained rather than overwritten."
+    ],
+    "plannerAcceptance": {
+      "recordedUTC": "2026-09-30T12:45:55.599519+00:00",
+      "status": "Coordinator slice accepted; integrated supervisor acceptance still pending",
+      "evidence": "Main independently read phase source and test cases, matched 3 source + 12 artifact hashes and actual RED7/GREEN3/26.602s/build logs. Separate strict-reviewer matched source/snapshots/patch/logs and found no additional confirmed defect. Prior/uncertain barrier preserved; only matching own unsubscribe RPC rejection authorizes fresh retry.",
+      "limit": "Integrated old-supervisor RED19 must turn GREEN after D revision; final package/native remains open."
+    },
+    "producerBoundaryRevision": {
+      "recordedUTC": "2026-09-30T13:29:54.446852+00:00",
+      "status": "source-frozen-awaiting-D-combined-GREEN",
+      "scope": [
+        "Sources/LoomCore/CodexSessionCoordinator.swift",
+        "Tests/LoomCoreTests/SessionRuntimeCodexTests.swift",
+        "Sources/loom-fake-provider/CodexFixture.swift"
+      ],
+      "sourceHashes": {
+        "Sources/LoomCore/CodexSessionCoordinator.swift": "766369c62884871d154b0d918ec4a81a4a21be35f3606378c7088562f85d10fc",
+        "Tests/LoomCoreTests/SessionRuntimeCodexTests.swift": "26c681cca8679e36763a240f5a8111036ca9b5f86267a58e973ac1a926a1a1d2",
+        "Sources/loom-fake-provider/CodexFixture.swift": "86bf569e77a4b0b0de78d58c8d48872e5de4b7a481f1fe68e56f6b8de9690931"
+      },
+      "priorCoordinatorSHA256": "6b3a98d2b37d0d8498dea002848c33d9bd8bbcd54b9a5f743173747b6f352334",
+      "lateTurnREDCoordinatorSHA256": "60b3f7427baf1930812d8c625fdca2248e2f8bff6692953ee369ad35f153a6bb",
+      "implementation": [
+        "Join/prior wire drain is a separate task under current cleanupID; existing cleanup awaits it then completion gate then unsubscribe.",
+        "Open StopGate stores the same cleanupID. Repeated prepare waits only that same run/thread/id drain and rechecks all proof after suspension. First prepare also awaits the same prior+join proof.",
+        "Cached uncertain drain throws; no fresh unsubscribe retry from timeout/transport/prior error. Closed-gate authoritative unsubscribe rejection retains prior explicit phase retry.",
+        "Successful cleanup forget/new cleanup replacement/coordinator stop release or replace drain proof references. Old prepare error never finishes a newer cleanupID gate.",
+        "After supervisor verifies producer0, completed freshly stops/reads provider work before gate/unsubscribe. Work RPC failure leaves gate and cleanup phase waiting; its RPC is not classified as unsubscribeRejected. Own ThreadNotFound catch still runs gate/unsubscribe.",
+        "Verified completed/catalog retry remains supervisor-owned and must skip redoing successful completed/preparation."
+      ],
+      "testSeam": "Only existing ProcessSupervisor.setOwnershipSamplingFailpointForTesting; late-turn fixture test pauses its first after-prepare sample with a bounded5s semaphore, submits real fixture TUI work60000, observes own turn-start, then releases. No new production failpoint, polling or timer.",
+      "checks": [
+        {
+          "command": "swift test --filter 'SessionRuntimeCodexTests/(repeatedPreparationWaitsOnlyForJoinDrainNotCompletion|liveTUIAfterUnknownOwnershipRequiresFreshProviderStopOnRetry)'",
+          "result": "RED:2tests/2issues/2.159s; secondprepare stayed pending until completion; actual newturn freshinterrupt absent. Other live/unknown/signals0/retained/sibling/cleanup assertions passed.",
+          "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-live-retry-20260930/live-retry-red.log"
+        },
+        {
+          "command": "swift test --filter 'SessionRuntimeCodexTests/completedStopsRealLateTurnAfterProducerWasTerminated'",
+          "result": "RED:1test/1issue/.521s; afterprepare real TUI late turn not interrupted while producer0/terminalexit/unsubscribe success assertions passed.",
+          "log": "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-live-retry-20260930/late-turn-red.log"
+        },
+        {
+          "command": "git diff --check",
+          "result": "PASS at C sourcefreeze"
+        },
+        {
+          "command": "D-owned combined narrowGREEN/affected/build",
+          "result": "PENDING; not run or claimed by C"
+        }
+      ],
+      "artifacts": {
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-live-retry-20260930/CodexFixture.final.swift": "86bf569e77a4b0b0de78d58c8d48872e5de4b7a481f1fe68e56f6b8de9690931",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-live-retry-20260930/CodexSessionCoordinator.before.swift": "6b3a98d2b37d0d8498dea002848c33d9bd8bbcd54b9a5f743173747b6f352334",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-live-retry-20260930/CodexSessionCoordinator.final.swift": "766369c62884871d154b0d918ec4a81a4a21be35f3606378c7088562f85d10fc",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-live-retry-20260930/CodexSessionCoordinator.lateTurnRed.swift": "60b3f7427baf1930812d8c625fdca2248e2f8bff6692953ee369ad35f153a6bb",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-live-retry-20260930/SessionRuntimeCodexTests.final.swift": "26c681cca8679e36763a240f5a8111036ca9b5f86267a58e973ac1a926a1a1d2",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-live-retry-20260930/late-turn-red.log": "402c41888ad103468db36d4b622fbbf16681de5bff753ea3ae23f3357992d69d",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-live-retry-20260930/live-retry-red.log": "f1b1cedb141eacadc2dbbab10e66ad39c4162b8a936cdefd891b85869dd9aea6",
+        "/Users/gencberke/Library/Application Support/Loom-Dev/probe/runs/cp5-codex-live-retry-20260930/revision.patch": "fc0ff1bfa06c3f9cbf7afa8c5546fb3fbab397b449954aca6ab72c3e0bd9119a"
+      },
+      "unverified": [
+        "Combined GREEN, affected uncertainty/completed/catalog cases and build are assigned to D and pending in this record.",
+        "Native UI/provider execution not run; these are real PTY fixture/localmodels0 checks only."
+      ],
+      "notes": [
+        "Prior SR7/8 and SR10 hashes/logs remain historical and unchanged.",
+        "One initial compile attempt had a test Bool? unwrapping error; fixed before meaningful RED. That compile failure is not regression evidence.",
+        "C released shared edit/check slot to D immediately at sourcefreeze; evidence write does not hold it."
+      ]
+    }
+  }
+}

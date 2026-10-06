@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-02",
+  "package": {
+    "path": "~/Library/Application Support/Loom-Dev/app-own/Loom Dev.app (outside ~/Documents: run host is TCC-responsible)",
+    "appSHA256": "b31892642353a3bd1a2515fd5f851bd7b8ce92adfeded04a522fb7d74ad796e1",
+    "runHostSHA256": "8a6d4f4f8fb59085239ba43fb3fc7a0a26c7c6931593a08b441410f6aea29c7b",
+    "signing": "ad-hoc",
+    "build": "LOOM_SCRATCH_PATH=~/Library/Caches/loom-build scripts/package-dev-app.sh"
+  },
+  "modelTurns": 0,
+  "results": [
+    {
+      "id": "OWN-A1 native",
+      "command": "scripts/cp5-own-native.py <app> quit",
+      "evidence": "~/Library/Application Support/Loom-Dev/probe/runs/cp5-own-quit-c2486dcf-3139-4199-89e2-f68a349e3694/result.json",
+      "passed": true,
+      "checks": 9,
+      "summary": "Unmarked setsid/double-fork /bin/sleep from the synthetic fixture was found in the run scope (not the app coalition); normal Quit succeeded, scope empty, escape gone, outside control alive."
+    },
+    {
+      "id": "OWN-A6 native",
+      "command": "scripts/cp5-own-native.py <app> kill",
+      "evidence": "~/Library/Application Support/Loom-Dev/probe/runs/cp5-own-kill-4eb5fa96-3514-4a68-9bfc-c687ccbb4f90/result.json",
+      "passed": true,
+      "checks": 12,
+      "summary": "App SIGKILL: no quit report, run host emptied its scope (escape gone), outside control alive; reopen started no run host or provider; final Quit succeeded."
+    },
+    {
+      "id": "C synthetic native (22)",
+      "command": "LOOM_SCRATCH_PATH=... scripts/cp5-c-acceptance.sh <app>",
+      "evidence": "~/Library/Application Support/Loom-Dev/probe/runs/cp5-c-20261002T105344 and plans/experiments/cp5-c-acceptance.json",
+      "passed": true,
+      "checks": 22,
+      "summary": "Fake Claude/Codex with per-conversation Codex servers in run scopes: C1-C5 and D3 (hidden active Quit, outside control untouched, forced failed Quit then retry)."
+    }
+  ],
+  "suite": "swift test: 301 tests (19 + 243 + 39) passed on the combined OWN-A/OWN-B sources",
+  "unverified": [
+    "Real Claude/Codex process trees in run scopes (model budget 0)",
+    "Apple XPC member in a product scope (research experiment only)",
+    "sudo/other-UID members",
+    "Resource matrix and latency re-measurement with run hosts (D4/A)",
+    "TCC prompts for the run host with a stable signing identity"
+  ]
+}

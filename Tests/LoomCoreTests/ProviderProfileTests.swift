@@ -58,7 +58,14 @@ struct ProviderProfileTests {
         let startGroups = try #require(hooks["SessionStart"] as? [[String: Any]])
         let startHandlers = try #require(startGroups.first?["hooks"] as? [[String: Any]])
         #expect(startHandlers.first?["command"] as? String == "/Applications/Loom.app/Contents/MacOS/loom-hook")
-        #expect(startHandlers.first?["async"] as? Bool == true)
+        #expect(startHandlers.first?["async"] == nil)
+        #expect(startHandlers.first?["timeout"] as? Int == 1)
+        for event in hooks.keys {
+            let groups = try #require(hooks[event] as? [[String: Any]])
+            let handlers = try #require(groups.first?["hooks"] as? [[String: Any]])
+            #expect(handlers.first?["async"] == nil)
+            #expect(handlers.first?["timeout"] as? Int == 1)
+        }
         let endGroups = try #require(hooks["SessionEnd"] as? [[String: Any]])
         let endHandlers = try #require(endGroups.first?["hooks"] as? [[String: Any]])
         #expect(endHandlers.first?["async"] == nil)
@@ -78,12 +85,12 @@ struct ProviderProfileTests {
         #expect(!claude.arguments.contains("--session-id"))
 
         let codex = try ProviderLaunchProfile.codex(
-            route: .remote(socket: "/tmp/app.sock", threadID: "thread-id"),
+            route: .remote(socket: "/tmp/app.sock", threadID: "thread-id", workingDirectory: "/tmp/project space/çalışma"),
             capabilities: capabilities, home: URL(fileURLWithPath: "/isolated"),
             environment: [:]
         )
         #expect(codex.arguments == [
-            "resume", "thread-id", "--remote", "unix:///tmp/app.sock",
+            "resume", "thread-id", "--remote", "unix:///tmp/app.sock", "--cd", "/tmp/project space/çalışma",
         ])
     }
 }

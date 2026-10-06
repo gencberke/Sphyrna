@@ -1,0 +1,828 @@
+import AppKit
+import Foundation
+import LoomCore
+import Observation
+
+public enum CatalogListKey: Hashable, Sendable {
+    case activity
+    case project(UUID)
+    case unassigned
+}
+
+/// The open rename dialog. Held by the model (not view `@State`) so the
+/// dialog needs no view-local state.
+@MainActor @Observable
+public final class RenameDraft: Identifiable {
+    public nonisolated let id: UUID
+    public var text: String
+    public var failure: String?
+    public var saving = false
+
+    init(id: UUID, text: String) {
+        self.id = id
+        self.text = text
+    }
+}
+
+/// What the user can ask of the conversation runtime. The model only forwards
+/// intents; starting, waiting and cleanup happen off MainActor in the runtime.
+@MainActor
+public protocol ConversationIntents: AnyObject {
+    func start(provider: ManagedSession.Provider, projectID: UUID?)
+    func resume(sessionID: UUID)
+    func stop(sessionID: UUID)
+    func answer(sessionID: UUID, requestID: String, accept: Bool)
+    func viewed(sessionID: UUID)
+    /// The live terminal of a conversation that currently owns a run.
+    func terminalView(sessionID: UUID) -> NSView?
+}
+
+public enum ConversationBusy: Equatable, Sendable {
+    case starting
+    case resuming
+    case stopping
+}
+
+/// A new-conversation request that is still starting (one per provider and project).
+public struct StartKey: Hashable, Sendable {
+    public let provider: ManagedSession.Provider
+    public let projectID: UUID?
+    public init(provider: ManagedSession.Provider, projectID: UUID?) {
+        self.provider = provider
+        self.projectID = projectID
+    }
+}
+
+/// A development terminal shown in the detail pane (A slice fixture). Never
+/// created by opening the app or by selecting a conversation.
+public struct DevTerminal {
+    public let panel: NSView
+    public init(panel: NSView) { self.panel = panel }
+}
+
+public struct CatalogModelStatistics: Sendable {
+    public var pageQueries = 0
+    public var framesApplied = 0
+    public var fastPathFrames = 0
+    public var fullReconciles = 0
+    public var rowModels = 0
+    public var loadedRows = 0
+    /// `start()` until projects, counts and the first page of each visible list are shown.
+    public var startMilliseconds = 0.0
+}
+
+/// One card. The record comes from the catalog, `live` from the core's latest
+/// event state; the model only joins them for display.
+@MainActor @Observable
+public final class SessionRowModel: Identifiable {
+    public nonisolated let id: UUID
+    public private(set) var record: CatalogSession
+    public private(set) var live: SessionViewState?
+
+    init(record: CatalogSession, live: SessionViewState?) {
+        id = record.session.id
+        self.record = record
+        self.live = live
+    }
+
+    func apply(record: CatalogSession) { if record != self.record { self.record = record } }
+    func apply(live: SessionViewState?) { if live != self.live { self.live = live } }
+
+    public var indicator: SessionIndicator { SessionIndicator(record: record, live: live) }
+}
+
+@MainActor @Observable
+public final class SessionListModel {
+    public private(set) var rows: [SessionRowModel] = []
+    public private(set) var hasMore = false
+    public private(set) var isLoaded = false
+    @ObservationIgnored fileprivate var cursor: CatalogCursor?
+    @ObservationIgnored fileprivate var generation = 0
+    @ObservationIgnored fileprivate var isStale = false
+    @ObservationIgnored fileprivate var isLoadingMore = false
+
+    fileprivate func replace(rows: [SessionRowModel], cursor: CatalogCursor?) {
+        self.rows = rows
+        self.cursor = cursor
+        hasMore = cursor != nil
+        isLoaded = true
+        isStale = false
+    }
+
+    fileprivate func append(_ more: [SessionRowModel], cursor: CatalogCursor?) {
+        let known = Set(rows.map(\.id))
+        rows += more.filter { !known.contains($0.id) }
+        self.cursor = cursor
+        hasMore = cursor != nil
+    }
+}
+
+/// Presentation projection of the catalog and the core's event state. It owns
+/// no process or lifecycle authority: rows come from paged catalog queries and
+/// live state from the single event consumer below.
+@MainActor @Observable
+public final class CatalogModel {
+    public private(set) var projects: [CatalogProject] = []
+    public private(set) var sessionCounts: [UUID?: Int] = [:]
+    public private(set) var searchText = ""
+    public private(set) var viewMode: CatalogViewMode
+    public private(set) var selectedSessionID: UUID?
+    public private(set) var selectedRow: SessionRowModel?
+    public private(set) var errorMessage: String?
+    public private(set) var infoMessage: String?
+    public private(set) var isReady = false
+    public private(set) var now = Date()
+    public private(set) var windowIsActive = false
+    /// Full screen hides the native window buttons (written by the window owner).
+    public private(set) var isFullScreen = false
+    public private(set) var sidebarCollapsed: Bool
+    public private(set) var showsDevTerminal = false
+    public let startupError: String?
+    public var ownershipNotice: String?
+    /// Progress or state that is not an error: Quit progress, terminal status. Shown in the banner area.
+    public var statusMessage: String?
+    public var renameDraft: RenameDraft?
+    public var devTerminal: DevTerminal?
+    /// Acceptance-only override; normal launches follow the system preference.
+    public var sidebarTransparencyOverride: Bool?
+    public var effectiveReduceTransparency: Bool {
+        sidebarTransparencyOverride ?? NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+    }
+    public var effectiveSidebarMaterial: String { effectiveReduceTransparency ? "opaque" : "glass" }
+    public private(set) var terminalFontSize: Double
+    public private(set) var branches: [String: GitBranch] = [:]
+    @ObservationIgnored public var onShowSettings: (() -> Void)?
+    @ObservationIgnored public var onTerminalFontSizeChange: ((Double) -> Void)?
+    @ObservationIgnored public var onToggleSidebar: (() -> Void)?
+    @ObservationIgnored public weak var intents: (any ConversationIntents)?
+    public private(set) var busy: [UUID: ConversationBusy] = [:]
+    public private(set) var startingKeys: Set<StartKey> = []
+    /// Bumped whenever a live terminal appears or goes away, so the detail
+    /// pane re-evaluates which terminal (if any) it shows.
+    public private(set) var terminalRevision = 0
+    public var quitting = false
+    @ObservationIgnored public private(set) var statistics = CatalogModelStatistics()
+
+    @ObservationIgnored private let catalog: SessionCatalog?
+    @ObservationIgnored private let events: SessionEventHub
+    @ObservationIgnored private let preferences: UIPreferencesStore
+    @ObservationIgnored private var lists: [CatalogListKey: SessionListModel] = [:]
+    @ObservationIgnored private var rowModels: [UUID: SessionRowModel] = [:]
+    @ObservationIgnored private var liveStates: [UUID: SessionViewState] = [:]
+    @ObservationIgnored private var liveRecords: [UUID: CatalogSession] = [:]
+    @ObservationIgnored private var lookingUp: Set<UUID> = []
+    /// Bumped when a live state or a looked-up record changes, so project dots redraw.
+    public private(set) var liveRevision = 0
+    @ObservationIgnored private var requestedRefresh: Set<UUID> = []
+    @ObservationIgnored private var lastSequence: UInt64?
+    @ObservationIgnored private var lastCatalogRevision: UInt64?
+    @ObservationIgnored private var eventTask: Task<Void, Never>?
+    @ObservationIgnored private var searchTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshDirty = false
+    /// Test seam: runs after a refresh read finished, before it is published as done.
+    @ObservationIgnored var afterRefreshRead: (() async -> Void)?
+    @ObservationIgnored private var viewingTask: Task<Void, Never>?
+
+    /// `catalog == nil` means the catalog could not be opened (`startupError`
+    /// says why); nothing is created or overwritten in that state.
+    public init(catalog: SessionCatalog?, startupError: String? = nil, events: SessionEventHub,
+                preferences: UIPreferencesStore) {
+        self.catalog = catalog
+        self.startupError = startupError
+        self.events = events
+        self.preferences = preferences
+        viewMode = preferences.current.viewMode
+        selectedSessionID = preferences.current.selectedSessionID
+        sidebarCollapsed = preferences.current.sidebarCollapsed
+        terminalFontSize = preferences.current.terminalFontSize
+    }
+
+    deinit {
+        eventTask?.cancel()
+        searchTask?.cancel()
+        refreshTask?.cancel()
+    }
+
+    public var preferencesSnapshot: UIPreferences { preferences.current }
+    public var trimmedSearch: String { searchText.trimmingCharacters(in: .whitespacesAndNewlines) }
+    public var isSearching: Bool { !trimmedSearch.isEmpty }
+
+    // MARK: Lifecycle
+
+    /// Reads projects and the first page of each visible list, restores the
+    /// selection, then starts the one event consumer. Starts no process.
+    public func start() async {
+        if let notice = preferences.loadNotice { infoMessage = notice }
+        guard catalog != nil else { isReady = true; return }
+        // Taken before the lists are read, so a batch landing meanwhile is seen.
+        lastCatalogRevision = await events.snapshot().catalogRevision
+        let began = ContinuousClock.now
+        await refreshProjects()
+        await reloadVisibleLists(force: true)
+        if selectedSessionID != nil { await ensureSelectedRow() }
+        let elapsed = ContinuousClock.now - began
+        statistics.startMilliseconds = Double(elapsed.components.seconds) * 1_000
+            + Double(elapsed.components.attoseconds) / 1e15
+        isReady = true
+        eventTask = Task { [weak self, events] in
+            let stream = await events.subscribe()
+            for await frame in stream {
+                guard let self else { return }
+                self.apply(frame)
+            }
+        }
+        updateViewing()
+    }
+
+    public func stop() {
+        eventTask?.cancel()
+        eventTask = nil
+    }
+
+    /// Like `stop()`, but returns only after the event consumer has ended.
+    public func stopAndWait() async {
+        let task = eventTask
+        stop()
+        await task?.value
+    }
+
+    /// Waits for debounced searches and coalesced refreshes (tests, evidence).
+    public func settle() async {
+        await searchTask?.value
+        await refreshTask?.value
+        await viewingTask?.value
+    }
+
+    // MARK: Lists
+
+    public func list(for key: CatalogListKey) -> SessionListModel {
+        if let existing = lists[key] { return existing }
+        let created = SessionListModel()
+        lists[key] = created
+        return created
+    }
+
+    public func projectName(for record: CatalogSession) -> String? {
+        guard let id = record.projectID else { return nil }
+        return projects.first { $0.id == id }?.name
+    }
+
+    public func title(of row: SessionRowModel, repeatsProject: Bool = true) -> String {
+        row.record.displayTitle(projectName: projectName(for: row.record), repeatsProject: repeatsProject)
+    }
+
+    /// The strongest signal among the project's live conversations. Taken from
+    /// the in-memory live states, so it also works for a collapsed project whose
+    /// rows were never loaded.
+    public func attention(forProject id: UUID) -> ProjectAttention? {
+        _ = liveRevision
+        var indicators: [SessionIndicator] = []
+        for (sessionID, state) in liveStates {
+            guard let record = rowModels[sessionID]?.record ?? liveRecords[sessionID],
+                  record.projectID == id else { continue }
+            indicators.append(SessionIndicator(record: record, live: state))
+        }
+        return ProjectAttention.strongest(of: indicators)
+    }
+
+    /// One point lookup per live conversation the lists do not hold, so its
+    /// project is known without paging the project's list.
+    private func lookUpLiveRecord(_ id: UUID) {
+        guard let catalog, liveRecords[id] == nil, lookingUp.insert(id).inserted else { return }
+        Task { [weak self] in
+            let record = try? await catalog.session(id: id)
+            guard let self else { return }
+            self.lookingUp.remove(id)
+            guard let record, self.liveStates[id] != nil else { return }
+            self.liveRecords[id] = record
+            self.liveRevision &+= 1
+        }
+    }
+
+    public func visibleListKeys() -> [CatalogListKey] {
+        switch viewMode {
+        case .activity: return [.activity]
+        case .projects:
+            var keys: [CatalogListKey] = projects.filter { isSearching || !$0.collapsed }
+                .map { .project($0.id) }
+            if isSearching || (sessionCounts[nil] ?? 0) > 0 { keys.append(.unassigned) }
+            return keys
+        }
+    }
+
+    private func query(for key: CatalogListKey) -> CatalogQuery {
+        switch key {
+        case .activity: CatalogQuery(scope: .all, order: .recentActivity, search: trimmedSearch)
+        case let .project(id): CatalogQuery(scope: .project(id), order: .creation, search: trimmedSearch)
+        case .unassigned: CatalogQuery(scope: .unassigned, order: .creation, search: trimmedSearch)
+        }
+    }
+
+    private func markAllStale() {
+        for list in lists.values { list.isStale = true }
+    }
+
+    private func reloadVisibleLists(force: Bool = false) async {
+        for key in visibleListKeys() {
+            let list = list(for: key)
+            if force || !list.isLoaded || list.isStale { await reload(key) }
+        }
+        pruneRowModels()
+    }
+
+    /// Re-reads a list from the top, keeping as many rows as were loaded so a
+    /// change never throws the user back to the first page.
+    private func reload(_ key: CatalogListKey) async {
+        guard let catalog else { return }
+        let list = list(for: key)
+        list.generation += 1
+        let generation = list.generation
+        let wanted = max(list.rows.count, 1)
+        do {
+            var records: [CatalogSession] = []
+            var cursor: CatalogCursor?
+            repeat {
+                statistics.pageQueries += 1
+                let page = try await catalog.sessionPage(query(for: key), after: cursor)
+                records += page.sessions
+                cursor = page.next
+            } while cursor != nil && records.count < wanted
+            guard generation == list.generation else { return }
+            now = Date()
+            list.replace(rows: records.map(row(for:)), cursor: cursor)
+        } catch {
+            report(error, "Conversations could not be read")
+        }
+    }
+
+    public func loadMore(_ key: CatalogListKey) {
+        let list = list(for: key)
+        guard let catalog, let cursor = list.cursor, !list.isLoadingMore else { return }
+        list.isLoadingMore = true
+        let generation = list.generation
+        Task {
+            defer { list.isLoadingMore = false }
+            do {
+                statistics.pageQueries += 1
+                let page = try await catalog.sessionPage(query(for: key), after: cursor)
+                guard generation == list.generation else { return }
+                list.append(page.sessions.map(row(for:)), cursor: page.next)
+            } catch {
+                report(error, "More conversations could not be read")
+            }
+        }
+    }
+
+    private func row(for record: CatalogSession) -> SessionRowModel {
+        let id = record.session.id
+        let path = record.session.workingDirectory
+        branches[path] = GitBranch.read(directory: path)
+        if let existing = rowModels[id] {
+            existing.apply(record: record)
+            return existing
+        }
+        let created = SessionRowModel(record: record, live: liveStates[id])
+        rowModels[id] = created
+        return created
+    }
+
+    private func pruneRowModels() {
+        var keep = Set(lists.values.flatMap { $0.rows.map(\.id) })
+        if let selectedSessionID { keep.insert(selectedSessionID) }
+        // A live conversation keeps its project known for the project dot after its row is gone.
+        for (id, row) in rowModels where !keep.contains(id) && liveStates[id] != nil {
+            liveRecords[id] = row.record
+        }
+        rowModels = rowModels.filter { keep.contains($0.key) }
+        statistics.rowModels = rowModels.count
+        statistics.loadedRows = lists.values.reduce(0) { $0 + $1.rows.count }
+    }
+
+    private func refreshProjects() async {
+        guard let catalog else { return }
+        do {
+            projects = try await catalog.projects()
+            sessionCounts = try await catalog.sessionCounts()
+        } catch {
+            report(error, "Projects could not be read")
+        }
+    }
+
+    // MARK: Search, mode, selection
+
+    public func setSearchText(_ text: String) {
+        guard text != searchText else { return }
+        searchText = text
+        searchTask?.cancel()
+        searchTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled, let self else { return }
+            self.markAllStale()
+            await self.reloadVisibleLists()
+        }
+    }
+
+    public func setViewMode(_ mode: CatalogViewMode) {
+        guard mode != viewMode else { return }
+        viewMode = mode
+        persist { $0.viewMode = mode }
+        Task { await reloadVisibleLists() }
+    }
+
+    /// Selecting a row only shows it. It never starts a provider or a PTY.
+    public func select(_ id: UUID?) {
+        showsDevTerminal = false
+        if id != selectedSessionID {
+            selectedSessionID = id
+            selectedRow = id.flatMap { rowModels[$0] }
+            persist { $0.selectedSessionID = id }
+            if id != nil, selectedRow == nil { Task { await ensureSelectedRow() } }
+        }
+        updateViewing()
+    }
+
+    private func ensureSelectedRow() async {
+        guard let catalog, let id = selectedSessionID else { return }
+        if let existing = rowModels[id] { selectedRow = existing; return }
+        do {
+            statistics.pageQueries += 1
+            guard let record = try await catalog.session(id: id) else {
+                if selectedSessionID == id { select(nil) }
+                return
+            }
+            guard selectedSessionID == id else { return }
+            selectedRow = row(for: record)
+        } catch {
+            report(error, "The selected conversation could not be read")
+        }
+    }
+
+    public func showDevTerminal(_ terminal: DevTerminal) {
+        devTerminal = terminal
+        showsDevTerminal = true
+        updateViewing()
+    }
+
+    public func setWindowActive(_ active: Bool) {
+        guard active != windowIsActive else { return }
+        windowIsActive = active
+        if active {
+            now = Date()
+            for path in branches.keys { branches[path] = GitBranch.read(directory: path) }
+        }
+        updateViewing()
+    }
+
+    public func setFullScreen(_ value: Bool) {
+        if value != isFullScreen { isFullScreen = value }
+    }
+
+    public func setSidebarCollapsed(_ collapsed: Bool) {
+        guard collapsed != sidebarCollapsed else { return }
+        sidebarCollapsed = collapsed
+        persist { $0.sidebarCollapsed = collapsed }
+    }
+
+    public func setTerminalFontSize(_ size: Double) {
+        terminalFontSize = UIPreferences.clampedFontSize(size)
+        persist { $0.terminalFontSize = terminalFontSize }
+        onTerminalFontSizeChange?(terminalFontSize)
+    }
+
+    public func setSidebarWidth(_ width: Double) {
+        persist { $0.sidebarWidth = width }
+    }
+
+    /// Only a selected conversation in a visible, active window counts as
+    /// viewed. List refreshes and event frames never do.
+    private func updateViewing() {
+        let target = windowIsActive && !showsDevTerminal ? selectedSessionID : nil
+        let previous = viewingTask
+        viewingTask = Task { [events] in
+            await previous?.value
+            await events.setViewed(sessionID: target)
+        }
+        // A deliberate view also counts as use (persistent, never reactivates a stale row).
+        if let target { intents?.viewed(sessionID: target) }
+    }
+
+    /// The runtime recorded a use of this conversation; show the new time.
+    func viewRecorded(_ id: UUID) async { await refreshRow(id) }
+
+    // MARK: Projects
+
+    @discardableResult
+    public func addProject(path: String) async -> CatalogAddedProject? {
+        guard let catalog else { return nil }
+        do {
+            let added = try await catalog.addProject(path: path)
+            if added.alreadyPresent {
+                infoMessage = "“\(added.project.name)” is already in Loom."
+                if added.project.collapsed { try await catalog.setProjectCollapsed(id: added.project.id, collapsed: false) }
+            } else { infoMessage = nil }
+            errorMessage = nil
+            await refreshProjects()
+            setViewMode(.projects)
+            markAllStale()
+            await reloadVisibleLists()
+            return added
+        } catch {
+            report(error, "The project could not be added")
+            return nil
+        }
+    }
+
+    public func removeProject(_ id: UUID) async {
+        guard let catalog else { return }
+        do {
+            try await catalog.removeProject(id: id)
+            errorMessage = nil
+            lists[.project(id)] = nil
+            await refreshProjects()
+            markAllStale()
+            await reloadVisibleLists()
+        } catch SessionCatalogError.projectNotEmpty {
+            report(nil, "Only an empty project can be removed. Its conversations stay in the catalog.")
+        } catch {
+            report(error, "The project could not be removed")
+        }
+    }
+
+    public func moveProject(_ id: UUID, by offset: Int) async {
+        guard let catalog, let index = projects.firstIndex(where: { $0.id == id }) else { return }
+        do {
+            try await catalog.moveProject(id: id, toIndex: index + offset)
+            errorMessage = nil
+            await refreshProjects()
+            await reloadVisibleLists()
+        } catch {
+            report(error, "The project could not be moved")
+        }
+    }
+
+    /// Expands a collapsed project; an expanded one is left alone (never toggles back).
+    func expandProject(_ id: UUID) async {
+        guard let catalog, projects.first(where: { $0.id == id })?.collapsed == true else { return }
+        do {
+            try await catalog.setProjectCollapsed(id: id, collapsed: false)
+            await refreshProjects()
+            await reloadVisibleLists()
+        } catch {
+            report(error, "The project could not be updated")
+        }
+    }
+
+    public func toggleCollapsed(_ id: UUID) async {
+        guard let catalog, let project = projects.first(where: { $0.id == id }) else { return }
+        do {
+            try await catalog.setProjectCollapsed(id: id, collapsed: !project.collapsed)
+            await refreshProjects()
+            await reloadVisibleLists()
+        } catch {
+            report(error, "The project could not be updated")
+        }
+    }
+
+    /// The window a folder panel is attached to as a sheet. Independent of which
+    /// window is key, so it works while Loom is not the active application; a
+    /// hidden or absent window falls back to a standalone panel.
+    @ObservationIgnored public var presentingWindow: (@MainActor () -> NSWindow?)?
+
+    public func presentAddProject() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Add Project"
+        panel.message = "Choose a project folder. Loom only remembers its path; nothing in the folder changes."
+        let finish: @MainActor @Sendable (NSApplication.ModalResponse) -> Void = { [weak self, weak panel] response in
+            guard let self else { return }
+            self.folderPanelFinished(accepted: response == .OK, url: panel?.url)
+        }
+        if let window = presentingWindow?(), window.isVisible {
+            panel.beginSheetModal(for: window, completionHandler: finish)
+        } else {
+            panel.begin(completionHandler: finish)
+        }
+    }
+
+    /// Result of the folder panel: only an accepted choice adds a project.
+    public func folderPanelFinished(accepted: Bool, url: URL?) {
+        guard accepted, let url else { return }
+        Task { await addProject(path: url.path) }
+    }
+
+    // MARK: Titles
+
+    public func beginRename(_ id: UUID) {
+        guard let row = rowModels[id] else { return }
+        renameDraft = RenameDraft(id: id, text: row.record.title ?? "")
+    }
+
+    /// Save button and Return key of the rename dialog.
+    public func commitRename() async {
+        guard let draft = renameDraft, !draft.saving else { return }
+        draft.saving = true
+        draft.failure = nil
+        do {
+            try await rename(sessionID: draft.id, to: draft.text)
+            if renameDraft === draft { renameDraft = nil }
+        } catch {
+            draft.failure = "The title was not saved: \(error)"
+            draft.saving = false
+        }
+    }
+
+    /// Throws when the title could not be saved; nothing is shown as saved then.
+    public func rename(sessionID: UUID, to title: String) async throws {
+        guard let catalog else { return }
+        do {
+            try await catalog.renameSession(sessionID: sessionID, to: title)
+        } catch {
+            report(error, "The title could not be saved")
+            throw error
+        }
+        await refreshRow(sessionID)
+    }
+
+    /// Path for titles announced by a terminal or provider: never replaces a
+    /// title the user set.
+    public func terminalTitleChanged(sessionID: UUID, title: String) async {
+        guard let catalog else { return }
+        do {
+            if try await catalog.recordTerminalTitle(sessionID: sessionID, title: title) {
+                await refreshRow(sessionID)
+            }
+        } catch {
+            report(error, "The terminal title could not be saved")
+        }
+    }
+
+    private func refreshRow(_ id: UUID) async {
+        guard let catalog else { return }
+        do {
+            statistics.pageQueries += 1
+            if let record = try await catalog.session(id: id), let existing = rowModels[id] {
+                existing.apply(record: record)
+            }
+            markAllStale()
+            // A title is a search key: while a search is open the result set may
+            // gain or lose this conversation. Without a search membership and
+            // order cannot change, so a frequent terminal title costs no query.
+            // The selected detail row stays (pruning keeps it) either way.
+            if isSearching { await reloadVisibleLists() }
+        } catch {
+            report(error, "The conversation could not be refreshed")
+        }
+    }
+
+    // MARK: Event consumer
+
+    /// One consumer: a contiguous frame updates one conversation; a gap
+    /// (missed frames) is repaired from the frame's full latest state.
+    func apply(_ frame: SessionEventFrame) {
+        statistics.framesApplied += 1
+        // Re-read at a reliable turn boundary, never for output/frame rendering.
+        if case let .status(status) = frame.change, status?.activity == .turnComplete,
+           let id = frame.sessionID, let row = rowModels[id] {
+            let path = row.record.session.workingDirectory
+            branches[path] = GitBranch.read(directory: path)
+        }
+        if let last = lastSequence, frame.sequence == last &+ 1, let id = frame.sessionID {
+            statistics.fastPathFrames += 1
+            setLive(id, frame.sessions[id])
+        } else {
+            statistics.fullReconciles += 1
+            for (id, state) in frame.sessions where liveStates[id] != state { setLive(id, state) }
+            for id in liveStates.keys where frame.sessions[id] == nil { setLive(id, nil) }
+        }
+        lastSequence = frame.sequence
+        if let id = frame.sessionID, rowModels[id] != nil {
+            switch frame.change {
+            case .runStarted, .runEnded, .runDetached, .lifecycle, .conversationIdentity:
+                // The catalog row (lifecycle, use time, identity) moved with the run.
+                if catalog != nil { scheduleRefresh() }
+            default: break
+            }
+        }
+        // Batched catalog changes (aging) carry no per-row state: a consumer that
+        // saw the frame or skipped it re-reads the visible lists either way.
+        if let seen = lastCatalogRevision, seen != frame.catalogRevision, catalog != nil {
+            scheduleRefresh()
+        }
+        lastCatalogRevision = frame.catalogRevision
+    }
+
+    private func setLive(_ id: UUID, _ state: SessionViewState?) {
+        if liveStates[id] != state {
+            liveStates[id] = state
+            liveRevision &+= 1
+        }
+        if state == nil { liveRecords[id] = nil }
+        rowModels[id]?.apply(live: state)
+        if state != nil, rowModels[id] == nil { lookUpLiveRecord(id) }
+        guard state != nil, rowModels[id] == nil, catalog != nil,
+              requestedRefresh.insert(id).inserted else { return }
+        // A conversation the lists do not know yet (for example a new one).
+        scheduleRefresh()
+    }
+
+    func scheduleRefresh() {
+        // A change that lands while a refresh reads is not lost: the running
+        // refresh loops once more before it finishes.
+        guard refreshTask == nil else { refreshDirty = true; return }
+        refreshTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(100))
+            while let self {
+                self.refreshDirty = false
+                await self.refreshProjects()
+                self.markAllStale()
+                await self.reloadVisibleLists()
+                await self.afterRefreshRead?()
+                self.requestedRefresh = self.requestedRefresh.filter { self.rowModels[$0] == nil }
+                if !self.refreshDirty || Task.isCancelled { break }
+            }
+            self?.refreshTask = nil
+        }
+    }
+
+    // MARK: Conversation actions
+
+    /// Actions need a readable catalog and a runtime; a catalog error or a
+    /// started Quit blocks them all.
+    public var actionsAvailable: Bool { startupError == nil && intents != nil && !quitting }
+
+    /// Where the "new conversation" commands apply: the selected conversation's project.
+    public var contextProjectID: UUID? { selectedRow?.record.projectID }
+
+    public func startConversation(_ provider: ManagedSession.Provider, projectID: UUID?) {
+        guard actionsAvailable else { return }
+        intents?.start(provider: provider, projectID: projectID)
+        // The new card belongs to this project: show it.
+        if let projectID, projects.first(where: { $0.id == projectID })?.collapsed == true {
+            Task { [weak self] in await self?.expandProject(projectID) }
+        }
+    }
+
+    public func resumeConversation(_ id: UUID) {
+        guard actionsAvailable else { return }
+        intents?.resume(sessionID: id)
+    }
+
+    public func stopConversation(_ id: UUID) {
+        guard actionsAvailable else { return }
+        intents?.stop(sessionID: id)
+    }
+
+    public func answerRequest(sessionID: UUID, requestID: String, accept: Bool) {
+        guard actionsAvailable else { return }
+        intents?.answer(sessionID: sessionID, requestID: requestID, accept: accept)
+    }
+
+    public func isStarting(_ provider: ManagedSession.Provider, projectID: UUID?) -> Bool {
+        startingKeys.contains(StartKey(provider: provider, projectID: projectID))
+    }
+
+    public func canStart(_ provider: ManagedSession.Provider, projectID: UUID?) -> Bool {
+        actionsAvailable && !isStarting(provider, projectID: projectID)
+    }
+
+    public func canResume(_ row: SessionRowModel) -> Bool {
+        actionsAvailable && row.record.session.provider != .synthetic
+            && row.live?.runID == nil && busy[row.id] == nil
+    }
+
+    public func canStop(_ row: SessionRowModel) -> Bool {
+        actionsAvailable && row.live?.runID != nil && busy[row.id] != .stopping
+    }
+
+    /// The conversation's live terminal, if it owns a run right now.
+    public func terminalView(for id: UUID) -> NSView? {
+        _ = terminalRevision
+        return intents?.terminalView(sessionID: id)
+    }
+
+    // Called by the conversation controller.
+
+    func beginStart(_ key: StartKey) -> Bool { startingKeys.insert(key).inserted }
+    func endStart(_ key: StartKey) { startingKeys.remove(key) }
+    func setBusy(_ id: UUID, _ value: ConversationBusy?) { busy[id] = value }
+    func terminalsChanged() { terminalRevision &+= 1 }
+    func reportFailure(_ text: String) { errorMessage = text }
+    func showInfo(_ text: String) { infoMessage = text }
+
+    // MARK: Messages
+
+    public func dismissError() { errorMessage = nil }
+    public func dismissInfo() { infoMessage = nil }
+
+    private func report(_ error: (any Error)?, _ context: String) {
+        errorMessage = error.map { "\(context): \($0)" } ?? context
+    }
+
+    private func persist(_ change: (inout UIPreferences) -> Void) {
+        do { try preferences.update(change) }
+        catch { report(error, "Preferences could not be saved") }
+    }
+}
