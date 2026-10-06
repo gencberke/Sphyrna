@@ -301,6 +301,6 @@ public final class ConversationController: ConversationIntents {
     private func report(_ error: any Error, _ context: String) {
         if error is CancellationError { return }
         if let runtimeError = error as? SessionRuntimeError, case .alreadyStarting = runtimeError { return }
-        model?.reportFailure("\(context): \(error)")
+        model?.reportFailure(CatalogModel.userMessage(for: error, context: context))
     }
 }

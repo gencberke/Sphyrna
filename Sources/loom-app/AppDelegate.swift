@@ -42,6 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     init(arguments: [String]) { self.options = LaunchOptions(arguments: arguments) }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // The app is dark-only: alerts, open panels and other AppKit panels follow this, not the system.
+        NSApp.appearance = NSAppearance(named: .darkAqua)
         // One window by design: no tab bar, no "Show Tab Bar"/"Merge All Windows" items.
         NSWindow.allowsAutomaticWindowTabbing = false
         installMenus()
@@ -136,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func beginQuit() {
         guard let shutdownCoordinator else { return }
         conversations?.quitStarted()
-        model?.statusMessage = "Stopping owned processes…"
+        model?.statusMessage = "Stopping conversations before quitting…"
         let started = ProcessInfo.processInfo.systemUptime
         let recordQuit = evidenceQuitRecorder(started: started)
         shutdownCoordinator.requestQuit(prepareReply: recordQuit) { [weak self] report in
@@ -226,7 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let executable = launcher.hostBundle
             .appendingPathComponent("Contents/MacOS/\(RunScopeLauncher.hostExecutableName)")
         guard !FileManager.default.isExecutableFile(atPath: executable.path) else { return }
-        model?.ownershipNotice = "Conversations cannot start: Loom's run-scope helper is missing, so Loom could not guarantee that Stop and Quit end all of a conversation's background work."
+        model?.ownershipNotice = "New conversations are turned off because Loom's process helper is missing. Without it Loom cannot make sure Stop and Quit end all of a conversation's background work. Reinstall Loom to fix this."
     }
 
     @objc func showMainWindow() { presentMainWindow(reason: "window-menu") }
@@ -394,7 +396,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         // Timeout or remaining processes never count as a successful quit.
         NSApp.reply(toApplicationShouldTerminate: false)
-        model?.statusMessage = "Quit could not verify that owned processes stopped."
+        model?.statusMessage = "Loom did not quit: it could not confirm that every conversation process stopped."
         presentMainWindow(reason: "failed-quit")
         guard let window else { return }
         let alert = NSAlert()

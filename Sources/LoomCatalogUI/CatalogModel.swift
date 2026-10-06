@@ -920,7 +920,26 @@ public final class CatalogModel {
     public func dismissInfo() { infoMessage = nil }
 
     private func report(_ error: (any Error)?, _ context: String) {
-        errorMessage = error.map { "\(context): \($0)" } ?? context
+        errorMessage = Self.userMessage(for: error, context: context)
+    }
+
+    /// The banner text for a failed action: the context as a sentence, then what
+    /// the error says when that is readable. Loom's own errors and Foundation
+    /// errors carry a sentence; anything else gets a generic one plus the
+    /// technical detail, so the raw value is never the whole message.
+    nonisolated static func userMessage(for error: (any Error)?, context: String) -> String {
+        guard let error else { return context }
+        func sentence(_ text: String) -> String { text.last.map { ".…?!".contains($0) } == true ? text : text + "." }
+        let head = sentence(context)
+        let detail: String
+        if error is CocoaError || error is URLError || error is POSIXError || type(of: error) is NSError.Type {
+            detail = error.localizedDescription
+        } else if let described = (error as Any) as? any CustomStringConvertible {
+            detail = described.description
+        } else {
+            detail = "Something unexpected went wrong. Details: \(error)"
+        }
+        return head + " " + sentence(detail)
     }
 
     /// Tab order is not high-frequency: written at once.

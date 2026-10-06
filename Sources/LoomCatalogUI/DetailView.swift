@@ -20,6 +20,7 @@ public struct DetailView: View {
         .ignoresSafeArea(.container, edges: .top)
         .background(LoomTheme.Surface.backdrop.ignoresSafeArea())
         .preferredColorScheme(.dark)
+        .tint(LoomTheme.Accent.base)
         .environment(\.indicatorsAnimate, model.windowIsActive)
         .sheet(item: $model.renameDraft) { draft in
             RenameSheet(model: model, draft: draft)
@@ -61,14 +62,14 @@ struct DetailHeader: View {
                         .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
                         .lineLimit(1).layoutPriority(1)
                 } else if let label = row.indicator.label {
-                    Text(label).font(LoomTheme.Typography.caption).foregroundStyle(row.indicator.labelColor)
+                    Text(label).font(LoomTheme.Typography.statusLabel).foregroundStyle(row.indicator.labelColor)
                         .lineLimit(1).layoutPriority(1)
                 }
             }
             Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             if !model.showsDevTerminal, let row = model.selectedRow, model.canStop(row) {
                 Button("Stop") { model.stopConversation(row.id) }
-                    .buttonStyle(.bordered).controlSize(.small)
+                    .buttonStyle(AccentButtonStyle(kind: .tinted))
                     .accessibilityLabel("Stop conversation")
             }
             if !model.showsDevTerminal, let row = model.selectedRow {
@@ -176,6 +177,7 @@ struct DetailContent: View {
                     HStack {
                         Button("Add Project…") { model.presentAddProject() }
                             .keyboardShortcut("o", modifiers: .command)
+                            .buttonStyle(AccentButtonStyle(kind: .filled))
                         Button("New Claude Conversation") { model.startConversation(.claude, projectID: nil) }
                             .disabled(!model.canStart(.claude, projectID: nil))
                         if model.startableProviders.contains(.codex) {
@@ -201,7 +203,7 @@ struct Message: View {
     var body: some View {
         VStack(spacing: LoomTheme.Space.messageSpacing) {
             Image(systemName: symbol).font(LoomTheme.Typography.heroSymbol).foregroundStyle(LoomTheme.Text.secondary)
-            Text(title).font(LoomTheme.Typography.title).foregroundStyle(LoomTheme.Text.primary)
+            Text(title).font(LoomTheme.Typography.heading).foregroundStyle(LoomTheme.Text.primary)
             Text(text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                 .multilineTextAlignment(.center).textSelection(.enabled)
         }
@@ -221,6 +223,18 @@ struct TerminalHost: NSViewRepresentable {
 struct ConversationDetail: View {
     let model: CatalogModel
     let row: SessionRowModel
+
+    /// The state line above the actions. It states what Loom knows: a pending
+    /// start, resume or stop; no run; a run without a terminal here; or that
+    /// actions are not available right now (for example while quitting).
+    nonisolated static func runStateHeading(busy: ConversationBusy?, canResume: Bool, isRunning: Bool) -> String {
+        switch busy {
+        case .starting: "Starting…"
+        case .resuming: "Resuming…"
+        case .stopping: "Stopping…"
+        case nil: canResume ? "Not running" : isRunning ? "Running" : "Not available right now"
+        }
+    }
 
     var body: some View {
         let record = row.record
@@ -264,7 +278,8 @@ struct ConversationDetail: View {
                 }
                 Divider().overlay(LoomTheme.Surface.hairline)
                 VStack(alignment: .leading, spacing: LoomTheme.Space.actionsSpacing) {
-                    Text(model.canResume(row) ? "Not running" : "Working…")
+                    Text(Self.runStateHeading(busy: model.busy[row.id], canResume: model.canResume(row),
+                                              isRunning: row.live?.runID != nil))
                         .font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
                     Text("Opening this record launches nothing. Resume continues the same provider conversation in its own folder; if the provider no longer has it, you will see that instead of a new conversation.")
                         .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
@@ -274,13 +289,10 @@ struct ConversationDetail: View {
                         }
                         .disabled(!model.canResume(row))
                         .keyboardShortcut(.defaultAction)
+                        .buttonStyle(AccentButtonStyle(kind: .filled))
                         Button("Stop") { model.stopConversation(row.id) }
                             .disabled(!model.canStop(row))
                         Button("Rename…") { model.beginRename(row.id) }
-                    }
-                    if let busy = model.busy[row.id] {
-                        Text(busy == .resuming ? "Resuming…" : busy == .starting ? "Starting…" : "Stopping…")
-                            .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     }
                 }
             }
@@ -320,6 +332,7 @@ struct RequestList: View {
                                 model.answerRequest(sessionID: row.id, requestID: request.id, accept: true)
                             }
                             .keyboardShortcut(.defaultAction)
+                            .buttonStyle(AccentButtonStyle(kind: .filled))
                         }
                     }
                     .padding(LoomTheme.Space.requestPadding)
@@ -393,14 +406,52 @@ struct RenameSheet: View {
                 Spacer()
                 Button("Cancel") { model.renameDraft = nil }.keyboardShortcut(.cancelAction)
                 Button("Save") { save() }.keyboardShortcut(.defaultAction).disabled(draft.saving)
+                    .buttonStyle(AccentButtonStyle(kind: .filled))
             }
         }
         .padding(LoomTheme.Space.sheetPadding)
         .frame(width: LoomTheme.Layout.sheetWidth)
         .preferredColorScheme(.dark)
+        .tint(LoomTheme.Accent.base)
     }
 
     private func save() {
         Task { await model.commitRename() }
+    }
+}
+
+/// The brand accent on a button. `filled` is the default action (dark text on
+/// the accent; light text on it is only 2.2 to 3.0:1); `tinted` is a quieter
+/// action such as Stop (accent text on a faint accent fill).
+struct AccentButtonStyle: ButtonStyle {
+    enum Kind { case filled, tinted }
+    let kind: Kind
+
+    func makeBody(configuration: Configuration) -> some View {
+        Styled(configuration: configuration, kind: kind)
+    }
+
+    private struct Styled: View {
+        let configuration: ButtonStyle.Configuration
+        let kind: Kind
+        @Environment(\.isEnabled) private var enabled
+
+        var body: some View {
+            let pressed = configuration.isPressed
+            configuration.label
+                .font(LoomTheme.Typography.body)
+                .foregroundStyle(kind == .filled ? LoomTheme.Accent.onAccent : LoomTheme.Accent.base)
+                .padding(.horizontal, LoomTheme.Space.buttonH).padding(.vertical, LoomTheme.Space.buttonV)
+                .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.control).fill(fill(pressed: pressed)))
+                .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
+                .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
+        }
+
+        private func fill(pressed: Bool) -> Color {
+            switch kind {
+            case .filled: LoomTheme.Accent.base.opacity(pressed ? LoomTheme.Opacity.accentPressed : 1)
+            case .tinted: LoomTheme.Accent.base.opacity(pressed ? LoomTheme.Opacity.accentTintPressed : LoomTheme.Opacity.accentTint)
+            }
+        }
     }
 }

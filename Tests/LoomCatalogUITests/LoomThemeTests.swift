@@ -34,12 +34,27 @@ struct LoomThemeTests {
         #expect(LoomTheme.Text.secondaryRGB.contrast(with: Self.sidebarOverBlack) >= 4.5)
     }
 
-    /// Known issue today (4.0 on the panel, 4.0 on the selected card); I2 changes
-    /// `Text.secondary`, and this block then reports as no longer failing.
     @Test func secondaryTextIsAAOnPanelAndSelectedCard() {
-        withKnownIssue("text.secondary is #757A8C today; I2 raises it to #828799") {
-            #expect(LoomTheme.Text.secondaryRGB.contrast(with: Self.panel) >= 4.5)
-            #expect(LoomTheme.Text.secondaryRGB.contrast(with: Self.selectedCard) >= 4.5)
+        #expect(LoomTheme.Text.secondaryRGB.contrast(with: Self.panel) >= 4.5)
+        #expect(LoomTheme.Text.secondaryRGB.contrast(with: Self.selectedCard) >= 4.5)
+    }
+
+    @Test func accentIsAAOnEverySurface() {
+        for surface in [Self.sidebarOpaque, Self.sidebarOverBlack, Self.panel, Self.selectedCard] {
+            #expect(LoomTheme.Accent.baseRGB.contrast(with: surface) >= 4.5)
+        }
+    }
+
+    /// Light text on the accent fill is 2.2 to 3.0:1, so filled accent controls use dark text.
+    @Test func accentFillCarriesDarkTextNotLightText() {
+        #expect(LoomTheme.Accent.onAccentRGB.contrast(with: LoomTheme.Accent.baseRGB) >= 4.5)
+        #expect(LoomTheme.Text.primaryRGB.contrast(with: LoomTheme.Accent.baseRGB) < 4.5)
+    }
+
+    /// Tertiary is for placeholders, disabled items and decoration only: not AA, but not invisible.
+    @Test func tertiaryTextStaysReadableAsAPlaceholder() {
+        for surface in [Self.sidebarOpaque, Self.panel, Self.selectedCard] {
+            #expect(LoomTheme.Text.tertiaryRGB.contrast(with: surface) >= 2.5)
         }
     }
 
@@ -55,7 +70,9 @@ struct LoomThemeTests {
         // The SwiftUI `Color` and the RGB data must not drift apart: one value, two views.
         #expect(LoomTheme.Surface.sidebarRGB == RGB(red: 0.043, green: 0.055, blue: 0.086))
         #expect(LoomTheme.Text.primaryRGB == RGB(red: 0.88, green: 0.86, blue: 0.92))
-        #expect(LoomTheme.Text.secondaryRGB == RGB(red: 0.46, green: 0.48, blue: 0.55))
+        #expect(LoomTheme.Text.secondaryRGB == RGB(hex: 0x828799))
+        #expect(LoomTheme.Text.tertiaryRGB == RGB(hex: 0x5A5F70))
+        #expect(LoomTheme.Accent.baseRGB == RGB(hex: 0x8791CF))
         #expect(LoomTheme.Status.attentionRGB == RGB(red: 1.0, green: 0.62, blue: 0.04))
         #expect(LoomTheme.Status.unviewedRGB == RGB(red: 0.36, green: 0.55, blue: 1.0))
         #expect(LoomTheme.Status.failureRGB == RGB(red: 0.95, green: 0.38, blue: 0.36))

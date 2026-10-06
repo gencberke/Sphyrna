@@ -24,6 +24,7 @@ public struct SidebarView: View {
         .background(SidebarBackground(reduceTransparency: model.sidebarTransparencyOverride ?? reduceTransparency))
         .ignoresSafeArea(.container, edges: .top)
         .preferredColorScheme(.dark)
+        .tint(LoomTheme.Accent.base)
         // Indicators stand still while the window is inactive/hidden or the sidebar is collapsed.
         .environment(\.indicatorsAnimate, Self.indicatorsAnimate(model))
     }
@@ -168,7 +169,7 @@ struct ActivityList: View {
         } else {
             ForEach(DayGrouping.sections(list.rows, now: model.now)) { section in
                 Text(section.title)
-                    .font(LoomTheme.Typography.smallMedium)
+                    .font(LoomTheme.Typography.dayHeading)
                     .foregroundStyle(LoomTheme.Text.secondary)
                     .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
                 ForEach(section.rows) { row in
@@ -289,8 +290,7 @@ struct EmptyListHint: View {
                 Text("No matching conversations").foregroundStyle(LoomTheme.Text.primary)
                 Text("Search covers title, provider and project.").foregroundStyle(LoomTheme.Text.secondary)
             } else {
-                Text("No conversations yet").foregroundStyle(LoomTheme.Text.primary)
-                Text("Add a project folder to get started.").foregroundStyle(LoomTheme.Text.secondary)
+                Text("No conversations yet. Add a project folder to begin.").foregroundStyle(LoomTheme.Text.secondary)
             }
         }
         .font(LoomTheme.Typography.small)

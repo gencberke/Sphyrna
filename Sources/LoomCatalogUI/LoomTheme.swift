@@ -69,14 +69,26 @@ enum LoomTheme {
         static let controlSelected = selected
         static let controlHover = Color.white.opacity(controlHoverOpacity)
         static let controlPressed = Color.white.opacity(controlPressedOpacity)
-        static let focusRing = Color.white.opacity(Opacity.focusRing)
+        static let focusRing = Accent.base
     }
 
     enum Text {
         static let primaryRGB = RGB(red: 0.88, green: 0.86, blue: 0.92)
-        static let secondaryRGB = RGB(red: 0.46, green: 0.48, blue: 0.55)
+        static let secondaryRGB = RGB(hex: 0x828799)
         static let primary = primaryRGB.color
         static let secondary = secondaryRGB.color
+        /// Placeholders, disabled items and decoration only (about 2.6:1, below AA).
+        static let tertiaryRGB = RGB(hex: 0x5A5F70)
+        static let tertiary = tertiaryRGB.color
+    }
+
+    /// The one brand color (the fleece of the mark). Fills carry dark text, never light text.
+    enum Accent {
+        static let baseRGB = RGB(hex: 0x8791CF)
+        static let base = baseRGB.color
+        /// Text and symbols on an accent fill (6.4:1; light text there is 2.2 to 3.0:1).
+        static let onAccentRGB = Surface.sidebarRGB
+        static let onAccent = onAccentRGB.color
     }
 
     enum Status {
@@ -95,7 +107,9 @@ enum LoomTheme {
 
     enum Opacity {
         static let disabled = 0.4
-        static let focusRing = 0.4
+        static let accentPressed = 0.8
+        static let accentTint = 0.14
+        static let accentTintPressed = 0.24
     }
 
     // MARK: Shape
@@ -120,12 +134,15 @@ enum LoomTheme {
     /// `Type` itself cannot be a nested type name in Swift).
     enum Typography {
         static let caption = Font.system(size: 11)
+        static let statusLabel = Font.system(size: 11, weight: .medium)
+        static let dayHeading = Font.system(size: 11, weight: .semibold)
         static let small = Font.system(size: 12)
         static let smallMedium = Font.system(size: 12, weight: .medium)
         static let body = Font.system(size: 13)
         static let bodyStrong = Font.system(size: 13, weight: .semibold)
         static let footerIcon = Font.system(size: 14)
         static let title = Font.system(size: 15, weight: .semibold)
+        /// A `Message` title and the conversation record's title.
         static let heading = Font.system(size: 20, weight: .semibold)
         static let heroSymbol = Font.system(size: 28)
         static let chevron = Font.system(size: 9, weight: .semibold)
@@ -157,7 +174,7 @@ enum LoomTheme {
         static let hintSpacing: CGFloat = 6
         static let hintTop: CGFloat = 40
         // Cards.
-        static let cardGap: CGFloat = 0
+        static let cardGap: CGFloat = 2
         static let cardH: CGFloat = 10
         static let cardV: CGFloat = 8
         static let cardSpacing: CGFloat = 8
@@ -190,6 +207,9 @@ enum LoomTheme {
         static let noticeSpacing: CGFloat = 10
         static let noticeLineSpacing: CGFloat = 3
         static let noticePadding: CGFloat = 12
+        // Accent buttons.
+        static let buttonH: CGFloat = 12
+        static let buttonV: CGFloat = 3
         // Sheet.
         static let sheetSpacing: CGFloat = 12
         static let sheetPadding: CGFloat = 20
@@ -230,7 +250,7 @@ enum LoomTheme {
         static let chaseInset: CGFloat = 1.6
         static let chaseDotRadius: CGFloat = 1.45
         static let pip: CGFloat = 8
-        static let projectDot: CGFloat = 7
+        static let projectDot: CGFloat = 8
     }
 
     // MARK: Motion
@@ -242,5 +262,13 @@ enum LoomTheme {
         /// Opacity by distance behind the head.
         static let chaseTrail: [Double] = [1, 0.8, 0.55, 0.35]
         static let chaseRest = 0.16
+    }
+}
+
+extension LoomTheme.RGB {
+    /// An sRGB color from 0xRRGGBB, the form the design documents use.
+    init(hex: UInt32) {
+        self.init(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255,
+                  blue: Double(hex & 0xFF) / 255)
     }
 }
