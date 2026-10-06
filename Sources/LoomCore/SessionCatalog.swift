@@ -25,11 +25,15 @@ public struct CatalogSession: Equatable, Sendable {
     /// True when the user renamed the conversation; terminal title events must
     /// not overwrite a custom title.
     public let titleIsCustom: Bool
+    /// When the row became stale (`last use + staleAfter` at classification).
+    /// Nil means unknown (a row classified before schema 3, or not stale);
+    /// the cleanup planner derives it then.
+    public let staleSince: Date?
 
     public init(
         session: ManagedSession, title: String?, createdAt: Date, lastUsedAt: Date,
         lifecycle: SessionLifecycle, pinned: Bool, projectID: UUID? = nil,
-        titleIsCustom: Bool = false
+        titleIsCustom: Bool = false, staleSince: Date? = nil
     ) {
         self.session = session
         self.title = title
@@ -39,6 +43,7 @@ public struct CatalogSession: Equatable, Sendable {
         self.pinned = pinned
         self.projectID = projectID
         self.titleIsCustom = titleIsCustom
+        self.staleSince = staleSince
     }
 }
 
@@ -99,6 +104,16 @@ public struct CatalogPage: Equatable, Sendable {
     public let sessions: [CatalogSession]
     /// Nil when this page reached the end of the query.
     public let next: CatalogCursor?
+    /// Rows this page's scan met but could not decode (unknown provider or
+    /// malformed identity). They are skipped, never written or deleted; the
+    /// next page's scan can meet the same rows again.
+    public let skippedRowCount: Int
+
+    init(sessions: [CatalogSession], next: CatalogCursor?, skippedRowCount: Int = 0) {
+        self.sessions = sessions
+        self.next = next
+        self.skippedRowCount = skippedRowCount
+    }
 }
 
 public struct CatalogRun: Equatable, Sendable {
@@ -126,6 +141,9 @@ public enum SessionCatalogError: Error, CustomStringConvertible, Sendable {
     case projectNotFound(UUID)
     case projectNotEmpty(UUID)
     case projectPathNotDirectory(String)
+    /// The conversation has a `deletions` row: no start, resume or use is allowed.
+    case deletionPending(UUID)
+    case deletionAlreadyRequested(UUID)
 
     public var description: String {
         switch self {
@@ -143,31 +161,58 @@ public enum SessionCatalogError: Error, CustomStringConvertible, Sendable {
             "Project still has conversations and cannot be removed: \(id)"
         case let .projectPathNotDirectory(path):
             "Project path is not an existing folder: \(path)"
+        case let .deletionPending(id):
+            "Conversation is being deleted: \(id)"
+        case let .deletionAlreadyRequested(id):
+            "A deletion is already recorded for conversation: \(id)"
         }
     }
 }
 
 /// Serialized durable metadata store. It never stores conversation content.
 public actor SessionCatalog {
-    public static let schemaVersion: Int32 = 2
+    public static let schemaVersion: Int32 = 3
     public static let maxTitleLength = 160
     static let sessionColumns = """
         s.id, s.provider, s.provider_conversation_id, s.working_directory, s.title,
-        s.created_at, s.last_used_at, s.lifecycle, s.pinned, s.project_id, s.title_is_custom
+        s.created_at, s.last_used_at, s.lifecycle, s.pinned, s.project_id, s.title_is_custom,
+        s.stale_since
         """
+    /// Excludes conversations with a `deletions` row (fence); `s` is the sessions alias.
+    static let notDeleting = "NOT EXISTS (SELECT 1 FROM deletions d WHERE d.session_id = s.id)"
     let database: CatalogDatabase
     var existingRunTransitionFailpoint: (@Sendable () throws -> Void)?
     /// Rows decoded so far; lets tests prove a state change does not rescan the catalog.
     private(set) var decodedSessionRows = 0
+    /// Raw ids of rows that could not be decoded, met by a list or load path.
+    private var skippedRowIDs: Set<String> = []
+    var deleteRowsFailpoint: (@Sendable () throws -> Void)?
+
+    /// Distinct undecodable `sessions` rows met so far by `sessions()`,
+    /// `sessions(ids:)` and `sessionPage` (for later UI or evidence). Such
+    /// rows are skipped and never written or deleted.
+    public var skippedRowCount: Int { skippedRowIDs.count }
 
     public init(url: URL) throws {
         database = try CatalogDatabase(url: url)
     }
 
-    /// Test seam: runs inside the schema 1 to 2 transaction, after the DDL and
+    /// Test seam: runs inside the migration transaction, after the DDL and
     /// before COMMIT, so a thrown error exercises the real rollback.
     init(url: URL, migrationFailpoint: @escaping () throws -> Void) throws {
         database = try CatalogDatabase(url: url, migrationFailpoint: migrationFailpoint)
+    }
+
+    /// Same, called after the DDL of each target version (2, then 3).
+    init(url: URL, versionedMigrationFailpoint: @escaping (Int32) throws -> Void) throws {
+        database = try CatalogDatabase(url: url, versionedMigrationFailpoint: versionedMigrationFailpoint)
+    }
+
+    /// Test seam inside the delete transaction, after the row deletes and
+    /// before COMMIT.
+    init(url: URL, deleteRowsFailpoint: @escaping @Sendable () throws -> Void) throws {
+        database = try CatalogDatabase(url: url)
+        self.deleteRowsFailpoint = deleteRowsFailpoint
     }
 
     /// Test seam at the existing-target transaction boundary, after the
@@ -211,6 +256,18 @@ public actor SessionCatalog {
         }
     }
 
+    /// List and load paths: an undecodable row is counted and skipped instead
+    /// of failing the whole read. Only invalid content is skipped; SQLite
+    /// errors still propagate.
+    func decodeSessionOrSkip(_ statement: OpaquePointer) throws -> CatalogSession? {
+        do {
+            return try decodeSession(statement)
+        } catch SessionCatalogError.invalidRow {
+            skippedRowIDs.insert(database.optionalText(statement, column: 0) ?? "")
+            return nil
+        }
+    }
+
     func decodeSession(_ statement: OpaquePointer) throws -> CatalogSession {
         decodedSessionRows &+= 1
         guard let id = UUID(uuidString: try database.text(statement, column: 0)),
@@ -237,20 +294,21 @@ public actor SessionCatalog {
             lifecycle: lifecycle,
             pinned: sqlite3_column_int(statement, 8) != 0,
             projectID: projectID,
-            titleIsCustom: sqlite3_column_int(statement, 10) != 0
+            titleIsCustom: sqlite3_column_int(statement, 10) != 0,
+            staleSince: database.optionalDouble(statement, column: 11).map(Date.init(timeIntervalSince1970:))
         )
     }
 
     func insertSessionRow(
         _ session: ManagedSession, title: String?, createdAt: Date,
         lastUsedAt: Date, lifecycle: SessionLifecycle, pinned: Bool,
-        projectID: UUID? = nil
+        projectID: UUID? = nil, staleSince: Date? = nil
     ) throws {
         try database.withStatement("""
             INSERT INTO sessions (
                 id, provider, provider_conversation_id, working_directory, title,
-                created_at, last_used_at, lifecycle, pinned, project_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                created_at, last_used_at, lifecycle, pinned, project_id, stale_since
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """) { statement in
             try database.bind(session.id.uuidString, at: 1, to: statement)
             try database.bind(session.provider.rawValue, at: 2, to: statement)
@@ -262,6 +320,8 @@ public actor SessionCatalog {
             try database.bind(lifecycle.rawValue, at: 8, to: statement)
             sqlite3_bind_int(statement, 9, pinned ? 1 : 0)
             try database.bind(projectID?.uuidString, at: 10, to: statement)
+            if let staleSince { sqlite3_bind_double(statement, 11, staleSince.timeIntervalSince1970) }
+            else { sqlite3_bind_null(statement, 11) }
             try database.stepDone(statement, operation: "insert session")
         }
     }
@@ -312,13 +372,13 @@ public actor SessionCatalog {
             try database.stepDone(statement, operation: "link replacement session")
         }
         try database.withStatement(
-            "UPDATE sessions SET lifecycle = 'idle' WHERE id = ?"
+            "UPDATE sessions SET lifecycle = 'idle', stale_since = NULL WHERE id = ?"
         ) { statement in
             try database.bind(oldSessionID.uuidString, at: 1, to: statement)
             try database.stepDone(statement, operation: "idle previous session")
         }
         try database.withStatement(
-            "UPDATE sessions SET lifecycle = 'active' WHERE id = ?"
+            "UPDATE sessions SET lifecycle = 'active', stale_since = NULL WHERE id = ?"
         ) { statement in
             try database.bind(newSessionID.uuidString, at: 1, to: statement)
             try database.stepDone(statement, operation: "activate replacement session")

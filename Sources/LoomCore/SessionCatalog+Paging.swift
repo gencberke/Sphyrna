@@ -40,12 +40,13 @@ extension SessionCatalog {
             bindings.append((nil, cursor.timestamp))
             bindings.append((cursor.id, nil))
         }
+        conditions.append(Self.notDeleting)
         let whereClause = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
         let sql = """
             SELECT \(Self.sessionColumns) FROM sessions s
             LEFT JOIN projects p ON p.id = s.project_id
             \(whereClause)
-            ORDER BY \(column) \(direction), s.id \(direction) LIMIT ?
+            ORDER BY \(column) \(direction), s.id \(direction)
             """
         return try database.withStatement(sql) { statement in
             var index: Int32 = 1
@@ -54,22 +55,29 @@ extension SessionCatalog {
                 else if let number { sqlite3_bind_double(statement, index, number) }
                 index += 1
             }
-            sqlite3_bind_int(statement, index, Int32(limit + 1))
+            // No SQL LIMIT: undecodable rows do not count toward the page, so
+            // the scan stops once one row beyond the page proves there is more.
             var rows: [CatalogSession] = []
+            var skipped = 0
             var stepResult = sqlite3_step(statement)
             while stepResult == SQLITE_ROW {
-                rows.append(try decodeSession(statement))
+                if let session = try decodeSessionOrSkip(statement) { rows.append(session) }
+                else { skipped += 1 }
+                if rows.count > limit { break }
                 stepResult = sqlite3_step(statement)
             }
-            try database.requireDone(stepResult, operation: "read session page")
-            guard rows.count > limit else { return CatalogPage(sessions: rows, next: nil) }
+            if stepResult != SQLITE_ROW { try database.requireDone(stepResult, operation: "read session page") }
+            guard rows.count > limit else {
+                return CatalogPage(sessions: rows, next: nil, skippedRowCount: skipped)
+            }
             rows.removeLast()
             let last = rows[rows.count - 1]
             let timestamp = query.order == .recentActivity ? last.lastUsedAt : last.createdAt
             return CatalogPage(
                 sessions: rows,
                 next: CatalogCursor(timestamp: timestamp.timeIntervalSince1970,
-                                    id: last.session.id.uuidString)
+                                    id: last.session.id.uuidString),
+                skippedRowCount: skipped
             )
         }
     }
@@ -89,7 +97,7 @@ extension SessionCatalog {
                 var rows: [CatalogSession] = []
                 var stepResult = sqlite3_step(statement)
                 while stepResult == SQLITE_ROW {
-                    rows.append(try decodeSession(statement))
+                    if let session = try decodeSessionOrSkip(statement) { rows.append(session) }
                     stepResult = sqlite3_step(statement)
                 }
                 try database.requireDone(stepResult, operation: "read selected sessions")
@@ -101,7 +109,7 @@ extension SessionCatalog {
 
     public func oldestLastUsed(lifecycle: SessionLifecycle) throws -> Date? {
         try database.withStatement(
-            "SELECT MIN(last_used_at) FROM sessions WHERE lifecycle = ?"
+            "SELECT MIN(s.last_used_at) FROM sessions s WHERE s.lifecycle = ? AND \(Self.notDeleting)"
         ) { statement in
             try database.bind(lifecycle.rawValue, at: 1, to: statement)
             guard sqlite3_step(statement) == SQLITE_ROW else { return nil }

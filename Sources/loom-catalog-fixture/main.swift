@@ -6,7 +6,9 @@ import SQLite3
 /// inspects one. Never bundled into the app and never pointed at real data:
 /// it refuses a data root that already holds a catalog, except for `inspect`.
 ///
-///   loom-catalog-fixture seed <data-root> <sessions> [projects]
+///   loom-catalog-fixture seed <data-root> <sessions> [projects] [--deleting <n>] [--stale-since]
+///       --deleting n: record a pending deletion (state "requested") for the n oldest rows
+///       --stale-since: give every stale row a stale_since (last use plus 15 days)
 ///   loom-catalog-fixture seed-v1 <data-root>
 ///   loom-catalog-fixture inspect <data-root> [session-id ...]
 
@@ -20,9 +22,29 @@ func printJSON(_ object: Any) {
     print(String(decoding: data, as: UTF8.self))
 }
 
-let arguments = Array(CommandLine.arguments.dropFirst())
+func parseArguments() -> (positional: [String], deleting: Int, staleSince: Bool) {
+    var positional: [String] = []
+    var deleting = 0
+    var staleSince = false
+    var tokens = Array(CommandLine.arguments.dropFirst())[...]
+    while let token = tokens.popFirst() {
+        switch token {
+        case "--deleting":
+            guard let value = tokens.popFirst(), let count = Int(value), count >= 0 else { fail("--deleting needs a count") }
+            deleting = count
+        case "--stale-since": staleSince = true
+        default: positional.append(token)
+        }
+    }
+    return (positional, deleting, staleSince)
+}
+
+let parsed = parseArguments()
+let arguments = parsed.positional
+let deletingCount = parsed.deleting
+let seedStaleSince = parsed.staleSince
 guard let command = arguments.first, arguments.count >= 2 else {
-    fail("usage: loom-catalog-fixture seed <data-root> <sessions> [projects] | seed-v1 <data-root> | inspect <data-root> [session-id ...]")
+    fail("usage: loom-catalog-fixture seed <data-root> <sessions> [projects] [--deleting <n>] [--stale-since] | seed-v1 <data-root> | inspect <data-root> [session-id ...]")
 }
 let root = URL(fileURLWithPath: arguments[1], isDirectory: true)
 let catalogURL = root.appendingPathComponent("catalog.sqlite3")
@@ -54,21 +76,37 @@ func run() async throws {
         let words = ["Refactor", "Fix", "Explain", "Review", "Summarize", "Draft", "Investigate", "Polish"]
         let topics = ["sidebar cards", "catalog paging", "terminal input", "migration", "search field",
                       "release notes", "hook adapter", "window restore"]
+        var inserted: [ManagedSession] = []
         for index in 0..<count {
             // Newest first; every 5th row shares a timestamp with its neighbour.
             let used = now.addingTimeInterval(-Double(index - index % 5) * 1_500)
             let project = index % 8 == 7 || projects.isEmpty ? nil : projects[index % projects.count]
             let provider: ManagedSession.Provider = index % 3 == 0 ? .codex : .claude
+            let lifecycle: SessionLifecycle = index < 6 ? .active : (index % 4 == 0 ? .stale : .idle)
+            let session = ManagedSession(provider: provider, workingDirectory: project?.path ?? NSHomeDirectory())
+            inserted.append(session)
             try await catalog.insertSession(
-                ManagedSession(provider: provider, workingDirectory: project?.path ?? NSHomeDirectory()),
+                session,
                 title: index % 11 == 10 ? nil : "\(words[index % words.count]) \(topics[(index / 3) % topics.count]) #\(index)",
                 createdAt: used.addingTimeInterval(-600), lastUsedAt: used,
-                lifecycle: index < 6 ? .active : (index % 4 == 0 ? .stale : .idle),
-                projectID: project?.id
+                lifecycle: lifecycle, projectID: project?.id,
+                staleSince: seedStaleSince && lifecycle == .stale ? used.addingTimeInterval(15 * 86_400) : nil
             )
         }
+        var deleting: [String] = []
+        for session in inserted.suffix(deletingCount) {
+            try await catalog.beginDeletion(
+                sessionID: session.id,
+                plan: CatalogDeletionPlan(
+                    provider: session.provider, providerIDs: try await catalog.providerIDs(of: session.id),
+                    configDirectory: nil, workingDirectory: session.workingDirectory
+                )
+            )
+            deleting.append(session.id.uuidString)
+        }
         var summary: [String: Any] = [
-            "dataRoot": root.path, "sessions": count,
+            "dataRoot": root.path, "sessions": count, "deleting": deleting,
+            "staleSinceSeeded": seedStaleSince,
             "projects": projects.map { ["id": $0.id.uuidString, "name": $0.name, "path": $0.path] },
         ]
         let newest = try await catalog.sessionPage(CatalogQuery(limit: 3)).sessions
@@ -121,6 +159,13 @@ func run() async throws {
         summary["unassigned"] = counts[nil] ?? 0
         summary["runs"] = try await catalog.runs().count
         summary["runLinks"] = try await catalog.runSessionLinks().count
+        summary["deletions"] = try await catalog.pendingDeletions().map {
+            ["id": $0.sessionID.uuidString, "state": $0.state.rawValue, "attempts": $0.attempts,
+             "lastError": $0.lastError ?? NSNull()] as [String: Any]
+        }
+        let listed = try await catalog.sessionPage(CatalogQuery(limit: CatalogQuery.maxPageSize))
+        summary["staleSinceFirstPage"] = listed.sessions.filter { $0.staleSince != nil }.count
+        summary["skippedRows"] = await catalog.skippedRowCount
         var details: [[String: Any]] = []
         for text in arguments.dropFirst(2) {
             guard let id = UUID(uuidString: text), let row = try await catalog.session(id: id) else {

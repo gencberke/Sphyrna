@@ -146,7 +146,7 @@ struct SessionCatalogV2Tests {
 
         let catalog = try SessionCatalog(url: url)
         #expect(try schemaOneDump(at: url) == before)
-        #expect(try pragma("PRAGMA user_version", at: url) == "2")
+        #expect(try pragma("PRAGMA user_version", at: url) == "\(SessionCatalog.schemaVersion)")
         #expect(try pragma("PRAGMA foreign_key_check", at: url) == "")
         #expect(try pragma("PRAGMA quick_check", at: url) == "ok")
 
@@ -167,7 +167,7 @@ struct SessionCatalogV2Tests {
         #expect(try await catalog.runs().map(\.id).sorted { $0.uuidString < $1.uuidString }
                 == ids.runs.sorted { $0.uuidString < $1.uuidString })
 
-        // The migrated catalog accepts the new features and reopens as version 2.
+        // The migrated catalog accepts the new features and reopens at the current version.
         let added = try await catalog.addProject(path: root.path)
         try await catalog.insertSession(
             ManagedSession(provider: .codex, workingDirectory: root.path),
@@ -200,7 +200,7 @@ struct SessionCatalogV2Tests {
 
         let catalog = try SessionCatalog(url: url)
         #expect(try await catalog.sessions().count == 3)
-        #expect(try pragma("PRAGMA user_version", at: url) == "2")
+        #expect(try pragma("PRAGMA user_version", at: url) == "\(SessionCatalog.schemaVersion)")
         #expect(try schemaOneDump(at: url) == before)
     }
 
@@ -237,7 +237,7 @@ struct SessionCatalogV2Tests {
 
         let catalog = try SessionCatalog(url: url)
         #expect(try await catalog.sessions().count == 3)
-        #expect(try pragma("PRAGMA user_version", at: url) == "2")
+        #expect(try pragma("PRAGMA user_version", at: url) == "\(SessionCatalog.schemaVersion)")
         #expect(try schemaOneDump(at: url) == before)
         #expect(try pragma("PRAGMA quick_check", at: url) == "ok")
     }
@@ -258,7 +258,7 @@ struct SessionCatalogV2Tests {
             return url
         }
         let newer = try makeDatabase("newer.sqlite3", [
-            "PRAGMA application_id = 1280266061", "CREATE TABLE future (x)", "PRAGMA user_version = 3",
+            "PRAGMA application_id = 1280266061", "CREATE TABLE future (x)", "PRAGMA user_version = \(SessionCatalog.schemaVersion + 1)",
         ])
         let foreign = try makeDatabase("foreign.sqlite3", [
             "PRAGMA application_id = 12345", "CREATE TABLE other (x)", "PRAGMA user_version = 2",
@@ -273,7 +273,7 @@ struct SessionCatalogV2Tests {
                 Issue.record("\(url.lastPathComponent) was accepted")
             } catch let error as SessionCatalogError {
                 switch (url.lastPathComponent, error) {
-                case ("newer.sqlite3", .unsupportedSchema(3)): break
+                case ("newer.sqlite3", .unsupportedSchema(SessionCatalog.schemaVersion + 1)): break
                 case ("foreign.sqlite3", .foreignDatabase(applicationID: 12345)): break
                 case ("corrupt.sqlite3", .sqlite): break
                 default: Issue.record("Unexpected \(error) for \(url.lastPathComponent)")

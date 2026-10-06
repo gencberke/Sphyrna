@@ -364,7 +364,8 @@ public actor SessionLifecycleController {
     public func classifyStale(at date: Date = Date()) async throws -> [UUID] {
         let changed = try await catalog.classifyStale(
             before: date.addingTimeInterval(-policy.staleAfter),
-            excluding: Set(await supervisor.runningSessionIDs())
+            excluding: Set(await supervisor.runningSessionIDs()),
+            staleAfter: policy.staleAfter
         )
         if !changed.isEmpty {
             await supervisor.events.publishCatalogLifecycle(.stale, ids: changed)

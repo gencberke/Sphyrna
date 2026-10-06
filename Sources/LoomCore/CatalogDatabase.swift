@@ -4,10 +4,16 @@ import SQLite3
 final class CatalogDatabase: @unchecked Sendable {
     static let applicationID: Int32 = 1_280_266_061 // ASCII "LOOM"
     let handle: OpaquePointer
-    private let migrationFailpoint: (() throws -> Void)?
+    /// Runs inside the migration transaction after the DDL of each target
+    /// version (2, then 3) and before COMMIT.
+    private let migrationFailpoint: ((Int32) throws -> Void)?
 
-    init(url: URL, migrationFailpoint: (() throws -> Void)? = nil) throws {
-        self.migrationFailpoint = migrationFailpoint
+    convenience init(url: URL, migrationFailpoint: (() throws -> Void)? = nil) throws {
+        try self.init(url: url, versionedMigrationFailpoint: migrationFailpoint.map { hook in { _ in try hook() } })
+    }
+
+    init(url: URL, versionedMigrationFailpoint: ((Int32) throws -> Void)?) throws {
+        self.migrationFailpoint = versionedMigrationFailpoint
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
@@ -41,6 +47,9 @@ final class CatalogDatabase: @unchecked Sendable {
         )
         guard registered == SQLITE_OK else { throw error(operation: "register fold function", code: registered) }
         try execute("PRAGMA foreign_keys = ON")
+        // Deleted conversations must not survive as freed-page bytes (contract
+        // section 8); the default is only "fast" and not a documented guarantee.
+        try execute("PRAGMA secure_delete = ON")
         let integrity = try scalarText("PRAGMA quick_check")
         guard integrity == "ok" else {
             throw SessionCatalogError.sqlite(operation: "integrity check", code: SQLITE_CORRUPT,
@@ -64,7 +73,7 @@ final class CatalogDatabase: @unchecked Sendable {
             }
         }
         if version == 0 { try createSchema() }
-        else if version == 1 { try migrateToVersion2() }
+        else if version < SessionCatalog.schemaVersion { try migrate(from: version) }
         try validateSchema()
         guard try scalarText("PRAGMA journal_mode = WAL").lowercased() == "wal" else {
             throw SessionCatalogError.sqlite(operation: "enable WAL", code: SQLITE_ERROR,
@@ -121,17 +130,24 @@ final class CatalogDatabase: @unchecked Sendable {
                 )
                 """)
             try applyVersion2Schema()
+            try applyVersion3Schema()
             try execute("PRAGMA user_version = \(SessionCatalog.schemaVersion)")
         }
     }
 
-    /// Schema 1 to 2 in one transaction: a failure (or a crash before COMMIT)
-    /// leaves the version 1 file exactly as it was.
-    func migrateToVersion2() throws {
+    /// The chain 1 to 2 to 3 runs in one transaction: a failure (or a crash
+    /// before COMMIT) leaves the file at its old version exactly as it was.
+    func migrate(from version: Int32) throws {
         try transaction {
-            try applyVersion2Schema()
-            try migrationFailpoint?()
-            try execute("PRAGMA user_version = 2")
+            if version < 2 {
+                try applyVersion2Schema()
+                try migrationFailpoint?(2)
+            }
+            if version < 3 {
+                try applyVersion3Schema()
+                try migrationFailpoint?(3)
+            }
+            try execute("PRAGMA user_version = \(SessionCatalog.schemaVersion)")
         }
     }
 
@@ -158,22 +174,56 @@ final class CatalogDatabase: @unchecked Sendable {
         try execute("CREATE INDEX sessions_conversation ON sessions(provider, provider_conversation_id)")
     }
 
+    /// Schema 3: durable deletion records, `stale_since`, app state and the
+    /// child-side indexes the delete transaction and the fences rely on. A
+    /// `deletions` row has no foreign key (it outlives the `sessions` row) and
+    /// never stores a title.
+    func applyVersion3Schema() throws {
+        try execute("""
+            CREATE TABLE deletions (
+                session_id TEXT PRIMARY KEY NOT NULL,
+                provider TEXT NOT NULL,
+                provider_ids TEXT NOT NULL,
+                config_dir TEXT,
+                working_directory TEXT,
+                state TEXT NOT NULL CHECK (
+                    state IN ('requested', 'stopping', 'provider_data', 'catalog', 'verifying')
+                ),
+                requested_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT
+            )
+            """)
+        try execute("ALTER TABLE sessions ADD COLUMN stale_since REAL")
+        try execute("""
+            CREATE TABLE app_state (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL
+            )
+            """)
+        try execute("CREATE INDEX run_sessions_session ON run_sessions(session_id)")
+        try execute("CREATE INDEX runs_initial_session ON runs(initial_session_id)")
+        try execute("CREATE INDEX identity_changes_session ON provider_identity_changes(session_id)")
+    }
+
     func validateSchema() throws {
         let tableCount = try scalarInt64("""
             SELECT count(*) FROM sqlite_master
             WHERE type = 'table' AND name IN (
-                'sessions', 'runs', 'run_sessions', 'provider_identity_changes', 'projects'
+                'sessions', 'runs', 'run_sessions', 'provider_identity_changes', 'projects',
+                'deletions', 'app_state'
             )
             """)
-        guard tableCount == 5 else {
-            throw SessionCatalogError.invalidRow("schema version 2 is missing required tables")
+        guard tableCount == 7 else {
+            throw SessionCatalogError.invalidRow("schema version 3 is missing required tables")
         }
         let columns = try scalarInt64("""
             SELECT count(*) FROM pragma_table_info('sessions')
-            WHERE name IN ('project_id', 'title_is_custom')
+            WHERE name IN ('project_id', 'title_is_custom', 'stale_since')
             """)
-        guard columns == 2 else {
-            throw SessionCatalogError.invalidRow("schema version 2 is missing session columns")
+        guard columns == 3 else {
+            throw SessionCatalogError.invalidRow("schema version 3 is missing session columns")
         }
     }
 
@@ -186,6 +236,19 @@ final class CatalogDatabase: @unchecked Sendable {
         } catch {
             try? execute("ROLLBACK")
             throw error
+        }
+    }
+
+    /// Truncating checkpoint: the WAL is emptied into the main file, so bytes
+    /// removed by a delete are gone from both. Fails when a reader blocks it.
+    func checkpointTruncate() throws {
+        try withStatement("PRAGMA wal_checkpoint(TRUNCATE)") { statement in
+            let result = sqlite3_step(statement)
+            guard result == SQLITE_ROW else { throw error(operation: "checkpoint", code: result) }
+            guard sqlite3_column_int(statement, 0) == 0 else {
+                throw SessionCatalogError.sqlite(operation: "checkpoint", code: SQLITE_BUSY,
+                                                 message: "checkpoint was blocked by another connection")
+            }
         }
     }
 

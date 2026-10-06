@@ -127,7 +127,7 @@ extension SessionCatalog {
     /// Conversation count per project (nil key: no project), from one grouped scan.
     public func sessionCounts() throws -> [UUID?: Int] {
         try database.withStatement(
-            "SELECT project_id, count(*) FROM sessions GROUP BY project_id"
+            "SELECT s.project_id, count(*) FROM sessions s WHERE \(Self.notDeleting) GROUP BY s.project_id"
         ) { statement in
             var result: [UUID?: Int] = [:]
             var stepResult = sqlite3_step(statement)

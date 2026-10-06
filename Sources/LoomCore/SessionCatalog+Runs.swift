@@ -4,6 +4,7 @@ import SQLite3
 extension SessionCatalog {
     public func startRun(_ run: ManagedRun, sessionID: UUID) throws {
         try database.transaction {
+            try requireNotDeleting(sessionID)
             try database.withStatement("""
                 INSERT INTO runs (
                     id, initial_session_id, leader_pid, leader_start_seconds,
@@ -66,6 +67,7 @@ extension SessionCatalog {
         try existingRunTransitionFailpoint?()
         try database.transaction {
             try requireActiveLink(runID: runID, sessionID: oldSessionID)
+            try requireNotDeleting(newSessionID)
             guard try sessionExists(newSessionID) else {
                 throw SessionCatalogError.invalidRow("session \(newSessionID) does not exist")
             }
