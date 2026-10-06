@@ -20,6 +20,8 @@ Write areas decide what runs in parallel; hot files (`AppDelegate.swift`, `Packa
 
 Critical path: F1 → F3 → I1 → U1/U2/U4 → CP4-D. Off the critical path and started at once: U0, CP4-A, CP4-F, UD.
 
+As run (7 Oct): wave 1 F0, F1, F2, F4, U0, CP4-A, CP4-F, UD; wave 2a I1, U3, F3, I2 (I2 moved up once I1 and F3 were in); wave 2b F5, F6 (S2 and F10 only), CP4-B (also takes F6's undecodable-row item, since it owns the catalog files), U12 (U1 and U2 as one slice to save a wave). Next: CP4-C, U4, I4 (exclusive measurement), then I3, CP4-D, CP4-G, U5, CP4-E.
+
 ## Protocol for every implementer slice
 
 - **Worktree.** Each slice works in its own git worktree `~/Library/Caches/loom-run1/wt/<slice>` (outside `~/Documents`) on branch `run1/<slice>`, created by the planner-reviewer from the `swarm/1` commit named in the Brief. The implementer never commits; the planner-reviewer diffs the worktree, applies the accepted change to `swarm/1` with `git apply --3way` and commits it (one commit per accepted slice, English message, Co-Authored-By line). No push, PR, merge, rebase, tag or history rewrite ([D-30](../DECISIONS.md)).

@@ -1,5 +1,7 @@
 # Loom identity: proposal (6 Oct 2026)
 
+**History (7 Oct 2026):** direction A was chosen (D-22) and folded into [DESIGN.md §6 and §3](DESIGN.md#6-identity-a--night-fleece) in stage I. DESIGN.md is canonical; this file is kept as the record of the comparison.
+
 **Status:** direction **A · Night Fleece** chosen by the user (6 Oct 2026, [D-22](../DECISIONS.md)). The optional borrowings in §4 and the sub-decisions in §5 stay open and default to A's values until the user decides them. Implementation (tokens into one Swift source, rules into DESIGN.md) is roadmap stage I.
 Visual aid: [identity-preview.html](identity-preview.html) (open in a browser; tokens match the tables below).
 
