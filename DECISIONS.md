@@ -33,22 +33,24 @@ Rules: only the main agent (planner-reviewer) writes this file, and only for dec
 | D-23 | 2026-10-06 | CP5 is closed; the app is stable. Codex-only items move to the Codex backlog (resolves O-02); budgets beyond CPU40 (O-01) move to release readiness. | [CP5 closure](plans/cp5/CLOSURE.md#cp5-closure-6-oct-2026), [Codex backlog](plans/cp5/CODEX-BACKLOG.md) |
 | D-24 | 2026-10-06 | The app mark's accessibility label is "Loom" (was the inherited "Herdr"). | assets/brand/README.md |
 | D-25 | 2026-10-06 | Two trees: this repository is **loom-dev** (development; may be messy, holds tests, plans, tooling and dev builds); a separate clean **loom** tree holds only what the production app needs and is the only source of the daily-use Loom.app. Stable releases are tested in loom-dev, then promoted into loom and built there. Setup details are proposed in ROADMAP stage L. | [DEVELOPMENT.md](DEVELOPMENT.md#10-loom-dev-and-the-clean-loom-tree), [ROADMAP](ROADMAP.md) |
+| D-26 | 2026-10-06 | CP4 (deletion and retention) is in the first-release scope. Permanent deletion of a single conversation is the must-have; stale handling and automatic cleanup are planned with it but may be cut if they stall. Resolves O-05 for CP4. | [ROADMAP](ROADMAP.md), contract §5, §8 |
+| D-27 | 2026-10-06 | CP3 (authorized coordination) is out of the multi-agent run and the first release; it may be tried later in a test environment after the clean build. Resolves O-05 for CP3. | ROADMAP |
+| D-28 | 2026-10-06 | Codex is frozen: no Codex work at all until after the first release (restates D-08/D-14 as a standing rule). | [Codex backlog](plans/cp5/CODEX-BACKLOG.md) |
+| D-29 | 2026-10-06 | Clean loom tree: a sibling folder `~/Documents/github/loom` (after this checkout is renamed `loom-dev`); one commit per promoted release, so commit ↔ release; versions start at 0.1.0; the daily app is signed with one stable local identity so macOS asks for permissions once. Resolves O-11. | [DEVELOPMENT.md §10](DEVELOPMENT.md#10-loom-dev-and-the-clean-loom-tree), [stage L](plans/STAGE-L.md) |
 
 Standing rules and setup facts from earlier sessions: commit, push and PR only on the user's request (a plan asking for one is not authority); development packages are signed with the local `Loom Dev Code Signing` identity (set up 3 Oct 2026); real `~/.claude` and `~/.codex` are read-only; the user's installed Loom Dev app and default dev catalog are never used for tests.
 
 ## Open
 
-Resolved: O-02 by D-23, O-04 by D-22.
+Resolved: O-02 by D-23, O-04 by D-22, O-05 by D-26/D-27, O-11 by D-29.
 
 | ID | Question | Context | Blocks |
 | --- | --- | --- | --- |
 | O-01 | Resource budgets beyond CPU40: app CPU ceiling (proposal ≤ 30 % at 1 MiB/s), memory, idle wakeups, latency. | [Proposal](plans/cp5/RESOURCE-BUDGET-PROPOSAL.md) (reference column predates package I; current numbers in [the package I summary](plans/experiments/cp5-final-matrix-I-20261006.json)) | Release readiness (stage R); no longer blocks CP5 (D-23) |
 | O-03 | Navbar / title bar layout. Direction A keeps a transparent header; the proposal's alternative is C's solid band with a status chip. | design/DESIGN.md, [identity proposal](design/IDENTITY-PROPOSAL.md) §5 | Stage I |
-| O-05 | Which of CP4 (deletion and retention) and CP3 (authorized coordination) are required for the first production release. | [ROADMAP](ROADMAP.md) | Release plan |
 | O-06 | First-release distribution: Developer ID signing, notarization, production bundle identity, update mechanism. | ROADMAP | Release plan |
 | O-07 | Deferred CP5 items: Finder drop and links, occluded-window GPU cells, Metal fast path (development only today), spinner layer split. | PERF, CLOSURE | Scheduling |
 | O-08 | Contract §3 rows that look outdated: "terminal engine and UI technology to be selected" (SwiftTerm, SwiftUI and AppKit are in use), the Codex memory figure, the Codex cache row versus §4.4. | Contract §3, [audit](plans/experiments/doc-audit-20261006/freshness.md) §4 | Contract accuracy |
 | O-09 | Contract §12 remaining decisions: crash and Force Quit guarantee, Claude delivery path, deletion data contract, cleanup arithmetic. | Contract §12 | CP4, CP3 |
 | O-10 | Contract statements marked "status to confirm" (lines with that note in §6, §9, §12, §13): Codex two-path comparison wording, the A5 gap, SQLite/SwiftUI/AppKit called candidates, crash-guarantee and budget items, the chat-ordering idea. | Contract, [audit](plans/experiments/doc-audit-20261006/freshness.md) §4 | Contract accuracy |
-| O-11 | Clean loom tree details: location, git history per promoted release, versioning, signing identity for the daily app, whether dev/evidence code must be stripped before the first daily build. | [ROADMAP](ROADMAP.md) stage L | Stage L |
 | O-12 | Identity sub-decisions under D-22: the optional borrowings (B's failure diamond, C's header band) and the proposal's §5 items 2–9; until decided, A's values apply. | [identity proposal](design/IDENTITY-PROPOSAL.md) §4–§5 | Stage I |

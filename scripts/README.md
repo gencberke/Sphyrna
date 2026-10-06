@@ -6,6 +6,9 @@ Rules for when and how to run these are in [DEVELOPMENT.md](../DEVELOPMENT.md). 
 |---|---|---|---|
 | `dev-paths.sh` | Sourced helpers: `loom_refuse_documents`, `loom_scratch_path`, `loom_command_channel`, `loom_send_command` | no | any time (sourced, not run) |
 | `package-dev-app.sh [dir]` | Release build, sign, verify, swap `Loom Dev.app` | yes (release build) | single build owner, target app not running, screen unlocked |
+| `release/promote.sh <version> <loom-tree>` | Exports the allowlist from tag `release/<version>` into the clean loom tree, generates its manifest/README/`build.sh`, commits and tags `v<version>` there (DEVELOPMENT.md §10) | no (no build; one tiny `git archive`) | any time; writes only the loom tree |
+| `release/build-loom.sh` (copied to the loom tree as `build.sh`) `[--target app] [--check-only]` | Release build, sign with the stable identity, verify, swap into `/Applications/Loom.app` | yes (release build, signing) unless `--check-only` | user says the Mac is idle, Loom not running, screen unlocked; `--check-only` any time |
+| `release/Package.release.swift` | Template of the release-only manifest used by `promote.sh` (not run) | no | not run |
 | `cp5-a-acceptance.sh [app]` | A slice smoke through LaunchServices (synthetic `--fixture interactive` terminal, no model) | yes (window) | idle Mac, app not the user's running copy |
 | `cp5-a-measure.sh [reps] [app]` | A slice starting measurements, 10 s warm-up + 60 s per scenario | yes | Mac idle, window visible |
 | `cp5-b-acceptance.sh [app]` | B acceptance on isolated data (migration, catalog); builds fixtures | yes (debug build) | single build owner, idle Mac |

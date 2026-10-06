@@ -1,0 +1,184 @@
+#!/bin/zsh
+# Builds the daily-use Loom.app (local.loom.desktop) from this tree and installs it.
+# In loom-dev this file is scripts/release/build-loom.sh; promote.sh copies it
+# into the clean loom tree as ./build.sh. It must stay standalone: it reads only
+# files of the tree it sits in (Package.swift, VERSION, assets/) and git.
+#
+# Usage: ./build.sh [--target <path/to/Loom.app>] [--check-only]
+#   --target      install location (default /Applications/Loom.app, or LOOM_INSTALL_PATH)
+#   --check-only  validate arguments, tree, signing identity and the running-app
+#                 refusal, print the plan, then stop before building or touching
+#                 the target (heat-free; used for dry runs)
+# LOOM_SCRATCH_PATH moves build products (default ~/Library/Caches/loom-release-build).
+# LOOM_CODESIGN_IDENTITY selects the certificate (exact name or SHA-1 hash);
+# default is the local "Loom Dev Code Signing" identity. Ad-hoc signing is refused:
+# macOS privacy grants persist only while the stable identity, bundle id and
+# install path stay the same.
+# Exit codes: 1 error, 2 path under ~/Documents or bad arguments, 3 Loom is running.
+set -euo pipefail
+
+root=${0:A:h}
+target=${LOOM_INSTALL_PATH:-/Applications/Loom.app}
+check_only=0
+while (( $# > 0 )); do
+  case $1 in
+    --target) (( $# >= 2 )) || { echo "--target needs a path" >&2; exit 2; }; target=$2; shift 2 ;;
+    --check-only) check_only=1; shift ;;
+    -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d'; exit 0 ;;
+    *) echo "Unknown argument: $1 (see --help)" >&2; exit 2 ;;
+  esac
+done
+
+# Packages and build scratch must live outside ~/Documents: every run host is its
+# own TCC-responsible app and blocks on a Documents consent prompt there.
+refuse_documents() { # <label> <path>
+  local resolved=${2:A} documents=${HOME:A}/Documents
+  if [[ $resolved == $documents || $resolved == $documents/* ]]; then
+    echo "$1 '$2' is under ~/Documents. Run hosts are separate TCC-responsible apps and block on a Documents consent prompt there." >&2
+    exit 2
+  fi
+}
+[[ $target == *.app ]] || { echo "Target must be a .app path: $target" >&2; exit 2; }
+refuse_documents "Install target" "$target"
+scratch=${LOOM_SCRATCH_PATH:-$HOME/Library/Caches/loom-release-build}
+refuse_documents "LOOM_SCRATCH_PATH" "$scratch"
+final_app=${target:A}
+given_app=${target:a}
+install_dir=${final_app:h}
+
+[[ -f "$root/VERSION" && -f "$root/Package.swift" && -f "$root/assets/Loom.icns" ]] \
+  || { echo "This is not a promoted loom tree (VERSION, Package.swift or assets/Loom.icns missing): $root" >&2; exit 1; }
+version=$(<"$root/VERSION")
+version=${version//[[:space:]]/}
+version_re='^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
+[[ $version =~ $version_re ]] || { echo "VERSION is not a version number: '$version'" >&2; exit 1; }
+git -C "$root" rev-parse --verify HEAD >/dev/null 2>&1 || { echo "$root is not a git tree with a commit; build only from the promoted commit." >&2; exit 1; }
+if [[ -n $(git -C "$root" status --porcelain) ]]; then
+  echo "The loom tree has uncommitted changes; this tree is generated and must be built exactly as promoted." >&2
+  exit 1
+fi
+revision=$(git -C "$root" rev-parse --short HEAD)
+
+# Any process executing from the target bundle (app, helpers, run hosts).
+running_from_target() {
+  # Match both the resolved path and the path as given (symlinked parents).
+  ps -axo command= | awk -v a="$final_app/Contents/" -v b="$given_app/Contents/" \
+    'index($0, a) == 1 || index($0, b) == 1 { found = 1 } END { exit !found }'
+}
+refuse_if_running() {
+  if running_from_target; then
+    echo "Refusing to replace '$final_app': Loom is running. Quit it first." >&2
+    exit 3
+  fi
+}
+refuse_if_running
+
+# Resolve once, before building: signing and the run host's owner requirement
+# must use the very same certificate.
+requested=${LOOM_CODESIGN_IDENTITY:-Loom Dev Code Signing}
+if [[ $requested == - ]]; then
+  echo "Ad-hoc signing is refused: it would lose macOS privacy grants on every build. Use a stable identity (LOOM_CODESIGN_IDENTITY)." >&2
+  exit 1
+fi
+identities=$(security find-identity -v -p codesigning)
+match_text=$(print -r -- "$identities" | awk -F'"' -v requested="$requested" '
+  { split($1, fields, " "); hash = fields[2] }
+  length(hash) == 40 && ($2 == requested || toupper(hash) == toupper(requested)) && !seen[hash]++ { print hash }
+')
+matches=(${(f)match_text})
+(( ${#matches} == 1 )) || { echo "Code-signing identity must match exactly one valid certificate: $requested (found ${#matches})" >&2; exit 1; }
+identity=$matches[1]
+
+echo "Loom $version ($revision) -> $final_app"
+echo "Signing identity: $identity ($requested)"
+echo "Build scratch: $scratch"
+if (( check_only )); then
+  echo "--check-only: stopping before the build; nothing was built or changed."
+  exit 0
+fi
+[[ -d $install_dir && -w $install_dir ]] || { echo "Cannot write to $install_dir (needs an existing, writable directory)." >&2; exit 1; }
+
+cd "$root"
+build=(swift build -c release --scratch-path "$scratch")
+"${build[@]}" --product loom-app
+"${build[@]}" --product loom-hook
+"${build[@]}" --product loom-run-host
+bin=$("${build[@]}" --show-bin-path)
+
+stage=$(mktemp -d "$install_dir/.loom-package.XXXXXX")
+trap 'rm -rf "$stage"' EXIT
+app="$stage/Loom.app"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+cp "$bin/loom-app" "$app/Contents/MacOS/Loom"
+# Helpers sit beside the main executable; the app resolves them there only.
+cp "$bin/loom-hook" "$app/Contents/MacOS/"
+cp assets/Loom.icns "$app/Contents/Resources/Loom.icns"
+# Run scopes: LaunchServices starts one host instance per run, each in a fresh
+# resource coalition. It is its own TCC-responsible app.
+host="$app/Contents/Helpers/LoomRunHost.app"
+mkdir -p "$host/Contents/MacOS"
+cp "$bin/loom-run-host" "$host/Contents/MacOS/loom-run-host"
+cat > "$host/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>local.loom.desktop.run-host</string>
+  <key>CFBundleName</key><string>Loom Run Host</string>
+  <key>CFBundleDisplayName</key><string>Loom Run Host</string>
+  <key>CFBundleExecutable</key><string>loom-run-host</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>LSBackgroundOnly</key><true/>
+  <key>LSMultipleInstancesProhibited</key><false/>
+  <key>LSMinimumSystemVersion</key><string>27.0</string>
+</dict>
+</plist>
+PLIST
+# Provider marks shown on conversation cards.
+cp assets/harness/harness-claude.png assets/harness/harness-codex.png "$app/Contents/Resources/"
+cat > "$app/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>local.loom.desktop</string>
+  <key>CFBundleName</key><string>Loom</string>
+  <key>CFBundleDisplayName</key><string>Loom</string>
+  <key>CFBundleExecutable</key><string>Loom</string>
+  <key>CFBundleIconFile</key><string>Loom</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>$version</string>
+  <key>CFBundleVersion</key><string>$revision</string>
+  <key>LSMinimumSystemVersion</key><string>27.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSPrincipalClass</key><string>NSApplication</string>
+</dict>
+</plist>
+PLIST
+
+codesign --force --options runtime --sign "$identity" "$app/Contents/MacOS/loom-hook"
+# The host serves only its owner: seal Loom's code requirement (identifier and
+# signing certificate) into the host's Info.plist before signing it.
+owner="identifier \"local.loom.desktop\" and certificate leaf = H\"$identity\""
+plutil -insert LoomOwnerRequirement -string "$owner" "$host/Contents/Info.plist"
+codesign --force --options runtime --sign "$identity" "$host"
+codesign --force --options runtime --sign "$identity" "$app"
+codesign --verify --deep --strict "$app"
+codesign --verify --strict -R="$owner" "$app"
+
+# Swap only now, when the new bundle is complete and verified. The previous
+# bundle is removed only after the new one is in place.
+refuse_if_running
+if [[ -e "$final_app" ]]; then
+  mv "$final_app" "$stage/previous.app"
+  if ! mv "$app" "$final_app"; then
+    mv "$stage/previous.app" "$final_app"
+    echo "Could not move the new bundle into place; the previous bundle was restored." >&2
+    exit 1
+  fi
+else
+  mv "$app" "$final_app"
+fi
+codesign --verify --deep --strict "$final_app"
+echo "Installed $final_app (Loom $version, $revision)"
+echo "Signing identity: $identity"

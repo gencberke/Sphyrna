@@ -1,9 +1,10 @@
 # Status
 
 - **Updated:** 2026-10-06
-- **Stage:** CP5 closed ([closure](plans/cp5/CLOSURE.md#cp5-closure-6-oct-2026)). Proposed next: stage L, the clean loom line, then F and I ([ROADMAP](ROADMAP.md), stages wait for the user's approval).
-- **State:** waiting for user decision — O-11 (clean loom tree details) before stage L planning; doc baseline being double-checked before commit.
-- **Next owner:** user: O-11 and O-05 (CP4/CP3 for the first release); planner-reviewer: commit the doc baseline after the double check (user asked, 6 Oct), then plan stage L once approved.
+- **Stage:** [L — clean loom line](plans/STAGE-L.md), before the multi-agent run ([ROADMAP](ROADMAP.md)). CP5 is closed.
+- **Slice:** L-2 rename this checkout to `loom-dev`.
+- **State:** waiting for user — L-1 scripts accepted ([plan](plans/STAGE-L.md)); the user renames the checkout with no agent session open.
+- **Next owner:** user: `mv ~/Documents/github/loom ~/Documents/github/loom-dev`, then start a new session in loom-dev; planner-reviewer there: L-3 (tag `release/0.1.0`, promote, release build and install when the Mac is idle) and L-4 acceptance.
 - **Open decisions:** [DECISIONS.md → Open](DECISIONS.md#open).
-- **Latest result:** [CP5 closure](plans/cp5/CLOSURE.md#cp5-closure-6-oct-2026), identity direction A ([D-22](DECISIONS.md)).
+- **Latest result:** [L-1 dry run](plans/experiments/stage-l-dryrun-2026-10-06.md); scope decisions D-26..D-29.
 - **Blocker:** none.

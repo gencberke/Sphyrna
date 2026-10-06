@@ -1,12 +1,13 @@
 # Plans and history
 
-Checkpoint plans, slice records and experiment evidence. No checkpoint is active right now (next stage: see ROADMAP); the active checkpoint's map, when there is one, is on the normal reading path; everything else is history, read when a task points to it. Files written before 6 Oct 2026 are in Turkish and stay as written. Current position: [STATUS.md](../STATUS.md); direction: [ROADMAP.md](../ROADMAP.md).
+Checkpoint plans, slice records and experiment evidence. The active stage's plan is on the normal reading path (see STATUS); everything else is history, read when a task points to it. Files written before 6 Oct 2026 are in Turkish and stay as written. Current position: [STATUS.md](../STATUS.md); direction: [ROADMAP.md](../ROADMAP.md).
 
 | File | What it is | State |
 | --- | --- | --- |
 | [CHECKPOINT-1.md](CHECKPOINT-1.md) | CP1 process ownership and clean exit: plan, experiments, results | closed, history |
 | [CHECKPOINT-2.md](CHECKPOINT-2.md) | CP2 state and resume: plan and acceptance matrix (§18 describes an older shared Codex server; contract §3 now has one per session) | closed, history |
 | [CHECKPOINT-5.md](CHECKPOINT-5.md) | CP5 terminal engine and first window: goal, slices, acceptance map | closed 6 Oct 2026 |
+| [STAGE-L.md](STAGE-L.md) | Stage L: clean loom line (promote and build scripts, first daily `Loom.app` 0.1.0) | **active** |
 | [CHECKPOINT-5-HISTORY.md](CHECKPOINT-5-HISTORY.md) | CP5 early decisions and slice A/B history (engine choice in §3.1) | history |
 | [cp5/C.md](cp5/C.md) | Slice C real-session operations: long review log | history |
 | [cp5/D.md](cp5/D.md) | Slice D input, view and combined acceptance plan | history |
