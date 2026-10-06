@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loom run 1 surfaces: footer bar, Settings and tabs (design preview)</title>
+<style>
+:root{
+  --sans: -apple-system, "SF Pro Text", "SF Pro", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --c1:#CD3131; --c2:#0DBC79; --c3:#E5E510; --c4:#2472C8; --c5:#BC3FBC; --c6:#11A8CD; --c7:#E5E5E5;
+  --c8:#666666; --c9:#F14C4C; --c10:#23D18B; --c11:#F5F543; --c12:#3B8EEA; --c13:#D670D6; --c14:#29B8DB; --c15:#FFFFFF;
+  /* identity A, copied from design/identity-preview.html (.dir-a) and IDENTITY-PROPOSAL.md 3.1 */
+  --side-rgb:11,14,22; --side:#0B0E16; --side-alpha:.86; --panel:#1D1C22;
+  --ink-rgb:255,255,255; --ctl-a:.06; --sel-a:.07; --sel-stroke:rgba(255,255,255,.10);
+  --hair:rgba(255,255,255,.10); --hover:rgba(255,255,255,.09); --press:rgba(255,255,255,.14);
+  --t1:#E0DBEB; --t2:#828799; --t3:#5A5F70; --acc:#8791CF; --acc-rgb:135,145,207;
+  --att:#FF9E0A; --unv:#5C8CFF; --fail:#F2615C;
+  --tfg:#E8E6EE;
+  --r-panel:10px; --r-card:10px; --r-ctl:6px; --r-search:8px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#07080B;color:#D9D7E0;font:13px/1.45 var(--sans);-webkit-font-smoothing:antialiased}
+code{font:11.5px var(--mono);color:#C3C6D0}
+.page{max-width:1760px;margin:0 auto;padding:28px 28px 64px}
+.top{display:flex;align-items:center;gap:16px;margin-bottom:6px}
+.top svg{width:44px;height:44px;color:#B5BBED;flex:none}
+.top h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-.01em}
+.top p{margin:2px 0 0;color:#8A8D99;font-size:12px;max-width:1100px}
+.page h2.sec-h{font-size:16px;font-weight:600;margin:44px 0 4px;display:flex;align-items:baseline;gap:10px}
+.page h2.sec-h small{font-size:12px;font-weight:400;color:#8A8D99}
+.page h3{font-size:11px;font-weight:600;color:#8A8D99;text-transform:uppercase;letter-spacing:.5px;margin:22px 0 8px}
+.lead{color:#9EA1AC;font-size:12px;max-width:980px;margin:0 0 14px}
+.cap{color:#8A8D99;font-size:11.5px;margin:6px 0 0;max-width:680px}
+.badge{font-size:10px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:#0B0E16;background:#B5BBED;border-radius:4px;padding:2px 6px;align-self:center}
+.row{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.fig{display:flex;flex-direction:column}
+.fig > .lab{font-size:11.5px;color:#9A9DA8;margin-bottom:6px}
+.fig > .lab b{color:#D9D7E0;font-weight:600}
+
+/* wallpaper behind glass: deliberately colourful, to show how little leaks through */
+.stage{border-radius:14px;padding:14px;background:
+  radial-gradient(120% 90% at 0% 0%, #2B5BFF 0%, transparent 55%),
+  radial-gradient(90% 80% at 100% 100%, #FF7A2B 0%, transparent 55%),
+  radial-gradient(80% 80% at 30% 100%, #B13BFF 0%, transparent 60%), #10131C;
+  display:inline-flex;flex-direction:column;gap:10px}
+.glass{background:rgba(var(--side-rgb),var(--side-alpha));-webkit-backdrop-filter:blur(40px) saturate(1.2);backdrop-filter:blur(40px) saturate(1.2)}
+.window{position:relative;display:flex;border-radius:12px;overflow:hidden;color:var(--t1);
+  border:1px solid rgba(255,255,255,.12);box-shadow:0 24px 60px rgba(0,0,0,.55),0 0 0 .5px rgba(0,0,0,.6)}
+.lights{position:absolute;left:19px;top:20px;display:flex;gap:8px;z-index:3}
+.lights i{width:12px;height:12px;border-radius:50%;display:block}
+.lights i:nth-child(1){background:#FF5F57}.lights i:nth-child(2){background:#FEBC2E}.lights i:nth-child(3){background:#28C840}
+
+/* ---------- sidebar ---------- */
+.sb{flex:none;display:flex;flex-direction:column;color:var(--t1)}
+.sb-head{height:52px;display:flex;align-items:center;gap:4px;padding:0 10px 0 76px;flex:none}
+.cbtn{width:26px;height:24px;border-radius:var(--r-ctl);display:grid;place-items:center;color:var(--t2);flex:none}
+.cbtn.on{background:rgba(var(--ink-rgb),.07);color:var(--t1)}
+.cbtn.hov{background:var(--hover);color:var(--t1)}
+.cbtn svg{width:15px;height:15px}
+.sp{flex:1}
+.search{margin:0 10px 6px;height:30px;border-radius:var(--r-search);background:rgba(var(--ink-rgb),var(--ctl-a));
+  display:flex;align-items:center;gap:7px;padding:0 9px;color:var(--t3);font-size:13px;flex:none}
+.search svg{width:13px;height:13px}
+.sec{padding:10px 18px 4px;font:600 11px/1.3 var(--sans);color:var(--t2)}
+.list{padding:0 8px;display:flex;flex-direction:column;gap:2px}
+.card{display:grid;grid-template-columns:12px minmax(0,1fr) auto;column-gap:8px;row-gap:2px;align-items:center;
+  padding:8px 10px;border-radius:var(--r-card);border:1px solid transparent}
+.card.sel{background:rgba(var(--ink-rgb),var(--sel-a));border-color:var(--sel-stroke)}
+.ttl{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card.sel .ttl{font-weight:600}
+.time{font:400 11px var(--sans);color:var(--t2)}
+.meta{grid-column:2;display:flex;align-items:center;gap:4px;font:400 11px var(--sans);color:var(--t2);min-width:0}
+.meta svg{width:10px;height:10px;flex:none}
+.meta span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.right{grid-column:3;display:flex;align-items:center;gap:6px;justify-content:flex-end;font:400 11px var(--sans);color:var(--t2)}
+.prov{width:14px;height:14px;flex:none}
+
+/* ---------- status indicators (DESIGN 4, IndicatorView look) ---------- */
+.ind{width:12px;height:16px;display:grid;place-items:center;flex:none}
+.pip{width:8px;height:8px;border-radius:50%;display:block}
+.pip.att{background:var(--att)} .pip.unv{background:var(--unv)} .pip.fail{background:var(--fail)}
+.ring{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--t2);display:block}
+.ring.att{border-color:var(--att)}
+.chase{position:relative;width:12px;height:12px}
+.chase i{position:absolute;width:2.9px;height:2.9px;border-radius:50%;background:var(--t1);opacity:.16;animation:chase .8s step-end infinite}
+.chase i:nth-child(1){left:.15px;top:.15px;opacity:1;animation-delay:0s}
+.chase i:nth-child(2){left:4.55px;top:.15px;animation-delay:-.7s}
+.chase i:nth-child(3){left:8.95px;top:.15px;animation-delay:-.6s}
+.chase i:nth-child(4){left:8.95px;top:4.55px;animation-delay:-.5s}
+.chase i:nth-child(5){left:8.95px;top:8.95px;animation-delay:-.4s}
+.chase i:nth-child(6){left:4.55px;top:8.95px;opacity:.35;animation-delay:-.3s}
+.chase i:nth-child(7){left:.15px;top:8.95px;opacity:.55;animation-delay:-.2s}
+.chase i:nth-child(8){left:.15px;top:4.55px;opacity:.8;animation-delay:-.1s}
+@keyframes chase{0%{opacity:1}12.5%{opacity:.8}25%{opacity:.55}37.5%{opacity:.35}50%,100%{opacity:.16}}
+
+/* ---------- detail panel ---------- */
+.detail{flex:1;min-width:0;background:var(--side);padding:8px;display:flex}
+.panel{flex:1;min-width:0;background:var(--panel);border:1px solid var(--hair);border-radius:var(--r-panel);display:flex;flex-direction:column;overflow:hidden}
+.hdr{height:36px;flex:none;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;color:var(--t1)}
+.hdr .prov{width:16px;height:16px}
+.hdr .ttl{font-weight:600;flex:none;max-width:240px}
+.hlabel{font-size:11px;font-weight:500;color:var(--t2);white-space:nowrap}
+.stop{height:22px;padding:0 9px;border-radius:var(--r-ctl);background:rgba(var(--ink-rgb),.07);color:var(--t1);font-size:11.5px;display:grid;place-items:center}
+.term{flex:1;margin:6px;padding:4px 6px;font:11.5px/1.5 var(--mono);color:var(--tfg);background:var(--panel);white-space:pre;overflow:hidden}
+.cur{background:var(--tfg);color:var(--panel)}
+
+/* ---------- sidebar footer bar (surface 1) ---------- */
+.foot{height:38px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--t2)}
+.foot .cbtn svg{width:15px;height:15px}
+.uchip{flex:1;min-width:0;height:24px;border-radius:var(--r-ctl);padding:0 8px;display:flex;flex-wrap:wrap;align-content:flex-start;column-gap:6px;overflow:hidden;
+  font:500 11px/24px var(--sans);color:var(--t2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.uchip .main{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.uchip .main b{font-weight:600;color:var(--t1)}
+.uchip .cost{flex:0 0 auto}
+.uchip.hov{background:var(--hover);color:var(--t1)}
+.uchip.focus{box-shadow:0 0 0 2px var(--acc)}
+.uchip.dim{color:var(--t2)}
+.uchip.dim .main{color:var(--t2)}
+.meter{display:inline-flex;align-items:flex-end;gap:2px;height:12px;margin-right:6px;vertical-align:-2px}
+.meter i{display:block;width:3px;border-radius:1px;background:var(--t2)}
+.meter i.now{background:var(--t1)}
+.fstrip{display:inline-block;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.12)}
+.mx{border-collapse:separate;border-spacing:0 10px}
+.mx th{font:600 11px var(--sans);color:#8A8D99;text-align:left;padding:0 18px 0 0;white-space:nowrap}
+.mx td{padding:0 18px 0 0;vertical-align:middle}
+.mx td.st{font-size:11.5px;color:#9A9DA8;white-space:nowrap;min-width:150px}
+.mx td.st b{display:block;color:#D9D7E0;font-weight:600}
+.tip{background:#2B2B30;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;font-size:11px;line-height:1.4;color:#E6E6EA;max-width:300px;box-shadow:0 6px 18px rgba(0,0,0,.5)}
+.tip b{font-weight:600}
+.tip.sm{max-width:240px}
+
+/* ---------- settings window (surface 2) ---------- */
+.win{width:680px;height:520px;background:var(--panel);border-radius:12px;border:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;overflow:hidden;position:relative;color:var(--t1);
+  box-shadow:0 24px 60px rgba(0,0,0,.55),0 0 0 .5px rgba(0,0,0,.6)}
+.win-top{height:52px;flex:none;display:flex;align-items:center;justify-content:center}
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:8px;background:rgba(var(--ink-rgb),var(--ctl-a))}
+.seg span{height:24px;padding:0 12px;border-radius:var(--r-ctl);display:grid;place-items:center;font-size:12px;font-weight:500;color:var(--t2);border:1px solid transparent;white-space:nowrap}
+.seg span.on{background:rgba(var(--ink-rgb),var(--sel-a));border-color:var(--sel-stroke);color:var(--t1)}
+.seg.sm span{padding:0 10px;font-size:11.5px}
+.seg.off span{color:var(--t3)}
+.win-body{flex:1;min-height:0;overflow:hidden;padding:4px 32px 0}
+.win-body .inner{display:flex;flex-direction:column;gap:20px;padding-bottom:20px}
+.win-foot{height:32px;flex:none;display:flex;align-items:center;gap:12px;padding:0 24px 0 32px;border-top:1px solid var(--hair);font-size:11px;color:var(--t2);font-variant-numeric:tabular-nums}
+.win-foot .sp{flex:1}
+.u-top{display:flex;align-items:center;justify-content:space-between;height:28px}
+.u-top .scope{font-size:12px;color:var(--t2)}
+.u-head{display:flex;gap:32px;align-items:flex-start}
+.u-head > div{flex:1;min-width:0}
+.big{font-size:32px;line-height:36px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:8px}
+.big small{font-size:13px;font-weight:400;color:var(--t2);letter-spacing:0}
+.sub{font-size:13px;color:var(--t2);margin-top:2px;font-variant-numeric:tabular-nums}
+.note{font-size:11px;color:var(--t2);margin-top:6px;line-height:1.4}
+.blk-h{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;font-weight:600;color:var(--t2);margin-bottom:8px}
+.blk-h span{font-weight:400}
+.cells{display:flex;gap:4px}
+.cells i{flex:1;height:28px;border-radius:4px;background:rgba(224,219,235,var(--a))}
+.cell-l{display:flex;gap:4px;margin-top:4px;font-size:11px;color:var(--t2);font-variant-numeric:tabular-nums}
+.cell-l span{flex:1;text-align:center}
+.totals{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
+.totals .l{font-size:11px;color:var(--t2)}
+.totals .v{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+.bars{display:flex;align-items:flex-end;gap:16px;height:72px;border-bottom:1px solid var(--hair);position:relative}
+.bars i{font-style:normal;flex:1;background:var(--t2);border-radius:4px 4px 0 0;display:block;position:relative}
+.bars i.now{background:var(--t1)}
+.bars.thin{gap:2px}.bars.thin i{border-radius:2px 2px 0 0}
+.bars.thin.t90{gap:1px}.bars.thin.t90 i{border-radius:1px 1px 0 0}
+.bars-l{display:flex;gap:16px;margin-top:4px;font-size:11px;color:var(--t2)}
+.bars-l span{flex:1;text-align:center}
+.bars-l.thin{gap:2px}
+.mtab{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.mtab th{height:24px;font-size:11px;font-weight:500;color:var(--t2);text-align:right;border-bottom:1px solid var(--hair);padding:0}
+.mtab td{height:28px;font-size:13px;text-align:right;border-bottom:1px solid var(--hair);padding:0}
+.mtab th:first-child,.mtab td:first-child{text-align:left}
+.mtab td.dim{color:var(--t2)}
+.mtab td.mdl{font-weight:500}
+.sbar{display:inline-block;width:48px;height:3px;border-radius:2px;background:rgba(var(--ink-rgb),.10);vertical-align:middle;margin-right:8px;position:relative;overflow:hidden}
+.sbar b{position:absolute;left:0;top:0;bottom:0;background:var(--t2);display:block}
+.hbar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 6px);z-index:2}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;height:380px;gap:6px}
+.empty .t{font-size:20px;font-weight:600;line-height:1.2}
+.empty .b{font-size:12px;color:var(--t2);max-width:360px}
+.empty svg{width:48px;height:48px;color:var(--t3);margin-bottom:10px}
+.prog{width:320px;height:4px;border-radius:2px;background:rgba(var(--ink-rgb),.10);overflow:hidden;margin:10px 0 2px}
+.prog b{display:block;height:100%;background:var(--t1);border-radius:2px}
+.card2{background:rgba(var(--ink-rgb),var(--ctl-a));border-radius:var(--r-card);padding:0 16px}
+.frow{display:flex;align-items:center;justify-content:space-between;min-height:44px;padding:10px 0;gap:16px}
+.frow + .frow{border-top:1px solid var(--hair)}
+.frow .k{font-size:13px;font-weight:500}
+.frow .d{font-size:11px;color:var(--t2);margin-top:1px}
+.frow .v{font-size:13px;color:var(--t2);font-variant-numeric:tabular-nums}
+.frow .v.mono{font:12px var(--mono);color:var(--t2)}
+.popup{height:24px;padding:0 8px 0 10px;border-radius:var(--r-ctl);background:rgba(var(--ink-rgb),.09);display:flex;align-items:center;gap:8px;font-size:13px;color:var(--t1);font-variant-numeric:tabular-nums}
+.popup svg{width:9px;height:9px;color:var(--t2)}
+.btn{height:24px;padding:0 10px;border-radius:var(--r-ctl);background:rgba(var(--ink-rgb),.09);display:grid;place-items:center;font-size:12px;color:var(--t1);white-space:nowrap}
+.about-head{display:flex;flex-direction:column;align-items:center;gap:4px;padding:28px 0 24px}
+.about-head svg{width:64px;height:64px;color:#B5BBED}
+.about-head .n{font-size:20px;font-weight:600;margin-top:8px}
+.about-head .v{font-size:12px;color:var(--t2)}
+
+/* ---------- conversation tab strip (surface 3) ---------- */
+.tabs{height:32px;flex:none;display:flex;align-items:center;gap:4px;padding:0 8px;position:relative;min-width:0}
+.tabs .tl{flex:1;min-width:0;display:flex;gap:4px;overflow:hidden}
+.tabs .tl.fade{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
+.tab{flex:1 1 160px;min-width:112px;max-width:200px;height:24px;display:flex;align-items:center;gap:6px;padding:0 4px 0 8px;border-radius:var(--r-ctl);
+  border:1px solid transparent;color:var(--t2);font-size:12px;font-weight:500;position:relative}
+.tab.fix{flex:0 0 168px}
+.tab .tt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab .x{width:16px;height:16px;border-radius:4px;display:grid;place-items:center;color:var(--t2);opacity:0;flex:none}
+.tab .x svg{width:8px;height:8px}
+.tab.on{background:rgba(var(--ink-rgb),var(--sel-a));border-color:var(--sel-stroke);color:var(--t1)}
+.tab:not(.on) .x{position:absolute;right:3px;top:3px;width:16px;height:16px;background:var(--press)}
+.tab:not(.on):not(.hov) .x{display:none}
+.tab.on .x,.tab.hov .x{opacity:1}
+.tab:not(.on) { padding-right:8px }
+.tab.hov{background:var(--hover);color:var(--t1)}
+.tab.on.hov{background:rgba(var(--ink-rgb),var(--sel-a));}
+.tab.tr .tt{font-style:italic}
+.tab.stale .tt{color:var(--t2)}
+.tab.long .tt{}
+.tab .x.xh{background:var(--press);color:var(--t1)}
+.ovf{width:24px;height:24px;border-radius:var(--r-ctl);display:grid;place-items:center;color:var(--t2);flex:none;position:relative}
+.ovf.hov{background:var(--hover);color:var(--t1)}
+.ovf svg{width:10px;height:10px}
+.ovf .pip{position:absolute;right:2px;top:2px;width:6px;height:6px;box-shadow:0 0 0 1.5px var(--panel)}
+.menu{position:absolute;width:244px;padding:4px;border-radius:10px;background:#2A2A30;border:1px solid rgba(255,255,255,.12);box-shadow:0 12px 32px rgba(0,0,0,.55);z-index:5;color:var(--t1);font-size:13px}
+.menu .mi{height:24px;display:flex;align-items:center;gap:8px;padding:0 8px;border-radius:4px}
+.menu .mi.sel{background:rgba(255,255,255,.10)}
+.menu .mi .ck{width:12px;color:var(--t1);font-size:11px;text-align:center}
+.menu .mi .ttl{flex:1;font-size:12px;font-weight:400}
+.menu hr{border:0;border-top:1px solid var(--hair);margin:4px 0}
+.strips{background:var(--panel);border:1px solid var(--hair);border-radius:var(--r-panel);overflow:hidden}
+.cat{display:grid;grid-template-columns:repeat(5,200px);gap:14px 20px}
+.cat .c{display:flex;flex-direction:column;gap:4px}
+.cat .c .tabs{background:var(--panel);border:1px solid var(--hair);border-radius:8px;padding:0 8px}
+.cat .c .t{font-size:11.5px;color:#9A9DA8;max-width:200px}
+.cat .c .t b{color:#D9D7E0;font-weight:600}
+.cat .tab{flex:0 0 184px;max-width:none}
+
+/* ---------- notes ---------- */
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px}
+.box{background:#0E1015;border:1px solid #1E212A;border-radius:10px;padding:14px}
+.box h4{margin:0 0 8px;font-size:12px;font-weight:600;color:#D9D7E0}
+.box ul{margin:0;padding:0 0 0 16px;font-size:12px;color:#B9BCC6}
+.box li{margin:3px 0}
+.box p{margin:0 0 6px;font-size:12px;color:#B9BCC6}
+table.spec{border-collapse:collapse;font-size:12px;width:100%}
+table.spec th{font-size:11px;text-align:left;color:#8A8D99;font-weight:600;padding:4px 10px 4px 0;border-bottom:1px solid #1E212A}
+table.spec td{padding:5px 10px 5px 0;border-bottom:1px solid #151820;color:#B9BCC6;vertical-align:top}
+table.spec td:first-child{white-space:nowrap;color:#D9D7E0}
+.pick{color:#B5BBED;font-weight:600}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="loom-mark" viewBox="0 0 512 512"><g fill="currentColor" transform="translate(0 512) scale(.1 -.1)" stroke="none"><path d="M2794 3710 c-129 -33 -299 -135 -359 -214 -21 -28 -26 -42 -21 -63 9 -38 154 -178 199 -192 32 -11 41 -9 104 23 171 86 354 70 475 -43 150 -138 150 -379 0 -511 -107 -95 -278 -94 -386 2 l-46 40 -11 -29 c-16 -40 -14 -122 4 -164 60 -144 264 -222 452 -174 360 92 559 494 430 868 -36 103 -81 173 -175 267 -71 72 -100 93 -180 132 -52 26 -127 54 -167 62 -96 21 -230 20 -319 -4z M2183 3695 c-116 -32 -221 -108 -273 -199 -17 -28 -30 -54 -30 -58 0 -4 20 1 45 12 66 28 220 68 294 76 64 7 65 7 137 83 40 41 71 77 69 79 -2 2 -21 8 -42 13 -55 12 -140 10 -200 -6z M2212 3388 c-159 -22 -390 -122 -559 -241 -299 -210 -585 -600 -609 -828 -12 -118 40 -251 125 -318 96 -76 178 -98 426 -116 110 -8 224 -21 254 -29 125 -34 230 -115 272 -211 11 -24 24 -81 30 -127 20 -170 65 -271 166 -374 34 -35 63 -65 63 -67 0 -1 -10 -27 -22 -57 -29 -76 -37 -259 -14 -350 42 -170 158 -318 311 -397 44 -23 98 -46 120 -52 22 -6 45 -14 51 -18 5 -5 15 -48 22 -96 6 -48 14 -92 17 -97 4 -6 415 -10 1131 -10 l1124 0 0 1584 0 1585 -55 -19 c-84 -29 -143 -68 -232 -154 l-83 -78 -54 49 c-111 102 -233 151 -391 160 -113 6 -199 -10 -298 -54 l-60 -27 -26 34 c-37 51 -120 134 -127 128 -3 -4 0 -34 7 -67 17 -89 7 -268 -21 -356 -103 -328 -377 -545 -688 -545 -161 0 -273 41 -373 137 -37 35 -66 75 -85 116 -79 173 -8 407 124 407 44 0 68 -14 117 -66 74 -78 167 -82 238 -9 60 62 72 147 33 231 -42 90 -120 130 -238 122 -50 -4 -85 -14 -131 -37 -89 -45 -122 -52 -176 -40 -92 20 -262 163 -302 253 -11 25 -21 45 -22 45 -1 -1 -30 -6 -65 -11z m-256 -505 c115 -88 129 -102 132 -131 2 -18 -2 -40 -9 -49 -7 -8 -69 -55 -138 -105 -103 -73 -130 -88 -151 -83 -35 8 -51 34 -48 74 3 31 12 42 83 92 44 31 80 61 82 66 1 4 -30 31 -69 58 -39 28 -77 56 -85 63 -18 19 -16 72 4 94 32 35 63 23 199 -79z m528 -88 c23 -24 28 -52 14 -82 l-13 -28 -141 -3 c-130 -2 -142 -1 -158 17 -23 26 -24 66 -1 91 16 18 32 20 151 20 105 0 136 -3 148 -15z"/></g></symbol>
+<symbol id="claude" viewBox="0 0 94 94"><path fill="#D97757" d="M18.7657 62.4437L37.1822 52.1167L37.4857 51.2122L37.1822 50.7085H36.2715L33.1852 50.5208L22.6615 50.2391L13.5545 49.8636L4.70044 49.3942L2.47428 48.9248L0.399902 46.1553L0.602281 44.794L2.47428 43.5266L5.15579 43.7613L11.0754 44.1837L19.98 44.794L26.4055 45.1695L35.9679 46.1553H37.4857L37.6881 45.545L37.1822 45.1695L36.7774 44.794L27.5692 38.5508L17.6021 31.9791L12.3908 28.1769L9.60812 26.2524L8.19147 24.4686L7.58433 20.5256L10.1141 17.7091L13.5545 17.9438L14.4146 18.1785L17.9056 20.8542L25.343 26.6279L35.0572 33.7629L36.4739 34.9364L37.0443 34.5514L37.1316 34.2792L36.4739 33.1996L31.212 23.6706L25.596 13.9539L23.0663 9.91695L22.4086 7.52296C22.1538 6.51831 22.0038 5.68714 22.0038 4.65957L24.8877 0.716544L26.5067 0.200195L30.4025 0.716544L32.0215 2.12477L34.4501 7.66379L38.3458 16.3478L44.4172 28.1769L46.188 31.6975L47.1493 34.9364L47.5035 35.9222H48.1106V35.3589L48.6166 28.6933L49.5273 20.5256L50.438 10.0108L50.7415 7.05356L52.2088 3.48605L55.1433 1.56148L57.42 2.64112L59.292 5.31674L59.039 7.05356L57.926 14.2824L55.7504 25.5952L54.3337 33.1996H55.1433L56.1046 32.2138L59.9497 27.1442L66.3752 19.0704L69.2085 15.8784L72.5478 12.3579L74.6728 10.668H78.7203L81.6548 15.0804L80.3394 19.6337L76.1906 24.8911L72.7502 29.3504L67.8172 35.9595L64.7562 41.2734L65.0307 41.7118L65.7681 41.6489L76.8989 39.255L82.9197 38.1753L90.1041 36.9549L93.3422 38.457L93.6963 40.006L92.4315 43.151L84.7411 45.0287L75.7353 46.8594L62.3244 50.0164L62.1759 50.1358L62.3512 50.3958L68.399 50.9432L70.9794 51.084H77.3037L89.0922 51.9759L92.1785 53.9944L93.9999 56.4822L93.6963 58.4068L88.9404 60.8008L82.5655 59.2987L67.6401 55.7312L62.5301 54.4638H61.8217V54.8862L66.0717 59.064L73.9139 66.1051L83.6786 75.2116L84.1845 77.4648L82.9197 79.2485L81.6042 79.0608L73.0032 72.5829L69.6639 69.6726L62.1759 63.3356H61.67V63.9928L63.3902 66.5276L72.5478 80.2812L73.0032 84.5059L72.3454 85.8672L69.9675 86.7121L67.3871 86.2427L61.9735 78.6852L56.4587 70.2359L52.0064 62.6315L51.4687 62.971L48.8189 91.2654L47.6047 92.7206L44.7714 93.8002L42.3934 92.0164L41.1286 89.1061L42.3934 83.3324L43.9113 75.8219L45.1255 69.8604L46.2386 62.4437L46.9184 59.9661L46.8583 59.8003L46.3153 59.8916L40.7238 67.5603L32.2239 79.0608L25.4948 86.2427L23.8758 86.8999L21.0931 85.4447L21.3461 82.863L22.9145 80.5629L32.2239 68.7338L37.8399 61.3641L41.4594 57.1337L41.4242 56.5218L41.2244 56.5048L16.489 72.6299L12.0873 73.1932L10.1647 71.4094L10.4176 68.4991L11.3283 67.5603L18.7657 62.4437Z"/></symbol>
+<symbol id="i-sidebar" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 2.5v11" stroke="currentColor" stroke-width="1.2"/></symbol>
+<symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.8 4.2c0-.8.6-1.4 1.4-1.4h3l1.4 1.5h5.2c.8 0 1.4.6 1.4 1.4v6.1c0 .8-.6 1.4-1.4 1.4H3.2c-.8 0-1.4-.6-1.4-1.4z" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+<symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 4.6V8l2.4 1.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+<symbol id="i-ellipsis" viewBox="0 0 16 16"><circle cx="3.2" cy="8" r="1.25" fill="currentColor"/><circle cx="8" cy="8" r="1.25" fill="currentColor"/><circle cx="12.8" cy="8" r="1.25" fill="currentColor"/></symbol>
+<symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6l3.6 3.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+<symbol id="i-branch" viewBox="0 0 16 16"><path d="M5 2v12M5 9c0-3 6-2.5 6-6.5M9 4.5l2-2 2 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+<symbol id="i-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="8" r="4.6" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+<symbol id="i-x" viewBox="0 0 10 10"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+<symbol id="i-chev" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13.2 8A5.2 5.2 0 1 1 11.6 4.3M11.8 1.8v2.9H8.9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</defs></svg>
+<div class="page">
+  <div class="top">
+    <svg role="img" aria-label="Loom"><use href="#loom-mark"/></svg>
+    <div>
+      <h1>Loom run 1: footer bar, Settings and conversation tabs</h1>
+      <p>Design preview for stage U (slice UD), identity A · Night Fleece. Tokens are copied from <code>design/identity-preview.html</code> (.dir-a) and <code>design/IDENTITY-PROPOSAL.md</code> section 3.1; sizes follow DESIGN.md section 3 and UI-MAP. Mock fragments are at real size (CSS pixel = point); terminal text is 11.5 instead of 14. Claude only; layouts are provider-generic.</p>
+    </div>
+  </div>
+
+<h2 class="sec-h">1. Sidebar footer bar <small>inside the sidebar, 38 pt, + left, usage chip middle, gear right</small></h2>
+<p class="lead">The bar replaces today's two-button footer and keeps its height (38 pt) and side padding (12 pt). The chip is one 24 pt button, radius 6, 8 pt padding, SF Pro 11 medium with tabular digits. Click opens Settings at Usage. Variant (a) is text only. Variant (b) puts a five-bar activity meter (last five hours, hourly bins, current hour in primary text) before today's tokens. Hover wants the Mac's own pointer, so it is drawn as a separate state.</p>
+<div class="row">
+  <div class="fig"><div class="lab"><b>Sidebar 300 pt</b> (default), variant (a)</div><div class="stage"><div class="window" style="height:420px"><div class="lights"><i></i><i></i><i></i></div><aside class="sb glass" style="width:300px"><div class="sb-head"><span class="cbtn"><svg><use href="#i-sidebar"/></svg></span><span class="sp"></span><span class="cbtn"><svg><use href="#i-folder"/></svg></span><span class="cbtn on"><svg><use href="#i-clock"/></svg></span></div><div class="search"><svg><use href="#i-search"/></svg>Search conversations</div><div class="sec">Today</div><div class="list"><div class="card sel"><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="ttl">Fix flaky sync test</span><span class="time">2m</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div><div class="card"><span class="ind"><span class="pip att"></span></span><span class="ttl">Refactor catalog actor</span><span class="time">18m</span><span class="meta"><svg><use href="#i-branch"/></svg><span>usage-index</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div><div class="card"><span class="ind"><span class="pip unv"></span></span><span class="ttl">Summarize release notes</span><span class="time">1h</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>notes</span><svg class="prov"><use href="#claude"/></svg></span></div></div><div class="sec">Yesterday</div><div class="list"><div class="card"><span class="ind"></span><span class="ttl">Why does CPU spike on resize</span><span class="time">1d</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div></div><div style="margin-top:auto"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main">Today <b>1.2M tok</b></span><span class="cost">· ~$3.10</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></aside></div></div></div>
+  <div class="fig"><div class="lab"><b>Sidebar 220 pt</b> (minimum), variant (a)</div><div class="stage"><div class="window" style="height:420px"><div class="lights"><i></i><i></i><i></i></div><aside class="sb glass" style="width:220px"><div class="sb-head"><span class="cbtn"><svg><use href="#i-sidebar"/></svg></span><span class="sp"></span><span class="cbtn"><svg><use href="#i-folder"/></svg></span><span class="cbtn on"><svg><use href="#i-clock"/></svg></span></div><div class="search"><svg><use href="#i-search"/></svg>Search conversations</div><div class="sec">Today</div><div class="list"><div class="card sel"><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="ttl">Fix flaky sync test</span><span class="time">2m</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div><div class="card"><span class="ind"><span class="pip att"></span></span><span class="ttl">Refactor catalog actor</span><span class="time">18m</span><span class="meta"><svg><use href="#i-branch"/></svg><span>usage-index</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div><div class="card"><span class="ind"><span class="pip unv"></span></span><span class="ttl">Summarize release notes</span><span class="time">1h</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>notes</span><svg class="prov"><use href="#claude"/></svg></span></div></div><div class="sec">Yesterday</div><div class="list"><div class="card"><span class="ind"></span><span class="ttl">Why does CPU spike on resize</span><span class="time">1d</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div></div><div style="margin-top:auto"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main">Today <b>1.2M tok</b></span><span class="cost">· ~$3.10</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></aside></div></div></div>
+  <div class="fig"><div class="lab"><b>Sidebar 220 pt</b>, variant (b)</div><div class="stage"><div class="window" style="height:420px"><div class="lights"><i></i><i></i><i></i></div><aside class="sb glass" style="width:220px"><div class="sb-head"><span class="cbtn"><svg><use href="#i-sidebar"/></svg></span><span class="sp"></span><span class="cbtn"><svg><use href="#i-folder"/></svg></span><span class="cbtn on"><svg><use href="#i-clock"/></svg></span></div><div class="search"><svg><use href="#i-search"/></svg>Search conversations</div><div class="sec">Today</div><div class="list"><div class="card sel"><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="ttl">Fix flaky sync test</span><span class="time">2m</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div><div class="card"><span class="ind"><span class="pip att"></span></span><span class="ttl">Refactor catalog actor</span><span class="time">18m</span><span class="meta"><svg><use href="#i-branch"/></svg><span>usage-index</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div><div class="card"><span class="ind"><span class="pip unv"></span></span><span class="ttl">Summarize release notes</span><span class="time">1h</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>notes</span><svg class="prov"><use href="#claude"/></svg></span></div></div><div class="sec">Yesterday</div><div class="list"><div class="card"><span class="ind"></span><span class="ttl">Why does CPU spike on resize</span><span class="time">1d</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div></div><div style="margin-top:auto"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main"><span class="meter"><i style="height:3px"></i><i style="height:5px"></i><i style="height:8px"></i><i style="height:12px"></i><i class=now style="height:7px"></i></span><b>1.2M tok</b></span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></aside></div></div></div>
+</div>
+<h3>States and variants, 1:1</h3>
+<div class="stage" style="padding:18px;display:block"><table class="mx">
+<tr><th></th><th>(a) text, 300 pt</th><th>(a) text, 220 pt</th><th>(b) meter, 300 pt</th><th>(b) meter, 220 pt</th></tr>
+<tr><td class="st"><b>Normal</b>Tokens first, cost secondary.</td><td><div class="fstrip glass" style="width:300px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main">Today <b>1.2M tok</b></span><span class="cost">· ~$3.10</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:220px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main">Today <b>1.2M tok</b></span><span class="cost">· ~$3.10</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:300px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main"><span class="meter"><i style="height:3px"></i><i style="height:5px"></i><i style="height:8px"></i><i style="height:12px"></i><i class=now style="height:7px"></i></span><b>1.2M tok</b></span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:220px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main"><span class="meter"><i style="height:3px"></i><i style="height:5px"></i><i style="height:8px"></i><i style="height:12px"></i><i class=now style="height:7px"></i></span><b>1.2M tok</b></span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td></tr><tr><td class="st"><b>Hover</b>Fill white 9 %, text to primary. Whole chip is one button.</td><td><div class="fstrip glass" style="width:300px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip hov"><span class="main">Today <b>1.2M tok</b></span><span class="cost">· ~$3.10</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:220px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip hov"><span class="main">Today <b>1.2M tok</b></span><span class="cost">· ~$3.10</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:300px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip hov"><span class="main"><span class="meter"><i style="height:3px"></i><i style="height:5px"></i><i style="height:8px"></i><i style="height:12px"></i><i class=now style="height:7px"></i></span><b>1.2M tok</b></span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:220px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip hov"><span class="main"><span class="meter"><i style="height:3px"></i><i style="height:5px"></i><i style="height:8px"></i><i style="height:12px"></i><i class=now style="height:7px"></i></span><b>1.2M tok</b></span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td></tr><tr><td class="st"><b>Keyboard focus</b>Accent focus ring, only with keyboard navigation (UI-MAP).</td><td><div class="fstrip glass" style="width:300px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip focus"><span class="main">Today <b>1.2M tok</b></span><span class="cost">· ~$3.10</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:220px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip focus"><span class="main">Today <b>1.2M tok</b></span><span class="cost">· ~$3.10</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:300px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip focus"><span class="main"><span class="meter"><i style="height:3px"></i><i style="height:5px"></i><i style="height:8px"></i><i style="height:12px"></i><i class=now style="height:7px"></i></span><b>1.2M tok</b></span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:220px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip focus"><span class="main"><span class="meter"><i style="height:3px"></i><i style="height:5px"></i><i style="height:8px"></i><i style="height:12px"></i><i class=now style="height:7px"></i></span><b>1.2M tok</b></span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td></tr><tr><td class="st"><b>Indexing (first scan)</b>Static text, no animation, no chase (the chase means a conversation is working).</td><td><div class="fstrip glass" style="width:300px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip dim"><span class="main">Indexing…</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:220px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip dim"><span class="main">Indexing…</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:300px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip dim"><span class="main"><span class="meter"><i style="height:2px"></i><i style="height:2px"></i><i style="height:2px"></i><i style="height:2px"></i><i style="height:2px"></i></span>Indexing…</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:220px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip dim"><span class="main"><span class="meter"><i style="height:2px"></i><i style="height:2px"></i><i style="height:2px"></i><i style="height:2px"></i><i style="height:2px"></i></span>Indexing…</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td></tr><tr><td class="st"><b>No data</b>Index is ready but Claude has no usage in this profile.</td><td><div class="fstrip glass" style="width:300px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip dim"><span class="main">No usage yet</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:220px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip dim"><span class="main">No usage yet</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:300px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip dim"><span class="main"><span class="meter"><i style="height:2px"></i><i style="height:2px"></i><i style="height:2px"></i><i style="height:2px"></i><i style="height:2px"></i></span>No usage yet</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:220px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip dim"><span class="main"><span class="meter"><i style="height:2px"></i><i style="height:2px"></i><i style="height:2px"></i><i style="height:2px"></i><i style="height:2px"></i></span>No usage yet</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td></tr><tr><td class="st"><b>Long value</b>The cost drops out whole when it does not fit (here at both widths); it never shows as a cut number.</td><td><div class="fstrip glass" style="width:300px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main">Today <b>1.28B tok</b></span><span class="cost">· ~$12,846</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:220px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main">Today <b>1.28B tok</b></span><span class="cost">· ~$12,846</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:300px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main"><span class="meter"><i style="height:3px"></i><i style="height:5px"></i><i style="height:8px"></i><i style="height:12px"></i><i class=now style="height:7px"></i></span><b>1.28B tok</b></span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td><td><div class="fstrip glass" style="width:220px"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main"><span class="meter"><i style="height:3px"></i><i style="height:5px"></i><i style="height:8px"></i><i style="height:12px"></i><i class=now style="height:7px"></i></span><b>1.28B tok</b></span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></td></tr></table></div>
+<p class="cap">Chip width: 300 pt sidebar = 300 - 24 padding - 26 - 26 - 16 gaps = 208 pt; 220 pt sidebar = 128 pt. "Today 1.2M tok" is about 88 pt, so the full text (a) is only seen at 300 pt; at 220 pt it falls back to tokens, and only past that would the text ellipsize. The meter in (b) is 23 pt wide (five 3 pt bars, 2 pt gaps, 6 pt gap to the text); its shape is the same in both widths.</p>
+<h3>Tooltip and accessibility text</h3>
+<div class="row" style="gap:20px">
+  <div class="fig"><div class="lab"><b>Normal</b></div><div class="tip"><b>Claude usage today, this Claude profile</b><br>1,204,310 tokens: input 41,200, output 118,900, cache write 202,010, cache read 842,200.<br>API-equivalent estimate about $3.10.<br>Click to open Usage.</div></div>
+  <div class="fig"><div class="lab"><b>Long value, 220 pt</b> (shows what the chip dropped)</div><div class="tip"><b>Claude usage today, this Claude profile</b><br>1,284,610,000 tokens: input 41,200,000, output 118,900,000, cache write 202,010,000, cache read 922,500,000.<br>API-equivalent estimate about $12,846.00.<br>Click to open Usage.</div></div>
+  <div class="fig"><div class="lab"><b>Indexing</b></div><div class="tip sm">Loom is reading Claude's local transcripts for the first time. Usage appears when it finishes. Click to see progress.</div></div>
+  <div class="fig"><div class="lab"><b>No data</b></div><div class="tip sm">No Claude usage found in this profile yet. Click to open Usage.</div></div>
+  <div class="fig"><div class="lab"><b>Variant (b) adds</b></div><div class="tip sm"><b>Last five hours (approximate)</b><br>Oldest to newest, 9 AM to 2 PM.<br>Then the Normal text above.</div></div>
+</div>
+<p class="cap">Accessibility label for the chip is the first tooltip line plus the tokens ("Claude usage today, 1.2 million tokens"). The tooltip appears after the system delay; it carries everything the chip dropped.</p>
+
+<h2 class="sec-h">2. Settings window <small>dark, 680 x 520, opens at Usage from the footer chip</small></h2>
+<p class="lead">Navigation: a <b>top section switcher</b> (General · Usage · About), centered on the 26 pt title-bar centerline. With three sections a left list would spend 160 pt of a 680 pt window on three words and read as the left rail that D-34 rejects. The switcher reuses the selected-card look (white 7 % fill, 10 % stroke, radius 6) on a 6 % track. The window is forced dark, opaque panel colour, no glass, and keeps one size for all three sections so it never jumps. The window title is "Settings" (hidden, the switcher takes its place).</p>
+<div class="row">
+  <div class="fig"><div class="lab"><b>Usage, default</b> (7 d). The body scrolls; the footer strip stays.</div><div class="stage"><div class="win" style="height:520px"><div class="lights"><i></i><i></i><i></i></div><div class="win-top"><div class="seg "><span class="">General</span><span class="on">Usage</span><span class="">About</span></div></div><div class="win-body"><div class="inner" style="margin-top:-0px">
+<div class="u-top"><span class="scope">This Claude profile, all projects</span><div class="seg sm"><span class="">24 h</span><span class="on">7 d</span><span class="">30 d</span><span class="">90 d</span></div></div>
+<div class="u-head">
+  <div><div class="big">18.4M<small>tokens, last 7 days</small></div>
+    <div class="sub">~$37.10 est. · 62 sessions</div>
+    <div class="note">API-equivalent estimate — subscriptions are not billed per token.</div></div>
+  <div><div class="blk-h">Last 5 hours<span>approximate</span></div>
+    <div class="cells"><i style="--a:0.1"></i><i style="--a:0.14"></i><i style="--a:0.3"></i><i style="--a:0.62"></i><i style="--a:0.86"></i></div>
+    <div class="cell-l"><span>9 AM</span><span>10 AM</span><span>11 AM</span><span>12 PM</span><span>1 PM</span></div>
+    <div class="note">0.9M tokens. Local activity, not your plan limit.</div></div>
+</div>
+<div class="totals">
+  <div><div class="l">Input</div><div class="v">0.9M</div></div>
+  <div><div class="l">Output</div><div class="v">2.6M</div></div>
+  <div><div class="l">Cache write</div><div class="v">3.4M</div></div>
+  <div><div class="l">Cache read</div><div class="v">11.5M</div></div>
+  <div><div class="l">Cache share</div><div class="v">73 %</div></div>
+</div>
+<div><div class="blk-h">Tokens per day<span>Peak 4.1M, Tue</span></div><div class="bars "><i class="" style="height:40px"></i><i class="" style="height:51px"></i><i class="" style="height:10px"></i><i class="" style="height:18px"></i><i class="" style="height:63px"><span class="tip hbar" style="white-space:nowrap"><b>Mon 5 Oct</b>, 3.8M tokens</span></i><i class="" style="height:68px"></i><i class="now" style="height:55px"></i></div><div class="bars-l "><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span></div></div>
+<div><div class="blk-h">By model<span>4 models</span></div>
+<table class="mtab"><tr><th>Model</th><th>Tokens</th><th>Share</th><th>Est. cost</th></tr><tr><td class="mdl">claude-opus-5-5</td><td>11.3M</td><td class="dim"><span class="sbar"><b style="width:61%"></b></span>61 %</td><td class="">~$27.80</td></tr><tr><td class="mdl">claude-sonnet-5-5</td><td>5.9M</td><td class="dim"><span class="sbar"><b style="width:32%"></b></span>32 %</td><td class="">~$8.60</td></tr><tr><td class="mdl">claude-haiku-4-5</td><td>1.1M</td><td class="dim"><span class="sbar"><b style="width:6%"></b></span>6 %</td><td class="">~$0.70</td></tr><tr><td class="mdl">claude-opus-5-6-preview</td><td>0.1M</td><td class="dim"><span class="sbar"><b style="width:1%"></b></span>1 %</td><td class="dim">—</td></tr></table></div>
+</div></div><div class="win-foot"><span>Updated 14:02</span><span>·</span><span>Prices as of 1 Oct 2026</span><span class="sp"></span><span class="cbtn" style="width:26px;height:24px"><svg><use href="#i-refresh"/></svg></span></div></div></div></div>
+  <div class="fig"><div class="lab"><b>Usage, same view scrolled to the end</b> (111 pt)</div><div class="stage"><div class="win" style="height:520px"><div class="lights"><i></i><i></i><i></i></div><div class="win-top"><div class="seg "><span class="">General</span><span class="on">Usage</span><span class="">About</span></div></div><div class="win-body"><div class="inner" style="margin-top:-111px">
+<div class="u-top"><span class="scope">This Claude profile, all projects</span><div class="seg sm"><span class="">24 h</span><span class="on">7 d</span><span class="">30 d</span><span class="">90 d</span></div></div>
+<div class="u-head">
+  <div><div class="big">18.4M<small>tokens, last 7 days</small></div>
+    <div class="sub">~$37.10 est. · 62 sessions</div>
+    <div class="note">API-equivalent estimate — subscriptions are not billed per token.</div></div>
+  <div><div class="blk-h">Last 5 hours<span>approximate</span></div>
+    <div class="cells"><i style="--a:0.1"></i><i style="--a:0.14"></i><i style="--a:0.3"></i><i style="--a:0.62"></i><i style="--a:0.86"></i></div>
+    <div class="cell-l"><span>9 AM</span><span>10 AM</span><span>11 AM</span><span>12 PM</span><span>1 PM</span></div>
+    <div class="note">0.9M tokens. Local activity, not your plan limit.</div></div>
+</div>
+<div class="totals">
+  <div><div class="l">Input</div><div class="v">0.9M</div></div>
+  <div><div class="l">Output</div><div class="v">2.6M</div></div>
+  <div><div class="l">Cache write</div><div class="v">3.4M</div></div>
+  <div><div class="l">Cache read</div><div class="v">11.5M</div></div>
+  <div><div class="l">Cache share</div><div class="v">73 %</div></div>
+</div>
+<div><div class="blk-h">Tokens per day<span>Peak 4.1M, Tue</span></div><div class="bars "><i class="" style="height:40px"></i><i class="" style="height:51px"></i><i class="" style="height:10px"></i><i class="" style="height:18px"></i><i class="" style="height:63px"><span class="tip hbar" style="white-space:nowrap"><b>Mon 5 Oct</b>, 3.8M tokens</span></i><i class="" style="height:68px"></i><i class="now" style="height:55px"></i></div><div class="bars-l "><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span></div></div>
+<div><div class="blk-h">By model<span>4 models</span></div>
+<table class="mtab"><tr><th>Model</th><th>Tokens</th><th>Share</th><th>Est. cost</th></tr><tr><td class="mdl">claude-opus-5-5</td><td>11.3M</td><td class="dim"><span class="sbar"><b style="width:61%"></b></span>61 %</td><td class="">~$27.80</td></tr><tr><td class="mdl">claude-sonnet-5-5</td><td>5.9M</td><td class="dim"><span class="sbar"><b style="width:32%"></b></span>32 %</td><td class="">~$8.60</td></tr><tr><td class="mdl">claude-haiku-4-5</td><td>1.1M</td><td class="dim"><span class="sbar"><b style="width:6%"></b></span>6 %</td><td class="">~$0.70</td></tr><tr><td class="mdl">claude-opus-5-6-preview</td><td>0.1M</td><td class="dim"><span class="sbar"><b style="width:1%"></b></span>1 %</td><td class="dim">—</td></tr></table></div>
+</div></div><div class="win-foot"><span>Updated 14:02</span><span>·</span><span>Prices as of 1 Oct 2026</span><span class="sp"></span><span class="cbtn" style="width:26px;height:24px"><svg><use href="#i-refresh"/></svg></span></div></div></div></div>
+  <div class="fig"><div class="lab"><b>Usage, indexing</b> (first scan; the chip shows "Indexing…")</div><div class="stage"><div class="win" style="height:520px"><div class="lights"><i></i><i></i><i></i></div><div class="win-top"><div class="seg "><span class="">General</span><span class="on">Usage</span><span class="">About</span></div></div><div class="win-body"><div class="u-top"><span class="scope">This Claude profile, all projects</span><div class="seg sm off"><span class="">24 h</span><span class="on">7 d</span><span class="">30 d</span><span class="">90 d</span></div></div>
+<div class="empty" style="height:360px"><div class="t">Reading Claude's usage</div>
+<div class="b">Loom is reading the transcripts Claude keeps on this Mac. This happens once; after that only new lines are read.</div>
+<div class="prog"><b style="width:37%"></b></div><div class="b" style="font-variant-numeric:tabular-nums">2,140 of 5,800 files</div></div></div><div class="win-foot"><span>Reading</span><span class="sp"></span><span class="cbtn" style="width:26px;height:24px;color:var(--t3)"><svg><use href="#i-refresh"/></svg></span></div></div></div></div>
+  <div class="fig"><div class="lab"><b>Usage, no data</b></div><div class="stage"><div class="win" style="height:520px"><div class="lights"><i></i><i></i><i></i></div><div class="win-top"><div class="seg "><span class="">General</span><span class="on">Usage</span><span class="">About</span></div></div><div class="win-body"><div class="u-top"><span class="scope">This Claude profile, all projects</span><div class="seg sm off"><span class="">24 h</span><span class="on">7 d</span><span class="">30 d</span><span class="">90 d</span></div></div>
+<div class="empty" style="height:360px"><svg role="img" aria-label="Loom"><use href="#loom-mark"/></svg><div class="t">No Claude usage yet</div>
+<div class="b">Loom found no transcripts in this Claude profile. Usage appears after a conversation finishes its first turn.</div>
+<div class="b"><code>~/.claude/projects</code></div></div></div><div class="win-foot"><span>Updated 14:02</span><span>·</span><span>Prices as of 1 Oct 2026</span><span class="sp"></span><span class="cbtn" style="width:26px;height:24px"><svg><use href="#i-refresh"/></svg></span></div></div></div></div>
+  <div class="fig"><div class="lab"><b>General</b></div><div class="stage"><div class="win" style="height:520px"><div class="lights"><i></i><i></i><i></i></div><div class="win-top"><div class="seg "><span class="on">General</span><span class="">Usage</span><span class="">About</span></div></div><div class="win-body"><div class="inner">
+<div class="card2"><div class="frow"><div><div class="k">Terminal font size</div><div class="d">Applies to existing and new terminals.</div></div>
+<div class="popup">14 pt <svg><use href="#i-chev"/></svg></div></div></div>
+</div></div></div></div></div>
+  <div class="fig"><div class="lab"><b>About</b></div><div class="stage"><div class="win" style="height:520px"><div class="lights"><i></i><i></i><i></i></div><div class="win-top"><div class="seg "><span class="">General</span><span class="">Usage</span><span class="on">About</span></div></div><div class="win-body"><div class="about-head"><svg role="img" aria-label="Loom"><use href="#loom-mark"/></svg><div class="n">Loom</div><div class="v">Version 0.1.0 (build 12)</div></div>
+<div class="card2"><div class="frow"><div><div class="k">Data folder</div><div class="d">Catalog, usage index and logs.</div></div><div style="display:flex;gap:12px;align-items:center"><span class="v mono">~/Library/Application Support/Loom</span><span class="btn">Reveal</span></div></div>
+<div class="frow"><div><div class="k">Claude profile</div><div class="d">Where usage is read from. Read only.</div></div><div class="v mono">~/.claude</div></div></div></div></div></div></div>
+</div>
+<h3>Daily bars for the other periods</h3>
+<div class="row">
+  <div class="fig"><div class="lab"><b>24 h</b>, one bar per hour</div><div class="stage" style="padding:14px"><div class="win" style="width:616px;height:auto;padding:16px"><div class="bars thin"><i class="" style="height:15px"></i><i class="" style="height:8px"></i><i class="" style="height:2px"></i><i class="" style="height:2px"></i><i class="" style="height:2px"></i><i class="" style="height:2px"></i><i class="" style="height:8px"></i><i class="" style="height:23px"></i><i class="" style="height:38px"></i><i class="" style="height:45px"></i><i class="" style="height:53px"></i><i class="" style="height:38px"></i><i class="" style="height:30px"></i><i class="" style="height:45px"></i><i class="" style="height:60px"></i><i class="" style="height:68px"></i><i class="" style="height:53px"></i><i class="" style="height:38px"></i><i class="" style="height:30px"></i><i class="" style="height:23px"></i><i class="" style="height:30px"></i><i class="" style="height:45px"></i><i class="" style="height:60px"></i><i class="now" style="height:38px"></i></div><div class="bars-l thin"><span></span><span></span><span></span><span>6 AM</span><span></span><span></span><span></span><span></span><span></span><span>12 PM</span><span></span><span></span><span></span><span></span><span></span><span>6 PM</span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div></div></div>
+  <div class="fig"><div class="lab"><b>30 d</b>, one bar per day</div><div class="stage" style="padding:14px"><div class="win" style="width:616px;height:auto;padding:16px"><div class="bars thin"><i class="" style="height:19px"></i><i class="" style="height:29px"></i><i class="" style="height:39px"></i><i class="" style="height:29px"></i><i class="" style="height:10px"></i><i class="" style="height:2px"></i><i class="" style="height:19px"></i><i class="" style="height:39px"></i><i class="" style="height:49px"></i><i class="" style="height:29px"></i><i class="" style="height:39px"></i><i class="" style="height:19px"></i><i class="" style="height:10px"></i><i class="" style="height:29px"></i><i class="" style="height:49px"></i><i class="" style="height:39px"></i><i class="" style="height:29px"></i><i class="" style="height:39px"></i><i class="" style="height:19px"></i><i class="" style="height:10px"></i><i class="" style="height:19px"></i><i class="" style="height:39px"></i><i class="" style="height:58px"></i><i class="" style="height:49px"></i><i class="" style="height:39px"></i><i class="" style="height:29px"></i><i class="" style="height:19px"></i><i class="" style="height:49px"></i><i class="" style="height:58px"></i><i class="now" style="height:68px"></i></div><div class="bars-l thin"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div><div class="bars-l thin" style="justify-content:space-between"><span style="text-align:left;flex:none">8 Sep</span><span style="text-align:right;flex:none">Wed 7 Oct</span></div></div></div></div>
+</div>
+<p class="cap">Bars are neutral: text.secondary for past days, text.primary for the current one, no accent and no gradient. Hover names the bucket and its exact tokens. 90 d uses the same strip at 1 pt gaps; labels become the first and last date only.</p>
+<h3>Copy</h3>
+<table class="spec"><tr><th>Where</th><th>Text</th></tr>
+<tr><td>Cost label</td><td>API-equivalent estimate — subscriptions are not billed per token.</td></tr>
+<tr><td>Scope line</td><td>This Claude profile, all projects</td></tr>
+<tr><td>5-hour block</td><td>Last 5 hours · approximate. "0.9M tokens. Local activity, not your plan limit."</td></tr>
+<tr><td>Footer strip</td><td>Updated 14:02 · Prices as of 1 Oct 2026 (the price table's date; "Updated" is the last index refresh)</td></tr>
+<tr><td>Unknown model</td><td>Cost shows "—"; its tokens still count. Row tooltip: "No price known for this model. Tokens are counted; cost is left out."</td></tr>
+<tr><td>Cache share</td><td>Cache read divided by all input-side tokens (input, cache write, cache read). Tooltip: "Share of input-side tokens served from the cache."</td></tr>
+<tr><td>Cache write</td><td>Tooltip splits 5 min and 1 h writes. One number in the row.</td></tr>
+<tr><td>Indexing</td><td>Reading Claude's usage. Loom is reading the transcripts Claude keeps on this Mac. This happens once; after that only new lines are read.</td></tr>
+<tr><td>No data</td><td>No Claude usage yet. Loom found no transcripts in this Claude profile. Usage appears after a conversation finishes its first turn.</td></tr></table>
+
+<h2 class="sec-h">3. Conversation tab strip <small>inside the detail panel, between the header row and the terminal</small></h2>
+<p class="lead">The strip is 32 pt: tabs are 24 pt high (the chrome-button height) with 4 pt vertical and 8 pt side padding, 4 pt between tabs, radius 6. A tab is [12 pt status indicator] 6 pt [title, SF Pro 12 medium, truncating], padding 8 each side, width 112 to 200 pt. The selected tab also reserves a 16 pt close slot (4 pt trailing padding); on other tabs the close button appears on hover as a 16 pt square over the end of the title, so titles keep the room. It is not drawn with fewer than two tabs and the panel then looks exactly as today. There is no "+" button: new conversations start from the footer and the project menus; "Open in Tab" pins the selection. Tabs sit on the panel colour with no divider, so the strip reads as part of the header, not a second bar.</p>
+<div class="row">
+  <div class="fig"><div class="lab"><b>One tab: strip hidden</b> (780 x 500, sidebar 300 pt, detail 480 pt)</div><div class="stage"><div class="window" style="width:780px;height:500px"><div class="lights"><i></i><i></i><i></i></div><aside class="sb glass" style="width:300px"><div class="sb-head"><span class="cbtn"><svg><use href="#i-sidebar"/></svg></span><span class="sp"></span><span class="cbtn"><svg><use href="#i-folder"/></svg></span><span class="cbtn on"><svg><use href="#i-clock"/></svg></span></div><div class="search"><svg><use href="#i-search"/></svg>Search conversations</div><div class="sec">Today</div><div class="list"><div class="card sel"><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="ttl">Fix flaky sync test</span><span class="time">2m</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div><div class="card"><span class="ind"><span class="pip att"></span></span><span class="ttl">Refactor catalog actor</span><span class="time">18m</span><span class="meta"><svg><use href="#i-branch"/></svg><span>usage-index</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div><div class="card"><span class="ind"><span class="pip unv"></span></span><span class="ttl">Summarize release notes</span><span class="time">1h</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>notes</span><svg class="prov"><use href="#claude"/></svg></span></div></div><div class="sec">Yesterday</div><div class="list"><div class="card"><span class="ind"></span><span class="ttl">Why does CPU spike on resize</span><span class="time">1d</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div></div><div style="margin-top:auto"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main">Today <b>1.2M tok</b></span><span class="cost">· ~$3.10</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></aside><main class="detail"><div class="panel"><div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl">Fix flaky sync test</span><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="hlabel">Working</span><span class="sp"></span><span class="stop">Stop</span><span class="cbtn"><svg><use href="#i-ellipsis"/></svg></span></div><div class="term"><span style="color:var(--c8)"># the CLI's own colours, Loom's palette</span>
+<span style="color:var(--c10)">$</span> swift test --filter UsageIndexTests
+<span style="color:var(--c12)">Building for debugging...</span>
+[54/54] Linking LoomCoreTests
+<span style="color:var(--c10)">✔</span> <span style="color:var(--c14)">deduplicatesStreamedLines</span> passed
+<span style="color:var(--c10)">✔</span> <span style="color:var(--c13)">12</span> tests passed
+<span style="color:var(--c5)">❯</span> <span class="cur"> </span></div></div></main></div></div></div>
+  <div class="fig"><div class="lab"><b>Three tabs</b>: two pinned (one hovered), the selected one transient (italic)</div><div class="stage"><div class="window" style="width:780px;height:500px"><div class="lights"><i></i><i></i><i></i></div><aside class="sb glass" style="width:300px"><div class="sb-head"><span class="cbtn"><svg><use href="#i-sidebar"/></svg></span><span class="sp"></span><span class="cbtn"><svg><use href="#i-folder"/></svg></span><span class="cbtn on"><svg><use href="#i-clock"/></svg></span></div><div class="search"><svg><use href="#i-search"/></svg>Search conversations</div><div class="sec">Today</div><div class="list"><div class="card sel"><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="ttl">Fix flaky sync test</span><span class="time">2m</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div><div class="card"><span class="ind"><span class="pip att"></span></span><span class="ttl">Refactor catalog actor</span><span class="time">18m</span><span class="meta"><svg><use href="#i-branch"/></svg><span>usage-index</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div><div class="card"><span class="ind"><span class="pip unv"></span></span><span class="ttl">Summarize release notes</span><span class="time">1h</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>notes</span><svg class="prov"><use href="#claude"/></svg></span></div></div><div class="sec">Yesterday</div><div class="list"><div class="card"><span class="ind"></span><span class="ttl">Why does CPU spike on resize</span><span class="time">1d</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div></div><div style="margin-top:auto"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main">Today <b>1.2M tok</b></span><span class="cost">· ~$3.10</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></aside><main class="detail"><div class="panel"><div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl">Fix flaky sync test</span><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="hlabel">Working</span><span class="sp"></span><span class="stop">Stop</span><span class="cbtn"><svg><use href="#i-ellipsis"/></svg></span></div><div class="tabs"><div class="tl"><div class="tab hov"><span class="ind"><span class="pip att"></span></span><span class="tt">Refactor catalog actor</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab "><span class="ind"><span class="pip unv"></span></span><span class="tt">Summarize release notes</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab on tr"><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="tt">Fix flaky sync test</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div></div><div class="term"><span style="color:var(--c8)"># the CLI's own colours, Loom's palette</span>
+<span style="color:var(--c10)">$</span> swift test --filter UsageIndexTests
+<span style="color:var(--c12)">Building for debugging...</span>
+[54/54] Linking LoomCoreTests
+<span style="color:var(--c10)">✔</span> <span style="color:var(--c14)">deduplicatesStreamedLines</span> passed
+<span style="color:var(--c10)">✔</span> <span style="color:var(--c13)">12</span> tests passed
+<span style="color:var(--c5)">❯</span> <span class="cur"> </span></div></div></main></div></div></div>
+  <div class="fig"><div class="lab"><b>Eight tabs at 780 pt: overflow</b>, list menu open</div><div class="stage"><div class="window" style="width:780px;height:500px"><div class="lights"><i></i><i></i><i></i></div><aside class="sb glass" style="width:300px"><div class="sb-head"><span class="cbtn"><svg><use href="#i-sidebar"/></svg></span><span class="sp"></span><span class="cbtn"><svg><use href="#i-folder"/></svg></span><span class="cbtn on"><svg><use href="#i-clock"/></svg></span></div><div class="search"><svg><use href="#i-search"/></svg>Search conversations</div><div class="sec">Today</div><div class="list"><div class="card sel"><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="ttl">Fix flaky sync test</span><span class="time">2m</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div><div class="card"><span class="ind"><span class="pip att"></span></span><span class="ttl">Refactor catalog actor</span><span class="time">18m</span><span class="meta"><svg><use href="#i-branch"/></svg><span>usage-index</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div><div class="card"><span class="ind"><span class="pip unv"></span></span><span class="ttl">Summarize release notes</span><span class="time">1h</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>notes</span><svg class="prov"><use href="#claude"/></svg></span></div></div><div class="sec">Yesterday</div><div class="list"><div class="card"><span class="ind"></span><span class="ttl">Why does CPU spike on resize</span><span class="time">1d</span><span class="meta"><svg><use href="#i-branch"/></svg><span>main</span></span><span class="right"><span>loom</span><svg class="prov"><use href="#claude"/></svg></span></div></div><div style="margin-top:auto"><div class="foot"><span class="cbtn"><svg><use href="#i-plus"/></svg></span><div class="uchip"><span class="main">Today <b>1.2M tok</b></span><span class="cost">· ~$3.10</span></div><span class="cbtn"><svg><use href="#i-gear"/></svg></span></div></div></aside><main class="detail"><div class="panel"><div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl">Fix flaky sync test</span><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="hlabel">Working</span><span class="sp"></span><span class="stop">Stop</span><span class="cbtn"><svg><use href="#i-ellipsis"/></svg></span></div><div class="tabs"><div class="tl fade"><div class="tab "><span class="ind"></span><span class="tt">Fix flaky sync test</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab "><span class="ind"></span><span class="tt">Refactor catalog actor</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab on"><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="tt">Summarize release notes</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab "><span class="ind"><span class="pip att"></span></span><span class="tt">Why does CPU spike on resize</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab "><span class="ind"></span><span class="tt">Add usage index</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab "><span class="ind"><span class="pip unv"></span></span><span class="tt">Review PR 214</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab "><span class="ind"><span class="pip fail"></span></span><span class="tt">Migrate schema v3</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab "><span class="ind"></span><span class="tt">Draft settings copy</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><span class="ovf hov"><svg><use href="#i-chev"/></svg><span class="pip fail"></span></span></div><div class="term"><span style="color:var(--c8)"># the CLI's own colours, Loom's palette</span>
+<span style="color:var(--c10)">$</span> swift test --filter UsageIndexTests
+<span style="color:var(--c12)">Building for debugging...</span>
+[54/54] Linking LoomCoreTests
+<span style="color:var(--c10)">✔</span> <span style="color:var(--c14)">deduplicatesStreamedLines</span> passed
+<span style="color:var(--c10)">✔</span> <span style="color:var(--c13)">12</span> tests passed
+<span style="color:var(--c5)">❯</span> <span class="cur"> </span></div></div></main><div class="menu" style="left:530px;top:100px"><div class="mi"><span class="ck"></span><span class="ind"></span><span class="ttl">Fix flaky sync test</span></div><div class="mi"><span class="ck"></span><span class="ind"></span><span class="ttl">Refactor catalog actor</span></div><div class="mi"><span class="ck">✓</span><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="ttl">Summarize release notes</span></div><div class="mi sel"><span class="ck"></span><span class="ind"><span class="pip att"></span></span><span class="ttl">Why does CPU spike on resize</span></div><div class="mi"><span class="ck"></span><span class="ind"></span><span class="ttl">Add usage index</span></div><div class="mi"><span class="ck"></span><span class="ind"><span class="pip unv"></span></span><span class="ttl">Review PR 214</span></div><div class="mi"><span class="ck"></span><span class="ind"><span class="pip fail"></span></span><span class="ttl">Migrate schema v3</span></div><div class="mi"><span class="ck"></span><span class="ind"></span><span class="ttl">Draft settings copy</span></div></div></div></div></div>
+</div>
+<p class="cap">Overflow at the 480 pt minimum detail width: tabs stop shrinking at 112 pt and the list scrolls horizontally (trackpad, wheel, and the keyboard shortcuts), with a 28 pt fade at the trailing edge. The selected tab is always scrolled into view. The trailing chevron button (24 x 24) opens a list of every tab with its status and a check on the selected one. It carries a small dot when a tab that is scrolled out of view needs attention (red over orange over blue, the same priority as a project row). In this mock the third tab is selected and the failed tab is hidden, so the chevron shows red.</p>
+<h3>Tab states, 1:1 (184 pt tabs; real tabs are 112 to 200 pt)</h3>
+<div class="cat"><div class="c"><div class="tabs" style="gap:4px"><div class="tab on"><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="tt">Fix flaky sync test</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Active, working</b><br>Selected fill and stroke, primary title, chase.</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab on"><span class="ind"></span><span class="tt">Draft settings copy</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Active, idle</b><br>Idle shows no indicator; the 12 pt slot stays so titles align.</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab "><span class="ind"></span><span class="tt">Refactor catalog actor</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Inactive</b><br>Secondary title, no fill.</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab hov"><span class="ind"></span><span class="tt">Refactor catalog actor</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Inactive, hover</b><br>Fill 9 %, title primary, close appears.</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab hov"><span class="ind"></span><span class="tt">Refactor catalog actor</span><span class="x xh"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Close, hover</b><br>Close gets a 14 % square. Close never stops a run.</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab on tr"><span class="ind"></span><span class="tt">Why does CPU spike on resize</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Transient, selected</b><br>Italic title. Selected but not pinned; the next sidebar selection replaces it.</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab tr"><span class="ind"></span><span class="tt">Why does CPU spike on resize</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Transient, inactive</b><br>Stays italic until pinned or replaced.</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab "><span class="ind"><span class="pip att"></span></span><span class="tt">Refactor catalog actor</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Needs approval</b><br>Orange dot (attention).</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab "><span class="ind"><span class="pip unv"></span></span><span class="tt">Summarize release notes</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Finished, not seen</b><br>Blue dot (unviewed).</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab "><span class="ind"><span class="pip fail"></span></span><span class="tt">Migrate schema v3</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Failed</b><br>Red dot. Never colour alone: the title and the header label say Failed.</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab "><span class="ind"><span class="ring"></span></span><span class="tt">Review PR 214</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>State unknown</b><br>Hollow grey ring.</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab "><span class="ind"><span class="ring att"></span></span><span class="tt">Add usage index</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Identity unclear</b><br>Hollow orange ring.</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab on stale"><span class="ind"></span><span class="tt">Migrate schema v2</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Stale, selected</b><br>Title dims to secondary like the card; no indicator.</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab on"><span class="ind"><span class="pip fail"></span></span><span class="tt">Migrate schema v3</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Failed, selected</b><br>Red dot on the selected fill.</div></div><div class="c"><div class="tabs" style="gap:4px"><div class="tab on"><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="tt">Why does CPU spike on resize when the sidebar is dragged to its minimum</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div><div class="t"><b>Long title</b><br>Truncated with an ellipsis at the tail; the full title is the tooltip.</div></div></div>
+<h3>Wide window (1220 pt, sidebar 300 pt: panel 904 pt)</h3>
+<div class="strips" style="width:904px"><div class="tabs"><div class="tl"><div class="tab on"><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="tt">Fix flaky sync test</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab "><span class="ind"><span class="pip att"></span></span><span class="tt">Refactor catalog actor</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab "><span class="ind"></span><span class="tt">Summarize release notes</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab "><span class="ind"><span class="pip unv"></span></span><span class="tt">Why does CPU spike on resize</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab "><span class="ind"></span><span class="tt">Add usage index</span><span class="x"><svg><use href="#i-x"/></svg></span></div><div class="tab "><span class="ind"></span><span class="tt">Review PR 214</span><span class="x"><svg><use href="#i-x"/></svg></span></div></div></div></div>
+<p class="cap">Six tabs fit at 904 pt (about 145 pt each); tabs grow up to 200 pt with fewer, so titles are mostly readable. Eight tabs need about 968 pt (8 x 112 + gaps, padding and the 28 pt list chevron), so at the default 1220 pt window with the 300 pt sidebar the eight-tab case also scrolls, by about 64 pt. Stale tabs dim the title like the sidebar card, which on an unselected tab is the same colour as any idle tab; the list menu and the header label tell them apart.</p>
+
+<h2 class="sec-h">4. Rationale and open choices</h2>
+<div class="cols">
+<div class="box"><h4>Taken from the references</h4><ul>
+<li><b>T3 usage page:</b> period control top right (24 h, 7 d, 30 d, 90 d), a big headline number at top left with a labelled estimate under it, a totals row (input, output, cache write, cache read, cache share), a daily chart, and a per-model table with tokens, share and cost columns and a thin share bar.</li>
+<li><b>Layout guidance:</b> tabs above the main content (surface 3), the bottom bar becomes the compact footer inside the sidebar (surface 1).</li>
+<li><b>Identity A:</b> every colour is an A token (panel, text tiers, white-alpha fills, hairline 10 %, selected look 7 % + 10 % stroke); radii 6/8/10; weight before size; sentence case, no exclamation marks.</li></ul></div>
+<div class="box"><h4>Left out on purpose</h4><ul>
+<li>Cost as the headline, cost line and cost-by-type bars: tokens are the headline, cost is one secondary line labelled an estimate, and unknown models show "—".</li>
+<li>The filled area chart, orange series colour and glow: bars are neutral and quiet; the single accent stays for focus rings and default buttons.</li>
+<li>Plan limits (5-hour, weekly, the "Limits" toggle): not reachable locally (DP-U4). A labelled, approximate local 5-hour activity block stands in.</li>
+<li>Environment and provider split, speed tiers, "Cost / Tokens" toggle: Claude only for now. The table's first column is model name; a provider mark can be added left of it for Codex without changing the layout.</li>
+<li>Left rail, right sidebar, a "+" tab button, a second header bar, session counts per model.</li></ul></div>
+<div class="box"><h4>Lightness</h4><ul>
+<li>No images, charts or custom drawing: bars are rounded rectangles, the activity block is five cells, the meter is five bars. All are static; nothing animates, no timers.</li>
+<li>The chip is one text line; the Settings body is a plain scroll view of text and rectangles, built only when the window is open.</li>
+<li>The chase appears only in conversation status, so "indexing" never reads as "a conversation is working".</li></ul></div>
+</div>
+<h3>Open choices and recommendation</h3>
+<table class="spec"><tr><th>Choice</th><th>Options</th><th>Recommendation and why</th></tr>
+<tr><td>Chip variant</td><td>(a) "Today 1.2M tok · ~$3.10" text; (b) five-bar meter + tokens</td><td class="pick">(a). It says the same thing in words, needs no legend, no drawing code and degrades by dropping the cost. (b) is the better glance at "am I busy now" but the meter is unlabeled shape language and the 5-hour figure is approximate; it can be added later in the same slot.</td></tr>
+<tr><td>Chip at 220 pt</td><td>Ellipsize the string; or drop the cost whole</td><td class="pick">Drop the cost whole (ViewThatFits: full, tokens, then ellipsis). A cut "~$1…" misleads; the tooltip carries the rest.</td></tr>
+<tr><td>Settings navigation</td><td>Top switcher; slim left list</td><td class="pick">Top switcher: three sections, 680 pt width kept for the usage table, no rail look. Fixed window size for all three sections.</td></tr>
+<tr><td>Transient tab</td><td>Italic title, close on hover; or no close until pinned</td><td class="pick">Italic title, close on hover like any tab. Closing a transient tab selects its neighbour. Pins on double click, "Open in Tab", and on start or resume (DP-U1). The transient tab sits after the pinned ones.</td></tr>
+<tr><td>Close button</td><td>Always visible; hover only; hover plus selected</td><td class="pick">Hover plus the selected tab. The selected tab reserves the slot; others overlay it on hover so unselected titles keep the width (at 112 pt about 70 pt of title shows).</td></tr>
+<tr><td>Tab overflow</td><td>Shrink to icons; scroll plus list menu</td><td class="pick">Min width 112 pt, scroll, and a chevron list menu with an aggregated attention dot. Icon-only tabs lose the title, which is the point of a tab.</td></tr>
+<tr><td>5-hour block</td><td>Five hourly cells; ten half-hour bars</td><td class="pick">Five hourly cells with the hour labels; simpler to read and to test. White-alpha intensity, no accent.</td></tr>
+<tr><td>Cost in the chip</td><td>Show; hide</td><td class="pick">Show it secondary and drop it first. If the user wants zero cost on the main window, (a) without the cost is "Today 1.2M tok".</td></tr>
+<tr><td>Failure and accessibility</td><td>Dot only (today); diamond (DP-I1)</td><td>Tab mark follows whatever DP-I1 decides, via IndicatorView. No separate shape here.</td></tr>
+<tr><td>Window size per section</td><td>One fixed 680 x 520; or resize per section (General is short)</td><td class="pick">Fixed. A window that changes height when the user clicks General then Usage is a stumble; General's emptiness is acceptable until it gains provider status rows.</td></tr>
+<tr><td>About: Claude profile line</td><td>Include; leave out</td><td class="pick">Include. It states where usage is read from (DP-U3) and costs one row. The brief listed version and data folder only; this is an addition for the reviewer to confirm.</td></tr></table>
+<h3>Sizes and tokens used (nothing new)</h3>
+<table class="spec"><tr><th>Item</th><th>Value</th></tr>
+<tr><td>Footer</td><td>38 pt high, 12 pt side padding, 8 pt gaps; buttons 26 x 24 radius 6; chip 24 high radius 6, padding 0 8, SF Pro 11 medium, tabular digits; hover white 9 %</td></tr>
+<tr><td>Settings window</td><td>680 x 520, panel colour #1D1C22, radius 12, title bar 52 pt with the switcher on the 26 pt centerline, body padding 32 side, footer strip 32 pt with a 10 % hairline; section gap 20 pt</td></tr>
+<tr><td>Usage type</td><td>Headline SF Pro 32 semibold (-0.02 em); totals values 15 semibold; table 13 regular, header 11; caption 11; all tabular digits</td></tr>
+<tr><td>Usage rows</td><td>Table row 28 pt, header 24 pt, 10 % hairlines; bars 72 pt high, radius 4 top; activity cells 28 pt high, radius 4, 4 pt gap</td></tr>
+<tr><td>Tab strip</td><td>32 pt high; tab 24 pt high, radius 6, 4 pt gap, 8 pt side padding, width 112 to 200; indicator slot 12; close 16 (reserved on the selected tab only); overflow button 24 x 24; selected = 7 % fill + 10 % stroke</td></tr>
+<tr><td>Colours</td><td>text.primary #E0DBEB, text.secondary #828799, text.tertiary #5A5F70 (disabled only), accent #8791CF (focus ring only), attention #FF9E0A, unviewed #5C8CFF, failure #F2615C, hairline white 10 %, hover 9 %, pressed 14 %, selected 7 %, control 6 %</td></tr></table>
+<p class="cap">Mock limits: the page uses CSS pixels as points, the system font stack (SF Pro on a Mac), and CSS blur for glass; real glass, hover transitions, menus and tooltips need the user's eye in the built app. Window chrome shown is the app's own title-bar layout (traffic lights at the 26 pt centerline).</p>
+
+</div>
+</body>
+</html>
