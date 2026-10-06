@@ -37,7 +37,7 @@ Declared in `Package.swift`; all tests use swift-testing (`@Test`). Product bund
 | `CLoomTestSupport` (C) | Test-only helpers for `loom-test-child` | `CLoomTestSupport.c` | none |
 | `LoomCore` | Everything non-UI: runtime, supervisor, catalog, ownership, hook server, provider setup, lifecycle, event hub | see below | `LoomCoreTests` |
 | `LoomTerminal` | SwiftTerm wrapper: output bridge, bounded input queue wiring, limits, theme, A-slice synthetic-run state machine | `TerminalSurface.swift` (`TerminalSurface`, `TerminalOutputBridge`, `TerminalSurfaceLimits`, `LoomTerminalView`), `TerminalRunController.swift`, `TerminalTheme.swift` | `LoomTerminalTests` |
-| `LoomCatalogUI` | Sidebar, detail pane, `@Observable` `CatalogModel`, `ConversationController` (runtime to terminals glue), status indicator, UI preferences, git branch read | `CatalogModel.swift`, `ConversationController.swift`, `SidebarView.swift`, `DetailView.swift`, `SessionDisplay.swift` (`SessionIndicator`), `LoomTheme.swift` (all visual tokens; guarded by `scripts/check-theme-literals.sh`), `IndicatorView.swift` (`IndicatorView`, `ChaseDots`, `IndicatorEvidence`), `ProviderIcon.swift`, `UIPreferences.swift`, `GitBranch.swift`, `SettingsView.swift` | `LoomCatalogUITests` |
+| `LoomCatalogUI` | Sidebar, detail pane, `@Observable` `CatalogModel`, `ConversationController` (runtime to terminals glue), status indicator, UI preferences, git branch read | `CatalogModel.swift`, `ConversationController.swift`, `SidebarView.swift`, `DetailView.swift`, `SessionDisplay.swift` (`SessionIndicator`), `LoomTheme.swift` (all visual tokens; guarded by `scripts/check-theme-literals.sh`), `IndicatorView.swift` (`IndicatorView`, `ChaseDots`, `IndicatorEvidence`), `ProviderIcon.swift`, `UIPreferences.swift`, `GitBranch.swift`, `BranchCache.swift`, `SettingsView.swift` | `LoomCatalogUITests` |
 | `LoomLaunchOptions` | Pure launch rules: data root resolution, `--evidence`, command-channel name | `LaunchOptions.swift` | `LoomLaunchOptionsTests` |
 | `loom-app` (exe) | `AppDelegate` (one window, menus, runtime wiring, Quit), `MainSplitViewController`, dev evidence tooling | `AppDelegate.swift`, `MainSplitViewController.swift`, `DevelopmentEvidence.swift`, `EvidenceResourcePool.swift` | none (acceptance scripts in `scripts/`) |
 | `loom-run-host` (C exe) | Bundled `Contents/Helpers/LoomRunHost.app`; one instance per run scope; spawns PTY children, reports exits | `main.c` | `RunScopeTests` (assembles a real bundle) |
@@ -67,9 +67,22 @@ sequenced frames to subscribers.
 
 **App launch to catalog** (`AppDelegate.applicationDidFinishLaunching`)
 `LaunchOptions.resolveDataRoot` -> `SessionCatalog(url: catalog.sqlite3)` -> `CatalogModel(events: hub, preferences:
-ui-preferences.json)` -> window shown at once (`makeWindow`, `MainSplitViewController`) -> `startupTask`: `startRuntime`
-(ledger + `runs/<uuid>/`, `ProcessSupervisor.restoring`, `SessionRuntime.start`, `ConversationController.begin`,
-background `PreviousRunRecovery`) -> `model.start()` (first page). Opening the app starts no provider, PTY or terminal.
+ui-preferences.json)` -> window shown at once (`makeWindow`, `MainSplitViewController`) -> `startupTask` runs `model.start()`
+(first page) and `startRuntime` concurrently (ledger + `runs/<uuid>/`, `ProcessSupervisor.restoring`, the app's own
+`ProcessTable.record(pid:)` for `owner.json`, `SessionRuntime.start`, `ConversationController.begin`, background
+`PreviousRunRecovery`) and waits for both before `startupFinished` (Quit waits for the same task). The sidebar needs only the
+catalog and the hub; a runtime that attaches after the first page makes `CatalogModel.intents` count the selection as viewed
+then. Opening the app starts no provider, PTY or terminal. Signposts (`LoomSignposts`, subsystem `local.loom.desktop`, category
+PointsOfInterest) mark `LaunchToFirstPage`, `CatalogOpen`, `WindowShown`, `RuntimeStart`, `FirstPage` and `SelectToTerminal`;
+read them with `/usr/bin/log show --last 2m --signpost --predicate 'subsystem == "local.loom.desktop"'` or
+`scripts/perf/launch_paint.py` (before/after medians in `plans/experiments/run1-F5-launch.json`).
+
+**Sidebar branches and refreshes** `CatalogModel` never reads Git on the main actor: `BranchCache` (actor, one `GitBranch.read`
+per folder) is asked for the folders of a page before that page is published, so a card shows its branch with the first
+paint; turn completion and window activation refresh known folders in the background and publish only changed values.
+`branches` keeps only folders a loaded card, the selection or a tab shows. A reload writes an observed property only when the
+value differs (`projects`, `sessionCounts`, list rows, `branches`); `now` moves forward at most every 10 s, or when a row is
+newer than it.
 
 **Start a Claude conversation to indicator**
 ```
@@ -220,8 +233,11 @@ Design fact: one `codex app-server` per Codex session (contract §3).
 - UI-layer coupling: `ConversationController` and `CatalogModel` hold `SessionRuntime`/`ProcessSupervisor` directly;
   `CatalogModel` (828 lines) mixes paging, search, selection, projects, rename, event consumption and branch reads;
   `CatalogModel` imports AppKit and `ConversationIntents.terminalView` returns `NSView`.
-- MainActor git reads: `CatalogModel.apply` calls `GitBranch.read` (synchronous file reads) at turn completion
-  (`CatalogModel.swift`, also at selection and refresh).
+- Launch measurements (F5, release package, 5 runs each, `scripts/perf/launch_paint.py`): window creation (`WindowShown`,
+  ~125-136 ms) dominates app delegate to first page; catalog open including `PRAGMA quick_check` is 0.7 / 1.5 / 8 ms at 0 /
+  1,000 / 10,000 rows, so it stays on the main thread. Git branch reads are off the main actor (`BranchCache`).
+  `CatalogModel.scheduleRefresh` still reloads every loaded row of every visible list on run/lifecycle frames (a row-level
+  refresh is a follow-up).
 - Quit path: `AppShutdownCoordinator` (`LoomCore`) owns the quit state machine; `AppDelegate.startRuntime` builds it with the
   shutdown closure when the supervisor exists, and with no coordinator quit returns `.terminateNow`. `TerminalRunController`
   now carries only the evidence-only synthetic dev terminal.

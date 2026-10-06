@@ -101,19 +101,21 @@ public final class SessionListModel {
     @ObservationIgnored fileprivate var isStale = false
     @ObservationIgnored fileprivate var isLoadingMore = false
 
+    /// An equal reload (same row models in the same order, same paging state) writes nothing observed.
     fileprivate func replace(rows: [SessionRowModel], cursor: CatalogCursor?) {
-        self.rows = rows
+        if rows.count != self.rows.count || !zip(rows, self.rows).allSatisfy({ $0 === $1 }) { self.rows = rows }
         self.cursor = cursor
-        hasMore = cursor != nil
-        isLoaded = true
+        if hasMore != (cursor != nil) { hasMore = cursor != nil }
+        if !isLoaded { isLoaded = true }
         isStale = false
     }
 
     fileprivate func append(_ more: [SessionRowModel], cursor: CatalogCursor?) {
         let known = Set(rows.map(\.id))
-        rows += more.filter { !known.contains($0.id) }
+        let fresh = more.filter { !known.contains($0.id) }
+        if !fresh.isEmpty { rows += fresh }
         self.cursor = cursor
-        hasMore = cursor != nil
+        if hasMore != (cursor != nil) { hasMore = cursor != nil }
     }
 }
 
@@ -154,7 +156,17 @@ public final class CatalogModel {
     @ObservationIgnored public var onShowSettings: (() -> Void)?
     @ObservationIgnored public var onTerminalFontSizeChange: ((Double) -> Void)?
     @ObservationIgnored public var onToggleSidebar: (() -> Void)?
-    @ObservationIgnored public weak var intents: (any ConversationIntents)?
+    /// The runtime may attach after the first page is shown (it starts alongside the model);
+    /// the selected conversation is then counted as viewed from that moment.
+    @ObservationIgnored public weak var intents: (any ConversationIntents)? {
+        didSet {
+            intentsRevision &+= 1
+            if intents != nil, isReady { updateViewing() }
+        }
+    }
+    /// Observed stand-in for the attach of `intents` (which is not itself observed), so views
+    /// that read `actionsAvailable` re-evaluate when the runtime attaches after the first page.
+    public private(set) var intentsRevision = 0
     public private(set) var busy: [UUID: ConversationBusy] = [:]
     public private(set) var startingKeys: Set<StartKey> = []
     /// Bumped whenever a live terminal appears or goes away, so the detail
@@ -162,6 +174,14 @@ public final class CatalogModel {
     public private(set) var terminalRevision = 0
     public var quitting = false
     @ObservationIgnored public private(set) var statistics = CatalogModelStatistics()
+    /// Reads Git branches off the main thread (`BranchCache`); `branchReader` is the test seam.
+    @ObservationIgnored private var branchCache = BranchCache()
+    @ObservationIgnored private var branchTask: Task<Void, Never>?
+    @ObservationIgnored var branchReader: @Sendable (String) -> GitBranch = { GitBranch.read(directory: $0) } {
+        didSet { branchCache = BranchCache(reader: branchReader) }
+    }
+    /// `now` moves forward only when a relative time ("5m") could read differently.
+    @ObservationIgnored private let nowResolution: TimeInterval = 10
 
     @ObservationIgnored private let catalog: SessionCatalog?
     @ObservationIgnored private let events: SessionEventHub
@@ -212,6 +232,7 @@ public final class CatalogModel {
         searchTask?.cancel()
         refreshTask?.cancel()
         preferenceWriteTask?.cancel()
+        branchTask?.cancel()
     }
 
     /// Providers a user may start. The production build lists only Claude;
@@ -229,6 +250,11 @@ public final class CatalogModel {
     /// selection, then starts the one event consumer. Starts no process.
     public func start() async {
         if let notice = preferences.loadNotice { infoMessage = notice }
+        LoomSignposts.begin(.firstPage)
+        defer {
+            LoomSignposts.end(.firstPage)
+            LoomSignposts.end(.launchToFirstPage)
+        }
         guard catalog != nil else { isReady = true; return }
         // Taken before the lists are read, so a batch landing meanwhile is seen.
         lastCatalogRevision = await events.snapshot().catalogRevision
@@ -270,6 +296,7 @@ public final class CatalogModel {
         await refreshTask?.value
         await viewingTask?.value
         await preferenceWriteTask?.value
+        await branchTask?.value
     }
 
     // MARK: Lists
@@ -366,8 +393,9 @@ public final class CatalogModel {
                 records += page.sessions
                 cursor = page.next
             } while cursor != nil && records.count < wanted
+            await ensureBranches(for: records)
             guard generation == list.generation else { return }
-            now = Date()
+            advanceNow(covering: records)
             list.replace(rows: records.map(row(for:)), cursor: cursor)
         } catch {
             report(error, "Conversations could not be read")
@@ -384,6 +412,7 @@ public final class CatalogModel {
             do {
                 statistics.pageQueries += 1
                 let page = try await catalog.sessionPage(query(for: key), after: cursor)
+                await ensureBranches(for: page.sessions)
                 guard generation == list.generation else { return }
                 list.append(page.sessions.map(row(for:)), cursor: page.next)
             } catch {
@@ -394,8 +423,6 @@ public final class CatalogModel {
 
     private func row(for record: CatalogSession) -> SessionRowModel {
         let id = record.session.id
-        let path = record.session.workingDirectory
-        branches[path] = GitBranch.read(directory: path)
         if let existing = rowModels[id] {
             existing.apply(record: record)
             return existing
@@ -414,15 +441,61 @@ public final class CatalogModel {
             liveRecords[id] = row.record
         }
         rowModels = rowModels.filter { keep.contains($0.key) }
+        pruneBranches()
         statistics.rowModels = rowModels.count
         statistics.loadedRows = lists.values.reduce(0) { $0 + $1.rows.count }
+    }
+
+    // MARK: Branches and the clock
+
+    /// Branches of the records' folders that are not shown yet, read off the main thread.
+    private func ensureBranches(for records: [CatalogSession]) async {
+        let missing = Set(records.map(\.session.workingDirectory)).filter { branches[$0] == nil }
+        guard !missing.isEmpty else { return }
+        publishBranches(await branchCache.branches(for: missing), onlyKnown: false)
+    }
+
+    /// Re-reads the folders in the background and publishes only what changed.
+    private func refreshBranches(_ paths: Set<String>) {
+        guard !paths.isEmpty else { return }
+        let previous = branchTask
+        branchTask = Task { [weak self] in
+            await previous?.value // publishes keep the order the reads were asked in
+            guard let self else { return }
+            self.publishBranches(await self.branchCache.refresh(paths), onlyKnown: true)
+        }
+    }
+
+    private func publishBranches(_ fresh: [String: GitBranch], onlyKnown: Bool) {
+        for (path, branch) in fresh where branches[path] != branch {
+            if onlyKnown, branches[path] == nil { continue }
+            branches[path] = branch
+        }
+    }
+
+    /// Keeps a branch only while a card, the selection or a tab shows its folder.
+    private func pruneBranches() {
+        let shown = Set(rowModels.values.map { $0.record.session.workingDirectory })
+        guard branches.keys.contains(where: { !shown.contains($0) }) else { return }
+        branches = branches.filter { shown.contains($0.key) }
+        Task { [branchCache] in await branchCache.retain(shown) }
+    }
+
+    /// Advances `now` when relative times could read differently, or when a row is newer than it.
+    private func advanceNow(covering records: [CatalogSession] = []) {
+        let current = Date()
+        if current.timeIntervalSince(now) >= nowResolution || records.contains(where: { $0.lastUsedAt > now }) {
+            now = current
+        }
     }
 
     private func refreshProjects() async {
         guard let catalog else { return }
         do {
-            projects = try await catalog.projects()
-            sessionCounts = try await catalog.sessionCounts()
+            let freshProjects = try await catalog.projects()
+            if freshProjects != projects { projects = freshProjects }
+            let freshCounts = try await catalog.sessionCounts()
+            if freshCounts != sessionCounts { sessionCounts = freshCounts }
         } catch {
             report(error, "Projects could not be read")
         }
@@ -454,6 +527,8 @@ public final class CatalogModel {
         showsDevTerminal = false
         if id != selectedSessionID {
             selectedSessionID = id
+            // Only a conversation that owns a run has a terminal to wait for.
+            if let id, liveStates[id]?.runID != nil { LoomSignposts.begin(.selectToTerminal) }
             selectedRow = id.flatMap { rowModels[$0] }
             persistSelection(id)
             if id != nil, selectedRow == nil { Task { await ensureSelectedRow() } }
@@ -471,6 +546,7 @@ public final class CatalogModel {
                 if selectedSessionID == id { select(nil) }
                 return
             }
+            await ensureBranches(for: [record])
             guard selectedSessionID == id else { return }
             selectedRow = row(for: record)
         } catch {
@@ -552,6 +628,8 @@ public final class CatalogModel {
                 statistics.pageQueries += 1
                 guard let record = try await catalog.session(id: id) else { forgetTab(id); continue }
                 guard tabs.isPinned(id) else { continue }
+                await ensureBranches(for: [record])
+                guard tabs.isPinned(id) else { continue }
                 _ = row(for: record)
             } catch {
                 report(error, "A tab's conversation could not be read")
@@ -570,8 +648,8 @@ public final class CatalogModel {
         guard active != windowIsActive else { return }
         windowIsActive = active
         if active {
-            now = Date()
-            for path in branches.keys { branches[path] = GitBranch.read(directory: path) }
+            advanceNow()
+            refreshBranches(Set(branches.keys))
         }
         updateViewing()
     }
@@ -788,8 +866,7 @@ public final class CatalogModel {
         // Re-read at a reliable turn boundary, never for output/frame rendering.
         if case let .status(status) = frame.change, status?.activity == .turnComplete,
            let id = frame.sessionID, let row = rowModels[id] {
-            let path = row.record.session.workingDirectory
-            branches[path] = GitBranch.read(directory: path)
+            refreshBranches([row.record.session.workingDirectory])
         }
         if let last = lastSequence, frame.sequence == last &+ 1, let id = frame.sessionID {
             statistics.fastPathFrames += 1
@@ -853,7 +930,10 @@ public final class CatalogModel {
 
     /// Actions need a readable catalog and a runtime; a catalog error or a
     /// started Quit blocks them all.
-    public var actionsAvailable: Bool { startupError == nil && intents != nil && !quitting }
+    public var actionsAvailable: Bool {
+        _ = intentsRevision
+        return startupError == nil && intents != nil && !quitting
+    }
 
     /// Where the "new conversation" commands apply: the selected conversation's project.
     public var contextProjectID: UUID? { selectedRow?.record.projectID }
@@ -902,7 +982,9 @@ public final class CatalogModel {
     /// The conversation's live terminal, if it owns a run right now.
     public func terminalView(for id: UUID) -> NSView? {
         _ = terminalRevision
-        return intents?.terminalView(sessionID: id)
+        let view = intents?.terminalView(sessionID: id)
+        if view != nil, id == selectedSessionID { LoomSignposts.end(.selectToTerminal) }
+        return view
     }
 
     // Called by the conversation controller.

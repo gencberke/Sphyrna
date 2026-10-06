@@ -39,7 +39,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var visibilityEvents: [[String: Any]] = []
 #endif
 
-    init(arguments: [String]) { self.options = LaunchOptions(arguments: arguments) }
+    init(arguments: [String]) {
+        LoomSignposts.begin(.launchToFirstPage)
+        LoomSignposts.begin(.windowShown)
+        self.options = LaunchOptions(arguments: arguments)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The app is dark-only: alerts, open panels and other AppKit panels follow this, not the system.
@@ -66,7 +70,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             catalogFailure = refusal
         } else {
             do {
-                catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
+                catalog = try LoomSignposts.measure(.catalogOpen) {
+                    try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
+                }
             } catch {
                 catalogFailure = String(describing: error)
             }
@@ -90,13 +96,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
         traceWindowCall("launch-after-show")
+        LoomSignposts.end(.windowShown)
         updateWindowActivity()
         startEvidenceChannel()
         // The runtime is built off the launch path; opening the app starts no
         // provider, PTY or terminal, and Quit waits for this to finish first.
+        // The sidebar needs only the catalog and the hub, so it loads while the
+        // runtime starts instead of after it.
         startupTask = Task { @MainActor in
+            async let sidebar: Void = model.start()
             if refusal == nil { await startRuntime(root: root, hub: hub, catalog: catalog, model: model) }
-            await model.start()
+            await sidebar
             startupFinished = true
             evidenceStartupFinished()
         }
@@ -251,6 +261,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func startRuntime(root: URL, hub: SessionEventHub, catalog: SessionCatalog?,
                               model: CatalogModel) async {
+        LoomSignposts.begin(.runtimeStart)
+        defer { LoomSignposts.end(.runtimeStart) }
         do {
             // Ownership is per run scope; the app's own coalition is never used.
             let ledger = OwnershipLedger()
@@ -272,7 +284,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
             self.supervisor = supervisor
             runDirectory = directory
-            if let owner = try ProcessTable.snapshot().first(where: { $0.identity.pid == getpid() }) {
+            if let owner = ProcessTable.record(pid: getpid()) {
                 try JSONEncoder().encode(owner.identity)
                     .write(to: directory.appendingPathComponent("owner.json"), options: .atomic)
             }

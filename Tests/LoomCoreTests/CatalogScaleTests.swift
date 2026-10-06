@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import Testing
 @testable import LoomCore
 
@@ -137,6 +138,43 @@ struct CatalogScaleTests {
         #expect(decoded <= events)
         await controller.stopAutomaticEvaluation()
         #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    /// F5 probe: what opening an existing catalog costs on the launch path
+    /// (`SessionCatalog(url:)`, which runs `PRAGMA quick_check` before anything
+    /// else) and what `quick_check` alone costs, at 1,000 and 10,000 rows.
+    @Test(arguments: [1_000, 10_000])
+    func catalogOpenAndQuickCheckCostAtScale(count: Int) async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("loom-open-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("catalog.sqlite3")
+        do {
+            let seeded = try SessionCatalog(url: url)
+            try await seed(seeded, count: count)
+        }
+        let clock = ContinuousClock()
+        var opens: [Duration] = [], checks: [Duration] = []
+        for _ in 0..<7 {
+            opens.append(try clock.measure { _ = try SessionCatalog(url: url) })
+            checks.append(try clock.measure {
+                var handle: OpaquePointer?
+                guard sqlite3_open_v2(url.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+                    throw SessionCatalogError.sqlite(operation: "probe open", code: SQLITE_CANTOPEN, message: "")
+                }
+                defer { sqlite3_close(handle) }
+                var statement: OpaquePointer?
+                sqlite3_prepare_v2(handle, "PRAGMA quick_check", -1, &statement, nil)
+                defer { sqlite3_finalize(statement) }
+                while sqlite3_step(statement) == SQLITE_ROW {}
+            })
+        }
+        let fileBytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+        print("F5 count=\(count) db=\(fileBytes / 1024) KiB SessionCatalog(url:) median=\(microseconds(median(opens)) / 1000) ms "
+              + "(min \(microseconds(opens.sorted().first!) / 1000), max \(microseconds(opens.sorted().last!) / 1000)) "
+              + "| quick_check alone median=\(microseconds(median(checks)) / 1000) ms "
+              + "(min \(microseconds(checks.sorted().first!) / 1000), max \(microseconds(checks.sorted().last!) / 1000))")
+        #expect(median(opens) < .seconds(5))
     }
 
     // MARK: CP5 C precondition (history §28.1): aging must not fill the event map

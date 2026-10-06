@@ -1,0 +1,792 @@
+{
+  "slice": "F5",
+  "date": "2026-10-07",
+  "unit": "ms",
+  "baseCommit": "c2bd611",
+  "what": "app delegate created -> first sidebar page loaded (LaunchToFirstPage), with the signpost intervals that compose it",
+  "method": {
+    "signposts": "LoomSignposts (subsystem local.loom.desktop, category PointsOfInterest); read with /usr/bin/log show --signpost --style ndjson, process-filtered",
+    "runs": 5,
+    "order": "before/after alternate run by run (A/B/A/B) inside one build-slot lock, 3 s cooldown, 5 s settle, then Quit through the evidence channel",
+    "launch": "direct exec of the packaged executable with --evidence <tmp> --data-root <copy of a seeded catalog> (no real data root, no provider)",
+    "packages": {
+      "before": "run1-F5-before = base c2bd611 plus signposts and instrumentation only",
+      "after": "run1-F5-after = before plus the F5 changes"
+    },
+    "seeds": "loom-catalog-fixture seed <root> N for N in 0, 1000, 10000 (3 projects)",
+    "commands": [
+      "scripts/package-dev-app.sh ~/Library/Application Support/Loom-Dev/packages/run1-F5-before",
+      "scripts/package-dev-app.sh ~/Library/Application Support/Loom-Dev/packages/run1-F5-after",
+      "loom-catalog-fixture seed <root> {0,1000,10000}",
+      "scripts/perf/launch_paint.py --app before=<pkg> --app after=<pkg> --seed 0=<root> --seed 1000=<root> --seed 10000=<root> --runs 5 --output <json>"
+    ],
+    "caveat": "first-page time is the in-process interval, not a screen capture; endsAt values are ms after the app delegate was created; machine was idle, not a thermal-controlled lab"
+  },
+  "results": {
+    "after": {
+      "0": {
+        "CatalogOpen": {
+          "max": 0.73,
+          "median": 0.72,
+          "min": 0.7,
+          "samples": [
+            0.71,
+            0.73,
+            0.7,
+            0.72,
+            0.72
+          ]
+        },
+        "CatalogOpen.endsAt": {
+          "max": 37.4,
+          "median": 36.43,
+          "min": 36.26,
+          "samples": [
+            37.4,
+            36.26,
+            36.64,
+            36.36,
+            36.43
+          ]
+        },
+        "FirstPage": {
+          "max": 1.51,
+          "median": 1.17,
+          "min": 1.13,
+          "samples": [
+            1.16,
+            1.17,
+            1.13,
+            1.51,
+            1.24
+          ]
+        },
+        "FirstPage.endsAt": {
+          "max": 143.14,
+          "median": 140.27,
+          "min": 139.93,
+          "samples": [
+            140.27,
+            143.14,
+            141.77,
+            139.98,
+            139.93
+          ]
+        },
+        "LaunchToFirstPage": {
+          "max": 143.14,
+          "median": 140.27,
+          "min": 139.93,
+          "samples": [
+            140.27,
+            143.14,
+            141.77,
+            139.98,
+            139.93
+          ]
+        },
+        "LaunchToFirstPage.endsAt": {
+          "max": 143.14,
+          "median": 140.27,
+          "min": 139.93,
+          "samples": [
+            140.27,
+            143.14,
+            141.77,
+            139.98,
+            139.93
+          ]
+        },
+        "RuntimeStart": {
+          "max": 4.16,
+          "median": 3.87,
+          "min": 3.76,
+          "samples": [
+            3.81,
+            3.87,
+            3.76,
+            4.16,
+            3.88
+          ]
+        },
+        "RuntimeStart.endsAt": {
+          "max": 145.39,
+          "median": 142.51,
+          "min": 142.16,
+          "samples": [
+            142.51,
+            145.39,
+            144.0,
+            142.23,
+            142.16
+          ]
+        },
+        "WindowShown": {
+          "max": 128.06,
+          "median": 125.28,
+          "min": 124.48,
+          "samples": [
+            125.28,
+            128.06,
+            126.86,
+            124.48,
+            124.94
+          ]
+        },
+        "WindowShown.endsAt": {
+          "max": 128.1,
+          "median": 125.32,
+          "min": 124.52,
+          "samples": [
+            125.32,
+            128.1,
+            126.9,
+            124.52,
+            124.98
+          ]
+        }
+      },
+      "1000": {
+        "CatalogOpen": {
+          "max": 1.53,
+          "median": 1.49,
+          "min": 1.46,
+          "samples": [
+            1.48,
+            1.49,
+            1.53,
+            1.46,
+            1.49
+          ]
+        },
+        "CatalogOpen.endsAt": {
+          "max": 40.48,
+          "median": 39.6,
+          "min": 37.73,
+          "samples": [
+            39.6,
+            38.69,
+            40.42,
+            40.48,
+            37.73
+          ]
+        },
+        "FirstPage": {
+          "max": 3.02,
+          "median": 2.96,
+          "min": 2.9,
+          "samples": [
+            2.9,
+            3.02,
+            2.96,
+            2.92,
+            3.01
+          ]
+        },
+        "FirstPage.endsAt": {
+          "max": 148.35,
+          "median": 144.39,
+          "min": 143.51,
+          "samples": [
+            144.39,
+            143.51,
+            144.01,
+            148.35,
+            145.01
+          ]
+        },
+        "LaunchToFirstPage": {
+          "max": 148.35,
+          "median": 144.39,
+          "min": 143.51,
+          "samples": [
+            144.39,
+            143.51,
+            144.01,
+            148.35,
+            145.01
+          ]
+        },
+        "LaunchToFirstPage.endsAt": {
+          "max": 148.35,
+          "median": 144.39,
+          "min": 143.51,
+          "samples": [
+            144.39,
+            143.51,
+            144.01,
+            148.35,
+            145.01
+          ]
+        },
+        "RuntimeStart": {
+          "max": 35.12,
+          "median": 32.7,
+          "min": 31.57,
+          "samples": [
+            32.03,
+            31.57,
+            34.1,
+            35.12,
+            32.7
+          ]
+        },
+        "RuntimeStart.endsAt": {
+          "max": 180.14,
+          "median": 174.29,
+          "min": 171.66,
+          "samples": [
+            173.07,
+            171.66,
+            174.75,
+            180.14,
+            174.29
+          ]
+        },
+        "WindowShown": {
+          "max": 128.41,
+          "median": 127.17,
+          "min": 126.64,
+          "samples": [
+            126.64,
+            126.75,
+            127.17,
+            128.41,
+            128.12
+          ]
+        },
+        "WindowShown.endsAt": {
+          "max": 128.45,
+          "median": 127.21,
+          "min": 126.68,
+          "samples": [
+            126.68,
+            126.78,
+            127.21,
+            128.45,
+            128.16
+          ]
+        }
+      },
+      "10000": {
+        "CatalogOpen": {
+          "max": 8.26,
+          "median": 8.07,
+          "min": 8.02,
+          "samples": [
+            8.02,
+            8.04,
+            8.11,
+            8.26,
+            8.07
+          ]
+        },
+        "CatalogOpen.endsAt": {
+          "max": 46.05,
+          "median": 44.92,
+          "min": 43.16,
+          "samples": [
+            45.25,
+            44.92,
+            43.16,
+            44.49,
+            46.05
+          ]
+        },
+        "FirstPage": {
+          "max": 16.66,
+          "median": 15.2,
+          "min": 14.91,
+          "samples": [
+            16.66,
+            16.28,
+            15.2,
+            14.91,
+            15.13
+          ]
+        },
+        "FirstPage.endsAt": {
+          "max": 167.26,
+          "median": 164.13,
+          "min": 160.04,
+          "samples": [
+            167.26,
+            164.13,
+            160.04,
+            163.88,
+            164.53
+          ]
+        },
+        "LaunchToFirstPage": {
+          "max": 167.27,
+          "median": 164.14,
+          "min": 160.04,
+          "samples": [
+            167.27,
+            164.14,
+            160.04,
+            163.88,
+            164.53
+          ]
+        },
+        "LaunchToFirstPage.endsAt": {
+          "max": 167.27,
+          "median": 164.14,
+          "min": 160.04,
+          "samples": [
+            167.27,
+            164.14,
+            160.04,
+            163.88,
+            164.53
+          ]
+        },
+        "RuntimeStart": {
+          "max": 47.44,
+          "median": 45.17,
+          "min": 44.08,
+          "samples": [
+            47.44,
+            44.98,
+            46.67,
+            45.17,
+            44.08
+          ]
+        },
+        "RuntimeStart.endsAt": {
+          "max": 197.64,
+          "median": 193.04,
+          "min": 191.1,
+          "samples": [
+            197.64,
+            192.44,
+            191.1,
+            193.7,
+            193.04
+          ]
+        },
+        "WindowShown": {
+          "max": 136.85,
+          "median": 134.99,
+          "min": 130.99,
+          "samples": [
+            136.85,
+            133.34,
+            130.99,
+            134.99,
+            135.53
+          ]
+        },
+        "WindowShown.endsAt": {
+          "max": 136.89,
+          "median": 135.03,
+          "min": 131.03,
+          "samples": [
+            136.89,
+            133.38,
+            131.03,
+            135.03,
+            135.57
+          ]
+        }
+      }
+    },
+    "before": {
+      "0": {
+        "CatalogOpen": {
+          "max": 0.81,
+          "median": 0.73,
+          "min": 0.71,
+          "samples": [
+            0.75,
+            0.81,
+            0.73,
+            0.72,
+            0.71
+          ]
+        },
+        "CatalogOpen.endsAt": {
+          "max": 39.24,
+          "median": 36.73,
+          "min": 36.06,
+          "samples": [
+            36.06,
+            36.5,
+            36.76,
+            36.73,
+            39.24
+          ]
+        },
+        "FirstPage": {
+          "max": 2.78,
+          "median": 0.27,
+          "min": 0.21,
+          "samples": [
+            0.22,
+            0.27,
+            0.21,
+            2.78,
+            0.28
+          ]
+        },
+        "FirstPage.endsAt": {
+          "max": 143.83,
+          "median": 140.92,
+          "min": 140.39,
+          "samples": [
+            143.83,
+            140.39,
+            140.92,
+            143.38,
+            140.5
+          ]
+        },
+        "LaunchToFirstPage": {
+          "max": 143.83,
+          "median": 140.92,
+          "min": 140.39,
+          "samples": [
+            143.83,
+            140.39,
+            140.92,
+            143.38,
+            140.5
+          ]
+        },
+        "LaunchToFirstPage.endsAt": {
+          "max": 143.83,
+          "median": 140.92,
+          "min": 140.39,
+          "samples": [
+            143.83,
+            140.39,
+            140.92,
+            143.38,
+            140.5
+          ]
+        },
+        "RuntimeStart": {
+          "max": 2.1,
+          "median": 2.09,
+          "min": 2.07,
+          "samples": [
+            2.07,
+            2.1,
+            2.09,
+            2.08,
+            2.1
+          ]
+        },
+        "RuntimeStart.endsAt": {
+          "max": 143.61,
+          "median": 140.59,
+          "min": 140.11,
+          "samples": [
+            143.61,
+            140.11,
+            140.7,
+            140.59,
+            140.22
+          ]
+        },
+        "WindowShown": {
+          "max": 127.69,
+          "median": 125.11,
+          "min": 124.55,
+          "samples": [
+            127.69,
+            124.55,
+            125.11,
+            125.27,
+            124.62
+          ]
+        },
+        "WindowShown.endsAt": {
+          "max": 127.73,
+          "median": 125.14,
+          "min": 124.58,
+          "samples": [
+            127.73,
+            124.58,
+            125.14,
+            125.31,
+            124.66
+          ]
+        }
+      },
+      "1000": {
+        "CatalogOpen": {
+          "max": 1.76,
+          "median": 1.47,
+          "min": 1.45,
+          "samples": [
+            1.45,
+            1.48,
+            1.46,
+            1.76,
+            1.47
+          ]
+        },
+        "CatalogOpen.endsAt": {
+          "max": 43.6,
+          "median": 37.74,
+          "min": 36.79,
+          "samples": [
+            40.94,
+            37.42,
+            36.79,
+            43.6,
+            37.74
+          ]
+        },
+        "FirstPage": {
+          "max": 7.71,
+          "median": 7.26,
+          "min": 6.52,
+          "samples": [
+            7.26,
+            6.76,
+            7.37,
+            6.52,
+            7.71
+          ]
+        },
+        "FirstPage.endsAt": {
+          "max": 163.49,
+          "median": 152.82,
+          "min": 150.1,
+          "samples": [
+            153.24,
+            150.1,
+            151.4,
+            163.49,
+            152.82
+          ]
+        },
+        "LaunchToFirstPage": {
+          "max": 163.49,
+          "median": 152.82,
+          "min": 150.1,
+          "samples": [
+            153.24,
+            150.1,
+            151.4,
+            163.49,
+            152.82
+          ]
+        },
+        "LaunchToFirstPage.endsAt": {
+          "max": 163.49,
+          "median": 152.82,
+          "min": 150.1,
+          "samples": [
+            153.24,
+            150.1,
+            151.4,
+            163.49,
+            152.82
+          ]
+        },
+        "RuntimeStart": {
+          "max": 4.37,
+          "median": 4.33,
+          "min": 3.67,
+          "samples": [
+            3.67,
+            4.37,
+            4.33,
+            4.35,
+            3.68
+          ]
+        },
+        "RuntimeStart.endsAt": {
+          "max": 156.97,
+          "median": 145.1,
+          "min": 143.34,
+          "samples": [
+            145.98,
+            143.34,
+            144.02,
+            156.97,
+            145.1
+          ]
+        },
+        "WindowShown": {
+          "max": 138.35,
+          "median": 128.05,
+          "min": 125.02,
+          "samples": [
+            128.81,
+            125.02,
+            126.37,
+            138.35,
+            128.05
+          ]
+        },
+        "WindowShown.endsAt": {
+          "max": 138.39,
+          "median": 128.09,
+          "min": 125.06,
+          "samples": [
+            128.85,
+            125.06,
+            126.41,
+            138.39,
+            128.09
+          ]
+        }
+      },
+      "10000": {
+        "CatalogOpen": {
+          "max": 8.99,
+          "median": 8.02,
+          "min": 7.95,
+          "samples": [
+            8.11,
+            7.95,
+            7.97,
+            8.99,
+            8.02
+          ]
+        },
+        "CatalogOpen.endsAt": {
+          "max": 51.27,
+          "median": 45.94,
+          "min": 43.67,
+          "samples": [
+            43.67,
+            43.84,
+            51.27,
+            45.94,
+            46.47
+          ]
+        },
+        "FirstPage": {
+          "max": 29.63,
+          "median": 27.31,
+          "min": 24.48,
+          "samples": [
+            27.31,
+            25.65,
+            29.63,
+            27.43,
+            24.48
+          ]
+        },
+        "FirstPage.endsAt": {
+          "max": 206.12,
+          "median": 196.04,
+          "min": 192.69,
+          "samples": [
+            196.04,
+            192.69,
+            206.12,
+            196.72,
+            194.56
+          ]
+        },
+        "LaunchToFirstPage": {
+          "max": 206.13,
+          "median": 196.04,
+          "min": 192.69,
+          "samples": [
+            196.04,
+            192.69,
+            206.13,
+            196.72,
+            194.56
+          ]
+        },
+        "LaunchToFirstPage.endsAt": {
+          "max": 206.13,
+          "median": 196.04,
+          "min": 192.69,
+          "samples": [
+            196.04,
+            192.69,
+            206.13,
+            196.72,
+            194.56
+          ]
+        },
+        "RuntimeStart": {
+          "max": 21.8,
+          "median": 20.1,
+          "min": 19.07,
+          "samples": [
+            21.8,
+            19.07,
+            21.44,
+            19.18,
+            20.1
+          ]
+        },
+        "RuntimeStart.endsAt": {
+          "max": 176.49,
+          "median": 169.29,
+          "min": 167.03,
+          "samples": [
+            168.72,
+            167.03,
+            176.49,
+            169.29,
+            170.07
+          ]
+        },
+        "WindowShown": {
+          "max": 141.59,
+          "median": 136.26,
+          "min": 131.63,
+          "samples": [
+            131.63,
+            132.82,
+            141.59,
+            136.62,
+            136.26
+          ]
+        },
+        "WindowShown.endsAt": {
+          "max": 141.63,
+          "median": 136.29,
+          "min": 131.67,
+          "samples": [
+            131.67,
+            132.86,
+            141.63,
+            136.65,
+            136.29
+          ]
+        }
+      }
+    }
+  },
+  "summary": {
+    "LaunchToFirstPage.medianDelta": {
+      "0": -0.65,
+      "1000": -8.43,
+      "10000": -31.9
+    },
+    "reading": "At 10,000 rows the first page ended after RuntimeStart in the before package and ends about 32 ms earlier, before RuntimeStart, in the after package. At 0 rows the change is within noise. Window creation (WindowShown, about 125-136 ms) is most of the remaining time and is outside this slice."
+  },
+  "quickCheck": {
+    "command": "swift test --scratch-path <scratch> --filter CatalogScaleTests/catalogOpenAndQuickCheckCostAtScale (debug test build, 7 reopens)",
+    "rows": {
+      "1000": {
+        "dbKiB": 416,
+        "sessionCatalogOpenMedianMs": 1.03,
+        "quickCheckAloneMedianMs": 0.61
+      },
+      "10000": {
+        "dbKiB": 3636,
+        "sessionCatalogOpenMedianMs": 6.66,
+        "quickCheckAloneMedianMs": 3.19
+      }
+    },
+    "decision": "catalog open stays on the main thread: 8 ms at 10,000 rows in the release package (CatalogOpen interval), so moving it would buy nothing measurable"
+  },
+  "regression": {
+    "tests": "Tests/LoomCatalogUITests/CatalogHotPathTests.swift",
+    "redRun": "all 5 tests failed on the old code (reads on main: 6 and 33 of 33; observed write on an equal refresh; no pruning)",
+    "greenRun": "7 of 7 pass after the change (fix round 1 added the actionsAvailable observation test; it fails with the intentsRevision read removed)"
+  }
+}
