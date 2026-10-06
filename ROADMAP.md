@@ -16,6 +16,7 @@ Path from today to Loom's first production release. Checkpoint numbers are ident
 | L Clean loom line | Daily-use `Loom.app` built only from a clean loom tree ([D-25, D-29](DECISIONS.md)) | [Stage L plan](plans/STAGE-L.md) | in progress (before the multi-agent run) |
 | F Foundation hardening (**proposed**, multi-agent run) | Make the base safe for parallel feature work and production | See below | not started |
 | I Identity and UI system (**proposed**, multi-agent run) | Codify identity direction A ([D-22](DECISIONS.md)) as tokens and rules; settle the navbar | See below | direction chosen; navbar waits for O-03 |
+| U Daily-use UI features (**proposed**, multi-agent run) | Sidebar footer bar, a real Settings page with a lightweight usage and cost view, conversation tabs ([D-32, D-33](DECISIONS.md)) | See below | not started |
 | CP4 Deletion and retention (multi-agent run) | Contract §5 and §8: permanent deletion first, then stale, retention and cleanup; recovery from half-done deletes | Contract §11 row 4 | in first-release scope ([D-26](DECISIONS.md)); not started |
 | CP3 Authorized coordination | Contract §7: delegated hand-off between sessions under user authority | Contract §11 row 3 | out of the multi-agent run and the first release ([D-27](DECISIONS.md)); maybe a later test-environment trial |
 | R Release readiness (**proposed**) | Ship the first production release | See below | waits for O-06 |
@@ -47,6 +48,16 @@ Done when: behavior is unchanged (full release suite plus a real-Claude check), 
 
 Done when: the user accepts the result on a package, evidence screenshots match the rules, and indicator and render costs stay at baseline.
 
+### U: Daily-use UI features (proposed)
+
+- Sidebar footer bar: the bottom `+` and settings icons become one compact footer inside the sidebar, also showing compact Claude usage.
+- Settings page: a real Settings window (existing preferences plus usage and cost), lightweight and usage-first ([reference](design/references/t3-code-usage-reference.png)).
+- Usage data without load: read what Claude Code already records locally, incrementally and bounded; no extra CLI processes, no provider polling; cost as a clearly labelled estimate. Codex rows wait for Codex (D-28).
+- Conversation tabs above the terminal for quick switching between a few threads ([layout reference](design/references/layout-guidance.jpg)).
+- All in identity A; previews before building; no left rail, no right sidebar ([D-34](DECISIONS.md)).
+
+Done when: the user accepts the surfaces on a package, the usage numbers match Claude's own records on test data, and idle and render costs stay at baseline.
+
 ### CP4: Deletion and retention (multi-agent run)
 
 - Permanent deletion of one conversation first: its local Claude data only, never another conversation's; half-done deletes recover; late events never bring a deleted conversation back (contract §8).
@@ -67,4 +78,4 @@ Done when: the checklist passes on the release candidate and the user accepts it
 
 ## Order (proposed)
 
-L (now, before the multi-agent run) → multi-agent run (authority [D-30](DECISIONS.md); the prompt is kept by the user outside the repo): F, I and CP4 in parallel where write areas are disjoint, with UI/UX, architecture/scalability and performance evaluations along the way → R. Each verified state can be promoted to the daily app through L's path. Codex returns after the first release, starting from the [Codex backlog](plans/cp5/CODEX-BACKLOG.md); CP3 may be tried after that.
+L (now, before the multi-agent run) → multi-agent run (authority [D-30](DECISIONS.md); the prompt is kept by the user outside the repo): F, I, U and CP4 in parallel where write areas are disjoint, with UI/UX, architecture/scalability and performance evaluations along the way → R. Each verified state can be promoted to the daily app through L's path. Codex returns after the first release, starting from the [Codex backlog](plans/cp5/CODEX-BACKLOG.md); CP3 may be tried after that.
