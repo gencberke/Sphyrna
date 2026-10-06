@@ -2,6 +2,8 @@
 
 Goal: take Loom from the closed CP5 state to "almost release" — more stable, faster and ready for daily use — through stages F, I, U and CP4 ([ROADMAP](../ROADMAP.md), authority [D-30..D-34](../DECISIONS.md)). Owner: the planner-reviewer (main session). Position: [STATUS](../STATUS.md).
 
+**Morning target ([D-35](../DECISIONS.md)):** a release-candidate `Loom.app` with the production identity, built from the staged release tree of the combined `swarm/1` state, signed with the stable local identity, verified (full suite, matrix against package I, real-Claude check), in `~/Library/Application Support/Loom-Dev/packages/run1-rc/`, with the release-candidate note and the exact commands to tag, promote and install it. Installing over `/Applications/Loom.app` and tagging stay with the user (D-30 forbids tags and installing a daily release in this run; the candidate migrates the catalog to schema v3, one way).
+
 Stage plans: [STAGE-F](STAGE-F.md) · [STAGE-I](STAGE-I.md) · [STAGE-U](STAGE-U.md) · [CHECKPOINT-4](CHECKPOINT-4.md). Slice Briefs: `plans/f/`, `plans/i/`, `plans/u/`, `plans/cp4/`. Planning evidence: [run1-planning-scans/](experiments/run1-planning-scans/) (eight read-only scans and a completeness critique, 7 Oct 2026).
 
 ## Order and waves
