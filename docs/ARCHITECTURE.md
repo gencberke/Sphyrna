@@ -51,9 +51,9 @@ Declared in `Package.swift`; all tests use swift-testing (`@Test`). Product bund
 
 | Group | Files |
 |---|---|
-| Ownership and process | `ProcessSupervisor`, `OwnershipLedger`, `ProcessTable`, `PTYProcess`, `EventDrivenPTYProcess`, `RunScope`, `PreviousRunRecovery`, `ShutdownReport`, `AppShutdownCoordinator` |
-| Runtime and lifecycle | `SessionRuntime`, `SessionLifecycleController` (also defines `ProviderWorkState`), `ManagedSession`, `SessionEventHub`, `ProviderSessionAdapters` |
-| Persistence | `SessionCatalog` |
+| Ownership and process | `ProcessSupervisor` (core plus `+Stop`, `+Shutdown`, `+Sampling`, `+Scopes`, `+EnvironmentJobs`, `+CatalogCommits`), `OwnershipLedger`, `ProcessTable`, `PTYProcess`, `EventDrivenPTYProcess`, `RunScope`, `PreviousRunRecovery`, `ShutdownReport`, `AppShutdownCoordinator` |
+| Runtime and lifecycle | `SessionRuntime` (core plus `+Claude`, `+Codex`), `SessionLifecycleController` (also defines `ProviderWorkState`), `ManagedSession`, `SessionEventHub`, `ProviderSessionAdapters` |
+| Persistence | `SessionCatalog` (core plus `+Sessions`, `+Runs`, `+Projects`, `+Titles`, `+Paging`), `CatalogDatabase` (schema, migration, SQLite helpers) |
 | Terminal I/O | `TerminalEndpoint` (also `TerminalOutputSink`), `TerminalInputQueue`, `TerminalInputGate` |
 | Provider setup | `LaunchEnvironment`, `EnvironmentResolutionJob`, `ProviderToolchain`, `ProviderLaunchProfile`, `ProviderResume` |
 | Claude | `ClaudeHook` (server, client, `ClaudeHookStateTracker`), `ClaudeRegistry` |
@@ -189,14 +189,17 @@ directory when every scope is shown empty; leftovers surface as `CatalogModel.ow
 
 Code is kept and tested but receives no new development. Locations: `Sources/LoomCore/Codex*.swift` (6 files),
 `CodexSessionAdapter` in `ProviderSessionAdapters.swift`, `CodexEventStateTracker` in `CodexSessionState.swift`, the nested `CodexServer` class and Codex
-setup/teardown in `SessionRuntime.swift`, `Sources/loom-fake-provider/CodexFixture.swift`, Codex tests in `LoomCoreTests`
+setup/teardown in `SessionRuntime+Codex.swift`, `Sources/loom-fake-provider/CodexFixture.swift`, Codex tests in `LoomCoreTests`
 (`CodexAppServer*`, `CodexWireDiagnosticsTests`, `SessionRuntimeCodex*`), `loom-probe` Codex files. UI entry points ("New Codex Conversation" in `SidebarView.swift` and `DetailView.swift`, `AppDelegate.newCodexFromMenu`) exist only in development builds: `BuildIdentity` (`Sources/LoomLaunchOptions/BuildIdentity.swift`) gives `startableProviders = [claude]` for the production identity `local.loom.desktop`, `CatalogModel.startableProviders` filters every new-conversation surface, and `ConversationController.start` refuses a provider outside that set.
 Design fact: one `codex app-server` per Codex session (contract §3).
 
 ## 9. Hotspots and scaling notes (facts, no redesign)
 
-- Large actors: `ProcessSupervisor.swift` (1,476 lines, ~35 mutable fields: launch, stop, shutdown, catalog commits, env jobs),
-  `SessionRuntime.swift` (1,305; ~570 lines Codex-specific), `SessionCatalog.swift` (1,266; synchronous sqlite on an actor).
+- Large actors, split by responsibility into extension files (the stored state stays in the core file, so access is internal
+  rather than private): `ProcessSupervisor` (core: ~35 mutable fields, registry, launch, adopt; `+Stop`, `+Shutdown`,
+  `+Sampling`, `+Scopes`, `+EnvironmentJobs`, `+CatalogCommits`), `SessionRuntime` (core; `+Codex` ~550 lines, `+Claude`),
+  `SessionCatalog` (core; `+Sessions`, `+Runs`, `+Projects`, `+Titles`, `+Paging`; `CatalogDatabase`; synchronous sqlite on
+  an actor).
 - Codex share of `LoomCore`: ~2,700 lines in `Codex*.swift` plus adapter and `SessionRuntime` parts, roughly 30% of the target.
 - UI-layer coupling: `ConversationController` and `CatalogModel` hold `SessionRuntime`/`ProcessSupervisor` directly;
   `CatalogModel` (828 lines) mixes paging, search, selection, projects, rename, event consumption and branch reads;
