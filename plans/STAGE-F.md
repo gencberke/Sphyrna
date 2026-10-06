@@ -10,9 +10,9 @@ Make the base safe for parallel feature work and for production, with no user-vi
 
 | Slice | Delivers | Write area (summary) | Wave | Depends on | State |
 | --- | --- | --- | --- | --- | --- |
-| [F0](f/F0.md) | `scripts/with-build-slot.sh`, `scripts/check.sh`, perf baseline comparer, one command-channel helper for scripts | `scripts/`, `DEVELOPMENT.md` §2–§3, `scripts/README.md`, `.gitignore` | 1 | — | planned |
-| [F1](f/F1.md) | `BuildIdentity` (one owner of the production/development identity); Codex entry points hidden in production | `Sources/LoomLaunchOptions`, listed sites in `AppDelegate`, `SidebarView`, `DetailView`, `CatalogModel`, `ConversationController`, their tests | 1 | — | planned |
-| [F2](f/F2.md) | `AppShutdownCoordinator`; quit no longer routes through `TerminalRunController` | new `Sources/LoomCore/AppShutdownCoordinator.swift`, quit sites in `AppDelegate`, `TerminalRunController`, tests | 1 | — | planned |
+| [F0](f/F0.md) | `scripts/with-build-slot.sh`, `scripts/check.sh`, perf baseline comparer, one command-channel helper for scripts | `scripts/`, `DEVELOPMENT.md` §2–§3, `scripts/README.md`, `.gitignore` | 1 | — | accepted `5b2d9b0` |
+| [F1](f/F1.md) | `BuildIdentity` (one owner of the production/development identity); Codex entry points hidden in production | `Sources/LoomLaunchOptions`, listed sites in `AppDelegate`, `SidebarView`, `DetailView`, `CatalogModel`, `ConversationController`, their tests | 1 | — | accepted `ae40652` |
+| [F2](f/F2.md) | `AppShutdownCoordinator`; quit no longer routes through `TerminalRunController` | new `Sources/LoomCore/AppShutdownCoordinator.swift`, quit sites in `AppDelegate`, `TerminalRunController`, tests | 1 | — | accepted `ea0150e` |
 | [F3](f/F3.md) | Evidence code compiled only in dev builds (`LOOM_EVIDENCE`), promote excludes it, `check.sh --full` builds the release flavor | `Package.swift`, `Sources/loom-app/**`, `scripts/release/promote.sh`, `scripts/check.sh` | 2 | F0, F1, F2 | planned |
 | [F4](f/F4.md) | Move-only splits of `SessionCatalog`, `SessionRuntime` (Codex, Claude parts), `ProcessSupervisor` | `Sources/LoomCore/SessionCatalog*.swift`, `SessionRuntime*.swift`, `ProcessSupervisor*.swift` | 1 | — | planned |
 | [F5](f/F5.md) | Signposts and a launch/switch baseline; first list paint no longer waits for the runtime; no git reads or needless observation writes on the main actor | `AppDelegate` startup, `CatalogModel`, `GitBranch`, new `BranchCache`, `SessionCatalog` open path | 2 | F3 (AppDelegate), F4 | planned |
@@ -47,4 +47,6 @@ Planned 2 (F-A7). Used: 0.
 
 ## Results
 
-None yet.
+- **F0** (`5b2d9b0`): `scripts/check.sh`, `scripts/with-build-slot.sh`, `scripts/perf/compare_baseline.py` (self-test passes on the package I baseline shape); the CLT macro-plugin flag is not needed with Xcode selected. Planner fixes on accept: `usage()` path and the window label in `check.sh`; the theme literal guard joined the default mode.
+- **F1** (`ae40652`): `BuildIdentity`; production offers only Claude (model and controller tests); production menu bar UI to be checked on the release candidate.
+- **F2** (`ea0150e`): `AppShutdownCoordinator`; quit tests moved; deviation accepted: no own reply enum (AppDelegate keeps the AppKit branching). End-to-end quit evidence (`cp5-c-acceptance.sh` §3–§4) runs on the stage F package.

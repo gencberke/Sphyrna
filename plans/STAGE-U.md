@@ -14,7 +14,7 @@ Three daily-use surfaces in identity A, designed first as an HTML preview, then 
 | [U0](u/U0.md) | Claude usage index: incremental, bounded, deduplicated reader of local transcripts; aggregates; static price table; `ClaudeProfileLayout` | new `Sources/LoomCore/ClaudeUsage*.swift`, `ClaudeProfileLayout.swift`, `UsagePricing.swift`, tests | 1 | — | planned |
 | [U1](u/U1.md) | `UsageModel`; a real Settings window (forced dark) with General, Usage and About; refresh triggers; Settings evidence commands | new `Sources/loom-app/SettingsWindowController.swift`, `Sources/LoomCatalogUI/UsageModel.swift`, `SettingsView.swift` rewrite, one-line hooks in `AppDelegate`/`CatalogModel`, evidence file | 3 | U0, I1, F3, UD | planned |
 | [U2](u/U2.md) | Sidebar footer bar: `+` menu, compact usage chip (opens Settings at Usage), gear | new `Sources/LoomCatalogUI/SidebarFooter.swift`, mount line in `SidebarView.swift` | 3 | U1, I1, UD | planned |
-| [U3](u/U3.md) | Tab state: `ConversationTabs` (pinned + one transient), persisted `openTabs`, row retention, follow `/clear`, forget hook | `UIPreferences.swift`, new `ConversationTabs.swift`, `CatalogModel.swift`, `ConversationController.swift`, tests | 2 | F1 | planned |
+| [U3](u/U3.md) | Tab state: `ConversationTabs` (pinned + one transient), persisted `openTabs`, row retention, follow `/clear`, forget hook | `UIPreferences.swift`, new `ConversationTabs.swift`, `CatalogModel.swift`, `ConversationController.swift`, tests | 2 | F1 | accepted `45ecbc2` |
 | [U4](u/U4.md) | Tab strip view, shortcuts, menu items, tab evidence commands and snapshot fields; switch-latency measurement | new `ConversationTabStrip.swift`, mount in `DetailView.swift`, `AppDelegate.installMenus`, evidence file | 4 | U3, I1, UD, F5 (signposts) | planned |
 | [U5](u/U5.md) | Daily-use polish: relative times and day headings tick while the window is active; window frame persisted; visible "Preparing…" on a first start | `CatalogModel.swift`, `SidebarView.swift`/`SessionDisplay.swift`, `AppDelegate.makeWindow`, `ConversationController.swift` | 4 | F5, U3 | planned |
 
@@ -50,4 +50,4 @@ Planned 2 (U-A3). Used: 0.
 
 ## Results
 
-None yet.
+- **U3** (`45ecbc2`): `ConversationTabs` and `CatalogModel` tab API (`tabs`, `visibleTabIDs`, `openTab`, `closeTab`, `forget(sessionID:)`, `tabOwnerMoved`); preference writes debounced 300 ms and flushed at stop/quit; 82 `LoomCatalogUITests` pass. Tests were shown to fail by a six-bug mutation run rather than test-first.

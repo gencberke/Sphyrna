@@ -10,7 +10,7 @@ Identity A · Night Fleece becomes one token source in code and an Identity sect
 
 | Slice | Delivers | Write area (summary) | Wave | Depends on | State |
 | --- | --- | --- | --- | --- | --- |
-| [I1](i/I1.md) | `LoomTheme` token source with today's values, all call sites migrated, dead constants removed (S-B), `ChromeButtonStyle` simplified (S-C), contrast test, literal guard | `Sources/LoomCatalogUI/*` views and theme files, `scripts/check-theme-literals.sh`, tests | 2 | F1 | planned |
+| [I1](i/I1.md) | `LoomTheme` token source with today's values, all call sites migrated, dead constants removed (S-B), `ChromeButtonStyle` simplified (S-C), contrast test, literal guard | `Sources/LoomCatalogUI/*` views and theme files, `scripts/check-theme-literals.sh`, tests | 2 | F1 | accepted `2773b9d` |
 | [I2](i/I2.md) | A's values and voice: `text.secondary` #828799, accent wired (default buttons, focus rings, tint), A's type sizes and 8 pt pips, copy per identity §2, dark appearance for alerts and panels | `LoomTheme.swift`, `SidebarView`, `DetailView`, copy sites, `AppDelegate` (appearance, strings) | 3 | I1, F3 | planned |
 | [I3](i/I3.md) | Motion (≤200 ms, opacity-only above the terminal, Reduce Motion gated), Increase Contrast, header traits, `ProjectHeader` as a button, Cmd+F focus search and Esc clear, 24 pt hit targets, Return vs default-action check | views, `CatalogModel` (focus request), `AppDelegate` menus | 4 | I2, U4 (menus serialized) | planned |
 | [I4](i/I4.md) | WindowServer cost of the working indicator measured; 10 fps frame-rate hint applied only if it matters; sidebar glass `followsWindowActiveState` evaluated | `scripts/perf/indicator_cost*.py`, `IndicatorView.swift` (hint), `SidebarBackground.swift` (only if measured better) | 3 | I1 | planned |
@@ -50,4 +50,4 @@ Planned 0. Used: 0.
 
 ## Results
 
-None yet.
+- **I1** (`2773b9d`): `LoomTheme` (namespace `Typography` instead of `Type`, a Swift metatype name), `IndicatorView.swift`, `ProviderIcon.swift`; S-B and S-C closed; before/after screenshots pixel-identical for all required shots (the selected shot differs only in the minute of a "Last used" clock); `LoomCatalogUITests` 59/59 with the two expected `text.secondary` known issues for I2.

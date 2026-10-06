@@ -24,6 +24,12 @@
 
 At launch, after `PreviousRunRecovery`, `SessionRuntime` resumes every `deletions` row from its state (no run can exist then, so `stopping` resolves); failures stay visible (a `deletionFailures` list the UI can show) with manual retry only.
 
+## Carried from CP4-A review
+
+- Add a live-session refusal test where the session file's `procStart` matches the running process (today only the no-`procStart` case is tested).
+- Share the `procStart` parser with `ClaudeRegistry.swift` instead of the second copy in `ClaudeDataInventory.swift`; reject boolean `pid` values as the registry reader does.
+- Surface off-device entries in the plan (refusal or listed item) instead of skipping them silently.
+
 ## Scope
 
 Write: new `Sources/LoomCore/ConversationDeletion.swift`; thin hooks in `SessionRuntime*.swift` (public `deleteConversation(id:)`, `retryDeletion(id:)`, `pendingDeletions`, recovery call in `start`), `ProcessSupervisor*.swift` (`discardSession`, `deletedProviderIDs`, adopt guard), `ProviderSessionAdapters.swift` (`forget`), `SessionEventHub.swift` (use existing `forget`), a `ConversationForgetting` registration point (protocol + list) for U0/U3 hooks; tests `Tests/LoomCoreTests/ConversationDeletionTests.swift` (fake provider and `loom-test-child`), `docs/ARCHITECTURE.md` §3 (new flow) and §5. Out of scope: UI (CP4-D), cleanup (CP4-G).

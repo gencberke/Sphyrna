@@ -17,12 +17,12 @@ The user can permanently delete one conversation: Loom stops it if needed, remov
 
 | Slice | Delivers | Write area (summary) | Wave | Depends on | State |
 | --- | --- | --- | --- | --- | --- |
-| [CP4-A](cp4/A.md) | `ClaudeDataInventory` + safe deleter (pure filesystem; dry-run plan, allowlisted names, no symlink escape) | new `Sources/LoomCore/ClaudeDataInventory.swift`, tests | 1 | — | planned |
+| [CP4-A](cp4/A.md) | `ClaudeDataInventory` + safe deleter (pure filesystem; dry-run plan, allowlisted names, no symlink escape) | new `Sources/LoomCore/ClaudeDataInventory.swift`, tests | 1 | — | accepted `9300e2c` |
 | [CP4-B](cp4/B.md) | Catalog schema v3: `deletions` operation table, `sessions.stale_since`, `app_state`, child indexes, transactional delete, `secure_delete`, WAL checkpoint, pin setter | `Sources/LoomCore/SessionCatalog*.swift`, `CatalogDatabase.swift`, `loom-catalog-fixture`, tests | 2 | F4 | planned |
 | [CP4-C](cp4/C.md) | `ConversationDeletion` state machine in the runtime: fencing, stop-and-verify, provider data, catalog, verification, crash recovery, late-event suppression, forget hooks | new `Sources/LoomCore/ConversationDeletion.swift`, thin hooks in `SessionRuntime`, `ProcessSupervisor`, adapters, hub; tests | 3 | A, B, F4 | planned |
 | [CP4-D](cp4/D.md) | Delete UI: context menu, confirm dialog with the dry-run summary, row state, failure banner and Retry, selection/tab/usage cleanup, evidence commands | `CatalogModel+Deletion.swift`, `SidebarView`/`DetailView` menu items, `ConversationController`, `AppDelegate` wiring, evidence file, tests | 4 | C, U3, I2 | planned |
 | [CP4-E](cp4/E.md) | Real-Claude deletion check and the §11 row 4 acceptance matrix | `scripts/cp4-deletion-real.py`, evidence file | 5 | D | planned |
-| [CP4-F](cp4/F.md) | Pure `CleanupPlanner` with sample timelines | new `Sources/LoomCore/CleanupPlanner.swift`, tests | 1 | — | planned |
+| [CP4-F](cp4/F.md) | Pure `CleanupPlanner` with sample timelines | new `Sources/LoomCore/CleanupPlanner.swift`, tests | 1 | — | accepted `4c730ce` |
 | [CP4-G](cp4/G.md) | Pin action, worktree protection check, manual "Review stale conversations" list-and-confirm on the deletion path; automatic deletion off | new `CleanupCoordinator.swift`, Settings/menu entry, `CatalogModel+Cleanup.swift`, tests | 4 | C, D, F, U1 | planned |
 
 ## Decisions taken in planning (routine, technical)
@@ -58,4 +58,5 @@ Planned 4 (CP4-E). Used: 0.
 
 ## Results
 
-None yet.
+- **CP4-A** (`9300e2c`): inventory and deleter; 13 tests over temp trees incl. symlink, substring-name, forged-plan and live-session cases. Open minor follow-ups carried into [CP4-C](cp4/C.md): live-session test with a matching `procStart`, share the `procStart` parser with `ClaudeRegistry`, reject boolean pids, report off-device entries.
+- **CP4-F** (`4c730ce`): planner with 13 timeline tests; missing `staleSince` falls back to last use + `staleAfter`.
