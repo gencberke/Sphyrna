@@ -13,12 +13,12 @@ public struct DetailView: View {
             Banners(model: model)
             DetailContent(model: model)
         }
-        .background(RoundedRectangle(cornerRadius: 10).fill(CatalogTheme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(CatalogTheme.hairline, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .padding(8)
+        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).fill(LoomTheme.Surface.panel))
+        .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).stroke(LoomTheme.Surface.hairline, lineWidth: LoomTheme.Line.hairline))
+        .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel))
+        .padding(LoomTheme.Space.panelInset)
         .ignoresSafeArea(.container, edges: .top)
-        .background(CatalogTheme.sidebar.ignoresSafeArea())
+        .background(LoomTheme.Surface.backdrop.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .environment(\.indicatorsAnimate, model.windowIsActive)
         .sheet(item: $model.renameDraft) { draft in
@@ -29,17 +29,17 @@ public struct DetailView: View {
 
 struct DetailHeader: View {
     let model: CatalogModel
-    static let rowHeight = CatalogTheme.detailRowHeight
+    static let rowHeight = LoomTheme.Layout.detailRowHeight
 
     /// The native buttons sit over this header's leading edge only while the
     /// sidebar (which otherwise carries them) is collapsed.
     private var reservesWindowButtons: Bool { model.sidebarCollapsed && !model.isFullScreen }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: LoomTheme.Space.detailSpacing) {
             if reservesWindowButtons {
                 // The native buttons start 19 pt from the window edge, inside this row.
-                Color.clear.frame(width: CatalogTheme.detailButtonsGap)
+                Color.clear.frame(width: LoomTheme.Layout.detailButtonsGap)
             }
             if model.sidebarCollapsed {
                 Button { model.onToggleSidebar?() } label: {
@@ -50,22 +50,22 @@ struct DetailHeader: View {
                 .accessibilityLabel("Show sidebar")
             }
             if model.showsDevTerminal {
-                ProviderIcon(provider: .synthetic, size: 16)
+                ProviderIcon(provider: .synthetic, size: LoomTheme.Layout.providerIconHeader)
                 Text("Synthetic terminal (development)").fontWeight(.semibold).lineLimit(1)
             } else if let row = model.selectedRow {
-                ProviderIcon(provider: row.record.session.provider, size: 16)
+                ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.providerIconHeader)
                 Text(model.title(of: row)).fontWeight(.semibold).lineLimit(1).truncationMode(.tail)
                 IndicatorView(indicator: row.indicator)
                 if model.busy[row.id] == .starting {
                     Text("Starting — complete any prompts in the terminal")
-                        .font(.system(size: 11)).foregroundStyle(CatalogTheme.secondary)
+                        .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
                         .lineLimit(1).layoutPriority(1)
                 } else if let label = row.indicator.label {
-                    Text(label).font(.system(size: 11)).foregroundStyle(row.indicator.labelColor)
+                    Text(label).font(LoomTheme.Typography.caption).foregroundStyle(row.indicator.labelColor)
                         .lineLimit(1).layoutPriority(1)
                 }
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             if !model.showsDevTerminal, let row = model.selectedRow, model.canStop(row) {
                 Button("Stop") { model.stopConversation(row.id) }
                     .buttonStyle(.bordered).controlSize(.small)
@@ -87,14 +87,14 @@ struct DetailHeader: View {
                 .accessibilityLabel("Conversation actions")
             }
         }
-        .font(.system(size: 13))
-        .foregroundStyle(CatalogTheme.text)
-        .padding(.horizontal, 14)
+        .font(LoomTheme.Typography.body)
+        .foregroundStyle(LoomTheme.Text.primary)
+        .padding(.horizontal, LoomTheme.Space.detailInset)
         // The window buttons are centered natively 26 pt below the window top
         // (8 pt panel inset + 18 pt); the row's center line is the same, and the
         // rest of the 52 pt header is spacing above the terminal.
         .frame(height: Self.rowHeight)
-        .padding(.bottom, CatalogTheme.headerHeight - Self.rowHeight)
+        .padding(.bottom, LoomTheme.Layout.headerHeight - Self.rowHeight)
     }
 }
 
@@ -107,28 +107,28 @@ struct Banners: View {
     }
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: LoomTheme.Space.bannerSpacing) {
             if let notice = model.ownershipNotice {
                 Text(notice)
-                    .font(.system(size: 12)).foregroundStyle(CatalogTheme.attention)
+                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.attention)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityIdentifier("ownership-notice")
             }
             if let message = model.statusMessage {
                 Text(message)
-                    .font(.system(size: 12)).foregroundStyle(CatalogTheme.secondary)
+                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityIdentifier("status-message")
             }
             if let message = model.errorMessage {
-                BannerRow(text: message, color: CatalogTheme.failure) { model.dismissError() }
+                BannerRow(text: message, color: LoomTheme.Status.failure) { model.dismissError() }
             }
             if let message = model.infoMessage {
-                BannerRow(text: message, color: CatalogTheme.secondary) { model.dismissInfo() }
+                BannerRow(text: message, color: LoomTheme.Text.secondary) { model.dismissInfo() }
             }
         }
-        .padding(.horizontal, isEmpty ? 0 : 14)
-        .padding(.bottom, isEmpty ? 0 : 8)
+        .padding(.horizontal, isEmpty ? 0 : LoomTheme.Space.detailInset)
+        .padding(.bottom, isEmpty ? 0 : LoomTheme.Space.bannerBottom)
     }
 }
 
@@ -138,12 +138,12 @@ struct BannerRow: View {
     let dismiss: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text(text).font(.system(size: 12)).foregroundStyle(color)
+        HStack(alignment: .top, spacing: LoomTheme.Space.bannerRowSpacing) {
+            Text(text).font(LoomTheme.Typography.small).foregroundStyle(color)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button(action: dismiss) { Image(systemName: "xmark") }
-                .buttonStyle(.plain).foregroundStyle(CatalogTheme.secondary)
+                .buttonStyle(.plain).foregroundStyle(LoomTheme.Text.secondary)
                 .accessibilityLabel("Dismiss message")
         }
     }
@@ -170,7 +170,7 @@ struct DetailContent: View {
                 }
             } else if model.isReady && model.projects.isEmpty && model.list(for: .activity).rows.isEmpty
                         && !model.isSearching {
-                VStack(spacing: 12) {
+                VStack(spacing: LoomTheme.Space.emptyStateSpacing) {
                     Message(symbol: "folder.badge.plus", title: "Add a project to begin",
                             text: "Your projects and conversations appear in the sidebar.")
                     HStack {
@@ -197,14 +197,14 @@ struct Message: View {
     let text: String
 
     var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: symbol).font(.system(size: 28)).foregroundStyle(CatalogTheme.secondary)
-            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(CatalogTheme.text)
-            Text(text).font(.system(size: 12)).foregroundStyle(CatalogTheme.secondary)
+        VStack(spacing: LoomTheme.Space.messageSpacing) {
+            Image(systemName: symbol).font(LoomTheme.Typography.heroSymbol).foregroundStyle(LoomTheme.Text.secondary)
+            Text(title).font(LoomTheme.Typography.title).foregroundStyle(LoomTheme.Text.primary)
+            Text(text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                 .multilineTextAlignment(.center).textSelection(.enabled)
         }
-        .frame(maxWidth: 420)
-        .padding(24)
+        .frame(maxWidth: LoomTheme.Layout.messageMaxWidth)
+        .padding(LoomTheme.Space.messagePadding)
     }
 }
 
@@ -224,35 +224,35 @@ struct ConversationDetail: View {
         let record = row.record
         let indicator = row.indicator
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 12) {
-                    ProviderIcon(provider: record.session.provider, size: 34)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(model.title(of: row)).font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(CatalogTheme.text).textSelection(.enabled)
+            VStack(alignment: .leading, spacing: LoomTheme.Space.detailSectionSpacing) {
+                HStack(spacing: LoomTheme.Space.detailTitleSpacing) {
+                    ProviderIcon(provider: record.session.provider, size: LoomTheme.Layout.providerIconDetail)
+                    VStack(alignment: .leading, spacing: LoomTheme.Space.detailLineSpacing) {
+                        Text(model.title(of: row)).font(LoomTheme.Typography.heading)
+                            .foregroundStyle(LoomTheme.Text.primary).textSelection(.enabled)
                         Text(ProviderName.title(record.session.provider) + " conversation")
-                            .font(.system(size: 12)).foregroundStyle(CatalogTheme.secondary)
+                            .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     }
                 }
                 RequestList(model: model, row: row)
                 if case let .stopUnverified(message) = indicator {
-                    Notice(symbol: "exclamationmark.triangle.fill", color: CatalogTheme.failure,
+                    Notice(symbol: "exclamationmark.triangle.fill", color: LoomTheme.Status.failure,
                            title: "Stop could not be verified", text: message)
                 } else if case let .problem(message) = indicator {
-                    Notice(symbol: "exclamationmark.triangle.fill", color: CatalogTheme.failure,
+                    Notice(symbol: "exclamationmark.triangle.fill", color: LoomTheme.Status.failure,
                            title: "This conversation has a problem", text: message)
                 } else if indicator == .identityUnclear {
-                    Notice(symbol: "questionmark.diamond", color: CatalogTheme.attention,
+                    Notice(symbol: "questionmark.diamond", color: LoomTheme.Status.attention,
                            title: "Conversation identity is not certain",
                            text: "Loom could not tell which provider conversation this is, so it changed nothing.")
                 } else if case let .failed(message) = indicator {
-                    Notice(symbol: "exclamationmark.triangle.fill", color: CatalogTheme.failure,
+                    Notice(symbol: "exclamationmark.triangle.fill", color: LoomTheme.Status.failure,
                            title: "The provider reported a failure", text: message ?? "No details were provided.")
                 } else if indicator == .unviewedCompletion {
-                    Notice(symbol: "checkmark.circle", color: CatalogTheme.unviewed,
+                    Notice(symbol: "checkmark.circle", color: LoomTheme.Status.unviewed,
                            title: "Finished while you were away", text: "The provider reported a completed turn.")
                 }
-                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+                Grid(alignment: .leading, horizontalSpacing: LoomTheme.Space.factColumnSpacing, verticalSpacing: LoomTheme.Space.factRowSpacing) {
                     Fact("Status", indicator.label ?? (record.lifecycle == .active ? "Not running" : "—"))
                     Fact("Project", model.projectName(for: record) ?? "No project")
                     Fact("Working directory", record.session.workingDirectory)
@@ -260,12 +260,12 @@ struct ConversationDetail: View {
                     Fact("Created", record.createdAt.formatted(date: .abbreviated, time: .shortened))
                     Fact("Last used", record.lastUsedAt.formatted(date: .abbreviated, time: .shortened))
                 }
-                Divider().overlay(CatalogTheme.hairline)
-                VStack(alignment: .leading, spacing: 10) {
+                Divider().overlay(LoomTheme.Surface.hairline)
+                VStack(alignment: .leading, spacing: LoomTheme.Space.actionsSpacing) {
                     Text(model.canResume(row) ? "Not running" : "Working…")
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(CatalogTheme.text)
+                        .font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
                     Text("Opening this record launches nothing. Resume continues the same provider conversation in its own folder; if the provider no longer has it, you will see that instead of a new conversation.")
-                        .font(.system(size: 12)).foregroundStyle(CatalogTheme.secondary)
+                        .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     HStack {
                         Button(record.lifecycle == .stale ? "Reactivate and Resume" : "Resume") {
                             model.resumeConversation(row.id)
@@ -278,12 +278,12 @@ struct ConversationDetail: View {
                     }
                     if let busy = model.busy[row.id] {
                         Text(busy == .resuming ? "Resuming…" : busy == .starting ? "Starting…" : "Stopping…")
-                            .font(.system(size: 12)).foregroundStyle(CatalogTheme.secondary)
+                            .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     }
                 }
             }
-            .padding(24)
-            .frame(maxWidth: 640, alignment: .leading)
+            .padding(LoomTheme.Space.detailPadding)
+            .frame(maxWidth: LoomTheme.Layout.detailMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
     }
@@ -298,18 +298,18 @@ struct RequestList: View {
     var body: some View {
         let requests = row.live?.userRequests ?? []
         if !requests.isEmpty {
-            VStack(spacing: 6) {
+            VStack(spacing: LoomTheme.Space.requestListSpacing) {
                 ForEach(requests) { request in
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "hand.raised.fill").foregroundStyle(CatalogTheme.attention)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(request.summary).font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(CatalogTheme.text).textSelection(.enabled)
+                    HStack(alignment: .top, spacing: LoomTheme.Space.requestSpacing) {
+                        Image(systemName: "hand.raised.fill").foregroundStyle(LoomTheme.Status.attention)
+                        VStack(alignment: .leading, spacing: LoomTheme.Space.requestLineSpacing) {
+                            Text(request.summary).font(LoomTheme.Typography.smallMedium)
+                                .foregroundStyle(LoomTheme.Text.primary).textSelection(.enabled)
                             if let failure = request.failure {
-                                Text(failure).font(.system(size: 11)).foregroundStyle(CatalogTheme.failure)
+                                Text(failure).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Status.failure)
                             }
                         }
-                        Spacer(minLength: 8)
+                        Spacer(minLength: LoomTheme.Space.detailMinSpacer)
                         if request.isAnswerable {
                             Button("Deny") {
                                 model.answerRequest(sessionID: row.id, requestID: request.id, accept: false)
@@ -320,13 +320,13 @@ struct RequestList: View {
                             .keyboardShortcut(.defaultAction)
                         }
                     }
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(CatalogTheme.attention.opacity(0.10)))
+                    .padding(LoomTheme.Space.requestPadding)
+                    .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.callout).fill(LoomTheme.Status.attention.opacity(LoomTheme.Status.tintOpacity)))
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Provider request: \(request.summary)")
                 }
             }
-            .padding(.horizontal, 14).padding(.bottom, 8)
+            .padding(.horizontal, LoomTheme.Space.detailInset).padding(.bottom, LoomTheme.Space.bannerBottom)
         }
     }
 }
@@ -338,16 +338,16 @@ struct Notice: View {
     let text: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: LoomTheme.Space.noticeSpacing) {
             Image(systemName: symbol).foregroundStyle(color)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(color)
-                Text(text).font(.system(size: 12)).foregroundStyle(CatalogTheme.text).textSelection(.enabled)
+            VStack(alignment: .leading, spacing: LoomTheme.Space.noticeLineSpacing) {
+                Text(title).font(LoomTheme.Typography.bodyStrong).foregroundStyle(color)
+                Text(text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.primary).textSelection(.enabled)
             }
         }
-        .padding(12)
+        .padding(LoomTheme.Space.noticePadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(color.opacity(0.10)))
+        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.callout).fill(color.opacity(LoomTheme.Status.tintOpacity)))
     }
 }
 
@@ -358,9 +358,9 @@ struct Fact: View {
 
     var body: some View {
         GridRow(alignment: .firstTextBaseline) {
-            Text(name).font(.system(size: 12)).foregroundStyle(CatalogTheme.secondary)
+            Text(name).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                 .gridColumnAlignment(.trailing)
-            Text(value).font(.system(size: 12)).foregroundStyle(CatalogTheme.text).textSelection(.enabled)
+            Text(value).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.primary).textSelection(.enabled)
         }
     }
 }
@@ -370,8 +370,8 @@ struct RenameSheet: View {
     @Bindable var draft: RenameDraft
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Rename conversation").font(.system(size: 15, weight: .semibold))
+        VStack(alignment: .leading, spacing: LoomTheme.Space.sheetSpacing) {
+            Text("Rename conversation").font(LoomTheme.Typography.title)
             TextField("Title", text: $draft.text)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { save() }
@@ -379,13 +379,13 @@ struct RenameSheet: View {
             HStack {
                 Text("\(draft.text.count)/\(SessionCatalog.maxTitleLength)")
                     .foregroundStyle(draft.text.count > SessionCatalog.maxTitleLength
-                                     ? CatalogTheme.failure : CatalogTheme.secondary)
+                                     ? LoomTheme.Status.failure : LoomTheme.Text.secondary)
                 Text("Longer titles are shortened. An empty title returns to the automatic one.")
-                    .foregroundStyle(CatalogTheme.secondary)
+                    .foregroundStyle(LoomTheme.Text.secondary)
             }
-            .font(.system(size: 11))
+            .font(LoomTheme.Typography.caption)
             if let failure = draft.failure {
-                Text(failure).font(.system(size: 12)).foregroundStyle(CatalogTheme.failure)
+                Text(failure).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.failure)
             }
             HStack {
                 Spacer()
@@ -393,8 +393,8 @@ struct RenameSheet: View {
                 Button("Save") { save() }.keyboardShortcut(.defaultAction).disabled(draft.saving)
             }
         }
-        .padding(20)
-        .frame(width: 420)
+        .padding(LoomTheme.Space.sheetPadding)
+        .frame(width: LoomTheme.Layout.sheetWidth)
         .preferredColorScheme(.dark)
     }
 

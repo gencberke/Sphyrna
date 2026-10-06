@@ -19,7 +19,7 @@ public struct SettingsView: View {
                 Text(error).foregroundStyle(.red).textSelection(.enabled)
             }
         }
-        .padding(24)
-        .frame(width: 360)
+        .padding(LoomTheme.Space.settingsPadding)
+        .frame(width: LoomTheme.Layout.settingsWidth)
     }
 }

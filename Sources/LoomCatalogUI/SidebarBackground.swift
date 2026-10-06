@@ -4,16 +4,13 @@ import SwiftUI
 /// The terminal remains opaque; only the sidebar uses native behind-window material.
 struct SidebarBackground: View {
     let reduceTransparency: Bool
-    /// The dark tone dominates; the material only adds a slight depth (a lower
-    /// value let a blue wallpaper glow through).
-    static let tintOpacity = 0.86
 
     var body: some View {
         Group {
             if reduceTransparency {
-                CatalogTheme.sidebar
+                LoomTheme.Surface.sidebar
             } else {
-                SidebarMaterial().overlay(CatalogTheme.sidebar.opacity(Self.tintOpacity))
+                SidebarMaterial().overlay(LoomTheme.Surface.sidebar.opacity(LoomTheme.Surface.sidebarTintOpacity))
             }
         }
         .ignoresSafeArea()

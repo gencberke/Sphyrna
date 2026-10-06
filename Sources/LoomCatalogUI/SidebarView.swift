@@ -16,8 +16,8 @@ public struct SidebarView: View {
         VStack(spacing: 0) {
             SidebarHeader(model: model)
             SearchField(model: model)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
+                .padding(.horizontal, LoomTheme.Space.searchInset)
+                .padding(.bottom, LoomTheme.Space.searchBottom)
             SidebarList(model: model)
             SidebarFooter(model: model)
         }
@@ -33,16 +33,16 @@ struct SidebarHeader: View {
     let model: CatalogModel
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: LoomTheme.Space.headerSpacing) {
             // Full screen has no native window buttons to clear.
-            if !model.isFullScreen { Color.clear.frame(width: CatalogTheme.sidebarButtonsGap) }
+            if !model.isFullScreen { Color.clear.frame(width: LoomTheme.Layout.sidebarButtonsGap) }
             Button { model.onToggleSidebar?() } label: {
                 Image(systemName: "sidebar.left")
             }
             .buttonStyle(ChromeButtonStyle())
             .help("Hide Sidebar (⌃⌘S)")
             .accessibilityLabel("Hide sidebar")
-            Spacer(minLength: 4)
+            Spacer(minLength: LoomTheme.Space.headerSpacing)
             ModeButton(model: model, mode: .projects, symbol: "folder", help: "Group by project (⌘2)")
             ModeButton(model: model, mode: .activity, symbol: "clock", help: "Sort by recent activity (⌘1)")
             Menu {
@@ -57,10 +57,10 @@ struct SidebarHeader: View {
             .help("More")
             .accessibilityLabel("More actions")
         }
-        .font(.system(size: 13))
+        .font(LoomTheme.Typography.body)
         .focusEffectDisabled()
-        .padding(.horizontal, 10)
-        .frame(height: CatalogTheme.headerHeight)
+        .padding(.horizontal, LoomTheme.Space.headerInset)
+        .frame(height: LoomTheme.Layout.headerHeight)
     }
 }
 
@@ -86,26 +86,26 @@ struct SearchField: View {
     let model: CatalogModel
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").foregroundStyle(CatalogTheme.secondary)
+        HStack(spacing: LoomTheme.Space.searchSpacing) {
+            Image(systemName: "magnifyingglass").foregroundStyle(LoomTheme.Text.secondary)
             TextField("Search conversations", text: Binding(
                 get: { model.searchText }, set: { model.setSearchText($0) }
             ))
             .textFieldStyle(.plain)
-            .foregroundStyle(CatalogTheme.text)
+            .foregroundStyle(LoomTheme.Text.primary)
             .accessibilityLabel("Search conversations")
             if !model.searchText.isEmpty {
                 Button { model.setSearchText("") } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(CatalogTheme.secondary)
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(LoomTheme.Text.secondary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear search")
             }
         }
-        .font(.system(size: 13))
-        .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.06)))
+        .font(LoomTheme.Typography.body)
+        .padding(.horizontal, LoomTheme.Space.searchPadding)
+        .frame(height: LoomTheme.Layout.searchHeight)
+        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.search).fill(LoomTheme.Surface.control))
     }
 }
 
@@ -121,7 +121,7 @@ struct SidebarFooter: View {
             } label: {
                 Image(systemName: "plus")
             }
-            .menuStyle(.button).buttonStyle(ChromeButtonStyle(size: CGSize(width: 28, height: 26)))
+            .menuStyle(.button).buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.footerButton))
             .menuIndicator(.hidden).fixedSize()
             .help("New conversation or project")
             .accessibilityLabel("New conversation or project")
@@ -129,14 +129,14 @@ struct SidebarFooter: View {
             Button { model.onShowSettings?() } label: {
                 Image(systemName: "gearshape")
             }
-            .buttonStyle(ChromeButtonStyle(size: CGSize(width: 28, height: 26)))
+            .buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.footerButton))
             .help("Settings")
             .accessibilityLabel("Settings")
         }
-        .font(.system(size: 14))
+        .font(LoomTheme.Typography.footerIcon)
         .focusEffectDisabled()
-        .padding(.horizontal, 10)
-        .frame(height: 38)
+        .padding(.horizontal, LoomTheme.Space.footerInset)
+        .frame(height: LoomTheme.Layout.footerHeight)
     }
 }
 
@@ -145,14 +145,14 @@ struct SidebarList: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: LoomTheme.Space.cardGap) {
                 switch model.viewMode {
                 case .activity: ActivityList(model: model)
                 case .projects: ProjectList(model: model)
                 }
             }
-            .padding(.horizontal, 6)
-            .padding(.bottom, 8)
+            .padding(.horizontal, LoomTheme.Space.listInset)
+            .padding(.bottom, LoomTheme.Space.listBottom)
         }
         .scrollContentBackground(.hidden)
     }
@@ -168,15 +168,15 @@ struct ActivityList: View {
         } else {
             ForEach(DayGrouping.sections(list.rows, now: model.now)) { section in
                 Text(section.title)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(CatalogTheme.secondary)
-                    .padding(.horizontal, 12).padding(.top, 14).padding(.bottom, 4)
+                    .font(LoomTheme.Typography.smallMedium)
+                    .foregroundStyle(LoomTheme.Text.secondary)
+                    .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
                 ForEach(section.rows) { row in
                     SessionCardView(row: row, model: model, showsProject: true)
                         .onAppear { if row.id == list.rows.last?.id { model.loadMore(.activity) } }
                 }
             }
-            if list.hasMore { ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(8) }
+            if list.hasMore { ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(LoomTheme.Space.loadingPadding) }
         }
     }
 }
@@ -202,8 +202,8 @@ struct ProjectList: View {
                 }
                 if list.rows.isEmpty && list.isLoaded && !model.isSearching {
                     Text("No conversations")
-                        .font(.system(size: 12)).foregroundStyle(CatalogTheme.secondary)
-                        .padding(.horizontal, 14).padding(.vertical, 6)
+                        .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
+                        .padding(.horizontal, LoomTheme.Space.emptyNoteInset).padding(.vertical, LoomTheme.Space.emptyNoteVertical)
                 }
             }
         }
@@ -222,12 +222,12 @@ struct SectionTitle: View {
     let symbol: String
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: symbol).foregroundStyle(CatalogTheme.secondary)
-            Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(CatalogTheme.text)
+        HStack(spacing: LoomTheme.Space.sectionSpacing) {
+            Image(systemName: symbol).foregroundStyle(LoomTheme.Text.secondary)
+            Text(title).font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
             Spacer()
         }
-        .padding(.horizontal, 12).padding(.top, 14).padding(.bottom, 4)
+        .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
     }
 }
 
@@ -239,17 +239,17 @@ struct ProjectHeader: View {
         let count = model.sessionCounts[project.id] ?? 0
         let attention = model.attention(forProject: project.id)
         let index = model.projects.firstIndex { $0.id == project.id } ?? 0
-        HStack(spacing: 8) {
-            Image(systemName: "folder").foregroundStyle(CatalogTheme.secondary)
-            Text(project.name).font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(CatalogTheme.text).lineLimit(1)
-            Spacer(minLength: 4)
+        HStack(spacing: LoomTheme.Space.sectionSpacing) {
+            Image(systemName: "folder").foregroundStyle(LoomTheme.Text.secondary)
+            Text(project.name).font(LoomTheme.Typography.bodyStrong)
+                .foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
+            Spacer(minLength: LoomTheme.Space.headerSpacing)
             if let attention {
-                Circle().fill(attention.color).frame(width: 7, height: 7)
+                Circle().fill(attention.color).frame(width: LoomTheme.Layout.projectDot, height: LoomTheme.Layout.projectDot)
                     .accessibilityLabel(attention.label)
             }
             Image(systemName: project.collapsed && !model.isSearching ? "chevron.right" : "chevron.down")
-                .font(.system(size: 9, weight: .semibold)).foregroundStyle(CatalogTheme.secondary)
+                .font(LoomTheme.Typography.chevron).foregroundStyle(LoomTheme.Text.secondary)
             Menu {
                 Button("Move Up") { Task { await model.moveProject(project.id, by: -1) } }
                     .disabled(index == 0)
@@ -263,12 +263,12 @@ struct ProjectHeader: View {
             } label: {
                 Image(systemName: "ellipsis")
             }
-            .menuStyle(.button).buttonStyle(ChromeButtonStyle(size: CGSize(width: 22, height: 20)))
+            .menuStyle(.button).buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.projectMenuButton))
             .menuIndicator(.hidden).fixedSize()
             .help(count > 0 ? "Only an empty project can be removed" : "Project actions")
             .accessibilityLabel("Actions for \(project.name)")
         }
-        .padding(.horizontal, 12).padding(.top, 14).padding(.bottom, 4)
+        .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
         .contentShape(Rectangle())
         .onTapGesture { Task { await model.toggleCollapsed(project.id) } }
         .contextMenu { NewConversationButtons(model: model, projectID: project.id) }
@@ -282,21 +282,21 @@ struct EmptyListHint: View {
     let isLoaded: Bool
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: LoomTheme.Space.hintSpacing) {
             if !isLoaded {
                 ProgressView().controlSize(.small)
             } else if model.isSearching {
-                Text("No matching conversations").foregroundStyle(CatalogTheme.text)
-                Text("Search covers title, provider and project.").foregroundStyle(CatalogTheme.secondary)
+                Text("No matching conversations").foregroundStyle(LoomTheme.Text.primary)
+                Text("Search covers title, provider and project.").foregroundStyle(LoomTheme.Text.secondary)
             } else {
-                Text("No conversations yet").foregroundStyle(CatalogTheme.text)
-                Text("Add a project folder to get started.").foregroundStyle(CatalogTheme.secondary)
+                Text("No conversations yet").foregroundStyle(LoomTheme.Text.primary)
+                Text("Add a project folder to get started.").foregroundStyle(LoomTheme.Text.secondary)
             }
         }
-        .font(.system(size: 12))
+        .font(LoomTheme.Typography.small)
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)
-        .padding(.top, 40).padding(.horizontal, 12)
+        .padding(.top, LoomTheme.Space.hintTop).padding(.horizontal, LoomTheme.Space.sectionInset)
     }
 }
 
@@ -315,42 +315,42 @@ struct SessionCardView: View {
         let title = model.title(of: row, repeatsProject: showsProject)
         let projectName = model.projectName(for: row.record)
         Button { model.select(row.id) } label: {
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .top, spacing: LoomTheme.Space.cardSpacing) {
                 IndicatorView(indicator: indicator)
-                    .padding(.top, 1)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
+                    .padding(.top, LoomTheme.Space.cardIndicatorTop)
+                VStack(alignment: .leading, spacing: LoomTheme.Space.cardLineSpacing) {
+                    HStack(spacing: LoomTheme.Space.cardRowSpacing) {
                         Text(title)
-                            .font(.system(size: 13, weight: selected ? .semibold : .medium))
-                            .foregroundStyle(indicator == .stale ? CatalogTheme.secondary : CatalogTheme.text)
+                            .font(LoomTheme.Typography.cardTitle(selected: selected))
+                            .foregroundStyle(indicator == .stale ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
                             .lineLimit(1).truncationMode(.tail)
-                        Spacer(minLength: 4)
+                        Spacer(minLength: LoomTheme.Space.headerSpacing)
                         Text(RelativeTime.string(from: row.record.lastUsedAt, to: model.now))
-                            .font(.system(size: 11)).foregroundStyle(CatalogTheme.secondary)
+                            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
                             .help("Last used \(row.record.lastUsedAt.formatted(date: .abbreviated, time: .shortened))")
                     }
-                    HStack(spacing: 6) {
+                    HStack(spacing: LoomTheme.Space.cardRowSpacing) {
                         Label((model.branches[row.record.session.workingDirectory] ?? .unavailable).label,
                               systemImage: "arrow.triangle.branch")
-                            .font(.system(size: 11)).foregroundStyle(CatalogTheme.secondary).lineLimit(1)
+                            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
                             .help("Git branch")
-                        Spacer(minLength: 4)
+                        Spacer(minLength: LoomTheme.Space.headerSpacing)
                         if let projectName = SessionCardView.projectLabel(showsProject: showsProject, name: projectName) {
-                            Text(projectName).font(.system(size: 11)).foregroundStyle(CatalogTheme.secondary)
+                            Text(projectName).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
                                 .lineLimit(1)
                         }
-                        ProviderIcon(provider: row.record.session.provider, size: 14)
+                        ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.providerIconCard)
                     }
                 }
             }
-            .padding(.horizontal, 10).padding(.vertical, 8)
+            .padding(.horizontal, LoomTheme.Space.cardH).padding(.vertical, LoomTheme.Space.cardV)
             .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(selected ? CatalogTheme.selection : .clear)
-                    .overlay(RoundedRectangle(cornerRadius: 10)
-                        .stroke(selected ? CatalogTheme.hairline : .clear, lineWidth: 1))
+                RoundedRectangle(cornerRadius: LoomTheme.Radius.card)
+                    .fill(selected ? LoomTheme.Surface.selected : .clear)
+                    .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.card)
+                        .stroke(selected ? LoomTheme.Surface.hairline : .clear, lineWidth: LoomTheme.Line.hairline))
             )
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.card))
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -404,7 +404,7 @@ struct NewConversationAction {
 /// subtle ring while focused (the system focus effect is switched off).
 struct ChromeButtonStyle: ButtonStyle {
     var selected = false
-    var size = CGSize(width: 26, height: 24)
+    var size = LoomTheme.Layout.chromeButton
 
     /// A mouse user's launch focus must not draw a ring: only with keyboard navigation on.
     static func showsFocusRing(focused: Bool, keyboardNavigation: Bool) -> Bool { focused && keyboardNavigation }
@@ -420,25 +420,43 @@ struct ChromeButtonStyle: ButtonStyle {
         @State private var hovering = false
         @Environment(\.isEnabled) private var enabled
         @Environment(\.isFocused) private var focused
-        @State private var keyboardNavigation = NSApplication.shared.isFullKeyboardAccessEnabled
 
         var body: some View {
-            let background = configuration.isPressed ? 0.14 : (hovering ? 0.09 : (selected ? 0.07 : 0))
+            let background: Color = configuration.isPressed ? LoomTheme.Surface.controlPressed
+                : (hovering ? LoomTheme.Surface.controlHover : (selected ? LoomTheme.Surface.selected : .clear))
             configuration.label
                 .symbolRenderingMode(.monochrome)
-                .foregroundStyle(selected || hovering || configuration.isPressed ? CatalogTheme.text : CatalogTheme.secondary)
+                .foregroundStyle(selected || hovering || configuration.isPressed ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
                 .frame(width: size.width, height: size.height)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(background)))
-                .overlay(RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(Color.white.opacity(
-                        ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: keyboardNavigation)
-                            ? 0.4 : 0), lineWidth: 1.5))
-                .contentShape(RoundedRectangle(cornerRadius: 6))
-                .opacity(enabled ? 1 : 0.4)
+                .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.control).fill(background))
+                .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
+                    .strokeBorder(ChromeButtonStyle.showsFocusRing(
+                        focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)
+                        ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing))
+                .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
+                .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
                 .onHover { hovering = $0 }
-                .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
-                    keyboardNavigation = NSApplication.shared.isFullKeyboardAccessEnabled
-                }
         }
     }
+}
+
+/// Whether Full Keyboard Access is on, read once and refreshed when a window
+/// becomes key (the setting changes in System Settings, outside the app), so
+/// each chrome button only reads a flag instead of subscribing on its own.
+@MainActor @Observable
+final class KeyboardNavigation {
+    static let shared = KeyboardNavigation()
+
+    private(set) var isEnabled = NSApplication.shared.isFullKeyboardAccessEnabled
+    @ObservationIgnored private var observer: NSObjectProtocol?
+
+    private init() {
+        observer = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
+    }
+
+    func refresh() { isEnabled = NSApplication.shared.isFullKeyboardAccessEnabled }
 }
