@@ -1,6 +1,8 @@
 """Shared helpers for the indicator-cost and real-Claude checks: proc_pid_rusage CPU/wakeup sampling and the
-per-instance evidence command channel (same name as scripts/dev-paths.sh `loom_command_channel`)."""
-import ctypes, json, os, pathlib, subprocess, time, hashlib
+per-instance evidence command channel (name from perf_paths.command_channel, same as scripts/dev-paths.sh `loom_command_channel`)."""
+import ctypes, json, os, pathlib, subprocess, sys, time
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from perf_paths import command_channel as channel
 
 WINDOW = int(os.environ.get('WINDOW', '60'))
 
@@ -18,8 +20,6 @@ def usage(pid):
     ns = lambda t: t * tb.numer / tb.denom
     return {'cpu': (ns(ru.user) + ns(ru.system)) / 1e9, 'idleWakeups': ru.pkg_idle_wkups, 'intWakeups': ru.interrupt_wkups,
             'footprint': ru.footprint, 't': time.monotonic()}
-def channel(d):
-    return 'local.loom.desktop.dev.command.' + hashlib.sha256(os.path.realpath(d).encode()).hexdigest()[:16]
 def send(d, text):
     subprocess.run(['osascript', '-l', 'JavaScript', '-e', "ObjC.import('Foundation');$.NSDistributedNotificationCenter.defaultCenter."
                     "postNotificationNameObjectUserInfoDeliverImmediately(" + json.dumps(channel(d)) + ", " + json.dumps(text) + ", $(), true)"],

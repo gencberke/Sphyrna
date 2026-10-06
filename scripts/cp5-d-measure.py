@@ -27,6 +27,9 @@ import sys
 import time
 import uuid
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / 'perf'))
+from perf_paths import command_channel  # evidence command channel name, shared with scripts/perf
+
 # interactive keeps the PTY default ONLCR; the explicit CR is followed by CRLF.
 BANNER = b'Loom synthetic terminal. Type a line; Ctrl-D exits.\r\r\n> '
 FOOTER = re.compile(rb'\r\nEND bytes=(\d+) seconds=(\d+\.\d{3})\r\n\Z')
@@ -265,12 +268,6 @@ def wait_json(path, timeout):
                 pass
         time.sleep(.025)
     raise TimeoutError(f'Missing valid acknowledgement/snapshot: {path.name}')
-
-
-def command_channel(directory):
-    # Mirrors LaunchOptions.commandChannel (Sources/LoomLaunchOptions).
-    real = os.path.realpath(directory)
-    return 'local.loom.desktop.dev.command.' + hashlib.sha256(real.encode()).hexdigest()[:16]
 
 
 def send(text, directory):

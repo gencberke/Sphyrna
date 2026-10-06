@@ -4,7 +4,7 @@ Everything the scripts create (run directories, copied fixtures) and the app
 under test must live outside ~/Documents: run hosts are separate
 TCC-responsible apps and block on a Documents consent prompt there.
 """
-import datetime, importlib.util, pathlib, sys
+import datetime, hashlib, importlib.util, os, pathlib, sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 HOME = pathlib.Path.home()
@@ -12,6 +12,13 @@ DEV_ROOT = HOME / 'Library/Application Support/Loom-Dev'
 DEFAULT_APP = DEV_ROOT / 'app/Loom Dev.app'
 PROBE = DEV_ROOT / 'probe'
 RUNS = PROBE / 'runs'
+
+
+def command_channel(directory):
+    """Evidence command channel of one instance: distributed-notification name derived from the real path.
+    Python side of the name; the Swift side is Sources/LoomLaunchOptions/LaunchOptions.swift and the shell side
+    is scripts/dev-paths.sh `loom_command_channel`."""
+    return 'local.loom.desktop.dev.command.' + hashlib.sha256(os.path.realpath(directory).encode()).hexdigest()[:16]
 
 
 def default_run_dir(prefix):
