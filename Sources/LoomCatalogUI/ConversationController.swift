@@ -145,7 +145,7 @@ public final class ConversationController: ConversationIntents {
     // MARK: ConversationIntents
 
     public func start(provider: ManagedSession.Provider, projectID: UUID?) {
-        guard let model, model.actionsAvailable else { return }
+        guard let model, model.actionsAvailable, model.startableProviders.contains(provider) else { return }
         let key = StartKey(provider: provider, projectID: projectID)
         guard model.beginStart(key) else { return }
         let surface = TerminalSurface(fontSize: model.terminalFontSize)

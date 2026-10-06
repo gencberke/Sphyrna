@@ -15,6 +15,8 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let options: LaunchOptions
+    /// Production or development, read once; the only source of identity-derived names.
+    let identity = BuildIdentity(bundleIdentifier: Bundle.main.bundleIdentifier)
     private var arguments: [String] { options.arguments }
     private var window: NSWindow?
     private var settingsWindow: NSWindow?
@@ -67,7 +69,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         let model = CatalogModel(
             catalog: catalog, startupError: catalogFailure, events: hub,
-            preferences: UIPreferencesStore(url: root.appendingPathComponent("ui-preferences.json"))
+            preferences: UIPreferencesStore(url: root.appendingPathComponent("ui-preferences.json")),
+            startableProviders: Set(identity.startableProviders.compactMap(ManagedSession.Provider.init(rawValue:)))
         )
         if options.isEvidence {
             switch value(after: "--evidence-transparency") {
@@ -110,9 +113,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Evidence runs always use an isolated root (`--data-root` or
     /// `<evidence>/data`); see `LaunchOptions.resolveDataRoot`.
     private func dataRoot() -> LaunchOptions.DataRoot {
-        let dataName = Bundle.main.bundleIdentifier == "local.loom.desktop" ? "Loom" : "Loom-Dev"
         let defaultRoot = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/\(dataName)", isDirectory: true)
+            .appendingPathComponent("Library/Application Support/\(identity.dataDirectoryName)", isDirectory: true)
         return options.resolveDataRoot(defaultRoot: defaultRoot)
     }
 
@@ -231,9 +233,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if options.isEvidence, ProcessInfo.processInfo.environment["LOOM_FORCE_SCOPE_FAILURE"] == "1" {
             host = host.appendingPathComponent("missing")
         }
-        let isDevelopment = Bundle.main.bundleIdentifier != "local.loom.desktop"
         let sockets = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(isDevelopment ? ".loom-dev/scopes" : ".loom/scopes", isDirectory: true)
+            .appendingPathComponent("\(identity.socketDirectoryName)/scopes", isDirectory: true)
         return RunScopeLauncher(hostBundle: host, socketDirectory: sockets)
     }
 
@@ -399,9 +400,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// profiles; a normal launch cannot.
     private func runtimeConfiguration(root: URL, supervisor: ProcessSupervisor) -> SessionRuntimeConfiguration {
         let helpers = Bundle.main.executableURL!.deletingLastPathComponent()
-        let isDevelopment = Bundle.main.bundleIdentifier != "local.loom.desktop"
         let socketDirectory = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(isDevelopment ? ".loom-dev" : ".loom", isDirectory: true)
+            .appendingPathComponent(identity.socketDirectoryName, isDirectory: true)
         let acceptance = options.isEvidence
         let toolchains: ProviderToolchainResolver
         if acceptance, let fixtures = value(after: "--fake-providers") {
@@ -634,10 +634,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // New conversations start in the selected conversation's project (or none).
         fileMenu.addItem(withTitle: "New Claude Conversation", action: #selector(newClaudeFromMenu(_:)),
                          keyEquivalent: "n").target = self
-        let codex = fileMenu.addItem(withTitle: "New Codex Conversation", action: #selector(newCodexFromMenu(_:)),
-                                     keyEquivalent: "n")
-        codex.keyEquivalentModifierMask = [.command, .shift]
-        codex.target = self
+        if !identity.isProduction {
+            let codex = fileMenu.addItem(withTitle: "New Codex Conversation", action: #selector(newCodexFromMenu(_:)),
+                                         keyEquivalent: "n")
+            codex.keyEquivalentModifierMask = [.command, .shift]
+            codex.target = self
+        }
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Resume Conversation", action: #selector(resumeFromMenu(_:)),
                          keyEquivalent: "r").target = self

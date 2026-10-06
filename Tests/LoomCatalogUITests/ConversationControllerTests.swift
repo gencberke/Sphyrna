@@ -35,7 +35,8 @@ struct ConversationControllerTests {
 
     private func makeFixture(
         idle: SessionIdlePolicy = SessionIdlePolicy(), startWindowActive: Bool = false,
-        extraEnvironment: [String: String] = [:], scoped: Bool = false
+        extraEnvironment: [String: String] = [:], scoped: Bool = false,
+        startableProviders: Set<ManagedSession.Provider> = [.claude, .codex]
     ) async throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loom-controller-\(UUID())", isDirectory: true)
@@ -91,7 +92,8 @@ struct ConversationControllerTests {
         try await runtime.start()
         let model = CatalogModel(
             catalog: catalog, events: hub,
-            preferences: UIPreferencesStore(url: root.appendingPathComponent("prefs.json"))
+            preferences: UIPreferencesStore(url: root.appendingPathComponent("prefs.json")),
+            startableProviders: startableProviders
         )
         let controller = ConversationController(runtime: runtime, model: model)
         await controller.begin()
@@ -135,6 +137,29 @@ struct ConversationControllerTests {
 
     private func surface(_ fixture: Fixture, for sessionID: UUID) -> TerminalSurface? {
         fixture.controller.entries.values.first { $0.owner == sessionID }?.surface
+    }
+
+    /// Production: Codex has no entry point and the controller refuses it even
+    /// when called directly (evidence `start:codex`, a stale button).
+    @Test func productionControllerRefusesCodexWithoutSideEffect() async throws {
+        let fixture = try await makeFixture(startableProviders: [.claude])
+        do {
+            fixture.controller.start(provider: .codex, projectID: nil)
+            fixture.model.startConversation(.codex, projectID: nil)
+            try await Task.sleep(for: .milliseconds(300))
+            #expect(fixture.controller.terminalCount == 0)
+            #expect(try await fixture.catalog.sessions().isEmpty)
+            #expect(!fixture.model.isStarting(.codex, projectID: nil))
+            #expect(fixture.model.errorMessage == nil)
+            // Claude still starts.
+            fixture.model.startConversation(.claude, projectID: nil)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 })
+            #expect(try await fixture.catalog.sessions().map(\.session.provider) == [.claude])
+        } catch {
+            await fixture.cleanup()
+            throw error
+        }
+        await fixture.cleanup()
     }
 
     @Test func fontPreferenceAppliesToExistingAndNewConversationSurfaces() async throws {

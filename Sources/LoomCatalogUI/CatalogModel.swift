@@ -193,7 +193,9 @@ public final class CatalogModel {
     /// `catalog == nil` means the catalog could not be opened (`startupError`
     /// says why); nothing is created or overwritten in that state.
     public init(catalog: SessionCatalog?, startupError: String? = nil, events: SessionEventHub,
-                preferences: UIPreferencesStore) {
+                preferences: UIPreferencesStore,
+                startableProviders: Set<ManagedSession.Provider> = [.claude, .codex]) {
+        self.startableProviders = startableProviders
         self.catalog = catalog
         self.startupError = startupError
         self.events = events
@@ -211,6 +213,11 @@ public final class CatalogModel {
         refreshTask?.cancel()
         preferenceWriteTask?.cancel()
     }
+
+    /// Providers a user may start. The production build lists only Claude;
+    /// Codex stays compiled but has no entry point (D-14, D-28). Existing
+    /// conversations of any provider still display.
+    public let startableProviders: Set<ManagedSession.Provider>
 
     public var preferencesSnapshot: UIPreferences { preferences.current }
     public var trimmedSearch: String { searchText.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -852,7 +859,7 @@ public final class CatalogModel {
     public var contextProjectID: UUID? { selectedRow?.record.projectID }
 
     public func startConversation(_ provider: ManagedSession.Provider, projectID: UUID?) {
-        guard actionsAvailable else { return }
+        guard actionsAvailable, startableProviders.contains(provider) else { return }
         intents?.start(provider: provider, projectID: projectID)
         // The new card belongs to this project: show it.
         if let projectID, projects.first(where: { $0.id == projectID })?.collapsed == true {
@@ -880,7 +887,7 @@ public final class CatalogModel {
     }
 
     public func canStart(_ provider: ManagedSession.Provider, projectID: UUID?) -> Bool {
-        actionsAvailable && !isStarting(provider, projectID: projectID)
+        actionsAvailable && startableProviders.contains(provider) && !isStarting(provider, projectID: projectID)
     }
 
     public func canResume(_ row: SessionRowModel) -> Bool {

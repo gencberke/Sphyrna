@@ -190,8 +190,7 @@ directory when every scope is shown empty; leftovers surface as `CatalogModel.ow
 Code is kept and tested but receives no new development. Locations: `Sources/LoomCore/Codex*.swift` (6 files),
 `CodexSessionAdapter` in `ProviderSessionAdapters.swift`, `CodexEventStateTracker` in `CodexSessionState.swift`, the nested `CodexServer` class and Codex
 setup/teardown in `SessionRuntime.swift`, `Sources/loom-fake-provider/CodexFixture.swift`, Codex tests in `LoomCoreTests`
-(`CodexAppServer*`, `CodexWireDiagnosticsTests`, `SessionRuntimeCodex*`), `loom-probe` Codex files. UI entry points still
-exist: "New Codex Conversation" in `SidebarView.swift` and `DetailView.swift`, `AppDelegate.newCodexFromMenu`.
+(`CodexAppServer*`, `CodexWireDiagnosticsTests`, `SessionRuntimeCodex*`), `loom-probe` Codex files. UI entry points ("New Codex Conversation" in `SidebarView.swift` and `DetailView.swift`, `AppDelegate.newCodexFromMenu`) exist only in development builds: `BuildIdentity` (`Sources/LoomLaunchOptions/BuildIdentity.swift`) gives `startableProviders = [claude]` for the production identity `local.loom.desktop`, `CatalogModel.startableProviders` filters every new-conversation surface, and `ConversationController.start` refuses a provider outside that set.
 Design fact: one `codex app-server` per Codex session (contract §3).
 
 ## 9. Hotspots and scaling notes (facts, no redesign)
@@ -206,9 +205,9 @@ Design fact: one `codex app-server` per Codex session (contract §3).
   (`CatalogModel.swift`, also at selection and refresh).
 - Quit path: the production shutdown closure is carried by `TerminalRunController` (`AppDelegate.startRuntime`), a class
   documented as an A-slice synthetic-terminal state machine; with no controller, quit returns `.terminateNow`.
-- Duplicated identity checks: `Bundle.main.bundleIdentifier != "local.loom.desktop"` is evaluated in `AppDelegate.dataRoot`,
-  `runScopeLauncher` and `runtimeConfiguration`; the notification prefix is repeated in `LaunchOptions.swift`,
-  `scripts/dev-paths.sh`, `scripts/cp5-d-measure.py`.
+- Identity: `BuildIdentity` (LoomLaunchOptions) is the one Swift owner of production vs development names (data and
+  socket directories, command-channel prefix, startable providers); the Python runners share one channel helper
+  (`scripts/perf/perf_paths.py`); `scripts/dev-paths.sh` keeps its own copy for the zsh scripts.
 - Evidence code (~880 of `loom-app`'s ~1,660 lines: `DevelopmentEvidence`, `EvidenceResourcePool`, tail of `AppDelegate`)
   ships in the production executable, gated by `--evidence`.
 - Ownership sampling in `ProcessSupervisor` scans the process table; `persistLedger` rewrites the ledger JSON.

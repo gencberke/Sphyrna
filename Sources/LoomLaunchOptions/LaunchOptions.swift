@@ -50,15 +50,13 @@ public struct LaunchOptions: Equatable, Sendable {
     /// hash of the evidence directory's real path, so concurrent evidence
     /// instances (and normal launches, which never subscribe) cannot hear each
     /// other. Scripts compute the same name with `loom_command_channel`.
-    public static let commandChannelPrefix = "local.loom.desktop.dev.command."
-
-    public static func commandChannel(evidenceDirectory: String) -> String {
+    public static func commandChannel(evidenceDirectory: String, identity: BuildIdentity) -> String {
         var resolved = URL(fileURLWithPath: evidenceDirectory).standardizedFileURL.path
         if let real = realpath(evidenceDirectory, nil) {
             resolved = String(cString: real)
             free(real)
         }
         let digest = SHA256.hash(data: Data(resolved.utf8))
-        return commandChannelPrefix + digest.map { String(format: "%02x", $0) }.joined().prefix(16)
+        return identity.commandChannelPrefix + digest.map { String(format: "%02x", $0) }.joined().prefix(16)
     }
 }

@@ -374,7 +374,7 @@ struct NewConversationButtons: View {
     var suffix = ""
 
     var body: some View {
-        ForEach(NewConversationAction.all, id: \.provider) { action in
+        ForEach(NewConversationAction.startable(on: model), id: \.provider) { action in
             Button(action.title + suffix) { action.perform(on: model, projectID: projectID) }
                 .disabled(!action.isEnabled(on: model, projectID: projectID))
         }
@@ -385,10 +385,15 @@ struct NewConversationAction {
     let provider: ManagedSession.Provider
     let title: String
 
-    static let all = [
+    private static let all = [
         NewConversationAction(provider: .claude, title: "New Claude Conversation"),
         NewConversationAction(provider: .codex, title: "New Codex Conversation"),
     ]
+
+    /// The actions the model may start (production: Claude only).
+    @MainActor static func startable(on model: CatalogModel) -> [NewConversationAction] {
+        all.filter { model.startableProviders.contains($0.provider) }
+    }
 
     @MainActor func perform(on model: CatalogModel, projectID: UUID?) {
         model.startConversation(provider, projectID: projectID)

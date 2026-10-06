@@ -33,7 +33,7 @@ final class DevelopmentEvidence {
         self.app = app
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         observer = DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name(LaunchOptions.commandChannel(evidenceDirectory: directory.path)), object: nil, queue: .main
+            forName: Notification.Name(LaunchOptions.commandChannel(evidenceDirectory: directory.path, identity: app.identity)), object: nil, queue: .main
         ) { [weak self] notification in
             let command = notification.object as? String ?? ""
             // Not inside this OperationQueue block: a `quit` that waits for the

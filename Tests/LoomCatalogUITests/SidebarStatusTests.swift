@@ -54,8 +54,8 @@ struct SidebarStatusTests {
         let intents = RecordingIntents()
         model.intents = intents
         let project = UUID()
-        #expect(NewConversationAction.all.map(\.title) == ["New Claude Conversation", "New Codex Conversation"])
-        for action in NewConversationAction.all {
+        #expect(NewConversationAction.startable(on: model).map(\.title) == ["New Claude Conversation", "New Codex Conversation"])
+        for action in NewConversationAction.startable(on: model) {
             #expect(action.isEnabled(on: model, projectID: project))
             action.perform(on: model, projectID: project)
         }
@@ -63,11 +63,30 @@ struct SidebarStatusTests {
         #expect(intents.starts.allSatisfy { $0.1 == project })
         // Unavailable (Quit started) behaves like every other new-conversation entry.
         model.quitting = true
-        for action in NewConversationAction.all {
+        for action in NewConversationAction.startable(on: model) {
             #expect(!action.isEnabled(on: model, projectID: project))
             action.perform(on: model, projectID: project)
         }
         #expect(intents.starts.count == 2)
+    }
+
+    @Test func productionModelOffersAndStartsOnlyClaude() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-ui-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = CatalogModel(catalog: nil, events: SessionEventHub(),
+                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")),
+                                 startableProviders: [.claude])
+        let intents = RecordingIntents()
+        model.intents = intents
+        #expect(NewConversationAction.startable(on: model).map(\.title) == ["New Claude Conversation"])
+        #expect(model.startableProviders == [.claude])
+        #expect(!model.canStart(.codex, projectID: nil))
+        model.startConversation(.codex, projectID: nil)
+        #expect(intents.starts.isEmpty)
+        #expect(model.canStart(.claude, projectID: nil))
+        model.startConversation(.claude, projectID: nil)
+        #expect(intents.starts.map(\.0) == [.claude])
     }
 
     @Test(.timeLimit(.minutes(1)))
@@ -156,13 +175,13 @@ struct SidebarStatusTests {
         await model.start()
         await model.stopAndWait()
         #expect(model.projects.first?.collapsed == true)
-        NewConversationAction.all[0].perform(on: model, projectID: project.id)
+        NewConversationAction.startable(on: model)[0].perform(on: model, projectID: project.id)
         await model.settle()
         for _ in 0..<40 where model.projects.first?.collapsed == true { try await Task.sleep(for: .milliseconds(50)) }
         #expect(intents.starts.count == 1)
         #expect(model.projects.first?.collapsed == false)
         // An already expanded project stays expanded.
-        NewConversationAction.all[1].perform(on: model, projectID: project.id)
+        NewConversationAction.startable(on: model)[1].perform(on: model, projectID: project.id)
         try await Task.sleep(for: .milliseconds(200))
         #expect(model.projects.first?.collapsed == false)
     }

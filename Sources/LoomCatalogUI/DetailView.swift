@@ -178,8 +178,10 @@ struct DetailContent: View {
                             .keyboardShortcut("o", modifiers: .command)
                         Button("New Claude Conversation") { model.startConversation(.claude, projectID: nil) }
                             .disabled(!model.canStart(.claude, projectID: nil))
-                        Button("New Codex Conversation") { model.startConversation(.codex, projectID: nil) }
-                            .disabled(!model.canStart(.codex, projectID: nil))
+                        if model.startableProviders.contains(.codex) {
+                            Button("New Codex Conversation") { model.startConversation(.codex, projectID: nil) }
+                                .disabled(!model.canStart(.codex, projectID: nil))
+                        }
                     }
                 }
             } else {
