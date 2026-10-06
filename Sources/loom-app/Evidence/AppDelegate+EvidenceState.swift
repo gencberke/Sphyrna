@@ -93,6 +93,8 @@ extension AppDelegate {
                 ] as [String: Any],
             ] as [String: Any]
         }
+        state["settings"] = settingsEvidence
+        state["usage"] = usageEvidence
         if let window {
             state["windowContentSize"] = [Double(window.contentLayoutRect.width), Double(window.contentLayoutRect.height)]
             state["sidebarWidth"] = splitController?.sidebarWidth ?? NSNull()
@@ -162,7 +164,7 @@ extension AppDelegate {
         Self.writePNG(of: window?.contentView?.superview, to: framed)
     }
 
-    private static func writePNG(of view: NSView?, to url: URL) {
+    static func writePNG(of view: NSView?, to url: URL) {
         guard let view, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: bitmap)
         try? bitmap.representation(using: .png, properties: [:])?.write(to: url, options: .atomic)

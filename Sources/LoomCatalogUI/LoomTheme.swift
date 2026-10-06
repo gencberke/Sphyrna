@@ -70,6 +70,14 @@ enum LoomTheme {
         static let controlHover = Color.white.opacity(controlHoverOpacity)
         static let controlPressed = Color.white.opacity(controlPressedOpacity)
         static let focusRing = Accent.base
+
+        /// One hourly cell of the five-hour activity block: the primary text tone at an
+        /// intensity from `activityCellFloor` (no activity) to `activityCellCeiling` (the busiest hour).
+        static func activityCell(_ fraction: Double) -> Color {
+            let clamped = min(max(fraction, 0), 1)
+            return Text.primary.opacity(Opacity.activityCellFloor
+                + (Opacity.activityCellCeiling - Opacity.activityCellFloor) * clamped)
+        }
     }
 
     enum Text {
@@ -110,6 +118,8 @@ enum LoomTheme {
         static let accentPressed = 0.8
         static let accentTint = 0.14
         static let accentTintPressed = 0.24
+        static let activityCellFloor = 0.10
+        static let activityCellCeiling = 0.90
     }
 
     // MARK: Shape
@@ -120,6 +130,9 @@ enum LoomTheme {
         static let control: CGFloat = 6
         static let search: CGFloat = 8
         static let callout: CGFloat = 8
+        /// Usage bars and activity cells.
+        static let bar: CGFloat = 4
+        static let barSlim: CGFloat = 2
     }
 
     enum Line {
@@ -142,6 +155,10 @@ enum LoomTheme {
         static let bodyStrong = Font.system(size: 13, weight: .semibold)
         static let footerIcon = Font.system(size: 14)
         static let title = Font.system(size: 15, weight: .semibold)
+        /// The Usage headline figure.
+        static let display = Font.system(size: 32, weight: .semibold)
+        /// Paths in Settings.
+        static let mono = Font.system(size: 12, design: .monospaced)
         /// A `Message` title and the conversation record's title.
         static let heading = Font.system(size: 20, weight: .semibold)
         static let heroSymbol = Font.system(size: 28)
@@ -161,6 +178,8 @@ enum LoomTheme {
         static let searchSpacing: CGFloat = 6
         static let searchPadding: CGFloat = 10
         static let footerInset: CGFloat = 10
+        static let footerSpacing: CGFloat = 8
+        static let chipInset: CGFloat = 8
         // List.
         static let listInset: CGFloat = 6
         static let listBottom: CGFloat = 8
@@ -216,7 +235,24 @@ enum LoomTheme {
         // Terminal host.
         static let terminalInset: CGFloat = 6
         // Settings.
-        static let settingsPadding: CGFloat = 24
+        static let settingsInset: CGFloat = 32
+        static let settingsFooterInset: CGFloat = 24
+        static let settingsSectionGap: CGFloat = 20
+        static let settingsRowInset: CGFloat = 16
+        static let settingsRowV: CGFloat = 10
+        static let settingsSegmentH: CGFloat = 12
+        static let settingsTrack: CGFloat = 2
+        static let usageColumnGap: CGFloat = 32
+        static let usageTotalsGap: CGFloat = 16
+        static let usageNoteTop: CGFloat = 6
+        static let usageBarGap: CGFloat = 16
+        static let usageBarGapSlim: CGFloat = 2
+        static let usageCellGap: CGFloat = 4
+        static let usageCellLabelTop: CGFloat = 4
+        static let usageShareGap: CGFloat = 8
+        static let aboutHeadTop: CGFloat = 28
+        static let aboutHeadBottom: CGFloat = 24
+        static let aboutHeadSpacing: CGFloat = 4
     }
 
     // MARK: Layout
@@ -243,7 +279,22 @@ enum LoomTheme {
         static let messageMaxWidth: CGFloat = 420
         static let detailMaxWidth: CGFloat = 640
         static let sheetWidth: CGFloat = 420
-        static let settingsWidth: CGFloat = 360
+        /// The Settings window keeps one size for every section.
+        static let settingsWidth: CGFloat = 680
+        static let settingsHeight: CGFloat = 520
+        static let settingsTopHeight: CGFloat = 52
+        static let settingsFooterHeight: CGFloat = 32
+        static let settingsSegmentHeight: CGFloat = 24
+        static let settingsRowMinHeight: CGFloat = 44
+        static let usageControlHeight: CGFloat = 28
+        static let usageBarsHeight: CGFloat = 72
+        static let usageCellHeight: CGFloat = 28
+        static let usageHeaderRowHeight: CGFloat = 24
+        static let usageRowHeight: CGFloat = 28
+        static let usageShareBar = CGSize(width: 48, height: 3)
+        static let usageEmptyHeight: CGFloat = 360
+        static let aboutMark: CGFloat = 64
+        static let footerChipHeight: CGFloat = 24
         // Indicators.
         static let indicatorSlot = CGSize(width: 12, height: 16)
         static let chaseSide: CGFloat = 12

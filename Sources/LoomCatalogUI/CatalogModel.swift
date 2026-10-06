@@ -153,7 +153,10 @@ public final class CatalogModel {
     public var effectiveSidebarMaterial: String { effectiveReduceTransparency ? "opaque" : "glass" }
     public private(set) var terminalFontSize: Double
     public private(set) var branches: [String: GitBranch] = [:]
-    @ObservationIgnored public var onShowSettings: (() -> Void)?
+    /// Opens the one Settings window; nil keeps the section it shows (the gear), a section jumps to it (the usage chip).
+    @ObservationIgnored public var onShowSettings: ((SettingsSection?) -> Void)?
+    /// Set once by the app before the first view exists; the sidebar footer and Settings read it.
+    @ObservationIgnored public var usage: UsageModel?
     @ObservationIgnored public var onTerminalFontSizeChange: ((Double) -> Void)?
     @ObservationIgnored public var onToggleSidebar: (() -> Void)?
     /// The runtime may attach after the first page is shown (it starts alongside the model);
@@ -267,6 +270,7 @@ public final class CatalogModel {
         statistics.startMilliseconds = Double(elapsed.components.seconds) * 1_000
             + Double(elapsed.components.attoseconds) / 1e15
         isReady = true
+        usage?.refresh(reason: .launch)
         eventTask = Task { [weak self, events] in
             let stream = await events.subscribe()
             for await frame in stream {
@@ -664,6 +668,8 @@ public final class CatalogModel {
         persist { $0.sidebarCollapsed = collapsed }
     }
 
+    public func showSettings(_ section: SettingsSection? = nil) { onShowSettings?(section) }
+
     public func setTerminalFontSize(_ size: Double) {
         terminalFontSize = UIPreferences.clampedFontSize(size)
         persist { $0.terminalFontSize = terminalFontSize }
@@ -862,6 +868,7 @@ public final class CatalogModel {
     /// One consumer: a contiguous frame updates one conversation; a gap
     /// (missed frames) is repaired from the frame's full latest state.
     func apply(_ frame: SessionEventFrame) {
+        usage?.observe(frame.change)
         statistics.framesApplied += 1
         // Re-read at a reliable turn boundary, never for output/frame rendering.
         if case let .status(status) = frame.change, status?.activity == .turnComplete,

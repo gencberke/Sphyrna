@@ -17,6 +17,7 @@ extension AppDelegate {
     func evidenceInjectedShutdownFailure() -> (@Sendable () -> ShutdownReport?)? { nil }
     func installDevelopmentTerminal(hub: SessionEventHub, supervisor: ProcessSupervisor, model: CatalogModel) {}
     func evidenceToolchains(root: URL, supervisor: ProcessSupervisor, origin: LaunchEnvironment.LaunchOrigin) -> ProviderToolchainResolver? { nil }
+    func evidenceClaudeProfile(root: URL) -> URL? { nil }
     func installDevelopmentMenuItems(in fileMenu: NSMenu) {}
     func traceWindowCall(_ reason: String, hasVisibleWindows: Bool? = nil) {}
     func recordVisibility(_ reason: String, hasVisibleWindows: Bool? = nil) {}

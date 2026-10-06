@@ -18,7 +18,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Production or development, read once; the only source of identity-derived names.
     let identity = BuildIdentity(bundleIdentifier: Bundle.main.bundleIdentifier)
     private(set) var window: NSWindow?
-    private var settingsWindow: NSWindow?
+    /// The one Settings window (`SettingsWindowController`); nil until the model exists.
+    var settingsController: SettingsWindowController?
+    /// Claude usage for the footer chip and Settings; nil when the data root was refused.
+    var usage: UsageModel?
     private(set) var model: CatalogModel?
     private(set) var splitController: MainSplitViewController?
     /// The development flavor's synthetic terminal; always nil in the release flavor.
@@ -84,7 +87,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
         configureEvidenceAtLaunch(model: model)
         self.model = model
-        model.onShowSettings = { [weak self] in self?.showSettings(nil) }
+        model.onShowSettings = { [weak self] section in self?.showSettings(section: section) }
+        installUsage(model: model, root: root, refused: refusal != nil)
         model.onTerminalFontSizeChange = { [weak self] size in
             self?.conversations?.setTerminalFontSize(size)
             self?.controller?.terminalFontSize = size
@@ -220,9 +224,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// occluded, key, and the application is active.
     private func updateWindowActivity() {
         guard let window, let model else { return }
-        model.setWindowActive(
-            window.isVisible && window.occlusionState.contains(.visible) && window.isKeyWindow && NSApp.isActive
-        )
+        let active = window.isVisible && window.occlusionState.contains(.visible) && window.isKeyWindow && NSApp.isActive
+        model.setWindowActive(active)
+        usage?.windowActivityChanged(active)
     }
 
     /// Every run starts in its own run-host scope. Without the bundled host
@@ -439,18 +443,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: Menus
 
-    @objc private func showSettings(_ sender: Any?) {
-        guard let model else { return }
-        if settingsWindow == nil {
-            let settings = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 150),
-                                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            settings.title = "Settings"
-            settings.isReleasedWhenClosed = false
-            settings.contentViewController = NSHostingController(rootView: SettingsView(model: model))
-            settings.center()
-            settingsWindow = settings
-        }
-        settingsWindow?.makeKeyAndOrderFront(nil)
+    @objc private func showSettings(_ sender: Any?) { showSettings(section: nil) }
+
+    func showSettings(section: SettingsSection?) {
+        settingsController?.show(section: section)
     }
 
     private func installMenus() {

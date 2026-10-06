@@ -110,37 +110,6 @@ struct SearchField: View {
     }
 }
 
-struct SidebarFooter: View {
-    let model: CatalogModel
-
-    var body: some View {
-        HStack {
-            Menu {
-                NewConversationButtons(model: model, projectID: model.contextProjectID)
-                Divider()
-                Button("Add Project…") { model.presentAddProject() }
-            } label: {
-                Image(systemName: "plus")
-            }
-            .menuStyle(.button).buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.footerButton))
-            .menuIndicator(.hidden).fixedSize()
-            .help("New conversation or project")
-            .accessibilityLabel("New conversation or project")
-            Spacer()
-            Button { model.onShowSettings?() } label: {
-                Image(systemName: "gearshape")
-            }
-            .buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.footerButton))
-            .help("Settings")
-            .accessibilityLabel("Settings")
-        }
-        .font(LoomTheme.Typography.footerIcon)
-        .focusEffectDisabled()
-        .padding(.horizontal, LoomTheme.Space.footerInset)
-        .frame(height: LoomTheme.Layout.footerHeight)
-    }
-}
-
 struct SidebarList: View {
     let model: CatalogModel
 

@@ -128,6 +128,15 @@ extension AppDelegate {
         return { provider in try await system.toolchain(for: provider) }
     }
 
+    /// Acceptance runs read usage from the profile they were given, never from `~/.claude`: the fake
+    /// providers' (and the default) is `<data root>/claude-config`; `--claude-config` names another.
+    func evidenceClaudeProfile(root: URL) -> URL? {
+        guard options.isEvidence else { return nil }
+        let isolated = root.appendingPathComponent("claude-config", isDirectory: true)
+        if value(after: "--fake-providers") != nil { return isolated }
+        return value(after: "--claude-config").map { URL(fileURLWithPath: $0, isDirectory: true) } ?? isolated
+    }
+
     func installDevelopmentMenuItems(in fileMenu: NSMenu) {
         guard evidenceMode else { return }
         let synthetic = fileMenu.addItem(withTitle: "New Synthetic Terminal (Development)",

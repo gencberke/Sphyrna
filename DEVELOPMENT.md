@@ -59,6 +59,8 @@ Builds are serialized: only the agent whose Brief says it holds the build slot b
 | `answer:<id>:<accept\|deny>` | answers an approval card |
 | `latency:<n>` | input-to-draw latency samples |
 | `resource:<pid>:<uuid>:<op…>` | measurement ops (`open`, `openspinner`, `hide`, `latency`, `cycles`, `stop`, `quit`), used by `cp5-d-measure.py` |
+| `open-settings[:general\|usage\|about]`, `close-settings`, `screenshot-settings:<label>`, `usage-select:<24h\|7d\|30d\|90d>`, `usage-refresh[:<label>]` | Settings window and usage view (snapshot gains `settings{…}` and `usage{…}`) |
+| `sidebar-width:<pt>` | sidebar width |
 | `close-window`, `quit` | close or normal Quit |
 
 Full list: the header of `Sources/loom-app/Evidence/DevelopmentEvidence.swift` and the `case`s of its command switch plus `Sources/loom-app/Evidence/EvidenceCatalogCommands.swift` (the header omits `buttons:`, `toggle-fullscreen`, `feed`, `double-start` and `resource:`).
