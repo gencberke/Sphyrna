@@ -1,10 +1,10 @@
 # Status
 
-- **Updated:** 2026-10-06
-- **Stage:** [L — clean loom line](plans/STAGE-L.md), before the multi-agent run ([ROADMAP](ROADMAP.md)). CP5 is closed.
-- **Slice:** L-2 rename this checkout to `loom-dev`.
-- **State:** waiting for user — L-1 scripts accepted ([plan](plans/STAGE-L.md)); the user renames the checkout with no agent session open.
-- **Next owner:** user: `mv ~/Documents/github/loom ~/Documents/github/loom-dev`, then start a new session in loom-dev; planner-reviewer there: L-3 (tag `release/0.1.0`, promote, release build and install) and L-4 acceptance with the user; then the user starts [multi-agent run 1](plans/SWARM-1.md) with its prompt.
+- **Updated:** 2026-10-07
+- **Stage:** multi-agent run 1 (F, I, CP4; [ROADMAP](ROADMAP.md)) — about to start. Stage L done except the deferred L-4 acceptance ([plan](plans/STAGE-L.md), D-31). CP5 is closed.
+- **Slice:** none yet; the run starts by writing plans/STAGE-F.md, plans/STAGE-I.md and plans/CHECKPOINT-4.md.
+- **State:** waiting for planning — the user starts the run with their prompt (authority D-30); `Loom.app` 0.1.0 is installed from clean loom `v0.1.0`.
+- **Next owner:** planner-reviewer of multi-agent run 1; the user later: L-4 acceptance of `Loom.app` 0.1.0.
 - **Open decisions:** [DECISIONS.md → Open](DECISIONS.md#open).
-- **Latest result:** [L-1 dry run](plans/experiments/stage-l-dryrun-2026-10-06.md); scope decisions D-26..D-29.
+- **Latest result:** stage L-3 — clean loom `v0.1.0` (`26b35f4`) from `release/0.1.0` (`d772acc`), `/Applications/Loom.app` signed and verified.
 - **Blocker:** none.

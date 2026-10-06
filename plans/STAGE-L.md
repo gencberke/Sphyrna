@@ -15,9 +15,9 @@ Goal: the user's daily `Loom.app` is built only from a clean `loom` tree that re
 | Step | Owner | State |
 | --- | --- | --- |
 | L-1 Promote and build scripts, dry-run export to a temp dir, debug build of the exported tree | implementer | accepted 6 Oct ([dry run](experiments/stage-l-dryrun-2026-10-06.md)); planner fix: templates are read from the tag, re-tested in a temp clone |
-| L-2 Rename this checkout to `loom-dev` | user, with no agent session open in it | next |
-| L-3 Tag `release/0.1.0`, promote into the new `loom`, release build and install `Loom.app` | planner-reviewer in a session started from loom-dev, when the user says the Mac is idle | waiting |
-| L-4 Acceptance on the installed `Loom.app` | planner-reviewer + user | waiting |
+| L-2 Rename this checkout to `loom-dev` | user, with no agent session open in it | done 7 Oct |
+| L-3 Tag `release/0.1.0`, promote into the new `loom`, release build and install `Loom.app` | planner-reviewer in a session started from loom-dev, when the user says the Mac is idle | done 7 Oct: tag on `d772acc`; loom `26b35f4` / `v0.1.0`, 180 files; `Loom.app` 0.1.0 `local.loom.desktop`, signed `Loom Dev Code Signing`, deep-strict verified; run host owner requirement = identifier + certificate leaf (L-A1, L-A2, L-A3 identity/signature part) |
+| L-4 Acceptance on the installed `Loom.app` | planner-reviewer + user | deferred by the user on 7 Oct (D-31); run it before relying on Loom.app daily or with the next release |
 
 ## Acceptance
 
