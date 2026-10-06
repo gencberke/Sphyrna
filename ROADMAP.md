@@ -67,4 +67,4 @@ Done when: the checklist passes on the release candidate and the user accepts it
 
 ## Order (proposed)
 
-L (now, before the multi-agent run) → multi-agent run: F, I and CP4 in parallel where write areas are disjoint, with UI/UX, architecture/scalability and performance evaluations along the way → R. Each verified state can be promoted to the daily app through L's path. Codex returns after the first release, starting from the [Codex backlog](plans/cp5/CODEX-BACKLOG.md); CP3 may be tried after that.
+L (now, before the multi-agent run) → multi-agent run ([prompt and authority](plans/SWARM-1.md)): F, I and CP4 in parallel where write areas are disjoint, with UI/UX, architecture/scalability and performance evaluations along the way → R. Each verified state can be promoted to the daily app through L's path. Codex returns after the first release, starting from the [Codex backlog](plans/cp5/CODEX-BACKLOG.md); CP3 may be tried after that.
