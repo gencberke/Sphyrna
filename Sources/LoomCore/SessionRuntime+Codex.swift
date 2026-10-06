@@ -377,8 +377,12 @@ extension SessionRuntime {
         guard let server = codexServers.first(where: { $0.id == serverID }) else { return true }
         guard let id = await server.manager.internalSessionID(),
               let run = await supervisor.session(id: id)?.currentRun else { return true }
-        guard let table = try? ProcessTable.snapshot() else { return false }
-        return !table.contains { $0.identity == run.leader && !$0.zombie }
+        // No record only counts as gone when the pid is really absent; any other
+        // lookup failure stays "not verified".
+        guard let leader = ProcessTable.record(pid: run.leader.pid) else {
+            return kill(run.leader.pid, 0) == -1 && errno == ESRCH
+        }
+        return leader.identity != run.leader || leader.zombie
     }
 
     private func codexServer(for coordinator: CodexSessionCoordinator) -> CodexServer? {

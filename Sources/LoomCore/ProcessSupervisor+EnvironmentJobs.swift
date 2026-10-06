@@ -58,8 +58,10 @@ extension ProcessSupervisor {
     }
 
     /// Environment startup work (a login shell's background jobs) may keep
-    /// running until Quit, so its scope lives as long as the app run. A
-    /// one-shot helper's scope is stopped and released when it returns.
+    /// running until Quit, so its scope is kept while forked work is alive in
+    /// it and released once no job uses it and it is verified empty; a later
+    /// job opens a new scope. A one-shot helper's scope is stopped and
+    /// released when it returns.
     private enum JobScope { case environment, perCall }
 
     private func runOwnedJob<Result: Sendable>(
@@ -82,8 +84,12 @@ extension ProcessSupervisor {
                 scope = try await openScope()
                 if kind == .environment { environmentScope = scope }
             }
+            if kind == .environment, let scope {
+                environmentScopeJobs[scope.coalitionID, default: 0] += 1
+            }
         }
         let spawner = scope.map(HelperSpawner.scoped) ?? .local
+        var finished = false // the environment job's use of its scope ends exactly once
         do {
             let result = try await Task.detached {
                 try operation(runID, job, spawner)
@@ -96,13 +102,28 @@ extension ProcessSupervisor {
                     throw LoomError.message("Helper cleanup could not be verified: " + errors.joined(separator: "; "))
                 }
             }
+            if kind == .environment, let scope { finished = true; await finishEnvironmentJob(in: scope) }
             guard !stopping else { throw SessionManagementError.shutdownStarted }
             return result
         } catch {
             if scopeLauncher == nil { ledger.recordDescendants(Array(job.observedIdentities())) }
             _ = try? sampleOwnership()
             if kind == .perCall, let scope { _ = await releaseScope(scope) }
+            if kind == .environment, !finished, let scope { await finishEnvironmentJob(in: scope) }
             throw error
         }
+    }
+
+    /// Ends an environment job's use of its scope. The scope is released only
+    /// when no other job uses it and it holds no forked process; startup work
+    /// left running keeps it until Quit, which still verifies and releases it.
+    /// A failed release leaves the scope registered for Quit to retry.
+    private func finishEnvironmentJob(in scope: RunScope) async {
+        let remaining = (environmentScopeJobs[scope.coalitionID] ?? 1) - 1
+        environmentScopeJobs[scope.coalitionID] = remaining > 0 ? remaining : nil
+        guard remaining <= 0, !stopping, liveScopes[scope.coalitionID] != nil,
+              (try? scope.forkedMembers().isEmpty) == true else { return }
+        if environmentScope === scope { environmentScope = nil }
+        _ = await releaseScope(scope)
     }
 }

@@ -34,6 +34,9 @@ public actor ProcessSupervisor {
     /// Quit that finds one is reported as unverified, never as success.
     var outsideScopes: [ProcessRecord] = []
     var environmentScope: RunScope?
+    /// Environment jobs currently using each scope; the scope is only ever
+    /// released when this reaches zero.
+    var environmentScopeJobs: [UInt64: Int] = [:]
     var scopeRuns: [UInt64: Set<UUID>] = [:]
     let catalog: SessionCatalog?
     var sessions: [UUID: ManagedSession] = [:]
@@ -321,13 +324,21 @@ public actor ProcessSupervisor {
                                      directory: session.workingDirectory,
                                      rows: rows, columns: columns)
         }
-        let snapshot: [ProcessRecord]
-        do { snapshot = try ProcessTable.snapshot() }
-        catch {
-            await abandonUnregistered(process, scope: scope, ownsNewScope: ownsNewScope)
-            throw error
+        // Run scopes own membership, so the leader alone is read; only the
+        // unscoped ledger needs the whole table.
+        var snapshot: [ProcessRecord] = []
+        let leaderRecord: ProcessRecord?
+        if scopeLauncher == nil {
+            do { snapshot = try ProcessTable.snapshot() }
+            catch {
+                await abandonUnregistered(process, scope: scope, ownsNewScope: ownsNewScope)
+                throw error
+            }
+            leaderRecord = snapshot.first(where: { $0.identity.pid == process.pid })
+        } else {
+            leaderRecord = ProcessTable.record(pid: process.pid)
         }
-        guard let leader = snapshot.first(where: { $0.identity.pid == process.pid }) else {
+        guard let leader = leaderRecord else {
             await abandonUnregistered(process, scope: scope, ownsNewScope: ownsNewScope)
             throw SessionManagementError.leaderIdentityUnavailable(process.pid)
         }

@@ -283,6 +283,59 @@ struct RunScopeTests {
         #expect(try liveMembers(coalition).isEmpty)
     }
 
+    /// F10: an environment capture that left no forked work behind must not
+    /// keep an idle run host until Quit; the next capture opens a new scope.
+    @Test func environmentScopeIsReleasedWhenTheCaptureLeavesNothingBehind() async throws {
+        let supervisor = try ProcessSupervisor(scopeLauncher: try launcher())
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("loom-scope-env-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try "export PATH=/usr/bin:/bin\n".write(
+            to: root.appendingPathComponent(".zshrc"), atomically: true, encoding: .utf8
+        )
+        let parent = ["HOME": root.path, "SHELL": "/bin/zsh", "USER": NSUserName(), "PATH": "/usr/bin:/bin"]
+        var coalitions: [UInt64] = []
+        for _ in 0..<2 {
+            let resolution = try await supervisor.terminalEnvironment(
+                parent: parent, session: [:], testZDOTDIR: root, timeout: 5
+            )
+            #expect(resolution.environment["PATH"] == "/usr/bin:/bin")
+            #expect(await supervisor.ledgerSnapshot().scopes?.isEmpty == true)
+            #expect(try await supervisor.liveScopeMembers().isEmpty)
+            coalitions += await supervisor.ledgerSnapshot().scopes?.map(\.coalitionID) ?? []
+        }
+        #expect(coalitions.isEmpty)
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    /// F10: background work a startup file left behind keeps the environment
+    /// scope until Quit, and a later capture reuses it instead of opening one.
+    @Test func environmentScopeIsKeptWhileStartupWorkIsAlive() async throws {
+        let supervisor = try ProcessSupervisor(scopeLauncher: try launcher())
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("loom-scope-env-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let report = root.appendingPathComponent("escape.json")
+        try "\(testChild) apple-escape > \(report.path) 2>/dev/null &!\nexport PATH=/usr/bin:/bin\n".write(
+            to: root.appendingPathComponent(".zshrc"), atomically: true, encoding: .utf8
+        )
+        let parent = ["HOME": root.path, "SHELL": "/bin/zsh", "USER": NSUserName(), "PATH": "/usr/bin:/bin"]
+        _ = try await supervisor.terminalEnvironment(
+            parent: parent, session: [:], testZDOTDIR: root, timeout: 5
+        )
+        let first = await supervisor.ledgerSnapshot().scopes?.map(\.coalitionID) ?? []
+        #expect(first.count == 1)
+        #expect(try await !supervisor.liveScopeMembers().isEmpty)
+        _ = try await supervisor.terminalEnvironment(
+            parent: parent, session: [:], testZDOTDIR: root, timeout: 5
+        )
+        #expect(await supervisor.ledgerSnapshot().scopes?.map(\.coalitionID) == first)
+        let shutdown = await supervisor.shutdown()
+        #expect(shutdown.succeeded, "\(shutdown.errors)")
+    }
+
     @Test func oneShotHelperLeavesNothingBehind() async throws {
         let supervisor = try ProcessSupervisor(scopeLauncher: try launcher())
         let output = try await supervisor.captureHelper(

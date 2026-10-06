@@ -25,7 +25,7 @@ final class EnvironmentResolutionJob: @unchecked Sendable {
 
     func register(pid: Int32) throws {
         try checkCancellation()
-        guard let record = try ProcessTable.snapshot().first(where: { $0.identity.pid == pid }) else {
+        guard let record = ProcessTable.record(pid: pid) else {
             throw LoomError.message("Environment shell identity unavailable")
         }
         lock.lock()
