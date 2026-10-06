@@ -13,11 +13,11 @@ Path from today to Loom's first production release. Checkpoint numbers are ident
 | CP1 Ownership and launch | Loom owns exactly the processes it starts | [CP1 plan](plans/CHECKPOINT-1.md) acceptance | closed |
 | CP2 State and resume | Identity, turn, error and approval sources; safe idle; same-conversation resume | [CP2 matrix](plans/CHECKPOINT-2.md) | closed |
 | CP5 Terminal engine and first window | Usable window with real Claude terminals in the preserved design | [CHECKPOINT-5](plans/CHECKPOINT-5.md) acceptance verified; optimizer done | closed 6 Oct ([D-23](DECISIONS.md)); Codex-only items in the [Codex backlog](plans/cp5/CODEX-BACKLOG.md) |
-| L Clean loom line | Daily-use `Loom.app` built only from a clean loom tree ([D-25, D-29](DECISIONS.md)) | [Stage L plan](plans/STAGE-L.md) | in progress (before the multi-agent run) |
-| F Foundation hardening (**proposed**, multi-agent run) | Make the base safe for parallel feature work and production | See below | not started |
-| I Identity and UI system (**proposed**, multi-agent run) | Codify identity direction A ([D-22](DECISIONS.md)) as tokens and rules; settle the navbar | See below | direction chosen; navbar waits for O-03 |
-| U Daily-use UI features (**proposed**, multi-agent run) | Sidebar footer bar, a real Settings page with a lightweight usage and cost view, conversation tabs ([D-32, D-33](DECISIONS.md)) | See below | not started |
-| CP4 Deletion and retention (multi-agent run) | Contract §5 and §8: permanent deletion first, then stale, retention and cleanup; recovery from half-done deletes | Contract §11 row 4 | in first-release scope ([D-26](DECISIONS.md)); not started |
+| L Clean loom line | Daily-use `Loom.app` built only from a clean loom tree ([D-25, D-29](DECISIONS.md)) | [Stage L plan](plans/STAGE-L.md) | done 7 Oct (0.1.0); L-4 acceptance deferred ([D-31](DECISIONS.md)) |
+| F Foundation hardening (multi-agent run 1) | Make the base safe for parallel feature work and production | [STAGE-F](plans/STAGE-F.md) acceptance | in progress ([run 1](plans/RUN-1.md)) |
+| I Identity and UI system (multi-agent run 1) | Codify identity direction A ([D-22](DECISIONS.md)) as tokens and rules; settle the navbar | [STAGE-I](plans/STAGE-I.md) acceptance | in progress ([run 1](plans/RUN-1.md)); navbar keeps the transparent header until O-03 |
+| U Daily-use UI features (multi-agent run 1) | Sidebar footer bar, a real Settings page with a lightweight usage and cost view, conversation tabs ([D-32, D-33](DECISIONS.md)) | [STAGE-U](plans/STAGE-U.md) acceptance | in progress ([run 1](plans/RUN-1.md)) |
+| CP4 Deletion and retention (multi-agent run 1) | Contract §5 and §8: permanent deletion first, then stale, retention and cleanup; recovery from half-done deletes | Contract §11 row 4; [CHECKPOINT-4](plans/CHECKPOINT-4.md) | in progress ([run 1](plans/RUN-1.md)); in first-release scope ([D-26](DECISIONS.md)) |
 | CP3 Authorized coordination | Contract §7: delegated hand-off between sessions under user authority | Contract §11 row 3 | out of the multi-agent run and the first release ([D-27](DECISIONS.md)); maybe a later test-environment trial |
 | R Release readiness (**proposed**) | Ship the first production release | See below | waits for O-06 |
 
@@ -25,7 +25,7 @@ Path from today to Loom's first production release. Checkpoint numbers are ident
 
 Model and rules: [DEVELOPMENT.md §10](DEVELOPMENT.md#10-loom-dev-and-the-clean-loom-tree); plan and acceptance: [plans/STAGE-L.md](plans/STAGE-L.md). Runs before the multi-agent run so that every later release has a clean daily build path.
 
-### F: Foundation hardening (proposed)
+### F: Foundation hardening
 
 Facts behind it are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (hotspots) and the [CP5 optimizer passes](plans/cp5/CLOSURE.md).
 
@@ -38,7 +38,7 @@ Facts behind it are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (hotspots) a
 
 Done when: behavior is unchanged (full release suite plus a real-Claude check), the CP5 performance baseline holds, and the architecture doc matches the code.
 
-### I: Identity and UI system (proposed)
+### I: Identity and UI system
 
 - Direction A from [the identity proposal](design/IDENTITY-PROPOSAL.md) is chosen; its open sub-decisions are settled, tokens move into one Swift source and the rules into [design/DESIGN.md](design/DESIGN.md).
 - Measure the indicator's WindowServer cost (CP5 optimizer R-A) and apply the 10 fps frame-rate hint if it matters.
@@ -48,7 +48,7 @@ Done when: behavior is unchanged (full release suite plus a real-Claude check), 
 
 Done when: the user accepts the result on a package, evidence screenshots match the rules, and indicator and render costs stay at baseline.
 
-### U: Daily-use UI features (proposed)
+### U: Daily-use UI features
 
 - Sidebar footer bar: the bottom `+` and settings icons become one compact footer inside the sidebar, also showing compact Claude usage.
 - Settings page: a real Settings window (existing preferences plus usage and cost), lightweight and usage-first ([reference](design/references/t3-code-usage-reference.png)).

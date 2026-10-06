@@ -7,7 +7,12 @@ Checkpoint plans, slice records and experiment evidence. The active stage's plan
 | [CHECKPOINT-1.md](CHECKPOINT-1.md) | CP1 process ownership and clean exit: plan, experiments, results | closed, history |
 | [CHECKPOINT-2.md](CHECKPOINT-2.md) | CP2 state and resume: plan and acceptance matrix (§18 describes an older shared Codex server; contract §3 now has one per session) | closed, history |
 | [CHECKPOINT-5.md](CHECKPOINT-5.md) | CP5 terminal engine and first window: goal, slices, acceptance map | closed 6 Oct 2026 |
-| [STAGE-L.md](STAGE-L.md) | Stage L: clean loom line (promote and build scripts, first daily `Loom.app` 0.1.0) | **active** |
+| [STAGE-L.md](STAGE-L.md) | Stage L: clean loom line (promote and build scripts, first daily `Loom.app` 0.1.0) | done; L-4 deferred (D-31) |
+| [RUN-1.md](RUN-1.md) | Multi-agent run 1: order, protocol, real-Claude ledger, evaluation recipe, decision points | **active** |
+| [STAGE-F.md](STAGE-F.md), [f/](f/) | Stage F foundation hardening: plan and slice Briefs | **active** |
+| [STAGE-I.md](STAGE-I.md), [i/](i/) | Stage I identity and UI system: plan and slice Briefs | **active** |
+| [STAGE-U.md](STAGE-U.md), [u/](u/) | Stage U daily-use UI features: plan and slice Briefs | **active** |
+| [CHECKPOINT-4.md](CHECKPOINT-4.md), [cp4/](cp4/) | CP4 deletion and retention: plan and slice Briefs | **active** |
 | [CHECKPOINT-5-HISTORY.md](CHECKPOINT-5-HISTORY.md) | CP5 early decisions and slice A/B history (engine choice in §3.1) | history |
 | [cp5/C.md](cp5/C.md) | Slice C real-session operations: long review log | history |
 | [cp5/D.md](cp5/D.md) | Slice D input, view and combined acceptance plan | history |
