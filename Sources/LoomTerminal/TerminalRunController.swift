@@ -1,7 +1,7 @@
 import Foundation
 import LoomCore
 
-/// A-slice run and quit state, kept out of AppKit so it can be tested.
+/// A-slice synthetic run state, kept out of AppKit so it can be tested.
 /// One terminal at a time: the reservation is taken synchronously, before
 /// the first suspension point, so repeated requests cannot start a second run.
 @MainActor
@@ -13,22 +13,11 @@ public final class TerminalRunController {
         case ended(sessionID: UUID)
     }
 
-    public enum QuitState: Equatable {
-        case idle
-        case running
-        /// Verified; the app is exiting and admits no new work.
-        case finished
-        /// The last shutdown could not be verified; the app must stay open.
-        case failed(remaining: Int, errors: [String])
-    }
-
     public typealias Launch = @MainActor (
         _ sessionID: UUID, _ arguments: [String], _ surface: TerminalSurface
     ) async throws -> ManagedSessionLaunch
-    public typealias Shutdown = @Sendable () async -> ShutdownReport
 
     public private(set) var state: State = .idle
-    public private(set) var quitState: QuitState = .idle
     public private(set) var surface: TerminalSurface?
     public var terminalFontSize: Double = 14 {
         didSet { surface?.setFontSize(terminalFontSize) }
@@ -37,22 +26,19 @@ public final class TerminalRunController {
     public var onLaunchError: ((any Error) -> Void)?
 
     private let launchRun: Launch
-    private let shutdown: Shutdown
     private let events: SessionEventHub
     private var eventTask: Task<Void, Never>?
 
-    public init(events: SessionEventHub, launch: @escaping Launch, shutdown: @escaping Shutdown) {
+    public init(events: SessionEventHub, launch: @escaping Launch) {
         self.events = events
         self.launchRun = launch
-        self.shutdown = shutdown
     }
 
     /// Production wiring: synthetic fixture under the shared supervisor.
     public convenience init(supervisor: ProcessSupervisor, executable: String, directory: String) {
         self.init(events: supervisor.events,
                   launch: Self.syntheticLaunch(supervisor: supervisor, executable: executable,
-                                               directory: directory),
-                  shutdown: { await supervisor.shutdown() })
+                                               directory: directory))
     }
 
     public static func syntheticLaunch(supervisor: ProcessSupervisor, executable: String,
@@ -72,16 +58,13 @@ public final class TerminalRunController {
         }
     }
 
-    /// Returns the new surface, or nil when a run is launching or live, or
-    /// quit has started. The caller shows the surface immediately.
+    /// Returns the new surface, or nil when a run is launching or live. The caller shows the surface immediately.
     @discardableResult
     public func newTerminal(arguments: [String]) -> TerminalSurface? {
         switch state {
         case .launching, .live: return nil
         case .idle, .ended: break
         }
-        // A started shutdown never admits new work, even after it failed.
-        guard quitState == .idle else { return nil }
         let sessionID = UUID()
         let surface = TerminalSurface(fontSize: terminalFontSize)
         self.surface = surface
@@ -105,31 +88,6 @@ public final class TerminalRunController {
             }
         }
         return surface
-    }
-
-    /// Starts one shared shutdown. `reply` is delivered through a run-loop
-    /// perform in common modes: AppKit may wait for it in a nested run loop
-    /// inside a main-queue block, where MainActor tasks cannot run.
-    public func requestQuit(
-        prepareReply: (@Sendable (ShutdownReport) async -> Void)? = nil,
-        reply: @escaping @MainActor (ShutdownReport) -> Void
-    ) {
-        guard quitState != .running, quitState != .finished else { return }
-        quitState = .running
-        let shutdown = shutdown
-        Task.detached {
-            let report = await shutdown()
-            // Collect diagnostics off the main actor before the final delivery.
-            // A nested AppKit termination wait cannot service main-actor tasks.
-            await prepareReply?(report)
-            RunLoop.main.perform(inModes: [.common]) {
-                MainActor.assumeIsolated {
-                    self.quitState = report.succeeded ? .finished
-                        : .failed(remaining: report.remaining.count, errors: report.errors)
-                    reply(report)
-                }
-            }
-        }
     }
 
     /// Recovers from the latest frame only; missed intermediate changes are fine.

@@ -36,7 +36,7 @@ Declared in `Package.swift`; all tests use swift-testing (`@Test`). Product bund
 | `CLoomPOSIX` (C) | PTY spawn, process table, `proc_pidinfo`/coalition reads (private XNU flavors), env marker reads (`KERN_PROCARGS2`), scope signalling, run-host frame IO | `CLoomPOSIX.c`, `RunScope.c`, `include/` | via `LoomCoreTests` |
 | `CLoomTestSupport` (C) | Test-only helpers for `loom-test-child` | `CLoomTestSupport.c` | none |
 | `LoomCore` | Everything non-UI: runtime, supervisor, catalog, ownership, hook server, provider setup, lifecycle, event hub | see below | `LoomCoreTests` |
-| `LoomTerminal` | SwiftTerm wrapper: output bridge, bounded input queue wiring, limits, theme, A-slice run/quit state machine | `TerminalSurface.swift` (`TerminalSurface`, `TerminalOutputBridge`, `TerminalSurfaceLimits`, `LoomTerminalView`), `TerminalRunController.swift`, `TerminalTheme.swift` | `LoomTerminalTests` |
+| `LoomTerminal` | SwiftTerm wrapper: output bridge, bounded input queue wiring, limits, theme, A-slice synthetic-run state machine | `TerminalSurface.swift` (`TerminalSurface`, `TerminalOutputBridge`, `TerminalSurfaceLimits`, `LoomTerminalView`), `TerminalRunController.swift`, `TerminalTheme.swift` | `LoomTerminalTests` |
 | `LoomCatalogUI` | Sidebar, detail pane, `@Observable` `CatalogModel`, `ConversationController` (runtime to terminals glue), status indicator, UI preferences, git branch read | `CatalogModel.swift`, `ConversationController.swift`, `SidebarView.swift`, `DetailView.swift`, `SessionDisplay.swift` (`SessionIndicator`), `LoomTheme.swift` (all visual tokens; guarded by `scripts/check-theme-literals.sh`), `IndicatorView.swift` (`IndicatorView`, `ChaseDots`, `IndicatorEvidence`), `ProviderIcon.swift`, `UIPreferences.swift`, `GitBranch.swift`, `SettingsView.swift` | `LoomCatalogUITests` |
 | `LoomLaunchOptions` | Pure launch rules: data root resolution, `--evidence`, command-channel name | `LaunchOptions.swift` | `LoomLaunchOptionsTests` |
 | `loom-app` (exe) | `AppDelegate` (one window, menus, runtime wiring, Quit), `MainSplitViewController`, dev evidence tooling | `AppDelegate.swift`, `MainSplitViewController.swift`, `DevelopmentEvidence.swift`, `EvidenceResourcePool.swift` | none (acceptance scripts in `scripts/`) |
@@ -51,7 +51,7 @@ Declared in `Package.swift`; all tests use swift-testing (`@Test`). Product bund
 
 | Group | Files |
 |---|---|
-| Ownership and process | `ProcessSupervisor`, `OwnershipLedger`, `ProcessTable`, `PTYProcess`, `EventDrivenPTYProcess`, `RunScope`, `PreviousRunRecovery`, `ShutdownReport` |
+| Ownership and process | `ProcessSupervisor`, `OwnershipLedger`, `ProcessTable`, `PTYProcess`, `EventDrivenPTYProcess`, `RunScope`, `PreviousRunRecovery`, `ShutdownReport`, `AppShutdownCoordinator` |
 | Runtime and lifecycle | `SessionRuntime`, `SessionLifecycleController` (also defines `ProviderWorkState`), `ManagedSession`, `SessionEventHub`, `ProviderSessionAdapters` |
 | Persistence | `SessionCatalog` |
 | Terminal I/O | `TerminalEndpoint` (also `TerminalOutputSink`), `TerminalInputQueue`, `TerminalInputGate` |
@@ -105,8 +105,8 @@ freeze then kill forked scope members (launchd-spawned members are never signall
 A failed stop stays visible (`SessionViewState.stopFailure`, "Stop it again to retry") and is retried by stopping again.
 
 **Quit**
-`applicationShouldTerminate` -> waits for `startupTask` -> `beginQuit` -> `TerminalRunController.requestQuit` (shutdown
-closure) -> `SessionRuntime.shutdown` (cancel Codex setup, stop lifecycle evaluation + hook server, tear down Codex servers,
+`applicationShouldTerminate` -> waits for `startupTask` -> `beginQuit` -> `AppShutdownCoordinator.requestQuit` (shutdown
+closure; `LoomCore`, state `idle/running/finished/failed`) -> `SessionRuntime.shutdown` (cancel Codex setup, stop lifecycle evaluation + hook server, tear down Codex servers,
 `ProcessSupervisor.shutdown` -> `ShutdownReport`). Unverified shutdown keeps the app open with a Try Again alert. Cmd+W only
 closes the window; the runtime keeps running.
 
@@ -203,8 +203,9 @@ Design fact: one `codex app-server` per Codex session (contract §3).
   `CatalogModel` imports AppKit and `ConversationIntents.terminalView` returns `NSView`.
 - MainActor git reads: `CatalogModel.apply` calls `GitBranch.read` (synchronous file reads) at turn completion
   (`CatalogModel.swift`, also at selection and refresh).
-- Quit path: the production shutdown closure is carried by `TerminalRunController` (`AppDelegate.startRuntime`), a class
-  documented as an A-slice synthetic-terminal state machine; with no controller, quit returns `.terminateNow`.
+- Quit path: `AppShutdownCoordinator` (`LoomCore`) owns the quit state machine; `AppDelegate.startRuntime` builds it with the
+  shutdown closure when the supervisor exists, and with no coordinator quit returns `.terminateNow`. `TerminalRunController`
+  now carries only the evidence-only synthetic dev terminal.
 - Identity: `BuildIdentity` (LoomLaunchOptions) is the one Swift owner of production vs development names (data and
   socket directories, command-channel prefix, startable providers); the Python runners share one channel helper
   (`scripts/perf/perf_paths.py`); `scripts/dev-paths.sh` keeps its own copy for the zsh scripts.

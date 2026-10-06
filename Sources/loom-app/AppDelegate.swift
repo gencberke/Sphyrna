@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private(set) var model: CatalogModel?
     private var splitController: MainSplitViewController?
     private var controller: TerminalRunController?
+    private var shutdownCoordinator: AppShutdownCoordinator?
     private var supervisor: ProcessSupervisor?
     private var runtime: SessionRuntime?
     private var conversations: ConversationController?
@@ -132,23 +133,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // The runtime is still being built: let it finish, then quit through it.
             Task { @MainActor in
                 await startupTask?.value
-                guard controller != nil else { NSApp.reply(toApplicationShouldTerminate: true); return }
+                guard shutdownCoordinator != nil else { NSApp.reply(toApplicationShouldTerminate: true); return }
                 beginQuit()
             }
             return .terminateLater
         }
-        guard controller != nil else { return .terminateNow }
+        guard shutdownCoordinator != nil else { return .terminateNow }
         beginQuit()
         return .terminateLater
     }
 
     private func beginQuit() {
-        guard let controller else { return }
+        guard let shutdownCoordinator else { return }
         conversations?.quitStarted()
         model?.statusMessage = "Stopping owned processes…"
         let started = ProcessInfo.processInfo.systemUptime
         let recordQuit = evidence?.quitRecorder(runtime: runtime, started: started)
-        controller.requestQuit(prepareReply: recordQuit) { [weak self] report in
+        shutdownCoordinator.requestQuit(prepareReply: recordQuit) { [weak self] report in
             self?.quitFinished(report)
         }
     }
@@ -365,7 +366,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     executable: Bundle.main.executableURL!.deletingLastPathComponent()
                         .appendingPathComponent("loom-test-child").path,
                     directory: FileManager.default.homeDirectoryForCurrentUser.path
-                ),
+                )
+            )
+            shutdownCoordinator = AppShutdownCoordinator(
                 shutdown: { [runtime] in
                     let attempt = quitAttempts.withLock { $0 += 1; return $0 }
                     if failFirstQuit, attempt == 1 {
@@ -486,9 +489,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// A slice: one launching or live synthetic run at a time.
     func newTerminal(fixtureArguments: [String]) {
         guard evidenceMode, let controller else { return }
-        guard let surface = controller.newTerminal(
-            arguments: fixtureArguments.isEmpty ? ["interactive"] : fixtureArguments
-        ) else {
+        // A started shutdown never admits new work, even after it failed.
+        guard shutdownCoordinator?.state == .idle,
+              let surface = controller.newTerminal(
+                  arguments: fixtureArguments.isEmpty ? ["interactive"] : fixtureArguments
+              )
+        else {
             NSSound.beep()
             return
         }
@@ -716,7 +722,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             "visibilityEvents": visibilityEvents,
             "ownershipNoticeShown": model?.ownershipNotice != nil && window?.isVisible == true,
             "terminalState": controller.map { String(describing: $0.state) } ?? NSNull(),
-            "quitState": controller.map { String(describing: $0.quitState) } ?? NSNull(),
+            "quitState": shutdownCoordinator.map { String(describing: $0.state) } ?? NSNull(),
             "quitAlert": quitAlert.map { [
                 "message": $0.messageText, "attachedAsSheet": window?.attachedSheet === $0.window,
                 "buttons": $0.buttons.map(\.title),
