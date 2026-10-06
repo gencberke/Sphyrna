@@ -10,8 +10,8 @@ Three daily-use surfaces in identity A, designed first as an HTML preview, then 
 
 | Slice | Delivers | Write area (summary) | Wave | Depends on | State |
 | --- | --- | --- | --- | --- | --- |
-| [UD](u/UD.md) | HTML preview of the footer bar, Settings (General, Usage, About) and the tab strip, in identity A tokens | `design/run1-surfaces-preview.html` | 1 | — | planned |
-| [U0](u/U0.md) | Claude usage index: incremental, bounded, deduplicated reader of local transcripts; aggregates; static price table; `ClaudeProfileLayout` | new `Sources/LoomCore/ClaudeUsage*.swift`, `ClaudeProfileLayout.swift`, `UsagePricing.swift`, tests | 1 | — | planned |
+| [UD](u/UD.md) | HTML preview of the footer bar, Settings (General, Usage, About) and the tab strip, in identity A tokens | `design/run1-surfaces-preview.html` | 1 | — | accepted (see Results) |
+| [U0](u/U0.md) | Claude usage index: incremental, bounded, deduplicated reader of local transcripts; aggregates; static price table; `ClaudeProfileLayout` | new `Sources/LoomCore/ClaudeUsage*.swift`, `ClaudeProfileLayout.swift`, `UsagePricing.swift`, tests | 1 | — | accepted (see Results) |
 | [U1](u/U1.md) | `UsageModel`; a real Settings window (forced dark) with General, Usage and About; refresh triggers; Settings evidence commands | new `Sources/loom-app/SettingsWindowController.swift`, `Sources/LoomCatalogUI/UsageModel.swift`, `SettingsView.swift` rewrite, one-line hooks in `AppDelegate`/`CatalogModel`, evidence file | 3 | U0, I1, F3, UD | planned |
 | [U2](u/U2.md) | Sidebar footer bar: `+` menu, compact usage chip (opens Settings at Usage), gear | new `Sources/LoomCatalogUI/SidebarFooter.swift`, mount line in `SidebarView.swift` | 3 | U1, I1, UD | planned |
 | [U3](u/U3.md) | Tab state: `ConversationTabs` (pinned + one transient), persisted `openTabs`, row retention, follow `/clear`, forget hook | `UIPreferences.swift`, new `ConversationTabs.swift`, `CatalogModel.swift`, `ConversationController.swift`, tests | 2 | F1 | accepted `45ecbc2` |
@@ -26,6 +26,15 @@ Three daily-use surfaces in identity A, designed first as an HTML preview, then 
 - **Cost** is computed at query time from a static, dated price table (`as of` shown in the UI), labelled an API-equivalent estimate; unknown models show tokens and "—".
 - **Tabs** live in their own row inside the detail panel between the header and the terminal, hidden when fewer than two tabs exist; terminals stay in `ConversationController.entries` (already kept alive per live run), so a tab switch is a view swap, never a new terminal (contract §10).
 - **Forget hooks:** U3 (tabs) and U0 (usage index) each expose `forget(sessionID:)` / `forgetSession(providerIDs:)` used by CP4 deletion.
+
+## Design picks from the UD preview (planner, within the identity; the user reviews the built surfaces at the end)
+
+- **Footer chip:** variant (a), text: `Today 1.2M tok · ~$3.10`. Tokens first; the cost drops out whole when it does not fit (never a cut number). Number format: below 1,000 plain; then `K`, `M`, `B` with three significant digits at most (`940K`, `12.4M`, `1.28B`); cost `~$3.10`, whole dollars from $1,000 (`~$12,846`). States: `Indexing…`, `No usage yet`. Full figures in the tooltip and accessibility label.
+- **Footer buttons** keep today's 28×26 pt (UI-MAP), not the preview's 26×24.
+- **Settings:** top section switcher General · Usage · About; fixed 680×520 window; the Usage body scrolls. About shows version, data folder and the Claude profile in use (read-only).
+- **Usage view:** neutral bars (past days `text.secondary`, today `text.primary`); the 5-hour block is five hourly cells in white-alpha intensity, no accent, labelled "approximate" and "not your plan limit".
+- **Tabs:** the transient tab has an italic title and is pinned by double click, "Open in Tab", or starting/resuming its conversation; close button on hover and on the selected tab (only the selected tab reserves its slot), its fill is the `press` white alpha; tabs shrink to 112 pt, then the strip scrolls and a 28 pt chevron lists every tab with a dot for the highest-priority off-screen status.
+- **Focus ring:** the accent ring from I2 (`Surface.focusRing`), only under keyboard navigation.
 
 ## Decision points (user)
 
@@ -50,4 +59,6 @@ Planned 2 (U-A3). Used: 0.
 
 ## Results
 
+- **UD** (accepted with this wave's commit): `design/run1-surfaces-preview.html`; planner fixes on accept: consistent 5-hour mock (0.9M, 9 AM–2 PM at "Updated 14:02"), `1.28B` long-value format, `Indexing…` at 220 pt, close-button fill from the `press` token, overflow arithmetic including the chevron. Picks above.
+- **U0** (accepted with this wave's commit): `ClaudeUsageIndex` (actor, own `usage-index.sqlite3`), `ClaudeUsageParser`, `UsagePricing` (official page, as of 2026-10-07), `ClaudeProfileLayout`, `UsageSnapshot`; 49 tests incl. eight mutation checks; 1 GiB synthetic corpus: cold 4.25 s, ~14 MB extra RSS, warm no-change refresh 2 ms, 1.4 MiB append 26 ms (warm page cache, upper bound). Accepted deviation: messages are keyed by `message.id` alone (a sidechain replay under a new `requestId` still counts once). Known limits, follow-ups: raw rows are not pruned (~106 bytes per message; a 15-minute roll-up with pruning is the recommended later step), a file reset can undercount a duplicate owned by another file until that file changes, a corruption during `forget` loses the forgotten list.
 - **U3** (`45ecbc2`): `ConversationTabs` and `CatalogModel` tab API (`tabs`, `visibleTabIDs`, `openTab`, `closeTab`, `forget(sessionID:)`, `tabOwnerMoved`); preference writes debounced 300 ms and flushed at stop/quit; 82 `LoomCatalogUITests` pass. Tests were shown to fail by a six-bug mutation run rather than test-first.

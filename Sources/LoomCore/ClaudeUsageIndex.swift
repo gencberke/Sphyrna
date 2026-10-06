@@ -1,0 +1,1084 @@
+import Darwin
+import Dispatch
+import Foundation
+import SQLite3
+
+/// Incremental, bounded, deduplicated usage aggregates built from the transcripts
+/// Claude Code already writes (`<config>/projects/**/<session>.jsonl`). No process
+/// is spawned, nothing touches the network and nothing polls: callers decide when
+/// to `refresh` (a Stop hook's `transcript_path`, Settings opening, app activation).
+///
+/// The index is a disposable SQLite file. Transcripts are append-only in practice,
+/// so each file keeps a byte offset and a 64-byte guard hash of the bytes just
+/// before it; growth reads only the new bytes, and a shrink, a new inode or a
+/// guard mismatch drops that file's rows and parses it again. A partial last line
+/// is never consumed. Messages are keyed by `message.id` (Claude writes one
+/// assistant message once per content block, and a sidechain replay reuses the id
+/// under a new request id), keeping the larger total and preferring non-sidechain
+/// rows. Rows are history: a transcript Claude deletes later never lowers totals.
+/// Prices are applied at query time, so a price-table update re-prices history.
+public actor ClaudeUsageIndex {
+    static let schemaVersion: Int32 = 1
+    static let applicationID: Int32 = 0x4C55_5347 // "LUSG"
+    static let bucketMs: Int64 = 900_000 // 15 minutes: every real UTC offset is a multiple
+    static let blockSeconds: Int64 = 5 * 3_600
+    static let activityHorizonSeconds: TimeInterval = 7 * 86_400
+
+    private let queue = DispatchSerialQueue(label: "loom.usage.index", qos: .utility)
+    public nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
+
+    private let databaseURL: URL
+    private let profile: ClaudeProfileLayout
+    private let coldStartWindow: TimeInterval
+    private let clock: @Sendable () -> Date
+    private let chunkBytes: Int
+    private let maximumLineBytes: Int
+
+    private var database: UsageDatabase?
+    private var symbols: [String: Int64] = [:]
+    private var forgotten: Set<String>?
+
+    /// - Parameters:
+    ///   - databaseURL: `usage-index.sqlite3` in the data root.
+    ///   - profile: which Claude profile's `projects/` to read.
+    ///   - coldStartWindow: files not indexed yet and older than this are skipped (default 90 days).
+    public init(
+        databaseURL: URL, profile: ClaudeProfileLayout, coldStartWindow: TimeInterval = 90 * 86_400,
+        clock: @escaping @Sendable () -> Date = { Date() }
+    ) {
+        self.init(databaseURL: databaseURL, profile: profile, coldStartWindow: coldStartWindow, clock: clock,
+                  chunkBytes: 4 * 1024 * 1024, maximumLineBytes: ClaudeUsageParser.defaultMaximumLineBytes)
+    }
+
+    init(
+        databaseURL: URL, profile: ClaudeProfileLayout, coldStartWindow: TimeInterval = 90 * 86_400,
+        clock: @escaping @Sendable () -> Date = { Date() }, chunkBytes: Int, maximumLineBytes: Int
+    ) {
+        self.databaseURL = databaseURL
+        self.profile = profile
+        self.coldStartWindow = coldStartWindow
+        self.clock = clock
+        self.chunkBytes = max(chunkBytes, 1_024)
+        self.maximumLineBytes = max(maximumLineBytes, 1_024)
+    }
+
+    // MARK: refresh
+
+    /// Brings the index up to date. `paths == nil` visits every transcript under the
+    /// profile; explicit paths (a hook's `transcript_path`) tail just those files.
+    /// Cancellable between files and between chunks; committed progress is kept.
+    @discardableResult
+    public func refresh(paths: [URL]? = nil) async throws -> UsageScanReport {
+        do {
+            return try await refreshOnce(paths: paths)
+        } catch let error as ClaudeUsageIndexError where error.isCorruption {
+            discardDatabase()
+            return try await refreshOnce(paths: paths)
+        }
+    }
+
+    private func refreshOnce(paths: [URL]?) async throws -> UsageScanReport {
+        let database = try openDatabase()
+        var report = UsageScanReport()
+        let parser = ClaudeUsageParser(maximumLineBytes: maximumLineBytes)
+        let candidates: [UsageTranscriptFile]
+        let explicit: Bool
+        if let paths {
+            candidates = paths.compactMap { UsageTranscriptWalker.candidate(at: $0, profile: profile) }
+            explicit = true
+        } else {
+            candidates = UsageTranscriptWalker.candidates(profile: profile)
+            explicit = false
+        }
+        let coldCutoffNs = Int64((clock().timeIntervalSince1970 - coldStartWindow) * 1_000_000_000)
+        for candidate in candidates {
+            try Task.checkCancellation()
+            report.filesSeen += 1
+            try scan(candidate, explicit: explicit, coldCutoffNs: coldCutoffNs, parser: parser, database: database, report: &report)
+            await Task.yield()
+        }
+        return report
+    }
+
+    private func scan(
+        _ candidate: UsageTranscriptFile, explicit: Bool, coldCutoffNs: Int64, parser: ClaudeUsageParser,
+        database: UsageDatabase, report: inout UsageScanReport
+    ) throws {
+        let state = try database.file(path: candidate.path)
+        if let state, state.dev == candidate.dev, state.ino == candidate.ino,
+           state.size == candidate.size, state.mtimeNs == candidate.mtimeNs {
+            report.filesUnchanged += 1
+            return
+        }
+        if state == nil, !explicit, candidate.mtimeNs < coldCutoffNs {
+            report.filesSkippedOld += 1
+            return
+        }
+        let descriptor = open(candidate.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        guard descriptor >= 0 else { return } // vanished or unreadable since the walk
+        defer { close(descriptor) }
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid() else { return }
+        let observed = UsageTranscriptFile(path: candidate.path, session: candidate.session, info: info)
+
+        var startOffset: Int64 = 0
+        var reset = false
+        if let state {
+            if state.dev != observed.dev || state.ino != observed.ino
+                || observed.size < state.offset || observed.size < state.size
+                || !Self.guardMatches(descriptor, offset: state.offset, length: state.guardLength, hash: state.guardHash) {
+                reset = true
+            } else {
+                startOffset = state.offset
+            }
+        }
+        let fileID: Int64
+        if let state, !reset {
+            fileID = state.id
+        } else {
+            fileID = try database.transaction {
+                if let state { try database.deleteMessages(fileID: state.id) }
+                return try database.saveFile(path: observed.path, session: observed.session, dev: observed.dev, ino: observed.ino)
+            }
+            if state != nil { report.filesReset += 1 }
+        }
+        report.filesParsed += 1
+        let committed = try readLines(
+            descriptor: descriptor, fileID: fileID, from: startOffset, to: observed.size,
+            fallbackSession: observed.session, parser: parser, database: database, report: &report)
+        if committed >= 0 {
+            try database.updateObserved(fileID: fileID, size: observed.size, mtimeNs: observed.mtimeNs)
+        }
+    }
+
+    /// Reads whole lines in `[from, to)` in chunks, one transaction per chunk. Returns the
+    /// offset after the last whole line. A partial tail (no newline yet) is never consumed;
+    /// a line over the cap is skipped once its newline arrives.
+    private func readLines(
+        descriptor: Int32, fileID: Int64, from: Int64, to end: Int64, fallbackSession: String,
+        parser: ClaudeUsageParser, database: UsageDatabase, report: inout UsageScanReport
+    ) throws -> Int64 {
+        var capacity = chunkBytes
+        var buffer = UnsafeMutableRawPointer.allocate(byteCount: capacity, alignment: 16)
+        defer { buffer.deallocate() }
+        var committed = from   // file position of buffer[0] while not discarding
+        var filled = 0         // carried bytes at buffer[0..<filled]
+        var readPos = from
+        var discarding = false // inside a line longer than the cap, looking for its newline
+        let forgottenSessions = try forgottenSet(database)
+
+        while readPos < end {
+            try Task.checkCancellation()
+            if !discarding && filled == capacity {
+                if capacity < parser.maximumLineBytes + 1 {
+                    let grown = min(capacity * 2, parser.maximumLineBytes + 1)
+                    let replacement = UnsafeMutableRawPointer.allocate(byteCount: grown, alignment: 16)
+                    replacement.copyMemory(from: buffer, byteCount: filled)
+                    buffer.deallocate()
+                    buffer = replacement
+                    capacity = grown
+                } else {
+                    discarding = true
+                    filled = 0
+                }
+                continue
+            }
+            let room = discarding ? capacity : capacity - filled
+            let want = Int(min(Int64(room), end - readPos))
+            let target = discarding ? buffer : buffer + filled
+            let count = pread(descriptor, target, want, off_t(readPos))
+            guard count > 0 else { break }
+            report.bytesRead += Int64(count)
+            let chunkStart = readPos
+            readPos += Int64(count)
+            if discarding {
+                guard let newline = memchr(buffer, 0x0A, count) else { continue }
+                let skipped = buffer.distance(to: newline) + 1
+                committed = chunkStart + Int64(skipped)
+                discarding = false
+                report.linesMalformed += 1
+                memmove(buffer, buffer + skipped, count - skipped)
+                filled = count - skipped
+            } else {
+                filled += count
+            }
+            var cursor = 0
+            try database.begin()
+            do {
+                while cursor < filled, let newline = memchr(buffer + cursor, 0x0A, filled - cursor) {
+                    let length = (buffer + cursor).distance(to: newline)
+                    switch parser.parse(UnsafeRawBufferPointer(start: buffer + cursor, count: length)) {
+                    case let .record(record):
+                        report.recordsAccepted += 1
+                        try insert(record, fileID: fileID, fallbackSession: fallbackSession,
+                                   forgotten: forgottenSessions, database: database)
+                    case .ignored:
+                        break
+                    case .malformed:
+                        report.linesMalformed += 1
+                    }
+                    cursor += length + 1
+                }
+                committed += Int64(cursor)
+                let (guardLength, guardHash) = Self.guardBytes(descriptor, before: committed)
+                try database.updateProgress(fileID: fileID, offset: committed, guardLength: guardLength, guardHash: guardHash)
+                try database.commit()
+            } catch {
+                database.rollback()
+                throw error
+            }
+            if cursor > 0 && cursor < filled { memmove(buffer, buffer + cursor, filled - cursor) }
+            filled -= cursor
+        }
+        return committed
+    }
+
+    private func insert(
+        _ record: ClaudeUsageRecord, fileID: Int64, fallbackSession: String, forgotten: Set<String>, database: UsageDatabase
+    ) throws {
+        let sessionText = record.sessionID ?? fallbackSession
+        let session: Int64? = forgotten.contains(sessionText) ? nil : try symbol(sessionText, database)
+        let model = try symbol(record.model, database)
+        let key: String
+        if let id = record.messageID { key = "m|" + id }
+        else { key = "r|\(record.requestID ?? "")|\(sessionText)|\(record.timestampMs)" }
+        let flags: Int64 = (record.sidechain ? 1 : 0) | (record.fast ? 2 : 0) | (record.usGeo ? 4 : 0)
+        try database.upsert(UsageRow(
+            key: Self.hash(Array(key.utf8)), fileID: fileID, timestampMs: record.timestampMs, session: session,
+            model: model, tokens: record.tokens, flags: flags, total: record.tokens.total + record.tokens.webSearches,
+            legacyCost: record.legacyCostUSD))
+    }
+
+    // MARK: forget
+
+    /// Detaches sessions from their messages (a deleted conversation): tokens and cost stay in
+    /// the totals, the session link goes, and the session's transcript rows are forgotten so a
+    /// later re-read of a surviving file does not link them again. Returns messages unlinked.
+    @discardableResult
+    public func forget(sessionIDs: [String]) throws -> Int {
+        do {
+            return try forgetOnce(sessionIDs)
+        } catch let error as ClaudeUsageIndexError where error.isCorruption {
+            discardDatabase()
+            return 0
+        }
+    }
+
+    private func forgetOnce(_ sessionIDs: [String]) throws -> Int {
+        let database = try openDatabase()
+        guard !sessionIDs.isEmpty else { return 0 }
+        var forgottenSet = try forgottenSet(database)
+        let unlinked = try database.transaction {
+            var total = 0
+            for id in sessionIDs {
+                try database.addForgotten(id)
+                forgottenSet.insert(id)
+                try database.deleteFiles(session: id)
+                if let symbolID = try database.symbolID(id) { total += try database.unlinkSession(symbolID) }
+            }
+            return total
+        }
+        forgotten = forgottenSet
+        return unlinked
+    }
+
+    // MARK: snapshot
+
+    public func snapshot(range: UsageRange, now: Date, timeZone: TimeZone) throws -> UsageSnapshot {
+        do {
+            return try snapshotOnce(range: range, now: now, timeZone: timeZone)
+        } catch let error as ClaudeUsageIndexError where error.isCorruption {
+            discardDatabase()
+            return try snapshotOnce(range: range, now: now, timeZone: timeZone)
+        }
+    }
+
+    private struct Accumulator {
+        var tokens = UsageTokens()
+        var cost = 0.0
+        var hasUnknownCost = false
+        var messages = 0
+
+        mutating func add(tokens other: UsageTokens, cost: Double?, messages count: Int) {
+            tokens.add(other)
+            if let cost { self.cost += cost } else { hasUnknownCost = true }
+            messages += count
+        }
+    }
+
+    private struct DayAccumulator {
+        var total = Accumulator()
+        var models: [String: Accumulator] = [:]
+        var sessions: Set<Int64> = []
+    }
+
+    /// Maps quarter-hour buckets to local days; exact because every real UTC offset and DST
+    /// change falls on a quarter hour.
+    private struct DayResolver {
+        let calendar: Calendar
+        var cache: [Int64: Date] = [:]
+
+        mutating func day(ofBucket bucket: Int64) -> Date {
+            if let cached = cache[bucket] { return cached }
+            let start = calendar.startOfDay(for: Date(timeIntervalSince1970: Double(bucket * ClaudeUsageIndex.bucketMs) / 1_000))
+            cache[bucket] = start
+            return start
+        }
+    }
+
+    private static func cost(
+        price: UsageModelPrice?, tokens: UsageTokens, flags: Int64, legacy: Double?
+    ) -> Double? {
+        if let legacy { return legacy }
+        guard let price else { return nil }
+        return UsagePricing.costUSD(price: price, tokens: tokens, fast: flags & 2 != 0, usGeo: flags & 4 != 0)
+    }
+
+    private static func ordered(_ models: [String: Accumulator], names: [String: String]) -> [UsageModelTotal] {
+        models.map { key, accumulator in
+            UsageModelTotal(
+                model: key, displayName: names[key] ?? key, tokens: accumulator.tokens,
+                estimatedCostUSD: accumulator.hasUnknownCost ? nil : accumulator.cost, messageCount: accumulator.messages)
+        }.sorted {
+            $0.tokens.total != $1.tokens.total ? $0.tokens.total > $1.tokens.total : $0.model < $1.model
+        }
+    }
+
+    private func snapshotOnce(range: UsageRange, now: Date, timeZone: TimeZone) throws -> UsageSnapshot {
+        let database = try openDatabase()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let bounds = range.bounds(now: now, calendar: calendar)
+        let lower = bounds.start.map { Int64(($0.timeIntervalSince1970 * 1_000).rounded(.down)) } ?? Int64.min
+        let upper = bounds.end.map { Int64(($0.timeIntervalSince1970 * 1_000).rounded(.down)) } ?? Int64.max
+
+        var total = Accumulator()
+        var byModel: [String: Accumulator] = [:]
+        var displayNames: [String: String] = [:]
+        var unknownModels: Set<String> = []
+        var byDay: [Date: DayAccumulator] = [:]
+        var resolver = DayResolver(calendar: calendar)
+
+        for group in try database.aggregates(lower: lower, upper: upper) {
+            let raw = try database.symbolText(group.model) ?? ""
+            let price = UsagePricing.price(forModel: raw)
+            let key = price == nil ? raw : UsagePricing.canonicalModelID(raw)
+            displayNames[key] = price?.displayName ?? raw
+            let cost = Self.cost(price: price, tokens: group.tokens, flags: group.flags,
+                                 legacy: group.hasLegacyCost ? group.legacyCost : nil)
+            if cost == nil { unknownModels.insert(raw) }
+            total.add(tokens: group.tokens, cost: cost, messages: group.messages)
+            byModel[key, default: Accumulator()].add(tokens: group.tokens, cost: cost, messages: group.messages)
+            let dayStart = resolver.day(ofBucket: group.bucket)
+            byDay[dayStart, default: DayAccumulator()].total.add(tokens: group.tokens, cost: cost, messages: group.messages)
+            byDay[dayStart, default: DayAccumulator()].models[key, default: Accumulator()]
+                .add(tokens: group.tokens, cost: cost, messages: group.messages)
+        }
+        var allSessions: Set<Int64> = []
+        for (bucket, session) in try database.sessionBuckets(lower: lower, upper: upper) {
+            allSessions.insert(session)
+            byDay[resolver.day(ofBucket: bucket), default: DayAccumulator()].sessions.insert(session)
+        }
+
+        var days: [UsageDay] = []
+        for start in byDay.keys.sorted() {
+            let accumulator = byDay[start]!
+            let parts = calendar.dateComponents([.year, .month, .day], from: start)
+            days.append(UsageDay(
+                day: String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0), start: start,
+                tokens: accumulator.total.tokens, estimatedCostUSD: accumulator.total.cost,
+                hasUnknownCost: accumulator.total.hasUnknownCost, messageCount: accumulator.total.messages,
+                sessionCount: accumulator.sessions.count, models: Self.ordered(accumulator.models, names: displayNames)))
+        }
+        return UsageSnapshot(
+            provider: .claude, asOf: now, priceTableAsOf: UsagePricing.asOf, range: range, tokens: total.tokens,
+            estimatedCostUSD: total.cost, unknownModels: unknownModels.sorted(), messageCount: total.messages,
+            sessionCount: allSessions.count, days: days, models: Self.ordered(byModel, names: displayNames),
+            activityWindow: try activityWindow(now: now, database: database))
+    }
+
+    /// ccusage's block rule over the last week of messages: a block starts at its first message
+    /// floored to the UTC hour and runs five hours; a message more than five hours after the
+    /// block start or after the previous message opens a new block. Only the block containing
+    /// `now` is returned, and only while it is still open.
+    private func activityWindow(now: Date, database: UsageDatabase) throws -> UsageActivityWindow? {
+        let nowMs = Int64((now.timeIntervalSince1970 * 1_000).rounded(.down))
+        let horizon = Int64((now.timeIntervalSince1970 - Self.activityHorizonSeconds) * 1_000)
+        let span = Self.blockSeconds * 1_000
+        var startMs: Int64 = 0
+        var lastMs: Int64 = 0
+        var accumulator = Accumulator()
+        var open = false
+        var prices: [Int64: UsageModelPrice?] = [:]
+        let cursor = try database.messages(lower: horizon, upper: nowMs)
+        while let row = try cursor.next() {
+            if open, row.timestampMs - startMs > span || row.timestampMs - lastMs > span { open = false }
+            if !open {
+                startMs = row.timestampMs / 3_600_000 * 3_600_000
+                accumulator = Accumulator()
+                open = true
+            }
+            lastMs = row.timestampMs
+            if prices[row.model] == nil {
+                prices[row.model] = .some(UsagePricing.price(forModel: try database.symbolText(row.model) ?? ""))
+            }
+            accumulator.add(
+                tokens: row.tokens,
+                cost: Self.cost(price: prices[row.model] ?? nil, tokens: row.tokens, flags: row.flags, legacy: row.legacyCost),
+                messages: 1)
+        }
+        guard open, nowMs < startMs + span, nowMs - lastMs < span else { return nil }
+        return UsageActivityWindow(
+            start: Date(timeIntervalSince1970: Double(startMs) / 1_000),
+            end: Date(timeIntervalSince1970: Double(startMs + span) / 1_000),
+            lastActivity: Date(timeIntervalSince1970: Double(lastMs) / 1_000),
+            tokens: accumulator.tokens, estimatedCostUSD: accumulator.cost,
+            hasUnknownCost: accumulator.hasUnknownCost, messageCount: accumulator.messages)
+    }
+
+    // MARK: database lifecycle
+
+    private func openDatabase() throws -> UsageDatabase {
+        if let database { return database }
+        let opened: UsageDatabase
+        do {
+            opened = try UsageDatabase(url: databaseURL)
+        } catch let error as ClaudeUsageIndexError where error.isCorruption || error.isSchemaMismatch {
+            Self.removeDatabaseFiles(databaseURL)
+            opened = try UsageDatabase(url: databaseURL)
+        }
+        database = opened
+        symbols = [:]
+        forgotten = nil
+        return opened
+    }
+
+    private func discardDatabase() {
+        database = nil
+        symbols = [:]
+        forgotten = nil
+        Self.removeDatabaseFiles(databaseURL)
+    }
+
+    private static func removeDatabaseFiles(_ url: URL) {
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            unlink(url.path + suffix)
+        }
+    }
+
+    private func symbol(_ text: String, _ database: UsageDatabase) throws -> Int64 {
+        if let known = symbols[text] { return known }
+        let id = try database.internSymbol(text)
+        symbols[text] = id
+        return id
+    }
+
+    private func forgottenSet(_ database: UsageDatabase) throws -> Set<String> {
+        if let forgotten { return forgotten }
+        let loaded = try database.forgottenSessions()
+        forgotten = loaded
+        return loaded
+    }
+
+    // MARK: hashing and guards
+
+    /// FNV-1a, 64 bit: stable across runs (unlike `Hasher`), collision odds negligible at this scale.
+    static func hash(_ bytes: some Sequence<UInt8>) -> Int64 {
+        var value: UInt64 = 0xCBF2_9CE4_8422_2325
+        for byte in bytes {
+            value ^= UInt64(byte)
+            value = value &* 0x0000_0100_0000_01B3
+        }
+        return Int64(bitPattern: value)
+    }
+
+    /// The up-to-64 bytes ending at `offset`, hashed.
+    static func guardBytes(_ descriptor: Int32, before offset: Int64) -> (Int, Int64) {
+        let length = Int(min(offset, 64))
+        guard length > 0 else { return (0, hash([UInt8]())) }
+        var bytes = [UInt8](repeating: 0, count: length)
+        let read = pread(descriptor, &bytes, length, off_t(offset) - off_t(length))
+        guard read == length else { return (0, hash([UInt8]())) }
+        return (length, hash(bytes))
+    }
+
+    static func guardMatches(_ descriptor: Int32, offset: Int64, length: Int, hash expected: Int64) -> Bool {
+        guard length > 0 else { return true }
+        guard offset >= Int64(length) else { return false }
+        var bytes = [UInt8](repeating: 0, count: length)
+        guard pread(descriptor, &bytes, length, off_t(offset) - off_t(length)) == length else { return false }
+        return hash(bytes) == expected
+    }
+}
+
+// MARK: - transcript discovery
+
+struct UsageTranscriptFile {
+    let path: String
+    /// Owning session: the file stem, or the parent session directory for subagent files.
+    let session: String
+    let dev: Int64
+    let ino: Int64
+    let size: Int64
+    let mtimeNs: Int64
+
+    init(path: String, session: String, info: stat) {
+        self.path = path
+        self.session = session
+        dev = Int64(info.st_dev)
+        ino = Int64(bitPattern: info.st_ino)
+        size = Int64(info.st_size)
+        mtimeNs = Int64(info.st_mtimespec.tv_sec) * 1_000_000_000 + Int64(info.st_mtimespec.tv_nsec)
+    }
+}
+
+/// Finds transcripts without following symlinks, keeping the registry reader's stance:
+/// the config and `projects` directories and every file must belong to this user and the
+/// config directory must not be group- or world-writable.
+enum UsageTranscriptWalker {
+    private static let skippedDirectories: Set<String> = ["memory", "tool-results"]
+    private static let maximumDepth = 6
+
+    static func isTranscriptName(_ name: String) -> Bool {
+        name.hasSuffix(".jsonl") && !name.contains(".orphaned-") && !name.contains(".superseded-")
+    }
+
+    static func session(forRelativeComponents components: [String]) -> String {
+        guard let name = components.last else { return "" }
+        if components.count >= 3, components[components.count - 2] == "subagents" {
+            return components[components.count - 3]
+        }
+        return String(name.dropLast(".jsonl".count))
+    }
+
+    private static func openProjects(_ profile: ClaudeProfileLayout) -> Int32? {
+        let root = open(profile.configDirectory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard root >= 0 else { return nil }
+        defer { close(root) }
+        var info = stat()
+        guard fstat(root, &info) == 0, info.st_uid == getuid(), info.st_mode & 0o022 == 0 else { return nil }
+        let projects = openat(root, "projects", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard projects >= 0 else { return nil }
+        guard fstat(projects, &info) == 0, info.st_uid == getuid(), info.st_mode & 0o022 == 0 else {
+            close(projects)
+            return nil
+        }
+        return projects
+    }
+
+    static func candidates(profile: ClaudeProfileLayout) -> [UsageTranscriptFile] {
+        guard let projects = openProjects(profile) else { return [] }
+        defer { close(projects) }
+        var found: [UsageTranscriptFile] = []
+        walk(descriptor: projects, path: profile.projectsDirectory.path, components: [], depth: 0, into: &found)
+        return found.sorted { $0.path < $1.path }
+    }
+
+    private static func walk(
+        descriptor: Int32, path: String, components: [String], depth: Int, into found: inout [UsageTranscriptFile]
+    ) {
+        let duplicate = dup(descriptor)
+        guard duplicate >= 0, let directory = fdopendir(duplicate) else {
+            if duplicate >= 0 { close(duplicate) }
+            return
+        }
+        defer { closedir(directory) }
+        var names: [String] = []
+        while let entry = readdir(directory) {
+            let name = withUnsafePointer(to: &entry.pointee.d_name) {
+                $0.withMemoryRebound(to: CChar.self, capacity: Int(NAME_MAX) + 1) { String(cString: $0) }
+            }
+            if name != "." && name != ".." { names.append(name) }
+        }
+        for name in names {
+            var info = stat()
+            guard fstatat(descriptor, name, &info, AT_SYMLINK_NOFOLLOW) == 0, info.st_uid == getuid() else { continue }
+            switch info.st_mode & S_IFMT {
+            case S_IFDIR:
+                guard depth < maximumDepth, !skippedDirectories.contains(name) else { continue }
+                let child = openat(descriptor, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                guard child >= 0 else { continue }
+                walk(descriptor: child, path: path + "/" + name, components: components + [name], depth: depth + 1, into: &found)
+                close(child)
+            case S_IFREG:
+                guard isTranscriptName(name) else { continue }
+                found.append(UsageTranscriptFile(
+                    path: path + "/" + name, session: session(forRelativeComponents: components + [name]), info: info))
+            default:
+                continue
+            }
+        }
+    }
+
+    /// A single transcript named by the caller (a hook's `transcript_path`). Accepted only when
+    /// its real path (symlinks resolved) lies inside the profile's `projects` directory and is a
+    /// regular file of this user, so a link cannot lead the scan outside the profile.
+    static func candidate(at url: URL, profile: ClaudeProfileLayout) -> UsageTranscriptFile? {
+        guard url.isFileURL, let resolved = realpath(url.path, nil) else { return nil }
+        defer { free(resolved) }
+        let path = String(cString: resolved)
+        guard let projectsReal = realpath(profile.projectsDirectory.path, nil) else { return nil }
+        defer { free(projectsReal) }
+        let prefix = String(cString: projectsReal) + "/"
+        guard path.hasPrefix(prefix), isTranscriptName((path as NSString).lastPathComponent) else { return nil }
+        guard let projects = openProjects(profile) else { return nil }
+        close(projects)
+        var info = stat()
+        guard lstat(path, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid() else { return nil }
+        let relative = String(path.dropFirst(prefix.count)).split(separator: "/").map(String.init)
+        return UsageTranscriptFile(path: path, session: session(forRelativeComponents: relative), info: info)
+    }
+}
+
+// MARK: - SQLite
+
+struct UsageRow {
+    var key: Int64
+    var fileID: Int64
+    var timestampMs: Int64
+    var session: Int64?
+    var model: Int64
+    var tokens: UsageTokens
+    var flags: Int64
+    var total: Int64
+    var legacyCost: Double?
+}
+
+struct UsageFileState {
+    var id: Int64
+    var dev: Int64
+    var ino: Int64
+    var size: Int64
+    var mtimeNs: Int64
+    var offset: Int64
+    var guardLength: Int
+    var guardHash: Int64
+}
+
+struct UsageAggregate {
+    var bucket: Int64
+    var model: Int64
+    var flags: Int64
+    var hasLegacyCost: Bool
+    var legacyCost: Double
+    var tokens: UsageTokens
+    var messages: Int
+}
+
+extension ClaudeUsageIndexError {
+    var isCorruption: Bool {
+        guard case let .sqlite(_, code, _) = self else { return false }
+        return code == SQLITE_CORRUPT || code == SQLITE_NOTADB
+    }
+
+    var isSchemaMismatch: Bool {
+        guard case let .sqlite(operation, _, _) = self else { return false }
+        return operation == "schema"
+    }
+}
+
+/// Owned by the index actor; never shared.
+final class UsageDatabase {
+    private let handle: OpaquePointer
+    private var statements: [String: OpaquePointer] = [:]
+
+    init(url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700])
+        var connection: OpaquePointer?
+        let opened = sqlite3_open_v2(url.path, &connection, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil)
+        guard opened == SQLITE_OK, let connection else {
+            let message = connection.map { String(cString: sqlite3_errmsg($0)) } ?? "could not allocate connection"
+            if let connection { sqlite3_close(connection) }
+            throw ClaudeUsageIndexError.sqlite(operation: "open", code: opened, message: message)
+        }
+        handle = connection
+        do { try configure() } catch {
+            sqlite3_close(connection)
+            throw error
+        }
+    }
+
+    deinit {
+        for statement in statements.values { sqlite3_finalize(statement) }
+        sqlite3_close(handle)
+    }
+
+    private func configure() throws {
+        sqlite3_busy_timeout(handle, 2_000)
+        let integrity = try scalarText("PRAGMA quick_check")
+        guard integrity == "ok" else {
+            throw ClaudeUsageIndexError.sqlite(operation: "integrity check", code: SQLITE_CORRUPT, message: integrity)
+        }
+        let version = Int32(try scalarInt("PRAGMA user_version"))
+        let applicationID = Int32(try scalarInt("PRAGMA application_id"))
+        let tables = try scalarInt("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+        if version == 0 && applicationID == 0 && tables == 0 {
+            try transaction { try createSchema() }
+        } else if version != ClaudeUsageIndex.schemaVersion || applicationID != ClaudeUsageIndex.applicationID {
+            // Newer, older or foreign: the file is disposable, the transcripts are the source.
+            throw ClaudeUsageIndexError.sqlite(
+                operation: "schema", code: SQLITE_SCHEMA, message: "user_version \(version), application_id \(applicationID)")
+        }
+        guard try scalarText("PRAGMA journal_mode = WAL").lowercased() == "wal" else {
+            throw ClaudeUsageIndexError.sqlite(operation: "enable WAL", code: SQLITE_ERROR, message: "journal mode did not become WAL")
+        }
+        try execute("PRAGMA synchronous = NORMAL")
+        try execute("PRAGMA cache_size = -8192") // 8 MiB page cache
+    }
+
+    private func createSchema() throws {
+        try execute("PRAGMA application_id = \(ClaudeUsageIndex.applicationID)")
+        try execute("CREATE TABLE symbol (id INTEGER PRIMARY KEY, text TEXT NOT NULL UNIQUE)")
+        try execute("""
+            CREATE TABLE file (
+                id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, session TEXT NOT NULL,
+                dev INTEGER NOT NULL, ino INTEGER NOT NULL, size INTEGER NOT NULL DEFAULT 0,
+                mtime_ns INTEGER NOT NULL DEFAULT 0, offset INTEGER NOT NULL DEFAULT 0,
+                guard_len INTEGER NOT NULL DEFAULT 0, guard_hash INTEGER NOT NULL DEFAULT 0)
+            """)
+        try execute("CREATE INDEX file_session ON file(session)")
+        // flags: bit 0 sidechain, bit 1 fast speed, bit 2 US inference geography.
+        try execute("""
+            CREATE TABLE msg (
+                key INTEGER PRIMARY KEY, file_id INTEGER NOT NULL, ts_ms INTEGER NOT NULL, session INTEGER,
+                model INTEGER NOT NULL, input INTEGER NOT NULL, output INTEGER NOT NULL,
+                cw5 INTEGER NOT NULL, cw1 INTEGER NOT NULL, cr INTEGER NOT NULL, web INTEGER NOT NULL,
+                flags INTEGER NOT NULL, total INTEGER NOT NULL, cost REAL)
+            """)
+        try execute("CREATE INDEX msg_ts ON msg(ts_ms)")
+        try execute("CREATE INDEX msg_file ON msg(file_id)")
+        try execute("CREATE INDEX msg_session ON msg(session) WHERE session IS NOT NULL")
+        try execute("CREATE TABLE forgotten (session TEXT PRIMARY KEY) WITHOUT ROWID")
+        try execute("PRAGMA user_version = \(ClaudeUsageIndex.schemaVersion)")
+    }
+
+    // MARK: primitives
+
+    fileprivate func error(_ operation: String, _ code: Int32) -> ClaudeUsageIndexError {
+        .sqlite(operation: operation, code: code, message: String(cString: sqlite3_errmsg(handle)))
+    }
+
+    func begin() throws { try execute("BEGIN IMMEDIATE") }
+    func commit() throws { try execute("COMMIT") }
+    func rollback() { try? execute("ROLLBACK") }
+
+    func transaction<T>(_ body: () throws -> T) throws -> T {
+        try execute("BEGIN IMMEDIATE")
+        do {
+            let result = try body()
+            try execute("COMMIT")
+            return result
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
+    }
+
+    private func execute(_ sql: String) throws {
+        var message: UnsafeMutablePointer<CChar>?
+        let result = sqlite3_exec(handle, sql, nil, nil, &message)
+        guard result == SQLITE_OK else {
+            let detail = message.map { String(cString: $0) } ?? String(cString: sqlite3_errmsg(handle))
+            sqlite3_free(message)
+            throw ClaudeUsageIndexError.sqlite(operation: "execute", code: result, message: detail)
+        }
+    }
+
+    private func scalarInt(_ sql: String) throws -> Int64 {
+        try withTransient(sql) { statement in
+            guard sqlite3_step(statement) == SQLITE_ROW else { throw error("scalar", sqlite3_errcode(handle)) }
+            return sqlite3_column_int64(statement, 0)
+        }
+    }
+
+    private func scalarText(_ sql: String) throws -> String {
+        try withTransient(sql) { statement in
+            guard sqlite3_step(statement) == SQLITE_ROW, let text = sqlite3_column_text(statement, 0) else {
+                throw error("scalar", sqlite3_errcode(handle))
+            }
+            return String(cString: text)
+        }
+    }
+
+    private func withTransient<T>(_ sql: String, _ body: (OpaquePointer) throws -> T) throws -> T {
+        var statement: OpaquePointer?
+        let result = sqlite3_prepare_v2(handle, sql, -1, &statement, nil)
+        guard result == SQLITE_OK, let statement else { throw error("prepare", result) }
+        defer { sqlite3_finalize(statement) }
+        return try body(statement)
+    }
+
+    /// A cached prepared statement, reset and cleared before use.
+    private func cached<T>(_ sql: String, _ body: (OpaquePointer) throws -> T) throws -> T {
+        let statement: OpaquePointer
+        if let known = statements[sql] {
+            statement = known
+        } else {
+            var prepared: OpaquePointer?
+            let result = sqlite3_prepare_v3(handle, sql, -1, UInt32(SQLITE_PREPARE_PERSISTENT), &prepared, nil)
+            guard result == SQLITE_OK, let prepared else { throw error("prepare", result) }
+            statements[sql] = prepared
+            statement = prepared
+        }
+        sqlite3_reset(statement)
+        sqlite3_clear_bindings(statement)
+        defer { sqlite3_reset(statement) }
+        return try body(statement)
+    }
+
+    private func done(_ statement: OpaquePointer, _ operation: String) throws {
+        let result = sqlite3_step(statement)
+        guard result == SQLITE_DONE else { throw error(operation, result) }
+    }
+
+    private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+    private func bind(_ value: String, _ index: Int32, _ statement: OpaquePointer) {
+        sqlite3_bind_text(statement, index, value, -1, Self.transient)
+    }
+
+    private func bind(_ value: Int64?, _ index: Int32, _ statement: OpaquePointer) {
+        if let value { sqlite3_bind_int64(statement, index, value) } else { sqlite3_bind_null(statement, index) }
+    }
+
+    // MARK: symbols, files, messages
+
+    func internSymbol(_ text: String) throws -> Int64 {
+        try cached("INSERT OR IGNORE INTO symbol(text) VALUES (?1)") { statement in
+            bind(text, 1, statement)
+            try done(statement, "intern symbol")
+        }
+        return try cached("SELECT id FROM symbol WHERE text = ?1") { statement in
+            bind(text, 1, statement)
+            guard sqlite3_step(statement) == SQLITE_ROW else { throw error("intern symbol", sqlite3_errcode(handle)) }
+            return sqlite3_column_int64(statement, 0)
+        }
+    }
+
+    func symbolID(_ text: String) throws -> Int64? {
+        try cached("SELECT id FROM symbol WHERE text = ?1") { statement in
+            bind(text, 1, statement)
+            return sqlite3_step(statement) == SQLITE_ROW ? sqlite3_column_int64(statement, 0) : nil
+        }
+    }
+
+    func symbolText(_ id: Int64) throws -> String? {
+        try cached("SELECT text FROM symbol WHERE id = ?1") { statement in
+            bind(id, 1, statement)
+            guard sqlite3_step(statement) == SQLITE_ROW, let text = sqlite3_column_text(statement, 0) else { return nil }
+            return String(cString: text)
+        }
+    }
+
+    func file(path: String) throws -> UsageFileState? {
+        try cached("SELECT id, dev, ino, size, mtime_ns, offset, guard_len, guard_hash FROM file WHERE path = ?1") { statement in
+            bind(path, 1, statement)
+            guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+            return UsageFileState(
+                id: sqlite3_column_int64(statement, 0), dev: sqlite3_column_int64(statement, 1),
+                ino: sqlite3_column_int64(statement, 2), size: sqlite3_column_int64(statement, 3),
+                mtimeNs: sqlite3_column_int64(statement, 4), offset: sqlite3_column_int64(statement, 5),
+                guardLength: Int(sqlite3_column_int64(statement, 6)), guardHash: sqlite3_column_int64(statement, 7))
+        }
+    }
+
+    /// Creates the file row or resets an existing one to "nothing indexed yet" under the given identity.
+    func saveFile(path: String, session: String, dev: Int64, ino: Int64) throws -> Int64 {
+        try cached("""
+            INSERT INTO file(path, session, dev, ino) VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(path) DO UPDATE SET session = ?2, dev = ?3, ino = ?4, size = 0, mtime_ns = 0,
+                offset = 0, guard_len = 0, guard_hash = 0
+            """) { statement in
+            bind(path, 1, statement)
+            bind(session, 2, statement)
+            bind(dev, 3, statement)
+            bind(ino, 4, statement)
+            try done(statement, "save file")
+        }
+        return try cached("SELECT id FROM file WHERE path = ?1") { statement in
+            bind(path, 1, statement)
+            guard sqlite3_step(statement) == SQLITE_ROW else { throw error("save file", sqlite3_errcode(handle)) }
+            return sqlite3_column_int64(statement, 0)
+        }
+    }
+
+    func updateProgress(fileID: Int64, offset: Int64, guardLength: Int, guardHash: Int64) throws {
+        try cached("UPDATE file SET offset = ?2, guard_len = ?3, guard_hash = ?4 WHERE id = ?1") { statement in
+            bind(fileID, 1, statement)
+            bind(offset, 2, statement)
+            bind(Int64(guardLength), 3, statement)
+            bind(guardHash, 4, statement)
+            try done(statement, "update progress")
+        }
+    }
+
+    func updateObserved(fileID: Int64, size: Int64, mtimeNs: Int64) throws {
+        try cached("UPDATE file SET size = ?2, mtime_ns = ?3 WHERE id = ?1") { statement in
+            bind(fileID, 1, statement)
+            bind(size, 2, statement)
+            bind(mtimeNs, 3, statement)
+            try done(statement, "update observed")
+        }
+    }
+
+    func deleteMessages(fileID: Int64) throws {
+        try cached("DELETE FROM msg WHERE file_id = ?1") { statement in
+            bind(fileID, 1, statement)
+            try done(statement, "delete messages")
+        }
+    }
+
+    func deleteFiles(session: String) throws {
+        try cached("DELETE FROM file WHERE session = ?1") { statement in
+            bind(session, 1, statement)
+            try done(statement, "delete files")
+        }
+    }
+
+    func unlinkSession(_ symbol: Int64) throws -> Int {
+        try cached("UPDATE msg SET session = NULL WHERE session = ?1") { statement in
+            bind(symbol, 1, statement)
+            try done(statement, "unlink session")
+            return Int(sqlite3_changes(handle))
+        }
+    }
+
+    func addForgotten(_ session: String) throws {
+        try cached("INSERT OR IGNORE INTO forgotten(session) VALUES (?1)") { statement in
+            bind(session, 1, statement)
+            try done(statement, "forget session")
+        }
+    }
+
+    func forgottenSessions() throws -> Set<String> {
+        try cached("SELECT session FROM forgotten") { statement in
+            var result: Set<String> = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                if let text = sqlite3_column_text(statement, 0) { result.insert(String(cString: text)) }
+            }
+            return result
+        }
+    }
+
+    /// Insert, or replace an existing row of the same message when the new one is a better copy:
+    /// non-sidechain beats sidechain, then the larger total wins (streaming partials).
+    func upsert(_ row: UsageRow) throws {
+        try cached("""
+            INSERT INTO msg(key, file_id, ts_ms, session, model, input, output, cw5, cw1, cr, web, flags, total, cost)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            ON CONFLICT(key) DO UPDATE SET
+                file_id = excluded.file_id, ts_ms = excluded.ts_ms, session = excluded.session, model = excluded.model,
+                input = excluded.input, output = excluded.output, cw5 = excluded.cw5, cw1 = excluded.cw1,
+                cr = excluded.cr, web = excluded.web, flags = excluded.flags, total = excluded.total, cost = excluded.cost
+            WHERE (excluded.flags & 1) < (msg.flags & 1)
+               OR ((excluded.flags & 1) = (msg.flags & 1) AND excluded.total > msg.total)
+            """) { statement in
+            bind(row.key, 1, statement)
+            bind(row.fileID, 2, statement)
+            bind(row.timestampMs, 3, statement)
+            bind(row.session, 4, statement)
+            bind(row.model, 5, statement)
+            bind(row.tokens.input, 6, statement)
+            bind(row.tokens.output, 7, statement)
+            bind(row.tokens.cacheWrite5m, 8, statement)
+            bind(row.tokens.cacheWrite1h, 9, statement)
+            bind(row.tokens.cacheRead, 10, statement)
+            bind(row.tokens.webSearches, 11, statement)
+            bind(row.flags, 12, statement)
+            bind(row.total, 13, statement)
+            if let cost = row.legacyCost { sqlite3_bind_double(statement, 14, cost) } else { sqlite3_bind_null(statement, 14) }
+            try done(statement, "upsert message")
+        }
+    }
+
+    // MARK: queries
+
+    /// Totals grouped by quarter-hour bucket, model, speed/geography flags and whether the rows
+    /// carry a legacy cost.
+    func aggregates(lower: Int64, upper: Int64) throws -> [UsageAggregate] {
+        try cached("""
+            SELECT ts_ms / 900000, model, flags & 6, cost IS NOT NULL, SUM(COALESCE(cost, 0)),
+                   SUM(input), SUM(output), SUM(cw5), SUM(cw1), SUM(cr), SUM(web), COUNT(*)
+            FROM msg WHERE ts_ms >= ?1 AND ts_ms < ?2 GROUP BY 1, 2, 3, 4
+            """) { statement in
+            bind(lower, 1, statement)
+            bind(upper, 2, statement)
+            var result: [UsageAggregate] = []
+            while true {
+                let step = sqlite3_step(statement)
+                if step == SQLITE_DONE { break }
+                guard step == SQLITE_ROW else { throw error("aggregate", step) }
+                result.append(UsageAggregate(
+                    bucket: sqlite3_column_int64(statement, 0), model: sqlite3_column_int64(statement, 1),
+                    flags: sqlite3_column_int64(statement, 2), hasLegacyCost: sqlite3_column_int(statement, 3) != 0,
+                    legacyCost: sqlite3_column_double(statement, 4),
+                    tokens: UsageTokens(
+                        input: sqlite3_column_int64(statement, 5), output: sqlite3_column_int64(statement, 6),
+                        cacheWrite5m: sqlite3_column_int64(statement, 7), cacheWrite1h: sqlite3_column_int64(statement, 8),
+                        cacheRead: sqlite3_column_int64(statement, 9), webSearches: sqlite3_column_int64(statement, 10)),
+                    messages: Int(sqlite3_column_int64(statement, 11))))
+            }
+            return result
+        }
+    }
+
+    func sessionBuckets(lower: Int64, upper: Int64) throws -> [(Int64, Int64)] {
+        try cached("""
+            SELECT DISTINCT ts_ms / 900000, session FROM msg
+            WHERE ts_ms >= ?1 AND ts_ms < ?2 AND session IS NOT NULL
+            """) { statement in
+            bind(lower, 1, statement)
+            bind(upper, 2, statement)
+            var result: [(Int64, Int64)] = []
+            while true {
+                let step = sqlite3_step(statement)
+                if step == SQLITE_DONE { break }
+                guard step == SQLITE_ROW else { throw error("session buckets", step) }
+                result.append((sqlite3_column_int64(statement, 0), sqlite3_column_int64(statement, 1)))
+            }
+            return result
+        }
+    }
+
+    /// Messages in time order, read one row at a time.
+    final class MessageCursor {
+        private let database: UsageDatabase
+        private let statement: OpaquePointer
+
+        fileprivate init(database: UsageDatabase, statement: OpaquePointer) {
+            self.database = database
+            self.statement = statement
+        }
+
+        deinit { sqlite3_finalize(statement) }
+
+        func next() throws -> UsageRow? {
+            let step = sqlite3_step(statement)
+            if step == SQLITE_DONE { return nil }
+            guard step == SQLITE_ROW else { throw database.error("messages", step) }
+            return UsageRow(
+                key: 0, fileID: 0, timestampMs: sqlite3_column_int64(statement, 0), session: nil,
+                model: sqlite3_column_int64(statement, 1),
+                tokens: UsageTokens(
+                    input: sqlite3_column_int64(statement, 3), output: sqlite3_column_int64(statement, 4),
+                    cacheWrite5m: sqlite3_column_int64(statement, 5), cacheWrite1h: sqlite3_column_int64(statement, 6),
+                    cacheRead: sqlite3_column_int64(statement, 7), webSearches: sqlite3_column_int64(statement, 8)),
+                flags: sqlite3_column_int64(statement, 2), total: 0,
+                legacyCost: sqlite3_column_type(statement, 9) == SQLITE_NULL ? nil : sqlite3_column_double(statement, 9))
+        }
+    }
+
+    func messages(lower: Int64, upper: Int64) throws -> MessageCursor {
+        var statement: OpaquePointer?
+        let result = sqlite3_prepare_v2(handle, """
+            SELECT ts_ms, model, flags, input, output, cw5, cw1, cr, web, cost FROM msg
+            WHERE ts_ms >= ?1 AND ts_ms <= ?2 ORDER BY ts_ms
+            """, -1, &statement, nil)
+        guard result == SQLITE_OK, let statement else { throw error("prepare", result) }
+        sqlite3_bind_int64(statement, 1, lower)
+        sqlite3_bind_int64(statement, 2, upper)
+        return MessageCursor(database: self, statement: statement)
+    }
+}
