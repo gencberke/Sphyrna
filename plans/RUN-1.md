@@ -20,7 +20,7 @@ Write areas decide what runs in parallel; hot files (`AppDelegate.swift`, `Packa
 
 Critical path: F1 → F3 → I1 → U1/U2/U4 → CP4-D. Off the critical path and started at once: U0, CP4-A, CP4-F, UD.
 
-As run (7 Oct): wave 1 F0, F1, F2, F4, U0, CP4-A, CP4-F, UD; wave 2a I1, U3, F3, I2 (I2 moved up once I1 and F3 were in); wave 2b F5, F6 (S2 and F10 only), CP4-B (also takes F6's undecodable-row item, since it owns the catalog files), U12 (U1 and U2 as one slice to save a wave). Next: CP4-C, U4, I4 (exclusive measurement), then I3, CP4-D, CP4-G, U5, CP4-E.
+As run (7 Oct): wave 1 F0, F1, F2, F4, U0, CP4-A, CP4-F, UD; wave 2a I1, U3, F3, I2 (I2 moved up once I1 and F3 were in); wave 2b F5, F6 (S2 and F10 only), CP4-B (also takes F6's undecodable-row item, since it owns the catalog files), U12 (U1 and U2 as one slice to save a wave). Wave 3: CP4-C, U4; I4 parked (screen locked). Wave 4: U5, CP4-D, I3, CP4-G (with a planner change: `BuildIdentity.permanentDeletionEnabled`, deletion only in development builds until DP-CP4-1). Wave 5: OPT1 (core optimizer items), then OPT2 (UI optimizer items) beside CP4-E (real-Claude deletion check), then the final evaluation and the release candidate ([RC-0.2.0](RC-0.2.0.md)).
 
 ## Protocol for every implementer slice
 
@@ -41,7 +41,9 @@ About 40 short turns for the whole run ([D-30](../DECISIONS.md)); isolated profi
 
 | Date | Use | Turns | Running total |
 | --- | --- | --- | --- |
-| — | none yet | 0 | 0 |
+| 7 Oct, 04:05–04:10 | CP4-E real-Claude deletion check (`scripts/cp4-deletion-real.py`, two runs of 2; the first failed on script bugs only) | 4 | 4 |
+| 7 Oct, 08:40 | Final candidate: `claude_real.py` (11/11) | 2 | 6 |
+| 7 Oct, 08:42 | Final candidate: `cp4-deletion-real.py` re-run after the `finishDeletion` fix (33/33) | 2 | 8 |
 
 ## Stage-end evaluation recipe
 
