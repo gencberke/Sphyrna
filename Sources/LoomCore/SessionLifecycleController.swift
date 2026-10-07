@@ -40,6 +40,8 @@ public enum SessionIdleBlocker: Hashable, Sendable {
     case nonBaselineDescendants(Int)
     case ambiguousIdentity
     case stopUnverified
+    /// The conversation is being deleted: its input stays closed and only the deletion stops it.
+    case deletionPending
 }
 
 public enum SessionIdleEvaluation: Sendable {
@@ -384,6 +386,7 @@ public actor SessionLifecycleController {
         }
         guard let session = await supervisor.session(id: sessionID),
               let run = session.currentRun else { return .notRunning }
+        if try await catalog.isDeletionPending(sessionID) { return .blocked([.deletionPending]) }
 
         var blockers: Set<SessionIdleBlocker> = []
         if await supervisor.identityState(sessionID: sessionID) == .ambiguous {
@@ -452,7 +455,9 @@ public actor SessionLifecycleController {
             sessionID: sessionID, graceSeconds: policy.stopGraceSeconds
         )
         guard report.succeeded else {
-            inputGate.reopen(runID: run.id)
+            // A deletion that began meanwhile closed the input for good (contract 8.1): only a
+            // stop that fails for inactivity alone gives it back.
+            if !(try await catalog.isDeletionPending(sessionID)) { inputGate.reopen(runID: run.id) }
             await supervisor.events.publish(
                 sessionID: sessionID,
                 change: .blockers([.stopUnverified])

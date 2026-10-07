@@ -238,4 +238,87 @@ struct UsageModelRealIndexTests {
         await usage.refreshNow(reason: .manual)
         #expect(usage.report?.snapshot.tokens.total == 1_865_000)
     }
+
+
+    // MARK: OPT1 - what a refresh asks of the index
+
+    /// The real index behind a counter: which index calls one refresh makes.
+    private final class CountingIndex: UsageIndexing, @unchecked Sendable {
+        let base: ClaudeUsageIndex
+        private let counts = Mutex<[String: Int]>([:])
+        init(_ base: ClaudeUsageIndex) { self.base = base }
+        func count(_ name: String) -> Int { counts.withLock { $0[name] ?? 0 } }
+        private func bump(_ name: String) { counts.withLock { $0[name, default: 0] += 1 } }
+
+        func refreshAll() async throws -> UsageScanReport { try await base.refresh(paths: nil) }
+        func snapshot(range: UsageRange, now: Date, timeZone: TimeZone) async throws -> UsageSnapshot {
+            bump("snapshot")
+            return try await base.snapshot(range: range, now: now, timeZone: timeZone)
+        }
+        func summary(range: UsageRange, now: Date, timeZone: TimeZone) async throws -> UsageSnapshot {
+            bump("summary")
+            return try await base.summary(range: range, now: now, timeZone: timeZone)
+        }
+        func buckets(size: UsageBucketSize, count: Int, endingAt now: Date, timeZone: TimeZone) async throws -> [UsageBucket] {
+            bump("buckets")
+            return try await base.buckets(size: size, count: count, endingAt: now, timeZone: timeZone)
+        }
+        func hasUsage() async throws -> Bool {
+            bump("hasUsage")
+            return try await base.hasUsage()
+        }
+    }
+
+    private func makeProfile(lines: [String]) throws -> (root: URL, config: URL) {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("loom-usage-ui-\(UUID().uuidString)", isDirectory: true).resolvingSymlinksInPath()
+        let config = root.appendingPathComponent("config", isDirectory: true)
+        let project = config.appendingPathComponent("projects/-tmp-proj", isDirectory: true)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        chmod(config.path, 0o700)
+        if !lines.isEmpty {
+            try (lines.joined(separator: "\n") + "\n")
+                .write(to: project.appendingPathComponent("sess-1.jsonl"), atomically: true, encoding: .utf8)
+        }
+        return (root, config)
+    }
+
+    @Test(arguments: [UsagePeriod.days7, .hours24])
+    func oneRefreshMakesOneSnapshotOneSummaryAndOneBucketQuery(period: UsagePeriod) async throws {
+        let (root, config) = try makeProfile(lines: [
+            line(id: "a", ts: "2026-10-07T09:00:00.000Z", input: 1_000, output: 200, cacheRead: 500),
+            line(id: "b", ts: "2026-10-06T11:00:00.000Z", input: 100, output: 50, cacheRead: 0),
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let now = Date(timeIntervalSince1970: 1_791_374_400) // 2026-10-07T12:00:00Z
+        let profile = ClaudeProfileLayout(profileDirectory: config, environment: [:], home: root)
+        let counting = CountingIndex(ClaudeUsageIndex(
+            databaseURL: root.appendingPathComponent("usage-index.sqlite3"), profile: profile, clock: { now }))
+        let usage = UsageModel(index: counting, clock: { now }, timeZone: TimeZone(identifier: "UTC")!)
+        usage.select(period)
+        await usage.refreshNow(reason: .launch)
+
+        // Before: 7 snapshots in the 7-day view and 26 in the 24-hour view, each with a week-long scan.
+        #expect(counting.count("summary") == 1)    // today, for the footer chip
+        #expect(counting.count("snapshot") == 1)   // the selected period, the only one with the activity window
+        #expect(counting.count("buckets") == 1)    // every hour bar at once
+        #expect(counting.count("hasUsage") == 0)   // today already has messages
+        #expect(usage.report?.snapshot.activityWindow != nil)
+        #expect(usage.report?.snapshot.tokens.total == (period == .days7 ? 1_850 : 1_700))
+        #expect(usage.report?.cells.map(\.tokens) == [0, 1_700, 0, 0, 0])
+    }
+
+    @Test func anEmptyIndexIsDecidedByAnExistenceCheckNotASnapshot() async throws {
+        let (root, config) = try makeProfile(lines: [])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let profile = ClaudeProfileLayout(profileDirectory: config, environment: [:], home: root)
+        let counting = CountingIndex(ClaudeUsageIndex(
+            databaseURL: root.appendingPathComponent("usage-index.sqlite3"), profile: profile))
+        let usage = UsageModel(index: counting, timeZone: TimeZone(identifier: "UTC")!)
+        await usage.refreshNow(reason: .launch)
+        #expect(usage.hasHistory == false)
+        #expect(counting.count("hasUsage") == 1)
+        #expect(counting.count("snapshot") == 1)   // the selected period only; no `.all` snapshot
+    }
 }

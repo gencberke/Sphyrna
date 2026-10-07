@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Dispatch
 import Foundation
@@ -18,7 +19,7 @@ import SQLite3
 /// rows. Rows are history: a transcript Claude deletes later never lowers totals.
 /// Prices are applied at query time, so a price-table update re-prices history.
 public actor ClaudeUsageIndex {
-    static let schemaVersion: Int32 = 1
+    static let schemaVersion: Int32 = 2
     static let applicationID: Int32 = 0x4C55_5347 // "LUSG"
     static let bucketMs: Int64 = 900_000 // 15 minutes: every real UTC offset is a multiple
     static let blockSeconds: Int64 = 5 * 3_600
@@ -36,7 +37,7 @@ public actor ClaudeUsageIndex {
 
     private var database: UsageDatabase?
     private var symbols: [String: Int64] = [:]
-    private var forgotten: Set<String>?
+    private var forgotten: ForgottenSessions?
 
     /// - Parameters:
     ///   - databaseURL: `usage-index.sqlite3` in the data root.
@@ -234,7 +235,7 @@ public actor ClaudeUsageIndex {
     }
 
     private func insert(
-        _ record: ClaudeUsageRecord, fileID: Int64, fallbackSession: String, forgotten: Set<String>, database: UsageDatabase
+        _ record: ClaudeUsageRecord, fileID: Int64, fallbackSession: String, forgotten: ForgottenSessions, database: UsageDatabase
     ) throws {
         let sessionText = record.sessionID ?? fallbackSession
         let session: Int64? = forgotten.contains(sessionText) ? nil : try symbol(sessionText, database)
@@ -253,7 +254,10 @@ public actor ClaudeUsageIndex {
 
     /// Detaches sessions from their messages (a deleted conversation): tokens and cost stay in
     /// the totals, the session link goes, and the session's transcript rows are forgotten so a
-    /// later re-read of a surviving file does not link them again. Returns messages unlinked.
+    /// later re-read of a surviving file does not link them again. Ids are matched without regard
+    /// to case. Nothing of the id stays in the index file: its symbol and file rows are deleted
+    /// (`secure_delete`), the re-link guard keeps only a SHA-256 digest, and the WAL is truncated.
+    /// Returns messages unlinked.
     @discardableResult
     public func forget(sessionIDs: [String]) throws -> Int {
         do {
@@ -267,30 +271,86 @@ public actor ClaudeUsageIndex {
     private func forgetOnce(_ sessionIDs: [String]) throws -> Int {
         let database = try openDatabase()
         guard !sessionIDs.isEmpty else { return 0 }
-        var forgottenSet = try forgottenSet(database)
-        let unlinked = try database.transaction {
-            var total = 0
-            for id in sessionIDs {
-                try database.addForgotten(id)
-                forgottenSet.insert(id)
-                try database.deleteFiles(session: id)
-                if let symbolID = try database.symbolID(id) { total += try database.unlinkSession(symbolID) }
-            }
-            return total
-        }
-        forgotten = forgottenSet
+        let guardSet = try forgottenSet(database)
+        let lowered = Set(sessionIDs.map { $0.lowercased() })
+        let unlinked = try database.transaction { try database.forget(lowercasedSessions: lowered) }
+        for id in lowered { guardSet.insert(id) }
+        symbols = symbols.filter { !lowered.contains($0.key.lowercased()) }
+        try database.checkpointTruncate()
         return unlinked
     }
 
     // MARK: snapshot
 
     public func snapshot(range: UsageRange, now: Date, timeZone: TimeZone) throws -> UsageSnapshot {
+        try snapshot(range: range, now: now, timeZone: timeZone, includeActivityWindow: true)
+    }
+
+    /// The same numbers as `snapshot` without the activity window, which scans the last week of
+    /// messages: for callers (the footer chip) that do not show it.
+    public func summary(range: UsageRange, now: Date, timeZone: TimeZone) throws -> UsageSnapshot {
+        try snapshot(range: range, now: now, timeZone: timeZone, includeActivityWindow: false)
+    }
+
+    private func snapshot(range: UsageRange, now: Date, timeZone: TimeZone, includeActivityWindow: Bool) throws -> UsageSnapshot {
         do {
-            return try snapshotOnce(range: range, now: now, timeZone: timeZone)
+            return try snapshotOnce(range: range, now: now, timeZone: timeZone, includeActivityWindow: includeActivityWindow)
         } catch let error as ClaudeUsageIndexError where error.isCorruption {
             discardDatabase()
-            return try snapshotOnce(range: range, now: now, timeZone: timeZone)
+            return try snapshotOnce(range: range, now: now, timeZone: timeZone, includeActivityWindow: includeActivityWindow)
         }
+    }
+
+    /// Token and message totals of `count` consecutive calendar hours or days, the last one
+    /// containing `now`, from one grouped query. Each bucket equals `snapshot(range: .interval)` over
+    /// its own interval; no sessions, models or costs are computed (the bar chart needs tokens).
+    public func buckets(size: UsageBucketSize, count: Int, endingAt now: Date, timeZone: TimeZone) throws -> [UsageBucket] {
+        do {
+            return try bucketsOnce(size: size, count: count, now: now, timeZone: timeZone)
+        } catch let error as ClaudeUsageIndexError where error.isCorruption {
+            discardDatabase()
+            return try bucketsOnce(size: size, count: count, now: now, timeZone: timeZone)
+        }
+    }
+
+    /// Whether any message is indexed at all (an existence check, not a snapshot).
+    public func hasUsage() throws -> Bool {
+        do {
+            return try openDatabase().hasMessages()
+        } catch let error as ClaudeUsageIndexError where error.isCorruption {
+            discardDatabase()
+            return try openDatabase().hasMessages()
+        }
+    }
+
+    private func bucketsOnce(size: UsageBucketSize, count: Int, now: Date, timeZone: TimeZone) throws -> [UsageBucket] {
+        let database = try openDatabase()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let edges = size.edges(count: count, endingAt: now, calendar: calendar)
+        guard edges.count > 1 else { return [] }
+        let milliseconds = edges.map { Int64(($0.timeIntervalSince1970 * 1_000).rounded(.down)) }
+        var buckets = (0..<edges.count - 1).map {
+            UsageBucket(start: edges[$0], end: edges[$0 + 1], tokens: UsageTokens(), messageCount: 0)
+        }
+        // Every real UTC offset is a multiple of 15 minutes, so a local hour or day starts on a
+        // quarter-hour group; anything else is summed per bucket instead of guessed.
+        if milliseconds.allSatisfy({ $0 % Self.bucketMs == 0 }) {
+            var index = 0
+            for group in try database.quarterTotals(lower: milliseconds[0], upper: milliseconds[milliseconds.count - 1]) {
+                let at = group.bucket * Self.bucketMs
+                while index + 1 < buckets.count, milliseconds[index + 1] <= at { index += 1 }
+                buckets[index].tokens.add(group.tokens)
+                buckets[index].messageCount += group.messages
+            }
+        } else {
+            for index in buckets.indices {
+                let total = try database.rangeTotals(lower: milliseconds[index], upper: milliseconds[index + 1])
+                buckets[index].tokens = total.tokens
+                buckets[index].messageCount = total.messages
+            }
+        }
+        return buckets
     }
 
     private struct Accumulator {
@@ -344,7 +404,9 @@ public actor ClaudeUsageIndex {
         }
     }
 
-    private func snapshotOnce(range: UsageRange, now: Date, timeZone: TimeZone) throws -> UsageSnapshot {
+    private func snapshotOnce(
+        range: UsageRange, now: Date, timeZone: TimeZone, includeActivityWindow: Bool
+    ) throws -> UsageSnapshot {
         let database = try openDatabase()
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
@@ -394,7 +456,7 @@ public actor ClaudeUsageIndex {
             provider: .claude, asOf: now, priceTableAsOf: UsagePricing.asOf, range: range, tokens: total.tokens,
             estimatedCostUSD: total.cost, unknownModels: unknownModels.sorted(), messageCount: total.messages,
             sessionCount: allSessions.count, days: days, models: Self.ordered(byModel, names: displayNames),
-            activityWindow: try activityWindow(now: now, database: database))
+            activityWindow: includeActivityWindow ? try activityWindow(now: now, database: database) : nil)
     }
 
     /// ccusage's block rule over the last week of messages: a block starts at its first message
@@ -473,9 +535,9 @@ public actor ClaudeUsageIndex {
         return id
     }
 
-    private func forgottenSet(_ database: UsageDatabase) throws -> Set<String> {
+    private func forgottenSet(_ database: UsageDatabase) throws -> ForgottenSessions {
         if let forgotten { return forgotten }
-        let loaded = try database.forgottenSessions()
+        let loaded = ForgottenSessions(digests: try database.forgottenDigests())
         forgotten = loaded
         return loaded
     }
@@ -508,6 +570,36 @@ public actor ClaudeUsageIndex {
         var bytes = [UInt8](repeating: 0, count: length)
         guard pread(descriptor, &bytes, length, off_t(offset) - off_t(length)) == length else { return false }
         return hash(bytes) == expected
+    }
+}
+
+// MARK: - forgotten sessions
+
+/// The sessions whose link to messages must stay cut, kept as SHA-256 digests of their lowercased
+/// ids so the index file never holds an id of a deleted conversation. Owned by the index actor.
+final class ForgottenSessions {
+    private var digests: Set<String>
+    private var answers: [String: Bool] = [:]
+
+    init(digests: Set<String>) { self.digests = digests }
+
+    static func digest(of id: String) -> String {
+        SHA256.hash(data: Data(id.lowercased().utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    func insert(_ id: String) {
+        digests.insert(Self.digest(of: id))
+        answers.removeAll()
+    }
+
+    /// Hashes each distinct session text once; most records of a file repeat one session.
+    func contains(_ text: String) -> Bool {
+        guard !digests.isEmpty else { return false }
+        if let known = answers[text] { return known }
+        if answers.count >= 4_096 { answers.removeAll() }
+        let found = digests.contains(Self.digest(of: text))
+        answers[text] = found
+        return found
     }
 }
 
@@ -707,6 +799,8 @@ final class UsageDatabase {
 
     private func configure() throws {
         sqlite3_busy_timeout(handle, 2_000)
+        // Deleted rows are overwritten, not just unlinked: a forgotten id must not stay in free pages.
+        try execute("PRAGMA secure_delete = ON")
         let integrity = try scalarText("PRAGMA quick_check")
         guard integrity == "ok" else {
             throw ClaudeUsageIndexError.sqlite(operation: "integrity check", code: SQLITE_CORRUPT, message: integrity)
@@ -714,8 +808,11 @@ final class UsageDatabase {
         let version = Int32(try scalarInt("PRAGMA user_version"))
         let applicationID = Int32(try scalarInt("PRAGMA application_id"))
         let tables = try scalarInt("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+        var needsMigration = false
         if version == 0 && applicationID == 0 && tables == 0 {
             try transaction { try createSchema() }
+        } else if version == 1 && applicationID == ClaudeUsageIndex.applicationID {
+            needsMigration = true
         } else if version != ClaudeUsageIndex.schemaVersion || applicationID != ClaudeUsageIndex.applicationID {
             // Newer, older or foreign: the file is disposable, the transcripts are the source.
             throw ClaudeUsageIndexError.sqlite(
@@ -726,6 +823,34 @@ final class UsageDatabase {
         }
         try execute("PRAGMA synchronous = NORMAL")
         try execute("PRAGMA cache_size = -8192") // 8 MiB page cache
+        if needsMigration { try migrateFromSchemaOne() }
+    }
+
+    /// Schema 1 kept forgotten ids in clear text and left the session's symbol row. The ids become
+    /// digests, their rows go, and the file is rewritten so none of the old bytes survive in it.
+    private func migrateFromSchemaOne() throws {
+        let old: [String] = try withTransient("SELECT session FROM forgotten") { statement in
+            var result: [String] = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                if let text = sqlite3_column_text(statement, 0) { result.append(String(cString: text)) }
+            }
+            return result
+        }
+        try transaction {
+            try execute("CREATE TABLE forgotten_v2 (digest TEXT PRIMARY KEY) WITHOUT ROWID")
+            for digest in Set(old.map { ForgottenSessions.digest(of: $0) }) {
+                try execute("INSERT OR IGNORE INTO forgotten_v2(digest) VALUES ('\(digest)')")
+            }
+            _ = try forget(lowercasedSessions: Set(old.map { $0.lowercased() }), recordDigests: false)
+            try execute("DROP TABLE forgotten")
+            try execute("ALTER TABLE forgotten_v2 RENAME TO forgotten")
+            try execute("PRAGMA user_version = \(ClaudeUsageIndex.schemaVersion)")
+        }
+        try checkpointTruncate()
+        if !old.isEmpty {
+            try execute("VACUUM")
+            try checkpointTruncate()
+        }
     }
 
     private func createSchema() throws {
@@ -750,7 +875,8 @@ final class UsageDatabase {
         try execute("CREATE INDEX msg_ts ON msg(ts_ms)")
         try execute("CREATE INDEX msg_file ON msg(file_id)")
         try execute("CREATE INDEX msg_session ON msg(session) WHERE session IS NOT NULL")
-        try execute("CREATE TABLE forgotten (session TEXT PRIMARY KEY) WITHOUT ROWID")
+        // SHA-256 of a forgotten session's lowercased id, hex: the re-link guard without the ids.
+        try execute("CREATE TABLE forgotten (digest TEXT PRIMARY KEY) WITHOUT ROWID")
         try execute("PRAGMA user_version = \(ClaudeUsageIndex.schemaVersion)")
     }
 
@@ -930,35 +1056,63 @@ final class UsageDatabase {
         }
     }
 
-    func deleteFiles(session: String) throws {
-        try cached("DELETE FROM file WHERE session = ?1") { statement in
-            bind(session, 1, statement)
-            try done(statement, "delete files")
+    /// Removes a forgotten session from the index: its file rows (their paths carry the id and the
+    /// encoded project path), its symbol rows and the messages' links to them. Returns messages
+    /// unlinked. `recordDigests` is false only while converting a schema 1 file, which stored them.
+    func forget(lowercasedSessions ids: Set<String>, recordDigests: Bool = true) throws -> Int {
+        var unlinked = 0
+        for id in ids {
+            if recordDigests {
+                try cached("INSERT OR IGNORE INTO forgotten(digest) VALUES (?1)") { statement in
+                    bind(ForgottenSessions.digest(of: id), 1, statement)
+                    try done(statement, "forget session")
+                }
+            }
+            try cached("DELETE FROM file WHERE lower(session) = ?1") { statement in
+                bind(id, 1, statement)
+                try done(statement, "delete files")
+            }
+            let symbolIDs: [Int64] = try cached("SELECT id FROM symbol WHERE lower(text) = ?1") { statement in
+                bind(id, 1, statement)
+                var found: [Int64] = []
+                while sqlite3_step(statement) == SQLITE_ROW { found.append(sqlite3_column_int64(statement, 0)) }
+                return found
+            }
+            for symbol in symbolIDs {
+                unlinked += try cached("UPDATE msg SET session = NULL WHERE session = ?1") { statement in
+                    bind(symbol, 1, statement)
+                    try done(statement, "unlink session")
+                    return Int(sqlite3_changes(handle))
+                }
+                try cached("DELETE FROM symbol WHERE id = ?1") { statement in
+                    bind(symbol, 1, statement)
+                    try done(statement, "delete symbol")
+                }
+            }
         }
+        return unlinked
     }
 
-    func unlinkSession(_ symbol: Int64) throws -> Int {
-        try cached("UPDATE msg SET session = NULL WHERE session = ?1") { statement in
-            bind(symbol, 1, statement)
-            try done(statement, "unlink session")
-            return Int(sqlite3_changes(handle))
-        }
-    }
-
-    func addForgotten(_ session: String) throws {
-        try cached("INSERT OR IGNORE INTO forgotten(session) VALUES (?1)") { statement in
-            bind(session, 1, statement)
-            try done(statement, "forget session")
-        }
-    }
-
-    func forgottenSessions() throws -> Set<String> {
-        try cached("SELECT session FROM forgotten") { statement in
+    func forgottenDigests() throws -> Set<String> {
+        try cached("SELECT digest FROM forgotten") { statement in
             var result: Set<String> = []
             while sqlite3_step(statement) == SQLITE_ROW {
                 if let text = sqlite3_column_text(statement, 0) { result.insert(String(cString: text)) }
             }
             return result
+        }
+    }
+
+    /// Truncating checkpoint: the WAL is emptied into the main file, so what a delete removed is
+    /// gone from both (`secure_delete` already overwrote it in the pages).
+    func checkpointTruncate() throws {
+        try withTransient("PRAGMA wal_checkpoint(TRUNCATE)") { statement in
+            let result = sqlite3_step(statement)
+            guard result == SQLITE_ROW else { throw error("checkpoint", result) }
+            guard sqlite3_column_int(statement, 0) == 0 else {
+                throw ClaudeUsageIndexError.sqlite(operation: "checkpoint", code: SQLITE_BUSY,
+                                                   message: "checkpoint was blocked by another connection")
+            }
         }
     }
 
@@ -1021,6 +1175,61 @@ final class UsageDatabase {
                     messages: Int(sqlite3_column_int64(statement, 11))))
             }
             return result
+        }
+    }
+
+    struct QuarterTotal {
+        var bucket: Int64
+        var tokens: UsageTokens
+        var messages: Int
+    }
+
+    private static func quarterTotal(_ statement: OpaquePointer, offset: Int32) -> (UsageTokens, Int) {
+        (UsageTokens(
+            input: sqlite3_column_int64(statement, offset), output: sqlite3_column_int64(statement, offset + 1),
+            cacheWrite5m: sqlite3_column_int64(statement, offset + 2), cacheWrite1h: sqlite3_column_int64(statement, offset + 3),
+            cacheRead: sqlite3_column_int64(statement, offset + 4), webSearches: sqlite3_column_int64(statement, offset + 5)),
+         Int(sqlite3_column_int64(statement, offset + 6)))
+    }
+
+    /// Tokens and message counts per quarter-hour group; no model, session or cost dimension.
+    func quarterTotals(lower: Int64, upper: Int64) throws -> [QuarterTotal] {
+        try cached("""
+            SELECT ts_ms / 900000, SUM(input), SUM(output), SUM(cw5), SUM(cw1), SUM(cr), SUM(web), COUNT(*)
+            FROM msg WHERE ts_ms >= ?1 AND ts_ms < ?2 GROUP BY 1 ORDER BY 1
+            """) { statement in
+            bind(lower, 1, statement)
+            bind(upper, 2, statement)
+            var result: [QuarterTotal] = []
+            while true {
+                let step = sqlite3_step(statement)
+                if step == SQLITE_DONE { break }
+                guard step == SQLITE_ROW else { throw error("quarter totals", step) }
+                let (tokens, messages) = Self.quarterTotal(statement, offset: 1)
+                result.append(QuarterTotal(bucket: sqlite3_column_int64(statement, 0), tokens: tokens, messages: messages))
+            }
+            return result
+        }
+    }
+
+    func rangeTotals(lower: Int64, upper: Int64) throws -> (tokens: UsageTokens, messages: Int) {
+        try cached("""
+            SELECT 0, COALESCE(SUM(input), 0), COALESCE(SUM(output), 0), COALESCE(SUM(cw5), 0), COALESCE(SUM(cw1), 0),
+                   COALESCE(SUM(cr), 0), COALESCE(SUM(web), 0), COUNT(*)
+            FROM msg WHERE ts_ms >= ?1 AND ts_ms < ?2
+            """) { statement in
+            bind(lower, 1, statement)
+            bind(upper, 2, statement)
+            guard sqlite3_step(statement) == SQLITE_ROW else { throw error("range totals", sqlite3_errcode(handle)) }
+            let (tokens, messages) = Self.quarterTotal(statement, offset: 1)
+            return (tokens, messages)
+        }
+    }
+
+    func hasMessages() throws -> Bool {
+        try cached("SELECT EXISTS(SELECT 1 FROM msg)") { statement in
+            guard sqlite3_step(statement) == SQLITE_ROW else { throw error("has messages", sqlite3_errcode(handle)) }
+            return sqlite3_column_int(statement, 0) != 0
         }
     }
 

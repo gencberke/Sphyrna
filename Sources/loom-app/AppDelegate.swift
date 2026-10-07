@@ -393,7 +393,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return SessionRuntimeConfiguration(
             toolchains: toolchains, hookHelperPath: helpers.appendingPathComponent("loom-hook").path,
             socketDirectory: socketDirectory,
-            clientVersion: "loom-\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "dev")"
+            clientVersion: "loom-\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "dev")",
+            claudeProfileDirectory: evidenceClaudeProfile(root: root)
         )
     }
 

@@ -77,6 +77,7 @@ Collected from the stage plans; each has a recommendation and the default used m
 | DP-CP4-4 | Schema v3: Loom 0.1.0 cannot open a v3 catalog (no downgrade) | Accept (default) |
 | DP-CP4-5 | Pinned conversations (retention exception) need a Pin action | Small context-menu Pin (default: built in CP4-G) |
 | DP-CP4-6 | Usage index and deletion: the usage index keeps token counts of a deleted conversation without its id or file path | As recommended (default) |
+| DP-CP4-8 | Which Claude folder a delete targets when `CLAUDE_CONFIG_DIR` is set only in the login shell and no conversation was started in this app run | Today: Loom's own environment, else `~/.claude` (shown in the confirm sheet; no CLI run). Recommended: resolve the login-shell environment once in the background at launch when deletion is enabled |
 | DP-CP4-7 | A symlinked or other-device folder under the Claude data folder: today any such folder stops every deletion at "unreachable" (fail closed) | Block only when the folder can hold this conversation's files (its project folder or a top-level data folder); offer "remove from Loom only" after a confirmed failure (default meanwhile: fail closed) |
 
 Open decisions that stay with the user and are not touched by this run: O-01, O-06, O-07, O-08, O-10; O-03 uses the transparent header and O-12 uses A's values meanwhile.

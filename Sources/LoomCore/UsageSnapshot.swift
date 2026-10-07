@@ -67,6 +67,40 @@ public enum UsageRange: Sendable, Equatable {
     }
 }
 
+/// The unit of `ClaudeUsageIndex.buckets`: a local calendar hour or day in the caller's time zone.
+public enum UsageBucketSize: Sendable, Equatable {
+    case hour, day
+
+    var component: Calendar.Component { self == .hour ? .hour : .day }
+
+    /// The `count + 1` edges of `count` consecutive buckets, the last containing `now`; bucket `i`
+    /// is `[edges[i], edges[i + 1])`. Follows the calendar, so a day can be 23 or 25 hours long.
+    public func edges(count: Int, endingAt now: Date, calendar: Calendar) -> [Date] {
+        guard count > 0, let current = calendar.dateInterval(of: component, for: now) else { return [] }
+        var starts = [current.start]
+        while starts.count < count, let previous = calendar.dateInterval(of: component, for: starts[0].addingTimeInterval(-1)) {
+            starts.insert(previous.start, at: 0)
+        }
+        return starts + [current.end]
+    }
+}
+
+/// Token and message totals of one bucket (a bar of the usage chart). Equal to the snapshot of
+/// the bucket's own interval.
+public struct UsageBucket: Sendable, Equatable {
+    public let start: Date
+    public let end: Date
+    public internal(set) var tokens: UsageTokens
+    public internal(set) var messageCount: Int
+
+    public init(start: Date, end: Date, tokens: UsageTokens, messageCount: Int) {
+        self.start = start
+        self.end = end
+        self.tokens = tokens
+        self.messageCount = messageCount
+    }
+}
+
 /// One model's totals. `model` is the canonical price-table id when the model
 /// is known and the raw transcript id otherwise; unknown models keep their
 /// tokens but have no cost.

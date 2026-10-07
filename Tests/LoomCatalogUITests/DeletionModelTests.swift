@@ -432,7 +432,9 @@ struct DeletionModelTests {
                 },
                 hookHelperPath: binaries.appendingPathComponent("loom-hook").path,
                 socketDirectory: socketDirectory, homeDirectory: home.path,
-                claudeTemporaryRoot: temporary, forgetters: forgetters
+                claudeTemporaryRoot: temporary, forgetters: forgetters,
+                // Deletion finds the profile without the CLI; never the runner's own environment.
+                claudeProfileDirectory: profile, claudeEnvironment: [:]
             )
         )
         try await runtime.start()

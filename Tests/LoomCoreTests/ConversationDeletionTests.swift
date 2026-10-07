@@ -20,12 +20,17 @@ struct ConversationDeletionTests {
         let socketDirectory: URL
         var catalogURL: URL { root.appendingPathComponent("catalog.sqlite3") }
 
-        init() throws {
-            root = FileManager.default.temporaryDirectory
+        /// The folder that holds the profile; `root` itself unless the test wants a parent it can remove.
+        let profileParent: URL
+
+        init(profileUnder parent: String? = nil) throws {
+            let base = FileManager.default.temporaryDirectory
                 .appendingPathComponent("loom-cp4c-\(UUID().uuidString)", isDirectory: true)
+            root = base
             home = root.appendingPathComponent("home", isDirectory: true)
             state = root.appendingPathComponent("fake-state", isDirectory: true)
-            profile = root.appendingPathComponent("claude-config", isDirectory: true)
+            profileParent = parent.map { base.appendingPathComponent($0, isDirectory: true) } ?? base
+            profile = profileParent.appendingPathComponent("claude-config", isDirectory: true)
             temporary = root.appendingPathComponent("tmp-claude", isDirectory: true)
             socketDirectory = URL(fileURLWithPath: "/tmp/lr-\(UUID().uuidString.prefix(8))", isDirectory: true)
             for directory in [home, state, profile, temporary] {
@@ -98,7 +103,8 @@ struct ConversationDeletionTests {
     /// A runtime over `env`'s catalog. Calling it again for the same `env` is a new instance of
     /// the app: the catalog is reopened, the supervisor restores from it, nothing is shared.
     static func makeWorld(
-        _ env: Env, forgetters: ConversationForgetters = ConversationForgetters(), start: Bool = true
+        _ env: Env, forgetters: ConversationForgetters = ConversationForgetters(), start: Bool = true,
+        profileDirectory: URL? = nil
     ) async throws -> World {
         let catalog = try SessionCatalog(url: env.catalogURL)
         let supervisor = try await ProcessSupervisor.restoring(ledger: OwnershipLedger(), catalog: catalog)
@@ -125,7 +131,8 @@ struct ConversationDeletionTests {
                 hookHelperPath: RuntimeFixture.binaries.appendingPathComponent("loom-hook").path,
                 socketDirectory: env.socketDirectory, homeDirectory: env.home.path,
                 codexIdentityTimeout: 3,
-                claudeTemporaryRoot: env.temporary, forgetters: forgetters
+                claudeTemporaryRoot: env.temporary, forgetters: forgetters,
+                claudeProfileDirectory: profileDirectory ?? env.profile
             )
         )
         if start { try await runtime.start() }
@@ -685,6 +692,161 @@ struct ConversationDeletionTests {
         #expect(!env.exists("projects/p/\(Self.ids(victim)[1]).jsonl"))
         #expect(try await world.catalog.session(id: victim.id) != nil)
         #expect(FileManager.default.fileExists(atPath: moved.appendingPathComponent("\(Self.ids(victim)[1]).txt").path))
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    // MARK: OPT1 - retry can fix leftovers, a missing folder is not success, no CLI needed
+
+    /// A file of the conversation appears after `provider_data` (a run that moved to another card keeps
+    /// writing its debug log, or a start raced the request): verifying removes it in the same step.
+    @Test func aFileThatReappearsBeforeVerifyingIsRemovedWithinTheSameDeletion() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        let victim = try await Self.addConversation(world)
+        let providerID = try #require(victim.providerConversationID)
+        let counter = AttemptCounter()
+        await world.runtime.setDeletionFailpointForTesting { [env] state, phase in
+            guard state == .verifying, phase == .before, counter.next() == 1 else { return }
+            try env.write("debug/\(providerID).txt", "written again")
+        }
+        #expect(try await world.runtime.deleteConversation(id: victim.id) == .deleted)
+        #expect(try env.snapshot(of: Self.ids(victim)).isEmpty)
+        #expect(try await world.catalog.pendingDeletions().isEmpty)
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    /// The same leftover while Claude still holds the conversation: the first attempt fails visibly at
+    /// `verifying`, and a retry (after the process is gone) completes instead of failing forever.
+    @Test func leftoversAtVerifyingFailVisiblyAndARetryCompletes() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        let victim = try await Self.addConversation(world)
+        let providerID = try #require(victim.providerConversationID)
+        let counter = AttemptCounter()
+        await world.runtime.setDeletionFailpointForTesting { [env] state, phase in
+            guard state == .verifying, phase == .before, counter.next() == 1 else { return }
+            try env.write("debug/\(providerID).txt", "written again")
+            // This test process stands in for a live Claude process that holds the conversation.
+            try env.write("sessions/\(getpid()).json", "{\"sessionId\":\"\(providerID)\",\"pid\":\(getpid())}")
+        }
+        guard case let .incomplete(pending) = try await world.runtime.deleteConversation(id: victim.id) else {
+            Issue.record("expected incomplete"); return
+        }
+        #expect(pending.state == .verifying)
+        #expect(pending.lastFailure == "live_session")
+        #expect(env.exists("debug/\(providerID).txt"))
+
+        try FileManager.default.removeItem(at: env.profile.appendingPathComponent("sessions/\(getpid()).json"))
+        #expect(try await world.runtime.retryDeletion(id: victim.id) == .deleted)
+        #expect(!env.exists("debug/\(providerID).txt"))
+        #expect(try await world.catalog.pendingDeletions().isEmpty)
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    /// A config folder that cannot be shown to be gone (its parent is missing: an unmounted volume)
+    /// is not a finished deletion. A folder that is gone while its parent exists is.
+    @Test(arguments: [CatalogDeletionState.providerData, .verifying])
+    func aMissingParentOfTheConfigFolderFailsTheStepAndARetryCompletes(state: CatalogDeletionState) async throws {
+        let env = try Env(profileUnder: "volume")
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        let victim = try await Self.addConversation(world)
+        let counter = AttemptCounter()
+        await world.runtime.setDeletionFailpointForTesting { [env] at, phase in
+            guard at == state, phase == .before, counter.next() == 1 else { return }
+            try FileManager.default.removeItem(at: env.profileParent)
+        }
+        guard case let .incomplete(pending) = try await world.runtime.deleteConversation(id: victim.id) else {
+            Issue.record("expected incomplete"); return
+        }
+        #expect(pending.state == state)
+        #expect(pending.lastFailure == "config_unavailable")
+        #expect(try await world.runtime.pendingDeletions().map(\.id) == [victim.id])
+
+        // The volume is back (its files are not): the retry now finds the folder and finishes.
+        try FileManager.default.createDirectory(at: env.profile, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        #expect(try await world.runtime.retryDeletion(id: victim.id) == .deleted)
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    @Test func aConfigFolderThatIsGoneWhileItsParentExistsHasNothingLeftToDelete() async throws {
+        let env = try Env(profileUnder: "volume")
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        let victim = try await Self.addConversation(world)
+        await world.runtime.setDeletionFailpointForTesting { [env] state, phase in
+            guard state == .providerData, phase == .before else { return }
+            try? FileManager.default.removeItem(at: env.profile)
+        }
+        #expect(try await world.runtime.deleteConversation(id: victim.id) == .deleted)
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    /// Finding the config folder must not run the Claude CLI: with Claude gone from PATH the
+    /// resolver fails, and preview and delete still work.
+    @Test func previewAndDeleteNeverResolveTheClaudeToolchain() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        world.toolchainSwitch.fail(with: LoomError.message("claude is not installed"))
+        let victim = try await Self.addConversation(world)
+
+        let preview = try await world.runtime.deletionPreview(id: victim.id)
+        #expect(preview.configDirectory == realPath(env.profile))
+        #expect(preview.fileCount == 8)   // per id (Loom's and Claude's): transcript, history folder, debug log, tier 2
+        #expect(try await world.runtime.deleteConversation(id: victim.id) == .deleted)
+        #expect(world.toolchainSwitch.calls == 0)
+        #expect(try env.snapshot(of: Self.ids(victim)).isEmpty)
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    @Test func withoutAnExplicitProfileTheLoomEnvironmentNamesTheFolder() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let catalog = try SessionCatalog(url: env.catalogURL)
+        let supervisor = try await ProcessSupervisor.restoring(ledger: OwnershipLedger(), catalog: catalog)
+        let toolchains = ToolchainSwitch()
+        let runtime = SessionRuntime(
+            supervisor: supervisor, catalog: catalog,
+            configuration: SessionRuntimeConfiguration(
+                toolchains: { _ in try toolchains.check(); throw LoomError.message("claude is not installed") },
+                hookHelperPath: "/usr/bin/true", socketDirectory: env.socketDirectory,
+                homeDirectory: env.home.path, claudeTemporaryRoot: env.temporary,
+                forgetters: ConversationForgetters(),
+                claudeEnvironment: ["CLAUDE_CONFIG_DIR": env.profile.path]
+            )
+        )
+        let session = ManagedSession(provider: .claude, providerConversationID: UUID().uuidString.lowercased(),
+                                     workingDirectory: env.home.path)
+        try await supervisor.createSession(session, projectID: nil)
+        try env.seed(Self.ids(session))
+        #expect(try await runtime.deletionPreview(id: session.id).configDirectory == realPath(env.profile))
+        #expect(try await runtime.deleteConversation(id: session.id) == .deleted)
+        #expect(toolchains.calls == 0)
+        #expect((await runtime.shutdown()).succeeded)
+    }
+
+    @Test func anUnusableConfigFolderIsAReadableRefusalNotARawError() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let missing = env.root.appendingPathComponent("not-mounted/claude-config", isDirectory: true)
+        let world = try await Self.makeWorld(env, profileDirectory: missing)
+        let victim = try await Self.addConversation(world, seed: false)
+        for attempt in 0..<2 {
+            do {
+                if attempt == 0 { _ = try await world.runtime.deletionPreview(id: victim.id) }
+                else { _ = try await world.runtime.deleteConversation(id: victim.id) }
+                Issue.record("expected a refusal")
+            } catch let error as SessionRuntimeError {
+                guard case let .deletionRefused(reason) = error else { throw error }
+                #expect(reason.contains("Claude data folder"))
+            }
+        }
+        #expect(try await world.catalog.pendingDeletions().isEmpty)
+        #expect(world.toolchainSwitch.calls == 0)
         #expect((await world.runtime.shutdown()).succeeded)
     }
 }

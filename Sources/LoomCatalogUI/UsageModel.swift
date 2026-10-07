@@ -8,6 +8,35 @@ public protocol UsageIndexing: Sendable {
     func refreshAll() async throws -> UsageScanReport
     /// Reads aggregates from the index's own database; never opens a transcript.
     func snapshot(range: UsageRange, now: Date, timeZone: TimeZone) async throws -> UsageSnapshot
+    /// The same numbers as `snapshot` without the activity window (a scan of the last week).
+    func summary(range: UsageRange, now: Date, timeZone: TimeZone) async throws -> UsageSnapshot
+    /// Totals of `count` consecutive local hours or days, the last containing `now`.
+    func buckets(size: UsageBucketSize, count: Int, endingAt now: Date, timeZone: TimeZone) async throws -> [UsageBucket]
+    /// Whether any usage is indexed at all.
+    func hasUsage() async throws -> Bool
+}
+
+/// What a stand-in without its own bucket query gets: the same answers from per-interval snapshots.
+extension UsageIndexing {
+    public func summary(range: UsageRange, now: Date, timeZone: TimeZone) async throws -> UsageSnapshot {
+        try await snapshot(range: range, now: now, timeZone: timeZone)
+    }
+
+    public func hasUsage() async throws -> Bool {
+        try await snapshot(range: .all, now: Date(), timeZone: .current).messageCount > 0
+    }
+
+    public func buckets(size: UsageBucketSize, count: Int, endingAt now: Date, timeZone: TimeZone) async throws -> [UsageBucket] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let edges = size.edges(count: count, endingAt: now, calendar: calendar)
+        var result: [UsageBucket] = []
+        for (start, end) in zip(edges, edges.dropFirst()) {
+            let part = try await snapshot(range: .interval(start: start, end: end), now: now, timeZone: timeZone)
+            result.append(UsageBucket(start: start, end: end, tokens: part.tokens, messageCount: part.messageCount))
+        }
+        return result
+    }
 }
 
 extension ClaudeUsageIndex: UsageIndexing {
@@ -222,12 +251,10 @@ public final class UsageModel {
 
     private func loadAfterScan() async throws {
         let now = clock()
-        let day = try await index.snapshot(range: .days(1), now: now, timeZone: timeZone)
+        let day = try await index.summary(range: .days(1), now: now, timeZone: timeZone)
         today = day
         hasHistory = day.messageCount > 0
-        if !hasHistory {
-            hasHistory = try await index.snapshot(range: .all, now: now, timeZone: timeZone).messageCount > 0
-        }
+        if !hasHistory { hasHistory = try await index.hasUsage() }
         reports = [:]
         let selected = period
         let built = try await buildReport(selected, now: now)
@@ -264,18 +291,12 @@ public final class UsageModel {
         return UsageReport(period: period, snapshot: snapshot, bars: bars, cells: Array(hours.suffix(5)))
     }
 
-    /// One query per hour: the index keeps quarter-hour buckets and no hourly API of its own.
+    /// One bucketed query for every hour bar (the index groups by quarter hour).
     private func hourlyBars(count: Int, now: Date) async throws -> [UsageBar] {
-        let calendar = calendar
-        let current = calendar.dateInterval(of: .hour, for: now)?.start ?? now
-        var bars: [UsageBar] = []
-        for offset in stride(from: count - 1, through: 0, by: -1) {
-            let start = calendar.date(byAdding: .hour, value: -offset, to: current) ?? current
-            let end = calendar.date(byAdding: .hour, value: 1, to: start) ?? start
-            let hour = try await index.snapshot(range: .interval(start: start, end: end), now: now, timeZone: timeZone)
-            bars.append(UsageBar(start: start, tokens: hour.tokens.total, isCurrent: offset == 0))
+        let hours = try await index.buckets(size: .hour, count: count, endingAt: now, timeZone: timeZone)
+        return hours.enumerated().map { offset, hour in
+            UsageBar(start: hour.start, tokens: hour.tokens.total, isCurrent: offset == hours.count - 1)
         }
-        return bars
     }
 
     private func dayBars(_ snapshot: UsageSnapshot, count: Int, now: Date) -> [UsageBar] {

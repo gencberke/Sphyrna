@@ -16,6 +16,13 @@ private actor IdleReliabilityGate {
 
 private final class LifecycleTestBundleAnchor: NSObject {}
 
+private final class FailureSwitch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var on = true
+    var isOn: Bool { lock.withLock { on } }
+    func turnOff() { lock.withLock { on = false } }
+}
+
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SessionLifecycleTests {
     private var childPath: String {
@@ -662,12 +669,46 @@ struct SessionLifecycleTests {
         #expect((await context.supervisor.shutdown()).succeeded)
     }
 
+    /// A deletion whose stop could not be verified keeps the conversation's input closed (contract
+    /// 8.1). An idle evaluation that also fails to stop must not reopen it.
+    @Test func anIdleEvaluationLeavesTheInputClosedThatADeletionClosed() async throws {
+        let context = try await makeContext(idleAfter: 1)
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        let id = UUID()
+        let launch = try await launchClaude(sessionID: id, conversationID: "A", mode: "stubborn", context: context)
+        _ = try await ready(launch.terminal)
+        let runID = try #require(launch.session.currentRun?.id)
+        try await makeClaudeQuiet(launchSessionID: id, runID: runID, conversationID: "A", adapter: context.claude)
+        try await context.lifecycle.captureProcessBaseline(sessionID: id)
+        try await context.catalog.markUsed(sessionID: id, at: Date().addingTimeInterval(-10), reactivate: true)
+        let failing = FailureSwitch()
+        try await context.supervisor.registerStopHooks(runID: runID, hooks: ManagedRunStopHooks(
+            prepare: { if failing.isOn { throw LoomError.message("provider work still running") } }, completed: {}
+        ))
+        let queue = TerminalInputQueue(endpoint: launch.terminal, onError: { _ in })
+        context.gate.register(runID: runID, queue: queue)
+        try await context.catalog.beginDeletion(
+            sessionID: id,
+            plan: CatalogDeletionPlan(provider: .claude, providerIDs: ["A"], configDirectory: nil, workingDirectory: nil))
+        context.gate.close(runID: runID, reason: "This conversation is being deleted")
+        #expect(!queue.enqueue(Array("typed before".utf8)))
+
+        let outcome = try await context.lifecycle.evaluateIdle(sessionID: id)
+        if case .transitioned = outcome { Issue.record("a conversation being deleted must not idle out") }
+        #expect(!queue.enqueue(Array("typed after".utf8)))
+        #expect(await context.supervisor.session(id: id)?.currentRun?.id == runID)
+        failing.turnOff()
+        #expect(try await context.supervisor.stop(sessionID: id, graceSeconds: 0.02).succeeded)
+        #expect((await context.supervisor.shutdown()).succeeded)
+    }
+
     private struct Context {
         let root: URL
         let catalog: SessionCatalog
         let supervisor: ProcessSupervisor
         let claude: ClaudeSessionAdapter
         let lifecycle: SessionLifecycleController
+        let gate: TerminalInputGate
     }
 
     private func makeContext(
@@ -682,6 +723,7 @@ struct SessionLifecycleTests {
             ledger: OwnershipLedger(),
             catalog: catalog
         )
+        let gate = TerminalInputGate()
         return Context(
             root: root, catalog: catalog, supervisor: supervisor,
             claude: ClaudeSessionAdapter(supervisor: supervisor),
@@ -691,8 +733,10 @@ struct SessionLifecycleTests {
                     idleAfter: idleAfter, staleAfter: staleAfter,
                     stopGraceSeconds: stopGrace
                 ),
+                inputGate: gate,
                 recheckSchedule: recheck
-            )
+            ),
+            gate: gate
         )
     }
 

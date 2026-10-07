@@ -623,4 +623,195 @@ import Testing
         #expect(report.bytesRead > 0) // the file was parsed again, not trusted
         #expect(try await second.all().tokens == UsageTokens(input: 12, output: 3))
     }
+
+    // MARK: OPT1 - bucketed bars, cheap summaries
+
+    @Test(arguments: ["UTC", "Europe/London", "Asia/Kolkata", "Asia/Kathmandu", "America/Los_Angeles"])
+    func hourAndDayBucketsEqualThePerIntervalSnapshots(zone: String) async throws {
+        let timeZone = try #require(TimeZone(identifier: zone))
+        let fixture = try UsageFixture()
+        // Spread over several local days, two models, around the end of British summer time
+        // (a 25-hour local day on 2026-10-25) and around fractional-hour zones.
+        var lines: [UsageLine] = []
+        for step in 0..<400 {
+            let seconds = 1_792_800_000 + step * 4_321 // from 2026-10-24T00:00Z, about 20 days
+            lines.append(UsageLine(
+                id: "m\(step)", request: "r\(step)", session: "s\(step % 5)",
+                model: step % 3 == 0 ? "claude-sonnet-4-6" : "claude-haiku-4-5-20251001",
+                ts: ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: Double(seconds))),
+                input: step + 1, output: step % 7, cacheRead: step % 11))
+        }
+        try fixture.write(lines.map(\.json), to: fixture.transcript())
+        let index = fixture.makeIndex()
+        try await index.refresh()
+        let now = Date(timeIntervalSince1970: 1_792_800_000 + 14 * 86_400 + 3_700)
+
+        for (size, count) in [(UsageBucketSize.hour, 24), (.hour, 5), (.hour, 60), (.day, 7), (.day, 14)] {
+            let buckets = try await index.buckets(size: size, count: count, endingAt: now, timeZone: timeZone)
+            #expect(buckets.count == count)
+            #expect(buckets.last.map { $0.start <= now && now < $0.end } == true)
+            for (before, after) in zip(buckets, buckets.dropFirst()) { #expect(before.end == after.start) }
+            for bucket in buckets {
+                let snapshot = try await index.snapshot(
+                    range: .interval(start: bucket.start, end: bucket.end), now: now, timeZone: timeZone)
+                #expect(bucket.tokens == snapshot.tokens)
+                #expect(bucket.messageCount == snapshot.messageCount)
+            }
+            #expect(buckets.map(\.tokens.total).reduce(0, +) > 0)
+        }
+    }
+
+    /// Monrovia kept a 44 min 30 s offset until January 1972: hour edges that miss the quarter-hour groups
+    /// are summed per bucket and still equal the interval snapshots.
+    @Test func bucketsOfAZoneWithAnOddOffsetStillEqualTheIntervalSnapshots() async throws {
+        let timeZone = try #require(TimeZone(identifier: "Africa/Monrovia"))
+        let fixture = try UsageFixture()
+        let base = UsageFixture.date("1971-06-01T10:00:00Z")
+        let lines = (0..<40).map { step in
+            UsageLine(id: "m\(step)", request: "r\(step)",
+                      ts: ISO8601DateFormatter().string(from: base.addingTimeInterval(Double(step) * 1_000)),
+                      input: step + 1).json
+        }
+        try fixture.write(lines, to: fixture.transcript())
+        let index = fixture.makeIndex(coldStartWindow: 100 * 365 * 86_400)
+        try await index.refresh()
+        let now = base.addingTimeInterval(45_000)
+        let buckets = try await index.buckets(size: .hour, count: 20, endingAt: now, timeZone: timeZone)
+        let inputs: [Int64] = buckets.map { $0.tokens.input }
+        #expect(inputs.reduce(0, +) == 820)   // 1 + 2 + ... + 40
+        for bucket in buckets {
+            let snapshot = try await index.snapshot(range: .interval(start: bucket.start, end: bucket.end), now: now, timeZone: timeZone)
+            #expect(bucket.tokens == snapshot.tokens)
+            #expect(bucket.messageCount == snapshot.messageCount)
+        }
+    }
+
+    @Test func aSummaryHasTheSameNumbersAsASnapshotWithoutTheActivityWindow() async throws {
+        let fixture = try UsageFixture()
+        try fixture.write(json(
+            UsageLine(id: "a", request: "ra", ts: "2026-10-07T11:00:00.000Z", input: 5, output: 1),
+            UsageLine(id: "b", request: "rb", ts: "2026-10-06T08:00:00.000Z", input: 7, output: 2)),
+            to: fixture.transcript())
+        let index = fixture.makeIndex()
+        try await index.refresh()
+        let now = UsageFixture.now
+        for range in [UsageRange.days(1), .days(7), .all, .last24Hours] {
+            let full = try await index.snapshot(range: range, now: now, timeZone: UsageFixture.utc)
+            let summary = try await index.summary(range: range, now: now, timeZone: UsageFixture.utc)
+            #expect(full.activityWindow != nil)
+            #expect(summary.activityWindow == nil)
+            #expect(summary == UsageSnapshot(
+                provider: full.provider, asOf: full.asOf, priceTableAsOf: full.priceTableAsOf, range: full.range,
+                tokens: full.tokens, estimatedCostUSD: full.estimatedCostUSD, unknownModels: full.unknownModels,
+                messageCount: full.messageCount, sessionCount: full.sessionCount, days: full.days,
+                models: full.models, activityWindow: nil))
+        }
+    }
+
+    @Test func hasUsageIsAnExistenceCheck() async throws {
+        let fixture = try UsageFixture()
+        let index = fixture.makeIndex()
+        try await index.refresh()
+        #expect(try await index.hasUsage() == false)
+        try fixture.write(json(UsageLine(input: 1)), to: fixture.transcript())
+        try await index.refresh()
+        #expect(try await index.hasUsage() == true)
+    }
+
+    // MARK: OPT1 - forget keeps no ids
+
+    private func occurrences(of text: String, in fixture: UsageFixture) -> Int {
+        var count = 0
+        for file in [fixture.databaseURL, URL(fileURLWithPath: fixture.databaseURL.path + "-wal")] {
+            var data = (try? Data(contentsOf: file)) ?? Data()
+            while let range = data.range(of: Data(text.utf8)) {
+                count += 1
+                data = data.subdata(in: range.upperBound..<data.count)
+            }
+        }
+        return count
+    }
+
+    @Test func aForgottenSessionLeavesNoIdBytesInTheIndexFiles() async throws {
+        let fixture = try UsageFixture()
+        let doomed = "doomed-\(UUID().uuidString.lowercased())"
+        let kept = "kept-\(UUID().uuidString.lowercased())"
+        let doomedURL = fixture.transcript(project: "-tmp-doomedproject", session: doomed)
+        try fixture.write(json(UsageLine(id: "g1", request: "rg1", session: doomed, input: 40, output: 2)), to: doomedURL)
+        try fixture.write(json(UsageLine(id: "g2", request: "rg2", session: doomed, input: 4, sidechain: true)),
+                          to: fixture.subagent(project: "-tmp-doomedproject", session: doomed))
+        try fixture.write(json(UsageLine(id: "k1", request: "rk1", session: kept, input: 6, output: 1)),
+                          to: fixture.transcript(session: kept))
+        for filler in 0..<150 { // spread pages and give the file some size
+            try fixture.write(json(UsageLine(id: "f\(filler)", request: "rf\(filler)", session: "filler-\(filler)", input: 1)),
+                              to: fixture.transcript(session: "filler-\(filler)"))
+        }
+        let index = fixture.makeIndex()
+        try await index.refresh()
+        // The probe has power: both ids are on disk before the forget.
+        #expect(occurrences(of: doomed, in: fixture) > 0)
+        #expect(occurrences(of: kept, in: fixture) > 0)
+        let before = try await index.all()
+
+        // The app registers the Loom id and the provider id as they are; case must not matter.
+        let unlinked = try await index.forget(sessionIDs: [doomed.uppercased()])
+        #expect(unlinked == 2)
+        #expect(occurrences(of: doomed, in: fixture) == 0)
+        #expect(occurrences(of: doomed.uppercased(), in: fixture) == 0)
+        #expect(occurrences(of: "doomedproject", in: fixture) == 0)   // the encoded path of its files
+        #expect(occurrences(of: kept, in: fixture) > 0)               // another session is untouched
+        #expect((try? Data(contentsOf: URL(fileURLWithPath: fixture.databaseURL.path + "-wal")))?.isEmpty ?? true)
+        let after = try await index.all()
+        #expect(after.tokens == before.tokens)
+        #expect(after.messageCount == before.messageCount)
+        #expect(after.sessionCount == before.sessionCount - 1)
+
+        // The transcript is still on disk and grows: it is read again but not linked again.
+        try fixture.append(json(UsageLine(id: "g3", request: "rg3", session: doomed, input: 1)), to: doomedURL)
+        try await index.refresh()
+        let grown = try await index.all()
+        #expect(grown.tokens.input == before.tokens.input + 1)
+        #expect(grown.sessionCount == after.sessionCount)
+        // A new instance still knows (the guard is stored, as a digest).
+        let second = fixture.makeIndex()
+        try fixture.append(json(UsageLine(id: "g4", request: "rg4", session: doomed, input: 1)), to: doomedURL)
+        try await second.refresh()
+        let again = try await second.all()
+        #expect(again.tokens.input == before.tokens.input + 2)
+        #expect(again.sessionCount == after.sessionCount)
+    }
+
+    /// A schema 1 index as the previous build wrote it: forgotten ids in clear text and the session's
+    /// symbol row still there. Opening it converts the guard to digests and removes both.
+    @Test func aSchemaOneIndexLosesItsClearTextForgottenIdsWithoutLosingHistory() async throws {
+        let fixture = try UsageFixture()
+        let old = "old-gone-session"
+        let url = fixture.transcript(session: old)
+        try fixture.write(json(UsageLine(id: "o1", request: "ro1", session: old, input: 9)), to: url)
+        try fixture.write(json(UsageLine(id: "k1", request: "rk1", session: "kept", input: 3)), to: fixture.transcript(session: "kept"))
+        do { try await fixture.makeIndex().refresh() }   // released again: its connection closes
+
+        // Rewrite the database as schema 1 with the old forget applied: session link gone from
+        // the messages, the id in `forgotten` (three case variants) and in `symbol`.
+        var connection: OpaquePointer?
+        #expect(sqlite3_open(fixture.databaseURL.path, &connection) == SQLITE_OK)
+        func run(_ sql: String) { #expect(sqlite3_exec(connection, sql, nil, nil, nil) == SQLITE_OK, "\(sql)") }
+        run("UPDATE msg SET session = NULL WHERE session = (SELECT id FROM symbol WHERE text = '\(old)')")
+        run("DROP TABLE forgotten")
+        run("CREATE TABLE forgotten (session TEXT PRIMARY KEY) WITHOUT ROWID")
+        for variant in [old, old.uppercased()] { run("INSERT INTO forgotten(session) VALUES ('\(variant)')") }
+        run("PRAGMA user_version = 1")
+        sqlite3_close(connection)
+        #expect(occurrences(of: old, in: fixture) > 0)
+
+        let second = fixture.makeIndex()
+        _ = try await second.all()   // opens (and converts) the file; nothing is read from transcripts yet
+        #expect(occurrences(of: old, in: fixture) == 0)
+        #expect(occurrences(of: old.uppercased(), in: fixture) == 0)
+        try fixture.append(json(UsageLine(id: "o2", request: "ro2", session: old, input: 1)), to: url)
+        try await second.refresh()
+        let snapshot = try await second.all()
+        #expect(snapshot.tokens.input == 13)
+        #expect(snapshot.sessionCount == 1)   // only "kept"; the old session is not linked again
+    }
 }

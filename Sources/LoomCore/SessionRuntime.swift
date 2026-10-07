@@ -24,6 +24,14 @@ public struct SessionRuntimeConfiguration: Sendable {
     /// for it (usage index, tabs). Shared by default so the app can register before the
     /// runtime exists; tests pass their own.
     public var forgetters: ConversationForgetters
+    /// The Claude profile folder an acceptance run was given (`--claude-config`, or the isolated
+    /// profile of a fake-provider run); nil in a normal run. Deletion finds the config folder
+    /// without running the Claude CLI: this folder, else the resolved toolchain's profile when one
+    /// exists already, else `claudeEnvironment`, else `~/.claude` (`ClaudeProfileLayout`).
+    public var claudeProfileDirectory: URL?
+    /// `CLAUDE_CONFIG_DIR` is read from here when no toolchain has been resolved yet: Loom's own
+    /// environment, the same rule the usage index follows.
+    public var claudeEnvironment: [String: String]
 
     public init(
         toolchains: @escaping ProviderToolchainResolver, hookHelperPath: String,
@@ -33,7 +41,9 @@ public struct SessionRuntimeConfiguration: Sendable {
         codexIdentityTimeout: TimeInterval = 10, codexServerStartupTimeout: TimeInterval = 8,
         resumeDiagnosticsWindow: TimeInterval = 15,
         claudeTemporaryRoot: URL? = ClaudeDataInventory.defaultTemporaryRoot,
-        forgetters: ConversationForgetters = .shared
+        forgetters: ConversationForgetters = .shared,
+        claudeProfileDirectory: URL? = nil,
+        claudeEnvironment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.toolchains = toolchains
         self.hookHelperPath = hookHelperPath
@@ -46,6 +56,8 @@ public struct SessionRuntimeConfiguration: Sendable {
         self.resumeDiagnosticsWindow = resumeDiagnosticsWindow
         self.claudeTemporaryRoot = claudeTemporaryRoot
         self.forgetters = forgetters
+        self.claudeProfileDirectory = claudeProfileDirectory
+        self.claudeEnvironment = claudeEnvironment
     }
 }
 
@@ -422,10 +434,21 @@ public actor SessionRuntime {
             throw SessionRuntimeError.sessionNotFound(sessionID)
         }
         guard let run = session.currentRun else { throw SessionRuntimeError.notRunning(sessionID) }
+        let previousCard = runs[run.id]?.activeSession
         stopRequestedRuns.insert(run.id)
         runs[run.id]?.activeSession = sessionID
         let server = runs[run.id]?.server
-        var report = try await supervisor.stop(sessionID: sessionID)
+        var report: SessionStopReport
+        do { report = try await supervisor.stop(sessionID: sessionID) }
+        catch SessionManagementError.sessionNotRunning {
+            // The run exited, or `/clear` moved it to another card, between the read above and the
+            // stop: nothing of this card was stopped, and a run that still lives is not Loom's stop.
+            if await supervisor.runContext(runID: run.id) != nil {
+                stopRequestedRuns.remove(run.id)
+                if let previousCard { runs[run.id]?.activeSession = previousCard }
+            }
+            throw SessionRuntimeError.notRunning(sessionID)
+        }
         await reconcileEnded()
         // The conversation's own app-server is part of its stop: the TUI went
         // first (so the provider stop hooks had a server), the server and its
@@ -513,6 +536,19 @@ public actor SessionRuntime {
               isDirectory.boolValue else {
             throw SessionRuntimeError.missingDirectory(path)
         }
+    }
+
+    /// Where Claude keeps this profile's files, found without running the CLI (a deletion must
+    /// work with Claude removed from PATH): the explicit profile folder, else the resolved
+    /// toolchain's when one exists already, else `CLAUDE_CONFIG_DIR` from its captured environment
+    /// or from Loom's own, else `~/.claude`; the same rule as the usage index.
+    func claudeConfigDirectory() -> URL {
+        let resolved = toolchains[.claude]
+        return ClaudeProfileLayout(
+            profileDirectory: configuration.claudeProfileDirectory ?? resolved?.profileDirectory,
+            environment: resolved?.environment ?? configuration.claudeEnvironment,
+            home: URL(fileURLWithPath: configuration.homeDirectory, isDirectory: true)
+        ).configDirectory
     }
 
     /// Resolved once per provider after it succeeds; a failure is retried on

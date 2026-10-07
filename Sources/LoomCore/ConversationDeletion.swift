@@ -196,7 +196,13 @@ extension SessionRuntime {
                 )
             }
         }
-        let configDirectory = ClaudeProfileLayout(toolchain: try await toolchain(for: .claude)).configDirectory
+        let configDirectory = claudeConfigDirectory()
+        switch Self.configFolderState(configDirectory.path) {
+        case .present: break
+        case .absent: throw SessionRuntimeError.deletionRefused("The Claude data folder was not found")
+        case .unavailable:
+            throw SessionRuntimeError.deletionRefused("The Claude data folder is not available (is its volume mounted?)")
+        }
         let temporaryRoot = configuration.claudeTemporaryRoot
         let ids = Self.fileIDs(providerIDs)
         let plan: DeletionPlan
@@ -216,6 +222,20 @@ extension SessionRuntime {
     /// Provider ids that name files: only a UUID can; anything else has nothing to claim.
     private static func fileIDs(_ providerIDs: [String]) -> [String] {
         providerIDs.filter { (try? ClaudeDataFiles.normalize([$0])) != nil }
+    }
+
+    enum ConfigFolderState: Equatable { case present, absent, unavailable }
+
+    /// A folder counts as absent only when `lstat` says it does not exist while its parent does:
+    /// the same answer comes from an unmounted volume or a folder that cannot be searched, and
+    /// neither is a folder with nothing left in it.
+    static func configFolderState(_ path: String) -> ConfigFolderState {
+        var info = stat()
+        if lstat(path, &info) == 0 { return .present }
+        guard errno == ENOENT else { return .unavailable }
+        let parent = (path as NSString).deletingLastPathComponent
+        guard stat(parent, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { return .unavailable }
+        return .absent
     }
 
     private static func reason(for error: Error) -> String {
@@ -296,7 +316,7 @@ extension SessionRuntime {
         inputGate.close(runID: run.id, reason: "This conversation is being deleted")
         let report: SessionStopReport
         do { report = try await stopConversation(sessionID: id) }
-        catch SessionRuntimeError.notRunning { return }
+        catch SessionRuntimeError.notRunning { return }   // exited or moved to another card meanwhile
         catch { throw DeletionStepFailure("stop_failed") }
         guard report.succeeded else { throw DeletionStepFailure("stop_unverified") }
     }
@@ -305,15 +325,21 @@ extension SessionRuntime {
         guard record.plan.provider == .claude, let directory = record.plan.configDirectory else {
             throw DeletionStepFailure("unsupported_provider")
         }
-        // A config folder that is gone has nothing left to claim.
-        guard FileManager.default.fileExists(atPath: directory) else { return }
+        switch Self.configFolderState(directory) {
+        case .absent: return   // a folder that is gone has nothing left to claim
+        case .unavailable: throw DeletionStepFailure("config_unavailable")
+        case .present: try await removeFiles(of: record, in: directory)
+        }
+    }
+
+    /// Plans again now, with the live-process check (the files change between the request and a
+    /// retry, a restart or a late write, and the record keeps no file list), and removes what is there.
+    private func removeFiles(of record: CatalogDeletion, in directory: String) async throws {
         let ids = Self.fileIDs(record.plan.providerIDs)
         let configDirectory = URL(fileURLWithPath: directory, isDirectory: true)
         let temporaryRoot = configuration.claudeTemporaryRoot
         let outcome: Result<(DeletionResult, [String]), Error> = await Task.detached {
             Result {
-                // Planned again now, with the live-process check: the files change between the
-                // request and a retry (or a restart), and the record keeps no file list.
                 let plan = try ClaudeDataInventory.plan(
                     sessionIDs: ids, configDirectory: configDirectory, temporaryRoot: temporaryRoot
                 )
@@ -356,17 +382,21 @@ extension SessionRuntime {
         do { try await supervisor.discardSession(id, providerIDs: providerIDs) }
         catch { throw DeletionStepFailure("still_running") }
         await claudeAdapter.forget(sessionID: id)
-        if let directory = record.plan.configDirectory, FileManager.default.fileExists(atPath: directory) {
-            let ids = Self.fileIDs(providerIDs)
-            let configDirectory = URL(fileURLWithPath: directory, isDirectory: true)
-            let temporaryRoot = configuration.claudeTemporaryRoot
-            let leftovers = await Task.detached {
-                Result { try ClaudeDataDeleter.verify(sessionIDs: ids, configDirectory: configDirectory, temporaryRoot: temporaryRoot) }
-            }.value
-            switch leftovers {
-            case let .success(items):
-                if let first = items.first { throw DeletionStepFailure("leftover_files", file: first.relativePath) }
-            case .failure: throw DeletionStepFailure("verify_failed")
+        if let directory = record.plan.configDirectory {
+            switch Self.configFolderState(directory) {
+            case .absent: break
+            case .unavailable: throw DeletionStepFailure("config_unavailable")
+            case .present:
+                var leftovers = try await remainingFiles(of: providerIDs, in: directory)
+                if !leftovers.isEmpty {
+                    // Something wrote again after the files were removed (a run that moved to another
+                    // card by `/clear` keeps its debug log, or a start raced the request): remove it
+                    // now and look once more. A process that still holds the conversation fails this
+                    // step visibly (`live_session`) and a retry resumes here.
+                    try await removeFiles(of: record, in: directory)
+                    leftovers = try await remainingFiles(of: providerIDs, in: directory)
+                }
+                if let first = leftovers.first { throw DeletionStepFailure("leftover_files", file: first.relativePath) }
             }
         }
         for forgetter in configuration.forgetters.registered {
@@ -377,5 +407,15 @@ extension SessionRuntime {
         // that could still be racing the run's end.
         await supervisor.events.forget(sessionID: id)
         try await catalog.finishDeletion(sessionID: id)
+    }
+
+    private func remainingFiles(of providerIDs: [String], in directory: String) async throws -> [DeletionPlan.Item] {
+        let ids = Self.fileIDs(providerIDs)
+        let configDirectory = URL(fileURLWithPath: directory, isDirectory: true)
+        let temporaryRoot = configuration.claudeTemporaryRoot
+        let result = await Task.detached {
+            Result { try ClaudeDataDeleter.verify(sessionIDs: ids, configDirectory: configDirectory, temporaryRoot: temporaryRoot) }
+        }.value
+        do { return try result.get() } catch { throw DeletionStepFailure("verify_failed") }
     }
 }
