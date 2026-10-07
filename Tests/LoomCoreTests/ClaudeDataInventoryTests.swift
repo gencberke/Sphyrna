@@ -280,6 +280,69 @@ struct ClaudeDataInventoryTests {
         #expect(ClaudeDataDeleter.execute(try plan(fixture)).isComplete)
     }
 
+    /// `procStart` exactly as Claude writes it (UTC `ps lstart`) for this very process.
+    private func ownProcStart() throws -> String {
+        let started = try #require(ProcessTable.record(pid: getpid())).identity.startSeconds
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.timeZone = TimeZone(secondsFromGMT: 0)
+        format.dateFormat = "EEE MMM d HH:mm:ss yyyy"
+        return format.string(from: Date(timeIntervalSince1970: TimeInterval(started)))
+    }
+
+    @Test func aSessionFileWhoseProcStartMatchesTheRunningProcessIsLive() throws {
+        let fixture = try Fixture()
+        try fixture.populate()
+        try sessionFile(fixture, pid: getpid(), id: Self.a, procStart: try ownProcStart())
+        #expect(throws: ClaudeDataError.liveSession(Self.a)) { try plan(fixture) }
+        // The dry run for the confirm dialog may look at a conversation that is still running.
+        let preview = try ClaudeDataInventory.plan(sessionIDs: [Self.a], configDirectory: fixture.config,
+                                                   temporaryRoot: nil, ignoringLiveSessions: true)
+        #expect(!preview.items.isEmpty)
+        // Execution still refuses, and nothing is removed.
+        let result = ClaudeDataDeleter.execute(preview)
+        #expect(result.refusal == .liveSession(Self.a))
+        #expect(fixture.exists("projects/p/\(Self.a).jsonl"))
+    }
+
+    @Test func aBooleanPidIsNotPidOneAndTheFileNameDecides() throws {
+        let fixture = try Fixture()
+        try fixture.populate()
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try child.run()
+        child.waitUntilExit()
+        // `"pid": true` read as an NSNumber is 1 (launchd, always alive); the name is a dead pid.
+        try fixture.write("sessions/\(child.processIdentifier).json",
+                          "{\"pid\":true,\"sessionId\":\"\(Self.a)\",\"kind\":\"interactive\"}")
+        #expect(try plan(fixture).items.contains { $0.relativePath == "projects/p/\(Self.a).jsonl" })
+        // The same boolean in a file named after a live pid still counts as live.
+        try fixture.write("sessions/\(getpid()).json",
+                          "{\"pid\":true,\"sessionId\":\"\(Self.a)\",\"kind\":\"interactive\"}")
+        #expect(throws: ClaudeDataError.liveSession(Self.a)) { try plan(fixture) }
+    }
+
+    @Test func foldersTheScanCannotEnterAreListedNotSkipped() throws {
+        let fixture = try Fixture()
+        try fixture.populate()
+        // populate() has `projects/s` as a link to a folder elsewhere.
+        #expect(try plan(fixture).unreachable == ["projects/s"])
+        // A whole data folder moved elsewhere and linked back, a typical way to save disk space.
+        try FileManager.default.removeItem(at: fixture.path("debug"))
+        try fixture.write("debug/\(Self.a).txt", "moved debug", under: fixture.outside)
+        try FileManager.default.createSymbolicLink(at: fixture.path("debug"),
+                                                   withDestinationURL: fixture.outside.appendingPathComponent("debug"))
+        let planned = try plan(fixture)
+        #expect(planned.unreachable == ["debug", "projects/s"])
+        #expect(!planned.items.contains { $0.relativePath.hasPrefix("debug/") })
+        // Nothing outside the config directory is touched by deleting what is reachable.
+        #expect(ClaudeDataDeleter.execute(planned).isComplete)
+        #expect(FileManager.default.fileExists(atPath: fixture.outside.appendingPathComponent("debug/\(Self.a).txt").path))
+        // A folder that is simply absent is not reported.
+        try FileManager.default.removeItem(at: fixture.path("uploads"))
+        #expect(try plan(fixture).unreachable == ["debug", "projects/s"])
+    }
+
     @Test func staleSessionFilesDoNotBlock() throws {
         let fixture = try Fixture()
         try fixture.populate()
@@ -349,7 +412,8 @@ struct ClaudeDataInventoryTests {
             item("projects/p/backup-\(Self.a).jsonl"),
         ]
         let tampered = DeletionPlan(sessionIDs: real.sessionIDs, configDirectory: real.configDirectory,
-                                    temporaryRoot: real.temporaryRoot, items: forged, temporaryItems: [], residual: [])
+                                    temporaryRoot: real.temporaryRoot, items: forged, temporaryItems: [], residual: [],
+                                    unreachable: [])
         let before = try fixture.snapshot()
         let result = ClaudeDataDeleter.execute(tampered)
         #expect(result.entries.count == forged.count)

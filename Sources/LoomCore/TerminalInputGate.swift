@@ -38,6 +38,11 @@ public final class TerminalInputGate: @unchecked Sendable {
         }
     }
 
+    /// Refuses all later input of the run, busy or not (deletion of its conversation).
+    public func close(runID: UUID, reason: String) {
+        lock.withLock { queues[runID] }?.close(reason: reason)
+    }
+
     public func lastInputDate(runID: UUID) -> Date? {
         lock.withLock { queues[runID] }?.lastAcceptedInput
     }

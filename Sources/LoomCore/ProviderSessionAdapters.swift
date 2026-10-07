@@ -89,6 +89,12 @@ public actor ClaudeSessionAdapter {
             change: .issue("Claude hook events were lost; state is unknown. Stop and resume this conversation to restore reliable tracking."))
     }
 
+    /// Drops what the adapter kept for a deleted conversation (its last status). Per-run state
+    /// (tracker, registry watch) already went with the run's end.
+    func forget(sessionID: UUID) {
+        lastStatuses[sessionID] = nil
+    }
+
     public func status(sessionID: UUID) async -> ClaudeSessionStatus? {
         if let runID = await supervisor.session(id: sessionID)?.currentRun?.id {
             var status = await trackers[runID]?.status() ?? ClaudeSessionStatus()
@@ -147,11 +153,16 @@ public actor ClaudeSessionAdapter {
             case "resume": transition = .resume
             default: transition = .automatic
             }
-            _ = try await supervisor.adoptConversation(
-                runID: envelope.managedRunID,
-                conversationID: event.providerSessionID,
-                transition: transition, at: receivedAt
-            )
+            do {
+                _ = try await supervisor.adoptConversation(
+                    runID: envelope.managedRunID,
+                    conversationID: event.providerSessionID,
+                    transition: transition, at: receivedAt
+                )
+            } catch SessionManagementError.conversationBeingDeleted {
+                // A deleted conversation never comes back; this is not an error to show.
+                return .staleRun
+            }
         }
         guard supervisor.providerWorkStateIsReliable(runID: envelope.managedRunID) else {
             await publishHookLoss(runID: envelope.managedRunID)

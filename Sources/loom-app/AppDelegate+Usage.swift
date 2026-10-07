@@ -13,6 +13,7 @@ extension AppDelegate {
         if !refused {
             let index = ClaudeUsageIndex(databaseURL: root.appendingPathComponent("usage-index.sqlite3"), profile: layout)
             usageModel = UsageModel(index: index)
+            ConversationForgetters.shared.register { _, ids in try await index.forget(sessionIDs: Array(Set(ids.flatMap { [$0, $0.lowercased(), $0.uppercased()] }))) }
         }
         usage = usageModel
         model.usage = usageModel

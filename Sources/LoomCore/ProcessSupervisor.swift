@@ -40,6 +40,10 @@ public actor ProcessSupervisor {
     var scopeRuns: [UInt64: Set<UUID>] = [:]
     let catalog: SessionCatalog?
     var sessions: [UUID: ManagedSession] = [:]
+    /// Provider conversation ids (lowercase) of conversations deleted in this process.
+    /// A late provider event naming one must not recreate the conversation; the set
+    /// lives as long as the supervisor and is bounded by what the user deleted.
+    var deletedProviderIDs: Set<String> = []
     private var internalSessionIDs: Set<UUID> = []
     var runtimes: [UUID: Runtime] = [:]
     var reservedSessions: Set<UUID> = []
@@ -138,6 +142,21 @@ public actor ProcessSupervisor {
         }
         sessions[sessionID] = nil
         internalSessionIDs.remove(sessionID)
+        lastStopReports[sessionID] = nil
+    }
+
+    /// Forgets a deleted conversation: its in-memory entry and last stop report go, and its
+    /// provider ids are fenced for the life of this supervisor (`deletedProviderIDs`). Refused
+    /// while it owns a run. Absent is not an error (a recovered deletion has no entry).
+    func discardSession(_ sessionID: UUID, providerIDs: [String]) throws {
+        if let session = sessions[sessionID], session.currentRun != nil || reservedSessions.contains(sessionID) {
+            throw SessionManagementError.sessionAlreadyRunning(sessionID)
+        }
+        guard !internalSessionIDs.contains(sessionID) else {
+            throw SessionManagementError.sessionNotFound(sessionID)
+        }
+        for id in providerIDs { deletedProviderIDs.insert(id.lowercased()) }
+        sessions[sessionID] = nil
         lastStopReports[sessionID] = nil
     }
 
@@ -274,6 +293,14 @@ public actor ProcessSupervisor {
         }
         reservedSessions.insert(sessionID)
         defer { reservedSessions.remove(sessionID) }
+        // A conversation being deleted never starts a process, not even one the catalog would
+        // refuse right after the spawn. Checked once the id is reserved, so a concurrent launch
+        // is rejected without waiting for the catalog.
+        if let catalog, !internalSessionIDs.contains(sessionID),
+           try await catalog.isDeletionPending(sessionID) {
+            throw SessionManagementError.deletionPending(sessionID)
+        }
+        guard !stopping else { throw SessionManagementError.shutdownStarted }
 
         let runID = requestedRunID ?? UUID()
         guard runtimes[runID] == nil else {
@@ -434,6 +461,15 @@ public actor ProcessSupervisor {
         }
         if current.providerConversationID == conversationID { return current.id }
         let provider = current.provider
+        // Neither a pending deletion nor one finished in this process may get a
+        // row back from a late event that names its provider conversation.
+        if deletedProviderIDs.contains(conversationID.lowercased()) {
+            throw SessionManagementError.conversationBeingDeleted(provider: provider)
+        }
+        if let catalog, try await catalog.isProviderIDPendingDeletion(conversationID) {
+            throw SessionManagementError.conversationBeingDeleted(provider: provider)
+        }
+        guard runtimes[runID] != nil else { throw SessionManagementError.runNotFound(runID) }
         if let existing = sessions.values.first(where: {
             $0.id != current.id && $0.provider == provider
                 && $0.providerConversationID == conversationID && $0.currentRun != nil

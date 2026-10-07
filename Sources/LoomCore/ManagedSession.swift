@@ -169,6 +169,10 @@ public enum SessionManagementError: Error, CustomStringConvertible, Equatable, S
     case conversationAlreadyRunning(provider: ManagedSession.Provider, conversationID: String)
     case invalidOwnershipMarkers(sessionID: UUID)
     case leaderIdentityUnavailable(Int32)
+    /// The conversation has a deletion record: no run may start or be adopted for it.
+    case deletionPending(UUID)
+    /// A provider conversation id that is being deleted (or was, in this process) must not come back.
+    case conversationBeingDeleted(provider: ManagedSession.Provider)
 
     public var description: String {
         switch self {
@@ -194,6 +198,10 @@ public enum SessionManagementError: Error, CustomStringConvertible, Equatable, S
             "Launch requires this supervisor and managed session's ownership markers: \(id)"
         case let .leaderIdentityUnavailable(pid):
             "Managed run leader identity unavailable: \(pid)"
+        case let .deletionPending(id):
+            "The conversation is being deleted: \(id)"
+        case let .conversationBeingDeleted(provider):
+            "A deleted \(provider.rawValue) conversation cannot be brought back"
         }
     }
 }

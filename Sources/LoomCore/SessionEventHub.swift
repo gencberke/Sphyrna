@@ -92,6 +92,12 @@ public enum SessionEventChange: Equatable, Sendable {
     /// is authoritative, and `catalogRevision` tells a consumer that skipped
     /// this frame that it must re-read what it shows.
     case catalogLifecycle(SessionLifecycle, count: Int)
+    /// A conversation was deleted completely (its record is finished). The frame names it in
+    /// `sessionID` but `sessions` no longer holds it: tabs, caches and lists drop it.
+    case conversationDeleted
+    /// A deletion stopped before it was complete; the conversation stays and the deletion
+    /// record (state, last failure) is the authority (`SessionRuntime.pendingDeletions`).
+    case deletionIncomplete
 }
 
 /// Each frame carries the latest state of every session. The stream retains one
@@ -170,7 +176,7 @@ public actor SessionEventHub {
         case let .unviewedCompletion(value): state.unviewedCompletion = value
         case let .issue(value): state.issue = value
         case let .userRequests(value): state.userRequests = value
-        case .catalogLifecycle: return
+        case .catalogLifecycle, .conversationDeleted, .deletionIncomplete: return
         }
         // A pure state event that changes nothing wakes nobody and does not
         // advance the sequence (consumers rely on contiguous sequences for the
@@ -194,6 +200,16 @@ public actor SessionEventHub {
         catalogRevision &+= 1
         sequence &+= 1
         yield(sessionID: nil, change: .catalogLifecycle(lifecycle, count: ids.count))
+    }
+
+    /// Announces the outcome of a deletion without keeping state for the conversation
+    /// (`.conversationDeleted` must not recreate the entry `forget` just dropped). The catalog
+    /// revision moves, so a consumer that skips this frame still re-reads what it shows.
+    public func publishDeletion(sessionID: UUID, change: SessionEventChange) {
+        guard change == .conversationDeleted || change == .deletionIncomplete else { return }
+        catalogRevision &+= 1
+        sequence &+= 1
+        yield(sessionID: sessionID, change: change)
     }
 
     private func yield(sessionID: UUID?, change: SessionEventChange) {

@@ -52,11 +52,11 @@ Declared in `Package.swift`; all tests use swift-testing (`@Test`). Product bund
 | Group | Files |
 |---|---|
 | Ownership and process | `ProcessSupervisor` (core plus `+Stop`, `+Shutdown`, `+Sampling`, `+Scopes`, `+EnvironmentJobs`, `+CatalogCommits`), `OwnershipLedger`, `ProcessTable`, `PTYProcess`, `EventDrivenPTYProcess`, `RunScope`, `PreviousRunRecovery`, `ShutdownReport`, `AppShutdownCoordinator` |
-| Runtime and lifecycle | `SessionRuntime` (core plus `+Claude`, `+Codex`), `SessionLifecycleController` (also defines `ProviderWorkState`), `ManagedSession`, `SessionEventHub`, `ProviderSessionAdapters` |
+| Runtime and lifecycle | `SessionRuntime` (core plus `+Claude`, `+Codex`), `ConversationDeletion` (`SessionRuntime` deletion flow, `ConversationForgetting`), `SessionLifecycleController` (also defines `ProviderWorkState`), `ManagedSession`, `SessionEventHub`, `ProviderSessionAdapters` |
 | Persistence | `SessionCatalog` (core plus `+Sessions`, `+Runs`, `+Projects`, `+Titles`, `+Paging`), `CatalogDatabase` (schema, migration, SQLite helpers) |
 | Terminal I/O | `TerminalEndpoint` (also `TerminalOutputSink`), `TerminalInputQueue`, `TerminalInputGate` |
 | Provider setup | `LaunchEnvironment`, `EnvironmentResolutionJob`, `ProviderToolchain`, `ProviderLaunchProfile`, `ProviderResume` |
-| Claude | `ClaudeHook` (server, client, `ClaudeHookStateTracker`), `ClaudeRegistry` |
+| Claude | `ClaudeHook` (server, client, `ClaudeHookStateTracker`), `ClaudeRegistry`, `ClaudeDataInventory` (planner and safe deleter of a session's files), `ClaudeProfileLayout`, `ClaudeUsageIndex` |
 | Codex (paused) | `CodexAppServer`, `CodexAppServerManager`, `CodexSessionCoordinator`, `CodexSessionState`, `CodexWireDiagnostics`, `CodexRoutingDiagnostics` |
 
 Roles: `SessionRuntime` is the one application runtime (UI sends intents only). `ProcessSupervisor` (actor) owns runs, scopes,
@@ -117,6 +117,31 @@ Engine limits live in `TerminalSurfaceLimits` (scrollback 2,000 lines, OSC 1 MiB
 freeze then kill forked scope members (launchd-spawned members are never signalled), ownership resample, `SessionStopReport`.
 A failed stop stays visible (`SessionViewState.stopFailure`, "Stop it again to retry") and is retried by stopping again.
 
+**Delete a conversation** (CP4-C, `ConversationDeletion.swift`; Claude only, Codex and synthetic rows are refused, D-28)
+```
+SessionRuntime.deletionPreview(id:)   dry run for the confirm dialog: file count, bytes, config dir, not removed, unreachable
+SessionRuntime.deleteConversation(id:) / retryDeletion(id:) / pendingDeletions()
+ request:  refuse Codex/synthetic, a start in progress, an id shared with another (non-deleting) conversation, an unsafe config dir;
+           ClaudeProfileLayout(toolchain:) -> ClaudeDataInventory.plan (live process ignored: the stop follows) -> beginDeletion
+ requested -> stopping      close the run's input (TerminalInputGate), stopConversation, report.succeeded required (a run that moved
+                            to another card by /clear needs no stop)
+           -> provider_data plan again WITH the live check, ClaudeDataDeleter.execute; any failed item, refusal or unreachable folder stays here
+           -> catalog       deleteSessionRows (+ WAL truncate)
+           -> verifying     no catalog row or reappeared provider id, supervisor.discardSession (+ deletedProviderIDs fence),
+                            ClaudeSessionAdapter.forget, ClaudeDataDeleter.verify finds nothing, every ConversationForgetting hook
+                            ran (usage index registers one in AppDelegate+Usage), SessionEventHub.forget, finishDeletion,
+                            frame `.conversationDeleted`
+```
+The record's state is the step in progress and is persisted before the step runs; a failed step records `step_failed`-style
+category plus file name on the same state (`PendingConversationDeletion.lastFailure`), publishes `.deletionIncomplete` and waits for
+a manual retry. `SessionRuntime.start` runs `recoverDeletions` in the background (no run of this process exists yet, so `stopping` resolves;
+`PreviousRunRecovery` runs concurrently in the app, so a process a crashed Loom left behind may still hold the files: it shows
+up as `live_session` and the record stays pending until a manual retry). Fences: `resumeConversation`, `ProcessSupervisor.launch` and the catalog (`markUsed`,
+`startRun`, `transitionRun`) refuse a pending id; `adoptConversation` refuses any provider id in `deletedProviderIDs` or in a
+`deletions` row (a late `SessionStart(resume)` gets `.staleRun`, no row is created); late hooks of the deleted run already get
+`.staleRun` because the run context is gone. Forget hooks are registered in `ConversationForgetters` (`SessionRuntimeConfiguration.forgetters`,
+default `.shared`); the tab and `CatalogModel` caches follow the `.conversationDeleted` frame (wired in CP4-D).
+
 **Quit**
 `applicationShouldTerminate` -> waits for `startupTask` -> `beginQuit` -> `AppShutdownCoordinator.requestQuit` (shutdown
 closure; `LoomCore`, state `idle/running/finished/failed`) -> `SessionRuntime.shutdown` (cancel Codex setup, stop lifecycle evaluation + hook server, tear down Codex servers,
@@ -176,6 +201,7 @@ Catalog schema v3 (CP4-B; `CatalogDatabase.swift` holds schema, migration and SQ
 - **No downgrade (DP-CP4-4).** Loom 0.1.0 (schema v2) refuses a v3 catalog through the existing `user_version > schemaVersion` guard (`unsupportedSchema`) and does not modify the file; there is no v3 to v2 path. Users who go back to 0.1.0 keep their catalog but cannot open it with that build.
 - **Deletion record.** `deletions(session_id, provider, provider_ids JSON, config_dir, working_directory, state, requested_at, updated_at, attempts, last_error)`, state one of `requested`, `stopping`, `provider_data`, `catalog`, `verifying`. No foreign key and no title or content; `last_error` is a category plus a file basename (`CatalogDeletionFailure`). API: `beginDeletion` (refuses a second record), `advanceDeletion` (same state records a retry, never backwards), `pendingDeletions`, `finishDeletion`. `deleteSessionRows` deletes identity changes and links of the conversation, repoints each run that started from it to its earliest remaining linked conversation (deleting the run when none remains), deletes the `sessions` row in the same transaction, then `wal_checkpoint(TRUNCATE)`; with `secure_delete = ON` no title bytes remain in `catalog.sqlite3` or `-wal` (trace test).
 - **Fences.** A conversation with a `deletions` row is excluded from `sessions()`, `sessionPage`, `sessionCounts`, `classifyStale` and `oldestStaleCandidate`, and `markUsed`, `startRun` and `transitionRun(toExistingSessionID:)` throw `deletionPending`. Direct lookups (`session(id:)`, `sessions(ids:)`) stay unfenced because the deleter needs the row.
+- **Deletion orchestration (CP4-C).** `isProviderIDShared` ignores a conversation that has its own `deletions` row (its data is going away too); `isProviderIDPendingDeletion(id)` answers whether any record lists the provider id (used by the late-event fence). `ClaudeDataInventory.plan` also returns `unreachable` (a link or other-device folder the scan cannot enter) so a deletion is never reported complete while one exists, and takes `ignoringLiveSessions` for the dry run; the deleter still refuses a live session. `sessions/<pid>.json` is parsed by the same helpers as the registry reader (`ClaudeRegistryFields`; a boolean `pid` is not a pid). Failure categories stored in `last_error`: `stop_failed`, `stop_unverified`, `live_session`, `unsafe_directory`, `partial_failure: <file>`, `unreachable_folder: <folder>`, `leftover_files: <file>`, `provider_id_reappeared`, `forget_hook_failed`, `still_running`, `step_failed`.
 - **Undecodable rows.** `sessions()`, `sessions(ids:)` and `sessionPage` skip and count a row with an unknown provider or malformed identity instead of failing the list (`SessionCatalog.skippedRowCount`, `CatalogPage.skippedRowCount`); such rows are never written or deleted.
 
 ## 6. Vendored SwiftTerm

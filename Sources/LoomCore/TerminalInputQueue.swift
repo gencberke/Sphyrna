@@ -104,6 +104,12 @@ public final class TerminalInputQueue: @unchecked Sendable {
         }
     }
 
+    /// Refuses all later input at once, whatever is queued (a deletion: the conversation is going
+    /// away, so nothing more may be typed). Bytes already accepted still drain. `reopen` undoes it.
+    public func close(reason: String) {
+        lock.withLock { closedReason = closedReason ?? reason }
+    }
+
     /// Wall-clock time of the last accepted input (scheduling).
     public var lastAcceptedInput: Date? { lock.withLock { lastAccepted } }
 

@@ -236,17 +236,33 @@ extension SessionCatalog {
     /// True when another conversation row uses `id` as its Loom id, its
     /// provider conversation id or in its identity changes. Compared
     /// case-insensitively (Claude writes uppercase Loom ids as file names).
+    /// A conversation that itself has a deletion record does not count: its
+    /// data is going away too, so a shared id is not a reason to keep the files.
     public func isProviderIDShared(_ id: String, excluding sessionID: UUID) throws -> Bool {
         try database.withStatement("""
-            SELECT 1 FROM sessions
-            WHERE id <> ?2 AND (lower(id) = lower(?1) OR lower(provider_conversation_id) = lower(?1))
+            SELECT 1 FROM sessions s
+            WHERE s.id <> ?2 AND (lower(s.id) = lower(?1) OR lower(s.provider_conversation_id) = lower(?1))
+              AND \(Self.notDeleting)
             UNION ALL
-            SELECT 1 FROM provider_identity_changes
-            WHERE session_id <> ?2 AND (lower(previous_id) = lower(?1) OR lower(new_id) = lower(?1))
+            SELECT 1 FROM provider_identity_changes c
+            WHERE c.session_id <> ?2 AND (lower(c.previous_id) = lower(?1) OR lower(c.new_id) = lower(?1))
+              AND NOT EXISTS (SELECT 1 FROM deletions d WHERE d.session_id = c.session_id)
             LIMIT 1
             """) { statement in
             try database.bind(id, at: 1, to: statement)
             try database.bind(sessionID.uuidString, at: 2, to: statement)
+            return sqlite3_step(statement) == SQLITE_ROW
+        }
+    }
+
+    /// True when any recorded deletion (whatever its state) lists `id` among its
+    /// provider ids. Late provider events must not recreate such a conversation,
+    /// including after its rows are gone and before the record is finished.
+    public func isProviderIDPendingDeletion(_ id: String) throws -> Bool {
+        try database.withStatement("""
+            SELECT 1 FROM deletions d, json_each(d.provider_ids) j WHERE lower(j.value) = lower(?) LIMIT 1
+            """) { statement in
+            try database.bind(id, at: 1, to: statement)
             return sqlite3_step(statement) == SQLITE_ROW
         }
     }

@@ -18,6 +18,12 @@ public struct SessionRuntimeConfiguration: Sendable {
     public var codexServerStartupTimeout: TimeInterval
     /// A resumed run that ends this quickly is checked for provider history errors.
     public var resumeDiagnosticsWindow: TimeInterval
+    /// Where a deletion also looks for Claude's temporary task output (tier 2); nil skips it.
+    public var claudeTemporaryRoot: URL?
+    /// Hooks the deletion of a conversation calls so other components drop what they keep
+    /// for it (usage index, tabs). Shared by default so the app can register before the
+    /// runtime exists; tests pass their own.
+    public var forgetters: ConversationForgetters
 
     public init(
         toolchains: @escaping ProviderToolchainResolver, hookHelperPath: String,
@@ -25,7 +31,9 @@ public struct SessionRuntimeConfiguration: Sendable {
         homeDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path,
         clientVersion: String = "loom", idlePolicy: SessionIdlePolicy = SessionIdlePolicy(),
         codexIdentityTimeout: TimeInterval = 10, codexServerStartupTimeout: TimeInterval = 8,
-        resumeDiagnosticsWindow: TimeInterval = 15
+        resumeDiagnosticsWindow: TimeInterval = 15,
+        claudeTemporaryRoot: URL? = ClaudeDataInventory.defaultTemporaryRoot,
+        forgetters: ConversationForgetters = .shared
     ) {
         self.toolchains = toolchains
         self.hookHelperPath = hookHelperPath
@@ -36,6 +44,8 @@ public struct SessionRuntimeConfiguration: Sendable {
         self.codexIdentityTimeout = codexIdentityTimeout
         self.codexServerStartupTimeout = codexServerStartupTimeout
         self.resumeDiagnosticsWindow = resumeDiagnosticsWindow
+        self.claudeTemporaryRoot = claudeTemporaryRoot
+        self.forgetters = forgetters
     }
 }
 
@@ -54,6 +64,13 @@ public enum SessionRuntimeError: Error, CustomStringConvertible, Equatable, Send
     case unsupportedProvider(ManagedSession.Provider)
     case unverifiedStop(UUID)
     case requestNotPending(String)
+    /// Deletion is refused for this conversation; the text says why (shown to the user).
+    case deletionRefused(String)
+    /// The conversation is being deleted: no start, resume, view or input until it finishes.
+    case deletionPending(UUID)
+    case deletionNotPending(UUID)
+    /// A deletion of this conversation is running right now.
+    case deletionInProgress(UUID)
 
     public var description: String {
         switch self {
@@ -83,6 +100,14 @@ public enum SessionRuntimeError: Error, CustomStringConvertible, Equatable, Send
             "The last stop of this conversation could not be verified: \(id)"
         case let .requestNotPending(id):
             "The provider request is no longer pending: \(id)"
+        case let .deletionRefused(reason):
+            "This conversation cannot be deleted: \(reason)"
+        case let .deletionPending(id):
+            "The conversation is being deleted: \(id)"
+        case let .deletionNotPending(id):
+            "No deletion is waiting for this conversation: \(id)"
+        case let .deletionInProgress(id):
+            "The conversation is already being deleted: \(id)"
         }
     }
 }
@@ -181,7 +206,7 @@ public actor SessionRuntime {
     private var toolchainWarnings: [String] = []
     var runs: [UUID: RunRecord] = [:]
     private var startingNew: Set<StartKey> = []
-    private var startingSessions: Set<UUID> = []
+    var startingSessions: Set<UUID> = []
     /// Runs Loom itself is stopping (user stop, undone launch): their exit is
     /// not a provider failure.
     var stopRequestedRuns: Set<UUID> = []
@@ -190,6 +215,16 @@ public actor SessionRuntime {
     var shuttingDown = false
     private var started = false
     private var observer: Task<Void, Never>?
+    /// Conversations whose deletion is executing in this process (one runner each).
+    var deletionsInFlight: Set<UUID> = []
+    var deletionRecovery: Task<Void, Never>?
+    /// Set when a deletion record could not be read at launch; recovery stopped loudly.
+    var deletionRecoveryIssue: String?
+    /// Test seam: called before and after each deletion step; a throw is that step's failure.
+    var deletionFailpoint: (@Sendable (CatalogDeletionState, DeletionFailpointPhase) throws -> Void)?
+    func setDeletionFailpointForTesting(
+        _ failpoint: (@Sendable (CatalogDeletionState, DeletionFailpointPhase) throws -> Void)?
+    ) { deletionFailpoint = failpoint }
 
     var hookServer: ClaudeHookServer?
     var hookConfiguration: ClaudeHookLaunchConfiguration?
@@ -235,6 +270,9 @@ public actor SessionRuntime {
             }
         }
         try await lifecycle.startAutomaticEvaluation()
+        // Interrupted deletions finish now: no run of this process exists yet, so a deletion
+        // that was stopping resolves. Failures stay on the records for a manual retry.
+        deletionRecovery = Task { [weak self] in await self?.recoverDeletions() }
     }
 
     public func environmentWarnings() -> [String] { toolchainWarnings }
@@ -329,6 +367,9 @@ public actor SessionRuntime {
             throw SessionRuntimeError.alreadyStarting(sessionID)
         }
         defer { startingSessions.remove(sessionID) }
+        guard !(try await catalog.isDeletionPending(sessionID)) else {
+            throw SessionRuntimeError.deletionPending(sessionID)
+        }
         guard let record = try await catalog.session(id: sessionID) else {
             throw SessionRuntimeError.sessionNotFound(sessionID)
         }
@@ -476,7 +517,7 @@ public actor SessionRuntime {
 
     /// Resolved once per provider after it succeeds; a failure is retried on
     /// the next attempt.
-    private func toolchain(for provider: ManagedSession.Provider) async throws -> ProviderToolchain {
+    func toolchain(for provider: ManagedSession.Provider) async throws -> ProviderToolchain {
         if let cached = toolchains[provider] { return cached }
         let value = try await configuration.toolchains(provider)
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }

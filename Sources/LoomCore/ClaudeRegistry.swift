@@ -63,18 +63,6 @@ struct ClaudeRegistryReader: Sendable {
                                nanoseconds: info.st_mtimespec.tv_nsec, size: Int64(info.st_size))
     }
 
-    // DateFormatter parsing is thread-safe once configured; the lock keeps the
-    // shared instance from ever being used concurrently anyway.
-    private static let procStartLock = NSLock()
-    nonisolated(unsafe) private static let procStartFormat: DateFormatter = {
-        let format = DateFormatter()
-        format.locale = Locale(identifier: "en_US_POSIX")
-        // Claude obtains procStart with LC_ALL=C, TZ=UTC ps lstart.
-        format.timeZone = TimeZone(secondsFromGMT: 0)
-        format.dateFormat = "EEE MMM d HH:mm:ss yyyy"
-        return format
-    }()
-
     func decode(_ data: Data, now: Date) -> ClaudeRegistryRead {
         guard data.count <= Self.maximumBytes,
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -87,10 +75,8 @@ struct ClaudeRegistryReader: Sendable {
               started >= Double(leader.startSeconds) * 1_000,
               started <= now.timeIntervalSince1970 * 1_000,
               let birth = object["procStart"] as? String else { return .unavailable }
-        Self.procStartLock.lock()
-        let parsed = Self.procStartFormat.date(from: birth)
-        Self.procStartLock.unlock()
-        guard let date = parsed, Int64(date.timeIntervalSince1970) == leader.startSeconds else { return .unavailable }
+        guard let date = ClaudeRegistryFields.processStart(birth),
+              Int64(date.timeIntervalSince1970) == leader.startSeconds else { return .unavailable }
         let status = object["status"] as? String
         guard object["status"] == nil || object["status"] is NSNull || status != nil else { return .unavailable }
         guard status == nil || ["idle", "busy", "waiting"].contains(status!) else { return .unavailable }
@@ -100,7 +86,34 @@ struct ClaudeRegistryReader: Sendable {
             status: status, statusUpdatedAt: updated))
     }
 
-    private func number(_ value: Any?) -> Double? {
+    private func number(_ value: Any?) -> Double? { ClaudeRegistryFields.number(value) }
+}
+
+/// Field parsing shared by everything that reads Claude's `sessions/<pid>.json`
+/// (the registry reader and the deletion inventory), so the two cannot disagree.
+enum ClaudeRegistryFields {
+    // DateFormatter parsing is thread-safe once configured; the lock keeps the
+    // shared instance from ever being used concurrently anyway.
+    private static let procStartLock = NSLock()
+    nonisolated(unsafe) private static let procStartFormat: DateFormatter = {
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        // Claude obtains procStart with LC_ALL=C, TZ=UTC ps lstart.
+        format.timeZone = TimeZone(secondsFromGMT: 0)
+        format.dateFormat = "EEE MMM d HH:mm:ss yyyy"
+        return format
+    }()
+
+    /// The process start time Claude recorded (`procStart`), nil when unreadable.
+    static func processStart(_ text: String) -> Date? {
+        procStartLock.lock()
+        defer { procStartLock.unlock() }
+        return procStartFormat.date(from: text)
+    }
+
+    /// A finite, non-negative JSON number. A boolean is not a number (NSNumber
+    /// would read `true` as 1, which is pid 1).
+    static func number(_ value: Any?) -> Double? {
         guard let value = value as? NSNumber, CFGetTypeID(value) != CFBooleanGetTypeID(),
               value.doubleValue.isFinite, value.doubleValue >= 0 else { return nil }
         return value.doubleValue

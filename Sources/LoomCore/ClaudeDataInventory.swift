@@ -42,6 +42,11 @@ public struct DeletionPlan: Sendable, Equatable {
     public let temporaryItems: [Item]
     /// Existing entries that deletion never touches, relative to the config directory.
     public let residual: [String]
+    /// Folders that may hold data of these sessions but cannot be entered: a symbolic
+    /// link or a mount point on another device, relative to the config directory.
+    /// Nothing inside them is planned, removed or verified, so a deletion that finds
+    /// one is not complete.
+    public let unreachable: [String]
     public var totalBytes: Int64 { (items + temporaryItems).reduce(0) { $0 + $1.byteSize } }
 }
 
@@ -72,16 +77,21 @@ public enum ClaudeDataInventory {
     public static var defaultTemporaryRoot: URL { URL(fileURLWithPath: "/private/tmp/claude-\(getuid())") }
 
     /// Throws for a non-UUID id, an unsafe config directory or a live session holding an id.
-    /// `temporaryRoot` nil skips tier 2.
+    /// `temporaryRoot` nil skips tier 2. `ignoringLiveSessions` makes a dry run possible while the
+    /// conversation is still running (the confirm dialog); `ClaudeDataDeleter.execute` still refuses.
     public static func plan(sessionIDs: [String], configDirectory: URL,
-                            temporaryRoot: URL? = defaultTemporaryRoot) throws -> DeletionPlan {
+                            temporaryRoot: URL? = defaultTemporaryRoot,
+                            ignoringLiveSessions: Bool = false) throws -> DeletionPlan {
         let ids = try ClaudeDataFiles.normalize(sessionIDs)
         let root = try ClaudeDataFiles.openRoot(configDirectory.path)
         defer { close(root.fd) }
-        if let live = try ClaudeDataFiles.liveSession(root: root.fd, ids: Set(ids)) { throw ClaudeDataError.liveSession(live) }
+        if !ignoringLiveSessions, let live = try ClaudeDataFiles.liveSession(root: root.fd, ids: Set(ids)) {
+            throw ClaudeDataError.liveSession(live)
+        }
         let scan = ClaudeDataFiles.scan(ids: Set(ids), config: root, temporaryRoot: temporaryRoot?.path)
         return DeletionPlan(sessionIDs: ids, configDirectory: root.path, temporaryRoot: scan.temporaryRoot,
-                            items: scan.items, temporaryItems: scan.temporaryItems, residual: scan.residual)
+                            items: scan.items, temporaryItems: scan.temporaryItems, residual: scan.residual,
+                            unreachable: scan.unreachable)
     }
 }
 
@@ -285,7 +295,23 @@ enum ClaudeDataFiles {
         var items: [DeletionPlan.Item] = []
         var temporaryItems: [DeletionPlan.Item] = []
         var residual: [String] = []
+        var unreachable: [String] = []
         var temporaryRoot: String?
+    }
+
+    /// A scanned folder: opened, absent (or not a folder), or present but impossible to enter
+    /// without leaving the config directory's device or following a link.
+    private enum ScanFolder { case opened(Int32), absent, unreachable }
+
+    private static func openScanFolder(_ parent: Int32, _ name: String, device: dev_t) -> ScanFolder {
+        guard let info = entryInfo(parent, name) else { return .absent }
+        switch info.st_mode & S_IFMT {
+        case S_IFLNK: return .unreachable
+        case S_IFDIR:
+            guard let fd = openDirectory(parent, name, device: device) else { return .unreachable }
+            return .opened(fd)
+        default: return .absent
+        }
     }
 
     static func scan(ids: Set<String>, config: Root, temporaryRoot: String?) -> Scan {
@@ -301,23 +327,36 @@ enum ClaudeDataFiles {
             }
             return found
         }
-        if let projects = openDirectory(config.fd, "projects", device: config.device) {
+        switch openScanFolder(config.fd, "projects", device: config.device) {
+        case let .opened(projects):
             for project in list(dup(projects)) {
-                guard validComponent(project), let folder = openDirectory(projects, project, device: config.device) else { continue }
-                scan.items += claim(folder, ["projects", project], device: config.device, temporary: false)
-                if entryInfo(folder, "memory") != nil { scan.residual.append("projects/\(project)/memory") }
-                close(folder)
+                guard validComponent(project) else { continue }
+                switch openScanFolder(projects, project, device: config.device) {
+                case let .opened(folder):
+                    scan.items += claim(folder, ["projects", project], device: config.device, temporary: false)
+                    if entryInfo(folder, "memory") != nil { scan.residual.append("projects/\(project)/memory") }
+                    close(folder)
+                case .unreachable: scan.unreachable.append("projects/\(project)")
+                case .absent: break
+                }
             }
             close(projects)
+        case .unreachable: scan.unreachable.append("projects")
+        case .absent: break
         }
         for name in ["file-history", "session-env", "debug", "tasks", "image-cache", "uploads", "todos"] {
-            guard let folder = openDirectory(config.fd, name, device: config.device) else { continue }
-            scan.items += claim(folder, [name], device: config.device, temporary: false)
-            close(folder)
+            switch openScanFolder(config.fd, name, device: config.device) {
+            case let .opened(folder):
+                scan.items += claim(folder, [name], device: config.device, temporary: false)
+                close(folder)
+            case .unreachable: scan.unreachable.append(name)
+            case .absent: break
+            }
         }
         for name in protectedNames where entryInfo(config.fd, name) != nil { scan.residual.append(name) }
         scan.items.sort { $0.relativePath < $1.relativePath }
         scan.residual.sort()
+        scan.unreachable.sort()
         if let temporaryRoot, let root = try? openRoot(temporaryRoot) {
             scan.temporaryRoot = root.path
             for middle in list(dup(root.fd)) {
@@ -333,14 +372,6 @@ enum ClaudeDataFiles {
     }
 
     // MARK: live sessions
-
-    private static let startFormat: DateFormatter = {
-        let format = DateFormatter()
-        format.locale = Locale(identifier: "en_US_POSIX")
-        format.timeZone = TimeZone(secondsFromGMT: 0)
-        format.dateFormat = "EEE MMM d HH:mm:ss yyyy"
-        return format
-    }()
 
     /// The id of a session held by a live process according to `sessions/*.json`, if any.
     /// A recorded start time that is not the process's means a reused pid (stale file);
@@ -370,9 +401,12 @@ enum ClaudeDataFiles {
             guard count > 0, count <= maximumRegistryBytes,
                   let object = try? JSONSerialization.jsonObject(with: Data(bytes.prefix(count))) as? [String: Any],
                   let session = (object["sessionId"] as? String)?.lowercased(), ids.contains(session) else { continue }
-            let pid = (object["pid"] as? NSNumber)?.int32Value ?? Int32(name.dropLast(5))
+            // A boolean or otherwise unusable `pid` is not a pid (`true` would read as pid 1): the
+            // file name carries it, which can only make a file count as live, never skip it.
+            let recorded = ClaudeRegistryFields.number(object["pid"]).flatMap { Int32(exactly: $0) }
+            let pid = recorded ?? Int32(name.dropLast(5))
             guard let pid, pid > 0, let process = ProcessTable.record(pid: pid), !process.zombie else { continue }
-            if let started = object["procStart"] as? String, let date = startFormat.date(from: started),
+            if let started = object["procStart"] as? String, let date = ClaudeRegistryFields.processStart(started),
                Int64(date.timeIntervalSince1970) != process.identity.startSeconds { continue }
             return session
         }
