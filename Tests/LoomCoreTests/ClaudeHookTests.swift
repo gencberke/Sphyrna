@@ -130,7 +130,7 @@ struct ClaudeHookTests {
         ))
         var status = await tracker.status()
         #expect(status.providerSessionID == "provider-session")
-        #expect(status.activity == .unknown)
+        #expect(status.activity == .atPrompt)
 
         let promptTime = startTime.addingTimeInterval(1)
         let prompt = try envelope(
@@ -199,8 +199,53 @@ struct ClaudeHookTests {
         }
         _ = try await tracker.receive(event("SessionStart", id: "A", fields: ["source": "resume"]))
         #expect(await tracker.status().providerSessionID == "A")
-        #expect(await tracker.status().activity == .unknown)
+        #expect(await tracker.status().activity == .atPrompt)
         #expect(await tracker.status().backgroundTaskCount == 0)
+    }
+
+    /// A resumed Claude at its prompt is ready, and a prompt typed before its SessionStart hook
+    /// arrived is not wiped by that late start (the run is seeded with the conversation's id).
+    @Test func resumedConversationIsReadyAndALateStartKeepsTheTurn() async throws {
+        let sessionID = UUID(), runID = UUID()
+        func event(_ kind: String, fields: [String: Any] = [:]) throws -> ClaudeHookEnvelope {
+            try envelope(sessionID: sessionID, runID: runID, event: kind,
+                         fields: fields.merging(["session_id": "A"]) { _, new in new })
+        }
+        let idle = ClaudeHookStateTracker(sessionID: sessionID, managedRunID: runID, providerSessionID: "A")
+        _ = try await idle.receive(event("SessionStart", fields: ["source": "resume"]))
+        #expect(await idle.status().activity == .atPrompt)
+        _ = try await idle.receive(event("UserPromptSubmit"))
+        #expect(await idle.status().activity == .working)
+
+        let raced = ClaudeHookStateTracker(sessionID: sessionID, managedRunID: runID, providerSessionID: "A")
+        _ = try await raced.receive(event("UserPromptSubmit"))
+        #expect(try await raced.receive(event("SessionStart", fields: ["source": "resume"])) != .duplicateSessionStart)
+        #expect(await raced.status().activity == .working)
+        #expect(await raced.status().providerSessionID == "A")
+        #expect(await raced.registryGeneration() != nil)
+        // Later duplicates of the start stay ignored; the turn still ends normally.
+        #expect(try await raced.receive(event("SessionStart", fields: ["source": "compact"])) == .duplicateSessionStart)
+        _ = try await raced.receive(event("Stop"))
+        #expect(await raced.status().activity == .turnComplete)
+    }
+
+    /// Notification types that say nothing about the turn keep the state; an MCP elicitation
+    /// waits for the user.
+    @Test func informationalNotificationsKeepTheState() async throws {
+        let sessionID = UUID(), runID = UUID()
+        let tracker = ClaudeHookStateTracker(sessionID: sessionID, managedRunID: runID)
+        _ = try await tracker.receive(envelope(sessionID: sessionID, runID: runID, event: "SessionStart"))
+        _ = try await tracker.receive(envelope(sessionID: sessionID, runID: runID, event: "UserPromptSubmit"))
+        let generation = await tracker.registryGeneration()
+        for type in ["auth_success", "a_type_from_a_newer_claude"] {
+            _ = try await tracker.receive(envelope(sessionID: sessionID, runID: runID, event: "Notification",
+                                                  fields: ["notification_type": type]))
+            #expect(await tracker.status().activity == .working)
+            #expect(await tracker.registryGeneration() == generation)
+        }
+        _ = try await tracker.receive(envelope(sessionID: sessionID, runID: runID, event: "Notification",
+                                              fields: ["notification_type": "elicitation_dialog"]))
+        #expect(await tracker.status().activity == .waitingForInput)
     }
 
     @Test func childAgentPayloadCannotMutateParentStatus() async throws {

@@ -93,7 +93,10 @@ CatalogModel.startConversation -> ConversationController.start (creates Terminal
     fresh coalition, owner-verified handshake; scope registered and ledger persisted) -> spawnInScope (host spawns the PTY child)
  -> Claude runs loom-hook per event (LOOM_HOOK_SOCKET/TOKEN, LOOM_MANAGED_RUN_ID)
  -> ClaudeHookServer -> ClaudeHookIngress (bounded 1,024, ordered) -> SessionRuntime.deliver -> ClaudeSessionAdapter.receive
- -> ClaudeHookStateTracker -> ProcessSupervisor.updateProviderWorkState (adoptConversation on /clear, fork, resume)
+ -> ClaudeHookStateTracker -> ProcessSupervisor.updateProviderWorkState (adoptConversation on /clear, fork, resume;
+    SessionStart = at prompt ("Ready"); a late SessionStart of the run's own conversation keeps the turn; informational
+    Notification types keep the state; dropped events are logged under subsystem local.loom.desktop, category ClaudeHooks)
+    Resume passes the transcript's last recorded effort back as --effort (ClaudeTranscriptEffort; Claude keeps /effort per process)
  -> SessionEventHub frame -> CatalogModel.apply (sequence fast path, full reconcile on a gap) -> SessionRowModel.live
  -> SessionIndicator(record:live:) -> IndicatorView / ChaseDots in sidebar row and detail header
 ```

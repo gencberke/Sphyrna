@@ -27,6 +27,9 @@ struct DisplayAndPreferencesTests {
         #expect(SessionIndicator(record: record(lifecycle: .stale), live: nil) == .stale)
         #expect(SessionIndicator(record: base, live: live(nil)) == .unknown)
         #expect(SessionIndicator(record: base, live: live(.unknown)) == .unknown)
+        // A Claude that just started or resumed sits at its prompt: ready, nothing to attend to.
+        #expect(SessionIndicator(record: base, live: live(.atPrompt)) == .ready)
+        #expect(SessionIndicator.ready.label == "Ready" && !SessionIndicator.ready.needsAttention)
         #expect(SessionIndicator(record: base, live: live(.working)) == .working)
         #expect(SessionIndicator(record: base, live: live(.waitingForApproval)) == .waitingForApproval)
         #expect(SessionIndicator(record: base, live: live(.waitingForInput)) == .waitingForInput)

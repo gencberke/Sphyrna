@@ -1,7 +1,11 @@
 import Darwin
 import Foundation
+import os
 
 extension SessionRuntime {
+    /// Read with `log show --predicate 'subsystem == "local.loom.desktop" && category == "ClaudeHooks"' --info`.
+    static let hookLog = Logger(subsystem: LoomSignposts.subsystem, category: "ClaudeHooks")
+
     func ensureHooks() throws -> ClaudeHookLaunchConfiguration {
         if let hookConfiguration { return hookConfiguration }
         guard access(configuration.hookHelperPath, X_OK) == 0 else {
@@ -33,7 +37,19 @@ extension SessionRuntime {
 
     private func deliver(hook envelope: ClaudeHookEnvelope) async {
         do {
-            _ = try await claudeAdapter.receive(envelope)
+            let disposition = try await claudeAdapter.receive(envelope)
+            let event = try? ClaudeHookEvent(payload: envelope.payload)
+            var name = event?.name ?? "unreadable"
+            if case let .notification(type)? = event?.kind {
+                name += "(\(type ?? "no type"))"
+                // Informational types keep the state; logged so a new type is visible.
+                if ClaudeHookStateTracker.notificationActivity(type) == nil {
+                    Self.hookLog.info("informational \(name, privacy: .public)")
+                }
+            }
+            if case .applied = disposition { return }
+            // Event and reason names only: a dropped event is otherwise invisible in a daily build.
+            Self.hookLog.info("dropped \(name, privacy: .public): \(String(describing: disposition), privacy: .public)")
         } catch {
             guard let sessionID = await supervisor.activeSessionID(runID: envelope.managedRunID) else { return }
             await supervisor.events.publish(
@@ -50,10 +66,17 @@ extension SessionRuntime {
         let environment = LaunchEnvironment.make(
             base: toolchain.environment, runID: supervisor.ownershipRunID, sessionID: sessionID
         )
+        var effort: String?
+        if case let .resume(conversationID) = route, toolchain.capabilities.supportsEffort {
+            let profile = ClaudeProfileLayout(
+                toolchain: toolchain, home: URL(fileURLWithPath: configuration.homeDirectory, isDirectory: true)
+            )
+            effort = ClaudeTranscriptEffort.last(conversationID: conversationID, projectsDirectory: profile.projectsDirectory)
+        }
         let profile = try ProviderLaunchProfile.claude(
             route: route, capabilities: toolchain.capabilities,
             config: toolchain.profileDirectory ?? URL(fileURLWithPath: "/"),
-            environment: environment, hooks: hooks
+            environment: environment, hooks: hooks, effort: effort
         )
         guard toolchain.profileDirectory == nil else { return profile }
         // The provider's own default profile: do not pin a config directory.

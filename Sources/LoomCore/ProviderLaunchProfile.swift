@@ -8,6 +8,7 @@ public struct ProviderCapabilities: Codable, Sendable {
     public let supportsDisableDaemonAutoStart: Bool
     public let supportsSessionID: Bool
     public let supportsSettings: Bool
+    public let supportsEffort: Bool
 
     public init(version: String, help: String, serverHelp: String = "", features: String = "") {
         self.version = version.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -19,6 +20,7 @@ public struct ProviderCapabilities: Codable, Sendable {
         }
         supportsSessionID = help.contains("--session-id <")
         supportsSettings = help.contains("--settings <")
+        supportsEffort = help.contains("--effort <")
     }
 }
 
@@ -75,7 +77,8 @@ public struct ProviderLaunchProfile: Sendable {
     public static func claude(
         route: ClaudeRoute, capabilities: ProviderCapabilities, config: URL,
         environment: [String: String],
-        hooks: ClaudeHookLaunchConfiguration? = nil
+        hooks: ClaudeHookLaunchConfiguration? = nil,
+        effort: String? = nil
     ) throws -> Self {
         guard capabilities.supportsSettings else {
             throw LoomError.message("Claude lacks required --settings option")
@@ -93,6 +96,11 @@ public struct ProviderLaunchProfile: Sendable {
             }
             routeArguments = ["--resume", providerSessionID]
         }
+        // The level the conversation ran at; without it Claude falls back to the saved default.
+        var effortArguments: [String] = []
+        if capabilities.supportsEffort, let effort, ClaudeTranscriptEffort.levels.contains(effort) {
+            effortArguments = ["--effort", effort]
+        }
         var env = environment
         env["CLAUDE_CONFIG_DIR"] = config.path
         env["CLAUDE_CODE_DISABLE_AGENT_VIEW"] = "1"
@@ -101,7 +109,7 @@ public struct ProviderLaunchProfile: Sendable {
             env["LOOM_HOOK_TOKEN"] = hooks.authenticationToken
         }
         let settings = try claudeSettings(hooks: hooks)
-        return Self(arguments: routeArguments + ["--settings", settings],
+        return Self(arguments: routeArguments + effortArguments + ["--settings", settings],
                     environment: env)
     }
 

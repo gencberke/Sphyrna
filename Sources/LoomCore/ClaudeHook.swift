@@ -430,6 +430,8 @@ public struct ClaudeHookEvent: Equatable, Sendable {
 
 public enum AgentActivity: Equatable, Sendable {
     case unknown
+    /// The provider started or resumed and sits at its prompt; no turn ran in this process yet.
+    case atPrompt
     case working
     case waitingForApproval
     case waitingForInput
@@ -526,7 +528,8 @@ public actor ClaudeHookStateTracker {
         case "idle": currentStatus.activity = .waitingForInput
         case "busy": currentStatus.activity = .working
         case "waiting": if inputAwaitsApproval { currentStatus.activity = .waitingForApproval }
-        default: currentStatus.activity = .unknown
+        // A status this build does not know says nothing against the hook state.
+        default: break
         }
         return nil
     }
@@ -574,10 +577,26 @@ public actor ClaudeHookStateTracker {
     ) throws -> ClaudeHookDisposition {
         let disposition = try disposition(for: envelope)
         guard case let .applied(event) = disposition else { return disposition }
+        if case let .notification(type) = event.kind, Self.notificationActivity(type) == nil {
+            // Informational notifications (auth_success, types newer than this build) say
+            // nothing about the turn: the state and the pending registry check stay.
+            noteEmission(envelope.sentAt)
+            currentStatus.lastEventAt = receivedAt
+            return disposition
+        }
         if case .sessionStart = event.kind {
+            // The run's own conversation announcing itself after its first prompt hook won the
+            // race (a resume typed into at once) keeps what that prompt established.
+            let continues = event.providerSessionID == activeProviderSessionID && currentStatus.activity != .unknown
             if let previous = activeProviderSessionID, previous != event.providerSessionID { retiredSessionIDs.insert(previous) }
             retiredSessionIDs.remove(event.providerSessionID)
             activeProviderSessionID = event.providerSessionID
+            if continues {
+                currentStatus.providerSessionID = event.providerSessionID
+                noteEmission(envelope.sentAt)
+                currentStatus.lastEventAt = receivedAt
+                return disposition
+            }
             currentStatus = ClaudeSessionStatus()
         }
         inputGeneration = nil
@@ -595,28 +614,20 @@ public actor ClaudeHookStateTracker {
         if case .notification("permission_prompt") = event.kind {
             inputGeneration = UUID(); inputWatermark = envelope.sentAt.timeIntervalSince1970 * 1_000; inputAwaitsApproval = true
         }
-        let emission = envelope.sentAt.timeIntervalSince1970 * 1_000
-        // Helpers for concurrent hooks may deliver slightly out of order; only a
-        // larger step back means the clock itself moved.
-        inputClockAmbiguous = !emission.isFinite
-            || (hookEmissionWatermark.map { emission < $0 - Self.maximumHookReorderMilliseconds } ?? false)
-        if emission.isFinite { hookEmissionWatermark = max(hookEmissionWatermark ?? emission, emission) }
+        noteEmission(envelope.sentAt)
         currentStatus.lastEventAt = receivedAt
         switch event.kind {
         case .sessionStart:
+            // A provider that just started or resumed is at its prompt until a prompt arrives.
             currentStatus.providerSessionID = event.providerSessionID
-            currentStatus.activity = .unknown
+            currentStatus.activity = .atPrompt
         case .userPromptSubmit:
             currentStatus.activity = .working
             currentStatus.lastUsedAt = receivedAt
         case .permissionRequest:
             currentStatus.activity = .waitingForApproval
         case let .notification(type):
-            switch type {
-            case "permission_prompt": currentStatus.activity = .waitingForApproval
-            case "idle_prompt", "agent_needs_input": currentStatus.activity = .waitingForInput
-            default: currentStatus.activity = .unknown
-            }
+            if let activity = Self.notificationActivity(type) { currentStatus.activity = activity }
         case let .stop(backgroundTaskCount, scheduledTaskCount):
             currentStatus.activity = .turnComplete
             currentStatus.lastAssistantMessage = event.lastAssistantMessage
@@ -631,6 +642,24 @@ public actor ClaudeHookStateTracker {
             currentStatus.activity = .unknown
         }
         return .applied(event)
+    }
+
+    /// The activity a notification type establishes; nil for informational types.
+    static func notificationActivity(_ type: String?) -> AgentActivity? {
+        switch type {
+        case "permission_prompt": .waitingForApproval
+        case "idle_prompt", "agent_needs_input", "elicitation_dialog": .waitingForInput
+        default: nil
+        }
+    }
+
+    private func noteEmission(_ sentAt: Date) {
+        let emission = sentAt.timeIntervalSince1970 * 1_000
+        // Helpers for concurrent hooks may deliver slightly out of order; only a
+        // larger step back means the clock itself moved.
+        inputClockAmbiguous = !emission.isFinite
+            || (hookEmissionWatermark.map { emission < $0 - Self.maximumHookReorderMilliseconds } ?? false)
+        if emission.isFinite { hookEmissionWatermark = max(hookEmissionWatermark ?? emission, emission) }
     }
 }
 

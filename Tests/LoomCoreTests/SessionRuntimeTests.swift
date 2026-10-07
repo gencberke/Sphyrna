@@ -160,7 +160,7 @@ struct SessionRuntimeTests {
             return ProviderToolchain(
                 provider: provider, executable: fake,
                 capabilities: ProviderCapabilities(
-                    version: "fake 1", help: "--settings <settings> --session-id <id> --remote <ADDR>",
+                    version: "fake 1", help: "--settings <settings> --session-id <id> --remote <ADDR> --effort <level>",
                     serverHelp: "--listen <URL>"
                 ),
                 environment: ["PATH": "/usr/bin:/bin", "HOME": home.path, "LOOM_FAKE_STATE": state.path]
@@ -382,6 +382,40 @@ struct SessionRuntimeTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
+    /// The user's report: after Stop and Resume the card read "State unknown" and Claude ran at
+    /// its saved default instead of the `/effort` level set in the session.
+    @Test func resumedClaudeIsReadyAndRunsAtTheEffortTheConversationUsed() async throws {
+        let context = try await Self.makeContext()
+        defer { context.cleanup() }
+        let (launch, screen) = try await Self.launchClaude(context)
+        #expect(await screen.contains("effort=default"))
+        #expect(await Self.waitUntil {
+            await context.supervisor.providerWorkState(sessionID: launch.sessionID)?.activity == .atPrompt
+        })
+        try await screen.send("/effort max")
+        #expect(await screen.contains("Set effort level to max (this session only)"))
+        try await screen.send("first turn")
+        #expect(await screen.contains("echo: first turn"))
+        #expect(await Self.waitUntil {
+            await context.supervisor.providerWorkState(sessionID: launch.sessionID)?.activity == .turnComplete
+        })
+        #expect(try await context.runtime.stopConversation(sessionID: launch.sessionID).succeeded)
+        #expect(await Self.waitUntil { await lastEndedRun(context, launch.runID) })
+
+        let (resumed, resumedScreen) = try await Self.resume(context, launch.sessionID)
+        let sawEffort = await resumedScreen.contains("effort=max")
+        #expect(sawEffort, "screen: \(resumedScreen.snapshot)")
+        #expect(await Self.waitUntil {
+            await context.supervisor.providerWorkState(sessionID: resumed.sessionID)?.activity == .atPrompt
+        })
+        try await resumedScreen.send("second turn")
+        #expect(await resumedScreen.contains("echo: second turn"))
+        #expect(await Self.waitUntil {
+            await context.supervisor.providerWorkState(sessionID: resumed.sessionID)?.activity == .turnComplete
+        })
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
     @Test func resumeOfMissingHistoryIsAnExplicitErrorNotANewConversation() async throws {
         let context = try await Self.makeContext()
         defer { context.cleanup() }
@@ -511,12 +545,13 @@ struct SessionRuntimeTests {
         let (launch, screen) = try await Self.launchClaude(context)
         #expect(await screen.contains("FAKE-CLAUDE READY"))
 
-        // Before the first turn there is no reliable start condition: the
-        // block stays visible and the terminal is not mistaken for idle.
+        // Before the first turn Claude is at its prompt, but no quiet process
+        // baseline exists yet: the block stays visible and the terminal is not
+        // mistaken for idle.
         #expect(try await Self.waitUntil(4) {
-            await blockers(context, launch.sessionID).contains(.unknownAgentState)
+            await blockers(context, launch.sessionID).contains(.baselineNotCaptured)
         })
-        #expect(await blockers(context, launch.sessionID).contains(.baselineNotCaptured))
+        #expect(!(await blockers(context, launch.sessionID).contains(.unknownAgentState)))
         #expect(await context.supervisor.runningSessionIDs() == [launch.sessionID])
 
         // An active turn keeps blocking; after it ends the baseline is taken

@@ -93,4 +93,43 @@ struct ProviderProfileTests {
             "resume", "thread-id", "--remote", "unix:///tmp/app.sock", "--cd", "/tmp/project space/çalışma",
         ])
     }
+
+    @Test func resumeCarriesTheRecordedEffortWhenClaudeAcceptsIt() throws {
+        let capable = ProviderCapabilities(version: "test", help: "--session-id <id> --settings <settings> --effort <level>")
+        func arguments(_ capabilities: ProviderCapabilities, _ effort: String?) throws -> [String] {
+            try ProviderLaunchProfile.claude(
+                route: .resume("provider-session"), capabilities: capabilities,
+                config: URL(fileURLWithPath: "/isolated"), environment: [:], effort: effort
+            ).arguments
+        }
+        #expect(Array(try arguments(capable, "max").prefix(4)) == ["--resume", "provider-session", "--effort", "max"])
+        #expect(!(try arguments(capable, nil)).contains("--effort"))
+        #expect(!(try arguments(capable, "--dangerously-skip-permissions")).contains("--effort"))
+        let older = ProviderCapabilities(version: "test", help: "--session-id <id> --settings <settings>")
+        #expect(!(try arguments(older, "max")).contains("--effort"))
+    }
+}
+
+struct ClaudeTranscriptEffortTests {
+    @Test func theLastAssistantEffortInTheTailWins() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("effort-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let projects = root.appendingPathComponent("projects")
+        let folder = projects.appendingPathComponent("-tmp-project")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let id = "0b5f3c2a-1111-4c4c-9d9d-123456789abc"
+        let records: [[String: Any]] = [
+            ["type": "assistant", "effort": "high"],
+            ["type": "system", "content": "Set effort level to max (this session only)"],
+            ["type": "assistant", "effort": "max"],
+            ["type": "user", "message": ["content": "please use effort low"], "effort": "low"],
+            ["type": "assistant"],
+        ]
+        var text = String(repeating: "x", count: 64) + "\n"   // a line the tail may cut
+        for record in records { text += String(data: try JSONSerialization.data(withJSONObject: record), encoding: .utf8)! + "\n" }
+        try text.write(to: folder.appendingPathComponent("\(id).jsonl"), atomically: true, encoding: .utf8)
+        #expect(ClaudeTranscriptEffort.last(conversationID: id, projectsDirectory: projects) == "max")
+        #expect(ClaudeTranscriptEffort.last(conversationID: "missing", projectsDirectory: projects) == nil)
+        #expect(ClaudeTranscriptEffort.last(conversationID: "../-tmp-project/\(id)", projectsDirectory: projects) == nil)
+    }
 }

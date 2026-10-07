@@ -66,7 +66,7 @@ struct ClaudeRegistryTests {
         #expect(await tracker.status().activity == .waitingForApproval)
         _ = try await tracker.receive(envelope("SessionStart", run: run, launch: launch, at: date.addingTimeInterval(2), id: "new", fields: ["source": "clear"]))
         _ = await tracker.receiveRegistry(snapshot("idle", at: 1_001_020), generation: current, now: date.addingTimeInterval(3))
-        #expect(await tracker.status().activity == .unknown)
+        #expect(await tracker.status().activity == .atPrompt)
         #expect(await tracker.status().providerSessionID == "new")
     }
 

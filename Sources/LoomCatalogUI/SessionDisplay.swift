@@ -19,7 +19,7 @@ public enum SessionIndicator: Equatable, Sendable {
     case identityUnclear
     /// A reliable turn completion nobody looked at yet.
     case unviewedCompletion
-    /// Live run, turn finished and seen.
+    /// Live run at its prompt: a turn finished and was seen, or none ran since it started.
     case ready
     case idle
     case stale
@@ -42,6 +42,7 @@ public enum SessionIndicator: Equatable, Sendable {
         if let live, live.runID != nil {
             switch live.status?.activity {
             case nil, .unknown?: self = .unknown
+            case .atPrompt?: self = .ready
             case .working?: self = .working
             case .waitingForApproval?: self = .waitingForApproval
             case .waitingForInput?: self = .waitingForInput

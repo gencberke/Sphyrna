@@ -402,7 +402,7 @@ public actor SessionLifecycleController {
             case .working: blockers.insert(.activeTurn)
             case .waitingForApproval: blockers.insert(.waitingForApproval)
             case .waitingForInput: blockers.insert(.waitingForInput)
-            case .turnComplete, .failed, .sessionEnded: break
+            case .atPrompt, .turnComplete, .failed, .sessionEnded: break
             }
             if work.pendingProviderWorkCount > 0 {
                 blockers.insert(.pendingProviderWork(work.pendingProviderWorkCount))

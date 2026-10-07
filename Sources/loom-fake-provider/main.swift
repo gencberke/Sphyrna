@@ -51,7 +51,7 @@ if arguments == ["--version"] {
     exit(0)
 }
 if arguments == ["--help"] {
-    out("--remote <ADDR> --settings <settings> --session-id <id>\n")
+    out("--remote <ADDR> --settings <settings> --session-id <id> --effort <level>\n")
     exit(0)
 }
 if arguments == ["app-server", "--help"] {
@@ -102,6 +102,9 @@ struct FakeClaude {
     let environment = ProcessInfo.processInfo.environment
     var promptCount = 0
     let registryStartedAt = Date()
+    /// Like Claude: `--effort` or `/effort` hold for this process only. Once set, each reply is
+    /// recorded in the profile's transcript with its effort, as Claude records it.
+    var effort: String?
 
     func registry(_ status: String) {
         guard let config = environment["CLAUDE_CONFIG_DIR"] else { return }
@@ -143,6 +146,22 @@ struct FakeClaude {
     func lines(for id: String) -> [String] {
         guard let url = history(for: id), let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
         return text.split(separator: "\n").map(String.init)
+    }
+
+    func recordReply() {
+        guard let effort, let config = environment["CLAUDE_CONFIG_DIR"] else { return }
+        let folder = String(FileManager.default.currentDirectoryPath.map { $0.isLetter || $0.isNumber ? $0 : "-" })
+        let directory = URL(fileURLWithPath: config).appendingPathComponent("projects/\(folder)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("\(id).jsonl")
+        let record: [String: Any] = ["type": "assistant", "sessionId": id, "effort": effort]
+        guard var line = try? JSONSerialization.data(withJSONObject: record) else { return }
+        line.append(UInt8(ascii: "\n"))
+        if let handle = try? FileHandle(forWritingTo: url) {
+            _ = try? handle.seekToEnd(); try? handle.write(contentsOf: line); try? handle.close()
+        } else {
+            try? line.write(to: url)
+        }
     }
 
     func remember(_ line: String) {
@@ -191,7 +210,7 @@ struct FakeClaude {
         registry("idle")
         hook("SessionStart", ["source": resume ? "resume" : "startup"])
         out("FAKE-CLAUDE READY \(id) cwd=\(FileManager.default.currentDirectoryPath) "
-            + "profile=\(environment["CLAUDE_CONFIG_DIR"] ?? "default")\r\n> ")
+            + "profile=\(environment["CLAUDE_CONFIG_DIR"] ?? "default") effort=\(effort ?? "default")\r\n> ")
         while let line = readLine() {
             switch line.split(separator: " ").first.map(String.init) ?? "" {
             case "/exit":
@@ -203,6 +222,9 @@ struct FakeClaude {
                 out("CLEARED \(id)\r\n")
                 registry("idle")
                 hook("SessionStart", ["source": "clear"])
+            case "/effort":
+                effort = line.split(separator: " ").dropFirst().first.map(String.init)
+                out("Set effort level to \(effort ?? "default") (this session only)\r\n")
             case "/fail":
                 hook("UserPromptSubmit", ["prompt_id": "p\(promptCount)"])
                 hook("StopFailure", ["error": "fixture failure"])
@@ -260,6 +282,7 @@ struct FakeClaude {
                 remember(line)
                 hook("UserPromptSubmit", ["prompt_id": "p\(promptCount)"])
                 out("echo: \(line)\r\n")
+                recordReply()
                 hook("Stop", ["last_assistant_message": "echo \(line)"])
             }
             out("> ")
@@ -271,11 +294,12 @@ switch role {
 case "claude":
     let settingsText = take("--settings") ?? "{}"
     let settings = (try? JSONSerialization.jsonObject(with: Data(settingsText.utf8))) as? [String: Any] ?? [:]
+    let effort = take("--effort")
     if let resumeID = take("--resume") {
-        var claude = FakeClaude(id: resumeID, settings: settings)
+        var claude = FakeClaude(id: resumeID, settings: settings, effort: effort)
         claude.run(resume: true)
     } else {
-        var claude = FakeClaude(id: take("--session-id") ?? UUID().uuidString.lowercased(), settings: settings)
+        var claude = FakeClaude(id: take("--session-id") ?? UUID().uuidString.lowercased(), settings: settings, effort: effort)
         claude.run(resume: false)
     }
 case "codex-server":

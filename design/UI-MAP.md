@@ -39,7 +39,7 @@ Source: `SessionIndicator` (`CUI/SessionDisplay.swift`), drawing `IndicatorView`
 | failed / stopUnverified / problem | Failed / Stop not verified / Problem | 8 pt red dot |
 | identityUnclear | Identity unclear | hollow orange ring |
 | unviewedCompletion | Finished | 8 pt blue dot |
-| ready / idle | Ready / Idle | none |
+| ready / idle | Ready / Idle | none (Ready: a live run at its prompt, a seen finish or a Claude that just started or resumed) |
 | stale | Stale | none; title dimmed |
 | ended | no label | none |
 
