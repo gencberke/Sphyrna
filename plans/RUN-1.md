@@ -71,9 +71,9 @@ Collected from the stage plans; each has a recommendation and the default used m
 | DP-U1 | Tab model: pinned tabs plus one transient tab for the selection, auto-pin on start/resume, explicit "Open in Tab", close never stops a run | As recommended (default) |
 | DP-U2 | Tab shortcuts | Shift+Cmd+] / [ and Ctrl+Tab / Ctrl+Shift+Tab; Close Tab Opt+Cmd+W (default) |
 | DP-U3 | Usage scope: all Claude usage in the active Claude profile, or only Loom-hosted conversations | Whole profile, labelled "this Claude profile" (default) |
-| DP-U4 | Plan limits (5-hour / weekly): only reachable through a Claude `statusLine` command or the network, both D-20 behavior changes | Not shown; a labelled local 5-hour activity window instead (default) |
+| DP-U4 | Plan limits (5-hour / weekly): only reachable through a Claude `statusLine` command or the network, both D-20 behavior changes | Not shown; a labelled local 5-hour activity window instead (default). **Superseded 8 Oct ([D-37](../DECISIONS.md)):** the Claude CLI's own `get_usage` control request answers without statusLine or network code in Loom |
 | DP-U5 | Price table: static, dated, shipped with the app; cost shown as "est." and hidden for unknown models | As recommended (default); confirm the table values in [U0](u/U0.md) |
-| DP-CP4-1 | Deletion data contract (contract §12.3): exactly which local Claude files a single-conversation delete removes | Allowlist in [CP4-A](cp4/A.md) (default implemented in dev builds only; nothing ships before your decision) |
+| DP-CP4-1 | Deletion data contract (contract §12.3): exactly which local Claude files a single-conversation delete removes | Allowlist in [CP4-A](cp4/A.md) (default implemented in dev builds only; nothing ships before your decision). **Decided 8 Oct ([D-37](../DECISIONS.md)):** manual delete ships in every build with this allowlist |
 | DP-CP4-2 | Cleanup arithmetic (contract §12.4): cadence, effect of viewing a stale row, long-absence threshold, bulk guard | Last run + 30 days; viewing extends the wait; 45 days absence; >10 eligible forces review (default; automatic deletion stays off) |
 | DP-CP4-3 | Worktree protection rule | Protect linked or Claude-created worktrees that are dirty, unpushed or stashed (default) |
 | DP-CP4-4 | Schema v3: Loom 0.1.0 cannot open a v3 catalog (no downgrade) | Accept (default) |

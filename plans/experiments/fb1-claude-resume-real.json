@@ -1,0 +1,51 @@
+{
+ "script": "scripts/perf/claude_resume_real.py",
+ "date": "2026-10-08",
+ "package": "Loom-Dev/packages/fb1-candidate (swarm/1 ed2914c)",
+ "profile": "isolated probe profile, model haiku, saved effort high",
+ "modelTurns": 2,
+ "checks": {
+  "firstTurnReplied": true,
+  "firstTurnIndicatorsKnown": true,
+  "secondTurnReplied": true,
+  "resumedTurnIndicatorsKnown": true,
+  "notStateUnknownAfterResume": true,
+  "resumedClaudeRemembers": true,
+  "sameTranscript": true,
+  "effortKeptAfterResume": true,
+  "appQuit": true
+ },
+ "details": {
+  "effortCommandSaysSessionOnly": false,
+  "firstTurnIndicatorsKnown": [
+   "Ready",
+   "Working",
+   "Working",
+   "Finished"
+  ],
+  "effortBeforeResume": [
+   "max",
+   "max"
+  ],
+  "indicatorAfterResumeIdle": "Ready",
+  "resumedTurnIndicatorsKnown": [
+   "Ready",
+   "Working",
+   "Working",
+   "Finished"
+  ],
+  "notStateUnknownAfterResume": "Ready",
+  "sameTranscript": {
+   "files": 1
+  },
+  "effortAfterResume": [
+   "max",
+   "max"
+  ],
+  "effortKeptAfterResume": [
+   "max",
+   "max"
+  ]
+ },
+ "note": "Before the fix (run1-final-candidate, 8 Oct 01:06): indicatorAfterResumeIdle 'State unknown'. The saved default effort is high, so the resumed turn at max proves the --effort carry-over."
+}
