@@ -316,8 +316,47 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
 }
 
 /// Engine view with Loom's paste rule (CHECKPOINT-5-HISTORY §4.1): an image-only clipboard
-/// is forwarded as Ctrl+V for CLIs that read clipboard images themselves.
+/// is forwarded as Ctrl+V for CLIs that read clipboard images themselves; and Loom's Option
+/// rule (see `keyDown`).
 public final class LoomTerminalView: TerminalView {
+    /// Option is the keyboard layout's character layer first, Meta second. A combination that
+    /// types a character (Turkish Q: Option+Q is "@", Option+8 "[", Option+P "π") or starts a dead
+    /// key (Option+\ then Space is "`") goes to the input system as typing; everything else stays
+    /// Meta: Option+Return (newline in Claude Code), Option+Backspace, Option+arrows, Option+Space.
+    /// Letter shortcuts that need Meta (Alt+B/F, Option+P/T in Claude Code) therefore type their
+    /// character on layouts that have one, as in Terminal.app, iTerm2 and kitty by default (Ghostty
+    /// does the same outside the US layouts). Cmd+Option+O turns Meta off for the terminal.
+    public override func keyDown(with event: NSEvent) {
+        guard optionAsMetaKey, Self.optionTypes(event) else {
+            super.keyDown(with: event)
+            return
+        }
+        optionAsMetaKey = false
+        defer { optionAsMetaKey = true }
+        super.keyDown(with: event)
+    }
+
+    /// Option without Command or Control, and the layout makes it typing: printable text that is
+    /// not the bare key and not whitespace (Option+Space is a no-break space), or a dead key (no
+    /// text yet; the input system composes it with the next key).
+    static func optionTypes(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.contains(.option), flags.isDisjoint(with: [.command, .control]),
+              let bare = event.charactersIgnoringModifiers, !bare.isEmpty,
+              !bare.unicodeScalars.contains(where: isFunctionKey),
+              let typed = event.characters else { return false }
+        if typed.isEmpty { return true }   // dead key
+        guard typed != bare else { return false }
+        return typed.unicodeScalars.allSatisfy { scalar in
+            scalar.value >= 0x20 && !(0x7f...0x9f).contains(scalar.value)
+                && !scalar.properties.isWhitespace && !isFunctionKey(scalar)
+        }
+    }
+
+    private static func isFunctionKey(_ scalar: Unicode.Scalar) -> Bool {
+        (0xF700...0xF8FF).contains(scalar.value)   // AppKit's private-use function-key range
+    }
+
     static func quotedPaths(_ urls: [URL]) -> String {
         urls.filter(\.isFileURL).map { url in
             var quoted = "'"

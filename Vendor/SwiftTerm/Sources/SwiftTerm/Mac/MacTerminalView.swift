@@ -2040,7 +2040,7 @@ open class TerminalView: NSView, NSUserInterfaceValidations, TerminalDelegate {
         return true
     }
 
-    public override func keyDown(with event: NSEvent) {
+    open override func keyDown(with event: NSEvent) {
         kittyComposingKeyCode = nil
         if !event.isARepeat {
             kittyKeysWithReportedPress.remove(event.keyCode)
