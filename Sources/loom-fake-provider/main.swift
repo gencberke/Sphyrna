@@ -85,6 +85,11 @@ if arguments == ["--probe-flood"] {
     exit(0)
 }
 
+// The headless plan-limits request (`-p --input-format stream-json`), see UsageFixture.swift.
+if arguments.contains("--input-format"), arguments.contains("stream-json") {
+    runFakeUsageProbe(arguments: arguments)
+}
+
 // The role follows the real command line: `app-server --listen` is the Codex
 // server, `--remote` the Codex TUI, `--session-id`/`--resume` Claude.
 let explicitRole = take("--fake-role")

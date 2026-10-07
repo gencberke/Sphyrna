@@ -323,6 +323,10 @@ enum LoomTheme {
         static let usageHeaderRowHeight: CGFloat = 24
         static let usageRowHeight: CGFloat = 28
         static let usageShareBar = CGSize(width: 48, height: 3)
+        /// A plan limit's used-share bar, and the label and reset columns beside it.
+        static let planLimitBarHeight: CGFloat = 4
+        static let planLimitLabelWidth: CGFloat = 56
+        static let planLimitResetWidth: CGFloat = 132
         static let usageEmptyHeight: CGFloat = 360
         static let aboutMark: CGFloat = 64
         /// Widest per-row result text in Settings → Conversations.

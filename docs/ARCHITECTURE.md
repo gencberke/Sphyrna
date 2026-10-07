@@ -56,7 +56,7 @@ Declared in `Package.swift`; all tests use swift-testing (`@Test`). Product bund
 | Persistence | `SessionCatalog` (core plus `+Sessions`, `+Runs`, `+Projects`, `+Titles`, `+Paging`), `CatalogDatabase` (schema, migration, SQLite helpers) |
 | Terminal I/O | `TerminalEndpoint` (also `TerminalOutputSink`), `TerminalInputQueue`, `TerminalInputGate` |
 | Provider setup | `LaunchEnvironment`, `EnvironmentResolutionJob`, `ProviderToolchain`, `ProviderLaunchProfile`, `ProviderResume` |
-| Claude | `ClaudeHook` (server, client, `ClaudeHookStateTracker`), `ClaudeRegistry`, `ClaudeDataInventory` (planner and safe deleter of a session's files), `ClaudeProfileLayout`, `ClaudeUsageIndex` |
+| Claude | `ClaudeHook` (server, client, `ClaudeHookStateTracker`), `ClaudeRegistry`, `ClaudeDataInventory` (planner and safe deleter of a session's files), `ClaudeProfileLayout`, `ClaudeUsageIndex`, `UsageTranscriptWatcher` (FSEvents over `<profile>/projects`), `ClaudePlanLimitsFetcher` (headless `get_usage` through the Claude CLI) |
 | Codex (paused) | `CodexAppServer`, `CodexAppServerManager`, `CodexSessionCoordinator`, `CodexSessionState`, `CodexWireDiagnostics`, `CodexRoutingDiagnostics` |
 
 Roles: `SessionRuntime` is the one application runtime (UI sends intents only). `ProcessSupervisor` (actor) owns runs, scopes,

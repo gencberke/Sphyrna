@@ -110,11 +110,15 @@ public struct SessionEventFrame: Equatable, Sendable {
     public let sessions: [UUID: SessionViewState]
     /// Counts batched catalog changes that live state cannot express.
     public let catalogRevision: UInt64
+    /// Counts finished Claude turns (a published `turnComplete` status). A consumer that skipped
+    /// frames still sees that a turn finished: the count in its latest frame differs from its last.
+    public let turnCompletions: UInt64
 }
 
 public actor SessionEventHub {
     private var sequence: UInt64 = 0
     private var catalogRevision: UInt64 = 0
+    private var turnCompletions: UInt64 = 0
     private var states: [UUID: SessionViewState] = [:]
     private var subscribers: [UUID: AsyncStream<SessionEventFrame>.Continuation] = [:]
     private var viewedSessionID: UUID?
@@ -124,7 +128,7 @@ public actor SessionEventHub {
     public func snapshot() -> SessionEventFrame {
         SessionEventFrame(
             sequence: sequence, sessionID: nil, change: .snapshot,
-            sessions: states, catalogRevision: catalogRevision
+            sessions: states, catalogRevision: catalogRevision, turnCompletions: turnCompletions
         )
     }
 
@@ -188,6 +192,7 @@ public actor SessionEventHub {
         }
         states[sessionID] = state
         sequence &+= 1
+        if case let .status(value) = change, value?.activity == .turnComplete { turnCompletions &+= 1 }
         yield(sessionID: sessionID, change: change)
     }
 
@@ -215,7 +220,7 @@ public actor SessionEventHub {
     private func yield(sessionID: UUID?, change: SessionEventChange) {
         let frame = SessionEventFrame(
             sequence: sequence, sessionID: sessionID, change: change,
-            sessions: states, catalogRevision: catalogRevision
+            sessions: states, catalogRevision: catalogRevision, turnCompletions: turnCompletions
         )
         for continuation in subscribers.values { continuation.yield(frame) }
     }

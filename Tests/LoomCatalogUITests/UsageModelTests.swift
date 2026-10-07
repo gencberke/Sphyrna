@@ -9,10 +9,11 @@ import Testing
 @Suite(.serialized, .timeLimit(.minutes(2)))
 struct UsageModelTests {
     private func model(
-        _ index: FakeUsageIndex, debounce: Duration = .milliseconds(40), cooldown: Duration = .zero
+        _ index: FakeUsageIndex, debounce: Duration = .milliseconds(40), cooldown: Duration = .zero,
+        limits: (any PlanLimitsFetching)? = nil, clock: TestClock? = nil
     ) -> UsageModel {
-        UsageModel(index: index, timeZone: TimeZone(identifier: "UTC")!, debounce: debounce,
-                   activationCooldown: cooldown)
+        UsageModel(index: index, limits: limits, clock: { clock?.now ?? Date() },
+                   timeZone: TimeZone(identifier: "UTC")!, debounce: debounce, activationCooldown: cooldown)
     }
 
     @Test func firstRefreshIsIndexingThenReadyAndLaterOnesStayReady() async {
@@ -29,7 +30,7 @@ struct UsageModelTests {
         index.release()
         await usage.settle()
         #expect(usage.state == .ready)
-        #expect(usage.chip?.full == "Today 1.2M tok · ~$1.20")
+        #expect(usage.chip?.full == "1.2M today")
         #expect(usage.updatedAt != nil)
         index.setBlocking(true)
         usage.refresh(reason: .manual)
@@ -96,11 +97,11 @@ struct UsageModelTests {
     @Test func turnCompleteFramesRefreshAndOtherChangesDoNot() async {
         let index = FakeUsageIndex()
         let usage = model(index)
-        usage.observe(.status(ProviderWorkState(activity: .working)))
-        usage.observe(.runStarted(UUID()))
+        usage.observeTurnCompletions(3) // the first frame only sets the baseline
+        usage.observeTurnCompletions(3)
         await usage.settle()
         #expect(index.refreshCalls == 0)
-        usage.observe(.status(ProviderWorkState(activity: .turnComplete)))
+        usage.observeTurnCompletions(4) // a frame that skipped three turns still counts once
         await usage.settle()
         #expect(index.refreshCalls == 1)
     }
@@ -184,6 +185,285 @@ struct UsageModelTests {
     }
 }
 
+// MARK: Freshness and plan limits
+
+@MainActor
+@Suite(.serialized, .timeLimit(.minutes(2)))
+struct UsageFreshnessTests {
+    private func model(
+        _ index: FakeUsageIndex, limits: (any PlanLimitsFetching)? = nil, clock: TestClock? = nil,
+        debounce: Duration = .milliseconds(40)
+    ) -> UsageModel {
+        UsageModel(index: index, limits: limits, clock: { clock?.now ?? Date() },
+                   timeZone: TimeZone(identifier: "UTC")!, debounce: debounce, activationCooldown: .zero)
+    }
+
+    private let transcript = URL(fileURLWithPath: "/tmp/profile/projects/-p/session.jsonl")
+
+    /// The Settings window is key: the main window is not active, the Usage page is visible.
+    private func showUsagePageOnly(_ usage: UsageModel) {
+        usage.windowActivityChanged(false)
+        usage.setSettingsWindowVisible(true)
+        usage.setUsageSectionSelected(true)
+    }
+
+    @Test func aTranscriptChangeRefreshesWhileOnlyTheUsagePageIsVisible() async {
+        let index = FakeUsageIndex()
+        let usage = model(index)
+        await usage.refreshNow(reason: .launch)
+        showUsagePageOnly(usage)
+        await usage.settle()
+        let before = index.refreshCalls
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: false))
+        await usage.settle()
+        #expect(index.changedCalls == [[transcript]])
+        #expect(index.refreshCalls == before) // only the changed file, no full walk
+    }
+
+    @Test func aFinishedTurnRefreshesWhileOnlyTheUsagePageIsVisible() async {
+        let index = FakeUsageIndex()
+        let usage = model(index)
+        usage.observeTurnCompletions(0)
+        await usage.refreshNow(reason: .launch)
+        showUsagePageOnly(usage)
+        await usage.settle()
+        let before = index.refreshCalls
+        usage.observeTurnCompletions(1)
+        await usage.settle()
+        #expect(index.refreshCalls == before + 1) // before the page counted as a reader this only marked stale
+    }
+
+    @Test func nothingIsReadWhileNoWindowIsVisibleAndTheNextActivationReadsOnce() async {
+        let index = FakeUsageIndex()
+        let usage = model(index)
+        await usage.refreshNow(reason: .launch)
+        usage.windowActivityChanged(false)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: false))
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [], needsFullScan: true))
+        usage.observeTurnCompletions(0)
+        usage.observeTurnCompletions(1)
+        await usage.settle()
+        #expect(index.refreshCalls == 1 && index.changedCalls.isEmpty)
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(index.refreshCalls == 2) // one full read covers everything that happened
+        #expect(index.changedCalls.isEmpty)
+    }
+
+    @Test func aBurstOfTranscriptChangesIsOneReadOfTheUnionOfTheFiles() async {
+        let index = FakeUsageIndex()
+        let usage = model(index, debounce: .milliseconds(150))
+        await usage.refreshNow(reason: .launch)
+        let other = URL(fileURLWithPath: "/tmp/profile/projects/-p/other.jsonl")
+        for path in [transcript, other, transcript] {
+            usage.transcriptsChanged(UsageTranscriptChange(paths: [path], needsFullScan: false))
+        }
+        #expect(index.changedCalls.isEmpty) // still inside the debounce
+        await usage.settle()
+        #expect(index.changedCalls.count == 1)
+        #expect(Set(index.changedCalls[0]) == [transcript, other])
+    }
+
+    @Test func changesBeforeTheFirstFullScanAreLeftToIt() async {
+        let index = FakeUsageIndex()
+        let usage = model(index)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: false))
+        await usage.settle()
+        #expect(index.refreshCalls == 0 && index.changedCalls.isEmpty)
+        usage.refresh(reason: .launch) // still starts: no partial read took its place
+        await usage.settle()
+        #expect(index.refreshCalls == 1)
+    }
+
+    @Test func lostEventsAskForAFullScan() async {
+        let index = FakeUsageIndex()
+        let usage = model(index)
+        await usage.refreshNow(reason: .launch)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: true))
+        await usage.settle()
+        #expect(index.refreshCalls == 2 && index.changedCalls.isEmpty)
+    }
+
+    @Test func aChipOnlyReadSkipsThePeriodReportUntilThePageShows() async {
+        let index = FakeUsageIndex()
+        index.setTokens(1_000)
+        let usage = model(index)
+        await usage.refreshNow(reason: .launch) // main window active, page closed
+        let ranges = index.snapshotRanges.count
+        index.setTokens(5_000)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: false))
+        await usage.settle()
+        #expect(index.snapshotRanges.dropFirst(ranges).allSatisfy { $0 == .days(1) }) // today's summary only
+        #expect(usage.chip?.full == "5K today")
+        #expect(usage.report?.snapshot.tokens.total == 1_000) // the page's report waits for the page
+        usage.setSettingsWindowVisible(true)
+        usage.setUsageSectionSelected(true)
+        await usage.settle()
+        #expect(usage.report?.snapshot.tokens.total == 5_000)
+    }
+
+    // MARK: Plan limits
+
+    private func limits(
+        five: Int? = 38, week: Int? = 20, fetchedAt: Date = Date(timeIntervalSince1970: 1_791_374_400)
+    ) -> PlanLimits {
+        PlanLimits(
+            fiveHour: five.map { PlanLimitWindow(usedPercent: $0, resetsAt: fetchedAt.addingTimeInterval(3 * 3_600)) },
+            weekly: week.map { PlanLimitWindow(usedPercent: $0, resetsAt: fetchedAt.addingTimeInterval(4 * 86_400)) },
+            fetchedAt: fetchedAt)
+    }
+
+    @Test func limitsAreAskedWhenTheFirstWindowShowsAndReachTheChip() async {
+        let index = FakeUsageIndex()
+        index.setTokens(1_200_000)
+        let source = FakeLimits()
+        source.setAnswer(limits())
+        let usage = model(index, limits: source, clock: TestClock())
+        usage.refresh(reason: .launch)
+        await usage.settle()
+        #expect(source.asks == 1)
+        #expect(usage.limits == limits())
+        #expect(usage.chip?.full == "1.2M today · 5h 62% left")
+    }
+
+    @Test func aWindowShowingAgainAsksOnlyWhenTheLastAskIsFiveMinutesOld() async {
+        let clock = TestClock()
+        let source = FakeLimits()
+        source.setAnswer(limits())
+        let usage = model(FakeUsageIndex(), limits: source, clock: clock)
+        usage.refresh(reason: .launch)
+        await usage.settle()
+        #expect(source.asks == 1)
+        clock.advance(299)
+        usage.windowActivityChanged(false)
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(source.asks == 1)
+        clock.advance(2)
+        usage.windowActivityChanged(false)
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(source.asks == 2)
+    }
+
+    @Test func aFinishedTurnAsksOnlyWhenTheLastAskIsTwoMinutesOld() async {
+        let clock = TestClock()
+        let source = FakeLimits()
+        let usage = model(FakeUsageIndex(), limits: source, clock: clock)
+        usage.observeTurnCompletions(0)
+        usage.refresh(reason: .launch)
+        await usage.settle()
+        #expect(source.asks == 1)
+        clock.advance(119)
+        usage.observeTurnCompletions(1)
+        await usage.settle()
+        #expect(source.asks == 1)
+        clock.advance(2)
+        usage.observeTurnCompletions(2)
+        await usage.settle()
+        #expect(source.asks == 2)
+    }
+
+    @Test func openingTheUsagePageAsksUnlessTheLastAskIsTenSecondsFresh() async {
+        let clock = TestClock()
+        let source = FakeLimits()
+        let usage = model(FakeUsageIndex(), limits: source, clock: clock)
+        usage.refresh(reason: .launch)
+        await usage.settle()
+        clock.advance(5)
+        usage.setSettingsWindowVisible(true)
+        usage.setUsageSectionSelected(true)
+        await usage.settle()
+        #expect(source.asks == 1)
+        usage.setUsageSectionSelected(false)
+        clock.advance(6)
+        usage.setUsageSectionSelected(true)
+        await usage.settle()
+        #expect(source.asks == 2)
+    }
+
+    @Test func limitsAreNeverAskedWhileNoWindowIsVisible() async {
+        let clock = TestClock()
+        let source = FakeLimits()
+        let usage = model(FakeUsageIndex(), limits: source, clock: clock)
+        usage.observeTurnCompletions(0)
+        usage.windowActivityChanged(false)
+        usage.refresh(reason: .launch)
+        await usage.settle()
+        clock.advance(3_600)
+        usage.observeTurnCompletions(1)
+        await usage.settle()
+        #expect(source.asks == 0)
+        usage.windowActivityChanged(true) // the first window to show asks
+        await usage.settle()
+        #expect(source.asks == 1)
+    }
+
+    @Test func twoAsksNeverRunAtOnce() async {
+        let clock = TestClock()
+        let source = FakeLimits()
+        source.setBlocking(true)
+        let usage = model(FakeUsageIndex(), limits: source, clock: clock)
+        usage.observeTurnCompletions(0)
+        usage.refresh(reason: .launch)
+        while source.asks == 0 { await Task.yield() }
+        clock.advance(3_600)
+        usage.observeTurnCompletions(1)
+        usage.setSettingsWindowVisible(true)
+        usage.setUsageSectionSelected(true)
+        #expect(source.asks == 1)
+        source.release()
+        await usage.settle()
+        #expect(source.asks == 1)
+    }
+
+    @Test func unavailableLimitsShowTokensOnlyAndALimitsChangeNeedsNoRead() async {
+        let clock = TestClock()
+        let index = FakeUsageIndex()
+        index.setTokens(1_200_000)
+        let source = FakeLimits()
+        source.setAnswer(limits())
+        let usage = model(index, limits: source, clock: clock)
+        usage.refresh(reason: .launch)
+        await usage.settle()
+        #expect(usage.chip?.limit == "5h 62% left")
+        let reads = index.refreshCalls
+        source.setAnswer(limits(five: 90))
+        clock.advance(400)
+        usage.windowActivityChanged(false)
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(usage.chip?.limit == "5h 10% left")
+        source.setAnswer(nil) // the CLI cannot say any more: show nothing, no banner
+        clock.advance(400)
+        usage.windowActivityChanged(false)
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(usage.limits == nil)
+        #expect(usage.chip?.full == "1.2M today")
+        #expect(usage.lastFailure == nil)
+        #expect(index.refreshCalls >= reads) // the activations may read; the limits themselves never do
+    }
+
+    @Test func theMinuteTickDropsAWindowThatEndedWithoutAnyRead() async {
+        let clock = TestClock()
+        let index = FakeUsageIndex()
+        index.setTokens(1_200_000)
+        let source = FakeLimits()
+        source.setAnswer(limits(five: 90, week: 20)) // the five-hour window resets in 3 h
+        let usage = model(index, limits: source, clock: clock)
+        usage.refresh(reason: .launch)
+        await usage.settle()
+        #expect(usage.chip?.limit == "5h 10% left")
+        let reads = index.refreshCalls
+        clock.advance(3 * 3_600 + 60)
+        usage.minuteTick()
+        #expect(usage.chip?.limit == "Wk 80% left")
+        #expect(index.refreshCalls == reads)
+        #expect(source.asks == 1)
+    }
+}
+
 /// The model over the real index and a throwaway Claude profile: the numbers on screen are the
 /// fixture's deduplicated truth.
 @MainActor
@@ -222,8 +502,8 @@ struct UsageModelRealIndexTests {
         #expect(usage.state == .ready)
         // Today: msg_a + msg_b once each. Tokens 1,700,000 + 150,000; cost 2.05 + 0.35 = $2.40.
         let chip = try #require(usage.chip)
-        #expect(chip.figure == "1.85M tok")
-        #expect(chip.cost == "~$2.40")
+        #expect(chip.full == "1.85M today")
+        #expect(!chip.tooltip.contains("$") && !chip.accessibilityLabel.contains("$"))
         #expect(chip.tooltip.contains("1,850,000 tokens: input 1,100,000, output 250,000, cache write 0, cache read 500,000."))
         // Seven days add yesterday: 15,000 tokens, $0.035.
         let report = try #require(usage.report)
@@ -237,6 +517,53 @@ struct UsageModelRealIndexTests {
         // A second refresh with no file growth keeps the figures and reads nothing new.
         await usage.refreshNow(reason: .manual)
         #expect(usage.report?.snapshot.tokens.total == 1_865_000)
+    }
+
+
+    /// The app's wiring without the app: a file-system stream over the profile's `projects` folder
+    /// feeding the model, the Settings window the only visible one, no hook and no event.
+    @Test func aTranscriptAppendedByAnotherProcessMovesTheChipWithNoHook() async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("loom-usage-live-\(UUID().uuidString)", isDirectory: true).resolvingSymlinksInPath()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = root.appendingPathComponent("config", isDirectory: true)
+        let project = config.appendingPathComponent("projects/-tmp-proj", isDirectory: true)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        chmod(config.path, 0o700)
+        let file = project.appendingPathComponent("sess-1.jsonl")
+        try (line(id: "msg_a", ts: "2026-10-07T09:00:00.000Z", input: 1_000, output: 0, cacheRead: 0) + "\n")
+            .write(to: file, atomically: true, encoding: .utf8)
+        let now = Date(timeIntervalSince1970: 1_791_374_400) // 2026-10-07T12:00:00Z
+        let profile = ClaudeProfileLayout(profileDirectory: config, environment: [:], home: root)
+        let index = ClaudeUsageIndex(databaseURL: root.appendingPathComponent("usage-index.sqlite3"),
+                                     profile: profile, clock: { now })
+        let usage = UsageModel(index: index, clock: { now }, timeZone: TimeZone(identifier: "UTC")!,
+                               debounce: .milliseconds(100), activationCooldown: .zero)
+        await usage.refreshNow(reason: .launch)
+        #expect(usage.chip?.full == "1K today")
+        usage.windowActivityChanged(false) // Settings is key, the main window is not
+        usage.setSettingsWindowVisible(true)
+        usage.setUsageSectionSelected(true)
+        await usage.settle()
+
+        let watcher = UsageTranscriptWatcher(directory: profile.projectsDirectory, latency: 0.1) { [weak usage] change in
+            Task { @MainActor in usage?.transcriptsChanged(change) }
+        }
+        #expect(watcher.start())
+        defer { watcher.stop() }
+        try await Task.sleep(for: .milliseconds(500))
+        let appended = line(id: "msg_b", ts: "2026-10-07T11:00:00.000Z", input: 2_000_000, output: 0, cacheRead: 0)
+        let writer = Process()
+        writer.executableURL = URL(fileURLWithPath: "/bin/sh")
+        writer.arguments = ["-c", "printf '%s\\n' \"$1\" >> \"$2\"", "sh", appended, file.path]
+        try writer.run()
+        writer.waitUntilExit()
+
+        let deadline = ContinuousClock.now + .seconds(15)
+        while usage.chip?.full != "2M today", ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(100)) }
+        #expect(usage.chip?.full == "2M today")
+        #expect(usage.report?.snapshot.tokens.total == 2_001_000) // the page is visible, so its report followed too
     }
 
 

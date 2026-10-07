@@ -6,6 +6,8 @@ import Observation
 public protocol UsageIndexing: Sendable {
     /// Brings the index up to date with the transcripts on disk.
     func refreshAll() async throws -> UsageScanReport
+    /// Brings just these transcripts up to date (the ones a file-system event named).
+    func refreshChanged(_ paths: [URL]) async throws -> UsageScanReport
     /// Reads aggregates from the index's own database; never opens a transcript.
     func snapshot(range: UsageRange, now: Date, timeZone: TimeZone) async throws -> UsageSnapshot
     /// The same numbers as `snapshot` without the activity window (a scan of the last week).
@@ -18,6 +20,10 @@ public protocol UsageIndexing: Sendable {
 
 /// What a stand-in without its own bucket query gets: the same answers from per-interval snapshots.
 extension UsageIndexing {
+    public func refreshChanged(_ paths: [URL]) async throws -> UsageScanReport {
+        try await refreshAll()
+    }
+
     public func summary(range: UsageRange, now: Date, timeZone: TimeZone) async throws -> UsageSnapshot {
         try await snapshot(range: range, now: now, timeZone: timeZone)
     }
@@ -41,6 +47,7 @@ extension UsageIndexing {
 
 extension ClaudeUsageIndex: UsageIndexing {
     public func refreshAll() async throws -> UsageScanReport { try await refresh(paths: nil) }
+    public func refreshChanged(_ paths: [URL]) async throws -> UsageScanReport { try await refresh(paths: paths) }
 }
 
 public enum UsageState: Equatable, Sendable {
@@ -94,7 +101,7 @@ public enum UsagePeriod: CaseIterable, Sendable {
     }
 }
 
-/// Why a refresh was asked for. Every one is an event that already happens; nothing polls.
+/// Why a refresh was asked for. Every one is an event; nothing polls.
 public enum UsageRefreshReason: Sendable {
     case launch, activation, settingsOpened, turnComplete, manual, dayChanged
 }
@@ -116,11 +123,26 @@ public struct UsageReport: Equatable, Sendable {
     public let cells: [UsageBar]
 }
 
+/// When plan limits are asked for again. The Claude CLI answers each ask in a short process, so the
+/// asks stay few: never when no Loom window is showing, never two at once, no timer.
+public struct PlanLimitsCadence: Equatable, Sendable {
+    /// A window became visible again: ask when the last ask is at least this old (seconds).
+    public var afterShown: TimeInterval = 300
+    /// A Claude turn finished: ask when the last ask is at least this old.
+    public var afterTurn: TimeInterval = 120
+    /// The Usage page was opened: ask unless the last ask is this fresh.
+    public var afterPageOpened: TimeInterval = 10
+
+    public init() {}
+}
+
 /// The one observable usage state both the footer chip and the Settings page read. Index work
 /// runs on the index's own queue, never on the main actor, and only on events: launch, window
-/// activation, Settings opening, a finished Claude turn (debounced), a new day and the refresh
-/// button. Requests while a refresh runs coalesce into one more run. While the window is inactive
-/// or hidden a finished turn only marks the numbers stale; the next activation reads them.
+/// activation, the Usage page showing, a change under the profile's `projects` folder (reported by
+/// `UsageTranscriptWatcher`, debounced and read for just the changed files), a finished Claude turn
+/// (debounced), a new day and the refresh button. Requests while a refresh runs coalesce into one
+/// more run. While no Loom window or Usage page is showing, changes only mark the numbers stale;
+/// the next time one shows reads them. Plan limits come from `limitsSource` on `PlanLimitsCadence`.
 @MainActor @Observable
 public final class UsageModel {
     public private(set) var state: UsageState = .idle
@@ -132,8 +154,14 @@ public final class UsageModel {
     public private(set) var lastFailure: String?
     /// The footer's text; replaced only when it changes, so its readers redraw only then.
     public private(set) var chip: UsageChipContent?
+    /// The Claude plan limits, nil while unknown or unavailable.
+    public private(set) var limits: PlanLimits?
 
     @ObservationIgnored private let index: any UsageIndexing
+    @ObservationIgnored private let limitsSource: (any PlanLimitsFetching)?
+    @ObservationIgnored private let cadence: PlanLimitsCadence
+    @ObservationIgnored private var limitsTask: Task<Void, Never>?
+    @ObservationIgnored private var lastLimitsAsk: Date?
     @ObservationIgnored private let clock: @Sendable () -> Date
     @ObservationIgnored public let timeZone: TimeZone
     @ObservationIgnored private let debounce: Duration
@@ -148,19 +176,34 @@ public final class UsageModel {
     /// The last window activity the model was told about; only a change counts. Assumed active
     /// until told otherwise (the app reports the real state as soon as its window exists).
     @ObservationIgnored private var windowIsActive = true
-    /// A turn finished while nobody could see the numbers.
+    /// Something changed while nobody could see the numbers.
     @ObservationIgnored private var stale = false
+    /// The Settings window is showing, and its Usage section; together they make the page visible.
+    @ObservationIgnored private var settingsWindowVisible = false
+    @ObservationIgnored private var usageSectionSelected = false
+    /// Transcripts reported changed and not read yet, and whether a full scan is wanted instead.
+    @ObservationIgnored private var changedPaths: Set<URL> = []
+    @ObservationIgnored private var wantsFullScan = false
+    /// The period report is older than the index: a refresh for the chip alone skipped it.
+    @ObservationIgnored private var reportOutdated = false
+    /// A full scan has finished: file-system events before that are covered by the launch scan.
+    @ObservationIgnored private var fullScanDone = false
+    /// The last turn-completion count seen on the event stream (nil until the first frame).
+    @ObservationIgnored private var turnCompletions: UInt64?
     /// The local day of the latest refresh request (the chip says "Today").
     @ObservationIgnored private var requestedDay: Date?
     /// Any usage at all in the index (decides between an empty Today and "No usage yet").
     public private(set) var hasHistory = false
 
     public init(
-        index: any UsageIndexing, clock: @escaping @Sendable () -> Date = { Date() },
+        index: any UsageIndexing, limits limitsSource: (any PlanLimitsFetching)? = nil,
+        cadence: PlanLimitsCadence = PlanLimitsCadence(), clock: @escaping @Sendable () -> Date = { Date() },
         timeZone: TimeZone = .current, debounce: Duration = .seconds(2),
         activationCooldown: Duration = .seconds(10)
     ) {
         self.index = index
+        self.limitsSource = limitsSource
+        self.cadence = cadence
         self.clock = clock
         self.timeZone = timeZone
         self.debounce = debounce
@@ -169,24 +212,23 @@ public final class UsageModel {
 
     // MARK: Events
 
+    /// Someone can see the numbers: the active main window, or the Usage page.
+    private var observing: Bool { windowIsActive || usagePageVisible }
+    private var usagePageVisible: Bool { settingsWindowVisible && usageSectionSelected }
+
     /// Asks for a refresh. Returns at once; `turnComplete` waits `debounce` (the first request
     /// of a burst sets the time, later ones join it) and `activation` is skipped right after a refresh.
     public func refresh(reason: UsageRefreshReason) {
         switch reason {
         case .turnComplete:
-            guard windowIsActive else { stale = true; return }
-            guard debounceTask == nil else { return }
-            debounceTask = Task { [weak self, debounce] in
-                try? await Task.sleep(for: debounce)
-                guard !Task.isCancelled, let self else { return }
-                self.debounceTask = nil
-                // The window went away during the debounce: the next activation reads.
-                if self.windowIsActive { self.start() } else { self.stale = true }
-            }
+            guard observing else { stale = true; return }
+            wantsFullScan = true
+            scheduleDebounced()
+            fetchLimitsIfDue(after: cadence.afterTurn)
         case .activation:
             if stale {
-                // A turn finished while hidden: read now, inside the cooldown too, and again if
-                // the running refresh began before that turn.
+                // Something changed while hidden: read now, inside the cooldown too, and again if
+                // the running refresh began before that change.
                 start()
                 return
             }
@@ -195,6 +237,7 @@ public final class UsageModel {
             if let last = lastRefreshEnd, ContinuousClock.now - last < activationCooldown { return }
             start()
         case .launch:
+            fetchLimitsIfDue(after: cadence.afterShown)
             // The first pass already ran (or is running): an activation that came up while the
             // first page loaded covers it. A second pass would only rerun the first.
             guard !isRefreshing, lastRefreshEnd == nil else { return }
@@ -210,9 +253,22 @@ public final class UsageModel {
         await refreshTask?.value
     }
 
-    /// The Claude Stop hook's turn boundary, as the catalog model sees it on the event stream.
-    public func observe(_ change: SessionEventChange) {
-        if case let .status(status) = change, status?.activity == .turnComplete { refresh(reason: .turnComplete) }
+    /// Transcripts changed under the profile (`UsageTranscriptWatcher`). While someone can see the
+    /// numbers they are read after the debounce, only those files; otherwise the next time
+    /// someone can, one full read covers it.
+    public func transcriptsChanged(_ change: UsageTranscriptChange) {
+        guard fullScanDone else { return } // the launch scan has not run yet and will read everything
+        guard observing else { stale = true; return }
+        if change.needsFullScan { wantsFullScan = true } else { changedPaths.formUnion(change.paths) }
+        scheduleDebounced()
+    }
+
+    /// The running count of finished Claude turns, as the latest event frame carries it. A frame
+    /// that was skipped under load does not matter: the count in the next one has still moved.
+    public func observeTurnCompletions(_ count: UInt64) {
+        defer { turnCompletions = count }
+        guard let seen = turnCompletions, count != seen else { return }
+        refresh(reason: .turnComplete)
     }
 
     /// The window became (in)active. Only a change counts: the app reports every occlusion, key
@@ -220,13 +276,39 @@ public final class UsageModel {
     public func windowActivityChanged(_ active: Bool) {
         guard active != windowIsActive else { return }
         windowIsActive = active
-        if active { refresh(reason: .activation) }
+        guard active else { return }
+        refresh(reason: .activation)
+        fetchLimitsIfDue(after: cadence.afterShown)
+    }
+
+    /// The Settings window shows or hides (closed, minimized or covered).
+    public func setSettingsWindowVisible(_ visible: Bool) {
+        let before = usagePageVisible
+        settingsWindowVisible = visible
+        pageVisibilityChanged(from: before)
+    }
+
+    /// The Settings window's Usage section appears or goes away.
+    public func setUsageSectionSelected(_ selected: Bool) {
+        let before = usagePageVisible
+        usageSectionSelected = selected
+        pageVisibilityChanged(from: before)
+    }
+
+    private func pageVisibilityChanged(from before: Bool) {
+        guard usagePageVisible, !before else { return }
+        // The page shows what the last chip-only refresh skipped: read it now.
+        if reportOutdated { start() } else { refresh(reason: .activation) }
+        fetchLimitsIfDue(after: cadence.afterPageOpened)
     }
 
     /// The catalog model's minute tick while the window is active: the chip says "Today", so a new
     /// local day reads the index once (a day that failed to read is not retried every minute).
+    /// A limit window that has ended drops out of the chip without any read.
     public func minuteTick() {
-        guard windowIsActive, let requestedDay, calendar.startOfDay(for: clock()) != requestedDay else { return }
+        guard windowIsActive else { return }
+        rebuildChip()
+        guard let requestedDay, calendar.startOfDay(for: clock()) != requestedDay else { return }
         refresh(reason: .dayChanged)
     }
 
@@ -235,6 +317,7 @@ public final class UsageModel {
         await debounceTask?.value
         await refreshTask?.value
         await loadingPeriod?.value
+        await limitsTask?.value
     }
 
     public func select(_ newPeriod: UsagePeriod) {
@@ -250,8 +333,39 @@ public final class UsageModel {
 
     // MARK: Refresh
 
+    /// The first request of a burst sets the time, later ones join it (a streaming turn is read
+    /// about every `debounce`, not once at its end and not on every line).
+    private func scheduleDebounced() {
+        guard debounceTask == nil else { return }
+        debounceTask = Task { [weak self, debounce] in
+            try? await Task.sleep(for: debounce)
+            guard !Task.isCancelled, let self else { return }
+            self.debounceTask = nil
+            // Everyone looked away during the debounce: the next time someone looks, one full read.
+            guard self.observing else {
+                self.changedPaths = []
+                self.wantsFullScan = false
+                self.stale = true
+                return
+            }
+            if self.wantsFullScan { self.start() } else { self.startChanged() }
+        }
+    }
+
     private func start() {
         stale = false
+        wantsFullScan = true
+        launchRefresh()
+    }
+
+    /// Reads the transcripts named by file-system events; the report behind the page is rebuilt only
+    /// while the page shows (otherwise the chip's day summary alone, which is all anyone sees).
+    private func startChanged() {
+        guard !changedPaths.isEmpty else { return }
+        launchRefresh()
+    }
+
+    private func launchRefresh() {
         requestedDay = calendar.startOfDay(for: clock())
         if isRefreshing { rerun = true; return }
         isRefreshing = true
@@ -265,15 +379,22 @@ public final class UsageModel {
         await announceFirstScan()
         repeat {
             rerun = false
+            let full = wantsFullScan
+            let paths = Array(changedPaths)
+            wantsFullScan = false
+            changedPaths = []
             do {
-                _ = try await index.refreshAll()
-                try await loadAfterScan()
+                _ = try await full ? index.refreshAll() : index.refreshChanged(paths)
+                if full { fullScanDone = true }
+                try await loadAfterScan(detail: full || usagePageVisible || report == nil)
                 lastFailure = nil
                 updatedAt = clock()
                 setState(.ready)
             } catch is CancellationError {
                 break
             } catch {
+                // What this pass was to read is still unread.
+                if full { wantsFullScan = true } else { changedPaths.formUnion(paths) }
                 let message = String(describing: error)
                 if report == nil { setState(.failed(message)) } else { lastFailure = message }
             }
@@ -292,7 +413,9 @@ public final class UsageModel {
         if state == .idle { setState(.indexing) }
     }
 
-    private func loadAfterScan() async throws {
+    /// `detail == false` reads only what the chip shows (today's summary); the period report is
+    /// rebuilt when the page next shows.
+    private func loadAfterScan(detail: Bool) async throws {
         let now = clock()
         let day = try await index.summary(range: .days(1), now: now, timeZone: timeZone)
         today = day
@@ -302,6 +425,8 @@ public final class UsageModel {
         if !history { history = try await index.hasUsage() }
         if hasHistory != history { hasHistory = history }
         reports = [:]
+        guard detail else { reportOutdated = true; return }
+        reportOutdated = false
         let selected = period
         let built = try await buildReport(selected, now: now)
         reports[selected] = built
@@ -318,8 +443,32 @@ public final class UsageModel {
 
     private func setState(_ next: UsageState) {
         if next != state { state = next }
-        let content = UsageChipContent.make(state: next, today: today, hasHistory: hasHistory)
+        rebuildChip()
+    }
+
+    /// Replaced only when the text changes, so the footer redraws only then.
+    private func rebuildChip() {
+        let content = UsageChipContent.make(
+            state: state, today: today, hasHistory: hasHistory, limits: limits, now: clock(), timeZone: timeZone)
         if content != chip { chip = content }
+    }
+
+    // MARK: Plan limits
+
+    /// Asks the Claude CLI for the plan limits when someone can see them, none is being asked for
+    /// and the last ask is at least `minimumAge` seconds old.
+    private func fetchLimitsIfDue(after minimumAge: TimeInterval) {
+        guard let limitsSource, observing, limitsTask == nil else { return }
+        if let last = lastLimitsAsk, clock().timeIntervalSince(last) < minimumAge { return }
+        lastLimitsAsk = clock()
+        limitsTask = Task { [weak self] in
+            let fetched = await limitsSource.fetch()
+            guard let self, !Task.isCancelled else { return }
+            self.limitsTask = nil
+            self.lastLimitsAsk = self.clock()
+            if self.limits != fetched { self.limits = fetched }
+            self.rebuildChip()
+        }
     }
 
     // MARK: Report

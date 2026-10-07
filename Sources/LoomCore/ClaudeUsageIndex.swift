@@ -628,7 +628,7 @@ struct UsageTranscriptFile {
 /// the config and `projects` directories and every file must belong to this user and the
 /// config directory must not be group- or world-writable.
 enum UsageTranscriptWalker {
-    private static let skippedDirectories: Set<String> = ["memory", "tool-results"]
+    static let skippedDirectories: Set<String> = ["memory", "tool-results"]
     private static let maximumDepth = 6
 
     static func isTranscriptName(_ name: String) -> Bool {

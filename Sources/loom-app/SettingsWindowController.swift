@@ -31,6 +31,7 @@ final class SettingsWindowController {
         self.window = window
         usage?.refresh(reason: .settingsOpened)
         window.makeKeyAndOrderFront(nil)
+        usage?.setSettingsWindowVisible(true) // the occlusion notifications correct it if the window is covered
     }
 
     func close() { window?.close() }
@@ -56,6 +57,25 @@ final class SettingsWindowController {
         window.contentViewController = hosting
         window.setContentSize(Self.contentSize)
         window.center()
+        observeVisibility(of: window)
         return window
+    }
+
+    /// The Usage page counts as visible while this window is on screen, not covered, not minimized
+    /// (it is a separate window, so the main window's activity says nothing about it).
+    private func observeVisibility(of window: NSWindow) {
+        let center = NotificationCenter.default
+        for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification,
+                     NSWindow.didDeminiaturizeNotification, NSWindow.willCloseNotification] {
+            center.addObserver(forName: name, object: window, queue: .main) { [weak self, weak window] notification in
+                let closing = notification.name == NSWindow.willCloseNotification
+                MainActor.assumeIsolated {
+                    guard let window else { return }
+                    let showing = !closing && window.isVisible && !window.isMiniaturized
+                        && window.occlusionState.contains(.visible)
+                    self?.usage?.setSettingsWindowVisible(showing)
+                }
+            }
+        }
     }
 }

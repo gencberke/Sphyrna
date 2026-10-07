@@ -971,7 +971,7 @@ public final class CatalogModel {
     /// One consumer: a contiguous frame updates one conversation; a gap
     /// (missed frames) is repaired from the frame's full latest state.
     func apply(_ frame: SessionEventFrame) {
-        usage?.observe(frame.change)
+        usage?.observeTurnCompletions(frame.turnCompletions)
         handleDeletionFrame(frame)
         statistics.framesApplied += 1
         // Re-read at a reliable turn boundary, never for output/frame rendering.

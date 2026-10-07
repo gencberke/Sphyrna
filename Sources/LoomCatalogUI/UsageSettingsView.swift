@@ -36,6 +36,8 @@ private struct UsageContent: View {
             body(for: usage.state)
             UsageFooter(usage: usage)
         }
+        .onAppear { usage.setUsageSectionSelected(true) }
+        .onDisappear { usage.setUsageSectionSelected(false) }
     }
 
     @ViewBuilder
@@ -53,7 +55,7 @@ private struct UsageContent: View {
                             path: profile.map { SettingsPaths.display($0.appendingPathComponent("projects")) })
             } else if let report = usage.report, report.period == usage.period {
                 ScrollView {
-                    UsageReportView(report: report, timeZone: usage.timeZone)
+                    UsageReportView(report: report, limits: usage.limits, timeZone: usage.timeZone)
                         .padding(.horizontal, LoomTheme.Space.settingsInset)
                         .padding(.bottom, LoomTheme.Space.settingsSectionGap)
                 }
@@ -122,10 +124,64 @@ private struct UsageFooter: View {
     }
 }
 
+// MARK: Plan limits
+
+private extension String {
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+}
+
+/// The Claude plan's 5-hour and weekly windows, as the Claude CLI reports them: used and remaining
+/// percent, and when each resets. Shown only while the CLI answered; a window that has reset is left out.
+private struct PlanLimitsBlock: View {
+    let limits: PlanLimits
+    let timeZone: TimeZone
+
+    var body: some View {
+        let now = Date()
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Plan limits").fontWeight(.semibold)
+                Spacer()
+                Text("Updated \(UsageText.time(limits.fetchedAt, timeZone))")
+            }
+            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+            .padding(.bottom, LoomTheme.Space.footerSpacing)
+            ForEach(limits.current(at: now), id: \.kind) { item in
+                row(item.kind, item.window, now: now)
+            }
+        }
+        .monospacedDigit()
+    }
+
+    private func row(_ kind: PlanLimitKind, _ window: PlanLimitWindow, now: Date) -> some View {
+        let reset = UsageChipContent.resetPhrase(window, now: now, timeZone: timeZone)
+        return HStack(spacing: LoomTheme.Space.usageColumnGap / 2) {
+            Text(kind.title).frame(width: LoomTheme.Layout.planLimitLabelWidth, alignment: .leading)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim).fill(LoomTheme.Surface.activityCell(0))
+                    RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim).fill(LoomTheme.Text.primary)
+                        .frame(width: proxy.size.width * CGFloat(window.usedPercent) / 100)
+                }
+            }
+            .frame(height: LoomTheme.Layout.planLimitBarHeight)
+            Text("\(window.usedPercent)% used · \(window.remainingPercent)% left")
+            Text(reset?.capitalizedFirst ?? "").foregroundStyle(LoomTheme.Text.secondary)
+                .frame(width: LoomTheme.Layout.planLimitResetWidth, alignment: .trailing)
+        }
+        .font(LoomTheme.Typography.small)
+        .frame(height: LoomTheme.Layout.usageHeaderRowHeight)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(kind.title) limit, \(window.usedPercent) percent used, \(window.remainingPercent) percent remaining"
+            + (reset.map { ", " + $0 } ?? ""))
+    }
+}
+
 // MARK: Report
 
 private struct UsageReportView: View {
     let report: UsageReport
+    let limits: PlanLimits?
     let timeZone: TimeZone
 
     var body: some View {
@@ -134,6 +190,9 @@ private struct UsageReportView: View {
             HStack(alignment: .top, spacing: LoomTheme.Space.usageColumnGap) {
                 headline(snapshot).frame(maxWidth: .infinity, alignment: .leading)
                 activityBlock.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let limits, !limits.current(at: Date()).isEmpty {
+                PlanLimitsBlock(limits: limits, timeZone: timeZone)
             }
             totals(snapshot.tokens)
             chart
@@ -171,7 +230,7 @@ private struct UsageReportView: View {
         return parts.joined(separator: " · ")
     }
 
-    // Five-hour block
+    // Local five-hour cells
 
     private var activityBlock: some View {
         let cells = report.cells

@@ -68,7 +68,7 @@ struct UsageChip: View {
     }
 }
 
-/// Full text, then tokens only, then the tokens cut with an ellipsis: a cost is dropped whole.
+/// Tokens and limit, then the limit alone, then the tokens cut with an ellipsis. No money.
 private struct UsageChipLabel: View {
     let chip: UsageChipContent
     @Environment(\.usageChipHovered) private var hovered
@@ -76,18 +76,22 @@ private struct UsageChipLabel: View {
     var body: some View {
         let tone = hovered ? LoomTheme.Text.primary : LoomTheme.Text.secondary
         ViewThatFits(in: .horizontal) {
-            text(tone, cost: chip.cost).fixedSize(horizontal: true, vertical: false)
-            text(tone, cost: nil).fixedSize(horizontal: true, vertical: false)
-            text(tone, cost: nil).truncationMode(.tail)
+            text(tone, showLimit: true).fixedSize(horizontal: true, vertical: false)
+            if let limit = chip.limit {
+                Text(limit).foregroundStyle(tone).fixedSize(horizontal: true, vertical: false)
+            }
+            text(tone, showLimit: false).truncationMode(.tail)
         }
         .font(LoomTheme.Typography.statusLabel).monospacedDigit()
         .lineLimit(1)
     }
 
-    private func text(_ tone: Color, cost: String?) -> Text {
-        Text(chip.lead).foregroundStyle(tone)
-            + Text(chip.figure).fontWeight(.semibold).foregroundStyle(LoomTheme.Text.primary)
-            + Text(cost.map { " · " + $0 } ?? "").foregroundStyle(tone)
+    private func text(_ tone: Color, showLimit: Bool) -> Text {
+        let lead = Text(chip.lead).foregroundStyle(tone)
+        let figure = Text(chip.figure).fontWeight(.semibold).foregroundStyle(LoomTheme.Text.primary)
+        let suffix = Text(chip.suffix).foregroundStyle(tone)
+        let limit = Text(showLimit ? chip.limit.map { " · " + $0 } ?? "" : "").foregroundStyle(tone)
+        return Text("\(lead)\(figure)\(suffix)\(limit)")
     }
 }
 

@@ -25,6 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var settingsController: SettingsWindowController?
     /// Claude usage for the footer chip and Settings; nil when the data root was refused.
     var usage: UsageModel?
+    /// The one file-system stream behind the usage numbers; nil without a usage index.
+    var usageWatcher: UsageTranscriptWatcher?
+    /// The Claude toolchain sessions use, handed over by the runtime; plan limits read it too.
+    let claudeToolchain = ClaudeToolchainSlot()
     private(set) var model: CatalogModel?
     private(set) var splitController: MainSplitViewController?
     /// The development flavor's synthetic terminal; always nil in the release flavor.
@@ -284,6 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     /// Whatever is still waiting for the preference write debounce (the window frame) goes to disk.
     func applicationWillTerminate(_ notification: Notification) {
+        usageWatcher?.stop()
         model?.flushPreferences()
     }
 
@@ -390,6 +395,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             ?? { [system = SystemProviderToolchains(supervisor: supervisor, origin: origin)] provider in
                 try await system.toolchain(for: provider)
             }
+        claudeToolchain.provide(toolchains)
         return SessionRuntimeConfiguration(
             toolchains: toolchains, hookHelperPath: helpers.appendingPathComponent("loom-hook").path,
             socketDirectory: socketDirectory,

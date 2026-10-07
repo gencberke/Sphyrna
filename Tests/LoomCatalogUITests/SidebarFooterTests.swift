@@ -24,35 +24,98 @@ struct SidebarFooterTests {
         #expect(empty.tooltip.contains("No Claude usage found in this profile yet"))
     }
 
-    @Test func todayShowsTokensFirstAndTheCostOnlyInTheFullForm() throws {
-        let chip = try #require(UsageChipContent.make(
-            state: .ready, today: today(1_204_310, cost: 3.1), hasHistory: true))
+    // 2026-10-07T12:00:00Z, a Wednesday.
+    private static let now = Date(timeIntervalSince1970: 1_791_374_400)
+    private static let utc = TimeZone(identifier: "UTC")!
+
+    private func window(used: Int, resetsInSeconds: TimeInterval?) -> PlanLimitWindow {
+        PlanLimitWindow(usedPercent: used, resetsAt: resetsInSeconds.map { Self.now.addingTimeInterval($0) })
+    }
+
+    private func limits(five: PlanLimitWindow?, week: PlanLimitWindow?) -> PlanLimits {
+        PlanLimits(fiveHour: five, weekly: week, fetchedAt: Self.now.addingTimeInterval(-60))
+    }
+
+    private func makeChip(_ tokens: Int64 = 1_204_310, cost: Double = 3.1, limits: PlanLimits? = nil) throws -> UsageChipContent {
+        try #require(UsageChipContent.make(
+            state: .ready, today: today(tokens, cost: cost), hasHistory: true, limits: limits,
+            now: Self.now, timeZone: Self.utc))
+    }
+
+    @Test func todayShowsTokensAloneWithoutLimitsAndNeverMoney() throws {
+        let chip = try makeChip()
         #expect(chip.kind == .today)
-        #expect(chip.full == "Today 1.2M tok · ~$3.10")
-        #expect(chip.short == "Today 1.2M tok")
-        #expect(chip.accessibilityLabel == "Claude usage today, 1.2 million tokens, estimated cost about $3.10")
+        #expect(chip.full == "1.2M today")
+        #expect(chip.short == "1.2M today")
+        #expect(chip.limit == nil)
+        #expect(chip.accessibilityLabel == "Claude usage today, 1.2 million tokens")
         #expect(chip.tooltip.hasPrefix("Claude usage today, this Claude profile"))
         #expect(chip.tooltip.contains("1,204,310 tokens"))
-        #expect(chip.tooltip.contains("API-equivalent estimate about $3.10"))
+        for text in [chip.full, chip.tooltip, chip.accessibilityLabel] {
+            #expect(!text.contains("$") && !text.contains("~") && !text.lowercased().contains("estimate"))
+        }
     }
 
-    @Test func theAccessibilityLabelCarriesTheCostOnlyWhenOneIsKnown() throws {
-        let unpriced = try #require(UsageChipContent.make(
-            state: .ready, today: today(500, cost: 0, unknown: ["claude-x"]), hasHistory: true))
-        #expect(unpriced.accessibilityLabel == "Claude usage today, 500 tokens")
+    @Test func theChipSaysTheBottleneckLimitNextToTheTokens() throws {
+        // 38 % of the five hours used, the week far from full.
+        let chip = try makeChip(limits: limits(
+            five: window(used: 38, resetsInSeconds: 3.5 * 3_600), week: window(used: 20, resetsInSeconds: 5 * 86_400)))
+        #expect(chip.full == "1.2M today · 5h 62% left")
+        #expect(chip.short == "1.2M today")
+        #expect(chip.limit == "5h 62% left")
+        #expect(chip.accessibilityLabel == "Claude usage today, 1.2 million tokens, five-hour limit 62 percent remaining")
+        #expect(chip.tooltip.contains("Plan limits, updated 11:59"))
+        #expect(chip.tooltip.contains("5-hour: 62% left, resets 15:30"))
+        #expect(chip.tooltip.contains("Weekly: 80% left, resets Mon 12:00"))
+        #expect(chip.tooltip.contains("1,204,310 tokens: input 0, output 1,204,310"))
+        for text in [chip.full, chip.tooltip, chip.accessibilityLabel] {
+            #expect(!text.contains("$") && !text.contains("~"))
+        }
     }
 
-    @Test func aDayWithNothingButAnEarlierHistoryReadsZeroTokens() throws {
-        let chip = try #require(UsageChipContent.make(state: .ready, today: today(0, cost: 0), hasHistory: true))
-        #expect(chip.kind == .today)
-        #expect(chip.short == "Today 0 tok")
+    @Test func theWindowWithTheLeastLeftIsTheBottleneckAndATieGoesToTheEarlierReset() throws {
+        let weekly = try makeChip(limits: limits(
+            five: window(used: 38, resetsInSeconds: 3_600), week: window(used: 82, resetsInSeconds: 86_400)))
+        #expect(weekly.limit == "Wk 18% left")
+        #expect(weekly.accessibilityLabel.hasSuffix("weekly limit 18 percent remaining"))
+        let tieWeek = try makeChip(limits: limits(
+            five: window(used: 40, resetsInSeconds: 7_200), week: window(used: 40, resetsInSeconds: 3_600)))
+        #expect(tieWeek.limit == "Wk 60% left")
+        let tieFive = try makeChip(limits: limits(
+            five: window(used: 40, resetsInSeconds: 3_600), week: window(used: 40, resetsInSeconds: 7_200)))
+        #expect(tieFive.limit == "5h 60% left")
     }
 
-    @Test func costIsLeftOutWhollyWhenOnlyUnknownModelsRanToday() throws {
-        let chip = try #require(UsageChipContent.make(
-            state: .ready, today: today(500, cost: 0, unknown: ["claude-x"]), hasHistory: true))
-        #expect(chip.full == chip.short)
-        #expect(chip.tooltip.contains("no known price"))
+    @Test func aWindowThatAlreadyResetIsIgnoredEverywhere() throws {
+        let expiredFive = try makeChip(limits: limits(
+            five: window(used: 99, resetsInSeconds: -1), week: window(used: 30, resetsInSeconds: 86_400)))
+        #expect(expiredFive.limit == "Wk 70% left")
+        #expect(!expiredFive.tooltip.contains("5-hour"))
+        let allExpired = try makeChip(limits: limits(
+            five: window(used: 99, resetsInSeconds: -60), week: window(used: 99, resetsInSeconds: -1)))
+        #expect(allExpired.limit == nil)
+        #expect(allExpired.full == "1.2M today")
+        #expect(!allExpired.tooltip.contains("Plan limits"))
+    }
+
+    @Test func aWindowWithoutAResetTimeCountsAndPartialLimitsShowTheOneWindow() throws {
+        let weekOnly = try makeChip(limits: limits(five: nil, week: window(used: 10, resetsInSeconds: nil)))
+        #expect(weekOnly.limit == "Wk 90% left")
+        #expect(weekOnly.tooltip.contains("Weekly: 90% left\n"))
+    }
+
+    @Test func aDayWithNothingButAnEarlierHistoryReadsZeroTokens() {
+        let chip = UsageChipContent.make(state: .ready, today: today(0, cost: 0), hasHistory: true)
+        #expect(chip?.kind == .today)
+        #expect(chip?.short == "0 today")
+    }
+
+    @Test func unknownModelsAddNothingToTheChip() {
+        let chip = UsageChipContent.make(
+            state: .ready, today: today(500, cost: 0, unknown: ["claude-x"]), hasHistory: true)
+        #expect(chip?.full == "500 today")
+        #expect(chip?.accessibilityLabel == "Claude usage today, 500 tokens")
+        #expect(chip?.tooltip.contains("price") == false)
     }
 
     @Test func tooltipBreaksTheTokensDownByType() throws {
