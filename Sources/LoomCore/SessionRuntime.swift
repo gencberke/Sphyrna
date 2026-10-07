@@ -89,37 +89,37 @@ public enum SessionRuntimeError: Error, CustomStringConvertible, Equatable, Send
         case .shuttingDown:
             "Loom is quitting; no new work is accepted"
         case .catalogUnavailable:
-            "The conversation catalog is not available"
+            "The session catalog is not available"
         case let .projectNotFound(id):
             "Project not found: \(id)"
         case let .missingDirectory(path):
             "The working directory no longer exists: \(path)"
         case let .sessionNotFound(id):
-            "Conversation not found: \(id)"
+            "Session not found: \(id)"
         case let .alreadyStarting(id):
-            "The conversation is already starting: \(id)"
+            "The session is already starting: \(id)"
         case let .alreadyRunning(id):
-            "The conversation is already running: \(id)"
+            "The session is already running: \(id)"
         case let .notRunning(id):
-            "The conversation is not running: \(id)"
+            "The session is not running: \(id)"
         case let .noProviderIdentity(provider):
-            "This \(provider.rawValue) conversation has no provider identity yet, so it cannot be resumed. Loom will not start a new conversation in its place."
+            "This \(provider.rawValue) session has no provider identity yet, so it cannot be resumed. Loom will not start a new session in its place."
         case let .providerIdentityTimeout(provider):
-            "\(provider.rawValue) did not report its conversation identity in time; the start was undone"
+            "\(provider.rawValue) did not report its session identity in time; the start was undone"
         case let .unsupportedProvider(provider):
-            "\(provider.rawValue) conversations cannot be started from the app"
+            "\(provider.rawValue) sessions cannot be started from the app"
         case let .unverifiedStop(id):
-            "The last stop of this conversation could not be verified: \(id)"
+            "The last stop of this session could not be verified: \(id)"
         case let .requestNotPending(id):
             "The provider request is no longer pending: \(id)"
         case let .deletionRefused(reason):
-            "This conversation cannot be deleted: \(reason)"
+            "This session cannot be deleted: \(reason)"
         case let .deletionPending(id):
-            "The conversation is being deleted: \(id)"
+            "The session is being deleted: \(id)"
         case let .deletionNotPending(id):
-            "No deletion is waiting for this conversation: \(id)"
+            "No deletion is waiting for this session: \(id)"
         case let .deletionInProgress(id):
-            "The conversation is already being deleted: \(id)"
+            "The session is already being deleted: \(id)"
         }
     }
 }

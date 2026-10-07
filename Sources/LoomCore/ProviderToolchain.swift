@@ -113,7 +113,7 @@ public actor SystemProviderToolchains {
         case .claude: value = try await claude(resolution)
         case .codex: value = try await codex(resolution)
         case .synthetic:
-            throw ProviderToolchainError.unsupported("Synthetic conversations have no provider CLI")
+            throw ProviderToolchainError.unsupported("Synthetic sessions have no provider CLI")
         }
         resolved[provider] = value
         return value

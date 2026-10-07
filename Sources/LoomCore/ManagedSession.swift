@@ -193,15 +193,15 @@ public enum SessionManagementError: Error, CustomStringConvertible, Equatable, S
         case let .runNotFound(id):
             "Managed run not found: \(id)"
         case let .conversationAlreadyRunning(provider, conversationID):
-            "Provider conversation is already running: \(provider.rawValue)/\(conversationID)"
+            "Provider session is already running: \(provider.rawValue)/\(conversationID)"
         case let .invalidOwnershipMarkers(id):
             "Launch requires this supervisor and managed session's ownership markers: \(id)"
         case let .leaderIdentityUnavailable(pid):
             "Managed run leader identity unavailable: \(pid)"
         case let .deletionPending(id):
-            "The conversation is being deleted: \(id)"
+            "The session is being deleted: \(id)"
         case let .conversationBeingDeleted(provider):
-            "A deleted \(provider.rawValue) conversation cannot be brought back"
+            "A deleted \(provider.rawValue) session cannot be brought back"
         }
     }
 }

@@ -12,7 +12,7 @@ extension CatalogModel {
         do {
             try await catalog.setPinned(pinned, for: id)
         } catch {
-            report(error, pinned ? "The conversation could not be pinned" : "The conversation could not be unpinned")
+            report(error, pinned ? "The session could not be pinned" : "The session could not be unpinned")
             return
         }
         await refreshRow(id)

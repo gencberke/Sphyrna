@@ -456,7 +456,7 @@ public enum LoomError: Error, CustomStringConvertible {
         case let .unsupportedShell(shell):
             "Terminal environment resolution currently supports macOS /bin/zsh; unsupported shell: \(shell)"
         case let .providerHistoryUnavailable(provider, conversationID):
-            "Provider history unavailable for \(provider.rawValue) conversation \(conversationID)"
+            "Provider history unavailable for \(provider.rawValue) session \(conversationID)"
         }
     }
 }

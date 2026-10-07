@@ -430,7 +430,7 @@ public final class CatalogModel {
             advanceNow(covering: records)
             list.replace(rows: records.map(row(for:)), cursor: cursor)
         } catch {
-            report(error, "Conversations could not be read")
+            report(error, "Sessions could not be read")
         }
     }
 
@@ -448,7 +448,7 @@ public final class CatalogModel {
                 guard generation == list.generation else { return }
                 list.append(page.sessions.map(row(for:)), cursor: page.next)
             } catch {
-                report(error, "More conversations could not be read")
+                report(error, "More sessions could not be read")
             }
         }
     }
@@ -600,7 +600,7 @@ public final class CatalogModel {
             guard selectedSessionID == id else { return }
             selectedRow = row(for: record)
         } catch {
-            report(error, "The selected conversation could not be read")
+            report(error, "The selected session could not be read")
         }
     }
 
@@ -699,7 +699,7 @@ public final class CatalogModel {
                 guard tabs.isPinned(id) else { continue }
                 _ = row(for: record)
             } catch {
-                report(error, "A tab's conversation could not be read")
+                report(error, "A tab's session could not be read")
                 forgetTab(id)
             }
         }
@@ -846,7 +846,7 @@ public final class CatalogModel {
             markAllStale()
             await reloadVisibleLists()
         } catch SessionCatalogError.projectNotEmpty {
-            report(nil, "Only an empty project can be removed. Its conversations stay in the catalog.")
+            report(nil, "Only an empty project can be removed. Its sessions stay in the catalog.")
         } catch {
             report(error, "The project could not be removed")
         }
@@ -976,7 +976,7 @@ public final class CatalogModel {
             // The selected detail row stays (pruning keeps it) either way.
             if isSearching { await reloadVisibleLists() }
         } catch {
-            report(error, "The conversation could not be refreshed")
+            report(error, "The session could not be refreshed")
         }
     }
 
@@ -1113,7 +1113,7 @@ public final class CatalogModel {
     public func resumeUnavailableReason(_ row: SessionRowModel) -> String? {
         let provider = row.record.session.provider
         guard provider != .synthetic, !startableProviders.contains(provider) else { return nil }
-        return "\(ProviderName.title(provider)) conversations can't be resumed in this version."
+        return "\(ProviderName.title(provider)) sessions can't be resumed in this version."
     }
 
     public func canStop(_ row: SessionRowModel) -> Bool {

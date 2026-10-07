@@ -50,7 +50,7 @@ extension ProcessSupervisor {
         }
         if !transitioningRuns.isEmpty || !stoppingRuns.isEmpty {
             if !transitioningRuns.isEmpty {
-                errors.append("Timed out waiting for conversation transitions: \(transitioningRuns.count)")
+                errors.append("Timed out waiting for session transitions: \(transitioningRuns.count)")
             }
             if !stoppingRuns.isEmpty { errors.append("Timed out waiting for active stops: \(stoppingRuns.count)") }
             // The in-flight catalog transaction owns this run until commit.

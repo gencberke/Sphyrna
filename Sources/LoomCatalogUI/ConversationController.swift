@@ -208,7 +208,7 @@ public final class ConversationController: ConversationIntents {
                 model.showStarted(launch.sessionID)
             } catch {
                 surface.runEnded()
-                report(error, "The conversation could not be resumed")
+                report(error, "The session could not be resumed")
             }
         }
     }
@@ -230,7 +230,7 @@ public final class ConversationController: ConversationIntents {
                     model.reportFailure("\(detail). Last process check: \(count). Stop it again to retry.")
                 }
             } catch {
-                report(error, "The conversation could not be stopped")
+                report(error, "The session could not be stopped")
             }
         }
     }

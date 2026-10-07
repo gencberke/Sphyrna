@@ -93,7 +93,7 @@ struct SearchField: View {
     var body: some View {
         HStack(spacing: LoomTheme.Space.searchSpacing) {
             Image(systemName: "magnifyingglass").foregroundStyle(LoomTheme.Text.secondary)
-            TextField("Search conversations", text: Binding(
+            TextField("Search sessions", text: Binding(
                 get: { model.searchText }, set: { model.setSearchText($0) }
             ))
             .textFieldStyle(.plain)
@@ -111,7 +111,7 @@ struct SearchField: View {
                 }
             }
             .onChange(of: model.searchFocusRequest) { focused = true }
-            .accessibilityLabel("Search conversations")
+            .accessibilityLabel("Search sessions")
             if !model.searchText.isEmpty {
                 Button { model.setSearchText("") } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(LoomTheme.Text.secondary)
@@ -198,7 +198,7 @@ struct ProjectList: View {
                         .onAppear { if row.id == list.rows.last?.id { model.loadMore(.project(project.id)) } }
                 }
                 if list.rows.isEmpty && list.isLoaded && !model.isSearching {
-                    Text("No conversations")
+                    Text("No sessions")
                         .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                         .padding(.horizontal, LoomTheme.Space.emptyNoteInset).padding(.vertical, LoomTheme.Space.emptyNoteVertical)
                 }
@@ -304,10 +304,10 @@ struct EmptyListHint: View {
             if !isLoaded {
                 ProgressView().controlSize(.small)
             } else if model.isSearching {
-                Text("No matching conversations").foregroundStyle(LoomTheme.Text.primary)
+                Text("No matching sessions").foregroundStyle(LoomTheme.Text.primary)
                 Text("Search covers title, provider and project.").foregroundStyle(LoomTheme.Text.secondary)
             } else {
-                Text("No conversations yet. Add a project folder to begin.").foregroundStyle(LoomTheme.Text.secondary)
+                Text("No sessions yet. Add a project folder to begin.").foregroundStyle(LoomTheme.Text.secondary)
             }
         }
         .font(LoomTheme.Typography.small)
@@ -488,8 +488,8 @@ struct NewConversationAction {
     let title: String
 
     private static let all = [
-        NewConversationAction(provider: .claude, title: "New Claude Conversation"),
-        NewConversationAction(provider: .codex, title: "New Codex Conversation"),
+        NewConversationAction(provider: .claude, title: "New Claude Session"),
+        NewConversationAction(provider: .codex, title: "New Codex Session"),
     ]
 
     /// The actions the model may start (production: Claude only).

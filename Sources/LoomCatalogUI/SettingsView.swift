@@ -10,7 +10,7 @@ public enum SettingsSection: CaseIterable, Identifiable, Hashable, Sendable {
         case .general: "General"
         case .usage: "Usage"
         case .about: "About"
-        case .conversations: "Conversations"
+        case .conversations: "Sessions"
         }
     }
 

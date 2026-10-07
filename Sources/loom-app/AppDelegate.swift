@@ -160,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func beginQuit() {
         guard let shutdownCoordinator else { return }
         conversations?.quitStarted()
-        model?.statusMessage = "Stopping conversations before quitting…"
+        model?.statusMessage = "Stopping sessions before quitting…"
         let started = ProcessInfo.processInfo.systemUptime
         let recordQuit = evidenceQuitRecorder(started: started)
         shutdownCoordinator.requestQuit(prepareReply: recordQuit) { [weak self] report in
@@ -277,7 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let executable = launcher.hostBundle
             .appendingPathComponent("Contents/MacOS/\(RunScopeLauncher.hostExecutableName)")
         guard !FileManager.default.isExecutableFile(atPath: executable.path) else { return }
-        model?.ownershipNotice = "New conversations are turned off because Loom's process helper is missing. Without it Loom cannot make sure Stop and Quit end all of a conversation's background work. Reinstall Loom to fix this."
+        model?.ownershipNotice = "New sessions are turned off because Loom's process helper is missing. Without it Loom cannot make sure Stop and Quit end all of a session's background work. Reinstall Loom to fix this."
     }
 
     @objc func showMainWindow() { presentMainWindow(reason: "window-menu") }
@@ -484,7 +484,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         // Timeout or remaining processes never count as a successful quit.
         NSApp.reply(toApplicationShouldTerminate: false)
-        model?.statusMessage = "Loom did not quit: it could not confirm that every conversation process stopped."
+        model?.statusMessage = "Loom did not quit: it could not confirm that every session process stopped."
         presentMainWindow(reason: "failed-quit")
         guard let window else { return }
         let alert = NSAlert()
@@ -538,18 +538,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         fileMenu.addItem(withTitle: "Add Project…", action: #selector(addProjectFromMenu(_:)),
                          keyEquivalent: "o").target = self
         // New conversations start in the selected conversation's project (or none).
-        fileMenu.addItem(withTitle: "New Claude Conversation", action: #selector(newClaudeFromMenu(_:)),
+        fileMenu.addItem(withTitle: "New Claude Session", action: #selector(newClaudeFromMenu(_:)),
                          keyEquivalent: "n").target = self
         if !identity.isProduction {
-            let codex = fileMenu.addItem(withTitle: "New Codex Conversation", action: #selector(newCodexFromMenu(_:)),
+            let codex = fileMenu.addItem(withTitle: "New Codex Session", action: #selector(newCodexFromMenu(_:)),
                                          keyEquivalent: "n")
             codex.keyEquivalentModifierMask = [.command, .shift]
             codex.target = self
         }
         fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "Resume Conversation", action: #selector(resumeFromMenu(_:)),
+        fileMenu.addItem(withTitle: "Resume Session", action: #selector(resumeFromMenu(_:)),
                          keyEquivalent: "r").target = self
-        let stop = fileMenu.addItem(withTitle: "Stop Conversation", action: #selector(stopFromMenu(_:)),
+        let stop = fileMenu.addItem(withTitle: "Stop Session", action: #selector(stopFromMenu(_:)),
                                     keyEquivalent: ".")
         stop.target = self
         fileMenu.addItem(.separator())

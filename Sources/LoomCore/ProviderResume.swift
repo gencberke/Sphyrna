@@ -9,7 +9,7 @@ public enum ProviderResumePlanner {
         guard session.provider == .claude,
               let conversationID = session.providerConversationID,
               !conversationID.isEmpty else {
-            throw LoomError.message("Claude session has no provider conversation identity")
+            throw LoomError.message("Claude session has no provider session identity")
         }
         return try .claude(
             route: .resume(conversationID), capabilities: capabilities,
@@ -25,7 +25,7 @@ public enum ProviderResumePlanner {
         guard session.provider == .codex,
               let conversationID = session.providerConversationID,
               !conversationID.isEmpty else {
-            throw LoomError.message("Codex session has no provider conversation identity")
+            throw LoomError.message("Codex session has no provider session identity")
         }
         return try .codex(
             route: .remote(socket: socketPath, threadID: conversationID, workingDirectory: session.workingDirectory),

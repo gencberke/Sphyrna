@@ -210,7 +210,7 @@ struct DeletionModelTests {
         // The failure is the banner's; the error banner stays quiet.
         #expect(fixture.model.errorMessage == nil)
         let text = DeletionCopy.bannerText(lastFailure: pending.lastFailure)
-        #expect(text.contains("Deleting this conversation isn't finished."))
+        #expect(text.contains("Deleting this session isn't finished."))
         #expect(text.contains("a.jsonl"))
         #expect(text.contains("Nothing else was touched."))
 

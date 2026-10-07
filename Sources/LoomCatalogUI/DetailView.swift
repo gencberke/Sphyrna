@@ -100,7 +100,7 @@ struct DetailHeader: View {
             if !model.showsDevTerminal, let row = model.selectedRow, model.canStop(row) {
                 Button("Stop") { model.stopConversation(row.id) }
                     .buttonStyle(AccentButtonStyle(kind: .tinted))
-                    .accessibilityLabel("Stop conversation")
+                    .accessibilityLabel("Stop session")
             }
             if !model.showsDevTerminal, let row = model.selectedRow {
                 Menu {
@@ -118,7 +118,7 @@ struct DetailHeader: View {
                 }
                 .menuStyle(.button).buttonStyle(ChromeButtonStyle()).menuIndicator(.hidden).fixedSize()
                 .focusEffectDisabled()
-                .accessibilityLabel("Conversation actions")
+                .accessibilityLabel("Session actions")
             }
         }
         .font(LoomTheme.Typography.body)
@@ -226,22 +226,22 @@ struct DetailContent: View {
                         && !model.isSearching {
                 VStack(spacing: LoomTheme.Space.emptyStateSpacing) {
                     Message(symbol: "folder.badge.plus", title: "Add a project to begin",
-                            text: "Your projects and conversations appear in the sidebar.")
+                            text: "Your projects and sessions appear in the sidebar.")
                     HStack {
                         Button("Add Project…") { model.presentAddProject() }
                             .keyboardShortcut("o", modifiers: .command)
                             .buttonStyle(AccentButtonStyle(kind: .filled))
-                        Button("New Claude Conversation") { model.startConversation(.claude, projectID: nil) }
+                        Button("New Claude Session") { model.startConversation(.claude, projectID: nil) }
                             .disabled(!model.canStart(.claude, projectID: nil))
                         if model.startableProviders.contains(.codex) {
-                            Button("New Codex Conversation") { model.startConversation(.codex, projectID: nil) }
+                            Button("New Codex Session") { model.startConversation(.codex, projectID: nil) }
                                 .disabled(!model.canStart(.codex, projectID: nil))
                         }
                     }
                 }
             } else {
-                Message(symbol: "text.bubble", title: "No conversation selected",
-                        text: "Choose a conversation in the sidebar to see its details.")
+                Message(symbol: "text.bubble", title: "No session selected",
+                        text: "Choose a session in the sidebar to see its details.")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -302,7 +302,7 @@ struct ConversationDetail: View {
                     VStack(alignment: .leading, spacing: LoomTheme.Space.detailLineSpacing) {
                         Text(model.title(of: row)).font(LoomTheme.Typography.heading)
                             .foregroundStyle(LoomTheme.Text.primary).textSelection(.enabled)
-                        Text(ProviderName.title(record.session.provider) + " conversation")
+                        Text(ProviderName.title(record.session.provider) + " session")
                             .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     }
                 }
@@ -312,11 +312,11 @@ struct ConversationDetail: View {
                            title: "Stop could not be verified", text: message)
                 } else if case let .problem(message) = indicator {
                     Notice(symbol: "exclamationmark.triangle.fill", color: LoomTheme.Status.failure,
-                           title: "This conversation has a problem", text: message)
+                           title: "This session has a problem", text: message)
                 } else if indicator == .identityUnclear {
                     Notice(symbol: "questionmark.diamond", color: LoomTheme.Status.attention,
-                           title: "Conversation identity is not certain",
-                           text: "Loom could not tell which provider conversation this is, so it changed nothing.")
+                           title: "Session identity is not certain",
+                           text: "Loom could not tell which provider session this is, so it changed nothing.")
                 } else if case let .failed(message) = indicator {
                     Notice(symbol: "exclamationmark.triangle.fill", color: LoomTheme.Status.failure,
                            title: "The provider reported a failure", text: message ?? "No details were provided.")
@@ -328,7 +328,7 @@ struct ConversationDetail: View {
                     Fact("Status", indicator.label ?? (record.lifecycle == .active ? "Not running" : "—"))
                     Fact("Project", model.projectName(for: record) ?? "No project")
                     Fact("Working directory", record.session.workingDirectory)
-                    Fact("Provider conversation", record.session.providerConversationID ?? "Not assigned yet")
+                    Fact("Provider session", record.session.providerConversationID ?? "Not assigned yet")
                     Fact("Created", record.createdAt.formatted(date: .abbreviated, time: .shortened))
                     Fact("Last activity", record.lastActivityAt.formatted(date: .abbreviated, time: .shortened))
                     Fact("Last used", record.lastUsedAt.formatted(date: .abbreviated, time: .shortened))
@@ -342,7 +342,7 @@ struct ConversationDetail: View {
                         Text(reason)
                             .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     } else {
-                        Text("Opening this record launches nothing. Resume continues the same provider conversation in its own folder; if the provider no longer has it, you will see that instead of a new conversation.")
+                        Text("Opening this record launches nothing. Resume continues the same provider session in its own folder; if the provider no longer has it, you will see that instead of a new session.")
                             .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     }
                     HStack {
@@ -453,11 +453,11 @@ struct RenameSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: LoomTheme.Space.sheetSpacing) {
-            Text("Rename conversation").font(LoomTheme.Typography.title)
+            Text("Rename session").font(LoomTheme.Typography.title)
             TextField("Title", text: $draft.text)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { save() }
-                .accessibilityLabel("Conversation title")
+                .accessibilityLabel("Session title")
             HStack {
                 Text("\(draft.text.count)/\(SessionCatalog.maxTitleLength)")
                     .foregroundStyle(draft.text.count > SessionCatalog.maxTitleLength

@@ -526,7 +526,7 @@ public actor CodexSessionCoordinator {
         if let sessionID {
             await supervisor.events.publish(sessionID: sessionID,
                 change: .issue(Self.failureText(
-                    "Codex subscription was stopped; restart the conversation to receive requests", error)))
+                    "Codex subscription was stopped; restart the session to receive requests", error)))
         }
     }
 
@@ -651,7 +651,7 @@ public actor CodexSessionCoordinator {
     /// gone; a merely closed connection to a live server is still a failure.
     private func requireProvider() async throws {
         if await providerServerGone() {
-            throw ProviderUnavailableError("the conversation's Codex app-server is gone")
+            throw ProviderUnavailableError("the session's Codex app-server is gone")
         }
     }
 

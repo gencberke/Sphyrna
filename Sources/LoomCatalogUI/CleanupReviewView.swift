@@ -14,7 +14,7 @@ struct CleanupReviewView: View {
             footer
         }
         .task { await review.open() }
-        .alert("Delete \(review.selectedCount) \(review.selectedCount == 1 ? "conversation" : "conversations") permanently?",
+        .alert("Delete \(review.selectedCount) \(review.selectedCount == 1 ? "session" : "sessions") permanently?",
                isPresented: $confirming) {
             Button("Delete", role: .destructive) { Task { await review.confirmDeletion() } }
             Button("Cancel", role: .cancel) {}
@@ -27,7 +27,7 @@ struct CleanupReviewView: View {
     private var content: some View {
         switch review.phase {
         case .idle, .loading where review.review == nil:
-            CleanupNotice(title: "Reviewing conversations", text: "Checking which stale conversations can be deleted.")
+            CleanupNotice(title: "Reviewing sessions", text: "Checking which stale sessions can be deleted.")
         case .failed(let message) where review.review == nil:
             CleanupNotice(title: "The review could not be made", text: message, retry: { Task { await review.open() } })
         default:
@@ -40,7 +40,7 @@ struct CleanupReviewView: View {
             VStack(alignment: .leading, spacing: LoomTheme.Space.settingsSectionGap) {
                 if review.showsDueNotice { dueCleanupNotice(snapshot) }
                 if snapshot.eligible.isEmpty && snapshot.excluded.isEmpty {
-                    Text("No stale conversations. Conversations unused for 15 days become stale.")
+                    Text("No stale sessions. Sessions unused for 15 days become stale.")
                         .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                 }
                 if !snapshot.eligible.isEmpty { eligibleSection(snapshot) }
@@ -71,7 +71,7 @@ struct CleanupReviewView: View {
     private func dueText(_ mode: CleanupMode) -> String {
         switch mode {
         case .reviewRequired(.longAbsence): "It has been a while. A review is due; nothing is deleted unless you confirm it here."
-        case .reviewRequired(.bulk): "A review is due and many conversations qualify. Nothing is deleted unless you confirm it here."
+        case .reviewRequired(.bulk): "A review is due and many sessions qualify. Nothing is deleted unless you confirm it here."
         default: "A review is due. Nothing is deleted unless you confirm it here."
         }
     }
@@ -168,7 +168,7 @@ struct CleanupReviewView: View {
                 .help("Review again")
                 .accessibilityLabel("Review again")
             if !review.hasResults {
-                Button(review.selectedCount == 0 ? "Delete Conversations" : "Delete \(review.selectedCount) \(review.selectedCount == 1 ? "Conversation" : "Conversations")") {
+                Button(review.selectedCount == 0 ? "Delete Sessions" : "Delete \(review.selectedCount) \(review.selectedCount == 1 ? "Session" : "Sessions")") {
                     confirming = true
                 }
                 .buttonStyle(AccentButtonStyle(kind: .tinted))

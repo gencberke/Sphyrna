@@ -116,9 +116,9 @@ public enum ProjectAttention: Int, Comparable, Sendable {
 
     public var label: String {
         switch self {
-        case .failure: "A conversation failed"
-        case .attention: "A conversation needs you"
-        case .unviewed: "A conversation finished"
+        case .failure: "A session failed"
+        case .attention: "A session needs you"
+        case .unviewed: "A session finished"
         }
     }
 }

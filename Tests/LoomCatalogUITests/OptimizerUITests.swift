@@ -50,7 +50,7 @@ struct OptimizerUITests {
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let codexRow = try row(fixture.model, fixture.codex)
         #expect(!fixture.model.canResume(codexRow))
-        #expect(fixture.model.resumeUnavailableReason(codexRow) == "Codex conversations can't be resumed in this version.")
+        #expect(fixture.model.resumeUnavailableReason(codexRow) == "Codex sessions can't be resumed in this version.")
         fixture.model.resumeConversation(fixture.codex)
         #expect(fixture.intents.resumes.isEmpty, "a stale menu or Cmd+R must not reach the runtime")
         // Claude is unaffected.

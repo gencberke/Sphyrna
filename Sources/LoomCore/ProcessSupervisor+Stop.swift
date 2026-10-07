@@ -82,7 +82,7 @@ extension ProcessSupervisor {
             try? await Task.sleep(for: .milliseconds(1))
         }
         if transitioningRuns.contains(runID) {
-            var errors = ["Timed out waiting for conversation transition before stop"]
+            var errors = ["Timed out waiting for session transition before stop"]
             var countVerified = true
             let remaining: [ProcessRecord]
             do { remaining = try sample(runID: runID) }

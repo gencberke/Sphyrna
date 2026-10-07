@@ -177,9 +177,9 @@ extension SessionRuntime {
             let exited = await supervisor.runContext(runID: registered.runID) == nil
             await undoLaunch(registered, reason: shuttingDown
                 ? "Loom was quitting"
-                : exited ? "Codex exited before it reported a conversation identity"
-                : "Codex did not report its conversation identity in time")
-            if exited { throw LoomError.message("Codex exited before it reported a conversation identity") }
+                : exited ? "Codex exited before it reported a session identity"
+                : "Codex did not report its session identity in time")
+            if exited { throw LoomError.message("Codex exited before it reported a session identity") }
             throw SessionRuntimeError.providerIdentityTimeout(.codex)
         }
         return registered
@@ -253,7 +253,7 @@ extension SessionRuntime {
             let errors = await tearDown(previous)
             guard errors.isEmpty else {
                 throw LoomError.message(
-                    "The previous Codex app-server of this conversation could not be stopped: \(errors.joined(separator: "; "))"
+                    "The previous Codex app-server of this session could not be stopped: \(errors.joined(separator: "; "))"
                 )
             }
         }
@@ -522,10 +522,10 @@ extension SessionRuntime {
         for (sessionID, (reservation, reservationCoordinator)) in reservations
         where reservationCoordinator === coordinator {
             guard server.coordinator === coordinator else { return }
-            startupConnectionFailures[sessionID] = "Codex app-server connection closed before conversation identity was received"
+            startupConnectionFailures[sessionID] = "Codex app-server connection closed before session identity was received"
             await reservationCoordinator.cancelNewLaunch(reservation)
         }
-        let message = "\(detail). Requests and status from Codex are no longer received; the conversation may need to be restarted."
+        let message = "\(detail). Requests and status from Codex are no longer received; the session may need to be restarted."
         for record in runs.values where record.server === server {
             guard let session = await supervisor.activeSessionID(runID: record.runID) else { continue }
             guard server.coordinator === coordinator else { return }

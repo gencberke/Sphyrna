@@ -51,7 +51,7 @@ private struct UsageContent: View {
         case .ready:
             if !usage.hasHistory {
                 UsageNotice(title: "No Claude usage yet",
-                            text: "Loom found no transcripts in this Claude profile. Usage appears after a conversation finishes its first turn.",
+                            text: "Loom found no transcripts in this Claude profile. Usage appears after a session finishes its first turn.",
                             path: profile.map { SettingsPaths.display($0.appendingPathComponent("projects")) })
             } else if let report = usage.report, report.period == usage.period {
                 ScrollView {

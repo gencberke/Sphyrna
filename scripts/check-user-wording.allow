@@ -1,0 +1,7 @@
+# Lines of Sources/LoomCatalogUI and Sources/loom-app that may keep "conversation"
+# inside a string literal. One extended regex per line, matched against the
+# "path:line:code" text of the grep hit. Keep this short: evidence keys and
+# identifiers only, never text the user reads.
+# Development-evidence JSON keys (scripts parse them).
+"conversationID"
+"conversationTerminals"

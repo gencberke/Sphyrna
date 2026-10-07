@@ -8,14 +8,14 @@ struct DeleteConversationSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: LoomTheme.Space.sheetSpacing) {
-            Text("Delete this conversation?").font(LoomTheme.Typography.title)
+            Text("Delete this session?").font(LoomTheme.Typography.title)
             Text(confirmation.title).font(LoomTheme.Typography.bodyStrong)
                 .foregroundStyle(LoomTheme.Text.primary).lineLimit(2).truncationMode(.tail)
             switch confirmation.phase {
             case .loading:
                 HStack(spacing: LoomTheme.Space.headerSpacing) {
                     ProgressView().controlSize(.small)
-                    Text("Checking what Claude has kept for this conversation…")
+                    Text("Checking what Claude has kept for this session…")
                         .foregroundStyle(LoomTheme.Text.secondary)
                 }
                 .font(LoomTheme.Typography.small)
@@ -81,7 +81,7 @@ struct DeletionBannerRow: View {
         let title = model.deletions.titles[record.id].flatMap { $0.isEmpty ? nil : $0 }
         HStack(alignment: .top, spacing: LoomTheme.Space.bannerRowSpacing) {
             if model.isDeleting(record.id) {
-                Text(title.map { "Deleting \($0)…" } ?? "Deleting a conversation…")
+                Text(title.map { "Deleting \($0)…" } ?? "Deleting a session…")
                     .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {

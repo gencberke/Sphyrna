@@ -54,7 +54,7 @@ struct SidebarStatusTests {
         let intents = RecordingIntents()
         model.intents = intents
         let project = UUID()
-        #expect(NewConversationAction.startable(on: model).map(\.title) == ["New Claude Conversation", "New Codex Conversation"])
+        #expect(NewConversationAction.startable(on: model).map(\.title) == ["New Claude Session", "New Codex Session"])
         for action in NewConversationAction.startable(on: model) {
             #expect(action.isEnabled(on: model, projectID: project))
             action.perform(on: model, projectID: project)
@@ -79,7 +79,7 @@ struct SidebarStatusTests {
                                  startableProviders: [.claude])
         let intents = RecordingIntents()
         model.intents = intents
-        #expect(NewConversationAction.startable(on: model).map(\.title) == ["New Claude Conversation"])
+        #expect(NewConversationAction.startable(on: model).map(\.title) == ["New Claude Session"])
         #expect(model.startableProviders == [.claude])
         #expect(!model.canStart(.codex, projectID: nil))
         model.startConversation(.codex, projectID: nil)

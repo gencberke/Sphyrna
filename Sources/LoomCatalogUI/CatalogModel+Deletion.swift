@@ -113,11 +113,11 @@ extension CatalogModel {
     public func deletionDisabledReason(for row: SessionRowModel) -> String? {
         switch row.record.session.provider {
         case .claude: break
-        case .codex: return "Codex conversations can't be deleted from Loom yet."
-        case .synthetic: return "This is not a provider conversation."
+        case .codex: return "Codex sessions can't be deleted from Loom yet."
+        case .synthetic: return "This is not a provider session."
         }
         if !actionsAvailable { return "Deleting isn't available right now." }
-        if isDeleting(row.id) || deletions.pending[row.id] != nil { return "This conversation is already being deleted." }
+        if isDeleting(row.id) || deletions.pending[row.id] != nil { return "This session is already being deleted." }
         switch busy[row.id] {
         case .starting?, .resuming?: return "Wait until it has finished starting."
         case .stopping?: return "Wait until it has finished stopping."
@@ -151,7 +151,7 @@ extension CatalogModel {
                 if case let SessionRuntimeError.deletionRefused(reason)? = error as? SessionRuntimeError {
                     phase = .unavailable(reason.last == "." ? reason : reason + ".")
                 } else {
-                    phase = .unavailable(Self.userMessage(for: error, context: "Loom could not check what deleting this conversation removes"))
+                    phase = .unavailable(Self.userMessage(for: error, context: "Loom could not check what deleting this session removes"))
                 }
             }
             guard let confirmation, self?.deletions.confirmation === confirmation else { return }
@@ -189,7 +189,7 @@ extension CatalogModel {
             case let .incomplete(record): deletions.setPending(record)
             }
         } catch {
-            reportFailure(Self.userMessage(for: error, context: "The conversation could not be deleted"))
+            reportFailure(Self.userMessage(for: error, context: "The session could not be deleted"))
             await refreshPendingDeletions()
         }
     }
@@ -247,7 +247,7 @@ public enum DeletionCopy {
 
     public static func unreachableNote(_ folders: [String]) -> String {
         "Deleting cannot finish: Loom cannot look inside \(folders.joined(separator: ", ")) (it is a link or on another disk), "
-            + "so it cannot tell whether Claude keeps files for this conversation there. Nothing was removed."
+            + "so it cannot tell whether Claude keeps files for this session there. Nothing was removed."
     }
 
     /// What failed, in a sentence without a final period. `lastFailure` is the runtime's
@@ -258,23 +258,23 @@ public enum DeletionCopy {
         let category = parts.first ?? ""
         let file = parts.count > 1 && !parts[1].isEmpty ? parts[1] : nil
         switch category {
-        case "stop_failed": return "Loom could not stop the running conversation"
-        case "stop_unverified": return "Loom could not confirm that the conversation stopped"
-        case "live_session": return "A Claude process is still using this conversation"
+        case "stop_failed": return "Loom could not stop the running session"
+        case "stop_unverified": return "Loom could not confirm that the session stopped"
+        case "live_session": return "A Claude process is still using this session"
         case "unsafe_directory": return "Claude's data folder is not safe to change (its owner or permissions are not what Loom expects)"
         case "partial_failure": return file.map { "Loom could not remove \($0)" } ?? "Loom could not remove some of Claude's files"
         case "refused": return "Loom was refused when it tried to remove Claude's files"
         case "plan_failed": return "Loom could not read Claude's data folder"
         case "unreachable_folder":
             return "Loom cannot look inside \(file ?? "a folder of Claude's data") (it is a link or on another disk), "
-                + "so it cannot tell whether Claude keeps files for this conversation there"
-        case "catalog_row_remains": return "Loom's own record of the conversation could not be removed"
-        case "provider_id_reappeared": return "Another conversation now uses the same Claude data"
-        case "still_running": return "A process of this conversation is still running"
+                + "so it cannot tell whether Claude keeps files for this session there"
+        case "catalog_row_remains": return "Loom's own record of the session could not be removed"
+        case "provider_id_reappeared": return "Another session now uses the same Claude data"
+        case "still_running": return "A process of this session is still running"
         case "leftover_files":
             return file.map { "\($0) was still there after Loom removed it" } ?? "Some of Claude's files were still there after Loom removed them"
         case "verify_failed": return "Loom could not check that Claude's files are gone"
-        case "forget_hook_failed": return "Loom could not clear its usage figures for this conversation"
+        case "forget_hook_failed": return "Loom could not clear its usage figures for this session"
         case "unsupported_provider": return "Loom cannot delete this provider's files"
         default:
             let readable = category.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
@@ -286,6 +286,6 @@ public enum DeletionCopy {
     public static func bannerText(lastFailure: String?) -> String {
         var reason = failureReason(lastFailure)
         while reason.last == "." { reason.removeLast() }
-        return "Deleting this conversation isn't finished. \(reason). Nothing else was touched."
+        return "Deleting this session isn't finished. \(reason). Nothing else was touched."
     }
 }

@@ -86,7 +86,7 @@ public actor ClaudeSessionAdapter {
         }
         try? await supervisor.updateProviderWorkState(runID: runID, state: ProviderWorkState(activity: .unknown))
         await supervisor.events.publish(sessionID: context.activeSessionID,
-            change: .issue("Claude hook events were lost; state is unknown. Stop and resume this conversation to restore reliable tracking."))
+            change: .issue("Claude hook events were lost; state is unknown. Stop and resume this session to restore reliable tracking."))
     }
 
     /// Drops what the adapter kept for a deleted conversation (its last status). Per-run state
@@ -231,7 +231,7 @@ public actor CodexSessionAdapter {
             let snapshot = try await read(threadID)
             if snapshot.isActive {
                 throw CodexAppServerError.protocolViolation(
-                    "Ambiguous new conversation \(threadID) may belong to another session and is still running"
+                    "Ambiguous new session \(threadID) may belong to another session and is still running"
                 )
             }
         }

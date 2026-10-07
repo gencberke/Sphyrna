@@ -184,15 +184,15 @@ extension SessionRuntime {
         switch record.session.provider {
         case .claude: break
         case .codex:
-            throw SessionRuntimeError.deletionRefused("Codex conversations cannot be deleted from Loom yet")
+            throw SessionRuntimeError.deletionRefused("Codex sessions cannot be deleted from Loom yet")
         case .synthetic:
-            throw SessionRuntimeError.deletionRefused("This is not a provider conversation")
+            throw SessionRuntimeError.deletionRefused("This is not a provider session")
         }
         let providerIDs = try await catalog.providerIDs(of: id)
         for providerID in providerIDs {
             if try await catalog.isProviderIDShared(providerID, excluding: id) {
                 throw SessionRuntimeError.deletionRefused(
-                    "Another conversation uses the same Claude conversation data"
+                    "Another session uses the same Claude session data"
                 )
             }
         }
@@ -241,9 +241,9 @@ extension SessionRuntime {
     private static func reason(for error: Error) -> String {
         switch error as? ClaudeDataError {
         case .unsafeDirectory: "The Claude data folder is not safe to change (owner or permissions)"
-        case .liveSession: "A Claude process is still using this conversation"
+        case .liveSession: "A Claude process is still using this session"
         case .sessionRegistryUnreadable: "Claude's session registry cannot be read"
-        case .invalidSessionID: "The conversation has an identity Loom cannot match to files"
+        case .invalidSessionID: "The session has an identity Loom cannot match to files"
         case nil: "The Claude data folder could not be inspected"
         }
     }
@@ -313,7 +313,7 @@ extension SessionRuntime {
     private func stopRun(of id: UUID) async throws {
         guard let run = await supervisor.session(id: id)?.currentRun else { return }
         // Nothing more may be typed into a conversation that is being deleted.
-        inputGate.close(runID: run.id, reason: "This conversation is being deleted")
+        inputGate.close(runID: run.id, reason: "This session is being deleted")
         let report: SessionStopReport
         do { report = try await stopConversation(sessionID: id) }
         catch SessionRuntimeError.notRunning { return }   // exited or moved to another card meanwhile

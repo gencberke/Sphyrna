@@ -82,7 +82,7 @@ struct ConversationTabStrip: View {
         }
         .frame(height: LoomTheme.TabStrip.height)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Conversation tabs")
+        .accessibilityLabel("Session tabs")
     }
 }
 
@@ -137,7 +137,7 @@ struct ConversationTabItem: View {
         let selected = model.selectedSessionID == id
         let transient = model.isTransientTab(id)
         let row = model.tabRow(id)
-        let title = row.map { model.title(of: $0) } ?? "Conversation"
+        let title = row.map { model.title(of: $0) } ?? "Session"
         let indicator = row?.indicator ?? .idle
         HStack(spacing: LoomTheme.TabStrip.tabSpacing) {
             IndicatorView(indicator: indicator)
@@ -229,7 +229,7 @@ private struct TabOverflowButton: View {
         Menu {
             ForEach(ids, id: \.self) { id in
                 let row = model.tabRow(id)
-                let title = row.map { model.title(of: $0) } ?? "Conversation"
+                let title = row.map { model.title(of: $0) } ?? "Session"
                 let label = row?.indicator.label
                 Button { model.selectTab(id) } label: {
                     let text = label.map { "\(title) — \($0)" } ?? title

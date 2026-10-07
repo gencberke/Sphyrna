@@ -447,7 +447,7 @@ public actor SessionLifecycleController {
         // provider has not read it yet (bytes in the PTY are not a prompt the
         // provider reported), so the stop is decided against that input too.
         let closing = inputGate.closeIfIdle(
-            runID: run.id, reason: "the conversation is being stopped for inactivity",
+            runID: run.id, reason: "the session is being stopped for inactivity",
             quietFor: policy.idleAfter
         )
         if closing == .pending || closing == .recentInput {

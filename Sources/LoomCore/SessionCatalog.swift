@@ -163,13 +163,13 @@ public enum SessionCatalogError: Error, CustomStringConvertible, Sendable {
         case let .projectNotFound(id):
             "Project not found: \(id)"
         case let .projectNotEmpty(id):
-            "Project still has conversations and cannot be removed: \(id)"
+            "Project still has sessions and cannot be removed: \(id)"
         case let .projectPathNotDirectory(path):
             "Project path is not an existing folder: \(path)"
         case let .deletionPending(id):
-            "Conversation is being deleted: \(id)"
+            "Session is being deleted: \(id)"
         case let .deletionAlreadyRequested(id):
-            "A deletion is already recorded for conversation: \(id)"
+            "A deletion is already recorded for session: \(id)"
         }
     }
 }

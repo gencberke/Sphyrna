@@ -24,8 +24,8 @@ struct SidebarFooter: View {
             }
             .menuStyle(.button).buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.footerButton))
             .menuIndicator(.hidden).fixedSize()
-            .help("New conversation or project")
-            .accessibilityLabel("New conversation or project")
+            .help("New session or project")
+            .accessibilityLabel("New session or project")
             if let usage = model.usage {
                 UsageChip(usage: usage) { model.showSettings(.usage) }
             } else {
