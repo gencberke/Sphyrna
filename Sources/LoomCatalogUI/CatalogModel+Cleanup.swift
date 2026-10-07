@@ -1,0 +1,149 @@
+import Foundation
+import LoomCore
+import Observation
+
+// CP4-G: pin (a retention exception, not a pinned tab) and the Conversations review state.
+
+extension CatalogModel {
+    /// Writes `sessions.pinned` and refreshes the card. A pinned conversation is never listed
+    /// for cleanup (DP-CP4-5).
+    public func setPinned(_ id: UUID, _ pinned: Bool) async {
+        guard let catalog else { return }
+        do {
+            try await catalog.setPinned(pinned, for: id)
+        } catch {
+            report(error, pinned ? "The conversation could not be pinned" : "The conversation could not be unpinned")
+            return
+        }
+        await refreshRow(id)
+    }
+
+    /// Offers the cleanup review in Settings. The app calls this only where permanent deletion is
+    /// enabled (`BuildIdentity.permanentDeletionEnabled`).
+    public func installCleanupReview(_ reviewing: any CleanupReviewing) {
+        cleanupReview = CleanupReviewModel(reviewing: reviewing)
+    }
+}
+
+/// State of Settings → Conversations. Every list is a snapshot from the coordinator; deleting
+/// re-plans in the coordinator and only rows that are checked and still eligible are removed.
+@MainActor @Observable
+public final class CleanupReviewModel {
+    public enum Phase: Equatable {
+        case idle
+        case loading
+        case ready
+        case deleting
+        case failed(String)
+    }
+
+    public private(set) var phase: Phase = .idle
+    public private(set) var review: CleanupReview?
+    public private(set) var selection: Set<UUID> = []
+    /// Per-row outcome of the last deletion run, shown on the rows.
+    public private(set) var results: [UUID: CleanupRowResult] = [:]
+    /// A dismissed due review stops showing the info line until the next one is due.
+    public private(set) var dismissed = false
+
+    @ObservationIgnored private let reviewing: any CleanupReviewing
+    @ObservationIgnored var currentDate: @Sendable () -> Date = { Date() }
+
+    public init(reviewing: any CleanupReviewing) { self.reviewing = reviewing }
+
+    public var isBusy: Bool { phase == .loading || phase == .deleting }
+    public var hasResults: Bool { !results.isEmpty }
+    public var selectedCount: Int { selection.count }
+    public var canDelete: Bool { phase == .ready && !selection.isEmpty && !hasResults }
+    /// The quiet info line: a review is due and the user has not dismissed it.
+    public var showsDueNotice: Bool { (review?.isDue ?? false) && !dismissed && !hasResults }
+
+    /// Takes a fresh snapshot (Settings opened, or "Review again"). Nothing is checked by default.
+    public func open() async {
+        guard !isBusy else { return }
+        phase = .loading
+        do {
+            review = try await reviewing.review(now: currentDate())
+            selection = []
+            results = [:]
+            dismissed = false
+            phase = .ready
+        } catch {
+            phase = .failed("The review could not be made: \(error)")
+        }
+    }
+
+    public func isSelected(_ id: UUID) -> Bool { selection.contains(id) }
+
+    public func setSelected(_ id: UUID, _ selected: Bool) {
+        guard phase == .ready, !hasResults, review?.eligible.contains(where: { $0.id == id }) == true else { return }
+        if selected { selection.insert(id) } else { selection.remove(id) }
+    }
+
+    public func selectAll() {
+        guard phase == .ready, !hasResults, let review else { return }
+        selection = Set(review.eligible.map(\.id))
+    }
+
+    public func clearSelection() { selection = [] }
+
+    /// Deletes the checked conversations one by one through the normal deletion path. The
+    /// coordinator re-plans first; a row that is no longer eligible is skipped, never deleted.
+    public func confirmDeletion() async {
+        guard canDelete, let review else { return }
+        let ids = review.eligible.map(\.id).filter(selection.contains)
+        phase = .deleting
+        results = [:]
+        do {
+            let confirmation = try await reviewing.confirm(ids: ids, now: currentDate()) { [weak self] id, result in
+                await self?.record(id, result)
+            }
+            results = confirmation.results
+            selection = []
+            phase = .ready
+        } catch {
+            phase = .failed("Deleting stopped: \(error)")
+        }
+    }
+
+    /// Leaves a due review without deleting; it still counts as the cleanup run.
+    public func dismissDueReview() async {
+        guard showsDueNotice else { return }
+        do {
+            try await reviewing.dismiss(now: currentDate())
+            dismissed = true
+        } catch {
+            phase = .failed("The review could not be dismissed: \(error)")
+        }
+    }
+
+    private func record(_ id: UUID, _ result: CleanupRowResult) { results[id] = result }
+}
+
+/// The words Settings uses for the planner's reasons.
+enum CleanupText {
+    static func reason(_ reason: CleanupExclusionReason) -> String {
+        switch reason {
+        case .pinned: "Pinned"
+        case .running: "Running"
+        case .deleting: "Being deleted"
+        case .notStale: "Not stale"
+        case .waitUntil(let date): "Waits until \(date.formatted(date: .abbreviated, time: .omitted))"
+        case .worktree(let detail): detail
+        case .task: "Linked to an unfinished task"
+        }
+    }
+
+    static func result(_ result: CleanupRowResult) -> String {
+        switch result {
+        case .deleted: "Deleted"
+        // The recorded failure is "category: file"; the row shows the category, the file stays in the record.
+        case .incomplete(let detail): "Not finished: \(detail.components(separatedBy: ": ").first ?? detail)"
+        case .failed(let detail): "Failed: \(detail)"
+        case .skipped(let why): "Skipped: \(reason(why))"
+        }
+    }
+
+    static func size(_ row: CleanupEligibleRow) -> String? {
+        row.byteCount.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
+    }
+}

@@ -342,6 +342,11 @@ struct SessionCardView: View {
                               systemImage: "arrow.triangle.branch")
                             .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
                             .help("Git branch")
+                        if row.record.pinned {
+                            Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
+                                .foregroundStyle(LoomTheme.Text.secondary)
+                                .help("Pinned: kept out of conversation cleanup")
+                        }
                         Spacer(minLength: LoomTheme.Space.headerSpacing)
                         if let projectName = SessionCardView.projectLabel(showsProject: showsProject, name: projectName) {
                             Text(projectName).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
@@ -367,6 +372,8 @@ struct SessionCardView: View {
         .contextMenu {
             Button("Rename…") { model.beginRename(row.id) }
             Button("Open in Tab") { model.openTab(row.id) }.disabled(model.tabs.isPinned(row.id))
+            Button(row.record.pinned ? "Unpin" : "Pin") { Task { await model.setPinned(row.id, !row.record.pinned) } }
+                .help("Keeps this conversation out of cleanup. Not the same as a pinned tab.")
             Divider()
             Button("Resume") { model.resumeConversation(row.id) }.disabled(!model.canResume(row))
             Button("Stop") { model.stopConversation(row.id) }.disabled(!model.canStop(row))
@@ -374,7 +381,7 @@ struct SessionCardView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(ProviderName.title(row.record.session.provider))"
-            + (indicator.label.map { ", \($0)" } ?? ""))
+            + (indicator.label.map { ", \($0)" } ?? "") + (row.record.pinned ? ", pinned" : ""))
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }

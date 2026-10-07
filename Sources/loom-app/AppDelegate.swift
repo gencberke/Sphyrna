@@ -348,6 +348,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 try await created.start()
                 let conversations = ConversationController(runtime: created, model: model)
                 await conversations.begin()
+                // The launch is recorded in both flavors; the review that deletes is offered only
+                // where permanent deletion is (CP4-G).
+                let cleanup = CleanupCoordinator(runtime: created)
+                await cleanup.recordLaunch()
+                if identity.permanentDeletionEnabled { model.installCleanupReview(cleanup) }
                 self.runtime = created
                 self.conversations = conversations
                 runtime = created

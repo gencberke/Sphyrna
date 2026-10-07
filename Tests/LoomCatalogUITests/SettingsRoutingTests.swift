@@ -33,6 +33,7 @@ struct SettingsRoutingTests {
     }
 
     @Test func settingsSectionsAreGeneralUsageAbout() {
-        #expect(SettingsSection.allCases.map(\.title) == ["General", "Usage", "About"])
+        #expect(SettingsSection.allCases.map(\.title) == ["General", "Usage", "About", "Conversations"])
+        #expect(SettingsSection.available(cleanupReview: false).map(\.title) == ["General", "Usage", "About"])
     }
 }

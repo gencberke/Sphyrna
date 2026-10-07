@@ -179,6 +179,8 @@ public final class CatalogModel {
     /// that read `actionsAvailable` re-evaluate when the runtime attaches after the first page.
     public private(set) var intentsRevision = 0
     public private(set) var busy: [UUID: ConversationBusy] = [:]
+    /// The Conversations section's model; set by the app only where permanent deletion is offered (CP4-G).
+    public internal(set) var cleanupReview: CleanupReviewModel?
     public private(set) var startingKeys: Set<StartKey> = []
     /// Bumped whenever a live terminal appears or goes away, so the detail
     /// pane re-evaluates which terminal (if any) it shows.
@@ -203,7 +205,7 @@ public final class CatalogModel {
     /// `now` moves forward only when a relative time ("5m") could read differently.
     @ObservationIgnored private let nowResolution: TimeInterval = 10
 
-    @ObservationIgnored private let catalog: SessionCatalog?
+    @ObservationIgnored let catalog: SessionCatalog?
     @ObservationIgnored private let events: SessionEventHub
     @ObservationIgnored private let preferences: UIPreferencesStore
     @ObservationIgnored private var lists: [CatalogListKey: SessionListModel] = [:]
@@ -950,7 +952,7 @@ public final class CatalogModel {
         }
     }
 
-    private func refreshRow(_ id: UUID) async {
+    func refreshRow(_ id: UUID) async {
         guard let catalog else { return }
         do {
             statistics.pageQueries += 1
@@ -1126,7 +1128,7 @@ public final class CatalogModel {
     public func dismissError() { errorMessage = nil }
     public func dismissInfo() { infoMessage = nil }
 
-    private func report(_ error: (any Error)?, _ context: String) {
+    func report(_ error: (any Error)?, _ context: String) {
         errorMessage = Self.userMessage(for: error, context: context)
     }
 

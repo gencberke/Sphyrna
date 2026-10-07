@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 public enum SettingsSection: CaseIterable, Identifiable, Hashable, Sendable {
-    case general, usage, about
+    case general, usage, about, conversations
 
     public var id: Self { self }
     public var title: String {
@@ -10,7 +10,13 @@ public enum SettingsSection: CaseIterable, Identifiable, Hashable, Sendable {
         case .general: "General"
         case .usage: "Usage"
         case .about: "About"
+        case .conversations: "Conversations"
         }
+    }
+
+    /// Conversations (the cleanup review, which deletes) exists only where the app offers it.
+    static func available(cleanupReview: Bool) -> [SettingsSection] {
+        allCases.filter { $0 != .conversations || cleanupReview }
     }
 }
 
@@ -42,8 +48,8 @@ public struct SettingsAbout: Equatable, Sendable {
     }
 }
 
-/// The Settings window's content: a top section switcher over General, Usage and About, one fixed
-/// size for all three (DESIGN §6; the window controller forces dark and sets the size).
+/// The Settings window's content: a top section switcher over General, Usage and About (and Conversations where offered), one fixed
+/// size for all (DESIGN §6; the window controller forces dark and sets the size).
 public struct SettingsView: View {
     let model: CatalogModel
     let usage: UsageModel?
@@ -61,7 +67,8 @@ public struct SettingsView: View {
         VStack(spacing: 0) {
             HStack {
                 SegmentedControl(
-                    values: SettingsSection.allCases, title: \.title, selection: navigation.section,
+                    values: SettingsSection.available(cleanupReview: model.cleanupReview != nil), title: \.title,
+                    selection: navigation.section,
                     onSelect: { navigation.section = $0 })
                     .accessibilityLabel("Settings section")
             }
@@ -71,6 +78,9 @@ public struct SettingsView: View {
             case .general: GeneralSettings(model: model)
             case .usage: UsageSettings(usage: usage, profile: about.claudeProfile)
             case .about: AboutSettings(about: about)
+            case .conversations:
+                if let review = model.cleanupReview { CleanupReviewView(review: review, catalog: model) }
+                else { GeneralSettings(model: model) }
             }
         }
         .frame(width: LoomTheme.Layout.settingsWidth, height: LoomTheme.Layout.settingsHeight)

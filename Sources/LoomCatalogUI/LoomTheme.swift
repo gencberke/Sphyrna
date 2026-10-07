@@ -188,6 +188,8 @@ enum LoomTheme {
         static let heading = Font.system(size: 20, weight: .semibold)
         static let heroSymbol = Font.system(size: 28)
         static let chevron = Font.system(size: 9, weight: .semibold)
+        /// The pin glyph in a pinned conversation's card (second row).
+        static let pinGlyph = Font.system(size: 10)
 
         static func cardTitle(selected: Bool) -> Font { .system(size: 13, weight: selected ? .semibold : .medium) }
     }
@@ -323,6 +325,8 @@ enum LoomTheme {
         static let usageShareBar = CGSize(width: 48, height: 3)
         static let usageEmptyHeight: CGFloat = 360
         static let aboutMark: CGFloat = 64
+        /// Widest per-row result text in Settings → Conversations.
+        static let cleanupResultMaxWidth: CGFloat = 260
         static let footerChipHeight: CGFloat = 24
         // Indicators.
         static let indicatorSlot = CGSize(width: 12, height: 16)
