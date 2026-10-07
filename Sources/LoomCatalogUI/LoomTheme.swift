@@ -71,6 +71,16 @@ enum LoomTheme {
         static let controlPressed = Color.white.opacity(controlPressedOpacity)
         static let focusRing = Accent.base
 
+        /// Hairlines and the selected stroke are white at 10 %; Increase Contrast raises them to 30 %.
+        static let hairlineIncreasedOpacity = 0.30
+        static func hairlineOpacity(for contrast: ColorSchemeContrast) -> Double {
+            contrast == .increased ? hairlineIncreasedOpacity : hairlineOpacity
+        }
+        /// The hairline as a style that resolves against the environment's contrast setting.
+        static let hairlineStyle = ContrastStyle(
+            standard: Tone(rgb: RGB(red: 1, green: 1, blue: 1), opacity: hairlineOpacity),
+            increased: Tone(rgb: RGB(red: 1, green: 1, blue: 1), opacity: hairlineIncreasedOpacity))
+
         /// One hourly cell of the five-hour activity block: the primary text tone at an
         /// intensity from `activityCellFloor` (no activity) to `activityCellCeiling` (the busiest hour).
         static func activityCell(_ fraction: Double) -> Color {
@@ -88,6 +98,14 @@ enum LoomTheme {
         /// Placeholders, disabled items and decoration only (about 2.6:1, below AA).
         static let tertiaryRGB = RGB(hex: 0x5A5F70)
         static let tertiary = tertiaryRGB.color
+        /// Increase Contrast lifts secondary text toward primary (at least 7:1 on every surface).
+        static let secondaryIncreasedRGB = RGB(hex: 0xA9AEBF)
+        static func secondaryRGB(for contrast: ColorSchemeContrast) -> RGB {
+            contrast == .increased ? secondaryIncreasedRGB : secondaryRGB
+        }
+        /// Secondary text as a style that resolves against the environment's contrast setting.
+        static let secondaryStyle = ContrastStyle(
+            standard: Tone(rgb: secondaryRGB, opacity: 1), increased: Tone(rgb: secondaryIncreasedRGB, opacity: 1))
     }
 
     /// The one brand color (the fleece of the mark). Fills carry dark text, never light text.
@@ -118,6 +136,8 @@ enum LoomTheme {
         static let accentPressed = 0.8
         static let accentTint = 0.14
         static let accentTintPressed = 0.24
+        /// A pressed row button (a project header).
+        static let rowPressed = 0.7
         static let activityCellFloor = 0.10
         static let activityCellCeiling = 0.90
     }
@@ -138,6 +158,11 @@ enum LoomTheme {
     enum Line {
         static let hairline: CGFloat = 1
         static let focusRing: CGFloat = 1.5
+        /// The focus ring is thicker under Increase Contrast.
+        static let focusRingIncreased: CGFloat = 2.5
+        static func focusRing(for contrast: ColorSchemeContrast) -> CGFloat {
+            contrast == .increased ? focusRingIncreased : focusRing
+        }
         static let indicatorRing: CGFloat = 1.5
     }
 
@@ -187,6 +212,8 @@ enum LoomTheme {
         static let sectionTop: CGFloat = 14
         static let sectionBottom: CGFloat = 4
         static let sectionSpacing: CGFloat = 8
+        /// How far a focused row's ring sits outside its content.
+        static let rowFocusOutset: CGFloat = 3
         static let emptyNoteInset: CGFloat = 14
         static let emptyNoteVertical: CGFloat = 6
         static let loadingPadding: CGFloat = 8
@@ -272,6 +299,8 @@ enum LoomTheme {
         static let chromeButton = CGSize(width: 26, height: 24)
         static let footerButton = CGSize(width: 28, height: 26)
         static let projectMenuButton = CGSize(width: 22, height: 20)
+        /// Every control answers a click within at least this area, whatever it draws.
+        static let minimumHitTarget = CGSize(width: 24, height: 24)
         static let providerIconCard: CGFloat = 14
         static let providerIconHeader: CGFloat = 16
         static let providerIconDefault: CGFloat = 15
@@ -341,6 +370,47 @@ enum LoomTheme {
         /// Opacity by distance behind the head.
         static let chaseTrail: [Double] = [1, 0.8, 0.55, 0.35]
         static let chaseRest = 0.16
+
+        /// One-shot transitions (design/DESIGN.md §6): ease-out, at most 200 ms.
+        static let selectionDuration = 0.12
+        static let bannerDuration = 0.20
+
+        enum Transition { case selection, banner }
+
+        static func duration(of transition: Transition) -> Double {
+            switch transition {
+            case .selection: selectionDuration
+            case .banner: bannerDuration
+            }
+        }
+
+        /// The animation of a transition, or nil (instant) under Reduce Motion. The working chase
+        /// is persistent motion and is not gated here.
+        static func animation(_ transition: Transition, reduceMotion: Bool) -> Animation? {
+            reduceMotion ? nil : .easeOut(duration: duration(of: transition))
+        }
+    }
+
+    // MARK: Contrast
+
+    /// A color at an opacity, kept as data so tests can read it.
+    struct Tone: Equatable, Sendable {
+        let rgb: RGB
+        let opacity: Double
+        var color: Color { rgb.color.opacity(opacity) }
+    }
+
+    /// A tone with a standard and an Increase Contrast value. As a `ShapeStyle` it resolves
+    /// against `colorSchemeContrast`, so a view needs no environment property of its own.
+    struct ContrastStyle: ShapeStyle, Equatable, Sendable {
+        let standard: Tone
+        let increased: Tone
+
+        func tone(for contrast: ColorSchemeContrast) -> Tone { contrast == .increased ? increased : standard }
+
+        func resolve(in environment: EnvironmentValues) -> Color {
+            tone(for: environment.colorSchemeContrast).color
+        }
     }
 }
 

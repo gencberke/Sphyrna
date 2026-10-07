@@ -73,7 +73,11 @@ extension DevelopmentEvidence {
             app.saveScreenshot(to: directory.appendingPathComponent("screenshot-\(label).png"))
         default:
             if handleDeletionCommand(name, argument) { break }
-            guard await handleSettingsCommand(name, argument) || handleTabCommand(name, argument) else { return }
+            let handled = await handleSettingsCommand(name, argument) || handleTabCommand(name, argument)
+            guard handled else {
+                _ = await handleKeyCommand(name, argument)
+                return
+            }
         }
         await model.settle()
     }

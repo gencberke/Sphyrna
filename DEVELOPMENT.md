@@ -62,6 +62,10 @@ Builds are serialized: only the agent whose Brief says it holds the build slot b
 | `open-settings[:general\|usage\|about]`, `close-settings`, `screenshot-settings:<label>`, `usage-select:<24h\|7d\|30d\|90d>`, `usage-refresh[:<label>]` | Settings window and usage view (snapshot gains `settings{…}` and `usage{…}`) |
 | `tab-pin:<id>`, `tab-unpin:<id>`, `tab-select:<id\|next\|prev>`, `tab-close:<id>`, `tab-key:<next\|prev\|ctrl-next\|ctrl-prev\|close>` | conversation tabs (U4): Open in Tab, unpin, click or Next/Previous, close button, and a key equivalent sent through the real main menu (writes `ack-tab-key-<arg>.json`: handled, enabled); snapshot gains `tabs{ids, pinned, selected, transient, stripVisible, rows, attachedTerminals, …}` and `catalog.preferences.openTabs`. Driver: `scripts/perf/tab_strip.py scenario\|shots\|latency` (fake provider `/stream <seconds>` produces about 1 MiB/s of output) |
 | `sidebar-width:<pt>` | sidebar width |
+| `tab-pin:<id>`, `tab-unpin:<id>`, `tab-select:<id\|next\|prev>`, `tab-close:<id>`, `tab-key:<next\|prev\|ctrl-next\|ctrl-prev\|close>` | conversation tabs (snapshot gains `tabs{…}`) |
+| `delete:<id>`, `delete-confirm`, `delete-cancel`, `delete-retry:<id>`, `delete-key`, `screenshot-sheet:<label>` | delete flow (snapshot gains `deletions`; launch flag `--delete-delay <s>` holds the deleting state) |
+| `cleanup-review`, `cleanup-select:<all\|none>`, `cleanup-confirm`, `pin:<id>`, `unpin:<id>` | pin and the stale-conversation review (`settings.cleanup` in the snapshot) |
+| `focus-terminal`, `focus-search`, `key:<return\|escape\|cmd-f>` | keyboard focus and keys through the window (writes `ack-key-*.json`) |
 | `close-window`, `quit` | close or normal Quit |
 
 Full list: the header of `Sources/loom-app/Evidence/DevelopmentEvidence.swift` and the `case`s of its command switch plus `Sources/loom-app/Evidence/EvidenceCatalogCommands.swift` (the header omits `buttons:`, `toggle-fullscreen`, `feed`, `double-start` and `resource:`).

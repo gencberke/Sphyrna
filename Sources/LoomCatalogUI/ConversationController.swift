@@ -23,6 +23,9 @@ final class TerminalContainerView: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    /// Gives the keyboard back to the terminal (leaving the search field with Esc).
+    func focusTerminal() { window?.makeFirstResponder(terminal) }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard let window else { return }

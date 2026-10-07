@@ -410,6 +410,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func showNextTab(_ sender: Any?) { model?.selectAdjacentTab(.next) }
     @objc func showPreviousTab(_ sender: Any?) { model?.selectAdjacentTab(.previous) }
     @objc func closeTabFromMenu(_ sender: Any?) { model?.closeSelectedTab() }
+    @objc func findFromMenu(_ sender: Any?) {
+        presentMainWindow(reason: "find-menu")
+        model?.requestSearchFocus()
+    }
 
     /// Menu commands follow the same rules as the buttons.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -433,6 +437,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return model.canSelectAdjacentTab
         case #selector(closeTabFromMenu(_:)):
             return model.canCloseSelectedTab
+        case #selector(findFromMenu(_:)):
+            // The search field lives in the main window; another key window (Settings) keeps Cmd+F to itself.
+            return NSApp.keyWindow.map { $0 === window } ?? true
         default:
             return true
         }
@@ -550,6 +557,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Find", action: #selector(findFromMenu(_:)), keyEquivalent: "f").target = self
         editItem.submenu = editMenu
         main.addItem(editItem)
 

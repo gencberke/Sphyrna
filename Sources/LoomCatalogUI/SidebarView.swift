@@ -85,6 +85,10 @@ struct ModeButton: View {
 
 struct SearchField: View {
     let model: CatalogModel
+    @FocusState private var focused: Bool
+
+    /// Esc clears a search that has text; with nothing to clear it leaves the field.
+    static func escapeClearsSearch(_ text: String) -> Bool { !text.isEmpty }
 
     var body: some View {
         HStack(spacing: LoomTheme.Space.searchSpacing) {
@@ -94,6 +98,19 @@ struct SearchField: View {
             ))
             .textFieldStyle(.plain)
             .foregroundStyle(LoomTheme.Text.primary)
+            .focused($focused)
+            .onExitCommand {
+                if Self.escapeClearsSearch(model.searchText) {
+                    model.setSearchText("")
+                } else {
+                    focused = false
+                    // The keyboard goes back to the terminal, not to the bare window.
+                    Task { @MainActor in
+                        (model.selectedSessionID.flatMap { model.terminalView(for: $0) } as? TerminalContainerView)?.focusTerminal()
+                    }
+                }
+            }
+            .onChange(of: model.searchFocusRequest) { focused = true }
             .accessibilityLabel("Search conversations")
             if !model.searchText.isEmpty {
                 Button { model.setSearchText("") } label: {
@@ -139,7 +156,8 @@ struct ActivityList: View {
             ForEach(DayGrouping.sections(list.rows, now: model.now)) { section in
                 Text(section.title)
                     .font(LoomTheme.Typography.dayHeading)
-                    .foregroundStyle(LoomTheme.Text.secondary)
+                    .foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .accessibilityAddTraits(.isHeader)
                     .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
                 ForEach(section.rows) { row in
                     SessionCardView(row: row, model: model, showsProject: true)
@@ -193,11 +211,13 @@ struct SectionTitle: View {
 
     var body: some View {
         HStack(spacing: LoomTheme.Space.sectionSpacing) {
-            Image(systemName: symbol).foregroundStyle(LoomTheme.Text.secondary)
+            Image(systemName: symbol).foregroundStyle(LoomTheme.Text.secondaryStyle).accessibilityHidden(true)
             Text(title).font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
             Spacer()
         }
         .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -205,21 +225,37 @@ struct ProjectHeader: View {
     let model: CatalogModel
     let project: CatalogProject
 
+    /// A search shows every matching project open, whatever its collapsed flag says.
+    static func isExpanded(collapsed: Bool, searching: Bool) -> Bool { searching || !collapsed }
+
     var body: some View {
         let count = model.sessionCounts[project.id] ?? 0
         let attention = model.attention(forProject: project.id)
         let index = model.projects.firstIndex { $0.id == project.id } ?? 0
+        let expanded = Self.isExpanded(collapsed: project.collapsed, searching: model.isSearching)
+        let projectMenuExtra = (ChromeButtonStyle.hitSize(for: LoomTheme.Layout.projectMenuButton).height
+                                - LoomTheme.Layout.projectMenuButton.height) / 2
         HStack(spacing: LoomTheme.Space.sectionSpacing) {
-            Image(systemName: "folder").foregroundStyle(LoomTheme.Text.secondary)
-            Text(project.name).font(LoomTheme.Typography.bodyStrong)
-                .foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
-            Spacer(minLength: LoomTheme.Space.headerSpacing)
-            if let attention {
-                Circle().fill(attention.color).frame(width: LoomTheme.Layout.projectDot, height: LoomTheme.Layout.projectDot)
-                    .accessibilityLabel(attention.label)
+            // The row's own button is what the keyboard and VoiceOver operate; a mouse click anywhere
+            // on the padded row (the tap gesture below) does the same.
+            Button { Task { await model.toggleCollapsed(project.id) } } label: {
+                HStack(spacing: LoomTheme.Space.sectionSpacing) {
+                    Image(systemName: "folder").foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    Text(project.name).font(LoomTheme.Typography.bodyStrong)
+                        .foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
+                    Spacer(minLength: LoomTheme.Space.headerSpacing)
+                    if let attention {
+                        Circle().fill(attention.color).frame(width: LoomTheme.Layout.projectDot, height: LoomTheme.Layout.projectDot)
+                    }
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(LoomTheme.Typography.chevron).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                }
+                .contentShape(Rectangle())
             }
-            Image(systemName: project.collapsed && !model.isSearching ? "chevron.right" : "chevron.down")
-                .font(LoomTheme.Typography.chevron).foregroundStyle(LoomTheme.Text.secondary)
+            .buttonStyle(RowButtonStyle()).focusEffectDisabled()
+            .accessibilityLabel(project.name + (attention.map { ", \($0.label)" } ?? ""))
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            .accessibilityAddTraits(.isHeader)
             Menu {
                 Button("Move Up") { Task { await model.moveProject(project.id, by: -1) } }
                     .disabled(index == 0)
@@ -238,7 +274,9 @@ struct ProjectHeader: View {
             .help(count > 0 ? "Only an empty project can be removed" : "Project actions")
             .accessibilityLabel("Actions for \(project.name)")
         }
-        .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
+        // The menu button's 24 pt hit area is taller than its 20 pt drawing; the row keeps its height.
+        .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop - projectMenuExtra)
+        .padding(.bottom, LoomTheme.Space.sectionBottom - projectMenuExtra)
         .contentShape(Rectangle())
         .onTapGesture { Task { await model.toggleCollapsed(project.id) } }
         .contextMenu { NewConversationButtons(model: model, projectID: project.id) }
@@ -273,6 +311,7 @@ struct SessionCardView: View {
     let row: SessionRowModel
     let model: CatalogModel
     let showsProject: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The project name appears on a card only where the card is not already
     /// grouped under its project (activity view).
@@ -317,7 +356,9 @@ struct SessionCardView: View {
                 RoundedRectangle(cornerRadius: LoomTheme.Radius.card)
                     .fill(selected ? LoomTheme.Surface.selected : .clear)
                     .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.card)
-                        .stroke(selected ? LoomTheme.Surface.hairline : .clear, lineWidth: LoomTheme.Line.hairline))
+                        .stroke(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline)
+                        .opacity(selected ? 1 : 0))
+                    .animation(LoomTheme.Motion.animation(.selection, reduceMotion: reduceMotion), value: selected)
             )
             .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.card))
         }
@@ -386,6 +427,14 @@ struct ChromeButtonStyle: ButtonStyle {
     /// A mouse user's launch focus must not draw a ring: only with keyboard navigation on.
     static func showsFocusRing(focused: Bool, keyboardNavigation: Bool) -> Bool { focused && keyboardNavigation }
 
+    /// The area that answers a click on a control drawn at `size`: at least
+    /// `LoomTheme.Layout.minimumHitTarget`. SwiftUI hit-tests only inside a view's layout frame,
+    /// so the frame itself grows; the drawn control keeps its size, centered in it.
+    static func hitSize(for size: CGSize) -> CGSize {
+        CGSize(width: max(size.width, LoomTheme.Layout.minimumHitTarget.width),
+               height: max(size.height, LoomTheme.Layout.minimumHitTarget.height))
+    }
+
     func makeBody(configuration: Configuration) -> some View {
         Chrome(configuration: configuration, selected: selected, size: size)
     }
@@ -397,8 +446,10 @@ struct ChromeButtonStyle: ButtonStyle {
         @State private var hovering = false
         @Environment(\.isEnabled) private var enabled
         @Environment(\.isFocused) private var focused
+        @Environment(\.colorSchemeContrast) private var contrast
 
         var body: some View {
+            let hit = ChromeButtonStyle.hitSize(for: size)
             let background: Color = configuration.isPressed ? LoomTheme.Surface.controlPressed
                 : (hovering ? LoomTheme.Surface.controlHover : (selected ? LoomTheme.Surface.selected : .clear))
             configuration.label
@@ -409,10 +460,35 @@ struct ChromeButtonStyle: ButtonStyle {
                 .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
                     .strokeBorder(ChromeButtonStyle.showsFocusRing(
                         focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)
-                        ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing))
-                .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
+                        ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast)))
+                .frame(width: hit.width, height: hit.height)
+                .contentShape(Rectangle())
                 .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
                 .onHover { hovering = $0 }
+        }
+    }
+}
+
+/// A row that is a button (a project header): no drawn state of its own, only the focus ring
+/// while it has keyboard focus under Full Keyboard Access.
+struct RowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Row(configuration: configuration)
+    }
+
+    private struct Row: View {
+        let configuration: ButtonStyle.Configuration
+        @Environment(\.isFocused) private var focused
+        @Environment(\.colorSchemeContrast) private var contrast
+
+        var body: some View {
+            configuration.label
+                .opacity(configuration.isPressed ? LoomTheme.Opacity.rowPressed : 1)
+                .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
+                    .strokeBorder(ChromeButtonStyle.showsFocusRing(
+                        focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)
+                        ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast))
+                        .padding(-LoomTheme.Space.rowFocusOutset))
         }
     }
 }

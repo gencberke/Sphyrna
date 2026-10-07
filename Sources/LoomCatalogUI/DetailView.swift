@@ -16,7 +16,7 @@ public struct DetailView: View {
             DetailContent(model: model)
         }
         .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).fill(LoomTheme.Surface.panel))
-        .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).stroke(LoomTheme.Surface.hairline, lineWidth: LoomTheme.Line.hairline))
+        .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).stroke(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
         .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel))
         .padding(LoomTheme.Space.panelInset)
         .ignoresSafeArea(.container, edges: .top)
@@ -124,18 +124,21 @@ struct Banners: View {
                 Text(notice)
                     .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.attention)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .fadesIn()
                     .accessibilityIdentifier("ownership-notice")
             }
             if let message = model.statusMessage {
                 Text(message)
-                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
+                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .fadesIn()
                     .accessibilityIdentifier("status-message")
             }
             if let message = model.preparingNotice {
                 Text(message)
-                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
+                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .fadesIn()
                     .accessibilityIdentifier("preparing-notice")
             }
             if let message = model.errorMessage {
@@ -161,9 +164,10 @@ struct BannerRow: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button(action: dismiss) { Image(systemName: "xmark") }
-                .buttonStyle(.plain).foregroundStyle(LoomTheme.Text.secondary)
+                .buttonStyle(.plain).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .accessibilityLabel("Dismiss message")
         }
+        .fadesIn()
     }
 }
 
@@ -180,7 +184,7 @@ struct DetailContent: View {
             } else if let row = model.selectedRow {
                 if let terminal = model.terminalView(for: row.id) {
                     VStack(spacing: 0) {
-                        RequestList(model: model, row: row)
+                        RequestList(model: model, row: row, returnApproves: false)
                         TerminalHost(panel: terminal).id(ObjectIdentifier(terminal))
                     }
                 } else {
@@ -219,13 +223,16 @@ struct Message: View {
 
     var body: some View {
         VStack(spacing: LoomTheme.Space.messageSpacing) {
-            Image(systemName: symbol).font(LoomTheme.Typography.heroSymbol).foregroundStyle(LoomTheme.Text.secondary)
+            Image(systemName: symbol).font(LoomTheme.Typography.heroSymbol).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                .accessibilityHidden(true)
             Text(title).font(LoomTheme.Typography.heading).foregroundStyle(LoomTheme.Text.primary)
-            Text(text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
+            Text(text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .multilineTextAlignment(.center).textSelection(.enabled)
         }
         .frame(maxWidth: LoomTheme.Layout.messageMaxWidth)
         .padding(LoomTheme.Space.messagePadding)
+        // A group, not .combine: combining drops the selectable text from the element's label.
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -325,6 +332,10 @@ struct ConversationDetail: View {
 struct RequestList: View {
     let model: CatalogModel
     let row: SessionRowModel
+    /// Whether Return answers Approve. Above a live terminal it does not: Return belongs to the
+    /// CLI, and a stray one (focus on the window after Esc, a click on the card) must never grant
+    /// a permission. The button stays one click away.
+    var returnApproves = true
 
     var body: some View {
         let requests = row.live?.userRequests ?? []
@@ -348,12 +359,13 @@ struct RequestList: View {
                             Button("Approve") {
                                 model.answerRequest(sessionID: row.id, requestID: request.id, accept: true)
                             }
-                            .keyboardShortcut(.defaultAction)
+                            .keyboardShortcut(returnApproves ? .defaultAction : nil)
                             .buttonStyle(AccentButtonStyle(kind: .filled))
                         }
                     }
                     .padding(LoomTheme.Space.requestPadding)
                     .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.callout).fill(LoomTheme.Status.attention.opacity(LoomTheme.Status.tintOpacity)))
+                    .fadesIn()
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Provider request: \(request.summary)")
                 }
@@ -371,7 +383,7 @@ struct Notice: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: LoomTheme.Space.noticeSpacing) {
-            Image(systemName: symbol).foregroundStyle(color)
+            Image(systemName: symbol).foregroundStyle(color).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: LoomTheme.Space.noticeLineSpacing) {
                 Text(title).font(LoomTheme.Typography.bodyStrong).foregroundStyle(color)
                 Text(text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.primary).textSelection(.enabled)
@@ -380,6 +392,7 @@ struct Notice: View {
         .padding(LoomTheme.Space.noticePadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.callout).fill(color.opacity(LoomTheme.Status.tintOpacity)))
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -471,4 +484,24 @@ struct AccentButtonStyle: ButtonStyle {
             }
         }
     }
+}
+
+/// A banner or request card fades in over `LoomTheme.Motion.bannerDuration`. Opacity only: the
+/// banners sit above the terminal, so nothing here may animate layout (a height change would
+/// resize the PTY on every frame). Under Reduce Motion the view is simply there.
+struct FadesIn: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown || reduceMotion ? 1 : 0)
+            .onAppear {
+                withAnimation(LoomTheme.Motion.animation(.banner, reduceMotion: reduceMotion)) { shown = true }
+            }
+    }
+}
+
+extension View {
+    func fadesIn() -> some View { modifier(FadesIn()) }
 }
