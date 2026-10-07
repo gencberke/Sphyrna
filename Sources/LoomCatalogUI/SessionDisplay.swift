@@ -135,11 +135,12 @@ public enum ProviderName {
 
 extension CatalogSession {
     /// Custom or announced title; otherwise a provider and project based default.
-    /// `repeatsProject: false` (inside its project's group) leaves the project name out of the default title.
+    /// `repeatsProject: false` (inside a group that already names the project, or the projectless "Sessions"
+    /// group) leaves the project part out of the default title.
     public func displayTitle(projectName: String?, repeatsProject: Bool = true) -> String {
         if let title, !title.isEmpty { return title }
         let name = ProviderName.title(session.provider)
-        guard repeatsProject || projectName == nil else { return name + " conversation" }
+        guard repeatsProject else { return name + " session" }
         return name + " · " + (projectName ?? "No project")
     }
 }

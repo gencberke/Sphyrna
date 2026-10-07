@@ -6,10 +6,17 @@ import SwiftUI
 struct SidebarFooter: View {
     let model: CatalogModel
 
+    /// Without a selected session's project the plain entries already start without one.
+    static func offersWithoutProject(contextProjectID: UUID?) -> Bool { contextProjectID != nil }
+
     var body: some View {
         HStack(spacing: LoomTheme.Space.footerSpacing) {
             Menu {
                 NewConversationButtons(model: model, projectID: model.contextProjectID)
+                // The entries above start in the selected session's project; this one says "no project".
+                if Self.offersWithoutProject(contextProjectID: model.contextProjectID) {
+                    WithoutProjectStartButton(model: model, title: ClaudeStartEntry.withoutProjectFooterTitle)
+                }
                 Divider()
                 Button("Add Project…") { model.presentAddProject() }
             } label: {

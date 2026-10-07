@@ -130,18 +130,27 @@ struct SearchField: View {
 struct SidebarList: View {
     let model: CatalogModel
 
+    // The scroll content is at least as tall as the list, so the empty area below short content
+    // belongs to the content and its context menu (a menu on the ScrollView itself is not hit there).
+    // Cards and project headers keep their own menus; the innermost one wins.
+
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: LoomTheme.Space.cardGap) {
-                switch model.viewMode {
-                case .activity: ActivityList(model: model)
-                case .projects: ProjectList(model: model)
+        GeometryReader { viewport in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: LoomTheme.Space.cardGap) {
+                    switch model.viewMode {
+                    case .activity: ActivityList(model: model)
+                    case .projects: ProjectList(model: model)
+                    }
                 }
+                .padding(.horizontal, LoomTheme.Space.listInset)
+                .padding(.bottom, LoomTheme.Space.listBottom)
+                .frame(maxWidth: .infinity, minHeight: viewport.size.height, alignment: .topLeading)
+                .contentShape(Rectangle())
+                .contextMenu { WithoutProjectStartButton(model: model, title: ClaudeStartEntry.withoutProjectTitle) }
             }
-            .padding(.horizontal, LoomTheme.Space.listInset)
-            .padding(.bottom, LoomTheme.Space.listBottom)
+            .scrollContentBackground(.hidden)
         }
-        .scrollContentBackground(.hidden)
     }
 }
 
@@ -256,6 +265,7 @@ struct ProjectHeader: View {
             .accessibilityLabel(project.name + (attention.map { ", \($0.label)" } ?? ""))
             .accessibilityValue(expanded ? "Expanded" : "Collapsed")
             .accessibilityAddTraits(.isHeader)
+            ProjectStartButton(model: model, project: project)
             Menu {
                 Button("Move Up") { Task { await model.moveProject(project.id, by: -1) } }
                     .disabled(index == 0)
@@ -317,6 +327,18 @@ struct SessionCardView: View {
     /// grouped under its project (activity view).
     static func projectLabel(showsProject: Bool, name: String?) -> String? { showsProject ? name : nil }
 
+    /// What Pin promises. "Out of cleanup" is true only where the cleanup review exists (development
+    /// builds); the daily app has none, and pinning never blocks a manual delete.
+    static func pinHelp(cleanupReviewOffered: Bool) -> String {
+        cleanupReviewOffered
+            ? "Keeps this session out of cleanup. Not the same as a pinned tab."
+            : "Marks this session with a pin. Not the same as a pinned tab."
+    }
+
+    static func pinnedGlyphHelp(cleanupReviewOffered: Bool) -> String {
+        cleanupReviewOffered ? "Pinned: kept out of session cleanup" : "Pinned"
+    }
+
     var body: some View {
         let indicator = row.indicator
         let selected = model.selectedSessionID == row.id
@@ -345,7 +367,7 @@ struct SessionCardView: View {
                         if row.record.pinned {
                             Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
                                 .foregroundStyle(LoomTheme.Text.secondary)
-                                .help("Pinned: kept out of conversation cleanup")
+                                .help(Self.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
                         }
                         Spacer(minLength: LoomTheme.Space.headerSpacing)
                         if let projectName = SessionCardView.projectLabel(showsProject: showsProject, name: projectName) {
@@ -373,7 +395,7 @@ struct SessionCardView: View {
             Button("Rename…") { model.beginRename(row.id) }
             Button("Open in Tab") { model.openTab(row.id) }.disabled(model.tabs.isPinned(row.id))
             Button(row.record.pinned ? "Unpin" : "Pin") { Task { await model.setPinned(row.id, !row.record.pinned) } }
-                .help("Keeps this conversation out of cleanup. Not the same as a pinned tab.")
+                .help(Self.pinHelp(cleanupReviewOffered: model.cleanupReview != nil))
             Divider()
             Button("Resume") { model.resumeConversation(row.id) }.disabled(!model.canResume(row))
             Button("Stop") { model.stopConversation(row.id) }.disabled(!model.canStop(row))
@@ -397,6 +419,66 @@ struct NewConversationButtons: View {
         ForEach(NewConversationAction.startable(on: model), id: \.provider) { action in
             Button(action.title + suffix) { action.perform(on: model, projectID: projectID) }
                 .disabled(!action.isEnabled(on: model, projectID: projectID))
+        }
+    }
+}
+
+/// The one-click Claude entries outside the per-provider menus: the "+" on a project header and the
+/// "no project" entries of the sidebar's empty-area menu and the footer menu. Each goes through the
+/// model's one start path (`NewConversationAction.perform`). Claude only (Codex is paused, D-14); there is
+/// no entry where Claude cannot be started.
+struct ClaudeStartEntry {
+    let title: String
+    let projectID: UUID?
+    private let action: NewConversationAction
+
+    static let withoutProjectTitle = "New Claude Session"
+    static let withoutProjectFooterTitle = "New Claude Session Without Project"
+
+    @MainActor static func inProject(_ project: CatalogProject, on model: CatalogModel) -> ClaudeStartEntry? {
+        make(title: "New Claude session in \(project.name)", projectID: project.id, on: model)
+    }
+
+    @MainActor static func withoutProject(title: String, on model: CatalogModel) -> ClaudeStartEntry? {
+        make(title: title, projectID: nil, on: model)
+    }
+
+    @MainActor private static func make(title: String, projectID: UUID?, on model: CatalogModel) -> ClaudeStartEntry? {
+        NewConversationAction.startable(on: model).first { $0.provider == .claude }
+            .map { ClaudeStartEntry(title: title, projectID: projectID, action: $0) }
+    }
+
+    @MainActor func isEnabled(on model: CatalogModel) -> Bool { action.isEnabled(on: model, projectID: projectID) }
+    @MainActor func perform(on model: CatalogModel) { action.perform(on: model, projectID: projectID) }
+}
+
+/// The "+" on a project header: same hit-target style as the actions button next to it.
+struct ProjectStartButton: View {
+    let model: CatalogModel
+    let project: CatalogProject
+
+    var body: some View {
+        if let entry = ClaudeStartEntry.inProject(project, on: model) {
+            Button { entry.perform(on: model) } label: {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.projectMenuButton))
+            .disabled(!entry.isEnabled(on: model))
+            .help(entry.title)
+            .accessibilityLabel(entry.title)
+        }
+    }
+}
+
+/// A Claude session without a project (the runtime uses the home folder).
+struct WithoutProjectStartButton: View {
+    let model: CatalogModel
+    let title: String
+
+    var body: some View {
+        if let entry = ClaudeStartEntry.withoutProject(title: title, on: model) {
+            Button(entry.title) { entry.perform(on: model) }
+                .disabled(!entry.isEnabled(on: model))
         }
     }
 }

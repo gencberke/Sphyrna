@@ -104,10 +104,6 @@ extension ConversationIntents {
 extension CatalogModel {
     // MARK: Entry points
 
-    /// Production hides every delete entry point (`BuildIdentity.permanentDeletionEnabled`, DP-CP4-1);
-    /// recovering an unfinished deletion and retrying it stay available in every build.
-    public var offersDeletion: Bool { permanentDeletionEnabled }
-
     /// A delete or retry of this conversation is running, here or in launch recovery.
     public func isDeleting(_ id: UUID) -> Bool {
         deletions.inProgress.contains(id) || deletions.pending[id]?.isRunning == true
@@ -130,7 +126,7 @@ extension CatalogModel {
     }
 
     public func canDelete(_ row: SessionRowModel) -> Bool {
-        offersDeletion && deletionDisabledReason(for: row) == nil
+        deletionDisabledReason(for: row) == nil
     }
 
     /// An unfinished deletion that nothing is working on: Try Again / Retry Deleting.
@@ -141,7 +137,7 @@ extension CatalogModel {
 
     // MARK: Confirm
 
-    /// "Delete Conversation…": opens the confirm sheet and asks the runtime what would be removed.
+    /// "Delete Permanently…": opens the confirm sheet and asks the runtime what would be removed.
     /// Nothing is removed until `confirmDeletion`.
     public func requestDeletion(_ id: UUID) {
         guard let row = tabRow(id), canDelete(row) else { return }
@@ -165,9 +161,9 @@ extension CatalogModel {
 
     public func cancelDeletion() { deletions.confirmation = nil }
 
-    /// The sheet's "Delete Conversation" button.
+    /// The sheet's "Delete Permanently" button.
     public func confirmDeletion() async {
-        guard offersDeletion, let confirmation = deletions.confirmation, confirmation.canConfirm else { return }
+        guard let confirmation = deletions.confirmation, confirmation.canConfirm else { return }
         deletions.confirmation = nil
         await performDeletion(id: confirmation.id, title: confirmation.title, retry: false)
     }

@@ -81,7 +81,7 @@ struct DeletionModelTests {
         }
     }
 
-    private func makeFixture(permanentDeletionEnabled: Bool = true) async throws -> Fixture {
+    private func makeFixture(startableProviders: Set<ManagedSession.Provider> = [.claude, .codex]) async throws -> Fixture {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-delui-\(UUID())", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
@@ -98,7 +98,7 @@ struct DeletionModelTests {
         let preferencesURL = root.appendingPathComponent("prefs.json")
         let model = CatalogModel(
             catalog: catalog, events: hub, preferences: UIPreferencesStore(url: preferencesURL),
-            permanentDeletionEnabled: permanentDeletionEnabled
+            startableProviders: startableProviders
         )
         let intents = DeletionIntents()
         model.intents = intents
@@ -237,28 +237,34 @@ struct DeletionModelTests {
         #expect(DeletionCopy.bannerText(lastFailure: "live_session").contains("Claude process"))
     }
 
-    // MARK: Production gate (DP-CP4-1)
+    // MARK: Production offers manual delete (the cleanup review stays development-only)
 
-    @Test func productionOffersNoDeleteEntryPointAndRefusesTheRequest() async throws {
-        let production = try await makeFixture(permanentDeletionEnabled: false)
+    @Test func theProductionConfiguredModelCanRequestConfirmAndRunAManualDelete() async throws {
+        // The production app starts Claude only and passes nothing else to the model: no gate remains.
+        let production = try await makeFixture(startableProviders: [.claude])
         defer { Task { await production.cleanup() } }
-        #expect(!production.model.offersDeletion)
-        let row = try row(production, production.claude)
-        #expect(!production.model.canDelete(row))
-        production.model.requestDeletion(production.claude.id)
-        #expect(production.model.deletions.confirmation == nil)
+        let id = production.claude.id
+        let claudeRow = try row(production, production.claude)
+        #expect(production.model.canDelete(claudeRow))
+        #expect(production.model.deletionDisabledReason(for: claudeRow) == nil)
+        production.model.requestDeletion(id)
+        let confirmation = try #require(production.model.deletions.confirmation)
+        #expect(await waitUntil { confirmation.canConfirm })
         await production.model.confirmDeletion()
-        #expect(production.intents.calls.isEmpty)
+        #expect(production.intents.calls.contains("delete:\(id)"))
+        // The cleanup review is a separate, opt-in feature: nothing installs it by itself.
+        #expect(production.model.cleanupReview == nil)
+        // Codex stays refused for its own reason, not for a build gate.
+        #expect(production.model.deletionDisabledReason(for: try row(production, production.codex))?.contains("Codex") == true)
+    }
 
-        let development = try await makeFixture(permanentDeletionEnabled: true)
-        defer { Task { await development.cleanup() } }
-        #expect(development.model.offersDeletion)
-        #expect(development.model.canDelete(try self.row(development, development.claude)))
+    @Test func theDeleteMenuEntryIsNamedDeletePermanently() {
+        #expect(DeletionMenuItems.deleteTitle == "Delete Permanently…")
     }
 
     @Test func aDeletionRecoveredAtLaunchShowsItsFailureAndRetriesInAnyFlavor() async throws {
-        for enabled in [false, true] {
-            let fixture = try await makeFixture(permanentDeletionEnabled: enabled)
+        for providers in [Set<ManagedSession.Provider>([.claude]), [.claude, .codex]] {
+            let fixture = try await makeFixture(startableProviders: providers)
             defer { Task { await fixture.cleanup() } }
             let id = fixture.claude.id
             fixture.intents.pending = [pendingRecord(id, failure: "unreachable_folder: shared")]

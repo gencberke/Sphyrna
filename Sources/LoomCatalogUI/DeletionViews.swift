@@ -35,7 +35,7 @@ struct DeleteConversationSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel") { model.cancelDeletion() }.keyboardShortcut(.cancelAction)
-                Button("Delete Conversation") { Task { await model.confirmDeletion() } }
+                Button("Delete Permanently") { Task { await model.confirmDeletion() } }
                     .buttonStyle(DestructiveButtonStyle())
                     .disabled(!confirmation.canConfirm)
             }
@@ -49,7 +49,7 @@ struct DeleteConversationSheet: View {
 }
 
 /// Deletions that did not finish, or are finishing after a launch (one row each). Shown in every build:
-/// a deletion the runtime recovered must stay visible and retryable even where Delete itself is hidden.
+/// a deletion the runtime recovered must stay visible and retryable.
 struct DeletionBanner: View {
     let model: CatalogModel
 
@@ -105,23 +105,23 @@ struct DeletionBannerRow: View {
     }
 }
 
-/// "Delete Conversation…" and "Retry Deleting" for the card menu and the actions menu. Nothing is drawn in
-/// a build that does not offer deletion; a disabled entry is followed by the reason.
+/// "Delete Permanently…" and "Retry Deleting" for the card menu and the actions menu, in every build;
+/// a disabled entry is followed by the reason.
 struct DeletionMenuItems: View {
+    static let deleteTitle = "Delete Permanently…"
+
     let model: CatalogModel
     let row: SessionRowModel
 
     var body: some View {
-        if model.offersDeletion {
-            Divider()
-            if model.canRetryDeletion(row.id) {
-                Button("Retry Deleting") { Task { await model.retryDeletion(row.id) } }
-            }
-            let reason = model.deletionDisabledReason(for: row)
-            Button("Delete Conversation…") { model.requestDeletion(row.id) }
-                .disabled(reason != nil)
-            if let reason { Text(reason) }
+        Divider()
+        if model.canRetryDeletion(row.id) {
+            Button("Retry Deleting") { Task { await model.retryDeletion(row.id) } }
         }
+        let reason = model.deletionDisabledReason(for: row)
+        Button(Self.deleteTitle) { model.requestDeletion(row.id) }
+            .disabled(reason != nil)
+        if let reason { Text(reason) }
     }
 }
 

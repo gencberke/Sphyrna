@@ -30,9 +30,8 @@ public struct BuildIdentity: Equatable, Sendable {
     /// Raw strings keep this target free of dependencies.
     public var startableProviders: [String] { isProduction ? ["claude"] : ["claude", "codex"] }
 
-    /// Whether the app offers permanent deletion of conversations (delete and
-    /// the cleanup review). The deletion data contract (contract §12 item 3,
-    /// DP-CP4-1) is the user's decision, so only development builds offer it
-    /// until then; the runtime path exists in both.
-    public var permanentDeletionEnabled: Bool { !isProduction }
+    /// Whether the app offers the stale-session cleanup review (Settings). Manual
+    /// "Delete Permanently…" of one session is offered in every build; only the
+    /// automatic review waits for the user's decision on DP-CP4-2.
+    public var cleanupReviewEnabled: Bool { !isProduction }
 }

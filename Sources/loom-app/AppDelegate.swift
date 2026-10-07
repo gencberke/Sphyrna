@@ -86,8 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let model = CatalogModel(
             catalog: catalog, startupError: catalogFailure, events: hub,
             preferences: UIPreferencesStore(url: root.appendingPathComponent("ui-preferences.json")),
-            startableProviders: Set(identity.startableProviders.compactMap(ManagedSession.Provider.init(rawValue:))),
-            permanentDeletionEnabled: identity.permanentDeletionEnabled
+            startableProviders: Set(identity.startableProviders.compactMap(ManagedSession.Provider.init(rawValue:)))
         )
         configureEvidenceAtLaunch(model: model)
         self.model = model
@@ -349,11 +348,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 try await created.start()
                 let conversations = ConversationController(runtime: created, model: model)
                 await conversations.begin()
-                // The launch is recorded in both flavors; the review that deletes is offered only
-                // where permanent deletion is (CP4-G).
+                // The launch is recorded in both flavors; the cleanup review (which deletes in bulk)
+                // is offered only where the identity enables it (CP4-G, DP-CP4-2).
                 let cleanup = CleanupCoordinator(runtime: created)
                 await cleanup.recordLaunch()
-                if identity.permanentDeletionEnabled { model.installCleanupReview(cleanup) }
+                if identity.cleanupReviewEnabled { model.installCleanupReview(cleanup) }
                 self.runtime = created
                 self.conversations = conversations
                 runtime = created
@@ -542,12 +541,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let stop = fileMenu.addItem(withTitle: "Stop Conversation", action: #selector(stopFromMenu(_:)),
                                     keyEquivalent: ".")
         stop.target = self
-        if identity.permanentDeletionEnabled {
-            fileMenu.addItem(.separator())
-            let delete = fileMenu.addItem(withTitle: "Delete Conversation…", action: #selector(deleteFromMenu(_:)),
-                                          keyEquivalent: "\u{8}")
-            delete.target = self
-        }
+        fileMenu.addItem(.separator())
+        let delete = fileMenu.addItem(withTitle: "Delete Permanently…", action: #selector(deleteFromMenu(_:)),
+                                      keyEquivalent: "\u{8}")
+        delete.target = self
         fileMenu.addItem(.separator())
         installDevelopmentMenuItems(in: fileMenu)
         // Cmd+W keeps closing the window; the tab closes with Opt+Cmd+W.

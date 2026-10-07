@@ -57,6 +57,7 @@ extension AppDelegate {
                 "projectRows": model.projects.map { model.list(for: .project($0.id)).rows.count },
                 "errorMessage": model.errorMessage ?? NSNull(), "infoMessage": model.infoMessage ?? NSNull(),
                 "windowIsActive": model.windowIsActive, "sidebarCollapsed": model.sidebarCollapsed,
+                "sidebarItemCollapsed": splitController?.sidebarIsCollapsed ?? NSNull(),
                 "actionsAvailable": model.actionsAvailable, "quitting": model.quitting,
                 "busy": model.busy.map { ["id": $0.key.uuidString, "state": String(describing: $0.value)] },
                 "startingKeys": model.startingKeys.map { "\($0.provider.rawValue):\($0.projectID?.uuidString ?? "none")" },
@@ -156,7 +157,8 @@ extension AppDelegate {
         closeSheetForEvidence()
         model?.folderPanelFinished(accepted: true, url: URL(fileURLWithPath: path, isDirectory: true))
     }
-    func toggleSidebarForEvidence() { splitController?.toggleSidebar(nil) }
+    // The same path as the Hide and Show buttons.
+    func toggleSidebarForEvidence() { model?.onToggleSidebar?() }
     func setSidebarWidthForEvidence(_ width: Double) { splitController?.setSidebarWidth(width) }
     func resizeForEvidence(width: Double, height: Double) {
         window?.setContentSize(NSSize(width: width, height: height))

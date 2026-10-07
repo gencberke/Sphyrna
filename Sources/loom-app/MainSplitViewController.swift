@@ -10,6 +10,8 @@ final class MainSplitViewController: NSSplitViewController {
     private let model: CatalogModel
     private let sidebarItem: NSSplitViewItem
     private var restored = false
+    /// AppKit's sidebar item is the one truth for collapsed or not; this mirrors it into the model.
+    private let collapseSync: SidebarCollapseSync
     private var widthTask: Task<Void, Never>?
 
     init(model: CatalogModel) {
@@ -19,6 +21,7 @@ final class MainSplitViewController: NSSplitViewController {
         sidebar.sizingOptions = []
         detail.sizingOptions = []
         sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
+        collapseSync = SidebarCollapseSync(model: model, source: SplitViewItemCollapse(item: sidebarItem))
         let contentItem = NSSplitViewItem(viewController: detail)
         super.init(nibName: nil, bundle: nil)
         sidebarItem.minimumThickness = UIPreferences.sidebarWidthRange.lowerBound
@@ -29,7 +32,6 @@ final class MainSplitViewController: NSSplitViewController {
         addSplitViewItem(sidebarItem)
         addSplitViewItem(contentItem)
         splitView.dividerStyle = .thin
-        model.onToggleSidebar = { [weak self] in self?.toggleSidebar(nil) }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -47,6 +49,7 @@ final class MainSplitViewController: NSSplitViewController {
         super.viewDidLayout()
         guard !restored, view.bounds.width > 0 else { return }
         restored = true
+        defer { collapseSync.activate() }
         let preferences = model.preferencesSnapshot
         if preferences.sidebarCollapsed {
             sidebarItem.isCollapsed = true
@@ -58,7 +61,7 @@ final class MainSplitViewController: NSSplitViewController {
     override func splitViewDidResizeSubviews(_ notification: Notification) {
         super.splitViewDidResizeSubviews(notification)
         guard restored else { return }
-        model.setSidebarCollapsed(sidebarItem.isCollapsed)
+        collapseSync.reconcile()
         // Only a divider drag is the user's width choice; a smaller window that
         // squeezes the sidebar must not overwrite it.
         guard !sidebarItem.isCollapsed, notification.userInfo?["NSSplitViewDividerIndex"] != nil else { return }

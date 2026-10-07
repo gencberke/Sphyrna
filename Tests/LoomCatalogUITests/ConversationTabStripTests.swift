@@ -1,5 +1,7 @@
+import AppKit
 import Foundation
 import Observation
+import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
@@ -83,6 +85,30 @@ struct ConversationTabStripTests {
         private var raised = false
         func set() { lock.lock(); raised = true; lock.unlock() }
         var value: Bool { lock.lock(); defer { lock.unlock() }; return raised }
+    }
+
+    // MARK: Vertical rhythm (FB-C): no gap between the title row and its tabs
+
+    /// The real header-and-strip composition (`DetailTop`) laid out by AppKit, no window needed.
+    private func topBlockHeight(_ model: CatalogModel) -> CGFloat {
+        let hosting = NSHostingView(rootView: DetailTop(model: model).frame(width: 800))
+        hosting.layoutSubtreeIfNeeded()
+        return hosting.fittingSize.height
+    }
+
+    @Test func theStripSitsDirectlyUnderTheHeaderRowAndASingleTabKeepsTheOldBlock() async throws {
+        let fixture = try await makeFixture(rows: 2)
+        defer { cleanup(fixture) }
+        await fixture.model.start()
+        fixture.model.select(fixture.ids[0])
+        #expect(!fixture.model.tabStripIsVisible)
+        // One tab: the unchanged 52 pt block (36 pt row + 16 pt spacing above the terminal).
+        #expect(topBlockHeight(fixture.model) == LoomTheme.Layout.headerHeight)
+        fixture.model.openTab(fixture.ids[0])
+        fixture.model.select(fixture.ids[1])
+        #expect(fixture.model.tabStripIsVisible)
+        // Two tabs: row and strip touch (36 + 32 pt), as in the approved preview.
+        #expect(topBlockHeight(fixture.model) == LoomTheme.Layout.detailRowHeight + LoomTheme.TabStrip.height)
     }
 
     // MARK: Fixture

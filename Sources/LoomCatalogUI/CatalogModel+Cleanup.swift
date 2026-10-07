@@ -18,8 +18,8 @@ extension CatalogModel {
         await refreshRow(id)
     }
 
-    /// Offers the cleanup review in Settings. The app calls this only where permanent deletion is
-    /// enabled (`BuildIdentity.permanentDeletionEnabled`).
+    /// Offers the cleanup review in Settings. The app calls this only where the identity enables
+    /// it (`BuildIdentity.cleanupReviewEnabled`); manual deletion does not depend on it.
     public func installCleanupReview(_ reviewing: any CleanupReviewing) {
         cleanupReview = CleanupReviewModel(reviewing: reviewing)
     }

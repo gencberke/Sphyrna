@@ -233,18 +233,13 @@ public final class CatalogModel {
     public let tabs: ConversationTabs
     /// The delete flow's state (confirm sheet, unfinished deletions); logic in `CatalogModel+Deletion.swift`.
     public let deletions = DeletionState()
-    /// Whether this build offers permanent deletion at all (`BuildIdentity.permanentDeletionEnabled`,
-    /// DP-CP4-1). False hides every delete entry point; recovery and Retry of an unfinished one stay.
-    public let permanentDeletionEnabled: Bool
 
     /// `catalog == nil` means the catalog could not be opened (`startupError`
     /// says why); nothing is created or overwritten in that state.
     public init(catalog: SessionCatalog?, startupError: String? = nil, events: SessionEventHub,
                 preferences: UIPreferencesStore,
-                startableProviders: Set<ManagedSession.Provider> = [.claude, .codex],
-                permanentDeletionEnabled: Bool = true) {
+                startableProviders: Set<ManagedSession.Provider> = [.claude, .codex]) {
         self.startableProviders = startableProviders
-        self.permanentDeletionEnabled = permanentDeletionEnabled
         self.catalog = catalog
         self.startupError = startupError
         self.events = events

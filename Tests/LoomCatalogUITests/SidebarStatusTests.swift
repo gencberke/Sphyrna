@@ -42,7 +42,7 @@ struct SidebarStatusTests {
             createdAt: Date(timeIntervalSince1970: 0), lastUsedAt: Date(timeIntervalSince1970: 0),
             lifecycle: .idle, pinned: false, projectID: nil)
         #expect(untitled.displayTitle(projectName: "rocket") == "Codex · rocket")
-        #expect(untitled.displayTitle(projectName: "rocket", repeatsProject: false) == "Codex conversation")
+        #expect(untitled.displayTitle(projectName: "rocket", repeatsProject: false) == "Codex session")
     }
 
     @Test func projectContextMenuStartsTheRightProviderInThatProject() throws {

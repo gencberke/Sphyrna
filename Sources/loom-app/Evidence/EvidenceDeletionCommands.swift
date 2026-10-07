@@ -5,8 +5,8 @@ import LoomCore
 
 /// Delete commands (CP4-D): the same model calls the menus, the sheet and the banner make.
 ///
-/// - `delete:<id>`: "Delete Conversation…" (opens the confirm sheet and asks the runtime for the dry run).
-/// - `delete-confirm`: the sheet's "Delete Conversation" button (returns at once; the deletion runs on).
+/// - `delete:<id>`: "Delete Permanently…" (opens the confirm sheet and asks the runtime for the dry run).
+/// - `delete-confirm`: the sheet's "Delete Permanently" button (returns at once; the deletion runs on).
 /// - `delete-cancel`: the sheet's Cancel.
 /// - `delete-retry:<id>`: the banner's "Try Again" (returns at once).
 /// - `delete-key`: Cmd+Delete sent through the real main menu; writes `ack-delete-key.json` with whether the menu
@@ -14,7 +14,7 @@ import LoomCore
 /// - `screenshot-sheet:<label>`: the attached sheet's content view as `screenshot-sheet-<label>.png`
 ///   (not written for real-provider runs).
 ///
-/// The snapshot gains `deletions{offersDeletion, fileMenuItem, confirmation, pending[], inProgress[], recoveryFailure}`.
+/// The snapshot gains `deletions{fileMenuItem, confirmation, pending[], inProgress[], recoveryFailure}`.
 @MainActor
 extension DevelopmentEvidence {
     /// Returns false when `name` is not a delete command.
@@ -68,7 +68,6 @@ extension AppDelegate {
         }
         let item = deleteMenuItem
         return [
-            "offersDeletion": model.offersDeletion,
             "fileMenuItem": item.map { ["title": $0.title, "enabled": validateMenuItem($0),
                                         "keyEquivalent": $0.keyEquivalent.unicodeScalars.map { String($0.value, radix: 16) },
                                         "command": $0.keyEquivalentModifierMask.contains(.command)] as [String: Any] } ?? NSNull(),

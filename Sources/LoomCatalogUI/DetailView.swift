@@ -9,10 +9,9 @@ public struct DetailView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(model: model)
+            DetailTop(model: model)
             Banners(model: model)
             DeletionBanner(model: model)
-            if model.tabStripIsVisible { ConversationTabStrip(model: model) }
             DetailContent(model: model)
         }
         .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).fill(LoomTheme.Surface.panel))
@@ -33,9 +32,28 @@ public struct DetailView: View {
     }
 }
 
+/// The header and, when two or more tabs are open, the tab strip directly under it. Banners come
+/// below both, so nothing sits between a title and its tabs.
+struct DetailTop: View {
+    let model: CatalogModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            DetailHeader(model: model)
+            if model.tabStripIsVisible { ConversationTabStrip(model: model) }
+        }
+    }
+}
+
 struct DetailHeader: View {
     let model: CatalogModel
     static let rowHeight = LoomTheme.Layout.detailRowHeight
+
+    /// The rest of the 52 pt header block is spacing above the terminal; the strip, when shown,
+    /// takes that place (header row 36 pt + strip 32 pt, as in the approved preview).
+    static func bottomSpacing(stripVisible: Bool) -> CGFloat {
+        stripVisible ? 0 : LoomTheme.Layout.headerHeight - rowHeight
+    }
 
     /// The native buttons sit over this header's leading edge only while the
     /// sidebar (which otherwise carries them) is collapsed.
@@ -107,10 +125,9 @@ struct DetailHeader: View {
         .foregroundStyle(LoomTheme.Text.primary)
         .padding(.horizontal, LoomTheme.Space.detailInset)
         // The window buttons are centered natively 26 pt below the window top
-        // (8 pt panel inset + 18 pt); the row's center line is the same, and the
-        // rest of the 52 pt header is spacing above the terminal.
+        // (8 pt panel inset + 18 pt); the row's center line is the same.
         .frame(height: Self.rowHeight)
-        .padding(.bottom, LoomTheme.Layout.headerHeight - Self.rowHeight)
+        .padding(.bottom, Self.bottomSpacing(stripVisible: model.tabStripIsVisible))
     }
 }
 
