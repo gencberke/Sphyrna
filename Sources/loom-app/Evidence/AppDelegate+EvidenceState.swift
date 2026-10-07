@@ -100,6 +100,7 @@ extension AppDelegate {
         }
         state["settings"] = settingsEvidence
         state["tabs"] = tabsEvidence
+        state["deletions"] = deletionsEvidence
         state["usage"] = usageEvidence
         if let window {
             state["windowFrame"] = [window.frame.origin.x, window.frame.origin.y, window.frame.width, window.frame.height]

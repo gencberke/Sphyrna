@@ -86,7 +86,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let model = CatalogModel(
             catalog: catalog, startupError: catalogFailure, events: hub,
             preferences: UIPreferencesStore(url: root.appendingPathComponent("ui-preferences.json")),
-            startableProviders: Set(identity.startableProviders.compactMap(ManagedSession.Provider.init(rawValue:)))
+            startableProviders: Set(identity.startableProviders.compactMap(ManagedSession.Provider.init(rawValue:))),
+            permanentDeletionEnabled: identity.permanentDeletionEnabled
         )
         configureEvidenceAtLaunch(model: model)
         self.model = model
@@ -403,6 +404,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func stopFromMenu(_ sender: Any?) {
         if let id = model?.selectedSessionID { model?.stopConversation(id) }
     }
+    @objc func deleteFromMenu(_ sender: Any?) {
+        if let id = model?.selectedSessionID { model?.requestDeletion(id) }
+    }
     @objc func showNextTab(_ sender: Any?) { model?.selectAdjacentTab(.next) }
     @objc func showPreviousTab(_ sender: Any?) { model?.selectAdjacentTab(.previous) }
     @objc func closeTabFromMenu(_ sender: Any?) { model?.closeSelectedTab() }
@@ -419,6 +423,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return model.selectedRow.map(model.canResume) ?? false
         case #selector(stopFromMenu(_:)):
             return model.selectedRow.map(model.canStop) ?? false
+        case #selector(deleteFromMenu(_:)):
+            // Cmd+Delete belongs to a text field being edited (search, rename) and to a focused terminal
+            // (Cmd+Backspace edits the prompt line there); the menu item itself stays usable.
+            if NSApp.currentEvent?.type == .keyDown,
+               window?.firstResponder is NSText || window?.firstResponder is LoomTerminalView { return false }
+            return model.selectedRow.map(model.canDelete) ?? false
         case #selector(showNextTab(_:)), #selector(showPreviousTab(_:)):
             return model.canSelectAdjacentTab
         case #selector(closeTabFromMenu(_:)):
@@ -518,6 +528,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let stop = fileMenu.addItem(withTitle: "Stop Conversation", action: #selector(stopFromMenu(_:)),
                                     keyEquivalent: ".")
         stop.target = self
+        if identity.permanentDeletionEnabled {
+            fileMenu.addItem(.separator())
+            let delete = fileMenu.addItem(withTitle: "Delete Conversation…", action: #selector(deleteFromMenu(_:)),
+                                          keyEquivalent: "\u{8}")
+            delete.target = self
+        }
         fileMenu.addItem(.separator())
         installDevelopmentMenuItems(in: fileMenu)
         // Cmd+W keeps closing the window; the tab closes with Opt+Cmd+W.

@@ -294,7 +294,7 @@ struct SessionCardView: View {
                             .foregroundStyle(indicator == .stale ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
                             .lineLimit(1).truncationMode(.tail)
                         Spacer(minLength: LoomTheme.Space.headerSpacing)
-                        Text(RelativeTime.string(from: row.record.lastUsedAt, to: model.now))
+                        Text(model.isDeleting(row.id) ? "Deleting…" : RelativeTime.string(from: row.record.lastUsedAt, to: model.now))
                             .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
                             .help("Last used \(row.record.lastUsedAt.formatted(date: .abbreviated, time: .shortened))")
                     }
@@ -329,6 +329,7 @@ struct SessionCardView: View {
             Divider()
             Button("Resume") { model.resumeConversation(row.id) }.disabled(!model.canResume(row))
             Button("Stop") { model.stopConversation(row.id) }.disabled(!model.canStop(row))
+            DeletionMenuItems(model: model, row: row)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(ProviderName.title(row.record.session.provider))"

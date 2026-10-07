@@ -71,7 +71,9 @@ extension DevelopmentEvidence {
             await model.settle()
             try? await Task.sleep(for: .milliseconds(300))
             app.saveScreenshot(to: directory.appendingPathComponent("screenshot-\(label).png"))
-        default: guard await handleSettingsCommand(name, argument) || handleTabCommand(name, argument) else { return }
+        default:
+            if handleDeletionCommand(name, argument) { break }
+            guard await handleSettingsCommand(name, argument) || handleTabCommand(name, argument) else { return }
         }
         await model.settle()
     }

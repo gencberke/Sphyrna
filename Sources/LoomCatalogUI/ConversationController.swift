@@ -245,6 +245,28 @@ public final class ConversationController: ConversationIntents {
         entries.values.first { $0.owner == sessionID }?.container
     }
 
+    // Permanent deletion: the runtime owns every step; these only forward.
+
+    public func deletionPreview(sessionID: UUID) async throws -> ConversationDeletionPreview {
+        try await runtime.deletionPreview(id: sessionID)
+    }
+
+    public func deleteConversation(sessionID: UUID) async throws -> ConversationDeletionOutcome {
+        try await runtime.deleteConversation(id: sessionID)
+    }
+
+    public func retryDeletion(sessionID: UUID) async throws -> ConversationDeletionOutcome {
+        try await runtime.retryDeletion(id: sessionID)
+    }
+
+    public func pendingDeletions() async throws -> [PendingConversationDeletion] {
+        try await runtime.pendingDeletions()
+    }
+
+    public func deletionRecoveryFailure() async -> String? {
+        await runtime.deletionRecoveryFailure()
+    }
+
     // MARK: Terminals
 
     private func adopt(_ launch: RuntimeLaunch, surface: TerminalSurface) {

@@ -35,6 +35,12 @@ public protocol ConversationIntents: AnyObject {
     func viewed(sessionID: UUID)
     /// The live terminal of a conversation that currently owns a run.
     func terminalView(sessionID: UUID) -> NSView?
+    // Permanent deletion (CP4-D). Defaults refuse, so an intents object without a runtime stays valid.
+    func deletionPreview(sessionID: UUID) async throws -> ConversationDeletionPreview
+    func deleteConversation(sessionID: UUID) async throws -> ConversationDeletionOutcome
+    func retryDeletion(sessionID: UUID) async throws -> ConversationDeletionOutcome
+    func pendingDeletions() async throws -> [PendingConversationDeletion]
+    func deletionRecoveryFailure() async -> String?
 }
 
 public enum ConversationBusy: Equatable, Sendable {
@@ -164,7 +170,7 @@ public final class CatalogModel {
     @ObservationIgnored public weak var intents: (any ConversationIntents)? {
         didSet {
             intentsRevision &+= 1
-            if intents != nil, isReady { updateViewing() }
+            if intents != nil, isReady { updateViewing(); refreshPendingDeletionsSoon() }
         }
     }
     /// New-conversation requests that have no card yet (the toolchain is still resolving).
@@ -223,13 +229,20 @@ public final class CatalogModel {
     @ObservationIgnored var preferenceWriteDelay: Duration = .milliseconds(300)
     /// Pinned conversation tabs (D-33); the selected conversation joins them as a transient tab.
     public let tabs: ConversationTabs
+    /// The delete flow's state (confirm sheet, unfinished deletions); logic in `CatalogModel+Deletion.swift`.
+    public let deletions = DeletionState()
+    /// Whether this build offers permanent deletion at all (`BuildIdentity.permanentDeletionEnabled`,
+    /// DP-CP4-1). False hides every delete entry point; recovery and Retry of an unfinished one stay.
+    public let permanentDeletionEnabled: Bool
 
     /// `catalog == nil` means the catalog could not be opened (`startupError`
     /// says why); nothing is created or overwritten in that state.
     public init(catalog: SessionCatalog?, startupError: String? = nil, events: SessionEventHub,
                 preferences: UIPreferencesStore,
-                startableProviders: Set<ManagedSession.Provider> = [.claude, .codex]) {
+                startableProviders: Set<ManagedSession.Provider> = [.claude, .codex],
+                permanentDeletionEnabled: Bool = true) {
         self.startableProviders = startableProviders
+        self.permanentDeletionEnabled = permanentDeletionEnabled
         self.catalog = catalog
         self.startupError = startupError
         self.events = events
@@ -291,6 +304,7 @@ public final class CatalogModel {
             }
         }
         updateViewing()
+        refreshPendingDeletionsSoon()
     }
 
     public func stop() {
@@ -314,6 +328,7 @@ public final class CatalogModel {
         await viewingTask?.value
         await preferenceWriteTask?.value
         await branchTask?.value
+        await deletions.refreshTask?.value
     }
 
     // MARK: Lists
@@ -945,6 +960,7 @@ public final class CatalogModel {
     /// (missed frames) is repaired from the frame's full latest state.
     func apply(_ frame: SessionEventFrame) {
         usage?.observe(frame.change)
+        handleDeletionFrame(frame)
         statistics.framesApplied += 1
         // Re-read at a reliable turn boundary, never for output/frame rendering.
         if case let .status(status) = frame.change, status?.activity == .turnComplete,
@@ -1055,11 +1071,11 @@ public final class CatalogModel {
 
     public func canResume(_ row: SessionRowModel) -> Bool {
         actionsAvailable && row.record.session.provider != .synthetic
-            && row.live?.runID == nil && busy[row.id] == nil
+            && row.live?.runID == nil && busy[row.id] == nil && !isDeleting(row.id)
     }
 
     public func canStop(_ row: SessionRowModel) -> Bool {
-        actionsAvailable && row.live?.runID != nil && busy[row.id] != .stopping
+        actionsAvailable && row.live?.runID != nil && busy[row.id] != .stopping && !isDeleting(row.id)
     }
 
     /// The conversation's live terminal, if it owns a run right now.

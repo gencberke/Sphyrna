@@ -25,6 +25,10 @@ extension AppDelegate {
         case "opaque": model.sidebarTransparencyOverride = true
         default: break // system is the normal behavior; no OS setting is changed.
         }
+        // Acceptance: hold the deleting state long enough for a screenshot.
+        if let delay = value(after: "--delete-delay").flatMap(Double.init), delay > 0 {
+            model.deletions.pauseBeforeRuntimeCall = .seconds(delay)
+        }
     }
 
     func startEvidenceChannel() {

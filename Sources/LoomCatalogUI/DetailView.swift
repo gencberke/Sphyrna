@@ -11,6 +11,7 @@ public struct DetailView: View {
         VStack(spacing: 0) {
             DetailHeader(model: model)
             Banners(model: model)
+            DeletionBanner(model: model)
             if model.tabStripIsVisible { ConversationTabStrip(model: model) }
             DetailContent(model: model)
         }
@@ -25,6 +26,9 @@ public struct DetailView: View {
         .environment(\.indicatorsAnimate, model.windowIsActive)
         .sheet(item: $model.renameDraft) { draft in
             RenameSheet(model: model, draft: draft)
+        }
+        .sheet(item: Binding(get: { model.deletions.confirmation }, set: { model.deletions.confirmation = $0 })) { confirmation in
+            DeleteConversationSheet(model: model, confirmation: confirmation)
         }
     }
 }
@@ -62,6 +66,9 @@ struct DetailHeader: View {
                     Text("Starting — complete any prompts in the terminal")
                         .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
                         .lineLimit(1).layoutPriority(1)
+                } else if model.isDeleting(row.id) {
+                    Text("Deleting…").font(LoomTheme.Typography.statusLabel).foregroundStyle(LoomTheme.Text.secondary)
+                        .lineLimit(1).layoutPriority(1)
                 } else if let label = row.indicator.label {
                     Text(label).font(LoomTheme.Typography.statusLabel).foregroundStyle(row.indicator.labelColor)
                         .lineLimit(1).layoutPriority(1)
@@ -83,6 +90,7 @@ struct DetailHeader: View {
                         .disabled(!model.canResume(row))
                     Button("Stop") { model.stopConversation(row.id) }
                         .disabled(!model.canStop(row))
+                    DeletionMenuItems(model: model, row: row)
                 } label: {
                     Image(systemName: "ellipsis")
                 }
