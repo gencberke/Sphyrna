@@ -50,6 +50,7 @@ private let defaultRoot = URL(fileURLWithPath: "/default/Loom-Dev", isDirectory:
         #expect(production.dataDirectoryName == "Loom")
         #expect(production.socketDirectoryName == ".loom")
         #expect(production.startableProviders == ["claude"])
+        #expect(!production.permanentDeletionEnabled)
     }
 
     @Test func developmentIdentityKeepsEveryNameAndBothProviders() {
@@ -59,6 +60,7 @@ private let defaultRoot = URL(fileURLWithPath: "/default/Loom-Dev", isDirectory:
             #expect(development.dataDirectoryName == "Loom-Dev")
             #expect(development.socketDirectoryName == ".loom-dev")
             #expect(development.startableProviders == ["claude", "codex"])
+            #expect(development.permanentDeletionEnabled)
         }
     }
 

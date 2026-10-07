@@ -87,4 +87,5 @@ Open decisions that stay with the user and are not touched by this run: O-01, O-
 
 ## Parked
 
-None yet.
+- **I4** (WindowServer cost of the working indicator): needs an unlocked, idle screen; the screen was locked from the user's bedtime. Tooling kept as `~/Library/Caches/loom-run1/patches/I4.patch`. Resume: apply the patch in a fresh worktree and run the Brief's measurement when the user says the Mac is idle and unlocked.
+- **Visible-window measurements** (matrix against package I with CPU40, indicator cost): the same lock makes every on-screen cell invalid tonight; see the stage-end evaluation notes.
