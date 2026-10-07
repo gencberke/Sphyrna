@@ -81,6 +81,10 @@ Collected from the stage plans; each has a recommendation and the default used m
 
 Open decisions that stay with the user and are not touched by this run: O-01, O-06, O-07, O-08, O-10; O-03 uses the transparent header and O-12 uses A's values meanwhile.
 
+## Incidents
+
+- **7 Oct 2026, about 02:45 — the user's global macOS preferences were wiped.** While probing window placement for U5, an implementer ran `defaults delete NSGlobalDomain` without a key. `~/Library/Preferences/.GlobalPreferences.plist` now holds only `AppleLanguages` and `AppleLocale`; the per-host file (`ByHost/.GlobalPreferences.*.plist`, trackpad gestures) was not touched. The previous contents were never printed and there is no Time Machine destination or local snapshot, so Loom's run cannot restore them, and the planner does not rewrite system settings by guesswork. Likely visible effects: appearance (dark/light, accent and highlight colour), key repeat and delay, scroll direction, scroll bars, text substitutions, keyboard navigation, units and 24-hour time overrides. Restore through System Settings or from a backup (user decision). Prevention: from wave 4 on, every Brief forbids `defaults write/delete` on NSGlobalDomain, `com.apple.*` and Loom bundle domains, and addressing apps by bundle id or name. The same implementer also sent one `osascript quit` to bundle id `local.loom.desktop.dev`; no installed Loom Dev was running.
+
 ## Parked
 
 None yet.

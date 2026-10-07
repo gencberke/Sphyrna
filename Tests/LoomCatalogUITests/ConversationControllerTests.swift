@@ -36,7 +36,8 @@ struct ConversationControllerTests {
     private func makeFixture(
         idle: SessionIdlePolicy = SessionIdlePolicy(), startWindowActive: Bool = false,
         extraEnvironment: [String: String] = [:], scoped: Bool = false,
-        startableProviders: Set<ManagedSession.Provider> = [.claude, .codex]
+        startableProviders: Set<ManagedSession.Provider> = [.claude, .codex],
+        toolchainDelay: Duration = .zero, toolchainFails: Bool = false
     ) async throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loom-controller-\(UUID())", isDirectory: true)
@@ -73,7 +74,10 @@ struct ConversationControllerTests {
             supervisor: supervisor, catalog: catalog,
             configuration: SessionRuntimeConfiguration(
                 toolchains: { provider in
-                    ProviderToolchain(
+                    // A slow login-shell capture, or a missing CLI, before anything can start.
+                    if toolchainDelay > .zero { try await Task.sleep(for: toolchainDelay) }
+                    if toolchainFails { throw SessionRuntimeError.shuttingDown }
+                    return ProviderToolchain(
                         provider: provider, executable: fake,
                         capabilities: ProviderCapabilities(
                             version: "fake", help: "--settings <s> --session-id <i> --remote <A>",
@@ -200,6 +204,52 @@ struct ConversationControllerTests {
             #expect(await waitUntil { fixture.controller.terminalCount == 0 && fixture.model.busy[sessionID] == nil })
             #expect(await waitUntil { ((try? await fixture.supervisor.liveScopeMembers()) ?? [provider]).isEmpty })
         }
+    }
+
+    // MARK: U5 start busy state
+
+    @Test func newConversationShowsPreparingWhileTheToolchainResolvesAndClearsWhenItReturns() async throws {
+        let fixture = try await makeFixture(toolchainDelay: .milliseconds(500))
+        do {
+            #expect(fixture.model.preparingNotice == nil)
+            fixture.model.startConversation(.claude, projectID: nil)
+            #expect(fixture.model.preparingNotice == "Preparing Claude…")
+            // Still preparing, with no card yet, well into the delay.
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(fixture.model.preparingNotice == "Preparing Claude…")
+            #expect(fixture.controller.terminalCount == 0)
+            #expect(fixture.model.selectedSessionID == nil)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 && fixture.model.selectedSessionID != nil })
+            #expect(await waitUntil { fixture.model.preparingNotice == nil })
+            #expect(fixture.model.errorMessage == nil)
+        } catch { await fixture.cleanup(); throw error }
+        await fixture.cleanup()
+    }
+
+    @Test func preparingClearsWhenTheToolchainFails() async throws {
+        let fixture = try await makeFixture(toolchainDelay: .milliseconds(150), toolchainFails: true)
+        do {
+            fixture.model.startConversation(.claude, projectID: nil)
+            #expect(fixture.model.preparingNotice == "Preparing Claude…")
+            #expect(await waitUntil { fixture.model.preparingNotice == nil })
+            #expect(await waitUntil { fixture.model.errorMessage != nil })
+            #expect(fixture.model.canStart(.claude, projectID: nil))
+            #expect(fixture.controller.terminalCount == 0)
+        } catch { await fixture.cleanup(); throw error }
+        await fixture.cleanup()
+    }
+
+    @Test func preparingEndsWhenTheCardAppearsEvenIfTheStartIsStillWaiting() async throws {
+        let fixture = try await makeFixture(extraEnvironment: ["LOOM_FAKE_CODEX_INPUT_BEFORE_IDENTITY": "1"])
+        do {
+            fixture.model.startConversation(.codex, projectID: nil)
+            #expect(fixture.model.preparingNotice == "Preparing Codex…")
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 })
+            // The card says "Starting…" itself now; the start is still pending.
+            #expect(fixture.model.isStarting(.codex, projectID: nil))
+            #expect(fixture.model.preparingNotice == nil)
+        } catch { await fixture.cleanup(); throw error }
+        await fixture.cleanup()
     }
 
     // MARK: C1

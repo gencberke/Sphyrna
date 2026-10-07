@@ -162,6 +162,7 @@ public final class ConversationController: ConversationIntents {
                     columns: size.columns, outputSink: surface.outputSink,
                     onTerminalReady: { launch in
                         pendingSessionID = launch.sessionID
+                        model.cardCreated(for: key)
                         self.adopt(launch, surface: surface)
                         model.setBusy(launch.sessionID, .starting)
                         model.showStarted(launch.sessionID)

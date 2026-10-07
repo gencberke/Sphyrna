@@ -60,6 +60,7 @@ extension AppDelegate {
                 "actionsAvailable": model.actionsAvailable, "quitting": model.quitting,
                 "busy": model.busy.map { ["id": $0.key.uuidString, "state": String(describing: $0.value)] },
                 "startingKeys": model.startingKeys.map { "\($0.provider.rawValue):\($0.projectID?.uuidString ?? "none")" },
+                "preparingNotice": model.preparingNotice ?? NSNull(),
                 "selectedIndicator": model.selectedRow?.indicator.label ?? NSNull(),
                 "selectedProvider": model.selectedRow?.record.session.provider.rawValue ?? NSNull(),
                 "selectedProjectID": model.selectedRow?.record.projectID?.uuidString ?? NSNull(),
@@ -91,6 +92,9 @@ extension AppDelegate {
                     "sidebarWidth": model.preferencesSnapshot.sidebarWidth,
                     "sidebarCollapsed": model.preferencesSnapshot.sidebarCollapsed,
                     "openTabs": model.preferencesSnapshot.openTabs.map(\.uuidString),
+                    "windowFrame": model.preferencesSnapshot.windowFrame.map {
+                        [$0.x, $0.y, $0.width, $0.height] as [Double]
+                    } ?? NSNull(),
                 ] as [String: Any],
             ] as [String: Any]
         }
@@ -98,6 +102,7 @@ extension AppDelegate {
         state["tabs"] = tabsEvidence
         state["usage"] = usageEvidence
         if let window {
+            state["windowFrame"] = [window.frame.origin.x, window.frame.origin.y, window.frame.width, window.frame.height]
             state["windowContentSize"] = [Double(window.contentLayoutRect.width), Double(window.contentLayoutRect.height)]
             state["sidebarWidth"] = splitController?.sidebarWidth ?? NSNull()
             state["attachedSheet"] = window.attachedSheet.map { String(describing: type(of: $0)) } ?? NSNull()

@@ -167,6 +167,8 @@ public final class CatalogModel {
             if intents != nil, isReady { updateViewing() }
         }
     }
+    /// New-conversation requests that have no card yet (the toolchain is still resolving).
+    public private(set) var preparingStarts: Set<StartKey> = []
     /// Observed stand-in for the attach of `intents` (which is not itself observed), so views
     /// that read `actionsAvailable` re-evaluate when the runtime attaches after the first page.
     public private(set) var intentsRevision = 0
@@ -185,6 +187,13 @@ public final class CatalogModel {
     @ObservationIgnored var branchReader: @Sendable (String) -> GitBranch = { GitBranch.read(directory: $0) } {
         didSet { branchCache = BranchCache(reader: branchReader) }
     }
+    /// Test seams for the minute tick: the clock and the wait until a date.
+    @ObservationIgnored var currentDate: @Sendable () -> Date = { Date() }
+    @ObservationIgnored var sleepUntil: @Sendable (Date) async throws -> Void = { date in
+        try await Task.sleep(for: .seconds(max(0, date.timeIntervalSinceNow)))
+    }
+    /// Runs only while the window is active (see `setWindowActive`).
+    @ObservationIgnored private var tickTask: Task<Void, Never>?
     /// `now` moves forward only when a relative time ("5m") could read differently.
     @ObservationIgnored private let nowResolution: TimeInterval = 10
 
@@ -238,6 +247,7 @@ public final class CatalogModel {
         refreshTask?.cancel()
         preferenceWriteTask?.cancel()
         branchTask?.cancel()
+        tickTask?.cancel()
     }
 
     /// Providers a user may start. The production build lists only Claude;
@@ -286,6 +296,7 @@ public final class CatalogModel {
     public func stop() {
         eventTask?.cancel()
         eventTask = nil
+        stopTicking()
         flushPreferences()
     }
 
@@ -490,8 +501,8 @@ public final class CatalogModel {
 
     /// Advances `now` when relative times could read differently, or when a row is newer than it.
     private func advanceNow(covering records: [CatalogSession] = []) {
-        let current = Date()
-        if current.timeIntervalSince(now) >= nowResolution || records.contains(where: { $0.lastUsedAt > now }) {
+        let current = currentDate()
+        if abs(current.timeIntervalSince(now)) >= nowResolution || records.contains(where: { $0.lastUsedAt > now }) {
             now = current
         }
     }
@@ -677,8 +688,36 @@ public final class CatalogModel {
         if active {
             advanceNow()
             refreshBranches(Set(branches.keys))
+            startTicking()
+        } else {
+            stopTicking()
         }
         updateViewing()
+    }
+
+    /// Moves `now` to each minute boundary while the window is active, so "5m" and the day
+    /// headings stay true (midnight is a boundary). Nothing is scheduled while inactive.
+    private func startTicking() {
+        guard tickTask == nil else { return }
+        tickTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let (next, sleep) = self?.nextTick() else { return }
+                do { try await sleep(next) } catch { return }
+                guard !Task.isCancelled, let self else { return }
+                let current = self.currentDate()
+                if current != self.now { self.now = current }
+            }
+        }
+    }
+
+    private func stopTicking() {
+        tickTask?.cancel()
+        tickTask = nil
+    }
+
+    private func nextTick() -> (Date, @Sendable (Date) async throws -> Void) {
+        let seconds = currentDate().timeIntervalSinceReferenceDate
+        return (Date(timeIntervalSinceReferenceDate: (seconds / 60).rounded(.down) * 60 + 60), sleepUntil)
     }
 
     public func setFullScreen(_ value: Bool) {
@@ -697,6 +736,20 @@ public final class CatalogModel {
         terminalFontSize = UIPreferences.clampedFontSize(size)
         persist { $0.terminalFontSize = terminalFontSize }
         onTerminalFontSizeChange?(terminalFontSize)
+    }
+
+    /// The window moved or was resized: remembered at once, written after the debounce (or at Quit).
+    public func setWindowFrame(_ frame: CGRect) {
+        let saved = WindowFrame(frame)
+        guard saved != preferences.current.windowFrame else { return }
+        preferences.apply { $0.windowFrame = saved }
+        scheduleFlush()
+    }
+
+    /// Shown while a new conversation is still being prepared (no card yet).
+    public var preparingNotice: String? {
+        let names = Set(preparingStarts.map(\.provider)).map(ProviderName.title).sorted()
+        return names.isEmpty ? nil : "Preparing " + names.joined(separator: " and ") + "…"
     }
 
     public func setSidebarWidth(_ width: Double) {
@@ -1022,8 +1075,17 @@ public final class CatalogModel {
 
     // Called by the conversation controller.
 
-    func beginStart(_ key: StartKey) -> Bool { startingKeys.insert(key).inserted }
-    func endStart(_ key: StartKey) { startingKeys.remove(key) }
+    func beginStart(_ key: StartKey) -> Bool {
+        let inserted = startingKeys.insert(key).inserted
+        if inserted { preparingStarts.insert(key) }
+        return inserted
+    }
+    /// The card exists now (its own "Starting…" state takes over from the preparing notice).
+    func cardCreated(for key: StartKey) { preparingStarts.remove(key) }
+    func endStart(_ key: StartKey) {
+        startingKeys.remove(key)
+        preparingStarts.remove(key)
+    }
     func setBusy(_ id: UUID, _ value: ConversationBusy?) { busy[id] = value }
     func terminalsChanged() { terminalRevision &+= 1 }
     func reportFailure(_ text: String) { errorMessage = text }
@@ -1066,6 +1128,11 @@ public final class CatalogModel {
     /// Selection changes in quick succession (tab switching) coalesce into one write.
     private func persistSelection(_ id: UUID?) {
         preferences.apply { $0.selectedSessionID = id }
+        scheduleFlush()
+    }
+
+    /// Rapid changes (tab switching, window drags) coalesce into one write after `preferenceWriteDelay`.
+    private func scheduleFlush() {
         preferenceWriteTask?.cancel()
         preferenceWriteTask = Task { [weak self] in
             guard let delay = self?.preferenceWriteDelay else { return }

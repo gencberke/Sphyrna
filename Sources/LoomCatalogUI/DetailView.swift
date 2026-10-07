@@ -106,7 +106,7 @@ struct Banners: View {
     let model: CatalogModel
 
     private var isEmpty: Bool {
-        model.ownershipNotice == nil && model.statusMessage == nil
+        model.ownershipNotice == nil && model.statusMessage == nil && model.preparingNotice == nil
             && model.errorMessage == nil && model.infoMessage == nil
     }
 
@@ -123,6 +123,12 @@ struct Banners: View {
                     .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityIdentifier("status-message")
+            }
+            if let message = model.preparingNotice {
+                Text(message)
+                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("preparing-notice")
             }
             if let message = model.errorMessage {
                 BannerRow(text: message, color: LoomTheme.Status.failure) { model.dismissError() }

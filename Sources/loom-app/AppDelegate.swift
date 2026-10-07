@@ -18,6 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Production or development, read once; the only source of identity-derived names.
     let identity = BuildIdentity(bundleIdentifier: Bundle.main.bundleIdentifier)
     private(set) var window: NSWindow?
+    /// The frame `makeWindow` chose (saved, or the centered default). AppKit re-places a window
+    /// that is shown for the first time (narrower, recentered), so it is applied again after the show.
+    private var openingFrame: NSRect?
     /// The one Settings window (`SettingsWindowController`); nil until the model exists.
     var settingsController: SettingsWindowController?
     /// Claude usage for the footer chip and Settings; nil when the data root was refused.
@@ -98,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.window = window
         traceWindowCall("launch-before-show")
         window.makeKeyAndOrderFront(nil)
+        if let openingFrame { window.setFrame(openingFrame, display: true) }
         NSApp.activate()
         traceWindowCall("launch-after-show")
         LoomSignposts.end(.windowShown)
@@ -164,7 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func makeWindow(model: CatalogModel) -> NSWindow {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1220, height: 780),
+            contentRect: NSRect(origin: .zero, size: UIPreferences.defaultWindowSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false
         )
@@ -178,18 +182,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.toolbar = NSToolbar(identifier: NSToolbar.Identifier("loom-main"))
         window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .none
-        window.minSize = NSSize(width: 780, height: 500)
+        window.minSize = UIPreferences.windowMinimumSize
         window.isReleasedWhenClosed = false
+        // The frame is this app's own preference (below). AppKit's saved window state is keyed by
+        // bundle identifier only, so it would carry one data root's frame into another.
+        window.isRestorable = false
         window.appearance = NSAppearance(named: .darkAqua)
         window.isOpaque = false
         window.backgroundColor = .clear
         window.delegate = self
         let split = MainSplitViewController(model: model)
         window.contentViewController = split
-        window.setContentSize(NSSize(width: 1220, height: 780))
-        window.center()
+        // The last frame the user left (kept in ui-preferences.json of this data root, never in
+        // the bundle's defaults) when it still fits a screen; otherwise the default, centered.
+        if let saved = model.preferencesSnapshot.windowFrame?.restorable(onScreens: NSScreen.screens.map(\.visibleFrame)) {
+            window.setFrame(saved, display: false)
+        } else {
+            window.setContentSize(UIPreferences.defaultWindowSize)
+            window.center()
+        }
+        openingFrame = window.frame
         splitController = split
         let center = NotificationCenter.default
+        // Moves and resizes are remembered (the model writes them after a short pause and at Quit);
+        // full screen, a minimized window and the window's opening (before the first page is ready)
+        // are not.
+        for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
+            center.addObserver(forName: name, object: window, queue: .main) { [weak self, weak window] _ in
+                MainActor.assumeIsolated {
+                    guard let window, let model = self?.model, model.isReady, window.isVisible,
+                          !window.isMiniaturized, !window.styleMask.contains(.fullScreen) else { return }
+                    model.setWindowFrame(window.frame)
+                }
+            }
+        }
         for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didBecomeKeyNotification,
                      NSWindow.didResignKeyNotification, NSWindow.didMiniaturizeNotification,
                      NSWindow.didDeminiaturizeNotification] {
@@ -254,6 +280,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window?.makeFirstResponder(view)
         }
         traceWindowCall("show-after-\(reason)")
+    }
+
+    /// Whatever is still waiting for the preference write debounce (the window frame) goes to disk.
+    func applicationWillTerminate(_ notification: Notification) {
+        model?.flushPreferences()
     }
 
     func windowWillClose(_ notification: Notification) {
