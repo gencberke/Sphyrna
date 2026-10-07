@@ -29,6 +29,8 @@ public enum LoomSignposts {
         case firstPage = "FirstPage"
         /// A conversation was selected until its terminal view is available to the detail pane.
         case selectToTerminal = "SelectToTerminal"
+        /// A conversation tab was selected until its terminal view is available to the detail pane.
+        case tabToTerminal = "TabToTerminal"
     }
 
     private static let open = OSAllocatedUnfairLock(initialState: [Interval: OSSignpostIntervalState]())
@@ -43,6 +45,7 @@ public enum LoomSignposts {
         case .runtimeStart: state = signposter.beginInterval("RuntimeStart")
         case .firstPage: state = signposter.beginInterval("FirstPage")
         case .selectToTerminal: state = signposter.beginInterval("SelectToTerminal")
+        case .tabToTerminal: state = signposter.beginInterval("TabToTerminal")
         }
         // A repeated begin replaces the earlier interval, which ends as abandoned.
         if let abandoned = open.withLock({ $0.updateValue(state, forKey: interval) }) { endNow(interval, abandoned) }
@@ -61,6 +64,7 @@ public enum LoomSignposts {
         case .runtimeStart: signposter.endInterval("RuntimeStart", state)
         case .firstPage: signposter.endInterval("FirstPage", state)
         case .selectToTerminal: signposter.endInterval("SelectToTerminal", state)
+        case .tabToTerminal: signposter.endInterval("TabToTerminal", state)
         }
     }
 

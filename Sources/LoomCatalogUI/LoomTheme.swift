@@ -304,6 +304,34 @@ enum LoomTheme {
         static let projectDot: CGFloat = 8
     }
 
+    // MARK: Tab strip
+
+    /// The conversation tab strip (design/run1-surfaces-preview.html, surface 3).
+    enum TabStrip {
+        static let height: CGFloat = 32
+        static let tabHeight: CGFloat = 24
+        static let minTabWidth: CGFloat = 112
+        static let maxTabWidth: CGFloat = 200
+        static let gap: CGFloat = 4
+        static let inset: CGFloat = 8
+        /// Space inside a tab before the indicator, and after the title when no close button is shown.
+        static let tabInset: CGFloat = 8
+        /// Space between a tab's indicator and title.
+        static let tabSpacing: CGFloat = 6
+        /// The selected tab's trailing padding around its reserved close slot.
+        static let selectedTrailing: CGFloat = 4
+        static let close: CGFloat = 16
+        /// The hover close button sits this far from the top and trailing edge of an unselected tab.
+        static let hoverCloseInset: CGFloat = 3
+        static let overflowWidth: CGFloat = 28
+        /// Trailing fade of the scrolling list.
+        static let fadeWidth: CGFloat = 28
+        /// The chevron's attention dot.
+        static let overflowDot: CGFloat = 6
+        static let overflowDotInset: CGFloat = 3
+        static let menuMinWidth: CGFloat = 220
+    }
+
     // MARK: Motion
 
     enum Motion {

@@ -60,6 +60,7 @@ Builds are serialized: only the agent whose Brief says it holds the build slot b
 | `latency:<n>` | input-to-draw latency samples |
 | `resource:<pid>:<uuid>:<op…>` | measurement ops (`open`, `openspinner`, `hide`, `latency`, `cycles`, `stop`, `quit`), used by `cp5-d-measure.py` |
 | `open-settings[:general\|usage\|about]`, `close-settings`, `screenshot-settings:<label>`, `usage-select:<24h\|7d\|30d\|90d>`, `usage-refresh[:<label>]` | Settings window and usage view (snapshot gains `settings{…}` and `usage{…}`) |
+| `tab-pin:<id>`, `tab-unpin:<id>`, `tab-select:<id\|next\|prev>`, `tab-close:<id>`, `tab-key:<next\|prev\|ctrl-next\|ctrl-prev\|close>` | conversation tabs (U4): Open in Tab, unpin, click or Next/Previous, close button, and a key equivalent sent through the real main menu (writes `ack-tab-key-<arg>.json`: handled, enabled); snapshot gains `tabs{ids, pinned, selected, transient, stripVisible, rows, attachedTerminals, …}` and `catalog.preferences.openTabs`. Driver: `scripts/perf/tab_strip.py scenario\|shots\|latency` (fake provider `/stream <seconds>` produces about 1 MiB/s of output) |
 | `sidebar-width:<pt>` | sidebar width |
 | `close-window`, `quit` | close or normal Quit |
 

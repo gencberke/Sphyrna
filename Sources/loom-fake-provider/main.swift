@@ -231,6 +231,14 @@ struct FakeClaude {
                 out("WORKING \(milliseconds)\r\n")
                 usleep(useconds_t(milliseconds) * 1_000)
                 hook("Stop", ["last_assistant_message": "worked"])
+            case "/stream":
+                // `/stream <seconds>`: heavy terminal output (about 1 MiB/s) while the turn is working.
+                let seconds = Int(line.split(separator: " ").last.map(String.init) ?? "") ?? 5
+                hook("UserPromptSubmit", ["prompt_id": "p\(promptCount)"])
+                let text = String(repeating: "stream output line 0123456789 abcdefghijklmnopqrstuvwxyz 0123456789\r\n", count: 220)
+                let end = Date().addingTimeInterval(Double(seconds))
+                while Date() < end { out(text); usleep(15_000) }
+                hook("Stop", ["last_assistant_message": "streamed"])
             case "/background", "/hidden", "/delayed-background", "/delayed-hidden":
                 // Exercise both delivery orders of the asynchronous prompt hook.
                 // In the delayed case the helper runs only after user work starts.

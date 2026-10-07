@@ -90,10 +90,12 @@ extension AppDelegate {
                     "selectedSessionID": model.preferencesSnapshot.selectedSessionID?.uuidString ?? NSNull(),
                     "sidebarWidth": model.preferencesSnapshot.sidebarWidth,
                     "sidebarCollapsed": model.preferencesSnapshot.sidebarCollapsed,
+                    "openTabs": model.preferencesSnapshot.openTabs.map(\.uuidString),
                 ] as [String: Any],
             ] as [String: Any]
         }
         state["settings"] = settingsEvidence
+        state["tabs"] = tabsEvidence
         state["usage"] = usageEvidence
         if let window {
             state["windowContentSize"] = [Double(window.contentLayoutRect.width), Double(window.contentLayoutRect.height)]

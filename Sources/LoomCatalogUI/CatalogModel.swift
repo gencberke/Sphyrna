@@ -175,6 +175,8 @@ public final class CatalogModel {
     /// Bumped whenever a live terminal appears or goes away, so the detail
     /// pane re-evaluates which terminal (if any) it shows.
     public private(set) var terminalRevision = 0
+    /// Bumped when the row behind a tab or the selection is first read, so the strip redraws its title.
+    public private(set) var tabRowsRevision = 0
     public var quitting = false
     @ObservationIgnored public private(set) var statistics = CatalogModelStatistics()
     /// Reads Git branches off the main thread (`BranchCache`); `branchReader` is the test seam.
@@ -433,6 +435,7 @@ public final class CatalogModel {
         }
         let created = SessionRowModel(record: record, live: liveStates[id])
         rowModels[id] = created
+        if tabs.isPinned(id) || id == selectedSessionID { tabRowsRevision &+= 1 }
         return created
     }
 
@@ -527,12 +530,15 @@ public final class CatalogModel {
     }
 
     /// Selecting a row only shows it. It never starts a provider or a PTY.
-    public func select(_ id: UUID?) {
+    public func select(_ id: UUID?) { select(id, waiting: .selectToTerminal) }
+
+    /// `waiting` names the signpost interval that runs until the terminal view reaches the detail pane.
+    private func select(_ id: UUID?, waiting interval: LoomSignposts.Interval) {
         showsDevTerminal = false
         if id != selectedSessionID {
             selectedSessionID = id
             // Only a conversation that owns a run has a terminal to wait for.
-            if let id, liveStates[id]?.runID != nil { LoomSignposts.begin(.selectToTerminal) }
+            if let id, liveStates[id]?.runID != nil { LoomSignposts.begin(interval) }
             selectedRow = id.flatMap { rowModels[$0] }
             persistSelection(id)
             if id != nil, selectedRow == nil { Task { await ensureSelectedRow() } }
@@ -564,7 +570,24 @@ public final class CatalogModel {
     public var visibleTabIDs: [UUID] { tabs.visible(selected: selectedSessionID) }
 
     /// The row behind a tab (title and indicator); nil only while it is still being read.
-    public func tabRow(_ id: UUID) -> SessionRowModel? { rowModels[id] }
+    /// Observed: a row that is read later (`ensureTabRows`, the selected conversation) redraws the strip.
+    public func tabRow(_ id: UUID) -> SessionRowModel? {
+        _ = tabRowsRevision
+        return rowModels[id]
+    }
+
+    /// Shows a tab's conversation (a click on the strip or a tab shortcut). Pins nothing, starts nothing.
+    public func selectTab(_ id: UUID) {
+        select(id, waiting: .tabToTerminal)
+    }
+
+    /// Unpins a tab without changing what is shown: the selected tab becomes the transient one.
+    public func unpinTab(_ id: UUID) {
+        if tabs.unpin(id) { persistTabs() }
+    }
+
+    /// The selected conversation when it is not pinned: the strip's one transient tab.
+    public func isTransientTab(_ id: UUID) -> Bool { id == selectedSessionID && !tabs.isPinned(id) }
 
     /// "Open in Tab": pins the conversation and shows it. Never starts anything.
     /// When the strip is full of running or attention tabs the pin is refused
@@ -990,7 +1013,10 @@ public final class CatalogModel {
     public func terminalView(for id: UUID) -> NSView? {
         _ = terminalRevision
         let view = intents?.terminalView(sessionID: id)
-        if view != nil, id == selectedSessionID { LoomSignposts.end(.selectToTerminal) }
+        if view != nil, id == selectedSessionID {
+            LoomSignposts.end(.selectToTerminal)
+            LoomSignposts.end(.tabToTerminal)
+        }
         return view
     }
 

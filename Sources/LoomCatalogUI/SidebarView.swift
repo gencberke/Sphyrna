@@ -322,8 +322,10 @@ struct SessionCardView: View {
             .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.card))
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(TapGesture(count: 2).onEnded { model.openTab(row.id) })
         .contextMenu {
             Button("Rename…") { model.beginRename(row.id) }
+            Button("Open in Tab") { model.openTab(row.id) }.disabled(model.tabs.isPinned(row.id))
             Divider()
             Button("Resume") { model.resumeConversation(row.id) }.disabled(!model.canResume(row))
             Button("Stop") { model.stopConversation(row.id) }.disabled(!model.canStop(row))

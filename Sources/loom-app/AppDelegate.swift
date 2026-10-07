@@ -372,6 +372,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func stopFromMenu(_ sender: Any?) {
         if let id = model?.selectedSessionID { model?.stopConversation(id) }
     }
+    @objc func showNextTab(_ sender: Any?) { model?.selectAdjacentTab(.next) }
+    @objc func showPreviousTab(_ sender: Any?) { model?.selectAdjacentTab(.previous) }
+    @objc func closeTabFromMenu(_ sender: Any?) { model?.closeSelectedTab() }
 
     /// Menu commands follow the same rules as the buttons.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -385,6 +388,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return model.selectedRow.map(model.canResume) ?? false
         case #selector(stopFromMenu(_:)):
             return model.selectedRow.map(model.canStop) ?? false
+        case #selector(showNextTab(_:)), #selector(showPreviousTab(_:)):
+            return model.canSelectAdjacentTab
+        case #selector(closeTabFromMenu(_:)):
+            return model.canCloseSelectedTab
         default:
             return true
         }
@@ -482,6 +489,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         stop.target = self
         fileMenu.addItem(.separator())
         installDevelopmentMenuItems(in: fileMenu)
+        // Cmd+W keeps closing the window; the tab closes with Opt+Cmd+W.
+        let closeTab = fileMenu.addItem(withTitle: "Close Tab", action: #selector(closeTabFromMenu(_:)),
+                                        keyEquivalent: "w")
+        closeTab.keyEquivalentModifierMask = [.command, .option]
+        closeTab.target = self
         fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileItem.submenu = fileMenu
         main.addItem(fileItem)
@@ -511,6 +523,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let windowItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(.separator())
+        // Tab shortcuts (DP-U2): Shift+Cmd+] / [ are the visible items; Ctrl+Tab / Ctrl+Shift+Tab and
+        // the shifted characters a keyboard layout may report are hidden twins of the same action.
+        let tabKeys: [(String, Selector, String, NSEvent.ModifierFlags, Bool)] = [
+            ("Show Next Tab", #selector(showNextTab(_:)), "]", [.command, .shift], false),
+            ("Show Next Tab", #selector(showNextTab(_:)), "}", [.command, .shift], true),
+            ("Show Next Tab", #selector(showNextTab(_:)), "\t", [.control], true),
+            ("Show Previous Tab", #selector(showPreviousTab(_:)), "[", [.command, .shift], false),
+            ("Show Previous Tab", #selector(showPreviousTab(_:)), "{", [.command, .shift], true),
+            ("Show Previous Tab", #selector(showPreviousTab(_:)), "\u{19}", [.control, .shift], true),
+        ]
+        for (title, action, key, mask, hidden) in tabKeys {
+            let item = windowMenu.addItem(withTitle: title, action: action, keyEquivalent: key)
+            item.keyEquivalentModifierMask = mask
+            item.target = self
+            item.isHidden = hidden
+        }
+        windowMenu.addItem(.separator())
         windowMenu.addItem(withTitle: "Loom", action: #selector(showMainWindow), keyEquivalent: "").target = self
         windowItem.submenu = windowMenu
         main.addItem(windowItem)

@@ -11,6 +11,7 @@ public struct DetailView: View {
         VStack(spacing: 0) {
             DetailHeader(model: model)
             Banners(model: model)
+            if model.tabStripIsVisible { ConversationTabStrip(model: model) }
             DetailContent(model: model)
         }
         .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).fill(LoomTheme.Surface.panel))
@@ -75,6 +76,8 @@ struct DetailHeader: View {
             if !model.showsDevTerminal, let row = model.selectedRow {
                 Menu {
                     Button("Rename…") { model.beginRename(row.id) }
+                    Button("Open in Tab") { model.openTab(row.id) }
+                        .disabled(model.tabs.isPinned(row.id))
                     Divider()
                     Button("Resume") { model.resumeConversation(row.id) }
                         .disabled(!model.canResume(row))
