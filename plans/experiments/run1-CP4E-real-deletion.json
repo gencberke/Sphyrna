@@ -1,0 +1,232 @@
+{
+ "checks": {
+  "assistantRepliedA": true,
+  "assistantRepliedB": true,
+  "subagentCreated": true,
+  "fileEditByTurnA": true,
+  "aFilesExistBeforeDelete": true,
+  "registryPidsFound": true,
+  "aTranscriptBeforeDelete": true,
+  "confirmationReady": true,
+  "deletionCompleted": true,
+  "noPathNamedForA": true,
+  "noTmpPathNamedForA": true,
+  "onlyAFilesRemoved": true,
+  "b_filesPresentAndUnchanged": true,
+  "memoryFilesUnchanged": true,
+  "historyKeepsEarlierLines": true,
+  "sharedRewrittenByClaudeOnly": true,
+  "bTranscriptStillHasItsReply": true,
+  "projectFileOfTurnAKept": true,
+  "catalogHasNoARows": true,
+  "catalogKeepsBRows": true,
+  "noIdBytesInDatabaseFilesAfterDelete": false,
+  "aProcessGone": true,
+  "bStillRunning": true,
+  "aNotInSnapshot": true,
+  "bInSnapshot": true,
+  "aNotInProjectCount": true,
+  "resumeReportsNoConversation": true,
+  "resumeCreatedNothing": true,
+  "appQuit": true,
+  "relaunchHasNoA": true,
+  "relaunchKeepsB": true,
+  "relaunchCatalogNoARows": true,
+  "relaunchAFilesGone": true
+ },
+ "details": {
+  "subagentCreated": {
+   "subagentFiles": 4,
+   "toolUseNames": [
+    "Agent"
+   ]
+  },
+  "fileEditByTurnA": {
+   "approvals": 1
+  },
+  "deletionCompleted": {
+   "seconds": 1.5
+  },
+  "noPathNamedForA": [],
+  "noTmpPathNamedForA": [],
+  "onlyAFilesRemoved": [],
+  "b_filesPresentAndUnchanged": {
+   "bFiles": 2,
+   "changed": []
+  },
+  "historyKeepsEarlierLines": {
+   "before": 55,
+   "after": 55
+  },
+  "sharedRewrittenByClaudeOnly": {
+   "history.jsonl": "same",
+   ".claude.json": "changed"
+  },
+  "catalogHasNoARows": {},
+  "noIdBytesInDatabaseFilesAfterDelete": {
+   "catalog.sqlite3": 3,
+   "catalog.sqlite3-wal": 2
+  },
+  "aNotInProjectCount": {
+   "activityRows": 1
+  }
+ },
+ "modelTurns": 2,
+ "model": "haiku (probe settings.json)",
+ "before": {
+  "aPaths": [
+   "projects/<probe>-workspace-cp4e-20261007T040947/<A>",
+   "projects/<probe>-workspace-cp4e-20261007T040947/<A>.jsonl",
+   "session-env/<A>"
+  ],
+  "aPathCount": 3,
+  "bPaths": [
+   "projects/<probe>-workspace-cp4e-20261007T040947/<B>.jsonl",
+   "session-env/<B>"
+  ],
+  "bFileCount": 2,
+  "sharedFiles": [
+   "history.jsonl",
+   ".claude.json",
+   "projects/<probe>-runs-cp5-c-haiku-20260929-workspace/memory/",
+   "projects/<probe>-workspace/memory/",
+   "projects/-private-tmp/memory/"
+  ],
+  "historyLines": 55,
+  "tmpPathsA": [
+   "<probe>-workspace-cp4e-20261007T040947/<A>"
+  ],
+  "catalogA": {
+   "rowsByTable": {
+    "sessions": 1,
+    "runs": 1,
+    "run_sessions": 1,
+    "provider_identity_changes": 1,
+    "symbol": 1,
+    "file": 2
+   },
+   "rows": 7,
+   "rawByteMatchesByFile": {
+    "catalog.sqlite3-wal": 50,
+    "usage-index.sqlite3-wal": 48
+   },
+   "rawByteMatches": 98
+  },
+  "catalogB": {
+   "rowsByTable": {
+    "sessions": 1,
+    "runs": 1,
+    "run_sessions": 1,
+    "provider_identity_changes": 1,
+    "symbol": 1,
+    "file": 1
+   },
+   "rows": 6,
+   "rawByteMatchesByFile": {
+    "catalog.sqlite3-wal": 22,
+    "usage-index.sqlite3-wal": 10
+   },
+   "rawByteMatches": 32
+  },
+  "aRegistryPids": 1,
+  "bRegistryPids": 1,
+  "aAlive": [
+   true
+  ],
+  "bAlive": [
+   true
+  ],
+  "turnA": {
+   "approvals": 1,
+   "indicators": [
+    "Working",
+    "Needs approval",
+    "Working",
+    "Finished"
+   ]
+  },
+  "turnB": {
+   "approvals": 0,
+   "indicators": [
+    "Finished"
+   ]
+  },
+  "configFileCount": 1222
+ },
+ "confirmation": {
+  "fileCount": 4,
+  "byteCount": 434250,
+  "isRunning": true,
+  "unreachable": []
+ },
+ "deletions": {
+  "pending": 0,
+  "recoveryFailure": null,
+  "bannerError": null
+ },
+ "removedRegistryEntriesOfA": 2,
+ "otherChangedFiles": [],
+ "addedFiles": [],
+ "removedFileCount": 8,
+ "removedNotNamedForA": [],
+ "after": {
+  "catalogA": {
+   "rowsByTable": {},
+   "rows": 0,
+   "rawByteMatchesByFile": {
+    "catalog.sqlite3": 3,
+    "catalog.sqlite3-wal": 2
+   },
+   "rawByteMatches": 5
+  },
+  "catalogB": {
+   "rowsByTable": {
+    "sessions": 1,
+    "runs": 1,
+    "run_sessions": 1,
+    "provider_identity_changes": 1,
+    "symbol": 1,
+    "file": 1
+   },
+   "rows": 6,
+   "rawByteMatchesByFile": {
+    "catalog.sqlite3": 15,
+    "usage-index.sqlite3": 6
+   },
+   "rawByteMatches": 21
+  },
+  "aAlive": [
+   false
+  ],
+  "bAlive": [
+   true
+  ]
+ },
+ "resume": {
+  "A": {
+   "mode": "print",
+   "exit": 1,
+   "category": "no-conversation"
+  },
+  "neverExistedControl": {
+   "mode": "print",
+   "exit": 1,
+   "category": "no-conversation"
+  },
+  "transcriptCountUnchanged": true,
+  "historyLinesUnchanged": true,
+  "aPathsAfterResume": 0
+ },
+ "relaunch": {
+  "rows": 1,
+  "projectCounts": [
+   1
+  ]
+ },
+ "finalQuit": true,
+ "leftoverRunHosts": 0,
+ "allChecksPassed": false,
+ "package": {
+  "binarySha256": "77deb60fe0a6bd5b2dc3cbcaa4d236cbc1bddad188be1706dd7c4dabf6d651e9"
+ }
+}

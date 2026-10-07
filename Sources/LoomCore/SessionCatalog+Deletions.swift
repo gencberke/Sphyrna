@@ -157,6 +157,10 @@ extension SessionCatalog {
             try database.bind(sessionID.uuidString, at: 1, to: statement)
             try database.stepDone(statement, operation: "finish deletion")
         }
+        // The record named the conversation's ids and Claude folder: truncate the WAL so no copy
+        // is left. The conversation is already gone, so a reader blocking this only delays the
+        // wipe to the next checkpoint instead of failing the deletion.
+        try? database.checkpointTruncate()
     }
 
     // MARK: Row deletion

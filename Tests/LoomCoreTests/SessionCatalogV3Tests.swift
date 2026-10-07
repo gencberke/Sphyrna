@@ -704,8 +704,13 @@ struct SessionCatalogV3Tests {
         #expect(occurrences(renamed) == 0)
         #expect(occurrences(keeper) > 0)   // another conversation's title is still there
         try await catalog.advanceDeletion(sessionID: target.id, to: .verifying)
+        #expect(occurrences(target.id.uuidString) > 0)   // the deletion record still names it
         try await catalog.finishDeletion(sessionID: target.id)
         #expect(occurrences(renamed) == 0)
+        // Finishing removes the record's id, provider ids and folder from both files too (CP4-E).
+        #expect(occurrences(target.id.uuidString) == 0)
+        #expect(occurrences(target.id.uuidString.lowercased()) == 0)
+        #expect(occurrences("/tmp/claude-config") == 0)
         #expect(try sql("PRAGMA quick_check", at: url, readOnly: true) == ["ok"])
         #expect(try sql("PRAGMA foreign_key_check", at: url, readOnly: true).isEmpty)
         let reopened = try SessionCatalog(url: url)
