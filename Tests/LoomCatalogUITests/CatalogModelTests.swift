@@ -452,6 +452,25 @@ struct CatalogModelTests {
         #expect(fixture.model.statistics.pageQueries - before <= 3)
     }
 
+    /// Feedback 1: a prompt, a finished turn or a Stop stamps the catalog and announces it; the
+    /// card time and the activity order follow without any per-status query.
+    @Test func anAnnouncedActivityMovesTheRowToTheTopAndItsCardTime() async throws {
+        let hub = SessionEventHub()
+        let fixture = try await makeFixture(rows: 5, hub: hub)
+        defer { cleanup(fixture) }
+        await fixture.model.start()
+        let oldest = try #require(fixture.model.list(for: .activity).rows.last)
+        #expect(oldest.record.title == "Row 0")
+
+        let stamp = Date(timeIntervalSince1970: 50_000)
+        try await fixture.catalog.markActivity(sessionID: oldest.id, at: stamp)
+        await hub.publishActivity(sessionID: oldest.id)
+        try await Task.sleep(for: .milliseconds(400))
+        await fixture.model.settle()
+        #expect(fixture.model.list(for: .activity).rows.first?.id == oldest.id)
+        #expect(live(fixture.model, oldest.id)?.record.lastActivityAt == stamp)
+    }
+
     @Test func aChangeLandingDuringARefreshReadIsNotLost() async throws {
         let fixture = try await makeFixture(rows: 3)
         defer { cleanup(fixture) }

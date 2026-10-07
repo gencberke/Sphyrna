@@ -31,7 +31,7 @@ extension SessionCatalog {
         let direction: String
         let comparison: String
         switch query.order {
-        case .recentActivity: column = "s.last_used_at"; direction = "DESC"; comparison = "<"
+        case .recentActivity: column = Self.activityExpression; direction = "DESC"; comparison = "<"
         case .creation: column = "s.created_at"; direction = "ASC"; comparison = ">"
         }
         if let cursor {
@@ -72,7 +72,7 @@ extension SessionCatalog {
             }
             rows.removeLast()
             let last = rows[rows.count - 1]
-            let timestamp = query.order == .recentActivity ? last.lastUsedAt : last.createdAt
+            let timestamp = query.order == .recentActivity ? last.lastActivityAt : last.createdAt
             return CatalogPage(
                 sessions: rows,
                 next: CatalogCursor(timestamp: timestamp.timeIntervalSince1970,

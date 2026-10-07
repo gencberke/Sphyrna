@@ -220,6 +220,8 @@ public final class ConversationController: ConversationIntents {
             defer { model.setBusy(sessionID, nil) }
             do {
                 let report = try await runtime.stopConversation(sessionID: sessionID)
+                // The user's own Stop is real use: the card time and the activity order follow it.
+                try? await runtime.markUserStopped(sessionID: sessionID)
                 if !report.succeeded {
                     // The card also carries the unverified stop; this makes it hard to miss.
                     let providerFailure = report.providerStages?.first { $0.outcome == "failed" }?.failureDescription

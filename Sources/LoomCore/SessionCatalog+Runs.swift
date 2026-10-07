@@ -75,6 +75,9 @@ extension SessionCatalog {
                 runID: runID, oldSessionID: oldSessionID,
                 newSessionID: newSessionID, at: date
             )
+            // The run now serves this conversation (a provider identity change such
+            // as /resume): that is real use of it.
+            try markActivity(sessionID: newSessionID, at: date)
         }
     }
 

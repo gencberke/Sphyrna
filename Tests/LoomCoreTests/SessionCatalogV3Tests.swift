@@ -247,6 +247,77 @@ struct SessionCatalogV3Tests {
         #expect(try sql("PRAGMA user_version", at: url) == ["3"])
     }
 
+    // MARK: Activity time (feedback 1)
+
+    @Test func aSchemaThreeCatalogWithoutTheActivityColumnGainsItBackfilledAndStaysVersionThree() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = catalogURL(root)
+        let first = claude(), second = claude()
+        do {
+            let catalog = try SessionCatalog(url: url)
+            try await catalog.insertSession(first, title: "first", createdAt: Date(timeIntervalSince1970: 10),
+                                            lastUsedAt: Date(timeIntervalSince1970: 100))
+            try await catalog.insertSession(second, title: "second", createdAt: Date(timeIntervalSince1970: 20),
+                                            lastUsedAt: Date(timeIntervalSince1970: 200))
+        }
+        // What a 0.2.1 catalog looks like: schema 3 without the activity column and its index.
+        try exec(["DROP INDEX sessions_last_activity", "ALTER TABLE sessions DROP COLUMN last_activity_at"], at: url)
+        #expect(try sql("SELECT count(*) FROM pragma_table_info('sessions') WHERE name = 'last_activity_at'", at: url) == ["0"])
+        #expect(try sql("PRAGMA user_version", at: url) == ["3"])
+
+        for _ in 0..<2 { // the second open is idempotent
+            let catalog = try SessionCatalog(url: url)
+            let sessions = try await catalog.sessions()
+            #expect(sessions.map(\.lastActivityAt) == [Date(timeIntervalSince1970: 100), Date(timeIntervalSince1970: 200)])
+            #expect(try sql("PRAGMA user_version", at: url) == ["3"], "no version bump: 0.2.1 must still open the catalog")
+            #expect(try sql("SELECT last_activity_at FROM sessions ORDER BY last_used_at", at: url) == ["100.0", "200.0"])
+            #expect(try sql("SELECT count(*) FROM sqlite_master WHERE name = 'sessions_last_activity'", at: url) == ["1"])
+        }
+
+        // A row an older build writes meanwhile has no activity time and reads as its use time.
+        let older = claude()
+        try exec(["""
+            INSERT INTO sessions (id, provider, working_directory, created_at, last_used_at, lifecycle, pinned)
+            VALUES ('\(older.id.uuidString)', 'claude', '/tmp', 30, 300, 'idle', 0)
+            """], at: url)
+        let catalog = try SessionCatalog(url: url)
+        #expect(try await catalog.session(id: older.id)?.lastActivityAt == Date(timeIntervalSince1970: 300))
+        let page = try await catalog.sessionPage(CatalogQuery(scope: .all, order: .recentActivity, search: ""), after: nil)
+        #expect(page.sessions.first?.session.id == older.id)
+    }
+
+    @Test func aViewMovesTheUseDateAndNotTheActivityTimeOrThePageOrder() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: catalogURL(root))
+        let old = claude(), recent = claude()
+        try await catalog.insertSession(old, title: "old", createdAt: Date(timeIntervalSince1970: 10),
+                                        lastUsedAt: Date(timeIntervalSince1970: 100), lifecycle: .idle)
+        try await catalog.insertSession(recent, title: "recent", createdAt: Date(timeIntervalSince1970: 20),
+                                        lastUsedAt: Date(timeIntervalSince1970: 200), lifecycle: .idle)
+        func order() async throws -> [UUID] {
+            try await catalog.sessionPage(CatalogQuery(scope: .all, order: .recentActivity, search: ""), after: nil)
+                .sessions.map(\.session.id)
+        }
+        #expect(try await order() == [recent.id, old.id])
+
+        try await catalog.markUsed(sessionID: old.id, at: Date(timeIntervalSince1970: 900)) // a view
+        let viewed = try #require(await catalog.session(id: old.id))
+        #expect(viewed.lastUsedAt == Date(timeIntervalSince1970: 900), "retention keeps reading the view")
+        #expect(viewed.lastActivityAt == Date(timeIntervalSince1970: 100))
+        #expect(try await order() == [recent.id, old.id], "a view does not reorder the activity list")
+
+        // Real use moves it to the top.
+        try await catalog.markActivity(sessionID: old.id, at: Date(timeIntervalSince1970: 1_000))
+        #expect(try await order() == [old.id, recent.id])
+        #expect(try await catalog.session(id: old.id)?.lastActivityAt == Date(timeIntervalSince1970: 1_000))
+        #expect(try await catalog.session(id: old.id)?.lastUsedAt == Date(timeIntervalSince1970: 1_000))
+        try await catalog.markUsed(sessionID: recent.id, at: Date(timeIntervalSince1970: 2_000), reactivate: true) // a prompt
+        #expect(try await order() == [recent.id, old.id])
+        #expect(try await catalog.session(id: recent.id)?.lastActivityAt == Date(timeIntervalSince1970: 2_000))
+    }
+
     @Test func aBuildOlderThanTheFileRefusesItAndLeavesItUntouched() throws {
         // A schema 2 build refuses `user_version > 2` with the same guard that
         // this build applies to a newer catalog (DP-CP4-4: no downgrade).

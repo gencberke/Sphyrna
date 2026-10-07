@@ -679,6 +679,59 @@ struct ProcessSupervisorTests {
         #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
+    /// Feedback 1: the activity time follows a prompt, a finished turn and a /clear or resume
+    /// identity change; a view moves only the use date.
+    @Test func claudePromptTurnAndIdentityChangesMoveTheActivityTimeButAViewDoesNot() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("loom-claude-activity-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"))
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger(), catalog: catalog)
+        let launchSessionID = UUID()
+        let launch = try await launch("stubborn", sessionID: launchSessionID, supervisor: supervisor, provider: .claude)
+        _ = try await ready(terminal: launch.terminal)
+        let runID = try #require(launch.session.currentRun?.id)
+        let claude = ClaudeSessionAdapter(supervisor: supervisor)
+        _ = try await claude.receive(try claudeEnvelope(
+            launchSessionID: launchSessionID, runID: runID, providerSessionID: "claude-one",
+            event: "SessionStart", fields: ["source": "startup"]
+        ), receivedAt: Date(timeIntervalSince1970: 400))
+        let lifecycle = SessionLifecycleController(supervisor: supervisor, catalog: catalog)
+
+        _ = try await claude.receive(try claudeEnvelope(
+            launchSessionID: launchSessionID, runID: runID, providerSessionID: "claude-one",
+            event: "UserPromptSubmit"
+        ), receivedAt: Date(timeIntervalSince1970: 500))
+        #expect(try await catalog.session(id: launchSessionID)?.lastActivityAt == Date(timeIntervalSince1970: 500))
+
+        _ = try await claude.receive(try claudeEnvelope(
+            launchSessionID: launchSessionID, runID: runID, providerSessionID: "claude-one", event: "Stop"
+        ), receivedAt: Date(timeIntervalSince1970: 540))
+        let finished = try #require(await catalog.session(id: launchSessionID))
+        #expect(finished.lastActivityAt == Date(timeIntervalSince1970: 540), "a finished turn is activity")
+        #expect(finished.lastUsedAt == Date(timeIntervalSince1970: 540), "and extends the idle clock")
+
+        try await lifecycle.markViewed(sessionID: launchSessionID, at: Date(timeIntervalSince1970: 9_000))
+        let viewed = try #require(await catalog.session(id: launchSessionID))
+        #expect(viewed.lastUsedAt == Date(timeIntervalSince1970: 9_000))
+        #expect(viewed.lastActivityAt == Date(timeIntervalSince1970: 540), "a view is not activity")
+
+        _ = try await claude.receive(try claudeEnvelope(
+            launchSessionID: launchSessionID, runID: runID, providerSessionID: "claude-two",
+            event: "SessionStart", fields: ["source": "clear"]
+        ), receivedAt: Date(timeIntervalSince1970: 9_100))
+        let clearedID = try #require(await supervisor.activeSessionID(runID: runID))
+        #expect(try await catalog.session(id: clearedID)?.lastActivityAt == Date(timeIntervalSince1970: 9_100))
+
+        _ = try await claude.receive(try claudeEnvelope(
+            launchSessionID: launchSessionID, runID: runID, providerSessionID: "claude-one",
+            event: "SessionStart", fields: ["source": "resume"]
+        ), receivedAt: Date(timeIntervalSince1970: 9_200))
+        #expect(try await catalog.session(id: launchSessionID)?.lastActivityAt == Date(timeIntervalSince1970: 9_200),
+                "a provider identity change back to an existing session is use of it")
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
+    }
+
     @Test func pendingResumeReservesDestinationAgainstLaunchAndAnotherAdoption() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-adopt-target-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }

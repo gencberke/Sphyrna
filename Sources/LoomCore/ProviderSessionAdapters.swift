@@ -177,6 +177,12 @@ public actor ClaudeSessionAdapter {
                 runID: envelope.managedRunID, at: min(receivedAt, envelope.sentAt)
             )
         }
+        if case .stop = event.kind {
+            // A finished turn is real use: the card time and the activity order follow it.
+            try await supervisor.markProviderActivity(
+                runID: envelope.managedRunID, at: min(receivedAt, envelope.sentAt)
+            )
+        }
         registryWatches[envelope.managedRunID]?.watch.request(generation: await tracker.registryGeneration())
         let status = await tracker.status()
         let activeSessionID = await supervisor.activeSessionID(runID: envelope.managedRunID)
@@ -295,6 +301,8 @@ public actor CodexSessionAdapter {
         guard disposition == .applied else { return disposition }
         if case .event(_, .turnStarted) = inbound {
             try await supervisor.markProviderUsed(runID: runID, at: receivedAt)
+        } else if case .event(_, .turnCompleted) = inbound {
+            try await supervisor.markProviderActivity(runID: runID, at: receivedAt)
         }
         try await publish(runID: runID, tracker: tracker)
         return disposition

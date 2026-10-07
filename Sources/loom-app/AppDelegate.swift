@@ -242,7 +242,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 MainActor.assumeIsolated { self?.model?.setFullScreen(entering) }
             }
         }
-        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
+        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification,
+                     NSApplication.didHideNotification, NSApplication.didUnhideNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.updateWindowActivity() }
             }
@@ -251,9 +252,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     /// A conversation counts as viewed only while the window is visible, not
-    /// occluded, key, and the application is active.
+    /// occluded, key, and the application is active. The relative times tick
+    /// whenever the window can be seen (visible, not occluded, not minimized, app
+    /// not hidden), key or not.
     private func updateWindowActivity() {
         guard let window, let model else { return }
+        model.setWindowVisible(window.isVisible && window.occlusionState.contains(.visible)
+                               && !window.isMiniaturized && !NSApp.isHidden)
         let active = window.isVisible && window.occlusionState.contains(.visible) && window.isKeyWindow && NSApp.isActive
         model.setWindowActive(active)
         usage?.windowActivityChanged(active) // the usage model acts on a change only

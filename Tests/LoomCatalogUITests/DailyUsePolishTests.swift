@@ -80,7 +80,7 @@ struct DailyUsePolishTests {
 
     // MARK: Item 1: the tick
 
-    @Test func nowTicksOncePerMinuteOnlyWhileTheWindowIsActive() async throws {
+    @Test func nowTicksOncePerMinuteOnlyWhileTheWindowIsVisible() async throws {
         let (model, root) = makeModel()
         defer { try? FileManager.default.removeItem(at: root) }
         let clock = ClockBox(local(6, 10, 10, 0, 30))
@@ -88,14 +88,14 @@ struct DailyUsePolishTests {
         model.currentDate = clock.read
         model.sleepUntil = { try await gate.sleep(until: $0) }
 
-        // Hidden or inactive: no timer at all.
+        // Not visible: no timer at all.
         try await Task.sleep(for: .milliseconds(60))
         #expect(gate.requested.isEmpty)
 
-        model.setWindowActive(true)
+        model.setWindowVisible(true)
         #expect(await waitUntil { gate.requested.count == 1 })
         #expect(gate.requested == [local(6, 10, 10, 1)], "aligned to the next minute boundary")
-        #expect(model.now == local(6, 10, 10, 0, 30), "activation catches up once; the tick has not fired yet")
+        #expect(model.now == local(6, 10, 10, 0, 30), "becoming visible catches up once; the tick has not fired yet")
 
         clock.set(local(6, 10, 10, 1))
         gate.release()
@@ -109,8 +109,8 @@ struct DailyUsePolishTests {
         try await Task.sleep(for: .milliseconds(80))
         #expect(flag.isRaised == false)
 
-        // Deactivation cancels the timer; later minutes change nothing.
-        model.setWindowActive(false)
+        // Hiding (occluded, minimized, app hidden) cancels the timer; later minutes change nothing.
+        model.setWindowVisible(false)
         #expect(await waitUntil { gate.cancelled })
         clock.set(local(6, 10, 10, 2))
         gate.release()
@@ -118,15 +118,50 @@ struct DailyUsePolishTests {
         #expect(model.now == local(6, 10, 10, 1))
         #expect(gate.requested.count == 2)
 
-        // Activating again catches up at once and restarts the aligned tick.
+        // Becoming visible again catches up at once and restarts the aligned tick.
         let reactivated = TickGate()
         model.sleepUntil = { try await reactivated.sleep(until: $0) }
         clock.set(local(6, 10, 10, 2, 20))
-        model.setWindowActive(true)
+        model.setWindowVisible(true)
         #expect(model.now == local(6, 10, 10, 2, 20))
         #expect(await waitUntil { reactivated.requested == [local(6, 10, 10, 3)] })
         model.stop()
         #expect(await waitUntil { reactivated.cancelled }, "stopping the model ends the tick")
+    }
+
+    /// The feedback bug: a visible window behind another app is not key, and its times froze.
+    @Test func aVisibleWindowThatIsNotKeyKeepsTickingAndKeyStateAloneNeverStartsTheTick() async throws {
+        let (model, root) = makeModel()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let clock = ClockBox(local(6, 10, 10, 0, 30))
+        let gate = TickGate()
+        model.currentDate = clock.read
+        model.sleepUntil = { try await gate.sleep(until: $0) }
+
+        // Key and active but not visible (cannot happen for a real window, but state alone starts nothing).
+        model.setWindowActive(true)
+        try await Task.sleep(for: .milliseconds(60))
+        #expect(gate.requested.isEmpty)
+        model.setWindowActive(false)
+
+        // Visible and not key: the tick runs and `now` follows the clock.
+        model.setWindowVisible(true)
+        #expect(model.windowIsActive == false)
+        #expect(await waitUntil { gate.requested.count == 1 })
+        clock.set(local(6, 10, 10, 1))
+        gate.release()
+        #expect(await waitUntil { gate.requested.count == 2 })
+        #expect(model.now == local(6, 10, 10, 1))
+
+        // Gaining and losing key changes nothing about the tick.
+        model.setWindowActive(true)
+        model.setWindowActive(false)
+        #expect(gate.cancelled == false)
+        clock.set(local(6, 10, 10, 2))
+        gate.release()
+        #expect(await waitUntil { gate.requested.count == 3 })
+        #expect(model.now == local(6, 10, 10, 2))
+        model.stop()
     }
 
     final class ChangeFlag: @unchecked Sendable {
@@ -144,7 +179,7 @@ struct DailyUsePolishTests {
         let gate = TickGate()
         model.currentDate = clock.read
         model.sleepUntil = { try await gate.sleep(until: $0) }
-        model.setWindowActive(true)
+        model.setWindowVisible(true)
         #expect(await waitUntil { gate.requested.count == 1 })
         #expect(gate.requested == [local(6, 11, 0, 0)])
 

@@ -355,9 +355,9 @@ struct SessionCardView: View {
                             .foregroundStyle(indicator == .stale ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
                             .lineLimit(1).truncationMode(.tail)
                         Spacer(minLength: LoomTheme.Space.headerSpacing)
-                        Text(model.isDeleting(row.id) ? "Deleting…" : RelativeTime.string(from: row.record.lastUsedAt, to: model.now))
+                        Text(model.isDeleting(row.id) ? "Deleting…" : RelativeTime.string(from: row.record.lastActivityAt, to: model.now))
                             .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
-                            .help("Last used \(row.record.lastUsedAt.formatted(date: .abbreviated, time: .shortened))")
+                            .help("Last activity \(row.record.lastActivityAt.formatted(date: .abbreviated, time: .shortened))")
                     }
                     HStack(spacing: LoomTheme.Space.cardRowSpacing) {
                         Label((model.branches[row.record.session.workingDirectory] ?? .unavailable).label,

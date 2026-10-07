@@ -330,6 +330,7 @@ struct ConversationDetail: View {
                     Fact("Working directory", record.session.workingDirectory)
                     Fact("Provider conversation", record.session.providerConversationID ?? "Not assigned yet")
                     Fact("Created", record.createdAt.formatted(date: .abbreviated, time: .shortened))
+                    Fact("Last activity", record.lastActivityAt.formatted(date: .abbreviated, time: .shortened))
                     Fact("Last used", record.lastUsedAt.formatted(date: .abbreviated, time: .shortened))
                 }
                 Divider().overlay(LoomTheme.Surface.hairline)

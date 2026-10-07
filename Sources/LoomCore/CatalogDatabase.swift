@@ -74,6 +74,7 @@ final class CatalogDatabase: @unchecked Sendable {
         }
         if version == 0 { try createSchema() }
         else if version < SessionCatalog.schemaVersion { try migrate(from: version) }
+        try ensureActivityColumn()
         try validateSchema()
         guard try scalarText("PRAGMA journal_mode = WAL").lowercased() == "wal" else {
             throw SessionCatalogError.sqlite(operation: "enable WAL", code: SQLITE_ERROR,
@@ -205,6 +206,36 @@ final class CatalogDatabase: @unchecked Sendable {
         try execute("CREATE INDEX run_sessions_session ON run_sessions(session_id)")
         try execute("CREATE INDEX runs_initial_session ON runs(initial_session_id)")
         try execute("CREATE INDEX identity_changes_session ON provider_identity_changes(session_id)")
+    }
+
+    /// `sessions.last_activity_at`: when the user last really used a session
+    /// (start, resume, prompt, finished turn, user Stop). `last_used_at` also
+    /// moves on a view and keeps driving retention; this column drives the card
+    /// time and the activity order.
+    ///
+    /// Added to schema 3 on open, deliberately without a `user_version` bump: a
+    /// 0.2.1 build refuses any version above 3 and only checks that its own
+    /// columns exist, so an extra nullable column and index leave the catalog
+    /// readable by it. A row an older build writes meanwhile has NULL here and
+    /// reads fall back to `last_used_at` (`SessionCatalog.activityExpression`).
+    func ensureActivityColumn() throws {
+        let hasColumn = try scalarInt64("""
+            SELECT count(*) FROM pragma_table_info('sessions') WHERE name = 'last_activity_at'
+            """) == 1
+        let hasIndex = try scalarInt64("""
+            SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'sessions_last_activity'
+            """) == 1
+        guard !hasColumn || !hasIndex else { return }
+        try transaction {
+            if !hasColumn {
+                try execute("ALTER TABLE sessions ADD COLUMN last_activity_at REAL")
+                try execute("UPDATE sessions SET last_activity_at = last_used_at WHERE last_activity_at IS NULL")
+            }
+            try execute("""
+                CREATE INDEX IF NOT EXISTS sessions_last_activity
+                ON sessions(COALESCE(last_activity_at, last_used_at) DESC, id DESC)
+                """)
+        }
     }
 
     func validateSchema() throws {

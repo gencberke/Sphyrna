@@ -92,6 +92,10 @@ public enum SessionEventChange: Equatable, Sendable {
     /// is authoritative, and `catalogRevision` tells a consumer that skipped
     /// this frame that it must re-read what it shows.
     case catalogLifecycle(SessionLifecycle, count: Int)
+    /// The catalog row of this conversation took a new activity time (a prompt, a finished
+    /// turn, the user's Stop, a resume). No per-conversation state: the catalog row is the
+    /// authority and a consumer re-reads what it shows (`catalogRevision` moves).
+    case activityRecorded
     /// A conversation was deleted completely (its record is finished). The frame names it in
     /// `sessionID` but `sessions` no longer holds it: tabs, caches and lists drop it.
     case conversationDeleted
@@ -180,7 +184,7 @@ public actor SessionEventHub {
         case let .unviewedCompletion(value): state.unviewedCompletion = value
         case let .issue(value): state.issue = value
         case let .userRequests(value): state.userRequests = value
-        case .catalogLifecycle, .conversationDeleted, .deletionIncomplete: return
+        case .catalogLifecycle, .conversationDeleted, .deletionIncomplete, .activityRecorded: return
         }
         // A pure state event that changes nothing wakes nobody and does not
         // advance the sequence (consumers rely on contiguous sequences for the
@@ -205,6 +209,13 @@ public actor SessionEventHub {
         catalogRevision &+= 1
         sequence &+= 1
         yield(sessionID: nil, change: .catalogLifecycle(lifecycle, count: ids.count))
+    }
+
+    /// Announces that the catalog stamped real use of a conversation, without keeping state for it.
+    public func publishActivity(sessionID: UUID) {
+        catalogRevision &+= 1
+        sequence &+= 1
+        yield(sessionID: sessionID, change: .activityRecorded)
     }
 
     /// Announces the outcome of a deletion without keeping state for the conversation

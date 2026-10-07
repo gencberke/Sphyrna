@@ -225,8 +225,12 @@ struct SessionCatalogTests {
         #expect(try await catalog.session(id: idle.id)?.lifecycle == .idle)
         #expect(try await catalog.session(id: stale.id)?.lifecycle == .stale)
         #expect(try await catalog.session(id: idle.id)?.lastUsedAt == Date(timeIntervalSince1970: 50))
+        // A view is not activity: the activity time (card time, activity order) stays.
+        #expect(try await catalog.session(id: idle.id)?.lastActivityAt == Date(timeIntervalSince1970: 10))
+        #expect(try await catalog.session(id: stale.id)?.lastActivityAt == Date(timeIntervalSince1970: 10))
         try await catalog.markUsed(sessionID: idle.id, at: Date(timeIntervalSince1970: 60), reactivate: true)
         #expect(try await catalog.session(id: idle.id)?.lifecycle == .active)
+        #expect(try await catalog.session(id: idle.id)?.lastActivityAt == Date(timeIntervalSince1970: 60))
     }
 
     private func scalarInt(_ sql: String, database: OpaquePointer) throws -> Int32 {

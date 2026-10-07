@@ -141,6 +141,9 @@ public final class CatalogModel {
     public private(set) var isReady = false
     public private(set) var now = Date()
     public private(set) var windowIsActive = false
+    /// The window can be seen (visible, not occluded, not minimized, app not hidden), key or not.
+    /// The relative times tick while this is true.
+    public private(set) var windowIsVisible = false
     /// Full screen hides the native window buttons (written by the window owner).
     public private(set) var isFullScreen = false
     public private(set) var sidebarCollapsed: Bool
@@ -514,7 +517,7 @@ public final class CatalogModel {
     /// Advances `now` when relative times could read differently, or when a row is newer than it.
     private func advanceNow(covering records: [CatalogSession] = []) {
         let current = currentDate()
-        if abs(current.timeIntervalSince(now)) >= nowResolution || records.contains(where: { $0.lastUsedAt > now }) {
+        if abs(current.timeIntervalSince(now)) >= nowResolution || records.contains(where: { $0.lastActivityAt > now }) {
             now = current
         }
     }
@@ -714,15 +717,26 @@ public final class CatalogModel {
         if active {
             advanceNow()
             refreshBranches(Set(branches.keys))
-            startTicking()
-        } else {
-            stopTicking()
         }
         updateViewing()
     }
 
-    /// Moves `now` to each minute boundary while the window is active, so "5m" and the day
-    /// headings stay true (midnight is a boundary). Nothing is scheduled while inactive.
+    /// The window's visibility edge (written by the window owner): the minute tick follows it, not
+    /// the key or active state, so a visible window behind another app keeps true times. `now`
+    /// catches up at once when the window becomes visible.
+    public func setWindowVisible(_ visible: Bool) {
+        guard visible != windowIsVisible else { return }
+        windowIsVisible = visible
+        if visible {
+            advanceNow()
+            startTicking()
+        } else {
+            stopTicking()
+        }
+    }
+
+    /// Moves `now` to each minute boundary while the window is visible, so "5m" and the day
+    /// headings stay true (midnight is a boundary). Nothing is scheduled while it cannot be seen.
     private func startTicking() {
         guard tickTask == nil else { return }
         tickTask = Task { [weak self] in

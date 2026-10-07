@@ -56,7 +56,8 @@ extension AppDelegate {
                 "activityHasMore": model.list(for: .activity).hasMore,
                 "projectRows": model.projects.map { model.list(for: .project($0.id)).rows.count },
                 "errorMessage": model.errorMessage ?? NSNull(), "infoMessage": model.infoMessage ?? NSNull(),
-                "windowIsActive": model.windowIsActive, "sidebarCollapsed": model.sidebarCollapsed,
+                "windowIsActive": model.windowIsActive, "windowIsVisible": model.windowIsVisible,
+                "modelNow": model.now.timeIntervalSince1970, "sidebarCollapsed": model.sidebarCollapsed,
                 "sidebarItemCollapsed": splitController?.sidebarIsCollapsed ?? NSNull(),
                 "actionsAvailable": model.actionsAvailable, "quitting": model.quitting,
                 "busy": model.busy.map { ["id": $0.key.uuidString, "state": String(describing: $0.value)] },
@@ -80,6 +81,7 @@ extension AppDelegate {
                      "live": row.live?.runID != nil, "lifecycle": row.record.lifecycle.rawValue,
                      "conversationID": row.record.session.providerConversationID ?? "",
                      "lastUsed": row.record.lastUsedAt.timeIntervalSince1970,
+                     "lastActivity": row.record.lastActivityAt.timeIntervalSince1970,
                      "issue": row.live?.issue ?? ""] as [String: Any]
                 },
                 "showsDevTerminal": model.showsDevTerminal,

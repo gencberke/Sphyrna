@@ -29,12 +29,17 @@ public struct CatalogSession: Equatable, Sendable {
     /// Nil means unknown (a row classified before schema 3, or not stale);
     /// the cleanup planner derives it then.
     public let staleSince: Date?
+    /// When the user last really used the session (start, resume, prompt,
+    /// finished turn, user Stop). Unlike `lastUsedAt`, a view never moves it;
+    /// the card time and the activity order read this one.
+    public let lastActivityAt: Date
 
     public init(
         session: ManagedSession, title: String?, createdAt: Date, lastUsedAt: Date,
         lifecycle: SessionLifecycle, pinned: Bool, projectID: UUID? = nil,
-        titleIsCustom: Bool = false, staleSince: Date? = nil
+        titleIsCustom: Bool = false, staleSince: Date? = nil, lastActivityAt: Date? = nil
     ) {
+        self.lastActivityAt = lastActivityAt ?? lastUsedAt
         self.session = session
         self.title = title
         self.createdAt = createdAt
@@ -176,8 +181,10 @@ public actor SessionCatalog {
     static let sessionColumns = """
         s.id, s.provider, s.provider_conversation_id, s.working_directory, s.title,
         s.created_at, s.last_used_at, s.lifecycle, s.pinned, s.project_id, s.title_is_custom,
-        s.stale_since
+        s.stale_since, \(activityExpression)
         """
+    /// A row an older build wrote has no activity time yet: it reads as its use time.
+    static let activityExpression = "COALESCE(s.last_activity_at, s.last_used_at)"
     /// Excludes conversations with a `deletions` row (fence); `s` is the sessions alias.
     static let notDeleting = "NOT EXISTS (SELECT 1 FROM deletions d WHERE d.session_id = s.id)"
     let database: CatalogDatabase
@@ -295,20 +302,22 @@ public actor SessionCatalog {
             pinned: sqlite3_column_int(statement, 8) != 0,
             projectID: projectID,
             titleIsCustom: sqlite3_column_int(statement, 10) != 0,
-            staleSince: database.optionalDouble(statement, column: 11).map(Date.init(timeIntervalSince1970:))
+            staleSince: database.optionalDouble(statement, column: 11).map(Date.init(timeIntervalSince1970:)),
+            lastActivityAt: database.optionalDouble(statement, column: 12).map(Date.init(timeIntervalSince1970:))
         )
     }
 
     func insertSessionRow(
         _ session: ManagedSession, title: String?, createdAt: Date,
         lastUsedAt: Date, lifecycle: SessionLifecycle, pinned: Bool,
-        projectID: UUID? = nil, staleSince: Date? = nil
+        projectID: UUID? = nil, staleSince: Date? = nil, lastActivityAt: Date? = nil
     ) throws {
         try database.withStatement("""
             INSERT INTO sessions (
                 id, provider, provider_conversation_id, working_directory, title,
-                created_at, last_used_at, lifecycle, pinned, project_id, stale_since
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                created_at, last_used_at, lifecycle, pinned, project_id, stale_since,
+                last_activity_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """) { statement in
             try database.bind(session.id.uuidString, at: 1, to: statement)
             try database.bind(session.provider.rawValue, at: 2, to: statement)
@@ -322,6 +331,7 @@ public actor SessionCatalog {
             try database.bind(projectID?.uuidString, at: 10, to: statement)
             if let staleSince { sqlite3_bind_double(statement, 11, staleSince.timeIntervalSince1970) }
             else { sqlite3_bind_null(statement, 11) }
+            sqlite3_bind_double(statement, 12, (lastActivityAt ?? lastUsedAt).timeIntervalSince1970)
             try database.stepDone(statement, operation: "insert session")
         }
     }

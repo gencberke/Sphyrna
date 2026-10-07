@@ -532,6 +532,34 @@ struct ConversationControllerTests {
         }
     }
 
+    /// Feedback 1: start, the user's Stop and resume are real use and move the session to the top.
+    @Test func startStopAndResumeMoveTheSessionToTheTopOfTheActivityList() async throws {
+        try await withFixture { fixture in
+            let old = Date(timeIntervalSince1970: (Date().timeIntervalSince1970 - 2 * 86_400).rounded())
+            let neighbor = ManagedSession(provider: .claude, providerConversationID: "n", workingDirectory: fixture.home.path)
+            try await fixture.catalog.insertSession(neighbor, title: "Neighbor", createdAt: old, lastUsedAt: old, lifecycle: .idle)
+            fixture.model.startConversation(.claude, projectID: nil)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 })
+            let sessionID = try #require(fixture.model.selectedSessionID)
+            func activity() async throws -> Date? { try await fixture.catalog.session(id: sessionID)?.lastActivityAt }
+            let started = try #require(try await activity())
+            #expect(started > old)
+
+            try await Task.sleep(for: .milliseconds(30))
+            fixture.model.stopConversation(sessionID)
+            #expect(await waitUntil { fixture.controller.terminalCount == 0 && fixture.model.busy[sessionID] == nil })
+            let stopped = try #require(try await waitUntil { try await activity().map { $0 > started } ?? false } ? activity() : nil)
+            #expect(stopped > started, "the user's own Stop is activity")
+            #expect(await waitUntil { fixture.model.list(for: .activity).rows.first?.id == sessionID })
+
+            try await Task.sleep(for: .milliseconds(30))
+            fixture.model.resumeConversation(sessionID)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 })
+            #expect(try await waitUntil { try await activity().map { $0 > stopped } ?? false }, "resume is activity")
+            #expect(try await fixture.catalog.session(id: neighbor.id)?.lastActivityAt == old)
+        }
+    }
+
     @Test func clearReplacesThePinnedTabInPlaceAndNeighborsStay() async throws {
         try await withFixture { fixture in
             let neighbor = ManagedSession(provider: .claude, workingDirectory: "/tmp")
@@ -595,13 +623,16 @@ struct ConversationControllerTests {
             #expect(try await fixture.catalog.session(id: idle.id)?.lastUsedAt == old)
             #expect(try await fixture.catalog.session(id: stale.id)?.lastUsedAt == old)
 
-            // A visible, active window makes the selection a view.
+            // A visible, active window makes the selection a view: the use date moves (the stale
+            // delay is preserved) but the activity time, the card and the order do not.
             fixture.model.setWindowActive(true)
             #expect(try await waitUntil { try await fixture.catalog.session(id: stale.id)?.lastUsedAt != old })
             #expect(try await fixture.catalog.session(id: stale.id)?.lifecycle == .stale)
             fixture.model.select(idle.id)
             #expect(try await waitUntil { try await fixture.catalog.session(id: idle.id)?.lastUsedAt != old })
             #expect(try await fixture.catalog.session(id: idle.id)?.lifecycle == .idle)
+            #expect(try await fixture.catalog.session(id: idle.id)?.lastActivityAt == old)
+            #expect(try await fixture.catalog.session(id: stale.id)?.lastActivityAt == old)
             // Selecting started nothing.
             #expect(fixture.controller.terminalCount == 0)
             #expect(await fixture.supervisor.runningSessionIDs().isEmpty)
@@ -611,6 +642,45 @@ struct ConversationControllerTests {
             fixture.model.select(stale.id)
             try await Task.sleep(for: .milliseconds(300))
             #expect(try await fixture.catalog.session(id: idle.id)?.lastUsedAt == before)
+        }
+    }
+
+    /// Feedback 1: clicking an old session must not pull it into "Today" or change its card time.
+    @Test func selectingAnOldSessionKeepsItsActivityTimeOrderAndDayHeading() async throws {
+        try await withFixture { fixture in
+            let calendar = Calendar.current
+            let startOfToday = calendar.startOfDay(for: Date())
+            let old = startOfToday.addingTimeInterval(-5 * 86_400 + 3_600)
+            let recent = Date().addingTimeInterval(-3_600)
+            let oldSession = ManagedSession(provider: .claude, providerConversationID: "o", workingDirectory: fixture.home.path)
+            let recentSession = ManagedSession(provider: .claude, providerConversationID: "r", workingDirectory: fixture.home.path)
+            try await fixture.catalog.insertSession(oldSession, title: "Old", createdAt: old, lastUsedAt: old, lifecycle: .idle)
+            try await fixture.catalog.insertSession(recentSession, title: "Recent", createdAt: recent, lastUsedAt: recent, lifecycle: .idle)
+            await fixture.model.start()
+            fixture.model.setWindowActive(true)
+
+            @MainActor func snapshot() -> (ids: [UUID], oldDay: String?) {
+                let rows = fixture.model.list(for: .activity).rows
+                let sections = DayGrouping.sections(rows, now: fixture.model.now)
+                let heading = sections.first { $0.rows.contains { $0.id == oldSession.id } }?.title
+                return (rows.map(\.id), heading)
+            }
+            let before = snapshot()
+            #expect(before.ids == [recentSession.id, oldSession.id])
+            #expect(before.oldDay != "Today")
+
+            fixture.model.select(oldSession.id)
+            let viewed = try await waitUntil { try await fixture.catalog.session(id: oldSession.id)?.lastUsedAt != old }
+            #expect(viewed, "the view still moves the use date (retention)")
+            fixture.model.scheduleRefresh() // re-reads the lists from the catalog
+            try await Task.sleep(for: .milliseconds(500))
+
+            let after = snapshot()
+            #expect(after.ids == before.ids)
+            #expect(after.oldDay == before.oldDay)
+            let row = try #require(fixture.model.list(for: .activity).rows.first { $0.id == oldSession.id })
+            #expect(row.record.lastActivityAt == old, "the card reads the activity time, not the view")
+            #expect(try await fixture.catalog.session(id: oldSession.id)?.lastActivityAt == old)
         }
     }
 

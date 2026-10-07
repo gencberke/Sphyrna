@@ -6,10 +6,11 @@ extension SessionCatalog {
                               createdAt: Date = Date(), lastUsedAt: Date = Date(),
                               lifecycle: SessionLifecycle = .active,
                               pinned: Bool = false, projectID: UUID? = nil,
-                              staleSince: Date? = nil) throws {
+                              staleSince: Date? = nil, lastActivityAt: Date? = nil) throws {
         try insertSessionRow(
             session, title: title, createdAt: createdAt, lastUsedAt: lastUsedAt,
-            lifecycle: lifecycle, pinned: pinned, projectID: projectID, staleSince: staleSince
+            lifecycle: lifecycle, pinned: pinned, projectID: projectID, staleSince: staleSince,
+            lastActivityAt: lastActivityAt
         )
     }
 
@@ -51,7 +52,9 @@ extension SessionCatalog {
 
     /// Records a user prompt or deliberate view. Without `reactivate` (a view)
     /// only the use date moves: a stale or idle row keeps its state, because
-    /// merely viewing history must not make it look live again.
+    /// merely viewing history must not make it look live again, and the
+    /// activity time stays (a view is not activity). With `reactivate` (a
+    /// prompt, resume) the activity time moves to the event time too.
     /// Refused (`deletionPending`) for a conversation with a `deletions` row.
     /// A row that leaves `stale` loses its `stale_since`.
     public func markUsed(sessionID: UUID, at date: Date = Date(),
@@ -59,6 +62,10 @@ extension SessionCatalog {
         try database.withStatement("""
             UPDATE sessions AS s
             SET last_used_at = ?,
+                last_activity_at = CASE
+                    WHEN ? = 1 THEN ?
+                    ELSE last_activity_at
+                END,
                 lifecycle = CASE
                     WHEN lifecycle IN ('stale', 'idle') AND ? = 0 THEN lifecycle
                     ELSE 'active'
@@ -71,13 +78,35 @@ extension SessionCatalog {
             """) { statement in
             sqlite3_bind_double(statement, 1, date.timeIntervalSince1970)
             sqlite3_bind_int(statement, 2, reactivate ? 1 : 0)
-            sqlite3_bind_int(statement, 3, reactivate ? 1 : 0)
-            try database.bind(sessionID.uuidString, at: 4, to: statement)
+            sqlite3_bind_double(statement, 3, date.timeIntervalSince1970)
+            sqlite3_bind_int(statement, 4, reactivate ? 1 : 0)
+            sqlite3_bind_int(statement, 5, reactivate ? 1 : 0)
+            try database.bind(sessionID.uuidString, at: 6, to: statement)
             try database.stepDone(statement, operation: "mark session used")
         }
         guard sqlite3_changes(database.handle) == 1 else {
             try requireNotDeleting(sessionID)
             throw SessionCatalogError.invalidRow("mark session used: session \(sessionID) does not exist")
+        }
+    }
+
+    /// Records real use that is not a prompt (a finished turn, the user's Stop):
+    /// the activity time and the use time both take the event time. The
+    /// lifecycle is left alone.
+    public func markActivity(sessionID: UUID, at date: Date = Date()) throws {
+        try database.withStatement("""
+            UPDATE sessions AS s
+            SET last_activity_at = ?, last_used_at = ?
+            WHERE id = ? AND \(Self.notDeleting)
+            """) { statement in
+            sqlite3_bind_double(statement, 1, date.timeIntervalSince1970)
+            sqlite3_bind_double(statement, 2, date.timeIntervalSince1970)
+            try database.bind(sessionID.uuidString, at: 3, to: statement)
+            try database.stepDone(statement, operation: "mark session activity")
+        }
+        guard sqlite3_changes(database.handle) == 1 else {
+            try requireNotDeleting(sessionID)
+            throw SessionCatalogError.invalidRow("mark session activity: session \(sessionID) does not exist")
         }
     }
 

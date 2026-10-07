@@ -567,6 +567,18 @@ public actor ProcessSupervisor {
     }
 
 
+    /// A finished turn: real use that is not a prompt. Moves the activity time
+    /// and the use time without changing the lifecycle.
+    public func markProviderActivity(runID: UUID, at date: Date = Date()) async throws {
+        guard let runtime = runtimes[runID] else {
+            throw SessionManagementError.runNotFound(runID)
+        }
+        if let catalog {
+            try await catalog.markActivity(sessionID: runtime.activeSessionID, at: date)
+            await events.publishActivity(sessionID: runtime.activeSessionID)
+        }
+    }
+
     public func markProviderUsed(runID: UUID, at date: Date = Date()) async throws {
         guard let runtime = runtimes[runID] else {
             throw SessionManagementError.runNotFound(runID)
@@ -575,6 +587,7 @@ public actor ProcessSupervisor {
             try await catalog.markUsed(
                 sessionID: runtime.activeSessionID, at: date, reactivate: true
             )
+            await events.publishActivity(sessionID: runtime.activeSessionID)
         }
     }
 }

@@ -466,6 +466,11 @@ public actor SessionRuntime {
         try await lifecycle.markViewed(sessionID: sessionID)
     }
 
+    /// The user's own Stop is real use of the session; idle stops and Quit are not.
+    public func markUserStopped(sessionID: UUID) async throws {
+        try await lifecycle.markActivity(sessionID: sessionID)
+    }
+
     /// Explicit user reactivation of a stale conversation (resume does it too).
     public func reactivate(sessionID: UUID) async throws {
         try await lifecycle.reactivate(sessionID: sessionID)

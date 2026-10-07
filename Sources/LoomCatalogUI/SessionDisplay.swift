@@ -186,7 +186,7 @@ final class FormatterCache: @unchecked Sendable {
 }
 
 public enum DayGrouping {
-    /// Groups rows already sorted by last use into calendar days.
+    /// Groups rows already sorted by last activity into calendar days.
     @MainActor
     public static func sections(_ rows: [SessionRowModel], now: Date,
                                 calendar: Calendar = .current) -> [DaySection] {
@@ -198,7 +198,7 @@ public enum DayGrouping {
                                      rows: current.rows))
         }
         for row in rows {
-            let day = calendar.startOfDay(for: row.record.lastUsedAt)
+            let day = calendar.startOfDay(for: row.record.lastActivityAt)
             if current?.day == day { current?.rows.append(row) }
             else {
                 flush()

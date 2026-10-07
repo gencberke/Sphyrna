@@ -354,6 +354,13 @@ public actor SessionLifecycleController {
         try await reschedule()
     }
 
+    /// Real use that is not a prompt or a resume (the user's own Stop). Moves the
+    /// activity time; the lifecycle is untouched.
+    public func markActivity(sessionID: UUID, at date: Date = Date()) async throws {
+        try await catalog.markActivity(sessionID: sessionID, at: date)
+        await supervisor.events.publishActivity(sessionID: sessionID)
+    }
+
     public func reactivate(sessionID: UUID, at date: Date = Date()) async throws {
         try await catalog.markUsed(sessionID: sessionID, at: date, reactivate: true)
         blockedDue[sessionID] = nil
