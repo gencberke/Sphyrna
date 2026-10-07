@@ -384,12 +384,15 @@ private struct ShareBar: View {
 
 /// English date text in the usage model's time zone (the app's copy is English).
 enum UsageText {
+    private static let formatters = FormatterCache()
+    static var formattersCreated: Int { formatters.created }
+
     private static func format(_ pattern: String, _ date: Date, _ zone: TimeZone) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = zone
-        formatter.dateFormat = pattern
-        return formatter.string(from: date)
+        formatters.string(from: date, key: "\(pattern)|\(zone.identifier)") {
+            $0.locale = Locale(identifier: "en_US_POSIX")
+            $0.timeZone = zone
+            $0.dateFormat = pattern
+        }
     }
 
     static func weekday(_ date: Date, _ zone: TimeZone) -> String { format("EEE", date, zone) }
@@ -412,13 +415,17 @@ enum UsageText {
         period == .hours24 ? hour(date, zone) : self.date(date, zone)
     }
 
-    /// `2026-10-07` as `7 Oct 2026`.
-    static func priceDate(_ text: String) -> String {
+    nonisolated(unsafe) private static let priceParser: DateFormatter = {
         let parser = DateFormatter()
         parser.locale = Locale(identifier: "en_US_POSIX")
         parser.timeZone = TimeZone(identifier: "UTC")
         parser.dateFormat = "yyyy-MM-dd"
-        guard let date = parser.date(from: text) else { return text }
+        return parser
+    }()
+
+    /// `2026-10-07` as `7 Oct 2026`.
+    static func priceDate(_ text: String) -> String {
+        guard let date = priceParser.date(from: text) else { return text }
         return format("d MMM yyyy", date, TimeZone(identifier: "UTC")!)
     }
 }

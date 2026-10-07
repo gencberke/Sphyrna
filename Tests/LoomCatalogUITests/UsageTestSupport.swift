@@ -33,11 +33,14 @@ final class FakeUsageIndex: UsageIndexing, @unchecked Sendable {
     private let state = Mutex(State())
     /// Tokens (total) the next snapshots report for every range.
     private let tokens = Mutex<Int64>(0)
+    /// Overrides `hasUsage` (nil: decided by the snapshot like the protocol's default).
+    private let historyOverride = Mutex<Bool?>(nil)
 
     var refreshCalls: Int { state.withLock { $0.refreshCalls } }
     var snapshotRanges: [UsageRange] { state.withLock { $0.snapshotRanges } }
     var ranOnMainThread: Bool { state.withLock { $0.ranOnMainThread } }
     func setTokens(_ value: Int64) { tokens.withLock { $0 = value } }
+    func setHasUsage(_ value: Bool?) { historyOverride.withLock { $0 = value } }
     func setFailing(_ value: Bool) { state.withLock { $0.failRefresh = value } }
     func setBlocking(_ value: Bool) { state.withLock { $0.blockRefresh = value } }
     func release() {
@@ -69,6 +72,11 @@ final class FakeUsageIndex: UsageIndexing, @unchecked Sendable {
         }
         if fail { throw Failure() }
         return UsageScanReport()
+    }
+
+    func hasUsage() async throws -> Bool {
+        if let value = historyOverride.withLock({ $0 }) { return value }
+        return try await snapshot(range: .all, now: Date(), timeZone: .current).messageCount > 0
     }
 
     func snapshot(range: UsageRange, now: Date, timeZone: TimeZone) async throws -> UsageSnapshot {

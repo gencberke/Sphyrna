@@ -17,14 +17,14 @@ struct UsageModelTests {
 
     @Test func firstRefreshIsIndexingThenReadyAndLaterOnesStayReady() async {
         let index = FakeUsageIndex()
-        index.setTokens(1_200_000)
         let usage = model(index)
         #expect(usage.state == .idle)
         #expect(usage.chip == nil)
         index.setBlocking(true)
         usage.refresh(reason: .launch)
-        await Task.yield()
-        #expect(usage.state == .indexing)
+        while index.refreshCalls == 0 { await Task.yield() }
+        #expect(usage.state == .indexing) // nothing indexed yet: the very first scan
+        index.setTokens(1_200_000)
         #expect(usage.chip?.kind == .indexing)
         index.release()
         await usage.settle()
@@ -61,7 +61,7 @@ struct UsageModelTests {
         let usage = model(index)
         index.setBlocking(true)
         usage.refresh(reason: .manual)
-        await Task.yield()
+        while index.refreshCalls == 0 { await Task.yield() } // the scan is running
         for _ in 0..<5 { usage.refresh(reason: .manual) }
         index.release()
         await usage.settle()
@@ -303,7 +303,9 @@ struct UsageModelRealIndexTests {
         #expect(counting.count("summary") == 1)    // today, for the footer chip
         #expect(counting.count("snapshot") == 1)   // the selected period, the only one with the activity window
         #expect(counting.count("buckets") == 1)    // every hour bar at once
-        #expect(counting.count("hasUsage") == 0)   // today already has messages
+        // Only the first refresh asks, once, before the scan whether "Indexing…" is the right state
+        // (nothing is indexed yet); after the scan today already has messages.
+        #expect(counting.count("hasUsage") == 1)
         #expect(usage.report?.snapshot.activityWindow != nil)
         #expect(usage.report?.snapshot.tokens.total == (period == .days7 ? 1_850 : 1_700))
         #expect(usage.report?.cells.map(\.tokens) == [0, 1_700, 0, 0, 0])
@@ -318,7 +320,7 @@ struct UsageModelRealIndexTests {
         let usage = UsageModel(index: counting, timeZone: TimeZone(identifier: "UTC")!)
         await usage.refreshNow(reason: .launch)
         #expect(usage.hasHistory == false)
-        #expect(counting.count("hasUsage") == 1)
+        #expect(counting.count("hasUsage") == 2)   // before the scan (first-scan state) and after it (history)
         #expect(counting.count("snapshot") == 1)   // the selected period only; no `.all` snapshot
     }
 }

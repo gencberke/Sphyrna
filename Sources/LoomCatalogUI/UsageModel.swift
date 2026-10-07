@@ -96,7 +96,7 @@ public enum UsagePeriod: CaseIterable, Sendable {
 
 /// Why a refresh was asked for. Every one is an event that already happens; nothing polls.
 public enum UsageRefreshReason: Sendable {
-    case launch, activation, settingsOpened, turnComplete, manual
+    case launch, activation, settingsOpened, turnComplete, manual, dayChanged
 }
 
 /// One bar of the per-period chart (an hour for 24 h, a calendar day otherwise).
@@ -118,8 +118,9 @@ public struct UsageReport: Equatable, Sendable {
 
 /// The one observable usage state both the footer chip and the Settings page read. Index work
 /// runs on the index's own queue, never on the main actor, and only on events: launch, window
-/// activation, Settings opening, a finished Claude turn (debounced) and the refresh button.
-/// Requests while a refresh runs coalesce into one more run.
+/// activation, Settings opening, a finished Claude turn (debounced), a new day and the refresh
+/// button. Requests while a refresh runs coalesce into one more run. While the window is inactive
+/// or hidden a finished turn only marks the numbers stale; the next activation reads them.
 @MainActor @Observable
 public final class UsageModel {
     public private(set) var state: UsageState = .idle
@@ -144,6 +145,13 @@ public final class UsageModel {
     @ObservationIgnored private var reports: [UsagePeriod: UsageReport] = [:]
     @ObservationIgnored private var loadingPeriod: Task<Void, Never>?
     @ObservationIgnored private var today: UsageSnapshot?
+    /// The last window activity the model was told about; only a change counts. Assumed active
+    /// until told otherwise (the app reports the real state as soon as its window exists).
+    @ObservationIgnored private var windowIsActive = true
+    /// A turn finished while nobody could see the numbers.
+    @ObservationIgnored private var stale = false
+    /// The local day of the latest refresh request (the chip says "Today").
+    @ObservationIgnored private var requestedDay: Date?
     /// Any usage at all in the index (decides between an empty Today and "No usage yet").
     public private(set) var hasHistory = false
 
@@ -166,19 +174,32 @@ public final class UsageModel {
     public func refresh(reason: UsageRefreshReason) {
         switch reason {
         case .turnComplete:
+            guard windowIsActive else { stale = true; return }
             guard debounceTask == nil else { return }
             debounceTask = Task { [weak self, debounce] in
                 try? await Task.sleep(for: debounce)
                 guard !Task.isCancelled, let self else { return }
                 self.debounceTask = nil
-                self.start()
+                // The window went away during the debounce: the next activation reads.
+                if self.windowIsActive { self.start() } else { self.stale = true }
             }
         case .activation:
+            if stale {
+                // A turn finished while hidden: read now, inside the cooldown too, and again if
+                // the running refresh began before that turn.
+                start()
+                return
+            }
             // A running refresh already covers an activation.
             if isRefreshing { return }
             if let last = lastRefreshEnd, ContinuousClock.now - last < activationCooldown { return }
             start()
-        case .launch, .settingsOpened, .manual:
+        case .launch:
+            // The first pass already ran (or is running): an activation that came up while the
+            // first page loaded covers it. A second pass would only rerun the first.
+            guard !isRefreshing, lastRefreshEnd == nil else { return }
+            start()
+        case .settingsOpened, .manual, .dayChanged:
             start()
         }
     }
@@ -194,8 +215,19 @@ public final class UsageModel {
         if case let .status(status) = change, status?.activity == .turnComplete { refresh(reason: .turnComplete) }
     }
 
+    /// The window became (in)active. Only a change counts: the app reports every occlusion, key
+    /// and application notification, most of which repeat the state.
     public func windowActivityChanged(_ active: Bool) {
+        guard active != windowIsActive else { return }
+        windowIsActive = active
         if active { refresh(reason: .activation) }
+    }
+
+    /// The catalog model's minute tick while the window is active: the chip says "Today", so a new
+    /// local day reads the index once (a day that failed to read is not retried every minute).
+    public func minuteTick() {
+        guard windowIsActive, let requestedDay, calendar.startOfDay(for: clock()) != requestedDay else { return }
+        refresh(reason: .dayChanged)
     }
 
     /// Waits for a pending debounce and a running refresh (tests, evidence).
@@ -219,9 +251,10 @@ public final class UsageModel {
     // MARK: Refresh
 
     private func start() {
+        stale = false
+        requestedDay = calendar.startOfDay(for: clock())
         if isRefreshing { rerun = true; return }
         isRefreshing = true
-        if report == nil, state != .ready { setState(.indexing) }
         refreshTask = Task { [weak self] in
             guard let self else { return }
             await self.run()
@@ -229,6 +262,7 @@ public final class UsageModel {
     }
 
     private func run() async {
+        await announceFirstScan()
         repeat {
             rerun = false
             do {
@@ -249,12 +283,24 @@ public final class UsageModel {
         lastRefreshEnd = .now
     }
 
+    /// "Indexing…" is the first-ever scan: shown only while there is nothing to show and the index
+    /// holds no usage yet. A later launch keeps the chip hidden until its refresh ends, and a
+    /// failed state stays failed (no hidden, indexing, hidden cycle on every activation).
+    private func announceFirstScan() async {
+        guard report == nil, state == .idle else { return }
+        guard let populated = try? await index.hasUsage(), !populated else { return }
+        if state == .idle { setState(.indexing) }
+    }
+
     private func loadAfterScan() async throws {
         let now = clock()
         let day = try await index.summary(range: .days(1), now: now, timeZone: timeZone)
         today = day
-        hasHistory = day.messageCount > 0
-        if !hasHistory { hasHistory = try await index.hasUsage() }
+        // Decided before it is assigned: a false in between would swap the report for the
+        // empty notice (and reset its scroll) for the length of the await.
+        var history = day.messageCount > 0
+        if !history { history = try await index.hasUsage() }
+        if hasHistory != history { hasHistory = history }
         reports = [:]
         let selected = period
         let built = try await buildReport(selected, now: now)

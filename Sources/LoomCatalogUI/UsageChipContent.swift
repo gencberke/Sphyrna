@@ -51,7 +51,8 @@ public struct UsageChipContent: Equatable, Sendable {
             return UsageChipContent(
                 kind: .today, lead: "Today ", figure: "\(UsageFormat.tokens(tokens.total)) tok",
                 cost: priced ? UsageFormat.cost(today.estimatedCostUSD) : nil, tooltip: tooltip,
-                accessibilityLabel: "Claude usage today, \(UsageFormat.spokenTokens(tokens.total)) tokens")
+                accessibilityLabel: "Claude usage today, \(UsageFormat.spokenTokens(tokens.total)) tokens"
+                    + (priced ? ", estimated cost about \(UsageFormat.fullCost(today.estimatedCostUSD))" : ""))
         }
     }
 }

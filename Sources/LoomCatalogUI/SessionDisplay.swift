@@ -162,6 +162,27 @@ public struct DaySection: Identifiable {
     public let rows: [SessionRowModel]
 }
 
+/// `DateFormatter`s are costly to make and the sidebar and the usage page ask for the same few
+/// patterns every minute: one per key, made on first use. A formatter is safe to use from any thread.
+final class FormatterCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var formatters: [String: DateFormatter] = [:]
+    /// How many formatters were ever made (a test counts it).
+    private(set) var created = 0
+
+    /// `key` must name everything `configure` sets, so equal keys mean equal formatters.
+    func string(from date: Date, key: String, configure: (DateFormatter) -> Void) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = formatters[key] { return cached.string(from: date) }
+        let formatter = DateFormatter()
+        configure(formatter)
+        formatters[key] = formatter
+        created += 1
+        return formatter.string(from: date)
+    }
+}
+
 public enum DayGrouping {
     /// Groups rows already sorted by last use into calendar days.
     @MainActor
@@ -186,18 +207,23 @@ public enum DayGrouping {
         return result
     }
 
+    private static let formatters = FormatterCache()
+    static var formattersCreated: Int { formatters.created }
+
     static func title(for day: Date, now: Date, calendar: Calendar) -> String {
         let today = calendar.startOfDay(for: now)
         let days = calendar.dateComponents([.day], from: day, to: today).day ?? 0
         if days <= 0 { return "Today" }
         if days == 1 { return "Yesterday" }
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = Locale(identifier: "en_US")
-        if days < 7 { formatter.dateFormat = "EEEE" }
-        else if calendar.component(.year, from: day) == calendar.component(.year, from: now) {
-            formatter.dateFormat = "MMM d"
-        } else { formatter.dateFormat = "MMM d, yyyy" }
-        return formatter.string(from: day)
+        let pattern: String
+        if days < 7 { pattern = "EEEE" }
+        else if calendar.component(.year, from: day) == calendar.component(.year, from: now) { pattern = "MMM d" }
+        else { pattern = "MMM d, yyyy" }
+        let key = "\(pattern)|\(calendar.identifier)|\(calendar.timeZone.identifier)|\(calendar.firstWeekday)"
+        return formatters.string(from: day, key: key) {
+            $0.calendar = calendar
+            $0.locale = Locale(identifier: "en_US")
+            $0.dateFormat = pattern
+        }
     }
 }

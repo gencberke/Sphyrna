@@ -69,10 +69,14 @@ struct DetailHeader: View {
                 } else if model.isDeleting(row.id) {
                     Text("Deleting…").font(LoomTheme.Typography.statusLabel).foregroundStyle(LoomTheme.Text.secondary)
                         .lineLimit(1).layoutPriority(1)
+                } else if let notice = model.preparingNotice {
+                    PreparingNotice(text: notice)
                 } else if let label = row.indicator.label {
                     Text(label).font(LoomTheme.Typography.statusLabel).foregroundStyle(row.indicator.labelColor)
                         .lineLimit(1).layoutPriority(1)
                 }
+            } else if let notice = model.preparingNotice {
+                PreparingNotice(text: notice)
             }
             Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             if !model.showsDevTerminal, let row = model.selectedRow, model.canStop(row) {
@@ -110,13 +114,31 @@ struct DetailHeader: View {
     }
 }
 
+/// "Preparing Claude…" in the header's fixed-height row: it takes no layout space above the
+/// terminal (only opacity changes, DESIGN §6), so starting a conversation never resizes the one on screen.
+struct PreparingNotice: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+            .lineLimit(1).layoutPriority(1)
+            .fadesIn()
+            .accessibilityIdentifier("preparing-notice")
+    }
+}
+
 struct Banners: View {
     let model: CatalogModel
 
-    private var isEmpty: Bool {
-        model.ownershipNotice == nil && model.statusMessage == nil && model.preparingNotice == nil
+    /// Whether the stack takes no layout space at all. The "Preparing…" notice is not part of it: a
+    /// row here would resize the terminal below (a PTY resize); it lives in the fixed-height header row.
+    static func isEmpty(for model: CatalogModel) -> Bool {
+        model.ownershipNotice == nil && model.statusMessage == nil
             && model.errorMessage == nil && model.infoMessage == nil
     }
+
+    private var isEmpty: Bool { Self.isEmpty(for: model) }
 
     var body: some View {
         VStack(spacing: LoomTheme.Space.bannerSpacing) {
@@ -133,13 +155,6 @@ struct Banners: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fadesIn()
                     .accessibilityIdentifier("status-message")
-            }
-            if let message = model.preparingNotice {
-                Text(message)
-                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fadesIn()
-                    .accessibilityIdentifier("preparing-notice")
             }
             if let message = model.errorMessage {
                 BannerRow(text: message, color: LoomTheme.Status.failure) { model.dismissError() }
@@ -305,14 +320,18 @@ struct ConversationDetail: View {
                     Text(Self.runStateHeading(busy: model.busy[row.id], canResume: model.canResume(row),
                                               isRunning: row.live?.runID != nil))
                         .font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
-                    Text("Opening this record launches nothing. Resume continues the same provider conversation in its own folder; if the provider no longer has it, you will see that instead of a new conversation.")
-                        .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
+                    if let reason = model.resumeUnavailableReason(row) {
+                        Text(reason)
+                            .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
+                    } else {
+                        Text("Opening this record launches nothing. Resume continues the same provider conversation in its own folder; if the provider no longer has it, you will see that instead of a new conversation.")
+                            .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
+                    }
                     HStack {
                         Button(record.lifecycle == .stale ? "Reactivate and Resume" : "Resume") {
                             model.resumeConversation(row.id)
                         }
                         .disabled(!model.canResume(row))
-                        .keyboardShortcut(.defaultAction)
                         .buttonStyle(AccentButtonStyle(kind: .filled))
                         Button("Stop") { model.stopConversation(row.id) }
                             .disabled(!model.canStop(row))

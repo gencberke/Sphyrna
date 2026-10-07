@@ -30,10 +30,16 @@ struct SidebarFooterTests {
         #expect(chip.kind == .today)
         #expect(chip.full == "Today 1.2M tok · ~$3.10")
         #expect(chip.short == "Today 1.2M tok")
-        #expect(chip.accessibilityLabel == "Claude usage today, 1.2 million tokens")
+        #expect(chip.accessibilityLabel == "Claude usage today, 1.2 million tokens, estimated cost about $3.10")
         #expect(chip.tooltip.hasPrefix("Claude usage today, this Claude profile"))
         #expect(chip.tooltip.contains("1,204,310 tokens"))
         #expect(chip.tooltip.contains("API-equivalent estimate about $3.10"))
+    }
+
+    @Test func theAccessibilityLabelCarriesTheCostOnlyWhenOneIsKnown() throws {
+        let unpriced = try #require(UsageChipContent.make(
+            state: .ready, today: today(500, cost: 0, unknown: ["claude-x"]), hasHistory: true))
+        #expect(unpriced.accessibilityLabel == "Claude usage today, 500 tokens")
     }
 
     @Test func aDayWithNothingButAnEarlierHistoryReadsZeroTokens() throws {

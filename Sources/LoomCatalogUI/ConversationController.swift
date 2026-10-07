@@ -172,6 +172,7 @@ public final class ConversationController: ConversationIntents {
                     }
                 )
                 if pendingSessionID == nil {
+                    model.cardCreated(for: key)
                     adopt(launch, surface: surface)
                     model.showStarted(launch.sessionID)
                 }
@@ -185,12 +186,20 @@ public final class ConversationController: ConversationIntents {
 
     public func resume(sessionID: UUID) {
         guard let model, model.actionsAvailable, model.busy[sessionID] == nil else { return }
+        let known = model.knownProvider(of: sessionID)
+        if let known, !model.startableProviders.contains(known) { return }
         model.setBusy(sessionID, .resuming)
         let surface = TerminalSurface(fontSize: model.terminalFontSize)
         let size = surface.gridSize
         Task {
             defer { model.setBusy(sessionID, nil) }
             do {
+                // The model has no row for this id (a direct call): the catalog decides, same rule.
+                if known == nil, let catalog = model.catalog,
+                   let provider = try await catalog.session(id: sessionID)?.session.provider,
+                   !model.startableProviders.contains(provider) {
+                    return
+                }
                 let launch = try await runtime.resumeConversation(
                     sessionID: sessionID, rows: size.rows, columns: size.columns,
                     outputSink: surface.outputSink

@@ -253,7 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let window, let model else { return }
         let active = window.isVisible && window.occlusionState.contains(.visible) && window.isKeyWindow && NSApp.isActive
         model.setWindowActive(active)
-        usage?.windowActivityChanged(active)
+        usage?.windowActivityChanged(active) // the usage model acts on a change only
     }
 
     /// Every run starts in its own run-host scope. Without the bundled host
@@ -291,6 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         recordVisibility("close")
         model?.setWindowActive(false)
+        usage?.windowActivityChanged(false)
     }
 
     // MARK: Runs

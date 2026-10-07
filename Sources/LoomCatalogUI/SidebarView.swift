@@ -510,7 +510,8 @@ final class KeyboardNavigation {
     private(set) var isEnabled = NSApplication.shared.isFullKeyboardAccessEnabled
     @ObservationIgnored private var observer: NSObjectProtocol?
 
-    private init() {
+    /// Internal so a test can make its own; the app uses `shared`.
+    init() {
         observer = NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -518,5 +519,8 @@ final class KeyboardNavigation {
         }
     }
 
-    func refresh() { isEnabled = NSApplication.shared.isFullKeyboardAccessEnabled }
+    /// Writes only a change: a write re-renders every chrome button that reads the flag.
+    func refresh(_ value: Bool = NSApplication.shared.isFullKeyboardAccessEnabled) {
+        if value != isEnabled { isEnabled = value }
+    }
 }

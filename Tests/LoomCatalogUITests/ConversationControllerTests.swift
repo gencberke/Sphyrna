@@ -166,6 +166,58 @@ struct ConversationControllerTests {
         await fixture.cleanup()
     }
 
+    /// OPT2 item 1: a Codex record in the production catalog is not resumed by any path, including a
+    /// direct call on the controller (a stale menu, Cmd+R, evidence).
+    @Test func productionControllerRefusesToResumeACodexRecord() async throws {
+        let fixture = try await makeFixture(startableProviders: [.claude])
+        do {
+            let codex = ManagedSession(provider: .codex, workingDirectory: fixture.root.path)
+            try await fixture.catalog.insertSession(codex, title: "Old Codex", lifecycle: .idle)
+            fixture.controller.resume(sessionID: codex.id)
+            fixture.model.resumeConversation(codex.id)
+            try await Task.sleep(for: .milliseconds(400))
+            #expect(fixture.controller.terminalCount == 0)
+            #expect(fixture.model.busy[codex.id] == nil)
+            #expect(fixture.model.errorMessage == nil)
+            #expect(try await fixture.catalog.session(id: codex.id)?.lifecycle == .idle)
+        } catch {
+            await fixture.cleanup()
+            throw error
+        }
+        await fixture.cleanup()
+    }
+
+    /// OPT2 item 2: the preparing notice lasts exactly until the launch returns or fails.
+    @Test func thePreparingNoticeClearsWhenTheLaunchReturns() async throws {
+        let fixture = try await makeFixture(toolchainDelay: .milliseconds(300))
+        do {
+            fixture.model.startConversation(.claude, projectID: nil)
+            #expect(fixture.model.preparingNotice == "Preparing Claude…")
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 })
+            #expect(await waitUntil { fixture.model.preparingNotice == nil })
+            #expect(!fixture.model.isStarting(.claude, projectID: nil))
+        } catch {
+            await fixture.cleanup()
+            throw error
+        }
+        await fixture.cleanup()
+    }
+
+    @Test func thePreparingNoticeClearsWhenTheLaunchFails() async throws {
+        let fixture = try await makeFixture(toolchainFails: true)
+        do {
+            fixture.model.startConversation(.claude, projectID: nil)
+            #expect(fixture.model.preparingNotice == "Preparing Claude…")
+            #expect(await waitUntil { fixture.model.errorMessage != nil })
+            #expect(await waitUntil { fixture.model.preparingNotice == nil })
+            #expect(!fixture.model.isStarting(.claude, projectID: nil))
+        } catch {
+            await fixture.cleanup()
+            throw error
+        }
+        await fixture.cleanup()
+    }
+
     @Test func fontPreferenceAppliesToExistingAndNewConversationSurfaces() async throws {
         try await withFixture { fixture in
             fixture.model.onTerminalFontSizeChange = { fixture.controller.setTerminalFontSize($0) }

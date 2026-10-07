@@ -737,6 +737,7 @@ public final class CatalogModel {
                 guard !Task.isCancelled, let self else { return }
                 let current = self.currentDate()
                 if current != self.now { self.now = current }
+                self.usage?.minuteTick() // the usage chip says "Today": a new day reads it again
             }
         }
     }
@@ -1064,6 +1065,8 @@ public final class CatalogModel {
 
     public func resumeConversation(_ id: UUID) {
         guard actionsAvailable else { return }
+        // A conversation of a provider this build cannot start is not resumed either (D-14, D-28).
+        if let provider = knownProvider(of: id), !startableProviders.contains(provider) { return }
         intents?.resume(sessionID: id)
     }
 
@@ -1087,7 +1090,21 @@ public final class CatalogModel {
 
     public func canResume(_ row: SessionRowModel) -> Bool {
         actionsAvailable && row.record.session.provider != .synthetic
+            && startableProviders.contains(row.record.session.provider)
             && row.live?.runID == nil && busy[row.id] == nil && !isDeleting(row.id)
+    }
+
+    /// The provider of a conversation the model has a row for.
+    func knownProvider(of id: UUID) -> ManagedSession.Provider? {
+        rowModels[id]?.record.session.provider
+    }
+
+    /// Why Resume is not offered for a conversation of a provider this build cannot start; nil when
+    /// that is not the reason (a busy or running conversation has its own state line).
+    public func resumeUnavailableReason(_ row: SessionRowModel) -> String? {
+        let provider = row.record.session.provider
+        guard provider != .synthetic, !startableProviders.contains(provider) else { return nil }
+        return "\(ProviderName.title(provider)) conversations can't be resumed in this version."
     }
 
     public func canStop(_ row: SessionRowModel) -> Bool {

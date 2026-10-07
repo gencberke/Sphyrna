@@ -146,7 +146,7 @@ struct ConversationTabItem: View {
                 .foregroundStyle(titleColor(selected: selected, stale: indicator == .stale))
                 .lineLimit(1).truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if selected { TabCloseButton(model: model, id: id, title: title, tabHovering: hovering) }
+            if selected { TabCloseButton(model: model, id: id, tabHovering: hovering) }
         }
         .padding(.leading, LoomTheme.TabStrip.tabInset)
         .padding(.trailing, selected ? LoomTheme.TabStrip.selectedTrailing : LoomTheme.TabStrip.tabInset)
@@ -157,7 +157,7 @@ struct ConversationTabItem: View {
             .strokeBorder(selected ? LoomTheme.Surface.hairline : .clear, lineWidth: LoomTheme.Line.hairline))
         .overlay(alignment: .trailing) {
             if hovering && !selected {
-                TabCloseButton(model: model, id: id, title: title, tabHovering: true)
+                TabCloseButton(model: model, id: id, tabHovering: true)
                     .padding(.trailing, LoomTheme.TabStrip.hoverCloseInset)
             }
         }
@@ -172,9 +172,16 @@ struct ConversationTabItem: View {
         }
         .help(title)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(title + (indicator.label.map { ", \($0)" } ?? "") + (transient ? ", not pinned" : ""))
+        .accessibilityLabel(Self.accessibilityLabel(title: title, status: indicator.label, transient: transient))
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
+        // Activating the tab selects it; closing is the named action (the close button itself is
+        // hidden from accessibility, so VoiceOver cannot activate it by accident).
+        .accessibilityAction { model.selectTab(id) }
         .accessibilityAction(named: "Close Tab") { model.closeTab(id) }
+    }
+
+    static func accessibilityLabel(title: String, status: String?, transient: Bool) -> String {
+        title + (status.map { ", \($0)" } ?? "") + (transient ? ", not pinned" : "")
     }
 
     private func titleColor(selected: Bool, stale: Bool) -> Color {
@@ -187,7 +194,6 @@ struct ConversationTabItem: View {
 private struct TabCloseButton: View {
     let model: CatalogModel
     let id: UUID
-    let title: String
     let tabHovering: Bool
     @State private var hovering = false
 
@@ -203,7 +209,7 @@ private struct TabCloseButton: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help("Close Tab (⌥⌘W)")
-        .accessibilityLabel("Close \(title)")
+        .accessibilityHidden(true) // the tab's own "Close Tab" action does this
     }
 
     private var isSelected: Bool { model.selectedSessionID == id }
