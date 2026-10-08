@@ -573,6 +573,28 @@ struct SessionRuntimeTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
+    /// The app's policy (user decision, 8 Oct 2026): a quiet session past the idle period keeps
+    /// running; only the user's Stop or Quit ends it.
+    @Test func withAutomaticIdleStopOffAQuietSessionKeepsRunning() async throws {
+        let policy = SessionIdlePolicy(idleAfter: 0.3, staleAfter: 3_600, stopGraceSeconds: 0.1, stopsIdleRuns: false)
+        let context = try await Self.makeContext(idlePolicy: policy)
+        defer { context.cleanup() }
+        let (launch, screen) = try await Self.launchClaude(context)
+        try await screen.send("/work 100")
+        #expect(await screen.contains("WORKING 100"))
+        #expect(try await Self.waitUntil {
+            await context.supervisor.providerWorkState(sessionID: launch.sessionID)?.activity == .turnComplete
+        })
+        // Several idle periods pass after the quiet moment the baseline is taken at.
+        try await Task.sleep(for: .seconds(2))
+        #expect(await context.supervisor.runningSessionIDs() == [launch.sessionID])
+        #expect(try await context.catalog.session(id: launch.sessionID)?.lifecycle == .active)
+        #expect(try await context.catalog.runs().first { $0.id == launch.runID }?.endReason == nil)
+        try await screen.send("still here")
+        #expect(await screen.contains("echo: still here"))
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
     @Test func interruptedNativeWorkMetadataReopensInputAndCannotRepairHookLoss() async throws {
         let context = try await Self.makeContext()
         defer { context.cleanup() }

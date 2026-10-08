@@ -103,7 +103,7 @@ Whether the process is starting/running/stopping/stopped, and whether the sessio
 
 ### 4.3. Transition to idle
 
-The initial target is a transition to idle after about **one hour of non-use**. The time since the last prompt alone is not sufficient: there may be a long-running job, a pending approval, a running subagent or a background command.
+The initial target is a transition to idle after about **one hour of non-use**. **User decision, 8 Oct 2026 ([D-38](DECISIONS.md)):** the app does not make this transition automatically; a running session stays running until the user stops it or quits. The transition contract below still describes how such a stop must behave. The time since the last prompt alone is not sufficient: there may be a long-running job, a pending approval, a running subagent or a background command.
 
 Proposed transition contract:
 

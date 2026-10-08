@@ -14,15 +14,22 @@ public struct SessionIdlePolicy: Equatable, Sendable {
     public var idleAfter: TimeInterval
     public var staleAfter: TimeInterval
     public var stopGraceSeconds: Double
+    /// Whether automatic evaluation stops a running session after `idleAfter` without use.
+    /// The app turns it off (user decision, 8 Oct 2026): a session runs until the user stops
+    /// it or quits. Stale classification of sessions without a run is unaffected, and an
+    /// explicit `evaluateIdle` still evaluates.
+    public var stopsIdleRuns: Bool
 
     public init(
         idleAfter: TimeInterval = 60 * 60,
         staleAfter: TimeInterval = 15 * 24 * 60 * 60,
-        stopGraceSeconds: Double = 0.2
+        stopGraceSeconds: Double = 0.2,
+        stopsIdleRuns: Bool = true
     ) {
         self.idleAfter = idleAfter
         self.staleAfter = staleAfter
         self.stopGraceSeconds = stopGraceSeconds
+        self.stopsIdleRuns = stopsIdleRuns
     }
 }
 
@@ -241,7 +248,7 @@ public actor SessionLifecycleController {
         let activeIDs = Set(running.filter { $0.lifecycle == .active }.map { $0.session.id })
         descendantRechecks = descendantRechecks.filter { activeIDs.contains($0.key) }
         descendantBackoff = descendantBackoff.filter { activeIDs.contains($0.key) }
-        for record in running where record.lifecycle == .active {
+        for record in running where policy.stopsIdleRuns && record.lifecycle == .active {
             guard let due = await nextIdleEvaluation(record) else { continue }
             if next == nil || due < next! { next = due }
         }
@@ -280,7 +287,7 @@ public actor SessionLifecycleController {
         do {
             let running = Array(await supervisor.runningSessionIDs())
             for record in try await catalog.sessions(ids: running) where
-                record.lifecycle == .active {
+                policy.stopsIdleRuns && record.lifecycle == .active {
                 guard let due = await nextIdleEvaluation(record), due <= now else { continue }
                 let outcome = try await evaluateIdle(
                     sessionID: record.session.id, at: now

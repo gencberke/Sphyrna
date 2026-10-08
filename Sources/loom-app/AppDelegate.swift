@@ -405,6 +405,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             toolchains: toolchains, hookHelperPath: helpers.appendingPathComponent("loom-hook").path,
             socketDirectory: socketDirectory,
             clientVersion: "loom-\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "dev")",
+            // A running session is never stopped for inactivity (user decision, 8 Oct 2026).
+            idlePolicy: SessionIdlePolicy(stopsIdleRuns: false),
             claudeProfileDirectory: evidenceClaudeProfile(root: root)
         )
     }

@@ -111,7 +111,7 @@ Render behaviors are SwiftTerm patches (Section 6): partial row invalidation (on
 one row margin; whole view on layout/style/selection/image change), identical-row skip (`BufferLine.snapshotRendersLike`),
 direct glyph runs, and hidden-window suspension (`TerminalSurface` sets `suspendsRenderingWhenNotVisible = true`; hidden
 feeds are retained and exactly one frame draws on return). Input path: `TerminalViewDelegate.send` -> `TerminalInputQueue`
-(4 MiB, ordered) -> `TerminalEndpoint.write`; `TerminalInputGate` closes a run's input atomically on automatic idle stop.
+(4 MiB, ordered) -> `TerminalEndpoint.write`; `TerminalInputGate` closes a run's input atomically on automatic idle stop (off in the app: `SessionIdlePolicy.stopsIdleRuns = false`, D-38).
 Engine limits live in `TerminalSurfaceLimits` (scrollback 2,000 lines, OSC 1 MiB, Kitty 8 MiB and inline images 8 MiB /
 1,024 per screen).
 
