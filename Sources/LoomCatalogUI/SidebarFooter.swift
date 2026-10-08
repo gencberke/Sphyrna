@@ -15,7 +15,7 @@ struct SidebarFooter: View {
                 NewConversationButtons(model: model, projectID: model.contextProjectID)
                 // The entries above start in the selected session's project; this one says "no project".
                 if Self.offersWithoutProject(contextProjectID: model.contextProjectID) {
-                    WithoutProjectStartButton(model: model, title: ClaudeStartEntry.withoutProjectFooterTitle)
+                    WithoutProjectStartButton(model: model, title: ClaudeStartEntry.withoutProjectTitle)
                 }
                 Divider()
                 Button("Add Project…") { model.presentAddProject() }

@@ -87,12 +87,20 @@ struct ClaudePlanLimitsTests {
         #expect(await waitUntilGone(pid)) // its input closed and it left
     }
 
-    @Test func theDefaultProfileLeavesTheConfigVariableUnsetEvenIfTheToolchainHasOne() async throws {
-        let rig = try rig("ok", explicitProfile: false, toolchainConfig: "/somewhere/else")
-        defer { try? FileManager.default.removeItem(at: rig.root) }
-        #expect(await rig.fetcher.fetch() != nil)
-        let record = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: rig.log)) as? [String: Any])
-        #expect(record["config"] is NSNull) // the CLI then uses its own default login and folder
+    /// The ask goes to the account sessions use: a login-shell CLAUDE_CONFIG_DIR stays, as sessions
+    /// keep it; without one the variable stays unset (the CLI's own default login and folder).
+    @Test func theDefaultProfileAsksTheSameAccountSessionsUse() async throws {
+        let shell = try rig("ok", explicitProfile: false, toolchainConfig: "/somewhere/else")
+        defer { try? FileManager.default.removeItem(at: shell.root) }
+        #expect(await shell.fetcher.fetch() != nil)
+        let record = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: shell.log)) as? [String: Any])
+        #expect(record["config"] as? String == "/somewhere/else")
+
+        let plain = try rig("ok", explicitProfile: false)
+        defer { try? FileManager.default.removeItem(at: plain.root) }
+        #expect(await plain.fetcher.fetch() != nil)
+        let unset = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: plain.log)) as? [String: Any])
+        #expect(unset["config"] is NSNull)
     }
 
     @Test func aWeeklyOnlyAnswerGivesTheOneWindow() async throws {

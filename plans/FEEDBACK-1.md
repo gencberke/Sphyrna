@@ -43,11 +43,13 @@ Recorded as [D-37](../DECISIONS.md). Each reverses cleanly:
 
 ## Open points for the user
 
-1. **Idle auto-stop** (60 min without use stops the run; resume restores it): keep, lengthen, or make it a setting?
-2. **Plan-limit asks**: the cadence above acceptable, or fewer?
-3. **Sidebar bug details** if it happens again: was the Show button (next to the window buttons) visible, and did Ctrl+Cmd+S work?
-4. **Project name on cards**: a screenshot if it still appears in the project view.
-5. **Install**: tag, promote and install the next version only on the user's word.
+Answered on 8 Oct:
+
+1. **Idle auto-stop:** turn it off ([D-38](../DECISIONS.md)); done in `b997885` (`SessionIdlePolicy.stopsIdleRuns = false` in the app; stale classification unchanged).
+2. **Plan-limit asks:** the user asked what collects the numbers; explained (tokens come from Claude's local transcripts read by Loom; the plan percentages come from the Claude CLI's own `get_usage`, which asks Anthropic with the CLI's login). Cadence unchanged.
+3. **Sidebar:** the Show button **was visible** when the click did nothing. Two read-only investigations and a judge found no deterministic cause in code (an animated expand AppKit ignored or lost, or a click that never reached the button); `ee0fea1` applies a move AppKit did not carry out without animation, serializes toggles, routes Ctrl+Cmd+S through the same path and logs each toggle (`local.loom.desktop` / `Sidebar`), so a repeat shows whether the click arrived.
+4. **Project name on cards:** no answer yet; screenshot if it still appears.
+5. **Install:** the user asked to install this round as 0.3.0 without running the full release suite.
 
 ## Verification (8 Oct 2026, swarm/1 `ed2914c`)
 
@@ -60,6 +62,26 @@ Recorded as [D-37](../DECISIONS.md). Each reverses cleanly:
 | Plan-limit source | `get_usage` answered on the isolated profile (CLI 2.1.293) with integer percent and ISO reset times in about 0.6–1.4 s; without `disableAllHooks` the profile's SessionStart and SessionEnd hooks ran for every ask, with it none ran |
 
 Not verified: anything that needs a visible, unlocked window over time (live minute tick, a real right-click on the empty sidebar area, real sidebar toggling, chip and Plan limits visuals, Settings window topology), the full release suite, `get_usage` from the app on the real profile, and a real deletion through the production identity.
+
+## Pre-release review (0.3.0)
+
+A four-area read-only review (hooks and resume, catalog time, usage and plan limits, sidebar and menus) of `955b326..ee0fea1`, each finding checked before fixing. Fixed in one commit; each new test fails without its fix (checked by disabling all six at once):
+
+| Area | Finding | Fix |
+| --- | --- | --- |
+| Menus | `validateMenuItem(_:)` was never exposed to Objective-C (no `NSMenuItemValidation` conformance), so File → Delete Permanently… (Cmd+Delete) stayed enabled while typing in the terminal or a text field; Cmd+Backspace there could open the delete sheet | `NSMenuItemValidation` conformance; the key equivalent yields to a text view, the terminal or an open sheet |
+| Hooks | A prompt dropped before the first SessionStart was known (prompt typed at once) was followed by **Ready** while Claude worked | That start leaves the state unknown until the next event |
+| Hooks | `elicitation_dialog` waited for input with no generation, so the registry's later "busy" sample could not move the card back to Working | It opens an input generation like a permission prompt |
+| Effort | An effort level this build does not know fell back to an older recorded level | The newest assistant record with an effort decides; an unknown level means no carry-over |
+| Catalog | A row 0.2.1 inserted has no `last_activity_at`; a view of it copied the view time into the fallback | A view freezes the fallback at the previous use date; the column check is repeated inside the migration transaction |
+| Catalog | A turn ended by an API error (`StopFailure`) did not stamp activity; a stamp refused for a session being deleted threw and kept the turn's status from being published | `StopFailure` stamps too; the stamp is best effort |
+| Usage | The default profile pinned `CLAUDE_CONFIG_DIR` to `~/.claude` even when the toolchain set another directory; a failed ask (offline after wake) cleared the limits; the minute tick did not drop an ended window while the window was not key; Refresh on the Usage page did not ask for limits; percentages outside 0–100 were not clamped | Only an explicit profile is pinned; a failed ask keeps the last answer; the chip is rebuilt on every tick; Refresh asks when due; clamp before rounding |
+| Sidebar | A second click while the first Show had not taken effect reversed it (stayed hidden) | A toggle during a move finishes a move AppKit has not carried out, and reverses one that took effect |
+| Wording | The footer and the empty-area menu named the projectless start differently | One title, "New Claude Session Without Project" |
+
+Not changed: model-scoped weekly windows (`seven_day_opus` and similar) are not shown in the chip or the Plan limits block; whether to show them is the user's call.
+
+Checks after the fixes: `scripts/check.sh` on the affected suites 136 + 249 passed (build and wording guard ok), then the seven directly affected suites 47 + 45 passed after the mutation check; the full release suite was **not** run (the user asked to install without it).
 
 ## Real-Claude turns
 

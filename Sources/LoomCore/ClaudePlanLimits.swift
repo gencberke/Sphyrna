@@ -92,7 +92,7 @@ public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
     ///   - grace: how long a child may take to exit after its input closed before it is terminated.
     public init(
         toolchain: @escaping @Sendable () async throws -> ProviderToolchain, profile: ClaudeProfileLayout,
-        workingDirectory: URL, timeout: TimeInterval = 10, grace: TimeInterval = 1,
+        workingDirectory: URL, timeout: TimeInterval = 10, grace: TimeInterval = 3,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.toolchain = toolchain
@@ -103,14 +103,13 @@ public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
         self.clock = clock
     }
 
-    /// The child's environment: the toolchain's, pinned to the profile usage reads. For the
-    /// default profile the variable is removed (not set to `~/.claude`): Claude names its stored
-    /// login after an explicit config directory, so setting it would look for another login.
+    /// The child's environment: the toolchain's, as sessions get it. For the default profile it is
+    /// left alone (sessions keep a `CLAUDE_CONFIG_DIR` from the login shell, so the ask goes to the
+    /// account sessions use; Loom never sets `~/.claude` explicitly, since Claude names its stored
+    /// login after an explicit config directory). An explicit profile is pinned.
     static func environment(toolchain: ProviderToolchain, profile: ClaudeProfileLayout) -> [String: String] {
         var environment = toolchain.environment
-        if profile.source == .homeDefault {
-            environment["CLAUDE_CONFIG_DIR"] = nil
-        } else {
+        if profile.source != .homeDefault {
             environment["CLAUDE_CONFIG_DIR"] = profile.configDirectory.path
         }
         return environment
@@ -179,8 +178,9 @@ enum PlanLimitsWire {
         guard let object = value as? [String: Any], let number = object["utilization"] as? NSNumber else { return nil }
         let used = number.doubleValue
         guard used.isFinite else { return nil }
+        let clamped = min(max(used, 0), 100)   // before Int(): an absurd value must not trap
         let resets = (object["resets_at"] as? String).flatMap { parser.date(from: $0) ?? plain.date(from: $0) }
-        return PlanLimitWindow(usedPercent: Int(used.rounded()), resetsAt: resets)
+        return PlanLimitWindow(usedPercent: Int(clamped.rounded()), resetsAt: resets)
     }
 }
 

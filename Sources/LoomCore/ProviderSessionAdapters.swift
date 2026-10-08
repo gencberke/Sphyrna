@@ -177,11 +177,15 @@ public actor ClaudeSessionAdapter {
                 runID: envelope.managedRunID, at: min(receivedAt, envelope.sentAt)
             )
         }
-        if case .stop = event.kind {
-            // A finished turn is real use: the card time and the activity order follow it.
-            try await supervisor.markProviderActivity(
+        switch event.kind {
+        case .stop, .stopFailure:
+            // A finished turn (also one ended by an API error) is real use: the card time and the
+            // activity order follow it. Best effort: a session being deleted refuses the stamp, and
+            // that must not keep the turn's status from being published.
+            try? await supervisor.markProviderActivity(
                 runID: envelope.managedRunID, at: min(receivedAt, envelope.sentAt)
             )
+        default: break
         }
         registryWatches[envelope.managedRunID]?.watch.request(generation: await tracker.registryGeneration())
         let status = await tracker.status()

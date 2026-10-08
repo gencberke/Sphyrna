@@ -227,7 +227,11 @@ final class CatalogDatabase: @unchecked Sendable {
             """) == 1
         guard !hasColumn || !hasIndex else { return }
         try transaction {
-            if !hasColumn {
+            // Read again under the write lock: another process may have added it meanwhile.
+            let added = try scalarInt64("""
+                SELECT count(*) FROM pragma_table_info('sessions') WHERE name = 'last_activity_at'
+                """) == 1
+            if !added {
                 try execute("ALTER TABLE sessions ADD COLUMN last_activity_at REAL")
                 try execute("UPDATE sessions SET last_activity_at = last_used_at WHERE last_activity_at IS NULL")
             }

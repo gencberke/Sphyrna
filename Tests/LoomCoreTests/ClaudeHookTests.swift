@@ -246,6 +246,29 @@ struct ClaudeHookTests {
         _ = try await tracker.receive(envelope(sessionID: sessionID, runID: runID, event: "Notification",
                                               fields: ["notification_type": "elicitation_dialog"]))
         #expect(await tracker.status().activity == .waitingForInput)
+        // Answered in the terminal without a prompt hook: the registry check stays open so its
+        // "busy" sample can move the card back to Working.
+        #expect(await tracker.registryGeneration() != nil)
+    }
+
+    /// A prompt typed into a new session before its SessionStart hook arrived is dropped; that
+    /// start then cannot claim Claude is idle at its prompt.
+    @Test func aPromptDroppedBeforeTheFirstStartKeepsTheStateUnknown() async throws {
+        let sessionID = UUID(), runID = UUID()
+        func event(_ kind: String, fields: [String: Any] = [:]) throws -> ClaudeHookEnvelope {
+            try envelope(sessionID: sessionID, runID: runID, event: kind,
+                         fields: fields.merging(["session_id": "Z"]) { _, new in new })
+        }
+        let tracker = ClaudeHookStateTracker(sessionID: sessionID, managedRunID: runID)
+        #expect(try await tracker.receive(event("UserPromptSubmit")) == .wrongConversation)
+        _ = try await tracker.receive(event("SessionStart", fields: ["source": "startup"]))
+        #expect(await tracker.status().activity == .unknown)
+        _ = try await tracker.receive(event("Stop"))
+        #expect(await tracker.status().activity == .turnComplete)
+        // A later conversation of the same run starts at its prompt again.
+        _ = try await tracker.receive(envelope(sessionID: sessionID, runID: runID, event: "SessionStart",
+                                              fields: ["session_id": "Y", "source": "clear"]))
+        #expect(await tracker.status().activity == .atPrompt)
     }
 
     @Test func childAgentPayloadCannotMutateParentStatus() async throws {

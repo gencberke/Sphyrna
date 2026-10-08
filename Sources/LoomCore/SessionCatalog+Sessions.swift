@@ -64,7 +64,9 @@ extension SessionCatalog {
             SET last_used_at = ?,
                 last_activity_at = CASE
                     WHEN ? = 1 THEN ?
-                    ELSE last_activity_at
+                    -- A row an older build inserted has no activity time; freeze its fallback
+                    -- (the previous use date) so a view cannot move it.
+                    ELSE COALESCE(last_activity_at, last_used_at)
                 END,
                 lifecycle = CASE
                     WHEN lifecycle IN ('stale', 'idle') AND ? = 0 THEN lifecycle

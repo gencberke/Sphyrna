@@ -84,7 +84,7 @@ struct SidebarEntryPointTests {
         fixture.model.select(fixture.projectSession.id)
         #expect(fixture.model.contextProjectID == fixture.project.id, "the footer and Cmd+N would start here")
         let entry = try #require(ClaudeStartEntry.withoutProject(title: ClaudeStartEntry.withoutProjectTitle, on: fixture.model))
-        #expect(entry.title == "New Claude Session")
+        #expect(entry.title == "New Claude Session Without Project")
         entry.perform(on: fixture.model)
         #expect(fixture.intents.starts.count == 1)
         #expect(fixture.intents.starts.first?.0 == .claude)
@@ -94,7 +94,7 @@ struct SidebarEntryPointTests {
     @Test func theFooterOffersAProjectlessEntryOnlyWhereThePlainEntriesWouldStartInAProject() {
         #expect(SidebarFooter.offersWithoutProject(contextProjectID: UUID()))
         #expect(!SidebarFooter.offersWithoutProject(contextProjectID: nil))
-        #expect(ClaudeStartEntry.withoutProjectFooterTitle == "New Claude Session Without Project")
+        #expect(ClaudeStartEntry.withoutProjectTitle == "New Claude Session Without Project")
     }
 
     @Test func aProjectlessSessionInTheProjectViewGroupHasNoRepeatedNoProjectTitle() {

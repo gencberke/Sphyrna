@@ -129,6 +129,10 @@ struct ClaudeTranscriptEffortTests {
         for record in records { text += String(data: try JSONSerialization.data(withJSONObject: record), encoding: .utf8)! + "\n" }
         try text.write(to: folder.appendingPathComponent("\(id).jsonl"), atomically: true, encoding: .utf8)
         #expect(ClaudeTranscriptEffort.last(conversationID: id, projectsDirectory: projects) == "max")
+        // A newer level this build does not know ends the carry-over instead of reviving "max".
+        let unknown = String(data: try JSONSerialization.data(withJSONObject: ["type": "assistant", "effort": "auto"]), encoding: .utf8)!
+        try (text + unknown + "\n").write(to: folder.appendingPathComponent("\(id).jsonl"), atomically: true, encoding: .utf8)
+        #expect(ClaudeTranscriptEffort.last(conversationID: id, projectsDirectory: projects) == nil)
         #expect(ClaudeTranscriptEffort.last(conversationID: "missing", projectsDirectory: projects) == nil)
         #expect(ClaudeTranscriptEffort.last(conversationID: "../-tmp-project/\(id)", projectsDirectory: projects) == nil)
     }

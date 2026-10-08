@@ -40,12 +40,15 @@ public enum ClaudeTranscriptEffort {
         guard (try? handle.seek(toOffset: start)) != nil, let data = try? handle.readToEnd() else { return nil }
         var lines = data.split(separator: UInt8(ascii: "\n"))
         if start > 0, !lines.isEmpty { lines.removeFirst() }   // cut mid-line
+        // The newest assistant record that names an effort decides (records without one, such as
+        // the synthetic ones an API error leaves, say nothing about it). A level this build does
+        // not know means no carry-over, never an older level.
         let key = Array("\"effort\"".utf8)
         for line in lines.reversed() where line.firstRange(of: key) != nil {
             guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
                   object["type"] as? String == "assistant",
-                  let effort = object["effort"] as? String, levels.contains(effort) else { continue }
-            return effort
+                  let effort = object["effort"] as? String else { continue }
+            return levels.contains(effort) ? effort : nil
         }
         return nil
     }

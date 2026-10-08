@@ -78,13 +78,16 @@ public final class SidebarCollapseSync {
     }
 
     /// Hide or Show: the opposite of what the sidebar really is now, whatever the model believes.
-    /// A toggle during a running move reverses that move at once. A move AppKit did not carry out
-    /// (the user's report: Show visible, click had no effect) is applied without animation.
+    /// A toggle during a running move reverses that move at once, or finishes it if it has not
+    /// taken effect. A move AppKit did not carry out (the user's report: Show visible, click had
+    /// no effect) is applied without animation when it ends.
     public func toggle() {
         generation &+= 1
         let current = generation
         if let running = move {
-            let target = !running.target
+            // Reverse a move that took effect; finish one AppKit has not carried out (a second
+            // click because the first did nothing).
+            let target = source.isCollapsed == running.target ? !running.target : running.target
             move = nil
             Self.log.info("toggle during a move: target collapsed=\(target, privacy: .public)")
             source.setCollapsedImmediately(target)

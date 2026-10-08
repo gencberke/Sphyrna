@@ -13,7 +13,7 @@ import SwiftUI
 /// supervisor shutdown and stays open when it cannot be verified. Opening the
 /// app or selecting a conversation starts no provider, PTY or terminal.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
     let options: LaunchOptions
     /// Production or development, read once; the only source of identity-derived names.
     let identity = BuildIdentity(bundleIdentifier: Bundle.main.bundleIdentifier)
@@ -450,10 +450,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         case #selector(stopFromMenu(_:)):
             return model.selectedRow.map(model.canStop) ?? false
         case #selector(deleteFromMenu(_:)):
-            // Cmd+Delete belongs to a text field being edited (search, rename) and to a focused terminal
-            // (Cmd+Backspace edits the prompt line there); the menu item itself stays usable.
-            if NSApp.currentEvent?.type == .keyDown,
-               window?.firstResponder is NSText || window?.firstResponder is LoomTerminalView { return false }
+            // Cmd+Delete belongs to a text field being edited (search, or rename in its sheet window)
+            // and to a focused terminal (Cmd+Backspace edits the prompt line there), and does nothing
+            // while a sheet is open; the menu item itself stays usable with the mouse.
+            if NSApp.currentEvent?.type == .keyDown {
+                let responder = NSApp.keyWindow?.firstResponder
+                if responder is NSText || responder is LoomTerminalView || window?.attachedSheet != nil { return false }
+            }
             return model.selectedRow.map(model.canDelete) ?? false
         case #selector(showNextTab(_:)), #selector(showPreviousTab(_:)):
             return model.canSelectAdjacentTab

@@ -242,7 +242,10 @@ public final class UsageModel {
             // first page loaded covers it. A second pass would only rerun the first.
             guard !isRefreshing, lastRefreshEnd == nil else { return }
             start()
-        case .settingsOpened, .manual, .dayChanged:
+        case .manual:
+            start()
+            fetchLimitsIfDue(after: cadence.afterPageOpened)
+        case .settingsOpened, .dayChanged:
             start()
         }
     }
@@ -306,8 +309,9 @@ public final class UsageModel {
     /// local day reads the index once (a day that failed to read is not retried every minute).
     /// A limit window that has ended drops out of the chip without any read.
     public func minuteTick() {
-        guard windowIsActive else { return }
+        // Pure: a plan window that has ended drops out whenever the window ticks (visible, key or not).
         rebuildChip()
+        guard windowIsActive else { return }
         guard let requestedDay, calendar.startOfDay(for: clock()) != requestedDay else { return }
         refresh(reason: .dayChanged)
     }
@@ -466,7 +470,9 @@ public final class UsageModel {
             guard let self, !Task.isCancelled else { return }
             self.limitsTask = nil
             self.lastLimitsAsk = self.clock()
-            if self.limits != fetched { self.limits = fetched }
+            // A failed ask (offline after wake, a timeout) keeps the last answer; it carries its
+            // own "updated" time and ended windows drop out by themselves.
+            if let fetched, self.limits != fetched { self.limits = fetched }
             self.rebuildChip()
         }
     }

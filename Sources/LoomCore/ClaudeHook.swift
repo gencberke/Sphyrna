@@ -488,6 +488,9 @@ public actor ClaudeHookStateTracker {
     static let maximumHookReorderMilliseconds = 500.0
     private var registryStartedAt: Double?
     private var registryTimestamp: Double?
+    /// An event for a conversation not yet announced was dropped before the first SessionStart
+    /// (a prompt typed at once): that start cannot claim the provider is idle at its prompt.
+    private var droppedEarlyEvent = false
 
     func registryGeneration() -> UUID? { inputGeneration }
 
@@ -548,6 +551,7 @@ public actor ClaudeHookStateTracker {
         inputGeneration = nil; inputWatermark = nil
         registryStartedAt = nil; registryTimestamp = nil
         hookEmissionWatermark = nil; inputClockAmbiguous = false
+        droppedEarlyEvent = false
     }
 
     public func status() -> ClaudeSessionStatus { currentStatus }
@@ -565,6 +569,7 @@ public actor ClaudeHookStateTracker {
             if currentStatus.providerSessionID == event.providerSessionID { return .duplicateSessionStart }
             if retiredSessionIDs.contains(event.providerSessionID), source != "resume" { return .retiredConversation }
         } else if activeProviderSessionID != event.providerSessionID {
+            if currentStatus.providerSessionID == nil { droppedEarlyEvent = true }
             return .wrongConversation
         }
         return .applied(event)
@@ -614,13 +619,20 @@ public actor ClaudeHookStateTracker {
         if case .notification("permission_prompt") = event.kind {
             inputGeneration = UUID(); inputWatermark = envelope.sentAt.timeIntervalSince1970 * 1_000; inputAwaitsApproval = true
         }
+        // An MCP elicitation is answered in the terminal without a prompt hook: the registry's
+        // later "busy" sample moves the card back to Working.
+        if case .notification("elicitation_dialog") = event.kind {
+            inputGeneration = UUID(); inputWatermark = envelope.sentAt.timeIntervalSince1970 * 1_000
+        }
         noteEmission(envelope.sentAt)
         currentStatus.lastEventAt = receivedAt
         switch event.kind {
         case .sessionStart:
-            // A provider that just started or resumed is at its prompt until a prompt arrives.
+            // A provider that just started or resumed is at its prompt until a prompt arrives,
+            // unless a prompt for it was already dropped before this start was known.
             currentStatus.providerSessionID = event.providerSessionID
-            currentStatus.activity = .atPrompt
+            currentStatus.activity = droppedEarlyEvent ? .unknown : .atPrompt
+            droppedEarlyEvent = false
         case .userPromptSubmit:
             currentStatus.activity = .working
             currentStatus.lastUsedAt = receivedAt

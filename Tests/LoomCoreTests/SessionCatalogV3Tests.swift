@@ -285,6 +285,10 @@ struct SessionCatalogV3Tests {
         #expect(try await catalog.session(id: older.id)?.lastActivityAt == Date(timeIntervalSince1970: 300))
         let page = try await catalog.sessionPage(CatalogQuery(scope: .all, order: .recentActivity, search: ""), after: nil)
         #expect(page.sessions.first?.session.id == older.id)
+        // Viewing such a row freezes its fallback instead of moving it (the 0.2.1 bug again).
+        try await catalog.markUsed(sessionID: older.id, at: Date(timeIntervalSince1970: 900))
+        #expect(try await catalog.session(id: older.id)?.lastActivityAt == Date(timeIntervalSince1970: 300))
+        #expect(try await catalog.session(id: older.id)?.lastUsedAt == Date(timeIntervalSince1970: 900))
     }
 
     @Test func aViewMovesTheUseDateAndNotTheActivityTimeOrThePageOrder() async throws {

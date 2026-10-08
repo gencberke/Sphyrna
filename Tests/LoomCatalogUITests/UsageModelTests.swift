@@ -417,7 +417,7 @@ struct UsageFreshnessTests {
         #expect(source.asks == 1)
     }
 
-    @Test func unavailableLimitsShowTokensOnlyAndALimitsChangeNeedsNoRead() async {
+    @Test func aFailedAskKeepsTheLastLimitsAndALimitsChangeNeedsNoRead() async {
         let clock = TestClock()
         let index = FakeUsageIndex()
         index.setTokens(1_200_000)
@@ -434,13 +434,13 @@ struct UsageFreshnessTests {
         usage.windowActivityChanged(true)
         await usage.settle()
         #expect(usage.chip?.limit == "5h 10% left")
-        source.setAnswer(nil) // the CLI cannot say any more: show nothing, no banner
+        source.setAnswer(nil) // a failed ask (offline after wake, a timeout): keep the last answer, no banner
         clock.advance(400)
         usage.windowActivityChanged(false)
         usage.windowActivityChanged(true)
         await usage.settle()
-        #expect(usage.limits == nil)
-        #expect(usage.chip?.full == "1.2M today")
+        #expect(usage.limits?.fiveHour?.usedPercent == 90)
+        #expect(usage.chip?.limit == "5h 10% left")
         #expect(usage.lastFailure == nil)
         #expect(index.refreshCalls >= reads) // the activations may read; the limits themselves never do
     }
@@ -456,6 +456,8 @@ struct UsageFreshnessTests {
         await usage.settle()
         #expect(usage.chip?.limit == "5h 10% left")
         let reads = index.refreshCalls
+        // The window stays visible but another app is in front: the tick still drops the ended window.
+        usage.windowActivityChanged(false)
         clock.advance(3 * 3_600 + 60)
         usage.minuteTick()
         #expect(usage.chip?.limit == "Wk 80% left")

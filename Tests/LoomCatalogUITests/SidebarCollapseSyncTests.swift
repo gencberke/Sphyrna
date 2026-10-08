@@ -117,6 +117,24 @@ struct SidebarCollapseSyncTests {
         #expect(sidebar.immediateMoves == [false])
     }
 
+    /// The user's case again: the expand did not happen yet, so the second Show click finishes it
+    /// instead of reversing it.
+    @Test func aSecondShowWhileTheFirstHasNotTakenEffectShowsTheSidebar() throws {
+        let (model, root) = try makeModel(collapsed: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sidebar = FakeSidebar()
+        sidebar.change(to: true, silently: true)
+        sidebar.deferCompletion = true
+        sidebar.ignoresAnimatedMoves = true
+        let sync = SidebarCollapseSync(model: model, source: sidebar)
+        sync.activate()
+        model.onToggleSidebar?()                     // Show: nothing happens yet
+        #expect(sidebar.isCollapsed)
+        model.onToggleSidebar?()                     // Show again
+        #expect(!sidebar.isCollapsed && !model.sidebarCollapsed)
+        #expect(sidebar.immediateMoves == [false])
+    }
+
     /// A second click while the first move runs reverses it at once, and the first move's late
     /// completion does not undo the second.
     @Test func aToggleDuringAMoveReversesItAndTheLateCompletionKeepsIt() throws {

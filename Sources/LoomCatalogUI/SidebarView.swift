@@ -432,8 +432,9 @@ struct ClaudeStartEntry {
     let projectID: UUID?
     private let action: NewConversationAction
 
-    static let withoutProjectTitle = "New Claude Session"
-    static let withoutProjectFooterTitle = "New Claude Session Without Project"
+    /// One title for every projectless entry: in the project view the empty-area menu also covers
+    /// gaps inside a project's group, where a bare "New Claude Session" would read as "in this project".
+    static let withoutProjectTitle = "New Claude Session Without Project"
 
     @MainActor static func inProject(_ project: CatalogProject, on model: CatalogModel) -> ClaudeStartEntry? {
         make(title: "New Claude session in \(project.name)", projectID: project.id, on: model)
