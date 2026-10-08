@@ -1,4 +1,6 @@
 import AppKit
+import LoomCore
+import os
 
 /// The thing that really collapses the sidebar (the split view's sidebar item). It owns the truth; the
 /// catalog model only mirrors it.
@@ -10,6 +12,8 @@ public protocol SidebarCollapsing: AnyObject {
     var onChange: (@MainActor () -> Void)? { get set }
     /// Moves to `collapsed` (animated); `completion` runs when the move has finished.
     func setCollapsed(_ collapsed: Bool, completion: @escaping @MainActor () -> Void)
+    /// Moves to `collapsed` at once, without animation.
+    func setCollapsedImmediately(_ collapsed: Bool)
 }
 
 /// `NSSplitViewItem.isCollapsed` observed with KVO, so a collapse is seen however it happens and not
@@ -36,6 +40,8 @@ public final class SplitViewItemCollapse: SidebarCollapsing {
             MainActor.assumeIsolated { completion() }
         })
     }
+
+    public func setCollapsedImmediately(_ collapsed: Bool) { item.isCollapsed = collapsed }
 }
 
 /// Keeps `CatalogModel.sidebarCollapsed` (and with it the Show button and the window-button gap) equal to
@@ -43,9 +49,14 @@ public final class SplitViewItemCollapse: SidebarCollapsing {
 /// state is still being restored) nothing is written back to the preferences.
 @MainActor
 public final class SidebarCollapseSync {
+    /// Read with `log show --predicate 'subsystem == "local.loom.desktop" && category == "Sidebar"' --info`.
+    static let log = Logger(subsystem: LoomSignposts.subsystem, category: "Sidebar")
     private let model: CatalogModel
     private let source: any SidebarCollapsing
     private var active = false
+    /// The animated move still running, if any; a newer toggle supersedes it.
+    private var move: (generation: UInt64, target: Bool)?
+    private var generation: UInt64 = 0
 
     public init(model: CatalogModel, source: any SidebarCollapsing) {
         self.model = model
@@ -67,8 +78,33 @@ public final class SidebarCollapseSync {
     }
 
     /// Hide or Show: the opposite of what the sidebar really is now, whatever the model believes.
+    /// A toggle during a running move reverses that move at once. A move AppKit did not carry out
+    /// (the user's report: Show visible, click had no effect) is applied without animation.
     public func toggle() {
-        source.setCollapsed(!source.isCollapsed) { [weak self] in self?.reconcile() }
+        generation &+= 1
+        let current = generation
+        if let running = move {
+            let target = !running.target
+            move = nil
+            Self.log.info("toggle during a move: target collapsed=\(target, privacy: .public)")
+            source.setCollapsedImmediately(target)
+            reconcile()
+            return
+        }
+        let target = !source.isCollapsed
+        move = (current, target)
+        Self.log.info("toggle: target collapsed=\(target, privacy: .public)")
+        source.setCollapsed(target) { [weak self] in self?.finish(generation: current, target: target) }
+        reconcile()
+    }
+
+    private func finish(generation finished: UInt64, target: Bool) {
+        guard move?.generation == finished else { return }   // superseded by a later toggle
+        move = nil
+        if source.isCollapsed != target {
+            Self.log.info("move not carried out: collapsed=\(self.source.isCollapsed, privacy: .public), applying target collapsed=\(target, privacy: .public) without animation")
+            source.setCollapsedImmediately(target)
+        }
         reconcile()
     }
 }

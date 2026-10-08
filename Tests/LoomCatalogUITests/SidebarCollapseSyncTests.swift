@@ -12,10 +12,26 @@ private final class FakeSidebar: SidebarCollapsing {
     var onChange: (@MainActor () -> Void)?
     var pendingCompletion: (@MainActor () -> Void)?
     var deferCompletion = false
+    /// An animated move AppKit does not carry out (the state stays; the completion still runs).
+    var ignoresAnimatedMoves = false
+    /// An animated move whose state flips only when it ends, with no change notification.
+    var changesSilentlyAtTheEnd = false
+    var immediateMoves: [Bool] = []
 
     func setCollapsed(_ collapsed: Bool, completion: @escaping @MainActor () -> Void) {
+        var finish = completion
+        if ignoresAnimatedMoves {
+        } else if changesSilentlyAtTheEnd {
+            finish = { [weak self] in self?.change(to: collapsed, silently: true); completion() }
+        } else {
+            change(to: collapsed, silently: false)
+        }
+        if deferCompletion { pendingCompletion = finish } else { finish() }
+    }
+
+    func setCollapsedImmediately(_ collapsed: Bool) {
+        immediateMoves.append(collapsed)
         change(to: collapsed, silently: false)
-        if deferCompletion { pendingCompletion = completion } else { completion() }
     }
 
     /// A change of the real state; `silently` is the case where no notification named it.
@@ -74,15 +90,53 @@ struct SidebarCollapseSyncTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let sidebar = FakeSidebar()
         sidebar.deferCompletion = true
+        sidebar.changesSilentlyAtTheEnd = true
         let sync = SidebarCollapseSync(model: model, source: sidebar)
         sync.activate()
         model.onToggleSidebar?()
-        #expect(sidebar.isCollapsed && model.sidebarCollapsed)
-        // A notification that was lost during the move: only the completion tells the model the end state.
-        sidebar.change(to: false, silently: true)
-        #expect(model.sidebarCollapsed)
-        sidebar.pendingCompletion?()
         #expect(!model.sidebarCollapsed)
+        // The state flipped at the end and its notification was lost: the completion tells the model.
+        sidebar.pendingCompletion?()
+        #expect(sidebar.isCollapsed && model.sidebarCollapsed)
+        #expect(sidebar.immediateMoves.isEmpty, "a move that happened needs no fallback")
+    }
+
+    /// The user's report on 0.2.1: the Show button was visible and a click did nothing. If AppKit does
+    /// not carry out the animated expand, the move is applied without animation.
+    @Test func anExpandAppKitDidNotCarryOutIsAppliedWithoutAnimation() throws {
+        let (model, root) = try makeModel(collapsed: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sidebar = FakeSidebar()
+        sidebar.change(to: true, silently: true)
+        let sync = SidebarCollapseSync(model: model, source: sidebar)
+        sync.activate()
+        #expect(model.sidebarCollapsed)
+        sidebar.ignoresAnimatedMoves = true
+        model.onToggleSidebar?()
+        #expect(!sidebar.isCollapsed && !model.sidebarCollapsed)
+        #expect(sidebar.immediateMoves == [false])
+    }
+
+    /// A second click while the first move runs reverses it at once, and the first move's late
+    /// completion does not undo the second.
+    @Test func aToggleDuringAMoveReversesItAndTheLateCompletionKeepsIt() throws {
+        let (model, root) = try makeModel()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sidebar = FakeSidebar()
+        sidebar.deferCompletion = true
+        let sync = SidebarCollapseSync(model: model, source: sidebar)
+        sync.activate()
+        model.onToggleSidebar?()                     // hide, animating
+        let firstCompletion = sidebar.pendingCompletion
+        model.onToggleSidebar?()                     // show again before the hide finished
+        #expect(!sidebar.isCollapsed && !model.sidebarCollapsed)
+        #expect(sidebar.immediateMoves == [false])
+        firstCompletion?()
+        #expect(!sidebar.isCollapsed && !model.sidebarCollapsed, "the superseded hide does not come back")
+        model.onToggleSidebar?()                     // the next toggle animates normally again
+        sidebar.pendingCompletion?()
+        #expect(sidebar.isCollapsed && model.sidebarCollapsed)
+        #expect(sidebar.immediateMoves == [false])
     }
 
     @Test func theSavedStateIsNotOverwrittenWhileItIsBeingRestored() throws {

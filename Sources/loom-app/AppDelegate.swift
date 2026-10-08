@@ -411,6 +411,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
     }
 
+    @objc func toggleSidebarFromMenu(_ sender: Any?) {
+        model?.onToggleSidebar?()
+    }
     @objc func newClaudeFromMenu(_ sender: Any?) {
         model?.startConversation(.claude, projectID: model?.contextProjectID)
     }
@@ -581,9 +584,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let viewItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
-        let sidebar = viewMenu.addItem(withTitle: "Toggle Sidebar",
-                                       action: #selector(NSSplitViewController.toggleSidebar(_:)),
+        // The same path as the Hide and Show buttons (SidebarCollapseSync), not AppKit's own toggle.
+        let sidebar = viewMenu.addItem(withTitle: "Toggle Sidebar", action: #selector(toggleSidebarFromMenu(_:)),
                                        keyEquivalent: "s")
+        sidebar.target = self
         sidebar.keyEquivalentModifierMask = [.control, .command]
         viewMenu.addItem(.separator())
         viewMenu.addItem(withTitle: "Recent Activity", action: #selector(showActivityView(_:)),
