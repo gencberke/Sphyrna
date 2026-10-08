@@ -2,7 +2,7 @@
 
 Multi-agent run 1 ([RUN-1](RUN-1.md), [D-35](../DECISIONS.md)). Written overnight as the decision input; the user accepted it on 7 Oct ([D-36](../DECISIONS.md)).
 
-**Installed now: 0.2.1** (09:40, `release/0.2.1` → `c57342f`, loom `70903a8` / `v0.2.1`; [hotfix below](#021-hotfix-option-keys)), same checks as 0.2.0 plus the Option tests. **0.2.0 installed 7 Oct 2026, 09:05:** tag `release/0.2.0` → `da413c7`; promoted into loom as `d154ebf` / `v0.2.0` (223 files, identical to the verified candidate tree); `/Applications/Loom.app` 0.2.0 (`d154ebf`) built by the loom tree's `build.sh`, deep-strict signature verified, same file layout as the candidate, no evidence code; an isolated launch smoke of the installed binary (own data root, empty Claude profile) created catalog v3, exited cleanly and left no process, preferences file, `~/.loom` or data folder behind. The commands below are the record of what ran.
+**Superseded on 8 Oct by 0.3.0** ([FEEDBACK-1](FEEDBACK-1.md#release-030)). **0.2.1** (installed 7 Oct 09:40, `release/0.2.1` → `c57342f`, loom `70903a8` / `v0.2.1`; [hotfix below](#021-hotfix-option-keys)), same checks as 0.2.0 plus the Option tests. **0.2.0 installed 7 Oct 2026, 09:05:** tag `release/0.2.0` → `da413c7`; promoted into loom as `d154ebf` / `v0.2.0` (223 files, identical to the verified candidate tree); `/Applications/Loom.app` 0.2.0 (`d154ebf`) built by the loom tree's `build.sh`, deep-strict signature verified, same file layout as the candidate, no evidence code; an isolated launch smoke of the installed binary (own data root, empty Claude profile) created catalog v3, exited cleanly and left no process, preferences file, `~/.loom` or data folder behind. The commands below are the record of what ran.
 
 ## The candidate
 

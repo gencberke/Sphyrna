@@ -49,7 +49,7 @@ Answered on 8 Oct:
 2. **Plan-limit asks:** the user asked what collects the numbers; explained (tokens come from Claude's local transcripts read by Loom; the plan percentages come from the Claude CLI's own `get_usage`, which asks Anthropic with the CLI's login). Cadence unchanged.
 3. **Sidebar:** the Show button **was visible** when the click did nothing. Two read-only investigations and a judge found no deterministic cause in code (an animated expand AppKit ignored or lost, or a click that never reached the button); `ee0fea1` applies a move AppKit did not carry out without animation, serializes toggles, routes Ctrl+Cmd+S through the same path and logs each toggle (`local.loom.desktop` / `Sidebar`), so a repeat shows whether the click arrived.
 4. **Project name on cards:** no answer yet; screenshot if it still appears.
-5. **Install:** the user asked to install this round as 0.3.0 without running the full release suite.
+5. **Install:** the user asked to install this round as 0.3.0 without running the full release suite ([D-38](../DECISIONS.md)); done, see [Release 0.3.0](#release-030).
 
 ## Verification (8 Oct 2026, swarm/1 `ed2914c`)
 
@@ -82,6 +82,10 @@ A four-area read-only review (hooks and resume, catalog time, usage and plan lim
 Not changed: model-scoped weekly windows (`seven_day_opus` and similar) are not shown in the chip or the Plan limits block; whether to show them is the user's call.
 
 Checks after the fixes: `scripts/check.sh` on the affected suites 136 + 249 passed (build and wording guard ok), then the seven directly affected suites 47 + 45 passed after the mutation check; the full release suite was **not** run (the user asked to install without it).
+
+## Release 0.3.0
+
+Installed 8 Oct 2026, 09:27: tag `release/0.3.0` → loom-dev `1681f0f`; promoted into loom as `e392d7c` / `v0.3.0` (227 files); `/Applications/Loom.app` 0.3.0 built by the loom tree's `build.sh` (Loom.app was not running). Checked: deep-strict signature, version 0.3.0 and `local.loom.desktop`, the menu validation selector and the shared projectless title in the binary, no development evidence strings in `Loom`, `loom-hook` or `loom-run-host`; an isolated hidden launch (own `--data-root`, empty `CLAUDE_CONFIG_DIR`) created catalog schema 3 and the usage index, exited on SIGTERM with no process left and did not touch the preferences file or `~/Library/Application Support/Loom`. Not run: the full release suite and the visible checks (the user asked to install without them).
 
 ## Real-Claude turns
 
