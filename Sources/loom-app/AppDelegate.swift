@@ -476,10 +476,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let toolchains: ProviderToolchainResolver = evidenceToolchains(root: root, supervisor: supervisor, origin: origin)
             ?? { provider in try await system.toolchain(for: provider) }
         claudeToolchain.provide(toolchains)
+        // The commit names the build for Codex; CFBundleVersion is only a growing number.
+        let info = Bundle.main.infoDictionary
+        let build = info?["LoomRevision"] as? String ?? info?["CFBundleVersion"] as? String ?? "dev"
         return SessionRuntimeConfiguration(
             toolchains: toolchains, hookHelperPath: helpers.appendingPathComponent("loom-hook").path,
             socketDirectory: socketDirectory,
-            clientVersion: "loom-\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "dev")",
+            clientVersion: "loom-\(build)",
             // A running session is never stopped for inactivity (user decision, 8 Oct 2026).
             idlePolicy: SessionIdlePolicy(stopsIdleRuns: false),
             claudeProfileDirectory: evidenceClaudeProfile(root: root),

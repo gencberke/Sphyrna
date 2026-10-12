@@ -37,9 +37,11 @@ extension AppDelegate {
         model.usage = usageModel
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "0.1.0"
-        let build = info?["CFBundleVersion"] as? String
+        // "build 12, 611bc29": the numeric build and the commit it was built from.
+        let build = [info?["CFBundleVersion"] as? String, info?["LoomRevision"] as? String]
+            .compactMap { $0 }.joined(separator: ", ")
         let about = SettingsAbout(
-            version: build.map { "Version \(version) (build \($0))" } ?? "Version \(version)",
+            version: build.isEmpty ? "Version \(version)" : "Version \(version) (build \(build))",
             dataFolder: root, claudeProfile: usageModel == nil ? nil : layout.configDirectory)
         let diagnostics = makeDiagnosticsCollection()
         self.diagnostics = diagnostics

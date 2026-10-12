@@ -18,6 +18,7 @@ extension SessionRuntime {
         ]
         if let version = info?["CFBundleShortVersionString"] as? String { fields["loomVersion"] = .string(version) }
         if let build = info?["CFBundleVersion"] as? String { fields["loomBuild"] = .string(build) }
+        if let revision = info?["LoomRevision"] as? String { fields["loomRevision"] = .string(revision) }
         journal.record("launch", fields)
         let client = configuration.clientVersion
         LoomLog.notice(.lifecycle, "Runtime started (\(client))")
@@ -131,6 +132,7 @@ extension SessionRuntime {
             application: .init(
                 version: info?["CFBundleShortVersionString"] as? String ?? "unknown",
                 build: info?["CFBundleVersion"] as? String,
+                revision: info?["LoomRevision"] as? String,
                 macOS: ProcessInfo.processInfo.operatingSystemVersionString),
             claudeCLI: claude, catalog: try? await catalog.diagnosticsCounts(), usage: usage,
             planLimitsFailure: planLimitsFailure, hooks: HookDiagnostics.snapshot(), log: nil)

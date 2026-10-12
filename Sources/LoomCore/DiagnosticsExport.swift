@@ -87,6 +87,8 @@ public struct DiagnosticsSummary: Codable, Equatable, Sendable {
     public struct Application: Codable, Equatable, Sendable {
         public var version: String
         public var build: String?
+        /// The commit the bundle was built from (`LoomRevision`); nil for a build without it.
+        public var revision: String? = nil
         public var macOS: String
     }
 

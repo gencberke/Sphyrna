@@ -58,6 +58,10 @@ if [[ -n $(git -C "$root" status --porcelain) ]]; then
   exit 1
 fi
 revision=$(git -C "$root" rev-parse --short HEAD)
+# CFBundleVersion must be numeric: LaunchServices compares it to pick the newest copy of a bundle
+# id. The loom tree gains one commit per promote, so its commit count only grows; the commit
+# itself is LoomRevision.
+build_number=$(git -C "$root" rev-list --count HEAD)
 
 # Any process executing from the target bundle (app, helpers, run hosts).
 running_from_target() {
@@ -89,7 +93,7 @@ matches=(${(f)match_text})
 (( ${#matches} == 1 )) || { echo "Code-signing identity must match exactly one valid certificate: $requested (found ${#matches})" >&2; exit 1; }
 identity=$matches[1]
 
-echo "Loom $version ($revision) -> $final_app"
+echo "Loom $version (build $build_number, $revision) -> $final_app"
 echo "Signing identity: $identity ($requested)"
 echo "Build scratch: $scratch"
 if (( check_only )); then
@@ -148,8 +152,10 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key><string>Loom</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
-  <key>CFBundleVersion</key><string>$revision</string>
+  <key>CFBundleVersion</key><string>$build_number</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <key>LSMinimumSystemVersion</key><string>27.0</string>
+  <key>LoomRevision</key><string>$revision</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict>
