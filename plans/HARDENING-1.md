@@ -8,11 +8,9 @@ State on 12 Oct (late evening):
 
 - **Release 0.4.0** ships H1-A to H1-E and the bundle keys (numeric build number, `LoomRevision`, app category). Its checks are in [Release 0.4.0](#release-040-12-oct-evening). The tag, promote and install are recorded there.
 - **Committed on `swarm/1`.** `2bbebf3` A and B; `37b155f` C; `037810c` E and D1; `07fafb6` D2; `c677ae1` the bundle keys.
-- **H1-F in progress** (the user's go, 12 Oct late evening: "şimdi başlayabilirsin"). An implementer builds it in worktree `loom-h1/wt/F` (base `2d3559b`, scratch `loom-h1/scratch-F`). It covers the menu bar per D-52, the needs-approval notification and the three Settings rows.
-  - **Test scope, the user's word:** test the new features only, not everything again ("menü bar için koş … en baştan her şeyi test etme"). So: the slice's new suites, the debug and staged release-tree builds, an on-screen pass of the menu bar states, menu, notification logic and Settings rows on a package, and the badge's CPU and wakeup cost (menu bar on against off, Loom inactive, one session working). No full suite, no matrix.
-  - **Ships as 0.4.1.**
-  - **Screen Time:** the question stays open. After 0.4.0 the user can look again for Loom, which now has a category and a numeric build.
-- **Old worktrees** `loom-h1/wt/A`, `B`, `C`, `E`, `D1`, `D2` and `ref-033` are merged or done and can be removed with the user's OK.
+- **Release 0.4.1** adds H1-F (the user's go, 12 Oct late evening: "şimdi başlayabilirsin"; test scope: the new features only). Checks are in [Release 0.4.1](#release-041-12-oct-late-evening).
+- **Screen Time:** the question stays open; the user can look for Loom again (category and numeric build since 0.4.0).
+- **Old worktrees** `loom-h1/wt/A`, `B`, `C`, `E`, `D1`, `D2`, `F` and `ref-033` are merged or done and can be removed with the user's OK.
 
 ## Slices
 
@@ -141,6 +139,28 @@ The first combined run failed two LoomCore tests that passed in B's own run. Bot
 - **`idleStopClosesInputAtomicallyAndPendingBytesBlockIt`**. `turnComplete` arrives before the Stop hook's helper process exits, and a live helper blocks the idle stop by itself. The test now waits until the leader is alone, as `childExitRearmsAutomaticIdleWithoutAnotherProviderEvent` already did, and names the blockers if it fails.
 
 The rerun passed. One run does not prove the races are gone; the evening's full suite repeats them.
+
+## Release 0.4.1 (12 Oct, late evening)
+
+0.4.1 adds H1-F to 0.4.0: the menu bar item, the needs-approval banner and the three Settings rows. The user set the test scope: test the new features only, not everything again.
+
+- **Targeted checks.** Log `check-20261012T234100-75401.log`: the debug build, the staged release tree without evidence code, and 53 tests in the menu bar suites and the suites H1-F touched (`MenuBarTests`, `MenuBarModelTests`, `MotionAccessibilityTests`, `DisplayAndPreferencesTests`, `ProductPreferencesTests`, `SettingsRoutingTests`, `LoomThemeTests`).
+- **Package.** `Loom-Dev/packages/r041-07610a6`, build 77.
+- **H1-F pass on the package.** Fake providers, a fresh data root, launched through LaunchServices; a scratch driver outside the repo. All 16 checks passed:
+  - Idle: the item shows, no badge, label "Loom", and leftover banners are removed at launch. The empty menu is one disabled line, then the actions.
+  - Working: the chase badge runs, with the label "Loom, 1 session working" and a Working section.
+  - Show in menu bar off removes the item; on brings it back with the chase running.
+  - Needs approval while Loom is inactive: one banner, "alpha · Claude is waiting for your approval.". The dot wins over the chase, with the label "Loom, 1 session needs you, 1 working". The menu lists Needs you, then Working.
+  - Answering the approval removes the banner and posts no second one. A failure shows the red dot and posts no banner.
+  - A menu row selects its session. The Open at login switch registers through the service. Quit is clean.
+- **Badge cost.** Loom inactive (Finder in front), one session working, 60 s each:
+  - Menu bar on, chase running: app 0.017 % CPU, 0 idle wakeups/s.
+  - Menu bar off: 0.54 %, 0.08/s.
+  - The chase costs the app nothing measurable. The higher off value comes from other work in that window. WindowServer's share was not measured.
+- **Look.**
+  - The item's drawing for idle, working, attention and failure on a dark and a light bar (a contact sheet of `screenshot-menubar`): the badge sits in the cut-away corner, and the light bar takes the darker values.
+  - Settings → General: the second card with three switches, and both notices with their buttons.
+- **Not run.** The item in the real menu bar (the user looks); the opened menu's look; real banners, the permission prompt and the deep links; real `SMAppService`; Increase Contrast; the full suite (the user's scope).
 
 ## Release 0.4.0 (12 Oct, evening)
 
