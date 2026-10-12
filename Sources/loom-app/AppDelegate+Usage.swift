@@ -24,7 +24,12 @@ extension AppDelegate {
             let watcher = UsageTranscriptWatcher(directory: layout.projectsDirectory) { [weak created] change in
                 Task { @MainActor in created?.transcriptsChanged(change) }
             }
-            watcher.start()
+            // Without a stream (it failed to start, or the profile has no `projects` folder yet) a
+            // finished turn keeps reading every transcript.
+            var isDirectory: ObjCBool = false
+            let hasProjects = FileManager.default.fileExists(atPath: layout.projectsDirectory.path, isDirectory: &isDirectory)
+                && isDirectory.boolValue
+            created.setTranscriptWatcherRunning(watcher.start() && hasProjects)
             usageWatcher = watcher
             ConversationForgetters.shared.register { _, ids in try await index.forget(sessionIDs: ids) }
         }

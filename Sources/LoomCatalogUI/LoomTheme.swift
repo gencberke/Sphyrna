@@ -1,4 +1,5 @@
 import AppKit
+import LoomCore
 import LoomTerminal
 import SwiftUI
 
@@ -109,6 +110,11 @@ enum LoomTheme {
         /// Secondary text as a style that resolves against the environment's contrast setting.
         static let secondaryStyle = ContrastStyle(
             standard: Tone(rgb: secondaryRGB, opacity: 1), increased: Tone(rgb: secondaryIncreasedRGB, opacity: 1))
+        /// Secondary text and the close glyph on a tab washed with a project tone: the lightest wash
+        /// would take plain secondary text under 4.5:1, so this is lifted just enough to keep it
+        /// (at least 4.5:1 on a resting tab, 3:1 for the glyph on the open tab).
+        static let secondaryOnTintRGB = RGB(hex: 0x9297A8)
+        static let secondaryOnTint = secondaryOnTintRGB.color
     }
 
     /// The one brand color (the fleece of the mark). Fills carry dark text, never light text.
@@ -132,6 +138,79 @@ enum LoomTheme {
         static let workingNS = NSColor(Text.primary)
         /// Fill opacity of a callout tinted with a status color.
         static let tintOpacity = 0.10
+    }
+
+    /// The project colour class (D-48): six soft tones besides the accent and the three status hues. Used
+    /// only for the sidebar stripe, the tab tint and the header stripe; never a dot, never in the
+    /// indicator slot, never a text colour, never inside the terminal (DESIGN §6). The base colour is
+    /// the stripe colour and the tint source; Increase Contrast swaps in a lighter stripe colour.
+    /// Each base is at least 3:1 on the sidebar's worst case (`sidebarOverWhite`) and at least 30 degrees
+    /// of hue from attention, unviewed, failure and the accent (`LoomThemeTests`).
+    enum ProjectColor {
+        static func baseRGB(_ tone: ProjectTone) -> RGB {
+            switch tone {
+            case .rose: RGB(hex: 0xE68EBA)
+            case .orchid: RGB(hex: 0xD194E6)
+            case .aqua: RGB(hex: 0x80D5DB)
+            case .mint: RGB(hex: 0x83D8B0)
+            case .sage: RGB(hex: 0x92C186)
+            case .lemon: RGB(hex: 0xCCE07B)
+            }
+        }
+
+        static func increasedRGB(_ tone: ProjectTone) -> RGB {
+            switch tone {
+            case .rose: RGB(hex: 0xF5B2D4)
+            case .orchid: RGB(hex: 0xE6B7F5)
+            case .aqua: RGB(hex: 0xA0E9EE)
+            case .mint: RGB(hex: 0xA2ECC9)
+            case .sage: RGB(hex: 0xAADB9E)
+            case .lemon: RGB(hex: 0xE0F29C)
+            }
+        }
+
+        static func stripeRGB(_ tone: ProjectTone, for contrast: ColorSchemeContrast) -> RGB {
+            contrast == .increased ? increasedRGB(tone) : baseRGB(tone)
+        }
+
+        /// The stripe colour as a style that resolves against the environment's contrast setting.
+        static func stripe(_ tone: ProjectTone) -> ContrastStyle {
+            ContrastStyle(standard: Tone(rgb: baseRGB(tone), opacity: 1),
+                          increased: Tone(rgb: increasedRGB(tone), opacity: 1))
+        }
+
+        // The stripe: 3 pt, 4 pt under Increase Contrast. In the sidebar it sits in the list gutter,
+        // `stripeOutset` left of the leading edge of a project header and of each of its cards, so the
+        // header and its cards read as one rail; the header's stripe starts below the row's top padding.
+        static let stripeWidth: CGFloat = 3
+        static let stripeWidthIncreased: CGFloat = 4
+        static let stripeRadius: CGFloat = 2
+        static let stripeOutset: CGFloat = 4
+        static let headerStripeTop: CGFloat = 11
+        static let headerStripeBottom: CGFloat = 1
+        static func stripeWidth(for contrast: ColorSchemeContrast) -> CGFloat {
+            contrast == .increased ? stripeWidthIncreased : stripeWidth
+        }
+
+        /// The detail header's mark after the status label: a stripe and the project name.
+        static let headerStripeHeight: CGFloat = 12
+        static let headerGap: CGFloat = 6
+
+        // Tab tint (T5): a wash of the tone on every tab, a step stronger on hover; on the open tab a
+        // stronger wash over the selection fill and a 1 pt stroke of the tone. Increase Contrast draws
+        // that stroke in the lighter stripe colour at a higher opacity; the washes stay as they are.
+        // The open tab's wash is the strongest that keeps primary text at 7:1 on every tone (the
+        // preview drew 18 %, which takes Lemon, Aqua, Mint and Sage under it); secondary text on a
+        // washed tab is `Text.secondaryOnTint`.
+        static let tabWash = 0.10
+        static let tabWashHover = 0.15
+        static let tabWashOpen = 0.15
+        static let tabStrokeOpen = 0.36
+        static let tabStrokeOpenIncreased = 0.75
+
+        /// The menu swatch: a rounded square, never a dot.
+        static let swatch: CGFloat = 12
+        static let swatchRadius: CGFloat = 3
     }
 
     enum Opacity {

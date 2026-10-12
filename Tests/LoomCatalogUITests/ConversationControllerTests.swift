@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import LoomCore
 import LoomTerminal
+import Synchronization
 import Testing
 @testable import LoomCatalogUI
 
@@ -503,6 +504,102 @@ struct ConversationControllerTests {
             try await Task.sleep(for: .milliseconds(300))
             #expect(fixture.controller.terminalCount == 1)
             #expect(await fixture.supervisor.session(id: newID)?.currentRun != nil)
+        }
+    }
+
+    // MARK: Reconcile asks the supervisor only about what a frame does not confirm
+
+    /// Every run id the supervisor was asked about, in order.
+    private final class OwnerQuestions: Sendable {
+        private let asked = Mutex<[UUID]>([])
+        var runs: [UUID] { asked.withLock { $0 } }
+        func note(_ runID: UUID) { asked.withLock { $0.append(runID) } }
+    }
+
+    private func countOwnerQuestions(_ fixture: Fixture) -> OwnerQuestions {
+        let questions = OwnerQuestions()
+        let supervisor = fixture.supervisor
+        fixture.controller.ownerLookup = { runID in
+            questions.note(runID)
+            return await supervisor.activeSessionID(runID: runID)
+        }
+        return questions
+    }
+
+    private func startLiveTerminals(_ fixture: Fixture, count: Int) async throws -> [UUID] {
+        for number in 1...count {
+            fixture.model.startConversation(.claude, projectID: nil)
+            #expect(await waitUntil { fixture.controller.terminalCount == number })
+            #expect(await waitUntil { !fixture.model.isStarting(.claude, projectID: nil) })
+        }
+        let ids = fixture.controller.entries.values.map(\.owner)
+        for id in ids {
+            let surface = try #require(surface(fixture, for: id))
+            #expect(await waitUntil { surface.screenText().contains("FAKE-CLAUDE READY") })
+        }
+        try await Task.sleep(for: .milliseconds(300)) // the start's own frames have been handled
+        return ids
+    }
+
+    @Test func framesThatShowEveryOwnerCostNoSupervisorQuestion() async throws {
+        try await withFixture { fixture in
+            let ids = try await startLiveTerminals(fixture, count: 3)
+            let questions = countOwnerQuestions(fixture)
+            // Frames that change nothing about ownership: states, issues and an unrelated session.
+            for round in 0..<5 {
+                for id in ids + [UUID()] {
+                    await fixture.hub.publish(sessionID: id, change: .issue("round \(round)"))
+                }
+                await fixture.controller.reconcile()
+            }
+            try await Task.sleep(for: .milliseconds(300)) // the observer has handled its frames
+            // Before: one question per live terminal per frame (at least 3 x 5 here).
+            #expect(questions.runs.isEmpty)
+            #expect(fixture.controller.terminalCount == 3)
+            #expect(Set(fixture.controller.entries.values.map(\.owner)) == Set(ids))
+        }
+    }
+
+    @Test func aRunEndIsStillHandledAndOnlyItsRunIsAsked() async throws {
+        try await withFixture { fixture in
+            let ids = try await startLiveTerminals(fixture, count: 3)
+            let stopped = ids[0]
+            let stoppedRun = try #require(fixture.controller.entries.values.first { $0.owner == stopped }?.runID)
+            let questions = countOwnerQuestions(fixture)
+            fixture.model.stopConversation(stopped)
+            #expect(await waitUntil { fixture.controller.terminalCount == 2 && fixture.model.busy[stopped] == nil })
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(!questions.runs.isEmpty) // the end was confirmed with the supervisor
+            #expect(Set(questions.runs) == [stoppedRun])
+            #expect(Set(fixture.controller.entries.values.map(\.owner)) == Set(ids.dropFirst()))
+            #expect(fixture.model.terminalView(for: stopped) == nil)
+        }
+    }
+
+    @Test func anOwnerMoveIsStillHandledAndOnlyItsRunIsAsked() async throws {
+        try await withFixture { fixture in
+            let ids = try await startLiveTerminals(fixture, count: 2)
+            let oldID = try #require(fixture.model.selectedSessionID)
+            #expect(ids.contains(oldID))
+            let other = try #require(ids.first { $0 != oldID })
+            let clearedRun = try #require(fixture.controller.entries.values.first { $0.owner == oldID }?.runID)
+            let otherRun = try #require(fixture.controller.entries.values.first { $0.owner == other }?.runID)
+            let terminal = try #require(surface(fixture, for: oldID))
+            type("before clear", into: terminal)
+            #expect(try await waitUntil { try await fixture.catalog.session(id: oldID)?.session.providerConversationID != nil })
+            let questions = countOwnerQuestions(fixture)
+
+            type("/clear", into: terminal)
+            #expect(try await waitUntil { try await fixture.catalog.sessions().count == 3 })
+            let newID = try #require(try await fixture.catalog.sessions().first { !ids.contains($0.session.id) }?.session.id)
+            #expect(await waitUntil { fixture.controller.entries[clearedRun]?.owner == newID })
+            #expect(await waitUntil { fixture.model.selectedSessionID == newID }) // the selection follows
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(!questions.runs.isEmpty)
+            #expect(Set(questions.runs) == [clearedRun])
+            #expect(!questions.runs.contains(otherRun))
+            #expect(fixture.controller.entries[otherRun]?.owner == other)
+            #expect(fixture.controller.terminalCount == 2)
         }
     }
 

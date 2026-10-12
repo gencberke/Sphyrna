@@ -68,6 +68,11 @@ public struct CatalogProject: Equatable, Sendable, Identifiable {
     public let sortOrder: Int
     public let collapsed: Bool
     public let createdAt: Date
+    /// The project's colour (D-48). Nil for a project the user set to None and for a value this build
+    /// does not know (a later build's tone), which stays stored and shows as neutral.
+    public let tone: ProjectTone?
+    /// The user chose None; the stored value is kept, so the project is never given a tone again.
+    public let colorIsNone: Bool
 }
 
 public struct CatalogAddedProject: Equatable, Sendable {
@@ -264,7 +269,7 @@ public actor SessionCatalog {
 
     func project(where predicate: String, value: String) throws -> CatalogProject? {
         try database.withStatement("""
-            SELECT id, path, name, sort_order, collapsed, created_at
+            SELECT \(Self.projectColumns)
             FROM projects WHERE \(predicate) LIMIT 1
             """) { statement in
             try database.bind(value, at: 1, to: statement)
@@ -273,16 +278,21 @@ public actor SessionCatalog {
         }
     }
 
+    static let projectColumns = "id, path, name, sort_order, collapsed, created_at, color"
+
     func decodeProject(_ statement: OpaquePointer) throws -> CatalogProject {
         guard let id = UUID(uuidString: try database.text(statement, column: 0)) else {
             throw SessionCatalogError.invalidRow("invalid project identity")
         }
+        let color = database.optionalText(statement, column: 6)
         return CatalogProject(
             id: id, path: try database.text(statement, column: 1),
             name: try database.text(statement, column: 2),
             sortOrder: Int(sqlite3_column_int64(statement, 3)),
             collapsed: sqlite3_column_int(statement, 4) != 0,
-            createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 5))
+            createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 5)),
+            tone: color.flatMap(ProjectTone.init(rawValue:)),
+            colorIsNone: color == ProjectTone.noneValue
         )
     }
 

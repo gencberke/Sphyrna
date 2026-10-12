@@ -139,25 +139,37 @@ struct ConversationTabItem: View {
         let row = model.tabRow(id)
         let title = row.map { model.title(of: $0) } ?? "Session"
         let indicator = row?.indicator ?? .idle
+        let mark = row.flatMap { model.projectMark(of: $0.record) }
+        let tint = ProjectTabStyle(tone: mark?.tone, selected: selected, hovering: hovering)
         HStack(spacing: LoomTheme.TabStrip.tabSpacing) {
             IndicatorView(indicator: indicator)
             Text(title)
                 .font(LoomTheme.Typography.smallMedium).italic(transient)
-                .foregroundStyle(titleColor(selected: selected, stale: indicator == .stale))
+                .foregroundStyle(titleColor(selected: selected, stale: indicator == .stale, tinted: tint.wash != nil))
                 .lineLimit(1).truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if selected { TabCloseButton(model: model, id: id, tabHovering: hovering) }
+            if selected { TabCloseButton(model: model, id: id, tabHovering: hovering, tinted: tint.wash != nil) }
         }
         .padding(.leading, LoomTheme.TabStrip.tabInset)
         .padding(.trailing, selected ? LoomTheme.TabStrip.selectedTrailing : LoomTheme.TabStrip.tabInset)
         .frame(height: LoomTheme.TabStrip.tabHeight)
-        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
-            .fill(selected ? LoomTheme.Surface.selected : (hovering ? LoomTheme.Surface.controlHover : .clear)))
+        .background {
+            // A project tone washes the tab over the selection fill; its hover wash replaces the hover fill.
+            ZStack {
+                RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
+                    .fill(selected ? LoomTheme.Surface.selected
+                          : (hovering && tint.wash == nil ? LoomTheme.Surface.controlHover : .clear))
+                if let wash = tint.wash {
+                    RoundedRectangle(cornerRadius: LoomTheme.Radius.control).fill(wash.color)
+                }
+            }
+        }
         .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
-            .strokeBorder(selected ? LoomTheme.Surface.hairline : .clear, lineWidth: LoomTheme.Line.hairline))
+            .strokeBorder(selected ? tint.stroke.map(AnyShapeStyle.init) ?? AnyShapeStyle(LoomTheme.Surface.hairline)
+                          : AnyShapeStyle(Color.clear), lineWidth: LoomTheme.Line.hairline))
         .overlay(alignment: .trailing) {
             if hovering && !selected {
-                TabCloseButton(model: model, id: id, tabHovering: true)
+                TabCloseButton(model: model, id: id, tabHovering: true, tinted: tint.wash != nil)
                     .padding(.trailing, LoomTheme.TabStrip.hoverCloseInset)
             }
         }
@@ -170,9 +182,10 @@ struct ConversationTabItem: View {
             if transient { Button("Open in Tab") { model.openTab(id) } }
             Button("Close Tab") { model.closeTab(id) }
         }
-        .help(title)
+        .help(Self.tooltip(title: title, project: mark?.name))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Self.accessibilityLabel(title: title, status: indicator.label, transient: transient))
+        .accessibilityLabel(Self.accessibilityLabel(
+            title: title, status: indicator.label, transient: transient, project: mark?.name))
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
         // Activating the tab selects it; closing is the named action (the close button itself is
         // hidden from accessibility, so VoiceOver cannot activate it by accident).
@@ -180,14 +193,23 @@ struct ConversationTabItem: View {
         .accessibilityAction(named: "Close Tab") { model.closeTab(id) }
     }
 
-    static func accessibilityLabel(title: String, status: String?, transient: Bool) -> String {
-        title + (status.map { ", \($0)" } ?? "") + (transient ? ", not pinned" : "")
+    /// "<title>, Finished, project enmusait, not pinned"; the project only while project colors are on.
+    static func accessibilityLabel(title: String, status: String?, transient: Bool, project: String? = nil) -> String {
+        title + (status.map { ", \($0)" } ?? "") + (project.map { ", project \($0)" } ?? "")
+            + (transient ? ", not pinned" : "")
     }
 
-    private func titleColor(selected: Bool, stale: Bool) -> Color {
+    /// The title, and a "Project: <name>" line under it while project colors are on.
+    static func tooltip(title: String, project: String?) -> String {
+        project.map { "\(title)\nProject: \($0)" } ?? title
+    }
+
+    /// A tab washed with its project's tone keeps its secondary text at 4.5:1 with the lifted tone.
+    private func titleColor(selected: Bool, stale: Bool, tinted: Bool) -> Color {
+        let secondary = tinted ? LoomTheme.Text.secondaryOnTint : LoomTheme.Text.secondary
         if selected { return LoomTheme.Text.primary }
-        if stale { return LoomTheme.Text.secondary }
-        return hovering ? LoomTheme.Text.primary : LoomTheme.Text.secondary
+        if stale { return secondary }
+        return hovering ? LoomTheme.Text.primary : secondary
     }
 }
 
@@ -195,12 +217,15 @@ private struct TabCloseButton: View {
     let model: CatalogModel
     let id: UUID
     let tabHovering: Bool
+    /// The tab carries a project tone: the glyph uses the lifted secondary to keep 3:1 on the wash.
+    var tinted = false
     @State private var hovering = false
 
     var body: some View {
         Button { model.closeTab(id) } label: {
             Image(systemName: "xmark").font(LoomTheme.Typography.chevron)
-                .foregroundStyle(hovering ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
+                .foregroundStyle(hovering ? LoomTheme.Text.primary
+                                 : (tinted ? LoomTheme.Text.secondaryOnTint : LoomTheme.Text.secondary))
                 .frame(width: LoomTheme.TabStrip.close, height: LoomTheme.TabStrip.close)
                 .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.bar)
                     .fill(hovering || (tabHovering && !isSelected) ? LoomTheme.Surface.controlPressed : .clear))

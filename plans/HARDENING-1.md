@@ -2,6 +2,27 @@
 
 Goal: stability and daily-use polish from the 12 Oct review ([D-45](../DECISIONS.md)), project colours ([D-48](../DECISIONS.md)) and Loom as a first-class app on the user's Mac ([D-47](../DECISIONS.md)). The review was three read-only passes (core robustness, UI layer, project-colour touch points); the planner checked the decisive findings in the source. Their file:line evidence is restated in the slice Briefs below, so this file keeps only the outcome.
 
+## Resume here
+
+State when the user shut the Mac down on 12 Oct (evening):
+
+- **Committed on `swarm/1`.**
+  - `2bbebf3` A and B.
+  - `37b155f` C.
+  - The next commit: E and D1 with the records.
+- **Waiting in worktree `~/Library/Caches/loom-h1/wt/D2`: H1-D2**, done by its implementer and checked there, not reviewed by the planner yet.
+  - Review it: `git -C <wt/D2> add -A && git -C <wt/D2> diff --cached 73dac855ac5620b6defb25785be963c910d3e9a2`.
+  - Its report covers:
+    - Patching one row for run, lifecycle, identity and activity frames.
+    - One windowed search query, capped per group plus 5,000 rows overall.
+    - A per-row selected flag, `CardTimeLabel` for the minute tick, cached tooltips and memoised day sections.
+    - New `SidebarRenderProbe` and `afterSearchRead` test seams.
+    - Counts: run frame 5 → 1 queries; search 7 → 1; selection 30 → 2 card bodies; minute tick 30 → 0.
+  - Then apply the diff to `swarm/1`, run `scripts/check.sh --tests` and commit (the user's answer "okeyim", 12 Oct, to committing each reviewed slice of this round, no push).
+- **Next after D2: H1-F**, on the user's go only. It covers the menu bar per D-52, notifications, Open at login, Screen Time fixes (category, numeric build numbers) and the open Screen Time question.
+- **Old worktrees** `loom-h1/wt/A`, `B`, `C`, `E`, `D1` are merged and can be removed with the user's OK.
+- **On the user's word only:** the full release suite and the on-screen checks listed in the slice notes.
+
 ## Slices
 
 | Slice | Content | Write area | State |
@@ -9,9 +30,10 @@ Goal: stability and daily-use polish from the 12 Oct review ([D-45](../DECISIONS
 | H1-A Daily use | Ended run keeps its last screen (read-only); Quit asks while sessions work or wait for approval; Quit Anyway, never blocking a system logout or restart; jump to the next or previous session that needs the user (Cmd+J, Shift+Cmd+J); next or previous session (Option+Cmd+Down/Up); the sidebar follows the selection; Reveal in Finder, Copy Claude Session ID, Copy Resume Command; Dock badge; bugs: a transient catalog error unpins a tab, the bottom spinner can stay stuck | `LoomCatalogUI`, `loom-app`, `LoomTerminal`, UI-MAP | implemented and reviewed; applied to `swarm/1` uncommitted; combined checks passed (`scripts/check.sh --tests`, log `check-20261012T161645-8295.log`: LoomCoreTests 568, LoomCatalogUITests 311, LoomTerminalTests 42, LoomLaunchOptionsTests 8; the staged release tree built in `check-20261012T160621-4764.log`); waiting for the evening's on-screen check |
 | H1-B Core hardening | `os.Logger` categories with privacy and rate limits; a bounded diagnostic journal; registry tolerance; capabilities no longer refuse a start; toolchain re-resolved when the executable changes; hook watchdog; runtime catalog write failures; crash residue (open runs, stale sockets, unreadable run folders); catalog backup with restore and start-fresh; diagnostics bundle API; usage and plan-limit failure fields; non-sticky clock ambiguity | `LoomCore`, `CLoomPOSIX`, `loom-hook`, ARCHITECTURE, DEVELOPMENT | implemented and reviewed; applied to `swarm/1` uncommitted; combined checks passed (see H1-A) |
 | H1-C Wiring | UI for H1-B: <ul><li>Help menu and Settings → About: Collect Diagnostics… (reveals the export)</li><li>Catalog restore prompt at launch (Restore Backup / Start Fresh)</li><li>"Plan limits unavailable" and not-understood usage lines on the Usage page</li><li>The watchdog issue visible above a live terminal</li><li>`toolchainInvalidator` wired in AppDelegate</li><li>The export's `log show` limited to this app's processes, so test and dev runs that share the subsystem stay out</li><li>A permanent deletion also removes `catalog.damaged-*`</li></ul> | `LoomCatalogUI`, `loom-app`, small `LoomCore` | implemented and reviewed; applied to `swarm/1` uncommitted. The implementer's `--tests` passed on the same code in worktree C (log `check-20261012T163441-15572.log`: LoomCoreTests 572, the other targets 324); after the planner's two changes the touched suites passed (log `check-20261012T163917-18365.log`, 36 tests) |
-| H1-D Performance | See [Performance candidates](#performance-candidates) | `LoomCatalogUI`, `SessionCatalog+Paging`, `ClaudeUsageIndex` | waiting for user decision |
-| H1-E Project colours | Per D-48, look chosen on [the preview](../design/project-colors-preview.html) | `LoomCore` (`projects.color`), `LoomCatalogUI`, DESIGN, UI-MAP | look chosen ([D-50](../DECISIONS.md)): C's stripe in the sidebar, T5's light tint on the tabs (the user approved the drawing, 12 Oct), the stripe and name in the detail header; in implementation in worktree `loom-h1/wt/E`, on top of A, B and C (base tree `1dc0562`) |
-| H1-F macOS integration | Per D-47 and [D-49](../DECISIONS.md): menu bar item (Loom mark, working chase, status dot, session menu), notifications for Needs approval, Open at Login setting, Screen Time visibility, numeric versions from tags | `loom-app`, `LoomCatalogUI`, `scripts/release` | waiting for planning (menu bar preview first; Screen Time cause under research) |
+| H1-D1 Performance, part 1 | Candidates 1 (usage after a finished turn) and 5 (terminal reconcile), [D-51](../DECISIONS.md) | `UsageModel`, `UsageTranscriptWatcher`, `ConversationController` | done and committed with H1-E; combined checks passed (see H1-E) |
+| H1-D2 Performance, part 2 | Candidates 2 (list patches), 3 (one search query) and 4 (card invalidation) | `LoomCatalogUI` lists and cards, `SessionCatalog+Paging` | implemented in worktree `loom-h1/wt/D2` (base tree `73dac85` = E and D1 applied); the implementer's `--tests` passed there (log `check-20261012T172610-53598.log`: 583 and 360 tests). **Not yet reviewed or merged by the planner** (see [Resume here](#resume-here)) |
+| H1-E Project colours | Per D-48, look chosen on [the preview](../design/project-colors-preview.html) | `LoomCore` (`projects.color`), `LoomCatalogUI`, DESIGN, UI-MAP | look chosen ([D-50](../DECISIONS.md)): C's stripe in the sidebar, T5's light tint on the tabs (the user approved the drawing, 12 Oct), the stripe and name in the detail header; done and committed with H1-D1 (the planner's contrast change included); combined checks passed (`scripts/check.sh --tests`, log `check-20261012T170029-40693.log`: LoomCoreTests 578, LoomCatalogUITests 344, LoomTerminalTests 42, LoomLaunchOptionsTests 8) |
+| H1-F macOS integration | Per D-47 and [D-49](../DECISIONS.md): menu bar item (Loom mark, working chase, status dot, session menu), notifications for Needs approval, Open at Login setting, Screen Time visibility, numeric versions from tags | `loom-app`, `LoomCatalogUI`, `scripts/release` | preview approved ([D-52](../DECISIONS.md)): option A, the mark with a chase badge. Planner decisions: light-bar status values `#B05A00`, `#2A5FD6`, `#C9332E`; the chase keeps moving under Reduce Motion (DESIGN §4); Settings defaults on, on, off. Screen Time waits for the user's answer (does Screen Time list any other app?). Not started: the user said to wait (12 Oct). |
 
 A and B run in parallel in detached worktrees with disjoint write areas; B keeps every API that A uses source-compatible. The planner applies both diffs to `swarm/1` and runs the combined checks.
 
@@ -61,6 +83,35 @@ A and B run in parallel in detached worktrees with disjoint write areas; B keeps
 - **Not run yet.**
   - On screen: the damaged-catalog alert (button order, Return), the Help menu, the About row, the issue notice and the Usage lines.
   - A launch with a real damaged catalog, and Quit from that alert early in launch.
+
+### H1-E notes from the review
+
+- **Contrast (planner change).** The drawn strengths broke the theme's text tiers on the washed tabs:
+  - Primary text on the open tab measured 6.5–7.4:1 against the 7:1 tier, under it for Lemon, Aqua, Mint and Sage.
+  - Plain secondary text on a resting tab measured 3.7–4.0:1 against the 4.5:1 tier, and no wash keeps it there.
+  - The fix keeps the look: the open tab's wash is 15 % instead of 18 % (the strongest that keeps 7:1 on every tone), and a washed tab's secondary title and close glyph use `Text.secondaryOnTint` `#9297A8` (at least 4.6:1, and 3:1 for the glyph). D-50 and DESIGN §6 say so.
+- **Implementer's choices, accepted.**
+  - The Increase Contrast stroke is 75 %.
+  - A project set to None still names itself in the tab tooltip, the accessibility label and the header.
+  - The tab label adds ", project X" without the provider.
+- **Not run yet.** Everything on screen: the stripes as one rail, the tab washes, the header mark, the Color menu's swatches (an `NSImage` in a SwiftUI menu may render as a template), Increase Contrast and the Settings row.
+
+### H1-D1 notes from the review
+
+- **Usage.**
+  - While the transcript watcher runs, a finished turn reads only the files the watcher reported. Counter: 200 transcript files, one turn, files examined 200 → 1.
+  - Without a watcher (the stream failed, or no `projects` folder at launch), a turn still walks everything. If the folder appears after launch, that lasts until the next launch.
+  - A transcript event that arrives after the turn's debounce still moves the numbers. The cost is up to about 1 s of watcher latency plus a 2 s debounce.
+- **Terminals.**
+  - Each frame is compared with the terminal entries locally. Only an entry whose owner no longer shows its run is asked of the supervisor.
+  - Counter: 3 terminals, 16 quiet frames, supervisor calls 48 → 0. Run end and owner move are still handled, and only their run is asked.
+  - The planner checked the hub path in the code: a run end publishes `runEnded`, a move publishes `runDetached` then `runStarted`, and both come after the supervisor's change.
+- **Load failures seen in the slices' full runs.** None was reproduced alone.
+  - In H1-D1: `RunScopeTests` failed with `EAGAIN` on process spawns.
+  - In H1-E:
+    - `SessionRuntimeCodexRecoveryTests` failed on a different test each run.
+    - `OpenSessionTests` hit "Claude hook timed out during read", which also failed twice at 09:33, before this round.
+  - The planner checked that B's stale-socket sweep cannot touch other tests: each test runtime has its own socket folder, and the sweep removes only sockets that refuse a connection.
 
 ### Combined checks (12 Oct)
 

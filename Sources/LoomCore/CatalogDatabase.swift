@@ -76,6 +76,7 @@ final class CatalogDatabase: @unchecked Sendable {
         else if version < SessionCatalog.schemaVersion { try migrate(from: version) }
         try ensureActivityColumn()
         try ensureOriginColumns()
+        try ensureProjectColors()
         try validateSchema()
         guard try scalarText("PRAGMA journal_mode = WAL").lowercased() == "wal" else {
             throw SessionCatalogError.sqlite(operation: "enable WAL", code: SQLITE_ERROR,
@@ -257,6 +258,64 @@ final class CatalogDatabase: @unchecked Sendable {
             // Read again under the write lock: another process may have added them meanwhile.
             if try !present("ticket_key") { try execute("ALTER TABLE sessions ADD COLUMN ticket_key TEXT") }
             if try !present("opened_by") { try execute("ALTER TABLE sessions ADD COLUMN opened_by TEXT") }
+        }
+    }
+
+    /// `projects.color` (D-48): a tone name, `none`, or NULL for a project that has no tone yet. Added
+    /// to schema 3 on open like the origin columns (nullable, no `user_version` bump, so an older
+    /// build that names its own columns still works). Every NULL, whether the column is new or an
+    /// older build added the project, gets the least-used tone, oldest project first; a value this
+    /// build does not know is never overwritten.
+    func ensureProjectColors() throws {
+        func present() throws -> Bool {
+            try scalarInt64("SELECT count(*) FROM pragma_table_info('projects') WHERE name = 'color'") == 1
+        }
+        if try !present() {
+            try transaction {
+                // Read again under the write lock: another process may have added it meanwhile.
+                if try !present() { try execute("ALTER TABLE projects ADD COLUMN color TEXT") }
+            }
+        }
+        guard try scalarInt64("SELECT count(*) FROM projects WHERE color IS NULL") > 0 else { return }
+        try transaction {
+            var counts = try projectToneCounts()
+            let missing: [String] = try withStatement(
+                "SELECT id FROM projects WHERE color IS NULL ORDER BY created_at, sort_order, id"
+            ) { statement in
+                var ids: [String] = []
+                var step = sqlite3_step(statement)
+                while step == SQLITE_ROW {
+                    ids.append(try text(statement, column: 0))
+                    step = sqlite3_step(statement)
+                }
+                try requireDone(step, operation: "read projects without a color")
+                return ids
+            }
+            for id in missing {
+                let tone = ProjectTone.leastUsed(counts: counts)
+                try withStatement("UPDATE projects SET color = ? WHERE id = ? AND color IS NULL") { statement in
+                    try bind(tone.rawValue, at: 1, to: statement)
+                    try bind(id, at: 2, to: statement)
+                    try stepDone(statement, operation: "assign project color")
+                }
+                counts[tone, default: 0] += 1
+            }
+        }
+    }
+
+    /// How many projects use each known tone (None and unknown values count for nothing).
+    func projectToneCounts() throws -> [ProjectTone: Int] {
+        try withStatement("SELECT color, count(*) FROM projects WHERE color IS NOT NULL GROUP BY color") { statement in
+            var counts: [ProjectTone: Int] = [:]
+            var step = sqlite3_step(statement)
+            while step == SQLITE_ROW {
+                if let name = optionalText(statement, column: 0), let tone = ProjectTone(rawValue: name) {
+                    counts[tone] = Int(sqlite3_column_int64(statement, 1))
+                }
+                step = sqlite3_step(statement)
+            }
+            try requireDone(step, operation: "count project colors")
+            return counts
         }
     }
 

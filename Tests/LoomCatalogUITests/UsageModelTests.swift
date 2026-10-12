@@ -302,6 +302,88 @@ struct UsageFreshnessTests {
         #expect(usage.report?.snapshot.tokens.total == 5_000)
     }
 
+    // MARK: A finished turn with the transcript watcher running
+
+    @Test func aFinishedTurnWithTheWatcherRunningWalksNoTranscripts() async {
+        let index = FakeUsageIndex()
+        let usage = model(index)
+        usage.setTranscriptWatcherRunning(true)
+        usage.observeTurnCompletions(0)
+        await usage.refreshNow(reason: .launch)
+        #expect(index.refreshCalls == 1) // the launch walk
+        usage.observeTurnCompletions(1)
+        await usage.settle()
+        #expect(index.refreshCalls == 1 && index.changedCalls.isEmpty) // the watcher reads the file; the turn does not
+    }
+
+    @Test func withoutAWatcherAFinishedTurnStillWalksEveryTranscript() async {
+        let index = FakeUsageIndex()
+        let usage = model(index) // the watcher never started, or the profile has no projects folder
+        usage.observeTurnCompletions(0)
+        await usage.refreshNow(reason: .launch)
+        usage.observeTurnCompletions(1)
+        await usage.settle()
+        #expect(index.refreshCalls == 2 && index.changedCalls.isEmpty)
+    }
+
+    @Test func aTranscriptEventAfterTheTurnDebounceStillUpdatesTheNumbers() async {
+        let index = FakeUsageIndex()
+        index.setTokens(1_000)
+        let usage = model(index)
+        usage.setTranscriptWatcherRunning(true)
+        usage.observeTurnCompletions(0)
+        await usage.refreshNow(reason: .launch)
+        #expect(usage.chip?.full == "1K today")
+        usage.observeTurnCompletions(1)
+        await usage.settle() // the turn's debounce has run out and read nothing
+        #expect(index.changedCalls.isEmpty)
+        index.setTokens(5_000)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: false)) // the late write
+        await usage.settle()
+        #expect(index.changedCalls == [[transcript]])
+        #expect(index.refreshCalls == 1)
+        #expect(usage.chip?.full == "5K today")
+    }
+
+    @Test func aTranscriptEventBeforeTheTurnEndsIsReadOnceForJustThatFile() async {
+        let index = FakeUsageIndex()
+        let usage = model(index, debounce: .milliseconds(150))
+        usage.setTranscriptWatcherRunning(true)
+        usage.observeTurnCompletions(0)
+        await usage.refreshNow(reason: .launch)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: false))
+        usage.observeTurnCompletions(1) // joins the same debounce
+        await usage.settle()
+        #expect(index.changedCalls == [[transcript]] && index.refreshCalls == 1)
+    }
+
+    @Test func lostEventsStillWalkEverythingWhileTheWatcherRuns() async {
+        let index = FakeUsageIndex()
+        let usage = model(index)
+        usage.setTranscriptWatcherRunning(true)
+        usage.observeTurnCompletions(0)
+        await usage.refreshNow(reason: .launch)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [], needsFullScan: true))
+        usage.observeTurnCompletions(1)
+        await usage.settle()
+        #expect(index.refreshCalls == 2 && index.changedCalls.isEmpty) // one walk covers both
+    }
+
+    @Test func theLimitsAskAfterATurnIsUnchangedWhileTheWatcherRuns() async {
+        let clock = TestClock()
+        let source = FakeLimits()
+        let usage = model(FakeUsageIndex(), limits: source, clock: clock)
+        usage.setTranscriptWatcherRunning(true)
+        usage.observeTurnCompletions(0)
+        usage.refresh(reason: .launch)
+        await usage.settle()
+        #expect(source.asks == 1)
+        clock.advance(121)
+        usage.observeTurnCompletions(1)
+        await usage.settle()
+        #expect(source.asks == 2)
+    }
+
     // MARK: Plan limits
 
     private func limits(
@@ -641,11 +723,19 @@ struct UsageModelRealIndexTests {
     private final class CountingIndex: UsageIndexing, @unchecked Sendable {
         let base: ClaudeUsageIndex
         private let counts = Mutex<[String: Int]>([:])
+        /// The report of every scan, in order (whole walks and changed-file reads alike).
+        private let reports = Mutex<[UsageScanReport]>([])
+        var scanReports: [UsageScanReport] { reports.withLock { $0 } }
         init(_ base: ClaudeUsageIndex) { self.base = base }
         func count(_ name: String) -> Int { counts.withLock { $0[name] ?? 0 } }
         private func bump(_ name: String) { counts.withLock { $0[name, default: 0] += 1 } }
 
-        func refreshAll() async throws -> UsageScanReport { try await base.refresh(paths: nil) }
+        func refreshAll() async throws -> UsageScanReport { try await record(base.refresh(paths: nil)) }
+        func refreshChanged(_ paths: [URL]) async throws -> UsageScanReport { try await record(base.refresh(paths: paths)) }
+        private func record(_ report: UsageScanReport) -> UsageScanReport {
+            reports.withLock { $0.append(report) }
+            return report
+        }
         func snapshot(range: UsageRange, now: Date, timeZone: TimeZone) async throws -> UsageSnapshot {
             bump("snapshot")
             return try await base.snapshot(range: range, now: now, timeZone: timeZone)
@@ -717,5 +807,49 @@ struct UsageModelRealIndexTests {
         #expect(usage.hasHistory == false)
         #expect(counting.count("hasUsage") == 2)   // before the scan (first-scan state) and after it (history)
         #expect(counting.count("snapshot") == 1)   // the selected period only; no `.all` snapshot
+    }
+
+    /// Item 1 of hardening round 1: the files the index examines for one finished turn.
+    @Test(arguments: [true, false])
+    func aFinishedTurnExaminesOnlyTheChangedTranscriptWhenTheWatcherRuns(watcherRuns: Bool) async throws {
+        let (root, config) = try makeProfile(lines: [])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let projects = config.appendingPathComponent("projects", isDirectory: true)
+        var files: [URL] = []
+        for number in 0..<200 {
+            let directory = projects.appendingPathComponent("-tmp-proj-\(number)", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let file = directory.appendingPathComponent("sess-\(number).jsonl")
+            try (line(id: "m\(number)", ts: "2026-10-07T09:00:00.000Z", input: 1_000, output: 0, cacheRead: 0) + "\n")
+                .write(to: file, atomically: true, encoding: .utf8)
+            files.append(file)
+        }
+        let now = Date(timeIntervalSince1970: 1_791_374_400) // 2026-10-07T12:00:00Z
+        let profile = ClaudeProfileLayout(profileDirectory: config, environment: [:], home: root)
+        let counting = CountingIndex(ClaudeUsageIndex(
+            databaseURL: root.appendingPathComponent("usage-index.sqlite3"), profile: profile, clock: { now }))
+        let usage = UsageModel(index: counting, clock: { now }, timeZone: TimeZone(identifier: "UTC")!,
+                               debounce: .milliseconds(40), activationCooldown: .zero)
+        usage.setTranscriptWatcherRunning(watcherRuns)
+        usage.observeTurnCompletions(0)
+        await usage.refreshNow(reason: .launch)
+        #expect(counting.scanReports.map(\.filesSeen) == [200]) // the launch walk
+        #expect(usage.chip?.full == "200K today")
+
+        // A turn finishes: Claude appended to one transcript, the watcher reports that file.
+        let handle = try FileHandle(forWritingTo: files[17])
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data((line(id: "late", ts: "2026-10-07T11:00:00.000Z", input: 2_000, output: 0, cacheRead: 0) + "\n").utf8))
+        try handle.close()
+        usage.observeTurnCompletions(1)
+        if watcherRuns { usage.transcriptsChanged(UsageTranscriptChange(paths: [files[17]], needsFullScan: false)) }
+        await usage.settle()
+
+        let examined = counting.scanReports.dropFirst().map(\.filesSeen).reduce(0, +)
+        #expect(examined == (watcherRuns ? 1 : 200)) // before the change: all 200 on every turn
+        if watcherRuns {
+            #expect(counting.scanReports.last?.filesParsed == 1)
+            #expect(usage.chip?.full == "202K today") // the late line is counted all the same
+        }
     }
 }

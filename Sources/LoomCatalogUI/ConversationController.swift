@@ -60,6 +60,9 @@ public final class ConversationController: ConversationIntents {
     /// Ended screens by session id, and the order they ended in (oldest first).
     private(set) var ended: [UUID: EndedScreen] = [:]
     private var endedOrder: [UUID] = []
+    /// Who owns a run right now, asked of the supervisor. Only an entry the latest event frame does
+    /// not confirm is asked about; tests count these calls.
+    var ownerLookup: (UUID) async -> UUID?
     private var observer: Task<Void, Never>?
     private var openRequestObserver: Task<Void, Never>?
     /// Approvals in flight: a second click on "Open Session" must not ask the runtime twice.
@@ -68,6 +71,7 @@ public final class ConversationController: ConversationIntents {
     public init(runtime: SessionRuntime, model: CatalogModel) {
         self.runtime = runtime
         self.model = model
+        ownerLookup = { runID in await runtime.supervisor.activeSessionID(runID: runID) }
         model.intents = self
     }
 
@@ -76,15 +80,16 @@ public final class ConversationController: ConversationIntents {
         openRequestObserver?.cancel()
     }
 
-    /// Follows run ownership and run ends from the event hub. Frames coalesce,
-    /// so every frame is answered by asking the runtime for the current truth.
+    /// Follows run ownership and run ends from the event hub. Every frame carries the full session
+    /// states, so frames may coalesce: each one is compared with the entries locally and only what it
+    /// does not confirm is asked of the supervisor (see `reconcile(_:)`).
     public func begin() async {
         guard observer == nil else { return }
         let stream = await runtime.supervisor.events.subscribe()
         observer = Task { [weak self] in
-            for await _ in stream {
+            for await frame in stream {
                 guard !Task.isCancelled else { break }
-                await self?.reconcile()
+                await self?.reconcile(frame)
             }
         }
         // The agents' requests to open a session (D-40): the model shows the runtime's whole list.
@@ -395,10 +400,21 @@ public final class ConversationController: ConversationIntents {
         Task { await model.terminalTitleChanged(sessionID: owner, title: title) }
     }
 
+    /// Reconciles with the hub's current states (a new terminal, a failed start).
     func reconcile() async {
+        await reconcile(await runtime.supervisor.events.snapshot())
+    }
+
+    /// An entry whose owner's state in `frame` still carries its run needs no question: the hub
+    /// publishes every run start, move (`runDetached` then `runStarted`) and end, and the supervisor
+    /// changes the owner before it publishes. Only an entry the frame does not show (the run ended,
+    /// moved, or started after the frame) is confirmed with the supervisor.
+    func reconcile(_ frame: SessionEventFrame) async {
         var changed = false
-        for entry in Array(entries.values) {
-            let owner = await runtime.supervisor.activeSessionID(runID: entry.runID)
+        for listed in Array(entries.values) {
+            guard let entry = entries[listed.runID] else { continue }
+            if frame.sessions[entry.owner]?.runID == entry.runID { continue }
+            let owner = await ownerLookup(entry.runID)
             guard let owner else {
                 entries[entry.runID] = nil
                 changed = true

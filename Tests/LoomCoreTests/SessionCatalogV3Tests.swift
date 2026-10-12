@@ -139,7 +139,8 @@ struct SessionCatalogV3Tests {
             "SELECT * FROM runs ORDER BY id",
             "SELECT * FROM run_sessions ORDER BY run_id, session_id, linked_at",
             "SELECT * FROM provider_identity_changes ORDER BY sequence",
-            "SELECT * FROM projects ORDER BY id",
+            // The columns schema 2 had: the colour column (D-48) is added on every open.
+            "SELECT id, path, name, sort_order, collapsed, created_at FROM projects ORDER BY id",
         ].flatMap { try sql($0, at: url, readOnly: true) }
     }
 

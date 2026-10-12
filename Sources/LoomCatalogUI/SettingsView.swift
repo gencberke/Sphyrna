@@ -113,6 +113,15 @@ struct GeneralSettings: View {
                     .labelsHidden().pickerStyle(.menu).fixedSize()
                     .accessibilityLabel("Terminal font size")
                 }
+                SettingsRowDivider()
+                SettingsRow(title: "Project colors",
+                            detail: "Give each project a color in the sidebar, the tab strip and the session header. Off shows Loom as before.") {
+                    Toggle("Project colors", isOn: Binding(
+                        get: { model.projectColorsEnabled }, set: { model.setProjectColors($0) }
+                    ))
+                    .labelsHidden().toggleStyle(.switch)
+                    .accessibilityLabel("Project colors")
+                }
             }
             if let error = model.errorMessage {
                 Text(error).foregroundStyle(LoomTheme.Status.failure).textSelection(.enabled)

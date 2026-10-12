@@ -93,6 +93,7 @@ struct DetailHeader: View {
                     Text(label).font(LoomTheme.Typography.statusLabel).foregroundStyle(row.indicator.labelColor)
                         .lineLimit(1).layoutPriority(1)
                 }
+                if let mark = model.projectMark(of: row.record) { ProjectHeaderMark(mark: mark) }
             } else if let notice = model.preparingNotice {
                 PreparingNotice(text: notice)
             }

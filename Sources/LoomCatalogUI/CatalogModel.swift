@@ -155,6 +155,10 @@ public final class SessionListModel {
 @MainActor @Observable
 public final class CatalogModel {
     public private(set) var projects: [CatalogProject] = []
+    /// The tone of each project that has one, read from the projects the lists already load; views look
+    /// colours up here and never walk `projects`. `projectColorsEnabled` is Settings → Project colors.
+    public private(set) var projectTones: [UUID: ProjectTone] = [:]
+    public private(set) var projectColorsEnabled: Bool
     public private(set) var sessionCounts: [UUID?: Int] = [:]
     public private(set) var searchText = ""
     public private(set) var viewMode: CatalogViewMode
@@ -296,6 +300,7 @@ public final class CatalogModel {
         selectedSessionID = preferences.current.selectedSessionID
         sidebarCollapsed = preferences.current.sidebarCollapsed
         terminalFontSize = preferences.current.terminalFontSize
+        projectColorsEnabled = preferences.current.projectColors
         tabs = ConversationTabs(pinned: preferences.current.openTabs)
     }
 
@@ -652,7 +657,12 @@ public final class CatalogModel {
         guard let catalog else { return }
         do {
             let freshProjects = try await catalog.projects()
-            if freshProjects != projects { projects = freshProjects }
+            if freshProjects != projects {
+                projects = freshProjects
+                projectTones = Dictionary(uniqueKeysWithValues: freshProjects.compactMap { project in
+                    project.tone.map { (project.id, $0) }
+                })
+            }
             let freshCounts = try await catalog.sessionCounts()
             if freshCounts != sessionCounts { sessionCounts = freshCounts }
         } catch {
@@ -1007,6 +1017,26 @@ public final class CatalogModel {
             report(nil, "Only an empty project can be removed. Its sessions stay in the catalog.")
         } catch {
             report(error, "The project could not be removed")
+        }
+    }
+
+    /// Settings → General → Project colors (D-48).
+    public func setProjectColors(_ enabled: Bool) {
+        guard enabled != projectColorsEnabled else { return }
+        projectColorsEnabled = enabled
+        persist { $0.projectColors = enabled }
+    }
+
+    /// The Color menu: a tone, or nil for None. The projects are read again (the one project-change
+    /// path); the lists hold no tone, so they are not reloaded.
+    public func setProjectTone(_ id: UUID, _ tone: ProjectTone?) async {
+        guard let catalog else { return }
+        do {
+            try await catalog.setProjectTone(id: id, tone: tone)
+            errorMessage = nil
+            await refreshProjects()
+        } catch {
+            report(error, "The project color could not be changed")
         }
     }
 

@@ -63,13 +63,16 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     public var openTabs: [UUID]
     /// Where the main window last was; nil until the user moves or resizes it.
     public var windowFrame: WindowFrame?
+    /// Settings → General → Project colors (D-48). Off draws no project colour anywhere and keeps the
+    /// stored ones; a file written before the setting existed reads as on.
+    public var projectColors: Bool
 
     public static let maxOpenTabs = 8
 
     public init(viewMode: CatalogViewMode = .activity, selectedSessionID: UUID? = nil,
                 sidebarWidth: Double = UIPreferences.defaultSidebarWidth,
                 sidebarCollapsed: Bool = false, terminalFontSize: Double = UIPreferences.defaultTerminalFontSize,
-                openTabs: [UUID] = [], windowFrame: WindowFrame? = nil) {
+                openTabs: [UUID] = [], windowFrame: WindowFrame? = nil, projectColors: Bool = true) {
         self.viewMode = viewMode
         self.selectedSessionID = selectedSessionID
         self.sidebarWidth = Self.clamped(sidebarWidth)
@@ -77,6 +80,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         self.terminalFontSize = Self.clampedFontSize(terminalFontSize)
         self.openTabs = Self.normalizedTabs(openTabs)
         self.windowFrame = windowFrame.flatMap { $0.isValid ? $0 : nil }
+        self.projectColors = projectColors
     }
 
     public init(from decoder: any Decoder) throws {
@@ -93,7 +97,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             // One unreadable entry drops only itself, not the whole list.
             openTabs: ((try? container.decodeIfPresent([Lossy<UUID>].self, forKey: .openTabs)) ?? nil)?
                 .compactMap(\.value) ?? [],
-            windowFrame: (try? container.decodeIfPresent(WindowFrame.self, forKey: .windowFrame)) ?? nil
+            windowFrame: (try? container.decodeIfPresent(WindowFrame.self, forKey: .windowFrame)) ?? nil,
+            projectColors: (try? container.decodeIfPresent(Bool.self, forKey: .projectColors)) ?? true
         )
     }
 

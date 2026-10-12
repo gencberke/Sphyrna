@@ -289,6 +289,10 @@ struct ProjectHeader: View {
                 Button("Move Down") { Task { await model.moveProject(project.id, by: 1) } }
                     .disabled(index >= model.projects.count - 1)
                 Divider()
+                if model.projectColorsEnabled {
+                    ProjectColorMenu(model: model, project: project)
+                    Divider()
+                }
                 NewConversationButtons(model: model, projectID: project.id, suffix: " Here")
                 Divider()
                 Button("Remove Empty Project") { Task { await model.removeProject(project.id) } }
@@ -304,9 +308,17 @@ struct ProjectHeader: View {
         // The menu button's 24 pt hit area is taller than its 20 pt drawing; the row keeps its height.
         .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop - projectMenuExtra)
         .padding(.bottom, LoomTheme.Space.sectionBottom - projectMenuExtra)
+        .projectStripe(model.projectTone(forProject: project.id),
+                       top: LoomTheme.ProjectColor.headerStripeTop, bottom: LoomTheme.ProjectColor.headerStripeBottom)
         .contentShape(Rectangle())
         .onTapGesture { Task { await model.toggleCollapsed(project.id) } }
-        .contextMenu { NewConversationButtons(model: model, projectID: project.id) }
+        .contextMenu {
+            NewConversationButtons(model: model, projectID: project.id)
+            if model.projectColorsEnabled {
+                Divider()
+                ProjectColorMenu(model: model, project: project)
+            }
+        }
         .accessibilityElement(children: .contain)
         .help(project.path)
     }
@@ -445,6 +457,7 @@ struct SessionCardView: View {
             .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.card))
         }
         .buttonStyle(.plain)
+        .projectStripe(model.projectTone(forProject: row.record.projectID))
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.openTab(row.id, revealInList: false) })
         .contextMenu {
             Button("Rename…") { model.beginRename(row.id) }

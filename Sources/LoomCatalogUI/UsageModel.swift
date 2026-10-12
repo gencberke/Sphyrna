@@ -144,7 +144,7 @@ public struct PlanLimitsCadence: Equatable, Sendable {
 /// runs on the index's own queue, never on the main actor, and only on events: launch, window
 /// activation, the Usage page showing, a change under the profile's `projects` folder (reported by
 /// `UsageTranscriptWatcher`, debounced and read for just the changed files), a finished Claude turn
-/// (debounced), a new day and the refresh button. Requests while a refresh runs coalesce into one
+/// (debounced; a full walk only while no watcher runs, otherwise the watcher's file is read), a new day and the refresh button. Requests while a refresh runs coalesce into one
 /// more run. While no Loom window or Usage page is showing, changes only mark the numbers stale;
 /// the next time one shows reads them. Plan limits come from `limitsSource` on `PlanLimitsCadence`.
 @MainActor @Observable
@@ -193,6 +193,9 @@ public final class UsageModel {
     /// Transcripts reported changed and not read yet, and whether a full scan is wanted instead.
     @ObservationIgnored private var changedPaths: Set<URL> = []
     @ObservationIgnored private var wantsFullScan = false
+    /// `UsageTranscriptWatcher` is running over the profile's `projects` folder, so file changes
+    /// reach `transcriptsChanged` and a finished turn needs no full walk of its own.
+    @ObservationIgnored private var transcriptWatcherRunning = false
     /// The period report is older than the index: a refresh for the chip alone skipped it.
     @ObservationIgnored private var reportOutdated = false
     /// A full scan has finished: file-system events before that are covered by the launch scan.
@@ -231,7 +234,9 @@ public final class UsageModel {
         switch reason {
         case .turnComplete:
             guard observing else { stale = true; return }
-            wantsFullScan = true
+            // The watcher reports the turn's own transcript write and `transcriptsChanged` reads just
+            // that file; only without a watcher does a finished turn walk every transcript.
+            if !transcriptWatcherRunning { wantsFullScan = true }
             scheduleDebounced()
             fetchLimitsIfDue(after: cadence.afterTurn)
         case .activation:
@@ -273,6 +278,12 @@ public final class UsageModel {
         guard observing else { stale = true; return }
         if change.needsFullScan { wantsFullScan = true } else { changedPaths.formUnion(change.paths) }
         scheduleDebounced()
+    }
+
+    /// Tells the model whether the transcript watcher is running (the app sets it after starting
+    /// the stream; a stream that failed to start or a profile without a `projects` folder is false).
+    public func setTranscriptWatcherRunning(_ running: Bool) {
+        transcriptWatcherRunning = running
     }
 
     /// The running count of finished Claude turns, as the latest event frame carries it. A frame
