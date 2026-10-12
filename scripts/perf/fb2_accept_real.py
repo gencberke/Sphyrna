@@ -9,6 +9,9 @@ first session (switched to haiku with the local /model command) and 1 in the ses
    reports `started`; a second run of the same command reports `exists` without opening a copy;
 3) project view: the new session is above the older one, no project label; activity view: the label shows;
 4) Mark as Read: a finished or waiting card returns to Ready and stays Ready across later idle samples.
+--only-skill (D-42, 1-2 turns, window in the background): the workspace's CLAUDE.md asks for a separate session per
+ticket and the prompt only says to start a ticket; Claude must find Loom's open-session skill on its own and run
+`"$LOOM_CLI" open` for it. The request is denied in Loom, so no second session spends a turn.
 Window captures (`screencapture -l`) go to the run dir only, never to the repository; the prompts are synthetic.
 Usage: scripts/perf/fb2_accept_real.py --app <package>/'Loom Dev.app' [--run-dir DIR] [--probe-root DIR]"""
 import argparse, json, pathlib, subprocess, sys, tempfile, time
@@ -20,6 +23,7 @@ perf_paths.add_common_arguments(parser, 'fb2-accept-real')
 parser.add_argument('--probe-root', type=pathlib.Path, default=perf_paths.PROBE,
                     help='holds claude-config/ (isolated profile) and workspace/ (default: Loom-Dev/probe)')
 parser.add_argument('--only-subagents', action='store_true', help='run step 1 only (1 model turn)')
+parser.add_argument('--only-skill', action='store_true', help="run the skill check only (D-42; 1-2 model turns)")
 args = parser.parse_args()
 app, run_dir = perf_paths.resolve_common(args, 'fb2-accept-real')
 PROBE = perf_paths.refuse_documents('Probe root', args.probe_root)
@@ -33,6 +37,10 @@ workspace.mkdir(parents=True)
 for name in ('alpha.txt', 'beta.txt', 'gamma.txt'): (workspace / name).write_text(name + '\n')
 subprocess.run(['git', 'init', '-q', '-b', 'main', str(workspace)], check=True)
 (workspace / 'TEST-7-msg.txt').write_text('Reply with exactly LOOM_CHILD_OK and nothing else.\n')
+if args.only_skill:
+    (workspace / 'CLAUDE.md').write_text(
+        '# Project rules\n\nWork on a ticket (keys like TEST-123) always happens in its own separate top-level session '
+        'opened for that ticket, never in this session and never in a subagent.\n')
 perf_paths.trust_probe_workspace(PROBE / 'claude-config', workspace)
 TOKENS = ['Try', 'shortcuts', 'trust this folder', 'external imports', 'ZQX17', 'LOOM_CHILD_OK', 'LOOM_OPEN_ONE', 'LOOM_OPEN_TWO', 'started', 'exists']
 COMMAND = '"$LOOM_CLI" open --title "TEST-7 - fb2 probe" --ticket TEST-7 --message-file TEST-7-msg.txt'
@@ -121,7 +129,7 @@ app_pid = None
 try:
     if subprocess.run(['pgrep', '-f', str(app / 'Contents/MacOS/Loom Dev')], stdout=subprocess.DEVNULL).returncode == 0:
         raise SystemExit('already running')
-    subprocess.run(['open', '-n', '-a', str(app), '--args', '--evidence', str(evidence), '--data-root', str(data),
+    subprocess.run(['open', '-n'] + (['-g'] if args.only_skill else []) + ['-a', str(app), '--args', '--evidence', str(evidence), '--data-root', str(data),
                     '--claude-config', str(PROBE / 'claude-config'), '--evidence-tokens', ','.join(TOKENS)], check=True)
     app_pid = measure.wait_json(evidence / 'launched.json', 30)['pid']
     until('ready', lambda s: s['catalog']['ready'] and s['catalog']['actionsAvailable'], 30)
@@ -136,6 +144,39 @@ try:
     tui_ready(parent, 'tui-ready'); time.sleep(2)
     measure.send(f'type:{parent}:/model haiku', evidence); time.sleep(4)
     (evidence / 'first-snapshot-keys.json').write_text(json.dumps(sorted(snap('keys').keys())))
+
+    if args.only_skill:
+        # Nothing in the prompt names the command or the skill.
+        prompt(parent, 'Start working on ticket TEST-9: create a file named hello.txt that contains the word hi.', 'skill')
+        report['modelTurns'] += 1
+        accepted, end = 0, time.monotonic() + 240
+        while time.monotonic() < end:
+            s = snap('skill-watch')
+            if s.get('openRequests'): break
+            if ((row(s, parent) or {}).get('indicator') or s['catalog'].get('selectedIndicator')) == 'Needs approval':
+                measure.send(f'answer:{parent}:accept', evidence); accepted += 1; time.sleep(2)
+            time.sleep(.5)
+        report['details']['permissionsAccepted'] = accepted
+        requests = snap('skill-request').get('openRequests', [])
+        check('openRequestInLoom', [r.get('kind') for r in requests] == ['open'], [r.get('kind') for r in requests])
+        for r in requests: measure.send(f'open-{"deny" if r.get("kind") == "open" else "dismiss"}:{r["id"]}', evidence)
+        if requests:
+            until('skill-settled', lambda s: ((row(s, parent) or {}).get('indicator') or s['catalog'].get('selectedIndicator'))
+                  in ('Finished', 'Ready', 'Waiting for you'), 120, every=1)
+        # Claude writes its transcript after the tool runs: read it once the turn has settled.
+        calls = [x for r in records(parent) if r.get('type') == 'assistant'
+                 for x in (r.get('message', {}).get('content') or []) if isinstance(x, dict) and x.get('type') == 'tool_use']
+        report['details']['toolCalls'] = [x.get('name') for x in calls]
+        check('skillUsed', any(x.get('name') == 'Skill' and 'open-session' in json.dumps(x.get('input')) for x in calls))
+        check('openCommandForTheTicket', any(x.get('name') == 'Bash' and ' open ' in str(x.get('input', {}).get('command'))
+                                             and 'TEST-9' in str(x.get('input', {}).get('command')) for x in calls))
+        results = [str(x.get('content')) for r in records(parent) if r.get('type') == 'user'
+                   for x in (r.get('message', {}).get('content') or []) if isinstance(x, dict) and x.get('type') == 'tool_result']
+        check('agentGotTheDenial', any('denied' in c for c in results))
+        check('noTicketWorkHere', not (workspace / 'hello.txt').exists())
+        plugin = data / 'claude-plugin' / 'skills/open-session/SKILL.md'
+        check('pluginWritten', plugin.exists())
+        raise SystemExit(0)
 
     # 1) Subagent tree.
     # The reply token is not in the prompt (the prompt itself is on screen).

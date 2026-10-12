@@ -119,7 +119,8 @@ struct SessionRuntimeTests {
         extraEnvironment: [String: String] = [:],
         startRuntime: Bool = true,
         scoped: Bool = false,
-        executableOverride: String? = nil
+        executableOverride: String? = nil,
+        claudePlugin: Bool = false
     ) async throws -> RuntimeContext {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loom-runtime-\(UUID())", isDirectory: true)
@@ -162,7 +163,7 @@ struct SessionRuntimeTests {
             return ProviderToolchain(
                 provider: provider, executable: fake,
                 capabilities: ProviderCapabilities(
-                    version: "fake 1", help: "--settings <settings> --session-id <id> --remote <ADDR> --effort <level> -n, --name <name>",
+                    version: "fake 1", help: "--settings <settings> --session-id <id> --remote <ADDR> --effort <level> -n, --name <name> --plugin-dir <path>",
                     serverHelp: "--listen <URL>"
                 ),
                 environment: ["PATH": "/usr/bin:/bin", "HOME": home.path, "LOOM_FAKE_STATE": state.path]
@@ -176,7 +177,8 @@ struct SessionRuntimeTests {
                 toolchains: resolver,
                 hookHelperPath: RuntimeFixture.binaries.appendingPathComponent("loom-hook").path,
                 socketDirectory: socketDirectory, homeDirectory: home.path,
-                idlePolicy: idlePolicy, codexIdentityTimeout: 3
+                idlePolicy: idlePolicy, codexIdentityTimeout: 3,
+                claudePluginDirectory: claudePlugin ? root.appendingPathComponent("claude-plugin", isDirectory: true) : nil
             )
         )
         if startRuntime { try await runtime.start() }

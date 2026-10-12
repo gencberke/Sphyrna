@@ -18,8 +18,9 @@ extension SessionCatalog {
     /// The session of this project that belongs to the ticket: `ticket_key` matches the key, else
     /// the title starts with the key followed by the end of the title or a space (D-40). Case is
     /// folded the way the catalog search folds it, so a Turkish title is compared safely. The oldest
-    /// match wins; a session being deleted never matches.
-    public func session(projectID: UUID, ticket key: String) throws -> CatalogSession? {
+    /// match wins; a session being deleted never matches. `excluding` (the asking session) never matches by
+    /// its title: Claude names a session after its first prompt, which often starts with the ticket key.
+    public func session(projectID: UUID, ticket key: String, excluding: UUID? = nil) throws -> CatalogSession? {
         let folded = Self.fold(key)
         let byKey = try database.withStatement("""
             SELECT \(Self.sessionColumns) FROM sessions s
@@ -41,7 +42,7 @@ extension SessionCatalog {
             try database.bind(Self.escapeLike(folded) + "%", at: 2, to: statement)
             var stepResult = sqlite3_step(statement)
             while stepResult == SQLITE_ROW {
-                if let candidate = try decodeSessionOrSkip(statement),
+                if let candidate = try decodeSessionOrSkip(statement), candidate.session.id != excluding,
                    let title = candidate.title, Self.fold(title).hasPrefix(folded) {
                     let rest = Self.fold(title).dropFirst(folded.count)
                     if rest.isEmpty || rest.first == " " { return candidate }

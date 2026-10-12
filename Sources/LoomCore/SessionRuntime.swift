@@ -32,6 +32,8 @@ public struct SessionRuntimeConfiguration: Sendable {
     /// `CLAUDE_CONFIG_DIR` is read from here when no toolchain has been resolved yet: Loom's own
     /// environment, the same rule the usage index follows.
     public var claudeEnvironment: [String: String]
+    /// Where Loom writes the plugin it gives its Claude sessions (`ClaudeLoomPlugin`); nil gives none.
+    public var claudePluginDirectory: URL?
 
     public init(
         toolchains: @escaping ProviderToolchainResolver, hookHelperPath: String,
@@ -43,7 +45,8 @@ public struct SessionRuntimeConfiguration: Sendable {
         claudeTemporaryRoot: URL? = ClaudeDataInventory.defaultTemporaryRoot,
         forgetters: ConversationForgetters = .shared,
         claudeProfileDirectory: URL? = nil,
-        claudeEnvironment: [String: String] = ProcessInfo.processInfo.environment
+        claudeEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+        claudePluginDirectory: URL? = nil
     ) {
         self.toolchains = toolchains
         self.hookHelperPath = hookHelperPath
@@ -58,6 +61,7 @@ public struct SessionRuntimeConfiguration: Sendable {
         self.forgetters = forgetters
         self.claudeProfileDirectory = claudeProfileDirectory
         self.claudeEnvironment = claudeEnvironment
+        self.claudePluginDirectory = claudePluginDirectory
     }
 }
 

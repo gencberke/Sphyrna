@@ -10,6 +10,7 @@ public struct ProviderCapabilities: Codable, Sendable {
     public let supportsSettings: Bool
     public let supportsEffort: Bool
     public let supportsName: Bool
+    public let supportsPluginDirectory: Bool
 
     public init(version: String, help: String, serverHelp: String = "", features: String = "") {
         self.version = version.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -23,6 +24,7 @@ public struct ProviderCapabilities: Codable, Sendable {
         supportsSettings = help.contains("--settings <")
         supportsEffort = help.contains("--effort <")
         supportsName = help.contains("--name <")
+        supportsPluginDirectory = help.contains("--plugin-dir <")
     }
 }
 
@@ -148,9 +150,15 @@ public struct ProviderLaunchProfile: Sendable {
             env["LOOM_CLI"] = hooks.helperPath
             if let control = hooks.controlSocketPath { env["LOOM_CONTROL_SOCKET"] = control }
         }
+        // Loom's skill for `"$LOOM_CLI" open` (D-42); a Claude without the option runs without it.
+        var pluginArguments: [String] = []
+        if let plugin = hooks?.pluginDirectory, capabilities.supportsPluginDirectory {
+            pluginArguments = ["--plugin-dir", plugin]
+        }
         let settings = try claudeSettings(hooks: hooks)
         return Self(
-            arguments: routeArguments + effortArguments + ["--settings", settings] + openingArguments,
+            arguments: routeArguments + effortArguments + ["--settings", settings] + pluginArguments
+                + openingArguments,
             environment: env, trailingArguments: trailing
         )
     }
@@ -192,12 +200,15 @@ public struct ClaudeHookLaunchConfiguration: Equatable, Sendable {
     public let authenticationToken: String
     /// The request/response socket of `loom-hook open`; nil when this run has none.
     public let controlSocketPath: String?
+    /// `ClaudeLoomPlugin`'s folder, passed as `--plugin-dir`; nil without the control socket it describes.
+    public let pluginDirectory: String?
 
     public init(helperPath: String, socketPath: String, authenticationToken: String,
-                controlSocketPath: String? = nil) {
+                controlSocketPath: String? = nil, pluginDirectory: String? = nil) {
         self.helperPath = helperPath
         self.socketPath = socketPath
         self.authenticationToken = authenticationToken
         self.controlSocketPath = controlSocketPath
+        self.pluginDirectory = pluginDirectory
     }
 }

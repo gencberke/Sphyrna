@@ -407,7 +407,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             clientVersion: "loom-\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "dev")",
             // A running session is never stopped for inactivity (user decision, 8 Oct 2026).
             idlePolicy: SessionIdlePolicy(stopsIdleRuns: false),
-            claudeProfileDirectory: evidenceClaudeProfile(root: root)
+            claudeProfileDirectory: evidenceClaudeProfile(root: root),
+            claudePluginDirectory: root.appendingPathComponent("claude-plugin", isDirectory: true)
         )
     }
 

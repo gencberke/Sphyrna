@@ -2,9 +2,9 @@
 
 - **Updated:** 2026-10-12
 - **Stage:** multi-agent run 1 (F, I, U, CP4), branch `swarm/1`; index and protocol [plans/RUN-1.md](plans/RUN-1.md). Stage L done except the deferred L-4 acceptance ([plan](plans/STAGE-L.md), D-31). CP5 is closed.
-- **Slice:** feedback round 2 on 0.3.0 ([plans/FEEDBACK-2.md](plans/FEEDBACK-2.md), [D-39, D-40](DECISIONS.md)): footer chip B, card project label fix, newest-first project groups, Mark as Read, subagent tree, approval-gated "session opens session" (P1 core, P2 UI). Uncommitted on `swarm/1`.
-- **State:** released as **0.3.1** and installed as the daily app (`release/0.3.1` → `1502d9e`, loom `fdca0b6` / `v0.3.1`; [record](plans/FEEDBACK-2.md#release-031)). All six items accepted on tests and on a dev package with real Claude and on screen; FB2-6 (a subagent's permission prompt left the card on Working) fixed after that, on tests only.
-- **Next owner:** the user: daily use of 0.3.1 and the next feedback. Waiting on the user's go: the `$LOOM_CLI open` line for the edd and enmusait vault cards (D-40).
+- **Slice:** feedback round 2 on 0.3.0 ([plans/FEEDBACK-2.md](plans/FEEDBACK-2.md), [D-39, D-40, D-42](DECISIONS.md)): footer chip B, card project label fix, newest-first project groups, Mark as Read, subagent tree, approval-gated "session opens session", and Loom's own `loom:open-session` skill so agents learn the command without vault lines (D-42).
+- **State:** 0.3.1 is the daily app ([record](plans/FEEDBACK-2.md#release-031)). After it: D-42 (Loom's plugin skill via `--plugin-dir`) and FB2-7 (the ticket lookup matched the asking session by its title) built, tested and accepted with real Claude (2 short haiku turns: Claude found the skill on its own, Loom showed an open request, a denial was respected); committed and tagged `release/0.3.2`.
+- **Next owner:** the planner: install 0.3.2 once the user has quit the running daily Loom (`build.sh` refuses while it runs; the planner never quits it). No vault change (D-42).
 - **Open decisions:** [DECISIONS.md → Open](DECISIONS.md#open) and the DP list in RUN-1.
-- **Latest result:** [Release 0.3.1](plans/FEEDBACK-2.md#release-031).
+- **Latest result:** [D-42 and FB2-7](plans/FEEDBACK-2.md#agents-learn-the-command-from-loom-d-42).
 - **Blocker:** none.

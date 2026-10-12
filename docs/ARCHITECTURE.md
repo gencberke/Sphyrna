@@ -109,6 +109,10 @@ CatalogModel.startConversation -> ConversationController.start (creates Terminal
 
 **A session opens a session (D-40)**
 ```
+Discovery (D-42): SessionRuntime.ensureHooks writes ClaudeLoomPlugin (one skill, loom:open-session) into
+    SessionRuntimeConfiguration.claudePluginDirectory (<data root>/claude-plugin; files rewritten only when they differ) when the
+    control socket exists; ProviderLaunchProfile adds `--plugin-dir <folder>` when Claude's help lists it. Claude keeps the skill's
+    description in context and reads its instructions (the command, its options and result lines) when it uses it.
 Claude session runs  "$LOOM_CLI" open --title ... [--ticket K] [--project P] (--message-file F | --message -)   (loom-hook, OpenSessionCommand)
  -> validates the input (OpenSessionInput: title 1-160, ticket 1-40 of [A-Za-z0-9-_.], message <= 64 KiB UTF-8), then connects to
     LOOM_CONTROL_SOCKET (<socketDir>/c-<8>.sock, next to the hook socket; same directory/mode/path-limit rules, LocalSocket) and sends

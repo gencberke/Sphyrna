@@ -339,6 +339,20 @@ struct OpenSessionTests {
         #expect(try await catalog.session(projectID: projectA, ticket: "ENMUSAIT_%") == nil)
     }
 
+    @Test func theAskingSessionIsNeverItsOwnTicketSessionByTitle() async throws {
+        // Real Claude, 12 Oct: asked to start TEST-9, Claude titled the asking session after that prompt, and the
+        // lookup answered `exists` with the asking session itself, so nothing could ever open.
+        let rig = try await OpenRig.make()
+        defer { rig.cleanup() }
+        #expect(try await rig.catalog.recordTerminalTitle(sessionID: rig.requester.id, title: "TEST-9 hello.txt file"))
+        let asked = rig.sendInBackground(rig.wire(title: "TEST-9 - create hello.txt", ticket: "TEST-9"))
+        for _ in 0..<500 where await rig.coordinator.snapshot().isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        let entry = try #require(await rig.coordinator.snapshot().first)
+        #expect(entry.kind == .open && entry.phase == .waiting)
+        try await rig.coordinator.deny(entry.id)
+        #expect(try await asked.value.status == .denied)
+    }
+
     @Test func aTicketThatHasASessionIsReportedAtOnceWithoutApprovalAndNothingStarts() async throws {
         let rig = try await OpenRig.make()
         defer { rig.cleanup() }

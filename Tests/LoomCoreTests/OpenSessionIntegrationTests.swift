@@ -175,6 +175,51 @@ struct OpenSessionLaunchProfileTests {
         #expect(withoutHooks.environment["LOOM_CLI"] == nil && withoutHooks.environment["LOOM_CONTROL_SOCKET"] == nil)
     }
 
+    @Test func loomsSkillFolderRidesAlongWhenClaudeKnowsPluginFolders() throws {
+        let withPlugin = ClaudeHookLaunchConfiguration(
+            helperPath: hooks.helperPath, socketPath: hooks.socketPath, authenticationToken: "token",
+            controlSocketPath: "/tmp/c.sock", pluginDirectory: "/data/claude-plugin"
+        )
+        let capable = ProviderCapabilities(version: "x", help: "--settings <settings> --session-id <id> --plugin-dir <path>")
+        for route in [ProviderLaunchProfile.ClaudeRoute.new(UUID()), .resume("abc")] {
+            let profile = try ProviderLaunchProfile.claude(
+                route: route, capabilities: capable, config: URL(fileURLWithPath: "/cfg"), environment: [:], hooks: withPlugin)
+            let index = try #require(profile.arguments.firstIndex(of: "--plugin-dir"))
+            #expect(profile.arguments[index + 1] == "/data/claude-plugin")
+        }
+        // A Claude without the option, or a run without the plugin, launches as before.
+        for (caps, launchHooks) in [(capabilities, withPlugin), (capable, hooks)] {
+            let profile = try ProviderLaunchProfile.claude(
+                route: .new(UUID()), capabilities: caps, config: URL(fileURLWithPath: "/cfg"), environment: [:], hooks: launchHooks)
+            #expect(!profile.arguments.contains("--plugin-dir"))
+        }
+    }
+
+    @Test func theSkillNamesTheCommandAsTheHelperUnderstandsItAndIsWrittenOnce() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-plugin-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = try ClaudeLoomPlugin.install(in: root)
+        let skillFile = folder.appendingPathComponent("skills/open-session/SKILL.md")
+        let skill = try String(contentsOf: skillFile, encoding: .utf8)
+        let manifest = try #require(try JSONSerialization.jsonObject(
+            with: Data(contentsOf: folder.appendingPathComponent(".claude-plugin/plugin.json"))) as? [String: Any])
+        #expect(manifest["name"] as? String == "loom")
+        #expect(skill.hasPrefix("---\nname: open-session\ndescription: "))
+        // Every option and result line the skill names is one the command has.
+        for word in ["\"$LOOM_CLI\" open", "--title", "--ticket", "--project", "--message-file", "--message -",
+                     "started <", "exists <", "pending: ...", "denied", "error: "] {
+            #expect(OpenSessionCommand.usage.contains(word), "usage lacks \(word)")
+            #expect(skill.contains(word), "skill lacks \(word)")
+        }
+        #expect(skill.contains("\(Int(OpenSessionLimits.serverReplyDelay)) seconds"))
+        // An unchanged file is left alone; a changed one is put back.
+        let written = try FileManager.default.attributesOfItem(atPath: skillFile.path)[.modificationDate] as? Date
+        try "old".write(to: folder.appendingPathComponent(".claude-plugin/plugin.json"), atomically: true, encoding: .utf8)
+        try ClaudeLoomPlugin.install(in: root)
+        #expect(try FileManager.default.attributesOfItem(atPath: skillFile.path)[.modificationDate] as? Date == written)
+        #expect(try Data(contentsOf: folder.appendingPathComponent(".claude-plugin/plugin.json")) == Data(ClaudeLoomPlugin.manifest.utf8))
+    }
+
     @Test func aFirstMessageNeedsANewSessionAndACliThatKnowsNames() throws {
         #expect(throws: LoomError.self) {
             _ = try ProviderLaunchProfile.claude(
@@ -445,6 +490,22 @@ struct OpenSessionRuntimeTests {
         var parts = data.split(separator: 0, omittingEmptySubsequences: false).map { String(decoding: $0, as: UTF8.self) }
         if parts.last == "" { parts.removeLast() }
         return parts
+    }
+
+    @Test func claudeSessionsStartWithLoomsSkillFolderWrittenBeforeThem() async throws {
+        let (script, directory) = try stub()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let context = try await SessionRuntimeTests.makeContext(executableOverride: script, claudePlugin: true)
+        defer { context.cleanup() }
+        let folder = context.root.appendingPathComponent("project", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let project = try await context.catalog.addProject(path: folder.path).project
+        let launch = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
+        let argv = try #require(await arguments(of: launch.sessionID, in: context))
+        let index = try #require(argv.firstIndex(of: "--plugin-dir"))
+        let plugin = URL(fileURLWithPath: argv[index + 1])
+        #expect(plugin.standardizedFileURL == context.root.appendingPathComponent("claude-plugin").standardizedFileURL)
+        #expect(FileManager.default.fileExists(atPath: plugin.appendingPathComponent("skills/open-session/SKILL.md").path))
     }
 
     @Test func approvingARequestStartsANormalSessionWithTheNameTheMessageAndItsOrigin() async throws {

@@ -35,10 +35,18 @@ extension SessionRuntime {
         controlServer = try? OpenSessionControlServer(
             socketPath: controlSocket, authenticationToken: token
         ) { call in await requests.submit(call) }
+        // The skill that tells the agent about that command (D-42). A failure to write it only costs the skill.
+        var plugin: String?
+        if controlServer != nil, let directory = configuration.claudePluginDirectory {
+            do { plugin = try ClaudeLoomPlugin.install(in: directory).path } catch {
+                Self.hookLog.error("Loom's Claude plugin could not be written: \(String(describing: error), privacy: .public)")
+            }
+        }
         let value = ClaudeHookLaunchConfiguration(
             helperPath: configuration.hookHelperPath, socketPath: socket,
             authenticationToken: token,
-            controlSocketPath: controlServer == nil ? nil : controlSocket
+            controlSocketPath: controlServer == nil ? nil : controlSocket,
+            pluginDirectory: plugin
         )
         hookConfiguration = value
         return value

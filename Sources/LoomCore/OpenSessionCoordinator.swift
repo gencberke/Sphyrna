@@ -188,7 +188,8 @@ actor OpenSessionCoordinator {
             }
             // Nothing is started for a ticket that has a session, so no approval is needed: say so
             // at once, and show the user why nothing is opening.
-            if let ticket = input.ticketKey, let existing = try await catalog.session(projectID: project.id, ticket: ticket) {
+            if let ticket = input.ticketKey,
+               let existing = try await catalog.session(projectID: project.id, ticket: ticket, excluding: requesterID) {
                 let running = await isRunning(existing.session.id)
                 noteExisting(existing, input: input, requesterID: requesterID,
                              requesterTitle: requesterTitle, project: project)
@@ -328,7 +329,7 @@ actor OpenSessionCoordinator {
 
         // The ticket may have got a session since the request arrived (another request, the user).
         if let ticket = request.ticketKey,
-           let existing = try? await catalog.session(projectID: request.projectID, ticket: ticket) {
+           let existing = try? await catalog.session(projectID: request.projectID, ticket: ticket, excluding: request.requesterID) {
             let running = await isRunning(existing.session.id)
             resolveWaiter(id, Self.existsReply(existing, ticket: ticket, running: running))
             if let at = entries.firstIndex(where: { $0.request.id == id }) {
