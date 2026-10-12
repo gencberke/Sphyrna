@@ -123,6 +123,7 @@ struct GeneralSettings: View {
                     .accessibilityLabel("Project colors")
                 }
             }
+            SystemSettingsCard(model: model, integration: model.integration)
             if let error = model.errorMessage {
                 Text(error).foregroundStyle(LoomTheme.Status.failure).textSelection(.enabled)
             }
@@ -131,6 +132,63 @@ struct GeneralSettings: View {
         .padding(.horizontal, LoomTheme.Space.settingsInset)
         .padding(.top, LoomTheme.Space.settingsSegmentH)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+/// How Loom reaches the user outside its window (D-49, D-52): the menu bar item, approval banners and
+/// Open at login. A row adds one line and a button only where macOS says something is wrong.
+struct SystemSettingsCard: View {
+    let model: CatalogModel
+    let integration: SystemIntegration
+
+    var body: some View {
+        let notifyNotice = SettingsNotice.notifications(integration.notificationAuthorization)
+        let loginNotice = SettingsNotice.loginItem(integration.loginItemStatus)
+        SettingsCard {
+            SettingsRow(title: "Show in menu bar",
+                        detail: "Show Loom's mark in the menu bar, with the sessions that need you or are working.") {
+                Toggle("Show in menu bar", isOn: Binding(
+                    get: { model.showInMenuBar }, set: { model.setShowInMenuBar($0) }
+                ))
+                .labelsHidden().toggleStyle(.switch)
+                .accessibilityLabel("Show in menu bar")
+            }
+            SettingsRowDivider()
+            SettingsRow(title: "Notify when a session needs approval",
+                        detail: "A banner when Claude waits for your approval and Loom is not the active app. macOS asks for permission once.",
+                        notice: notifyNotice?.text) {
+                HStack(spacing: LoomTheme.Space.settingsRowInset) {
+                    if let notifyNotice {
+                        Button(notifyNotice.buttonTitle) { integration.openNotificationSettings() }
+                            .buttonStyle(SettingsButtonStyle())
+                    }
+                    Toggle("Notify when a session needs approval", isOn: Binding(
+                        get: { model.notifyApprovals }, set: { model.setNotifyApprovals($0) }
+                    ))
+                    .labelsHidden().toggleStyle(.switch)
+                    .accessibilityLabel("Notify when a session needs approval")
+                }
+            }
+            SettingsRowDivider()
+            SettingsRow(title: "Open at login", detail: "Start Loom when you log in.", notice: loginNotice?.text) {
+                HStack(spacing: LoomTheme.Space.settingsRowInset) {
+                    if let loginNotice {
+                        Button(loginNotice.buttonTitle) { integration.openLoginItems() }
+                            .buttonStyle(SettingsButtonStyle())
+                    }
+                    Toggle("Open at login", isOn: Binding(
+                        get: { integration.loginItemStatus.switchIsOn }, set: { integration.setLoginItem($0) }
+                    ))
+                    .labelsHidden().toggleStyle(.switch)
+                    .accessibilityLabel("Open at login")
+                }
+            }
+        }
+        // The system's side can change while Settings is closed or Loom is in the background.
+        .onAppear { integration.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            integration.refresh()
+        }
     }
 }
 
@@ -217,6 +275,8 @@ struct SettingsCard<Content: View>: View {
 struct SettingsRow<Trailing: View>: View {
     let title: String
     let detail: String
+    /// One orange line under the detail, only where macOS says something is wrong.
+    var notice: String?
     @ViewBuilder let trailing: Trailing
 
     var body: some View {
@@ -224,6 +284,9 @@ struct SettingsRow<Trailing: View>: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(LoomTheme.Typography.smallMedium)
                 Text(detail).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+                if let notice {
+                    Text(notice).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Status.attention)
+                }
             }
             Spacer(minLength: LoomTheme.Space.settingsRowInset)
             trailing

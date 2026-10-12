@@ -40,10 +40,41 @@ extension CatalogModel {
     /// Recomputes the count behind the Dock badge; called wherever a live state, a record or an
     /// open-session wait changes, never on a timer.
     func updateAttentionCount() {
-        let count = AttentionOrder.count(attentionCandidates())
-        guard count != attentionCount else { return }
-        attentionCount = count
-        onAttentionCountChange?(count)
+        let candidates = attentionCandidates()
+        let count = AttentionOrder.count(candidates)
+        if count != attentionCount {
+            attentionCount = count
+            onAttentionCountChange?(count)
+        }
+        let summary = MenuBarSummary.derive(candidates)
+        if summary != menuBarSummary {
+            menuBarSummary = summary
+            onMenuBarChange?(summary)
+        }
+    }
+
+    // MARK: The menu bar item
+
+    /// The sessions the menu bar menu lists, with the titles and projects as the cards show them. Built
+    /// when the menu opens, never per frame.
+    func menuBarEntries() -> [MenuBarEntry] {
+        liveStates.compactMap { id, state in
+            guard let record = rowModels[id]?.record ?? liveRecords[id] else { return nil }
+            let indicator = SessionIndicator(record: record, live: state, awaitingOpenApproval: awaitingOpenApproval.contains(id))
+            guard ProjectAttention(indicator) != nil || indicator == .working else { return nil }
+            let project = projectName(for: record)
+            return MenuBarEntry(id: id, indicator: indicator, lastActivityAt: record.lastActivityAt,
+                                title: record.displayTitle(projectName: project), project: project)
+        }
+    }
+
+    public func menuBarState() -> MenuBarState { MenuBarState.derive(menuBarEntries()) }
+
+    /// A session's title and project as a notification prints them; nil when its record is not known.
+    public func titleAndProject(of id: UUID) -> (title: String, project: String?)? {
+        guard let record = rowModels[id]?.record ?? liveRecords[id] else { return nil }
+        let project = projectName(for: record)
+        return (record.displayTitle(projectName: project), project)
     }
 
     // MARK: Select next and previous

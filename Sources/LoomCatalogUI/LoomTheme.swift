@@ -450,6 +450,92 @@ enum LoomTheme {
         static let subagentChaseScale: CGFloat = 0.75
     }
 
+    // MARK: Menu bar item
+
+    /// The menu bar item and its menu (D-49, D-52; design/menu-bar-preview.html). Lengths are points in the
+    /// mark's own box (18 pt wide, the 408 x 376 box of `Loom-menubar.svg`), which sits in a square canvas
+    /// so the badge may reach past its lower right corner.
+    enum MenuBar {
+        static let canvas = CGSize(width: 20, height: 20)
+        static let markWidth: CGFloat = 18
+        /// The mark's place in the canvas.
+        static let markOrigin = CGPoint(x: 1, y: 1.7)
+        /// The box of the SVG that the mark is fitted to (user space of the 512 x 512 viewBox).
+        static let markBox = CGRect(x: 104, y: 136, width: 408, height: 376)
+        static var markSize: CGSize { CGSize(width: markWidth, height: markWidth * markBox.height / markBox.width) }
+
+        // The badge slot, lower right. Working: the sidebar chase at 0.8 scale. Needs you: one dot.
+        // The mark is cut away around the badge so it sits on the bar. Coordinates are in the mark's box.
+        static let chaseScale: CGFloat = 0.8
+        static let chaseOrigin = CGPoint(x: 9.4, y: 8)
+        static let chaseCutoutCenter = CGPoint(x: 14.2, y: 12.8)
+        static let chaseCutoutRadius: CGFloat = 7
+        static let dotDiameter: CGFloat = 7
+        static let dotCenter = CGPoint(x: 15.2, y: 13.8)
+        static let dotCutoutRadius: CGFloat = 5.2
+        /// Increase Contrast: a larger dot.
+        static let dotDiameterIncreased: CGFloat = 8
+        static let dotCenterIncreased = CGPoint(x: 14.8, y: 13.4)
+        static let dotCutoutRadiusIncreased: CGFloat = 6
+
+        /// The mark and the chase: white on a dark bar, black on a light one.
+        static let markOnDarkRGB = RGB(red: 1, green: 1, blue: 1)
+        static let markOnLightRGB = RGB(red: 0, green: 0, blue: 0)
+        static func markRGB(darkBar: Bool) -> RGB { darkBar ? markOnDarkRGB : markOnLightRGB }
+
+        /// Increase Contrast lifts the trail's floor from 16 % to 45 %.
+        static let chaseTrailIncreased: [Double] = [1, 0.85, 0.7, 0.55]
+        static let chaseRestIncreased = 0.45
+
+        /// The dot's colour. A dark bar takes the theme's status values; a light bar darker ones (the
+        /// brand hues are 1.4 to 2.2:1 on it); Increase Contrast a stronger hue, lighter on a dark bar
+        /// and darker on a light one.
+        static func dotRGB(_ attention: ProjectAttention, darkBar: Bool, increasedContrast: Bool) -> RGB {
+            switch (darkBar, increasedContrast) {
+            case (true, false):
+                switch attention {
+                case .failure: Status.failureRGB
+                case .attention: Status.attentionRGB
+                case .unviewed: Status.unviewedRGB
+                }
+            case (true, true):
+                switch attention {
+                case .failure: RGB(hex: 0xFF8A86)
+                case .attention: RGB(hex: 0xFFB84D)
+                case .unviewed: RGB(hex: 0x8FB0FF)
+                }
+            case (false, false):
+                switch attention {
+                case .failure: RGB(hex: 0xC9332E)
+                case .attention: RGB(hex: 0xB05A00)
+                case .unviewed: RGB(hex: 0x2A5FD6)
+                }
+            case (false, true):
+                switch attention {
+                case .failure: RGB(hex: 0xA8231F)
+                case .attention: RGB(hex: 0x8A4700)
+                case .unviewed: RGB(hex: 0x1D4BB5)
+                }
+            }
+        }
+
+        /// The bar behind the evidence pictures (`screenshot-menubar`), and its height.
+        static let barHeight: CGFloat = 24
+        static let barWidth: CGFloat = 36
+        static let barDarkRGB = RGB(hex: 0x2E2A44)
+        static let barLightRGB = RGB(hex: 0xE2DDEE)
+
+        // The menu. A session row: a 12 pt glyph, the title, and the project at the right edge.
+        static let rowGlyph: CGFloat = 12
+        static let rowDot: CGFloat = 8
+        static let titleFontSize: CGFloat = 13
+        static let projectFontSize: CGFloat = 12
+        /// The width of the title and project text together; the project keeps up to `projectMaxWidth`.
+        static let rowTextWidth: CGFloat = 264
+        static let projectMaxWidth: CGFloat = 112
+        static let titleProjectGap: CGFloat = 8
+    }
+
     // MARK: Tab strip
 
     /// The conversation tab strip (design/run1-surfaces-preview.html, surface 3).
@@ -532,6 +618,8 @@ enum LoomTheme {
 }
 
 extension LoomTheme.RGB {
+    var cgColor: CGColor { CGColor(srgbRed: red, green: green, blue: blue, alpha: 1) }
+
     /// An sRGB color from 0xRRGGBB, the form the design documents use.
     init(hex: UInt32) {
         self.init(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255,

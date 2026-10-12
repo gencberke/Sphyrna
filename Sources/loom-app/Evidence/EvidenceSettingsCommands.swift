@@ -65,6 +65,7 @@ extension AppDelegate {
             "contentSize": window?.contentView.map { [Double($0.bounds.width), Double($0.bounds.height)] } ?? NSNull(),
             "resizable": window?.styleMask.contains(.resizable) ?? NSNull(),
             "cleanup": cleanupEvidence,
+            "general": generalSettingsEvidence,
         ]
     }
 

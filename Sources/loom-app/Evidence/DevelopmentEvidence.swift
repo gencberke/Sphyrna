@@ -18,7 +18,7 @@ import LoomTerminal
 /// `remove-project:<id>`, `move-project:<id>:<delta>`, `toggle-project:<id>`,
 /// `rename:<id>:<title>`, `begin-rename:<id>` / `rename-text:<text>` /
 /// `rename-commit` (the dialog's own path), `open-add-project-panel`, `panel-choose:<path>`, `close-panel`, `terminal-title:<id>:<title>`, `toggle-sidebar`,
-/// `sidebar-width:<pt>`, `resize:<w>x<h>`, `screenshot:<label>`. Conversation commands (CP5 C) drive the model intents the buttons use: `start:<claude|codex>:<project id|none>`, `resume:<id>`, `stop:<id>`, `answer:<id>:<accept|deny>`, and `type:<id>:<text>` (through the terminal delegate, not a native key event).
+/// `sidebar-width:<pt>`, `resize:<w>x<h>`, `screenshot:<label>`. Conversation commands (CP5 C) drive the model intents the buttons use: `start:<claude|codex>:<project id|none>`, `resume:<id>`, `stop:<id>`, `answer:<id>:<accept|deny>`, and `type:<id>:<text>` (through the terminal delegate, not a native key event). Menu bar, notification and login item commands (H1-F; the snapshot gains `menuBar`, `notifications`, `loginItem` and `settings.general`, and the system services are recording fakes): `menubar-menu:<label>`, `menubar-click:<session id|more|new|open|settings>`, `screenshot-menubar:<label>`, `settings-set:<menubar|notify|login>:<on|off>`, `app-active:<on|off>`, `notify-auth:<authorized|denied|notDetermined>`, `login-status:<enabled|requiresApproval|notRegistered>` (details in `EvidenceSystemCommands.swift`).
 @MainActor
 final class DevelopmentEvidence {
     let directory: URL

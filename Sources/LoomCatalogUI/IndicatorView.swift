@@ -73,10 +73,14 @@ struct ChaseDots: NSViewRepresentable {
     static let trail = LoomTheme.Motion.chaseTrail
     static let rest = LoomTheme.Motion.chaseRest
 
-    static func opacity(dot: Int, step: Int) -> Double {
+    static func opacity(dot: Int, step: Int, trail: [Double] = ChaseDots.trail, rest: Double = ChaseDots.rest) -> Double {
         let behind = ((step - dot) % dotCount + dotCount) % dotCount
         return behind < trail.count ? trail[behind] : rest
     }
+
+    /// The dots' places on the rounded rectangle as fractions of its span, clockwise from the top-left
+    /// corner (y points down): corners and edge midpoints.
+    static let unit: [(x: CGFloat, y: CGFloat)] = [(0, 0), (0.5, 0), (1, 0), (1, 0.5), (1, 1), (0.5, 1), (0, 1), (0, 0.5)]
 
     func makeNSView(context: Context) -> LayerView { LayerView(scale: scale) }
 
@@ -87,6 +91,8 @@ struct ChaseDots: NSViewRepresentable {
         private var dots: [CALayer] = []
         private var wantsAnimation = false
         private let scale: CGFloat
+        private var trail = ChaseDots.trail
+        private var rest = ChaseDots.rest
 
         /// Whether the keyframe animation is installed (test seam).
         var isRunning: Bool { dots.first?.animation(forKey: Self.key) != nil }
@@ -110,12 +116,11 @@ struct ChaseDots: NSViewRepresentable {
             let radius = LoomTheme.Layout.chaseDotRadius * scale
             let span = side - 2 * inset
             // Clockwise from the top-left corner: corners and edge midpoints (view y points up).
-            let unit: [(CGFloat, CGFloat)] = [(0, 0), (0.5, 0), (1, 0), (1, 0.5), (1, 1), (0.5, 1), (0, 1), (0, 0.5)]
-            for (index, point) in unit.enumerated() {
+            for (index, point) in ChaseDots.unit.enumerated() {
                 let dot = CALayer()
                 dot.bounds = CGRect(x: 0, y: 0, width: radius * 2, height: radius * 2)
                 dot.cornerRadius = radius
-                dot.position = CGPoint(x: inset + point.0 * span, y: side - (inset + point.1 * span))
+                dot.position = CGPoint(x: inset + point.x * span, y: side - (inset + point.y * span))
                 dot.backgroundColor = LoomTheme.Status.workingNS.cgColor
                 dot.opacity = Float(ChaseDots.opacity(dot: index, step: 0))
                 layer?.addSublayer(dot)
@@ -127,6 +132,19 @@ struct ChaseDots: NSViewRepresentable {
 
         func setAnimating(_ value: Bool) {
             wantsAnimation = value
+            apply()
+        }
+
+        /// A chase in another colour and trail (the menu bar item follows the bar's appearance and
+        /// Increase Contrast). A running animation is rebuilt with the new opacities.
+        func configure(color: CGColor, trail: [Double], rest: Double) {
+            self.trail = trail
+            self.rest = rest
+            for (index, dot) in dots.enumerated() {
+                dot.backgroundColor = color
+                dot.opacity = Float(ChaseDots.opacity(dot: index, step: 0, trail: trail, rest: rest))
+                dot.removeAnimation(forKey: Self.key)
+            }
             apply()
         }
 
@@ -142,7 +160,7 @@ struct ChaseDots: NSViewRepresentable {
                     let steps = ChaseDots.dotCount
                     let animation = CAKeyframeAnimation(keyPath: "opacity")
                     animation.calculationMode = .discrete
-                    animation.values = (0..<steps).map { Float(ChaseDots.opacity(dot: index, step: $0)) }
+                    animation.values = (0..<steps).map { Float(ChaseDots.opacity(dot: index, step: $0, trail: trail, rest: rest)) }
                     animation.keyTimes = (0...steps).map { NSNumber(value: Double($0) / Double(steps)) }
                     animation.duration = Double(steps) / IndicatorView.framesPerSecond
                     animation.repeatCount = .infinity

@@ -66,13 +66,20 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// Settings → General → Project colors (D-48). Off draws no project colour anywhere and keeps the
     /// stored ones; a file written before the setting existed reads as on.
     public var projectColors: Bool
+    /// Settings → General → Show in menu bar (D-49, D-52). Off removes the status item. A file written
+    /// before the setting existed reads as on.
+    public var showInMenuBar: Bool
+    /// Settings → General → Notify when a session needs approval. A file written before the setting
+    /// existed reads as on. (Open at login is not a preference: the system holds it.)
+    public var notifyApprovals: Bool
 
     public static let maxOpenTabs = 8
 
     public init(viewMode: CatalogViewMode = .activity, selectedSessionID: UUID? = nil,
                 sidebarWidth: Double = UIPreferences.defaultSidebarWidth,
                 sidebarCollapsed: Bool = false, terminalFontSize: Double = UIPreferences.defaultTerminalFontSize,
-                openTabs: [UUID] = [], windowFrame: WindowFrame? = nil, projectColors: Bool = true) {
+                openTabs: [UUID] = [], windowFrame: WindowFrame? = nil, projectColors: Bool = true,
+                showInMenuBar: Bool = true, notifyApprovals: Bool = true) {
         self.viewMode = viewMode
         self.selectedSessionID = selectedSessionID
         self.sidebarWidth = Self.clamped(sidebarWidth)
@@ -81,6 +88,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         self.openTabs = Self.normalizedTabs(openTabs)
         self.windowFrame = windowFrame.flatMap { $0.isValid ? $0 : nil }
         self.projectColors = projectColors
+        self.showInMenuBar = showInMenuBar
+        self.notifyApprovals = notifyApprovals
     }
 
     public init(from decoder: any Decoder) throws {
@@ -98,7 +107,9 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             openTabs: ((try? container.decodeIfPresent([Lossy<UUID>].self, forKey: .openTabs)) ?? nil)?
                 .compactMap(\.value) ?? [],
             windowFrame: (try? container.decodeIfPresent(WindowFrame.self, forKey: .windowFrame)) ?? nil,
-            projectColors: (try? container.decodeIfPresent(Bool.self, forKey: .projectColors)) ?? true
+            projectColors: (try? container.decodeIfPresent(Bool.self, forKey: .projectColors)) ?? true,
+            showInMenuBar: (try? container.decodeIfPresent(Bool.self, forKey: .showInMenuBar)) ?? true,
+            notifyApprovals: (try? container.decodeIfPresent(Bool.self, forKey: .notifyApprovals)) ?? true
         )
     }
 

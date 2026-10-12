@@ -42,6 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var startupTask: Task<Void, Never>?
     private var startupFinished = false
     private(set) var runDirectory: URL?
+    /// Menu bar item, needs-approval banners and the two system services behind them (H1-F; `AppDelegate+System`).
+    var systemServices: SystemServices?
+    var menuBar: MenuBarController?
+    var approvalNotifier: ApprovalNotifier?
     private(set) var quitAlert: NSAlert?
     /// "Quit Loom and stop N working sessions?" while it is on screen.
     private(set) var quitQuestion: NSAlert?
@@ -121,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model.presentingWindow = { [weak self] in self?.window }
         // The Dock badge counts the sessions that need the user; it follows live state changes, no timer.
         model.onAttentionCountChange = { count in NSApp.dockTile.badgeLabel = DockBadge.label(count: count) }
+        installSystemIntegration(model: model)
         let window = makeWindow(model: model)
         self.window = window
         traceWindowCall("launch-before-show")
@@ -356,7 +361,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc func showMainWindow() { presentMainWindow(reason: "window-menu") }
 
-    private func presentMainWindow(reason: String) {
+    func presentMainWindow(reason: String) {
         traceWindowCall("show-before-\(reason)")
         window?.makeKeyAndOrderFront(nil)
         if model?.showsDevTerminal == true, let view = controller?.surface?.view {
@@ -368,6 +373,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// Whatever is still waiting for the preference write debounce (the window frame) goes to disk.
     func applicationWillTerminate(_ notification: Notification) {
         NSApp.dockTile.badgeLabel = nil
+        approvalNotifier?.stop()
         usageWatcher?.stop()
         model?.flushPreferences()
     }

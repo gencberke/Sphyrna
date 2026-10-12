@@ -220,6 +220,9 @@ public final class CatalogModel {
     /// colours up here and never walk `projects`. `projectColorsEnabled` is Settings → Project colors.
     public private(set) var projectTones: [UUID: ProjectTone] = [:]
     public private(set) var projectColorsEnabled: Bool
+    /// Settings → General → Show in menu bar and Notify when a session needs approval (D-49, D-52).
+    public private(set) var showInMenuBar: Bool
+    public private(set) var notifyApprovals: Bool
     public private(set) var sessionCounts: [UUID?: Int] = [:]
     public private(set) var searchText = ""
     public private(set) var viewMode: CatalogViewMode
@@ -323,6 +326,15 @@ public final class CatalogModel {
     /// a record or an open-session wait changes; `onAttentionCountChange` fires on a change only.
     @ObservationIgnored public internal(set) var attentionCount = 0
     @ObservationIgnored public var onAttentionCountChange: (@MainActor (Int) -> Void)?
+    /// The menu bar item in numbers (working changes the Dock badge never sees), kept beside the count and
+    /// fired from the same places on a change only. The menu itself is built when it opens (`menuBarState()`).
+    @ObservationIgnored public internal(set) var menuBarSummary = MenuBarSummary.idle
+    @ObservationIgnored public var onMenuBarChange: (@MainActor (MenuBarSummary) -> Void)?
+    /// The Show in menu bar and Notify switches in Settings changed; the app reads `showInMenuBar` and `notifyApprovals`.
+    @ObservationIgnored public var onShowInMenuBarChange: (@MainActor () -> Void)?
+    @ObservationIgnored public var onNotifyApprovalsChange: (@MainActor () -> Void)?
+    /// What the system says about notifications and the login item, and the calls Settings makes (the app installs them).
+    public let integration = SystemIntegration()
     /// The sidebar scrolls to this session (selection changed by something other than a click in the list).
     public internal(set) var revealRequest: SessionRevealRequest?
     @ObservationIgnored var revealSerial = 0
@@ -372,6 +384,8 @@ public final class CatalogModel {
         sidebarCollapsed = preferences.current.sidebarCollapsed
         terminalFontSize = preferences.current.terminalFontSize
         projectColorsEnabled = preferences.current.projectColors
+        showInMenuBar = preferences.current.showInMenuBar
+        notifyApprovals = preferences.current.notifyApprovals
         tabs = ConversationTabs(pinned: preferences.current.openTabs)
         today = Calendar.current.startOfDay(for: now)
     }
@@ -1124,6 +1138,22 @@ public final class CatalogModel {
         guard enabled != projectColorsEnabled else { return }
         projectColorsEnabled = enabled
         persist { $0.projectColors = enabled }
+    }
+
+    /// Settings → General → Show in menu bar. Touches nothing else.
+    public func setShowInMenuBar(_ enabled: Bool) {
+        guard enabled != showInMenuBar else { return }
+        showInMenuBar = enabled
+        persist { $0.showInMenuBar = enabled }
+        onShowInMenuBarChange?()
+    }
+
+    /// Settings → General → Notify when a session needs approval. Touches nothing else.
+    public func setNotifyApprovals(_ enabled: Bool) {
+        guard enabled != notifyApprovals else { return }
+        notifyApprovals = enabled
+        persist { $0.notifyApprovals = enabled }
+        onNotifyApprovalsChange?()
     }
 
     /// The Color menu: a tone, or nil for None. The projects are read again (the one project-change

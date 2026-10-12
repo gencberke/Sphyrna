@@ -32,6 +32,7 @@ final class SettingsWindowController {
         let window = window ?? makeWindow()
         self.window = window
         usage?.refresh(reason: .settingsOpened)
+        model.integration.refresh() // what the system says about notifications and the login item
         window.makeKeyAndOrderFront(nil)
         usage?.setSettingsWindowVisible(true) // the occlusion notifications correct it if the window is covered
     }

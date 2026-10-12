@@ -22,5 +22,6 @@ extension AppDelegate {
     func installDevelopmentMenuItems(in fileMenu: NSMenu) {}
     func traceWindowCall(_ reason: String, hasVisibleWindows: Bool? = nil) {}
     func recordVisibility(_ reason: String, hasVisibleWindows: Bool? = nil) {}
+    func makeSystemServices() -> SystemServices { .live(bundleIdentifier: Bundle.main.bundleIdentifier) }
 }
 #endif

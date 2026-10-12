@@ -8,7 +8,10 @@ State on 12 Oct (late evening):
 
 - **Release 0.4.0** ships H1-A to H1-E and the bundle keys (numeric build number, `LoomRevision`, app category). Its checks are in [Release 0.4.0](#release-040-12-oct-evening). The tag, promote and install are recorded there.
 - **Committed on `swarm/1`.** `2bbebf3` A and B; `37b155f` C; `037810c` E and D1; `07fafb6` D2; `c677ae1` the bundle keys.
-- **Next: H1-F** (menu bar per D-52, notifications, Open at login), on the user's go. The Screen Time question stays open: after 0.4.0 the user can look again for Loom (it now has a category and a numeric build).
+- **H1-F in progress** (the user's go, 12 Oct late evening: "şimdi başlayabilirsin"). An implementer builds it in worktree `loom-h1/wt/F` (base `2d3559b`, scratch `loom-h1/scratch-F`). It covers the menu bar per D-52, the needs-approval notification and the three Settings rows.
+  - **Test scope, the user's word:** test the new features only, not everything again ("menü bar için koş … en baştan her şeyi test etme"). So: the slice's new suites, the debug and staged release-tree builds, an on-screen pass of the menu bar states, menu, notification logic and Settings rows on a package, and the badge's CPU and wakeup cost (menu bar on against off, Loom inactive, one session working). No full suite, no matrix.
+  - **Ships as 0.4.1.**
+  - **Screen Time:** the question stays open. After 0.4.0 the user can look again for Loom, which now has a category and a numeric build.
 - **Old worktrees** `loom-h1/wt/A`, `B`, `C`, `E`, `D1`, `D2` and `ref-033` are merged or done and can be removed with the user's OK.
 
 ## Slices
@@ -21,7 +24,7 @@ State on 12 Oct (late evening):
 | H1-D1 Performance, part 1 | Candidates 1 (usage after a finished turn) and 5 (terminal reconcile), [D-51](../DECISIONS.md) | `UsageModel`, `UsageTranscriptWatcher`, `ConversationController` | committed with H1-E in `037810c`, in 0.4.0; combined checks passed (see H1-E) |
 | H1-D2 Performance, part 2 | Candidates 2 (list patches), 3 (one search query) and 4 (card invalidation) | `LoomCatalogUI` lists and cards, `SessionCatalog+Paging` | reviewed by the planner and committed in `07fafb6`, in 0.4.0; combined checks passed on `swarm/1` (`scripts/check.sh --tests`, log `check-20261012T215200-56637.log`: 583 and 360 tests) |
 | H1-E Project colours | Per D-48, look chosen on [the preview](../design/project-colors-preview.html) | `LoomCore` (`projects.color`), `LoomCatalogUI`, DESIGN, UI-MAP | look chosen ([D-50](../DECISIONS.md)): C's stripe in the sidebar, T5's light tint on the tabs (the user approved the drawing, 12 Oct), the stripe and name in the detail header; done and committed with H1-D1 (the planner's contrast change included); combined checks passed (`scripts/check.sh --tests`, log `check-20261012T170029-40693.log`: LoomCoreTests 578, LoomCatalogUITests 344, LoomTerminalTests 42, LoomLaunchOptionsTests 8) |
-| H1-F macOS integration | Per D-47 and [D-49](../DECISIONS.md): menu bar item (Loom mark, working chase, status dot, session menu), notifications for Needs approval, Open at Login setting, Screen Time visibility, numeric versions from tags | `loom-app`, `LoomCatalogUI`, `scripts/release` | preview approved ([D-52](../DECISIONS.md)): option A, the mark with a chase badge. Planner decisions: light-bar status values `#B05A00`, `#2A5FD6`, `#C9332E`; the chase keeps moving under Reduce Motion (DESIGN §4); Settings defaults on, on, off. Screen Time waits for the user's answer (does Screen Time list any other app?); the bundle keys (numeric build number, app category) shipped early, in 0.4.0. The rest is not started: the user said to wait (12 Oct). |
+| H1-F macOS integration | Per D-47 and [D-49](../DECISIONS.md): menu bar item (Loom mark, working chase, status dot, session menu), notifications for Needs approval, Open at Login setting, Screen Time visibility, numeric versions from tags | `loom-app`, `LoomCatalogUI`, `scripts/release` | implemented in worktree `loom-h1/wt/F` and reviewed and merged by the planner. Targeted checks passed on `swarm/1` (`scripts/check.sh --release-tree --suite MenuBarTests MenuBarModelTests …`, log `check-20261012T234100-75401.log`: 53 tests, the staged release tree built without evidence code). The bundle keys (numeric build number, app category) shipped early, in 0.4.0. Screen Time waits for the user's look after 0.4.0 |
 
 A and B run in parallel in detached worktrees with disjoint write areas; B keeps every API that A uses source-compatible. The planner applies both diffs to `swarm/1` and runs the combined checks.
 
@@ -114,6 +117,21 @@ A and B run in parallel in detached worktrees with disjoint write areas; B keeps
   - A search result holds at most 5,000 rows.
   - The tooltip cache is keyed on the activity time and the time zone, not the locale.
 - **Not run yet.** On screen: scrolling, the selection highlight, a search over many projects, the minute tick.
+
+### H1-F notes from the review
+
+- **Shape.**
+  - `MenuBarSummary` (badge, counts, the approval set) is derived in `updateAttentionCount()` beside the Dock badge and fires `onMenuBarChange` only on a change. The menu is built from `menuBarState()` when it opens.
+  - The chase is `ChaseDots.LayerView` over the status button: a render-server animation gated only by `wantsAnimation && window != nil`, so it moves while Loom is in the background. There is no timer.
+  - `ApprovalNotificationPlanner` is pure. `ApprovalNotifier` posts and removes through a `NotificationService`, and removes everything at launch and quit.
+  - `SMAppService.mainApp` and `UNUserNotificationCenter` are touched only by the live services. Under `--evidence` both are recording fakes, so test runs raise no system prompt and register no login item.
+- **Implementer's choices, accepted.**
+  - The mark is 18 pt wide and 16.6 pt high (the preview's 408 × 376 symbol box) in a 20 pt canvas, so the badge can reach past its corner.
+  - A warning row keeps its detail and adds the orange line under it, with the button left of the switch.
+  - Open at login shows on while the status is enabled or requires approval. A failed `register()` is only logged; the switch then shows the system's status.
+  - The banner title is the activity-view card title.
+  - The status item sets `autosaveName` and `isVisible`, so an earlier Command-drag out of the bar cannot hide an item whose switch is on.
+- **Unverified at merge.** The item on a real menu bar (the badged image, the chase layers over `NSStatusBarButton`, appearance flips); the menu's look; real banners, the permission prompt and the deep links; real `SMAppService`.
 
 ### Combined checks (12 Oct)
 
