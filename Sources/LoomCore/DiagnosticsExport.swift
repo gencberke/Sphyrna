@@ -153,8 +153,15 @@ public enum DiagnosticsExport {
             .appendingPathComponent(folderPrefix + CatalogRecovery.stamp(now), isDirectory: true)
     }
 
-    static func logArguments() -> [String] {
-        ["show", "--last", "24h", "--predicate", "subsystem == \"\(LoomSignposts.subsystem)\"", "--style", "ndjson"]
+    /// `log show` for this app only. The subsystem is shared with `swift test` processes and with the
+    /// other flavor (Loom and Loom Dev), so the predicate also requires the process image to live
+    /// inside the running app's bundle (the app and its bundled helpers, nothing else).
+    static func logArguments(bundlePath: String = Bundle.main.bundleURL.path) -> [String] {
+        let prefix = (bundlePath.hasSuffix("/") ? bundlePath : bundlePath + "/")
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let predicate = "subsystem == \"\(LoomSignposts.subsystem)\" && processImagePath BEGINSWITH \"\(prefix)\""
+        return ["show", "--last", "24h", "--predicate", predicate, "--style", "ndjson"]
     }
 
     /// The real `log show`, with a timeout and an output cap.

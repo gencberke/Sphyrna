@@ -55,7 +55,8 @@ private struct UsageContent: View {
                             path: profile.map { SettingsPaths.display($0.appendingPathComponent("projects")) })
             } else if let report = usage.report, report.period == usage.period {
                 ScrollView {
-                    UsageReportView(report: report, limits: usage.limits, timeZone: usage.timeZone)
+                    UsageReportView(report: report, limits: usage.limits, limitsFailure: usage.limitsFailure,
+                                    linesNotUnderstood: usage.linesNotUnderstood, timeZone: usage.timeZone)
                         .padding(.horizontal, LoomTheme.Space.settingsInset)
                         .padding(.bottom, LoomTheme.Space.settingsSectionGap)
                 }
@@ -131,9 +132,11 @@ private extension String {
 }
 
 /// The Claude plan's 5-hour and weekly windows, as the Claude CLI reports them: used and remaining
-/// percent, and when each resets. Shown only while the CLI answered; a window that has reset is left out.
+/// percent, and when each resets. A window that has reset is left out. When the last ask failed, the
+/// earlier answer stays with a note that it was not refreshed (`PlanLimitsUnavailable` covers no answer).
 private struct PlanLimitsBlock: View {
     let limits: PlanLimits
+    var notRefreshed = false
     let timeZone: TimeZone
 
     var body: some View {
@@ -142,7 +145,7 @@ private struct PlanLimitsBlock: View {
             HStack {
                 Text("Plan limits").fontWeight(.semibold)
                 Spacer()
-                Text("Updated \(UsageText.time(limits.fetchedAt, timeZone))")
+                Text("Updated \(UsageText.time(limits.fetchedAt, timeZone))" + (notRefreshed ? " · could not refresh" : ""))
             }
             .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
             .padding(.bottom, LoomTheme.Space.footerSpacing)
@@ -177,11 +180,28 @@ private struct PlanLimitsBlock: View {
     }
 }
 
+/// Where the plan limits would be when the last ask failed and there is nothing earlier to show.
+private struct PlanLimitsUnavailable: View {
+    let reason: String
+
+    var body: some View {
+        HStack {
+            Text("Plan limits unavailable").fontWeight(.semibold)
+            Spacer()
+            Text(reason)
+        }
+        .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // MARK: Report
 
 private struct UsageReportView: View {
     let report: UsageReport
     let limits: PlanLimits?
+    let limitsFailure: PlanLimitsFailure?
+    let linesNotUnderstood: Int
     let timeZone: TimeZone
 
     var body: some View {
@@ -191,12 +211,18 @@ private struct UsageReportView: View {
                 headline(snapshot).frame(maxWidth: .infinity, alignment: .leading)
                 activityBlock.frame(maxWidth: .infinity, alignment: .leading)
             }
+            let reason = limitsFailure?.category.reason
             if let limits, !limits.current(at: Date()).isEmpty {
-                PlanLimitsBlock(limits: limits, timeZone: timeZone)
+                PlanLimitsBlock(limits: limits, notRefreshed: reason != nil, timeZone: timeZone)
+            } else if let reason {
+                PlanLimitsUnavailable(reason: reason)
             }
             totals(snapshot.tokens)
             chart
             modelTable(snapshot)
+            if let skipped = UsageText.skippedLines(linesNotUnderstood) {
+                Text(skipped).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+            }
         }
         .padding(.top, LoomTheme.Space.settingsSegmentH - 4)
     }
@@ -452,6 +478,12 @@ enum UsageText {
             $0.timeZone = zone
             $0.dateFormat = pattern
         }
+    }
+
+    /// The one line under the page when scans met records they could not understand; nil for none.
+    static func skippedLines(_ count: Int) -> String? {
+        guard count > 0 else { return nil }
+        return "\(UsageFormat.grouped(Int64(count))) usage \(count == 1 ? "record" : "records") could not be understood, so totals may be low."
     }
 
     static func weekday(_ date: Date, _ zone: TimeZone) -> String { format("EEE", date, zone) }

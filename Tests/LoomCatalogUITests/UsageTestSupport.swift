@@ -37,6 +37,8 @@ final class FakeUsageIndex: UsageIndexing, @unchecked Sendable {
     private let tokens = Mutex<Int64>(0)
     /// Overrides `hasUsage` (nil: decided by the snapshot like the protocol's default).
     private let historyOverride = Mutex<Bool?>(nil)
+    /// What `diagnostics()` reports as lines the scans could not understand.
+    private let skippedLines = Mutex(0)
 
     var refreshCalls: Int { state.withLock { $0.refreshCalls } }
     var changedCalls: [[URL]] { state.withLock { $0.changedCalls } }
@@ -44,6 +46,7 @@ final class FakeUsageIndex: UsageIndexing, @unchecked Sendable {
     var ranOnMainThread: Bool { state.withLock { $0.ranOnMainThread } }
     func setTokens(_ value: Int64) { tokens.withLock { $0 = value } }
     func setHasUsage(_ value: Bool?) { historyOverride.withLock { $0 = value } }
+    func setLinesNotUnderstood(_ value: Int) { skippedLines.withLock { $0 = value } }
     func setFailing(_ value: Bool) { state.withLock { $0.failRefresh = value } }
     func setBlocking(_ value: Bool) { state.withLock { $0.blockRefresh = value } }
     func release() {
@@ -82,6 +85,10 @@ final class FakeUsageIndex: UsageIndexing, @unchecked Sendable {
         return UsageScanReport()
     }
 
+    func diagnostics() async -> UsageDiagnostics {
+        UsageDiagnostics(linesNotUnderstood: skippedLines.withLock { $0 })
+    }
+
     func hasUsage() async throws -> Bool {
         if let value = historyOverride.withLock({ $0 }) { return value }
         return try await snapshot(range: .all, now: Date(), timeZone: .current).messageCount > 0
@@ -111,12 +118,16 @@ final class FakeLimits: PlanLimitsFetching, @unchecked Sendable {
     private struct State {
         var asks = 0
         var answer: PlanLimits?
+        var failure: PlanLimitsFailure?
         var blocking = false
         var waiters: [CheckedContinuation<Void, Never>] = []
     }
     private let state = Mutex(State())
     var asks: Int { state.withLock { $0.asks } }
     func setAnswer(_ value: PlanLimits?) { state.withLock { $0.answer = value } }
+    /// What `lastFailure` reports (a real fetcher sets it when an ask fails and clears it on success).
+    func setFailure(_ value: PlanLimitsFailure?) { state.withLock { $0.failure = value } }
+    var lastFailure: PlanLimitsFailure? { state.withLock { $0.failure } }
     func setBlocking(_ value: Bool) { state.withLock { $0.blocking = value } }
     func release() {
         let waiting = state.withLock { state -> [CheckedContinuation<Void, Never>] in

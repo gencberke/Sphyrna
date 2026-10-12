@@ -157,6 +157,16 @@ public final class CatalogBackupStore: @unchecked Sendable {
         journal.record("catalog_backup", ["outcome": "purged"])
     }
 
+    /// Removes the damaged catalogs set aside by a restore or a fresh start (`catalog.damaged-<stamp>.sqlite3`
+    /// with their -wal and -shm). Like a backup, such a file can still hold a session that is now being
+    /// permanently deleted (contract §8), so every deletion removes them.
+    public func purgeDamagedCopies() {
+        let removed = CatalogRecovery.removeDamagedCopies(besideCatalogAt: catalogURL)
+        guard removed > 0 else { return }
+        LoomLog.notice(.catalog, "Removed \(removed) set-aside damaged catalog file(s) with a permanent deletion")
+        journal.record("catalog_damaged_purged", ["files": .int(removed)])
+    }
+
     private func write(now: Date, generation started: Int) -> CatalogBackupOutcome {
         let fileManager = FileManager.default
         do {
@@ -254,6 +264,35 @@ public enum CatalogRecovery {
         guard name.hasPrefix(namePrefix), name.hasSuffix(nameSuffix) else { return false }
         let middle = name.dropFirst(namePrefix.count).dropLast(nameSuffix.count)
         return middle.count == 19 && middle.allSatisfy { $0.isNumber || $0 == "-" }
+    }
+
+    /// Whether `name` is a catalog set aside by `setAside` (or one of its -wal / -shm files) for the
+    /// catalog file called `catalogName`.
+    static func isDamagedName(_ name: String, catalogName: String) -> Bool {
+        let url = URL(fileURLWithPath: catalogName)
+        let prefix = url.deletingPathExtension().lastPathComponent + ".damaged-"
+        let suffix = "." + url.pathExtension
+        guard name.hasPrefix(prefix) else { return false }
+        var rest = Substring(name.dropFirst(prefix.count))
+        for sidecar in ["-wal", "-shm"] where rest.hasSuffix(suffix + sidecar) {
+            rest = rest.dropLast(sidecar.count)
+        }
+        guard rest.hasSuffix(suffix) else { return false }
+        let stamp = rest.dropLast(suffix.count)
+        return stamp.count == 19 && stamp.allSatisfy { $0.isNumber || $0 == "-" }
+    }
+
+    /// Removes every set-aside damaged catalog (and its -wal and -shm) beside the catalog at
+    /// `catalogURL`; returns how many files went.
+    @discardableResult
+    static func removeDamagedCopies(besideCatalogAt catalogURL: URL) -> Int {
+        let directory = catalogURL.deletingLastPathComponent()
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        var removed = 0
+        for name in names where isDamagedName(name, catalogName: catalogURL.lastPathComponent) {
+            if unlink(directory.appendingPathComponent(name).path) == 0 { removed += 1 }
+        }
+        return removed
     }
 
     /// Complete backups of the catalog at `catalogURL`, newest first.

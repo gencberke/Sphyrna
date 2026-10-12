@@ -36,7 +36,9 @@ extension AppDelegate {
         let about = SettingsAbout(
             version: build.map { "Version \(version) (build \($0))" } ?? "Version \(version)",
             dataFolder: root, claudeProfile: usageModel == nil ? nil : layout.configDirectory)
-        settingsController = SettingsWindowController(model: model, usage: usageModel, about: about)
+        let diagnostics = makeDiagnosticsCollection()
+        self.diagnostics = diagnostics
+        settingsController = SettingsWindowController(model: model, usage: usageModel, about: about, diagnostics: diagnostics)
     }
 
     /// Which Claude profile usage is read from, without resolving the terminal environment (that

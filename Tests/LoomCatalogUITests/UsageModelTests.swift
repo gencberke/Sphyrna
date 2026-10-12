@@ -326,6 +326,70 @@ struct UsageFreshnessTests {
         #expect(usage.chip?.full == "1.2M today · 5h 62%")
     }
 
+    @Test func aFailedAskIsShownUntilANewAskSucceeds() async {
+        let clock = TestClock()
+        let source = FakeLimits()
+        let failure = PlanLimitsFailure(category: .timedOut, at: clock.now)
+        source.setFailure(failure)
+        let usage = model(FakeUsageIndex(), limits: source, clock: clock)
+        usage.refresh(reason: .launch)
+        await usage.settle()
+        #expect(usage.limits == nil)
+        #expect(usage.limitsFailure == failure)
+
+        // The next ask answers: the failure is gone, whatever the source still remembers.
+        clock.advance(400)
+        source.setAnswer(limits())
+        usage.windowActivityChanged(false)
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(source.asks == 2)
+        #expect(usage.limits == limits())
+        #expect(usage.limitsFailure == nil)
+
+        // A later failure keeps the earlier answer and records why it was not refreshed.
+        clock.advance(400)
+        source.setAnswer(nil)
+        source.setFailure(PlanLimitsFailure(category: .notAvailable, at: clock.now))
+        usage.windowActivityChanged(false)
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(usage.limits == limits())
+        #expect(usage.limitsFailure?.category == .notAvailable)
+    }
+
+    @Test func aCancelledAskIsNotAFailure() async {
+        let source = FakeLimits()
+        source.setFailure(PlanLimitsFailure(category: .cancelled, at: Date()))
+        let usage = model(FakeUsageIndex(), limits: source, clock: TestClock())
+        usage.refresh(reason: .launch)
+        await usage.settle()
+        #expect(source.asks == 1)
+        #expect(usage.limitsFailure == nil)
+    }
+
+    @Test func linesTheScansDidNotUnderstandReachThePage() async {
+        let index = FakeUsageIndex()
+        let usage = model(index, clock: TestClock())
+        await usage.refreshNow(reason: .launch)
+        #expect(usage.linesNotUnderstood == 0)
+        index.setLinesNotUnderstood(3)
+        await usage.refreshNow(reason: .manual)
+        #expect(usage.linesNotUnderstood == 3)
+        #expect(UsageText.skippedLines(3) == "3 usage records could not be understood, so totals may be low.")
+        #expect(UsageText.skippedLines(1) == "1 usage record could not be understood, so totals may be low.")
+        #expect(UsageText.skippedLines(0) == nil)
+        #expect(await usage.diagnosticsSnapshot().usage.linesNotUnderstood == 3)
+    }
+
+    @Test func everyFailureCategoryHasAShortReasonExceptCancellation() {
+        let categories: [PlanLimitsFailure.Category] = [
+            .noToolchain, .spawnFailed, .writeFailed, .timedOut, .endedWithoutAnswer, .outputTooLarge, .notAvailable,
+        ]
+        for category in categories { #expect(!(category.reason ?? "").isEmpty, "\(category)") }
+        #expect(PlanLimitsFailure.Category.cancelled.reason == nil)
+    }
+
     @Test func aWindowShowingAgainAsksOnlyWhenTheLastAskIsFiveMinutesOld() async {
         let clock = TestClock()
         let source = FakeLimits()
@@ -516,6 +580,8 @@ struct UsageModelRealIndexTests {
         #expect(abs(report.snapshot.estimatedCostUSD - 2.435) < 1e-9)
         // The five hourly cells are 08:00 to 12:00: msg_a sits in 09:00, msg_b in 11:00.
         #expect(report.cells.map(\.tokens) == [0, 1_700_000, 0, 150_000, 0])
+        // The real index answers with its own scan report, not the protocol's empty default.
+        #expect(await usage.diagnosticsSnapshot().usage.lastScanAt != nil)
         // A second refresh with no file growth keeps the figures and reads nothing new.
         await usage.refreshNow(reason: .manual)
         #expect(usage.report?.snapshot.tokens.total == 1_865_000)

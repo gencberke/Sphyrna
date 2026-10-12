@@ -16,6 +16,8 @@ public protocol UsageIndexing: Sendable {
     func buckets(size: UsageBucketSize, count: Int, endingAt now: Date, timeZone: TimeZone) async throws -> [UsageBucket]
     /// Whether any usage is indexed at all.
     func hasUsage() async throws -> Bool
+    /// What the scans report about themselves (lines they could not understand).
+    func diagnostics() async -> UsageDiagnostics
 }
 
 /// What a stand-in without its own bucket query gets: the same answers from per-interval snapshots.
@@ -31,6 +33,8 @@ extension UsageIndexing {
     public func hasUsage() async throws -> Bool {
         try await snapshot(range: .all, now: Date(), timeZone: .current).messageCount > 0
     }
+
+    public func diagnostics() async -> UsageDiagnostics { UsageDiagnostics() }
 
     public func buckets(size: UsageBucketSize, count: Int, endingAt now: Date, timeZone: TimeZone) async throws -> [UsageBucket] {
         var calendar = Calendar(identifier: .gregorian)
@@ -156,6 +160,11 @@ public final class UsageModel {
     public private(set) var chip: UsageChipContent?
     /// The Claude plan limits, nil while unknown or unavailable.
     public private(set) var limits: PlanLimits?
+    /// Why the last plan-limits ask failed; nil after a success or before any ask. The page says
+    /// "Plan limits unavailable" while it is set.
+    public private(set) var limitsFailure: PlanLimitsFailure?
+    /// Transcript lines the scans could not understand since Loom started: the totals may be low.
+    public private(set) var linesNotUnderstood = 0
 
     @ObservationIgnored private let index: any UsageIndexing
     @ObservationIgnored private let limitsSource: (any PlanLimitsFetching)?
@@ -390,6 +399,8 @@ public final class UsageModel {
             do {
                 _ = try await full ? index.refreshAll() : index.refreshChanged(paths)
                 if full { fullScanDone = true }
+                let skipped = await index.diagnostics().linesNotUnderstood
+                if skipped != linesNotUnderstood { linesNotUnderstood = skipped }
                 try await loadAfterScan(detail: full || usagePageVisible || report == nil)
                 lastFailure = nil
                 updatedAt = clock()
@@ -473,8 +484,16 @@ public final class UsageModel {
             // A failed ask (offline after wake, a timeout) keeps the last answer; it carries its
             // own "updated" time and ended windows drop out by themselves.
             if let fetched, self.limits != fetched { self.limits = fetched }
+            // A success clears the failure; a cancelled ask is neither.
+            let failure = fetched == nil ? limitsSource.lastFailure : nil
+            if failure?.category != .cancelled, self.limitsFailure != failure { self.limitsFailure = failure }
             self.rebuildChip()
         }
+    }
+
+    /// The facts the diagnostics export carries from here: the index's scan report and the plan-limits failure.
+    public func diagnosticsSnapshot() async -> (usage: UsageDiagnostics, planLimitsFailure: PlanLimitsFailure?) {
+        (await index.diagnostics(), limitsSource?.lastFailure)
     }
 
     // MARK: Report

@@ -112,6 +112,59 @@ struct CatalogBackupTests {
         #expect(try allBytes(under: store.directory).range(of: Data("MARKER-DELETED-TITLE".utf8)) == nil)
     }
 
+    /// A damaged catalog set aside by a restore or a fresh start, with a marker only the deleted
+    /// session's row holds, plus files that are not damaged copies of this catalog.
+    private func setAsideCatalogHolding(_ title: String, in root: URL) async throws -> (SessionCatalog, UUID, [String]) {
+        let url = root.appendingPathComponent("catalog.sqlite3")
+        do { _ = try await catalog(root, titles: [title]) }
+        try Data("wal bytes".utf8).write(to: URL(fileURLWithPath: url.path + "-wal"))
+        let aside = try #require(try CatalogRecovery.startFresh(catalogAt: url))
+        let (fresh, ids) = try await catalog(root, titles: ["after"])
+        #expect(try Data(contentsOf: aside).range(of: Data(title.utf8)) != nil)
+        return (fresh, ids[0], ["notes.damaged-20261001-120000-000.sqlite3", "catalog.damaged-notes.txt"])
+    }
+
+    @Test func deletingASessionAlsoRemovesTheSetAsideDamagedCatalogs() async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (catalog, id, unrelated) = try await setAsideCatalogHolding("MARKER-DAMAGED-TITLE", in: root)
+        for name in unrelated { try Data("x".utf8).write(to: root.appendingPathComponent(name)) }
+        func damagedNames() throws -> [String] {
+            try FileManager.default.contentsOfDirectory(atPath: root.path).filter { CatalogRecovery.isDamagedName($0, catalogName: "catalog.sqlite3") }
+        }
+        let before = try damagedNames()
+        #expect(before.contains { $0.hasSuffix(".sqlite3") } && before.contains { $0.hasSuffix(".sqlite3-wal") }) // main file and its log
+
+        #expect(try await catalog.deleteSessionRows(sessionID: id))
+        #expect(try damagedNames().isEmpty)
+        let left = Set(try FileManager.default.contentsOfDirectory(atPath: root.path))
+        for name in unrelated { #expect(left.contains(name), "\(name) must stay") }
+    }
+
+    @Test func onlyTheNamesASetAsideCatalogGetsAreDamagedCopies() {
+        let stamp = "20261001-120000-123"
+        for suffix in ["", "-wal", "-shm"] {
+            #expect(CatalogRecovery.isDamagedName("catalog.damaged-\(stamp).sqlite3\(suffix)", catalogName: "catalog.sqlite3"))
+        }
+        for name in ["catalog.sqlite3", "catalog-\(stamp).sqlite3", "catalog.damaged-\(stamp).txt", "catalog.damaged-12.sqlite3",
+                     "catalog.damaged-\(stamp).sqlite3.partial", "other.damaged-\(stamp).sqlite3", "catalog.sqlite3.restoring"] {
+            #expect(!CatalogRecovery.isDamagedName(name, catalogName: "catalog.sqlite3"), "\(name)")
+        }
+    }
+
+    @Test func finishingADeletionAlsoRemovesTheSetAsideDamagedCatalogs() async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (catalog, id, _) = try await setAsideCatalogHolding("MARKER-DAMAGED-TITLE", in: root)
+        try await catalog.beginDeletion(
+            sessionID: id, plan: CatalogDeletionPlan(provider: .claude, providerIDs: [id.uuidString],
+                                                     configDirectory: "/tmp/claude-config", workingDirectory: "/tmp/w"))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).contains { $0.contains(".damaged-") })
+        // A deletion that resumes after a crash finds its rows gone and still ends here.
+        try await catalog.finishDeletion(sessionID: id)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).allSatisfy { !$0.contains(".damaged-") })
+    }
+
     @Test func aCopyBeingWrittenWhenADeletionFinishesIsDiscarded() async throws {
         let root = try root()
         defer { try? FileManager.default.removeItem(at: root) }

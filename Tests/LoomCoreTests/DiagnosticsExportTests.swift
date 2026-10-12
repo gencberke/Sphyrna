@@ -223,9 +223,22 @@ struct DiagnosticsExportTests {
 
     // MARK: The log run
 
-    @Test func theLogCommandIsTheSubsystemQueryOverTheLastDay() {
-        let arguments = DiagnosticsExport.logArguments()
-        #expect(arguments == ["show", "--last", "24h", "--predicate", "subsystem == \"local.loom.desktop\"", "--style", "ndjson"])
+    @Test func theLogCommandIsTheSubsystemQueryOverTheLastDayForThisAppBundleOnly() {
+        let arguments = DiagnosticsExport.logArguments(bundlePath: "/Applications/Loom Dev.app")
+        #expect(arguments == [
+            "show", "--last", "24h", "--predicate",
+            "subsystem == \"local.loom.desktop\" && processImagePath BEGINSWITH \"/Applications/Loom Dev.app/\"",
+            "--style", "ndjson",
+        ])
+        // A trailing slash is not doubled, and the prefix ends at a path separator: "Loom.app" does not
+        // match the images of "Loom.app.old" or of the other flavor.
+        #expect(DiagnosticsExport.logArguments(bundlePath: "/Applications/Loom.app/")[4]
+            == "subsystem == \"local.loom.desktop\" && processImagePath BEGINSWITH \"/Applications/Loom.app/\"")
+    }
+
+    @Test func aBundlePathCannotBreakOutOfThePredicateString() {
+        let arguments = DiagnosticsExport.logArguments(bundlePath: "/tmp/a\"b\\c.app")
+        #expect(arguments[4] == "subsystem == \"local.loom.desktop\" && processImagePath BEGINSWITH \"/tmp/a\\\"b\\\\c.app/\"")
     }
 
     @Test func theLogOutputIsCappedAndTheRunIsBoundedByATimeout() throws {

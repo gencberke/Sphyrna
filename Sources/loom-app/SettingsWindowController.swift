@@ -14,12 +14,14 @@ final class SettingsWindowController {
     private let model: CatalogModel
     private let usage: UsageModel?
     private let about: SettingsAbout
+    private let diagnostics: DiagnosticsCollection?
     private(set) var window: NSWindow?
 
-    init(model: CatalogModel, usage: UsageModel?, about: SettingsAbout) {
+    init(model: CatalogModel, usage: UsageModel?, about: SettingsAbout, diagnostics: DiagnosticsCollection? = nil) {
         self.model = model
         self.usage = usage
         self.about = about
+        self.diagnostics = diagnostics
     }
 
     var isVisible: Bool { window?.isVisible ?? false }
@@ -52,7 +54,8 @@ final class SettingsWindowController {
             window.standardWindowButton(kind)?.isHidden = true
         }
         let hosting = NSHostingController(
-            rootView: SettingsView(model: model, usage: usage, navigation: navigation, about: about))
+            rootView: SettingsView(model: model, usage: usage, navigation: navigation, about: about,
+                                   diagnostics: diagnostics))
         hosting.sizingOptions = []
         window.contentViewController = hosting
         window.setContentSize(Self.contentSize)

@@ -55,12 +55,15 @@ public struct SettingsView: View {
     let usage: UsageModel?
     let navigation: SettingsNavigation
     let about: SettingsAbout
+    let diagnostics: DiagnosticsCollection?
 
-    public init(model: CatalogModel, usage: UsageModel?, navigation: SettingsNavigation, about: SettingsAbout) {
+    public init(model: CatalogModel, usage: UsageModel?, navigation: SettingsNavigation, about: SettingsAbout,
+                diagnostics: DiagnosticsCollection? = nil) {
         self.model = model
         self.usage = usage
         self.navigation = navigation
         self.about = about
+        self.diagnostics = diagnostics
     }
 
     public var body: some View {
@@ -77,7 +80,7 @@ public struct SettingsView: View {
             switch navigation.section {
             case .general: GeneralSettings(model: model)
             case .usage: UsageSettings(usage: usage, profile: about.claudeProfile)
-            case .about: AboutSettings(about: about)
+            case .about: AboutSettings(about: about, diagnostics: diagnostics)
             case .conversations:
                 if let review = model.cleanupReview { CleanupReviewView(review: review, catalog: model) }
                 else { GeneralSettings(model: model) }
@@ -126,6 +129,7 @@ struct GeneralSettings: View {
 
 struct AboutSettings: View {
     let about: SettingsAbout
+    var diagnostics: DiagnosticsCollection?
 
     var body: some View {
         VStack(spacing: LoomTheme.Space.settingsSectionGap) {
@@ -153,6 +157,15 @@ struct AboutSettings: View {
                     SettingsRowDivider()
                     SettingsRow(title: "Claude profile", detail: "Where usage is read from. Read only.") {
                         PathText(url: profile)
+                    }
+                }
+                if let diagnostics {
+                    SettingsRowDivider()
+                    SettingsRow(title: "Diagnostics", detail: "A folder with versions, counts and Loom's log. No session content.") {
+                        Button(diagnostics.isRunning ? "Collecting…" : "Collect Diagnostics…") { diagnostics.collect() }
+                            .buttonStyle(SettingsButtonStyle())
+                            .disabled(!diagnostics.canCollect)
+                            .accessibilityLabel("Collect diagnostics")
                     }
                 }
             }

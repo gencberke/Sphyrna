@@ -27,6 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     var usage: UsageModel?
     /// The one file-system stream behind the usage numbers; nil without a usage index.
     var usageWatcher: UsageTranscriptWatcher?
+    /// "Collect Diagnostics…" for the Help menu and Settings → About; created with the Settings window.
+    var diagnostics: DiagnosticsCollection?
     /// The Claude toolchain sessions use, handed over by the runtime; plan limits read it too.
     let claudeToolchain = ClaudeToolchainSlot()
     private(set) var model: CatalogModel?
@@ -88,12 +90,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let refusal {
             catalogFailure = refusal
         } else {
+            let catalogURL = root.appendingPathComponent("catalog.sqlite3")
             do {
-                catalog = try LoomSignposts.measure(.catalogOpen) {
-                    try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
-                }
+                catalog = try LoomSignposts.measure(.catalogOpen) { try SessionCatalog(url: catalogURL) }
             } catch {
-                catalogFailure = String(describing: error)
+                // A damaged file gets the restore question before anything else starts; every other
+                // failure (newer schema, busy, foreign) is shown as it was.
+                switch offerCatalogRecovery(after: error, catalogURL: catalogURL) {
+                case let .opened(recovered): catalog = recovered
+                case let .failed(message): catalogFailure = message
+                case .quit:
+                    NSApp.terminate(nil)
+                    return
+                }
             }
         }
         let model = CatalogModel(
@@ -431,6 +440,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 if identity.cleanupReviewEnabled { model.installCleanupReview(cleanup) }
                 self.runtime = created
                 self.conversations = conversations
+                diagnostics?.isAvailable = true
                 runtime = created
             }
             // The missing-host notice is more important than shell warnings and is kept.
@@ -462,10 +472,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             parent: ProcessInfo.processInfo.environment,
             bundleIdentifier: Bundle.main.bundleIdentifier, parentPID: getppid()
         )
+        let system = SystemProviderToolchains(supervisor: supervisor, origin: origin)
         let toolchains: ProviderToolchainResolver = evidenceToolchains(root: root, supervisor: supervisor, origin: origin)
-            ?? { [system = SystemProviderToolchains(supervisor: supervisor, origin: origin)] provider in
-                try await system.toolchain(for: provider)
-            }
+            ?? { provider in try await system.toolchain(for: provider) }
         claudeToolchain.provide(toolchains)
         return SessionRuntimeConfiguration(
             toolchains: toolchains, hookHelperPath: helpers.appendingPathComponent("loom-hook").path,
@@ -474,7 +483,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // A running session is never stopped for inactivity (user decision, 8 Oct 2026).
             idlePolicy: SessionIdlePolicy(stopsIdleRuns: false),
             claudeProfileDirectory: evidenceClaudeProfile(root: root),
-            claudePluginDirectory: root.appendingPathComponent("claude-plugin", isDirectory: true)
+            claudePluginDirectory: root.appendingPathComponent("claude-plugin", isDirectory: true),
+            // A failed start makes the next one read the CLI again instead of reusing the cache.
+            toolchainInvalidator: { provider in await system.invalidate(provider) }
         )
     }
 
@@ -544,6 +555,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return model.canSelectAdjacentSession(.next)
         case #selector(selectPreviousSession(_:)):
             return model.canSelectAdjacentSession(.previous)
+        case #selector(collectDiagnosticsFromMenu(_:)):
+            return diagnostics?.canCollect ?? false
         case #selector(findFromMenu(_:)):
             // The search field lives in the main window; another key window (Settings) keeps Cmd+F to itself.
             return NSApp.keyWindow.map { $0 === window } ?? true
@@ -745,7 +758,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         windowMenu.addItem(withTitle: "Loom", action: #selector(showMainWindow), keyEquivalent: "").target = self
         windowItem.submenu = windowMenu
         main.addItem(windowItem)
+
+        let helpItem = NSMenuItem()
+        let helpMenu = NSMenu(title: "Help")
+        helpMenu.addItem(withTitle: "Collect Diagnostics…", action: #selector(collectDiagnosticsFromMenu(_:)),
+                         keyEquivalent: "").target = self
+        helpItem.submenu = helpMenu
+        main.addItem(helpItem)
         NSApp.mainMenu = main
         NSApp.windowsMenu = windowMenu
+        NSApp.helpMenu = helpMenu
     }
 }

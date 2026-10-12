@@ -1,4 +1,22 @@
 import Foundation
+import LoomCore
+
+/// The words for a failed plan-limits ask (a category, never provider output).
+extension PlanLimitsFailure.Category {
+    /// A short reason for the Usage page; nil for a cancelled ask, which is not a failure.
+    var reason: String? {
+        switch self {
+        case .noToolchain: "Loom could not find Claude."
+        case .spawnFailed: "Claude could not be started."
+        case .writeFailed: "Claude did not accept the request."
+        case .timedOut: "Claude did not answer in time."
+        case .endedWithoutAnswer: "Claude ended without answering."
+        case .outputTooLarge: "Claude's answer was too large to read."
+        case .notAvailable: "Claude reported no plan limits for this account."
+        case .cancelled: nil
+        }
+    }
+}
 
 /// Number and money text for the usage surfaces (plans/STAGE-U.md, design picks). Locale-independent:
 /// the app's copy is English and the chip must not change width with the system's number format.

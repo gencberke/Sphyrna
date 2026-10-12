@@ -8,9 +8,9 @@ Goal: stability and daily-use polish from the 12 Oct review ([D-45](../DECISIONS
 | --- | --- | --- | --- |
 | H1-A Daily use | Ended run keeps its last screen (read-only); Quit asks while sessions work or wait for approval; Quit Anyway, never blocking a system logout or restart; jump to the next or previous session that needs the user (Cmd+J, Shift+Cmd+J); next or previous session (Option+Cmd+Down/Up); the sidebar follows the selection; Reveal in Finder, Copy Claude Session ID, Copy Resume Command; Dock badge; bugs: a transient catalog error unpins a tab, the bottom spinner can stay stuck | `LoomCatalogUI`, `loom-app`, `LoomTerminal`, UI-MAP | implemented and reviewed; applied to `swarm/1` uncommitted; combined checks passed (`scripts/check.sh --tests`, log `check-20261012T161645-8295.log`: LoomCoreTests 568, LoomCatalogUITests 311, LoomTerminalTests 42, LoomLaunchOptionsTests 8; the staged release tree built in `check-20261012T160621-4764.log`); waiting for the evening's on-screen check |
 | H1-B Core hardening | `os.Logger` categories with privacy and rate limits; a bounded diagnostic journal; registry tolerance; capabilities no longer refuse a start; toolchain re-resolved when the executable changes; hook watchdog; runtime catalog write failures; crash residue (open runs, stale sockets, unreadable run folders); catalog backup with restore and start-fresh; diagnostics bundle API; usage and plan-limit failure fields; non-sticky clock ambiguity | `LoomCore`, `CLoomPOSIX`, `loom-hook`, ARCHITECTURE, DEVELOPMENT | implemented and reviewed; applied to `swarm/1` uncommitted; combined checks passed (see H1-A) |
-| H1-C Wiring | UI for H1-B: <ul><li>Help menu and Settings → About: Collect Diagnostics… (reveals the export)</li><li>Catalog restore prompt at launch (Restore Backup / Start Fresh)</li><li>"Plan limits unavailable" and not-understood usage lines on the Usage page</li><li>The watchdog issue visible above a live terminal</li><li>`toolchainInvalidator` wired in AppDelegate</li><li>The export's `log show` limited to this app's processes, so test and dev runs that share the subsystem stay out</li><li>A permanent deletion also removes `catalog.damaged-*`</li></ul> | `LoomCatalogUI`, `loom-app`, small `LoomCore` | in implementation in worktree `loom-h1/wt/C`, on top of A and B (base tree `70e850a`) |
+| H1-C Wiring | UI for H1-B: <ul><li>Help menu and Settings → About: Collect Diagnostics… (reveals the export)</li><li>Catalog restore prompt at launch (Restore Backup / Start Fresh)</li><li>"Plan limits unavailable" and not-understood usage lines on the Usage page</li><li>The watchdog issue visible above a live terminal</li><li>`toolchainInvalidator` wired in AppDelegate</li><li>The export's `log show` limited to this app's processes, so test and dev runs that share the subsystem stay out</li><li>A permanent deletion also removes `catalog.damaged-*`</li></ul> | `LoomCatalogUI`, `loom-app`, small `LoomCore` | implemented and reviewed; applied to `swarm/1` uncommitted. The implementer's `--tests` passed on the same code in worktree C (log `check-20261012T163441-15572.log`: LoomCoreTests 572, the other targets 324); after the planner's two changes the touched suites passed (log `check-20261012T163917-18365.log`, 36 tests) |
 | H1-D Performance | See [Performance candidates](#performance-candidates) | `LoomCatalogUI`, `SessionCatalog+Paging`, `ClaudeUsageIndex` | waiting for user decision |
-| H1-E Project colours | Per D-48, look chosen on [the preview](../design/project-colors-preview.html) | `LoomCore` (`projects.color`), `LoomCatalogUI`, DESIGN, UI-MAP | look chosen ([D-50](../DECISIONS.md)): C's stripe in the sidebar, T5's light tint on the tabs, the stripe and name in the detail header; starts after H1-C (shared files) |
+| H1-E Project colours | Per D-48, look chosen on [the preview](../design/project-colors-preview.html) | `LoomCore` (`projects.color`), `LoomCatalogUI`, DESIGN, UI-MAP | look chosen ([D-50](../DECISIONS.md)): C's stripe in the sidebar, T5's light tint on the tabs (the user approved the drawing, 12 Oct), the stripe and name in the detail header; in implementation in worktree `loom-h1/wt/E`, on top of A, B and C (base tree `1dc0562`) |
 | H1-F macOS integration | Per D-47 and [D-49](../DECISIONS.md): menu bar item (Loom mark, working chase, status dot, session menu), notifications for Needs approval, Open at Login setting, Screen Time visibility, numeric versions from tags | `loom-app`, `LoomCatalogUI`, `scripts/release` | waiting for planning (menu bar preview first; Screen Time cause under research) |
 
 A and B run in parallel in detached worktrees with disjoint write areas; B keeps every API that A uses source-compatible. The planner applies both diffs to `swarm/1` and runs the combined checks.
@@ -48,6 +48,19 @@ A and B run in parallel in detached worktrees with disjoint write areas; B keeps
 - **Unverified.**
   - Real Claude's registry status vocabulary and folder-trust timing.
   - Journal and unified-log cost under real use.
+
+### H1-C notes from the review
+
+- **Planner changes.**
+  - The issue notice above a live terminal uses the failure colour, like the record view's notice and the "Problem" state on the card; the implementer had chosen the attention colour.
+  - A test now checks that the real usage index answers with its own scan report through `UsageIndexing`, not the protocol's empty default.
+- **Implementer's choices, accepted.**
+  - When an earlier plan-limits answer exists, it stays and its header adds "· could not refresh".
+  - The notice shortens the terminal by one line, so the PTY gets one resize when the issue appears and one when it clears.
+  - After Start Fresh, the damaged file stays as `catalog.damaged-*` until the next permanent deletion, as the alert says.
+- **Not run yet.**
+  - On screen: the damaged-catalog alert (button order, Return), the Help menu, the About row, the issue notice and the Usage lines.
+  - A launch with a real damaged catalog, and Quit from that alert early in launch.
 
 ### Combined checks (12 Oct)
 
