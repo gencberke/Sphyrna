@@ -201,6 +201,7 @@ public enum DayGrouping {
     @MainActor
     public static func sections(_ rows: [SessionRowModel], now: Date,
                                 calendar: Calendar = .current) -> [DaySection] {
+        SidebarRenderProbe.grouping(of: rows)
         var result: [DaySection] = []
         var current: (day: Date, rows: [SessionRowModel])?
         func flush() {

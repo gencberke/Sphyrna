@@ -226,3 +226,498 @@ struct CatalogHotPathTests {
         await model.settle()
     }
 }
+
+// MARK: One row patched instead of every list re-read, one search query instead of one per list
+
+/// A catalog with several projects and sessions, a model started over it and a hand-fed event stream
+/// (the model's own consumer is stopped, so each test applies exactly the frames it publishes).
+@MainActor
+final class ListRig {
+    let root: URL
+    let catalog: SessionCatalog
+    let hub: SessionEventHub
+    let model: CatalogModel
+    private(set) var projects: [CatalogProject] = []
+    /// Session ids by project (nil: no project), oldest first.
+    private(set) var ids: [UUID?: [UUID]] = [:]
+    private var frames: FrameReader?
+
+    init(root: URL, catalog: SessionCatalog, hub: SessionEventHub, model: CatalogModel) {
+        self.root = root
+        self.catalog = catalog
+        self.hub = hub
+        self.model = model
+    }
+
+    var everyID: [UUID] { ids.values.flatMap { $0 } }
+
+    static func make(projects projectCount: Int, perProject: Int, unassigned: Int, mode: CatalogViewMode,
+                     collapsedProjects: Int = 0) async throws -> ListRig {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("loom-lists-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
+        let preferences = UIPreferencesStore(url: root.appendingPathComponent("ui-preferences.json"))
+        try preferences.update { $0.viewMode = mode }
+        let hub = SessionEventHub()
+        let model = CatalogModel(catalog: catalog, events: hub, preferences: preferences)
+        model.branchReader = { _ in .unavailable }
+        let rig = ListRig(root: root, catalog: catalog, hub: hub, model: model)
+        var clock = 0.0
+        func stamp() -> Date { clock += 1; return Date(timeIntervalSince1970: 1_000_000 + clock) }
+        for index in 0..<projectCount {
+            let folder = root.appendingPathComponent("project-\(index)", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await catalog.addProject(path: folder.path).project
+            rig.projects.append(project)
+            for item in 0..<perProject {
+                let id = UUID()
+                try await catalog.insertSession(
+                    ManagedSession(id: id, provider: item % 2 == 0 ? .claude : .codex, workingDirectory: folder.path),
+                    title: "\(item % 3 == 0 ? "Alpha" : "Beta") p\(index) n\(item)",
+                    createdAt: stamp(), lastUsedAt: stamp(), lifecycle: .idle, projectID: project.id)
+                rig.ids[project.id, default: []].append(id)
+            }
+        }
+        for item in 0..<unassigned {
+            let id = UUID()
+            try await catalog.insertSession(
+                ManagedSession(id: id, provider: .claude, workingDirectory: root.path),
+                title: "\(item % 3 == 0 ? "Alpha" : "Beta") free n\(item)",
+                createdAt: stamp(), lastUsedAt: stamp(), lifecycle: .idle)
+            rig.ids[nil, default: []].append(id)
+        }
+        for index in 0..<collapsedProjects {
+            try await catalog.setProjectCollapsed(id: rig.projects[projectCount - 1 - index].id, collapsed: true)
+        }
+        await model.start()
+        await model.stopAndWait() // the test feeds frames itself
+        await model.settle()
+        let reader = FrameReader(await rig.hub.subscribe())
+        rig.frames = reader
+        try await rig.applyNextFrame() // the initial snapshot
+        return rig
+    }
+
+    func cleanup() {
+        model.stop()
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    /// Publishes a change and applies the frame it produced.
+    func feed(_ change: SessionEventChange, for id: UUID) async throws {
+        await hub.publish(sessionID: id, change: change)
+        try await applyNextFrame()
+    }
+
+    func feedActivity(for id: UUID) async throws {
+        await hub.publishActivity(sessionID: id)
+        try await applyNextFrame()
+    }
+
+    func applyNextFrame() async throws {
+        let reader = try #require(frames)
+        model.apply(try #require(await reader.next()))
+    }
+
+    /// What every visible list shows now: rows in order with their records, and the paging state.
+    func shape() -> [CatalogListKey: ListShape] {
+        var result: [CatalogListKey: ListShape] = [:]
+        for key in model.visibleListKeys() {
+            let list = model.list(for: key)
+            result[key] = ListShape(records: list.rows.map(\.record), hasMore: list.hasMore)
+        }
+        return result
+    }
+
+    /// A full re-read of every visible list, the way the old code answered every frame.
+    func fullReload() async -> [CatalogListKey: ListShape] {
+        model.scheduleRefresh()
+        await model.settle()
+        return shape()
+    }
+}
+
+/// Reads one subscription frame by frame; the stream keeps only the newest frame for a slow reader.
+final class FrameReader: @unchecked Sendable {
+    private var iterator: AsyncStream<SessionEventFrame>.Iterator
+    init(_ stream: AsyncStream<SessionEventFrame>) { iterator = stream.makeAsyncIterator() }
+    func next() async -> SessionEventFrame? { await iterator.next() }
+}
+
+struct ListShape: Equatable {
+    let records: [CatalogSession]
+    let hasMore: Bool
+    var ids: [UUID] { records.map(\.session.id) }
+}
+
+extension CatalogHotPathTests {
+    private func delta(_ model: CatalogModel, since base: CatalogModelStatistics)
+        -> (queries: Int, reloads: Int, patches: Int, searches: Int) {
+        let now = model.statistics
+        return (now.pageQueries - base.pageQueries, now.listReloads - base.listReloads,
+                now.rowPatches - base.rowPatches, now.searchQueries - base.searchQueries)
+    }
+
+    // MARK: Item 2
+
+    /// Before: every run frame of a known session re-read all five visible lists (4 projects and the
+    /// sessions without a project); now it reads that one session.
+    @Test func aRunFrameOfOneSessionInTheProjectViewReadsThatRowAndRereadsNoList() async throws {
+        let rig = try await ListRig.make(projects: 4, perProject: 12, unassigned: 3, mode: .projects)
+        defer { rig.cleanup() }
+        let model = rig.model
+        #expect(model.visibleListKeys().count == 5)
+        let target = try #require(rig.ids[rig.projects[2].id]?[5])
+        let before = rig.shape()
+
+        // The runtime resumed the session: the catalog row moved first, then the frame came.
+        let run = UUID()
+        try await rig.catalog.markUsed(sessionID: target, at: Date(timeIntervalSince1970: 9_000_000), reactivate: true)
+        let base = model.statistics
+        try await rig.feed(.runStarted(run), for: target)
+        await model.settle()
+        let started = delta(model, since: base)
+        #expect(started.reloads == 0, "list reloads for a run start: \(started.reloads)")
+        #expect(started.queries == 1, "queries for a run start: \(started.queries)")
+        #expect(started.patches == 1)
+        let afterStart = rig.shape()
+        #expect(afterStart != before, "the card took the new record")
+        #expect(afterStart[.project(rig.projects[2].id)]?.ids == before[.project(rig.projects[2].id)]?.ids)
+
+        // The run ends and the session goes idle again.
+        try await rig.catalog.updateLifecycle(sessionID: target, lifecycle: .idle)
+        let mid = model.statistics
+        try await rig.feed(.runEnded(run, .processExited), for: target)
+        await model.settle()
+        let ended = delta(model, since: mid)
+        #expect(ended.reloads == 0, "list reloads for a run end: \(ended.reloads)")
+        #expect(ended.queries == 1, "queries for a run end: \(ended.queries)")
+
+        // The same rows in the same order, with the same records, as after a full re-read.
+        let patched = rig.shape()
+        #expect(await rig.fullReload() == patched)
+    }
+
+    /// Before: an activity stamp (a prompt, a finished turn) re-read the list from the top, one query per loaded page.
+    @Test func anActivityStampMovesOneRowToTheTopOfTheActivityViewWithOneRead() async throws {
+        let rig = try await ListRig.make(projects: 4, perProject: 80, unassigned: 3, mode: .activity)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let list = model.list(for: .activity)
+        for loaded in [200, 300] {
+            model.loadMore(.activity)
+            #expect(await waitUntil { list.rows.count == loaded })
+        }
+        await model.settle()
+        #expect(list.rows.count == 300 && list.hasMore)
+        let target = list.rows[250].id
+
+        try await rig.catalog.markActivity(sessionID: target, at: Date(timeIntervalSince1970: 9_000_000))
+        let base = model.statistics
+        try await rig.feedActivity(for: target)
+        await model.settle()
+        let counts = delta(model, since: base)
+        #expect(counts.reloads == 0, "list reloads for an activity stamp: \(counts.reloads)")
+        #expect(counts.queries == 1, "queries for an activity stamp over 300 loaded rows: \(counts.queries)")
+        #expect(list.rows.first?.id == target)
+        #expect(list.rows.count == 300 && list.hasMore)
+        #expect(list.rows.first?.record.lastActivityAt == Date(timeIntervalSince1970: 9_000_000))
+
+        let patched = rig.shape()
+        #expect(await rig.fullReload() == patched)
+    }
+
+    @Test func aRowThatFallsPastTheLoadedRangeIsDroppedAndPagingStillDeliversItOnce() async throws {
+        let rig = try await ListRig.make(projects: 4, perProject: 40, unassigned: 3, mode: .activity)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let list = model.list(for: .activity)
+        let last = try #require(list.rows.last?.id)
+
+        try await rig.catalog.markActivity(sessionID: last, at: Date(timeIntervalSince1970: 1))
+        let base = model.statistics
+        try await rig.feedActivity(for: last)
+        await model.settle()
+        let counts = delta(model, since: base)
+        #expect(counts.reloads == 0 && counts.queries == 1)
+        #expect(list.rows.count == 99 && !list.rows.contains { $0.id == last })
+        #expect(list.hasMore)
+
+        // Paging reads on from where the list ended: every session once, in the catalog's order.
+        for _ in 0..<4 {
+            model.loadMore(.activity)
+            _ = await waitUntil(2) { !list.hasMore }
+        }
+        await model.settle()
+        let fresh = try await rig.catalog.sessionPage(CatalogQuery(limit: 100))
+        var order = fresh.sessions.map(\.session.id)
+        var cursor = fresh.next
+        while let next = cursor {
+            let page = try await rig.catalog.sessionPage(CatalogQuery(limit: 100), after: next)
+            order += page.sessions.map(\.session.id)
+            cursor = page.next
+        }
+        #expect(list.rows.map(\.id) == order)
+        #expect(Set(list.rows.map(\.id)).count == rig.everyID.count)
+        #expect(list.rows.last?.id == last)
+    }
+
+    @Test func frameChangesThatAreNotOneKnownRowStillReloadTheLists() async throws {
+        let rig = try await ListRig.make(projects: 4, perProject: 40, unassigned: 3, mode: .activity)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let list = model.list(for: .activity)
+
+        // A session the lists do not hold (past the first page) that took activity: its place needs a read of the list.
+        let unloaded = try #require(rig.everyID.first { id in !list.rows.contains { $0.id == id } })
+        try await rig.catalog.markActivity(sessionID: unloaded, at: Date(timeIntervalSince1970: 9_000_000))
+        var base = model.statistics
+        try await rig.feedActivity(for: unloaded)
+        await model.settle()
+        #expect(delta(model, since: base).reloads >= 1)
+        #expect(list.rows.first?.id == unloaded)
+
+        // A batched lifecycle change (aging) carries no row.
+        let aged = list.rows[3].id
+        try await rig.catalog.updateLifecycle(sessionID: aged, lifecycle: .stale)
+        base = model.statistics
+        await rig.hub.publishCatalogLifecycle(.stale, ids: [aged])
+        try await rig.applyNextFrame()
+        await model.settle()
+        #expect(delta(model, since: base).reloads >= 1)
+        #expect(list.rows.first { $0.id == aged }?.record.lifecycle == .stale)
+
+        // A skipped frame: the sequence is not contiguous, so the one frame cannot be trusted to be the only change.
+        let skipped = list.rows[5].id
+        let applied = list.rows[6].id
+        try await rig.catalog.markActivity(sessionID: skipped, at: Date(timeIntervalSince1970: 9_100_000))
+        await rig.hub.publishActivity(sessionID: skipped)
+        try await rig.catalog.markActivity(sessionID: applied, at: Date(timeIntervalSince1970: 9_200_000))
+        await rig.hub.publishActivity(sessionID: applied)
+        try await rig.applyNextFrame() // the stream keeps the newest frame only
+        await model.settle()
+        #expect(list.rows.prefix(2).map(\.id) == [applied, skipped])
+    }
+
+    @Test func aFrameDuringASearchReadsOnceForTheWholeResultAndKeepsTheResults() async throws {
+        let rig = try await ListRig.make(projects: 4, perProject: 12, unassigned: 3, mode: .projects)
+        defer { rig.cleanup() }
+        let model = rig.model
+        model.setSearchText("alpha")
+        await model.settle()
+        let target = try #require(model.list(for: .project(rig.projects[1].id)).rows.first?.id)
+        let before = rig.shape()
+        let base = model.statistics
+        try await rig.feed(.runStarted(UUID()), for: target)
+        await model.settle()
+        let counts = delta(model, since: base)
+        #expect(counts.queries == 1, "queries for a frame during a search: \(counts.queries)")
+        #expect(counts.reloads == 0)
+        #expect(rig.shape() == before)
+    }
+
+    // MARK: Item 3
+
+    /// The old per-list reads, for comparison: one `sessionPage` per visible list.
+    private func perListResults(_ rig: ListRig, search: String) async throws -> [CatalogListKey: [UUID]] {
+        var result: [CatalogListKey: [UUID]] = [:]
+        for key in rig.model.visibleListKeys() {
+            let query: CatalogQuery
+            switch key {
+            case .activity: query = CatalogQuery(scope: .all, order: .recentActivity, search: search)
+            case let .project(id): query = CatalogQuery(scope: .project(id), order: .creation, search: search)
+            case .unassigned: query = CatalogQuery(scope: .unassigned, order: .creation, search: search)
+            }
+            result[key] = try await rig.catalog.sessionPage(query).sessions.map(\.session.id)
+        }
+        return result
+    }
+
+    /// Before: one query per visible list (six projects, one of them collapsed, and the unassigned list: 7);
+    /// now one for the settled search.
+    @Test func aSettledSearchRunsOneQueryForEveryList() async throws {
+        let rig = try await ListRig.make(projects: 6, perProject: 12, unassigned: 3, mode: .projects, collapsedProjects: 1)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let base = model.statistics
+        for text in ["a", "al", "alp", "alph", "alpha"] { model.setSearchText(text) }
+        await model.settle()
+        let counts = delta(model, since: base)
+        #expect(counts.queries == 1, "queries for one settled search over 7 lists: \(counts.queries)")
+        #expect(counts.reloads == 0)
+        #expect(counts.searches == 1)
+
+        // The same lists, rows and order the per-list queries gave (the collapsed project is searched too).
+        let expected = try await perListResults(rig, search: "alpha")
+        #expect(Set(model.visibleListKeys()) == Set(expected.keys) && expected.count == 7)
+        for (key, ids) in expected {
+            #expect(model.list(for: key).rows.map(\.id) == ids, "\(key)")
+        }
+        #expect(expected.values.contains { !$0.isEmpty })
+    }
+
+    @Test func theActivityViewGroupsTheSearchInActivityOrderWithOneQuery() async throws {
+        let rig = try await ListRig.make(projects: 4, perProject: 40, unassigned: 3, mode: .activity)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let base = model.statistics
+        model.setSearchText("beta")
+        await model.settle()
+        #expect(delta(model, since: base).queries == 1)
+        let expected = try await perListResults(rig, search: "beta")
+        let list = model.list(for: .activity)
+        #expect(list.rows.map(\.id) == expected[.activity])
+        #expect(list.rows.count == 100 && list.hasMore)
+        // Paging continues from the search result.
+        for _ in 0..<4 {
+            model.loadMore(.activity)
+            _ = await waitUntil(2) { !list.hasMore }
+        }
+        await model.settle()
+        let all = try await rig.catalog.sessionPage(CatalogQuery(search: "beta", limit: 100))
+        var order = all.sessions.map(\.session.id)
+        var cursor = all.next
+        while let next = cursor {
+            let page = try await rig.catalog.sessionPage(CatalogQuery(search: "beta", limit: 100), after: next)
+            order += page.sessions.map(\.session.id)
+            cursor = page.next
+        }
+        #expect(list.rows.map(\.id) == order)
+    }
+
+    @Test func aProjectWithMoreThanOnePageOfMatchesKeepsItsPagingAndNoProjectIsCrowdedOut() async throws {
+        let rig = try await ListRig.make(projects: 3, perProject: 130, unassigned: 3, mode: .projects)
+        defer { rig.cleanup() }
+        let model = rig.model
+        model.setSearchText("p1")
+        await model.settle()
+        let busy = model.list(for: .project(rig.projects[1].id))
+        #expect(busy.rows.count == 100 && busy.hasMore)
+        #expect(model.list(for: .project(rig.projects[0].id)).rows.isEmpty)
+        let expected = try await perListResults(rig, search: "p1")
+        #expect(busy.rows.map(\.id) == expected[.project(rig.projects[1].id)])
+        model.loadMore(.project(rig.projects[1].id))
+        #expect(await waitUntil { busy.rows.count == 130 })
+        #expect(busy.hasMore == false)
+        #expect(Set(busy.rows.map(\.id)) == Set(rig.ids[rig.projects[1].id] ?? []))
+    }
+
+    @Test func searchMatchesTheSameFieldsFoldingAndEscapesAsBefore() async throws {
+        let rig = try await ListRig.make(projects: 3, perProject: 6, unassigned: 2, mode: .projects)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let special = try #require(rig.ids[rig.projects[0].id]?.first)
+        try await rig.catalog.renameSession(sessionID: special, to: "100%_done İstanbul")
+        for term in ["100%", "%_d", "istanbul", "İSTANBUL", "claude", "CODEX", "project-1", "p2 n3", "no such thing", "alpha beta"] {
+            model.setSearchText(term)
+            await model.settle()
+            let expected = try await perListResults(rig, search: term)
+            for (key, ids) in expected {
+                #expect(model.list(for: key).rows.map(\.id) == ids, "term \(term), \(key)")
+            }
+        }
+    }
+
+    @Test func clearingTheSearchRestoresTheNormalLists() async throws {
+        let rig = try await ListRig.make(projects: 4, perProject: 12, unassigned: 3, mode: .projects)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let before = rig.shape()
+        model.setSearchText("alpha")
+        await model.settle()
+        #expect(rig.shape() != before)
+        model.setSearchText("")
+        await model.settle()
+        #expect(rig.shape() == before)
+    }
+
+    @Test func anOlderSearchResultNeverReplacesANewerOne() async throws {
+        let rig = try await ListRig.make(projects: 4, perProject: 12, unassigned: 3, mode: .projects)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let gate = Gate()
+        let calls = Counter()
+        model.afterSearchRead = {
+            // Only the first read (for "alpha") is held back until the newer search has landed.
+            if calls.next() == 1 { await gate.wait() }
+        }
+        model.setSearchText("alpha")
+        #expect(await waitUntil { calls.value == 1 })
+        model.setSearchText("beta")
+        #expect(await waitUntil { calls.value >= 2 })
+        #expect(await waitUntil { model.list(for: .project(rig.projects[0].id)).rows.allSatisfy { $0.record.title?.hasPrefix("Beta") == true } })
+        let newer = rig.shape()
+        gate.open()
+        try await Task.sleep(for: .milliseconds(200))
+        await model.settle()
+        #expect(rig.shape() == newer)
+        #expect(newer.values.flatMap(\.records).allSatisfy { $0.title?.hasPrefix("Beta") == true })
+    }
+
+    // MARK: Item 4 (the model side; the redraw counts are in `SidebarRenderTests`)
+
+    @Test func theSelectedFlagFollowsTheSelectionThroughReloadsAndRestarts() async throws {
+        let rig = try await ListRig.make(projects: 2, perProject: 6, unassigned: 2, mode: .projects)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let first = try #require(rig.ids[rig.projects[0].id]?[1])
+        let second = try #require(rig.ids[rig.projects[1].id]?[2])
+        func selectedIDs() -> [UUID] {
+            model.visibleListKeys().flatMap { model.list(for: $0).rows }.filter(\.isSelected).map(\.id)
+        }
+        #expect(selectedIDs().isEmpty)
+        model.select(first)
+        #expect(selectedIDs() == [first])
+        model.select(second)
+        #expect(selectedIDs() == [second])
+        _ = await rig.fullReload()
+        #expect(selectedIDs() == [second])
+        model.select(nil)
+        #expect(selectedIDs().isEmpty)
+
+        // A row read after the selection was made (a restart, a tab) starts selected.
+        model.select(first)
+        model.flushPreferences()
+        let reopened = CatalogModel(catalog: rig.catalog, events: SessionEventHub(),
+                                    preferences: UIPreferencesStore(url: rig.root.appendingPathComponent("ui-preferences.json")))
+        reopened.branchReader = { _ in .unavailable }
+        await reopened.start()
+        defer { reopened.stop() }
+        let rows = reopened.visibleListKeys().flatMap { reopened.list(for: $0).rows }
+        #expect(rows.filter(\.isSelected).map(\.id) == [first])
+        #expect(reopened.selectedRow?.isSelected == true)
+    }
+
+    final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        var value: Int { lock.withLock { count } }
+        func next() -> Int { lock.withLock { count += 1; return count } }
+    }
+
+    /// Holds a caller until opened; unlike a sleep it keeps waiting when the caller's task is cancelled.
+    final class Gate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var opened = false
+        private var waiting: CheckedContinuation<Void, Never>?
+        func wait() async {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let resumeNow = lock.withLock { () -> Bool in
+                    if opened { return true }
+                    waiting = continuation
+                    return false
+                }
+                if resumeNow { continuation.resume() }
+            }
+        }
+        func open() {
+            let continuation = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+                opened = true
+                defer { waiting = nil }
+                return waiting
+            }
+            continuation?.resume()
+        }
+    }
+}

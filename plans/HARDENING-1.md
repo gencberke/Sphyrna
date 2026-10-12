@@ -4,24 +4,20 @@ Goal: stability and daily-use polish from the 12 Oct review ([D-45](../DECISIONS
 
 ## Resume here
 
-State when the user shut the Mac down on 12 Oct (evening):
+State on 12 Oct (late evening):
 
 - **Committed on `swarm/1`.**
   - `2bbebf3` A and B.
   - `37b155f` C.
-  - The next commit: E and D1 with the records.
-- **Waiting in worktree `~/Library/Caches/loom-h1/wt/D2`: H1-D2**, done by its implementer and checked there, not reviewed by the planner yet.
-  - Review it: `git -C <wt/D2> add -A && git -C <wt/D2> diff --cached 73dac855ac5620b6defb25785be963c910d3e9a2`.
-  - Its report covers:
-    - Patching one row for run, lifecycle, identity and activity frames.
-    - One windowed search query, capped per group plus 5,000 rows overall.
-    - A per-row selected flag, `CardTimeLabel` for the minute tick, cached tooltips and memoised day sections.
-    - New `SidebarRenderProbe` and `afterSearchRead` test seams.
-    - Counts: run frame 5 → 1 queries; search 7 → 1; selection 30 → 2 card bodies; minute tick 30 → 0.
-  - Then apply the diff to `swarm/1`, run `scripts/check.sh --tests` and commit (the user's answer "okeyim", 12 Oct, to committing each reviewed slice of this round, no push).
-- **Next after D2: H1-F**, on the user's go only. It covers the menu bar per D-52, notifications, Open at login, Screen Time fixes (category, numeric build numbers) and the open Screen Time question.
-- **Old worktrees** `loom-h1/wt/A`, `B`, `C`, `E`, `D1` are merged and can be removed with the user's OK.
-- **On the user's word only:** the full release suite and the on-screen checks listed in the slice notes.
+  - `037810c` E and D1.
+  - The next commit: D2, reviewed and merged by the planner.
+- **Release 0.4.0 in progress.** The user handed the Mac over for the evening ("pc'm senin kontrolünde … bu akşam stabil versiyona çıkalım", 12 Oct), so heavy checks and on-screen checks run now. Steps, in order:
+  1. Bundle keys in both packaging scripts: numeric `CFBundleVersion` (the tree's commit count), the commit as `LoomRevision`, `LSApplicationCategoryType` developer tools. About, diagnostics and the Codex client name show the commit.
+  2. `scripts/check.sh --full --idle`.
+  3. A dev package, the real-Claude check, the performance comparison and the on-screen checks in the slice notes.
+  4. Records, tag `release/0.4.0`, promote, `build.sh`, and a check of the installed app.
+- **H1-F (menu bar, notifications, Open at login) is not in 0.4.0.** It starts on the user's go after the release.
+- **Old worktrees** `loom-h1/wt/A`, `B`, `C`, `E`, `D1` and `D2` are merged and can be removed with the user's OK.
 
 ## Slices
 
@@ -31,7 +27,7 @@ State when the user shut the Mac down on 12 Oct (evening):
 | H1-B Core hardening | `os.Logger` categories with privacy and rate limits; a bounded diagnostic journal; registry tolerance; capabilities no longer refuse a start; toolchain re-resolved when the executable changes; hook watchdog; runtime catalog write failures; crash residue (open runs, stale sockets, unreadable run folders); catalog backup with restore and start-fresh; diagnostics bundle API; usage and plan-limit failure fields; non-sticky clock ambiguity | `LoomCore`, `CLoomPOSIX`, `loom-hook`, ARCHITECTURE, DEVELOPMENT | implemented and reviewed; applied to `swarm/1` uncommitted; combined checks passed (see H1-A) |
 | H1-C Wiring | UI for H1-B: <ul><li>Help menu and Settings → About: Collect Diagnostics… (reveals the export)</li><li>Catalog restore prompt at launch (Restore Backup / Start Fresh)</li><li>"Plan limits unavailable" and not-understood usage lines on the Usage page</li><li>The watchdog issue visible above a live terminal</li><li>`toolchainInvalidator` wired in AppDelegate</li><li>The export's `log show` limited to this app's processes, so test and dev runs that share the subsystem stay out</li><li>A permanent deletion also removes `catalog.damaged-*`</li></ul> | `LoomCatalogUI`, `loom-app`, small `LoomCore` | implemented and reviewed; applied to `swarm/1` uncommitted. The implementer's `--tests` passed on the same code in worktree C (log `check-20261012T163441-15572.log`: LoomCoreTests 572, the other targets 324); after the planner's two changes the touched suites passed (log `check-20261012T163917-18365.log`, 36 tests) |
 | H1-D1 Performance, part 1 | Candidates 1 (usage after a finished turn) and 5 (terminal reconcile), [D-51](../DECISIONS.md) | `UsageModel`, `UsageTranscriptWatcher`, `ConversationController` | done and committed with H1-E; combined checks passed (see H1-E) |
-| H1-D2 Performance, part 2 | Candidates 2 (list patches), 3 (one search query) and 4 (card invalidation) | `LoomCatalogUI` lists and cards, `SessionCatalog+Paging` | implemented in worktree `loom-h1/wt/D2` (base tree `73dac85` = E and D1 applied); the implementer's `--tests` passed there (log `check-20261012T172610-53598.log`: 583 and 360 tests). **Not yet reviewed or merged by the planner** (see [Resume here](#resume-here)) |
+| H1-D2 Performance, part 2 | Candidates 2 (list patches), 3 (one search query) and 4 (card invalidation) | `LoomCatalogUI` lists and cards, `SessionCatalog+Paging` | reviewed and merged by the planner; combined checks passed on `swarm/1` (`scripts/check.sh --tests`, log `check-20261012T215200-56637.log`: 583 and 360 tests) |
 | H1-E Project colours | Per D-48, look chosen on [the preview](../design/project-colors-preview.html) | `LoomCore` (`projects.color`), `LoomCatalogUI`, DESIGN, UI-MAP | look chosen ([D-50](../DECISIONS.md)): C's stripe in the sidebar, T5's light tint on the tabs (the user approved the drawing, 12 Oct), the stripe and name in the detail header; done and committed with H1-D1 (the planner's contrast change included); combined checks passed (`scripts/check.sh --tests`, log `check-20261012T170029-40693.log`: LoomCoreTests 578, LoomCatalogUITests 344, LoomTerminalTests 42, LoomLaunchOptionsTests 8) |
 | H1-F macOS integration | Per D-47 and [D-49](../DECISIONS.md): menu bar item (Loom mark, working chase, status dot, session menu), notifications for Needs approval, Open at Login setting, Screen Time visibility, numeric versions from tags | `loom-app`, `LoomCatalogUI`, `scripts/release` | preview approved ([D-52](../DECISIONS.md)): option A, the mark with a chase badge. Planner decisions: light-bar status values `#B05A00`, `#2A5FD6`, `#C9332E`; the chase keeps moving under Reduce Motion (DESIGN §4); Settings defaults on, on, off. Screen Time waits for the user's answer (does Screen Time list any other app?). Not started: the user said to wait (12 Oct). |
 
@@ -112,6 +108,20 @@ A and B run in parallel in detached worktrees with disjoint write areas; B keeps
     - `SessionRuntimeCodexRecoveryTests` failed on a different test each run.
     - `OpenSessionTests` hit "Claude hook timed out during read", which also failed twice at 09:33, before this round.
   - The planner checked that B's stale-socket sweep cannot touch other tests: each test runtime has its own socket folder, and the sweep removes only sockets that refuse a connection.
+
+### H1-D2 notes from the review
+
+- **When a row is patched.** One frame about one session reads that row once and patches it into the lists, only when the frame follows the last one seen (no frame missed), a visible list shows the session, no search is open and no refresh is running. Everything else keeps the full refresh, which drops pending patches.
+- **Planner checks in the source.**
+  - Only `publishCatalogLifecycle`, `publishActivity` and `publishDeletion` move `catalogRevision`, each by one with its own frame. So a contiguous `activityRecorded` frame accounts for exactly one step, and a run or lifecycle frame for none.
+  - A patch does not re-read projects or counts. Neither depends on a session's lifecycle or activity: projects sort by `sort_order`, and counts leave out only deletions.
+  - The search query's per-project cursors use the same keyset (`created_at`, `id`, newest first) as each list's "load more".
+- **Implementer's notes, accepted.**
+  - "Load more" after a search still reads per list.
+  - A patched row that now sorts past a list's cursor leaves the loaded rows until the next page brings it.
+  - A search result holds at most 5,000 rows.
+  - The tooltip cache is keyed on the activity time and the time zone, not the locale.
+- **Not run yet.** On screen: scrolling, the selection highlight, a search over many projects, the minute tick.
 
 ### Combined checks (12 Oct)
 

@@ -85,6 +85,22 @@ paint; turn completion and window activation refresh known folders in the backgr
 value differs (`projects`, `sessionCounts`, list rows, `branches`); `now` moves forward at most every 10 s, or when a row is
 newer than it.
 
+**Sidebar events, search and redraws** (H1-D2) A frame about one session a visible list already shows (run start/end/detach,
+lifecycle, identity, an announced activity stamp) is not a full refresh: after the same 100 ms wait the row is read once
+(`SessionCatalog.listedSession`, which skips a session being deleted) and patched (`CatalogModel+Patching`): in place in the
+project view (creation order never moves), moved by `last_activity_at` in the activity view (to the top when newest; out of
+the loaded range when it now sorts past the list's cursor, the next page delivers it), hidden lists marked stale. Only a
+contiguous frame is patched, and the catalog-revision step an activity stamp announces is then covered; a batch (aging), a
+skipped frame, a deletion, a session no visible list shows, an open search, a running refresh or a failed read keeps the full
+`scheduleRefresh`. A settled search is one `SessionCatalog.searchSessions` read (`CatalogModel+Search`): activity order is the
+whole catalog's first page, creation order is a window query (`ROW_NUMBER() OVER (PARTITION BY project_id)`) holding each
+project's first page and its cursor, capped at `maxSearchResultRows`; the task's cancellation stops the read. Cards read their own
+`SessionRowModel.isSelected` (a selection change evaluates two cards), the relative time sits in `CardTimeLabel` (the minute tick
+evaluates only those), and the activity view's day sections are memoised per list and `CatalogModel.today`. The counters are
+`CatalogModelStatistics` (`pageQueries`, `listReloads`, `rowPatches`, `searchQueries`) and `SidebarRenderProbe` (card and time
+label body evaluations, off unless a test switches it on); tests: `CatalogHotPathTests`, `SidebarRenderTests`,
+`SessionCatalogSearchTests`.
+
 **Start a Claude conversation to indicator**
 ```
 CatalogModel.startConversation -> ConversationController.start (creates TerminalSurface)

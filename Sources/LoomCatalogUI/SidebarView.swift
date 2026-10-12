@@ -176,7 +176,8 @@ struct ActivityList: View {
         if list.rows.isEmpty {
             EmptyListHint(model: model, isLoaded: list.isLoaded)
         } else {
-            ForEach(DayGrouping.sections(list.rows, now: model.now)) { section in
+            // Grouped once per list change and calendar day (`model.today`), not once per minute.
+            ForEach(list.daySections(today: model.today)) { section in
                 Text(section.title)
                     .font(LoomTheme.Typography.dayHeading)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle)
@@ -362,6 +363,24 @@ struct SessionListEntry: View {
     }
 }
 
+/// The relative time on a card ("5m"), or "Deleting…". The only part of a card that reads the minute tick, so
+/// the tick redraws these labels and nothing else of the card. The tooltip comes formatted with the row.
+struct CardTimeLabel: View {
+    let row: SessionRowModel
+    let model: CatalogModel
+
+    static func text(for row: SessionRowModel, deleting: Bool, now: Date) -> String {
+        deleting ? "Deleting…" : RelativeTime.string(from: row.record.lastActivityAt, to: now)
+    }
+
+    var body: some View {
+        let _ = SidebarRenderProbe.timeLabel(row.id)
+        Text(Self.text(for: row, deleting: model.isDeleting(row.id), now: model.now))
+            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+            .help(row.activityTooltip)
+    }
+}
+
 struct SessionCardView: View {
     let row: SessionRowModel
     let model: CatalogModel
@@ -397,8 +416,9 @@ struct SessionCardView: View {
     }
 
     var body: some View {
+        let _ = SidebarRenderProbe.card(row.id)
         let indicator = row.indicator
-        let selected = model.selectedSessionID == row.id
+        let selected = row.isSelected
         let mode = model.viewMode
         let title = model.title(of: row, repeatsProject: Self.repeatsProject(mode: mode))
         let projectName = model.projectName(for: row.record)
@@ -415,9 +435,7 @@ struct SessionCardView: View {
                             .foregroundStyle(indicator == .stale ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
                             .lineLimit(1).truncationMode(.tail)
                         Spacer(minLength: LoomTheme.Space.headerSpacing)
-                        Text(model.isDeleting(row.id) ? "Deleting…" : RelativeTime.string(from: row.record.lastActivityAt, to: model.now))
-                            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
-                            .help("Last activity \(row.record.lastActivityAt.formatted(date: .abbreviated, time: .shortened))")
+                        CardTimeLabel(row: row, model: model)
                     }
                     HStack(spacing: LoomTheme.Space.cardRowSpacing) {
                         if let origin, origin.replacesBranch {

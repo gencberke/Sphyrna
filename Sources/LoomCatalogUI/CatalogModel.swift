@@ -85,6 +85,12 @@ public struct CatalogModelStatistics: Sendable {
     public var fullReconciles = 0
     public var rowModels = 0
     public var loadedRows = 0
+    /// Lists re-read from the top (`reload`), one per list and pass.
+    public var listReloads = 0
+    /// One-session reads that patched the lists instead of re-reading them (`patchRows`).
+    public var rowPatches = 0
+    /// Search queries over the whole catalog (one per settled search, whatever the number of lists).
+    public var searchQueries = 0
     /// `start()` until projects, counts and the first page of each visible list are shown.
     public var startMilliseconds = 0.0
 }
@@ -98,13 +104,20 @@ public final class SessionRowModel: Identifiable {
     public private(set) var live: SessionViewState?
     /// This session's agent asked to open a session and the user has not answered (D-40).
     public private(set) var awaitingOpenApproval: Bool
+    /// This is the selected session. Held per row (the model sets the old and the new row), so a card reads
+    /// its own flag and a selection change redraws two cards, not all of them.
+    public private(set) var isSelected: Bool
 
-    init(record: CatalogSession, live: SessionViewState?, awaitingOpenApproval: Bool = false) {
+    init(record: CatalogSession, live: SessionViewState?, awaitingOpenApproval: Bool = false,
+         isSelected: Bool = false) {
         id = record.session.id
         self.record = record
         self.live = live
         self.awaitingOpenApproval = awaitingOpenApproval
+        self.isSelected = isSelected
     }
+
+    func apply(selected: Bool) { if selected != isSelected { isSelected = selected } }
 
     func apply(record: CatalogSession) { if record != self.record { self.record = record } }
     func apply(live: SessionViewState?) { if live != self.live { self.live = live } }
@@ -115,6 +128,21 @@ public final class SessionRowModel: Identifiable {
     public var indicator: SessionIndicator {
         SessionIndicator(record: record, live: live, awaitingOpenApproval: awaitingOpenApproval)
     }
+
+    /// How many times this row formatted its tooltip date (a test counts it).
+    @ObservationIgnored private(set) var tooltipFormats = 0
+    @ObservationIgnored private var tooltipCache: (date: Date, zone: TimeZone, text: String)?
+
+    /// "Last activity <date>", formatted once per activity time: the card asks for it in every body pass.
+    public var activityTooltip: String {
+        let date = record.lastActivityAt
+        let zone = TimeZone.current
+        if let cached = tooltipCache, cached.date == date, cached.zone == zone { return cached.text }
+        tooltipFormats += 1
+        let text = "Last activity " + date.formatted(date: .abbreviated, time: .shortened)
+        tooltipCache = (date, zone, text)
+        return text
+    }
 }
 
 @MainActor @Observable
@@ -122,30 +150,63 @@ public final class SessionListModel {
     public private(set) var rows: [SessionRowModel] = []
     public private(set) var hasMore = false
     public private(set) var isLoaded = false
-    @ObservationIgnored fileprivate var cursor: CatalogCursor?
-    @ObservationIgnored fileprivate var generation = 0
-    @ObservationIgnored fileprivate var isStale = false
-    @ObservationIgnored fileprivate var isLoadingMore = false
+    @ObservationIgnored var cursor: CatalogCursor?
+    @ObservationIgnored var generation = 0
+    @ObservationIgnored var isStale = false
+    @ObservationIgnored var isLoadingMore = false
     /// Reloads that have started and not finished. A "load more" page that a reload outdated is read again
     /// when the last one ends, or at once when none is running (the last row's `onAppear` will not fire again).
-    @ObservationIgnored fileprivate var activeReloads = 0
-    @ObservationIgnored fileprivate var pendingMore = false
+    @ObservationIgnored var activeReloads = 0
+    @ObservationIgnored var pendingMore = false
+    /// Counts the writes of `rows`, so the day sections know when the list changed.
+    @ObservationIgnored private var rowsRevision = 0
+    @ObservationIgnored private var sectionsCache: SectionsCache?
+
+    private struct SectionsCache {
+        let revision: Int
+        let today: Date
+        let calendar: Calendar
+        let activity: [Date]
+        let sections: [DaySection]
+    }
+
+    /// Writes `rows` only when the order or the row models differ: an equal write redraws the list.
+    func setRows(_ rows: [SessionRowModel]) {
+        guard rows.count != self.rows.count || !zip(rows, self.rows).allSatisfy({ $0 === $1 }) else { return }
+        self.rows = rows
+        rowsRevision += 1
+    }
 
     /// An equal reload (same row models in the same order, same paging state) writes nothing observed.
-    fileprivate func replace(rows: [SessionRowModel], cursor: CatalogCursor?) {
-        if rows.count != self.rows.count || !zip(rows, self.rows).allSatisfy({ $0 === $1 }) { self.rows = rows }
+    func replace(rows: [SessionRowModel], cursor: CatalogCursor?) {
+        setRows(rows)
         self.cursor = cursor
         if hasMore != (cursor != nil) { hasMore = cursor != nil }
         if !isLoaded { isLoaded = true }
         isStale = false
     }
 
-    fileprivate func append(_ more: [SessionRowModel], cursor: CatalogCursor?) {
+    func append(_ more: [SessionRowModel], cursor: CatalogCursor?) {
         let known = Set(rows.map(\.id))
         let fresh = more.filter { !known.contains($0.id) }
-        if !fresh.isEmpty { rows += fresh }
+        if !fresh.isEmpty { rows += fresh; rowsRevision += 1 }
         self.cursor = cursor
         if hasMore != (cursor != nil) { hasMore = cursor != nil }
+    }
+
+    /// The rows grouped into calendar days, kept until the rows, a row's activity time, the calendar day or
+    /// the calendar change: the minute tick and every other body pass of the list reuse it. `today` is the
+    /// start of the model's current day (`CatalogModel.today`), which is all the headings depend on.
+    func daySections(today: Date, calendar: Calendar = .current) -> [DaySection] {
+        if let cached = sectionsCache, cached.revision == rowsRevision, cached.today == today,
+           cached.calendar == calendar, cached.activity.count == rows.count,
+           zip(cached.activity, rows).allSatisfy({ $0 == $1.record.lastActivityAt }) {
+            return cached.sections
+        }
+        let sections = DayGrouping.sections(rows, now: today, calendar: calendar)
+        sectionsCache = SectionsCache(revision: rowsRevision, today: today, calendar: calendar,
+                                      activity: rows.map(\.record.lastActivityAt), sections: sections)
+        return sections
     }
 }
 
@@ -168,6 +229,9 @@ public final class CatalogModel {
     public private(set) var infoMessage: String?
     public private(set) var isReady = false
     public private(set) var now = Date()
+    /// The start of the day `now` is in. The day headings read this instead of `now`, so the minute tick does
+    /// not redraw them; it changes at midnight.
+    public private(set) var today = Calendar.current.startOfDay(for: Date())
     public private(set) var windowIsActive = false
     /// The window can be seen (visible, not occluded, not minimized, app not hidden), key or not.
     /// The relative times tick while this is true.
@@ -228,7 +292,7 @@ public final class CatalogModel {
     /// Bumped when the row behind a tab or the selection is first read, so the strip redraws its title.
     public private(set) var tabRowsRevision = 0
     public var quitting = false
-    @ObservationIgnored public private(set) var statistics = CatalogModelStatistics()
+    @ObservationIgnored public internal(set) var statistics = CatalogModelStatistics()
     /// Reads Git branches off the main thread (`BranchCache`); `branchReader` is the test seam.
     @ObservationIgnored private var branchCache = BranchCache()
     @ObservationIgnored private var branchTask: Task<Void, Never>?
@@ -248,7 +312,7 @@ public final class CatalogModel {
     @ObservationIgnored let catalog: SessionCatalog?
     @ObservationIgnored private let events: SessionEventHub
     @ObservationIgnored private let preferences: UIPreferencesStore
-    @ObservationIgnored private var lists: [CatalogListKey: SessionListModel] = [:]
+    @ObservationIgnored var lists: [CatalogListKey: SessionListModel] = [:]
     @ObservationIgnored var rowModels: [UUID: SessionRowModel] = [:]
     @ObservationIgnored var liveStates: [UUID: SessionViewState] = [:]
     @ObservationIgnored var liveRecords: [UUID: CatalogSession] = [:]
@@ -267,13 +331,20 @@ public final class CatalogModel {
     @ObservationIgnored var sessionReader: ((UUID) async throws -> CatalogSession?)?
     /// Test seam: runs after a "load more" page was read, before it is published.
     @ObservationIgnored var afterMoreRead: (() async -> Void)?
+    /// Test seam: runs after a search query was read, before its result is published.
+    @ObservationIgnored var afterSearchRead: (() async -> Void)?
     @ObservationIgnored private var requestedRefresh: Set<UUID> = []
     @ObservationIgnored private var lastSequence: UInt64?
     @ObservationIgnored private var lastCatalogRevision: UInt64?
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
-    @ObservationIgnored private var refreshTask: Task<Void, Never>?
-    @ObservationIgnored private var refreshDirty = false
+    @ObservationIgnored var refreshTask: Task<Void, Never>?
+    @ObservationIgnored var refreshDirty = false
+    /// Sessions whose catalog row one frame changed, read once and patched into the lists (`CatalogModel+Patching`).
+    @ObservationIgnored var pendingPatches: Set<UUID> = []
+    @ObservationIgnored var patchTask: Task<Void, Never>?
+    /// Counts the search reads; a result is published only by the newest one (`CatalogModel+Search`).
+    @ObservationIgnored var searchGeneration = 0
     /// Test seam: runs after a refresh read finished, before it is published as done.
     @ObservationIgnored var afterRefreshRead: (() async -> Void)?
     @ObservationIgnored private var viewingTask: Task<Void, Never>?
@@ -302,12 +373,14 @@ public final class CatalogModel {
         terminalFontSize = preferences.current.terminalFontSize
         projectColorsEnabled = preferences.current.projectColors
         tabs = ConversationTabs(pinned: preferences.current.openTabs)
+        today = Calendar.current.startOfDay(for: now)
     }
 
     deinit {
         eventTask?.cancel()
         searchTask?.cancel()
         refreshTask?.cancel()
+        patchTask?.cancel()
         preferenceWriteTask?.cancel()
         branchTask?.cancel()
         tickTask?.cancel()
@@ -374,6 +447,7 @@ public final class CatalogModel {
     /// Waits for debounced searches and coalesced refreshes (tests, evidence).
     public func settle() async {
         await searchTask?.value
+        await patchTask?.value // a patch that cannot be applied falls back to a refresh
         await refreshTask?.value
         await viewingTask?.value
         await preferenceWriteTask?.value
@@ -453,7 +527,16 @@ public final class CatalogModel {
         for list in lists.values { list.isStale = true }
     }
 
-    private func reloadVisibleLists(force: Bool = false) async {
+    func reloadVisibleLists(force: Bool = false) async {
+        if isSearching {
+            // One query over the whole catalog serves every visible list (`CatalogModel+Search`).
+            let keys = visibleListKeys()
+            if force || keys.contains(where: { !list(for: $0).isLoaded || list(for: $0).isStale }) {
+                await reloadSearchResults()
+            }
+            pruneRowModels()
+            return
+        }
         for key in visibleListKeys() {
             let list = list(for: key)
             if force || !list.isLoaded || list.isStale { await reload(key) }
@@ -468,13 +551,8 @@ public final class CatalogModel {
         let list = list(for: key)
         list.generation += 1
         list.activeReloads += 1
-        defer {
-            list.activeReloads -= 1
-            if list.activeReloads == 0, list.pendingMore {
-                list.pendingMore = false
-                if list.hasMore { loadMore(key) }
-            }
-        }
+        statistics.listReloads += 1
+        defer { endReload(of: list, key) }
         let generation = list.generation
         let wanted = max(list.rows.count, 1)
         do {
@@ -493,6 +571,15 @@ public final class CatalogModel {
             list.replace(rows: records.map(row(for:)), cursor: cursor)
         } catch {
             report(error, "Sessions could not be read")
+        }
+    }
+
+    /// A reload of `list` ended: a "load more" page the reload outdated is read again once none is running.
+    func endReload(of list: SessionListModel, _ key: CatalogListKey) {
+        list.activeReloads -= 1
+        if list.activeReloads == 0, list.pendingMore {
+            list.pendingMore = false
+            if list.hasMore { loadMore(key) }
         }
     }
 
@@ -526,21 +613,22 @@ public final class CatalogModel {
         }
     }
 
-    private func row(for record: CatalogSession) -> SessionRowModel {
+    func row(for record: CatalogSession) -> SessionRowModel {
         let id = record.session.id
         if let existing = rowModels[id] {
             existing.apply(record: record)
             return existing
         }
         let created = SessionRowModel(record: record, live: liveStates[id],
-                                      awaitingOpenApproval: awaitingOpenApproval.contains(id))
+                                      awaitingOpenApproval: awaitingOpenApproval.contains(id),
+                                      isSelected: id == selectedSessionID)
         rowModels[id] = created
         if liveStates[id] != nil { updateAttentionCount() }
         if tabs.isPinned(id) || id == selectedSessionID { tabRowsRevision &+= 1 }
         return created
     }
 
-    private func pruneRowModels() {
+    func pruneRowModels() {
         var keep = Set(lists.values.flatMap { $0.rows.map(\.id) })
         if let selectedSessionID { keep.insert(selectedSessionID) }
         keep.formUnion(tabs.pinned)
@@ -559,7 +647,7 @@ public final class CatalogModel {
     // MARK: Branches and the clock
 
     /// Branches of the records' folders that are not shown yet, read off the main thread.
-    private func ensureBranches(for records: [CatalogSession]) async {
+    func ensureBranches(for records: [CatalogSession]) async {
         let missing = Set(records.map(\.session.workingDirectory)).filter { branches[$0] == nil }
         guard !missing.isEmpty else { return }
         publishBranches(await branchCache.branches(for: missing), onlyKnown: false)
@@ -598,7 +686,7 @@ public final class CatalogModel {
     /// Reads the sessions that opened the records' sessions, so a card never queries the catalog
     /// while it draws. A requester a loaded row or a live record already holds costs no query. A
     /// failed read is left for the next reload; only a session the catalog does not have is "missing".
-    private func ensureOrigins(for records: [CatalogSession]) async {
+    func ensureOrigins(for records: [CatalogSession]) async {
         let wanted = Set(records.compactMap(\.openedBy))
             .filter { origins[$0] == nil && !missingOrigins.contains($0) }
         guard !wanted.isEmpty else { return }
@@ -646,11 +734,18 @@ public final class CatalogModel {
     }
 
     /// Advances `now` when relative times could read differently, or when a row is newer than it.
-    private func advanceNow(covering records: [CatalogSession] = []) {
+    func advanceNow(covering records: [CatalogSession] = []) {
         let current = currentDate()
         if abs(current.timeIntervalSince(now)) >= nowResolution || records.contains(where: { $0.lastActivityAt > now }) {
-            now = current
+            setNow(current)
         }
+    }
+
+    /// The one writer of `now`; `today` follows it.
+    private func setNow(_ date: Date) {
+        if date != now { now = date }
+        let day = Calendar.current.startOfDay(for: date)
+        if day != today { today = day }
     }
 
     private func refreshProjects() async {
@@ -719,10 +814,14 @@ public final class CatalogModel {
     private func select(_ id: UUID?, waiting interval: LoomSignposts.Interval, revealInList: Bool = true) {
         showsDevTerminal = false
         if id != selectedSessionID {
+            let previous = selectedSessionID
             selectedSessionID = id
             // Only a conversation that owns a run has a terminal to wait for.
             if let id, liveStates[id]?.runID != nil { LoomSignposts.begin(interval) }
             selectedRow = id.flatMap { rowModels[$0] }
+            // Each card reads its own flag: only the old and the new card are redrawn.
+            previous.flatMap { rowModels[$0] }?.apply(selected: false)
+            selectedRow?.apply(selected: true)
             persistSelection(id)
             if id != nil, selectedRow == nil { Task { await ensureSelectedRow() } }
             if revealInList, let id { requestReveal(id) }
@@ -903,7 +1002,7 @@ public final class CatalogModel {
                 do { try await sleep(next) } catch { return }
                 guard !Task.isCancelled, let self else { return }
                 let current = self.currentDate()
-                if current != self.now { self.now = current }
+                self.setNow(current)
                 self.usage?.minuteTick() // the usage chip says "Today": a new day reads it again
             }
         }
@@ -1195,7 +1294,8 @@ public final class CatalogModel {
            let id = frame.sessionID, let row = rowModels[id] {
             refreshBranches([row.record.session.workingDirectory])
         }
-        if let last = lastSequence, frame.sequence == last &+ 1, let id = frame.sessionID {
+        let contiguous = lastSequence.map { frame.sequence == $0 &+ 1 } ?? false
+        if contiguous, let id = frame.sessionID {
             statistics.fastPathFrames += 1
             setLive(id, frame.sessions[id])
         } else {
@@ -1204,17 +1304,28 @@ public final class CatalogModel {
             for id in liveStates.keys where frame.sessions[id] == nil { setLive(id, nil) }
         }
         lastSequence = frame.sequence
+        // Set when one row's patch accounts for the frame's move of the catalog revision.
+        var revisionCovered = false
         if let id = frame.sessionID, rowModels[id] != nil {
             switch frame.change {
-            case .runStarted, .runEnded, .runDetached, .lifecycle, .conversationIdentity:
-                // The catalog row (lifecycle, use time, identity) moved with the run.
-                if catalog != nil { scheduleRefresh() }
+            case .runStarted, .runEnded, .runDetached, .lifecycle, .conversationIdentity, .activityRecorded:
+                // The catalog row (lifecycle, use time, identity, activity time) moved with this frame.
+                guard catalog != nil else { break }
+                if contiguous, canPatchRow(id) {
+                    // Nothing was missed before this frame, so it is the only change: its revision step is
+                    // the stamp it announced (a run or lifecycle frame moves none).
+                    schedulePatch(id)
+                    let stamped = frame.change == .activityRecorded ? 1 : 0
+                    revisionCovered = lastCatalogRevision.map { frame.catalogRevision == $0 &+ UInt64(stamped) } ?? false
+                } else {
+                    scheduleRefresh()
+                }
             default: break
             }
         }
         // Batched catalog changes (aging) carry no per-row state: a consumer that
         // saw the frame or skipped it re-reads the visible lists either way.
-        if let seen = lastCatalogRevision, seen != frame.catalogRevision, catalog != nil {
+        if let seen = lastCatalogRevision, seen != frame.catalogRevision, catalog != nil, !revisionCovered {
             scheduleRefresh()
         }
         lastCatalogRevision = frame.catalogRevision
@@ -1243,6 +1354,7 @@ public final class CatalogModel {
             try? await Task.sleep(for: .milliseconds(100))
             while let self {
                 self.refreshDirty = false
+                self.pendingPatches.removeAll() // this pass re-reads every row a pending patch would
                 await self.refreshProjects()
                 self.markAllStale()
                 await self.reloadVisibleLists()
