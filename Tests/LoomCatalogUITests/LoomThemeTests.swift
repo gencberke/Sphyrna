@@ -3,7 +3,10 @@ import Testing
 
 /// Contrast of today's token values (WCAG 2.x relative luminance). The sidebar
 /// is a translucent tint over a material, so it is checked over the darkest
-/// and the lightest possible backdrop and as the opaque Reduce Transparency color.
+/// and the lightest backdrop and as the opaque Reduce Transparency color.
+/// The lightest backdrop is what the dark `.sidebar` material passes of a pure
+/// white window behind it: measured 0.38-0.51 per sRGB channel on macOS 27
+/// (12 Oct 2026, captures at tint 0.86 and 0.6), taken as 0.5 gray.
 struct LoomThemeTests {
     typealias RGB = LoomTheme.RGB
     private static let black = RGB(red: 0, green: 0, blue: 0)
@@ -12,8 +15,9 @@ struct LoomThemeTests {
     private static let sidebarOpaque = LoomTheme.Surface.sidebarRGB
     private static let sidebarOverBlack = LoomTheme.Surface.sidebarRGB
         .composited(over: black, opacity: LoomTheme.Surface.sidebarTintOpacity)
+    private static let materialOverWhite = RGB(red: 0.5, green: 0.5, blue: 0.5)
     private static let sidebarOverWhite = LoomTheme.Surface.sidebarRGB
-        .composited(over: white, opacity: LoomTheme.Surface.sidebarTintOpacity)
+        .composited(over: materialOverWhite, opacity: LoomTheme.Surface.sidebarTintOpacity)
     private static let panel = LoomTheme.Surface.panelRGB
     private static let selectedCard = white.composited(over: sidebarOpaque, opacity: LoomTheme.Surface.selectedOpacity)
 
@@ -32,6 +36,9 @@ struct LoomThemeTests {
     @Test func secondaryTextIsAAOnTheSidebar() {
         #expect(LoomTheme.Text.secondaryRGB.contrast(with: Self.sidebarOpaque) >= 4.5)
         #expect(LoomTheme.Text.secondaryRGB.contrast(with: Self.sidebarOverBlack) >= 4.5)
+        // The lighter tint the user chose (12 Oct 2026) trades AA over a white window behind
+        // the sidebar (about 3.7:1 measured) for the glass look; it must not get any lower.
+        #expect(LoomTheme.Text.secondaryRGB.contrast(with: Self.sidebarOverWhite) >= 3)
     }
 
     @Test func secondaryTextIsAAOnPanelAndSelectedCard() {
@@ -76,6 +83,6 @@ struct LoomThemeTests {
         #expect(LoomTheme.Status.attentionRGB == RGB(red: 1.0, green: 0.62, blue: 0.04))
         #expect(LoomTheme.Status.unviewedRGB == RGB(red: 0.36, green: 0.55, blue: 1.0))
         #expect(LoomTheme.Status.failureRGB == RGB(red: 0.95, green: 0.38, blue: 0.36))
-        #expect(LoomTheme.Surface.sidebarTintOpacity == 0.86)
+        #expect(LoomTheme.Surface.sidebarTintOpacity == 0.6)
     }
 }

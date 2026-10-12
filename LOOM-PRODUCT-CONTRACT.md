@@ -183,7 +183,7 @@ The window close button and Cmd+W only close the window; the app and jobs keep r
 
 ## 7. Cross-session coordination under the user's management
 
-The goal is for Claude and Codex sessions to be able to find each other, pass on tasks and follow the result for work authorized by the user. This goal is not reduced to a copy/paste feature alone.
+The goal is for Claude and Codex sessions to be able to find each other, pass on tasks and follow the result for work authorized by the user. This goal is not reduced to a copy/paste feature alone. The user confirmed on 12 Oct 2026 that this will be built ([D-43](DECISIONS.md)).
 
 Authorization and task execution are considered separately:
 

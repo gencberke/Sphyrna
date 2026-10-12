@@ -46,9 +46,9 @@ enum LoomTheme {
         static let sidebar = sidebarRGB.color
         /// The opaque color behind the detail panel (the sidebar tone).
         static let backdrop = sidebar
-        /// The dark tone dominates the sidebar; the material only adds a slight
-        /// depth (a lower value let a blue wallpaper glow through).
-        static let sidebarTintOpacity = 0.86
+        /// The dark tone over the sidebar material: low enough that the glass reads (the user's
+        /// choice after the Liquid Glass trial, 12 Oct 2026; 0.86 before looked matte).
+        static let sidebarTintOpacity = 0.6
         /// The panel and the terminal share one background (TerminalTheme is the source).
         static let panelNS = TerminalTheme.background
         static let panel = Color(nsColor: panelNS)
