@@ -6,30 +6,22 @@ Goal: stability and daily-use polish from the 12 Oct review ([D-45](../DECISIONS
 
 State on 12 Oct (late evening):
 
-- **Committed on `swarm/1`.**
-  - `2bbebf3` A and B.
-  - `37b155f` C.
-  - `037810c` E and D1.
-  - The next commit: D2, reviewed and merged by the planner.
-- **Release 0.4.0 in progress.** The user handed the Mac over for the evening ("pc'm senin kontrolünde … bu akşam stabil versiyona çıkalım", 12 Oct), so heavy checks and on-screen checks run now. Steps, in order:
-  1. Bundle keys in both packaging scripts: numeric `CFBundleVersion` (the tree's commit count), the commit as `LoomRevision`, `LSApplicationCategoryType` developer tools. About, diagnostics and the Codex client name show the commit.
-  2. `scripts/check.sh --full --idle`.
-  3. A dev package, the real-Claude check, the performance comparison and the on-screen checks in the slice notes.
-  4. Records, tag `release/0.4.0`, promote, `build.sh`, and a check of the installed app.
-- **H1-F (menu bar, notifications, Open at login) is not in 0.4.0.** It starts on the user's go after the release.
-- **Old worktrees** `loom-h1/wt/A`, `B`, `C`, `E`, `D1` and `D2` are merged and can be removed with the user's OK.
+- **Release 0.4.0** ships H1-A to H1-E and the bundle keys (numeric build number, `LoomRevision`, app category). Its checks are in [Release 0.4.0](#release-040-12-oct-evening). The tag, promote and install are recorded there.
+- **Committed on `swarm/1`.** `2bbebf3` A and B; `37b155f` C; `037810c` E and D1; `07fafb6` D2; `c677ae1` the bundle keys.
+- **Next: H1-F** (menu bar per D-52, notifications, Open at login), on the user's go. The Screen Time question stays open: after 0.4.0 the user can look again for Loom (it now has a category and a numeric build).
+- **Old worktrees** `loom-h1/wt/A`, `B`, `C`, `E`, `D1`, `D2` and `ref-033` are merged or done and can be removed with the user's OK.
 
 ## Slices
 
 | Slice | Content | Write area | State |
 | --- | --- | --- | --- |
-| H1-A Daily use | Ended run keeps its last screen (read-only); Quit asks while sessions work or wait for approval; Quit Anyway, never blocking a system logout or restart; jump to the next or previous session that needs the user (Cmd+J, Shift+Cmd+J); next or previous session (Option+Cmd+Down/Up); the sidebar follows the selection; Reveal in Finder, Copy Claude Session ID, Copy Resume Command; Dock badge; bugs: a transient catalog error unpins a tab, the bottom spinner can stay stuck | `LoomCatalogUI`, `loom-app`, `LoomTerminal`, UI-MAP | implemented and reviewed; applied to `swarm/1` uncommitted; combined checks passed (`scripts/check.sh --tests`, log `check-20261012T161645-8295.log`: LoomCoreTests 568, LoomCatalogUITests 311, LoomTerminalTests 42, LoomLaunchOptionsTests 8; the staged release tree built in `check-20261012T160621-4764.log`); waiting for the evening's on-screen check |
-| H1-B Core hardening | `os.Logger` categories with privacy and rate limits; a bounded diagnostic journal; registry tolerance; capabilities no longer refuse a start; toolchain re-resolved when the executable changes; hook watchdog; runtime catalog write failures; crash residue (open runs, stale sockets, unreadable run folders); catalog backup with restore and start-fresh; diagnostics bundle API; usage and plan-limit failure fields; non-sticky clock ambiguity | `LoomCore`, `CLoomPOSIX`, `loom-hook`, ARCHITECTURE, DEVELOPMENT | implemented and reviewed; applied to `swarm/1` uncommitted; combined checks passed (see H1-A) |
-| H1-C Wiring | UI for H1-B: <ul><li>Help menu and Settings → About: Collect Diagnostics… (reveals the export)</li><li>Catalog restore prompt at launch (Restore Backup / Start Fresh)</li><li>"Plan limits unavailable" and not-understood usage lines on the Usage page</li><li>The watchdog issue visible above a live terminal</li><li>`toolchainInvalidator` wired in AppDelegate</li><li>The export's `log show` limited to this app's processes, so test and dev runs that share the subsystem stay out</li><li>A permanent deletion also removes `catalog.damaged-*`</li></ul> | `LoomCatalogUI`, `loom-app`, small `LoomCore` | implemented and reviewed; applied to `swarm/1` uncommitted. The implementer's `--tests` passed on the same code in worktree C (log `check-20261012T163441-15572.log`: LoomCoreTests 572, the other targets 324); after the planner's two changes the touched suites passed (log `check-20261012T163917-18365.log`, 36 tests) |
-| H1-D1 Performance, part 1 | Candidates 1 (usage after a finished turn) and 5 (terminal reconcile), [D-51](../DECISIONS.md) | `UsageModel`, `UsageTranscriptWatcher`, `ConversationController` | done and committed with H1-E; combined checks passed (see H1-E) |
-| H1-D2 Performance, part 2 | Candidates 2 (list patches), 3 (one search query) and 4 (card invalidation) | `LoomCatalogUI` lists and cards, `SessionCatalog+Paging` | reviewed and merged by the planner; combined checks passed on `swarm/1` (`scripts/check.sh --tests`, log `check-20261012T215200-56637.log`: 583 and 360 tests) |
+| H1-A Daily use | Ended run keeps its last screen (read-only); Quit asks while sessions work or wait for approval; Quit Anyway, never blocking a system logout or restart; jump to the next or previous session that needs the user (Cmd+J, Shift+Cmd+J); next or previous session (Option+Cmd+Down/Up); the sidebar follows the selection; Reveal in Finder, Copy Claude Session ID, Copy Resume Command; Dock badge; bugs: a transient catalog error unpins a tab, the bottom spinner can stay stuck | `LoomCatalogUI`, `loom-app`, `LoomTerminal`, UI-MAP | committed in `2bbebf3`, in 0.4.0; combined checks passed (`scripts/check.sh --tests`, log `check-20261012T161645-8295.log`: LoomCoreTests 568, LoomCatalogUITests 311, LoomTerminalTests 42, LoomLaunchOptionsTests 8; the staged release tree built in `check-20261012T160621-4764.log`) |
+| H1-B Core hardening | `os.Logger` categories with privacy and rate limits; a bounded diagnostic journal; registry tolerance; capabilities no longer refuse a start; toolchain re-resolved when the executable changes; hook watchdog; runtime catalog write failures; crash residue (open runs, stale sockets, unreadable run folders); catalog backup with restore and start-fresh; diagnostics bundle API; usage and plan-limit failure fields; non-sticky clock ambiguity | `LoomCore`, `CLoomPOSIX`, `loom-hook`, ARCHITECTURE, DEVELOPMENT | committed in `2bbebf3`, in 0.4.0; combined checks passed (see H1-A) |
+| H1-C Wiring | UI for H1-B: <ul><li>Help menu and Settings → About: Collect Diagnostics… (reveals the export)</li><li>Catalog restore prompt at launch (Restore Backup / Start Fresh)</li><li>"Plan limits unavailable" and not-understood usage lines on the Usage page</li><li>The watchdog issue visible above a live terminal</li><li>`toolchainInvalidator` wired in AppDelegate</li><li>The export's `log show` limited to this app's processes, so test and dev runs that share the subsystem stay out</li><li>A permanent deletion also removes `catalog.damaged-*`</li></ul> | `LoomCatalogUI`, `loom-app`, small `LoomCore` | committed in `37b155f`, in 0.4.0. The implementer's `--tests` passed on the same code in worktree C (log `check-20261012T163441-15572.log`: LoomCoreTests 572, the other targets 324); after the planner's two changes the touched suites passed (log `check-20261012T163917-18365.log`, 36 tests) |
+| H1-D1 Performance, part 1 | Candidates 1 (usage after a finished turn) and 5 (terminal reconcile), [D-51](../DECISIONS.md) | `UsageModel`, `UsageTranscriptWatcher`, `ConversationController` | committed with H1-E in `037810c`, in 0.4.0; combined checks passed (see H1-E) |
+| H1-D2 Performance, part 2 | Candidates 2 (list patches), 3 (one search query) and 4 (card invalidation) | `LoomCatalogUI` lists and cards, `SessionCatalog+Paging` | reviewed by the planner and committed in `07fafb6`, in 0.4.0; combined checks passed on `swarm/1` (`scripts/check.sh --tests`, log `check-20261012T215200-56637.log`: 583 and 360 tests) |
 | H1-E Project colours | Per D-48, look chosen on [the preview](../design/project-colors-preview.html) | `LoomCore` (`projects.color`), `LoomCatalogUI`, DESIGN, UI-MAP | look chosen ([D-50](../DECISIONS.md)): C's stripe in the sidebar, T5's light tint on the tabs (the user approved the drawing, 12 Oct), the stripe and name in the detail header; done and committed with H1-D1 (the planner's contrast change included); combined checks passed (`scripts/check.sh --tests`, log `check-20261012T170029-40693.log`: LoomCoreTests 578, LoomCatalogUITests 344, LoomTerminalTests 42, LoomLaunchOptionsTests 8) |
-| H1-F macOS integration | Per D-47 and [D-49](../DECISIONS.md): menu bar item (Loom mark, working chase, status dot, session menu), notifications for Needs approval, Open at Login setting, Screen Time visibility, numeric versions from tags | `loom-app`, `LoomCatalogUI`, `scripts/release` | preview approved ([D-52](../DECISIONS.md)): option A, the mark with a chase badge. Planner decisions: light-bar status values `#B05A00`, `#2A5FD6`, `#C9332E`; the chase keeps moving under Reduce Motion (DESIGN §4); Settings defaults on, on, off. Screen Time waits for the user's answer (does Screen Time list any other app?). Not started: the user said to wait (12 Oct). |
+| H1-F macOS integration | Per D-47 and [D-49](../DECISIONS.md): menu bar item (Loom mark, working chase, status dot, session menu), notifications for Needs approval, Open at Login setting, Screen Time visibility, numeric versions from tags | `loom-app`, `LoomCatalogUI`, `scripts/release` | preview approved ([D-52](../DECISIONS.md)): option A, the mark with a chase badge. Planner decisions: light-bar status values `#B05A00`, `#2A5FD6`, `#C9332E`; the chase keeps moving under Reduce Motion (DESIGN §4); Settings defaults on, on, off. Screen Time waits for the user's answer (does Screen Time list any other app?); the bundle keys (numeric build number, app category) shipped early, in 0.4.0. The rest is not started: the user said to wait (12 Oct). |
 
 A and B run in parallel in detached worktrees with disjoint write areas; B keeps every API that A uses source-compatible. The planner applies both diffs to `swarm/1` and runs the combined checks.
 
@@ -132,6 +124,22 @@ The first combined run failed two LoomCore tests that passed in B's own run. Bot
 
 The rerun passed. One run does not prove the races are gone; the evening's full suite repeats them.
 
+## Release 0.4.0 (12 Oct, evening)
+
+The user handed the Mac over for the evening ("pc'm senin kontrolünde … bu akşam stabil versiyona çıkalım", 12 Oct). 0.4.0 ships H1-A to H1-E and the bundle keys. H1-F waits for the user's go, so the release stays small.
+
+- **Full release suite.** `scripts/check.sh --full --idle` passed on the tree of `c677ae1` (log `check-20261012T215601-59397.log`). It covers the release build, the staged release tree without evidence code, and `swift test -c release` over every target with the window tests (583 and 362 tests).
+- **Package.** `Loom-Dev/packages/r040-c677ae1`: `CFBundleVersion` 74, `LoomRevision` `c677ae1`, `LSApplicationCategoryType` developer tools, deep-strict signature.
+- **On screen, fake providers.** Fresh data root, launched through LaunchServices, three projects and four sessions, driven by a scratch script outside the repo.
+  - The three projects took three tones (Rose, Orchid, Aqua). The stripes form one rail per project in the project view and mark each row in the activity view. The tabs carry the light tint, the open one with its stroke. The detail header shows the mark and the name.
+  - Search "beta" returned the one matching session.
+  - Stop on the selected session kept its last screen with "This session is not running.", Resume and Show Details. Its row moved to the top (the activity stamp, patched in place).
+  - Settings: General shows Project colors. About shows "Version 0.5.0 (build 74, c677ae1)" (0.5.0 is the dev flavor's label) and Collect Diagnostics…. Quit was clean.
+  - The evidence captures (`cacheDisplay`) show the terminal area transparent. SwiftTerm paints its background as the layer's colour, which that capture skips. This is not a product issue.
+- **Real Claude** (`perf/claude_real.py`, run `claude-real-20261012T220557`, 2 model turns). All 11 checks passed: reply, Working and Finished indicators, approval card, truecolor, background job in the run scope, Stop empties the scope, no Stop failure, clean Quit, outsider untouched. The idle observer with one Claude cost 0.045 % CPU (baseline 0.044).
+- **Performance.** `perf/run-final-matrix.py` against the Oct 6 baseline alone failed one gate (run `matrix-20261012T220749`): the visible stream1 app median was 26.64 % against the baseline max + 1.5 = 25.52 %. The rerun alternated with a 0.3.3 reference package (`ref-033-87487b5`, run `matrix-20261012T223130`) and passed every gate. Visible stream1 app median: 0.4.0 26.86 % (26.86, 26.57, 26.87), 0.3.3 25.50 % (25.50, 25.08, 26.72); the gate is the reference median + 1.5 = 27.00 %. So most of the drift from the Oct 6 baseline was already in 0.3.3, and 0.4.0 adds about one point (pairs +1.4, +1.5, +0.2), inside the gate. Spinner 11.90 %, hidden stream1 3.50 %, input-to-draw p95 19.25 ms, total CPU at most 28.38 % (CPU40 passes). Open: where the extra point comes from, for a 5-run comparison in the next performance pass.
+- **Not run.** The Help menu; the damaged-catalog alert; the issue notice above a live terminal; Usage lines with real data; the Color menu's swatches (the image is drawn with `isTemplate = false`); Increase Contrast; the Dock badge; keyboard shortcuts with a Turkish layout.
+
 ## Performance candidates
 
 These are proposals for H1-D. They are inferred from the code and not measured; each is measured with `CatalogHotPathTests` counters or signposts before and after.
@@ -172,7 +180,7 @@ These are proposals for H1-D. They are inferred from the code and not measured; 
 
 - **Each slice.** Targeted `scripts/check.sh --suite` runs in its own worktree and scratch.
 - **Planner.** `scripts/check.sh --tests` on the merged tree.
-- **On the user's word.** The full release suite (`--full --idle`) and the on-screen checks. Not soon: the user says when (12 Oct), so the planner does not ask.
+- **On the user's word.** The full release suite (`--full --idle`) and the on-screen checks. They ran for 0.4.0 on the evening of 12 Oct, when the user handed the Mac over.
 
 ## Housekeeping (12 Oct)
 
