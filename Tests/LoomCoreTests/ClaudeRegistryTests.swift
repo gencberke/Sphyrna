@@ -226,9 +226,14 @@ struct ClaudeRegistryTests {
         mismatched["pid"] = getpid() + 1
         write(try JSONSerialization.data(withJSONObject: mismatched), to: path)
         guard case .unavailable = reader.read() else { Issue.record("Wrong declared PID accepted"); return }
+        // The working directory is not part of the identity (pid, process birth, start time and
+        // session id are): a Claude that changed folders (a worktree) is still this process.
         mismatched["pid"] = getpid(); mismatched["cwd"] = "/different"
         write(try JSONSerialization.data(withJSONObject: mismatched), to: path)
-        guard case .unavailable = reader.read() else { Issue.record("Wrong working directory accepted"); return }
+        guard case .snapshot = reader.read() else { Issue.record("A changed working directory made the record unavailable"); return }
+        mismatched["cwd"] = "relative/path"
+        write(try JSONSerialization.data(withJSONObject: mismatched), to: path)
+        guard case .unavailable = reader.read() else { Issue.record("A cwd that is not absolute accepted"); return }
         write(try bytes(reader), to: path)
         let wrong = ClaudeRegistryReader(config: root, leader: ProcessIdentity(pid: getpid(), startSeconds: reader.leader.startSeconds - 1, startMicroseconds: reader.leader.startMicroseconds), directory: reader.directory)
         guard case .unavailable = wrong.read() else { Issue.record("Wrong OS birth accepted"); return }
@@ -358,5 +363,68 @@ struct ClaudeRegistryTests {
         write(try bytes(reader), to: sessions.appendingPathComponent("\(getpid()).json").path)
         try await waitUntil { watch.readCount > before }
         #expect(watch.readCount > before)
+    }
+
+    // MARK: H1-B: tolerance and clock
+
+    private func decoded(status: String?) throws -> ClaudeRegistryRead {
+        let identity = ProcessIdentity(pid: 97823, startSeconds: 1790762096, startMicroseconds: 704705)
+        let reader = ClaudeRegistryReader(config: URL(fileURLWithPath: "/tmp/own-claude"), leader: identity, directory: "/tmp/own-claude")
+        var object: [String: Any] = ["pidDomain": "darwin", "kind": "interactive", "cwd": "/tmp/own-claude",
+            "sessionId": "36abf9da-6b92-4eac-86e4-0b0e2f972606", "startedAt": 1790762096895,
+            "procStart": "Wed Sep 30 09:54:56 2026", "statusUpdatedAt": 1790762099289]
+        if let status { object["status"] = status }
+        return reader.decode(try JSONSerialization.data(withJSONObject: object), now: Date(timeIntervalSince1970: 1790762100))
+    }
+
+    @Test func anUnknownStatusIsASnapshotTheTrackerIgnoresNotAnUnavailableRead() async throws {
+        ClaudeRegistryDiagnostics.resetForTesting()
+        guard case let .snapshot(snapshot) = try decoded(status: "thinking") else {
+            Issue.record("A status this build does not know made the read unavailable"); return
+        }
+        #expect(snapshot.status == "thinking" && snapshot.hasUnknownStatus)
+        // Known values are unaffected, and a malformed status is still unavailable.
+        guard case let .snapshot(known) = try decoded(status: "busy") else { Issue.record("busy"); return }
+        #expect(!known.hasUnknownStatus)
+        let identity = ProcessIdentity(pid: 97823, startSeconds: 1790762096, startMicroseconds: 704705)
+        let reader = ClaudeRegistryReader(config: URL(fileURLWithPath: "/tmp/own-claude"), leader: identity, directory: "/tmp/own-claude")
+        let wrongType = try JSONSerialization.data(withJSONObject: ["pidDomain": "darwin", "kind": "interactive", "cwd": "/tmp/own-claude",
+            "sessionId": "s", "startedAt": 1790762096895, "procStart": "Wed Sep 30 09:54:56 2026", "status": 7, "statusUpdatedAt": 1790762099289])
+        guard case .unavailable = reader.decode(wrongType, now: Date(timeIntervalSince1970: 1790762100)) else {
+            Issue.record("A status of the wrong type accepted"); return
+        }
+
+        // The tracker keeps the hook state and reports no problem.
+        let (tracker, _, _, date) = try await tracker()
+        let before = await tracker.status().activity
+        let issue = await tracker.receiveRegistry(
+            .snapshot(ClaudeRegistrySnapshot(sessionID: "native", startedAt: 900_000, status: "thinking", statusUpdatedAt: 1_000_500)),
+            generation: await tracker.registryGeneration(), now: date.addingTimeInterval(2))
+        #expect(issue == nil)
+        #expect(await tracker.status().activity == before)
+    }
+
+    @Test func eachUnknownStatusIsReportedOncePerProcess() {
+        ClaudeRegistryDiagnostics.resetForTesting()
+        #expect(ClaudeRegistryDiagnostics.noteUnknownStatus("thinking"))
+        #expect(!ClaudeRegistryDiagnostics.noteUnknownStatus("thinking"))
+        #expect(ClaudeRegistryDiagnostics.noteUnknownStatus("compacting"))
+        #expect(ClaudeRegistryDiagnostics.token("a b\nc") == "(not a plain token)")
+    }
+
+    @Test func aWallClockThatSteppedBackIsAmbiguousOnceAndTheNextHookOnTheNewClockIsSaneAgain() async throws {
+        let (tracker, run, launch, date) = try await tracker()
+        // The clock jumps back 100 s between two hooks.
+        _ = try await tracker.receive(envelope("UserPromptSubmit", run: run, launch: launch, at: date.addingTimeInterval(-100)))
+        let generation = await tracker.registryGeneration()
+        let ambiguous = await tracker.receiveRegistry(snapshot("idle", at: 900_500), generation: generation, now: date.addingTimeInterval(2))
+        #expect(ambiguous?.contains("clock is ambiguous") == true)
+        #expect(await tracker.status().activity == .unknown)
+
+        // The next hook, on the new clock, is in order again: the flag clears and samples apply.
+        _ = try await tracker.receive(envelope("UserPromptSubmit", run: run, launch: launch, at: date.addingTimeInterval(-99)))
+        let again = await tracker.registryGeneration()
+        #expect(await tracker.receiveRegistry(snapshot("idle", at: 901_500), generation: again, now: date.addingTimeInterval(2)) == nil)
+        #expect(await tracker.status().activity == .waitingForInput)
     }
 }

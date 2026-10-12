@@ -2,6 +2,18 @@ import Darwin
 import Foundation
 import Synchronization
 
+/// Remembers why the last plan-limits ask failed (and forgets it when one succeeds), so the UI can
+/// say "Plan limits unavailable" and the diagnostics export can say why. Shared by copies of the
+/// fetcher.
+public final class PlanLimitsStatus: @unchecked Sendable {
+    private let lock = NSLock()
+    private var failure: PlanLimitsFailure?
+    public init() {}
+    /// The most recent ask's failure; nil when it succeeded or none was made.
+    public var lastFailure: PlanLimitsFailure? { lock.withLock { failure } }
+    func record(_ value: PlanLimitsFailure?) { lock.withLock { failure = value } }
+}
+
 /// One rate-limit window of a Claude plan, as the Claude CLI reports it.
 public struct PlanLimitWindow: Equatable, Sendable {
     /// Percent of the window already used, 0...100.
@@ -61,6 +73,13 @@ public struct PlanLimits: Equatable, Sendable {
 /// not available (no plan limits for this account, no CLI, a timeout): nothing is shown then.
 public protocol PlanLimitsFetching: Sendable {
     func fetch() async -> PlanLimits?
+    /// Why the last ask failed and when; nil when it succeeded or none failed. A source that
+    /// does not track it keeps the default (nil).
+    var lastFailure: PlanLimitsFailure? { get }
+}
+
+public extension PlanLimitsFetching {
+    var lastFailure: PlanLimitsFailure? { nil }
 }
 
 /// Asks the Claude CLI itself for the plan limits: a short headless `claude -p` process in
@@ -83,6 +102,9 @@ public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
     let timeout: TimeInterval
     let grace: TimeInterval
     let clock: @Sendable () -> Date
+    /// The category and time of the last failed ask (`lastFailure`).
+    public let status: PlanLimitsStatus
+    public var lastFailure: PlanLimitsFailure? { status.lastFailure }
 
     /// - Parameters:
     ///   - toolchain: the resolved Claude toolchain sessions are launched with.
@@ -93,7 +115,8 @@ public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
     public init(
         toolchain: @escaping @Sendable () async throws -> ProviderToolchain, profile: ClaudeProfileLayout,
         workingDirectory: URL, timeout: TimeInterval = 10, grace: TimeInterval = 3,
-        clock: @escaping @Sendable () -> Date = { Date() }
+        clock: @escaping @Sendable () -> Date = { Date() },
+        status: PlanLimitsStatus = PlanLimitsStatus()
     ) {
         self.toolchain = toolchain
         self.profile = profile
@@ -101,6 +124,7 @@ public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
         self.timeout = timeout
         self.grace = grace
         self.clock = clock
+        self.status = status
     }
 
     /// The child's environment: the toolchain's, as sessions get it. For the default profile it is
@@ -116,18 +140,32 @@ public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
     }
 
     public func fetch() async -> PlanLimits? {
-        guard let resolved = try? await toolchain() else { return nil }
+        let resolved: ProviderToolchain
+        do { resolved = try await toolchain() } catch {
+            return fail(.noToolchain)
+        }
         let exchange = LimitsExchange(
             executable: resolved.executable, environment: Self.environment(toolchain: resolved, profile: profile),
             workingDirectory: workingDirectory, timeout: timeout, grace: grace)
         let cancelled = CancelFlag()
-        let outcome = await withTaskCancellationHandler {
+        let outcome: LimitsOutcome = await withTaskCancellationHandler {
             await Task.detached(priority: .utility) { exchange.run(cancelled: cancelled) }.value
         } onCancel: {
             cancelled.set()
         }
-        guard let outcome, outcome.fiveHour != nil || outcome.weekly != nil else { return nil }
-        return PlanLimits(fiveHour: outcome.fiveHour, weekly: outcome.weekly, fetchedAt: clock())
+        switch outcome {
+        case let .failure(category): return fail(category)
+        case let .answer(answer):
+            guard answer.fiveHour != nil || answer.weekly != nil else { return fail(.notAvailable) }
+            status.record(nil)
+            return PlanLimits(fiveHour: answer.fiveHour, weekly: answer.weekly, fetchedAt: clock())
+        }
+    }
+
+    private func fail(_ category: PlanLimitsFailure.Category) -> PlanLimits? {
+        status.record(PlanLimitsFailure(category: category, at: clock()))
+        LoomLog.error(.usage, key: "plan-limits", "Plan limits could not be read (\(category.rawValue))")
+        return nil
     }
 }
 
@@ -190,6 +228,11 @@ private final class CancelFlag: Sendable {
     func set() { value.withLock { $0 = true } }
 }
 
+enum LimitsOutcome: Equatable, Sendable {
+    case answer(PlanLimitsAnswer)
+    case failure(PlanLimitsFailure.Category)
+}
+
 /// The blocking part: spawn, one request line, read until the answer, close, make sure it exits.
 private struct LimitsExchange: Sendable {
     let executable: String
@@ -201,7 +244,7 @@ private struct LimitsExchange: Sendable {
     /// More than this from the child is not an answer to a one-line request.
     private static let outputLimit = 4 * 1024 * 1024
 
-    func run(cancelled: CancelFlag) -> PlanLimitsAnswer? {
+    func run(cancelled: CancelFlag) -> LimitsOutcome {
         try? FileManager.default.createDirectory(
             at: workingDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let process = Process()
@@ -213,7 +256,7 @@ private struct LimitsExchange: Sendable {
         process.standardInput = input
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { return nil }
+        do { try process.run() } catch { return .failure(.spawnFailed) }
         // Only the child keeps the write end of its stdout, so EOF means it exited.
         try? output.fileHandleForWriting.close()
         let writer = input.fileHandleForWriting
@@ -221,28 +264,28 @@ private struct LimitsExchange: Sendable {
         defer { finish(process, writer: writer) }
 
         let requestID = UUID().uuidString
-        do { try writer.write(contentsOf: PlanLimitsWire.request(id: requestID)) } catch { return nil }
+        do { try writer.write(contentsOf: PlanLimitsWire.request(id: requestID)) } catch { return .failure(.writeFailed) }
         return readAnswer(from: output.fileHandleForReading.fileDescriptor, requestID: requestID, cancelled: cancelled)
     }
 
-    private func readAnswer(from descriptor: Int32, requestID: String, cancelled: CancelFlag) -> PlanLimitsAnswer? {
+    private func readAnswer(from descriptor: Int32, requestID: String, cancelled: CancelFlag) -> LimitsOutcome {
         let deadline = ProcessInfo.processInfo.systemUptime + timeout
         var pending: [UInt8] = []
         var total = 0
         var chunk = [UInt8](repeating: 0, count: 16_384)
         while !cancelled.isSet {
             let remaining = deadline - ProcessInfo.processInfo.systemUptime
-            guard remaining > 0 else { return nil }
+            guard remaining > 0 else { return .failure(.timedOut) }
             var poller = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)
             // Short steps, so a cancelled fetch is noticed.
             let ready = poll(&poller, 1, Int32(min(remaining * 1_000, 200)))
-            if ready < 0 { if errno == EINTR { continue } else { return nil } }
+            if ready < 0 { if errno == EINTR { continue } else { return .failure(.endedWithoutAnswer) } }
             if ready == 0 { continue }
             let count = read(descriptor, &chunk, chunk.count)
-            if count < 0 { if errno == EINTR { continue } else { return nil } }
-            if count == 0 { return nil } // the child ended without answering
+            if count < 0 { if errno == EINTR { continue } else { return .failure(.endedWithoutAnswer) } }
+            if count == 0 { return .failure(.endedWithoutAnswer) } // the child ended without answering
             total += count
-            guard total <= Self.outputLimit else { return nil }
+            guard total <= Self.outputLimit else { return .failure(.outputTooLarge) }
             pending.append(contentsOf: chunk[..<count])
             while let newline = pending.firstIndex(of: 0x0A) {
                 let line = pending[..<newline]
@@ -250,14 +293,14 @@ private struct LimitsExchange: Sendable {
                 pending.removeSubrange(...newline)
                 switch judged {
                 case .ignored: continue
-                case .unavailable: return nil
-                case let .answer(answer): return answer
+                case .unavailable: return .failure(.notAvailable)
+                case let .answer(answer): return .answer(answer)
                 }
             }
             // A line that never ends is not JSON worth waiting for.
             if pending.count > 1_048_576 { pending.removeAll() }
         }
-        return nil
+        return .failure(.cancelled)
     }
 
     /// Closes the child's input, gives it `grace` to leave, then terminates it by its pid.

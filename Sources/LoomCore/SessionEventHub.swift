@@ -152,8 +152,16 @@ public actor SessionEventHub {
     }
 
     public func subscribe() -> AsyncStream<SessionEventFrame> {
+        subscribe(bufferingPolicy: .bufferingNewest(1))
+    }
+
+    /// A consumer that must see every change rather than the latest state (a test asserting a
+    /// transient change such as `.deletionIncomplete`) passes `.unbounded`.
+    func subscribe(
+        bufferingPolicy: AsyncStream<SessionEventFrame>.Continuation.BufferingPolicy
+    ) -> AsyncStream<SessionEventFrame> {
         let id = UUID()
-        return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+        return AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
             subscribers[id] = continuation
             continuation.yield(snapshot())
             continuation.onTermination = { [weak self] _ in

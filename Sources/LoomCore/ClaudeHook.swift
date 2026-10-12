@@ -26,6 +26,9 @@ public enum ClaudeHookTransportError: Error, CustomStringConvertible, Equatable,
     case timeout(String)
     case messageTooLarge
     case malformedMessage
+    /// The server read the message and refused its token (a Loom that is not the one this hook was
+    /// started by).
+    case rejected
 
     public var description: String {
         switch self {
@@ -39,6 +42,8 @@ public enum ClaudeHookTransportError: Error, CustomStringConvertible, Equatable,
             "Claude hook message exceeds 1 MiB"
         case .malformedMessage:
             "Claude hook message is malformed"
+        case .rejected:
+            "Claude hook message was rejected by Loom"
         }
     }
 }
@@ -99,6 +104,51 @@ public enum ClaudeHookClient {
         }
         guard Darwin.shutdown(descriptor, SHUT_WR) == 0 else {
             throw ClaudeHookTransportError.system(operation: "shutdown", code: errno)
+        }
+        // The server closes the connection once it has judged the message, and sends one byte first
+        // when it refuses the token. A server that is slow or older than this client simply closes
+        // or stays silent: that is never a failure of the hook, so the wait is short and its
+        // timeout is ignored.
+        if readVerdict(descriptor: descriptor, deadline: min(deadline, ProcessInfo.processInfo.systemUptime + verdictWait)) {
+            throw ClaudeHookTransportError.rejected
+        }
+    }
+
+    /// A short, content-free reason for a failed send: what `loom-hook` logs before it exits.
+    public static func failureDescription(_ error: any Error) -> String {
+        switch error {
+        case let ClaudeHookTransportError.timeout(operation): return "\(operation) timed out"
+        case ClaudeHookTransportError.rejected: return "token rejected by Loom"
+        case let ClaudeHookTransportError.system(operation, code):
+            switch code {
+            case ECONNREFUSED: return "\(operation) refused (nothing is listening; Loom is not running or restarted)"
+            case ENOENT: return "\(operation) failed: the socket does not exist"
+            default: return "\(operation) failed (errno \(code))"
+            }
+        case ClaudeHookTransportError.invalidConfiguration: return "invalid configuration"
+        case ClaudeHookTransportError.messageTooLarge: return "message too large"
+        default: return LoomLog.category(of: error)
+        }
+    }
+
+    /// The one byte a server sends for a refused message.
+    static let rejectionByte: UInt8 = 0x15
+    private static let verdictWait: TimeInterval = 0.1
+
+    private static func readVerdict(descriptor: Int32, deadline: TimeInterval) -> Bool {
+        var byte: UInt8 = 0
+        while true {
+            let count = Darwin.recv(descriptor, &byte, 1, 0)
+            if count > 0 { return byte == rejectionByte }
+            if count == 0 { return false }
+            if errno == EINTR { continue }
+            guard errno == EAGAIN || errno == EWOULDBLOCK else { return false }
+            let remaining = deadline - ProcessInfo.processInfo.systemUptime
+            guard remaining > 0 else { return false }
+            // Any event (data, or the server hanging up after its byte) is answered by reading again.
+            var item = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)
+            let result = Darwin.poll(&item, 1, Int32(max(1, min(remaining * 1_000, 100))))
+            if result < 0, errno != EINTR { return false }
         }
     }
 
@@ -284,10 +334,29 @@ public final class ClaudeHookServer: @unchecked Sendable {
                 return
             }
         }
+        // A connection that sends nothing is a probe (the stale-socket sweep of another Loom), not a message.
+        guard !data.isEmpty else { return }
         guard let wire = try? JSONDecoder().decode(ClaudeHookWireMessage.self, from: data),
               wire.envelope.version == ClaudeHookEnvelope.protocolVersion,
-              secureEqual(wire.authenticationToken, authenticationToken),
-              wire.envelope.payload.count <= ClaudeHookClient.maximumPayloadByteCount else { return }
+              wire.envelope.payload.count <= ClaudeHookClient.maximumPayloadByteCount else {
+            HookDiagnostics.note(.malformedMessage)
+            LoomLog.error(.claudeHooks, key: "hook-malformed", "A hook connection sent a message this Loom cannot read")
+            return
+        }
+        guard secureEqual(wire.authenticationToken, authenticationToken) else {
+            HookDiagnostics.note(.rejectedToken)
+            LoomLog.error(.claudeHooks, key: "hook-token", "A hook message with the wrong token was refused")
+            // The one byte goes out only with SIGPIPE disabled on this connection. Setting that fails
+            // (EINVAL) once the peer has hung up, which also means there is nobody to tell.
+            var noSignal: Int32 = 1
+            if setsockopt(connection, SOL_SOCKET, SO_NOSIGPIPE, &noSignal,
+                          socklen_t(MemoryLayout.size(ofValue: noSignal))) == 0 {
+                var verdict = ClaudeHookClient.rejectionByte
+                _ = Darwin.send(connection, &verdict, 1, 0)
+            }
+            return
+        }
+        HookDiagnostics.note(.received)
         handler(wire.envelope)
     }
 }
@@ -473,6 +542,9 @@ public actor ClaudeHookStateTracker {
     private var inputWatermark: Double?
     private var inputAwaitsApproval = false
     private var hookEmissionWatermark: Double?
+    /// The previous hook's emission time: the clock is judged against it, so a wall clock that
+    /// stepped back is ambiguous once and the next hook on the new clock is sane again.
+    private var lastHookEmission: Double?
     private var inputClockAmbiguous = false
     static let maximumHookReorderMilliseconds = 500.0
     private var registryStartedAt: Double?
@@ -562,7 +634,7 @@ public actor ClaudeHookStateTracker {
         retiredSessionIDs.removeAll()
         inputGeneration = nil; inputWatermark = nil
         registryStartedAt = nil; registryTimestamp = nil
-        hookEmissionWatermark = nil; inputClockAmbiguous = false
+        hookEmissionWatermark = nil; lastHookEmission = nil; inputClockAmbiguous = false
         droppedEarlyEvent = false
         subagents = SubagentLedger()
         subagentApprovalReturn = nil
@@ -718,11 +790,14 @@ public actor ClaudeHookStateTracker {
 
     private func noteEmission(_ sentAt: Date) {
         let emission = sentAt.timeIntervalSince1970 * 1_000
-        // Helpers for concurrent hooks may deliver slightly out of order; only a
-        // larger step back means the clock itself moved.
-        inputClockAmbiguous = !emission.isFinite
-            || (hookEmissionWatermark.map { emission < $0 - Self.maximumHookReorderMilliseconds } ?? false)
-        if emission.isFinite { hookEmissionWatermark = max(hookEmissionWatermark ?? emission, emission) }
+        guard emission.isFinite else { inputClockAmbiguous = true; return }
+        // Helpers for concurrent hooks may deliver slightly out of order; only a larger step back
+        // from the hook before means the clock itself moved. That hook is ambiguous; the next one
+        // on the new clock is not, and later registry samples are measured against the new clock.
+        let steppedBack = lastHookEmission.map { emission < $0 - Self.maximumHookReorderMilliseconds } ?? false
+        inputClockAmbiguous = steppedBack
+        hookEmissionWatermark = steppedBack ? emission : max(hookEmissionWatermark ?? emission, emission)
+        lastHookEmission = emission
     }
 }
 

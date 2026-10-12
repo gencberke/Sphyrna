@@ -318,7 +318,25 @@ public actor SessionLifecycleController {
             _ = try await classifyStale(at: now)
             try await reschedule()
         } catch {
-            // A later state change reschedules after a transient catalog error.
+            // A catalog error must not end the timer chain: nothing else would wake the stale
+            // classification until some unrelated state change. Report it and try again shortly.
+            LoomLog.error(.lifecycle, key: "timer", "The lifecycle timer could not read the catalog (\(LoomLog.category(of: error))); retrying")
+            scheduleRetry()
+        }
+    }
+
+    /// Seconds before the timer tries again after a catalog error.
+    var timerRetryDelay: TimeInterval = 30
+    func setTimerRetryDelayForTesting(_ seconds: TimeInterval) { timerRetryDelay = seconds }
+
+    private func scheduleRetry() {
+        guard eventTask != nil else { return }
+        timer?.cancel()
+        let delay = timerRetryDelay
+        timer = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            await self?.timerFired()
         }
     }
 

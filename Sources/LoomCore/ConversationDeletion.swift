@@ -407,6 +407,8 @@ extension SessionRuntime {
         // that could still be racing the run's end.
         await supervisor.events.forget(sessionID: id)
         try await catalog.finishDeletion(sessionID: id)
+        // `finishDeletion` removed every backup (one may have held this session): take a fresh one.
+        scheduleCatalogBackup(force: true)
     }
 
     private func remainingFiles(of providerIDs: [String], in directory: String) async throws -> [DeletionPlan.Item] {

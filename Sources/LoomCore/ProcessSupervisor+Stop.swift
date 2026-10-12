@@ -49,6 +49,11 @@ extension ProcessSupervisor {
             succeeded: report.succeeded
         ))
         var summary: String?
+        if report.succeeded {
+            LoomLog.notice(.lifecycle, "Run \(report.runID.uuidString.prefix(8)) stopped and verified in \(Int(report.elapsedSeconds * 1000)) ms")
+        } else {
+            LoomLog.error(.lifecycle, "Run \(report.runID.uuidString.prefix(8)) stop could not be verified: \(report.remaining.count) remaining, \(report.outsideOwnership.count) outside ownership, \(report.errors.count) error(s)")
+        }
         if !report.succeeded {
             var parts: [String] = []
             if !report.remaining.isEmpty { parts.append("\(report.remaining.count) process(es) still running") }

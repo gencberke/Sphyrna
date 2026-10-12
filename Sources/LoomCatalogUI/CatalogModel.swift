@@ -46,6 +46,13 @@ public protocol ConversationIntents: AnyObject {
     func retryDeletion(sessionID: UUID) async throws -> ConversationDeletionOutcome
     func pendingDeletions() async throws -> [PendingConversationDeletion]
     func deletionRecoveryFailure() async -> String?
+    /// The last screen of a session whose run ended, kept read-only while the session is selected or a tab
+    /// (D-45). Defaults: none.
+    func endedTerminalView(sessionID: UUID) -> NSView?
+    /// "Show Details": lets go of the kept screen so the session shows its record.
+    func closeEndedScreen(sessionID: UUID)
+    /// The selection or the pinned tabs changed: kept screens of sessions that are neither are released.
+    func sessionVisibilityChanged()
 }
 
 public enum ConversationBusy: Equatable, Sendable {
@@ -119,6 +126,10 @@ public final class SessionListModel {
     @ObservationIgnored fileprivate var generation = 0
     @ObservationIgnored fileprivate var isStale = false
     @ObservationIgnored fileprivate var isLoadingMore = false
+    /// Reloads that have started and not finished. A "load more" page that a reload outdated is read again
+    /// when the last one ends, or at once when none is running (the last row's `onAppear` will not fire again).
+    @ObservationIgnored fileprivate var activeReloads = 0
+    @ObservationIgnored fileprivate var pendingMore = false
 
     /// An equal reload (same row models in the same order, same paging state) writes nothing observed.
     fileprivate func replace(rows: [SessionRowModel], cursor: CatalogCursor?) {
@@ -234,12 +245,24 @@ public final class CatalogModel {
     @ObservationIgnored private let events: SessionEventHub
     @ObservationIgnored private let preferences: UIPreferencesStore
     @ObservationIgnored private var lists: [CatalogListKey: SessionListModel] = [:]
-    @ObservationIgnored private var rowModels: [UUID: SessionRowModel] = [:]
-    @ObservationIgnored private var liveStates: [UUID: SessionViewState] = [:]
-    @ObservationIgnored private var liveRecords: [UUID: CatalogSession] = [:]
+    @ObservationIgnored var rowModels: [UUID: SessionRowModel] = [:]
+    @ObservationIgnored var liveStates: [UUID: SessionViewState] = [:]
+    @ObservationIgnored var liveRecords: [UUID: CatalogSession] = [:]
     @ObservationIgnored private var lookingUp: Set<UUID> = []
     /// Bumped when a live state or a looked-up record changes, so project dots redraw.
     public private(set) var liveRevision = 0
+    /// Sessions that need the user (`AttentionOrder`), kept for the Dock badge. Updated whenever live state,
+    /// a record or an open-session wait changes; `onAttentionCountChange` fires on a change only.
+    @ObservationIgnored public internal(set) var attentionCount = 0
+    @ObservationIgnored public var onAttentionCountChange: (@MainActor (Int) -> Void)?
+    /// The sidebar scrolls to this session (selection changed by something other than a click in the list).
+    public internal(set) var revealRequest: SessionRevealRequest?
+    @ObservationIgnored var revealSerial = 0
+    @ObservationIgnored var revealTask: Task<Void, Never>?
+    /// Test seam: a point read of one session (the tab rows). Nil reads the catalog.
+    @ObservationIgnored var sessionReader: ((UUID) async throws -> CatalogSession?)?
+    /// Test seam: runs after a "load more" page was read, before it is published.
+    @ObservationIgnored var afterMoreRead: (() async -> Void)?
     @ObservationIgnored private var requestedRefresh: Set<UUID> = []
     @ObservationIgnored private var lastSequence: UInt64?
     @ObservationIgnored private var lastCatalogRevision: UInt64?
@@ -350,6 +373,7 @@ public final class CatalogModel {
         await viewingTask?.value
         await preferenceWriteTask?.value
         await branchTask?.value
+        await revealTask?.value
         await deletions.refreshTask?.value
     }
 
@@ -397,6 +421,7 @@ public final class CatalogModel {
             guard let record, self.liveStates[id] != nil else { return }
             self.liveRecords[id] = record
             self.liveRevision &+= 1
+            self.updateAttentionCount()
         }
     }
 
@@ -437,6 +462,14 @@ public final class CatalogModel {
         guard let catalog else { return }
         let list = list(for: key)
         list.generation += 1
+        list.activeReloads += 1
+        defer {
+            list.activeReloads -= 1
+            if list.activeReloads == 0, list.pendingMore {
+                list.pendingMore = false
+                if list.hasMore { loadMore(key) }
+            }
+        }
         let generation = list.generation
         let wanted = max(list.rows.count, 1)
         do {
@@ -464,17 +497,27 @@ public final class CatalogModel {
         list.isLoadingMore = true
         let generation = list.generation
         Task {
-            defer { list.isLoadingMore = false }
+            var outdated = false
             do {
                 statistics.pageQueries += 1
                 let page = try await catalog.sessionPage(query(for: key), after: cursor)
                 await ensureBranches(for: page.sessions)
                 await ensureOrigins(for: page.sessions)
-                guard generation == list.generation else { return }
-                list.append(page.sessions.map(row(for:)), cursor: page.next)
+                await afterMoreRead?()
+                if generation == list.generation {
+                    list.append(page.sessions.map(row(for:)), cursor: page.next)
+                } else {
+                    outdated = true
+                }
             } catch {
                 report(error, "More sessions could not be read")
             }
+            list.isLoadingMore = false
+            // A reload replaced the list while this page was read, so the page was dropped. Nothing else
+            // asks for it again: the rows the user sees did not change, so the last row never reappears.
+            guard outdated else { return }
+            if list.activeReloads > 0 { list.pendingMore = true }
+            else if list.hasMore { loadMore(key) }
         }
     }
 
@@ -487,6 +530,7 @@ public final class CatalogModel {
         let created = SessionRowModel(record: record, live: liveStates[id],
                                       awaitingOpenApproval: awaitingOpenApproval.contains(id))
         rowModels[id] = created
+        if liveStates[id] != nil { updateAttentionCount() }
         if tabs.isPinned(id) || id == selectedSessionID { tabRowsRevision &+= 1 }
         return created
     }
@@ -500,6 +544,7 @@ public final class CatalogModel {
             liveRecords[id] = row.record
         }
         rowModels = rowModels.filter { keep.contains($0.key) }
+        updateAttentionCount()
         pruneOrigins()
         pruneBranches()
         statistics.rowModels = rowModels.count
@@ -650,11 +695,18 @@ public final class CatalogModel {
         Task { await reloadVisibleLists() }
     }
 
-    /// Selecting a row only shows it. It never starts a provider or a PTY.
-    public func select(_ id: UUID?) { select(id, waiting: .selectToTerminal) }
+    /// Selecting a row only shows it. It never starts a provider or a PTY. `revealInList: false` is for a
+    /// click in the sidebar list itself, which must not scroll it; every other change of the selection
+    /// (tabs, shortcuts, "Show Session", a `/clear` move) brings the session's card into view.
+    public func select(_ id: UUID?, revealInList: Bool = true) {
+        select(id, waiting: .selectToTerminal, revealInList: revealInList)
+    }
+
+    /// A click on a card in the sidebar list (or on a subagent row under it): selects, and never scrolls the list.
+    public func selectFromList(_ id: UUID) { select(id, revealInList: false) }
 
     /// `waiting` names the signpost interval that runs until the terminal view reaches the detail pane.
-    private func select(_ id: UUID?, waiting interval: LoomSignposts.Interval) {
+    private func select(_ id: UUID?, waiting interval: LoomSignposts.Interval, revealInList: Bool = true) {
         showsDevTerminal = false
         if id != selectedSessionID {
             selectedSessionID = id
@@ -663,6 +715,8 @@ public final class CatalogModel {
             selectedRow = id.flatMap { rowModels[$0] }
             persistSelection(id)
             if id != nil, selectedRow == nil { Task { await ensureSelectedRow() } }
+            if revealInList, let id { requestReveal(id) }
+            intents?.sessionVisibilityChanged()
         }
         updateViewing()
     }
@@ -715,10 +769,10 @@ public final class CatalogModel {
     /// When the strip is full of running or attention tabs the pin is refused
     /// with a reason; the conversation is still shown as the transient tab.
     @discardableResult
-    public func openTab(_ id: UUID) -> TabPinResult {
+    public func openTab(_ id: UUID, revealInList: Bool = true) -> TabPinResult {
         let result = pinTab(id)
         if case let .refused(reason) = result { infoMessage = reason }
-        select(id)
+        select(id, revealInList: revealInList)
         return result
     }
 
@@ -770,18 +824,24 @@ public final class CatalogModel {
                                  awaitingOpenApproval: awaitingOpenApproval.contains(id)).needsAttention
     }
 
+    private func readSession(_ id: UUID, catalog: SessionCatalog) async throws -> CatalogSession? {
+        if let sessionReader { return try await sessionReader(id) }
+        return try await catalog.session(id: id)
+    }
+
     private func forgetTab(_ id: UUID) {
         if tabs.forget(id) { persistTabs() }
     }
 
     /// Reads the rows of pinned tabs the lists do not hold (at most one point
     /// lookup each); a tab whose conversation is gone is dropped.
-    private func ensureTabRows() async {
+    func ensureTabRows() async {
         guard let catalog else { return }
         for id in tabs.pinned where rowModels[id] == nil {
             do {
                 statistics.pageQueries += 1
-                guard let record = try await catalog.session(id: id) else { forgetTab(id); continue }
+                // Only a definite "no such session" unpins a tab; a read that failed leaves it for a later pass.
+                guard let record = try await readSession(id, catalog: catalog) else { forgetTab(id); continue }
                 guard tabs.isPinned(id) else { continue }
                 await ensureBranches(for: [record])
                 await ensureOrigins(for: [record])
@@ -789,7 +849,6 @@ public final class CatalogModel {
                 _ = row(for: record)
             } catch {
                 report(error, "A tab's session could not be read")
-                forgetTab(id)
             }
         }
     }
@@ -1090,6 +1149,7 @@ public final class CatalogModel {
         awaitingOpenApproval = awaiting
         for (id, row) in rowModels { row.apply(awaitingOpenApproval: awaiting.contains(id)) }
         liveRevision &+= 1
+        updateAttentionCount()
     }
 
     // MARK: Event consumer
@@ -1137,6 +1197,7 @@ public final class CatalogModel {
         }
         if state == nil { liveRecords[id] = nil }
         rowModels[id]?.apply(live: state)
+        updateAttentionCount()
         if state != nil, rowModels[id] == nil { lookUpLiveRecord(id) }
         guard state != nil, rowModels[id] == nil, catalog != nil,
               requestedRefresh.insert(id).inserted else { return }
@@ -1155,6 +1216,7 @@ public final class CatalogModel {
                 await self.refreshProjects()
                 self.markAllStale()
                 await self.reloadVisibleLists()
+                await self.ensureTabRows()
                 await self.afterRefreshRead?()
                 self.requestedRefresh = self.requestedRefresh.filter { self.rowModels[$0] == nil }
                 if !self.refreshDirty || Task.isCancelled { break }
@@ -1243,6 +1305,21 @@ public final class CatalogModel {
         return view
     }
 
+    /// The last screen of a session whose run ended, kept read-only (D-45): shown while the session is
+    /// selected. Nil for a session with a live terminal or none kept.
+    public func endedTerminalView(for id: UUID) -> NSView? {
+        _ = terminalRevision
+        return intents?.endedTerminalView(sessionID: id)
+    }
+
+    /// "Show Details": the session shows its record instead of the ended screen.
+    public func closeEndedScreen(_ id: UUID) { intents?.closeEndedScreen(sessionID: id) }
+
+    /// Whether the last screen of an ended run is kept: only while the session is selected or a pinned tab.
+    public func keepsEndedScreen(_ id: UUID) -> Bool {
+        EndedScreenPolicy.keeps(session: id, selected: selectedSessionID, pinned: tabs.pinned)
+    }
+
     // Called by the conversation controller.
 
     func beginStart(_ key: StartKey) -> Bool {
@@ -1293,6 +1370,7 @@ public final class CatalogModel {
     private func persistTabs() {
         let pinned = tabs.pinned
         persist { $0.openTabs = pinned }
+        intents?.sessionVisibilityChanged()
     }
 
     /// Selection changes in quick succession (tab switching) coalesce into one write.

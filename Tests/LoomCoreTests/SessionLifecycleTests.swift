@@ -16,6 +16,23 @@ private actor IdleReliabilityGate {
 
 private final class LifecycleTestBundleAnchor: NSObject {}
 
+/// Fails the first `failing` calls, then lets them through.
+private final class FailureCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var remaining: Int
+    private var total = 0
+    init(failing: Int) { remaining = failing }
+    func next() -> Bool {
+        lock.withLock {
+            total += 1
+            guard remaining > 0 else { return false }
+            remaining -= 1
+            return true
+        }
+    }
+    var calls: Int { lock.withLock { total } }
+}
+
 private final class FailureSwitch: @unchecked Sendable {
     private let lock = NSLock()
     private var on = true
@@ -524,6 +541,28 @@ struct SessionLifecycleTests {
         #expect(await context.lifecycle.timerFireCount() >= 1)
         await context.lifecycle.stopAutomaticEvaluation()
         #expect((await context.supervisor.shutdown(graceSeconds: 0.2)).succeeded)
+    }
+
+    @Test func aCatalogErrorInTheTimerDoesNotEndTheChainTheClassificationIsRetried() async throws {
+        let context = try await makeContext(idleAfter: 0.1, staleAfter: 0.25)
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        let session = ManagedSession(provider: .synthetic, workingDirectory: context.root.path)
+        try await context.supervisor.createSession(session)
+        let failures = FailureCounter(failing: 1)
+        await context.catalog.setReadFailpointForTesting {
+            if failures.next() { throw SessionCatalogError.sqlite(operation: "read", code: 5, message: "database is locked") }
+        }
+        await context.lifecycle.setTimerRetryDelayForTesting(0.05)
+        try await context.lifecycle.startAutomaticEvaluation()
+        let deadline = ProcessInfo.processInfo.systemUptime + 3
+        var lifecycle = try await context.catalog.session(id: session.id)?.lifecycle
+        while lifecycle != .stale, ProcessInfo.processInfo.systemUptime < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+            lifecycle = try await context.catalog.session(id: session.id)?.lifecycle
+        }
+        #expect(lifecycle == .stale)
+        #expect(failures.calls >= 2)          // the failed call and the retry
+        await context.lifecycle.stopAutomaticEvaluation()
     }
 
     @Test func coalescedCompletionReopensBlockedIdleAndRepeatedSnapshotsDoNoWork() async throws {

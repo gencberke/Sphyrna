@@ -38,15 +38,25 @@ extension ProcessSupervisor {
         runID: UUID, reason: ManagedRunEndReason, exitStatus: Int32?
     ) {
         guard let catalog, pendingCatalogWrites[runID] == nil else { return }
+        let delays = catalogFinishRetryDelays
         pendingCatalogWrites[runID] = Task { [weak self] in
-            let completionError: String?
-            do {
-                try await catalog.finishRun(
-                    runID, reason: reason, exitStatus: exitStatus
-                )
-                completionError = nil
-            } catch let caughtError {
-                completionError = String(describing: caughtError)
+            // A busy or briefly failing catalog must not leave a stopped run looking unverified
+            // until the user stops it again: three attempts with a short backoff, then the stop
+            // is reported as it is.
+            var completionError: String?
+            for attempt in 0...delays.count {
+                if attempt > 0 {
+                    LoomLog.notice(.catalog, "Recording the end of run \(runID.uuidString.prefix(8)) failed; retrying (attempt \(attempt + 1))")
+                    try? await Task.sleep(for: delays[attempt - 1])
+                }
+                do {
+                    try await catalog.finishRun(runID, reason: reason, exitStatus: exitStatus)
+                    completionError = nil
+                    break
+                } catch let caughtError {
+                    completionError = String(describing: caughtError)
+                    LoomLog.error(.catalog, key: "finish-run", "Recording the end of a run failed (\(LoomLog.category(of: caughtError)))")
+                }
             }
             await self?.catalogWriteCompleted(runID: runID, error: completionError)
         }

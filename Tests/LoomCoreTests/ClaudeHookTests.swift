@@ -63,9 +63,12 @@ struct ClaudeHookTests {
             sessionID: UUID(), managedRunID: UUID(),
             payload: try payload(event: "SessionStart", fields: ["source": "startup"])
         )
-        try ClaudeHookClient.send(
-            envelope, socketPath: socketPath, authenticationToken: "wrong-token"
-        )
+        // The server refuses a wrong token and says so, so `loom-hook` can leave a trace.
+        #expect(throws: ClaudeHookTransportError.rejected) {
+            try ClaudeHookClient.send(
+                envelope, socketPath: socketPath, authenticationToken: "wrong-token"
+            )
+        }
         #expect(collector.waitForCount(1, timeout: 0.05).isEmpty)
 
         try ClaudeHookClient.send(

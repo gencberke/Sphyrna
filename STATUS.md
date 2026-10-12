@@ -1,10 +1,10 @@
 # Status
 
 - **Updated:** 2026-10-12
-- **Stage:** multi-agent run 1 (F, I, U, CP4), branch `swarm/1`; index and protocol [plans/RUN-1.md](plans/RUN-1.md). Stage L done except the deferred L-4 acceptance ([plan](plans/STAGE-L.md), D-31). CP5 is closed.
-- **Slice:** feedback round 2 on 0.3.0 ([plans/FEEDBACK-2.md](plans/FEEDBACK-2.md), [D-39, D-40, D-42](DECISIONS.md)): footer chip B, card project label fix, newest-first project groups, Mark as Read, subagent tree, approval-gated "session opens session", and Loom's own `loom:open-session` skill so agents learn the command without vault lines (D-42).
-- **State:** **0.3.3** is the daily app (sidebar tint 0.6 after the Liquid Glass trial, D-44; [record](plans/GLASS-TRIAL.md#outcome-d-44)). Before: round 2 (0.3.1), D-42 and FB2-7 (0.3.2).
-- **Next owner:** the user: daily use of 0.3.3 and the next feedback. The cross-session channel is committed for the next planning round (D-43).
+- **Stage:** hardening round 1 after 0.3.3 ([plans/HARDENING-1.md](plans/HARDENING-1.md), [D-45](DECISIONS.md)), branch `swarm/1`. Run 1 and feedback rounds 1–2 are done ([RUN-1](plans/RUN-1.md), [FEEDBACK-2](plans/FEEDBACK-2.md)); stage L done except the deferred L-4 acceptance (D-31).
+- **Slice:** H1-A daily use and H1-B core hardening are applied to `swarm/1` (uncommitted) and pass the combined checks; H1-C wiring is in implementation on top of them. Project colours: look chosen ([D-50](DECISIONS.md), [preview](design/project-colors-preview.html)): the stripe in the sidebar, a light tint on the tabs.
+- **State:** **0.3.3** is the daily app.
+- **Next owner:** the implementer (H1-C), then the planner reviews and merges it. The user answers the performance proposal (H1-D). The full release suite runs when the user says; not soon, and the planner does not ask.
 - **Open decisions:** [DECISIONS.md → Open](DECISIONS.md#open) and the DP list in RUN-1.
-- **Latest result:** [Glass trial outcome](plans/GLASS-TRIAL.md#outcome-d-44).
+- **Latest result:** [combined checks of A and B](plans/HARDENING-1.md#combined-checks-12-oct).
 - **Blocker:** none.

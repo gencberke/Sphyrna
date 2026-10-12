@@ -36,6 +36,9 @@ public actor ClaudeUsageIndex {
     private let maximumLineBytes: Int
 
     private var database: UsageDatabase?
+    private var lastScanReport: UsageScanReport?
+    private var lastScanDate: Date?
+    private var malformedLinesTotal = 0
     private var symbols: [String: Int64] = [:]
     private var forgotten: ForgottenSessions?
 
@@ -70,12 +73,34 @@ public actor ClaudeUsageIndex {
     /// Cancellable between files and between chunks; committed progress is kept.
     @discardableResult
     public func refresh(paths: [URL]? = nil) async throws -> UsageScanReport {
+        let report: UsageScanReport
         do {
-            return try await refreshOnce(paths: paths)
+            report = try await refreshOnce(paths: paths)
         } catch let error as ClaudeUsageIndexError where error.isCorruption {
+            LoomLog.error(.usage, "The usage index was damaged and is being rebuilt")
             discardDatabase()
-            return try await refreshOnce(paths: paths)
+            report = try await refreshOnce(paths: paths)
         }
+        record(report)
+        return report
+    }
+
+    private func record(_ report: UsageScanReport) {
+        lastScanReport = report
+        lastScanDate = clock()
+        malformedLinesTotal += report.linesMalformed
+        if report.linesMalformed > 0 {
+            LoomLog.notice(.usage, "Usage scan met \(report.linesMalformed) line(s) it could not understand")
+        } else {
+            LoomLog.debug(.usage, "Usage scan: \(report.filesParsed) file(s) parsed, \(report.recordsAccepted) record(s)")
+        }
+    }
+
+    /// What the scans report about themselves, for "N usage lines not understood" and the export.
+    /// The lines are counted when a scan reads them, so the total is per app run: a line read
+    /// by an earlier run is not read, or counted, again.
+    public func diagnostics() -> UsageDiagnostics {
+        UsageDiagnostics(lastScan: lastScanReport, lastScanAt: lastScanDate, linesNotUnderstood: malformedLinesTotal)
     }
 
     private func refreshOnce(paths: [URL]?) async throws -> UsageScanReport {

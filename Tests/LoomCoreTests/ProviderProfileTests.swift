@@ -3,14 +3,27 @@ import Testing
 @testable import LoomCore
 
 struct ProviderProfileTests {
-    @Test func rejectsUnknownCapabilities() {
+    @Test func rejectsUnknownCapabilities() throws {
         let unknown = ProviderCapabilities(version: "unknown", help: "")
         #expect(throws: (any Error).self) {
             try ProviderLaunchProfile.codex(route: .direct, capabilities: unknown, home: URL(fileURLWithPath: "/isolated"), environment: [:])
         }
-        #expect(throws: (any Error).self) {
-            try ProviderLaunchProfile.claude(capabilities: unknown, config: URL(fileURLWithPath: "/isolated"), sessionID: UUID(), environment: [:])
-        }
+        // Claude's help is text that can change shape: a start is not refused for an option it does
+        // not list (Claude's own error is what the user sees); the drift is reported separately.
+        let id = UUID()
+        let profile = try ProviderLaunchProfile.claude(capabilities: unknown, config: URL(fileURLWithPath: "/isolated"), sessionID: id, environment: [:])
+        #expect(profile.arguments.starts(with: ["--session-id", id.uuidString, "--settings"]))
+        #expect(ProviderLaunchProfile.missingRequiredClaudeOptions(capabilities: unknown, route: .new(id))
+            == ["--settings", "--session-id"])
+        #expect(ProviderLaunchProfile.missingRequiredClaudeOptions(capabilities: unknown, route: .resume("x"))
+            == ["--settings"])
+        #expect(ProviderLaunchProfile.missingRequiredClaudeOptions(
+            capabilities: unknown, route: .new(id), opening: .init(title: "t", firstMessage: "m"))
+            == ["--settings", "--session-id", "--name"])
+        let listed = ProviderCapabilities(version: "x", help: "--settings <s> --session-id <i> --name <n>")
+        #expect(ProviderLaunchProfile.missingRequiredClaudeOptions(
+            capabilities: listed, route: .new(id), opening: .init(title: "t", firstMessage: "m")).isEmpty)
+        #expect(listed.detectedClaudeOptions == ["--settings", "--session-id", "--name"])
     }
 
     @Test func addsOnlySessionScopedProviderSettings() throws {

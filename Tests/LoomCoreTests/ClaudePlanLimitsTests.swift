@@ -112,10 +112,14 @@ struct ClaudePlanLimitsTests {
     }
 
     @Test func unavailableLimitsAnErrorAndAnExitWithoutAnswerAllGiveNothing() async throws {
+        let expected: [String: PlanLimitsFailure.Category] = [
+            "unavailable": .notAvailable, "error": .notAvailable, "exit": .endedWithoutAnswer,
+        ]
         for mode in ["unavailable", "error", "exit"] {
             let rig = try rig(mode)
             defer { try? FileManager.default.removeItem(at: rig.root) }
             #expect(await rig.fetcher.fetch() == nil, "mode \(mode)")
+            #expect(rig.fetcher.lastFailure == PlanLimitsFailure(category: expected[mode]!, at: now), "mode \(mode)")
         }
     }
 
@@ -131,6 +135,7 @@ struct ClaudePlanLimitsTests {
         defer { try? FileManager.default.removeItem(at: rig.root) }
         let began = ContinuousClock.now
         #expect(await rig.fetcher.fetch() == nil)
+        #expect(rig.fetcher.lastFailure?.category == .timedOut)
         #expect(ContinuousClock.now - began < .seconds(8))
         let pid = try #require(childPID(rig))
         #expect(await waitUntilGone(pid))
@@ -149,7 +154,26 @@ struct ClaudePlanLimitsTests {
             toolchain: { throw ProviderToolchainError.executableNotFound(provider: .claude, searched: 0) },
             profile: ClaudeProfileLayout(profileDirectory: nil, environment: [:], home: URL(fileURLWithPath: "/nonexistent")),
             workingDirectory: FileManager.default.temporaryDirectory)
+        #expect(fetcher.lastFailure == nil)                   // nothing was asked yet
         #expect(await fetcher.fetch() == nil)
+        #expect(fetcher.lastFailure?.category == .noToolchain)
+    }
+
+    @Test func aSuccessfulAskClearsTheLastFailure() async throws {
+        let status = PlanLimitsStatus()
+        let failing = try rig("exit")
+        defer { try? FileManager.default.removeItem(at: failing.root) }
+        let good = try rig("ok")
+        defer { try? FileManager.default.removeItem(at: good.root) }
+        func fetcher(of rig: Rig) -> ClaudePlanLimitsFetcher {
+            ClaudePlanLimitsFetcher(
+                toolchain: rig.fetcher.toolchain, profile: rig.profile, workingDirectory: rig.workingDirectory,
+                timeout: 10, grace: 0.2, clock: { Date(timeIntervalSince1970: 1_791_374_400) }, status: status)
+        }
+        #expect(await fetcher(of: failing).fetch() == nil)
+        #expect(status.lastFailure?.category == .endedWithoutAnswer)
+        #expect(await fetcher(of: good).fetch() != nil)
+        #expect(status.lastFailure == nil)
     }
 
     @Test func aCancelledFetchStopsTheChild() async throws {

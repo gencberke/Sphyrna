@@ -137,6 +137,8 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
     }
     private var input: InputState = .launching([])
     private var inputGate: TerminalInputGate?
+    /// The ended run's last screen is kept for reading (`keepAsReadOnly`): keys and pastes are dropped quietly.
+    private var isReadOnly = false
     private var inputErrors: [String] = []
     private var requestedSize: (rows: UInt16, columns: UInt16)?
     private var resizeTask: Task<Void, Never>?
@@ -198,6 +200,16 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
         resizeTask = nil
     }
 
+    /// The run ended and its screen stays on show: like `runEnded()`, but nothing typed, pasted or dropped
+    /// reaches anything, and nothing is reported either (a refused write would raise an error banner
+    /// for every key). Selecting and copying text still work.
+    public func keepAsReadOnly() {
+        runEnded()
+        isReadOnly = true
+    }
+
+    public var isKeptReadOnly: Bool { isReadOnly }
+
     public var statistics: TerminalSurfaceStatistics {
         let counters = output.snapshot
         let engine = view.diagnostics
@@ -240,7 +252,7 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
         case let .attached(queue, _):
             queue.enqueue(data)
         case .ended:
-            report(.writeFailed("run has ended"))
+            if !isReadOnly { report(.writeFailed("run has ended")) }
         }
     }
 

@@ -112,6 +112,7 @@ struct DetailHeader: View {
                         .disabled(!model.canResume(row))
                     Button("Stop") { model.stopConversation(row.id) }
                         .disabled(!model.canStop(row))
+                    SessionLocationMenuItems(row: row)
                     DeletionMenuItems(model: model, row: row)
                 } label: {
                     Image(systemName: "ellipsis")
@@ -219,6 +220,13 @@ struct DetailContent: View {
                         RequestList(model: model, row: row, returnApproves: false)
                         TerminalHost(panel: terminal).id(ObjectIdentifier(terminal))
                     }
+                } else if let screen = model.endedTerminalView(for: row.id) {
+                    // The run ended and its last screen is kept (D-45): read-only, with a notice above it.
+                    VStack(spacing: 0) {
+                        RequestList(model: model, row: row, returnApproves: false)
+                        EndedScreenNotice(model: model, row: row)
+                        TerminalHost(panel: screen).id(ObjectIdentifier(screen))
+                    }
                 } else {
                     ConversationDetail(model: model, row: row)
                 }
@@ -245,6 +253,39 @@ struct DetailContent: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// The slim notice above the kept screen of a run that ended. Resume is never the default action (Return
+/// belongs to the terminal and does nothing on an ended screen); "Show Details" lets go of the screen and
+/// shows the record. It fades in (opacity only): a height animation above the terminal would resize it.
+struct EndedScreenNotice: View {
+    let model: CatalogModel
+    let row: SessionRowModel
+
+    /// The notice text; a resume under way says so.
+    static func text(busy: ConversationBusy?) -> String {
+        busy == .resuming ? "Resuming…" : "This session is not running."
+    }
+
+    var body: some View {
+        HStack(spacing: LoomTheme.Space.detailSpacing) {
+            Text(Self.text(busy: model.busy[row.id]))
+                .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
+                .lineLimit(1)
+            Spacer(minLength: LoomTheme.Space.detailMinSpacer)
+            Button(row.record.lifecycle == .stale ? "Reactivate and Resume" : "Resume") {
+                model.resumeConversation(row.id)
+            }
+            .disabled(!model.canResume(row))
+            .buttonStyle(AccentButtonStyle(kind: .filled))
+            Button("Show Details") { model.closeEndedScreen(row.id) }
+                .help("Closes this screen and shows the session's details")
+        }
+        .padding(.horizontal, LoomTheme.Space.detailInset).padding(.bottom, LoomTheme.Space.bannerBottom)
+        .fadesIn()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ended-screen-notice")
     }
 }
 

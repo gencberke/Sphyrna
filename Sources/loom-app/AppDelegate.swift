@@ -41,6 +41,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var startupFinished = false
     private(set) var runDirectory: URL?
     private(set) var quitAlert: NSAlert?
+    /// "Quit Loom and stop N working sessions?" while it is on screen.
+    private(set) var quitQuestion: NSAlert?
+    /// The user answered that question with Quit; Try Again after a failed shutdown does not ask again.
+    private var quitConfirmed = false
+    /// The quit in progress came from the system (logout, restart, shutdown): it never asks, and a failed
+    /// shutdown never holds it up. Read from the quit Apple event when the quit starts.
+    private var quitIsSystemInitiated = false
+    /// "Quit Anyway": the next quit ends Loom without a verified shutdown.
+    private var terminatesWithoutVerifiedShutdown = false
 #if LOOM_EVIDENCE
     // State of the development-only evidence tooling (Evidence/).
     var evidence: DevelopmentEvidence?
@@ -101,6 +110,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self?.controller?.terminalFontSize = size
         }
         model.presentingWindow = { [weak self] in self?.window }
+        // The Dock badge counts the sessions that need the user; it follows live state changes, no timer.
+        model.onAttentionCountChange = { count in NSApp.dockTile.badgeLabel = DockBadge.label(count: count) }
         let window = makeWindow(model: model)
         self.window = window
         traceWindowCall("launch-before-show")
@@ -143,6 +154,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // "Quit Anyway" after a shutdown that could not be verified.
+        if terminatesWithoutVerifiedShutdown { return .terminateNow }
+        quitIsSystemInitiated = QuitConfirmation.isSystemInitiated(reason: currentQuitReason())
         guard startupFinished else {
             // The runtime is still being built: let it finish, then quit through it.
             Task { @MainActor in
@@ -153,8 +167,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return .terminateLater
         }
         guard shutdownCoordinator != nil else { return .terminateNow }
+        if quitIsSystemInitiated, let open = quitQuestion {
+            // The system is quitting applications while the question waits: it is not asked any more.
+            window?.endSheet(open.window, returnCode: .abort)
+        }
+        if !quitConfirmed, !evidenceSkipsQuitQuestion(),
+           let prompt = QuitConfirmation.prompt(busySessions: model?.busySessionCount() ?? 0,
+                                                systemInitiated: quitIsSystemInitiated) {
+            guard quitQuestion == nil else { return .terminateCancel }
+            askBeforeQuitting(prompt)
+            return .terminateLater
+        }
         beginQuit()
         return .terminateLater
+    }
+
+    /// The Apple event that asks Loom to quit says why when the system does (log out, restart, shut down).
+    private func currentQuitReason() -> UInt32? {
+        NSAppleEventManager.shared().currentAppleEvent?
+            .attributeDescriptor(forKeyword: QuitConfirmation.reasonKeyword)?.enumCodeValue
+    }
+
+    /// Quitting stops every session; with work in flight the user is asked first. Cancel is the default
+    /// button (Return) and answers Escape too.
+    private func askBeforeQuitting(_ prompt: QuitConfirmation.Prompt) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = prompt.title
+        alert.informativeText = prompt.text
+        alert.addButton(withTitle: prompt.cancelTitle)
+        alert.addButton(withTitle: prompt.confirmTitle)
+        quitQuestion = alert
+        let answered: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard let self else { return }
+            self.quitQuestion = nil
+            if response == .alertSecondButtonReturn {
+                self.quitConfirmed = true
+                self.continueQuit()
+            } else {
+                NSApp.reply(toApplicationShouldTerminate: false)
+            }
+        }
+        presentMainWindow(reason: "quit-question")
+        NSApp.activate()
+        if let window, window.isVisible {
+            alert.beginSheetModal(for: window, completionHandler: answered)
+        } else {
+            answered(alert.runModal())
+        }
+    }
+
+    private func continueQuit() {
+        guard shutdownCoordinator != nil else { NSApp.reply(toApplicationShouldTerminate: true); return }
+        beginQuit()
     }
 
     private func beginQuit() {
@@ -293,6 +358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     /// Whatever is still waiting for the preference write debounce (the window frame) goes to disk.
     func applicationWillTerminate(_ notification: Notification) {
+        NSApp.dockTile.badgeLabel = nil
         usageWatcher?.stop()
         model?.flushPreferences()
     }
@@ -433,6 +499,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func showNextTab(_ sender: Any?) { model?.selectAdjacentTab(.next) }
     @objc func showPreviousTab(_ sender: Any?) { model?.selectAdjacentTab(.previous) }
     @objc func closeTabFromMenu(_ sender: Any?) { model?.closeSelectedTab() }
+    @objc func jumpToNextAttention(_ sender: Any?) { jumpToAttention(item: .next) }
+    @objc func jumpToPreviousAttention(_ sender: Any?) { jumpToAttention(item: .previous) }
+    private func jumpToAttention(item: StepDirection) {
+        let event = NSApp.currentEvent
+        model?.jumpToAttention(SessionShortcut.attentionDirection(
+            fromKeyDown: event?.type == .keyDown, shift: event?.modifierFlags.contains(.shift) == true, item: item))
+    }
+    @objc func selectNextSession(_ sender: Any?) { model?.selectAdjacentSession(.next) }
+    @objc func selectPreviousSession(_ sender: Any?) { model?.selectAdjacentSession(.previous) }
     @objc func findFromMenu(_ sender: Any?) {
         presentMainWindow(reason: "find-menu")
         model?.requestSearchFocus()
@@ -463,6 +538,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return model.canSelectAdjacentTab
         case #selector(closeTabFromMenu(_:)):
             return model.canCloseSelectedTab
+        case #selector(jumpToNextAttention(_:)), #selector(jumpToPreviousAttention(_:)):
+            return model.canJumpToAttention
+        case #selector(selectNextSession(_:)):
+            return model.canSelectAdjacentSession(.next)
+        case #selector(selectPreviousSession(_:)):
+            return model.canSelectAdjacentSession(.previous)
         case #selector(findFromMenu(_:)):
             // The search field lives in the main window; another key window (Settings) keeps Cmd+F to itself.
             return NSApp.keyWindow.map { $0 === window } ?? true
@@ -491,6 +572,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             NSApp.reply(toApplicationShouldTerminate: true)
             return
         }
+        // The report is written either way. A logout, restart or shutdown is not held up by a shutdown that
+        // could not be verified: the system's own quit goes on.
+        if quitIsSystemInitiated {
+            NSApp.reply(toApplicationShouldTerminate: true)
+            return
+        }
         // Timeout or remaining processes never count as a successful quit.
         NSApp.reply(toApplicationShouldTerminate: false)
         model?.statusMessage = "Loom did not quit: it could not confirm that every session process stopped."
@@ -500,13 +587,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         alert.alertStyle = .warning
         alert.messageText = "Loom could not verify that its processes stopped."
         let remaining = report.remainingCountVerified == false ? "unavailable" : String(report.remaining.count)
-        alert.informativeText = "Remaining: \(remaining). Errors: \(report.errors.prefix(3).joined(separator: "; "))"
+        alert.informativeText = QuitConfirmation.failedShutdownText(remaining: remaining, errors: report.errors)
         alert.addButton(withTitle: "Try Again")
         alert.addButton(withTitle: "Keep Loom Open")
+        alert.addButton(withTitle: "Quit Anyway").hasDestructiveAction = true
         quitAlert = alert
         alert.beginSheetModal(for: window) { [weak self] response in
-            self?.quitAlert = nil
-            if response == .alertFirstButtonReturn { NSApp.terminate(nil) }
+            guard let self else { return }
+            self.quitAlert = nil
+            switch response {
+            case .alertFirstButtonReturn:
+                NSApp.terminate(nil)
+            case .alertThirdButtonReturn:
+                // Without a verified shutdown: Loom ends, whatever it could not stop may keep running.
+                self.terminatesWithoutVerifiedShutdown = true
+                NSApp.terminate(nil)
+            default:
+                self.quitConfirmed = false
+            }
         }
     }
 
@@ -620,6 +718,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             item.keyEquivalentModifierMask = mask
             item.target = self
             item.isHidden = hidden
+        }
+        windowMenu.addItem(.separator())
+        // Between sessions (D-45). Key equivalents reach the menu before a focused terminal sees the key.
+        // Shift+Cmd+J may arrive as an uppercase J, which a lowercase key equivalent does not match: a hidden
+        // twin takes it. Which of the two J items AppKit fires is not reliable; the action reads Shift itself.
+        let previousAttention = SessionShortcut.jumpToPreviousAttention
+        let twin = windowMenu.addItem(withTitle: previousAttention.title, action: #selector(jumpToPreviousAttention(_:)),
+                                      keyEquivalent: previousAttention.keyEquivalent.uppercased())
+        twin.keyEquivalentModifierMask = previousAttention.modifiers
+        twin.target = self
+        twin.isHidden = true
+        let sessionKeys: [(SessionShortcut, Selector)] = [
+            (.jumpToNextAttention, #selector(jumpToNextAttention(_:))),
+            (.jumpToPreviousAttention, #selector(jumpToPreviousAttention(_:))),
+            (.selectNextSession, #selector(selectNextSession(_:))),
+            (.selectPreviousSession, #selector(selectPreviousSession(_:))),
+        ]
+        for (shortcut, action) in sessionKeys {
+            if action == #selector(selectNextSession(_:)) { windowMenu.addItem(.separator()) }
+            let item = windowMenu.addItem(withTitle: shortcut.title, action: action, keyEquivalent: shortcut.keyEquivalent)
+            item.keyEquivalentModifierMask = shortcut.modifiers
+            item.target = self
         }
         windowMenu.addItem(.separator())
         windowMenu.addItem(withTitle: "Loom", action: #selector(showMainWindow), keyEquivalent: "").target = self

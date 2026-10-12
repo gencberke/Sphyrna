@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// Claude owns hook authentication/reduction and translates it into the common
 /// work state and conversation operations exposed by the process owner.
@@ -14,6 +15,17 @@ public actor ClaudeSessionAdapter {
     }
     private var registryWatches: [UUID: RegistryObservation] = [:]
     private var registryIssues: [UUID: String] = [:]
+    /// Runs for which at least one hook message reached Loom, whatever became of it. Set from the
+    /// ingress thread, so it lives outside the actor's state.
+    private let hookArrivals = Mutex<Set<UUID>>([])
+    /// Runs whose hook watchdog is waiting, and the issue text it published for a run.
+    private var silenceWatchdogs: [UUID: Task<Void, Never>] = [:]
+    private var silenceIssues: [UUID: String] = [:]
+    /// How long Claude may report a running turn before the missing hooks are reported. A hook
+    /// message trails the registry write by a few milliseconds; this only has to outlast that.
+    let hookSilenceGrace: TimeInterval
+    static let hookSilenceIssue =
+        "Loom is not receiving events from Claude, so this session's status may be wrong. The session itself is not affected."
 
     func observeRegistry(runID: UUID, reader: ClaudeRegistryReader) async {
         stopRegistry(runID: runID, discardTracker: false)
@@ -37,13 +49,23 @@ public actor ClaudeSessionAdapter {
             observation.watch.stop(); observation.continuation.finish(); observation.consumer.cancel()
         }
         registryIssues[runID] = nil
-        if discardTracker { trackers[runID] = nil }
+        if discardTracker {
+            trackers[runID] = nil
+            silenceWatchdogs.removeValue(forKey: runID)?.cancel()
+            silenceIssues[runID] = nil
+            _ = hookArrivals.withLock { $0.remove(runID) }
+        }
     }
 
     private func receiveRegistry(runID: UUID, watchID: UUID, generation: UUID?, result: ClaudeRegistryRead) async {
         while transitioningRuns.contains(runID) {
             guard !Task.isCancelled, registryWatches[runID]?.watch.id == watchID else { return }
             try? await Task.sleep(for: .milliseconds(1))
+        }
+        if registryWatches[runID]?.watch.id == watchID, case let .snapshot(snapshot) = result {
+            if snapshot.hasUnknownStatus, let status = snapshot.status { noteUnknownRegistryStatus(status) }
+            // A turn is running in Claude's own words; every turn begins with a hook.
+            if snapshot.status == "busy" { armSilenceWatchdog(runID: runID) }
         }
         guard !Task.isCancelled, registryWatches[runID]?.watch.id == watchID,
               supervisor.providerWorkStateIsReliable(runID: runID),
@@ -71,13 +93,78 @@ public actor ClaudeSessionAdapter {
         }
     }
 
-    public init(supervisor: ProcessSupervisor) { self.supervisor = supervisor }
+    public init(supervisor: ProcessSupervisor, hookSilenceGrace: TimeInterval = 3) {
+        self.supervisor = supervisor
+        self.hookSilenceGrace = hookSilenceGrace
+    }
 
     /// Called synchronously by bounded ingress, outside the lossy delta queue.
     nonisolated func noteHookLoss(runID: UUID) {
+        HookDiagnostics.note(.lostToOverflow)
         guard supervisor.invalidateProviderWorkState(runID: runID) else { return }
+        LoomLog.error(.claudeHooks, key: "hook-overflow", "Hook events were lost because the intake was full; the run's state is unknown")
         Task { await publishHookLoss(runID: runID) }
     }
+
+    /// Called from the ingress as a message arrives: from then on the run's hooks are known to work.
+    nonisolated func noteHookArrival(runID: UUID) {
+        _ = hookArrivals.withLock { $0.insert(runID) }
+    }
+
+    // MARK: Hook watchdog
+
+    /// Claude reports a running turn in its registry but no hook has ever reached Loom for this run:
+    /// the hooks are not being delivered (a Claude that renamed them, settings that disable hooks,
+    /// a helper that cannot connect). Only "busy" is taken as proof: at startup Claude can sit at a
+    /// folder-trust or first-run question, where it runs no hooks and reports no turn.
+    private func armSilenceWatchdog(runID: UUID) {
+        guard silenceWatchdogs[runID] == nil, silenceIssues[runID] == nil,
+              !hookArrivals.withLock({ $0.contains(runID) }) else { return }
+        let grace = hookSilenceGrace
+        silenceWatchdogs[runID] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(grace))
+            guard !Task.isCancelled else { return }
+            await self?.silenceElapsed(runID: runID)
+        }
+    }
+
+    private func silenceElapsed(runID: UUID) async {
+        guard !hookArrivals.withLock({ $0.contains(runID) }),
+              silenceIssues[runID] == nil,
+              registryWatches[runID] != nil,
+              supervisor.providerWorkStateIsReliable(runID: runID),
+              let context = await supervisor.runContext(runID: runID) else { return }
+        // A hook may have arrived while the context was read.
+        guard !hookArrivals.withLock({ $0.contains(runID) }) else { return }
+        silenceIssues[runID] = Self.hookSilenceIssue
+        LoomLog.error(.claudeHooks, "No hook event reached Loom for run \(runID.uuidString.prefix(8)) although Claude reports a running turn")
+        supervisor.journal?.record("hook_silence", ["run": .string(String(runID.uuidString.prefix(8)))])
+        await supervisor.events.publish(sessionID: context.activeSessionID, change: .issue(Self.hookSilenceIssue))
+    }
+
+    /// The first event of a run ends the watchdog; its issue goes if it is still the one shown.
+    private func hookArrived(runID: UUID) async {
+        silenceWatchdogs.removeValue(forKey: runID)?.cancel()
+        guard let issue = silenceIssues.removeValue(forKey: runID) else { return }
+        LoomLog.notice(.claudeHooks, "Hook events reached Loom for run \(runID.uuidString.prefix(8)) after all")
+        guard let sessionID = await supervisor.activeSessionID(runID: runID) else { return }
+        if await supervisor.events.snapshot().sessions[sessionID]?.issue == issue {
+            await supervisor.events.publish(sessionID: sessionID, change: .issue(nil))
+        }
+    }
+
+    private static let reportedStatuses = Mutex<Set<String>>([])
+
+    private func noteUnknownRegistryStatus(_ status: String) {
+        let token = ClaudeRegistryDiagnostics.token(status)
+        guard Self.reportedStatuses.withLock({ $0.insert(token).inserted }) else { return }
+        supervisor.journal?.record("cli_compat_warning", [
+            "kind": "unknown_registry_status", "status": .string(token),
+        ])
+    }
+
+    /// For tests: the runs that currently show the watchdog's issue.
+    func silenceIssueRuns() -> Set<UUID> { Set(silenceIssues.keys) }
 
     private func publishHookLoss(runID: UUID) async {
         guard let context = await supervisor.runContext(runID: runID) else {
@@ -122,6 +209,8 @@ public actor ClaudeSessionAdapter {
             return .staleRun
         }
         guard initial.launchSessionID == envelope.sessionID else { return .wrongSession }
+        noteHookArrival(runID: envelope.managedRunID)
+        await hookArrived(runID: envelope.managedRunID)
         guard supervisor.providerWorkStateIsReliable(runID: envelope.managedRunID) else { return .unreliable }
         let event = try ClaudeHookEvent(payload: envelope.payload)
         while transitioningRuns.contains(envelope.managedRunID) {
@@ -178,10 +267,17 @@ public actor ClaudeSessionAdapter {
         }
         if case .userPromptSubmit = event.kind {
             // This is a usage timestamp only. An asynchronous helper may run
-            // after user work starts, so it cannot establish a process baseline.
-            try await supervisor.markProviderUsed(
-                runID: envelope.managedRunID, at: min(receivedAt, envelope.sentAt)
-            )
+            // after user work starts, so it cannot establish a process baseline. A catalog that
+            // cannot take it must not keep the turn's state from being published.
+            do {
+                try await supervisor.markProviderUsed(
+                    runID: envelope.managedRunID, at: min(receivedAt, envelope.sentAt)
+                )
+            } catch SessionCatalogError.deletionPending {
+                LoomLog.debug(.catalog, "Use stamp skipped: the session is being deleted")
+            } catch {
+                LoomLog.error(.catalog, key: "mark-used", "The session's use time could not be recorded (\(LoomLog.category(of: error)))")
+            }
         }
         switch event.kind {
         case .stop, .stopFailure:

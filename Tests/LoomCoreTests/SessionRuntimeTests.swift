@@ -120,7 +120,10 @@ struct SessionRuntimeTests {
         startRuntime: Bool = true,
         scoped: Bool = false,
         executableOverride: String? = nil,
-        claudePlugin: Bool = false
+        claudePlugin: Bool = false,
+        hookHelperPath: String? = nil,
+        hookSilenceGrace: TimeInterval = 3,
+        catalogBackupDelay: TimeInterval? = nil
     ) async throws -> RuntimeContext {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loom-runtime-\(UUID())", isDirectory: true)
@@ -175,10 +178,11 @@ struct SessionRuntimeTests {
             supervisor: supervisor, catalog: catalog,
             configuration: SessionRuntimeConfiguration(
                 toolchains: resolver,
-                hookHelperPath: RuntimeFixture.binaries.appendingPathComponent("loom-hook").path,
+                hookHelperPath: hookHelperPath ?? RuntimeFixture.binaries.appendingPathComponent("loom-hook").path,
                 socketDirectory: socketDirectory, homeDirectory: home.path,
                 idlePolicy: idlePolicy, codexIdentityTimeout: 3,
-                claudePluginDirectory: claudePlugin ? root.appendingPathComponent("claude-plugin", isDirectory: true) : nil
+                claudePluginDirectory: claudePlugin ? root.appendingPathComponent("claude-plugin", isDirectory: true) : nil,
+                hookSilenceGrace: hookSilenceGrace, catalogBackupDelay: catalogBackupDelay
             )
         )
         if startRuntime { try await runtime.start() }
@@ -697,6 +701,12 @@ struct SessionRuntimeTests {
             await context.supervisor.providerWorkState(sessionID: launch.sessionID)?.activity == .turnComplete
         })
         #expect(try await Self.waitUntil { await context.runtime.baselineCaptured(sessionID: launch.sessionID) })
+        // turnComplete is delivered before its command helper exits, and a live helper blocks the
+        // stop on its own (tested separately): wait until the leader is alone.
+        #expect(try await Self.waitUntil {
+            let records = try await context.supervisor.sample(sessionID: launch.sessionID)
+            return records.count == 1 && records.first?.identity.pid == launch.terminal.pid
+        })
 
         // Stand-in for the terminal surface: a queue whose write is held.
         let hold = HoldingWriter()
@@ -710,7 +720,7 @@ struct SessionRuntimeTests {
         guard case let .blocked(reasons) = try await context.runtime.lifecycle.evaluateIdle(
             sessionID: launch.sessionID, at: later
         ) else { Issue.record("expected the pending input to block the stop"); return }
-        #expect(reasons.contains { if case .pendingPromptDelivery = $0 { true } else { false } })
+        #expect(reasons.contains { if case .pendingPromptDelivery = $0 { true } else { false } }, "blockers: \(reasons)")
         #expect(await context.supervisor.session(id: launch.sessionID)?.currentRun != nil)
 
         // Once written, the bytes still count as fresh use (the provider may not

@@ -195,6 +195,21 @@ public actor SessionCatalog {
     /// Excludes conversations with a `deletions` row (fence); `s` is the sessions alias.
     static let notDeleting = "NOT EXISTS (SELECT 1 FROM deletions d WHERE d.session_id = s.id)"
     let database: CatalogDatabase
+    /// The catalog file; its folder is the data root (backups, diagnostics and runs live beside it).
+    public nonisolated let catalogURL: URL
+    public nonisolated var dataRoot: URL { catalogURL.deletingLastPathComponent() }
+    /// Backups of this catalog (`CatalogBackupStore`): off the actor, with the deletion rule.
+    public nonisolated var backupStore: CatalogBackupStore { .forCatalog(at: catalogURL) }
+    /// Test seam: runs at the start of the reads the lifecycle timer makes.
+    var readFailpoint: (@Sendable () throws -> Void)?
+    func setReadFailpointForTesting(_ failpoint: (@Sendable () throws -> Void)?) { readFailpoint = failpoint }
+    /// Test seam: runs before each `finishRun` attempt with the 1-based attempt number.
+    var finishRunFailpoint: (@Sendable (Int) throws -> Void)?
+    var finishRunAttempts = 0
+    func setFinishRunFailpointForTesting(_ failpoint: (@Sendable (Int) throws -> Void)?) {
+        finishRunFailpoint = failpoint
+        finishRunAttempts = 0
+    }
     var existingRunTransitionFailpoint: (@Sendable () throws -> Void)?
     /// Rows decoded so far; lets tests prove a state change does not rescan the catalog.
     private(set) var decodedSessionRows = 0
@@ -208,23 +223,33 @@ public actor SessionCatalog {
     public var skippedRowCount: Int { skippedRowIDs.count }
 
     public init(url: URL) throws {
-        database = try CatalogDatabase(url: url)
+        CatalogRecovery.finishInterruptedRestore(catalogAt: url)
+        catalogURL = url
+        do {
+            database = try CatalogDatabase(url: url)
+        } catch {
+            LoomLog.error(.catalog, "The catalog could not be opened (\(LoomLog.category(of: error)))", path: url.path)
+            throw error
+        }
     }
 
     /// Test seam: runs inside the migration transaction, after the DDL and
     /// before COMMIT, so a thrown error exercises the real rollback.
     init(url: URL, migrationFailpoint: @escaping () throws -> Void) throws {
+        catalogURL = url
         database = try CatalogDatabase(url: url, migrationFailpoint: migrationFailpoint)
     }
 
     /// Same, called after the DDL of each target version (2, then 3).
     init(url: URL, versionedMigrationFailpoint: @escaping (Int32) throws -> Void) throws {
+        catalogURL = url
         database = try CatalogDatabase(url: url, versionedMigrationFailpoint: versionedMigrationFailpoint)
     }
 
     /// Test seam inside the delete transaction, after the row deletes and
     /// before COMMIT.
     init(url: URL, deleteRowsFailpoint: @escaping @Sendable () throws -> Void) throws {
+        catalogURL = url
         database = try CatalogDatabase(url: url)
         self.deleteRowsFailpoint = deleteRowsFailpoint
     }
@@ -232,6 +257,7 @@ public actor SessionCatalog {
     /// Test seam at the existing-target transaction boundary, after the
     /// supervisor has selected its destination and before the durable commit.
     init(url: URL, existingRunTransitionFailpoint: @escaping @Sendable () throws -> Void) throws {
+        catalogURL = url
         database = try CatalogDatabase(url: url)
         self.existingRunTransitionFailpoint = existingRunTransitionFailpoint
     }

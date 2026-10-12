@@ -315,6 +315,14 @@ import Testing
         #expect(snapshot.messageCount == 2)
         #expect(snapshot.tokens == UsageTokens(input: 3, output: 3))
         #expect(report.linesMalformed >= 6)
+        // The index keeps the last scan and the running total for "N usage lines not understood".
+        let diagnostics = await index.diagnostics()
+        #expect(diagnostics.lastScan == report)
+        #expect(diagnostics.linesNotUnderstood == report.linesMalformed)
+        #expect(diagnostics.lastScanAt != nil)
+        // A scan that finds nothing new adds nothing.
+        try await index.refresh()
+        #expect(await index.diagnostics().linesNotUnderstood == report.linesMalformed)
     }
 
     @Test func oversizedLinesAreSkippedAndTheNextLineIsRead() async throws {

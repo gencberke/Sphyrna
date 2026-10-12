@@ -220,20 +220,23 @@ struct OpenSessionLaunchProfileTests {
         #expect(try Data(contentsOf: folder.appendingPathComponent(".claude-plugin/plugin.json")) == Data(ClaudeLoomPlugin.manifest.utf8))
     }
 
-    @Test func aFirstMessageNeedsANewSessionAndACliThatKnowsNames() throws {
+    @Test func aFirstMessageNeedsANewSession() throws {
         #expect(throws: LoomError.self) {
             _ = try ProviderLaunchProfile.claude(
                 route: .resume("abc"), capabilities: capabilities, config: URL(fileURLWithPath: "/cfg"),
                 environment: [:], hooks: hooks, opening: .init(title: "t", firstMessage: "m")
             )
         }
+        // A help text without --name no longer refuses the start: the option is passed and the
+        // drift is reported (CLI drift, H1-B).
         let old = ProviderCapabilities(version: "x", help: "--settings <settings> --session-id <id>")
-        #expect(throws: LoomError.self) {
-            _ = try ProviderLaunchProfile.claude(
-                route: .new(UUID()), capabilities: old, config: URL(fileURLWithPath: "/cfg"),
-                environment: [:], hooks: hooks, opening: .init(title: "t", firstMessage: "m")
-            )
-        }
+        let profile = try ProviderLaunchProfile.claude(
+            route: .new(UUID()), capabilities: old, config: URL(fileURLWithPath: "/cfg"),
+            environment: [:], hooks: hooks, opening: .init(title: "t", firstMessage: "m")
+        )
+        #expect(profile.arguments.contains("-n"))
+        #expect(ProviderLaunchProfile.missingRequiredClaudeOptions(
+            capabilities: old, route: .new(UUID()), opening: .init(title: "t", firstMessage: "m")) == ["--name"])
     }
 }
 

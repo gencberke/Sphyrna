@@ -12,14 +12,41 @@ public enum PreviousRunRecovery {
         public var verifiedScopes = 0
         public var stoppedProcesses = 0
         public var removedDirectories = 0
+        /// Run directories whose ledger could not be read, moved to `runs/quarantine/` after being
+        /// reported here once (each also has a `leftovers` entry).
+        public var quarantinedDirectories = 0
         /// One entry per scope that could not be shown empty; its directory is kept.
         public var leftovers: [String] = []
     }
 
     public static func recover(runsDirectory: URL, current: URL?,
                                scopeTimeout: TimeInterval = 10) async -> Report {
-        await Task.detached { recoverBlocking(runsDirectory: runsDirectory, current: current,
-                                              scopeTimeout: scopeTimeout) }.value
+        let report = await Task.detached { recoverBlocking(runsDirectory: runsDirectory, current: current,
+                                                           scopeTimeout: scopeTimeout) }.value
+        record(report, dataRoot: runsDirectory.deletingLastPathComponent())
+        return report
+    }
+
+    /// Where an unreadable run directory goes, under the runs directory.
+    static let quarantineName = "quarantine"
+    static let quarantineKeepCount = 10
+
+    /// The ordinary relaunch (the previous run's directory removed, its scopes already empty) is
+    /// not news. Anything that stopped work, left work or set a directory aside is.
+    private static func record(_ report: Report, dataRoot: URL) {
+        let eventful = report.stoppedProcesses > 0 || !report.leftovers.isEmpty || report.quarantinedDirectories > 0
+        if eventful {
+            LoomLog.error(.recovery, "Previous run recovery: \(report.stoppedProcesses) process(es) stopped, \(report.leftovers.count) leftover(s), \(report.quarantinedDirectories) directory(ies) set aside")
+        } else {
+            LoomLog.notice(.recovery, "Previous run recovery: \(report.verifiedScopes) scope(s) verified empty, \(report.removedDirectories) directory(ies) removed")
+        }
+        guard eventful else { return }
+        DiagnosticJournal.forDataRoot(dataRoot).record("recovery", [
+            "verifiedScopes": .int(report.verifiedScopes), "stoppedProcesses": .int(report.stoppedProcesses),
+            "removedDirectories": .int(report.removedDirectories),
+            "quarantinedDirectories": .int(report.quarantinedDirectories),
+            "leftovers": .int(report.leftovers.count),
+        ])
     }
 
     static func recoverBlocking(runsDirectory: URL, current: URL?, scopeTimeout: TimeInterval) -> Report {
@@ -30,7 +57,8 @@ public enum PreviousRunRecovery {
         ) else { return report }
         let boot = ProcessTable.bootSessionID()
         let live = Set((try? ProcessTable.snapshot())?.map(\.identity) ?? [])
-        for directory in entries where directory.standardizedFileURL != current?.standardizedFileURL {
+        for directory in entries where directory.standardizedFileURL != current?.standardizedFileURL
+            && directory.lastPathComponent != quarantineName {
             let ownerURL = directory.appendingPathComponent("owner.json")
             let ledgerURL = directory.appendingPathComponent("ledger.json")
             if let data = try? Data(contentsOf: ownerURL),
@@ -42,6 +70,7 @@ public enum PreviousRunRecovery {
                 continue // not a run directory
             }
             var clean = true
+            var unreadableLedger = false
             if let ledger = try? OwnershipLedger.load(from: ledgerURL) {
                 for scope in ledger.scopes ?? [] where scope.bootSessionID == boot {
                     switch drain(scope.coalitionID, timeout: scopeTimeout) {
@@ -55,9 +84,14 @@ public enum PreviousRunRecovery {
                 }
             } else if fileManager.fileExists(atPath: ledgerURL.path) {
                 clean = false
+                unreadableLedger = true
                 report.leftovers.append("Previous run ledger \(directory.lastPathComponent) is unreadable")
             }
-            if clean {
+            if unreadableLedger {
+                // Reported in this pass; kept for inspection, but out of the way so the next launch
+                // does not report and rewrite it again.
+                if quarantine(directory, under: runsDirectory) { report.quarantinedDirectories += 1 }
+            } else if clean {
                 if (try? fileManager.removeItem(at: directory)) != nil { report.removedDirectories += 1 }
             } else {
                 try? Data(report.leftovers.joined(separator: "\n").utf8)
@@ -65,6 +99,33 @@ public enum PreviousRunRecovery {
             }
         }
         return report
+    }
+
+    /// Moves `directory` to `<runs>/quarantine/<name>` and keeps the newest few there.
+    private static func quarantine(_ directory: URL, under runsDirectory: URL) -> Bool {
+        let fileManager = FileManager.default
+        let folder = runsDirectory.appendingPathComponent(quarantineName, isDirectory: true)
+        do {
+            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true,
+                                            attributes: [.posixPermissions: 0o700])
+            var target = folder.appendingPathComponent(directory.lastPathComponent)
+            if fileManager.fileExists(atPath: target.path) {
+                target = folder.appendingPathComponent("\(directory.lastPathComponent)-\(UUID().uuidString.prefix(6))")
+            }
+            try fileManager.moveItem(at: directory, to: target)
+        } catch {
+            LoomLog.error(.recovery, "A run directory with an unreadable ledger could not be set aside (\(LoomLog.category(of: error)))")
+            return false
+        }
+        let kept = ((try? fileManager.contentsOfDirectory(
+            at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [])
+            .sorted {
+                let left = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let right = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return left > right
+            }
+        for stale in kept.dropFirst(quarantineKeepCount) { try? fileManager.removeItem(at: stale) }
+        return true
     }
 
     private enum Drain { case empty(stopped: Int), notEmpty(String) }

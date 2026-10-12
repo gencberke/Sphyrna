@@ -56,6 +56,10 @@ extension AppDelegate {
         return host
     }
 
+    /// Acceptance runs quit with sessions working (the command channel's `quit`); the question of D-45
+    /// would wait for a click nobody gives.
+    func evidenceSkipsQuitQuestion() -> Bool { options.isEvidence }
+
     /// Acceptance only (CHECKPOINT-5-HISTORY §18.1 madde 3): the first quit reports a
     /// failure without stopping anything, so the real alert and Try Again
     /// path can be exercised. Requires --evidence.

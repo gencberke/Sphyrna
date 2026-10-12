@@ -7,6 +7,17 @@ import Testing
 /// provider and temp trees only. Nothing here reads or writes the real ~/.claude: the Claude
 /// profile is a directory under the test's own root (the toolchain names it explicitly) and tier 2
 /// points at a folder in the same root.
+extension SessionCatalog {
+    /// Test helper: a title the backup test can look for in file bytes.
+    func renameTitleForBackupTest(_ id: UUID, _ title: String) throws {
+        try database.withStatement("UPDATE sessions SET title = ? WHERE id = ?") { statement in
+            try database.bind(title, at: 1, to: statement)
+            try database.bind(id.uuidString, at: 2, to: statement)
+            try database.stepDone(statement, operation: "test title")
+        }
+    }
+}
+
 @Suite(.serialized, .timeLimit(.minutes(3)))
 struct ConversationDeletionTests {
     // MARK: Fixture
@@ -202,7 +213,9 @@ struct ConversationDeletionTests {
         private var storage: [SessionEventFrame] = []
         private var task: Task<Void, Never>?
         init(_ hub: SessionEventHub) async {
-            let stream = await hub.subscribe()
+            // The app's subscription keeps only the newest frame, so under load a later frame can
+            // replace the transient change a test asserts before this task reads it.
+            let stream = await hub.subscribe(bufferingPolicy: .unbounded)
             task = Task { [weak self] in
                 for await frame in stream { self?.lock.withLock { self?.storage.append(frame) } }
             }
@@ -319,6 +332,33 @@ struct ConversationDeletionTests {
         #expect(try await world.catalog.session(id: b.id) == rowBefore)
         #expect(await world.supervisor.session(id: b.id) != nil)
         #expect(try env.snapshot(of: Self.ids(a)).isEmpty)
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    /// H1-B item 8, the deletion contract: a backup taken before a deletion never survives it, and a
+    /// fresh one (without the conversation) takes its place.
+    @Test func aFinishedDeletionLeavesOnlyAFreshBackupWithoutTheDeletedConversation() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        let doomed = try await Self.addConversation(world)
+        let other = try await Self.addConversation(world)
+        try await world.catalog.renameTitleForBackupTest(doomed.id, "DOOMED-TITLE-FOR-BACKUP")
+        let store = world.catalog.backupStore
+        guard case .created = await store.backUp() else { Issue.record("no first backup"); return }
+        #expect(store.list().count == 1)
+        let oldBackup = try #require(store.list().first)
+
+        #expect(try await world.runtime.deleteConversation(id: doomed.id) == .deleted)
+
+        // The old backup is gone at once; the fresh one is written in the background.
+        #expect(!FileManager.default.fileExists(atPath: oldBackup.url.path))
+        #expect(await SessionRuntimeTests.waitUntil(5) { store.list().count == 1 })
+        let fresh = try #require(store.list().first)
+        #expect(fresh.url != oldBackup.url)
+        let bytes = try Data(contentsOf: fresh.url)
+        #expect(bytes.range(of: Data("DOOMED-TITLE-FOR-BACKUP".utf8)) == nil)
+        #expect(try await world.catalog.session(id: other.id) != nil)
         #expect((await world.runtime.shutdown()).succeeded)
     }
 

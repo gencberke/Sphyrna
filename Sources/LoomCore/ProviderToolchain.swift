@@ -15,12 +15,15 @@ public struct ProviderToolchain: Sendable {
     /// Appended after the runtime's route arguments (fixtures, model flags).
     public let extraArguments: [String]
     public let warnings: [String]
+    /// The executable as it was when the capabilities were read; nil when the resolver did not
+    /// record it (the runtime then stamps the file when it first caches the toolchain).
+    public let executableStamp: ExecutableStamp?
 
     public init(
         provider: ManagedSession.Provider, executable: String,
         capabilities: ProviderCapabilities, environment: [String: String],
         profileDirectory: URL? = nil, extraArguments: [String] = [],
-        warnings: [String] = []
+        warnings: [String] = [], executableStamp: ExecutableStamp? = nil
     ) {
         self.provider = provider
         self.executable = executable
@@ -29,6 +32,26 @@ public struct ProviderToolchain: Sendable {
         self.profileDirectory = profileDirectory
         self.extraArguments = extraArguments
         self.warnings = warnings
+        self.executableStamp = executableStamp
+    }
+}
+
+/// Which file an executable path pointed at, and when it last changed. A cached toolchain
+/// (capabilities read from `--help`) is only as current as the file it was read from: a CLI
+/// update replaces the file (new inode) or rewrites it (new mtime or size).
+public struct ExecutableStamp: Equatable, Sendable {
+    public let inode: UInt64
+    public let modifiedSeconds: Int
+    public let modifiedNanoseconds: Int
+    public let size: Int64
+
+    /// nil when the path does not exist (or is not reachable). Follows symlinks, as `exec` does.
+    public static func read(_ path: String) -> ExecutableStamp? {
+        var info = stat()
+        guard stat(path, &info) == 0 else { return nil }
+        return ExecutableStamp(
+            inode: UInt64(info.st_ino), modifiedSeconds: info.st_mtimespec.tv_sec,
+            modifiedNanoseconds: info.st_mtimespec.tv_nsec, size: Int64(info.st_size))
     }
 }
 
@@ -82,6 +105,8 @@ public actor SystemProviderToolchains {
     private let environmentSource: (@Sendable () async throws -> LaunchEnvironment.Resolution)?
     private var environment: LaunchEnvironment.Resolution?
     private var resolved: [ManagedSession.Provider: ProviderToolchain] = [:]
+    /// Resolutions since this object was created, per provider (tests and the diagnostics read it).
+    public private(set) var resolutionCount = 0
 
     public init(
         supervisor: ProcessSupervisor, origin: LaunchEnvironment.LaunchOrigin,
@@ -99,8 +124,18 @@ public actor SystemProviderToolchains {
         { [self] provider in try await toolchain(for: provider) }
     }
 
+    /// The cached toolchain while the executable it was read from is unchanged; otherwise it is
+    /// resolved again (a CLI update must not leave Loom launching with the old one's capabilities).
+    /// A missing executable also drops the terminal environment, so a CLI installed somewhere new
+    /// since is found through a fresh PATH.
     public func toolchain(for provider: ManagedSession.Provider) async throws -> ProviderToolchain {
-        if let cached = resolved[provider] { return cached }
+        if let cached = resolved[provider] {
+            let current = ExecutableStamp.read(cached.executable)
+            if let current, current == cached.executableStamp { return cached }
+            LoomLog.notice(.toolchain, "\(provider.rawValue) executable \(current == nil ? "is gone" : "changed"); resolving again")
+            resolved[provider] = nil
+            if current == nil { environment = nil }
+        }
         let resolution: LaunchEnvironment.Resolution
         if let environment { resolution = environment }
         else {
@@ -116,7 +151,13 @@ public actor SystemProviderToolchains {
             throw ProviderToolchainError.unsupported("Synthetic sessions have no provider CLI")
         }
         resolved[provider] = value
+        resolutionCount += 1
         return value
+    }
+
+    /// Forgets what was resolved for a provider (a launch failed): the next ask resolves again.
+    public func invalidate(_ provider: ManagedSession.Provider) {
+        resolved[provider] = nil
     }
 
     private func claude(_ resolution: LaunchEnvironment.Resolution) async throws -> ProviderToolchain {
@@ -128,13 +169,15 @@ public actor SystemProviderToolchains {
         }
         var probe = resolution.environment
         if let claudeProfile { probe["CLAUDE_CONFIG_DIR"] = claudeProfile.path }
+        // Stamped before the probes: a file replaced while they run reads as changed next time.
+        let stamp = ExecutableStamp.read(found.path)
         let version = try await capture(found.path, ["--version"], probe)
         let help = try await capture(found.path, ["--help"], probe)
         return ProviderToolchain(
             provider: .claude, executable: found.path,
             capabilities: ProviderCapabilities(version: version, help: help),
             environment: resolution.environment, profileDirectory: claudeProfile,
-            warnings: resolution.warnings
+            warnings: resolution.warnings, executableStamp: stamp
         )
     }
 
@@ -151,6 +194,7 @@ public actor SystemProviderToolchains {
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex", isDirectory: true)
         var probe = resolution.environment
         probe["CODEX_HOME"] = home.path
+        let stamp = ExecutableStamp.read(found.path)
         let version = try await capture(found.path, ["--version"], probe)
         let help = try await capture(found.path, ["--help"], probe)
         let serverHelp = try await capture(found.path, ["app-server", "--help"], probe)
@@ -158,7 +202,7 @@ public actor SystemProviderToolchains {
             provider: .codex, executable: found.path,
             capabilities: ProviderCapabilities(version: version, help: help, serverHelp: serverHelp),
             environment: resolution.environment, profileDirectory: home,
-            warnings: resolution.warnings
+            warnings: resolution.warnings, executableStamp: stamp
         )
     }
 

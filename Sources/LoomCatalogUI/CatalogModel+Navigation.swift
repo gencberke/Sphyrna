@@ -1,0 +1,110 @@
+import AppKit
+import Foundation
+import LoomCore
+
+/// Keyboard navigation between sessions, the Dock badge's count and the sidebar following the selection (D-45).
+extension CatalogModel {
+    // MARK: Sessions that need the user
+
+    /// Every live session whose record is known, as the attention order reads it. A row that is only
+    /// loaded (no live state) is History and never needs the user, so the live states are the whole set;
+    /// the awaiting rule is the one `SessionRowModel.indicator` and the project dots apply.
+    func attentionCandidates() -> [AttentionCandidate] {
+        liveStates.compactMap { id, state in
+            guard let record = rowModels[id]?.record ?? liveRecords[id] else { return nil }
+            return AttentionCandidate(
+                id: id,
+                indicator: SessionIndicator(record: record, live: state,
+                                            awaitingOpenApproval: awaitingOpenApproval.contains(id)),
+                lastActivityAt: record.lastActivityAt)
+        }
+    }
+
+    /// The sessions that need the user, most urgent first (`AttentionOrder`).
+    public func sessionsNeedingAttention() -> [UUID] { AttentionOrder.ordered(attentionCandidates()) }
+
+    /// Sessions that are Working or Need approval: what quitting would stop mid-turn.
+    public func busySessionCount() -> Int { QuitConfirmation.busyCount(attentionCandidates()) }
+
+    public var canJumpToAttention: Bool { !sessionsNeedingAttention().isEmpty }
+
+    /// "Jump to Next/Previous Session That Needs You". Selecting loads the row when no list holds it.
+    @discardableResult
+    public func jumpToAttention(_ direction: StepDirection) -> Bool {
+        guard let target = AttentionOrder.neighbor(of: selectedSessionID, in: sessionsNeedingAttention(), direction)
+        else { return false }
+        select(target)
+        return true
+    }
+
+    /// Recomputes the count behind the Dock badge; called wherever a live state, a record or an
+    /// open-session wait changes, never on a timer.
+    func updateAttentionCount() {
+        let count = AttentionOrder.count(attentionCandidates())
+        guard count != attentionCount else { return }
+        attentionCount = count
+        onAttentionCountChange?(count)
+    }
+
+    // MARK: Select next and previous
+
+    /// The sessions in the order the current view draws them: the activity list as listed; in the project
+    /// view the projects in their order (a collapsed project contributes nothing unless a search forces
+    /// it open), then the projectless "Sessions" group.
+    public func visibleSessionIDs() -> [UUID] {
+        switch viewMode {
+        case .activity:
+            return list(for: .activity).rows.map(\.id)
+        case .projects:
+            var ids: [UUID] = []
+            for project in projects {
+                let rows = list(for: .project(project.id)).rows
+                if isSearching ? !rows.isEmpty : !project.collapsed { ids += rows.map(\.id) }
+            }
+            return ids + list(for: .unassigned).rows.map(\.id)
+        }
+    }
+
+    public func adjacentSession(_ direction: StepDirection) -> UUID? {
+        VisibleOrder.neighbor(of: selectedSessionID, in: visibleSessionIDs(), direction)
+    }
+
+    public func canSelectAdjacentSession(_ direction: StepDirection) -> Bool { adjacentSession(direction) != nil }
+
+    /// "Select Next/Previous Session": one step through the list as drawn, never wrapping.
+    @discardableResult
+    public func selectAdjacentSession(_ direction: StepDirection) -> Bool {
+        guard let target = adjacentSession(direction) else { return false }
+        select(target)
+        return true
+    }
+
+    // MARK: The sidebar follows the selection
+
+    func requestReveal(_ id: UUID) {
+        revealTask = Task { [weak self] in await self?.reveal(id) }
+    }
+
+    /// Expands the session's project when it is collapsed, then asks the sidebar to scroll to its card.
+    /// A card that is not loaded (outside the pages read so far) is skipped: nothing is paged for it.
+    func reveal(_ id: UUID) async {
+        var record = rowModels[id]?.record
+        if record == nil, let catalog { record = try? await catalog.session(id: id) }
+        guard selectedSessionID == id, let record else { return }
+        if viewMode == .projects, !isSearching, let projectID = record.projectID,
+           projects.first(where: { $0.id == projectID })?.collapsed == true {
+            await expandProject(projectID)
+        }
+        guard selectedSessionID == id, visibleSessionIDs().contains(id) else { return }
+        revealSerial &+= 1
+        revealRequest = SessionRevealRequest(id: id, serial: revealSerial)
+    }
+}
+
+// MARK: Ended terminals
+
+extension ConversationIntents {
+    public func endedTerminalView(sessionID: UUID) -> NSView? { nil }
+    public func closeEndedScreen(sessionID: UUID) {}
+    public func sessionVisibilityChanged() {}
+}

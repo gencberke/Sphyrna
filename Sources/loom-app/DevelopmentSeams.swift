@@ -14,6 +14,7 @@ extension AppDelegate {
     func evidenceStartupFinished() {}
     func evidenceQuitRecorder(started: Double) -> (@Sendable (ShutdownReport) async -> Void)? { nil }
     func evidenceRunHost(_ host: URL) -> URL { host }
+    func evidenceSkipsQuitQuestion() -> Bool { false }
     func evidenceInjectedShutdownFailure() -> (@Sendable () -> ShutdownReport?)? { nil }
     func installDevelopmentTerminal(hub: SessionEventHub, supervisor: ProcessSupervisor, model: CatalogModel) {}
     func evidenceToolchains(root: URL, supervisor: ProcessSupervisor, origin: LaunchEnvironment.LaunchOrigin) -> ProviderToolchainResolver? { nil }

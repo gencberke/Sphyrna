@@ -49,7 +49,7 @@ Builds are serialized: only the agent whose Brief says it holds the build slot b
 
 | Command | Effect |
 |---|---|
-| `snapshot:<label>` | writes `state-<label>.json` (catalog, terminals, runtime) |
+| `snapshot:<label>` | writes `state-<label>.json` (catalog, terminals, runtime; also `endedScreens`, `attentionCount`, `dockBadge`). Evidence runs never show the quit question, so a command-channel `quit` does not wait for a click |
 | `screenshot:<label>` | `screenshot-<label>.png` (fake providers only) |
 | `buttons:<label>` | window button geometry `buttons-<label>.json` |
 | `select:<id\|none>`, `search:<t>`, `view-mode:<activity\|projects>`, `toggle-sidebar`, `resize:<w>x<h>` | catalog/window state |
@@ -118,3 +118,17 @@ Flow: finish and verify a release in loom-dev (full suite, real-Claude check, pe
 Rules: the daily `Loom.app` and its data are user data like the installed `Loom Dev.app` — never test material. Evidence code is compiled only into the development flavor of `loom-app` (`LOOM_EVIDENCE`, directory `Sources/loom-app/Evidence/`); `scripts/check.sh --release-tree` (part of `--full`) exports the allowlist from the checked-out tree, builds it with `Package.release.swift` and fails when the binary carries `DevelopmentEvidence`, `EvidenceResourcePool` or the evidence-only flags, so the release flavor keeps building. Inert library-side seams (`TerminalPresentationLog`, `IndicatorEvidence`, `ConversationController` evidence members) stay in both flavors. Build output stays outside `~/Documents` (§2).
 
 Order: first rename this checkout from `loom` to `loom-dev` (a directory move done by the user while no agent session runs in it), then create the clean `loom` tree, so the two never share a path; scripts resolve paths relative to the repo, but the Claude Code project history and any external links keyed on the old path start fresh.
+
+## 11. Logs and diagnostics
+
+Loom logs through unified logging, subsystem `local.loom.desktop`, one category per area: `Lifecycle`, `Catalog`, `ClaudeHooks`, `Registry`, `Toolchain`, `Scope`, `Usage`, `Recovery`, `Quit`, `Diagnostics`, and `HookClient` (the `loom-hook` helper). Notice and error entries are state transitions and failures; per-event detail is `debug`. Entries carry ids, counts, durations and error categories, never prompts, messages, titles or transcript text; user paths are private. Loom keeps no log files of its own.
+
+```
+/usr/bin/log show --last 1h --info --debug --predicate 'subsystem == "local.loom.desktop"'
+/usr/bin/log show --last 1h --predicate 'subsystem == "local.loom.desktop" && category == "Catalog"'
+/usr/bin/log stream --level debug --predicate 'subsystem == "local.loom.desktop" && category == "ClaudeHooks"'
+```
+
+Rare events also go to `<data root>/diagnostics/journal.jsonl` (rotated at 512 KB to `journal.1.jsonl`, two files kept): launch and quit summaries, `claude_cli` (version, detected options), `cli_compat_warning`, `hook_silence`, recovery, catalog backup and restore. One JSON object per line, so `jq -c . <data root>/diagnostics/journal.jsonl` reads it.
+
+`SessionRuntime.collectDiagnostics(to:)` writes a folder with `summary.json`, the journal files and `log.ndjson` (last 24 h of the subsystem, at most 5 MB). It is built for sending to the developer: no session content, home paths shortened to `~`. At most 3 exports are kept under `<data root>/diagnostics/exports/`. Tests use temporary data roots only; the real `log show` is not run by tests (a stand-in executable is).

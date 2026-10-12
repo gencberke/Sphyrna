@@ -19,14 +19,19 @@ struct LoomHook {
             ))
         }
         let environment = ProcessInfo.processInfo.environment
+        // Every way out below leaves one line in unified logging (category HookClient): a hook
+        // that exits quietly is otherwise indistinguishable from no hook at all.
         guard let socketPath = environment["LOOM_HOOK_SOCKET"],
               let authenticationToken = environment["LOOM_HOOK_TOKEN"],
               let sessionText = environment["LOOM_SESSION_ID"],
               let sessionID = UUID(uuidString: sessionText),
               let runText = environment["LOOM_MANAGED_RUN_ID"],
-              let managedRunID = UUID(uuidString: runText),
-              let payload = try? readStandardInput(),
-              (try? ClaudeHookEvent(payload: payload)) != nil else {
+              let managedRunID = UUID(uuidString: runText) else {
+            LoomLog.error(.hookClient, "Hook not sent: the Loom environment variables are missing or malformed")
+            exit(1)
+        }
+        guard let payload = try? readStandardInput(), (try? ClaudeHookEvent(payload: payload)) != nil else {
+            LoomLog.error(.hookClient, "Hook not sent: the event on standard input is empty, too large or not a Claude hook payload")
             exit(1)
         }
         let envelope = ClaudeHookEnvelope(
@@ -38,6 +43,7 @@ struct LoomHook {
                 authenticationToken: authenticationToken
             )
         } catch {
+            LoomLog.error(.hookClient, "Hook not delivered: \(ClaudeHookClient.failureDescription(error))")
             exit(1)
         }
     }

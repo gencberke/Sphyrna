@@ -119,6 +119,10 @@ extension SessionCatalog {
     public func finishRun(_ runID: UUID, endedAt: Date = Date(),
                           reason: ManagedRunEndReason,
                           exitStatus: Int32?) throws {
+        if let finishRunFailpoint {
+            finishRunAttempts += 1
+            try finishRunFailpoint(finishRunAttempts)
+        }
         try database.withStatement("""
             UPDATE runs SET ended_at = ?, end_reason = ?, exit_status = ?
             WHERE id = ? AND ended_at IS NULL
@@ -136,6 +140,32 @@ extension SessionCatalog {
             return sqlite3_step(statement) == SQLITE_ROW
         }
         guard exists else { throw SessionCatalogError.invalidRow("run \(runID) does not exist") }
+    }
+
+    /// Closes the runs an earlier app run left open (a crash, a Force Quit: only `finishRun` writes
+    /// `ended_at`). A run counts as abandoned when its leader process is not alive any more, which
+    /// `isLive` decides by birth identity; a leader that still lives (another Loom on this catalog,
+    /// or work an unfinished recovery is still stopping) keeps its run open. The end reason is
+    /// `applicationQuit`: the application went away, and no exit status is known.
+    @discardableResult
+    public func closeAbandonedRuns(
+        at date: Date = Date(), isLive: (ProcessIdentity) -> Bool = SessionCatalog.leaderIsAlive
+    ) throws -> Int {
+        let open = try runs().filter { $0.endedAt == nil }
+        var closed = 0
+        for run in open where !isLive(run.leader) {
+            try finishRun(run.id, endedAt: max(date, run.startedAt), reason: .applicationQuit, exitStatus: nil)
+            closed += 1
+        }
+        if closed > 0 {
+            LoomLog.notice(.catalog, "Closed \(closed) run(s) an earlier Loom left open")
+        }
+        return closed
+    }
+
+    public static func leaderIsAlive(_ identity: ProcessIdentity) -> Bool {
+        guard let record = ProcessTable.record(pid: identity.pid) else { return false }
+        return record.identity == identity && !record.zombie
     }
 
     public func runs() throws -> [CatalogRun] {

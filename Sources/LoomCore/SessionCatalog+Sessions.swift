@@ -176,6 +176,7 @@ extension SessionCatalog {
     @discardableResult
     public func classifyStale(before cutoff: Date, excluding running: Set<UUID> = [],
                               staleAfter: TimeInterval? = nil) throws -> [UUID] {
+        try readFailpoint?()
         let excluded = Self.jsonIDList(running)
         let candidates: [UUID] = try database.withStatement("""
             SELECT s.id FROM sessions s

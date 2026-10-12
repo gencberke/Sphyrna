@@ -4,7 +4,7 @@ import os
 
 extension SessionRuntime {
     /// Read with `log show --predicate 'subsystem == "local.loom.desktop" && category == "ClaudeHooks"' --info`.
-    static let hookLog = Logger(subsystem: LoomSignposts.subsystem, category: "ClaudeHooks")
+    static let hookLog = LoomLog.logger(.claudeHooks)
 
     func ensureHooks() throws -> ClaudeHookLaunchConfiguration {
         if let hookConfiguration { return hookConfiguration }
@@ -64,10 +64,18 @@ extension SessionRuntime {
                     Self.hookLog.info("informational \(name, privacy: .public)")
                 }
             }
-            if case .applied = disposition { return }
+            if case .applied = disposition {
+                HookDiagnostics.note(.applied)
+                LoomLog.debug(.claudeHooks, "applied \(name)")
+                return
+            }
             // Event and reason names only: a dropped event is otherwise invisible in a daily build.
-            Self.hookLog.info("dropped \(name, privacy: .public): \(String(describing: disposition), privacy: .public)")
+            let reason = String(describing: disposition)
+            HookDiagnostics.noteDropped(reason: reason)
+            Self.hookLog.info("dropped \(name, privacy: .public): \(reason, privacy: .public)")
         } catch {
+            HookDiagnostics.noteDropped(reason: "error")
+            LoomLog.error(.claudeHooks, key: "hook-error", "A hook event could not be processed (\(LoomLog.category(of: error)))")
             guard let sessionID = await supervisor.activeSessionID(runID: envelope.managedRunID) else { return }
             await supervisor.events.publish(
                 sessionID: sessionID,
@@ -91,6 +99,7 @@ extension SessionRuntime {
             )
             effort = ClaudeTranscriptEffort.last(conversationID: conversationID, projectsDirectory: profile.projectsDirectory)
         }
+        reportCompatibility(toolchain: toolchain, route: route, opening: opening)
         let profile = try ProviderLaunchProfile.claude(
             route: route, capabilities: toolchain.capabilities,
             config: toolchain.profileDirectory ?? URL(fileURLWithPath: "/"),
@@ -124,6 +133,11 @@ extension SessionRuntime {
                 outputSink: tee ?? outputSink, managedRunID: runID
             )
         } catch {
+            LoomLog.error(.lifecycle, "Claude could not be started (\(LoomLog.category(of: error)))")
+            // The CLI may have been replaced or removed since it was read: read it again next time.
+            if !(error is SessionRuntimeError), !(error is SessionManagementError) {
+                await invalidateToolchain(.claude)
+            }
             await supervisor.events.publish(
                 sessionID: sessionID, change: .issue("Claude could not be started: \(error)")
             )

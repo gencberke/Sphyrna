@@ -779,6 +779,146 @@ struct ConversationControllerTests {
         await fixture.cleanup()
     }
 
+    // MARK: D-45 an ended run keeps its last screen
+
+    /// Starts a Claude session and ends it with /exit; returns the id and its surface.
+    private func startAndExit(_ fixture: Fixture) async throws -> (id: UUID, surface: TerminalSurface) {
+        fixture.model.startConversation(.claude, projectID: nil)
+        #expect(await waitUntil { fixture.controller.terminalCount == 1 && fixture.model.selectedSessionID != nil })
+        let id = try #require(fixture.model.selectedSessionID)
+        let terminal = try #require(surface(fixture, for: id))
+        #expect(await waitUntil { terminal.screenText().contains("FAKE-CLAUDE READY") })
+        type("/exit", into: terminal)
+        return (id, terminal)
+    }
+
+    @Test func aSelectedSessionKeepsWhatItPrintedLastReadOnlyUntilTheSelectionMovesOn() async throws {
+        try await withFixture { fixture in
+            let (id, terminal) = try await startAndExit(fixture)
+            #expect(await waitUntil { fixture.controller.terminalCount == 0 && fixture.controller.endedScreenCount == 1 })
+            // The detail pane falls back to nothing: the live terminal is gone, the ended screen is there.
+            #expect(fixture.model.terminalView(for: id) == nil)
+            let kept = try #require(fixture.model.endedTerminalView(for: id))
+            #expect((kept as? TerminalContainerView)?.terminal === terminal.view)
+            #expect(terminal.screenText().contains("bye"), "what the CLI printed before it exited stays")
+            #expect(terminal.isKeptReadOnly)
+
+            // Read-only: nothing typed reaches anything and nothing is reported.
+            type("hello?", into: terminal)
+            terminal.view.send(data: Array("more".utf8)[...])
+            try await Task.sleep(for: .milliseconds(150))
+            #expect(terminal.statistics.inputErrors.isEmpty && fixture.model.errorMessage == nil)
+            #expect(await fixture.supervisor.runningSessionIDs().isEmpty)
+
+            // Resume is an action, never a default: the notice offers it while the session is not running.
+            await fixture.model.settle()
+            #expect(fixture.model.canResume(try #require(fixture.model.selectedRow)))
+
+            // The user selects another session: a pinned tab keeps its screen, an unpinned one releases it.
+            let other = ManagedSession(provider: .claude, providerConversationID: "o", workingDirectory: fixture.home.path)
+            try await fixture.catalog.insertSession(other, title: "Other", lifecycle: .idle)
+            fixture.model.select(other.id)
+            #expect(fixture.model.tabs.isPinned(id) && fixture.controller.endedScreenCount == 1)
+            // Back on it and unpinned: it is still the selected session, so the screen stays; moving on frees it.
+            fixture.model.select(id)
+            fixture.model.unpinTab(id)
+            #expect(fixture.controller.endedScreenCount == 1)
+            fixture.model.select(other.id)
+            #expect(fixture.controller.endedScreenCount == 0)
+            #expect(fixture.model.endedTerminalView(for: id) == nil)
+        }
+    }
+
+    @Test func aSessionThatIsNeitherSelectedNorPinnedReleasesItsScreenAtOnce() async throws {
+        try await withFixture { fixture in
+            fixture.model.startConversation(.claude, projectID: nil)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 && fixture.model.selectedSessionID != nil })
+            let id = try #require(fixture.model.selectedSessionID)
+            let terminal = try #require(surface(fixture, for: id))
+            #expect(await waitUntil { terminal.screenText().contains("FAKE-CLAUDE READY") })
+            fixture.model.closeTab(id) // unpinned, and the selection moves to nothing
+            #expect(fixture.model.selectedSessionID == nil && !fixture.model.tabs.isPinned(id))
+            type("/exit", into: terminal)
+            #expect(await waitUntil { fixture.controller.terminalCount == 0 })
+            #expect(fixture.controller.endedScreenCount == 0)
+            #expect(fixture.model.endedTerminalView(for: id) == nil)
+        }
+    }
+
+    @Test func aPinnedTabKeepsItsScreenInTheBackgroundUntilTheTabIsClosed() async throws {
+        try await withFixture { fixture in
+            fixture.model.startConversation(.claude, projectID: nil)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 && fixture.model.selectedSessionID != nil })
+            let id = try #require(fixture.model.selectedSessionID)
+            let terminal = try #require(surface(fixture, for: id))
+            #expect(await waitUntil { terminal.screenText().contains("FAKE-CLAUDE READY") })
+            fixture.model.openTab(id)
+            fixture.model.select(nil)
+            type("/exit", into: terminal)
+            #expect(await waitUntil { fixture.controller.terminalCount == 0 })
+            #expect(fixture.controller.endedScreenCount == 1, "a pinned tab keeps it though another session is shown")
+            fixture.model.closeTab(id)
+            #expect(fixture.controller.endedScreenCount == 0)
+        }
+    }
+
+    @Test func closingTheScreenResumingAndQuittingReleaseIt() async throws {
+        try await withFixture { fixture in
+            let (id, first) = try await startAndExit(fixture)
+            #expect(await waitUntil { fixture.controller.endedScreenCount == 1 })
+            // "Show Details".
+            fixture.model.closeEndedScreen(id)
+            #expect(fixture.controller.endedScreenCount == 0 && fixture.model.endedTerminalView(for: id) == nil)
+
+            // Resume: the new run gets a new surface and the old screen is not kept beside it.
+            #expect(try await waitUntil { try await fixture.catalog.session(id: id)?.session.providerConversationID != nil })
+            fixture.model.resumeConversation(id)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 })
+            let second = try #require(surface(fixture, for: id))
+            #expect(second !== first)
+            type("/exit", into: second)
+            #expect(await waitUntil { fixture.controller.endedScreenCount == 1 && fixture.controller.terminalCount == 0 })
+            fixture.model.resumeConversation(id)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 })
+            #expect(fixture.controller.endedScreenCount == 0, "a resumed session's old screen is replaced")
+
+            // Quit releases every kept screen.
+            let third = try #require(surface(fixture, for: id))
+            type("/exit", into: third)
+            #expect(await waitUntil { fixture.controller.endedScreenCount == 1 })
+            fixture.controller.quitStarted()
+            #expect(fixture.controller.endedScreenCount == 0)
+        }
+    }
+
+    @Test func atMostEightEndedScreensAreKeptAndTheSelectedOneIsNeverTheVictim() async throws {
+        try await withFixture { fixture in
+            // Surfaces that never ran a process: only the keeping rules are under test.
+            @MainActor func keep(_ owner: UUID) {
+                let surface = TerminalSurface()
+                fixture.controller.keepEndedScreen(ConversationController.Entry(
+                    runID: UUID(), surface: surface, container: TerminalContainerView(terminal: surface.view),
+                    owner: owner))
+            }
+            // The oldest screen belongs to the selected session.
+            let selected = ManagedSession(provider: .claude, providerConversationID: "s", workingDirectory: fixture.home.path)
+            try await fixture.catalog.insertSession(selected, title: "Selected", lifecycle: .idle)
+            fixture.model.select(selected.id)
+            await fixture.model.settle()
+            keep(selected.id)
+            let others = (0..<9).map { _ in UUID() }
+            for owner in others.prefix(7) { keep(owner) }
+            #expect(fixture.controller.endedScreenCount == 8)
+            keep(others[7])
+            #expect(fixture.controller.endedScreenCount == 8)
+            #expect(fixture.controller.ended[selected.id] != nil, "the selected session's screen stays though it is the oldest")
+            #expect(fixture.controller.ended[others[0]] == nil, "the oldest screen that is not selected went")
+            keep(others[8])
+            #expect(fixture.controller.endedScreenCount == 8)
+            #expect(Set(fixture.controller.ended.keys) == Set([selected.id] + others.suffix(7)))
+        }
+    }
+
     @Test(arguments: ["stop", "quit", "exit", "connection"])
     func identityGateEndsWithoutLeavingTerminalsOrLeases(_ action: String) async throws {
         let fixture = try await makeFixture(extraEnvironment: ["LOOM_FAKE_CODEX_INPUT_BEFORE_IDENTITY": "1"])
@@ -803,14 +943,23 @@ struct ConversationControllerTests {
             #expect(await waitUntil { await fixture.supervisor.runningSessionIDs().isEmpty })
             #expect(await fixture.runtime.codexServerState().servers == 0)
             #expect(try await fixture.catalog.session(id: id)?.session.providerConversationID == nil)
+            let errorBeforeTyping = fixture.model.errorMessage
             if action == "stop" || action == "quit" {
-                #expect(fixture.model.errorMessage == nil)
+                #expect(errorBeforeTyping == nil)
             } else {
-                #expect(fixture.model.errorMessage?.contains(action == "exit" ? "exited before" : "connection closed before") == true)
+                #expect(errorBeforeTyping?.contains(action == "exit" ? "exited before" : "connection closed before") == true)
             }
-            // Stale terminal input cannot resurrect an ended reservation.
+            // The ended run's last screen stays on show while its session is selected (D-45): the live
+            // terminal count is zero, the same surface is kept read-only.
+            #expect(fixture.controller.endedScreenCount == 1)
+            #expect(fixture.model.terminalView(for: id) == nil)
+            #expect(fixture.model.endedTerminalView(for: id) === terminal.view.superview)
+            #expect(terminal.screenText().contains("BEFORE-IDENTITY"))
+            // Stale terminal input cannot resurrect an ended reservation, and says nothing either.
             type("continue", into: terminal)
             #expect(try await fixture.catalog.session(id: id)?.session.providerConversationID == nil)
+            #expect(fixture.model.errorMessage == errorBeforeTyping)
+            #expect(terminal.statistics.inputErrors.isEmpty)
         } catch { await fixture.cleanup(); throw error }
         await fixture.cleanup()
     }

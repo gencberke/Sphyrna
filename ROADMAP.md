@@ -4,7 +4,7 @@ Path from today to Loom's first production release. Checkpoint numbers are ident
 
 ## Release target
 
-**First production release:** a signed macOS 27 app (signing and notarization form: O-06) for one power user that hosts real Claude Code terminals in the accepted design and identity, with verified process ownership, state, resume, Stop and Quit, permanent deletion of a conversation and the CP4 retention rules ([D-26](DECISIONS.md)), inside the agreed resource budgets. Codex is frozen and not included ([D-14, D-28](DECISIONS.md)); CP3 coordination is not included ([D-27](DECISIONS.md)). Other providers, Dock/menu-bar notifications and the ideas in contract §13 are out unless the user adds them; the user added a subagent view under each session ([D-39](DECISIONS.md)) and a narrow, approval-gated "session opens session" ([D-40](DECISIONS.md)).
+**First production release:** a macOS 27 app for one power user on their own Mac, signed with the stable local identity (no public distribution, [D-47](DECISIONS.md)), that hosts real Claude Code terminals in the accepted design and identity, with verified process ownership, state, resume, Stop and Quit, permanent deletion of a conversation and the CP4 retention rules ([D-26](DECISIONS.md)), inside the agreed resource budgets. Codex is frozen and not included ([D-14, D-28](DECISIONS.md)); CP3 coordination is not included ([D-27](DECISIONS.md)). Other providers, notifications and the ideas in contract §13 are out unless the user adds them; the user added a subagent view under each session ([D-39](DECISIONS.md)), a narrow, approval-gated "session opens session" ([D-40](DECISIONS.md)), a Dock badge ([D-45](DECISIONS.md)), a menu bar item ([D-47](DECISIONS.md)) and project colours ([D-48](DECISIONS.md)).
 
 ## Stages
 
@@ -18,8 +18,9 @@ Path from today to Loom's first production release. Checkpoint numbers are ident
 | I Identity and UI system (multi-agent run 1) | Codify identity direction A ([D-22](DECISIONS.md)) as tokens and rules; settle the navbar | [STAGE-I](plans/STAGE-I.md) acceptance | I1–I3 done in [run 1](plans/RUN-1.md), I4 parked; user acceptance on the [0.2.0 candidate](plans/RC-0.2.0.md); navbar keeps the transparent header until O-03 |
 | U Daily-use UI features (multi-agent run 1) | Sidebar footer bar, a real Settings page with a lightweight usage and cost view, conversation tabs ([D-32, D-33](DECISIONS.md)) | [STAGE-U](plans/STAGE-U.md) acceptance | done in [run 1](plans/RUN-1.md); user acceptance on the [0.2.0 candidate](plans/RC-0.2.0.md) |
 | CP4 Deletion and retention (multi-agent run 1) | Contract §5 and §8: permanent deletion first, then stale, retention and cleanup; recovery from half-done deletes | Contract §11 row 4; [CHECKPOINT-4](plans/CHECKPOINT-4.md) | built and verified in [run 1](plans/RUN-1.md) (real-Claude deletion check passed); off in the production app until DP-CP4-1; in first-release scope ([D-26](DECISIONS.md)) |
-| CP3 Authorized coordination | Contract §7: delegated hand-off between sessions under user authority | Contract §11 row 3 | **committed, not started** ([D-43](DECISIONS.md): the user wants the channel built; Claude finds sessions and opens/follows a Codex session); out of the multi-agent run and the first release ([D-27](DECISIONS.md)), except the narrow slice of [D-40](DECISIONS.md) (a session asks Loom to open a new session; the user approves in Loom; agents learn it from Loom's own skill, [D-42](DECISIONS.md); built in [feedback round 2](plans/FEEDBACK-2.md)); message delivery into existing sessions stays here |
-| R Release readiness (**proposed**) | Ship the first production release | See below | waits for O-06 |
+| CP3 Authorized coordination | Contract §7: delegated hand-off between sessions under user authority | Contract §11 row 3 | **committed, no date** ([D-43](DECISIONS.md), [D-46](DECISIONS.md): the user wants the channel built eventually, not in the next round; Claude finds sessions and opens/follows a Codex session); out of the multi-agent run and the first release ([D-27](DECISIONS.md)), except the narrow slice of [D-40](DECISIONS.md) (a session asks Loom to open a new session; the user approves in Loom; agents learn it from Loom's own skill, [D-42](DECISIONS.md); built in [feedback round 2](plans/FEEDBACK-2.md)); message delivery into existing sessions stays here |
+| H Hardening round 1 | Stability and daily-use polish after 0.3.3 ([D-45](DECISIONS.md)); project colours ([D-48](DECISIONS.md)) | [plans/HARDENING-1.md](plans/HARDENING-1.md) | **in progress** |
+| R First-class app on the user's Mac ([D-47](DECISIONS.md)) | Loom behaves like an official macOS app on this Mac and meets its guarantees | See below | planned as H1-F; rest proposed |
 
 ### L: Clean loom line
 
@@ -66,16 +67,18 @@ Done when: the user accepts the surfaces on a package, the usage numbers match C
 
 Done when: contract §11 row 4 evidence passes on synthetic data and a real-Claude deletion check, with no harm to other conversations.
 
-### R: Release readiness (proposed)
+### R: First-class app on the user's Mac
 
-- Distribution (O-06): Developer ID signing, notarization, production bundle identity and data paths, versioning from tags instead of the commit hash, an update approach.
+Loom stays a personal app (D-47): no Developer ID, notarization or update mechanism; releases keep the promote path into the clean loom tree.
+
+- macOS integration: a menu bar item, the Dock badge (H1-A), showing up in Screen Time with an app category, versioning from tags instead of hard-coded values; notifications and open at login if the user wants them (H1-F).
 - First-run experience: provider CLI detection, missing-CLI and launch errors, empty states.
 - Crash and Force Quit guarantees stated and tested (contract §12.1).
 - Resource budgets (O-01) enforced by a repeatable measurement.
-- Release checklist: full suite, real-Claude check, perf matrix, clean install on a fresh user account.
+- Release checklist: full suite, real-Claude check, perf matrix, a short smoke run on a production-faithful package before each tag.
 
 Done when: the checklist passes on the release candidate and the user accepts it.
 
 ## Order (proposed)
 
-L (now, before the multi-agent run) → multi-agent run (authority [D-30](DECISIONS.md); the prompt is kept by the user outside the repo): F, I, U and CP4 in parallel where write areas are disjoint, with UI/UX, architecture/scalability and performance evaluations along the way → R. Each verified state can be promoted to the daily app through L's path. Codex returns after the first release, starting from the [Codex backlog](plans/cp5/CODEX-BACKLOG.md); CP3 may be tried after that.
+L (now, before the multi-agent run) → multi-agent run (authority [D-30](DECISIONS.md); the prompt is kept by the user outside the repo): F, I, U and CP4 in parallel where write areas are disjoint, with UI/UX, architecture/scalability and performance evaluations along the way → R. Each verified state can be promoted to the daily app through L's path. After run 1 and the two feedback rounds: hardening round 1 (H, now), then R. Codex returns after the first release, starting from the [Codex backlog](plans/cp5/CODEX-BACKLOG.md); the CP3 channel follows when the user schedules it (D-46).

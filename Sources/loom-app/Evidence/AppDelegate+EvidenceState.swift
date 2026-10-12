@@ -122,6 +122,9 @@ extension AppDelegate {
             state["renameDraftText"] = model?.renameDraft?.text ?? NSNull()
         }
         state["terminalSurfaceExists"] = controller?.surface != nil
+        state["endedScreens"] = conversations?.endedScreenCount ?? 0
+        state["attentionCount"] = model?.attentionCount ?? 0
+        state["dockBadge"] = NSApp.dockTile.badgeLabel ?? NSNull()
         state["conversationTerminals"] = (conversations?.terminalEvidence(
             redacted: redactsContent, tokens: evidenceTokens
         ) ?? []).map {

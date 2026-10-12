@@ -106,7 +106,9 @@ struct SearchField: View {
                     focused = false
                     // The keyboard goes back to the terminal, not to the bare window.
                     Task { @MainActor in
-                        (model.selectedSessionID.flatMap { model.terminalView(for: $0) } as? TerminalContainerView)?.focusTerminal()
+                        let id = model.selectedSessionID
+                        let view = id.flatMap { model.terminalView(for: $0) ?? model.endedTerminalView(for: $0) }
+                        (view as? TerminalContainerView)?.focusTerminal()
                     }
                 }
             }
@@ -136,20 +138,32 @@ struct SidebarList: View {
 
     var body: some View {
         GeometryReader { viewport in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: LoomTheme.Space.cardGap) {
-                    switch model.viewMode {
-                    case .activity: ActivityList(model: model)
-                    case .projects: ProjectList(model: model)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: LoomTheme.Space.cardGap) {
+                        switch model.viewMode {
+                        case .activity: ActivityList(model: model)
+                        case .projects: ProjectList(model: model)
+                        }
+                    }
+                    .padding(.horizontal, LoomTheme.Space.listInset)
+                    .padding(.bottom, LoomTheme.Space.listBottom)
+                    .frame(maxWidth: .infinity, minHeight: viewport.size.height, alignment: .topLeading)
+                    .contentShape(Rectangle())
+                    .contextMenu { WithoutProjectStartButton(model: model, title: ClaudeStartEntry.withoutProjectTitle) }
+                }
+                .scrollContentBackground(.hidden)
+                // The selection moved by something other than a click here (a tab, a shortcut, "Show Session"):
+                // scroll the least that shows the card, without animation. One turn later, so rows that a
+                // project's expansion just loaded are laid out.
+                .onChange(of: model.revealRequest) { _, request in
+                    guard let id = request?.id else { return }
+                    Task { @MainActor in
+                        await Task.yield()
+                        proxy.scrollTo(id)
                     }
                 }
-                .padding(.horizontal, LoomTheme.Space.listInset)
-                .padding(.bottom, LoomTheme.Space.listBottom)
-                .frame(maxWidth: .infinity, minHeight: viewport.size.height, alignment: .topLeading)
-                .contentShape(Rectangle())
-                .contextMenu { WithoutProjectStartButton(model: model, title: ClaudeStartEntry.withoutProjectTitle) }
             }
-            .scrollContentBackground(.hidden)
         }
     }
 }
@@ -170,6 +184,7 @@ struct ActivityList: View {
                     .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
                 ForEach(section.rows) { row in
                     SessionListEntry(row: row, model: model)
+                        .id(row.id)
                         .onAppear { if row.id == list.rows.last?.id { model.loadMore(.activity) } }
                 }
             }
@@ -195,6 +210,7 @@ struct ProjectList: View {
             if model.isSearching || !project.collapsed {
                 ForEach(list.rows) { row in
                     SessionListEntry(row: row, model: model)
+                        .id(row.id)
                         .onAppear { if row.id == list.rows.last?.id { model.loadMore(.project(project.id)) } }
                 }
                 if list.rows.isEmpty && list.isLoaded && !model.isSearching {
@@ -208,6 +224,7 @@ struct ProjectList: View {
             SectionTitle(title: "Sessions", symbol: "tray")
             ForEach(unassigned.rows) { row in
                 SessionListEntry(row: row, model: model)
+                    .id(row.id)
                     .onAppear { if row.id == unassigned.rows.last?.id { model.loadMore(.unassigned) } }
             }
         }
@@ -374,7 +391,8 @@ struct SessionCardView: View {
         let title = model.title(of: row, repeatsProject: Self.repeatsProject(mode: mode))
         let projectName = model.projectName(for: row.record)
         let origin = model.origin(of: row)
-        Button { model.select(row.id) } label: {
+        // A click in the list never scrolls it (the card is already under the pointer).
+        Button { model.selectFromList(row.id) } label: {
             HStack(alignment: .top, spacing: LoomTheme.Space.cardSpacing) {
                 IndicatorView(indicator: indicator)
                     .padding(.top, LoomTheme.Space.cardIndicatorTop)
@@ -427,16 +445,17 @@ struct SessionCardView: View {
             .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.card))
         }
         .buttonStyle(.plain)
-        .simultaneousGesture(TapGesture(count: 2).onEnded { model.openTab(row.id) })
+        .simultaneousGesture(TapGesture(count: 2).onEnded { model.openTab(row.id, revealInList: false) })
         .contextMenu {
             Button("Rename…") { model.beginRename(row.id) }
-            Button("Open in Tab") { model.openTab(row.id) }.disabled(model.tabs.isPinned(row.id))
+            Button("Open in Tab") { model.openTab(row.id, revealInList: false) }.disabled(model.tabs.isPinned(row.id))
             Button(row.record.pinned ? "Unpin" : "Pin") { Task { await model.setPinned(row.id, !row.record.pinned) } }
                 .help(Self.pinHelp(cleanupReviewOffered: model.cleanupReview != nil))
             Button("Mark as Read") { model.markRead(row.id) }.disabled(!indicator.canMarkRead)
             Divider()
             Button("Resume") { model.resumeConversation(row.id) }.disabled(!model.canResume(row))
             Button("Stop") { model.stopConversation(row.id) }.disabled(!model.canStop(row))
+            SessionLocationMenuItems(row: row)
             DeletionMenuItems(model: model, row: row)
         }
         .accessibilityElement(children: .combine)

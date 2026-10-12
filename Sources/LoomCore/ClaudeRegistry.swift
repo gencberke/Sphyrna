@@ -4,10 +4,16 @@ import Synchronization
 
 /// A private CLI capability, never a conversation identity authority.
 struct ClaudeRegistrySnapshot: Sendable, Equatable {
+    /// The `status` values this build understands. Any other value still makes a snapshot (the
+    /// process identity does not depend on it); the tracker ignores it.
+    static let knownStatuses: Set<String> = ["idle", "busy", "waiting"]
+
     let sessionID: String
     let startedAt: Double
     let status: String?
     let statusUpdatedAt: Double?
+
+    var hasUnknownStatus: Bool { status.map { !Self.knownStatuses.contains($0) } ?? false }
 }
 
 enum ClaudeRegistryRead: Sendable {
@@ -69,7 +75,6 @@ struct ClaudeRegistryReader: Sendable {
               object["pidDomain"] as? String == "darwin", object["kind"] as? String == "interactive",
               let cwd = object["cwd"] as? String, cwd.hasPrefix("/"),
               object["pid"] == nil || number(object["pid"]) == Double(leader.pid),
-              URL(fileURLWithPath: cwd).resolvingSymlinksInPath().standardizedFileURL.path == directory,
               let session = object["sessionId"] as? String, !session.isEmpty,
               let started = number(object["startedAt"]),
               started >= Double(leader.startSeconds) * 1_000,
@@ -79,7 +84,11 @@ struct ClaudeRegistryReader: Sendable {
               Int64(date.timeIntervalSince1970) == leader.startSeconds else { return .unavailable }
         let status = object["status"] as? String
         guard object["status"] == nil || object["status"] is NSNull || status != nil else { return .unavailable }
-        guard status == nil || ["idle", "busy", "waiting"].contains(status!) else { return .unavailable }
+        // A status this build does not know is still this process's record: pid, process birth,
+        // start time and session id identify it. Unknown values are reported once each.
+        if let status, !ClaudeRegistrySnapshot.knownStatuses.contains(status) {
+            ClaudeRegistryDiagnostics.noteUnknownStatus(status)
+        }
         let updated = number(object["statusUpdatedAt"])
         guard status == nil || updated != nil else { return .unavailable }
         return .snapshot(ClaudeRegistrySnapshot(sessionID: session, startedAt: started,
@@ -87,6 +96,32 @@ struct ClaudeRegistryReader: Sendable {
     }
 
     private func number(_ value: Any?) -> Double? { ClaudeRegistryFields.number(value) }
+}
+
+/// What the registry reader reports about itself once per process, so a new Claude does not turn
+/// into an endless stream of identical lines.
+enum ClaudeRegistryDiagnostics {
+    private static let seen = Mutex<Set<String>>([])
+
+    /// The status as a loggable token: Claude's own vocabulary only, never free text.
+    static func token(_ status: String) -> String {
+        let allowed = status.prefix(32).allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }
+        return allowed ? String(status.prefix(32)) : "(not a plain token)"
+    }
+
+    /// True the first time this value is seen in this process.
+    @discardableResult
+    static func noteUnknownStatus(_ status: String) -> Bool {
+        let token = token(status)
+        let first = seen.withLock { $0.insert(token).inserted }
+        if first {
+            LoomLog.notice(.registry, "Claude registry reports a status this build does not know: \(token)")
+        }
+        return first
+    }
+
+    /// For tests: forget what was reported.
+    static func resetForTesting() { seen.withLock { $0.removeAll() } }
 }
 
 /// Field parsing shared by everything that reads Claude's `sessions/<pid>.json`

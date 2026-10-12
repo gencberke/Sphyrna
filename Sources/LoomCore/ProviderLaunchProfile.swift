@@ -26,6 +26,14 @@ public struct ProviderCapabilities: Codable, Sendable {
         supportsName = help.contains("--name <")
         supportsPluginDirectory = help.contains("--plugin-dir <")
     }
+
+    /// The Claude options this build looked for in `--help` and found, by name: what a journal or a
+    /// diagnostics export says the CLI supports.
+    public var detectedClaudeOptions: [String] {
+        [("--settings", supportsSettings), ("--session-id", supportsSessionID), ("--effort", supportsEffort),
+         ("--name", supportsName), ("--plugin-dir", supportsPluginDirectory)]
+            .filter { $0.1 }.map { $0.0 }
+    }
 }
 
 public struct ProviderLaunchProfile: Sendable {
@@ -106,15 +114,12 @@ public struct ProviderLaunchProfile: Sendable {
         effort: String? = nil,
         opening: ClaudeOpening? = nil
     ) throws -> Self {
-        guard capabilities.supportsSettings else {
-            throw LoomError.message("Claude lacks required --settings option")
-        }
+        // `--help` is text that can change shape without the option going away, so an option it does
+        // not mention is passed anyway: if Claude really lacks it, Claude's own error is what the
+        // user sees. `missingRequiredClaudeOptions` is how the caller logs and journals the drift.
         let routeArguments: [String]
         switch route {
         case let .new(sessionID):
-            guard capabilities.supportsSessionID else {
-                throw LoomError.message("Claude lacks required --session-id option")
-            }
             routeArguments = ["--session-id", sessionID.uuidString]
         case let .resume(providerSessionID):
             guard !providerSessionID.isEmpty else {
@@ -132,9 +137,6 @@ public struct ProviderLaunchProfile: Sendable {
         if let opening {
             guard case .new = route else {
                 throw LoomError.message("Only a new Claude session can start with a first message")
-            }
-            guard capabilities.supportsName else {
-                throw LoomError.message("Claude lacks required --name option")
             }
             openingArguments = ["-n", opening.title]
             // After `--` a message that starts with a dash is still the prompt, not an option.
@@ -161,6 +163,18 @@ public struct ProviderLaunchProfile: Sendable {
                 + openingArguments,
             environment: env, trailingArguments: trailing
         )
+    }
+
+    /// The options a Claude start of this kind needs that `--help` did not list. Informational:
+    /// `claude(route:...)` passes them anyway.
+    public static func missingRequiredClaudeOptions(
+        capabilities: ProviderCapabilities, route: ClaudeRoute, opening: ClaudeOpening? = nil
+    ) -> [String] {
+        var missing: [String] = []
+        if !capabilities.supportsSettings { missing.append("--settings") }
+        if case .new = route, !capabilities.supportsSessionID { missing.append("--session-id") }
+        if opening != nil, !capabilities.supportsName { missing.append("--name") }
+        return missing
     }
 
     private static func claudeSettings(hooks: ClaudeHookLaunchConfiguration?) throws -> String {

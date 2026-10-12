@@ -161,6 +161,9 @@ extension SessionCatalog {
         // is left. The conversation is already gone, so a reader blocking this only delays the
         // wipe to the next checkpoint instead of failing the deletion.
         try? database.checkpointTruncate()
+        // A backup taken before the deletion may still hold the conversation. The app takes a fresh
+        // one when this returns (`SessionRuntime`).
+        backupStore.purgeAll()
     }
 
     // MARK: Row deletion
@@ -210,6 +213,9 @@ extension SessionCatalog {
             return deleted
         }
         try database.checkpointTruncate()
+        // The deletion contract (§8): no backup keeps a permanently deleted conversation.
+        // Also when the row was already gone: a deletion that resumes after a crash purges here.
+        backupStore.purgeAll()
         return removed
     }
 

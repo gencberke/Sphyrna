@@ -136,7 +136,7 @@ struct SubagentTreeView: View {
 
     private func perform(_ row: SubagentTreeContent.Row) {
         switch row.tap {
-        case .selectSession: model.select(sessionID)
+        case .selectSession: model.selectFromList(sessionID)
         case .toggleFinished: finishedExpanded.toggle()
         case .toggleRunning: runningExpanded.toggle()
         }

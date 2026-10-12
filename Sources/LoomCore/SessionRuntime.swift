@@ -34,6 +34,14 @@ public struct SessionRuntimeConfiguration: Sendable {
     public var claudeEnvironment: [String: String]
     /// Where Loom writes the plugin it gives its Claude sessions (`ClaudeLoomPlugin`); nil gives none.
     public var claudePluginDirectory: URL?
+    /// How long Claude may report a running turn with no hook event reaching Loom before the
+    /// session shows that Loom is not receiving events (`ClaudeSessionAdapter`).
+    public var hookSilenceGrace: TimeInterval
+    /// Seconds after start before the daily catalog backup is considered; nil takes none.
+    public var catalogBackupDelay: TimeInterval?
+    /// Called after a provider launch failed, so whatever resolves toolchains can forget its cache
+    /// (the runtime re-resolves on its own in any case). `SystemProviderToolchains.invalidate`.
+    public var toolchainInvalidator: (@Sendable (ManagedSession.Provider) async -> Void)?
 
     public init(
         toolchains: @escaping ProviderToolchainResolver, hookHelperPath: String,
@@ -46,7 +54,10 @@ public struct SessionRuntimeConfiguration: Sendable {
         forgetters: ConversationForgetters = .shared,
         claudeProfileDirectory: URL? = nil,
         claudeEnvironment: [String: String] = ProcessInfo.processInfo.environment,
-        claudePluginDirectory: URL? = nil
+        claudePluginDirectory: URL? = nil,
+        hookSilenceGrace: TimeInterval = 3,
+        catalogBackupDelay: TimeInterval? = 10,
+        toolchainInvalidator: (@Sendable (ManagedSession.Provider) async -> Void)? = nil
     ) {
         self.toolchains = toolchains
         self.hookHelperPath = hookHelperPath
@@ -62,6 +73,9 @@ public struct SessionRuntimeConfiguration: Sendable {
         self.claudeProfileDirectory = claudeProfileDirectory
         self.claudeEnvironment = claudeEnvironment
         self.claudePluginDirectory = claudePluginDirectory
+        self.hookSilenceGrace = hookSilenceGrace
+        self.catalogBackupDelay = catalogBackupDelay
+        self.toolchainInvalidator = toolchainInvalidator
     }
 }
 
@@ -178,6 +192,7 @@ final class ClaudeHookIngress: Sendable {
     }
 
     func receive(_ envelope: ClaudeHookEnvelope) {
+        adapter.noteHookArrival(runID: envelope.managedRunID)
         if case let .dropped(dropped) = continuation.yield(envelope) {
             adapter.noteHookLoss(runID: dropped.managedRunID)
         }
@@ -238,6 +253,12 @@ public actor SessionRuntime {
     let openRequests: OpenSessionCoordinator
 
     private var toolchains: [ManagedSession.Provider: ProviderToolchain] = [:]
+    /// The executable file each cached toolchain was read from; a changed file means a new CLI.
+    private var toolchainStamps: [ManagedSession.Provider: ExecutableStamp] = [:]
+    private var staleToolchains: Set<ManagedSession.Provider> = []
+    /// Compatibility warnings already journaled in this run (version + missing options).
+    var reportedCompatibility: Set<String> = []
+    var backupTask: Task<Void, Never>?
     private var toolchainWarnings: [String] = []
     var runs: [UUID: RunRecord] = [:]
     private var startingNew: Set<StartKey> = []
@@ -288,7 +309,7 @@ public actor SessionRuntime {
             supervisor: supervisor, catalog: catalog, policy: configuration.idlePolicy,
             inputGate: gate, companion: relay.companion
         )
-        claudeAdapter = ClaudeSessionAdapter(supervisor: supervisor)
+        claudeAdapter = ClaudeSessionAdapter(supervisor: supervisor, hookSilenceGrace: configuration.hookSilenceGrace)
         codexAdapter = CodexSessionAdapter(supervisor: supervisor)
         openRequests = OpenSessionCoordinator(
             catalog: catalog,
@@ -311,6 +332,13 @@ public actor SessionRuntime {
     public func start() async throws {
         guard !started else { return }
         started = true
+        recordLaunch()
+        // Crash residue first, before anything of this run exists: stale sockets of an earlier
+        // run, then runs the catalog still shows as open. Deletion recovery (below) comes after, so
+        // a deletion that was stopping finds no phantom run.
+        sweepStaleSockets()
+        await closeAbandonedRuns()
+        scheduleCatalogBackup()
         let stream = await supervisor.events.subscribe()
         observer = Task { [weak self] in
             for await frame in stream {
@@ -527,6 +555,8 @@ public actor SessionRuntime {
     /// first; a failed shutdown stays failed so the caller can offer a retry.
     public func shutdown() async -> ShutdownReport {
         shuttingDown = true
+        let liveRuns = runs.count
+        LoomLog.notice(.quit, "Shutdown started (\(liveRuns) live run(s))")
         let servers = codexServers
         for server in servers {
             let setup = server.setup
@@ -553,7 +583,10 @@ public actor SessionRuntime {
             await server.coordinator?.stop()
             _ = await server.manager.stopServer()
         }
+        backupTask?.cancel()
+        backupTask = nil
         let report = await supervisor.shutdown()
+        recordQuit(report)
         observer?.cancel()
         observer = nil
         // End frames may still be queued when observation stops. Reconcile
@@ -607,15 +640,36 @@ public actor SessionRuntime {
 
     /// Resolved once per provider after it succeeds; a failure is retried on
     /// the next attempt.
+    /// The toolchain is cached per provider while the executable it was read from is the same file
+    /// (inode, mtime, size). A CLI update replaces or rewrites that file, so the next start reads
+    /// `--version` and `--help` again instead of launching with the old one's capabilities; a
+    /// launch failure also forces a fresh read (`invalidateToolchain`).
     func toolchain(for provider: ManagedSession.Provider) async throws -> ProviderToolchain {
-        if let cached = toolchains[provider] { return cached }
+        if let cached = toolchains[provider], !staleToolchains.contains(provider) {
+            let current = toolchainStamps[provider].map { ExecutableStamp.read(cached.executable) == $0 } ?? true
+            if current { return cached }
+            LoomLog.notice(.toolchain, "\(provider.rawValue) executable changed on disk; resolving again")
+        }
+        let previous = toolchains[provider]
         let value = try await configuration.toolchains(provider)
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
         toolchains[provider] = value
+        toolchainStamps[provider] = value.executableStamp ?? ExecutableStamp.read(value.executable)
+        staleToolchains.remove(provider)
         for warning in value.warnings where !toolchainWarnings.contains(warning) {
             toolchainWarnings.append(warning)
         }
+        noteToolchain(value, previous: previous)
         return value
+    }
+
+    /// What the runtime has cached for a provider (diagnostics read it; nothing resolves here).
+    func cachedToolchain(for provider: ManagedSession.Provider) -> ProviderToolchain? { toolchains[provider] }
+
+    /// A start failed: read the CLI again before the next one.
+    func invalidateToolchain(_ provider: ManagedSession.Provider) async {
+        staleToolchains.insert(provider)
+        await configuration.toolchainInvalidator?(provider)
     }
 
     func register(

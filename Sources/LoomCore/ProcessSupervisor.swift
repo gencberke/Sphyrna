@@ -8,6 +8,13 @@ import Synchronization
 public actor ProcessSupervisor {
     public nonisolated let ownershipRunID: UUID
     public nonisolated let events: SessionEventHub
+    /// The diagnostic journal of the data root this supervisor's catalog lives in; nil without one.
+    nonisolated var journal: DiagnosticJournal? {
+        catalog.map { DiagnosticJournal.forDataRoot($0.dataRoot) }
+    }
+    /// Pauses between the attempts to record a run's end in the catalog (three attempts).
+    var catalogFinishRetryDelays: [Duration] = [.milliseconds(120), .milliseconds(350)]
+    func setCatalogFinishRetryDelaysForTesting(_ delays: [Duration]) { catalogFinishRetryDelays = delays }
 
     enum StopPhase { case unprepared, prepared, completionPending, completed }
 
@@ -397,6 +404,7 @@ public actor ProcessSupervisor {
         )
         runRegistered = true
         await events.publish(sessionID: sessionID, change: .runStarted(runID))
+        LoomLog.notice(.lifecycle, "Run \(runID.uuidString.prefix(8)) started")
         markerInspected.insert(leader.identity)
         managedRunMarkers[leader.identity] = runID
 

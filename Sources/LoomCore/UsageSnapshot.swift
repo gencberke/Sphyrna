@@ -165,7 +165,7 @@ public struct UsageSnapshot: Sendable, Equatable {
 }
 
 /// What one `refresh` did; tests and diagnostics read it, the UI does not.
-public struct UsageScanReport: Sendable, Equatable {
+public struct UsageScanReport: Sendable, Equatable, Codable {
     public var filesSeen = 0
     public var filesUnchanged = 0
     public var filesParsed = 0

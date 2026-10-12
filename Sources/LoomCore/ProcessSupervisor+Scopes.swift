@@ -46,7 +46,12 @@ extension ProcessSupervisor {
         guard let scopeLauncher else {
             throw RunScopeError.hostUnavailable("run scopes are not configured")
         }
-        let scope = try await scopeLauncher.launch()
+        let scope: RunScope
+        do { scope = try await scopeLauncher.launch() } catch {
+            LoomLog.error(.scope, "A run scope could not be opened (\(LoomLog.category(of: error)))")
+            throw error
+        }
+        LoomLog.debug(.scope, "Run scope \(scope.coalitionID) opened")
         liveScopes[scope.coalitionID] = scope
         ledger.register(scope: scope.record)
         do { try persistLedger() }
@@ -70,7 +75,11 @@ extension ProcessSupervisor {
         releasingScopes.insert(scope.coalitionID)
         defer { releasingScopes.remove(scope.coalitionID) }
         let errors = await scope.release()
-        guard errors.isEmpty else { return errors }
+        guard errors.isEmpty else {
+            LoomLog.error(.scope, key: "release-\(scope.coalitionID)", "Run scope \(scope.coalitionID) could not be released (\(errors.count) error(s))")
+            return errors
+        }
+        LoomLog.debug(.scope, "Run scope \(scope.coalitionID) released")
         liveScopes[scope.coalitionID] = nil
         scopeRuns[scope.coalitionID] = nil
         ledger.remove(scope: scope.record)
