@@ -323,7 +323,7 @@ struct UsageFreshnessTests {
         await usage.settle()
         #expect(source.asks == 1)
         #expect(usage.limits == limits())
-        #expect(usage.chip?.full == "1.2M today · 5h 62% left")
+        #expect(usage.chip?.full == "1.2M today · 5h 62%")
     }
 
     @Test func aWindowShowingAgainAsksOnlyWhenTheLastAskIsFiveMinutesOld() async {
@@ -426,21 +426,21 @@ struct UsageFreshnessTests {
         let usage = model(index, limits: source, clock: clock)
         usage.refresh(reason: .launch)
         await usage.settle()
-        #expect(usage.chip?.limit == "5h 62% left")
+        #expect(usage.chip?.limit == .init(name: "5h", remainingPercent: 62))
         let reads = index.refreshCalls
         source.setAnswer(limits(five: 90))
         clock.advance(400)
         usage.windowActivityChanged(false)
         usage.windowActivityChanged(true)
         await usage.settle()
-        #expect(usage.chip?.limit == "5h 10% left")
+        #expect(usage.chip?.limit == .init(name: "5h", remainingPercent: 10))
         source.setAnswer(nil) // a failed ask (offline after wake, a timeout): keep the last answer, no banner
         clock.advance(400)
         usage.windowActivityChanged(false)
         usage.windowActivityChanged(true)
         await usage.settle()
         #expect(usage.limits?.fiveHour?.usedPercent == 90)
-        #expect(usage.chip?.limit == "5h 10% left")
+        #expect(usage.chip?.limit == .init(name: "5h", remainingPercent: 10))
         #expect(usage.lastFailure == nil)
         #expect(index.refreshCalls >= reads) // the activations may read; the limits themselves never do
     }
@@ -454,13 +454,13 @@ struct UsageFreshnessTests {
         let usage = model(index, limits: source, clock: clock)
         usage.refresh(reason: .launch)
         await usage.settle()
-        #expect(usage.chip?.limit == "5h 10% left")
+        #expect(usage.chip?.limit == .init(name: "5h", remainingPercent: 10))
         let reads = index.refreshCalls
         // The window stays visible but another app is in front: the tick still drops the ended window.
         usage.windowActivityChanged(false)
         clock.advance(3 * 3_600 + 60)
         usage.minuteTick()
-        #expect(usage.chip?.limit == "Wk 80% left")
+        #expect(usage.chip?.limit == .init(name: "Wk", remainingPercent: 80))
         #expect(index.refreshCalls == reads)
         #expect(source.asks == 1)
     }

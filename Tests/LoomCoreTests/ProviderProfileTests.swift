@@ -54,6 +54,8 @@ struct ProviderProfileTests {
         #expect(Set(hooks.keys) == [
             "SessionStart", "UserPromptSubmit", "Stop", "StopFailure",
             "Notification", "PermissionRequest", "SessionEnd",
+            // The subagent list under a card (D-39); no per-tool hooks.
+            "SubagentStart", "SubagentStop",
         ])
         let startGroups = try #require(hooks["SessionStart"] as? [[String: Any]])
         let startHandlers = try #require(startGroups.first?["hooks"] as? [[String: Any]])

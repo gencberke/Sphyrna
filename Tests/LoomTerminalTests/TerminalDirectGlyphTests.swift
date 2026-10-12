@@ -63,7 +63,7 @@ struct TerminalDirectGlyphTests {
         #expect(reference.directCells == 0, sourceLocation: sourceLocation)
         #expect(direct.directCells >= minimumDirectCells,
                 "direct path drew \(direct.directCells) cells", sourceLocation: sourceLocation)
-        let differing = zip(reference.pixels, direct.pixels).reduce(0) { $0 + ($1.0 == $1.1 ? 0 : 1) }
+        let differing = differingBytes(reference.pixels, direct.pixels)
         #expect(differing == 0, "\(differing) differing bytes", sourceLocation: sourceLocation)
         // A blank frame would compare equal for a trivial reason.
         #expect(reference.pixels.contains { $0 != 0 }, sourceLocation: sourceLocation)

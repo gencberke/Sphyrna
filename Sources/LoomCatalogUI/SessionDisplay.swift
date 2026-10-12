@@ -26,7 +26,10 @@ public enum SessionIndicator: Equatable, Sendable {
     /// No live run (history).
     case ended
 
-    public init(record: CatalogSession, live: SessionViewState?) {
+    /// `awaitingOpenApproval`: the session's agent asked Loom to open another session and the user has
+    /// not answered (D-40). A live session then shows the same state as a provider approval, in the one
+    /// place indicators are derived, so cards, project dots and tabs agree.
+    public init(record: CatalogSession, live: SessionViewState?, awaitingOpenApproval: Bool = false) {
         if let failure = live?.stopFailure {
             self = .stopUnverified(failure)
             return
@@ -39,13 +42,17 @@ public enum SessionIndicator: Equatable, Sendable {
             self = .identityUnclear
             return
         }
+        if let live, live.runID != nil, awaitingOpenApproval {
+            self = .waitingForApproval
+            return
+        }
         if let live, live.runID != nil {
             switch live.status?.activity {
             case nil, .unknown?: self = .unknown
             case .atPrompt?: self = .ready
             case .working?: self = .working
             case .waitingForApproval?: self = .waitingForApproval
-            case .waitingForInput?: self = .waitingForInput
+            case .waitingForInput?: self = live.waitingAcknowledged ? .ready : .waitingForInput
             case let .failed(message)?: self = .failed(message)
             case .sessionEnded?: self = .ended
             case .turnComplete?:
@@ -84,6 +91,10 @@ public enum SessionIndicator: Equatable, Sendable {
         case .ended: nil
         }
     }
+
+    /// Whether "Mark as Read" applies: the user is already done with a state that only waits for them.
+    /// Not approval requests (the provider is blocked) and not failures.
+    public var canMarkRead: Bool { self == .waitingForInput || self == .unviewedCompletion }
 
     public var needsAttention: Bool {
         switch self {

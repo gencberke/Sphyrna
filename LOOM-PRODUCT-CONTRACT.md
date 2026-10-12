@@ -330,6 +330,6 @@ Ideas the user has expressed before. They do not automatically enter the first r
 - A side chat and right panel opened from the main context, whose exchange is not added to the main chat.
 - More comprehensive tracking of subtasks in the right panel.
 - Showing ChatGPT/Claude usage allowance and remaining limits. (7 Oct 2026: moved into scope as a lightweight usage and cost view, [D-32](DECISIONS.md).)
-- Chats within a project keeping a fixed order by creation time; plus a separate view sorted by latest activity (see DECISIONS.md — status to confirm).
+- Chats within a project keeping a fixed order by creation time, newest first (D-39, 12 Oct 2026); plus a separate view sorted by latest activity.
 - Importing pre-existing provider history, and full transcript search.
 - Harnesses other than Claude and Codex (OpenCode, Antigravity, etc.).

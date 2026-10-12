@@ -65,6 +65,8 @@ Builds are serialized: only the agent whose Brief says it holds the build slot b
 | `tab-pin:<id>`, `tab-unpin:<id>`, `tab-select:<id\|next\|prev>`, `tab-close:<id>`, `tab-key:<next\|prev\|ctrl-next\|ctrl-prev\|close>` | conversation tabs (snapshot gains `tabs{…}`) |
 | `delete:<id>`, `delete-confirm`, `delete-cancel`, `delete-retry:<id>`, `delete-key`, `screenshot-sheet:<label>` | delete flow (snapshot gains `deletions`; launch flag `--delete-delay <s>` holds the deleting state) |
 | `cleanup-review`, `cleanup-select:<all\|none>`, `cleanup-confirm`, `pin:<id>`, `unpin:<id>` | pin and the stale-conversation review (`settings.cleanup` in the snapshot) |
+| `mark-read:<id>` | the card menu's Mark as Read (D-39) |
+| `open-approve:<request id>`, `open-deny:<request id>`, `open-dismiss:<request id>` | the open-session box's Open Session, Deny and Dismiss (D-40; the same model calls as the buttons). The snapshot gains `openRequests[{id, requester, kind: open\|exists, phase: waiting\|starting\|failed, title, ticket, project, failure, existingSession}]` (title, ticket and failure empty when redacted), `catalog.awaitingOpenApproval` (requesting sessions whose card reads Needs approval) and, per `activityRowDetails` row, `openedBy`, `origin` and `originReplacesBranch` |
 | `focus-terminal`, `focus-search`, `key:<return\|escape\|cmd-f>` | keyboard focus and keys through the window (writes `ack-key-*.json`) |
 | `close-window`, `quit` | close or normal Quit |
 

@@ -169,7 +169,7 @@ struct ActivityList: View {
                     .accessibilityAddTraits(.isHeader)
                     .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
                 ForEach(section.rows) { row in
-                    SessionCardView(row: row, model: model, showsProject: true)
+                    SessionListEntry(row: row, model: model)
                         .onAppear { if row.id == list.rows.last?.id { model.loadMore(.activity) } }
                 }
             }
@@ -194,7 +194,7 @@ struct ProjectList: View {
             let list = model.list(for: .project(project.id))
             if model.isSearching || !project.collapsed {
                 ForEach(list.rows) { row in
-                    SessionCardView(row: row, model: model, showsProject: false)
+                    SessionListEntry(row: row, model: model)
                         .onAppear { if row.id == list.rows.last?.id { model.loadMore(.project(project.id)) } }
                 }
                 if list.rows.isEmpty && list.isLoaded && !model.isSearching {
@@ -207,7 +207,7 @@ struct ProjectList: View {
         if !unassigned.rows.isEmpty {
             SectionTitle(title: "Sessions", symbol: "tray")
             ForEach(unassigned.rows) { row in
-                SessionCardView(row: row, model: model, showsProject: false)
+                SessionListEntry(row: row, model: model)
                     .onAppear { if row.id == unassigned.rows.last?.id { model.loadMore(.unassigned) } }
             }
         }
@@ -317,15 +317,33 @@ struct EmptyListHint: View {
     }
 }
 
+/// A card with the subagents of its session below it (D-39). A session without subagents draws exactly the
+/// card: the stack holds no second view and adds no space.
+struct SessionListEntry: View {
+    let row: SessionRowModel
+    let model: CatalogModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SessionCardView(row: row, model: model)
+            if let subagents = row.live?.subagents, !subagents.isEmpty {
+                SubagentTreeView(sessionID: row.id, records: subagents, model: model)
+            }
+        }
+    }
+}
+
 struct SessionCardView: View {
     let row: SessionRowModel
     let model: CatalogModel
-    let showsProject: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// The project name appears on a card only where the card is not already
-    /// grouped under its project (activity view).
-    static func projectLabel(showsProject: Bool, name: String?) -> String? { showsProject ? name : nil }
+    /// The project name appears on a card only where the card is not already grouped under its project
+    /// (activity view). The mode is read from the model inside `body`, not handed down by the list: the
+    /// same card ids exist in both views, and a flag passed in kept the value of the view that drew the
+    /// card first. The projectless "Sessions" group exists only in the project view, so the mode alone decides.
+    static func projectLabel(mode: CatalogViewMode, name: String?) -> String? { mode == .activity ? name : nil }
+    static func repeatsProject(mode: CatalogViewMode) -> Bool { mode == .activity }
 
     /// What Pin promises. "Out of cleanup" is true only where the cleanup review exists (development
     /// builds); the daily app has none, and pinning never blocks a manual delete.
@@ -339,11 +357,23 @@ struct SessionCardView: View {
         cleanupReviewOffered ? "Pinned: kept out of session cleanup" : "Pinned"
     }
 
+    /// "<title>, Claude, Needs approval, opened by <requester>, pinned".
+    static func accessibilityLabel(title: String, provider: ManagedSession.Provider, status: String?,
+                                   origin: SessionOrigin?, pinned: Bool) -> String {
+        var parts = [title, ProviderName.title(provider)]
+        if let status { parts.append(status) }
+        if let origin { parts.append(origin.accessibilityPhrase) }
+        if pinned { parts.append("pinned") }
+        return parts.joined(separator: ", ")
+    }
+
     var body: some View {
         let indicator = row.indicator
         let selected = model.selectedSessionID == row.id
-        let title = model.title(of: row, repeatsProject: showsProject)
+        let mode = model.viewMode
+        let title = model.title(of: row, repeatsProject: Self.repeatsProject(mode: mode))
         let projectName = model.projectName(for: row.record)
+        let origin = model.origin(of: row)
         Button { model.select(row.id) } label: {
             HStack(alignment: .top, spacing: LoomTheme.Space.cardSpacing) {
                 IndicatorView(indicator: indicator)
@@ -360,17 +390,24 @@ struct SessionCardView: View {
                             .help("Last activity \(row.record.lastActivityAt.formatted(date: .abbreviated, time: .shortened))")
                     }
                     HStack(spacing: LoomTheme.Space.cardRowSpacing) {
-                        Label((model.branches[row.record.session.workingDirectory] ?? .unavailable).label,
-                              systemImage: "arrow.triangle.branch")
-                            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
-                            .help("Git branch")
+                        if let origin, origin.replacesBranch {
+                            // Same branch as the session that opened this one: the origin says more than the branch.
+                            Label(origin.cardLabel, systemImage: "arrow.turn.down.right")
+                                .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
+                                .help(origin.tooltip)
+                        } else {
+                            Label((model.branches[row.record.session.workingDirectory] ?? .unavailable).label,
+                                  systemImage: "arrow.triangle.branch")
+                                .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
+                                .help(origin.map { "Git branch. " + $0.tooltip } ?? "Git branch")
+                        }
                         if row.record.pinned {
                             Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
                                 .foregroundStyle(LoomTheme.Text.secondary)
                                 .help(Self.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
                         }
                         Spacer(minLength: LoomTheme.Space.headerSpacing)
-                        if let projectName = SessionCardView.projectLabel(showsProject: showsProject, name: projectName) {
+                        if let projectName = SessionCardView.projectLabel(mode: mode, name: projectName) {
                             Text(projectName).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
                                 .lineLimit(1)
                         }
@@ -396,14 +433,16 @@ struct SessionCardView: View {
             Button("Open in Tab") { model.openTab(row.id) }.disabled(model.tabs.isPinned(row.id))
             Button(row.record.pinned ? "Unpin" : "Pin") { Task { await model.setPinned(row.id, !row.record.pinned) } }
                 .help(Self.pinHelp(cleanupReviewOffered: model.cleanupReview != nil))
+            Button("Mark as Read") { model.markRead(row.id) }.disabled(!indicator.canMarkRead)
             Divider()
             Button("Resume") { model.resumeConversation(row.id) }.disabled(!model.canResume(row))
             Button("Stop") { model.stopConversation(row.id) }.disabled(!model.canStop(row))
             DeletionMenuItems(model: model, row: row)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title), \(ProviderName.title(row.record.session.provider))"
-            + (indicator.label.map { ", \($0)" } ?? "") + (row.record.pinned ? ", pinned" : ""))
+        .accessibilityLabel(Self.accessibilityLabel(
+            title: title, provider: row.record.session.provider, status: indicator.label,
+            origin: origin, pinned: row.record.pinned))
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }

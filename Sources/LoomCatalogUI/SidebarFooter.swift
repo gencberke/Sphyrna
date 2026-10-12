@@ -68,30 +68,69 @@ struct UsageChip: View {
     }
 }
 
-/// Tokens and limit, then the limit alone, then the tokens cut with an ellipsis. No money.
-private struct UsageChipLabel: View {
+/// Tokens on the left, the limit (name, meter, percent) pinned to the right. Narrow: the meter
+/// drops first, then the tokens are cut with an ellipsis; the limit is never cut. No money.
+struct UsageChipLabel: View {
     let chip: UsageChipContent
     @Environment(\.usageChipHovered) private var hovered
 
     var body: some View {
         let tone = hovered ? LoomTheme.Text.primary : LoomTheme.Text.secondary
-        ViewThatFits(in: .horizontal) {
-            text(tone, showLimit: true).fixedSize(horizontal: true, vertical: false)
+        Group {
             if let limit = chip.limit {
-                Text(limit).foregroundStyle(tone).fixedSize(horizontal: true, vertical: false)
+                ViewThatFits(in: .horizontal) {
+                    // No fixedSize here: ViewThatFits tests the ideal width (tokens, the least gap, limit), and the
+                    // chosen child then takes the whole proposal so the spacer pushes the limit to the trailing edge.
+                    // When none fits the last one is used and the tokens truncate.
+                    split(tone, limit, showMeter: true)
+                    split(tone, limit, showMeter: false)
+                }
+            } else {
+                tokens(tone).truncationMode(.tail)
             }
-            text(tone, showLimit: false).truncationMode(.tail)
         }
         .font(LoomTheme.Typography.statusLabel).monospacedDigit()
         .lineLimit(1)
     }
 
-    private func text(_ tone: Color, showLimit: Bool) -> Text {
+    private func split(_ tone: Color, _ limit: UsageChipContent.Limit, showMeter: Bool) -> some View {
+        HStack(spacing: 0) {
+            tokens(tone).truncationMode(.tail)
+            Spacer(minLength: LoomTheme.Space.chipSplitGap)
+            HStack(spacing: LoomTheme.Space.chipLimitGap) {
+                Text(limit.name).foregroundStyle(tone)
+                if showMeter { UsageChipMeter(remainingPercent: limit.remainingPercent, isLow: limit.isLow) }
+                Text("\(limit.remainingPercent)%").fontWeight(.semibold)
+                    .foregroundStyle(limit.isLow ? LoomTheme.Status.attention : LoomTheme.Text.primary)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    private func tokens(_ tone: Color) -> Text {
         let lead = Text(chip.lead).foregroundStyle(tone)
         let figure = Text(chip.figure).fontWeight(.semibold).foregroundStyle(LoomTheme.Text.primary)
         let suffix = Text(chip.suffix).foregroundStyle(tone)
-        let limit = Text(showLimit ? chip.limit.map { " · " + $0 } ?? "" : "").foregroundStyle(tone)
-        return Text("\(lead)\(figure)\(suffix)\(limit)")
+        return Text("\(lead)\(figure)\(suffix)")
+    }
+}
+
+/// The remaining share of the limit window: a thin track and a fill in the secondary tone (orange when low).
+private struct UsageChipMeter: View {
+    let remainingPercent: Int
+    let isLow: Bool
+
+    var body: some View {
+        let fraction = CGFloat(min(max(remainingPercent, 0), 100)) / 100
+        RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim)
+            .fill(LoomTheme.Surface.chipMeterTrack)
+            .frame(width: LoomTheme.Layout.chipMeter.width, height: LoomTheme.Layout.chipMeter.height)
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim)
+                    .fill(isLow ? LoomTheme.Status.attention : LoomTheme.Text.secondary)
+                    .frame(width: LoomTheme.Layout.chipMeter.width * fraction)
+            }
+            .accessibilityHidden(true)
     }
 }
 

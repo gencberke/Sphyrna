@@ -33,12 +33,19 @@ public struct CatalogSession: Equatable, Sendable {
     /// finished turn, user Stop). Unlike `lastUsedAt`, a view never moves it;
     /// the card time and the activity order read this one.
     public let lastActivityAt: Date
+    /// The ticket an agent named when it asked for this session to be opened (D-40); nil otherwise.
+    public let ticketKey: String?
+    /// The session whose agent asked for this one to be opened (D-40); nil for a session the user started.
+    public let openedBy: UUID?
 
     public init(
         session: ManagedSession, title: String?, createdAt: Date, lastUsedAt: Date,
         lifecycle: SessionLifecycle, pinned: Bool, projectID: UUID? = nil,
-        titleIsCustom: Bool = false, staleSince: Date? = nil, lastActivityAt: Date? = nil
+        titleIsCustom: Bool = false, staleSince: Date? = nil, lastActivityAt: Date? = nil,
+        ticketKey: String? = nil, openedBy: UUID? = nil
     ) {
+        self.ticketKey = ticketKey
+        self.openedBy = openedBy
         self.lastActivityAt = lastActivityAt ?? lastUsedAt
         self.session = session
         self.title = title
@@ -78,7 +85,7 @@ public enum CatalogScope: Equatable, Sendable {
 public enum CatalogOrder: Equatable, Sendable {
     /// Newest use first (activity view).
     case recentActivity
-    /// Creation order, oldest first (project view; selection never moves a row).
+    /// Creation order, newest first (project view; selection never moves a row).
     case creation
 }
 
@@ -181,7 +188,7 @@ public actor SessionCatalog {
     static let sessionColumns = """
         s.id, s.provider, s.provider_conversation_id, s.working_directory, s.title,
         s.created_at, s.last_used_at, s.lifecycle, s.pinned, s.project_id, s.title_is_custom,
-        s.stale_since, \(activityExpression)
+        s.stale_since, \(activityExpression), s.ticket_key, s.opened_by
         """
     /// A row an older build wrote has no activity time yet: it reads as its use time.
     static let activityExpression = "COALESCE(s.last_activity_at, s.last_used_at)"
@@ -303,21 +310,25 @@ public actor SessionCatalog {
             projectID: projectID,
             titleIsCustom: sqlite3_column_int(statement, 10) != 0,
             staleSince: database.optionalDouble(statement, column: 11).map(Date.init(timeIntervalSince1970:)),
-            lastActivityAt: database.optionalDouble(statement, column: 12).map(Date.init(timeIntervalSince1970:))
+            lastActivityAt: database.optionalDouble(statement, column: 12).map(Date.init(timeIntervalSince1970:)),
+            ticketKey: database.optionalText(statement, column: 13),
+            // A requester id that does not parse is dropped, never a reason to skip the row.
+            openedBy: database.optionalText(statement, column: 14).flatMap(UUID.init(uuidString:))
         )
     }
 
     func insertSessionRow(
         _ session: ManagedSession, title: String?, createdAt: Date,
         lastUsedAt: Date, lifecycle: SessionLifecycle, pinned: Bool,
-        projectID: UUID? = nil, staleSince: Date? = nil, lastActivityAt: Date? = nil
+        projectID: UUID? = nil, staleSince: Date? = nil, lastActivityAt: Date? = nil,
+        titleIsCustom: Bool = false, ticketKey: String? = nil, openedBy: UUID? = nil
     ) throws {
         try database.withStatement("""
             INSERT INTO sessions (
                 id, provider, provider_conversation_id, working_directory, title,
                 created_at, last_used_at, lifecycle, pinned, project_id, stale_since,
-                last_activity_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                last_activity_at, title_is_custom, ticket_key, opened_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """) { statement in
             try database.bind(session.id.uuidString, at: 1, to: statement)
             try database.bind(session.provider.rawValue, at: 2, to: statement)
@@ -332,6 +343,9 @@ public actor SessionCatalog {
             if let staleSince { sqlite3_bind_double(statement, 11, staleSince.timeIntervalSince1970) }
             else { sqlite3_bind_null(statement, 11) }
             sqlite3_bind_double(statement, 12, (lastActivityAt ?? lastUsedAt).timeIntervalSince1970)
+            sqlite3_bind_int(statement, 13, titleIsCustom ? 1 : 0)
+            try database.bind(ticketKey, at: 14, to: statement)
+            try database.bind(openedBy?.uuidString, at: 15, to: statement)
             try database.stepDone(statement, operation: "insert session")
         }
     }

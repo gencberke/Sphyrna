@@ -47,18 +47,27 @@ public struct SessionViewState: Equatable, Sendable {
     /// A reliable provider turn completion nobody was looking at. Cleared when
     /// the conversation is viewed (`SessionEventHub.setViewed`) or works again.
     public var unviewedCompletion: Bool
+    /// The user marked a "waiting for input" state as read (`SessionEventHub.markRead`). A display
+    /// acknowledgement only: it holds through the at-prompt period (finished turn, waiting for input, at prompt)
+    /// and ends with any other status, a new unseen completion, a new run or the end of the run. Nothing is sent to the provider.
+    public var waitingAcknowledged: Bool
     /// The last thing that went wrong for this conversation outside a stop
     /// (start failure, missing history, lost provider connection). Cleared by a
     /// new run; survives skipped frames.
     public var issue: String?
     public var userRequests: [ProviderUserRequest]
+    /// The subagents the run's conversation has under it (D-39). Only a live run has any: the list is
+    /// cleared by a new run, a detach and the end of the run, and an update that arrives after the run
+    /// ended is ignored.
+    public var subagents: [SubagentRecord]
 
     public init(
         status: ProviderWorkState? = nil, lifecycle: SessionLifecycle? = nil,
         conversationID: String? = nil, identity: SessionIdentityState = .known,
         runID: UUID? = nil, blockers: Set<SessionIdleBlocker> = [],
         stopFailure: String? = nil, unviewedCompletion: Bool = false,
-        issue: String? = nil, userRequests: [ProviderUserRequest] = []
+        waitingAcknowledged: Bool = false, issue: String? = nil, userRequests: [ProviderUserRequest] = [],
+        subagents: [SubagentRecord] = []
     ) {
         self.status = status
         self.lifecycle = lifecycle
@@ -68,8 +77,10 @@ public struct SessionViewState: Equatable, Sendable {
         self.blockers = blockers
         self.stopFailure = stopFailure
         self.unviewedCompletion = unviewedCompletion
+        self.waitingAcknowledged = waitingAcknowledged
         self.issue = issue
         self.userRequests = userRequests
+        self.subagents = subagents
     }
 }
 
@@ -85,8 +96,12 @@ public enum SessionEventChange: Equatable, Sendable {
     case blockers(Set<SessionIdleBlocker>)
     case stopFailure(String?)
     case unviewedCompletion(Bool)
+    /// The user marked the conversation's attention state as read: see `SessionEventHub.markRead`.
+    case markedRead
     case issue(String?)
     case userRequests([ProviderUserRequest])
+    /// The conversation's subagents changed (a start, a stop, details read, the next turn).
+    case subagents([SubagentRecord])
     /// The catalog moved this many conversations to `lifecycle` in one batch
     /// (aging). The frame carries no per-conversation entries: the catalog row
     /// is authoritative, and `catalogRevision` tells a consumer that skipped
@@ -155,11 +170,13 @@ public actor SessionEventHub {
         case let .status(value):
             let wasComplete = state.status?.activity == .turnComplete
             state.status = value
+            if !Self.isAtPromptPeriod(value?.activity) { state.waitingAcknowledged = false }
             if value?.activity == .working {
                 state.unviewedCompletion = false
             } else if value?.activity == .turnComplete, !wasComplete,
                       viewedSessionID != sessionID {
                 state.unviewedCompletion = true
+                state.waitingAcknowledged = false
             }
         case let .lifecycle(value): state.lifecycle = value
         case let .conversationIdentity(value): state.conversationID = value
@@ -170,20 +187,33 @@ public actor SessionEventHub {
             state.issue = nil
             state.userRequests = []
             state.unviewedCompletion = false
+            state.waitingAcknowledged = false
+            state.subagents = []
         // A late event of an earlier run must not end a newer run.
         case let .runDetached(value):
-            if state.runID == value { state.runID = nil; state.status = nil }
+            if state.runID == value {
+                state.runID = nil; state.status = nil; state.waitingAcknowledged = false; state.subagents = []
+            }
         case let .runEnded(value, _):
             if state.runID == value {
                 state.runID = nil
                 state.status = nil
+                state.waitingAcknowledged = false
                 state.userRequests = []
+                state.subagents = []
             }
         case let .blockers(value): state.blockers = value
         case let .stopFailure(value): state.stopFailure = value
         case let .unviewedCompletion(value): state.unviewedCompletion = value
+        case .markedRead:
+            state.unviewedCompletion = false
+            if Self.isAtPromptPeriod(state.status?.activity) { state.waitingAcknowledged = true }
         case let .issue(value): state.issue = value
         case let .userRequests(value): state.userRequests = value
+        case let .subagents(value):
+            // A late update must not bring subagents back to a session whose run is over.
+            guard state.runID != nil || value.isEmpty else { return }
+            state.subagents = value
         case .catalogLifecycle, .conversationDeleted, .deletionIncomplete, .activityRecorded: return
         }
         // A pure state event that changes nothing wakes nobody and does not
@@ -250,6 +280,23 @@ public actor SessionEventHub {
         viewedSessionID = sessionID
         guard let sessionID, states[sessionID]?.unviewedCompletion == true else { return }
         publish(sessionID: sessionID, change: .unviewedCompletion(false))
+    }
+
+    /// The statuses of one at-prompt period: a finished turn, the provider idling for input, a fresh prompt.
+    /// A real Claude goes from a finished turn to waiting for input on its own, about a minute later.
+    private static func isAtPromptPeriod(_ activity: AgentActivity?) -> Bool {
+        switch activity {
+        case .turnComplete?, .waitingForInput?, .atPrompt?: true
+        default: false
+        }
+    }
+
+    /// "Mark as Read": a finished turn nobody looked at counts as seen, and a conversation waiting at its
+    /// prompt is acknowledged, so both show the neutral Ready. The acknowledgement survives repeats of the
+    /// same waiting state (later idle samples, a repeated idle notification) and ends with the next change
+    /// of status, so a new turn that finishes and idles shows "waiting" again. Display state only.
+    public func markRead(sessionID: UUID) {
+        publish(sessionID: sessionID, change: .markedRead)
     }
 
     private func removeSubscriber(_ id: UUID) {

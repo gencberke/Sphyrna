@@ -704,7 +704,7 @@ struct SessionCatalogV3Tests {
         #expect(listed.map(\.session.id) == good)
         #expect(await catalog.skippedRowCount == 4)
 
-        // Paging stays correct: every good row exactly once, in order, no
+        // Paging stays correct: every good row exactly once, newest first, no
         // short page hiding a later one, and the scan reports what it skipped.
         var seen: [UUID] = []
         var cursor: CatalogCursor?
@@ -720,7 +720,7 @@ struct SessionCatalogV3Tests {
             pages += 1
             #expect(page.sessions.count == 2 || page.next == nil)
         } while cursor != nil && pages < 20
-        #expect(seen == good)
+        #expect(seen == good.reversed())
         #expect(skippedPerPage.reduce(0, +) >= 4)
         let recent = try await catalog.sessionPage(CatalogQuery(limit: 100))
         #expect(recent.sessions.count == 7)

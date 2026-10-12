@@ -1,0 +1,55 @@
+import Foundation
+
+/// The approval API for requests of agents to open a session (D-40). The UI shows the list
+/// and calls approve, deny or dismiss; nothing starts without an approve call (contract section 7).
+extension SessionRuntime {
+    /// The current list first, then the whole list after every change (new request, notice, state
+    /// change, removal). Finishes at Quit.
+    public func openRequestUpdates() async -> AsyncStream<[OpenSessionRequest]> {
+        await openRequests.updates()
+    }
+
+    public func openRequestSnapshot() async -> [OpenSessionRequest] {
+        await openRequests.snapshot()
+    }
+
+    /// Starts the approved session through the normal start path and answers the waiting agent
+    /// (`started <id>`), or returns nil when the ticket got a session meanwhile (the request
+    /// became an "exists" notice and nothing started). The caller adopts the returned launch
+    /// like `startConversation`'s: it passes the terminal sink and size the same way. A failed
+    /// start throws and leaves the request in the list as failed; it is never retried.
+    public func approveOpenRequest(
+        _ requestID: UUID, rows: UInt16 = 24, columns: UInt16 = 80,
+        outputSink: (any TerminalOutputSink)? = nil
+    ) async throws -> RuntimeLaunch? {
+        let launched = LaunchBox()
+        let approval = try await openRequests.approve(requestID) { spec in
+            let launch = try await self.startConversation(
+                provider: .claude, projectID: spec.projectID, rows: rows, columns: columns,
+                outputSink: outputSink,
+                opening: SessionOpening(
+                    title: spec.title, firstMessage: spec.message, ticketKey: spec.ticketKey,
+                    openedBy: spec.requesterID
+                )
+            )
+            launched.value = launch
+            return launch.sessionID
+        }
+        guard case .started = approval else { return nil }
+        return launched.value
+    }
+
+    /// The agent's command is answered `denied`; nothing starts.
+    public func denyOpenRequest(_ requestID: UUID) async throws {
+        try await openRequests.deny(requestID)
+    }
+
+    /// Removes an "exists" notice or a failed request (a request still waiting counts as denied).
+    public func dismissOpenRequest(_ requestID: UUID) async throws {
+        try await openRequests.dismiss(requestID)
+    }
+}
+
+private final class LaunchBox: @unchecked Sendable {
+    var value: RuntimeLaunch?
+}

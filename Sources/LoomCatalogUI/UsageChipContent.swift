@@ -13,14 +13,33 @@ public struct UsageChipContent: Equatable, Sendable {
     public var figure: String
     /// Secondary tone, after the figure: ` today`.
     public var suffix: String
-    /// The plan window that runs out first, `5h 62% left`; nil when plan limits are unknown.
-    public var limit: String?
+    /// The plan window that runs out first; nil when plan limits are unknown.
+    public var limit: Limit?
     public var tooltip: String
     public var accessibilityLabel: String
 
-    /// Tokens and, when it is known, the limit: `1.2M today · 5h 62% left`.
-    public var full: String { short + (limit.map { " · " + $0 } ?? "") }
-    /// Tokens only; the chip falls back to the limit alone or to this, never to a cut-off limit.
+    /// The bottleneck plan window as data, so the view draws it (name, meter, percent) without formatting.
+    public struct Limit: Equatable, Sendable {
+        /// Below this many percent remaining the chip takes the attention colour.
+        public static let lowBelowPercent = 20
+
+        /// `5h` or `Wk`.
+        public var name: String
+        /// The share still left, 0...100.
+        public var remainingPercent: Int
+        public var isLow: Bool { remainingPercent < Self.lowBelowPercent }
+        /// `5h 62%`.
+        public var text: String { "\(name) \(remainingPercent)%" }
+
+        public init(name: String, remainingPercent: Int) {
+            self.name = name
+            self.remainingPercent = remainingPercent
+        }
+    }
+
+    /// Tokens and, when it is known, the limit: `1.2M today · 5h 62%`.
+    public var full: String { short + (limit.map { " · " + $0.text } ?? "") }
+    /// Tokens only; the narrow chip drops the meter first and then cuts these, never the limit.
     public var short: String { lead + figure + suffix }
 
     /// nil hides the chip: no index, or a first scan that failed (Settings says why).
@@ -50,9 +69,9 @@ public struct UsageChipContent: Equatable, Sendable {
                 + "output \(UsageFormat.grouped(tokens.output)), cache write \(UsageFormat.grouped(tokens.cacheWrite)), "
                 + "cache read \(UsageFormat.grouped(tokens.cacheRead))."
             var label = "Claude usage today, \(UsageFormat.spokenTokens(tokens.total)) tokens"
-            var limit: String?
+            var limit: Limit?
             if let limits, let bottleneck = limits.bottleneck(at: now) {
-                limit = "\(bottleneck.kind.chipName) \(bottleneck.window.remainingPercent)% left"
+                limit = Limit(name: bottleneck.kind.chipName, remainingPercent: bottleneck.window.remainingPercent)
                 label += ", \(bottleneck.kind.spokenName) limit \(bottleneck.window.remainingPercent) percent remaining"
                 tooltip += "\nPlan limits, updated \(UsageText.time(limits.fetchedAt, timeZone)):"
                 for (kind, window) in limits.current(at: now) {

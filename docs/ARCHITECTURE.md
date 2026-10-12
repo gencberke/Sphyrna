@@ -41,7 +41,7 @@ Declared in `Package.swift`; all tests use swift-testing (`@Test`). Product bund
 | `LoomLaunchOptions` | Pure launch rules: data root resolution, `--evidence`, command-channel name | `LaunchOptions.swift` | `LoomLaunchOptionsTests` |
 | `loom-app` (exe) | `AppDelegate` (one window, menus, runtime wiring, Quit), `MainSplitViewController`, dev evidence tooling | `AppDelegate.swift`, `MainSplitViewController.swift`, `DevelopmentEvidence.swift`, `EvidenceResourcePool.swift` | none (acceptance scripts in `scripts/`) |
 | `loom-run-host` (C exe) | Bundled `Contents/Helpers/LoomRunHost.app`; one instance per run scope; spawns PTY children, reports exits | `main.c` | `RunScopeTests` (assembles a real bundle) |
-| `loom-hook` | Claude hook command: reads stdin, sends an authenticated envelope to the hook socket | `main.swift` | `ClaudeHookTests` |
+| `loom-hook` | Claude hook command: reads stdin, sends an authenticated envelope to the hook socket. With arguments it is the agent command `"$LOOM_CLI" open ...` (`OpenSessionCommand` in LoomCore; D-40) | `main.swift` | `ClaudeHookTests`, `OpenSessionCommandTests` |
 | `loom-test-child` | Synthetic process fixture and the dev "terminal" | `main.swift` | used by many tests |
 | `loom-fake-provider` | Provider-shaped Claude/Codex fixture for tests and `--fake-providers`. Never bundled | `main.swift`, `CodexFixture.swift` | n/a |
 | `loom-catalog-fixture` | Writes an isolated catalog for acceptance. Never bundled | `main.swift` | n/a |
@@ -56,7 +56,7 @@ Declared in `Package.swift`; all tests use swift-testing (`@Test`). Product bund
 | Persistence | `SessionCatalog` (core plus `+Sessions`, `+Runs`, `+Projects`, `+Titles`, `+Paging`), `CatalogDatabase` (schema, migration, SQLite helpers) |
 | Terminal I/O | `TerminalEndpoint` (also `TerminalOutputSink`), `TerminalInputQueue`, `TerminalInputGate` |
 | Provider setup | `LaunchEnvironment`, `EnvironmentResolutionJob`, `ProviderToolchain`, `ProviderLaunchProfile`, `ProviderResume` |
-| Claude | `ClaudeHook` (server, client, `ClaudeHookStateTracker`), `ClaudeRegistry`, `ClaudeDataInventory` (planner and safe deleter of a session's files), `ClaudeProfileLayout`, `ClaudeUsageIndex`, `UsageTranscriptWatcher` (FSEvents over `<profile>/projects`), `ClaudePlanLimitsFetcher` (headless `get_usage` through the Claude CLI) |
+| Claude | `ClaudeHook` (server, client, `ClaudeHookStateTracker`), `OpenSessionProtocol`/`OpenSessionCoordinator`/`OpenSessionCommand`/`LocalSocket` (a session asks Loom to open another one, D-40), `SubagentLedger` (the run's subagent list from `SubagentStart`/`SubagentStop`, `Stop.background_tasks` and each subagent's `meta.json`; D-39), `ClaudeRegistry`, `ClaudeDataInventory` (planner and safe deleter of a session's files), `ClaudeProfileLayout`, `ClaudeUsageIndex`, `UsageTranscriptWatcher` (FSEvents over `<profile>/projects`), `ClaudePlanLimitsFetcher` (headless `get_usage` through the Claude CLI) |
 | Codex (paused) | `CodexAppServer`, `CodexAppServerManager`, `CodexSessionCoordinator`, `CodexSessionState`, `CodexWireDiagnostics`, `CodexRoutingDiagnostics` |
 
 Roles: `SessionRuntime` is the one application runtime (UI sends intents only). `ProcessSupervisor` (actor) owns runs, scopes,
@@ -97,9 +97,35 @@ CatalogModel.startConversation -> ConversationController.start (creates Terminal
     SessionStart = at prompt ("Ready"); a late SessionStart of the run's own conversation keeps the turn; informational
     Notification types keep the state; dropped events are logged under subsystem local.loom.desktop, category ClaudeHooks)
     Resume passes the transcript's last recorded effort back as --effort (ClaudeTranscriptEffort; Claude keeps /effort per process)
+    Subagents (D-39): SubagentStart/SubagentStop of the run's own conversation feed the tracker's `SubagentLedger` (never the
+    status; a subagent's own permission prompt, PermissionRequest or a permission_prompt Notification, shows Needs approval until
+    the registry's next "idle" or "busy" sample returns the state from before it (FB2-6); other events with an agent_id stay
+    dropped as .childAgent); the adapter reads `meta.json` off the hook path (bounded
+    retry after a start, one try at the stop) and publishes `.subagents` to the hub; `SessionViewState.subagents` is cleared by a
+    new run, a detach and the run's end, and a later update is ignored; SessionListEntry draws `SubagentTreeView` under the card
  -> SessionEventHub frame -> CatalogModel.apply (sequence fast path, full reconcile on a gap) -> SessionRowModel.live
  -> SessionIndicator(record:live:) -> IndicatorView / ChaseDots in sidebar row and detail header
 ```
+
+**A session opens a session (D-40)**
+```
+Claude session runs  "$LOOM_CLI" open --title ... [--ticket K] [--project P] (--message-file F | --message -)   (loom-hook, OpenSessionCommand)
+ -> validates the input (OpenSessionInput: title 1-160, ticket 1-40 of [A-Za-z0-9-_.], message <= 64 KiB UTF-8), then connects to
+    LOOM_CONTROL_SOCKET (<socketDir>/c-<8>.sock, next to the hook socket; same directory/mode/path-limit rules, LocalSocket) and sends
+    one JSON request with LOOM_HOOK_TOKEN + LOOM_SESSION_ID + LOOM_MANAGED_RUN_ID, then waits (up to 90 s, no retry)
+ -> OpenSessionControlServer (token check; one connection held per request) -> OpenSessionCoordinator.submit
+    authorize (SessionRuntime: supervisor.runContext(run) live, launch card == LOOM_SESSION_ID; the requester is the run's active card),
+    validate, resolve the project (the requester's, or --project by exact name/path; never created),
+    ticket lookup (SessionCatalog.session(projectID:ticket:): sessions.ticket_key, else a title starting with the key + end/space;
+    folded like the catalog search) -> found: reply `exists` at once and publish an "exists" notice, nothing starts
+    else one pending request per requesting session (kept in memory only) -> published through SessionRuntime.openRequestUpdates()
+ -> UI: approveOpenRequest(id, rows, columns, outputSink) / denyOpenRequest / dismissOpenRequest (the only way anything starts)
+    approve re-checks the ticket, then SessionRuntime.startConversation(opening:) -> claudeProfile -> `-n <title> ... -- <message>`
+    (prompt after every option, incl. the toolchain's extras), createSession with title (automatic), ticket_key, opened_by
+ -> the waiting client is answered on its own connection: started <id> / exists / denied / error; after 85 s it gets `pending` and the
+    request stays, so a later approval still starts it; a failed start marks the request failed (never retried)
+```
+Quit answers every waiting client `unavailable` and drops all requests (memory only). Exit codes of the command: 0 started/exists/pending, 1 denied or approved-but-not-started, 2 usage or validation error, 3 Loom unreachable or not inside a live Loom session.
 
 **Terminal output to pixels**
 ```
@@ -199,10 +225,11 @@ directory when every scope is shown empty; leftovers surface as `CatalogModel.ow
 
 | Store | Location | Notes |
 |---|---|---|
-| `SessionCatalog` | `<data root>/catalog.sqlite3` | SQLite via system `sqlite3`; WAL; `quick_check`; `secure_delete = ON` per connection; schema v3 (`SessionCatalog.schemaVersion`): `sessions` (+ `stale_since`), `runs`, `run_sessions`, `provider_identity_changes`, `projects`, `deletions`, `app_state`. Refuses newer or foreign schemas; surfaces the failure in the UI instead of starting a runtime |
+| `SessionCatalog` | `<data root>/catalog.sqlite3` | SQLite via system `sqlite3`; WAL; `quick_check`; `secure_delete = ON` per connection; schema v3 (`SessionCatalog.schemaVersion`): `sessions` (+ `stale_since`; `last_activity_at`, `ticket_key`, `opened_by` are added on open without a version bump so 0.2.1/0.3.0 still open the catalog: `ensureActivityColumn`, `ensureOriginColumns`), `runs`, `run_sessions`, `provider_identity_changes`, `projects`, `deletions`, `app_state`. Refuses newer or foreign schemas; surfaces the failure in the UI instead of starting a runtime |
 | UI preferences | `<data root>/ui-preferences.json` | `UIPreferencesStore` (`UIPreferences.swift`); an unreadable file is renamed to `ui-preferences.unreadable-<ts>.json` |
 | Run directories | `<data root>/runs/<run uuid>/` | `ledger.json`, `owner.json`, `ownership-guarantee.txt`, created 0700 per app run; removed by `PreviousRunRecovery` once scopes are shown empty |
 | Hook socket | `<socket dir>/h-<8 hex of run id>.sock` | `SessionRuntime.ensureHooks`, token-authenticated, removed by `ClaudeHookServer.stop` at shutdown |
+| Control socket | `<socket dir>/c-<8 hex of run id>.sock` | `SessionRuntime.ensureHooks`, same token, request/response for `loom-hook open` (D-40); removed by `OpenSessionControlServer.stop` at shutdown |
 
 Catalog schema v3 (CP4-B; `CatalogDatabase.swift` holds schema, migration and SQLite helpers, `SessionCatalog+Deletions.swift` the deletion API):
 - **Migration.** `migrate(from:)` runs the chain v1 to v2 to v3 in one transaction (`BEGIN IMMEDIATE`, `user_version` set last, test failpoint after each version's DDL); an interrupted migration leaves the old file untouched. v3 adds `deletions`, `sessions.stale_since`, `app_state` (`last_cleanup_at`, `last_launch_at`) and the child indexes `run_sessions(session_id)`, `runs(initial_session_id)`, `provider_identity_changes(session_id)`.

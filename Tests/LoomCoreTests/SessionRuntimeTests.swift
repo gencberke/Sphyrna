@@ -118,7 +118,8 @@ struct SessionRuntimeTests {
         idlePolicy: SessionIdlePolicy = SessionIdlePolicy(),
         extraEnvironment: [String: String] = [:],
         startRuntime: Bool = true,
-        scoped: Bool = false
+        scoped: Bool = false,
+        executableOverride: String? = nil
     ) async throws -> RuntimeContext {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loom-runtime-\(UUID())", isDirectory: true)
@@ -131,7 +132,8 @@ struct SessionRuntimeTests {
         let socketDirectory = URL(fileURLWithPath: "/tmp/lr-\(UUID().uuidString.prefix(8))", isDirectory: true)
         let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
         let supervisor: ProcessSupervisor
-        var fakePath = RuntimeFixture.binaries.appendingPathComponent("loom-fake-provider").path
+        var fakePath = executableOverride
+            ?? RuntimeFixture.binaries.appendingPathComponent("loom-fake-provider").path
         if scoped {
             // Run hosts are their own TCC-responsible apps: a scoped child must
             // execute a copy from a temporary directory, not from ~/Documents.
@@ -160,7 +162,7 @@ struct SessionRuntimeTests {
             return ProviderToolchain(
                 provider: provider, executable: fake,
                 capabilities: ProviderCapabilities(
-                    version: "fake 1", help: "--settings <settings> --session-id <id> --remote <ADDR> --effort <level>",
+                    version: "fake 1", help: "--settings <settings> --session-id <id> --remote <ADDR> --effort <level> -n, --name <name>",
                     serverHelp: "--listen <URL>"
                 ),
                 environment: ["PATH": "/usr/bin:/bin", "HOME": home.path, "LOOM_FAKE_STATE": state.path]

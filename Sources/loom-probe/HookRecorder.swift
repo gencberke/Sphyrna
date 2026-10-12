@@ -43,7 +43,7 @@ final class HookRecorder: @unchecked Sendable {
             record["hasErrorDetails"] = details != nil
             record["hasLastAssistantMessage"] = event.lastAssistantMessage != nil
         case let .sessionEnd(reason): record["reason"] = reason
-        case .userPromptSubmit, .unknown: break
+        case .userPromptSubmit, .subagentStart, .subagentStop, .unknown: break
         }
         guard let data = try? JSONSerialization.data(
             withJSONObject: record, options: [.sortedKeys]

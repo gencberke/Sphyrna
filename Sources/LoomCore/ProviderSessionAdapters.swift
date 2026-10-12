@@ -170,6 +170,12 @@ public actor ClaudeSessionAdapter {
         }
         let disposition = try await tracker.receive(envelope, receivedAt: receivedAt)
         guard case .applied = disposition else { return disposition }
+        if event.isSubagentLifecycle {
+            // Only the subagent list moves: no status, work state or usage stamp.
+            await publishSubagents(runID: envelope.managedRunID, tracker: tracker, fallback: context.activeSessionID)
+            noteSubagentDetails(runID: envelope.managedRunID, event: event)
+            return disposition
+        }
         if case .userPromptSubmit = event.kind {
             // This is a usage timestamp only. An asynchronous helper may run
             // after user work starts, so it cannot establish a process baseline.
@@ -200,7 +206,63 @@ public actor ClaudeSessionAdapter {
                     status.backgroundTaskCount + status.scheduledTaskCount
             )
         )
+        switch event.kind {
+        case .sessionStart, .userPromptSubmit, .stop:
+            // A new conversation, the next real prompt and the end of a turn change the list.
+            await publishSubagents(runID: envelope.managedRunID, tracker: tracker, fallback: context.activeSessionID)
+        default: break
+        }
         return disposition
+    }
+
+    /// Hands the run's current subagent list to the event hub (which ignores an unchanged one and one
+    /// for a run that is over). Called while the run's transition is held, so lists reach the hub in order.
+    private func publishSubagents(runID: UUID, tracker: ClaudeHookStateTracker, fallback: UUID) async {
+        let records = await tracker.subagentRecords()
+        let sessionID = await supervisor.activeSessionID(runID: runID) ?? fallback
+        await supervisor.events.publish(sessionID: sessionID, change: .subagents(records))
+    }
+
+    /// A subagent's description, kind and depth are in a `meta.json` Claude writes a few milliseconds after
+    /// `SubagentStart`. It is read off the hook path: a short bounded retry after a start, one try at the
+    /// stop (the file exists by then).
+    private func noteSubagentDetails(runID: UUID, event: ClaudeHookEvent) {
+        guard let agentID = event.agentID,
+              let file = SubagentMeta.fileURL(
+                agentID: agentID, transcriptPath: event.transcriptPath,
+                agentTranscriptPath: event.agentTranscriptPath) else { return }
+        let attempts: Int
+        switch event.kind {
+        case .subagentStart: attempts = Self.metaAttempts
+        case .subagentStop: attempts = 1
+        default: return
+        }
+        Task { [weak self] in
+            await self?.resolveSubagentMeta(runID: runID, agentID: agentID, file: file, attempts: attempts)
+        }
+    }
+
+    static let metaAttempts = 8
+    static let metaRetryDelay = Duration.milliseconds(40)
+
+    private func resolveSubagentMeta(runID: UUID, agentID: String, file: URL, attempts: Int) async {
+        for attempt in 0..<attempts {
+            guard trackers[runID] != nil else { return }
+            if let meta = SubagentMeta.read(file) {
+                while transitioningRuns.contains(runID) {
+                    guard trackers[runID] != nil else { return }
+                    try? await Task.sleep(for: .milliseconds(1))
+                }
+                transitioningRuns.insert(runID)
+                defer { transitioningRuns.remove(runID) }
+                guard let tracker = trackers[runID], let context = await supervisor.runContext(runID: runID) else { return }
+                if await tracker.applySubagentMeta(id: agentID, meta) {
+                    await publishSubagents(runID: runID, tracker: tracker, fallback: context.activeSessionID)
+                }
+                return
+            }
+            if attempt + 1 < attempts { try? await Task.sleep(for: Self.metaRetryDelay) }
+        }
     }
 }
 

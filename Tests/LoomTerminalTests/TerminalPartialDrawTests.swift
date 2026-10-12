@@ -63,10 +63,6 @@ struct TerminalPartialDrawTests {
         return canvas.pixels
     }
 
-    private func differing(_ a: [UInt8], _ b: [UInt8]) -> Int {
-        zip(a, b).reduce(0) { $0 + ($1.0 == $1.1 ? 0 : 1) }
-    }
-
     private let e = "\u{1b}"
 
     /// Runs the update sequence; returns bytes differing from a full redraw
@@ -76,7 +72,7 @@ struct TerminalPartialDrawTests {
         var diffs: [Int] = [], regions: [CGRect?] = []
         func check(_ text: String) throws {
             regions.append(try step(view, text, into: incremental))
-            diffs.append(differing(incremental.pixels, fullPixels(view)))
+            diffs.append(differingBytes(incremental.pixels, fullPixels(view)))
         }
         let rows = view.terminal.rows
         // Initial screen, colors, descenders, box characters.
@@ -102,7 +98,7 @@ struct TerminalPartialDrawTests {
         view.selectAll(nil)
         regions.append(try step(view, "", into: incremental) ?? nil)
         // The selection frame may have no data change: draw fully if asked.
-        diffs.append(differing(incremental.pixels, fullPixels(view)))
+        diffs.append(differingBytes(incremental.pixels, fullPixels(view)))
         try check("\(e)[\(rows);1H\(e)[2Kselected tail")
         // Double-width line attribute forces a full redraw.
         try check("\(e)[3;1H\(e)#6wide")
@@ -140,7 +136,7 @@ struct TerminalPartialDrawTests {
         defer { TerminalView.skipRowForTesting = nil }
         try step(view, "\(e)[10;1H\(e)[2Kspinner A\(e)[11;1H\(e)[2Kspinner B\(e)[12;1H\(e)[2Kstatus", into: incremental)
         TerminalView.skipRowForTesting = nil
-        let bad = differing(incremental.pixels, fullPixels(view))
+        let bad = differingBytes(incremental.pixels, fullPixels(view))
         // The equality assertion must fail here; the known-issue wrapper records it.
         withKnownIssue("a dropped dirty row breaks pixel equality") {
             #expect(bad == 0, "\(bad) bytes differ from the full redraw")
@@ -172,7 +168,7 @@ struct TerminalPartialDrawTests {
         for spinner in ["/", "-", "\\", "|", "/"] {
             let region = try #require(try step(view, block(spinner), into: incremental))
             sizes.append(region.height / cell.height)
-            #expect(differing(incremental.pixels, fullPixels(view)) == 0)
+            #expect(differingBytes(incremental.pixels, fullPixels(view)) == 0)
         }
         // The spinner row plus the margin row below it; not the five rewritten rows.
         #expect(sizes.allSatisfy { $0 == 2 }, "dirty rows per frame \(sizes)")

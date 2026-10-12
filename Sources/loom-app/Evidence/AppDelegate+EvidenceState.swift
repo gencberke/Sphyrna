@@ -60,6 +60,7 @@ extension AppDelegate {
                 "modelNow": model.now.timeIntervalSince1970, "sidebarCollapsed": model.sidebarCollapsed,
                 "sidebarItemCollapsed": splitController?.sidebarIsCollapsed ?? NSNull(),
                 "actionsAvailable": model.actionsAvailable, "quitting": model.quitting,
+                "awaitingOpenApproval": model.awaitingOpenApproval.map(\.uuidString).sorted(),
                 "busy": model.busy.map { ["id": $0.key.uuidString, "state": String(describing: $0.value)] },
                 "startingKeys": model.startingKeys.map { "\($0.provider.rawValue):\($0.projectID?.uuidString ?? "none")" },
                 "preparingNotice": model.preparingNotice ?? NSNull(),
@@ -82,7 +83,10 @@ extension AppDelegate {
                      "conversationID": row.record.session.providerConversationID ?? "",
                      "lastUsed": row.record.lastUsedAt.timeIntervalSince1970,
                      "lastActivity": row.record.lastActivityAt.timeIntervalSince1970,
-                     "issue": row.live?.issue ?? ""] as [String: Any]
+                     "issue": row.live?.issue ?? "",
+                     "openedBy": row.record.openedBy?.uuidString ?? "",
+                     "origin": redactsContent ? "" : (model.origin(of: row)?.cardLabel ?? ""),
+                     "originReplacesBranch": model.origin(of: row)?.replacesBranch ?? false] as [String: Any]
                 },
                 "showsDevTerminal": model.showsDevTerminal,
                 "pageQueries": statistics.pageQueries, "framesApplied": statistics.framesApplied,
@@ -104,6 +108,7 @@ extension AppDelegate {
         state["settings"] = settingsEvidence
         state["tabs"] = tabsEvidence
         state["deletions"] = deletionsEvidence
+        state["openRequests"] = openRequestsEvidence
         state["usage"] = usageEvidence
         if let window {
             state["windowFrame"] = [window.frame.origin.x, window.frame.origin.y, window.frame.width, window.frame.height]

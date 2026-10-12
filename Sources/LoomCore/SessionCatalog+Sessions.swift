@@ -6,12 +6,51 @@ extension SessionCatalog {
                               createdAt: Date = Date(), lastUsedAt: Date = Date(),
                               lifecycle: SessionLifecycle = .active,
                               pinned: Bool = false, projectID: UUID? = nil,
-                              staleSince: Date? = nil, lastActivityAt: Date? = nil) throws {
+                              staleSince: Date? = nil, lastActivityAt: Date? = nil,
+                              ticketKey: String? = nil, openedBy: UUID? = nil) throws {
         try insertSessionRow(
             session, title: title, createdAt: createdAt, lastUsedAt: lastUsedAt,
             lifecycle: lifecycle, pinned: pinned, projectID: projectID, staleSince: staleSince,
-            lastActivityAt: lastActivityAt
+            lastActivityAt: lastActivityAt, ticketKey: ticketKey, openedBy: openedBy
         )
+    }
+
+    /// The session of this project that belongs to the ticket: `ticket_key` matches the key, else
+    /// the title starts with the key followed by the end of the title or a space (D-40). Case is
+    /// folded the way the catalog search folds it, so a Turkish title is compared safely. The oldest
+    /// match wins; a session being deleted never matches.
+    public func session(projectID: UUID, ticket key: String) throws -> CatalogSession? {
+        let folded = Self.fold(key)
+        let byKey = try database.withStatement("""
+            SELECT \(Self.sessionColumns) FROM sessions s
+            WHERE s.project_id = ? AND loom_fold(s.ticket_key) = ? AND \(Self.notDeleting)
+            ORDER BY s.created_at, s.id LIMIT 1
+            """) { statement in
+            try database.bind(projectID.uuidString, at: 1, to: statement)
+            try database.bind(folded, at: 2, to: statement)
+            guard sqlite3_step(statement) == SQLITE_ROW else { return nil as CatalogSession? }
+            return try decodeSession(statement)
+        }
+        if let byKey { return byKey }
+        return try database.withStatement("""
+            SELECT \(Self.sessionColumns) FROM sessions s
+            WHERE s.project_id = ? AND loom_fold(s.title) LIKE ? ESCAPE '\\' AND \(Self.notDeleting)
+            ORDER BY s.created_at, s.id
+            """) { statement in
+            try database.bind(projectID.uuidString, at: 1, to: statement)
+            try database.bind(Self.escapeLike(folded) + "%", at: 2, to: statement)
+            var stepResult = sqlite3_step(statement)
+            while stepResult == SQLITE_ROW {
+                if let candidate = try decodeSessionOrSkip(statement),
+                   let title = candidate.title, Self.fold(title).hasPrefix(folded) {
+                    let rest = Self.fold(title).dropFirst(folded.count)
+                    if rest.isEmpty || rest.first == " " { return candidate }
+                }
+                stepResult = sqlite3_step(statement)
+            }
+            try database.requireDone(stepResult, operation: "read ticket sessions")
+            return nil
+        }
     }
 
     /// Every conversation without a pending deletion. Undecodable rows are

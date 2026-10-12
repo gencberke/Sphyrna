@@ -11,6 +11,7 @@ import LoomCore
 /// - `cleanup-review`, `cleanup-select:<all|none>`, `cleanup-confirm`: Settings → Conversations (CP4-G; the
 ///   same model calls the section's buttons make; no-ops where the review is not installed).
 /// - `pin:<id>`, `unpin:<id>`: the card menu's Pin / Unpin.
+/// - `mark-read:<id>`: the card menu's Mark as Read.
 /// - `usage-select:<24h|7d|30d|90d>`: the period control.
 /// - `usage-refresh[:<label>]`: refreshes now and writes `ack-usage-refresh-<label>.json` when done.
 @MainActor
@@ -33,6 +34,8 @@ extension DevelopmentEvidence {
             await app.model?.cleanupReview?.confirmDeletion()
         case "pin", "unpin":
             if let id = UUID(uuidString: argument) { await app.model?.setPinned(id, name == "pin") }
+        case "mark-read":
+            if let id = UUID(uuidString: argument) { app.model?.markRead(id) }
         case "usage-select":
             let periods = Dictionary(uniqueKeysWithValues: UsagePeriod.allCases.map { ($0.title.replacingOccurrences(of: " ", with: ""), $0) })
             if let period = periods[argument] { app.usage?.select(period); await app.usage?.settle() }

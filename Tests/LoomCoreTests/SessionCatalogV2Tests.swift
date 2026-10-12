@@ -363,10 +363,10 @@ struct SessionCatalogV2Tests {
         #expect(activity.map(\.session.id) == expectedActivity)
         #expect(Set(activity.map(\.session.id)).count == 10_000)
 
-        // Creation order: oldest first, stable and unmoved by use.
+        // Creation order: newest first, ties broken by id descending, unmoved by use.
         let creation = try await drain(catalog, CatalogQuery(order: .creation))
         let expectedCreation = rows.sorted {
-            $0.created != $1.created ? $0.created < $1.created : $0.id.uuidString < $1.id.uuidString
+            $0.created != $1.created ? $0.created > $1.created : $0.id.uuidString > $1.id.uuidString
         }.map(\.id)
         #expect(creation.map(\.session.id) == expectedCreation)
 
@@ -513,6 +513,55 @@ struct SessionCatalogV2Tests {
         #expect(stored.allSatisfy { !$0.collapsed })
         try await reopened.setProjectCollapsed(id: one.project.id, collapsed: true)
         #expect(try await SessionCatalog(url: catalogURL).projects().last?.collapsed == true)
+    }
+
+    @Test func projectAndProjectlessGroupsListTheNewestCreatedFirstAcrossPages() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
+        let folder = root.appendingPathComponent("alpha")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let project = try await catalog.addProject(path: folder.path).project.id
+        // Creation times repeat in pairs so the id tiebreak crosses a page boundary too; a later use
+        // of the oldest row must not move it.
+        var expected: [(created: Double, id: UUID)] = []
+        for index in 0..<7 {
+            let id = UUID()
+            let created = 1_000 + Double(index / 2)
+            expected.append((created, id))
+            try await catalog.insertSession(
+                ManagedSession(id: id, provider: .claude, workingDirectory: "/tmp/work"),
+                createdAt: Date(timeIntervalSince1970: created),
+                lastUsedAt: Date(timeIntervalSince1970: index == 0 ? 9_000 : created), lifecycle: .idle,
+                projectID: project
+            )
+        }
+        let loose = (0..<3).map { _ in UUID() }
+        for (index, id) in loose.enumerated() {
+            try await catalog.insertSession(
+                ManagedSession(id: id, provider: .claude, workingDirectory: "/tmp"),
+                createdAt: Date(timeIntervalSince1970: 2_000 + Double(index)), lifecycle: .idle
+            )
+        }
+        let newestFirst = expected.sorted {
+            $0.created != $1.created ? $0.created > $1.created : $0.id.uuidString > $1.id.uuidString
+        }.map(\.id)
+
+        var seen: [UUID] = []
+        var cursor: CatalogCursor?
+        var pages = 0
+        repeat {
+            let page = try await catalog.sessionPage(
+                CatalogQuery(scope: .project(project), order: .creation, limit: 3), after: cursor
+            )
+            seen += page.sessions.map(\.session.id)
+            cursor = page.next
+            pages += 1
+        } while cursor != nil && pages < 10
+        #expect(pages == 3)
+        #expect(seen == newestFirst)
+        let unassigned = try await drain(catalog, CatalogQuery(scope: .unassigned, order: .creation))
+        #expect(unassigned.map(\.session.id) == loose.reversed())
     }
 
     @Test func newConversationInheritsTheProjectAndExistingTargetsKeepTheirOwn() async throws {

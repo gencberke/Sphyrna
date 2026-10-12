@@ -66,6 +66,8 @@ struct IndicatorView: View {
 /// SwiftUI updates (a TimelineView re-evaluated the whole view graph per tick).
 struct ChaseDots: NSViewRepresentable {
     let animating: Bool
+    /// 1 for the card's indicator; a subagent row draws the same chase smaller (same layers, same rate).
+    var scale: CGFloat = 1
     static let dotCount = LoomTheme.Motion.chaseDotCount
     /// Opacity by distance behind the head.
     static let trail = LoomTheme.Motion.chaseTrail
@@ -76,7 +78,7 @@ struct ChaseDots: NSViewRepresentable {
         return behind < trail.count ? trail[behind] : rest
     }
 
-    func makeNSView(context: Context) -> LayerView { LayerView() }
+    func makeNSView(context: Context) -> LayerView { LayerView(scale: scale) }
 
     func updateNSView(_ view: LayerView, context: Context) { view.setAnimating(animating) }
 
@@ -84,20 +86,28 @@ struct ChaseDots: NSViewRepresentable {
         static let key = "chase"
         private var dots: [CALayer] = []
         private var wantsAnimation = false
+        private let scale: CGFloat
 
         /// Whether the keyframe animation is installed (test seam).
         var isRunning: Bool { dots.first?.animation(forKey: Self.key) != nil }
         /// What the render server currently shows per dot (evidence).
         var presentedOpacities: [Float] { dots.map { $0.presentation()?.opacity ?? $0.opacity } }
 
-        override var intrinsicContentSize: NSSize { NSSize(width: LoomTheme.Layout.chaseSide, height: LoomTheme.Layout.chaseSide) }
+        override var intrinsicContentSize: NSSize {
+            NSSize(width: LoomTheme.Layout.chaseSide * scale, height: LoomTheme.Layout.chaseSide * scale)
+        }
 
-        override init(frame: NSRect) {
+        override convenience init(frame: NSRect) { self.init(frame: frame, scale: 1) }
+
+        convenience init(scale: CGFloat) { self.init(frame: .zero, scale: scale) }
+
+        private init(frame: NSRect, scale: CGFloat) {
+            self.scale = scale
             super.init(frame: frame)
             wantsLayer = true
             layer?.masksToBounds = false
-            let side = LoomTheme.Layout.chaseSide, inset = LoomTheme.Layout.chaseInset
-            let radius = LoomTheme.Layout.chaseDotRadius
+            let side = LoomTheme.Layout.chaseSide * scale, inset = LoomTheme.Layout.chaseInset * scale
+            let radius = LoomTheme.Layout.chaseDotRadius * scale
             let span = side - 2 * inset
             // Clockwise from the top-left corner: corners and edge midpoints (view y points up).
             let unit: [(CGFloat, CGFloat)] = [(0, 0), (0.5, 0), (1, 0), (1, 0.5), (1, 1), (0.5, 1), (0, 1), (0, 0.5)]

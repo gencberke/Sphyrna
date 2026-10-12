@@ -134,6 +134,23 @@ public struct RuntimeLaunch: Sendable {
     public let terminal: TerminalEndpoint
 }
 
+/// A new Claude session an agent asked for and the user approved (D-40): the title is the session's
+/// name and its automatic card title, the message is Claude's first prompt.
+public struct SessionOpening: Equatable, Sendable {
+    public let title: String
+    public let firstMessage: String
+    public let ticketKey: String?
+    /// The session whose agent asked.
+    public let openedBy: UUID
+
+    public init(title: String, firstMessage: String, ticketKey: String?, openedBy: UUID) {
+        self.title = title
+        self.firstMessage = firstMessage
+        self.ticketKey = ticketKey
+        self.openedBy = openedBy
+    }
+}
+
 public enum ProviderRequestDecision: Sendable {
     case accept
     case decline
@@ -213,6 +230,8 @@ public actor SessionRuntime {
     let configuration: SessionRuntimeConfiguration
     let claudeAdapter: ClaudeSessionAdapter
     let codexAdapter: CodexSessionAdapter
+    /// Requests of agents to open a session (D-40); the UI answers them (`SessionRuntime+OpenRequests`).
+    let openRequests: OpenSessionCoordinator
 
     private var toolchains: [ManagedSession.Provider: ProviderToolchain] = [:]
     private var toolchainWarnings: [String] = []
@@ -239,6 +258,7 @@ public actor SessionRuntime {
     ) { deletionFailpoint = failpoint }
 
     var hookServer: ClaudeHookServer?
+    var controlServer: OpenSessionControlServer?
     var hookConfiguration: ClaudeHookLaunchConfiguration?
     var hookTask: Task<Void, Never>?
 
@@ -266,6 +286,19 @@ public actor SessionRuntime {
         )
         claudeAdapter = ClaudeSessionAdapter(supervisor: supervisor)
         codexAdapter = CodexSessionAdapter(supervisor: supervisor)
+        openRequests = OpenSessionCoordinator(
+            catalog: catalog,
+            authorize: { sessionID, runID in
+                // The hook rule: only the live run this Loom started, for the card it was launched on.
+                // The request belongs to the card the run is on now (`/clear` moves a run).
+                guard let context = await supervisor.runContext(runID: runID),
+                      context.launchSessionID == sessionID,
+                      let run = context.session.currentRun, run.id == runID, run.state == .running
+                else { return nil }
+                return context.activeSessionID
+            },
+            isRunning: { await supervisor.session(id: $0)?.currentRun != nil }
+        )
         relay.runtime = self
     }
 
@@ -307,10 +340,14 @@ public actor SessionRuntime {
         provider: ManagedSession.Provider, projectID: UUID?,
         rows: UInt16 = 24, columns: UInt16 = 80,
         outputSink: (any TerminalOutputSink)? = nil,
+        opening: SessionOpening? = nil,
         onTerminalReady: (@MainActor @Sendable (RuntimeLaunch) async -> Void)? = nil
     ) async throws -> RuntimeLaunch {
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
         guard provider == .claude || provider == .codex else {
+            throw SessionRuntimeError.unsupportedProvider(provider)
+        }
+        guard opening == nil || provider == .claude else {
             throw SessionRuntimeError.unsupportedProvider(provider)
         }
         let key = StartKey(provider: provider, projectID: projectID)
@@ -327,11 +364,15 @@ public actor SessionRuntime {
             let hooks = try ensureHooks()
             // Validated before the card exists: an unsupported CLI leaves nothing behind.
             let profile = try claudeProfile(
-                route: .new(sessionID), toolchain: toolchain, sessionID: sessionID, hooks: hooks
+                route: .new(sessionID), toolchain: toolchain, sessionID: sessionID, hooks: hooks,
+                opening: opening.map {
+                    ProviderLaunchProfile.ClaudeOpening(title: $0.title, firstMessage: $0.firstMessage)
+                }
             )
             try await supervisor.createSession(
                 ManagedSession(id: sessionID, provider: .claude, workingDirectory: directory),
-                projectID: projectID
+                projectID: projectID, title: opening?.title, ticketKey: opening?.ticketKey,
+                openedBy: opening?.openedBy
             )
             startingSessions.insert(sessionID)
             defer { startingSessions.remove(sessionID) }
@@ -493,6 +534,10 @@ public actor SessionRuntime {
             await coordinator.cancelNewLaunch(reservation)
         }
         await lifecycle.stopAutomaticEvaluation()
+        // Waiting clients hear that Loom is going; pending requests are lost (memory only).
+        await openRequests.shutdown()
+        controlServer?.stop()
+        controlServer = nil
         hookServer?.stop()
         hookServer = nil
         hookTask?.cancel()

@@ -51,6 +51,9 @@ public final class ConversationController: ConversationIntents {
     private weak var model: CatalogModel?
     private(set) var entries: [UUID: Entry] = [:]
     private var observer: Task<Void, Never>?
+    private var openRequestObserver: Task<Void, Never>?
+    /// Approvals in flight: a second click on "Open Session" must not ask the runtime twice.
+    private var approvingOpen: Set<UUID> = []
 
     public init(runtime: SessionRuntime, model: CatalogModel) {
         self.runtime = runtime
@@ -58,7 +61,10 @@ public final class ConversationController: ConversationIntents {
         model.intents = self
     }
 
-    deinit { observer?.cancel() }
+    deinit {
+        observer?.cancel()
+        openRequestObserver?.cancel()
+    }
 
     /// Follows run ownership and run ends from the event hub. Frames coalesce,
     /// so every frame is answered by asking the runtime for the current truth.
@@ -71,11 +77,21 @@ public final class ConversationController: ConversationIntents {
                 await self?.reconcile()
             }
         }
+        // The agents' requests to open a session (D-40): the model shows the runtime's whole list.
+        let requests = await runtime.openRequestUpdates()
+        openRequestObserver = Task { [weak self] in
+            for await list in requests {
+                guard !Task.isCancelled else { break }
+                self?.model?.setOpenRequests(list)
+            }
+        }
     }
 
     public func stopObserving() {
         observer?.cancel()
         observer = nil
+        openRequestObserver?.cancel()
+        openRequestObserver = nil
     }
 
     public func setTerminalFontSize(_ size: Double) {
@@ -245,6 +261,46 @@ public final class ConversationController: ConversationIntents {
                 // The failed answer stays on the request itself; nothing is assumed answered.
                 report(error, "The answer was not delivered")
             }
+        }
+    }
+
+    /// "Open Session" on an agent's request (D-40). The runtime starts the session through the normal
+    /// start path; the terminal is adopted exactly as a start adopts it. The selection does not move.
+    /// A failed start is shown in the request's box (the runtime keeps it as failed) and never retried.
+    public func approveOpen(requestID: UUID) {
+        guard let model, model.actionsAvailable, approvingOpen.insert(requestID).inserted else { return }
+        let surface = TerminalSurface(fontSize: model.terminalFontSize)
+        let size = surface.gridSize
+        Task {
+            defer { approvingOpen.remove(requestID) }
+            do {
+                guard let launch = try await runtime.approveOpenRequest(
+                    requestID, rows: size.rows, columns: size.columns, outputSink: surface.outputSink
+                ) else {
+                    // The ticket got a session meanwhile: the request is a notice now, nothing started.
+                    surface.runEnded()
+                    return
+                }
+                adopt(launch, surface: surface)
+            } catch {
+                surface.runEnded()
+                // A start that failed is on the request's box; only an answer that could not be given is a banner.
+                if error is OpenSessionError { report(error, "The request could not be answered") }
+            }
+        }
+    }
+
+    public func denyOpen(requestID: UUID) {
+        Task {
+            do { try await runtime.denyOpenRequest(requestID) }
+            catch { report(error, "The request could not be denied") }
+        }
+    }
+
+    public func dismissOpen(requestID: UUID) {
+        Task {
+            do { try await runtime.dismissOpenRequest(requestID) }
+            catch { report(error, "The request could not be dismissed") }
         }
     }
 

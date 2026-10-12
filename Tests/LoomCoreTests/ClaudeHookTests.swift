@@ -277,7 +277,7 @@ struct ClaudeHookTests {
         _ = try await tracker.receive(envelope(sessionID: sessionID, runID: runID, event: "SessionStart"))
         _ = try await tracker.receive(envelope(sessionID: sessionID, runID: runID, event: "UserPromptSubmit"))
         let current = await tracker.status()
-        for kind in ["Stop", "PermissionRequest", "UserPromptSubmit", "SessionStart"] {
+        for kind in ["Stop", "UserPromptSubmit", "SessionStart"] {
             _ = try await tracker.receive(envelope(sessionID: sessionID, runID: runID, event: kind,
                                                   fields: ["agent_id": "child-agent"]))
             #expect(await tracker.status() == current)

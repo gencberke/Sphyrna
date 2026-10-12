@@ -327,6 +327,7 @@ struct ConversationDetail: View {
                 Grid(alignment: .leading, horizontalSpacing: LoomTheme.Space.factColumnSpacing, verticalSpacing: LoomTheme.Space.factRowSpacing) {
                     Fact("Status", indicator.label ?? (record.lifecycle == .active ? "Not running" : "—"))
                     Fact("Project", model.projectName(for: record) ?? "No project")
+                    if let origin = model.origin(of: row) { Fact("Opened by", origin.factValue) }
                     Fact("Working directory", record.session.workingDirectory)
                     Fact("Provider session", record.session.providerConversationID ?? "Not assigned yet")
                     Fact("Created", record.createdAt.formatted(date: .abbreviated, time: .shortened))
@@ -364,8 +365,8 @@ struct ConversationDetail: View {
     }
 }
 
-/// Questions the provider asked that only the user can answer. Nothing is
-/// answered on the user's behalf; a failed answer stays visible on the request.
+/// Questions the provider asked that only the user can answer, and the requests of this session's agent
+/// to open another session. Nothing is answered on the user's behalf; a failed answer stays visible on the request.
 struct RequestList: View {
     let model: CatalogModel
     let row: SessionRowModel
@@ -376,7 +377,8 @@ struct RequestList: View {
 
     var body: some View {
         let requests = row.live?.userRequests ?? []
-        if !requests.isEmpty {
+        let openRequests = model.openRequests(for: row.id)
+        if !requests.isEmpty || !openRequests.isEmpty {
             VStack(spacing: LoomTheme.Space.requestListSpacing) {
                 ForEach(requests) { request in
                     HStack(alignment: .top, spacing: LoomTheme.Space.requestSpacing) {
@@ -406,6 +408,8 @@ struct RequestList: View {
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Provider request: \(request.summary)")
                 }
+                // An agent's request to open a session (D-40) follows the provider's own requests.
+                OpenRequestBoxes(model: model, requests: openRequests)
             }
             .padding(.horizontal, LoomTheme.Space.detailInset).padding(.bottom, LoomTheme.Space.bannerBottom)
         }

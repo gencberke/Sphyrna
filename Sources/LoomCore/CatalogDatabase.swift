@@ -75,6 +75,7 @@ final class CatalogDatabase: @unchecked Sendable {
         if version == 0 { try createSchema() }
         else if version < SessionCatalog.schemaVersion { try migrate(from: version) }
         try ensureActivityColumn()
+        try ensureOriginColumns()
         try validateSchema()
         guard try scalarText("PRAGMA journal_mode = WAL").lowercased() == "wal" else {
             throw SessionCatalogError.sqlite(operation: "enable WAL", code: SQLITE_ERROR,
@@ -239,6 +240,23 @@ final class CatalogDatabase: @unchecked Sendable {
                 CREATE INDEX IF NOT EXISTS sessions_last_activity
                 ON sessions(COALESCE(last_activity_at, last_used_at) DESC, id DESC)
                 """)
+        }
+    }
+
+    /// `sessions.ticket_key` and `sessions.opened_by` (D-40): the ticket an agent named when it
+    /// asked for the session, and the session that asked. Added to schema 3 on open exactly like
+    /// `last_activity_at`: two nullable columns, no `user_version` bump, so a 0.3.0 build (which
+    /// names its own columns in every statement) still opens and writes the catalog; rows it
+    /// writes meanwhile read as NULL here.
+    func ensureOriginColumns() throws {
+        func present(_ name: String) throws -> Bool {
+            try scalarInt64("SELECT count(*) FROM pragma_table_info('sessions') WHERE name = '\(name)'") == 1
+        }
+        guard try !present("ticket_key") || !present("opened_by") else { return }
+        try transaction {
+            // Read again under the write lock: another process may have added them meanwhile.
+            if try !present("ticket_key") { try execute("ALTER TABLE sessions ADD COLUMN ticket_key TEXT") }
+            if try !present("opened_by") { try execute("ALTER TABLE sessions ADD COLUMN opened_by TEXT") }
         }
     }
 

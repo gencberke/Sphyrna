@@ -14,6 +14,28 @@ struct DisplayAndPreferencesTests {
         )
     }
 
+    /// A waiting open-session request (D-40) outranks the provider's own activity but never hides a
+    /// failure: stop not verified, a problem and an unclear identity stay on the card.
+    @Test func aWaitingOpenRequestNeverHidesAFailureOnTheRequester() {
+        let run = UUID()
+        let base = record()
+        let working = ProviderWorkState(activity: .working)
+        func state(stopFailure: String? = nil, issue: String? = nil, identity: SessionIdentityState? = nil) -> SessionViewState {
+            var state = SessionViewState(status: working, runID: run, stopFailure: stopFailure)
+            state.issue = issue
+            if let identity { state.identity = identity }
+            return state
+        }
+        #expect(SessionIndicator(record: base, live: state(stopFailure: "x"), awaitingOpenApproval: true) == .stopUnverified("x"))
+        #expect(SessionIndicator(record: base, live: state(issue: "y"), awaitingOpenApproval: true) == .problem("y"))
+        #expect(SessionIndicator(record: base, live: state(identity: .ambiguous), awaitingOpenApproval: true) == .identityUnclear)
+        // Otherwise the request outranks what the provider is doing.
+        #expect(SessionIndicator(record: base, live: state(), awaitingOpenApproval: true) == .waitingForApproval)
+        #expect(SessionIndicator(record: base, live: state(), awaitingOpenApproval: false) == .working)
+        // A session without a live run is not asked for anything.
+        #expect(SessionIndicator(record: record(lifecycle: .idle), live: nil, awaitingOpenApproval: true) == .idle)
+    }
+
     @Test func indicatorSeparatesRunsFromLifecycleAndNeverInventsAFinish() {
         let run = UUID()
         func live(_ activity: AgentActivity?, pending: Int = 0, unviewed: Bool = false, failure: String? = nil,
@@ -47,6 +69,71 @@ struct DisplayAndPreferencesTests {
         #expect(SessionIndicator(record: base, live: live(nil, unviewed: true, runID: nil)) == .unviewedCompletion)
         // Hub lifecycle overrides the row only when the hub reported one.
         #expect(SessionIndicator(record: base, live: SessionViewState(lifecycle: .stale)) == .stale)
+    }
+
+    @Test func markAsReadReturnsAWaitingOrFinishedCardToReadyUntilARealTransition() async {
+        let hub = SessionEventHub()
+        let id = UUID(), run = UUID()
+        let base = record()
+        func indicator() async -> SessionIndicator {
+            SessionIndicator(record: base, live: await hub.snapshot().sessions[id])
+        }
+        func status(_ activity: AgentActivity) async {
+            await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: activity)))
+        }
+        await hub.publish(sessionID: id, change: .runStarted(run))
+
+        // A wait at the prompt after a turn: Mark as Read gives Ready and also clears the unseen finish.
+        await status(.working)
+        await status(.turnComplete)
+        await status(.waitingForInput)
+        #expect(await indicator() == .waitingForInput)
+        #expect(await indicator().canMarkRead)
+        await hub.markRead(sessionID: id)
+        #expect(await indicator() == .ready)
+        #expect(ProjectAttention.strongest(of: [await indicator()]) == nil)
+        #expect(await hub.snapshot().sessions[id]?.unviewedCompletion == false)
+        // The same wait reported again (a later idle sample, a repeated idle notification) stays acknowledged.
+        await status(.waitingForInput)
+        #expect(await indicator() == .ready)
+        // A real transition ends it: the next turn works, finishes unseen, and the following wait shows again.
+        await status(.working)
+        #expect(await indicator() == .working)
+        await status(.turnComplete)
+        #expect(await indicator() == .unviewedCompletion)
+        await status(.waitingForInput)
+        #expect(await indicator() == .waitingForInput)
+
+        // An approval request is not something to mark read, and it ends a standing acknowledgement.
+        await hub.markRead(sessionID: id)
+        await status(.waitingForApproval)
+        #expect(await indicator() == .waitingForApproval)
+        #expect(!(await indicator()).canMarkRead)
+        await status(.waitingForInput)
+        #expect(await indicator() == .waitingForInput)
+
+        // A finished turn alone: Mark as Read clears it, and so does an ended run's unseen finish.
+        await status(.working)
+        await status(.turnComplete)
+        #expect(await indicator().canMarkRead)
+        await hub.markRead(sessionID: id)
+        #expect(await indicator() == .ready)
+        // Claude idles by itself about a minute after a finished turn: the marked Finished stays Ready,
+        // until the next work ends the acknowledgement.
+        await status(.waitingForInput)
+        #expect(await indicator() == .ready)
+        await status(.working)
+        await status(.turnComplete)
+        #expect(await indicator() == .unviewedCompletion)
+        await status(.waitingForInput)
+        #expect(await indicator() == .waitingForInput)
+        await status(.turnComplete)
+        await hub.markRead(sessionID: id)
+        await hub.publish(sessionID: id, change: .runEnded(run, .idle))
+        await hub.publish(sessionID: id, change: .unviewedCompletion(true))
+        #expect(await indicator() == .unviewedCompletion)
+        await hub.markRead(sessionID: id)
+        #expect(await indicator() == .ended)
     }
 
     @Test func defaultTitleUsesProviderAndProject() {

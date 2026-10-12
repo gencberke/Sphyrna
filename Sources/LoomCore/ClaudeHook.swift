@@ -202,72 +202,17 @@ public final class ClaudeHookServer: @unchecked Sendable {
         self.authenticationToken = authenticationToken
         self.handler = handler
 
-        let parent = URL(fileURLWithPath: socketPath).deletingLastPathComponent()
-        var isDirectory: ObjCBool = false
-        if FileManager.default.fileExists(atPath: parent.path, isDirectory: &isDirectory) {
-            guard isDirectory.boolValue,
-                  let permissions = try FileManager.default.attributesOfItem(
-                    atPath: parent.path
-                  )[.posixPermissions] as? NSNumber,
-                  permissions.intValue & 0o077 == 0 else {
-                throw ClaudeHookTransportError.invalidConfiguration(
-                    "socket directory must exist with owner-only permissions"
-                )
-            }
-        } else {
-            try FileManager.default.createDirectory(
-                at: parent, withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
-        }
-        var existing = stat()
-        guard lstat(socketPath, &existing) != 0, errno == ENOENT else {
-            throw ClaudeHookTransportError.invalidConfiguration("socket path already exists")
-        }
-
-        let descriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
-        guard descriptor >= 0 else {
-            throw ClaudeHookTransportError.system(operation: "socket", code: errno)
-        }
-        do {
-            guard fcntl(descriptor, F_SETFL, O_NONBLOCK) == 0,
-                  fcntl(descriptor, F_SETFD, FD_CLOEXEC) == 0 else {
-                throw ClaudeHookTransportError.system(operation: "fcntl", code: errno)
-            }
-            var address = try unixAddress(path: socketPath)
-            let bound = withUnsafePointer(to: &address) { pointer in
-                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                    Darwin.bind(
-                        descriptor, $0,
-                        socklen_t(MemoryLayout<sockaddr_un>.size)
-                    )
-                }
-            }
-            guard bound == 0 else {
-                throw ClaudeHookTransportError.system(operation: "bind", code: errno)
-            }
-            guard chmod(socketPath, 0o600) == 0 else {
-                throw ClaudeHookTransportError.system(operation: "chmod", code: errno)
-            }
-            guard Darwin.listen(descriptor, 16) == 0 else {
-                throw ClaudeHookTransportError.system(operation: "listen", code: errno)
-            }
-
-            let source = DispatchSource.makeReadSource(
-                fileDescriptor: descriptor, queue: receiveQueue
-            )
-            source.setEventHandler { [weak self] in self?.acceptAvailable(descriptor: descriptor) }
-            source.setCancelHandler {
-                Darwin.close(descriptor)
-                unlink(socketPath)
-            }
-            self.source = source
-            source.resume()
-        } catch {
+        let descriptor = try LocalSocket.listen(at: socketPath)
+        let source = DispatchSource.makeReadSource(
+            fileDescriptor: descriptor, queue: receiveQueue
+        )
+        source.setEventHandler { [weak self] in self?.acceptAvailable(descriptor: descriptor) }
+        source.setCancelHandler {
             Darwin.close(descriptor)
             unlink(socketPath)
-            throw error
         }
+        self.source = source
+        source.resume()
     }
 
     deinit { stop() }
@@ -356,6 +301,10 @@ public struct ClaudeHookEvent: Equatable, Sendable {
         case stop(backgroundTaskCount: Int, scheduledTaskCount: Int)
         case stopFailure(error: String?, details: String?)
         case sessionEnd(reason: String?)
+        /// A subagent of the run's own conversation started or stopped (`agent_id` names it,
+        /// `agent_type` is empty for Claude's internal agents, which Loom ignores).
+        case subagentStart(agentType: String)
+        case subagentStop(agentType: String)
         case unknown(name: String)
     }
 
@@ -363,9 +312,34 @@ public struct ClaudeHookEvent: Equatable, Sendable {
     public let promptID: String?
     public let agentID: String?
     public let transcriptPath: String?
+    /// `SubagentStop` only: where Claude keeps that subagent's transcript.
+    public let agentTranscriptPath: String?
     public let workingDirectory: String?
     public let lastAssistantMessage: String?
+    /// `Stop` only: the background subagents Claude reports as running at the end of the turn.
+    public let backgroundSubagents: [BackgroundSubagentTask]
+    /// `UserPromptSubmit` only: the harness injects hand-backs of background subagents
+    /// (`<agent-message`) and task notifications (`<task-notification`) as prompts. They are
+    /// not something the user typed and do not start a new turn from the user's point of view.
+    public let promptIsSynthetic: Bool
     public let kind: Kind
+
+    public var isSubagentLifecycle: Bool {
+        switch kind {
+        case .subagentStart, .subagentStop: true
+        default: false
+        }
+    }
+
+    /// A subagent of the conversation waits on its own permission prompt, which Claude shows in the
+    /// session's terminal (FB2-6).
+    public var isSubagentPermissionPrompt: Bool {
+        guard agentID != nil else { return false }
+        switch kind {
+        case .permissionRequest, .notification("permission_prompt"): return true
+        default: return false
+        }
+    }
 
     public var name: String {
         switch kind {
@@ -376,6 +350,8 @@ public struct ClaudeHookEvent: Equatable, Sendable {
         case .stop: "Stop"
         case .stopFailure: "StopFailure"
         case .sessionEnd: "SessionEnd"
+        case .subagentStart: "SubagentStart"
+        case .subagentStop: "SubagentStop"
         case let .unknown(name): name
         }
     }
@@ -393,8 +369,12 @@ public struct ClaudeHookEvent: Equatable, Sendable {
         promptID = object["prompt_id"] as? String
         agentID = (object["agent_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         transcriptPath = object["transcript_path"] as? String
+        agentTranscriptPath = object["agent_transcript_path"] as? String
         workingDirectory = object["cwd"] as? String
         lastAssistantMessage = object["last_assistant_message"] as? String
+        backgroundSubagents = eventName == "Stop" ? BackgroundSubagentTask.parse(object["background_tasks"]) : []
+        promptIsSynthetic = eventName == "UserPromptSubmit"
+            && (object["prompt"] as? String).map(Self.isSyntheticPrompt) == true
         switch eventName {
         case "SessionStart":
             kind = .sessionStart(source: object["source"] as? String)
@@ -416,9 +396,18 @@ public struct ClaudeHookEvent: Equatable, Sendable {
             )
         case "SessionEnd":
             kind = .sessionEnd(reason: object["reason"] as? String)
+        case "SubagentStart":
+            kind = .subagentStart(agentType: (object["agent_type"] as? String) ?? "")
+        case "SubagentStop":
+            kind = .subagentStop(agentType: (object["agent_type"] as? String) ?? "")
         default:
             kind = .unknown(name: eventName)
         }
+    }
+
+    private static func isSyntheticPrompt(_ prompt: String) -> Bool {
+        let head = prompt.drop { $0.isWhitespace }
+        return head.hasPrefix("<agent-message") || head.hasPrefix("<task-notification")
     }
 
     private static func collectionCount(_ value: Any?) -> Int {
@@ -491,6 +480,17 @@ public actor ClaudeHookStateTracker {
     /// An event for a conversation not yet announced was dropped before the first SessionStart
     /// (a prompt typed at once): that start cannot claim the provider is idle at its prompt.
     private var droppedEarlyEvent = false
+    /// The subagents of this run's conversation (`SubagentLedger` holds the rules).
+    private var subagents = SubagentLedger()
+    /// While a subagent's permission prompt is shown: the conversation's state before it, which the
+    /// registry's first later sample that no longer says "waiting" returns to.
+    private var subagentApprovalReturn: SubagentApprovalReturn?
+    private struct SubagentApprovalReturn {
+        let activity: AgentActivity
+        let generation: UUID?
+        let watermark: Double?
+        let awaitsApproval: Bool
+    }
 
     func registryGeneration() -> UUID? { inputGeneration }
 
@@ -527,6 +527,18 @@ public actor ClaudeHookStateTracker {
         if timestamp == floor(newest) { return nil }
         registryTimestamp = timestamp
         guard timestamp > newest else { return nil }
+        if let previous = subagentApprovalReturn, status == "idle" || status == "busy" {
+            // The subagent's prompt was answered. A conversation that was at rest still is (Claude reports
+            // "busy" while a background subagent runs); one that was working follows the sample.
+            subagentApprovalReturn = nil
+            inputGeneration = previous.generation; inputWatermark = previous.watermark
+            inputAwaitsApproval = previous.awaitsApproval
+            switch previous.activity {
+            case .atPrompt, .turnComplete, .waitingForInput: currentStatus.activity = previous.activity
+            default: currentStatus.activity = status == "idle" ? .waitingForInput : .working
+            }
+            return nil
+        }
         switch status {
         case "idle": currentStatus.activity = .waitingForInput
         case "busy": currentStatus.activity = .working
@@ -552,9 +564,16 @@ public actor ClaudeHookStateTracker {
         registryStartedAt = nil; registryTimestamp = nil
         hookEmissionWatermark = nil; inputClockAmbiguous = false
         droppedEarlyEvent = false
+        subagents = SubagentLedger()
+        subagentApprovalReturn = nil
     }
 
     public func status() -> ClaudeSessionStatus { currentStatus }
+
+    public func subagentRecords() -> [SubagentRecord] { subagents.records }
+
+    /// Details read later from the subagent's `meta.json`; true when the list changed.
+    func applySubagentMeta(id: String, _ meta: SubagentMeta) -> Bool { subagents.apply(meta, to: id) }
 
     /// Classification runs before durable adoption. Native identity, never
     /// helper timestamps, fences late events from a previous conversation.
@@ -562,6 +581,13 @@ public actor ClaudeHookStateTracker {
         guard envelope.sessionID == sessionID else { return .wrongSession }
         guard envelope.managedRunID == managedRunID else { return .staleRun }
         let event = try ClaudeHookEvent(payload: envelope.payload)
+        // The two subagent lifecycle events and a subagent's permission prompt of the run's own
+        // conversation are the only payloads with an agent_id that are used: the first two feed the
+        // subagent list, the prompt only shows Needs approval until the registry says it was answered.
+        if event.isSubagentLifecycle || event.isSubagentPermissionPrompt {
+            guard activeProviderSessionID == event.providerSessionID else { return .wrongConversation }
+            return .applied(event)
+        }
         // Child hook payloads share launch credentials; agent_id identifies a
         // different execution context and has no parent-conversation authority.
         guard event.agentID == nil else { return .childAgent }
@@ -582,6 +608,23 @@ public actor ClaudeHookStateTracker {
     ) throws -> ClaudeHookDisposition {
         let disposition = try disposition(for: envelope)
         guard case let .applied(event) = disposition else { return disposition }
+        if event.isSubagentLifecycle {
+            subagents.apply(event, at: min(receivedAt, envelope.sentAt))
+            return disposition
+        }
+        if event.isSubagentPermissionPrompt {
+            if subagentApprovalReturn == nil, currentStatus.activity != .waitingForApproval {
+                subagentApprovalReturn = SubagentApprovalReturn(
+                    activity: currentStatus.activity, generation: inputGeneration,
+                    watermark: inputWatermark, awaitsApproval: inputAwaitsApproval)
+            }
+            inputGeneration = UUID(); inputWatermark = envelope.sentAt.timeIntervalSince1970 * 1_000
+            inputAwaitsApproval = true; registryTimestamp = nil
+            noteEmission(envelope.sentAt)
+            currentStatus.lastEventAt = receivedAt
+            currentStatus.activity = .waitingForApproval
+            return disposition
+        }
         if case let .notification(type) = event.kind, Self.notificationActivity(type) == nil {
             // Informational notifications (auth_success, types newer than this build) say
             // nothing about the turn: the state and the pending registry check stay.
@@ -603,11 +646,13 @@ public actor ClaudeHookStateTracker {
                 return disposition
             }
             currentStatus = ClaudeSessionStatus()
+            subagents = SubagentLedger()
         }
         inputGeneration = nil
         inputWatermark = nil
         inputAwaitsApproval = false
         registryTimestamp = nil
+        subagentApprovalReturn = nil
         if case .sessionStart = event.kind { registryStartedAt = nil }
         switch event.kind {
         case .permissionRequest:
@@ -636,6 +681,9 @@ public actor ClaudeHookStateTracker {
         case .userPromptSubmit:
             currentStatus.activity = .working
             currentStatus.lastUsedAt = receivedAt
+            // The next turn of the user ends the finished subagents of the last one; a hand-back
+            // of a background subagent is not that turn.
+            if !event.promptIsSynthetic { subagents.clearFinished() }
         case .permissionRequest:
             currentStatus.activity = .waitingForApproval
         case let .notification(type):
@@ -645,6 +693,7 @@ public actor ClaudeHookStateTracker {
             currentStatus.lastAssistantMessage = event.lastAssistantMessage
             currentStatus.backgroundTaskCount = backgroundTaskCount
             currentStatus.scheduledTaskCount = scheduledTaskCount
+            subagents.turnEnded(listing: event.backgroundSubagents, at: min(receivedAt, envelope.sentAt))
         case let .stopFailure(error, _):
             currentStatus.activity = .failed(error)
             currentStatus.lastAssistantMessage = event.lastAssistantMessage
@@ -652,6 +701,8 @@ public actor ClaudeHookStateTracker {
             currentStatus.activity = .sessionEnded(reason)
         case .unknown:
             currentStatus.activity = .unknown
+        case .subagentStart, .subagentStop:
+            break // handled before the status; not reachable here
         }
         return .applied(event)
     }
@@ -675,7 +726,7 @@ public actor ClaudeHookStateTracker {
     }
 }
 
-private func unixAddress(path: String) throws -> sockaddr_un {
+func unixAddress(path: String) throws -> sockaddr_un {
     var address = sockaddr_un()
     let bytes = Array(path.utf8)
     guard !bytes.contains(0), bytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
@@ -690,7 +741,7 @@ private func unixAddress(path: String) throws -> sockaddr_un {
     return address
 }
 
-private func secureEqual(_ lhs: String, _ rhs: String) -> Bool {
+func secureEqual(_ lhs: String, _ rhs: String) -> Bool {
     let left = Array(lhs.utf8)
     let right = Array(rhs.utf8)
     guard left.count == right.count else { return false }

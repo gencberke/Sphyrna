@@ -5,6 +5,19 @@ import LoomCore
 @main
 struct LoomHook {
     static func main() {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        // Claude runs the helper with no arguments for a hook event. Any argument makes it the
+        // command agents use (`"$LOOM_CLI" open ...`); the hook path below is unchanged.
+        if !arguments.isEmpty {
+            exit(OpenSessionCommand.run(
+                arguments: arguments, environment: ProcessInfo.processInfo.environment,
+                readStandardInput: { try readStandardInput(limit: 64 * 1024 + 1) },
+                output: .init(
+                    standardOutput: { FileHandle.standardOutput.write(Data(($0 + "\n").utf8)) },
+                    standardError: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
+                )
+            ))
+        }
         let environment = ProcessInfo.processInfo.environment
         guard let socketPath = environment["LOOM_HOOK_SOCKET"],
               let authenticationToken = environment["LOOM_HOOK_TOKEN"],
@@ -39,5 +52,17 @@ struct LoomHook {
             ), !chunk.isEmpty else { return result }
             result.append(chunk)
         }
+    }
+
+    /// At most `limit` bytes: a message past the cap is refused without reading the rest.
+    private static func readStandardInput(limit: Int) throws -> Data {
+        var result = Data()
+        while result.count < limit {
+            guard let chunk = try FileHandle.standardInput.read(
+                upToCount: min(16 * 1024, limit - result.count)
+            ), !chunk.isEmpty else { break }
+            result.append(chunk)
+        }
+        return result
     }
 }

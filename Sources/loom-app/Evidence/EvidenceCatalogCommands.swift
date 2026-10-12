@@ -72,7 +72,7 @@ extension DevelopmentEvidence {
             try? await Task.sleep(for: .milliseconds(300))
             app.saveScreenshot(to: directory.appendingPathComponent("screenshot-\(label).png"))
         default:
-            if handleDeletionCommand(name, argument) { break }
+            if handleDeletionCommand(name, argument) || handleOpenRequestCommand(name, argument) { break }
             let handled = await handleSettingsCommand(name, argument) || handleTabCommand(name, argument)
             guard handled else {
                 _ = await handleKeyCommand(name, argument)

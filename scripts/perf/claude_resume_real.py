@@ -29,8 +29,9 @@ evidence, data = base / 'evidence', base / 'data'
 evidence.mkdir(parents=True); data.mkdir()
 workspace = PROBE / 'workspace' / f'resume-{time.strftime("%Y%m%dT%H%M%S")}'
 workspace.mkdir(parents=True)
+perf_paths.trust_probe_workspace(PROBE / 'claude-config', workspace)
 SECRET = 'LOOMWORD' + uuid.uuid4().hex[:6].upper()
-TOKENS = ['Try', 'trust', 'LOOM_RESUME_ONE', 'LOOM_RESUME_TWO', SECRET, 'this session only']
+TOKENS = ['Try', 'shortcuts', 'trust this folder', 'external imports', 'LOOM_RESUME_ONE', 'LOOM_RESUME_TWO', SECRET, 'this session only']
 report = {'checks': {}, 'modelTurns': 0, 'details': {}}
 def check(name, ok, detail=None):
     report['checks'][name] = bool(ok)
@@ -85,14 +86,15 @@ def watch(owner, label, until_token, timeout):
         time.sleep(.3)
     return seen, replied
 def tui_ready(owner, label):
-    """Claude's prompt is up; a folder-trust question for the fresh probe folder is answered with its default."""
+    """Claude's prompt is up. The probe folder is trusted in advance: a folder-trust question here would quit Claude
+    on Return, so it stops the run; the external-imports question is answered with its default "No"."""
     end = time.monotonic() + 90
     while time.monotonic() < end:
         s = snap(label)
-        if token(owner, 'Try')(s): return s
-        if token(owner, 'trust')(s):
-            report['details'].setdefault('trustPromptsAnswered', 0)
-            report['details']['trustPromptsAnswered'] += 1
+        if token(owner, 'Try')(s) or token(owner, 'shortcuts')(s): return s
+        if token(owner, 'trust this folder')(s):
+            raise RuntimeError('folder-trust question shown (its default quits Claude): ' + label)
+        if token(owner, 'external imports')(s):
             measure.send(f'type:{owner}:', evidence); time.sleep(2)
         time.sleep(.5)
     raise RuntimeError('timeout:' + label)

@@ -4,7 +4,7 @@ Everything the scripts create (run directories, copied fixtures) and the app
 under test must live outside ~/Documents: run hosts are separate
 TCC-responsible apps and block on a Documents consent prompt there.
 """
-import datetime, hashlib, importlib.util, os, pathlib, sys
+import datetime, hashlib, importlib.util, json, os, pathlib, sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 HOME = pathlib.Path.home()
@@ -33,6 +33,20 @@ def refuse_documents(label, path):
             f"{label} '{path}' is under ~/Documents. Run hosts are separate TCC-responsible apps and block on a "
             f"Documents consent prompt there. Use a path under ~/Library (default: {DEFAULT_APP.parent}).")
     return resolved
+
+
+def trust_probe_workspace(claude_config, workspace):
+    """Claude's folder-trust question defaults to "No, exit" (2.1.293), so Return would quit Claude: trust the fresh
+    probe folder in the isolated profile instead of answering it. The external CLAUDE.md imports question that may follow
+    is answered "No" in advance, which keeps the user's own imported rules out of the probe."""
+    profile_json = pathlib.Path(claude_config).expanduser().resolve() / '.claude.json'
+    if profile_json in (HOME / '.claude.json', HOME / '.claude' / '.claude.json'):
+        raise SystemExit(f'{profile_json} is the user\'s real Claude profile; use the isolated probe profile.')
+    profile = json.loads(profile_json.read_text()) if profile_json.exists() else {}
+    entry = profile.setdefault('projects', {}).setdefault(str(pathlib.Path(workspace).resolve()), {})
+    entry.update(hasTrustDialogAccepted=True, hasClaudeMdExternalIncludesApproved=False,
+                 hasClaudeMdExternalIncludesWarningShown=True)
+    tmp = profile_json.with_suffix('.json.perftmp'); tmp.write_text(json.dumps(profile, indent=2)); tmp.replace(profile_json)
 
 
 def load_module(name, path):

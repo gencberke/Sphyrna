@@ -32,7 +32,7 @@ extension SessionCatalog {
         let comparison: String
         switch query.order {
         case .recentActivity: column = Self.activityExpression; direction = "DESC"; comparison = "<"
-        case .creation: column = "s.created_at"; direction = "ASC"; comparison = ">"
+        case .creation: column = "s.created_at"; direction = "DESC"; comparison = "<"
         }
         if let cursor {
             conditions.append("(\(column) \(comparison) ? OR (\(column) = ? AND s.id \(comparison) ?))")
@@ -121,7 +121,7 @@ extension SessionCatalog {
         text.folding(options: [.caseInsensitive], locale: nil)
     }
 
-    private static func escapeLike(_ term: String) -> String {
+    static func escapeLike(_ term: String) -> String {
         term.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "%", with: "\\%")
             .replacingOccurrences(of: "_", with: "\\_")

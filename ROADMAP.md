@@ -4,7 +4,7 @@ Path from today to Loom's first production release. Checkpoint numbers are ident
 
 ## Release target
 
-**First production release:** a signed macOS 27 app (signing and notarization form: O-06) for one power user that hosts real Claude Code terminals in the accepted design and identity, with verified process ownership, state, resume, Stop and Quit, permanent deletion of a conversation and the CP4 retention rules ([D-26](DECISIONS.md)), inside the agreed resource budgets. Codex is frozen and not included ([D-14, D-28](DECISIONS.md)); CP3 coordination is not included ([D-27](DECISIONS.md)). Other providers, child-task view, Dock/menu-bar notifications and the ideas in contract §13 are out unless the user adds them.
+**First production release:** a signed macOS 27 app (signing and notarization form: O-06) for one power user that hosts real Claude Code terminals in the accepted design and identity, with verified process ownership, state, resume, Stop and Quit, permanent deletion of a conversation and the CP4 retention rules ([D-26](DECISIONS.md)), inside the agreed resource budgets. Codex is frozen and not included ([D-14, D-28](DECISIONS.md)); CP3 coordination is not included ([D-27](DECISIONS.md)). Other providers, Dock/menu-bar notifications and the ideas in contract §13 are out unless the user adds them; the user added a subagent view under each session ([D-39](DECISIONS.md)) and a narrow, approval-gated "session opens session" ([D-40](DECISIONS.md)).
 
 ## Stages
 
@@ -18,7 +18,7 @@ Path from today to Loom's first production release. Checkpoint numbers are ident
 | I Identity and UI system (multi-agent run 1) | Codify identity direction A ([D-22](DECISIONS.md)) as tokens and rules; settle the navbar | [STAGE-I](plans/STAGE-I.md) acceptance | I1–I3 done in [run 1](plans/RUN-1.md), I4 parked; user acceptance on the [0.2.0 candidate](plans/RC-0.2.0.md); navbar keeps the transparent header until O-03 |
 | U Daily-use UI features (multi-agent run 1) | Sidebar footer bar, a real Settings page with a lightweight usage and cost view, conversation tabs ([D-32, D-33](DECISIONS.md)) | [STAGE-U](plans/STAGE-U.md) acceptance | done in [run 1](plans/RUN-1.md); user acceptance on the [0.2.0 candidate](plans/RC-0.2.0.md) |
 | CP4 Deletion and retention (multi-agent run 1) | Contract §5 and §8: permanent deletion first, then stale, retention and cleanup; recovery from half-done deletes | Contract §11 row 4; [CHECKPOINT-4](plans/CHECKPOINT-4.md) | built and verified in [run 1](plans/RUN-1.md) (real-Claude deletion check passed); off in the production app until DP-CP4-1; in first-release scope ([D-26](DECISIONS.md)) |
-| CP3 Authorized coordination | Contract §7: delegated hand-off between sessions under user authority | Contract §11 row 3 | out of the multi-agent run and the first release ([D-27](DECISIONS.md)); maybe a later test-environment trial |
+| CP3 Authorized coordination | Contract §7: delegated hand-off between sessions under user authority | Contract §11 row 3 | out of the multi-agent run and the first release ([D-27](DECISIONS.md)), except the narrow slice of [D-40](DECISIONS.md) (a session asks Loom to open a new session; the user approves in Loom; built in [feedback round 2](plans/FEEDBACK-2.md)); message delivery into existing sessions stays here |
 | R Release readiness (**proposed**) | Ship the first production release | See below | waits for O-06 |
 
 ### L: Clean loom line

@@ -69,6 +69,9 @@ enum LoomTheme {
         static let controlSelected = selected
         static let controlHover = Color.white.opacity(controlHoverOpacity)
         static let controlPressed = Color.white.opacity(controlPressedOpacity)
+        /// The footer usage chip's meter track: white at 10 %.
+        static let chipMeterTrackOpacity = 0.10
+        static let chipMeterTrack = Color.white.opacity(chipMeterTrackOpacity)
         static let focusRing = Accent.base
 
         /// Hairlines and the selected stroke are white at 10 %; Increase Contrast raises them to 30 %.
@@ -190,6 +193,10 @@ enum LoomTheme {
         static let chevron = Font.system(size: 9, weight: .semibold)
         /// The pin glyph in a pinned conversation's card (second row).
         static let pinGlyph = Font.system(size: 10)
+        /// A subagent row under a card (D-39): the agent type, and the elapsed time or duration.
+        static let subagentType = Font.system(size: 11, weight: .medium)
+        static let subagentTime = Font.system(size: 10.5).monospacedDigit()
+        static let subagentGlyph = Font.system(size: 10)
 
         static func cardTitle(selected: Bool) -> Font { .system(size: 13, weight: selected ? .semibold : .medium) }
     }
@@ -207,6 +214,9 @@ enum LoomTheme {
         static let footerInset: CGFloat = 10
         static let footerSpacing: CGFloat = 8
         static let chipInset: CGFloat = 8
+        /// The usage chip: the least space between tokens and limit, and between limit name, meter and percent.
+        static let chipSplitGap: CGFloat = 6
+        static let chipLimitGap: CGFloat = 5
         // List.
         static let listInset: CGFloat = 6
         static let listBottom: CGFloat = 8
@@ -229,6 +239,18 @@ enum LoomTheme {
         static let cardLineSpacing: CGFloat = 3
         static let cardRowSpacing: CGFloat = 6
         static let cardIndicatorTop: CGFloat = 1
+        // Subagents under a card (D-39): a hairline guide under the card's indicator column.
+        /// The guide's distance from the list edge (the center of the card's indicator slot).
+        static let subagentGuideInset: CGFloat = 15
+        /// Space between the guide and the rows, and a row's own leading and trailing padding.
+        static let subagentGuidePad: CGFloat = 9
+        static let subagentRowLeading: CGFloat = 4
+        static let subagentRowTrailing: CGFloat = 10
+        static let subagentColumnGap: CGFloat = 6
+        static let subagentTextGap: CGFloat = 5
+        /// One step of nesting for a subagent a subagent started.
+        static let subagentIndent: CGFloat = 10
+        static let subagentTreeBottom: CGFloat = 2
         // Detail panel.
         static let panelInset: CGFloat = 8
         static let detailInset: CGFloat = 14
@@ -308,6 +330,9 @@ enum LoomTheme {
         static let providerIconDefault: CGFloat = 15
         static let providerIconDetail: CGFloat = 34
         static let messageMaxWidth: CGFloat = 420
+        /// The request box for an agent's "open a session": its label column, and the scroll area of the full message.
+        static let requestLabelWidth: CGFloat = 52
+        static let requestMessageMaxHeight: CGFloat = 160
         static let detailMaxWidth: CGFloat = 640
         static let sheetWidth: CGFloat = 420
         /// The Settings window keeps one size for every section.
@@ -332,6 +357,8 @@ enum LoomTheme {
         /// Widest per-row result text in Settings → Conversations.
         static let cleanupResultMaxWidth: CGFloat = 260
         static let footerChipHeight: CGFloat = 24
+        /// The usage chip's remaining-share meter (radius `Radius.barSlim`).
+        static let chipMeter = CGSize(width: 34, height: 4)
         // Indicators.
         static let indicatorSlot = CGSize(width: 12, height: 16)
         static let chaseSide: CGFloat = 12
@@ -339,6 +366,9 @@ enum LoomTheme {
         static let chaseDotRadius: CGFloat = 1.45
         static let pip: CGFloat = 8
         static let projectDot: CGFloat = 8
+        /// A subagent row: its height, and the scale of the working chase in its 12 pt slot.
+        static let subagentRowHeight: CGFloat = 22
+        static let subagentChaseScale: CGFloat = 0.75
     }
 
     // MARK: Tab strip

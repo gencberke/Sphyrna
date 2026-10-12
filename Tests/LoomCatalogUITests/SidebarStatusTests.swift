@@ -33,10 +33,10 @@ struct SidebarStatusTests {
     }
 
     @Test func projectNameIsHiddenOnlyInTheProjectView() {
-        #expect(SessionCardView.projectLabel(showsProject: true, name: "rocket") == "rocket")
-        #expect(SessionCardView.projectLabel(showsProject: false, name: "rocket") == nil)
+        #expect(SessionCardView.projectLabel(mode: .activity, name: "rocket") == "rocket")
+        #expect(SessionCardView.projectLabel(mode: .projects, name: "rocket") == nil)
         // The user's own project/folder name must not come back in the project view.
-        #expect(SessionCardView.projectLabel(showsProject: false, name: "light-work-doc-viewer") == nil)
+        #expect(SessionCardView.projectLabel(mode: .projects, name: "light-work-doc-viewer") == nil)
         let untitled = CatalogSession(
             session: ManagedSession(provider: .codex, workingDirectory: "/tmp"), title: nil,
             createdAt: Date(timeIntervalSince1970: 0), lastUsedAt: Date(timeIntervalSince1970: 0),

@@ -33,6 +33,11 @@ public protocol ConversationIntents: AnyObject {
     func stop(sessionID: UUID)
     func answer(sessionID: UUID, requestID: String, accept: Bool)
     func viewed(sessionID: UUID)
+    /// The answers to an agent's request to open a session (D-40). Defaults do nothing, so an intents
+    /// object without a runtime stays valid.
+    func approveOpen(requestID: UUID)
+    func denyOpen(requestID: UUID)
+    func dismissOpen(requestID: UUID)
     /// The live terminal of a conversation that currently owns a run.
     func terminalView(sessionID: UUID) -> NSView?
     // Permanent deletion (CP4-D). Defaults refuse, so an intents object without a runtime stays valid.
@@ -84,17 +89,25 @@ public final class SessionRowModel: Identifiable {
     public nonisolated let id: UUID
     public private(set) var record: CatalogSession
     public private(set) var live: SessionViewState?
+    /// This session's agent asked to open a session and the user has not answered (D-40).
+    public private(set) var awaitingOpenApproval: Bool
 
-    init(record: CatalogSession, live: SessionViewState?) {
+    init(record: CatalogSession, live: SessionViewState?, awaitingOpenApproval: Bool = false) {
         id = record.session.id
         self.record = record
         self.live = live
+        self.awaitingOpenApproval = awaitingOpenApproval
     }
 
     func apply(record: CatalogSession) { if record != self.record { self.record = record } }
     func apply(live: SessionViewState?) { if live != self.live { self.live = live } }
+    func apply(awaitingOpenApproval: Bool) {
+        if awaitingOpenApproval != self.awaitingOpenApproval { self.awaitingOpenApproval = awaitingOpenApproval }
+    }
 
-    public var indicator: SessionIndicator { SessionIndicator(record: record, live: live) }
+    public var indicator: SessionIndicator {
+        SessionIndicator(record: record, live: live, awaitingOpenApproval: awaitingOpenApproval)
+    }
 }
 
 @MainActor @Observable
@@ -162,6 +175,15 @@ public final class CatalogModel {
     public var effectiveSidebarMaterial: String { effectiveReduceTransparency ? "opaque" : "glass" }
     public private(set) var terminalFontSize: Double
     public private(set) var branches: [String: GitBranch] = [:]
+    /// The requests of agents to open a session, and the notices that a ticket already has one (D-40).
+    /// The runtime owns them; the controller mirrors its list here.
+    public private(set) var openRequests: [OpenSessionRequest] = []
+    /// Sessions whose agent waits for the user's answer (their indicator reads "Needs approval").
+    public private(set) var awaitingOpenApproval: Set<UUID> = []
+    /// The sessions that opened others, read once per id (the requester of a card's origin line);
+    /// a loaded row is always preferred, so a rename shows at once. `missingOrigins`: no longer in the catalog.
+    public private(set) var origins: [UUID: CatalogSession] = [:]
+    public private(set) var missingOrigins: Set<UUID> = []
     /// Opens the one Settings window; nil keeps the section it shows (the gear), a section jumps to it (the usage chip).
     @ObservationIgnored public var onShowSettings: ((SettingsSection?) -> Void)?
     /// Set once by the app before the first view exists; the sidebar footer and Settings read it.
@@ -358,7 +380,8 @@ public final class CatalogModel {
         for (sessionID, state) in liveStates {
             guard let record = rowModels[sessionID]?.record ?? liveRecords[sessionID],
                   record.projectID == id else { continue }
-            indicators.append(SessionIndicator(record: record, live: state))
+            indicators.append(SessionIndicator(record: record, live: state,
+                                               awaitingOpenApproval: awaitingOpenApproval.contains(sessionID)))
         }
         return ProjectAttention.strongest(of: indicators)
     }
@@ -426,6 +449,7 @@ public final class CatalogModel {
                 cursor = page.next
             } while cursor != nil && records.count < wanted
             await ensureBranches(for: records)
+            await ensureOrigins(for: records)
             guard generation == list.generation else { return }
             advanceNow(covering: records)
             list.replace(rows: records.map(row(for:)), cursor: cursor)
@@ -445,6 +469,7 @@ public final class CatalogModel {
                 statistics.pageQueries += 1
                 let page = try await catalog.sessionPage(query(for: key), after: cursor)
                 await ensureBranches(for: page.sessions)
+                await ensureOrigins(for: page.sessions)
                 guard generation == list.generation else { return }
                 list.append(page.sessions.map(row(for:)), cursor: page.next)
             } catch {
@@ -459,7 +484,8 @@ public final class CatalogModel {
             existing.apply(record: record)
             return existing
         }
-        let created = SessionRowModel(record: record, live: liveStates[id])
+        let created = SessionRowModel(record: record, live: liveStates[id],
+                                      awaitingOpenApproval: awaitingOpenApproval.contains(id))
         rowModels[id] = created
         if tabs.isPinned(id) || id == selectedSessionID { tabRowsRevision &+= 1 }
         return created
@@ -474,6 +500,7 @@ public final class CatalogModel {
             liveRecords[id] = row.record
         }
         rowModels = rowModels.filter { keep.contains($0.key) }
+        pruneOrigins()
         pruneBranches()
         statistics.rowModels = rowModels.count
         statistics.loadedRows = lists.values.reduce(0) { $0 + $1.rows.count }
@@ -508,10 +535,64 @@ public final class CatalogModel {
 
     /// Keeps a branch only while a card, the selection or a tab shows its folder.
     private func pruneBranches() {
+        // A requester's folder stays too: the origin line compares its branch with the card's.
         let shown = Set(rowModels.values.map { $0.record.session.workingDirectory })
+            .union(origins.values.map { $0.session.workingDirectory })
         guard branches.keys.contains(where: { !shown.contains($0) }) else { return }
         branches = branches.filter { shown.contains($0.key) }
         Task { [branchCache] in await branchCache.retain(shown) }
+    }
+
+    // MARK: Origins
+
+    /// Reads the sessions that opened the records' sessions, so a card never queries the catalog
+    /// while it draws. A requester a loaded row or a live record already holds costs no query. A
+    /// failed read is left for the next reload; only a session the catalog does not have is "missing".
+    private func ensureOrigins(for records: [CatalogSession]) async {
+        let wanted = Set(records.compactMap(\.openedBy))
+            .filter { origins[$0] == nil && !missingOrigins.contains($0) }
+        guard !wanted.isEmpty else { return }
+        var found: [CatalogSession] = []
+        var missing: Set<UUID> = []
+        for id in wanted {
+            if let known = rowModels[id]?.record ?? liveRecords[id] {
+                found.append(known)
+            } else if let catalog {
+                statistics.pageQueries += 1
+                do {
+                    if let record = try await catalog.session(id: id) { found.append(record) }
+                    else { missing.insert(id) }
+                } catch {
+                    continue // not "missing": the next reload asks again
+                }
+            }
+        }
+        await ensureBranches(for: found)
+        for record in found { origins[record.session.id] = record }
+        missingOrigins.formUnion(missing)
+    }
+
+    private func pruneOrigins() {
+        let referenced = Set(rowModels.values.compactMap { $0.record.openedBy })
+        if origins.keys.contains(where: { !referenced.contains($0) }) {
+            origins = origins.filter { referenced.contains($0.key) }
+        }
+        if missingOrigins.contains(where: { !referenced.contains($0) }) {
+            missingOrigins = missingOrigins.filter { referenced.contains($0) }
+        }
+    }
+
+    /// How a card's origin line reads, or nil for a session nobody opened (and while the requester is still being read).
+    public func origin(of row: SessionRowModel) -> SessionOrigin? {
+        guard let requesterID = row.record.openedBy else { return nil }
+        let own = branches[row.record.session.workingDirectory] ?? .unavailable
+        if missingOrigins.contains(requesterID) {
+            return SessionOrigin(requesterTitle: nil, requesterBranch: nil, ownBranch: own)
+        }
+        guard let requester = rowModels[requesterID]?.record ?? origins[requesterID] else { return nil }
+        return SessionOrigin(
+            requesterTitle: requester.displayTitle(projectName: projectName(for: requester), repeatsProject: false),
+            requesterBranch: branches[requester.session.workingDirectory], ownBranch: own)
     }
 
     /// Advances `now` when relative times could read differently, or when a row is newer than it.
@@ -597,6 +678,7 @@ public final class CatalogModel {
                 return
             }
             await ensureBranches(for: [record])
+            await ensureOrigins(for: [record])
             guard selectedSessionID == id else { return }
             selectedRow = row(for: record)
         } catch {
@@ -648,8 +730,13 @@ public final class CatalogModel {
         if id == selectedSessionID { select(next) }
     }
 
-    /// A conversation was deleted (CP4): its tab goes away like a closed tab.
-    public func forget(sessionID id: UUID) { closeTab(id) }
+    /// A conversation was deleted (CP4): its tab goes away like a closed tab, and a card it opened no
+    /// longer names it.
+    public func forget(sessionID id: UUID) {
+        origins[id] = nil
+        missingOrigins.insert(id)
+        closeTab(id)
+    }
 
     /// A started or resumed conversation takes a tab (best effort: a full strip
     /// of running tabs leaves it as the transient tab) and is shown.
@@ -679,7 +766,8 @@ public final class CatalogModel {
         let live = liveStates[id]
         if live?.runID != nil { return false }
         guard let record = rowModels[id]?.record ?? liveRecords[id] else { return live == nil }
-        return !SessionIndicator(record: record, live: live).needsAttention
+        return !SessionIndicator(record: record, live: live,
+                                 awaitingOpenApproval: awaitingOpenApproval.contains(id)).needsAttention
     }
 
     private func forgetTab(_ id: UUID) {
@@ -696,6 +784,7 @@ public final class CatalogModel {
                 guard let record = try await catalog.session(id: id) else { forgetTab(id); continue }
                 guard tabs.isPinned(id) else { continue }
                 await ensureBranches(for: [record])
+                await ensureOrigins(for: [record])
                 guard tabs.isPinned(id) else { continue }
                 _ = row(for: record)
             } catch {
@@ -808,6 +897,16 @@ public final class CatalogModel {
         }
         // A deliberate view also counts as use (persistent, never reactivates a stale row).
         if let target { intents?.viewed(sessionID: target) }
+    }
+
+    /// "Mark as Read": the user is done with an unviewed finish or a wait at the prompt. The core hub
+    /// holds the acknowledgement, so cards and the project dot read the same state.
+    public func markRead(_ id: UUID) {
+        let previous = viewingTask
+        viewingTask = Task { [events] in
+            await previous?.value
+            await events.markRead(sessionID: id)
+        }
     }
 
     /// The runtime recorded a use of this conversation; show the new time.
@@ -978,6 +1077,19 @@ public final class CatalogModel {
         } catch {
             report(error, "The session could not be refreshed")
         }
+    }
+
+    // MARK: Open requests
+
+    /// The runtime's whole list (the controller calls this on every change). The requesting sessions'
+    /// indicators move with it, through `SessionRowModel` and the project dots.
+    func setOpenRequests(_ requests: [OpenSessionRequest]) {
+        if requests != openRequests { openRequests = requests }
+        let awaiting = Set(requests.filter(\.needsUser).map(\.requesterID))
+        guard awaiting != awaitingOpenApproval else { return }
+        awaitingOpenApproval = awaiting
+        for (id, row) in rowModels { row.apply(awaitingOpenApproval: awaiting.contains(id)) }
+        liveRevision &+= 1
     }
 
     // MARK: Event consumer

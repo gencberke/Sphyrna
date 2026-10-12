@@ -27,9 +27,18 @@ extension SessionRuntime {
             for await envelope in events { await self?.deliver(hook: envelope) }
         }
         hookServer = server
+        // The request/response socket of `loom-hook open` (D-40), next to the hook socket and
+        // under the same token. A failure to open it only costs that command, never the hooks.
+        let controlSocket = configuration.socketDirectory
+            .appendingPathComponent("c-\(supervisor.ownershipRunID.uuidString.prefix(8)).sock").path
+        let requests = openRequests
+        controlServer = try? OpenSessionControlServer(
+            socketPath: controlSocket, authenticationToken: token
+        ) { call in await requests.submit(call) }
         let value = ClaudeHookLaunchConfiguration(
             helperPath: configuration.hookHelperPath, socketPath: socket,
-            authenticationToken: token
+            authenticationToken: token,
+            controlSocketPath: controlServer == nil ? nil : controlSocket
         )
         hookConfiguration = value
         return value
@@ -61,7 +70,8 @@ extension SessionRuntime {
 
     func claudeProfile(
         route: ProviderLaunchProfile.ClaudeRoute, toolchain: ProviderToolchain,
-        sessionID: UUID, hooks: ClaudeHookLaunchConfiguration
+        sessionID: UUID, hooks: ClaudeHookLaunchConfiguration,
+        opening: ProviderLaunchProfile.ClaudeOpening? = nil
     ) throws -> ProviderLaunchProfile {
         let environment = LaunchEnvironment.make(
             base: toolchain.environment, runID: supervisor.ownershipRunID, sessionID: sessionID
@@ -76,13 +86,16 @@ extension SessionRuntime {
         let profile = try ProviderLaunchProfile.claude(
             route: route, capabilities: toolchain.capabilities,
             config: toolchain.profileDirectory ?? URL(fileURLWithPath: "/"),
-            environment: environment, hooks: hooks, effort: effort
+            environment: environment, hooks: hooks, effort: effort, opening: opening
         )
         guard toolchain.profileDirectory == nil else { return profile }
         // The provider's own default profile: do not pin a config directory.
         var defaulted = profile.environment
         defaulted["CLAUDE_CONFIG_DIR"] = toolchain.environment["CLAUDE_CONFIG_DIR"]
-        return ProviderLaunchProfile(arguments: profile.arguments, environment: defaulted)
+        return ProviderLaunchProfile(
+            arguments: profile.arguments, environment: defaulted,
+            trailingArguments: profile.trailingArguments
+        )
     }
 
     func launchClaude(
@@ -98,7 +111,7 @@ extension SessionRuntime {
             guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
             launch = try await supervisor.launch(
                 sessionID: sessionID, executable: toolchain.executable,
-                arguments: profile.arguments + toolchain.extraArguments,
+                arguments: profile.launchArguments(extra: toolchain.extraArguments),
                 environment: profile.environment, rows: rows, columns: columns,
                 outputSink: tee ?? outputSink, managedRunID: runID
             )

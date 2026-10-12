@@ -1,4 +1,6 @@
+import CoreGraphics
 import Foundation
+import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
@@ -60,9 +62,10 @@ struct SidebarFooterTests {
         // 38 % of the five hours used, the week far from full.
         let chip = try makeChip(limits: limits(
             five: window(used: 38, resetsInSeconds: 3.5 * 3_600), week: window(used: 20, resetsInSeconds: 5 * 86_400)))
-        #expect(chip.full == "1.2M today · 5h 62% left")
+        #expect(chip.full == "1.2M today · 5h 62%")
         #expect(chip.short == "1.2M today")
-        #expect(chip.limit == "5h 62% left")
+        #expect(chip.limit == UsageChipContent.Limit(name: "5h", remainingPercent: 62))
+        #expect(chip.limit?.text == "5h 62%" && chip.limit?.isLow == false)
         #expect(chip.accessibilityLabel == "Claude usage today, 1.2 million tokens, five-hour limit 62 percent remaining")
         #expect(chip.tooltip.contains("Plan limits, updated 11:59"))
         #expect(chip.tooltip.contains("5-hour: 62% left, resets 15:30"))
@@ -76,20 +79,20 @@ struct SidebarFooterTests {
     @Test func theWindowWithTheLeastLeftIsTheBottleneckAndATieGoesToTheEarlierReset() throws {
         let weekly = try makeChip(limits: limits(
             five: window(used: 38, resetsInSeconds: 3_600), week: window(used: 82, resetsInSeconds: 86_400)))
-        #expect(weekly.limit == "Wk 18% left")
+        #expect(weekly.limit == .init(name: "Wk", remainingPercent: 18))
         #expect(weekly.accessibilityLabel.hasSuffix("weekly limit 18 percent remaining"))
         let tieWeek = try makeChip(limits: limits(
             five: window(used: 40, resetsInSeconds: 7_200), week: window(used: 40, resetsInSeconds: 3_600)))
-        #expect(tieWeek.limit == "Wk 60% left")
+        #expect(tieWeek.limit == .init(name: "Wk", remainingPercent: 60))
         let tieFive = try makeChip(limits: limits(
             five: window(used: 40, resetsInSeconds: 3_600), week: window(used: 40, resetsInSeconds: 7_200)))
-        #expect(tieFive.limit == "5h 60% left")
+        #expect(tieFive.limit == .init(name: "5h", remainingPercent: 60))
     }
 
     @Test func aWindowThatAlreadyResetIsIgnoredEverywhere() throws {
         let expiredFive = try makeChip(limits: limits(
             five: window(used: 99, resetsInSeconds: -1), week: window(used: 30, resetsInSeconds: 86_400)))
-        #expect(expiredFive.limit == "Wk 70% left")
+        #expect(expiredFive.limit == .init(name: "Wk", remainingPercent: 70))
         #expect(!expiredFive.tooltip.contains("5-hour"))
         let allExpired = try makeChip(limits: limits(
             five: window(used: 99, resetsInSeconds: -60), week: window(used: 99, resetsInSeconds: -1)))
@@ -100,8 +103,30 @@ struct SidebarFooterTests {
 
     @Test func aWindowWithoutAResetTimeCountsAndPartialLimitsShowTheOneWindow() throws {
         let weekOnly = try makeChip(limits: limits(five: nil, week: window(used: 10, resetsInSeconds: nil)))
-        #expect(weekOnly.limit == "Wk 90% left")
+        #expect(weekOnly.limit == .init(name: "Wk", remainingPercent: 90))
         #expect(weekOnly.tooltip.contains("Weekly: 90% left\n"))
+    }
+
+    @Test func theLimitIsLowOnlyBelowTwentyPercentRemaining() throws {
+        func chip(used: Int) throws -> UsageChipContent {
+            try makeChip(limits: limits(five: window(used: used, resetsInSeconds: 3_600), week: nil))
+        }
+        let at20 = try #require(chip(used: 80).limit)
+        let at19 = try #require(chip(used: 81).limit)
+        #expect(at20.remainingPercent == 20 && !at20.isLow)
+        #expect(at19.remainingPercent == 19 && at19.isLow)
+        #expect(try #require(chip(used: 100).limit).isLow)
+        #expect(try #require(chip(used: 0).limit).isLow == false)
+        // The spoken label keeps saying the window and what is left, low or not.
+        #expect(try chip(used: 81).accessibilityLabel.hasSuffix("five-hour limit 19 percent remaining"))
+    }
+
+    @Test func withoutPlanLimitsTheChipIsTokensOnly() throws {
+        for limits in [nil, limits(five: nil, week: nil)] {
+            let chip = try makeChip(limits: limits)
+            #expect(chip.limit == nil)
+            #expect(chip.full == chip.short)
+        }
     }
 
     @Test func aDayWithNothingButAnEarlierHistoryReadsZeroTokens() {
@@ -124,5 +149,46 @@ struct SidebarFooterTests {
         let chip = try #require(UsageChipContent.make(state: .ready, today: snapshot, hasHistory: true))
         #expect(chip.tooltip.contains(
             "1,204,310 tokens: input 41,200, output 118,900, cache write 202,010, cache read 842,200."))
+    }
+
+    /// Columns of the first and last visible pixel when the label is drawn in a chip `width` wide, laid out as the
+    /// button style does (inset, leading-aligned); no window is opened.
+    @MainActor private func inkColumns(_ chip: UsageChipContent, width: CGFloat) throws -> (first: Int, last: Int) {
+        let view = UsageChipLabel(chip: chip)
+            .padding(.horizontal, LoomTheme.Space.chipInset)
+            .frame(width: width, height: LoomTheme.Layout.footerChipHeight, alignment: .leading)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage)
+        let w = image.width, h = image.height
+        var pixels = [UInt8](repeating: 0, count: w * h * 4)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        try #require(drawn)
+        var first = Int.max, last = -1
+        for y in 0..<h {
+            for x in 0..<w where pixels[(y * w + x) * 4 + 3] > 40 {
+                first = min(first, x)
+                last = max(last, x)
+            }
+        }
+        return (first, last)
+    }
+
+    @MainActor @Test func theLimitSitsAtTheTrailingEdgeAtEveryWidthAndTheTokensGiveWay() throws {
+        let chip = try makeChip(limits: limits(five: window(used: 38, resetsInSeconds: 3_600), week: nil))
+        let inset = Int(LoomTheme.Space.chipInset)
+        for width in [300, 240, 200, 120] as [CGFloat] {
+            let ink = try inkColumns(chip, width: width)
+            // The last glyph ends at the trailing inset, give or take the glyph's side bearing.
+            #expect(ink.last >= Int(width) - inset - 3 && ink.last < Int(width), "width \(width): last ink column \(ink.last)")
+            #expect(ink.first >= inset - 1 && ink.first <= inset + 3, "width \(width): first ink column \(ink.first)")
+        }
     }
 }
