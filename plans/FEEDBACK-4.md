@@ -9,7 +9,7 @@ The user asked for three things in this order:
 2. Then the full suite ("sonrasında full suite testi koşabilirsin").
 3. Later, an optimization run, when they ask. Code structure and resource use stay optimal throughout, especially for the release app.
 
-The round ships as 0.4.3 ([D-41](../DECISIONS.md) numbering) when the user says so.
+The round shipped as 0.4.3 on 13 Oct ([D-41](../DECISIONS.md) numbering; [record](#release-043-13-oct)).
 
 ## Resume here
 
@@ -17,7 +17,7 @@ The round ships as 0.4.3 ([D-41](../DECISIONS.md) numbering) when the user says 
   - Slice A, the Stop flow, is done and reviewed: commits 543d0d0 (FB4-1, FB4-4, FB4-6) and 95bffc9 (FB4-3). See [Slice A as built](#slice-a-as-built).
   - Slice B, the Active section (FB4-2), is done and reviewed: da77473, plus the planner's fix 71d4093. See [Slice B as built](#slice-b-as-built).
   - Slice C, the subagent panel (FB4-5), is done and reviewed: a6cd400 and 1d4b7de. See [Slice C as built](#slice-c-as-built).
-  - Full suite: run 3, on the round with the optimizer fixes (75852f6), passes. Run 2 had passed before the fixes; run 1 had failed one timing test, fixed in 9ade38d ([verification](#verification)).
+  - Full suite: run 3, on the round with the optimizer fixes (75852f6), passes. Run 2 had passed before the fixes; run 1 had failed one timing test, fixed in 9ade38d. Run 4, on the ended-screen fix, passed all but one Codex-only test, a teardown race outside the release ([verification](#verification)).
   - The optimizer review is done ([findings](#optimizer-review-13-oct)). The user asked for it on 13 Oct ("optimizer'ı max effort spawnlarsın"). It ran as `strict-reviewer` with the optimizer Brief on Opus 5.5 at max effort ([D-06](../DECISIONS.md) requires at least `xhigh`), and read only. Its one blocking finding, R1, is fixed in 81ae519. The user chose to apply U1 and I1 too ([D-55](../DECISIONS.md)): done in 27dd23c and 4390445. The full suite passes on the result ([verification](#verification)).
   - The on-screen pass is done. The user said the computer was idle and gave the go for 0.4.3 if it was positive (13 Oct: "pc boşta yapabilirsin istediğin testi. olumlu olursa 0.4.3'ü kurabilirsin"). Its first run found that the ended screen lost the first character of every row; that is fixed in 4d99e97. The second run passes 20 of 20 checks ([on-screen pass](#on-screen-pass-13-oct)).
   - **Release 0.4.3 is installed** (13 Oct) and is the daily app ([record](#release-043-13-oct)).
@@ -29,13 +29,13 @@ The round ships as 0.4.3 ([D-41](../DECISIONS.md) numbering) when the user says 
   - `SessionLifecycleController.markActivity` has had no caller since FB4-1.
   - The evidence `answer:` command answers only the selected session; the round-4 driver did not select the session first.
 - **Storage cleanup** (14 Oct, at the user's request): about 22 GB went to the Trash ([record](#storage-cleanup-14-oct)). The user empties the Trash.
+- **Test leftovers** (14 Oct, at the user's request): tests no longer leave temporary folders or LaunchServices records behind ([record](#test-leftovers-14-oct)). Its commits are on `swarm/1` after 0.4.3; the Quit change among them reaches the daily app with the next release.
 - **Still open from round 3** ([Resume here](FEEDBACK-3.md#resume-here)):
   - The header's hover, ⋯ menu and focus ring in daily use.
   - The subagent rows during a real workflow.
   - The Settings → General cards' secondary text at 4.0:1.
 - **Still open from hardening round 1** ([Resume here](HARDENING-1.md#resume-here)):
   - Screen Time.
-  - DEVELOPMENT §5 rows for the H1-F evidence commands.
   - About one point of visible-stream CPU.
 
 ## Items
@@ -395,4 +395,21 @@ The user asked to move whatever the dev and prod builds had left behind without 
   - Other sessions' files in `/private/tmp`.
 - **Afterwards.**
   - References in older plans to the moved paths are historical.
-  - Tests leave temporary folders and LaunchServices records behind on every run; this is a follow-up candidate.
+  - Tests left temporary folders and LaunchServices records behind on every run; fixed the same day ([test leftovers](#test-leftovers-14-oct)).
+
+## Test leftovers (14 Oct)
+
+The user asked for the follow-up the storage cleanup had found: "Stop tests leaking temp folders and LaunchServices records". A counter outside the repo (`~/Library/Caches/loom-leaks/snap.sh`) listed the test folders in `$TMPDIR` and `/tmp` and the LaunchServices records of Loom bundles before and after one `scripts/check.sh --tests` run.
+
+- **Before.** One run left 21 folders in `$TMPDIR`: 13 `loom-scope-*`, 5 `loom-cp4c-*`, and one each of `loom-scope-silent-*`, `loom-scope-foreign-*` and `loom-scope-fixtures`. It also left 22 LaunchServices records of `LoomRunHost.app` copies inside temporary folders.
+- **Causes.**
+  - Launching a run host through `open` registers its bundle with LaunchServices, and the record outlives the folder. The tests that assemble a host removed the folder at most, never the record.
+  - `RunScopeTests` never removed its folders: a shared fixture folder and one per launcher.
+  - A catalog backup still being copied when a test's runtime shut down wrote `backups/` and the journal into the test's data root after the test had removed it (the `loom-cp4c-*` folders of `ConversationDeletionTests`). In the app, Quit could end the process while such a copy was being written.
+- **Fixes.**
+  - 9c6cfb2: `RunScopeLauncher.removeOwnedBundle(in:)` unregisters the host from LaunchServices and removes its folder. `RunScopeTests` (a per-test scratch that cleans up when the test ends), `SessionRuntimeTests`, `AppShutdownCoordinatorTests` and `ConversationControllerTests` use it.
+  - a5174f5: `SessionRuntime.shutdown` cancels a backup still waiting for its turn and waits for one being copied, and no backup starts once shutdown has begun; the next launch's daily backup covers a deletion that ends during Quit. The new test `quitWaitsForTheBackupBeingCopiedAndStartsNoOther` failed without the fix (`check-20261014T002648-83603.log`).
+  - 0e268e0: the first full run after 9c6cfb2 failed one test, `aPlainStopLetsNothingMoreThroughAndClosesTheFilesSoon` (`check-20261014T001604-78261.log`). It checked that the stopped feed's descriptor numbers were closed, but under parallel tests another test gets the same number at once (POSIX hands out the lowest free one). Both stop tests now check that no open descriptor refers to the transcript file (device and inode). SubagentTranscriptTests: 27 passed (`check-20261014T002734-84121.log`).
+- **After.** `scripts/check.sh --tests` on 0e268e0 passed, window tests skipped: LoomCore 624, LoomCatalogUI 456, LoomTerminal 56 (one known issue) and 8 (`check-20261014T002806-84703.log`). The counts before and after the run are identical, so nothing was left behind. LaunchServices holds only the installed `Loom.app`, `Loom Dev.app` and their run hosts.
+- **Not in the daily app.** These commits come after 0.4.3. a5174f5 changes the product's Quit, so it ships with the next release.
+- [DEVELOPMENT.md §2](../DEVELOPMENT.md#2-build-and-test) now states the rule: tests remove what they create, a run host through `removeOwnedBundle(in:)`.

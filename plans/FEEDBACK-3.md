@@ -1,19 +1,19 @@
 # Feedback round 3 on 0.4.1 (13 Oct 2026)
 
-The user's notes of 13 Oct on 0.4.1 ([FEEDBACK-2](FEEDBACK-2.md) was round 2), the causes found, the choices and the plan. Design choices were made on [design/feedback-3-preview.html](../design/feedback-3-preview.html) and recorded as [D-53](../DECISIONS.md). The user asked to build all three items together when the computer is idle. The round ships as 0.4.2 ([D-41](../DECISIONS.md) numbering).
+The user's notes of 13 Oct on 0.4.1 ([FEEDBACK-2](FEEDBACK-2.md) was round 2), the causes found, the choices and the plan. Design choices were made on [design/feedback-3-preview.html](../design/feedback-3-preview.html) and recorded as [D-53](../DECISIONS.md). The user asked to build all three items together when the computer is idle. The round shipped as 0.4.2 ([D-41](../DECISIONS.md) numbering).
 
 ## Resume here
 
 - **State:** the user gave the go for the implementation and for commits on 13 Oct ("implementasyona geçebiliriz. commit yetkin de var"). FB3-3, FB3-2 and FB3-1 are done and committed ([verification](#verification)).
-- **Release 0.4.2 is installed** (13 Oct) and is the daily app. It ships the round with targeted checks, at the user's choice. The full suite waits for their word (13 Oct: "tam suite test değil geliştirmeleri doğrulayan testleri yap"; "Hedefli testlerle kur"). Record: [Release 0.4.2](#release-042-13-oct). Then the combined check and release 0.4.2. The full suite and the on-screen checks wait for the user's word that the computer is idle ([D-13](../DECISIONS.md)). The user quits Loom for the install.
+- **Release 0.4.2 was installed** on 13 Oct with targeted checks, at the user's choice (13 Oct: "tam suite test değil geliştirmeleri doğrulayan testleri yap"; "Hedefli testlerle kur"). Record: [Release 0.4.2](#release-042-13-oct). [Round 4](FEEDBACK-4.md) ran the full suite on code that includes this round and replaced 0.4.2 with 0.4.3 the same day.
 - **Open from this round:**
-  - The full suite, when the user says.
+  - The full suite: done in round 4 ([verification](FEEDBACK-4.md#verification)).
   - The header's hover, ⋯ menu and focus ring, seen in daily use.
   - The subagent rows during a real workflow, seen by the user.
   - The Settings → General cards' secondary text at 4.0:1 (a follow-up).
 - **Still open from hardening round 1** ([Resume here](HARDENING-1.md#resume-here)):
   - The user looks for Loom in Screen Time.
-  - DEVELOPMENT §5 lacks rows for the H1-F evidence commands.
+  - DEVELOPMENT §5 rows for the H1-F evidence commands: added on 14 Oct.
   - About one point of visible-stream CPU is left for the next performance pass.
   - The old worktrees went to the Trash on 14 Oct, with the user's OK ([storage cleanup](FEEDBACK-4.md#storage-cleanup-14-oct)).
 

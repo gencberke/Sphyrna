@@ -1,6 +1,6 @@
 # Stage U — daily-use UI features
 
-Part of [multi-agent run 1](RUN-1.md). Roadmap row: [ROADMAP → U](../ROADMAP.md#u-daily-use-ui-features-proposed). Decisions: [D-32](../DECISIONS.md) (usage and cost view, Settings page, footer bar), [D-33](../DECISIONS.md) (conversation tabs), [D-34](../DECISIONS.md) (no left rail, no right sidebar). Facts: [U integration scan](experiments/run1-planning-scans/U-integration.md), [usage data scan](experiments/run1-planning-scans/U-usage-data.md), [performance research](experiments/run1-planning-scans/perf-research.md). References: [T3 usage page](../design/references/t3-code-usage-reference.png), [layout guidance](../design/references/layout-guidance.jpg).
+Part of [multi-agent run 1](RUN-1.md). Roadmap row: [ROADMAP → U](../ROADMAP.md#u-daily-use-ui-features). Decisions: [D-32](../DECISIONS.md) (usage and cost view, Settings page, footer bar), [D-33](../DECISIONS.md) (conversation tabs), [D-34](../DECISIONS.md) (no left rail, no right sidebar). Facts: [U integration scan](experiments/run1-planning-scans/U-integration.md), [usage data scan](experiments/run1-planning-scans/U-usage-data.md), [performance research](experiments/run1-planning-scans/perf-research.md). References: [T3 usage page](../design/references/t3-code-usage-reference.png), [layout guidance](../design/references/layout-guidance.jpg).
 
 ## Goal
 

@@ -4,7 +4,7 @@ Goal: stability and daily-use polish from the 12 Oct review ([D-45](../DECISIONS
 
 ## Resume here
 
-The next round is [feedback round 3](FEEDBACK-3.md) (13 Oct). The open items below stay here.
+Feedback rounds [3](FEEDBACK-3.md) and [4](FEEDBACK-4.md) followed on 13 Oct (0.4.2 and 0.4.3). The open items below stay here.
 
 State on 12 Oct (late evening):
 

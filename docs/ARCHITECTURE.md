@@ -52,12 +52,13 @@ Declared in `Package.swift`; all tests use swift-testing (`@Test`). Product bund
 | Group | Files |
 |---|---|
 | Ownership and process | `ProcessSupervisor` (core plus `+Stop`, `+Shutdown`, `+Sampling`, `+Scopes`, `+EnvironmentJobs`, `+CatalogCommits`), `OwnershipLedger`, `ProcessTable`, `PTYProcess`, `EventDrivenPTYProcess`, `RunScope`, `PreviousRunRecovery`, `ShutdownReport`, `AppShutdownCoordinator` |
-| Runtime and lifecycle | `SessionRuntime` (core plus `+Claude`, `+Codex`), `ConversationDeletion` (`SessionRuntime` deletion flow, `ConversationForgetting`), `SessionLifecycleController` (also defines `ProviderWorkState`), `ManagedSession`, `SessionEventHub`, `ProviderSessionAdapters` |
-| Persistence | `SessionCatalog` (core plus `+Sessions`, `+Runs`, `+Projects`, `+Titles`, `+Paging`), `CatalogDatabase` (schema, migration, SQLite helpers) |
+| Runtime and lifecycle | `SessionRuntime` (core plus `+Claude`, `+Codex`, `+OpenRequests`: the approval API for a session's request to open another one, D-40), `ConversationDeletion` (`SessionRuntime` deletion flow, `ConversationForgetting`), `SessionLifecycleController` (also defines `ProviderWorkState`), `ManagedSession`, `SessionEventHub`, `ProviderSessionAdapters` |
+| Persistence | `SessionCatalog` (core plus `+Sessions`, `+Runs`, `+Projects`, `+Titles`, `+Paging`, `+Deletions`: the deletion API and its state machine), `CatalogDatabase` (schema, migration, SQLite helpers), `ProjectTone` (the project colour palette's names, D-48) |
+| Retention | `CleanupPlanner` (`CleanupPolicy`, the cleanup arithmetic of DP-CP4-2, and which stale sessions are eligible), `CleanupCoordinator` (worktree protection, DP-CP4-3, and the rows of the cleanup review); the review (CP4-G) stays in development builds until DP-CP4-2 |
 | Terminal I/O | `TerminalEndpoint` (also `TerminalOutputSink`), `TerminalInputQueue`, `TerminalInputGate` |
-| Logs and diagnostics | `LoomLog` (os.Logger categories, rate limit), `DiagnosticJournal`, `DiagnosticsExport` (bundle, `HookDiagnostics`, `PlanLimitsFailure`), `SessionRuntime+Diagnostics` (launch/quit summary, `collectDiagnostics`), `CatalogBackups` (`CatalogBackupStore`, `CatalogRecovery`), `CrashResidue` (`StaleSocketSweep`), `SessionCatalog+Diagnostics` |
+| Logs and diagnostics | `LoomLog` (os.Logger categories, rate limit), `LoomSignposts` (launch and sidebar signposts), `DiagnosticJournal`, `DiagnosticsExport` (bundle, `HookDiagnostics`, `PlanLimitsFailure`), `SessionRuntime+Diagnostics` (launch/quit summary, `collectDiagnostics`), `CatalogBackups` (`CatalogBackupStore`, `CatalogRecovery`), `CrashResidue` (`StaleSocketSweep`), `SessionCatalog+Diagnostics` |
 | Provider setup | `LaunchEnvironment`, `EnvironmentResolutionJob`, `ProviderToolchain`, `ProviderLaunchProfile`, `ProviderResume` |
-| Claude | `ClaudeHook` (server, client, `ClaudeHookStateTracker`), `OpenSessionProtocol`/`OpenSessionCoordinator`/`OpenSessionCommand`/`LocalSocket` (a session asks Loom to open another one, D-40), `SubagentLedger` (the run's subagent list from `SubagentStart`/`SubagentStop`, `Stop.background_tasks` and each subagent's `meta.json`; D-39; a record also carries the transcript path beside the meta file), `SubagentTranscriptLocation` / `SubagentTranscriptParser` / `SubagentTranscriptTail` / `SubagentTranscriptFeed` (FB4-5: a subagent's live transcript, read-only), `ClaudeRegistry`, `ClaudeDataInventory` (planner and safe deleter of a session's files), `ClaudeProfileLayout`, `ClaudeUsageIndex`, `UsageTranscriptWatcher` (FSEvents over `<profile>/projects`), `ClaudePlanLimitsFetcher` (headless `get_usage` through the Claude CLI) |
+| Claude | `ClaudeHook` (server, client, `ClaudeHookStateTracker`), `OpenSessionProtocol`/`OpenSessionCoordinator`/`OpenSessionCommand`/`LocalSocket` (a session asks Loom to open another one, D-40), `SubagentLedger` (the run's subagent list from `SubagentStart`/`SubagentStop`, `Stop.background_tasks` and each subagent's `meta.json`; D-39; a record also carries the transcript path beside the meta file), `SubagentTranscriptLocation` / `SubagentTranscriptParser` / `SubagentTranscriptTail` / `SubagentTranscriptFeed` (FB4-5: a subagent's live transcript, read-only), `ClaudeRegistry`, `ClaudeDataInventory` (planner and safe deleter of a session's files), `ClaudeProfileLayout`, `ClaudeUsageIndex` (with `ClaudeUsageParser`, `UsageSnapshot` and `UsagePricing`, the models' list prices for the cost estimate), `UsageTranscriptWatcher` (FSEvents over `<profile>/projects`), `ClaudePlanLimitsFetcher` (headless `get_usage` through the Claude CLI) |
 | Codex (paused) | `CodexAppServer`, `CodexAppServerManager`, `CodexSessionCoordinator`, `CodexSessionState`, `CodexWireDiagnostics`, `CodexRoutingDiagnostics` |
 
 Roles: `SessionRuntime` is the one application runtime (UI sends intents only). `ProcessSupervisor` (actor) owns runs, scopes,
@@ -227,9 +228,9 @@ default `.shared`); the tab and `CatalogModel` caches follow the `.conversationD
 
 **Quit**
 `applicationShouldTerminate` -> waits for `startupTask` -> `beginQuit` -> `AppShutdownCoordinator.requestQuit` (shutdown
-closure; `LoomCore`, state `idle/running/finished/failed`) -> `SessionRuntime.shutdown` (cancel Codex setup, stop lifecycle evaluation + hook server, tear down Codex servers,
-`ProcessSupervisor.shutdown` -> `ShutdownReport`). A user-initiated quit with a session Working or Needing approval first asks "Quit Loom and stop N working sessions?" (`QuitConfirmation`; Cancel is the default; never for a system-initiated quit, read from `keyAEQuitReason`, nor in evidence runs). Unverified shutdown keeps the app open with Try Again, Keep Loom Open and Quit Anyway (the next quit returns `.terminateNow` without a verified shutdown; processes Loom could not stop may keep running); a system-initiated quit is never held up by an unverified shutdown (the report is still written). Cmd+W only
-closes the window; the runtime keeps running. `SessionRuntime.shutdown` journals a `quit` summary (counts of processes signalled, errors and whether it succeeded; no process records) and cancels a backup in progress.
+closure; `LoomCore`, state `idle/running/finished/failed`) -> `SessionRuntime.shutdown` (refuse new work, cancel Codex setup and reserved launches, stop lifecycle evaluation, end pending open requests, stop the control and hook servers, tear down Codex servers,
+cancel a backup still waiting for its turn, `ProcessSupervisor.shutdown` -> `ShutdownReport`, journal it, reconcile ended runs, wait for a backup being copied). A user-initiated quit with a session Working or Needing approval first asks "Quit Loom and stop N working sessions?" (`QuitConfirmation`; Cancel is the default; never for a system-initiated quit, read from `keyAEQuitReason`, nor in evidence runs). Unverified shutdown keeps the app open with Try Again, Keep Loom Open and Quit Anyway (the next quit returns `.terminateNow` without a verified shutdown; processes Loom could not stop may keep running); a system-initiated quit is never held up by an unverified shutdown (the report is still written). Cmd+W only
+closes the window; the runtime keeps running. `SessionRuntime.shutdown` journals a `quit` summary (counts of processes signalled, errors and whether it succeeded; no process records). No backup starts once shutdown has begun, so nothing of the runtime writes to the data root after it returns.
 
 **Previous-run recovery**
 `PreviousRunRecovery.recover(runsDirectory:current:)` (background, never starts anything): for each other `runs/<uuid>/` whose
@@ -247,6 +248,8 @@ directory when every scope is shown empty; leftovers surface as `CatalogModel.ow
   the host serves only its owner (`LoomOwnerRequirement` in the host Info.plist, checked by the host's `peer_is_owner` in `Sources/loom-run-host/main.c`; the app side, `RunScopeLauncher.verify`, checks peer UID, LaunchServices lineage and the exclusive coalition).
   If Loom disappears without an orderly EXIT frame, the host kills forked members itself and exits. The host is its own
   TCC-responsible app: packages, fixtures and build scratch must live outside `~/Documents` (`scripts/dev-paths.sh`); the source checkout may stay there.
+  Tests assemble a host bundle with `RunScopeLauncher.assembleOwnedBundle(executable:in:)` and remove it with `removeOwnedBundle(in:)`,
+  which also unregisters it from LaunchServices (launching through `open` registers the bundle, and the record outlives the folder).
 - **Scope and members.** `RunScope`/`RunScopeTable` track members via `CLoomPOSIX` reads. `RunScopeMember.launchdSpawned`
   separates launchd-spawned members (never signalled) from forked work (frozen, re-verified, killed). The app's own
   coalition is never an ownership seed.
@@ -264,7 +267,7 @@ directory when every scope is shown empty; leftovers surface as `CatalogModel.ow
 - **Identities are separate:** catalog session id, provider conversation id, run id. `run_sessions` and
   `provider_identity_changes` record `/clear`, `/new`, fork and resume transitions.
 - **Dev vs prod identity.** Production bundle id is `local.loom.desktop`; anything else is development
-  (`Loom Dev.app`, `local.loom.desktop.dev`, built by `scripts/package-dev-app.sh`; no production packaging exists yet).
+  (`Loom Dev.app`, `local.loom.desktop.dev`, built by `scripts/package-dev-app.sh`; the production `Loom.app` is built by the clean loom tree's `build.sh`, [DEVELOPMENT.md §10](../DEVELOPMENT.md#10-loom-dev-and-the-clean-loom-tree)).
 
 | | Development (bundle id != `local.loom.desktop`) | Production |
 |---|---|---|
@@ -288,7 +291,7 @@ directory when every scope is shown empty; leftovers surface as `CatalogModel.ow
 | Hook socket | `<socket dir>/h-<8 hex of run id>.sock` | `SessionRuntime.ensureHooks`, token-authenticated, removed by `ClaudeHookServer.stop` at shutdown |
 | Control socket | `<socket dir>/c-<8 hex of run id>.sock` | `SessionRuntime.ensureHooks`, same token, request/response for `loom-hook open` (D-40); removed by `OpenSessionControlServer.stop` at shutdown |
 
-**Backup and restore.** `SessionCatalog.backupStore` (derived from the catalog's folder) backs up through `scheduleCatalogBackup` 10 s after runtime start (`SessionRuntimeConfiguration.catalogBackupDelay`) and forced after a deletion. A generation counter discards a copy that was being written when a deletion finished. When opening the catalog fails with `SessionCatalogError.isDamaged` (corrupt or not a database), the launch prompt (`AppDelegate.offerCatalogRecovery` in `AppDelegate+Diagnostics.swift`, an `NSAlert` run before the window or the runtime exist; what it says and which buttons it has come from `CatalogRecoveryPrompt.make(backups:)`, a pure function) lists `CatalogRecovery.backups(forCatalogAt:)` and offers "Restore Backup" (only when a backup exists; the newest, named by date), "Start Fresh" (`startFresh(catalogAt:)`) and "Quit"; after a restore or a fresh start the launch goes on with the reopened catalog, a failed recovery falls back to the usual catalog-error screen, and any other open error (newer schema, busy, foreign) gets no offer. Restore copies the backup to `catalog.sqlite3.restoring`, verifies it, sets `-wal`, `-shm` and the main file aside as `catalog.damaged-<stamp>.sqlite3` (the sidecars first, so a stray WAL is never replayed into another main file) and renames the copy into place; `SessionCatalog.init` finishes an interrupted restore from the files left on disk.
+**Backup and restore.** `SessionCatalog.backupStore` (derived from the catalog's folder) backs up through `scheduleCatalogBackup` 10 s after runtime start (`SessionRuntimeConfiguration.catalogBackupDelay`) and forced after a deletion; none is scheduled once shutdown has begun (the next launch's daily backup covers a deletion that ends during Quit), and Quit waits for a copy being written. A generation counter discards a copy that was being written when a deletion finished. When opening the catalog fails with `SessionCatalogError.isDamaged` (corrupt or not a database), the launch prompt (`AppDelegate.offerCatalogRecovery` in `AppDelegate+Diagnostics.swift`, an `NSAlert` run before the window or the runtime exist; what it says and which buttons it has come from `CatalogRecoveryPrompt.make(backups:)`, a pure function) lists `CatalogRecovery.backups(forCatalogAt:)` and offers "Restore Backup" (only when a backup exists; the newest, named by date), "Start Fresh" (`startFresh(catalogAt:)`) and "Quit"; after a restore or a fresh start the launch goes on with the reopened catalog, a failed recovery falls back to the usual catalog-error screen, and any other open error (newer schema, busy, foreign) gets no offer. Restore copies the backup to `catalog.sqlite3.restoring`, verifies it, sets `-wal`, `-shm` and the main file aside as `catalog.damaged-<stamp>.sqlite3` (the sidecars first, so a stray WAL is never replayed into another main file) and renames the copy into place; `SessionCatalog.init` finishes an interrupted restore from the files left on disk.
 
 Catalog schema v3 (CP4-B; `CatalogDatabase.swift` holds schema, migration and SQLite helpers, `SessionCatalog+Deletions.swift` the deletion API):
 - **Migration.** `migrate(from:)` runs the chain v1 to v2 to v3 in one transaction (`BEGIN IMMEDIATE`, `user_version` set last, test failpoint after each version's DDL); an interrupted migration leaves the old file untouched. v3 adds `deletions`, `sessions.stale_since`, `app_state` (`last_cleanup_at`, `last_launch_at`) and the child indexes `run_sessions(session_id)`, `runs(initial_session_id)`, `provider_identity_changes(session_id)`.
@@ -306,7 +309,7 @@ Catalog schema v3 (CP4-B; `CatalogDatabase.swift` holds schema, migration and SQ
 - **Policy:** never edit upstream sources in place without a patch. Every local source change exists as
   `patches/swiftterm-*.patch` (repo root) and is listed in `LOOM-VENDOR.md`. The only non-patch changes are the reduced
   `Vendor/SwiftTerm/Package.swift` and the build-info plugin/generator pins (items 2-3 in `LOOM-VENDOR.md`).
-- **Current patches (14):** inline-image-quota, buffer-diagnostics, frame-signal-coalescing, ascii-text-presentation-guard,
+- **Current patches (12):** inline-image-quota, buffer-diagnostics, frame-signal-coalescing, ascii-text-presentation-guard,
   direct-glyph-runs, direct-glyph-blank-skip, direct-run-continuation, partial-row-invalidation, suspended-signal-retention,
   identical-row-skip, open-keydown, alt-screen-capture (FB4-3). Tests in `LoomTerminalTests` (`FrameDriverTests` in `TerminalFrameDriverTests.swift`, `TerminalPartialDrawTests`,
   `TerminalDirectGlyphTests`, `TerminalImageLimitTests`) guard them.
@@ -329,17 +332,16 @@ Catalog schema v3 (CP4-B; `CatalogDatabase.swift` holds schema, migration and SQ
   `--fake-providers`, `--fake-toolchain-delay`, `--claude-config`, `--codex-home`, `--fail-first-quit`, `LOOM_FORCE_SCOPE_FAILURE`,
   and the synthetic terminal (menu item, controller). Inert library-side seams remain in both flavors: `TerminalPresentationLog`,
   `ConversationController.terminalEvidence`/`typeForEvidence`/`runtimeEvidence`, `IndicatorEvidence`.
-- A normal launch never subscribes to the command channel and cannot substitute fixture providers. Command list: doc comment
-  at the top of `Evidence/DevelopmentEvidence.swift` plus the `case`s of its command switch and of
-  `Evidence/EvidenceCatalogCommands.swift` (the header omits `buttons:`, `toggle-fullscreen`, `feed`, `double-start` and `resource:`);
-  scripts and method: `DEVELOPMENT.md` and `scripts/` (`cp5-*.sh|py`, `dev-paths.sh`).
+- A normal launch never subscribes to the command channel and cannot substitute fixture providers. Command list:
+  [DEVELOPMENT.md §5](../DEVELOPMENT.md#5-evidence-mode) and the `case`s of the command switches in `Evidence/` (`DevelopmentEvidence.swift`
+  hands each command to its `Evidence*Commands.swift` extension); scripts and method: `DEVELOPMENT.md` and `scripts/` (`cp5-*.sh|py`, `dev-paths.sh`).
 
 ## 8. Codex: paused, not in first release
 
 Code is kept and tested but receives no new development. Locations: `Sources/LoomCore/Codex*.swift` (6 files),
 `CodexSessionAdapter` in `ProviderSessionAdapters.swift`, `CodexEventStateTracker` in `CodexSessionState.swift`, the nested `CodexServer` class and Codex
 setup/teardown in `SessionRuntime+Codex.swift`, `Sources/loom-fake-provider/CodexFixture.swift`, Codex tests in `LoomCoreTests`
-(`CodexAppServer*`, `CodexWireDiagnosticsTests`, `SessionRuntimeCodex*`), `loom-probe` Codex files. UI entry points ("New Codex Conversation" in `SidebarView.swift` and `DetailView.swift`, `AppDelegate.newCodexFromMenu`) exist only in development builds: `BuildIdentity` (`Sources/LoomLaunchOptions/BuildIdentity.swift`) gives `startableProviders = [claude]` for the production identity `local.loom.desktop`, `CatalogModel.startableProviders` filters every new-conversation surface, and `ConversationController.start` refuses a provider outside that set. Resume follows the same rule: `CatalogModel.canResume` requires a startable provider (Resume, "Reactivate and Resume", Cmd+R and the menus all go through it), `resumeConversation` and `ConversationController.resume` refuse a record of any other provider, and the record view says "Codex conversations can't be resumed in this version." (`resumeUnavailableReason`); a Codex record in the production catalog stays readable and listed.
+(`CodexAppServer*`, `CodexWireDiagnosticsTests`, `SessionRuntimeCodex*`), `loom-probe` Codex files. UI entry points ("New Codex Session" in `SidebarView.swift` and `DetailView.swift`, `AppDelegate.newCodexFromMenu`) exist only in development builds: `BuildIdentity` (`Sources/LoomLaunchOptions/BuildIdentity.swift`) gives `startableProviders = [claude]` for the production identity `local.loom.desktop`, `CatalogModel.startableProviders` filters every new-conversation surface, and `ConversationController.start` refuses a provider outside that set. Resume follows the same rule: `CatalogModel.canResume` requires a startable provider (Resume, "Reactivate and Resume", Cmd+R and the menus all go through it), `resumeConversation` and `ConversationController.resume` refuse a record of any other provider, and the record view says "Codex sessions can't be resumed in this version." (`resumeUnavailableReason`); a Codex record in the production catalog stays readable and listed.
 Design fact: one `codex app-server` per Codex session (contract §3).
 
 ## 9. Hotspots and scaling notes (facts, no redesign)
@@ -349,15 +351,16 @@ Design fact: one `codex app-server` per Codex session (contract §3).
   `+Sampling`, `+Scopes`, `+EnvironmentJobs`, `+CatalogCommits`), `SessionRuntime` (core; `+Codex` ~550 lines, `+Claude`),
   `SessionCatalog` (core; `+Sessions`, `+Runs`, `+Projects`, `+Titles`, `+Paging`; `CatalogDatabase`; synchronous sqlite on
   an actor).
-- Codex share of `LoomCore`: ~2,700 lines in `Codex*.swift` plus adapter and `SessionRuntime` parts, roughly 30% of the target.
+- Codex share of `LoomCore`: ~2,700 lines in `Codex*.swift` plus adapter and `SessionRuntime` parts, roughly a sixth of the target's ~21,000 lines.
 - UI-layer coupling: `ConversationController` (live terminals plus the ended runs' snapshots, at most 16 and 4 MiB) and `CatalogModel` hold `SessionRuntime`/`ProcessSupervisor` directly;
   `CatalogModel` (1,612 lines in `CatalogModel.swift`, plus extensions) mixes paging, search, selection, projects, rename, event consumption and branch reads;
   `CatalogModel` imports AppKit and `ConversationIntents.terminalView` returns `NSView`.
 - Launch measurements (F5, release package, 5 runs each, `scripts/perf/launch_paint.py`): window creation (`WindowShown`,
   ~125-136 ms) dominates app delegate to first page; catalog open including `PRAGMA quick_check` is 0.7 / 1.5 / 8 ms at 0 /
   1,000 / 10,000 rows, so it stays on the main thread. Git branch reads are off the main actor (`BranchCache`).
-  `CatalogModel.scheduleRefresh` still reloads every loaded row of every visible list on run/lifecycle frames (a row-level
-  refresh is a follow-up).
+  A run, lifecycle, identity or activity frame patches its one row (`CatalogModel+Patching.swift`, H1-D2) when no frame was
+  missed before it and the row is loaded; otherwise, and for batched catalog changes such as aging, `CatalogModel.scheduleRefresh`
+  reloads every loaded row of every visible list.
 - Logging and diagnostics (D-45): `LoomLog` categories under subsystem `local.loom.desktop` (Lifecycle, Catalog, ClaudeHooks, Registry, Toolchain, Scope, Usage, Recovery, Quit, Diagnostics, HookClient for the `loom-hook` process). Notice and error levels are for transitions and failures; per-event detail is `debug`; ids, counts, durations and error categories are public, user paths private; a repeating error is rate-limited to once a minute per key (`LogRateLimiter`). Loom writes no log files of its own; the only files are the journal and exports above. Cost: a logger call without a listener is a cheap level check, a journal write is one `O_APPEND` line on a rare event, a backup is at most one `VACUUM INTO` a day off the main thread. Entry points: Help > Collect Diagnostics… and Settings > About > Collect Diagnostics… share one `DiagnosticsCollection` (LoomCatalogUI; one export at a time, both disabled while it runs and before the runtime exists) that `AppDelegate+Diagnostics.swift` points at `SessionRuntime.collectDiagnostics(to: DiagnosticsExport.defaultFolder(dataRoot:), usage:, planLimitsFailure:)` (the facts come from `UsageModel.diagnosticsSnapshot()`), then reveals the folder in Finder; a failure shows a modal alert with the error category only. The Usage page shows the same two facts: "Plan limits unavailable" with a short reason while the last ask failed (`UsageModel.limitsFailure`, cleared by a success; an earlier answer stays with "could not refresh"), and one line "N usage records could not be understood, so totals may be low" (`UsageModel.linesNotUnderstood`). Known limits: the usage scan's not-understood line total and `PlanLimitsFailure` are per app run; the journal records the Claude CLI version/capabilities at the first toolchain resolution (`claude_cli`), not at launch.
 - Quit path: `AppShutdownCoordinator` (`LoomCore`) owns the quit state machine; `AppDelegate.startRuntime` builds it with the
   shutdown closure when the supervisor exists, and with no coordinator quit returns `.terminateNow`. `TerminalRunController`
@@ -365,11 +368,12 @@ Design fact: one `codex app-server` per Codex session (contract §3).
 - Identity: `BuildIdentity` (LoomLaunchOptions) is the one Swift owner of production vs development names (data and
   socket directories, command-channel prefix, startable providers); the Python runners share one channel helper
   (`scripts/perf/perf_paths.py`); `scripts/dev-paths.sh` keeps its own copy for the zsh scripts.
-- Evidence code (~880 of `loom-app`'s ~1,660 lines: `DevelopmentEvidence`, `EvidenceResourcePool`, tail of `AppDelegate`)
-  ships in the production executable, gated by `--evidence`.
+- Evidence code compiles only into the development flavor (§7); `scripts/check.sh --release-tree` fails when the release
+  binary carries any of it.
 - Ownership sampling in `ProcessSupervisor` scans the process table; `persistLedger` rewrites the ledger JSON.
-- No `.github/`, no CI, no release packaging or notarization; only `scripts/package-dev-app.sh` (dev signing, version
-  hard-coded in inline Info.plists). `loom-app` has no unit tests; `AppDelegate`/`MainSplitViewController` and the views are
+- No `.github/` and no CI. Packaging: `scripts/package-dev-app.sh` for development packages and the clean loom tree's
+  `build.sh` (`scripts/release/build-loom.sh`) for `Loom.app`, both signed with the stable local identity; notarization is not
+  needed ([D-47](../DECISIONS.md)). `CFBundleVersion` is the commit count of the tree that builds the app. `loom-app` has no unit tests; `AppDelegate`/`MainSplitViewController` and the views are
   covered only by manual acceptance scripts.
 
 ## 10. Keeping this file true

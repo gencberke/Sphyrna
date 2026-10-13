@@ -1,6 +1,6 @@
 # Stage I — identity and UI system
 
-Part of [multi-agent run 1](RUN-1.md). Roadmap row: [ROADMAP → I](../ROADMAP.md#i-identity-and-ui-system-proposed). Facts: [I scan](experiments/run1-planning-scans/I-identity.md), [identity proposal](../design/IDENTITY-PROPOSAL.md) (direction A chosen, D-22), [DESIGN](../design/DESIGN.md), [UI-MAP](../design/UI-MAP.md).
+Part of [multi-agent run 1](RUN-1.md). Roadmap row: [ROADMAP → I](../ROADMAP.md#i-identity-and-ui-system). Facts: [I scan](experiments/run1-planning-scans/I-identity.md), [identity proposal](../design/IDENTITY-PROPOSAL.md) (direction A chosen, D-22), [DESIGN](../design/DESIGN.md), [UI-MAP](../design/UI-MAP.md).
 
 ## Goal
 

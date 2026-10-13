@@ -1,6 +1,6 @@
 # Stage F — foundation hardening
 
-Part of [multi-agent run 1](RUN-1.md). Roadmap row: [ROADMAP → F](../ROADMAP.md#f-foundation-hardening-proposed). Facts: [F scan](experiments/run1-planning-scans/F-foundation.md), [architecture/scale scan](experiments/run1-planning-scans/arch-scale.md), [performance research](experiments/run1-planning-scans/perf-research.md), [tooling scan](experiments/run1-planning-scans/tooling-baseline.md), CP5 optimizer items in [cp5/CLOSURE.md](cp5/CLOSURE.md).
+Part of [multi-agent run 1](RUN-1.md). Roadmap row: [ROADMAP → F](../ROADMAP.md#f-foundation-hardening). Facts: [F scan](experiments/run1-planning-scans/F-foundation.md), [architecture/scale scan](experiments/run1-planning-scans/arch-scale.md), [performance research](experiments/run1-planning-scans/perf-research.md), [tooling scan](experiments/run1-planning-scans/tooling-baseline.md), CP5 optimizer items in [cp5/CLOSURE.md](cp5/CLOSURE.md).
 
 ## Goal
 

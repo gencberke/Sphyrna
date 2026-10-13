@@ -8,11 +8,15 @@ Checkpoint plans, slice records and experiment evidence. The active stage's plan
 | [CHECKPOINT-2.md](CHECKPOINT-2.md) | CP2 state and resume: plan and acceptance matrix (§18 describes an older shared Codex server; contract §3 now has one per session) | closed, history |
 | [CHECKPOINT-5.md](CHECKPOINT-5.md) | CP5 terminal engine and first window: goal, slices, acceptance map | closed 6 Oct 2026 |
 | [STAGE-L.md](STAGE-L.md) | Stage L: clean loom line (promote and build scripts, first daily `Loom.app` 0.1.0) | done; L-4 deferred (D-31) |
-| [RUN-1.md](RUN-1.md) | Multi-agent run 1: order, protocol, real-Claude ledger, evaluation recipe, decision points | **active** |
-| [STAGE-F.md](STAGE-F.md), [f/](f/) | Stage F foundation hardening: plan and slice Briefs | **active** |
-| [STAGE-I.md](STAGE-I.md), [i/](i/) | Stage I identity and UI system: plan and slice Briefs | **active** |
-| [STAGE-U.md](STAGE-U.md), [u/](u/) | Stage U daily-use UI features: plan and slice Briefs | **active** |
-| [CHECKPOINT-4.md](CHECKPOINT-4.md), [cp4/](cp4/) | CP4 deletion and retention: plan and slice Briefs | **active** |
+| [RUN-1.md](RUN-1.md) | Multi-agent run 1: order, protocol, real-Claude ledger, evaluation recipe, decision points | done (0.2.0, [D-36](../DECISIONS.md)); its DP list is still the reference for open CP4 decisions |
+| [RC-0.2.0.md](RC-0.2.0.md) | Release candidate 0.2.0: the note for the user's decision | accepted 7 Oct ([D-36](../DECISIONS.md)), history |
+| [STAGE-F.md](STAGE-F.md), [f/](f/) | Stage F foundation hardening: plan and slice Briefs | done in run 1 |
+| [STAGE-I.md](STAGE-I.md), [i/](i/) | Stage I identity and UI system: plan and slice Briefs | done in run 1; I4 parked |
+| [STAGE-U.md](STAGE-U.md), [u/](u/) | Stage U daily-use UI features: plan and slice Briefs | done in run 1 |
+| [CHECKPOINT-4.md](CHECKPOINT-4.md), [cp4/](cp4/) | CP4 deletion and retention: plan and slice Briefs | built in run 1; the cleanup review waits for DP-CP4-2 |
+| [FEEDBACK-1.md](FEEDBACK-1.md) | Day-one feedback on 0.2.1: causes, changes, open points | done (0.3.0) |
+| [FEEDBACK-2.md](FEEDBACK-2.md) | Feedback round 2 on 0.3.0, and the plan for a session opening a session (D-40) | done (0.3.1, 0.3.2) |
+| [GLASS-TRIAL.md](GLASS-TRIAL.md) | Liquid Glass trial for the sidebar | done (0.3.3, [D-44](../DECISIONS.md)) |
 | [HARDENING-1.md](HARDENING-1.md) | Hardening round 1 after 0.3.3: slices, planner decisions, performance candidates, housekeeping | done (0.4.0, 0.4.1); open items in its Resume here |
 | [FEEDBACK-3.md](FEEDBACK-3.md) | Feedback round 3 on 0.4.1: Usage page, session header, workflow subagents | done (0.4.2); open items in its Resume here |
 | [FEEDBACK-4.md](FEEDBACK-4.md) | Feedback round 4 on 0.4.2: Stop flow and last screen, Active section, subagent panel, longer branch | done (0.4.3); open items in its Resume here |
