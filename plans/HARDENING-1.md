@@ -160,6 +160,12 @@ The rerun passed. One run does not prove the races are gone; the evening's full 
 - **Look.**
   - The item's drawing for idle, working, attention and failure on a dark and a light bar (a contact sheet of `screenshot-menubar`): the badge sits in the cut-away corner, and the light bar takes the darker values.
   - Settings → General: the second card with three switches, and both notices with their buttons.
+- **Tag, promote, install.** Tag `release/0.4.1` → loom-dev `b7f2672`; loom `2caaa5c` / `v0.4.1` (268 files). The user quit the daily Loom, and `build.sh` built and swapped `/Applications/Loom.app`. Checked:
+  - Deep-strict signature; version 0.4.1, `CFBundleVersion` 9, `LoomRevision` `2caaa5c`, the category.
+  - LaunchServices holds one record, version 9.0.
+  - The binary has no evidence code or fakes, and holds the H1-F strings.
+  - The user's data was not touched by the install.
+  - No isolated launch this time: the release flavor's `--evidence` isolates only the data root, so the live notification service would have shown the real permission prompt for the user's app during a test. The live services first run when the user opens 0.4.1.
 - **Not run.** The item in the real menu bar (the user looks); the opened menu's look; real banners, the permission prompt and the deep links; real `SMAppService`; Increase Contrast; the full suite (the user's scope).
 
 ## Release 0.4.0 (12 Oct, evening)
