@@ -65,7 +65,7 @@ As drawn in the preview's "Chosen" section.
   - Transient texts take the pill's place as plain secondary text: "Starting — complete any prompts in the terminal", "Deleting…" and the preparing notice.
   - The contrast tiers of DESIGN.md hold (primary 7:1, secondary 4.5:1), and a test measures the pill colours.
 - **Project chip.**
-  - It starts with the project's tone stripe, as `ProjectHeaderMark` draws it. There is no stripe when colours are off or the project has no colour.
+  - It starts with the project's tone stripe (`ProjectBranchChip`). There is no stripe when colours are off or the project has no colour.
   - Then come the project name in primary text, a hairline, the branch glyph and the branch name in secondary text.
   - The branch comes from `CatalogModel.branches`, the card's source. It shows for `.named` and `.detached` ("Detached HEAD") and is hidden for `.unavailable`. Its tooltip is "Git branch".
   - A session without a project shows only the branch.
@@ -73,6 +73,14 @@ As drawn in the preview's "Chosen" section.
 - **Control group.** One rounded container holds a Stop segment (stop glyph and text) while `canStop`, and the ⋯ menu segment always, with a hairline between them. The menu items do not change. When the run ends, Stop disappears and ⋯ stays where it is.
 - **Narrow window.** The title truncates first, then the branch, then the project name. The pill and the control group never truncate. The row stays 36 pt, and the tab strip does not change.
 - **Docs.** DESIGN.md and design/UI-MAP.md describe the new header.
+- **As built** (`CUI/SessionHeaderViews.swift`, `LoomTheme.Header`; accepted by the planner):
+  - The chip names the project even with Project colors off: neutral, without a stripe. `CatalogModel.headerProjectMark(of:)` does this; the sidebar and the tabs still follow the setting.
+  - Ready, Idle and Stale draw no indicator, so their pill has equal insets.
+  - Lighter labels keep 4.5:1 on their washes: `#FFB547` attention, `#FF8A85` failure, `#8FB0FF` unviewed. Neutral labels use `Text.secondaryOnTint`.
+  - The branch name is capped at 180 pt.
+  - The transient texts stand alone, without the indicator.
+  - The layout is a custom `HeaderFlow` that follows the pure `HeaderFlowPlan`: the title floor is 100 pt and the chip floor 56 pt. Below a detail width of about 480 pt (the sidebar can be 520 pt wide in a 780 pt window), the title shrinks further.
+  - Branch data: `ensureSelectedRow` and `ensureTabRows` now read the branch last, after the requester lookup. Before, a prune in between could drop the branch of a selection whose card was not loaded.
 
 ### FB3-1: Usage page, U1
 
@@ -110,3 +118,10 @@ The slices run one after another (D-13), and then:
 | --- | --- |
 | FB3-3: `scripts/check.sh --suite SubagentTests ClaudeHookTests SessionEventHubTests ClaudeRegistryTests` | guards and build ok; 59 tests passed (log `check-20261013T131330-70913.log`) |
 | FB3-3 new tests fail without the fix | With the fix disabled (the `turnEnded` guard, `workflowPhase`, the folder rule in `read` and the run-folder lookup), all three new tests failed (9 issues, log `check-20261013T131308-70416.log`). The FB2-3 test `theParentsStopEndsAForegroundSubagentWhoseStopWasLost` still passed |
+| FB3-2: `scripts/check.sh --suite LoomCatalogUITests` (window tests skipped) | guards and build ok; 394 tests passed, including the 15 new `SessionHeaderTests` and the 36 + 32 header-and-strip layout test (log `check-20261013T133520-93424.log`) |
+| FB3-2 new tests fail without the change | Three changes reverted at once (the old branch read order, a title floor of 0, `.unavailable` shown as a branch): 13 failed expectations in six tests (log copy `~/Library/Caches/loom-fb3/logs/mutation-run.log`) |
+| FB3-2 look | Offscreen renders (`~/Library/Caches/loom-fb3/header/`, from `SessionHeaderTests` with `LOOM_HEADER_RENDER_DIR`), checked by the planner:
+<br>- Working, Needs approval, colours off, no project, and no project with no branch, at 900 pt.
+<br>- Ready at 520 pt: the title shortened.
+<br>- Finished at 480 pt: the branch dropped.
+<br>Not seen in a real window yet: hover, focus, the menu and Increase Contrast |
