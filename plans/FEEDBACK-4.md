@@ -13,14 +13,18 @@ The round ships as 0.4.3 ([D-41](../DECISIONS.md) numbering) when the user says 
 
 ## Resume here
 
-- **State.** The plan is written. Slice A (Stop flow) is with an implementer: FB4-1, FB4-4 and FB4-6, then FB4-3. Slices B (FB4-2, Active) and C (FB4-5, subagent panel) follow, one build at a time.
+- **State.**
+  - Slice A, the Stop flow, is done and reviewed: commits 543d0d0 (FB4-1, FB4-4, FB4-6) and 95bffc9 (FB4-3). See [Slice A as built](#slice-a-as-built).
+  - Slice B, FB4-2 (the Active section), is with an implementer.
+  - Slice C, FB4-5 (the subagent panel), follows. Builds run one at a time.
 - **Next.**
-  1. Review A.
-  2. Brief and review B, then C.
+  1. Review B.
+  2. Brief and review C.
   3. Run the full suite on the combined result (`scripts/check.sh --full --idle`). The user allowed it on 13 Oct.
   4. The on-screen pass, after the user says the computer is idle ([D-13](../DECISIONS.md)).
   5. Release 0.4.3, when the user says.
-- **Later.** The optimization run, when the user asks.
+- **Later.** The optimization run, when the user asks. Candidates noted so far:
+  - `SessionLifecycleController.markActivity` has had no caller since FB4-1.
 - **Still open from round 3** ([Resume here](FEEDBACK-3.md#resume-here)):
   - The header's hover, ⋯ menu and focus ring in daily use.
   - The subagent rows during a real workflow.
@@ -142,15 +146,40 @@ One build at a time. Each slice commits its own work. The planner reviews each o
 
 | Slice | Items | Owner | State |
 | --- | --- | --- | --- |
-| A | FB4-1, FB4-4, FB4-6 (commit 1); FB4-3 (commit 2) | implementer | running |
-| B | FB4-2 | implementer, after A | waiting |
+| A | FB4-1, FB4-4, FB4-6 (543d0d0); FB4-3 (95bffc9) | implementer | done, reviewed |
+| B | FB4-2 | implementer, after A | running |
 | C | FB4-5 | implementer, after B | waiting |
+
+## Slice A as built
+
+- **FB4-1.** `SessionCatalog.markUsed` takes `movesActivity`. The lifecycle controller's resume paths pass false: the lifecycle becomes active, the stale mark is cleared and the use time moves, but not the activity time. The Stop stamp (`SessionRuntime.markUserStopped`) is gone. Claude's `SessionStart` on Loom's own resume never reaches `transitionRun`, because `adoptConversation` returns early for the same conversation. An end-to-end test covers it.
+- **FB4-4.** `ConversationController.stop` closes the tab after a verified stop. It skips that when the session has a new run since the stop.
+- **FB4-6.** `LoomTheme.Header.branchMaxWidth` is 320. The order in which `HeaderFlowPlan` gives way did not need a change, and a long-branch test pins it.
+- **FB4-3, capture.**
+  - SwiftTerm patch 14 (`patches/swiftterm-alt-screen-capture.patch`) adds an opt-in `Terminal.onAlternateBufferLeaving` hook, called under the terminal lock just before `?1047l`/`?1049l` clears the alternate buffer. It also adds `copyRows` and `BufferRowsCopy`.
+  - `TerminalSurface` keeps the latest non-blank screen that was left. It captures:
+    - at Stop, `captureVisibleScreen()`, synchronously before any signal;
+    - at run end, `captureEndedScreen()`: the active alternate screen, else the one that was left, else the main buffer plus a scrollback tail.
+  - `TerminalScreenSnapshot` holds RGB runs with styles; dim and inverse are applied.
+- **FB4-3, keep and show.**
+  - `EndedScreenStore` replaces `EndedScreenPolicy`. It is an LRU of 16 snapshots and 4 MiB, with each snapshot capped at 400 rows and 1 MiB.
+  - Measured sizes: a 164×52 fullscreen screen is about 16.5 KB; a 399-line classic screen is about 93 KB.
+  - `EndedScreenView` is a read-only, selectable `NSTextView` that redraws only for a new capture or a new font size.
+  - The fake provider gained an alternate-screen mode (`LOOM_FAKE_ALT_SCREEN=1` or `clear`).
+- **Planner review.**
+  - The capture runs on the feeding thread under the lock, only when the alternate screen is left, which is rare. Copied cells carry their own grapheme scalars, so a copy read after the lock is released is safe.
+  - The controller is not observed, so `EndedScreenStore.use` in a view body does not invalidate anything.
+  - Tests exercise the hook through `TerminalSurface` and `view.feed`.
+- **Unverified.**
+  - A real Claude run.
+  - The on-screen look of `EndedScreenView`, including wide and CJK glyph alignment.
+  - Whether Claude erases the alternate screen before leaving it on SIGHUP. The capture at Stop covers this either way.
 
 ## Verification
 
 | Check | Result |
 | --- | --- |
-| Slice A targeted suites | — |
+| Slice A targeted suites | Passed (implementer, 13 Oct). Commit 1: SessionLifecycleTests, SessionCatalogV3Tests, SessionCatalogTests, ConversationControllerTests and two header tests, 43 tests (`check-20261013T212945-28402.log`). New tests failed on the old source (`check-20261013T213104-29168.log`). Commit 2: LoomTerminalTests, ConversationControllerTests, SessionNavigationRuleTests, EndedScreenViewTests, DeletionModelTests, ConversationTabsTests and CatalogModelTests, 56 + 115 tests (`check-20261013T214555-35239.log`). Guards passed. |
 | Slice B targeted suites | — |
 | Slice C targeted suites | — |
 | Full suite on the combined result | — |
