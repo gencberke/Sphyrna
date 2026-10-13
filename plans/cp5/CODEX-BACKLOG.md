@@ -11,5 +11,6 @@ Codex development is paused since 4 Oct 2026 and Codex is not part of the first 
 | Codex-only CP5 acceptance rows | C1/C4 and related rows were last verified for Codex on 2 Oct (17/17); not re-run on packages H/I | [CHECKPOINT-5](../CHECKPOINT-5.md), [C](C.md) |
 | Contract rows to revisit | Codex memory figure, Codex 30-minute cache versus §4.4 ([O-08](../../DECISIONS.md)) | Contract §3, §4.4 |
 | Production build surfaces | Codex menu items, context menus and `--codex-home` are excluded from the production build in roadmap stage F | [ROADMAP](../../ROADMAP.md) |
+| Server teardown that is joined returns early | `SessionRuntime.tearDown(_:card:)`: a caller that joins a teardown already running (`server.teardownTask`) returns its result before the first caller has set `finished` and removed the server from `codexServers`. So `stopConversation` can report success while `codexServerState().servers` still counts the server for a moment. `eachCodexConversationHasItsOwnServerAndStopClosesOnlyIt` failed once on this, at line 1108, in the round-4 full run 4 on 13 Oct. Fix candidate: do the bookkeeping inside the teardown task, so that every caller sees it | [FEEDBACK-4](../FEEDBACK-4.md#verification) |
 
 Code locations: [docs/ARCHITECTURE.md §8](../../docs/ARCHITECTURE.md#8-codex-paused-not-in-first-release).

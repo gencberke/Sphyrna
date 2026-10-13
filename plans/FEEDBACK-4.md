@@ -19,9 +19,8 @@ The round ships as 0.4.3 ([D-41](../DECISIONS.md) numbering) when the user says 
   - Slice C, the subagent panel (FB4-5), is done and reviewed: a6cd400 and 1d4b7de. See [Slice C as built](#slice-c-as-built).
   - Full suite: run 3, on the round with the optimizer fixes (75852f6), passes. Run 2 had passed before the fixes; run 1 had failed one timing test, fixed in 9ade38d ([verification](#verification)).
   - The optimizer review is done ([findings](#optimizer-review-13-oct)). The user asked for it on 13 Oct ("optimizer'ı max effort spawnlarsın"). It ran as `strict-reviewer` with the optimizer Brief on Opus 5.5 at max effort ([D-06](../DECISIONS.md) requires at least `xhigh`), and read only. Its one blocking finding, R1, is fixed in 81ae519. The user chose to apply U1 and I1 too ([D-55](../DECISIONS.md)): done in 27dd23c and 4390445. The full suite passes on the result ([verification](#verification)).
-- **Next.**
-  1. The on-screen pass, after the user says the computer is idle ([D-13](../DECISIONS.md)). The script is ready: `~/Library/Caches/loom-fb4/onscreen/fb4.py`. It uses a fake provider wrapper with `LOOM_FAKE_ALT_SCREEN=1` and a fresh data root.
-  2. Release 0.4.3, when the user says.
+  - The on-screen pass is done. The user said the computer was idle and gave the go for 0.4.3 if it was positive (13 Oct: "pc boşta yapabilirsin istediğin testi. olumlu olursa 0.4.3'ü kurabilirsin"). Its first run found that the ended screen lost the first character of every row; that is fixed in 4d99e97. The second run passes 20 of 20 checks ([on-screen pass](#on-screen-pass-13-oct)).
+- **Next.** Release 0.4.3 ([record](#release-043-13-oct)).
 - **Optimization.** The optimizer's findings are verified and prioritized here; the user decides what is built. Candidates noted so far:
   - `SessionLifecycleController.markActivity` has had no caller since FB4-1.
 - **Still open from round 3** ([Resume here](FEEDBACK-3.md#resume-here)):
@@ -163,7 +162,8 @@ One build at a time. Each slice commits its own work. The planner reviews each o
 - **FB4-3, keep and show.**
   - `EndedScreenStore` replaces `EndedScreenPolicy`. It is an LRU of 16 snapshots and 4 MiB, with each snapshot capped at 400 rows and 1 MiB.
   - Measured sizes: a 164×52 fullscreen screen is about 16.5 KB; a 399-line classic screen is about 93 KB.
-  - `EndedScreenView` is a read-only, selectable `NSTextView` that redraws only for a new capture or a new font size.
+  - `EndedScreenView` is a read-only, selectable `NSTextView` that redraws only for a new capture, font size or backing scale.
+  - Each character is one terminal cell wide (the advance snapped to the pixel grid, as the engine draws it), and the screen opens at its last row and first column. Both came from the on-screen pass (4d99e97).
   - The fake provider gained an alternate-screen mode (`LOOM_FAKE_ALT_SCREEN=1` or `clear`).
 - **Planner review.**
   - The capture runs on the feeding thread under the lock, only when the alternate screen is left, which is rare. Copied cells carry their own grapheme scalars, so a copy read after the lock is released is safe.
@@ -288,6 +288,47 @@ It was read-only: nothing was built or measured. The planner verified R1 and U1 
 - U1's rescan cost on synthetic profiles of 1k, 5k and 20k transcripts, before and after the change;
 - a signpost around `stopFeed()` during a cold read.
 
+## On-screen pass (13 Oct)
+
+- **Setup.**
+  - Package `Loom-Dev/packages/fb4-candidate`: build 107, `LoomRevision` 4d99e97.
+  - Fake providers, through a wrapper that sets `LOOM_FAKE_ALT_SCREEN=1`, so sessions draw in the alternate screen like the user's fullscreen Claude.
+  - A fresh data root, launched through LaunchServices. The window stayed on screen; the user said the computer was idle.
+  - The scratch driver is `~/Library/Caches/loom-fb4/onscreen/fb4.py`. Runs: `run-232939` (first) and `run-234102` (after the fix), each with snapshots and screenshots in `evidence/`.
+- **Found: the ended screen lost every row's first character.**
+  - Cause: the engine snaps the cell width to the pixel grid (`computeFontDimensions`: 8.5 pt at 14 pt on a 2x screen). The text view laid the same characters out at the font's own advance: 8.654 pt for the system monospaced font, which stands in because `SFMono-Regular` is not installed. So a full row came out wider than the area, and `scrollToEndOfDocument` scrolled sideways to the end of the last row.
+  - The capture was right: it held the full rows.
+  - Fix 4d99e97:
+    - Each character carries the kern that makes it one snapped cell wide, at the window's backing scale, and is laid out again when the scale changes.
+    - Once the area has a size, the screen opens at its last row and first column.
+  - The new test `aFullRowIsAsWideAsTheTerminalAndTheScreenOpensAtItsFirstColumn` failed without the fix on both counts.
+- **Script fixes between the runs.**
+  - The first run switched to the activity view before adding the projects. Adding a project shows the projects view, so its Active screenshots were in the project view and its activity-row checks compared empty lists. The second run switches after adding and checks the view mode before each part.
+  - The first run read the closed panel's evidence `{viewed: null}` as open. Esc had closed the panel.
+- **Second run: 20 of 20 checks pass.** Quit was clean.
+  - **FB4-2, Active.**
+    - A working session is in Active. Finished and unread, it stays there with the blue dot.
+    - Selected and read, it is held. After the user moves on, it leaves, and its work has put it at the top of Today.
+    - A session that needs approval is in Active, with the orange dot.
+  - **FB4-5, panel.**
+    - The fake subagent's transcript opens in place of the terminal (P1) and feeds while on screen.
+    - Breadcrumb "Release notes draft › implementer · map the fake module", the Running pill, and the brief and entries.
+    - Then "Finished 12s" with the tool rows and the error row in red.
+    - Esc returns to the terminal.
+  - **FB4-1, FB4-3, FB4-4, Stop and Resume.**
+    - Stop closes the session's tab and shows the neighbour.
+    - The card keeps its place through Stop and Resume; the activity rows held all three sessions.
+    - No live terminal stays, and one ended screen is kept.
+    - The ended screen shows full rows from the first column.
+    - A resumed session is not in Active before a prompt.
+  - **FB4-6, header.**
+    - At 1220 pt the header shows `stable/conflict/bg/EDDP-19964` in full.
+    - At 780 × 500 the title shortens and the branch drops, in the same order as before.
+- **Notes.**
+  - In evidence screenshots (`cacheDisplay`), a live terminal draws white with faint text. Round 3's and hardening round 1's evidence show the same, so this comes from the capture path, not the app.
+  - The script's `answer:` step did nothing: the command answers only the selected session. The approval stayed open until Stop. This is outside this round.
+- **Not seen:** hover and pressed states, a real Claude session's last screen, and a real workflow's subagent panel.
+
 ## Verification
 
 | Check | Result |
@@ -297,4 +338,26 @@ It was read-only: nothing was built or measured. The planner verified R1 and U1 
 | Slice C targeted suites | Passed (implementer, 13 Oct). SubagentTranscriptTests, SubagentPanelTests, SubagentTests, SubagentTreeTests and the end-to-end controller test: 48 + 22 (`check-20261013T222513-48342.log`). CatalogModelTests, CatalogHotPathTests, SessionHeaderTests, ConversationTabsTests, SessionNavigationModelTests, SidebarRenderTests and SidebarStatusTests: 102 (`check-20261013T222417-47940.log`). With the two panel rules removed, SubagentPanelTests failed with 6 issues. |
 | Full suite on the combined result | Run 1 at 3506a5a..6da3aed (`check-20261013T222646-48936.log`): the release build and the staged release tree passed. `swift test -c release` failed 1 of the 622 LoomCoreTests: `aBurstOfWritesIsCoalescedIntoFewReads`. Under load, its 20 writes spaced 10 ms apart took 3.3 s, so the feed rightly read them in 10 batches, one per 200 ms window, against a fixed bound of 4. The test is now bounded by the windows the writes spanned (9ade38d); SubagentTranscriptTests 26 passed (`check-20261013T223350-51854.log`). Run 2 on 3d4822f passed (`check-20261013T223520-52519.log`): the release build and the staged release tree, with no evidence code. `swift test -c release` covered every target and included the window tests: 58 tests (one known issue), 8, 622 and 446. |
 | Full suite after the optimizer fixes | Run 3 on 75852f6 passed (`check-20261013T232017-59123.log`): the release build, the staged release tree (no evidence code), and `swift test -c release` on every target with the window tests: 58 (one known issue), 8, 623 and 457 tests |
-| On-screen pass | — |
+| On-screen pass | Run 1, `run-232939`, on a package from before the fix (the product code of 75852f6): found the ended screen's first-column loss. Run 2, `run-234102`, on build 107 (4d99e97): 20 of 20 checks pass ([on-screen pass](#on-screen-pass-13-oct)) |
+| Full suite on the fixed round | Run 4 on 4d99e97 (`check-20261013T234450-65522.log`). The release build and the staged release tree passed, with no evidence code. `swift test -c release` with the window tests: LoomTerminal 58 (one known issue) and 8, and LoomCatalogUI 458, all passed. LoomCore passed 622 of 623. `eachCodexConversationHasItsOwnServerAndStopClosesOnlyIt` failed once at line 1108, on a Codex-only teardown race; Codex is paused and not in the release, and the race is in the [Codex backlog](cp5/CODEX-BACKLOG.md). LoomCore had not changed since run 3's pass. Two release-config re-runs of LoomCoreTests passed 623 of 623 (`~/Library/Caches/loom-check-logs/fb4-codex-flake.out`); further Codex re-runs were stopped as not needed for this release |
+| Ended-screen fix (4d99e97) | EndedScreenViewTests: 6 passed (`check-20261013T233755-63331.log`). The new test failed without the fix, on the row width and on the first column (`check-20261013T233809-63749.log`). EndedScreenViewTests, TerminalScreenSnapshotTests and ConversationControllerTests: 15 + 50 passed (`check-20261013T233833-64194.log`) |
+
+## Release 0.4.3 (13 Oct)
+
+0.4.3 adds feedback round 4 to 0.4.2:
+- the Stop flow and the last screen;
+- the Active section;
+- the subagent panel;
+- the longer branch;
+- the optimizer fixes R1, U1 and I1;
+- the ended-screen fix from the on-screen pass.
+
+The user gave the go on 13 Oct, if the tests were positive ("pc boşta yapabilirsin istediğin testi. olumlu olursa 0.4.3'ü kurabilirsin").
+
+- **Full suite.** Run 4 on 4d99e97 ([verification](#verification)). Everything passed except one Codex-only test, a teardown race outside the release. LoomCore was unchanged since run 3's full pass.
+- **Package and on-screen pass.** Build 107 (4d99e97): 20 of 20 checks ([on-screen pass](#on-screen-pass-13-oct)).
+- **Not run:**
+  - A real Claude session: the last screen of a real fullscreen session, and a real workflow's subagent panel.
+  - Hover, pressed and focus states.
+  - Increase Contrast.
+  - The measurements the optimizer review left open: U1's rescan cost and a `stopFeed` signpost.
