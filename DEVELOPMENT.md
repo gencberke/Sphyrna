@@ -49,7 +49,7 @@ Builds are serialized: only the agent whose Brief says it holds the build slot b
 
 | Command | Effect |
 |---|---|
-| `snapshot:<label>` | writes `state-<label>.json` (catalog, terminals, runtime; also `endedScreens`, `attentionCount`, `dockBadge`). Evidence runs never show the quit question, so a command-channel `quit` does not wait for a click |
+| `snapshot:<label>` | writes `state-<label>.json` (catalog, terminals, runtime; also `endedScreens`, `attentionCount`, `dockBadge`, and `catalog.activeSessionIDs`, the sessions the activity view draws under Active, FB4-2). Evidence runs never show the quit question, so a command-channel `quit` does not wait for a click |
 | `screenshot:<label>` | `screenshot-<label>.png` (fake providers only) |
 | `buttons:<label>` | window button geometry `buttons-<label>.json` |
 | `select:<id\|none>`, `search:<t>`, `view-mode:<activity\|projects>`, `toggle-sidebar`, `resize:<w>x<h>` | catalog/window state |

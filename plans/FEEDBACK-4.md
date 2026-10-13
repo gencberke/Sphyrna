@@ -16,12 +16,12 @@ The round ships as 0.4.3 ([D-41](../DECISIONS.md) numbering) when the user says 
 - **State.**
   - Slice A, the Stop flow, is done and reviewed: commits 543d0d0 (FB4-1, FB4-4, FB4-6) and 95bffc9 (FB4-3). See [Slice A as built](#slice-a-as-built).
   - Slice B, the Active section (FB4-2), is done and reviewed: da77473, plus the planner's fix 71d4093. See [Slice B as built](#slice-b-as-built).
-  - Slice C, the subagent panel (FB4-5), is with an implementer.
+  - Slice C, the subagent panel (FB4-5), is done and reviewed: a6cd400 and 1d4b7de. See [Slice C as built](#slice-c-as-built).
+  - The full suite is running on the combined result.
 - **Next.**
-  1. Review C.
-  3. Run the full suite on the combined result (`scripts/check.sh --full --idle`). The user allowed it on 13 Oct.
-  4. The on-screen pass, after the user says the computer is idle ([D-13](../DECISIONS.md)).
-  5. Release 0.4.3, when the user says.
+  1. The full suite on the combined result (`scripts/check.sh --full --idle`). The user allowed it on 13 Oct.
+  2. The on-screen pass, after the user says the computer is idle ([D-13](../DECISIONS.md)).
+  3. Release 0.4.3, when the user says.
 - **Later.** The optimization run, when the user asks. Candidates noted so far:
   - `SessionLifecycleController.markActivity` has had no caller since FB4-1.
 - **Still open from round 3** ([Resume here](FEEDBACK-3.md#resume-here)):
@@ -38,12 +38,12 @@ The round ships as 0.4.3 ([D-41](../DECISIONS.md) numbering) when the user says 
 
 | # | User note | Cause or finding | Change | State |
 | --- | --- | --- | --- | --- |
-| FB4-1 | A stopped session jumps up in the activity view. Only a prompt and the work it starts should move it | The user's Stop stamps the activity time: `ConversationController.stop` → `markUserStopped` → `markActivity`. Resume stamps it too: `reactivate` → `markUsed(reactivate: true)` | Stop no longer stamps. Resume reactivates the lifecycle without moving the activity time | slice A |
-| FB4-2 | An Active section in the activity view, besides Today. Sessions stay there while they work, until the task is done. Once read, they drop to Today | New | [Active section](#fb4-2-active-section) | slice B |
-| FB4-3 | A stopped session does not show its last terminal screen, only "Resume this session with: claude --resume …". A stopped session must use no resources | [Cause](#fb4-3-cause) | A static snapshot of the screen replaces the kept live terminal ([below](#fb4-3-ended-screen)) | slice A |
-| FB4-4 | A stopped session's tab should close | Stop leaves the tab alone | A verified Stop closes the tab like its close button ([below](#fb4-1-and-fb4-4-stop-and-resume)) | slice A |
-| FB4-5 | A click on a subagent row in the sidebar should open its live transcript, as in Claude | A row's click selects the parent session (`SubagentTree`) | P1, as drawn ([below](#fb4-5-subagent-panel-p1)) | slice C |
-| FB4-6 | Longer branch names in the header | `LoomTheme.Header.branchMaxWidth` is 180 pt | 320 pt. The order in which the header gives way is unchanged | slice A |
+| FB4-1 | A stopped session jumps up in the activity view. Only a prompt and the work it starts should move it | The user's Stop stamps the activity time: `ConversationController.stop` → `markUserStopped` → `markActivity`. Resume stamps it too: `reactivate` → `markUsed(reactivate: true)` | Stop no longer stamps. Resume reactivates the lifecycle without moving the activity time | done (slice A) |
+| FB4-2 | An Active section in the activity view, besides Today. Sessions stay there while they work, until the task is done. Once read, they drop to Today | New | [Active section](#fb4-2-active-section) | done (slice B) |
+| FB4-3 | A stopped session does not show its last terminal screen, only "Resume this session with: claude --resume …". A stopped session must use no resources | [Cause](#fb4-3-cause) | A static snapshot of the screen replaces the kept live terminal ([below](#fb4-3-ended-screen)) | done (slice A) |
+| FB4-4 | A stopped session's tab should close | Stop leaves the tab alone | A verified Stop closes the tab like its close button ([below](#fb4-1-and-fb4-4-stop-and-resume)) | done (slice A) |
+| FB4-5 | A click on a subagent row in the sidebar should open its live transcript, as in Claude | A row's click selects the parent session (`SubagentTree`) | P1, as drawn ([below](#fb4-5-subagent-panel-p1)) | done (slice C) |
+| FB4-6 | Longer branch names in the header | `LoomTheme.Header.branchMaxWidth` is 180 pt | 320 pt. The order in which the header gives way is unchanged | done (slice A) |
 
 ## FB4-3: cause
 
@@ -147,7 +147,7 @@ One build at a time. Each slice commits its own work. The planner reviews each o
 | --- | --- | --- | --- |
 | A | FB4-1, FB4-4, FB4-6 (543d0d0); FB4-3 (95bffc9) | implementer | done, reviewed |
 | B | FB4-2 (da77473, planner fix 71d4093) | implementer | done, reviewed |
-| C | FB4-5 | implementer, after B | running |
+| C | FB4-5 (a6cd400, 1d4b7de) | implementer | done, reviewed |
 
 ## Slice A as built
 
@@ -200,12 +200,58 @@ One build at a time. Each slice commits its own work. The planner reviews each o
   - Active draws loaded rows only. The page holds 100.
   - `SidebarAccessibilityTests`, which reads day headings through a window, has not run. It will run with the full suite.
 
+## Slice C as built
+
+**Core** (a6cd400):
+- `SubagentRecord.transcriptPath` is the sibling `.jsonl` of the meta file. It is set when the meta is read.
+- `SubagentTranscriptLocation` checks:
+  - the id;
+  - one of the two path shapes;
+  - after `realpath`, a path inside the profile's `projects` folder;
+  - when opening: read-only, `O_NOFOLLOW`, a regular file owned by this user.
+- `SubagentTranscriptParser` decodes a narrow wire type behind a `memmem` gate for attachments. It clips strings at 4 KiB.
+- `SubagentTranscriptTail` reads only new whole lines:
+  - lines over 128 KiB are skipped;
+  - a shrink or an inode change resets it;
+  - a cold open reads the last 512 KiB from a line start, plus the first line, the brief.
+- `SubagentTranscriptFeed` runs one vnode source and a one-shot 200 ms coalescing read on a utility queue. Batches arrive through an `AsyncStream`. `stop()` is synchronous and idempotent, and closes both descriptors.
+- The fake provider gained `/subagent <ms>`. It writes in the isolated profile only.
+
+**UI** (1d4b7de):
+- `CatalogModel.viewedSubagent` and `SubagentTranscriptModel`:
+  - The model holds a ring of 400 entries.
+  - The feed runs only while the panel is on screen and the window is visible.
+  - Each batch is one update.
+- Any `select()` closes the panel. So do the record leaving the live list and the run ending.
+- `DetailContent` swaps `TerminalHost` for the transcript. The header shows "session › agent type · description", Running or Finished, and Session with Esc.
+- A row's tap is `.openSubagent`.
+- Evidence gained `open-subagent:<sessionID>:<agentID>`, `close-subagent` and the snapshot field `subagentPanel`.
+
+**Decisions made in the slice:**
+- There is no Failed state, because Claude reports no subagent failure.
+- The projects root is checked in the controller against the runtime's real profile.
+- A batch carries at most 1,000 entries.
+- A tool with no known main argument shows its alphabetically first short string field.
+
+**Measured** (debug build):
+- Parsing takes about 15 µs a line.
+- A cold open of a 5.9 MB file read 540,673 bytes and delivered 230 lines.
+
+**Planner review:**
+- Nothing runs while the file is idle.
+- `stop()` waits only for the cancel handlers, and runs on the main actor, never on the feed's queue.
+- `deinit` cannot overlap a queue block, because every block holds the feed strongly while it runs.
+
+**Unverified:**
+- Everything on screen: scroll-follow, the header, Esc with real focus, selection across lazy rows.
+- A real Claude subagent.
+
 ## Verification
 
 | Check | Result |
 | --- | --- |
 | Slice A targeted suites | Passed (implementer, 13 Oct). Commit 1: SessionLifecycleTests, SessionCatalogV3Tests, SessionCatalogTests, ConversationControllerTests and two header tests, 43 tests (`check-20261013T212945-28402.log`). New tests failed on the old source (`check-20261013T213104-29168.log`). Commit 2: LoomTerminalTests, ConversationControllerTests, SessionNavigationRuleTests, EndedScreenViewTests, DeletionModelTests, ConversationTabsTests and CatalogModelTests, 56 + 115 tests (`check-20261013T214555-35239.log`). Guards passed. |
 | Slice B targeted suites | Passed (implementer, 13 Oct): ActivePhaseTests and SessionEventHubTests (14), CatalogHotPathTests (25), SidebarRenderTests with CatalogHotPathTests (30), and the navigation, model, preferences, menu bar, open request and status suites (66 + 14). Logs: `check-20261013T215813-37695.log`, `-215847-38096.log`, `-215935-38903.log`, `-220005-39329.log`. Planner fix: ActivePhaseTests and SessionEventHubTests 15 passed (`check-20261013T220136-39799.log`); the new test failed without the fix (`check-20261013T220153-40291.log`). |
-| Slice C targeted suites | — |
+| Slice C targeted suites | Passed (implementer, 13 Oct). SubagentTranscriptTests, SubagentPanelTests, SubagentTests, SubagentTreeTests and the end-to-end controller test: 48 + 22 (`check-20261013T222513-48342.log`). CatalogModelTests, CatalogHotPathTests, SessionHeaderTests, ConversationTabsTests, SessionNavigationModelTests, SidebarRenderTests and SidebarStatusTests: 102 (`check-20261013T222417-47940.log`). With the two panel rules removed, SubagentPanelTests failed with 6 issues. |
 | Full suite on the combined result | — |
 | On-screen pass | — |
