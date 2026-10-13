@@ -99,9 +99,10 @@ extension SessionRuntime {
     // MARK: Backup
 
     /// The daily backup, after a short delay so it never competes with the launch; `force` is the
-    /// fresh one after a deletion finished. Off the main thread and off the catalog actor.
+    /// fresh one after a deletion finished. Off the main thread and off the catalog actor. None starts
+    /// once shutdown has begun; the next launch's daily backup covers a deletion that ends during Quit.
     func scheduleCatalogBackup(force: Bool = false) {
-        guard let delay = configuration.catalogBackupDelay else { return }
+        guard let delay = configuration.catalogBackupDelay, !shuttingDown else { return }
         let store = catalog.backupStore
         backupTask?.cancel()
         backupTask = Task.detached(priority: .utility) {

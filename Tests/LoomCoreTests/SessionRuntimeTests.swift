@@ -72,6 +72,13 @@ private extension SessionCatalog {
     func holdForRuntimeQuitTest(_ gate: RuntimeCatalogGate) { gate.hold() }
 }
 
+private final class RuntimeFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var raised = false
+    var isRaised: Bool { lock.withLock { raised } }
+    func raise() { lock.withLock { raised = true } }
+}
+
 /// Toggles the resolver between failing and working so retries can be tested.
 final class ToolchainSwitch: @unchecked Sendable {
     private let lock = NSLock()
@@ -355,6 +362,32 @@ struct SessionRuntimeTests {
             _ = try await context.runtime.startConversation(provider: .claude, projectID: nil)
         }
         #expect(try await context.catalog.runs().allSatisfy { $0.endReason != nil })
+    }
+
+    /// A catalog backup being copied when Quit comes is finished before shutdown returns, and none
+    /// starts once shutdown has begun: nothing of the runtime writes to the data root after Quit.
+    @Test func quitWaitsForTheBackupBeingCopiedAndStartsNoOther() async throws {
+        let context = try await Self.makeContext(catalogBackupDelay: 3_600)
+        defer { context.cleanup() }
+        let store = context.catalog.backupStore
+        let gate = RuntimeCatalogGate()
+        store.setAfterCopyHookForTesting { gate.hold() }
+        defer { store.setAfterCopyHookForTesting(nil) }
+        await context.runtime.scheduleCatalogBackup(force: true)
+        #expect(await Self.waitUntil { gate.entered })
+
+        let returned = RuntimeFlag()
+        let quit = Task { let report = await context.runtime.shutdown(); returned.raise(); return report }
+        #expect(await Self.waitUntil(1) { returned.isRaised } == false, "shutdown waits for the copy")
+        gate.release()
+        #expect(await quit.value.succeeded)
+        let backups = { DiagnosticJournal.forDataRoot(context.root).lines().filter { $0.contains("\"catalog_backup\"") } }
+        #expect(backups().count == 1 && backups().first?.contains("\"created\"") == true)
+
+        store.setAfterCopyHookForTesting(nil)
+        await context.runtime.scheduleCatalogBackup(force: true)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(backups().count == 1, "no backup starts after shutdown")
     }
 
     // MARK: C2 identity, resume and continuation

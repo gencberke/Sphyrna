@@ -578,8 +578,11 @@ public actor SessionRuntime {
             await server.coordinator?.stop()
             _ = await server.manager.stopServer()
         }
-        backupTask?.cancel()
+        // A backup still waiting for its turn gives up; one being copied is awaited at the end, so nothing
+        // of the runtime writes to the data root after shutdown returns.
+        let backup = backupTask
         backupTask = nil
+        backup?.cancel()
         let report = await supervisor.shutdown()
         recordQuit(report)
         observer?.cancel()
@@ -595,6 +598,7 @@ public actor SessionRuntime {
             }
             codexServers.removeAll()
         }
+        await backup?.value
         return report
     }
 
