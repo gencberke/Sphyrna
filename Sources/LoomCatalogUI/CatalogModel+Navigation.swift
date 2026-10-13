@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import LoomCore
+import LoomTerminal
 
 /// Keyboard navigation between sessions, the Dock badge's count and the sidebar following the selection (D-45).
 extension CatalogModel {
@@ -132,10 +133,9 @@ extension CatalogModel {
     }
 }
 
-// MARK: Ended terminals
+// MARK: Ended screens
 
 extension ConversationIntents {
-    public func endedTerminalView(sessionID: UUID) -> NSView? { nil }
+    public func endedScreen(sessionID: UUID) -> TerminalScreenSnapshot? { nil }
     public func closeEndedScreen(sessionID: UUID) {}
-    public func sessionVisibilityChanged() {}
 }

@@ -1,0 +1,82 @@
+--- a/Sources/SwiftTerm/Apple/AppleTerminalView.swift
++++ b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
+@@ -1665,2 +1665,18 @@ extension TerminalView {
+
++    /// Copies lines of a buffer under the terminal lock (see ``Terminal/copyRows(kind:scrollbackLines:atViewport:)``).
++    /// Nil when the engine session is unavailable.
++    public nonisolated func copyRows(
++        kind: Terminal.BufferKind = .active, scrollbackLines: Int = 0, atViewport: Bool = true
++    ) -> Terminal.BufferRowsCopy? {
++        renderOwner.copyRows(kind: kind, scrollbackLines: scrollbackLines, atViewport: atViewport)
++    }
++
++    /// Sets (or clears) ``Terminal/onAlternateBufferLeaving``: the handler gets a copy of the alternate
++    /// buffer's visible rows right before leaving the alternate screen clears it.
++    public nonisolated func setAlternateBufferLeavingHandler(
++        _ handler: (@Sendable (Terminal.BufferRowsCopy) -> Void)?
++    ) {
++        renderOwner.setAlternateBufferLeavingHandler(handler)
++    }
++
+     /// Observes copied OSC sequences as the view's terminal encounters them,
+--- a/Sources/SwiftTerm/Apple/TerminalRenderOwner.swift
++++ b/Sources/SwiftTerm/Apple/TerminalRenderOwner.swift
+@@ -317,2 +317,17 @@ final class TerminalRenderOwner: Sendable {
+
++    func copyRows(kind: Terminal.BufferKind, scrollbackLines: Int,
++                  atViewport: Bool) -> Terminal.BufferRowsCopy? {
++        guard let terminal = currentSession()?.terminal else { return nil }
++        return terminal.terminalLock.withLock {
++            terminal.copyRows(kind: kind, scrollbackLines: scrollbackLines, atViewport: atViewport)
++        }
++    }
++
++    func setAlternateBufferLeavingHandler(_ handler: (@Sendable (Terminal.BufferRowsCopy) -> Void)?) {
++        guard let terminal = currentSession()?.terminal else { return }
++        terminal.terminalLock.withLock {
++            terminal.onAlternateBufferLeaving = handler
++        }
++    }
++
+     func setCursorStyle(_ style: CursorStyle) {
+--- a/Sources/SwiftTerm/Terminal.swift
++++ b/Sources/SwiftTerm/Terminal.swift
+@@ -1277,2 +1277,3 @@ open class Terminal {
+         if clearAlt {
++            onAlternateBufferLeaving?(copyRows(kind: .alt))
+             clearKittyImages(in: altBuffer, isAlternateBuffer: true)
+@@ -2460,2 +2461,34 @@ open class Terminal {
+
++    /// A copy of rows of one buffer, taken under ``terminalLock`` (Loom patch).
++    public struct BufferRowsCopy: Sendable {
++        /// The terminal's columns when the copy was taken.
++        public let columns: Int
++        /// Whether the copied buffer is the alternate one.
++        public let isAlternate: Bool
++        /// One array of cells per copied line, oldest first.
++        public let rows: [[CharData]]
++    }
++
++    /// Called under ``terminalLock`` right before `CSI ? 1047 l` or `CSI ? 1049 l` clears the alternate
++    /// buffer, with a copy of its visible rows. Nil (the default) changes nothing. The handler runs on the
++    /// feeding thread: it must return quickly and take no terminal lock of its own (Loom patch).
++    public var onAlternateBufferLeaving: (@Sendable (BufferRowsCopy) -> Void)?
++
++    /// Copies lines of a buffer. The window ends with the viewport (`atViewport`, what the user sees) or
++    /// with the last row of the buffer, and starts `scrollbackLines` lines above the visible rows.
++    /// Call with ``terminalLock`` held (Loom patch).
++    public func copyRows(kind: BufferKind = .active, scrollbackLines: Int = 0,
++                         atViewport: Bool = true) -> BufferRowsCopy {
++        let source = bufferFromKind(kind: kind)
++        let top = atViewport ? source.yDisp : source.yBase
++        let end = min(source.lines.count, top + rows)
++        let start = max(0, top - max(0, scrollbackLines))
++        var copied: [[CharData]] = []
++        if start < end {
++            copied.reserveCapacity(end - start)
++            for index in start..<end { copied.append(source.lines[index].getData()) }
++        }
++        return BufferRowsCopy(columns: cols, isAlternate: source === altBuffer, rows: copied)
++    }
++
+     public func getCharacter (for charData: CharData) -> Character

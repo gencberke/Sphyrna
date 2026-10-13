@@ -315,6 +315,21 @@ final class TerminalRenderOwner: Sendable {
         }
     }
 
+    func copyRows(kind: Terminal.BufferKind, scrollbackLines: Int,
+                  atViewport: Bool) -> Terminal.BufferRowsCopy? {
+        guard let terminal = currentSession()?.terminal else { return nil }
+        return terminal.terminalLock.withLock {
+            terminal.copyRows(kind: kind, scrollbackLines: scrollbackLines, atViewport: atViewport)
+        }
+    }
+
+    func setAlternateBufferLeavingHandler(_ handler: (@Sendable (Terminal.BufferRowsCopy) -> Void)?) {
+        guard let terminal = currentSession()?.terminal else { return }
+        terminal.terminalLock.withLock {
+            terminal.onAlternateBufferLeaving = handler
+        }
+    }
+
     func setCursorStyle(_ style: CursorStyle) {
         guard let terminal = currentSession()?.terminal else { return }
         terminal.terminalLock.withLock {

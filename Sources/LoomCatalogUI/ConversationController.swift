@@ -47,19 +47,13 @@ public final class ConversationController: ConversationIntents {
         var owner: UUID
     }
 
-    /// The last screen of a run that ended, kept read-only while its session is selected or a tab (D-45).
-    struct EndedScreen {
-        let runID: UUID
-        let surface: TerminalSurface
-        let container: TerminalContainerView
-    }
-
     private let runtime: SessionRuntime
     private weak var model: CatalogModel?
     private(set) var entries: [UUID: Entry] = [:]
-    /// Ended screens by session id, and the order they ended in (oldest first).
-    private(set) var ended: [UUID: EndedScreen] = [:]
-    private var endedOrder: [UUID] = []
+    /// The last screens of ended runs, by session (FB4-3): static snapshots, no surface is kept.
+    private(set) var endedScreens = EndedScreenStore()
+    /// What the user saw when they pressed Stop, by run, until that run's end uses it.
+    private var stopCaptures: [UUID: TerminalScreenSnapshot] = [:]
     /// Who owns a run right now, asked of the supervisor. Only an entry the latest event frame does
     /// not confirm is asked about; tests count these calls.
     var ownerLookup: (UUID) async -> UUID?
@@ -111,13 +105,12 @@ public final class ConversationController: ConversationIntents {
 
     public func setTerminalFontSize(_ size: Double) {
         for entry in entries.values { entry.surface.setFontSize(size) }
-        for screen in ended.values { screen.surface.setFontSize(size) }
     }
 
     /// Live terminals (one per run that has an owner).
     public var terminalCount: Int { entries.count }
     /// Kept screens of runs that ended.
-    public var endedScreenCount: Int { ended.count }
+    public var endedScreenCount: Int { endedScreens.count }
 
     /// What acceptance tooling records about a live terminal.
     public struct TerminalEvidence: Sendable {
@@ -252,11 +245,20 @@ public final class ConversationController: ConversationIntents {
     public func stop(sessionID: UUID) {
         guard let model, model.actionsAvailable, model.busy[sessionID] != .stopping else { return }
         model.setBusy(sessionID, .stopping)
-        let stoppedRun = entries.values.first { $0.owner == sessionID }?.runID ?? model.liveStates[sessionID]?.runID
+        let stopped = entries.values.first { $0.owner == sessionID }
+        let stoppedRun = stopped?.runID ?? model.liveStates[sessionID]?.runID
+        // What the user sees now is what stays: taken before any signal, so whatever the program draws
+        // while it exits cannot replace it.
+        if let stopped, let seen = stopped.surface.captureVisibleScreen() { stopCaptures[stopped.runID] = seen }
         Task {
             defer { model.setBusy(sessionID, nil) }
             do {
                 let report = try await runtime.stopConversation(sessionID: sessionID)
+                if let stoppedRun {
+                    // The run's end takes the capture; one that was not taken (a stop that failed) is let go.
+                    if report.succeeded { await reconcile() }
+                    stopCaptures[stoppedRun] = nil
+                }
                 // A verified stop closes the session's tab like its close button. A stop that is not
                 // verified keeps it, and so does a session that has a new run meanwhile.
                 if report.succeeded, !hasNewRun(sessionID, since: stoppedRun) { model.closeTab(sessionID) }
@@ -268,6 +270,7 @@ public final class ConversationController: ConversationIntents {
                     model.reportFailure("\(detail). Last process check: \(count). Stop it again to retry.")
                 }
             } catch {
+                if let stoppedRun { stopCaptures[stoppedRun] = nil }
                 report(error, "The session could not be stopped")
             }
         }
@@ -344,15 +347,9 @@ public final class ConversationController: ConversationIntents {
         entries.values.first { $0.owner == sessionID }?.container
     }
 
-    public func endedTerminalView(sessionID: UUID) -> NSView? { ended[sessionID]?.container }
+    public func endedScreen(sessionID: UUID) -> TerminalScreenSnapshot? { endedScreens.use(sessionID) }
 
     public func closeEndedScreen(sessionID: UUID) { releaseEndedScreen(sessionID) }
-
-    /// The selection or the pinned tabs changed: a kept screen of a session that is neither is let go.
-    public func sessionVisibilityChanged() {
-        guard let model else { return }
-        for id in endedOrder where !model.keepsEndedScreen(id) { releaseEndedScreen(id) }
-    }
 
     // Permanent deletion: the runtime owns every step; these only forward.
 
@@ -380,7 +377,7 @@ public final class ConversationController: ConversationIntents {
 
     private func adopt(_ launch: RuntimeLaunch, surface: TerminalSurface) {
         let runID = launch.runID
-        // A new run of a session replaces the screen its earlier run left behind.
+        // A new run of a session lets go of the screen its earlier run left behind.
         releaseEndedScreen(launch.sessionID)
         surface.setFontSize(model?.terminalFontSize ?? 14)
         surface.attach(runID: runID, endpoint: launch.terminal, inputGate: runtime.inputGate)
@@ -427,10 +424,7 @@ public final class ConversationController: ConversationIntents {
             guard let owner else {
                 entries[entry.runID] = nil
                 changed = true
-                // What the CLI printed last (a failed resume, an expired login, /exit) stays on screen
-                // while the user is looking at this session; any other session shows its record.
-                if model?.keepsEndedScreen(entry.owner) == true { keepEndedScreen(entry) }
-                else { entry.surface.runEnded() }
+                keepEndedScreen(entry)
                 continue
             }
             if owner != entry.owner, entries[entry.runID] != nil {
@@ -446,29 +440,22 @@ public final class ConversationController: ConversationIntents {
         if changed { model?.terminalsChanged() }
     }
 
-    /// Keeps the surface of an ended run, read-only, for its session; the oldest screens beyond the limit
-    /// go (never the selected session's).
-    func keepEndedScreen(_ entry: Entry) {
-        entry.surface.keepAsReadOnly()
-        releaseEndedScreen(entry.owner, notify: false)
-        ended[entry.owner] = EndedScreen(runID: entry.runID, surface: entry.surface, container: entry.container)
-        endedOrder.append(entry.owner)
-        for id in EndedScreenPolicy.evictions(order: endedOrder, selected: model?.selectedSessionID) {
-            releaseEndedScreen(id, notify: false)
-        }
-        model?.terminalsChanged()
+    /// What the run left on screen (a failed resume, an expired login, /exit, a Stop) is kept as a snapshot
+    /// and the surface goes with the entry: nothing of the terminal stays alive for an ended session.
+    private func keepEndedScreen(_ entry: Entry) {
+        let screen = stopCaptures.removeValue(forKey: entry.runID) ?? entry.surface.captureEndedScreen()
+        entry.surface.runEnded()
+        guard let screen else { return }
+        endedScreens.put(screen, for: entry.owner)
     }
 
-    private func releaseEndedScreen(_ id: UUID, notify: Bool = true) {
-        guard ended.removeValue(forKey: id) != nil else { return }
-        endedOrder.removeAll { $0 == id }
-        if notify { model?.terminalsChanged() }
+    private func releaseEndedScreen(_ id: UUID) {
+        if endedScreens.remove(id) { model?.terminalsChanged() }
     }
 
     private func releaseAllEndedScreens() {
-        guard !ended.isEmpty else { return }
-        ended.removeAll()
-        endedOrder.removeAll()
+        guard endedScreens.count > 0 else { return }
+        endedScreens.removeAll()
         model?.terminalsChanged()
     }
 

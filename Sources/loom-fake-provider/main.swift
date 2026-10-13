@@ -110,6 +110,8 @@ struct FakeClaude {
     /// Like Claude: `--effort` or `/effort` hold for this process only. Once set, each reply is
     /// recorded in the profile's transcript with its effort, as Claude records it.
     var effort: String?
+    /// Keeps the SIGHUP source alive in `LOOM_FAKE_ALT_SCREEN` mode.
+    var altHangup: (any DispatchSourceSignal)?
 
     func registry(_ status: String) {
         guard let config = environment["CLAUDE_CONFIG_DIR"] else { return }
@@ -204,7 +206,36 @@ struct FakeClaude {
         if event == "Stop" { registry("idle") }
     }
 
+    /// `LOOM_FAKE_ALT_SCREEN=1`: draws like the user's `"tui": "fullscreen"` Claude, in the alternate screen.
+    /// On `/exit` and on SIGHUP (Loom's Stop) it leaves the screen with `?1049l`, which clears it, and then
+    /// prints the resume hint to the main buffer, as the real one does. With `clear`, SIGHUP also erases the
+    /// alternate screen first (unknown for the real CLI).
+    var altScreen: Bool { ["1", "clear"].contains(environment["LOOM_FAKE_ALT_SCREEN"] ?? "") }
+
+    func leaveAltScreen() {
+        guard altScreen else { return }
+        out("\u{1B}[?1049l")
+        out("Resume this session with:\r\nclaude --resume \(id)\r\n")
+    }
+
     mutating func run(resume: Bool) {
+        if altScreen {
+            out("\u{1B}[?1049h\u{1B}[2J\u{1B}[H")
+            out("ALT-SCREEN-DRAWN \(id)\r\n")
+            // Stop sends SIGHUP: leave the screen the way the real CLI does, then go.
+            signal(SIGHUP, SIG_IGN)
+            let hangup = DispatchSource.makeSignalSource(signal: SIGHUP, queue: .global())
+            let sessionID = id
+            let clearsFirst = environment["LOOM_FAKE_ALT_SCREEN"] == "clear"
+            hangup.setEventHandler {
+                if clearsFirst { out("\u{1B}[2J\u{1B}[H") }
+                out("\u{1B}[?1049l")
+                out("Resume this session with:\r\nclaude --resume \(sessionID)\r\n")
+                exit(0)
+            }
+            hangup.resume()
+            altHangup = hangup
+        }
         if resume {
             if id.hasPrefix("missing") {
                 out("No conversation found with session ID: \(id)\r\n")
@@ -220,7 +251,7 @@ struct FakeClaude {
             switch line.split(separator: " ").first.map(String.init) ?? "" {
             case "/exit":
                 hook("SessionEnd", ["reason": "prompt_input_exit"])
-                out("bye\r\n")
+                if altScreen { leaveAltScreen() } else { out("bye\r\n") }
                 exit(0)
             case "/clear":
                 id = UUID().uuidString.lowercased()

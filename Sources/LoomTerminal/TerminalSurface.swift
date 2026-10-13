@@ -15,6 +15,10 @@ public enum TerminalSurfaceLimits {
     public static let inlineImagesPerScreen = 1_024
     /// Input accepted but not yet written to the PTY (keys, paste, replies).
     public static let pendingInputBytes = 4 * 1024 * 1024
+    /// The last screen of an ended run (FB4-3): at most this many rows (the visible ones and a tail of
+    /// scrollback) and about this many bytes, the oldest rows going first.
+    public static let endedScreenLines = 400
+    public static let endedScreenBytes = 1024 * 1024
 
     public static var options: TerminalOptions {
         var options = TerminalOptions(
@@ -123,6 +127,14 @@ public enum TerminalPresentationLog {
     }
 }
 
+/// The latest screen a full-screen program left when it left the alternate screen (`?1049l` clears that
+/// screen, so it is copied just before). Filled on the engine's feeding thread, read on the main actor.
+final class AlternateScreenKeeper: Sendable {
+    private let latest = Mutex<TerminalScreenSnapshot?>(nil)
+    func keep(_ snapshot: TerminalScreenSnapshot) { latest.withLock { $0 = snapshot } }
+    var snapshot: TerminalScreenSnapshot? { latest.withLock { $0 } }
+}
+
 /// One terminal view bound to exactly one managed run. Keyboard, paste and
 /// terminal replies share one ordered queue; a later run needs a new surface.
 @MainActor
@@ -137,8 +149,7 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
     }
     private var input: InputState = .launching([])
     private var inputGate: TerminalInputGate?
-    /// The ended run's last screen is kept for reading (`keepAsReadOnly`): keys and pastes are dropped quietly.
-    private var isReadOnly = false
+    private let leftAlternate = AlternateScreenKeeper()
     private var inputErrors: [String] = []
     private var requestedSize: (rows: UInt16, columns: UInt16)?
     private var resizeTask: Task<Void, Never>?
@@ -161,6 +172,13 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
         view.nativeBackgroundColor = TerminalTheme.background
         view.nativeForegroundColor = TerminalTheme.foreground
         view.installColors(TerminalTheme.ansi)
+        let keeper = leftAlternate
+        view.setAlternateBufferLeavingHandler { copy in
+            let left = TerminalScreenSnapshot(
+                copy, maxLines: TerminalSurfaceLimits.endedScreenLines, maxBytes: TerminalSurfaceLimits.endedScreenBytes)
+            // A screen the program had already erased says nothing: the one before it stays.
+            if !left.isBlank { keeper.keep(left) }
+        }
     }
 
     /// Pass to `ProcessSupervisor.launch(outputSink:)`; it replaces the core's
@@ -200,15 +218,28 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
         resizeTask = nil
     }
 
-    /// The run ended and its screen stays on show: like `runEnded()`, but nothing typed, pasted or dropped
-    /// reaches anything, and nothing is reported either (a refused write would raise an error banner
-    /// for every key). Selecting and copying text still work.
-    public func keepAsReadOnly() {
-        runEnded()
-        isReadOnly = true
+    /// What the user sees now: the visible rows of the active buffer. The user's Stop takes this before any
+    /// signal is sent, so what the program does while it exits cannot change what is kept.
+    public func captureVisibleScreen() -> TerminalScreenSnapshot? {
+        snapshot(view.copyRows(kind: .active))
     }
 
-    public var isKeptReadOnly: Bool { isReadOnly }
+    /// The screen to keep for a run that ended on its own or was killed, in this order: the alternate screen
+    /// if the program died inside it; else the one it left (`?1049l`) last; else the main buffer's visible
+    /// rows with a tail of its scrollback (a program that never used the alternate screen).
+    public func captureEndedScreen() -> TerminalScreenSnapshot? {
+        if let active = view.copyRows(kind: .active), active.isAlternate { return snapshot(active) }
+        if let left = leftAlternate.snapshot { return left }
+        let tail = max(0, TerminalSurfaceLimits.endedScreenLines - view.terminalDimensions.rows)
+        return snapshot(view.copyRows(kind: .normal, scrollbackLines: tail, atViewport: false))
+    }
+
+    private func snapshot(_ copy: Terminal.BufferRowsCopy?) -> TerminalScreenSnapshot? {
+        guard let copy else { return nil }
+        let result = TerminalScreenSnapshot(
+            copy, maxLines: TerminalSurfaceLimits.endedScreenLines, maxBytes: TerminalSurfaceLimits.endedScreenBytes)
+        return result.isBlank ? nil : result
+    }
 
     public var statistics: TerminalSurfaceStatistics {
         let counters = output.snapshot
@@ -252,7 +283,7 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
         case let .attached(queue, _):
             queue.enqueue(data)
         case .ended:
-            if !isReadOnly { report(.writeFailed("run has ended")) }
+            report(.writeFailed("run has ended"))
         }
     }
 
@@ -320,7 +351,8 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
         onInputError?(error)
     }
 
-    static func font(size: CGFloat) -> NSFont {
+    /// The terminal's font at `size` (clamped), also used to draw a kept screen.
+    public static func font(size: CGFloat) -> NSFont {
         let size = min(20, max(11, size))
         return NSFont(name: "SFMono-Regular", size: size)
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import LoomCore
+import LoomTerminal
 import Testing
 @testable import LoomCatalogUI
 
@@ -166,23 +167,58 @@ struct SessionNavigationRuleTests {
 
     // MARK: Ended screens
 
-    @Test func anEndedScreenIsKeptOnlyForTheSelectedSessionOrAPinnedTab() {
-        let selected = UUID(), pinned = UUID(), other = UUID()
-        #expect(EndedScreenPolicy.keeps(session: selected, selected: selected, pinned: []))
-        #expect(EndedScreenPolicy.keeps(session: pinned, selected: selected, pinned: [pinned]))
-        #expect(!EndedScreenPolicy.keeps(session: other, selected: selected, pinned: [pinned]))
-        #expect(!EndedScreenPolicy.keeps(session: other, selected: nil, pinned: []))
+    /// A snapshot of a real surface, so its size is the real one.
+    @MainActor private func screen(_ word: String, rows: Int = 3) -> TerminalScreenSnapshot {
+        let surface = TerminalSurface()
+        surface.view.feed(text: (0..<rows).map { "\(word) row \($0)" }.joined(separator: "\r\n"))
+        return surface.captureVisibleScreen()!
     }
 
-    @Test func atMostEightEndedScreensStayAndTheOldestGoFirstNeverTheSelectedOne() {
-        let ids = (0..<10).map { _ in UUID() }
-        #expect(EndedScreenPolicy.limit == 8)
-        #expect(EndedScreenPolicy.evictions(order: Array(ids.prefix(8)), selected: nil).isEmpty)
-        #expect(EndedScreenPolicy.evictions(order: Array(ids.prefix(9)), selected: nil) == [ids[0]])
-        #expect(EndedScreenPolicy.evictions(order: ids, selected: nil) == [ids[0], ids[1]])
-        // The oldest is selected: it stays, the next oldest goes.
-        #expect(EndedScreenPolicy.evictions(order: Array(ids.prefix(9)), selected: ids[0]) == [ids[1]])
-        #expect(EndedScreenPolicy.evictions(order: ids, selected: ids[1]) == [ids[0], ids[2]])
+    @MainActor @Test func theEndedScreenStoreKeepsAtMostSixteenAndTheLeastRecentlyUsedGoFirst() {
+        let ids = (0..<20).map { _ in UUID() }
+        var store = EndedScreenStore()
+        #expect(EndedScreenStore.maxCount == 16)
+        for id in ids.prefix(16) { store.put(screen("s"), for: id) }
+        #expect(store.count == 16)
+        // Showing the oldest makes it the newest: the next one in line goes instead.
+        #expect(store.use(ids[0]) != nil)
+        store.put(screen("s"), for: ids[16])
+        #expect(store.count == 16 && store.use(ids[1]) == nil && store.use(ids[0]) != nil)
+        for id in ids.suffix(3) { store.put(screen("s"), for: id) }
+        #expect(store.count == 16)
+        #expect(Set(store.sessionIDs) == Set([ids[0]] + ids[5...19]), "the three least recently used went, not the used one")
+        // A newer screen of the same session replaces the old one.
+        let again = screen("again")
+        store.put(again, for: ids[19])
+        #expect(store.use(ids[19]) == again && store.count == 16)
+    }
+
+    @MainActor @Test func theEndedScreenStoreIsCappedByTotalBytesToo() throws {
+        let small = screen("a"), big = screen("b", rows: 20)
+        #expect(big.approximateBytes > small.approximateBytes * 3)
+        var store = EndedScreenStore(maxCount: 16, maxBytes: big.approximateBytes * 2 + small.approximateBytes)
+        let first = UUID(), second = UUID(), third = UUID(), fourth = UUID()
+        store.put(big, for: first)
+        store.put(big, for: second)
+        store.put(small, for: third)
+        #expect(store.count == 3 && store.totalBytes <= store.maxBytes)
+        store.put(big, for: fourth)
+        #expect(store.use(first) == nil && store.use(fourth) != nil, "the least recently used went to make room")
+        #expect(store.totalBytes <= store.maxBytes)
+        // One screen alone is never dropped, whatever its size.
+        var tiny = EndedScreenStore(maxCount: 16, maxBytes: 1)
+        tiny.put(big, for: first)
+        #expect(tiny.count == 1)
+    }
+
+    @MainActor @Test func removingAndClearingTheEndedScreenStoreLeavesNothing() {
+        var store = EndedScreenStore()
+        let id = UUID(), other = UUID()
+        store.put(screen("x"), for: id)
+        store.put(screen("y"), for: other)
+        #expect(store.remove(id) && !store.remove(id) && store.use(id) == nil && store.count == 1)
+        store.removeAll()
+        #expect(store.count == 0 && store.totalBytes == 0 && store.sessionIDs.isEmpty && store.use(other) == nil)
     }
 
     // MARK: Shortcuts

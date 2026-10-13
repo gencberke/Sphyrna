@@ -1275,6 +1275,7 @@ open class Terminal {
         // when activated.
         
         if clearAlt {
+            onAlternateBufferLeaving?(copyRows(kind: .alt))
             clearKittyImages(in: altBuffer, isAlternateBuffer: true)
             altBuffer.clear ()
         }
@@ -2456,6 +2457,38 @@ open class Terminal {
         }
         updateRange(borrowing: buffer, buffer.y)
         readingBuffer.putbackBuffer.removeAll(keepingCapacity: true)
+    }
+
+    /// A copy of rows of one buffer, taken under ``terminalLock`` (Loom patch).
+    public struct BufferRowsCopy: Sendable {
+        /// The terminal's columns when the copy was taken.
+        public let columns: Int
+        /// Whether the copied buffer is the alternate one.
+        public let isAlternate: Bool
+        /// One array of cells per copied line, oldest first.
+        public let rows: [[CharData]]
+    }
+
+    /// Called under ``terminalLock`` right before `CSI ? 1047 l` or `CSI ? 1049 l` clears the alternate
+    /// buffer, with a copy of its visible rows. Nil (the default) changes nothing. The handler runs on the
+    /// feeding thread: it must return quickly and take no terminal lock of its own (Loom patch).
+    public var onAlternateBufferLeaving: (@Sendable (BufferRowsCopy) -> Void)?
+
+    /// Copies lines of a buffer. The window ends with the viewport (`atViewport`, what the user sees) or
+    /// with the last row of the buffer, and starts `scrollbackLines` lines above the visible rows.
+    /// Call with ``terminalLock`` held (Loom patch).
+    public func copyRows(kind: BufferKind = .active, scrollbackLines: Int = 0,
+                         atViewport: Bool = true) -> BufferRowsCopy {
+        let source = bufferFromKind(kind: kind)
+        let top = atViewport ? source.yDisp : source.yBase
+        let end = min(source.lines.count, top + rows)
+        let start = max(0, top - max(0, scrollbackLines))
+        var copied: [[CharData]] = []
+        if start < end {
+            copied.reserveCapacity(end - start)
+            for index in start..<end { copied.append(source.lines[index].getData()) }
+        }
+        return BufferRowsCopy(columns: cols, isAlternate: source === altBuffer, rows: copied)
     }
 
     public func getCharacter (for charData: CharData) -> Character

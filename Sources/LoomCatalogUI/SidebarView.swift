@@ -107,7 +107,7 @@ struct SearchField: View {
                     // The keyboard goes back to the terminal, not to the bare window.
                     Task { @MainActor in
                         let id = model.selectedSessionID
-                        let view = id.flatMap { model.terminalView(for: $0) ?? model.endedTerminalView(for: $0) }
+                        let view = id.flatMap { model.terminalView(for: $0) }
                         (view as? TerminalContainerView)?.focusTerminal()
                     }
                 }

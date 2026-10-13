@@ -238,12 +238,12 @@ struct DetailContent: View {
                         if let issue = SessionIssueNotice.message(for: row.live) { SessionIssueNotice(message: issue) }
                         TerminalHost(panel: terminal).id(ObjectIdentifier(terminal))
                     }
-                } else if let screen = model.endedTerminalView(for: row.id) {
-                    // The run ended and its last screen is kept (D-45): read-only, with a notice above it.
+                } else if let screen = model.endedScreen(for: row.id) {
+                    // The run ended and its last screen is kept (FB4-3): a static copy below a notice.
                     VStack(spacing: 0) {
                         RequestList(model: model, row: row, returnApproves: false)
                         EndedScreenNotice(model: model, row: row)
-                        TerminalHost(panel: screen).id(ObjectIdentifier(screen))
+                        EndedScreenView(snapshot: screen, fontSize: model.terminalFontSize)
                     }
                 } else {
                     ConversationDetail(model: model, row: row)
@@ -275,7 +275,7 @@ struct DetailContent: View {
 }
 
 /// The slim notice above the kept screen of a run that ended. Resume is never the default action (Return
-/// belongs to the terminal and does nothing on an ended screen); "Show Details" lets go of the screen and
+/// does nothing on an ended screen); "Show Details" lets go of the screen and
 /// shows the record. It fades in (opacity only): a height animation above the terminal would resize it.
 struct EndedScreenNotice: View {
     let model: CatalogModel

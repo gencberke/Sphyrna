@@ -5,33 +5,17 @@ import SwiftTerm
 import Testing
 @testable import LoomTerminal
 
-/// An ended run's last screen stays on show (D-45): read-only, and Window-menu shortcuts still reach the
-/// menu with the terminal as first responder instead of being typed into it.
+/// Window-menu shortcuts still reach the menu with the terminal as first responder instead of being typed into
+/// it; and an ended surface refuses input loudly (the last screen of an ended run is a snapshot, not a surface).
 @MainActor
 struct TerminalKeptScreenTests {
-    @Test func aKeptEndedScreenDropsEverythingTypedWithoutReportingIt() {
-        let surface = TerminalSurface()
-        surface.view.feed(text: "claude: login expired\r\n")
-        surface.keepAsReadOnly()
-        var errors: [TerminalInputError] = []
-        surface.onInputError = { errors.append($0) }
-        surface.view.send(data: Array("x".utf8)[...])
-        surface.view.insertDroppedFiles([URL(fileURLWithPath: "/tmp/a")])
-        surface.view.paste(self)
-        #expect(errors.isEmpty)
-        #expect(surface.statistics.inputErrors.isEmpty)
-        #expect(surface.isKeptReadOnly)
-        #expect(surface.screenText().contains("login expired"), "the screen itself is untouched")
-    }
-
-    @Test func aRunEndedSurfaceThatIsNotKeptStillRefusesLoudly() {
+    @Test func aRunEndedSurfaceRefusesInputLoudly() {
         let surface = TerminalSurface()
         surface.runEnded()
         var errors: [TerminalInputError] = []
         surface.onInputError = { errors.append($0) }
         surface.view.send(data: Array("x".utf8)[...])
         #expect(errors == [.writeFailed("run has ended")])
-        #expect(!surface.isKeptReadOnly)
     }
 
     // MARK: Menu key equivalents with the terminal focused

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import LoomCore
+import LoomTerminal
 import Observation
 
 public enum CatalogListKey: Hashable, Sendable {
@@ -46,13 +47,10 @@ public protocol ConversationIntents: AnyObject {
     func retryDeletion(sessionID: UUID) async throws -> ConversationDeletionOutcome
     func pendingDeletions() async throws -> [PendingConversationDeletion]
     func deletionRecoveryFailure() async -> String?
-    /// The last screen of a session whose run ended, kept read-only while the session is selected or a tab
-    /// (D-45). Defaults: none.
-    func endedTerminalView(sessionID: UUID) -> NSView?
-    /// "Show Details": lets go of the kept screen so the session shows its record.
+    /// The last screen of a session whose run ended, as a static snapshot (FB4-3). Defaults: none.
+    func endedScreen(sessionID: UUID) -> TerminalScreenSnapshot?
+    /// "Show Details" and a deleted session: lets go of the kept screen so the session shows its record.
     func closeEndedScreen(sessionID: UUID)
-    /// The selection or the pinned tabs changed: kept screens of sessions that are neither are released.
-    func sessionVisibilityChanged()
 }
 
 public enum ConversationBusy: Equatable, Sendable {
@@ -840,7 +838,6 @@ public final class CatalogModel {
             persistSelection(id)
             if id != nil, selectedRow == nil { Task { await ensureSelectedRow() } }
             if revealInList, let id { requestReveal(id) }
-            intents?.sessionVisibilityChanged()
         }
         updateViewing()
     }
@@ -915,6 +912,7 @@ public final class CatalogModel {
     public func forget(sessionID id: UUID) {
         origins[id] = nil
         missingOrigins.insert(id)
+        intents?.closeEndedScreen(sessionID: id)
         closeTab(id)
     }
 
@@ -1480,20 +1478,15 @@ public final class CatalogModel {
         return view
     }
 
-    /// The last screen of a session whose run ended, kept read-only (D-45): shown while the session is
-    /// selected. Nil for a session with a live terminal or none kept.
-    public func endedTerminalView(for id: UUID) -> NSView? {
+    /// The last screen of a session whose run ended (FB4-3): a static snapshot shown when the session is
+    /// selected. Nil for a session with a live terminal or none kept (after a relaunch, for one).
+    public func endedScreen(for id: UUID) -> TerminalScreenSnapshot? {
         _ = terminalRevision
-        return intents?.endedTerminalView(sessionID: id)
+        return intents?.endedScreen(sessionID: id)
     }
 
     /// "Show Details": the session shows its record instead of the ended screen.
     public func closeEndedScreen(_ id: UUID) { intents?.closeEndedScreen(sessionID: id) }
-
-    /// Whether the last screen of an ended run is kept: only while the session is selected or a pinned tab.
-    public func keepsEndedScreen(_ id: UUID) -> Bool {
-        EndedScreenPolicy.keeps(session: id, selected: selectedSessionID, pinned: tabs.pinned)
-    }
 
     // Called by the conversation controller.
 
@@ -1545,7 +1538,6 @@ public final class CatalogModel {
     private func persistTabs() {
         let pinned = tabs.pinned
         persist { $0.openTabs = pinned }
-        intents?.sessionVisibilityChanged()
     }
 
     /// Selection changes in quick succession (tab switching) coalesce into one write.

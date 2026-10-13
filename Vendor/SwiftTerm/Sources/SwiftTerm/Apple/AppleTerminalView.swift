@@ -1663,6 +1663,22 @@ extension TerminalView {
         renderOwner.bufferData(kind: kind, encoding: encoding)
     }
 
+    /// Copies lines of a buffer under the terminal lock (see ``Terminal/copyRows(kind:scrollbackLines:atViewport:)``).
+    /// Nil when the engine session is unavailable.
+    public nonisolated func copyRows(
+        kind: Terminal.BufferKind = .active, scrollbackLines: Int = 0, atViewport: Bool = true
+    ) -> Terminal.BufferRowsCopy? {
+        renderOwner.copyRows(kind: kind, scrollbackLines: scrollbackLines, atViewport: atViewport)
+    }
+
+    /// Sets (or clears) ``Terminal/onAlternateBufferLeaving``: the handler gets a copy of the alternate
+    /// buffer's visible rows right before leaving the alternate screen clears it.
+    public nonisolated func setAlternateBufferLeavingHandler(
+        _ handler: (@Sendable (Terminal.BufferRowsCopy) -> Void)?
+    ) {
+        renderOwner.setAlternateBufferLeavingHandler(handler)
+    }
+
     /// Observes copied OSC sequences as the view's terminal encounters them,
     /// without changing how the view handles them.
     ///
