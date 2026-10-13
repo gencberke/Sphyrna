@@ -495,9 +495,10 @@ struct SubagentTranscriptTests {
         feed.start()
         #expect(await wait { collector.batches.count == 1 })
         let descriptors = feed.openDescriptors
-        #expect(descriptors.count == 2 && descriptors.allSatisfy { fcntl($0, F_GETFD) != -1 })
+        let transcript = try #require(FileIdentity(path: url.path))
+        #expect(descriptors.count == 2 && descriptors.allSatisfy { FileIdentity(descriptor: $0) == transcript })
         feed.stopAndWait()
-        #expect(descriptors.allSatisfy { fcntl($0, F_GETFD) == -1 && errno == EBADF }, "both descriptors are closed")
+        #expect(descriptors.allSatisfy { FileIdentity(descriptor: $0) != transcript }, "both descriptors are closed")
         #expect(await wait { collector.finished }, "the stream ends")
         try append(textLine + "\n", to: url)
         try await Task.sleep(for: .milliseconds(300))
@@ -518,9 +519,10 @@ struct SubagentTranscriptTests {
         feed.start()
         #expect(await wait { collector.batches.count == 1 })
         let descriptors = feed.openDescriptors
+        let transcript = try #require(FileIdentity(path: url.path))
         #expect(descriptors.count == 2)
         feed.stop() // returns without waiting for the teardown
-        #expect(await wait { descriptors.allSatisfy { fcntl($0, F_GETFD) == -1 && errno == EBADF } },
+        #expect(await wait { descriptors.allSatisfy { FileIdentity(descriptor: $0) != transcript } },
                 "both descriptors are closed")
         #expect(await wait { collector.finished }, "the stream ends")
         try append(textLine + "\n", to: url)
@@ -566,5 +568,25 @@ struct SubagentTranscriptTests {
         let batch = try #require(collector.batches.first)
         #expect(batch.entries.count == SubagentTranscriptFeed.maximumEntriesPerBatch && batch.omitsEarlier)
         #expect(batch.entries.last == .text("entry \(count - 1)"))
+    }
+}
+
+/// The file a descriptor refers to. The suites run in parallel in one process, so the kernel can hand a
+/// closed descriptor's number to another test's file at once: a descriptor is closed when it no longer
+/// refers to its file, not when its number is unused.
+private struct FileIdentity: Equatable {
+    let device: dev_t
+    let inode: ino_t
+
+    init?(descriptor: Int32) {
+        var info = stat()
+        guard fstat(descriptor, &info) == 0 else { return nil }
+        (device, inode) = (info.st_dev, info.st_ino)
+    }
+
+    init?(path: String) {
+        var info = stat()
+        guard stat(path, &info) == 0 else { return nil }
+        (device, inode) = (info.st_dev, info.st_ino)
     }
 }
