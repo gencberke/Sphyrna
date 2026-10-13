@@ -118,6 +118,10 @@ enum LoomTheme {
         /// `secondaryOnTint` as a style: Increase Contrast takes the lifted secondary of that tier.
         static let secondaryOnTintStyle = ContrastStyle(
             standard: Tone(rgb: secondaryOnTintRGB, opacity: 1), increased: Tone(rgb: secondaryIncreasedRGB, opacity: 1))
+        /// Secondary text on a Usage card (the 6 % control tone over the panel): plain secondary reads 4.0:1
+        /// there, so the cards take the lifted tone of `secondaryOnTint` (4.8:1).
+        static let secondaryOnCardRGB = secondaryOnTintRGB
+        static let secondaryOnCardStyle = secondaryOnTintStyle
     }
 
     /// The one brand color (the fleece of the mark). Fills carry dark text, never light text.
@@ -425,14 +429,22 @@ enum LoomTheme {
         static let settingsRowV: CGFloat = 10
         static let settingsSegmentH: CGFloat = 12
         static let settingsTrack: CGFloat = 2
-        static let usageColumnGap: CGFloat = 32
         static let usageTotalsGap: CGFloat = 16
-        static let usageNoteTop: CGFloat = 6
         static let usageBarGap: CGFloat = 16
         static let usageBarGapSlim: CGFloat = 2
         static let usageCellGap: CGFloat = 4
         static let usageCellLabelTop: CGFloat = 4
         static let usageShareGap: CGFloat = 8
+        /// The Usage page's cards: the gap between them, the padding inside, and the header's gap to the body.
+        static let usageCardGap: CGFloat = 12
+        static let usageCardTop: CGFloat = 12
+        static let usageCardBottom: CGFloat = 14
+        static let usageCardHeaderBottom: CGFloat = 10
+        /// The period card's two columns, and the local-hours row (rule above and below, gap between its parts).
+        static let usageCardColumnGap: CGFloat = 24
+        static let usageRuleTop: CGFloat = 12
+        static let usageRuleBottom: CGFloat = 10
+        static let usageLocalGap: CGFloat = 10
         static let aboutHeadTop: CGFloat = 28
         static let aboutHeadBottom: CGFloat = 24
         static let aboutHeadSpacing: CGFloat = 4
@@ -476,7 +488,8 @@ enum LoomTheme {
         static let settingsRowMinHeight: CGFloat = 44
         static let usageControlHeight: CGFloat = 28
         static let usageBarsHeight: CGFloat = 72
-        static let usageCellHeight: CGFloat = 28
+        /// A cell of the local-hours row.
+        static let usageCellHeight: CGFloat = 12
         static let usageHeaderRowHeight: CGFloat = 24
         static let usageRowHeight: CGFloat = 28
         static let usageShareBar = CGSize(width: 48, height: 3)
@@ -484,6 +497,15 @@ enum LoomTheme {
         static let planLimitBarHeight: CGFloat = 4
         static let planLimitLabelWidth: CGFloat = 56
         static let planLimitResetWidth: CGFloat = 132
+        static let planLimitUsedWidth: CGFloat = 72
+        /// The period card: the total's column, and a token kind's row, label and value.
+        static let usageSummaryWidth: CGFloat = 200
+        static let usageKindRowHeight: CGFloat = 22
+        static let usageKindLabelWidth: CGFloat = 76
+        static let usageKindValueWidth: CGFloat = 48
+        /// The local-hours row: its label and its total.
+        static let usageLocalLabelWidth: CGFloat = 120
+        static let usageLocalTotalWidth: CGFloat = 48
         static let usageEmptyHeight: CGFloat = 360
         static let aboutMark: CGFloat = 64
         /// Widest per-row result text in Settings → Conversations.

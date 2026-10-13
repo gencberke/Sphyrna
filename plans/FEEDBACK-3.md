@@ -4,8 +4,8 @@ The user's notes of 13 Oct on 0.4.1 ([FEEDBACK-2](FEEDBACK-2.md) was round 2), t
 
 ## Resume here
 
-- **State:** the user gave the go for the implementation and for commits on 13 Oct ("implementasyona geçebiliriz. commit yetkin de var"). FB3-3 and FB3-2 are done and committed ([verification](#verification)).
-- **Next:** FB3-1, then the targeted checks of the round (the user, 13 Oct: no full suite until they say so). Then the combined check and release 0.4.2. The full suite and the on-screen checks wait for the user's word that the computer is idle ([D-13](../DECISIONS.md)). The user quits Loom for the install.
+- **State:** the user gave the go for the implementation and for commits on 13 Oct ("implementasyona geçebiliriz. commit yetkin de var"). FB3-3, FB3-2 and FB3-1 are done and committed ([verification](#verification)).
+- **Next:** an on-screen pass of the header and the Usage page (`~/Library/Caches/loom-fb3/onscreen/fb3.py`; it opens a Loom Dev window, so it needs the user's OK). Then release 0.4.2. The full suite waits for the user's word (13 Oct: "tam suite test değil geliştirmeleri doğrulayan testleri yap"). Then the combined check and release 0.4.2. The full suite and the on-screen checks wait for the user's word that the computer is idle ([D-13](../DECISIONS.md)). The user quits Loom for the install.
 - **Still open from hardening round 1** ([Resume here](HARDENING-1.md#resume-here)):
   - The user looks for Loom in Screen Time.
   - DEVELOPMENT §5 lacks rows for the H1-F evidence commands.
@@ -16,7 +16,7 @@ The user's notes of 13 Oct on 0.4.1 ([FEEDBACK-2](FEEDBACK-2.md) was round 2), t
 
 | # | User note | Cause or finding | Change | State |
 | --- | --- | --- | --- | --- |
-| FB3-1 | Usage page: the user loves seeing the data and the detail, but it could read better with cleaner separation | Every block sits directly on the window background with about the same weight. The plan limits sit in the middle. Two different "5 hours" sit apart and are easy to mix up: the plan's limit window and Loom's local activity cells. The five totals have equal weight, though cache reads are most of the tokens | U1, as drawn ([below](#fb3-1-usage-page-u1)) | planned |
+| FB3-1 | Usage page: the user loves seeing the data and the detail, but it could read better with cleaner separation | Every block sits directly on the window background with about the same weight. The plan limits sit in the middle. Two different "5 hours" sit apart and are easy to mix up: the plan's limit window and Loom's local activity cells. The five totals have equal weight, though cache reads are most of the tokens | U1, as drawn ([below](#fb3-1-usage-page-u1)) | done; [verification](#verification) |
 | FB3-2 | Session header: keep the title, state, project, Stop and ⋯, but give the row a settled structure | The state and the project trail the title, so they move when its length changes. Stop is a tinted capsule and ⋯ is a bare glyph, so they read as two control families | A with the branch, as drawn ([below](#fb3-2-session-header-a-with-the-branch)) | done; [verification](#verification) |
 | FB3-3 | Subagent rows: a workflow's implementers showed as finished while they were still running (session `531D1AA3-121E-41D6-8A06-9CF3E50C48BB`) | Loom takes workflow agents for foreground subagents, and the parent's `Stop` ends foreground records ([cause](#fb3-3-cause)) | The parent's turn no longer ends workflow agents ([fix](#fb3-3-workflow-subagents)) | done; [verification](#verification) |
 
@@ -93,6 +93,12 @@ As drawn in the preview's "Chosen" section.
 - **Card surface.** The existing `SettingsCard` of Settings → General: the 6 % control tone and a 10 pt radius. It replaces the preview's separate 4.5 % wash and hairline, so the two Settings pages match.
 - **Window.** The size does not change (680 × 520), and the page scrolls as today.
 - **Empty and error states** keep their texts, inside the matching card.
+- **As built** (`CUI/UsageReportCards.swift`; accepted by the planner):
+  - Secondary text on the cards uses the lifted `Text.secondaryOnTint` tone (`secondaryOnCardStyle`), because plain secondary is 4.0:1 on the card surface.
+  - The unavailable card keeps today's two texts under its title.
+  - The 24 h axis labels keep a blank line so they clear the baseline.
+  - The model table's share column is as wide as "100 %", so the bars line up from row to row. The planner added this after the first renders; it was misaligned before this round too.
+  - Follow-up, not in this round: the Settings → General cards still use plain secondary at 4.0:1.
 
 ## Slices and checks
 
@@ -125,3 +131,6 @@ The slices run one after another (D-13), and then:
 <br>- Ready at 520 pt: the title shortened.
 <br>- Finished at 480 pt: the branch dropped.
 <br>Not seen in a real window yet: hover, focus, the menu and Increase Contrast |
+| FB3-1: `scripts/check.sh --suite LoomCatalogUITests` (window tests skipped) | guards and build ok; 411 tests passed, including the 17 new `UsageCardsTests` (log `check-20261013T134428-11778.log`). After the planner's share-column change: `--suite UsageCardsTests`, 17 passed (log `check-20261013T134649-15089.log`) |
+| FB3-1 new tests fail without the change | Four rules broken at once (the ranking sort, "left" in the used text, the card order, the period capitalisation) plus the card text token: five tests failed (log `check-20261013T134500-12698.log`) |
+| FB3-1 look | Offscreen renders at 680 pt (`~/Library/Caches/loom-fb3/usage/`, from `UsageCardsTests` with `LOOM_USAGE_RENDER_DIR`), checked by the planner: 7 d with plan limits, 24 h, limits unavailable, not refreshed, 90 d with four models, and 30 d empty. Not seen in the real Settings window yet: tooltips, scrolling and VoiceOver |
