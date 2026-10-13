@@ -5,7 +5,12 @@ The user's notes of 13 Oct on 0.4.1 ([FEEDBACK-2](FEEDBACK-2.md) was round 2), t
 ## Resume here
 
 - **State:** the user gave the go for the implementation and for commits on 13 Oct ("implementasyona geçebiliriz. commit yetkin de var"). FB3-3, FB3-2 and FB3-1 are done and committed ([verification](#verification)).
-- **Release 0.4.2** ships the round with targeted checks, at the user's choice. The full suite waits for their word (13 Oct: "tam suite test değil geliştirmeleri doğrulayan testleri yap"; "Hedefli testlerle kur"). Record: [Release 0.4.2](#release-042-13-oct). Then the combined check and release 0.4.2. The full suite and the on-screen checks wait for the user's word that the computer is idle ([D-13](../DECISIONS.md)). The user quits Loom for the install.
+- **Release 0.4.2 is installed** (13 Oct) and is the daily app. It ships the round with targeted checks, at the user's choice. The full suite waits for their word (13 Oct: "tam suite test değil geliştirmeleri doğrulayan testleri yap"; "Hedefli testlerle kur"). Record: [Release 0.4.2](#release-042-13-oct). Then the combined check and release 0.4.2. The full suite and the on-screen checks wait for the user's word that the computer is idle ([D-13](../DECISIONS.md)). The user quits Loom for the install.
+- **Open from this round:**
+  - The full suite, when the user says.
+  - The header's hover, ⋯ menu and focus ring, seen in daily use.
+  - The subagent rows during a real workflow, seen by the user.
+  - The Settings → General cards' secondary text at 4.0:1 (a follow-up).
 - **Still open from hardening round 1** ([Resume here](HARDENING-1.md#resume-here)):
   - The user looks for Loom in Screen Time.
   - DEVELOPMENT §5 lacks rows for the H1-F evidence commands.
@@ -152,6 +157,11 @@ The slices run one after another (D-13), and then:
   - **Usage page in the real Settings window** at 7 d, 24 h and 30 d: the cards scroll between the top bar and the footer. There are no plan limits with fake providers and no failure reason, so there is no plan card.
   - **Totals** equal the fixture's sums: 176 lines; 270,909 input, 255,018 output, 2,766,120 cache write and 23,147,645 cache read tokens.
   - **First driver run:** it stopped early because it waited on the activity list, which is empty in the project view. The tab rows held the right states, and the continuation finished the pass on the same instance. Quit was clean.
+- **Tag, promote, install.** Tag `release/0.4.2` → loom-dev `83c56db`; loom `f6968f3` / `v0.4.2` (270 files). The release products were built ahead in the loom tree. The user quit the daily Loom, and `build.sh` built and swapped `/Applications/Loom.app`. Checked:
+  - Deep-strict signature; version 0.4.2, `CFBundleVersion` 10, `LoomRevision` `f6968f3`, the category.
+  - LaunchServices holds one record, version 10.0.
+  - The binary holds the round's types (`HeaderFlowPlan`, `ProjectBranchChip`, `UsageCardText`, `listsRunningWorkflow`) and the new Usage texts, and no evidence code.
+  - The install did not touch the user's data: the catalog was last written at 17:10:57, as Loom quit; the install was at 17:11:21.
 - **Not run:**
   - The full suite (the user's scope).
   - Hover, pressed fills, the focus ring and the ⋯ menu opening; screenshots cannot show them.
