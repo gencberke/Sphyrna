@@ -15,7 +15,7 @@ Checkpoint plans, slice records and experiment evidence. The active stage's plan
 | [CHECKPOINT-4.md](CHECKPOINT-4.md), [cp4/](cp4/) | CP4 deletion and retention: plan and slice Briefs | **active** |
 | [HARDENING-1.md](HARDENING-1.md) | Hardening round 1 after 0.3.3: slices, planner decisions, performance candidates, housekeeping | done (0.4.0, 0.4.1); open items in its Resume here |
 | [FEEDBACK-3.md](FEEDBACK-3.md) | Feedback round 3 on 0.4.1: Usage page, session header, workflow subagents | done (0.4.2); open items in its Resume here |
-| [FEEDBACK-4.md](FEEDBACK-4.md) | Feedback round 4 on 0.4.2: Stop flow and last screen, Active section, subagent panel, longer branch | **active** |
+| [FEEDBACK-4.md](FEEDBACK-4.md) | Feedback round 4 on 0.4.2: Stop flow and last screen, Active section, subagent panel, longer branch | done (0.4.3); open items in its Resume here |
 | [CHECKPOINT-5-HISTORY.md](CHECKPOINT-5-HISTORY.md) | CP5 early decisions and slice A/B history (engine choice in §3.1) | history |
 | [cp5/C.md](cp5/C.md) | Slice C real-session operations: long review log | history |
 | [cp5/D.md](cp5/D.md) | Slice D input, view and combined acceptance plan | history |

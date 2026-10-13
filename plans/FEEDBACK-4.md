@@ -20,9 +20,14 @@ The round ships as 0.4.3 ([D-41](../DECISIONS.md) numbering) when the user says 
   - Full suite: run 3, on the round with the optimizer fixes (75852f6), passes. Run 2 had passed before the fixes; run 1 had failed one timing test, fixed in 9ade38d ([verification](#verification)).
   - The optimizer review is done ([findings](#optimizer-review-13-oct)). The user asked for it on 13 Oct ("optimizer'ı max effort spawnlarsın"). It ran as `strict-reviewer` with the optimizer Brief on Opus 5.5 at max effort ([D-06](../DECISIONS.md) requires at least `xhigh`), and read only. Its one blocking finding, R1, is fixed in 81ae519. The user chose to apply U1 and I1 too ([D-55](../DECISIONS.md)): done in 27dd23c and 4390445. The full suite passes on the result ([verification](#verification)).
   - The on-screen pass is done. The user said the computer was idle and gave the go for 0.4.3 if it was positive (13 Oct: "pc boşta yapabilirsin istediğin testi. olumlu olursa 0.4.3'ü kurabilirsin"). Its first run found that the ended screen lost the first character of every row; that is fixed in 4d99e97. The second run passes 20 of 20 checks ([on-screen pass](#on-screen-pass-13-oct)).
-- **Next.** Release 0.4.3 ([record](#release-043-13-oct)).
-- **Optimization.** The optimizer's findings are verified and prioritized here; the user decides what is built. Candidates noted so far:
+  - **Release 0.4.3 is installed** (13 Oct) and is the daily app ([record](#release-043-13-oct)).
+- **Open from this round:**
+  - Seen in daily use with real Claude: a stopped fullscreen session's last screen, and the subagent panel during a real workflow.
+  - Hover, pressed and focus states; Increase Contrast.
+  - The optimizer review's open measurements: U1's rescan cost and a `stopFeed` signpost.
+  - From the [optimizer review](#optimizer-review-13-oct): I3 (watch) and UA (classic mode keeps an old alternate screen; unverified risk).
   - `SessionLifecycleController.markActivity` has had no caller since FB4-1.
+  - The evidence `answer:` command answers only the selected session; the round-4 driver did not select the session first.
 - **Still open from round 3** ([Resume here](FEEDBACK-3.md#resume-here)):
   - The header's hover, ⋯ menu and focus ring in daily use.
   - The subagent rows during a real workflow.
@@ -361,3 +366,8 @@ The user gave the go on 13 Oct, if the tests were positive ("pc boşta yapabilir
   - Hover, pressed and focus states.
   - Increase Contrast.
   - The measurements the optimizer review left open: U1's rescan cost and a `stopFeed` signpost.
+- **Tag, promote, install.** Tag `release/0.4.3` → loom-dev 4bdda54; loom 5921991 / `v0.4.3` (281 files). The release products were built ahead in the loom tree. Loom was not running, and `build.sh` built and swapped `/Applications/Loom.app` at 23:56. Checked:
+  - Deep-strict signature; version 0.4.3, `CFBundleVersion` 11, `LoomRevision` 5921991, the category.
+  - LaunchServices holds one record, version 11.0.
+  - The binary holds the round's types (`EndedScreenStore`, `EndedScreenContainerView`, `SubagentTranscriptFeed`, `SubagentTranscriptModel`, `ActivePhase`) and the ended-screen notice, and no evidence code.
+  - The install did not touch the user's data: the catalog was last written at 21:08:30 and the UI preferences at 17:54:22, both before the install.
