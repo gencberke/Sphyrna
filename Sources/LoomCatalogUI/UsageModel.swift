@@ -145,8 +145,11 @@ public struct PlanLimitsCadence: Equatable, Sendable {
 /// activation, the Usage page showing, a change under the profile's `projects` folder (reported by
 /// `UsageTranscriptWatcher`, debounced and read for just the changed files), a finished Claude turn
 /// (debounced; a full walk only while no watcher runs, otherwise the watcher's file is read), a new day and the refresh button. Requests while a refresh runs coalesce into one
-/// more run. While no Loom window or Usage page is showing, changes only mark the numbers stale;
-/// the next time one shows reads them. Plan limits come from `limitsSource` on `PlanLimitsCadence`.
+/// more run. While no Loom window or Usage page is showing, the running watcher's changes are only
+/// collected (the changed files, or a full-scan flag after an overflow); coming back reads just those
+/// files, a full scan only after an overflow or on a new local day, and nothing when nothing changed.
+/// Without a watcher, changes mark the numbers stale and the next time one shows walks everything.
+/// Plan limits come from `limitsSource` on `PlanLimitsCadence`.
 @MainActor @Observable
 public final class UsageModel {
     public private(set) var state: UsageState = .idle
@@ -227,19 +230,37 @@ public final class UsageModel {
     /// Someone can see the numbers: the active main window, or the Usage page.
     private var observing: Bool { windowIsActive || usagePageVisible }
     private var usagePageVisible: Bool { settingsWindowVisible && usageSectionSelected }
+    /// The watcher has reported every change since the launch scan, so what happened while nobody
+    /// looked is known exactly and is collected instead of marking everything stale.
+    private var watcherKeepsTrack: Bool { transcriptWatcherRunning && fullScanDone }
+    /// The local day now is not the day of the latest refresh request (the chip says "Today").
+    private var dayChanged: Bool {
+        guard let requestedDay else { return false }
+        return calendar.startOfDay(for: clock()) != requestedDay
+    }
 
     /// Asks for a refresh. Returns at once; `turnComplete` waits `debounce` (the first request
     /// of a burst sets the time, later ones join it) and `activation` is skipped right after a refresh.
     public func refresh(reason: UsageRefreshReason) {
         switch reason {
         case .turnComplete:
-            guard observing else { stale = true; return }
+            guard observing else {
+                // With the watcher keeping track, the turn's own transcript write is collected.
+                if !watcherKeepsTrack { stale = true }
+                return
+            }
             // The watcher reports the turn's own transcript write and `transcriptsChanged` reads just
             // that file; only without a watcher does a finished turn walk every transcript.
             if !transcriptWatcherRunning { wantsFullScan = true }
             scheduleDebounced()
             fetchLimitsIfDue(after: cadence.afterTurn)
         case .activation:
+            if watcherKeepsTrack {
+                // What happened while hidden is known: a full scan only for an overflow or a new
+                // day, else just the changed files (inside the cooldown too), else nothing.
+                if stale || wantsFullScan || dayChanged { start() } else { startChanged() }
+                return
+            }
             if stale {
                 // Something changed while hidden: read now, inside the cooldown too, and again if
                 // the running refresh began before that change.
@@ -271,13 +292,13 @@ public final class UsageModel {
     }
 
     /// Transcripts changed under the profile (`UsageTranscriptWatcher`). While someone can see the
-    /// numbers they are read after the debounce, only those files; otherwise the next time
-    /// someone can, one full read covers it.
+    /// numbers they are read after the debounce, only those files; otherwise they are collected
+    /// (bounded by the distinct transcripts written) for the next time someone can.
     public func transcriptsChanged(_ change: UsageTranscriptChange) {
         guard fullScanDone else { return } // the launch scan has not run yet and will read everything
-        guard observing else { stale = true; return }
+        guard observing || watcherKeepsTrack else { stale = true; return }
         if change.needsFullScan { wantsFullScan = true } else { changedPaths.formUnion(change.paths) }
-        scheduleDebounced()
+        if observing { scheduleDebounced() }
     }
 
     /// Tells the model whether the transcript watcher is running (the app sets it after starting
@@ -331,8 +352,7 @@ public final class UsageModel {
     public func minuteTick() {
         // Pure: a plan window that has ended drops out whenever the window ticks (visible, key or not).
         rebuildChip()
-        guard windowIsActive else { return }
-        guard let requestedDay, calendar.startOfDay(for: clock()) != requestedDay else { return }
+        guard windowIsActive, dayChanged else { return }
         refresh(reason: .dayChanged)
     }
 
@@ -365,11 +385,14 @@ public final class UsageModel {
             try? await Task.sleep(for: debounce)
             guard !Task.isCancelled, let self else { return }
             self.debounceTask = nil
-            // Everyone looked away during the debounce: the next time someone looks, one full read.
+            // Everyone looked away during the debounce: with the watcher keeping track, coming back
+            // reads what was collected; without it, one full read.
             guard self.observing else {
-                self.changedPaths = []
-                self.wantsFullScan = false
-                self.stale = true
+                if !self.watcherKeepsTrack {
+                    self.changedPaths = []
+                    self.wantsFullScan = false
+                    self.stale = true
+                }
                 return
             }
             if self.wantsFullScan { self.start() } else { self.startChanged() }

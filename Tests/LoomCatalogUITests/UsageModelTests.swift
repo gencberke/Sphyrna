@@ -192,10 +192,10 @@ struct UsageModelTests {
 struct UsageFreshnessTests {
     private func model(
         _ index: FakeUsageIndex, limits: (any PlanLimitsFetching)? = nil, clock: TestClock? = nil,
-        debounce: Duration = .milliseconds(40)
+        debounce: Duration = .milliseconds(40), cooldown: Duration = .zero
     ) -> UsageModel {
         UsageModel(index: index, limits: limits, clock: { clock?.now ?? Date() },
-                   timeZone: TimeZone(identifier: "UTC")!, debounce: debounce, activationCooldown: .zero)
+                   timeZone: TimeZone(identifier: "UTC")!, debounce: debounce, activationCooldown: cooldown)
     }
 
     private let transcript = URL(fileURLWithPath: "/tmp/profile/projects/-p/session.jsonl")
@@ -382,6 +382,138 @@ struct UsageFreshnessTests {
         usage.observeTurnCompletions(1)
         await usage.settle()
         #expect(source.asks == 2)
+    }
+
+    // MARK: Coming back with the watcher running
+
+    /// The watcher runs and the launch scan is done: the state the release app is in.
+    private func watched(
+        _ index: FakeUsageIndex, clock: TestClock? = nil, cooldown: Duration = .zero
+    ) async -> UsageModel {
+        let usage = model(index, clock: clock, cooldown: cooldown)
+        usage.setTranscriptWatcherRunning(true)
+        await usage.refreshNow(reason: .launch)
+        return usage
+    }
+
+    @Test func comingBackReadsOnlyTheTranscriptsThatChangedWhileHidden() async {
+        let index = FakeUsageIndex()
+        let usage = await watched(index)
+        usage.windowActivityChanged(false)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: false))
+        await usage.settle()
+        #expect(index.changedCalls.isEmpty) // nobody is looking: collected, not read
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(index.changedCalls == [[transcript]])
+        #expect(index.refreshCalls == 1)
+        usage.windowActivityChanged(false)
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(index.changedCalls.count == 1 && index.refreshCalls == 1) // collected once, read once
+    }
+
+    @Test func changedTranscriptsAreReadInsideTheActivationCooldownToo() async {
+        let index = FakeUsageIndex()
+        let usage = await watched(index, cooldown: .seconds(60))
+        usage.windowActivityChanged(false)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: false))
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(index.changedCalls == [[transcript]] && index.refreshCalls == 1)
+    }
+
+    @Test func comingBackAfterTheDebounceRanOutKeepsWhatWasCollected() async throws {
+        let index = FakeUsageIndex()
+        let usage = await watched(index)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: false)) // debounce starts
+        usage.windowActivityChanged(false)
+        await usage.settle() // the debounce ends with everyone looking away
+        #expect(index.changedCalls.isEmpty)
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(index.changedCalls == [[transcript]] && index.refreshCalls == 1)
+    }
+
+    @Test func aFinishedTurnWhileHiddenIsCoveredByTheTranscriptWrite() async {
+        let index = FakeUsageIndex()
+        let usage = await watched(index)
+        usage.observeTurnCompletions(0)
+        usage.windowActivityChanged(false)
+        usage.observeTurnCompletions(1)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: false))
+        await usage.settle()
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(index.changedCalls == [[transcript]] && index.refreshCalls == 1)
+    }
+
+    @Test func comingBackWithNothingChangedReadsNothing() async {
+        let index = FakeUsageIndex()
+        let usage = await watched(index, clock: TestClock())
+        usage.windowActivityChanged(false)
+        usage.windowActivityChanged(true) // the cooldown is zero: it has passed
+        await usage.settle()
+        #expect(index.refreshCalls == 1 && index.changedCalls.isEmpty)
+    }
+
+    @Test func anOverflowWhileHiddenGivesOneFullScanWhenComingBack() async {
+        let index = FakeUsageIndex()
+        let usage = await watched(index)
+        usage.windowActivityChanged(false)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: false))
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [], needsFullScan: true))
+        await usage.settle()
+        #expect(index.refreshCalls == 1)
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(index.refreshCalls == 2 && index.changedCalls.isEmpty) // the walk covers the named file
+        usage.windowActivityChanged(false)
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(index.refreshCalls == 2)
+    }
+
+    @Test func aNewDayWhileHiddenGivesOneFullScanWhenComingBack() async {
+        let clock = TestClock()
+        let index = FakeUsageIndex()
+        let usage = await watched(index, clock: clock)
+        usage.windowActivityChanged(false)
+        clock.advance(86_400)
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(index.refreshCalls == 2 && index.changedCalls.isEmpty)
+        usage.windowActivityChanged(false)
+        usage.windowActivityChanged(true) // the same day again
+        await usage.settle()
+        #expect(index.refreshCalls == 2)
+    }
+
+    @Test func aChangeReadOnComingBackStillFillsThePageWhenItOpens() async {
+        let index = FakeUsageIndex()
+        index.setTokens(1_000)
+        let usage = await watched(index)
+        usage.windowActivityChanged(false)
+        index.setTokens(5_000)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: false))
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(usage.chip?.full == "5K today")
+        usage.setSettingsWindowVisible(true)
+        usage.setUsageSectionSelected(true)
+        await usage.settle()
+        #expect(usage.report?.snapshot.tokens.total == 5_000)
+    }
+
+    @Test func withoutAWatcherComingBackStillWalksEverythingAfterAChange() async {
+        let index = FakeUsageIndex()
+        let usage = model(index)
+        await usage.refreshNow(reason: .launch)
+        usage.windowActivityChanged(false)
+        usage.transcriptsChanged(UsageTranscriptChange(paths: [transcript], needsFullScan: false))
+        usage.windowActivityChanged(true)
+        await usage.settle()
+        #expect(index.refreshCalls == 2 && index.changedCalls.isEmpty)
     }
 
     // MARK: Plan limits
