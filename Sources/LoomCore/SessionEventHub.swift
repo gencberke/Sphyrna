@@ -108,7 +108,7 @@ public enum SessionEventChange: Equatable, Sendable {
     /// this frame that it must re-read what it shows.
     case catalogLifecycle(SessionLifecycle, count: Int)
     /// The catalog row of this conversation took a new activity time (a prompt, a finished
-    /// turn, the user's Stop, a resume). No per-conversation state: the catalog row is the
+    /// turn, a run that moved to it). No per-conversation state: the catalog row is the
     /// authority and a consumer re-reads what it shows (`catalogRevision` moves).
     case activityRecorded
     /// A conversation was deleted completely (its record is finished). The frame names it in

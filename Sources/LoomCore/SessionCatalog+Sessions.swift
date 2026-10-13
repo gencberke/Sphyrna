@@ -90,15 +90,17 @@ extension SessionCatalog {
         }
     }
 
-    /// Records a user prompt or deliberate view. Without `reactivate` (a view)
-    /// only the use date moves: a stale or idle row keeps its state, because
-    /// merely viewing history must not make it look live again, and the
+    /// Records a user prompt, a resume or a deliberate view. Without `reactivate`
+    /// (a view) only the use date moves: a stale or idle row keeps its state,
+    /// because merely viewing history must not make it look live again, and the
     /// activity time stays (a view is not activity). With `reactivate` (a
-    /// prompt, resume) the activity time moves to the event time too.
+    /// prompt, resume) the row becomes active again and the activity time moves
+    /// to the event time too, unless `movesActivity` is false: a resume restarts
+    /// the retention clock but is not work, so the card keeps its place.
     /// Refused (`deletionPending`) for a conversation with a `deletions` row.
     /// A row that leaves `stale` loses its `stale_since`.
     public func markUsed(sessionID: UUID, at date: Date = Date(),
-                         reactivate: Bool = false) throws {
+                         reactivate: Bool = false, movesActivity: Bool = true) throws {
         try database.withStatement("""
             UPDATE sessions AS s
             SET last_used_at = ?,
@@ -119,7 +121,7 @@ extension SessionCatalog {
             WHERE id = ? AND \(Self.notDeleting)
             """) { statement in
             sqlite3_bind_double(statement, 1, date.timeIntervalSince1970)
-            sqlite3_bind_int(statement, 2, reactivate ? 1 : 0)
+            sqlite3_bind_int(statement, 2, reactivate && movesActivity ? 1 : 0)
             sqlite3_bind_double(statement, 3, date.timeIntervalSince1970)
             sqlite3_bind_int(statement, 4, reactivate ? 1 : 0)
             sqlite3_bind_int(statement, 5, reactivate ? 1 : 0)
@@ -132,9 +134,9 @@ extension SessionCatalog {
         }
     }
 
-    /// Records real use that is not a prompt (a finished turn, the user's Stop):
-    /// the activity time and the use time both take the event time. The
-    /// lifecycle is left alone.
+    /// Records real use that is not a prompt (a finished turn, a run that moved to
+    /// another conversation): the activity time and the use time both take the
+    /// event time. The lifecycle is left alone.
     public func markActivity(sessionID: UUID, at date: Date = Date()) throws {
         try database.withStatement("""
             UPDATE sessions AS s

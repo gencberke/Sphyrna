@@ -246,8 +246,8 @@ enum LoomTheme {
         static let chipBranchGap: CGFloat = 4
         /// The glyph before the branch name.
         static let chipGlyph = Font.system(size: 11)
-        /// A longer branch name ends in an ellipsis.
-        static let branchMaxWidth: CGFloat = 180
+        /// A longer branch name ends in an ellipsis; 320 pt holds names like "stable/conflict/bg/EDDP-19964".
+        static let branchMaxWidth: CGFloat = 320
         /// The neutral chip (no project, None, colours off): a white wash.
         static let chipNeutralWash = 0.07
         static let chipNeutral = Color.white.opacity(chipNeutralWash)

@@ -379,15 +379,17 @@ public actor SessionLifecycleController {
         try await reschedule()
     }
 
-    /// Real use that is not a prompt or a resume (the user's own Stop). Moves the
+    /// Real use that is not a prompt or a resume (a finished turn). Moves the
     /// activity time; the lifecycle is untouched.
     public func markActivity(sessionID: UUID, at date: Date = Date()) async throws {
         try await catalog.markActivity(sessionID: sessionID, at: date)
         await supervisor.events.publishActivity(sessionID: sessionID)
     }
 
+    /// A resume: the row is active again and the retention clock restarts, but the
+    /// activity time stays, so the card keeps its place until a prompt moves it.
     public func reactivate(sessionID: UUID, at date: Date = Date()) async throws {
-        try await catalog.markUsed(sessionID: sessionID, at: date, reactivate: true)
+        try await catalog.markUsed(sessionID: sessionID, at: date, reactivate: true, movesActivity: false)
         blockedDue[sessionID] = nil
         descendantBackoff[sessionID] = nil
         await supervisor.events.publish(sessionID: sessionID, change: .lifecycle(.active))
@@ -532,7 +534,7 @@ public actor SessionLifecycleController {
         )
         do {
             try await catalog.markUsed(
-                sessionID: sessionID, at: date, reactivate: true
+                sessionID: sessionID, at: date, reactivate: true, movesActivity: false
             )
             await supervisor.events.publish(
                 sessionID: sessionID, change: .lifecycle(.active)

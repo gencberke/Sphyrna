@@ -211,9 +211,9 @@ final class CatalogDatabase: @unchecked Sendable {
     }
 
     /// `sessions.last_activity_at`: when the user last really used a session
-    /// (start, resume, prompt, finished turn, user Stop). `last_used_at` also
-    /// moves on a view and keeps driving retention; this column drives the card
-    /// time and the activity order.
+    /// (start, prompt, finished turn, a run that moved to it). `last_used_at` also
+    /// moves on a view, a Stop and a resume and keeps driving retention; this column
+    /// drives the card time and the activity order.
     ///
     /// Added to schema 3 on open, deliberately without a `user_version` bump: a
     /// 0.2.1 build refuses any version above 3 and only checks that its own

@@ -252,12 +252,14 @@ public final class ConversationController: ConversationIntents {
     public func stop(sessionID: UUID) {
         guard let model, model.actionsAvailable, model.busy[sessionID] != .stopping else { return }
         model.setBusy(sessionID, .stopping)
+        let stoppedRun = entries.values.first { $0.owner == sessionID }?.runID ?? model.liveStates[sessionID]?.runID
         Task {
             defer { model.setBusy(sessionID, nil) }
             do {
                 let report = try await runtime.stopConversation(sessionID: sessionID)
-                // The user's own Stop is real use: the card time and the activity order follow it.
-                try? await runtime.markUserStopped(sessionID: sessionID)
+                // A verified stop closes the session's tab like its close button. A stop that is not
+                // verified keeps it, and so does a session that has a new run meanwhile.
+                if report.succeeded, !hasNewRun(sessionID, since: stoppedRun) { model.closeTab(sessionID) }
                 if !report.succeeded {
                     // The card also carries the unverified stop; this makes it hard to miss.
                     let providerFailure = report.providerStages?.first { $0.outcome == "failed" }?.failureDescription
@@ -269,6 +271,13 @@ public final class ConversationController: ConversationIntents {
                 report(error, "The session could not be stopped")
             }
         }
+    }
+
+    /// True when the session owns a run other than `stoppedRun`: a resume or a start got in after the stop.
+    private func hasNewRun(_ sessionID: UUID, since stoppedRun: UUID?) -> Bool {
+        if entries.values.contains(where: { $0.owner == sessionID && $0.runID != stoppedRun }) { return true }
+        guard let live = model?.liveStates[sessionID]?.runID else { return false }
+        return live != stoppedRun
     }
 
     public func answer(sessionID: UUID, requestID: String, accept: Bool) {

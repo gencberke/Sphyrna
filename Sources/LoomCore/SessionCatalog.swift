@@ -29,9 +29,9 @@ public struct CatalogSession: Equatable, Sendable {
     /// Nil means unknown (a row classified before schema 3, or not stale);
     /// the cleanup planner derives it then.
     public let staleSince: Date?
-    /// When the user last really used the session (start, resume, prompt,
-    /// finished turn, user Stop). Unlike `lastUsedAt`, a view never moves it;
-    /// the card time and the activity order read this one.
+    /// When the user last really used the session (start, prompt, finished turn,
+    /// a run that moved to it). Unlike `lastUsedAt`, a view, a Stop and a resume
+    /// never move it; the card time and the activity order read this one.
     public let lastActivityAt: Date
     /// The ticket an agent named when it asked for this session to be opened (D-40); nil otherwise.
     public let ticketKey: String?

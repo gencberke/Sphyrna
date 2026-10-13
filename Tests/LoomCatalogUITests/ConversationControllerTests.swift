@@ -460,6 +460,10 @@ struct ConversationControllerTests {
             #expect(await waitUntil { fixture.controller.terminalCount == 0 && fixture.model.busy[sessionID] == nil })
             #expect(fixture.model.terminalView(for: sessionID) == nil)
             await fixture.model.settle()
+            // The stop closed the session's tab; the card is still there to be shown again (FB4-4).
+            #expect(fixture.model.selectedSessionID == nil && fixture.model.tabs.pinned.isEmpty)
+            fixture.model.select(sessionID)
+            await fixture.model.settle()
             let stoppedRow = try #require(fixture.model.selectedRow)
             #expect(fixture.model.canResume(stoppedRow))
             #expect(!fixture.model.canStop(stoppedRow))
@@ -605,7 +609,7 @@ struct ConversationControllerTests {
 
     // MARK: U3 conversation tabs
 
-    @Test func startAndResumePinATabAndStopThenCloseKeepsTheCardOnly() async throws {
+    @Test func startAndResumePinATabAndStopClosesItWithoutLosingTheCard() async throws {
         try await withFixture { fixture in
             fixture.model.startConversation(.claude, projectID: nil)
             #expect(await waitUntil { fixture.controller.terminalCount == 1 })
@@ -620,8 +624,13 @@ struct ConversationControllerTests {
             #expect(fixture.controller.terminalCount == 1)
             #expect(fixture.model.terminalView(for: sessionID) != nil)
 
+            // Open in Tab again, then Stop: the verified stop closes the tab like its close button (FB4-4).
+            fixture.model.openTab(sessionID)
+            #expect(fixture.model.tabs.pinned == [sessionID] && fixture.model.selectedSessionID == sessionID)
             fixture.model.stopConversation(sessionID)
             #expect(await waitUntil { fixture.controller.terminalCount == 0 && fixture.model.busy[sessionID] == nil })
+            #expect(fixture.model.tabs.pinned.isEmpty && fixture.model.selectedSessionID == nil)
+            #expect(try await fixture.catalog.session(id: sessionID) != nil, "the card stays")
             fixture.model.resumeConversation(sessionID)
             #expect(await waitUntil { fixture.controller.terminalCount == 1 })
             #expect(await waitUntil { fixture.model.tabs.pinned == [sessionID] })
@@ -629,31 +638,161 @@ struct ConversationControllerTests {
         }
     }
 
-    /// Feedback 1: start, the user's Stop and resume are real use and move the session to the top.
-    @Test func startStopAndResumeMoveTheSessionToTheTopOfTheActivityList() async throws {
+    // MARK: FB4-4 Stop closes the session's tab
+
+    /// Sessions that only fill the strip with tabs; they never run.
+    private func insertIdle(_ fixture: Fixture, _ count: Int) async throws -> [UUID] {
+        var ids: [UUID] = []
+        for index in 0..<count {
+            let session = ManagedSession(provider: .claude, workingDirectory: "/tmp")
+            try await fixture.catalog.insertSession(session, title: "Tab \(index)", lifecycle: .idle)
+            ids.append(session.id)
+        }
+        return ids
+    }
+
+    private func startRunning(_ fixture: Fixture) async throws -> UUID {
+        fixture.model.startConversation(.claude, projectID: nil)
+        #expect(await waitUntil { fixture.controller.terminalCount == 1 })
+        let id = try #require(fixture.controller.entries.values.first?.owner)
+        #expect(fixture.model.selectedSessionID == id)
+        let terminal = try #require(surface(fixture, for: id))
+        #expect(await waitUntil { terminal.screenText().contains("FAKE-CLAUDE READY") })
+        return id
+    }
+
+    @Test func stoppingTheSelectedPinnedSessionClosesItsTabAndShowsTheRightNeighbourElseTheLeft() async throws {
         try await withFixture { fixture in
-            let old = Date(timeIntervalSince1970: (Date().timeIntervalSince1970 - 2 * 86_400).rounded())
-            let neighbor = ManagedSession(provider: .claude, providerConversationID: "n", workingDirectory: fixture.home.path)
-            try await fixture.catalog.insertSession(neighbor, title: "Neighbor", createdAt: old, lastUsedAt: old, lifecycle: .idle)
+            let others = try await insertIdle(fixture, 2)
+            fixture.model.openTab(others[0])
+            let id = try await startRunning(fixture)
+            fixture.model.openTab(others[1])
+            fixture.model.select(id)
+            #expect(fixture.model.tabs.pinned == [others[0], id, others[1]])
+
+            fixture.model.stopConversation(id)
+            #expect(await waitUntil { fixture.controller.terminalCount == 0 && fixture.model.busy[id] == nil })
+            #expect(fixture.model.tabs.pinned == [others[0], others[1]], "the tab is gone and unpinned")
+            #expect(fixture.model.selectedSessionID == others[1], "the right neighbour is shown")
+
+            // The last tab on the right: the left neighbour is shown.
+            fixture.model.resumeConversation(id)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 && fixture.model.selectedSessionID == id })
+            #expect(fixture.model.tabs.pinned == [others[0], others[1], id])
+            let terminal = try #require(surface(fixture, for: id))
+            #expect(await waitUntil { terminal.screenText().contains("FAKE-CLAUDE READY") })
+            fixture.model.stopConversation(id)
+            #expect(await waitUntil { fixture.controller.terminalCount == 0 && fixture.model.busy[id] == nil })
+            #expect(fixture.model.tabs.pinned == [others[0], others[1]])
+            #expect(fixture.model.selectedSessionID == others[1], "the left neighbour is shown")
+        }
+    }
+
+    @Test func stoppingTheSelectedTransientSessionLeavesItsTabToo() async throws {
+        try await withFixture { fixture in
+            let other = try await insertIdle(fixture, 1)[0]
+            fixture.model.openTab(other)
+            let id = try await startRunning(fixture)
+            fixture.model.unpinTab(id)
+            #expect(fixture.model.isTransientTab(id) && fixture.model.visibleTabIDs == [other, id])
+
+            fixture.model.stopConversation(id)
+            #expect(await waitUntil { fixture.controller.terminalCount == 0 && fixture.model.busy[id] == nil })
+            #expect(fixture.model.visibleTabIDs == [other], "the italic tab is gone")
+            #expect(fixture.model.selectedSessionID == other)
+        }
+    }
+
+    @Test func stoppingAPinnedSessionThatIsNotSelectedClosesItsTabAndKeepsTheSelection() async throws {
+        try await withFixture { fixture in
+            let other = try await insertIdle(fixture, 1)[0]
+            let id = try await startRunning(fixture)
+            fixture.model.openTab(other)
+            #expect(fixture.model.tabs.pinned == [id, other] && fixture.model.selectedSessionID == other)
+
+            fixture.model.stopConversation(id)
+            #expect(await waitUntil { fixture.controller.terminalCount == 0 && fixture.model.busy[id] == nil })
+            #expect(fixture.model.tabs.pinned == [other])
+            #expect(fixture.model.selectedSessionID == other, "the selection stays")
+        }
+    }
+
+    /// A stop that could not be verified leaves everything as it was, tab included, and says so.
+    @Test func aStopThatIsNotVerifiedKeepsTheTab() async throws {
+        let fixture = try await makeFixture(extraEnvironment: ["LOOM_FAKE_CODEX_STOP_FAILURE": "prepare"])
+        do {
+            fixture.model.startConversation(.codex, projectID: nil)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 })
+            let id = try #require(fixture.model.selectedSessionID)
+            #expect(try await waitUntil { try await fixture.catalog.session(id: id)?.session.providerConversationID != nil })
+            let runID = try #require(await fixture.supervisor.session(id: id)?.currentRun?.id)
+            fixture.model.stopConversation(id)
+            #expect(try await waitUntil { await fixture.supervisor.lastStopReport(sessionID: id) != nil })
+            #expect(await waitUntil { fixture.model.busy[id] == nil })
+            #expect(fixture.model.errorMessage?.contains("Stop it again to retry") == true)
+            #expect(fixture.model.tabs.pinned == [id] && fixture.model.selectedSessionID == id)
+            try await fixture.supervisor.registerStopHooks(runID: runID,
+                hooks: ManagedRunStopHooks(prepare: {}, completed: {}))
+        } catch {
+            await fixture.cleanup()
+            throw error
+        }
+        await fixture.cleanup()
+    }
+
+    /// The run ending on its own (`/exit`, a crash) is not a Stop: the tab stays, showing the ended session.
+    @Test func aRunThatEndsOnItsOwnKeepsTheTab() async throws {
+        try await withFixture { fixture in
+            let id = try await startRunning(fixture)
+            let terminal = try #require(surface(fixture, for: id))
+            type("/exit", into: terminal)
+            #expect(await waitUntil { fixture.controller.terminalCount == 0 })
+            try await Task.sleep(for: .milliseconds(150))
+            #expect(fixture.model.tabs.pinned == [id] && fixture.model.selectedSessionID == id)
+        }
+    }
+
+    /// FB4-1: Stop and Resume do not move a session in the activity view; only a prompt does (feedback 1 had
+    /// them move it, which put a stopped session at the top without any work).
+    @Test func stopAndResumeKeepTheCardsPlaceAndAPromptMovesItToTheTop() async throws {
+        try await withFixture { fixture in
             fixture.model.startConversation(.claude, projectID: nil)
             #expect(await waitUntil { fixture.controller.terminalCount == 1 })
-            let sessionID = try #require(fixture.model.selectedSessionID)
-            func activity() async throws -> Date? { try await fixture.catalog.session(id: sessionID)?.lastActivityAt }
-            let started = try #require(try await activity())
-            #expect(started > old)
+            let a = try #require(fixture.model.selectedSessionID)
+            let terminalA = try #require(surface(fixture, for: a))
+            #expect(await waitUntil { terminalA.screenText().contains("FAKE-CLAUDE READY") })
+            #expect(try await waitUntil { try await fixture.catalog.session(id: a)?.session.providerConversationID != nil })
+            try await Task.sleep(for: .milliseconds(30))
+            fixture.model.startConversation(.claude, projectID: nil)
+            #expect(await waitUntil { fixture.controller.terminalCount == 2 && fixture.model.selectedSessionID != a })
+            let b = try #require(fixture.model.selectedSessionID)
+            func activity(_ id: UUID) async throws -> Date? { try await fixture.catalog.session(id: id)?.lastActivityAt }
+            let placed = try #require(try await activity(a))
+            let placedB = try #require(try await activity(b))
+            #expect(placedB > placed)
+            #expect(await waitUntil { fixture.model.list(for: .activity).rows.first?.id == b })
 
             try await Task.sleep(for: .milliseconds(30))
-            fixture.model.stopConversation(sessionID)
-            #expect(await waitUntil { fixture.controller.terminalCount == 0 && fixture.model.busy[sessionID] == nil })
-            let stopped = try #require(try await waitUntil { try await activity().map { $0 > started } ?? false } ? activity() : nil)
-            #expect(stopped > started, "the user's own Stop is activity")
-            #expect(await waitUntil { fixture.model.list(for: .activity).rows.first?.id == sessionID })
+            fixture.model.stopConversation(a)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 && fixture.model.busy[a] == nil })
+            #expect(try await activity(a) == placed, "Stop is not activity")
+            #expect(await waitUntil { fixture.model.list(for: .activity).rows.first?.id == b })
 
-            try await Task.sleep(for: .milliseconds(30))
-            fixture.model.resumeConversation(sessionID)
-            #expect(await waitUntil { fixture.controller.terminalCount == 1 })
-            #expect(try await waitUntil { try await activity().map { $0 > stopped } ?? false }, "resume is activity")
-            #expect(try await fixture.catalog.session(id: neighbor.id)?.lastActivityAt == old)
+            fixture.model.resumeConversation(a)
+            #expect(await waitUntil { fixture.controller.terminalCount == 2 })
+            let resumed = try #require(surface(fixture, for: a))
+            #expect(await waitUntil { resumed.screenText().contains("RESUMED") && resumed.screenText().contains("FAKE-CLAUDE READY") })
+            // The resumed CLI's SessionStart (source resume) names the same conversation: no move either.
+            try await Task.sleep(for: .milliseconds(400))
+            #expect(try await activity(a) == placed, "Resume is not activity")
+            #expect(try await activity(b) == placedB)
+            #expect(fixture.model.list(for: .activity).rows.first?.id == b)
+
+            // A prompt is work: the session moves to the top.
+            type("now to work", into: resumed)
+            #expect(try await waitUntil { try await activity(a).map { $0 > placedB } ?? false }, "a prompt is activity")
+            #expect(await waitUntil { fixture.model.list(for: .activity).rows.first?.id == a })
+            #expect(try await activity(b) == placedB)
         }
     }
 
@@ -1046,12 +1185,18 @@ struct ConversationControllerTests {
             } else {
                 #expect(errorBeforeTyping?.contains(action == "exit" ? "exited before" : "connection closed before") == true)
             }
-            // The ended run's last screen stays on show while its session is selected (D-45): the live
-            // terminal count is zero, the same surface is kept read-only.
-            #expect(fixture.controller.endedScreenCount == 1)
-            #expect(fixture.model.terminalView(for: id) == nil)
-            #expect(fixture.model.endedTerminalView(for: id) === terminal.view.superview)
-            #expect(terminal.screenText().contains("BEFORE-IDENTITY"))
+            if action == "stop" {
+                // A verified stop closed the tab (FB4-4): the session is neither selected nor pinned.
+                #expect(fixture.model.selectedSessionID == nil && fixture.model.tabs.pinned.isEmpty)
+                #expect(fixture.controller.endedScreenCount == 0)
+            } else {
+                // The ended run's last screen stays on show while its session is selected (D-45): the live
+                // terminal count is zero, the same surface is kept read-only.
+                #expect(fixture.controller.endedScreenCount == 1)
+                #expect(fixture.model.terminalView(for: id) == nil)
+                #expect(fixture.model.endedTerminalView(for: id) === terminal.view.superview)
+                #expect(terminal.screenText().contains("BEFORE-IDENTITY"))
+            }
             // Stale terminal input cannot resurrect an ended reservation, and says nothing either.
             type("continue", into: terminal)
             #expect(try await fixture.catalog.session(id: id)?.session.providerConversationID == nil)

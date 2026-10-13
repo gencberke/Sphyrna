@@ -129,10 +129,30 @@ struct SessionHeaderTests {
     // MARK: The row's width rules (pure)
 
     private func plan(_ width: CGFloat, title: CGFloat = 235, status: CGFloat? = 109, branchy: Bool = true,
-                      shrinks: Bool = false) -> HeaderFlowPlan {
+                      shrinks: Bool = false, chipFull: CGFloat = 174) -> HeaderFlowPlan {
         HeaderFlowPlan.make(
             width: width, title: title, status: status.map { HeaderFlowPlan.Status(ideal: $0, shrinks: shrinks) },
-            chip: HeaderFlowPlan.Chip(full: 174, compact: branchy ? 96 : 174), rule: 5, group: 87, spacing: 8)
+            chip: HeaderFlowPlan.Chip(full: chipFull, compact: branchy ? 96 : chipFull), rule: 5, group: 87, spacing: 8)
+    }
+
+    /// FB4-6: the branch may be 320 pt wide, so a chip with a long name is about 470 pt. It gives way in the
+    /// same order, also at the width the minimum window leaves the detail (780 minus the sidebar's minimum).
+    @Test func aLongBranchNameGivesWayInTheSameOrder() {
+        #expect(LoomTheme.Header.branchMaxWidth == 320)
+        let long: CGFloat = 470
+        let wide = plan(1_000, chipFull: long)
+        #expect(wide.showsBranch && wide.chip == long && wide.title == 235, "room for everything: the long name shows")
+        // The title shortens first, down to 100 pt, while the long branch stays.
+        let edge: CGFloat = 100 + 8 + 109 + 8 + long + 8 + 5 + 8 + 87
+        #expect(plan(edge, chipFull: long).showsBranch && plan(edge, chipFull: long).title == 100)
+        // One point less and the branch goes; the title takes its room back, the name keeps its full width.
+        let gone = plan(edge - 1, chipFull: long)
+        #expect(!gone.showsBranch && gone.chip == 96 && gone.title >= 100)
+        // The minimum window: the branch is dropped, the title keeps its floor and the pill never shortens.
+        for width in stride(from: 560 as CGFloat, through: 420, by: -10) {
+            let result = plan(width, chipFull: long)
+            #expect(!result.showsBranch && result.title >= 100 && result.status == 109, "width \(width)")
+        }
     }
 
     @Test func theTitleGivesWayFirstThenTheBranchThenTheProjectName() {

@@ -229,6 +229,35 @@ struct SessionLifecycleTests {
         #expect((await context.supervisor.shutdown()).succeeded)
     }
 
+    /// FB4-1: a resume makes a stale session active again and restarts its retention clock, but it is not
+    /// work: the card time (the activity time) stays where the last prompt or finished turn put it.
+    @Test func reactivatingAStaleSessionKeepsItsActivityTime() async throws {
+        let context = try await makeContext(idleAfter: 1, staleAfter: 15)
+        defer { try? FileManager.default.removeItem(at: context.root) }
+        let session = ManagedSession(
+            provider: .codex, providerConversationID: "thread-resumed", workingDirectory: context.root.path
+        )
+        try await context.supervisor.createSession(session)
+        try await context.catalog.markUsed(
+            sessionID: session.id, at: Date(timeIntervalSince1970: 10), reactivate: true
+        )
+        #expect(try await context.lifecycle.classifyStale(at: Date(timeIntervalSince1970: 30)) == [session.id])
+        let stale = try #require(try await context.catalog.session(id: session.id))
+        #expect(stale.lifecycle == .stale && stale.staleSince != nil)
+
+        try await context.lifecycle.reactivate(sessionID: session.id, at: Date(timeIntervalSince1970: 50))
+        let resumed = try #require(try await context.catalog.session(id: session.id))
+        #expect(resumed.lifecycle == .active)
+        #expect(resumed.staleSince == nil)
+        #expect(resumed.lastUsedAt == Date(timeIntervalSince1970: 50), "the retention clock restarts")
+        #expect(resumed.lastActivityAt == Date(timeIntervalSince1970: 10), "the card keeps its place")
+
+        // A prompt after it is work and moves the time.
+        try await context.catalog.markUsed(sessionID: session.id, at: Date(timeIntervalSince1970: 60), reactivate: true)
+        #expect(try await context.catalog.session(id: session.id)?.lastActivityAt == Date(timeIntervalSince1970: 60))
+        #expect((await context.supervisor.shutdown()).succeeded)
+    }
+
     /// Contract section 5: stale follows time since last use, not how the
     /// conversation ended. A stopped (never idle) conversation ages out; a live
     /// run never does; viewing keeps stale.
