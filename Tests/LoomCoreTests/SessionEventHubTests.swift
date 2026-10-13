@@ -297,6 +297,21 @@ struct ActivePhaseTests {
         #expect(await phase(hub, id) == .endedUnread, "the last background task ended unseen")
     }
 
+    @Test func backgroundWorkThatEndsUnseenShowsAsFinishedThoughTheTurnWasSeen() async {
+        let hub = SessionEventHub(), id = UUID()
+        _ = await start(hub, id)
+        await hub.publish(sessionID: id, change: working)
+        await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .turnComplete, pendingProviderWorkCount: 1)))
+        // The user looks while the background work runs, then moves on before it ends.
+        await hub.setViewed(sessionID: id)
+        await hub.setViewed(sessionID: nil)
+        #expect(await hub.snapshot().sessions[id]?.unviewedCompletion == false)
+        await hub.publish(sessionID: id, change: complete)
+        let state = await hub.snapshot().sessions[id]
+        #expect(state?.activePhase == .endedUnread)
+        #expect(state?.unviewedCompletion == true, "the card shows Finished, not Ready, in Active")
+    }
+
     @Test func aPromptARunEndAndANewRunTakeTheSessionOut() async {
         let hub = SessionEventHub(), id = UUID(), detached = UUID()
         var run = await start(hub, id)

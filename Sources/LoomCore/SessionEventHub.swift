@@ -201,8 +201,15 @@ public actor SessionEventHub {
                 state.unviewedCompletion = true
                 state.waitingAcknowledged = false
             }
-            state.activePhase = Self.activePhase(after: value, from: state.activePhase,
-                                                 viewed: viewedSessionID == sessionID)
+            let phase = Self.activePhase(after: value, from: state.activePhase,
+                                         viewed: viewedSessionID == sessionID)
+            // Background work that ends while nobody looks is the task's real end, even when the turn itself
+            // was seen or still had work pending: it shows as finished, like a turn that ends unseen.
+            if phase == .endedUnread, state.activePhase == .underWay, value?.activity == .turnComplete {
+                state.unviewedCompletion = true
+                state.waitingAcknowledged = false
+            }
+            state.activePhase = phase
         case let .lifecycle(value): state.lifecycle = value
         case let .conversationIdentity(value): state.conversationID = value
         case let .identityState(value): state.identity = value
