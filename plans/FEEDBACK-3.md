@@ -15,7 +15,7 @@ The user's notes of 13 Oct on 0.4.1 ([FEEDBACK-2](FEEDBACK-2.md) was round 2), t
   - The user looks for Loom in Screen Time.
   - DEVELOPMENT §5 lacks rows for the H1-F evidence commands.
   - About one point of visible-stream CPU is left for the next performance pass.
-  - The old worktrees can be removed once the user says OK.
+  - The old worktrees went to the Trash on 14 Oct, with the user's OK ([storage cleanup](FEEDBACK-4.md#storage-cleanup-14-oct)).
 
 ## Items
 

@@ -12,7 +12,7 @@ State on 12 Oct (late evening):
 - **Committed on `swarm/1`.** `2bbebf3` A and B; `37b155f` C; `037810c` E and D1; `07fafb6` D2; `c677ae1` the bundle keys.
 - **Release 0.4.1** adds H1-F (the user's go, 12 Oct late evening: "şimdi başlayabilirsin"; test scope: the new features only). Checks are in [Release 0.4.1](#release-041-12-oct-late-evening).
 - **Screen Time:** the question stays open; the user can look for Loom again (category and numeric build since 0.4.0).
-- **Old worktrees** `loom-h1/wt/A`, `B`, `C`, `E`, `D1`, `D2`, `F` and `ref-033` are merged or done and can be removed with the user's OK.
+- **Old worktrees** `loom-h1/wt/A`, `B`, `C`, `E`, `D1`, `D2`, `F` and `ref-033` went to the Trash on 14 Oct, with the user's OK ([storage cleanup](FEEDBACK-4.md#storage-cleanup-14-oct)).
 
 ## Slices
 

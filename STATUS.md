@@ -1,6 +1,6 @@
 # Status
 
-- **Updated:** 2026-10-13
+- **Updated:** 2026-10-14
 - **Stage:** feedback round 4 on 0.4.2 is done and shipped as 0.4.3 ([plans/FEEDBACK-4.md](plans/FEEDBACK-4.md), [D-54](DECISIONS.md)), branch `swarm/1`.
   - Feedback round 3 is done and shipped as 0.4.2 ([plans/FEEDBACK-3.md](plans/FEEDBACK-3.md)).
   - Hardening round 1 is done: 0.4.0 and 0.4.1 ([plans/HARDENING-1.md](plans/HARDENING-1.md)).
@@ -14,5 +14,5 @@
 
   Then the planner continues from [Resume here](plans/FEEDBACK-4.md#resume-here).
 - **Open decisions:** [DECISIONS.md → Open](DECISIONS.md#open) and the DP list in RUN-1.
-- **Latest result:** 0.4.3 installed (13 Oct, [record](plans/FEEDBACK-4.md#release-043-13-oct)). The on-screen pass passed 20 of 20. Full run 4 passed all but one Codex-only test, a teardown race outside the release, now in the [Codex backlog](plans/cp5/CODEX-BACKLOG.md).
+- **Latest result:** 0.4.3 installed (13 Oct, [record](plans/FEEDBACK-4.md#release-043-13-oct)). The on-screen pass passed 20 of 20. Full run 4 passed all but one Codex-only test, a teardown race outside the release, now in the [Codex backlog](plans/cp5/CODEX-BACKLOG.md). On 14 Oct, at the user's request, about 22 GB of unused builds, old worktrees, old probe runs and test leftovers went to the Trash ([record](plans/FEEDBACK-4.md#storage-cleanup-14-oct)).
 - **Blocker:** none.

@@ -28,6 +28,7 @@ The round ships as 0.4.3 ([D-41](../DECISIONS.md) numbering) when the user says 
   - From the [optimizer review](#optimizer-review-13-oct): I3 (watch) and UA (classic mode keeps an old alternate screen; unverified risk).
   - `SessionLifecycleController.markActivity` has had no caller since FB4-1.
   - The evidence `answer:` command answers only the selected session; the round-4 driver did not select the session first.
+- **Storage cleanup** (14 Oct, at the user's request): about 22 GB went to the Trash ([record](#storage-cleanup-14-oct)). The user empties the Trash.
 - **Still open from round 3** ([Resume here](FEEDBACK-3.md#resume-here)):
   - The header's hover, ⋯ menu and focus ring in daily use.
   - The subagent rows during a real workflow.
@@ -36,7 +37,6 @@ The round ships as 0.4.3 ([D-41](../DECISIONS.md) numbering) when the user says 
   - Screen Time.
   - DEVELOPMENT §5 rows for the H1-F evidence commands.
   - About one point of visible-stream CPU.
-  - The old worktrees, once the user says OK.
 
 ## Items
 
@@ -371,3 +371,28 @@ The user gave the go on 13 Oct, if the tests were positive ("pc boşta yapabilir
   - LaunchServices holds one record, version 11.0.
   - The binary holds the round's types (`EndedScreenStore`, `EndedScreenContainerView`, `SubagentTranscriptFeed`, `SubagentTranscriptModel`, `ActivePhase`) and the ended-screen notice, and no evidence code.
   - The install did not touch the user's data: the catalog was last written at 21:08:30 and the UI preferences at 17:54:22, both before the install.
+
+## Storage cleanup (14 Oct)
+
+The user asked to move whatever the dev and prod builds had left behind without use to the Trash (14 Oct: "hem dev hem prod kurulumlarında gereksiz herhangi bir aşamada gereksiz dosyalar oluştuysa bunları ayıkla ve çöp kutusuna taşı"). Everything went through `/usr/bin/trash`; nothing was deleted for good. The user chose the second group from a list.
+
+- **Moved, clearly unused** (about 17.6 GB):
+  - `loom-dev/.build`, 11 GB: repo-local builds and scratch folders from 27 Sep to 6 Oct, before scratch paths moved out of `~/Documents`. Nothing in it was newer than 7 Oct.
+  - The hardening round's agent scratch, `loom-h1/scratch-*`, about 6.5 GB.
+  - Five test packages in `Loom-Dev/packages`, 114 MB: the 0.4.0 to 0.4.3 candidates and `ref-033`. Each can be rebuilt from its tag.
+  - The session's temp files, and three older test folders in `/private/tmp`.
+- **Moved, at the user's choice** (about 4.5 GB):
+  - The 40 old worktrees of run 1 and hardening round 1, about 0.5 GB. Every HEAD was in `swarm/1`. 37 held uncommitted leftovers of their agents. `git worktree prune` dropped their records; the branches stay.
+  - `Loom-Dev/probe/runs`, 746 MB: 264 run folders from 27 Sep to 12 Oct. Their results are in the plans. The `runs` folder stays for new evidence.
+  - The build caches `loom-dev-build`, `loom-dev-build-release-tree`, `loom-dev-build-release-stage` and `loom-release-build`, about 3.2 GB. The next check and the next release build from scratch.
+- **Test leftovers.**
+  - 791 Loom test folders and SwiftPM lock files in `$TMPDIR`, 42 MB.
+  - 1,568 LaunchServices records of Loom copies that no longer exist, mostly the tests' temporary `LoomRunHost.app`. Only the installed `Loom.app`, `Loom Dev.app` and their helpers stay registered, so "Loom Dev" cannot open an old copy.
+- **Kept:**
+  - The installed apps, the user's data and the default dev catalog with its documented backup.
+  - The isolated profiles: `probe/claude-config` and `~/.loom-dev/codex-home`, 392 MB, the user's choice.
+  - Small evidence and notes: `loom-run1` without its worktrees (142 MB of run-1 evidence, the run's notes and scripts, the 0.2.0 candidate and the build-slot lock), `loom-fb3`, `loom-fb4`, `loom-h1/onscreen`, `loom-check-logs` and `probe/evidence`.
+  - Other sessions' files in `/private/tmp`.
+- **Afterwards.**
+  - References in older plans to the moved paths are historical.
+  - Tests leave temporary folders and LaunchServices records behind on every run; this is a follow-up candidate.
