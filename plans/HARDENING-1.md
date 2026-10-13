@@ -194,7 +194,7 @@ The user handed the Mac over for the evening ("pc'm senin kontrolünde … bu ak
 
 These are proposals for H1-D. They are inferred from the code and not measured; each is measured with `CatalogHotPathTests` counters or signposts before and after.
 
-1. **Usage after a finished turn.** Refresh only the changed transcripts: the paths the FSEvents watcher reports and the Stop hook's `transcript_path`. The full tree walk stays only for launch, a stale window coming back, an FSEvents overflow, a day change and the refresh button. Today `UsageModel.refresh(.turnComplete)` sets `wantsFullScan`, and the walk stats every transcript file.
+1. **Usage after a finished turn.** (The return-to-window part is done in FEEDBACK-4 U1, 27dd23c: hidden changes are collected and only those files are read.) Refresh only the changed transcripts: the paths the FSEvents watcher reports and the Stop hook's `transcript_path`. The full tree walk stays only for launch, a stale window coming back, an FSEvents overflow, a day change and the refresh button. Today `UsageModel.refresh(.turnComplete)` sets `wantsFullScan`, and the walk stats every transcript file.
 2. **Lists on run and lifecycle frames.**
    - Patch the one changed row instead of reloading every loaded row of every visible list.
    - Project view: patch in place, since creation order never changes.
