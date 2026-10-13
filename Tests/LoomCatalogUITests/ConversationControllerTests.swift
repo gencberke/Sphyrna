@@ -29,7 +29,7 @@ struct ConversationControllerTests {
             controller.stopObserving()
             model.stop()
             _ = await runtime.shutdown()
-            try? FileManager.default.removeItem(at: root)
+            RunScopeLauncher.removeOwnedBundle(in: root)
             try? FileManager.default.removeItem(at: socketDirectory)
         }
     }

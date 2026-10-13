@@ -7,9 +7,43 @@ import Testing
 
 private final class RunScopeBundleAnchor: NSObject {}
 
+/// The temporary folders of one test: run host folders and the test child's copy. A suite instance
+/// lives for one test, so they go when the test ends, together with their hosts' LaunchServices records.
+private final class ScopeScratch: Sendable {
+    private let folders = Mutex<[URL]>([])
+    private let child = Mutex<String?>(nil)
+
+    /// A folder path, created by whoever fills it, that is removed when the test ends.
+    func folder(_ prefix: String) -> URL {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(prefix)-\(UUID().uuidString.prefix(8))")
+        folders.withLock { $0.append(folder) }
+        return folder
+    }
+
+    /// A copy of `executable` in a folder of this test, made on first use.
+    func copy(of executable: URL) -> String {
+        child.withLock { path in
+            if let path { return path }
+            let place = self.folder("loom-scope-child")
+            try? FileManager.default.createDirectory(at: place, withIntermediateDirectories: true)
+            let copy = place.appendingPathComponent(executable.lastPathComponent)
+            try? FileManager.default.copyItem(at: executable, to: copy)
+            path = copy.path
+            return copy.path
+        }
+    }
+
+    deinit {
+        for folder in folders.withLock({ $0 }) { RunScopeLauncher.removeOwnedBundle(in: folder) }
+    }
+}
+
 /// Real LaunchServices run hosts: each run gets a fresh resource coalition.
 @Suite(.serialized, .timeLimit(.minutes(2)))
 struct RunScopeTests {
+    private let scratch = ScopeScratch()
+
     private var productsDirectory: URL {
         Bundle(for: RunScopeBundleAnchor.self).bundleURL.deletingLastPathComponent()
     }
@@ -17,26 +51,12 @@ struct RunScopeTests {
     /// Run hosts are their own TCC-responsible apps. The build products live
     /// under ~/Documents, so scoped children must run copies from a temporary
     /// directory or macOS would block their exec on a Documents consent prompt.
-    private static let fixtureRoot: URL = {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("loom-scope-fixtures-\(getpid())")
-        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root
-    }()
-
     private var testChild: String {
-        let copy = Self.fixtureRoot.appendingPathComponent("loom-test-child")
-        if !FileManager.default.fileExists(atPath: copy.path) {
-            try? FileManager.default.copyItem(
-                at: productsDirectory.appendingPathComponent("loom-test-child"), to: copy
-            )
-        }
-        return copy.path
+        scratch.copy(of: productsDirectory.appendingPathComponent("loom-test-child"))
     }
 
     private func launcher(hostBundle: URL? = nil) throws -> RunScopeLauncher {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("loom-scope-\(UUID().uuidString.prefix(8))")
+        let root = scratch.folder("loom-scope")
         let bundle = try hostBundle ?? RunScopeLauncher.assembleOwnedBundle(
             executable: productsDirectory.appendingPathComponent("loom-run-host"), in: root
         )
@@ -351,19 +371,19 @@ struct RunScopeTests {
     /// SR1-F1: a run that traced an outside process (as a debugger does) must
     /// not take it over. Ancestry seen while attached is not ownership.
     @Test func debuggerTraceeOutsideTheScopeIsNeverSignaled() async throws {
-        let tracee = Self.fixtureRoot.appendingPathComponent("loom-test-child-traceable")
-        if !FileManager.default.fileExists(atPath: tracee.path) {
-            try FileManager.default.copyItem(at: URL(fileURLWithPath: testChild), to: tracee)
-            let entitlements = Self.fixtureRoot.appendingPathComponent("get-task-allow.plist")
-            try Data("""
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0"><dict><key>com.apple.security.get-task-allow</key><true/></dict></plist>
-            """.utf8).write(to: entitlements)
-            #expect(try RunScopeLauncher.runTool("/usr/bin/codesign", [
-                "--force", "--sign", "-", "--entitlements", entitlements.path, tracee.path,
-            ], timeout: 30) == 0)
-        }
+        let place = scratch.folder("loom-scope-tracee")
+        try FileManager.default.createDirectory(at: place, withIntermediateDirectories: true)
+        let tracee = place.appendingPathComponent("loom-test-child-traceable")
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: testChild), to: tracee)
+        let entitlements = place.appendingPathComponent("get-task-allow.plist")
+        try Data("""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict><key>com.apple.security.get-task-allow</key><true/></dict></plist>
+        """.utf8).write(to: entitlements)
+        #expect(try RunScopeLauncher.runTool("/usr/bin/codesign", [
+            "--force", "--sign", "-", "--entitlements", entitlements.path, tracee.path,
+        ], timeout: 30) == 0)
         // Foundation can retain a stale completion state after another process
         // attaches to this child with ptrace. Own spawn/reap directly instead.
         var arguments = [tracee.path, "stubborn", "--silent"].map { strdup($0) }
@@ -439,8 +459,7 @@ struct RunScopeTests {
 
     /// SR1-F15: a host that never connects fails within the handshake deadline.
     @Test func hostThatNeverConnectsFailsWithinTheHandshakeDeadline() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("loom-scope-silent-\(UUID().uuidString.prefix(8))")
+        let root = scratch.folder("loom-scope-silent")
         let bundle = try RunScopeLauncher.assembleOwnedBundle(executable: URL(fileURLWithPath: "/usr/bin/true"), in: root)
         let launcher = RunScopeLauncher(hostBundle: bundle, socketDirectory: root.appendingPathComponent("s"),
                                         handshakeTimeout: 2)
@@ -573,8 +592,7 @@ struct RunScopeTests {
     /// SR1-F3: the host serves only the app that contains it. A caller that is
     /// not that app's code gets no hello and cannot make the host spawn.
     @Test func hostRefusesACallerThatIsNotItsOwner() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("loom-scope-foreign-\(UUID().uuidString.prefix(8))")
+        let root = scratch.folder("loom-scope-foreign")
         let bundle = try RunScopeLauncher.assembleOwnedBundle(
             executable: productsDirectory.appendingPathComponent("loom-run-host"), in: root,
             owner: URL(fileURLWithPath: "/bin/sleep")

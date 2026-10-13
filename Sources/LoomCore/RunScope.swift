@@ -156,6 +156,20 @@ public struct RunScopeLauncher: Sendable {
         return host
     }
 
+    /// Removes `root`, a folder that `assembleOwnedBundle` may have assembled a host in. `open`
+    /// registers every host it launches with LaunchServices, and that record outlives the folder, so
+    /// the host is unregistered first.
+    public static func removeOwnedBundle(in root: URL) {
+        let host = root.appendingPathComponent("LoomRunHost.app")
+        if FileManager.default.fileExists(atPath: host.path) {
+            _ = try? runTool(lsregisterPath, ["-u", host.path], timeout: 10)
+        }
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    private static let lsregisterPath =
+        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
     static func designatedRequirement(of code: URL) throws -> String {
         var staticCode: SecStaticCode?
         var requirement: SecRequirement?

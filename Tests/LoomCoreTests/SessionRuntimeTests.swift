@@ -105,7 +105,7 @@ struct RuntimeContext {
     var events: SessionEventHub { supervisor.events }
 
     func cleanup() {
-        try? FileManager.default.removeItem(at: root)
+        RunScopeLauncher.removeOwnedBundle(in: root)
         try? FileManager.default.removeItem(at: socketDirectory)
     }
 

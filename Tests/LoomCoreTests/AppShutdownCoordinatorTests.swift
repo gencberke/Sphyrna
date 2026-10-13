@@ -81,7 +81,7 @@ struct AppShutdownCoordinatorTests {
     @Test func scopedRunInsideARunHostAndQuitLeavesNoScopeMember() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loom-quit-scope-\(UUID().uuidString.prefix(8))")
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer { RunScopeLauncher.removeOwnedBundle(in: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         // Run hosts are their own TCC-responsible apps; products may live under ~/Documents.
         let child = root.appendingPathComponent("loom-test-child")
