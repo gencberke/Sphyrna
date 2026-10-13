@@ -472,12 +472,18 @@ struct SubagentTranscriptTests {
         feed.start()
         defer { feed.stop() }
         #expect(await wait { collector.batches.count == 1 })
+        let clock = ContinuousClock(), began = clock.now
         for _ in 0..<20 {
             try append(textLine + "\n", to: url)
             try await Task.sleep(for: .milliseconds(10))
         }
+        let spent = clock.now - began
         #expect(await wait { collector.batches.dropFirst().reduce(0) { $0 + $1.entries.count } == 20 })
-        #expect(collector.batches.count <= 4, "20 writes over 200 ms are read in a few batches, not 20")
+        // At most one read per coalescing window the writes spanned, plus the one after the last write. About
+        // 200 ms of writes gives a few batches, not 20; a loaded machine that stretches the loop gets more windows.
+        let windows = Int((spent / .milliseconds(200)).rounded(.up)) + 1
+        #expect(collector.batches.count - 1 <= max(3, windows),
+                "20 writes over \(spent) are read once per window at most, not once per write")
     }
 
     @Test func afterStopNothingArrivesAndTheFilesAreClosed() async throws {
