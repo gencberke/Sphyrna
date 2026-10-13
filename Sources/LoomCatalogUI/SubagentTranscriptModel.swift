@@ -125,10 +125,12 @@ final class SubagentTranscriptModel {
             }
             feed = opened
             let batches = opened.batches
+            // `stop()` does not wait for the feed's queue: a batch it yielded before the teardown ran may
+            // still be buffered, and a closed panel or a replaced feed must not show it.
             consumer = Task { [weak self] in
                 for await batch in batches {
-                    guard !Task.isCancelled else { return }
-                    self?.apply(batch)
+                    guard let self, !Task.isCancelled, generation == mine else { return }
+                    apply(batch)
                 }
             }
             opened.start()

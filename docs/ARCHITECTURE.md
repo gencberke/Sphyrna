@@ -129,7 +129,7 @@ CatalogModel.startConversation -> ConversationController.start (creates Terminal
     `SubagentTranscriptModel` asks `ConversationIntents.subagentTranscript` (the controller, with `SessionRuntime.claudeProjectsDirectory()`)
     for the file: `SubagentTranscriptLocation.resolve` accepts only `…/subagents/agent-<id>.jsonl` or `…/subagents/workflows/<run>/agent-<id>.jsonl`
     whose `realpath` lies inside the profile's `projects` folder, and the open is read-only with `O_NOFOLLOW` on a regular file of this user.
-    `SubagentTranscriptFeed` (one vnode source, started only while the panel is on screen and the window visible, stopped on hide) reads with
+    `SubagentTranscriptFeed` (one vnode source, started only while the panel is on screen and the window visible, stopped on hide; `stop()` returns at once and tears down on the feed's queue, so the model's consumer drops any batch that arrives after a close) reads with
     `SubagentTranscriptTail` (only new bytes and only whole lines, a partial last line held back, lines over 128 KiB skipped, a cold open reads the
     last 512 KiB from a line start plus the first line, a shrink or a replaced inode starts over), parses with `SubagentTranscriptParser`
     (a `memmem` gate drops attachment lines, a narrow Decodable never decodes `toolUseResult` and the other bulky duplicates, strings clip at 4 KiB)

@@ -496,7 +496,7 @@ struct SubagentTranscriptTests {
         #expect(await wait { collector.batches.count == 1 })
         let descriptors = feed.openDescriptors
         #expect(descriptors.count == 2 && descriptors.allSatisfy { fcntl($0, F_GETFD) != -1 })
-        feed.stop()
+        feed.stopAndWait()
         #expect(descriptors.allSatisfy { fcntl($0, F_GETFD) == -1 && errno == EBADF }, "both descriptors are closed")
         #expect(await wait { collector.finished }, "the stream ends")
         try append(textLine + "\n", to: url)
@@ -507,6 +507,28 @@ struct SubagentTranscriptTests {
         feed.start()
         try await Task.sleep(for: .milliseconds(100))
         #expect(collector.batches.count == 1 && feed.openDescriptors.isEmpty)
+    }
+
+    @Test func aPlainStopLetsNothingMoreThroughAndClosesTheFilesSoon() async throws {
+        let tree = try Tree()
+        defer { tree.remove() }
+        let url = try tree.transcript("a1", textLine + "\n")
+        let feed = try feed(url, in: tree)
+        let collector = Collector(feed)
+        feed.start()
+        #expect(await wait { collector.batches.count == 1 })
+        let descriptors = feed.openDescriptors
+        #expect(descriptors.count == 2)
+        feed.stop() // returns without waiting for the teardown
+        #expect(await wait { descriptors.allSatisfy { fcntl($0, F_GETFD) == -1 && errno == EBADF } },
+                "both descriptors are closed")
+        #expect(await wait { collector.finished }, "the stream ends")
+        try append(textLine + "\n", to: url)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(collector.batches.count == 1)
+        feed.stop() // idempotent, with the waiting form too
+        feed.stopAndWait()
+        #expect(feed.openDescriptors.isEmpty)
     }
 
     @Test func aReplacedFileIsFollowedByTheFeed() async throws {

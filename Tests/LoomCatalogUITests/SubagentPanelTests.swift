@@ -119,6 +119,20 @@ struct SubagentPanelTests {
         #expect(!model.isFeeding, "a closed panel does not start again")
     }
 
+    @Test func aBatchThatArrivesAfterTheCloseChangesNothing() async throws {
+        let tree = try Tree(text: briefLine + "\n" + textLine("first") + "\n")
+        defer { tree.remove() }
+        let model = panel(tree)
+        model.setOnScreen(true)
+        #expect(await waitUntil { model.items.count == 1 })
+        // The write is read by the feed's queue about 30 ms later; the close comes first and does not wait for it.
+        try tree.append(textLine("second") + "\n")
+        model.close()
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(model.items.count == 1 && !model.isFeeding)
+        #expect(model.items.first?.entry == .text("first"))
+    }
+
     @Test func aPanelThatIsHiddenBeforeItsFileIsLocatedNeverStartsAFeed() async throws {
         let tree = try Tree(text: textLine("x") + "\n")
         defer { tree.remove() }

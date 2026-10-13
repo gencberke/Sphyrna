@@ -23,7 +23,8 @@ public struct SubagentTranscriptBatch: Equatable, Sendable {
 /// on a utility queue; the batches arrive on `batches`.
 ///
 /// A feed is used once: `start()` begins it, `stop()` ends it (cancels the source, closes the files and
-/// finishes `batches`), and neither does anything a second time.
+/// finishes `batches`), and neither does anything a second time. `stop()` returns at once, so a caller on the
+/// main actor never waits for a read in flight; a batch yielded before the teardown ran may still arrive.
 public final class SubagentTranscriptFeed: @unchecked Sendable {
     public static let defaultCoalescing: TimeInterval = 0.2
     /// The most entries one batch carries; a larger burst keeps its newest.
@@ -41,7 +42,7 @@ public final class SubagentTranscriptFeed: @unchecked Sendable {
     private var phase = Phase.idle
     private var tail: SubagentTranscriptTail?
     private var source: (any DispatchSourceFileSystemObject)?
-    /// Left when a source's cancel handler has closed its descriptor; `stop` waits on it (any number of times).
+    /// Left when a source's cancel handler has closed its descriptor; `stopAndWait` waits on it (any number of times).
     private let sourcesClosed = DispatchGroup()
     private var scheduled: DispatchWorkItem?
     /// The file was moved or removed: watch whatever has its name once the pending read is done.
@@ -77,9 +78,14 @@ public final class SubagentTranscriptFeed: @unchecked Sendable {
         }
     }
 
-    /// Stops for good. When it returns no callback is pending, the files are closed and `batches` has ended.
-    /// Idempotent.
+    /// Stops for good and returns at once: the teardown runs on the feed's queue (the block keeps the feed
+    /// alive until it has), after any read in flight. Idempotent.
     public func stop() {
+        queue.async { [self] in teardown() }
+    }
+
+    /// `stop()`, then waits until no callback is pending, the files are closed and `batches` has ended (tests).
+    func stopAndWait() {
         queue.sync { teardown() }
         sourcesClosed.wait()
     }
