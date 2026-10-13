@@ -24,6 +24,8 @@ extension CatalogModel {
     /// does not list (it dropped out meanwhile) opens nothing.
     public func openSubagent(_ agentID: String, in sessionID: UUID) {
         guard let record = liveStates[sessionID]?.subagents.first(where: { $0.id == agentID }) else { return }
+        // A second click on the subagent already shown changes nothing: its panel goes on reading.
+        if viewedSubagent == ViewedSubagent(sessionID: sessionID, agentID: agentID), subagentPanel != nil { return }
         // Selecting closes a panel that is open, so this is also how one subagent's panel gives way to the next.
         select(sessionID, revealInList: false)
         let panel = SubagentTranscriptModel(

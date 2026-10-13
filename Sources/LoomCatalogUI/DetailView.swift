@@ -243,7 +243,8 @@ struct DetailContent: View {
                         RequestList(model: model, row: row, returnApproves: false)
                         if let issue = SessionIssueNotice.message(for: row.live) { SessionIssueNotice(message: issue) }
                         if row.indicator == .waitingForApproval { SubagentApprovalNotice(model: model) }
-                        SubagentTranscriptView(panel: panel).id(viewed.agentID)
+                        // One view per panel model: a new model (the same subagent opened again) is put on screen too.
+                        SubagentTranscriptView(panel: panel).id(ObjectIdentifier(panel))
                     }
                 } else if let terminal = model.terminalView(for: row.id) {
                     VStack(spacing: 0) {

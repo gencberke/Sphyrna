@@ -422,4 +422,50 @@ struct SubagentPanelTests {
         try await settle()
         #expect(!labels().contains("Back to the session") && !panel.isFeeding)
     }
+
+    @Test func openingTheShownSubagentAgainKeepsItsPanelReading() async throws {
+        let rig = try await makeRig()
+        defer { rig.cleanup() }
+        let tree = try Tree(text: #"{"type":"user","message":{"role":"user","content":"Map the module"}}"# + "\n"
+            + #"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Reading"}]}}"# + "\n")
+        defer { tree.remove() }
+        rig.intents.projects = tree.projects
+        rig.model.setWindowVisible(true)
+        try await goLive(rig, 1, [record(path: tree.transcript.path)])
+        rig.model.select(rig.ids[1])
+        await rig.model.settle()
+
+        let hosting = NSHostingController(rootView: DetailView(model: rig.model))
+        hosting.sizingOptions = []
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
+                              styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+        window.contentViewController = hosting
+        window.setContentSize(NSSize(width: 900, height: 600))
+        window.isReleasedWhenClosed = false // never ordered front: the layout runs against a window nobody sees
+        defer { window.close() }
+        func settle() async throws {
+            for _ in 0..<5 {
+                try await Task.sleep(for: .milliseconds(100))
+                window.contentView?.layoutSubtreeIfNeeded()
+                window.displayIfNeeded()
+            }
+        }
+        rig.model.openSubagent("a1", in: rig.ids[1])
+        try await settle()
+        let first = try #require(rig.model.subagentPanel)
+        #expect(await waitUntil { first.isFeeding && first.items.count == 1 })
+
+        // A second click on the same row changes nothing: the panel goes on reading.
+        rig.model.openSubagent("a1", in: rig.ids[1])
+        try await settle()
+        #expect(rig.model.subagentPanel === first && first.isFeeding)
+
+        // Closed and opened again before the view could go away: the new panel is put on screen as well.
+        rig.model.closeSubagent()
+        rig.model.openSubagent("a1", in: rig.ids[1])
+        try await settle()
+        let second = try #require(rig.model.subagentPanel)
+        #expect(second !== first)
+        #expect(await waitUntil { second.isFeeding && second.items.count == 1 })
+    }
 }
