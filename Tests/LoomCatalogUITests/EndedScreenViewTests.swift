@@ -61,6 +61,32 @@ struct EndedScreenViewTests {
         #expect(visible.maxY >= view.textView.frame.height - 1, "it opens at the bottom, where the last output is")
     }
 
+    @Test func aFullRowIsAsWideAsTheTerminalAndTheScreenOpensAtItsFirstColumn() throws {
+        let surface = TerminalSurface()
+        let columns = surface.view.terminalDimensions.cols
+        let row = "A" + String(repeating: "x", count: columns - 2) + "Z"
+        surface.view.feed(text: Array(repeating: row, count: 60).joined(separator: "\r\n"))
+        let snapshot = try #require(surface.captureVisibleScreen())
+        // Every character is one terminal cell wide: the font's advance snapped to the pixel grid, as the engine
+        // draws it. At the font's own advance a full row came out wider than the terminal.
+        let font = TerminalSurface.font(size: 14)
+        let cell = (font.advancement(forGlyph: font.glyph(withName: "W")).width * 2).rounded() / 2
+        let text = EndedScreenContainerView.attributedString(for: snapshot, fontSize: 14, scale: 2)
+        let first = text.attributedSubstring(from: NSRange(location: 0, length: columns)).size().width
+        #expect(abs(first - CGFloat(columns) * cell) < 1, "a full row is \(first) wide, the terminal \(CGFloat(columns) * cell)")
+
+        // An area narrower and shorter than the screen opens at the last row, with the rows' first column in view,
+        // also when the screen is shown before the area has a size, as the app does.
+        let view = EndedScreenContainerView()
+        view.show(snapshot, fontSize: 14)
+        view.frame = NSRect(x: 0, y: 0, width: 300, height: 200)
+        view.layoutSubtreeIfNeeded()
+        let clip = try #require(view.textView.enclosingScrollView).contentView
+        #expect(view.textView.frame.width > clip.bounds.width, "the rows are wider than the area")
+        #expect(clip.bounds.minX == 0, "the first column is in view")
+        #expect(clip.bounds.maxY >= view.textView.frame.height - 1, "the last row is in view")
+    }
+
     @Test func theSameCaptureAtTheSameSizeIsNotDrawnAgain() throws {
         let snapshot = try snapshot("once")
         let view = EndedScreenContainerView()
