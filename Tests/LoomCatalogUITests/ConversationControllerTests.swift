@@ -1226,4 +1226,48 @@ struct ConversationControllerTests {
         await fixture.cleanup()
     }
 
+    /// FB4-5 end to end: a subagent of the fake provider writes its transcript while it works, and the panel's
+    /// model, opened on its row, receives the brief, a tool call, its error result and the finish. The
+    /// terminal keeps its run behind the panel and is back when the panel closes.
+    @Test func aSubagentsTranscriptStreamsIntoThePanelWhileTheTerminalKeepsRunning() async throws {
+        try await withFixture { fixture in
+            fixture.model.setWindowVisible(true)
+            fixture.model.startConversation(.claude, projectID: nil)
+            #expect(await waitUntil { fixture.controller.terminalCount == 1 && fixture.model.selectedSessionID != nil })
+            let sessionID = try #require(fixture.model.selectedSessionID)
+            let surface = try #require(surface(fixture, for: sessionID))
+            #expect(await waitUntil { surface.screenText().contains("FAKE-CLAUDE READY") })
+            type("/subagent 2500", into: surface)
+
+            @MainActor func record() -> SubagentRecord? { fixture.model.liveStates[sessionID]?.subagents.first }
+            #expect(await waitUntil { record()?.transcriptPath != nil && record()?.description != nil })
+            let agentID = try #require(record()?.id)
+            fixture.model.openSubagent(agentID, in: sessionID)
+            let panel = try #require(fixture.model.subagentPanel)
+            #expect(fixture.model.viewedSubagent == ViewedSubagent(sessionID: sessionID, agentID: agentID))
+            #expect(!panel.isFeeding, "nothing is read before the panel is on screen")
+            panel.setOnScreen(true)
+
+            #expect(await waitUntil { panel.isFeeding && panel.brief != nil })
+            #expect(panel.brief?.hasPrefix("Map the fake module") == true)
+            #expect(await waitUntil {
+                panel.items.contains { $0.entry == .toolCall(name: "Bash", argument: #"rg -n "class .*Service" fake-module"#) }
+            })
+            #expect(await waitUntil { record()?.isRunning == false })
+            #expect(await waitUntil { !panel.isRunning && panel.items.last?.entry == .text("Done. The map is in notes.md.") })
+            let entries = panel.items.map(\.entry)
+            #expect(entries.contains(.thought(milliseconds: 1_500)))
+            #expect(entries.contains(.toolResult(firstLine: "File does not exist.", lineCount: 1, isError: true)))
+            #expect(entries.contains(.toolResult(firstLine: "fake-module/A.swift:3:class AService", lineCount: 3, isError: false)))
+            #expect(!entries.contains { if case let .text(text) = $0 { text.contains("ignored") } else { false } }, "the attachment line is skipped")
+            #expect(!entries.contains { if case .brief = $0 { true } else { false } }, "the brief is kept apart from the ring")
+
+            // The terminal was running behind the panel the whole time.
+            #expect(fixture.model.terminalView(for: sessionID) != nil)
+            #expect(await waitUntil { surface.screenText().contains("SUBAGENT 2500") })
+            fixture.model.closeSubagent()
+            #expect(fixture.model.viewedSubagent == nil && !panel.isFeeding)
+            #expect(fixture.model.terminalView(for: sessionID) != nil)
+        }
+    }
 }

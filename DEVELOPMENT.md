@@ -57,6 +57,7 @@ Builds are serialized: only the agent whose Brief says it holds the build slot b
 | `start:<claude\|codex>:<project id\|none>`, `resume:<id>`, `stop:<id>` | conversation lifecycle |
 | `type:<id>:<text>` | types text plus Return into the session (empty text = Return) |
 | `answer:<id>:<accept\|deny>` | answers an approval card |
+| `open-subagent:<session id>:<agent id>`, `close-subagent` | the subagent panel (FB4-5): what a click on a subagent row and Esc do; snapshot gains `subagentPanel{viewed, sessionID, agentID, entryCount, isRunning, isFeeding, phase}`. The fake provider's `/subagent <ms>` runs a subagent that writes `subagents/agent-<id>.{meta.json,jsonl}` under `CLAUDE_CONFIG_DIR` while it works |
 | `latency:<n>` | input-to-draw latency samples |
 | `resource:<pid>:<uuid>:<op…>` | measurement ops (`open`, `openspinner`, `hide`, `latency`, `cycles`, `stop`, `quit`), used by `cp5-d-measure.py` |
 | `open-settings[:general\|usage\|about]`, `close-settings`, `screenshot-settings:<label>`, `usage-select:<24h\|7d\|30d\|90d>`, `usage-refresh[:<label>]` | Settings window and usage view (snapshot gains `settings{…}` and `usage{…}`) |

@@ -35,19 +35,20 @@ struct SubagentTreeContent: Equatable {
         let accessibilityLabel: String
         let accessibilityValue: String?
 
-        /// What a click on the row does. A subagent has no terminal of its own, so its row selects the
-        /// session it belongs to; a fold row only opens or closes.
-        enum Tap: Equatable { case selectSession, toggleFinished, toggleRunning }
+        /// What a click on the row does. A subagent has no terminal of its own, so its row opens its
+        /// transcript in its session's detail pane (FB4-5), selecting the session first; a fold row only
+        /// opens or closes.
+        enum Tap: Equatable { case openSubagent, toggleFinished, toggleRunning }
 
         var tap: Tap {
             switch kind {
-            case .running, .finished: .selectSession
+            case .running, .finished: .openSubagent
             case .finishedFold: .toggleFinished
             case .more: .toggleRunning
             }
         }
 
-        var selectsSession: Bool { tap == .selectSession }
+        var opensSubagent: Bool { tap == .openSubagent }
     }
 
     let rows: [Row]
@@ -136,7 +137,7 @@ struct SubagentTreeView: View {
 
     private func perform(_ row: SubagentTreeContent.Row) {
         switch row.tap {
-        case .selectSession: model.selectFromList(sessionID)
+        case .openSubagent: model.openSubagent(row.id, in: sessionID)
         case .toggleFinished: finishedExpanded.toggle()
         case .toggleRunning: runningExpanded.toggle()
         }
@@ -211,7 +212,7 @@ private struct SubagentRowView: View {
     }
 
     private var helpText: String {
-        guard row.selectsSession else { return "" }
+        guard row.opensSubagent else { return "" }
         return [row.title, row.detail].compactMap { $0 }.joined(separator: ": ")
     }
 }

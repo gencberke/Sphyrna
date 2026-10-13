@@ -40,7 +40,7 @@ struct SubagentTreeTests {
         #expect(rows.map(\.title) == ["Explore", "implementer"])
         #expect(rows.map(\.detail) == ["Find login flow handlers", "Fix token refresh race"])
         #expect(rows.map(\.trailing) == ["now", "2m"])
-        #expect(rows.allSatisfy { $0.kind == .running && $0.selectsSession })
+        #expect(rows.allSatisfy { $0.kind == .running && $0.opensSubagent })
         // Elapsed time follows `now`, nothing else.
         #expect(content([running("a")], now: 3 * 60).rows.map(\.trailing) == ["3m"])
         #expect(content([running("a")], now: 2 * 3600).rows.map(\.trailing) == ["2h"])
@@ -61,7 +61,7 @@ struct SubagentTreeTests {
         let records = (0..<5).map { running("r\($0)", "Explore", "task \($0)") }
         let folded = content(records).rows
         #expect(folded.map(\.id) == ["r0", "r1", "r2", "more"])
-        #expect(folded[3].title == "+2 more" && folded[3].kind == .more(expanded: false) && !folded[3].selectsSession)
+        #expect(folded[3].title == "+2 more" && folded[3].kind == .more(expanded: false) && !folded[3].opensSubagent)
         let open = content(records, more: true).rows
         #expect(open.map(\.id) == ["r0", "r1", "r2", "r3", "r4", "more"])
         #expect(open[5].title == "Show fewer" && open[5].kind == .more(expanded: true))
@@ -73,13 +73,13 @@ struct SubagentTreeTests {
         let records = [running("busy"), finished("f1", took: 18), finished("f2", took: 125)]
         let folded = content(records).rows
         #expect(folded.map(\.id) == ["busy", "finished"])
-        #expect(folded[1].title == "2 finished" && folded[1].kind == .finishedFold(expanded: false) && !folded[1].selectsSession)
+        #expect(folded[1].title == "2 finished" && folded[1].kind == .finishedFold(expanded: false) && !folded[1].opensSubagent)
         let open = content(records, finished: true).rows
         #expect(open.map(\.id) == ["busy", "finished", "f1", "f2"])
         #expect(open[1].kind == .finishedFold(expanded: true))
         // A finished row shows its static duration, seconds included.
         #expect(open[2].trailing == "18s" && open[3].trailing == "2m")
-        #expect(open[2].kind == .finished && open[2].selectsSession)
+        #expect(open[2].kind == .finished && open[2].opensSubagent)
     }
 
     @Test func withOnlyFinishedSubagentsOnlyTheFoldRowShows() {
@@ -89,9 +89,9 @@ struct SubagentTreeTests {
         #expect(content([finished("f1")]).rows[0].accessibilityValue == "collapsed")
     }
 
-    @Test func aClickSelectsTheParentSessionOrTogglesAFold() {
+    @Test func aClickOpensTheSubagentsPanelOrTogglesAFold() {
         let rows = content((0..<4).map { running("r\($0)") } + [finished("f1")], finished: true).rows
-        #expect(rows.map(\.tap) == [.selectSession, .selectSession, .selectSession, .toggleRunning, .toggleFinished, .selectSession])
+        #expect(rows.map(\.tap) == [.openSubagent, .openSubagent, .openSubagent, .toggleRunning, .toggleFinished, .openSubagent])
     }
 
     @Test func aNestedSubagentIndentsOneStepPerLevel() {

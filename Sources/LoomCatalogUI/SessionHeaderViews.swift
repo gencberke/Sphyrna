@@ -20,8 +20,9 @@ struct StatePillStyle: Equatable {
 
     private static let white = LoomTheme.RGB(red: 1, green: 1, blue: 1)
 
-    init?(_ indicator: SessionIndicator) {
-        guard let label = indicator.label else { return nil }
+    /// `label` replaces the indicator's own (the subagent panel's "Running 4m").
+    init?(_ indicator: SessionIndicator, label override: String? = nil) {
+        guard let label = override ?? indicator.label else { return nil }
         self.label = label
         showsIndicator = ![.ready, .idle, .stale].contains(indicator)
         func tone(_ rgb: LoomTheme.RGB) -> LoomTheme.ContrastStyle {

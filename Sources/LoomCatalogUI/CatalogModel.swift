@@ -51,6 +51,8 @@ public protocol ConversationIntents: AnyObject {
     func endedScreen(sessionID: UUID) -> TerminalScreenSnapshot?
     /// "Show Details" and a deleted session: lets go of the kept screen so the session shows its record.
     func closeEndedScreen(sessionID: UUID)
+    /// A subagent's transcript file, checked against the profile's `projects` folder (FB4-5). Defaults: none.
+    func subagentTranscript(path: String, agentID: String) async -> SubagentTranscriptFile?
 }
 
 public enum ConversationBusy: Equatable, Sendable {
@@ -243,6 +245,11 @@ public final class CatalogModel {
     public private(set) var viewMode: CatalogViewMode
     public private(set) var selectedSessionID: UUID?
     public private(set) var selectedRow: SessionRowModel?
+    /// The subagent whose transcript the detail pane shows in place of its session's terminal (FB4-5).
+    /// Transient: never persisted, and cleared by any selection, the subagent's end and the run's end.
+    public internal(set) var viewedSubagent: ViewedSubagent?
+    /// The transcript behind `viewedSubagent`.
+    var subagentPanel: SubagentTranscriptModel?
     public private(set) var errorMessage: String?
     public private(set) var infoMessage: String?
     public private(set) var isReady = false
@@ -851,6 +858,8 @@ public final class CatalogModel {
     /// `waiting` names the signpost interval that runs until the terminal view reaches the detail pane.
     private func select(_ id: UUID?, waiting interval: LoomSignposts.Interval, revealInList: Bool = true) {
         showsDevTerminal = false
+        // Any selection, the same session's card included, returns from a subagent's panel to the terminal.
+        closeSubagent()
         if id != selectedSessionID {
             let previous = selectedSessionID
             selectedSessionID = id
@@ -1025,6 +1034,7 @@ public final class CatalogModel {
     public func setWindowVisible(_ visible: Bool) {
         guard visible != windowIsVisible else { return }
         windowIsVisible = visible
+        subagentPanel?.setWindowVisible(visible)
         if visible {
             advanceNow()
             startTicking()
@@ -1397,6 +1407,7 @@ public final class CatalogModel {
         }
         if state == nil { liveRecords[id] = nil }
         rowModels[id]?.apply(live: state)
+        if viewedSubagent?.sessionID == id { syncViewedSubagent(with: state) }
         updateActive(id)
         updateAttentionCount()
         if state != nil, rowModels[id] == nil { lookUpLiveRecord(id) }

@@ -78,7 +78,11 @@ struct DetailHeader: View {
                 Text("Synthetic terminal (development)").fontWeight(.semibold).lineLimit(1)
                 Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             } else if let row = model.selectedRow {
-                SessionHeaderRow(model: model, row: row)
+                if let viewed = model.viewedSubagent, viewed.sessionID == row.id {
+                    SubagentHeaderRow(model: model, row: row, agentID: viewed.agentID)
+                } else {
+                    SessionHeaderRow(model: model, row: row)
+                }
             } else if let notice = model.preparingNotice {
                 PreparingNotice(text: notice)
                 Spacer(minLength: LoomTheme.Space.detailMinSpacer)
@@ -232,7 +236,16 @@ struct DetailContent: View {
             } else if model.showsDevTerminal, let terminal = model.devTerminal {
                 TerminalHost(panel: terminal.panel)
             } else if let row = model.selectedRow {
-                if let terminal = model.terminalView(for: row.id) {
+                if let viewed = model.viewedSubagent, viewed.sessionID == row.id, let panel = model.subagentPanel {
+                    // A subagent's transcript in place of the terminal (FB4-5). The terminal stays with its
+                    // controller, running; it is only not shown, and nothing above it changes size.
+                    VStack(spacing: 0) {
+                        RequestList(model: model, row: row, returnApproves: false)
+                        if let issue = SessionIssueNotice.message(for: row.live) { SessionIssueNotice(message: issue) }
+                        if row.indicator == .waitingForApproval { SubagentApprovalNotice(model: model) }
+                        SubagentTranscriptView(panel: panel).id(viewed.agentID)
+                    }
+                } else if let terminal = model.terminalView(for: row.id) {
                     VStack(spacing: 0) {
                         RequestList(model: model, row: row, returnApproves: false)
                         if let issue = SessionIssueNotice.message(for: row.live) { SessionIssueNotice(message: issue) }

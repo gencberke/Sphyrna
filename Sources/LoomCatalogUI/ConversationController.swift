@@ -351,6 +351,13 @@ public final class ConversationController: ConversationIntents {
 
     public func closeEndedScreen(sessionID: UUID) { releaseEndedScreen(sessionID) }
 
+    /// The panel reads a subagent's transcript only from the profile's `projects` folder, the one this
+    /// runtime launches Claude with.
+    public func subagentTranscript(path: String, agentID: String) async -> SubagentTranscriptFile? {
+        SubagentTranscriptLocation.resolve(
+            path: path, agentID: agentID, projectsDirectory: await runtime.claudeProjectsDirectory())
+    }
+
     // Permanent deletion: the runtime owns every step; these only forward.
 
     public func deletionPreview(sessionID: UUID) async throws -> ConversationDeletionPreview {

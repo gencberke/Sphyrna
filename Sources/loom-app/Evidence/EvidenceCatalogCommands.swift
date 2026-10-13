@@ -72,7 +72,8 @@ extension DevelopmentEvidence {
             try? await Task.sleep(for: .milliseconds(300))
             app.saveScreenshot(to: directory.appendingPathComponent("screenshot-\(label).png"))
         default:
-            if handleDeletionCommand(name, argument) || handleOpenRequestCommand(name, argument) { break }
+            if handleDeletionCommand(name, argument) || handleOpenRequestCommand(name, argument)
+                || handleSubagentCommand(name, argument) { break }
             var handled = await handleSettingsCommand(name, argument) || handleTabCommand(name, argument)
             if !handled { handled = await handleSystemCommand(name, argument) }
             guard handled else {

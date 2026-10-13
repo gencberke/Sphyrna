@@ -264,6 +264,14 @@ enum LoomTheme {
         static let stopGap: CGFloat = 6
         static let menuSegmentWidth: CGFloat = 28
 
+        // The subagent panel's header (FB4-5): the crumb, and the Session control with its Esc key cap.
+        static let crumbGap: CGFloat = 6
+        static let crumbGlyph = Font.system(size: 12)
+        static let backGap: CGFloat = 6
+        static let backLeading: CGFloat = 8
+        static let backTrailing: CGFloat = 10
+        static let keyCapPadding: CGFloat = 4
+
         // Narrow rows: the title gives way down to this width, then the branch goes, then the project
         // name shortens (never below the floor).
         static let titleMinWidth: CGFloat = 100
@@ -333,6 +341,9 @@ enum LoomTheme {
         static let subagentType = Font.system(size: 11, weight: .medium)
         static let subagentTime = Font.system(size: 10.5).monospacedDigit()
         static let subagentGlyph = Font.system(size: 10)
+        /// The subagent panel's transcript (FB4-5): the terminal's face at the size of the mock.
+        static let transcript = Font.system(size: 12, design: .monospaced)
+        static let transcriptStrong = Font.system(size: 12, weight: .bold, design: .monospaced)
 
         static func cardTitle(selected: Bool) -> Font { .system(size: 13, weight: selected ? .semibold : .medium) }
     }
@@ -387,6 +398,11 @@ enum LoomTheme {
         /// One step of nesting for a subagent a subagent started.
         static let subagentIndent: CGFloat = 10
         static let subagentTreeBottom: CGFloat = 2
+        // The subagent panel's transcript (FB4-5).
+        static let transcriptInset: CGFloat = 14
+        static let transcriptRowGap: CGFloat = 8
+        /// The text after the glyph column (⏺, ⎿ and ✻ take this width).
+        static let transcriptGlyphColumn: CGFloat = 18
         // Detail panel.
         static let panelInset: CGFloat = 8
         static let detailInset: CGFloat = 14

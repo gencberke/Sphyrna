@@ -108,6 +108,7 @@ extension AppDelegate {
         }
         state["settings"] = settingsEvidence
         state["tabs"] = tabsEvidence
+        state["subagentPanel"] = subagentPanelEvidence
         state["deletions"] = deletionsEvidence
         state["openRequests"] = openRequestsEvidence
         state["usage"] = usageEvidence

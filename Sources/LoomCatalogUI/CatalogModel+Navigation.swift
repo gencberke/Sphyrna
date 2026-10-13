@@ -140,3 +140,7 @@ extension ConversationIntents {
     public func endedScreen(sessionID: UUID) -> TerminalScreenSnapshot? { nil }
     public func closeEndedScreen(sessionID: UUID) {}
 }
+
+extension ConversationIntents {
+    public func subagentTranscript(path: String, agentID: String) async -> SubagentTranscriptFile? { nil }
+}
