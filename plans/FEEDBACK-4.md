@@ -15,11 +15,10 @@ The round ships as 0.4.3 ([D-41](../DECISIONS.md) numbering) when the user says 
 
 - **State.**
   - Slice A, the Stop flow, is done and reviewed: commits 543d0d0 (FB4-1, FB4-4, FB4-6) and 95bffc9 (FB4-3). See [Slice A as built](#slice-a-as-built).
-  - Slice B, FB4-2 (the Active section), is with an implementer.
-  - Slice C, FB4-5 (the subagent panel), follows. Builds run one at a time.
+  - Slice B, the Active section (FB4-2), is done and reviewed: da77473, plus the planner's fix 71d4093. See [Slice B as built](#slice-b-as-built).
+  - Slice C, the subagent panel (FB4-5), is with an implementer.
 - **Next.**
-  1. Review B.
-  2. Brief and review C.
+  1. Review C.
   3. Run the full suite on the combined result (`scripts/check.sh --full --idle`). The user allowed it on 13 Oct.
   4. The on-screen pass, after the user says the computer is idle ([D-13](../DECISIONS.md)).
   5. Release 0.4.3, when the user says.
@@ -147,8 +146,8 @@ One build at a time. Each slice commits its own work. The planner reviews each o
 | Slice | Items | Owner | State |
 | --- | --- | --- | --- |
 | A | FB4-1, FB4-4, FB4-6 (543d0d0); FB4-3 (95bffc9) | implementer | done, reviewed |
-| B | FB4-2 | implementer, after A | running |
-| C | FB4-5 | implementer, after B | waiting |
+| B | FB4-2 (da77473, planner fix 71d4093) | implementer | done, reviewed |
+| C | FB4-5 | implementer, after B | running |
 
 ## Slice A as built
 
@@ -175,12 +174,38 @@ One build at a time. Each slice commits its own work. The planner reviews each o
   - The on-screen look of `EndedScreenView`, including wide and CJK glyph alignment.
   - Whether Claude erases the alternate screen before leaving it on SIGHUP. The capture at Stop covers this either way.
 
+## Slice B as built
+
+- **Hub.**
+  - `SessionViewState.activePhase` is `inactive`, `underWay` or `endedUnread`. `SessionEventHub.publish` applies the transitions in [FB4-2](#fb4-2-active-section).
+  - Viewing (`.unviewedCompletion(false)`) and Mark as Read end an unread end. `setViewed` also publishes for a failed turn.
+  - Planner fix 71d4093: background work after the turn that ends while nobody looks also sets the unviewed completion, so the card says Finished in Active, not Ready. Its regression test failed without the fix.
+- **Model** (`CatalogModel+Active.swift`).
+  - `activeIDs` is not observed. `activeRevision` is observed and moves only when the set changes.
+  - `updateActive` is one O(1) check per live frame. It runs from `setLive`, from `setOpenRequests` (on the diff) and from `select` (`moveActiveHold`).
+  - A held selection is released when its run ends.
+- **Layout.**
+  - `activityLayout()` returns the Active rows, then the day sections without them, and no Active section while searching.
+  - Navigation and reveal use the same layout.
+  - Paging starts from the last row drawn.
+  - The evidence snapshot gains `catalog.activeSessionIDs`.
+- **Measured** (render probe, 30 hosted cards):
+
+  | Event | Moved card | Other cards | Regroups |
+  | --- | --- | --- | --- |
+  | Flip into or out of Active | 1 evaluation | 0 | 1 |
+  | Frame with no flip | its own card only | 0 | 0 |
+
+- **Known edges.**
+  - Active draws loaded rows only. The page holds 100.
+  - `SidebarAccessibilityTests`, which reads day headings through a window, has not run. It will run with the full suite.
+
 ## Verification
 
 | Check | Result |
 | --- | --- |
 | Slice A targeted suites | Passed (implementer, 13 Oct). Commit 1: SessionLifecycleTests, SessionCatalogV3Tests, SessionCatalogTests, ConversationControllerTests and two header tests, 43 tests (`check-20261013T212945-28402.log`). New tests failed on the old source (`check-20261013T213104-29168.log`). Commit 2: LoomTerminalTests, ConversationControllerTests, SessionNavigationRuleTests, EndedScreenViewTests, DeletionModelTests, ConversationTabsTests and CatalogModelTests, 56 + 115 tests (`check-20261013T214555-35239.log`). Guards passed. |
-| Slice B targeted suites | — |
+| Slice B targeted suites | Passed (implementer, 13 Oct): ActivePhaseTests and SessionEventHubTests (14), CatalogHotPathTests (25), SidebarRenderTests with CatalogHotPathTests (30), and the navigation, model, preferences, menu bar, open request and status suites (66 + 14). Logs: `check-20261013T215813-37695.log`, `-215847-38096.log`, `-215935-38903.log`, `-220005-39329.log`. Planner fix: ActivePhaseTests and SessionEventHubTests 15 passed (`check-20261013T220136-39799.log`); the new test failed without the fix (`check-20261013T220153-40291.log`). |
 | Slice C targeted suites | — |
 | Full suite on the combined result | — |
 | On-screen pass | — |
