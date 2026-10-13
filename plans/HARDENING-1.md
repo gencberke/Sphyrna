@@ -4,6 +4,8 @@ Goal: stability and daily-use polish from the 12 Oct review ([D-45](../DECISIONS
 
 ## Resume here
 
+The next round is [feedback round 3](FEEDBACK-3.md) (13 Oct). The open items below stay here.
+
 State on 12 Oct (late evening):
 
 - **Release 0.4.0** ships H1-A to H1-E and the bundle keys (numeric build number, `LoomRevision`, app category). Its checks are in [Release 0.4.0](#release-040-12-oct-evening). The tag, promote and install are recorded there.

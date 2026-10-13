@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loom feedback round 3: session header and Usage page (design preview)</title>
+<style>
+:root{
+  --sans: -apple-system, "SF Pro Text", "SF Pro", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  /* identity A (Night Fleece), the same values as LoomTheme and the earlier previews */
+  --panel:#1D1C22; --ink:255,255,255;
+  --t1:#E0DBEB; --t2:#828799; --t3:#5A5F70; --acc:#8791CF;
+  --att:#FF9E0A; --unv:#5C8CFF; --fail:#F2615C; --tfg:#E8E6EE;
+  --hair:rgba(255,255,255,.10);
+  --rose:#E68EBA; --orchid:#D194E6; --aqua:#80D5DB; --mint:#83D8B0;
+  --card:rgba(255,255,255,.045);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#07080B;color:#D9D7E0;font:13px/1.45 var(--sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1960px;margin:0 auto;padding:28px 28px 90px}
+.top h1{font-size:20px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em}
+.top p{margin:2px 0 0;color:#8A8D99;font-size:12px;max-width:1100px}
+h2{font-size:17px;font-weight:600;margin:56px 0 4px}
+h3{font-size:11px;font-weight:600;color:#8A8D99;text-transform:uppercase;letter-spacing:.5px;margin:26px 0 8px}
+.note{color:#9A9DA8;font-size:12px;max-width:1100px;margin:4px 0 12px}
+.note b{color:#D9D7E0}
+.cap{font-size:11.5px;color:#8A8D99;margin:8px 0 0;max-width:900px}
+.cap b{color:#C9CBD4}
+.pick{margin:16px 0 0;max-width:1100px;font-size:12.5px;color:#C9CBD4;border-left:2px solid #3A3E4C;padding:4px 0 4px 12px}
+.grid{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start}
+.fig{display:flex;flex-direction:column}
+.fig .lab{font-size:11.5px;color:#9A9DA8;margin-bottom:6px}
+.fig .lab b{color:#D9D7E0}
+
+/* ---------- detail panel: header, tabs, terminal ---------- */
+.panel{background:var(--panel);border-radius:10px;border:1px solid rgba(255,255,255,.08);overflow:hidden;color:var(--t1)}
+.hdr{height:36px;display:flex;align-items:center;gap:8px;padding:0 8px 0 14px;font-size:13px}
+.hdr .sp{flex:1;min-width:12px}
+.prov{width:16px;height:16px;flex:none;display:block}
+.ttl{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ttl.fix{flex:none}
+.stl{font-size:11.5px;font-weight:500;color:var(--t2);white-space:nowrap;flex:none}
+.stl.att{color:var(--att)} .stl.fail{color:var(--fail)}
+.pm{width:3px;height:12px;border-radius:1.5px;flex:none;display:block}
+.pname{font-size:12px;color:var(--t2);white-space:nowrap;flex:none}
+.stopbtn{height:24px;padding:0 10px;border-radius:6px;background:rgba(135,145,207,.18);color:#C6CCF5;font-size:12px;display:grid;place-items:center;flex:none}
+.dotsbtn{width:26px;height:24px;border-radius:6px;display:grid;place-items:center;color:var(--t2);flex:none}
+.dotsbtn svg,.seg svg{width:14px;height:14px}
+.ind{width:12px;height:16px;display:grid;place-items:center;flex:none}
+.pip{width:8px;height:8px;border-radius:50%;display:block}
+.pip.att{background:var(--att)} .pip.fail{background:var(--fail)} .pip.unv{background:var(--unv)}
+.ring{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--t2);display:block}
+.chase{position:relative;width:12px;height:12px;display:block}
+.chase i{position:absolute;width:2.9px;height:2.9px;border-radius:50%;background:var(--t1);opacity:.16;animation:chase .8s step-end infinite}
+.chase i:nth-child(1){left:.15px;top:.15px;opacity:1;animation-delay:0s}
+.chase i:nth-child(2){left:4.55px;top:.15px;animation-delay:-.7s}
+.chase i:nth-child(3){left:8.95px;top:.15px;animation-delay:-.6s}
+.chase i:nth-child(4){left:8.95px;top:4.55px;animation-delay:-.5s}
+.chase i:nth-child(5){left:8.95px;top:8.95px;animation-delay:-.4s}
+.chase i:nth-child(6){left:4.55px;top:8.95px;opacity:.35;animation-delay:-.3s}
+.chase i:nth-child(7){left:.15px;top:8.95px;opacity:.55;animation-delay:-.2s}
+.chase i:nth-child(8){left:.15px;top:4.55px;opacity:.8;animation-delay:-.1s}
+@keyframes chase{0%{opacity:1}12.5%{opacity:.8}25%{opacity:.55}37.5%{opacity:.35}50%,100%{opacity:.16}}
+.chase.sm{transform:scale(.84);transform-origin:center}
+
+/* option pieces */
+.pill{height:22px;border-radius:11px;padding:0 9px 0 7px;display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500;white-space:nowrap;flex:none;
+  background:rgba(255,255,255,.07);color:var(--t1)}
+.pill.att{background:rgba(255,158,10,.15);color:#FFB547}
+.pill.fail{background:rgba(242,97,92,.15);color:#FF8A85}
+.pill.idle{background:rgba(255,255,255,.05);color:var(--t2)}
+.chip{height:22px;border-radius:6px;padding:0 8px 0 0;display:flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;flex:none;color:var(--t1);overflow:hidden;
+  background:color-mix(in srgb, var(--tone) 12%, transparent)}
+.chip::before{content:"";width:3px;align-self:stretch;background:var(--tone)}
+.chip .br{display:flex;align-items:center;gap:4px;color:var(--t2);border-left:1px solid var(--hair);padding-left:7px;margin-left:1px;white-space:nowrap}
+.chip .br svg{width:11px;height:11px;flex:none}
+.vsep{width:1px;height:16px;background:var(--hair);flex:none;margin:0 2px}
+.group{height:24px;border-radius:6px;background:rgba(255,255,255,.07);display:flex;align-items:stretch;flex:none;overflow:hidden}
+.seg{display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12px;color:var(--t1)}
+.seg + .seg{border-left:1px solid var(--hair)}
+.seg.ic{padding:0;width:28px;justify-content:center;color:var(--t2)}
+.sq{width:8px;height:8px;border-radius:1.5px;background:var(--t1);display:block}
+.block{display:flex;flex-direction:column;justify-content:center;min-width:0;gap:1px}
+.block .ttl{font-size:13px;line-height:16px}
+.sub{display:flex;align-items:center;gap:6px;font-size:11.5px;line-height:14px;color:var(--t2);white-space:nowrap;min-width:0;overflow:hidden}
+.sub .w{color:var(--t1)} .sub .a{color:var(--att)} .sub .f{color:var(--fail)}
+.sub .dot{color:var(--t3)}
+.sub .pm{height:10px}
+.sub svg{width:11px;height:11px;flex:none}
+.prov.lg{width:20px;height:20px}
+
+/* tab strip and terminal */
+.tabs{height:32px;display:flex;align-items:center;gap:4px;padding:0 8px}
+.tab{flex:1 1 170px;min-width:96px;max-width:200px;height:24px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;font-size:12px;color:#9297A8;
+  white-space:nowrap;overflow:hidden;background:color-mix(in srgb, var(--tone) 10%, transparent)}
+.tab span{overflow:hidden;text-overflow:ellipsis}
+.tab.open{color:var(--t1);background:color-mix(in srgb, var(--tone) 15%, transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--tone) 36%, transparent)}
+.term{margin:0 6px 6px;padding:8px 8px;font:12px/1.45 var(--mono);color:var(--tfg);white-space:pre;overflow:hidden;height:58px}
+.term .c1{color:#8BD5A6}.term .c2{color:#82AAFF}.term .c3{color:#7D8295}
+
+/* ---------- settings window (Usage) ---------- */
+.sw{width:680px;background:var(--panel);border-radius:12px;border:1px solid rgba(255,255,255,.10);overflow:hidden;color:var(--t1);box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.stabs{height:52px;display:flex;justify-content:center;align-items:center}
+.segc{display:flex;background:rgba(255,255,255,.06);border-radius:8px;padding:2px;gap:2px}
+.segc span{padding:3px 12px;border-radius:6px;font-size:12.5px;color:var(--t2)}
+.segc span.on{background:rgba(255,255,255,.12);color:var(--t1);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+.segc.sm span{padding:2px 9px;font-size:11.5px}
+.utop{height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-size:12px;color:var(--t2)}
+.ubody{padding:4px 20px 18px;display:flex;flex-direction:column;gap:18px;font-variant-numeric:tabular-nums}
+.ufoot{height:34px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:8px;padding:0 10px 0 20px;font-size:11px;color:var(--t2)}
+.ufoot .sp{flex:1}
+.ufoot svg{width:13px;height:13px}
+.capt{font-size:11px;color:var(--t2)}
+.hrow{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--t2);margin-bottom:6px}
+.hrow b{font-weight:600}
+.disp{font-size:26px;font-weight:600;letter-spacing:-.01em}
+.ttl17{font-size:17px;font-weight:600}
+.cells{display:flex;gap:4px}
+.cells i{flex:1;height:18px;border-radius:3px;display:block}
+.lbls{display:flex;gap:4px;font-size:10.5px;color:var(--t2);margin-top:4px}
+.lbls span{flex:1;text-align:center}
+.lim{display:flex;align-items:center;gap:10px;height:24px;font-size:12px}
+.lim .k{width:58px}
+.track{flex:1;height:5px;border-radius:2.5px;background:rgba(255,255,255,.08);overflow:hidden}
+.track i{display:block;height:100%;background:var(--t1);border-radius:2.5px}
+.lim .r{min-width:96px;white-space:nowrap;text-align:right;color:var(--t2)}
+.tot{display:flex;gap:18px}
+.tot div{flex:1}
+.bars{display:flex;align-items:flex-end;gap:10px;height:92px;border-bottom:1px solid var(--hair)}
+.bars i{flex:1;display:block;background:var(--t2);border-radius:3px 3px 0 0}
+.bars i.cur{background:var(--t1)}
+.blbl{display:flex;gap:10px;font-size:10.5px;color:var(--t2);margin-top:4px}
+.blbl span{flex:1;text-align:center}
+table.mt{width:100%;border-collapse:collapse;font-size:13px}
+table.mt th{font-size:11.5px;font-weight:500;color:var(--t2);text-align:right;height:24px;border-bottom:1px solid var(--hair)}
+table.mt th:first-child,table.mt td:first-child{text-align:left}
+table.mt td{height:30px;text-align:right;border-bottom:1px solid var(--hair)}
+table.mt td.m{font-weight:500}
+.share{display:inline-flex;align-items:center;gap:6px;color:var(--t2)}
+.share b{display:inline-block;width:46px;height:4px;border-radius:2px;background:rgba(255,255,255,.10);position:relative;overflow:hidden}
+.share b i{position:absolute;left:0;top:0;bottom:0;background:var(--t2)}
+/* options */
+.card{background:var(--card);border-radius:10px;padding:12px 14px 14px;border:1px solid rgba(255,255,255,.05)}
+.chd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.chd b{font-size:12.5px;font-weight:600;color:var(--t1)}
+.chd span{font-size:11px;color:var(--t2)}
+.sumrow{display:flex;gap:22px;align-items:flex-start}
+.kv{display:grid;grid-template-columns:auto 1fr auto;gap:0 10px;align-items:center;font-size:12px;flex:1}
+.kv .l{color:var(--t2);height:22px;display:flex;align-items:center}
+.kv .v{text-align:right}
+.kv .b{height:4px;border-radius:2px;background:rgba(255,255,255,.08);position:relative;overflow:hidden}
+.kv .b i{position:absolute;left:0;top:0;bottom:0;background:var(--t2)}
+.subhr{height:1px;background:var(--hair);margin:12px 0 10px}
+.mini{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--t2)}
+.mini .cells{flex:1}
+.mini .cells i{height:12px}
+.tiles{display:flex;gap:10px}
+.tile{flex:1;background:var(--card);border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:10px 12px 12px;min-width:0}
+.tile .k{font-size:11px;color:var(--t2)}
+.tile .v{font-size:22px;font-weight:600;margin-top:2px;letter-spacing:-.01em}
+.tile .v small{font-size:12px;font-weight:500;color:var(--t2);margin-left:4px}
+.tile .s{font-size:11px;color:var(--t2);margin-top:2px}
+.tile .track{margin-top:8px;height:4px}
+.foot2{font-size:11px;color:var(--t2);margin-top:-6px}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="claude" viewBox="0 0 24 24"><g fill="#D97757"><path d="M12 1.5l1.6 7.1 6.2-3.9-3.9 6.2 7.1 1.6-7.1 1.6 3.9 6.2-6.2-3.9L12 22.5l-1.6-7.1-6.2 3.9 3.9-6.2-7.1-1.6 7.1-1.6-3.9-6.2 6.2 3.9z"/></g></symbol>
+    <symbol id="dots" viewBox="0 0 16 16"><g fill="currentColor"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></g></symbol>
+    <symbol id="branch" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="4.5" cy="3.5" r="1.6"/><circle cx="4.5" cy="12.5" r="1.6"/><circle cx="11.5" cy="5.5" r="1.6"/><path d="M4.5 5.1v5.8M11.5 7.1c0 2.4-2.2 3-7 3.8"/></g></symbol>
+    <symbol id="refresh" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.8v2.7h-2.7"/></g></symbol>
+  </defs>
+</svg>
+<div class="page">
+<div class="top">
+  <h1>Loom feedback round 3: session header and Usage page</h1>
+  <p>13 Oct 2026, after 0.4.1. Static mock-ups drawn at real size (1 CSS pixel = 1 pt) with the theme's values; sample data, not screenshots. Chosen on 13 Oct (D-53): the header is A with the branch, and the Usage page is U1. The third item of the round (subagent rows that look finished too early) is a bug and is handled separately.</p>
+</div>
+
+<h2>1 · The session header</h2>
+<p class="note">The row above the tabs keeps all it holds today: the provider mark, the session title, its state, the project, <b>Stop</b> and <b>⋯</b>. What changes is the order and the shapes. Today the state and the project trail the title, so they move whenever the title is longer or shorter, and <b>Stop</b> (a tinted capsule) and <b>⋯</b> (a bare glyph) look like two different families. Every option keeps the row 36 pt high, so the terminal does not lose a line.</p>
+
+<h3>Today (0.4.1)</h3>
+<div class="grid">
+  <div class="fig"><div class="lab"><b>Working</b></div>
+    <div class="panel" style="width:900px">
+      <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl fix">AL contract denetimi ve tam review</span>
+        <span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="stl">Working</span>
+        <span class="pm" style="background:var(--rose)"></span><span class="pname">edd-backend</span><span class="sp"></span>
+        <span class="stopbtn">Stop</span><span class="dotsbtn"><svg><use href="#dots"/></svg></span></div>
+      <div class="tabs"><div class="tab open" style="--tone:var(--rose)"><span>AL contract denetimi ve tam review</span></div><div class="tab" style="--tone:var(--orchid)"><span>Project colours design</span></div><div class="tab" style="--tone:var(--rose)"><span>Fix flaky checkout test</span></div><div class="tab" style="--tone:var(--aqua)"><span>Release notes draft</span></div></div>
+      <div class="term"><span class="c3">⏺</span> Reading <span class="c2">contracts/al.sol</span> and the review checklist…
+<span class="c1">✓</span> 14 findings so far, 3 high</div>
+    </div>
+  </div>
+  <div class="fig"><div class="lab"><b>Needs approval</b>, shorter title: the state and project move left</div>
+    <div class="panel" style="width:900px">
+      <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl fix">Playlist import</span>
+        <span class="ind"><span class="pip att"></span></span><span class="stl att">Needs approval</span>
+        <span class="pm" style="background:var(--aqua)"></span><span class="pname">enmusait</span><span class="sp"></span>
+        <span class="stopbtn">Stop</span><span class="dotsbtn"><svg><use href="#dots"/></svg></span></div>
+    </div>
+  </div>
+</div>
+
+<h3>A · Fixed places in one row</h3>
+<p class="note">The title owns the left. The state and the project sit at fixed places on the right, as a pill and a chip. <b>Stop</b> and <b>⋯</b> become one control group. When the run ends, the Stop segment goes and <b>⋯</b> stays where it was.</p>
+<div class="grid">
+  <div class="fig"><div class="lab"><b>Working</b></div>
+    <div class="panel" style="width:900px">
+      <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl">AL contract denetimi ve tam review</span><span class="sp"></span>
+        <span class="pill"><span class="chase sm"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Working</span>
+        <span class="chip" style="--tone:var(--rose)">edd-backend</span><span class="vsep"></span>
+        <span class="group"><span class="seg"><span class="sq"></span>Stop</span><span class="seg ic"><svg><use href="#dots"/></svg></span></span></div>
+      <div class="tabs"><div class="tab open" style="--tone:var(--rose)"><span>AL contract denetimi ve tam review</span></div><div class="tab" style="--tone:var(--orchid)"><span>Project colours design</span></div><div class="tab" style="--tone:var(--rose)"><span>Fix flaky checkout test</span></div><div class="tab" style="--tone:var(--aqua)"><span>Release notes draft</span></div></div>
+      <div class="term"><span class="c3">⏺</span> Reading <span class="c2">contracts/al.sol</span> and the review checklist…
+<span class="c1">✓</span> 14 findings so far, 3 high</div>
+    </div>
+  </div>
+  <div class="fig"><div class="lab"><b>Needs approval</b>: the pill takes the state colour</div>
+    <div class="panel" style="width:900px">
+      <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl">Playlist import</span><span class="sp"></span>
+        <span class="pill att"><span class="pip att"></span>Needs approval</span>
+        <span class="chip" style="--tone:var(--aqua)">enmusait</span><span class="vsep"></span>
+        <span class="group"><span class="seg"><span class="sq"></span>Stop</span><span class="seg ic"><svg><use href="#dots"/></svg></span></span></div>
+    </div>
+  </div>
+  <div class="fig"><div class="lab"><b>Not running</b>, narrow window: the title gives way first</div>
+    <div class="panel" style="width:520px">
+      <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl">AL contract denetimi ve tam review</span><span class="sp"></span>
+        <span class="pill idle"><span class="ring"></span>Ready</span>
+        <span class="chip" style="--tone:var(--rose)">edd-backend</span><span class="vsep"></span>
+        <span class="group"><span class="seg ic"><svg><use href="#dots"/></svg></span></span></div>
+    </div>
+  </div>
+</div>
+
+<h3>Chosen: A with the branch (13 Oct, D-53)</h3>
+<p class="note">The user's pick: A, with the branch also in the header. The branch joins the project chip after a hairline, because the two together say where the session works. When the row gets narrow, the title gives way first and then the branch. The state pill and the controls never truncate. When the folder is not a Git repository, the chip shows only the project.</p>
+<div class="grid">
+  <div class="fig"><div class="lab"><b>Working</b></div>
+    <div class="panel" style="width:900px">
+      <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl">AL contract denetimi ve tam review</span><span class="sp"></span>
+        <span class="pill"><span class="chase sm"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Working</span>
+        <span class="chip" style="--tone:var(--rose)">edd-backend<span class="br"><svg><use href="#branch"/></svg>al-audit</span></span><span class="vsep"></span>
+        <span class="group"><span class="seg"><span class="sq"></span>Stop</span><span class="seg ic"><svg><use href="#dots"/></svg></span></span></div>
+      <div class="tabs"><div class="tab open" style="--tone:var(--rose)"><span>AL contract denetimi ve tam review</span></div><div class="tab" style="--tone:var(--orchid)"><span>Project colours design</span></div><div class="tab" style="--tone:var(--rose)"><span>Fix flaky checkout test</span></div><div class="tab" style="--tone:var(--aqua)"><span>Release notes draft</span></div></div>
+      <div class="term"><span class="c3">⏺</span> Reading <span class="c2">contracts/al.sol</span> and the review checklist…
+<span class="c1">✓</span> 14 findings so far, 3 high</div>
+    </div>
+  </div>
+  <div class="fig"><div class="lab"><b>Needs approval</b></div>
+    <div class="panel" style="width:900px">
+      <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl">Playlist import</span><span class="sp"></span>
+        <span class="pill att"><span class="pip att"></span>Needs approval</span>
+        <span class="chip" style="--tone:var(--aqua)">enmusait<span class="br"><svg><use href="#branch"/></svg>main</span></span><span class="vsep"></span>
+        <span class="group"><span class="seg"><span class="sq"></span>Stop</span><span class="seg ic"><svg><use href="#dots"/></svg></span></span></div>
+    </div>
+  </div>
+  <div class="fig"><div class="lab"><b>Not running</b>, narrow window</div>
+    <div class="panel" style="width:520px">
+      <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl">AL contract denetimi ve tam review</span><span class="sp"></span>
+        <span class="pill idle"><span class="ring"></span>Ready</span>
+        <span class="chip" style="--tone:var(--rose)">edd-backend<span class="br"><svg><use href="#branch"/></svg>al-audit</span></span><span class="vsep"></span>
+        <span class="group"><span class="seg ic"><svg><use href="#dots"/></svg></span></span></div>
+    </div>
+  </div>
+</div>
+
+<h3>B · A title block, then the actions</h3>
+<p class="note">The title and everything that describes it form one block of two lines. The first line is the title. The second line holds the state, the project and the branch. The branch is new to the header; it is optional and already shows on the card. The actions are one group on the right. Both lines fit the same 36 pt row. Nothing moves when the state changes, because the state is always the first word of the second line.</p>
+<div class="grid">
+  <div class="fig"><div class="lab"><b>Working</b></div>
+    <div class="panel" style="width:900px">
+      <div class="hdr" style="gap:10px"><svg class="prov lg"><use href="#claude"/></svg>
+        <span class="block"><span class="ttl">AL contract denetimi ve tam review</span>
+          <span class="sub"><span class="chase sm"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="w">Working</span><span class="dot">·</span><span class="pm" style="background:var(--rose)"></span>edd-backend<span class="dot">·</span><svg><use href="#branch"/></svg>al-audit</span></span>
+        <span class="sp"></span>
+        <span class="group"><span class="seg"><span class="sq"></span>Stop</span><span class="seg ic"><svg><use href="#dots"/></svg></span></span></div>
+      <div class="tabs"><div class="tab open" style="--tone:var(--rose)"><span>AL contract denetimi ve tam review</span></div><div class="tab" style="--tone:var(--orchid)"><span>Project colours design</span></div><div class="tab" style="--tone:var(--rose)"><span>Fix flaky checkout test</span></div><div class="tab" style="--tone:var(--aqua)"><span>Release notes draft</span></div></div>
+      <div class="term"><span class="c3">⏺</span> Reading <span class="c2">contracts/al.sol</span> and the review checklist…
+<span class="c1">✓</span> 14 findings so far, 3 high</div>
+    </div>
+  </div>
+  <div class="fig"><div class="lab"><b>Needs approval</b></div>
+    <div class="panel" style="width:900px">
+      <div class="hdr" style="gap:10px"><svg class="prov lg"><use href="#claude"/></svg>
+        <span class="block"><span class="ttl">Playlist import</span>
+          <span class="sub"><span class="pip att" style="width:7px;height:7px"></span><span class="a">Needs approval</span><span class="dot">·</span><span class="pm" style="background:var(--aqua)"></span>enmusait<span class="dot">·</span><svg><use href="#branch"/></svg>main</span></span>
+        <span class="sp"></span>
+        <span class="group"><span class="seg"><span class="sq"></span>Stop</span><span class="seg ic"><svg><use href="#dots"/></svg></span></span></div>
+    </div>
+  </div>
+  <div class="fig"><div class="lab"><b>Not running</b>, narrow window: both lines truncate at their end</div>
+    <div class="panel" style="width:520px">
+      <div class="hdr" style="gap:10px"><svg class="prov lg"><use href="#claude"/></svg>
+        <span class="block"><span class="ttl">AL contract denetimi ve tam review</span>
+          <span class="sub"><span class="ring" style="width:7px;height:7px"></span>Ready<span class="dot">·</span><span class="pm" style="background:var(--rose)"></span>edd-backend<span class="dot">·</span><svg><use href="#branch"/></svg>al-audit</span></span>
+        <span class="sp"></span>
+        <span class="group"><span class="seg ic"><svg><use href="#dots"/></svg></span></span></div>
+    </div>
+  </div>
+</div>
+
+<h3>C · The state leads</h3>
+<p class="note">The state comes first, as a pill at the left edge, so it is always in the same spot. Then come the mark, the title and the project chip; the actions are one group on the right.</p>
+<div class="grid">
+  <div class="fig"><div class="lab"><b>Working</b></div>
+    <div class="panel" style="width:900px">
+      <div class="hdr"><span class="pill"><span class="chase sm"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Working</span>
+        <svg class="prov"><use href="#claude"/></svg><span class="ttl">AL contract denetimi ve tam review</span>
+        <span class="chip" style="--tone:var(--rose)">edd-backend</span><span class="sp"></span>
+        <span class="group"><span class="seg"><span class="sq"></span>Stop</span><span class="seg ic"><svg><use href="#dots"/></svg></span></span></div>
+      <div class="tabs"><div class="tab open" style="--tone:var(--rose)"><span>AL contract denetimi ve tam review</span></div><div class="tab" style="--tone:var(--orchid)"><span>Project colours design</span></div><div class="tab" style="--tone:var(--rose)"><span>Fix flaky checkout test</span></div><div class="tab" style="--tone:var(--aqua)"><span>Release notes draft</span></div></div>
+      <div class="term"><span class="c3">⏺</span> Reading <span class="c2">contracts/al.sol</span> and the review checklist…
+<span class="c1">✓</span> 14 findings so far, 3 high</div>
+    </div>
+  </div>
+  <div class="fig"><div class="lab"><b>Needs approval</b>: the pill is wider, so the title shifts right</div>
+    <div class="panel" style="width:900px">
+      <div class="hdr"><span class="pill att"><span class="pip att"></span>Needs approval</span>
+        <svg class="prov"><use href="#claude"/></svg><span class="ttl">Playlist import</span>
+        <span class="chip" style="--tone:var(--aqua)">enmusait</span><span class="sp"></span>
+        <span class="group"><span class="seg"><span class="sq"></span>Stop</span><span class="seg ic"><svg><use href="#dots"/></svg></span></span></div>
+    </div>
+  </div>
+</div>
+
+<p class="pick"><b>Planner:</b> B. It gives the row a clear structure: one block says what the session is and how it stands, and one group holds what you can do. It fits the same 36 pt row, and the state is always the first word of the second line, so nothing moves when it changes. A is the conservative choice: one line, fixed places, nothing new. C puts the state first, but its pill changes width with the state, so the title moves.</p>
+
+<h2>2 · The Usage page</h2>
+<p class="note">Everything the page shows today stays: the period's total and estimate, the plan limits, the token breakdown, the bars, the local five hours and the models. The changes are containers, order and weight. Today every block sits loose on the window background, the plan limits sit in the middle, and two different "5 hours" are easy to mix up: the plan's limit window and Loom's local activity cells. The five totals also have equal weight, although cache reads dominate. Sample data: 7 days, three models.</p>
+
+<div class="grid">
+<div class="fig"><div class="lab"><b>Today (0.4.1)</b></div>
+<div class="sw">
+  <div class="stabs"><div class="segc"><span>General</span><span class="on">Usage</span><span>About</span><span>Sessions</span></div></div>
+  <div class="utop"><span>This Claude profile, all projects</span><div class="segc sm"><span>24 h</span><span class="on">7 d</span><span>30 d</span><span>90 d</span></div></div>
+  <div class="ubody">
+    <div style="display:flex;gap:28px">
+      <div style="flex:1">
+        <div><span class="disp">48.2M</span> <span style="color:var(--t2)">tokens, last 7 days</span></div>
+        <div style="color:var(--t2)">$312.40 est. · 41 sessions</div>
+        <div class="capt" style="margin-top:6px">API-equivalent estimate — subscriptions are not billed per token.</div>
+      </div>
+      <div style="flex:1">
+        <div class="hrow"><b>Last 5 hours</b><span>approximate</span></div>
+        <div class="cells"><i style="background:rgba(255,255,255,.10)"></i><i style="background:rgba(255,255,255,.22)"></i><i style="background:rgba(255,255,255,.55)"></i><i style="background:rgba(255,255,255,.40)"></i><i style="background:rgba(255,255,255,.18)"></i></div>
+        <div class="lbls"><span>7 AM</span><span>8 AM</span><span>9 AM</span><span>10 AM</span><span>11 AM</span></div>
+        <div class="capt" style="margin-top:6px">7.8M tokens. Local activity, not your plan limit.</div>
+      </div>
+    </div>
+    <div>
+      <div class="hrow"><b>Plan limits</b><span>Updated 11:42</span></div>
+      <div class="lim"><span class="k">5-hour</span><span class="track"><i style="width:62%"></i></span><span>62% used · 38% left</span><span class="r">Resets 14:20</span></div>
+      <div class="lim"><span class="k">Weekly</span><span class="track"><i style="width:31%"></i></span><span>31% used · 69% left</span><span class="r">Resets Mon 09:00</span></div>
+    </div>
+    <div class="tot">
+      <div><div class="capt">Input</div><div class="ttl17">1.9M</div></div>
+      <div><div class="capt">Output</div><div class="ttl17">0.8M</div></div>
+      <div><div class="capt">Cache write</div><div class="ttl17">6.1M</div></div>
+      <div><div class="capt">Cache read</div><div class="ttl17">39.4M</div></div>
+      <div><div class="capt">Cache share</div><div class="ttl17">95 %</div></div>
+    </div>
+    <div>
+      <div class="hrow"><b>Tokens per day</b><span>Peak 13.2M, Mon 13 Oct</span></div>
+      <div class="bars"><i style="height:35%"></i><i style="height:58%"></i><i style="height:22%"></i><i style="height:67%"></i><i style="height:46%"></i><i style="height:14%"></i><i class="cur" style="height:92%"></i></div>
+      <div class="blbl"><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span><span>Mon</span></div>
+    </div>
+    <div>
+      <div class="hrow"><b>By model</b><span>3 models</span></div>
+      <table class="mt"><tr><th>Model</th><th>Tokens</th><th>Share</th><th>Est. cost</th></tr>
+        <tr><td class="m">Opus 5.5</td><td>38.1M</td><td><span class="share"><b><i style="width:79%"></i></b>79 %</span></td><td>$281.20</td></tr>
+        <tr><td class="m">Sonnet 5.5</td><td>8.9M</td><td><span class="share"><b><i style="width:18%"></i></b>18 %</span></td><td>$29.90</td></tr>
+        <tr><td class="m">Haiku 5.5</td><td>1.2M</td><td><span class="share"><b><i style="width:3%"></i></b>3 %</span></td><td>$1.30</td></tr></table>
+    </div>
+  </div>
+  <div class="ufoot"><span>Updated 11:42 · Prices as of 7 Oct 2026</span><span class="sp"></span><svg><use href="#refresh"/></svg></div>
+</div>
+</div>
+
+<div class="fig"><div class="lab"><b>U1 · Cards, the plan first</b></div>
+<div class="sw">
+  <div class="stabs"><div class="segc"><span>General</span><span class="on">Usage</span><span>About</span><span>Sessions</span></div></div>
+  <div class="utop"><span>This Claude profile, all projects</span><div class="segc sm"><span>24 h</span><span class="on">7 d</span><span>30 d</span><span>90 d</span></div></div>
+  <div class="ubody" style="gap:12px">
+    <div class="card">
+      <div class="chd"><b>Plan limits</b><span>Updated 11:42</span></div>
+      <div class="lim"><span class="k">5-hour</span><span class="track"><i style="width:62%"></i></span><span style="width:70px;text-align:right">62% used</span><span class="r">Resets 14:20</span></div>
+      <div class="lim"><span class="k">Weekly</span><span class="track"><i style="width:31%"></i></span><span style="width:70px;text-align:right">31% used</span><span class="r">Resets Mon 09:00</span></div>
+    </div>
+    <div class="card">
+      <div class="chd"><b>Last 7 days</b><span>41 sessions</span></div>
+      <div class="sumrow">
+        <div style="width:200px">
+          <div class="disp">48.2M</div>
+          <div style="color:var(--t2);font-size:12px">tokens</div>
+          <div style="margin-top:8px;font-size:13px">$312.40 <span style="color:var(--t2);font-size:11.5px">estimated</span></div>
+          <div class="capt" style="margin-top:2px">API prices; a subscription is not billed per token.</div>
+        </div>
+        <div class="kv">
+          <span class="l">Cache read</span><span class="b"><i style="width:82%"></i></span><span class="v">39.4M</span>
+          <span class="l">Cache write</span><span class="b"><i style="width:13%"></i></span><span class="v">6.1M</span>
+          <span class="l">Input</span><span class="b"><i style="width:4%"></i></span><span class="v">1.9M</span>
+          <span class="l">Output</span><span class="b"><i style="width:2%"></i></span><span class="v">0.8M</span>
+          <span class="l" style="grid-column:1 / 3">Served from the cache</span><span class="v">95 %</span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="chd"><b>Tokens per day</b><span>Peak 13.2M, Mon 13 Oct</span></div>
+      <div class="bars"><i style="height:35%"></i><i style="height:58%"></i><i style="height:22%"></i><i style="height:67%"></i><i style="height:46%"></i><i style="height:14%"></i><i class="cur" style="height:92%"></i></div>
+      <div class="blbl"><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span><span>Mon</span></div>
+      <div class="subhr"></div>
+      <div class="mini"><span style="width:118px">Last 5 hours, local</span>
+        <span class="cells"><i style="background:rgba(255,255,255,.10)"></i><i style="background:rgba(255,255,255,.22)"></i><i style="background:rgba(255,255,255,.55)"></i><i style="background:rgba(255,255,255,.40)"></i><i style="background:rgba(255,255,255,.18)"></i></span>
+        <span style="width:44px;text-align:right;color:var(--t1)">7.8M</span></div>
+      <div class="mini" style="margin-top:3px"><span style="width:118px"></span><span class="lbls" style="flex:1;margin:0"><span>7 AM</span><span>8 AM</span><span>9 AM</span><span>10 AM</span><span>11 AM</span></span><span style="width:44px"></span></div>
+    </div>
+    <div class="card">
+      <div class="chd"><b>By model</b><span>3 models</span></div>
+      <table class="mt"><tr><th>Model</th><th>Tokens</th><th>Share</th><th>Est. cost</th></tr>
+        <tr><td class="m">Opus 5.5</td><td>38.1M</td><td><span class="share"><b><i style="width:79%"></i></b>79 %</span></td><td>$281.20</td></tr>
+        <tr><td class="m">Sonnet 5.5</td><td>8.9M</td><td><span class="share"><b><i style="width:18%"></i></b>18 %</span></td><td>$29.90</td></tr>
+        <tr><td class="m" style="border-bottom:0">Haiku 5.5</td><td style="border-bottom:0">1.2M</td><td style="border-bottom:0"><span class="share"><b><i style="width:3%"></i></b>3 %</span></td><td style="border-bottom:0">$1.30</td></tr></table>
+    </div>
+  </div>
+  <div class="ufoot"><span>Updated 11:42 · Prices as of 7 Oct 2026</span><span class="sp"></span><svg><use href="#refresh"/></svg></div>
+</div>
+<p class="cap"><b>U1:</b> one card per subject, the plan limits first because they are the numbers you act on. The token breakdown becomes a ranked list with bars, so cache reads read as the bulk they are. The local five hours become one labelled line under the bars, where they belong to activity and cannot be mistaken for the plan's 5-hour window.</p>
+</div>
+
+<div class="fig"><div class="lab"><b>U2 · Three numbers on top, the details in cards</b></div>
+<div class="sw">
+  <div class="stabs"><div class="segc"><span>General</span><span class="on">Usage</span><span>About</span><span>Sessions</span></div></div>
+  <div class="utop"><span>This Claude profile, all projects</span><div class="segc sm"><span>24 h</span><span class="on">7 d</span><span>30 d</span><span>90 d</span></div></div>
+  <div class="ubody" style="gap:12px">
+    <div class="tiles">
+      <div class="tile"><div class="k">Last 7 days</div><div class="v">48.2M<small>tokens</small></div><div class="s">$312.40 est. · 41 sessions</div></div>
+      <div class="tile"><div class="k">5-hour limit</div><div class="v">62%<small>used</small></div><div class="track"><i style="width:62%"></i></div><div class="s" style="margin-top:6px">Resets 14:20</div></div>
+      <div class="tile"><div class="k">Weekly limit</div><div class="v">31%<small>used</small></div><div class="track"><i style="width:31%"></i></div><div class="s" style="margin-top:6px">Resets Mon 09:00</div></div>
+    </div>
+    <div class="card">
+      <div class="chd"><b>Activity</b><span>Peak 13.2M, Mon 13 Oct</span></div>
+      <div class="bars"><i style="height:35%"></i><i style="height:58%"></i><i style="height:22%"></i><i style="height:67%"></i><i style="height:46%"></i><i style="height:14%"></i><i class="cur" style="height:92%"></i></div>
+      <div class="blbl"><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span><span>Mon</span></div>
+      <div class="subhr"></div>
+      <div class="mini"><span style="width:118px">Last 5 hours, local</span>
+        <span class="cells"><i style="background:rgba(255,255,255,.10)"></i><i style="background:rgba(255,255,255,.22)"></i><i style="background:rgba(255,255,255,.55)"></i><i style="background:rgba(255,255,255,.40)"></i><i style="background:rgba(255,255,255,.18)"></i></span>
+        <span style="width:44px;text-align:right;color:var(--t1)">7.8M</span></div>
+      <div class="mini" style="margin-top:3px"><span style="width:118px"></span><span class="lbls" style="flex:1;margin:0"><span>7 AM</span><span>8 AM</span><span>9 AM</span><span>10 AM</span><span>11 AM</span></span><span style="width:44px"></span></div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:stretch">
+      <div class="card" style="flex:1">
+        <div class="chd"><b>Tokens</b><span>95 % from the cache</span></div>
+        <div class="kv">
+          <span class="l">Cache read</span><span class="b"><i style="width:82%"></i></span><span class="v">39.4M</span>
+          <span class="l">Cache write</span><span class="b"><i style="width:13%"></i></span><span class="v">6.1M</span>
+          <span class="l">Input</span><span class="b"><i style="width:4%"></i></span><span class="v">1.9M</span>
+          <span class="l">Output</span><span class="b"><i style="width:2%"></i></span><span class="v">0.8M</span>
+        </div>
+      </div>
+      <div class="card" style="flex:1.25">
+        <div class="chd"><b>By model</b><span>Est. cost</span></div>
+        <table class="mt"><tr><td class="m">Opus 5.5</td><td>38.1M</td><td>$281.20</td></tr>
+          <tr><td class="m">Sonnet 5.5</td><td>8.9M</td><td>$29.90</td></tr>
+          <tr><td class="m" style="border-bottom:0">Haiku 5.5</td><td style="border-bottom:0">1.2M</td><td style="border-bottom:0">$1.30</td></tr></table>
+      </div>
+    </div>
+    <div class="foot2">Costs are API-equivalent estimates; a subscription is not billed per token.</div>
+  </div>
+  <div class="ufoot"><span>Updated 11:42 · Prices as of 7 Oct 2026</span><span class="sp"></span><svg><use href="#refresh"/></svg></div>
+</div>
+<p class="cap"><b>U2:</b> the three numbers most often looked for are tiles at the top: the period's total and the two plan windows. The details follow in cards. The tokens and the models sit side by side; in this narrower model table the share moves into the tooltip.</p>
+</div>
+</div>
+
+<p class="pick"><b>Planner:</b> U1. It separates the subjects most clearly and keeps every detail in its full form, including the model shares. Its order puts the plan limits first. U2 is quicker at a glance, but its side-by-side cards leave the model table without its share column at the Settings window's 680 pt width.</p>
+</div>
+</body>
+</html>
