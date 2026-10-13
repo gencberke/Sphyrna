@@ -18,9 +18,7 @@ The round ships as 0.4.3 ([D-41](../DECISIONS.md) numbering) when the user says 
   - Slice B, the Active section (FB4-2), is done and reviewed: da77473, plus the planner's fix 71d4093. See [Slice B as built](#slice-b-as-built).
   - Slice C, the subagent panel (FB4-5), is done and reviewed: a6cd400 and 1d4b7de. See [Slice C as built](#slice-c-as-built).
   - Full suite: the second run on 3d4822f passes ([verification](#verification)). The first run had failed one timing test, fixed in 9ade38d.
-  - The optimizer review is under way. The user asked for it on 13 Oct ("optimizer'ı max effort spawnlarsın"). It runs as `strict-reviewer` with the optimizer Brief on Opus 5.5 at max effort ([D-06](../DECISIONS.md) requires at least `xhigh`). It reads, and runs nothing. Scope:
-    - the round's diff, in depth;
-    - the release app's steady state.
+  - The optimizer review is done ([findings](#optimizer-review-13-oct)). The user asked for it on 13 Oct ("optimizer'ı max effort spawnlarsın"). It ran as `strict-reviewer` with the optimizer Brief on Opus 5.5 at max effort ([D-06](../DECISIONS.md) requires at least `xhigh`), and read only. Its one blocking finding, R1, is fixed in 81ae519. U1 and I1 wait for the user's choice.
 - **Next.**
   1. The full suite on the combined result (`scripts/check.sh --full --idle`). The user allowed it on 13 Oct.
   2. The on-screen pass, after the user says the computer is idle ([D-13](../DECISIONS.md)).
@@ -248,6 +246,34 @@ One build at a time. Each slice commits its own work. The planner reviews each o
 **Unverified:**
 - Everything on screen: scroll-follow, the header, Esc with real focus, selection across lazy rows.
 - A real Claude subagent.
+
+## Optimizer review (13 Oct)
+
+**Scope:**
+- the round's diff (`5a2deca..HEAD`) in depth;
+- the release app's steady state.
+
+It was read-only: nothing was built or measured. The planner verified R1 and U1 in the code.
+
+| # | Finding | Priority | State |
+| --- | --- | --- | --- |
+| R1 | Clicking the subagent that is already open replaced its panel model while the view stayed, because it was keyed by the agent id. The new model never went on screen and the panel read nothing until Esc | blocking | fixed in 81ae519: the click is a no-op and the view is keyed by its model. The hosted test failed at both points without the fix |
+| U1 | Every activation of the Loom window rescans every transcript and rebuilds the 7-day report, including when nothing changed and the last refresh is over 10 s old. While the window is not active, the watcher's changed paths are dropped and only `stale` is set (`UsageModel.refresh(.activation)`, `transcriptsChanged`, `scheduleDebounced`). This predates the round and contradicts ARCHITECTURE §usage and HARDENING-1's candidate 1 | should fix | the user decides. Proposal: keep collecting changed paths and the full-scan flag while hidden. On activation, read only those, or nothing. Do a full scan only for a watcher overflow, a new day, launch, Settings, the refresh button, or no watcher |
+| I1 | `SubagentTranscriptFeed.stop()` waits on the main actor for an in-flight read (up to the 512 KiB cold window) and for the cancel handlers, at utility QoS | improvement | the user decides. Proposal: stop asynchronously like `ClaudeRegistryWatch.stop()`, keeping a waiting form for the descriptor tests |
+| I2 | Quit captures every run's last screen right after dropping the store | improvement | not taken. It costs a few ms once per quit. Skipping it would lose the last screens after a quit that fails |
+| I3 | Per-frame main-actor scans grow with the sessions touched since launch: `updateAttentionCount`, project headers | watch | no change. Frames come from hooks, not terminal output |
+| UA | In classic mode, a run that once showed an alternate-screen program (an editor) and later ends on its own keeps that old screen | unverified risk | recorded. The user runs fullscreen, and the capture at Stop is unaffected. A fix needs a rule that tells the resume hint after `?1049l` apart from a live main screen |
+
+**Structure:** no findings beyond R1's cause and I1. The transcript tail and feed differ from the usage index's reader and the registry watch on purpose.
+
+**Docs:** stale lines in docs/ARCHITECTURE.md:
+- `EndedScreenPolicy`;
+- "up to 8 kept ended screens";
+- `CatalogModel.swift`'s line count.
+
+**Measurements**, when the user says the computer is idle:
+- U1's rescan cost on synthetic profiles of 1k, 5k and 20k transcripts, before and after the change;
+- a signpost around `stopFeed()` during a cold read.
 
 ## Verification
 
