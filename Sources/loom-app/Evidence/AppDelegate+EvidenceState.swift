@@ -61,6 +61,7 @@ extension AppDelegate {
                 "sidebarItemCollapsed": splitController?.sidebarIsCollapsed ?? NSNull(),
                 "actionsAvailable": model.actionsAvailable, "quitting": model.quitting,
                 "awaitingOpenApproval": model.awaitingOpenApproval.map(\.uuidString).sorted(),
+                "activeSessionIDs": model.activeIDs.map(\.uuidString).sorted(),
                 "busy": model.busy.map { ["id": $0.key.uuidString, "state": String(describing: $0.value)] },
                 "startingKeys": model.startingKeys.map { "\($0.provider.rawValue):\($0.projectID?.uuidString ?? "none")" },
                 "preparingNotice": model.preparingNotice ?? NSNull(),

@@ -16,6 +16,7 @@ struct SidebarRenderTests {
 
     struct Hosted {
         let model: CatalogModel
+        let hub: SessionEventHub
         let window: NSWindow
         let hosting: NSHostingController<SidebarView>
         let root: URL
@@ -46,7 +47,8 @@ struct SidebarRenderTests {
         }
         let preferences = UIPreferencesStore(url: root.appendingPathComponent("ui-preferences.json"))
         try preferences.update { $0.viewMode = mode }
-        let model = CatalogModel(catalog: catalog, events: SessionEventHub(), preferences: preferences)
+        let hub = SessionEventHub()
+        let model = CatalogModel(catalog: catalog, events: hub, preferences: preferences)
         model.branchReader = { _ in .unavailable }
         let clock = Clock(noon)
         let gate = Gate()
@@ -64,7 +66,7 @@ struct SidebarRenderTests {
         window.contentViewController = hosting
         window.setContentSize(NSSize(width: 320, height: 3_200))
         window.isReleasedWhenClosed = false // never ordered front: the layout runs against a window nobody sees
-        let hosted = Hosted(model: model, window: window, hosting: hosting, root: root, clock: clock, gate: gate, ids: ids)
+        let hosted = Hosted(model: model, hub: hub, window: window, hosting: hosting, root: root, clock: clock, gate: gate, ids: ids)
         try await settle(hosted, until: { SidebarRenderProbe.cardBodies.count == cards })
         return hosted
     }
@@ -219,5 +221,56 @@ struct SidebarRenderTests {
         let moved = list.daySections(today: model.today)
         #expect(SidebarRenderProbe.groupings - beforeStamp == 1)
         #expect(moved.first?.title == "Today" && moved.first?.rows.map(\.id) == [row.id])
+    }
+
+    /// The Active section moves a card between two places in the list without touching the others: a flip
+    /// evaluates the moved card at most once (it is a new view in its new place) and regroups the days once;
+    /// a frame that flips nothing evaluates no other card and regroups nothing. Before: no such section.
+    @Test func aMembershipFlipEvaluatesOnlyTheMovedCardAndRegroupsTheDaysOnce() async throws {
+        let hosted = try await host(cards: 30)
+        defer { finish(hosted) }
+        let model = hosted.model
+        let reader = FrameReader(await hosted.hub.subscribe())
+        model.apply(try #require(await reader.next())) // the initial snapshot
+        let target = hosted.ids[12]
+        func feed(_ change: SessionEventChange) async throws {
+            await hosted.hub.publish(sessionID: target, change: change)
+            model.apply(try #require(await reader.next()))
+        }
+        func others() -> Int { SidebarRenderProbe.cardTotal - (SidebarRenderProbe.cardBodies[target] ?? 0) }
+
+        try await feed(.runStarted(UUID()))
+        await model.settle()
+        try await settle(hosted)
+        #expect(model.activeIDs.isEmpty)
+
+        // Flip in: the turn starts.
+        SidebarRenderProbe.reset()
+        try await feed(.status(ProviderWorkState(activity: .working)))
+        try await settle(hosted, until: { SidebarRenderProbe.groupings == 1 && SidebarRenderProbe.cardBodies[target] != nil })
+        #expect(model.activityLayout().active.map(\.id) == [target])
+        #expect(SidebarRenderProbe.groupings == 1, "one regrouping for the flip: \(SidebarRenderProbe.groupings)")
+        #expect((SidebarRenderProbe.cardBodies[target] ?? 0) <= 1, "moved card bodies: \(SidebarRenderProbe.cardBodies[target] ?? 0)")
+        #expect(others() == 0, "other cards evaluated by the flip: \(others())")
+
+        // A frame that flips nothing (background work after the turn, then the finish unseen) regroups nothing.
+        SidebarRenderProbe.reset()
+        try await feed(.status(ProviderWorkState(activity: .turnComplete, pendingProviderWorkCount: 1)))
+        try await feed(.status(ProviderWorkState(activity: .turnComplete)))
+        try await settle(hosted)
+        #expect(model.activityLayout().active.map(\.id) == [target])
+        #expect(SidebarRenderProbe.groupings == 0, "regroupings by frames that flip nothing: \(SidebarRenderProbe.groupings)")
+        #expect(others() == 0, "other cards evaluated by frames that flip nothing: \(others())")
+
+        // Flip out: the user marks it read.
+        SidebarRenderProbe.reset()
+        model.markRead(target)
+        await model.settle()
+        model.apply(try #require(await reader.next()))
+        try await settle(hosted, until: { SidebarRenderProbe.groupings == 1 && SidebarRenderProbe.cardBodies[target] != nil })
+        #expect(model.activityLayout().active.isEmpty)
+        #expect(SidebarRenderProbe.groupings == 1, "one regrouping for the flip back: \(SidebarRenderProbe.groupings)")
+        #expect((SidebarRenderProbe.cardBodies[target] ?? 0) <= 1)
+        #expect(others() == 0)
     }
 }

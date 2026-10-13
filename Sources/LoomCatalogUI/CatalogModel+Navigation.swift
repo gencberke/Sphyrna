@@ -80,13 +80,14 @@ extension CatalogModel {
 
     // MARK: Select next and previous
 
-    /// The sessions in the order the current view draws them: the activity list as listed; in the project
+    /// The sessions in the order the current view draws them: the activity list's Active rows, then its day
+    /// sections (`ActivityLayout`, the one order the list draws); in the project
     /// view the projects in their order (a collapsed project contributes nothing unless a search forces
     /// it open), then the projectless "Sessions" group.
     public func visibleSessionIDs() -> [UUID] {
         switch viewMode {
         case .activity:
-            return list(for: .activity).rows.map(\.id)
+            return activityLayout().rowIDs
         case .projects:
             var ids: [UUID] = []
             for project in projects {

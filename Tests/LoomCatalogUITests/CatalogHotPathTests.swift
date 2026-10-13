@@ -721,3 +721,222 @@ extension CatalogHotPathTests {
         }
     }
 }
+
+// MARK: The Active section moves with frames, not with list reads (FB4-2)
+
+extension CatalogHotPathTests {
+    private static let working = SessionEventChange.status(ProviderWorkState(activity: .working))
+
+    /// Starts a run and a turn for `id`, the way the runtime's frames arrive.
+    @discardableResult
+    private func startTurn(_ rig: ListRig, _ id: UUID) async throws -> UUID {
+        let run = UUID()
+        try await rig.feed(.runStarted(run), for: id)
+        try await rig.feed(Self.working, for: id)
+        await rig.model.settle() // the run frame patched the card's catalog row
+        return run
+    }
+
+    /// The turn finishes while nobody looks, and the user reads the end with "Mark as Read".
+    private func readTheEnd(_ rig: ListRig, _ id: UUID) async throws {
+        try await rig.feed(.status(ProviderWorkState(activity: .turnComplete)), for: id)
+        try await markRead(rig, id)
+    }
+
+    /// "Mark as Read" the way the card menu does it: the hub publishes the change and the model applies its frame.
+    private func markRead(_ rig: ListRig, _ id: UUID) async throws {
+        rig.model.markRead(id)
+        await rig.model.settle()
+        try await rig.applyNextFrame()
+    }
+
+    private func request(from id: UUID, phase: OpenSessionRequest.Phase = .waiting) -> OpenSessionRequest {
+        OpenSessionRequest(requesterID: id, projectID: UUID(), projectName: "p", title: "Open", message: "m", phase: phase)
+    }
+
+    @Test func framesMoveARowIntoAndOutOfActiveWithoutListReloadsOrRowPatches() async throws {
+        let rig = try await ListRig.make(projects: 2, perProject: 6, unassigned: 2, mode: .activity)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let list = model.list(for: .activity)
+        let order = list.rows.map(\.id)
+        let target = order[5]
+
+        try await rig.feed(.runStarted(UUID()), for: target)
+        await model.settle()
+        #expect(model.activeIDs.isEmpty, "a started run is not active before a turn runs")
+        #expect(model.activityLayout().active.isEmpty)
+        #expect(model.activityLayout().days.flatMap(\.rows).map(\.id) == order)
+
+        // The turn starts: one flip, no list read, no row patch.
+        var base = model.statistics
+        var revision = model.activeRevision
+        try await rig.feed(Self.working, for: target)
+        await model.settle()
+        #expect(model.activeIDs == [target] && model.activeRevision == revision + 1)
+        #expect(model.activityLayout().active.map(\.id) == [target])
+        #expect(model.activityLayout().days.flatMap(\.rows).map(\.id) == order.filter { $0 != target })
+        #expect(list.rows.map(\.id) == order, "the list itself does not move")
+        var counts = delta(model, since: base)
+        #expect(counts.reloads == 0 && counts.queries == 0 && counts.patches == 0,
+                "reloads \(counts.reloads), queries \(counts.queries), patches \(counts.patches)")
+
+        // Frames that flip nothing leave the set and its revision alone: more state, a question, the finish unseen.
+        revision = model.activeRevision
+        base = model.statistics
+        try await rig.feed(.blockers([.ambiguousIdentity]), for: target)
+        try await rig.feed(.status(ProviderWorkState(activity: .waitingForInput)), for: target)
+        try await rig.feed(Self.working, for: target)
+        try await rig.feed(.status(ProviderWorkState(activity: .turnComplete, pendingProviderWorkCount: 1)), for: target)
+        try await rig.feed(.status(ProviderWorkState(activity: .turnComplete)), for: target)
+        await model.settle()
+        #expect(model.activeIDs == [target] && model.activeRevision == revision, "the finish nobody saw stays in")
+        counts = delta(model, since: base)
+        #expect(counts.reloads == 0 && counts.queries == 0 && counts.patches == 0)
+
+        // Read: it leaves, again without a read of the catalog.
+        try await markRead(rig, target)
+        #expect(model.activeIDs.isEmpty && model.activeRevision == revision + 1)
+        #expect(model.activityLayout().active.isEmpty)
+        #expect(model.activityLayout().days.flatMap(\.rows).map(\.id) == order)
+        counts = delta(model, since: base)
+        #expect(counts.reloads == 0 && counts.queries == 0 && counts.patches == 0)
+    }
+
+    @Test func aSelectedActiveSessionStaysUntilAnotherIsSelectedAndAnEndedRunDropsIt() async throws {
+        let rig = try await ListRig.make(projects: 2, perProject: 6, unassigned: 2, mode: .activity)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let order = model.list(for: .activity).rows.map(\.id)
+        let (first, second, third) = (order[2], order[7], order[9])
+
+        // Active when selected, then read: the card does not jump under the cursor.
+        try await startTurn(rig, first)
+        model.select(first, revealInList: false)
+        try await readTheEnd(rig, first)
+        #expect(model.activeIDs == [first], "read and selected: still displayed")
+        #expect(model.activityLayout().active.map(\.id) == [first])
+
+        // A session that becomes active while selected is held too.
+        model.select(second, revealInList: false)
+        #expect(model.activeIDs.isEmpty, "selecting another session drops the read one")
+        try await startTurn(rig, second)
+        try await readTheEnd(rig, second)
+        #expect(model.activeIDs == [second])
+        model.select(nil)
+        #expect(model.activeIDs.isEmpty, "dropped when nothing is selected")
+
+        // Selecting an active session holds it; selecting another one that is active releases only the first.
+        try await startTurn(rig, first)
+        try await startTurn(rig, third)
+        model.select(first, revealInList: false)
+        try await readTheEnd(rig, first)
+        model.select(third, revealInList: false)
+        #expect(model.activeIDs == [third])
+
+        // A held session whose run ended is out: the section lists running sessions.
+        let run = try await startTurn(rig, second)
+        model.select(second, revealInList: false)
+        try await readTheEnd(rig, second)
+        #expect(model.activeIDs == [second, third], "third is still under way; second is held")
+        try await rig.feed(.runEnded(run, .processExited), for: second)
+        await model.settle()
+        #expect(model.activeIDs == [third])
+    }
+
+    @Test func aSessionAwaitingAnOpenSessionAnswerIsActiveOnlyWhileItsRunLives() async throws {
+        let rig = try await ListRig.make(projects: 2, perProject: 6, unassigned: 2, mode: .activity)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let order = model.list(for: .activity).rows.map(\.id)
+        let (asking, idle) = (order[3], order[8])
+        try await rig.feed(.runStarted(UUID()), for: asking)
+        await model.settle()
+        #expect(model.activeIDs.isEmpty)
+
+        let revision = model.activeRevision
+        model.setOpenRequests([request(from: asking), request(from: idle)])
+        #expect(model.activeIDs == [asking], "a request of a session with no run asks nothing of the user")
+        #expect(model.activeRevision == revision + 1)
+        #expect(model.activityLayout().active.map(\.id) == [asking])
+
+        // The answer was given (starting): the card goes back.
+        model.setOpenRequests([request(from: asking, phase: .starting)])
+        #expect(model.activeIDs.isEmpty)
+        model.setOpenRequests([request(from: asking)])
+        #expect(model.activeIDs == [asking])
+        model.setOpenRequests([])
+        #expect(model.activeIDs.isEmpty)
+    }
+
+    @Test func searchHidesTheActiveSectionAndLeavesTheResultAsItIs() async throws {
+        let rig = try await ListRig.make(projects: 2, perProject: 6, unassigned: 2, mode: .activity)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let list = model.list(for: .activity)
+        let target = list.rows[4].id
+        try await startTurn(rig, target)
+        #expect(model.activityLayout().active.map(\.id) == [target])
+
+        model.setSearchText("Alpha")
+        await model.settle()
+        #expect(model.isSearching && !list.rows.isEmpty)
+        let layout = model.activityLayout()
+        #expect(layout.active.isEmpty, "no Active section while searching")
+        #expect(layout.days.flatMap(\.rows).map(\.id) == list.rows.map(\.id), "the result as the day sections draw it")
+        #expect(model.visibleSessionIDs() == list.rows.map(\.id))
+        #expect(model.activeIDs == [target], "membership itself is kept")
+
+        model.setSearchText("")
+        await model.settle()
+        #expect(model.activityLayout().active.map(\.id) == [target])
+    }
+
+    @Test func nextAndPreviousSessionWalkTheActiveRowsFirstAndThenTheDays() async throws {
+        let rig = try await ListRig.make(projects: 2, perProject: 6, unassigned: 2, mode: .activity)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let order = model.list(for: .activity).rows.map(\.id)
+        // Two active sessions that sit in the middle of the list; the drawn order lists them first, newest first.
+        let (late, early) = (order[6], order[3])
+        try await startTurn(rig, late)
+        try await startTurn(rig, early)
+        let drawn = [early, late] + order.filter { $0 != early && $0 != late }
+        #expect(model.visibleSessionIDs() == drawn)
+        #expect(model.activityLayout().rowIDs == drawn)
+
+        model.select(late, revealInList: false)
+        #expect(model.adjacentSession(.previous) == early)
+        #expect(model.adjacentSession(.next) == drawn[2], "after the Active rows comes the first day row")
+        model.select(drawn[2], revealInList: false)
+        #expect(model.adjacentSession(.previous) == late)
+        #expect(model.selectAdjacentSession(.next))
+        #expect(model.selectedSessionID == drawn[3])
+    }
+
+    @Test func pagingStartsFromTheLastDrawnRowEvenWhenTheListsLastRowIsActive() async throws {
+        let rig = try await ListRig.make(projects: 3, perProject: 40, unassigned: 3, mode: .activity)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let list = model.list(for: .activity)
+        #expect(list.rows.count == 100 && list.hasMore)
+        let tail = try #require(list.rows.last?.id)
+        #expect(model.activityLayout().lastRowID == tail)
+
+        try await startTurn(rig, tail)
+        let layout = model.activityLayout()
+        #expect(layout.active.map(\.id) == [tail])
+        #expect(layout.lastRowID == list.rows[98].id, "the list's last row is drawn at the top, not at the bottom")
+        #expect(layout.lastRowID != tail)
+
+        // Everything loaded is active: the last Active row is the last drawn one.
+        for row in list.rows.dropLast() {
+            try await rig.feed(.runStarted(UUID()), for: row.id)
+            try await rig.feed(Self.working, for: row.id)
+        }
+        await model.settle()
+        let all = model.activityLayout()
+        #expect(all.days.isEmpty && all.active.count == 100)
+        #expect(all.lastRowID == all.active.last?.id)
+    }
+}

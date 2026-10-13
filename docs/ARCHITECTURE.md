@@ -96,7 +96,11 @@ skipped frame, a deletion, a session no visible list shows, an open search, a ru
 whole catalog's first page, creation order is a window query (`ROW_NUMBER() OVER (PARTITION BY project_id)`) holding each
 project's first page and its cursor, capped at `maxSearchResultRows`; the task's cancellation stops the read. Cards read their own
 `SessionRowModel.isSelected` (a selection change evaluates two cards), the relative time sits in `CardTimeLabel` (the minute tick
-evaluates only those), and the activity view's day sections are memoised per list and `CatalogModel.today`. The counters are
+evaluates only those), and the activity view's day sections are memoised per list, `CatalogModel.today` and `CatalogModel.activeRevision`. The Active
+section (FB4-2) takes its membership from `SessionViewState.activePhase`, which `SessionEventHub.publish` derives beside
+`unviewedCompletion`; `CatalogModel.updateActive` (`CatalogModel+Active.swift`) keeps the displayed set (`activeIDs`, not
+observed) with one O(1) check per live frame and bumps the observed `activeRevision` only when the set changes, so a flip
+regroups once and moves one card. The counters are
 `CatalogModelStatistics` (`pageQueries`, `listReloads`, `rowPatches`, `searchQueries`) and `SidebarRenderProbe` (card and time
 label body evaluations, off unless a test switches it on); tests: `CatalogHotPathTests`, `SidebarRenderTests`,
 `SessionCatalogSearchTests`.

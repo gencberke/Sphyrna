@@ -29,6 +29,15 @@ public struct ProviderUserRequest: Equatable, Sendable, Identifiable {
     }
 }
 
+/// Where a live run stands for the activity view's Active section (FB4-2): a turn is under way, or it
+/// ended while nobody was looking and the user has not read the end yet. Derived here, beside
+/// `unviewedCompletion`, so card states keep one source (`SessionEventHub.publish`).
+public enum ActivePhase: Equatable, Sendable {
+    case inactive
+    case underWay
+    case endedUnread
+}
+
 /// Latest event-derived state of one conversation. It only exists for
 /// conversations something happened to in this process: history restored from
 /// the catalog is not put here (the catalog page carries it), so the event map
@@ -51,6 +60,11 @@ public struct SessionViewState: Equatable, Sendable {
     /// acknowledgement only: it holds through the at-prompt period (finished turn, waiting for input, at prompt)
     /// and ends with any other status, a new unseen completion, a new run or the end of the run. Nothing is sent to the provider.
     public var waitingAcknowledged: Bool
+    /// Whether the run belongs in the Active section: under way from the start of a turn (work, an approval, a
+    /// question during the turn, background work after it), then "ended unread" when the turn finished or
+    /// failed while the conversation was not viewed. Viewing or "Mark as Read" ends it; so do a prompt, a new
+    /// run and the end of the run. An idle notice after a turn the user read changes nothing.
+    public var activePhase: ActivePhase
     /// The last thing that went wrong for this conversation outside a stop
     /// (start failure, missing history, lost provider connection). Cleared by a
     /// new run; survives skipped frames.
@@ -66,8 +80,8 @@ public struct SessionViewState: Equatable, Sendable {
         conversationID: String? = nil, identity: SessionIdentityState = .known,
         runID: UUID? = nil, blockers: Set<SessionIdleBlocker> = [],
         stopFailure: String? = nil, unviewedCompletion: Bool = false,
-        waitingAcknowledged: Bool = false, issue: String? = nil, userRequests: [ProviderUserRequest] = [],
-        subagents: [SubagentRecord] = []
+        waitingAcknowledged: Bool = false, activePhase: ActivePhase = .inactive, issue: String? = nil,
+        userRequests: [ProviderUserRequest] = [], subagents: [SubagentRecord] = []
     ) {
         self.status = status
         self.lifecycle = lifecycle
@@ -78,6 +92,7 @@ public struct SessionViewState: Equatable, Sendable {
         self.stopFailure = stopFailure
         self.unviewedCompletion = unviewedCompletion
         self.waitingAcknowledged = waitingAcknowledged
+        self.activePhase = activePhase
         self.issue = issue
         self.userRequests = userRequests
         self.subagents = subagents
@@ -186,6 +201,8 @@ public actor SessionEventHub {
                 state.unviewedCompletion = true
                 state.waitingAcknowledged = false
             }
+            state.activePhase = Self.activePhase(after: value, from: state.activePhase,
+                                                 viewed: viewedSessionID == sessionID)
         case let .lifecycle(value): state.lifecycle = value
         case let .conversationIdentity(value): state.conversationID = value
         case let .identityState(value): state.identity = value
@@ -196,25 +213,35 @@ public actor SessionEventHub {
             state.userRequests = []
             state.unviewedCompletion = false
             state.waitingAcknowledged = false
+            state.activePhase = .inactive
             state.subagents = []
         // A late event of an earlier run must not end a newer run.
         case let .runDetached(value):
             if state.runID == value {
                 state.runID = nil; state.status = nil; state.waitingAcknowledged = false; state.subagents = []
+                state.activePhase = .inactive
             }
         case let .runEnded(value, _):
             if state.runID == value {
                 state.runID = nil
                 state.status = nil
                 state.waitingAcknowledged = false
+                state.activePhase = .inactive
                 state.userRequests = []
                 state.subagents = []
             }
         case let .blockers(value): state.blockers = value
         case let .stopFailure(value): state.stopFailure = value
-        case let .unviewedCompletion(value): state.unviewedCompletion = value
+        case let .unviewedCompletion(value):
+            state.unviewedCompletion = value
+            if !value, state.activePhase == .endedUnread { state.activePhase = .inactive }
         case .markedRead:
             state.unviewedCompletion = false
+            // An acknowledged question (the turn is still marked under way) is read like an unread end.
+            if state.activePhase == .endedUnread
+                || (state.activePhase == .underWay && state.status?.activity == .waitingForInput) {
+                state.activePhase = .inactive
+            }
             if Self.isAtPromptPeriod(state.status?.activity) { state.waitingAcknowledged = true }
         case let .issue(value): state.issue = value
         case let .userRequests(value): state.userRequests = value
@@ -286,8 +313,28 @@ public actor SessionEventHub {
     /// (nil otherwise). Only this call, never a list refresh, counts as viewing.
     public func setViewed(sessionID: UUID?) {
         viewedSessionID = sessionID
-        guard let sessionID, states[sessionID]?.unviewedCompletion == true else { return }
+        // A failed turn has no unviewed completion but still ends unread (Active section).
+        guard let sessionID, let state = states[sessionID],
+              state.unviewedCompletion || state.activePhase == .endedUnread else { return }
         publish(sessionID: sessionID, change: .unviewedCompletion(false))
+    }
+
+    /// The Active-section phase after a status. Work, an approval and background work after a turn put the run
+    /// under way; a finished or failed turn ends it as unread unless the user is looking. A question during the
+    /// turn and an unknown state change nothing, so Claude's idle notice about a minute after a turn the user
+    /// read cannot bring the run back; a prompt or the end of the session takes it out.
+    private static func activePhase(after status: ProviderWorkState?, from phase: ActivePhase,
+                                    viewed: Bool) -> ActivePhase {
+        guard let status else { return .inactive }
+        switch status.activity {
+        case .working, .waitingForApproval: return .underWay
+        case .turnComplete where status.pendingProviderWorkCount > 0: return .underWay
+        case .turnComplete, .failed:
+            guard phase == .underWay else { return phase }
+            return viewed ? .inactive : .endedUnread
+        case .waitingForInput, .unknown: return phase
+        case .atPrompt, .sessionEnded: return .inactive
+        }
     }
 
     /// The statuses of one at-prompt period: a finished turn, the provider idling for input, a fresh prompt.

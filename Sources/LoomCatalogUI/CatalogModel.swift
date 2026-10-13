@@ -159,9 +159,11 @@ public final class SessionListModel {
     /// Counts the writes of `rows`, so the day sections know when the list changed.
     @ObservationIgnored private var rowsRevision = 0
     @ObservationIgnored private var sectionsCache: SectionsCache?
+    @ObservationIgnored private var activeRowsCache: (revision: Int, activeRevision: Int, rows: [SessionRowModel])?
 
     private struct SectionsCache {
         let revision: Int
+        let activeRevision: Int
         let today: Date
         let calendar: Calendar
         let activity: [Date]
@@ -192,19 +194,34 @@ public final class SessionListModel {
         if hasMore != (cursor != nil) { hasMore = cursor != nil }
     }
 
-    /// The rows grouped into calendar days, kept until the rows, a row's activity time, the calendar day or
-    /// the calendar change: the minute tick and every other body pass of the list reuse it. `today` is the
-    /// start of the model's current day (`CatalogModel.today`), which is all the headings depend on.
-    func daySections(today: Date, calendar: Calendar = .current) -> [DaySection] {
-        if let cached = sectionsCache, cached.revision == rowsRevision, cached.today == today,
-           cached.calendar == calendar, cached.activity.count == rows.count,
+    /// The rows grouped into calendar days, kept until the rows, a row's activity time, the calendar day, the
+    /// calendar or the Active set change: the minute tick and every other body pass of the list reuse it.
+    /// `today` is the start of the model's current day (`CatalogModel.today`), which is all the headings depend
+    /// on. Rows in `activeIDs` are left out (they are drawn under "Active", `activeRows`); `activeRevision`
+    /// says when that set changed, so a membership flip regroups once and a live frame never does.
+    func daySections(today: Date, activeIDs: Set<UUID> = [], activeRevision: Int = 0,
+                     calendar: Calendar = .current) -> [DaySection] {
+        if let cached = sectionsCache, cached.revision == rowsRevision, cached.activeRevision == activeRevision,
+           cached.today == today, cached.calendar == calendar, cached.activity.count == rows.count,
            zip(cached.activity, rows).allSatisfy({ $0 == $1.record.lastActivityAt }) {
             return cached.sections
         }
-        let sections = DayGrouping.sections(rows, now: today, calendar: calendar)
-        sectionsCache = SectionsCache(revision: rowsRevision, today: today, calendar: calendar,
-                                      activity: rows.map(\.record.lastActivityAt), sections: sections)
+        let sections = DayGrouping.sections(activeIDs.isEmpty ? rows : rows.filter { !activeIDs.contains($0.id) },
+                                            now: today, calendar: calendar)
+        sectionsCache = SectionsCache(revision: rowsRevision, activeRevision: activeRevision, today: today,
+                                      calendar: calendar, activity: rows.map(\.record.lastActivityAt),
+                                      sections: sections)
         return sections
+    }
+
+    /// The loaded rows that are in `activeIDs`, in the list's order, kept until the rows or the set change.
+    func activeRows(activeIDs: Set<UUID>, activeRevision: Int) -> [SessionRowModel] {
+        if let cached = activeRowsCache, cached.revision == rowsRevision, cached.activeRevision == activeRevision {
+            return cached.rows
+        }
+        let active = activeIDs.isEmpty ? [] : rows.filter { activeIDs.contains($0.id) }
+        activeRowsCache = (rowsRevision, activeRevision, active)
+        return active
     }
 }
 
@@ -320,6 +337,14 @@ public final class CatalogModel {
     @ObservationIgnored private var lookingUp: Set<UUID> = []
     /// Bumped when a live state or a looked-up record changes, so project dots redraw.
     public private(set) var liveRevision = 0
+    /// The sessions the activity view draws under "Active" (FB4-2; `CatalogModel+Active.swift`). Not observed:
+    /// a live frame must not redraw the list. `activeRevision` is the observed stand-in, bumped only when this
+    /// set changes, so the list regroups once per membership flip and not per frame.
+    @ObservationIgnored public internal(set) var activeIDs: Set<UUID> = []
+    public internal(set) var activeRevision = 0
+    /// The selected session that was in Active when it was selected or became so while selected: it stays until
+    /// another session is selected, so a card does not jump under the cursor when the user reads it.
+    @ObservationIgnored var heldActiveID: UUID?
     /// Sessions that need the user (`AttentionOrder`), kept for the Dock badge. Updated whenever live state,
     /// a record or an open-session wait changes; `onAttentionCountChange` fires on a change only.
     @ObservationIgnored public internal(set) var attentionCount = 0
@@ -835,6 +860,7 @@ public final class CatalogModel {
             // Each card reads its own flag: only the old and the new card are redrawn.
             previous.flatMap { rowModels[$0] }?.apply(selected: false)
             selectedRow?.apply(selected: true)
+            moveActiveHold(to: id)
             persistSelection(id)
             if id != nil, selectedRow == nil { Task { await ensureSelectedRow() } }
             if revealInList, let id { requestReveal(id) }
@@ -1306,8 +1332,10 @@ public final class CatalogModel {
         if requests != openRequests { openRequests = requests }
         let awaiting = Set(requests.filter(\.needsUser).map(\.requesterID))
         guard awaiting != awaitingOpenApproval else { return }
+        let changed = awaiting.symmetricDifference(awaitingOpenApproval)
         awaitingOpenApproval = awaiting
         for (id, row) in rowModels { row.apply(awaitingOpenApproval: awaiting.contains(id)) }
+        for id in changed { updateActive(id) }
         liveRevision &+= 1
         updateAttentionCount()
     }
@@ -1369,6 +1397,7 @@ public final class CatalogModel {
         }
         if state == nil { liveRecords[id] = nil }
         rowModels[id]?.apply(live: state)
+        updateActive(id)
         updateAttentionCount()
         if state != nil, rowModels[id] == nil { lookUpLiveRecord(id) }
         guard state != nil, rowModels[id] == nil, catalog != nil,

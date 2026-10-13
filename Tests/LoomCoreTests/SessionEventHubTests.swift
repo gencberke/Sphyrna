@@ -177,3 +177,174 @@ struct SessionEventHubTests {
         #expect(await hub.snapshot().sessions[unreliable]?.unviewedCompletion == false)
     }
 }
+
+// MARK: Active section phase (FB4-2)
+
+/// The hub decides which live runs belong in the activity view's Active section: under way from the start of a
+/// turn, "ended unread" when it finished or failed unseen, out once read.
+struct ActivePhaseTests {
+    private let working = SessionEventChange.status(ProviderWorkState(activity: .working))
+    private let complete = SessionEventChange.status(ProviderWorkState(activity: .turnComplete))
+    private let waiting = SessionEventChange.status(ProviderWorkState(activity: .waitingForInput))
+
+    private func phase(_ hub: SessionEventHub, _ id: UUID) async -> ActivePhase? {
+        await hub.snapshot().sessions[id]?.activePhase
+    }
+
+    private func start(_ hub: SessionEventHub, _ id: UUID) async -> UUID {
+        let run = UUID()
+        await hub.publish(sessionID: id, change: .runStarted(run))
+        return run
+    }
+
+    @Test func aTurnPutsTheRunUnderWayAndAFinishNobodySawKeepsItInUntilViewed() async {
+        let hub = SessionEventHub(), id = UUID()
+        _ = await start(hub, id)
+        #expect(await phase(hub, id) == .inactive, "a started run is not in Active until a turn runs")
+        await hub.publish(sessionID: id, change: working)
+        #expect(await phase(hub, id) == .underWay)
+        await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .waitingForApproval)))
+        #expect(await phase(hub, id) == .underWay)
+        await hub.publish(sessionID: id, change: working)
+        await hub.publish(sessionID: id, change: complete)
+        #expect(await phase(hub, id) == .endedUnread)
+        // Other changes and the idle notice do not read it.
+        await hub.publish(sessionID: id, change: waiting)
+        await hub.publish(sessionID: id, change: .lifecycle(.idle))
+        #expect(await phase(hub, id) == .endedUnread)
+        await hub.setViewed(sessionID: id)
+        #expect(await phase(hub, id) == .inactive)
+    }
+
+    @Test func aFinishWhileTheSessionIsViewedNeverEntersAndItsIdleNoticeStaysOut() async {
+        let hub = SessionEventHub(), id = UUID()
+        _ = await start(hub, id)
+        await hub.setViewed(sessionID: id)
+        await hub.publish(sessionID: id, change: working)
+        #expect(await phase(hub, id) == .underWay)
+        await hub.publish(sessionID: id, change: complete)
+        #expect(await phase(hub, id) == .inactive)
+        // Claude's waiting notice about a minute after a turn the user read.
+        await hub.publish(sessionID: id, change: waiting)
+        #expect(await phase(hub, id) == .inactive)
+        await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .unknown)))
+        #expect(await phase(hub, id) == .inactive)
+    }
+
+    @Test func theWaitingNoticeAndARepeatedFinishAfterAReadTurnStayOut() async {
+        let hub = SessionEventHub(), id = UUID()
+        _ = await start(hub, id)
+        await hub.publish(sessionID: id, change: working)
+        await hub.publish(sessionID: id, change: complete)
+        await hub.setViewed(sessionID: id)
+        await hub.publish(sessionID: id, change: waiting)
+        #expect(await phase(hub, id) == .inactive)
+        // A repeated finish (nothing changed in the turn) does not bring it back.
+        await hub.publish(sessionID: id, change: complete)
+        #expect(await phase(hub, id) == .inactive)
+        await hub.publish(sessionID: id, change: waiting)
+        await hub.publish(sessionID: id, change: complete)
+        #expect(await phase(hub, id) == .inactive)
+    }
+
+    @Test func aFailedTurnStaysInUntilViewedAndViewingItPublishesTheChange() async throws {
+        let hub = SessionEventHub(), id = UUID()
+        _ = await start(hub, id)
+        await hub.publish(sessionID: id, change: working)
+        await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .failed("rate limit"))))
+        var state = try #require(await hub.snapshot().sessions[id])
+        #expect(state.activePhase == .endedUnread)
+        #expect(!state.unviewedCompletion, "a failure is not an unviewed completion, yet it ends unread")
+        let before = await hub.snapshot().sequence
+        await hub.setViewed(sessionID: id)
+        state = try #require(await hub.snapshot().sessions[id])
+        #expect(state.activePhase == .inactive)
+        #expect(await hub.snapshot().sequence == before + 1, "viewing a failed turn is a frame")
+        // Viewing something that changes nothing is not.
+        await hub.setViewed(sessionID: nil)
+        await hub.setViewed(sessionID: id)
+        #expect(await hub.snapshot().sequence == before + 1)
+    }
+
+    @Test func aQuestionDuringTheTurnStaysInAndMarkReadAcknowledgesIt() async {
+        let hub = SessionEventHub(), id = UUID()
+        _ = await start(hub, id)
+        await hub.publish(sessionID: id, change: working)
+        await hub.publish(sessionID: id, change: waiting)
+        #expect(await phase(hub, id) == .underWay, "a question asked during the turn stays under way")
+        await hub.markRead(sessionID: id)
+        #expect(await phase(hub, id) == .inactive, "an acknowledged question leaves")
+        // Marking read while the provider works changes nothing.
+        await hub.publish(sessionID: id, change: working)
+        await hub.markRead(sessionID: id)
+        #expect(await phase(hub, id) == .underWay)
+        // And an unread end is read by the mark.
+        await hub.publish(sessionID: id, change: complete)
+        #expect(await phase(hub, id) == .endedUnread)
+        await hub.markRead(sessionID: id)
+        #expect(await phase(hub, id) == .inactive)
+    }
+
+    @Test func pendingProviderWorkKeepsTheRunUnderWayAfterTheTurn() async {
+        let hub = SessionEventHub(), id = UUID()
+        _ = await start(hub, id)
+        await hub.publish(sessionID: id, change: working)
+        await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .turnComplete, pendingProviderWorkCount: 2)))
+        #expect(await phase(hub, id) == .underWay)
+        await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .turnComplete, pendingProviderWorkCount: 1)))
+        #expect(await phase(hub, id) == .underWay)
+        await hub.publish(sessionID: id, change: complete)
+        #expect(await phase(hub, id) == .endedUnread, "the last background task ended unseen")
+    }
+
+    @Test func aPromptARunEndAndANewRunTakeTheSessionOut() async {
+        let hub = SessionEventHub(), id = UUID(), detached = UUID()
+        var run = await start(hub, id)
+        await hub.publish(sessionID: id, change: working)
+        // A late end of an earlier run changes nothing.
+        await hub.publish(sessionID: id, change: .runEnded(UUID(), .processExited))
+        await hub.publish(sessionID: id, change: .runDetached(detached))
+        #expect(await phase(hub, id) == .underWay)
+        await hub.publish(sessionID: id, change: .runEnded(run, .processExited))
+        #expect(await phase(hub, id) == .inactive)
+
+        // Resume: the new run sits at its prompt.
+        run = await start(hub, id)
+        await hub.publish(sessionID: id, change: working)
+        await hub.publish(sessionID: id, change: complete)
+        #expect(await phase(hub, id) == .endedUnread)
+        await hub.publish(sessionID: id, change: .runEnded(run, .processExited))
+        #expect(await phase(hub, id) == .inactive)
+        run = await start(hub, id)
+        await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .atPrompt)))
+        #expect(await phase(hub, id) == .inactive)
+
+        // A prompt, a detach and a new run each take a running turn out.
+        await hub.publish(sessionID: id, change: working)
+        await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .atPrompt)))
+        #expect(await phase(hub, id) == .inactive)
+        await hub.publish(sessionID: id, change: working)
+        await hub.publish(sessionID: id, change: .runDetached(run))
+        #expect(await phase(hub, id) == .inactive)
+        run = await start(hub, id)
+        await hub.publish(sessionID: id, change: working)
+        run = await start(hub, id)
+        #expect(await phase(hub, id) == .inactive)
+        await hub.publish(sessionID: id, change: working)
+        await hub.publish(sessionID: id, change: .status(nil))
+        #expect(await phase(hub, id) == .inactive)
+        _ = run
+    }
+
+    @Test func aFrameThatChangesNothingStaysSilent() async {
+        let hub = SessionEventHub(), id = UUID()
+        _ = await start(hub, id)
+        await hub.publish(sessionID: id, change: working)
+        let sequence = await hub.snapshot().sequence
+        await hub.publish(sessionID: id, change: working)
+        await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .unknown)))
+        await hub.publish(sessionID: id, change: .markedRead)
+        #expect(await hub.snapshot().sequence == sequence + 1, "the unknown status is a frame; the repeat and a mark are not")
+        #expect(await phase(hub, id) == .underWay)
+    }
+}

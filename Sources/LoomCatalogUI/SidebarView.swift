@@ -176,21 +176,44 @@ struct ActivityList: View {
         if list.rows.isEmpty {
             EmptyListHint(model: model, isLoaded: list.isLoaded)
         } else {
-            // Grouped once per list change and calendar day (`model.today`), not once per minute.
-            ForEach(list.daySections(today: model.today)) { section in
-                Text(section.title)
-                    .font(LoomTheme.Typography.dayHeading)
-                    .foregroundStyle(LoomTheme.Text.secondaryStyle)
-                    .accessibilityAddTraits(.isHeader)
-                    .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
-                ForEach(section.rows) { row in
-                    SessionListEntry(row: row, model: model)
-                        .id(row.id)
-                        .onAppear { if row.id == list.rows.last?.id { model.loadMore(.activity) } }
+            // Grouped once per list change, membership flip and calendar day (`model.today`), not once per minute.
+            let layout = model.activityLayout()
+            let lastRowID = layout.lastRowID
+            if !layout.active.isEmpty {
+                ActivityHeading {
+                    HStack(spacing: LoomTheme.Space.sectionSpacing) {
+                        Text("Active").foregroundStyle(LoomTheme.Text.primary)
+                        Text("\(layout.active.count)").foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    }
+                    .accessibilityElement(children: .combine)
                 }
+                ForEach(layout.active) { row in activityEntry(row, lastRowID: lastRowID) }
+            }
+            ForEach(layout.days) { section in
+                ActivityHeading { Text(section.title).foregroundStyle(LoomTheme.Text.secondaryStyle) }
+                ForEach(section.rows) { row in activityEntry(row, lastRowID: lastRowID) }
             }
             if list.hasMore { ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(LoomTheme.Space.loadingPadding) }
         }
+    }
+
+    /// Paging starts from the last row actually drawn, which may be an Active row.
+    private func activityEntry(_ row: SessionRowModel, lastRowID: UUID?) -> some View {
+        SessionListEntry(row: row, model: model)
+            .id(row.id)
+            .onAppear { if row.id == lastRowID { model.loadMore(.activity) } }
+    }
+}
+
+/// A heading of the activity list, a day or "Active": one font, one trait and the same paddings.
+struct ActivityHeading<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .font(LoomTheme.Typography.dayHeading)
+            .accessibilityAddTraits(.isHeader)
+            .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
     }
 }
 
