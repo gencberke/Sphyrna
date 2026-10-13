@@ -5,7 +5,7 @@ The user's notes of 13 Oct on 0.4.1 ([FEEDBACK-2](FEEDBACK-2.md) was round 2), t
 ## Resume here
 
 - **State:** the user gave the go for the implementation and for commits on 13 Oct ("implementasyona geçebiliriz. commit yetkin de var"). FB3-3, FB3-2 and FB3-1 are done and committed ([verification](#verification)).
-- **Next:** an on-screen pass of the header and the Usage page (`~/Library/Caches/loom-fb3/onscreen/fb3.py`; it opens a Loom Dev window, so it needs the user's OK). Then release 0.4.2. The full suite waits for the user's word (13 Oct: "tam suite test değil geliştirmeleri doğrulayan testleri yap"). Then the combined check and release 0.4.2. The full suite and the on-screen checks wait for the user's word that the computer is idle ([D-13](../DECISIONS.md)). The user quits Loom for the install.
+- **Release 0.4.2** ships the round with targeted checks, at the user's choice. The full suite waits for their word (13 Oct: "tam suite test değil geliştirmeleri doğrulayan testleri yap"; "Hedefli testlerle kur"). Record: [Release 0.4.2](#release-042-13-oct). Then the combined check and release 0.4.2. The full suite and the on-screen checks wait for the user's word that the computer is idle ([D-13](../DECISIONS.md)). The user quits Loom for the install.
 - **Still open from hardening round 1** ([Resume here](HARDENING-1.md#resume-here)):
   - The user looks for Loom in Screen Time.
   - DEVELOPMENT §5 lacks rows for the H1-F evidence commands.
@@ -134,3 +134,27 @@ The slices run one after another (D-13), and then:
 | FB3-1: `scripts/check.sh --suite LoomCatalogUITests` (window tests skipped) | guards and build ok; 411 tests passed, including the 17 new `UsageCardsTests` (log `check-20261013T134428-11778.log`). After the planner's share-column change: `--suite UsageCardsTests`, 17 passed (log `check-20261013T134649-15089.log`) |
 | FB3-1 new tests fail without the change | Four rules broken at once (the ranking sort, "left" in the used text, the card order, the period capitalisation) plus the card text token: five tests failed (log `check-20261013T134500-12698.log`) |
 | FB3-1 look | Offscreen renders at 680 pt (`~/Library/Caches/loom-fb3/usage/`, from `UsageCardsTests` with `LOOM_USAGE_RENDER_DIR`), checked by the planner: 7 d with plan limits, 24 h, limits unavailable, not refreshed, 90 d with four models, and 30 d empty. Not seen in the real Settings window yet: tooltips, scrolling and VoiceOver |
+
+## Release 0.4.2 (13 Oct)
+
+0.4.2 adds feedback round 3 to 0.4.1: workflow subagents, the session header and the Usage page. The user chose the scope: targeted checks only, not the full suite.
+
+- **Targeted checks.** Log `check-20261013T135718-17843.log`: the guards, the debug build, the staged release tree without evidence code, and 187 tests. That is 59 in LoomCore (`SubagentTests`, `ClaudeHookTests`, `SessionEventHubTests`, `ClaudeRegistryTests`) and 128 in LoomCatalogUI (`SessionHeaderTests`, `UsageCardsTests`, `UsageModelTests`, `UsageFormatTests`, `SettingsRoutingTests`, `SidebarFooterTests`, `ConversationTabStripTests`, `LoomThemeTests`, `ProjectColorUITests`). Each slice's earlier runs are in [Verification](#verification).
+- **Package.** `Loom-Dev/packages/fb3-candidate`, build 84, `LoomRevision` `0a8fc0b`.
+- **On-screen pass on the package.** Fake providers, a fresh data root, launched through LaunchServices. The scratch drivers `fb3.py` and `fb3_continue.py` are in `~/Library/Caches/loom-fb3/onscreen/`; screenshots are in `run-135428/evidence/`. The user allowed the window on screen.
+  - **Header, one row per state:**
+    - Working: the Claude mark, the title, a Working pill with the chase, `edd-backend | al-audit`, and Stop | ⋯.
+    - Needs approval: an orange pill and `enmusait | main`.
+    - Ready in a folder without Git: the chip shows only the project.
+    - Stopped: no pill and no Stop; ⋯ stays at the trailing edge.
+    - 780 × 500 window: the title shortens, the branch drops, and the pill and the group stay.
+    - Sidebar collapsed: the row starts after the sidebar button.
+  - **Usage page in the real Settings window** at 7 d, 24 h and 30 d: the cards scroll between the top bar and the footer. There are no plan limits with fake providers and no failure reason, so there is no plan card.
+  - **Totals** equal the fixture's sums: 176 lines; 270,909 input, 255,018 output, 2,766,120 cache write and 23,147,645 cache read tokens.
+  - **First driver run:** it stopped early because it waited on the activity list, which is empty in the project view. The tab rows held the right states, and the continuation finished the pass on the same instance. Quit was clean.
+- **Not run:**
+  - The full suite (the user's scope).
+  - Hover, pressed fills, the focus ring and the ⋯ menu opening; screenshots cannot show them.
+  - Increase Contrast.
+  - Real plan limits on the Usage page.
+  - A real Claude workflow.
