@@ -17,12 +17,15 @@ The round ships as 0.4.3 ([D-41](../DECISIONS.md) numbering) when the user says 
   - Slice A, the Stop flow, is done and reviewed: commits 543d0d0 (FB4-1, FB4-4, FB4-6) and 95bffc9 (FB4-3). See [Slice A as built](#slice-a-as-built).
   - Slice B, the Active section (FB4-2), is done and reviewed: da77473, plus the planner's fix 71d4093. See [Slice B as built](#slice-b-as-built).
   - Slice C, the subagent panel (FB4-5), is done and reviewed: a6cd400 and 1d4b7de. See [Slice C as built](#slice-c-as-built).
-  - The full suite is running on the combined result.
+  - Full suite, first run: one timing test failed. The test is fixed in 9ade38d; the second run is under way ([verification](#verification)).
+  - The optimizer review is under way. The user asked for it on 13 Oct ("optimizer'ı max effort spawnlarsın"). It runs as `strict-reviewer` with the optimizer Brief on Opus 5.5 at max effort ([D-06](../DECISIONS.md) requires at least `xhigh`). It reads, and runs nothing. Scope:
+    - the round's diff, in depth;
+    - the release app's steady state.
 - **Next.**
   1. The full suite on the combined result (`scripts/check.sh --full --idle`). The user allowed it on 13 Oct.
   2. The on-screen pass, after the user says the computer is idle ([D-13](../DECISIONS.md)).
   3. Release 0.4.3, when the user says.
-- **Later.** The optimization run, when the user asks. Candidates noted so far:
+- **Optimization.** The optimizer's findings are verified and prioritized here; the user decides what is built. Candidates noted so far:
   - `SessionLifecycleController.markActivity` has had no caller since FB4-1.
 - **Still open from round 3** ([Resume here](FEEDBACK-3.md#resume-here)):
   - The header's hover, ⋯ menu and focus ring in daily use.
@@ -253,5 +256,5 @@ One build at a time. Each slice commits its own work. The planner reviews each o
 | Slice A targeted suites | Passed (implementer, 13 Oct). Commit 1: SessionLifecycleTests, SessionCatalogV3Tests, SessionCatalogTests, ConversationControllerTests and two header tests, 43 tests (`check-20261013T212945-28402.log`). New tests failed on the old source (`check-20261013T213104-29168.log`). Commit 2: LoomTerminalTests, ConversationControllerTests, SessionNavigationRuleTests, EndedScreenViewTests, DeletionModelTests, ConversationTabsTests and CatalogModelTests, 56 + 115 tests (`check-20261013T214555-35239.log`). Guards passed. |
 | Slice B targeted suites | Passed (implementer, 13 Oct): ActivePhaseTests and SessionEventHubTests (14), CatalogHotPathTests (25), SidebarRenderTests with CatalogHotPathTests (30), and the navigation, model, preferences, menu bar, open request and status suites (66 + 14). Logs: `check-20261013T215813-37695.log`, `-215847-38096.log`, `-215935-38903.log`, `-220005-39329.log`. Planner fix: ActivePhaseTests and SessionEventHubTests 15 passed (`check-20261013T220136-39799.log`); the new test failed without the fix (`check-20261013T220153-40291.log`). |
 | Slice C targeted suites | Passed (implementer, 13 Oct). SubagentTranscriptTests, SubagentPanelTests, SubagentTests, SubagentTreeTests and the end-to-end controller test: 48 + 22 (`check-20261013T222513-48342.log`). CatalogModelTests, CatalogHotPathTests, SessionHeaderTests, ConversationTabsTests, SessionNavigationModelTests, SidebarRenderTests and SidebarStatusTests: 102 (`check-20261013T222417-47940.log`). With the two panel rules removed, SubagentPanelTests failed with 6 issues. |
-| Full suite on the combined result | — |
+| Full suite on the combined result | Run 1 at 3506a5a..6da3aed (`check-20261013T222646-48936.log`): the release build and the staged release tree passed. `swift test -c release` failed 1 of the 622 LoomCoreTests: `aBurstOfWritesIsCoalescedIntoFewReads`. Under load, its 20 writes spaced 10 ms apart took 3.3 s, so the feed rightly read them in 10 batches, one per 200 ms window, against a fixed bound of 4. The test is now bounded by the windows the writes spanned (9ade38d); SubagentTranscriptTests 26 passed (`check-20261013T223350-51854.log`). Run 2: — |
 | On-screen pass | — |
