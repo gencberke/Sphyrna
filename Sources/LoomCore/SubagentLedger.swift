@@ -46,11 +46,22 @@ public struct BackgroundSubagentTask: Equatable, Sendable {
                 description: SubagentMeta.cleaned(task["description"] as? String))
         }
     }
+
+    /// Whether the list holds a workflow still in flight. A workflow's agents have no task of their own
+    /// (Claude 2.1.293's hook schema), so they are never listed while they run.
+    static func listsWorkflow(_ value: Any?) -> Bool {
+        guard let tasks = value as? [[String: Any]] else { return false }
+        return tasks.contains { task in
+            task["type"] as? String == "workflow"
+                && !["completed", "failed", "killed"].contains(task["status"] as? String ?? "")
+        }
+    }
 }
 
 /// What Claude writes next to a subagent's transcript:
 /// `<config>/projects/<slug>/<sessionId>/subagents/agent-<id>.meta.json`, about 25 ms after
-/// `SubagentStart`. Only these fields are read.
+/// `SubagentStart`; an agent the Workflow tool runs has it one level deeper, in
+/// `subagents/workflows/<run>/`. Only these fields are read.
 public struct SubagentMeta: Equatable, Sendable {
     public var agentType: String?
     public var description: String?
@@ -88,9 +99,11 @@ public struct SubagentMeta: Equatable, Sendable {
         let type = (object["agentType"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         let depth = (object["spawnDepth"] as? Int).map { max(1, min($0, 16)) }
         let shape = object["requestShape"] as? String
+        // A workflow's agents run on after the parent's turn, although Claude writes "foreground" for them.
+        let inWorkflow = object["workflowPhase"] is String
         return SubagentMeta(
             agentType: type, description: cleaned(object["description"] as? String), depth: depth,
-            isBackground: shape.map { $0 == "background" })
+            isBackground: inWorkflow ? true : shape.map { $0 == "background" })
     }
 
     /// Where the meta file of `agentID` lives, from the hook payload's paths. The subagent's own
@@ -112,12 +125,42 @@ public struct SubagentMeta: Equatable, Sendable {
             .appendingPathComponent("\(name).meta.json")
     }
 
-    /// A short read of the file; nil while it does not exist yet or is not what is expected.
+    static let maximumWorkflowRuns = 256
+
+    /// The meta file as it exists now: `file` (from `fileURL`) or, for an agent of a workflow, the same
+    /// name in one of the `workflows/<run>/` folders beside it. A workflow agent's `SubagentStart` names
+    /// only the parent's transcript, so its run folder is looked up. Nil while neither exists.
+    static func existingFile(agentID: String, at file: URL) -> URL? {
+        let manager = FileManager.default
+        if manager.fileExists(atPath: file.path) { return file }
+        let subagents = file.deletingLastPathComponent()
+        guard isValidAgentID(agentID), file.lastPathComponent == "agent-\(agentID).meta.json",
+              subagents.lastPathComponent == "subagents" else { return nil }
+        let workflows = subagents.appendingPathComponent("workflows", isDirectory: true)
+        guard let runs = try? manager.contentsOfDirectory(atPath: workflows.path) else { return nil }
+        for run in runs.prefix(maximumWorkflowRuns) {
+            let candidate = workflows.appendingPathComponent(run, isDirectory: true)
+                .appendingPathComponent(file.lastPathComponent)
+            if manager.fileExists(atPath: candidate.path) { return candidate }
+        }
+        return nil
+    }
+
+    /// Whether `url` is in a workflow's folder: `…/subagents/workflows/<run>/<file>`.
+    static func isInWorkflow(_ url: URL) -> Bool {
+        let parts = url.pathComponents
+        return parts.count >= 4 && parts[parts.count - 3] == "workflows" && parts[parts.count - 4] == "subagents"
+    }
+
+    /// A short read of the file; nil while it does not exist yet or is not what is expected. A file in a
+    /// workflow's folder belongs to an agent that runs on after the parent's turn, so it reads as background.
     public static func read(_ url: URL) -> SubagentMeta? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: maximumFileByteCount + 1) else { return nil }
-        return parse(data)
+        guard let data = try? handle.read(upToCount: maximumFileByteCount + 1),
+              var meta = parse(data) else { return nil }
+        if isInWorkflow(url) { meta.isBackground = true }
+        return meta
     }
 }
 
@@ -128,7 +171,8 @@ public struct SubagentMeta: Equatable, Sendable {
 /// - A background subagent that `Stop.background_tasks` lists as running and Loom never saw start is
 ///   added as running. A background subagent's own `SubagentStop` lists itself as running, so that list
 ///   never ends anything; only the stop hook does, except that the parent's `Stop` ends a running
-///   foreground record whose stop hook was lost (`turnEnded`).
+///   foreground record whose stop hook was lost (`turnEnded`). A workflow's agents count as background
+///   (their meta), and a `Stop` that lists a running workflow ends nothing.
 /// - The user's next real prompt drops the finished records; a harness hand-back is not that prompt.
 /// - Bounded: at most `maximumFinished` finished and `maximumRunning` running records are kept.
 public struct SubagentLedger: Equatable, Sendable {
@@ -173,12 +217,15 @@ public struct SubagentLedger: Equatable, Sendable {
     /// blocks it), so a running record that this Stop does not list and that is not known to be background
     /// lost its `SubagentStop` hook and ends now. A known-background record that is not listed stays running
     /// (what an unlisted background subagent means is not verified). The ended id is remembered, so a late
-    /// real stop changes nothing.
-    mutating func turnEnded(listing tasks: [BackgroundSubagentTask], at date: Date) {
+    /// real stop changes nothing. While a workflow runs (`workflowRunning`), nothing ends: its agents are
+    /// never listed, and one whose meta is not read yet still looks like a foreground record.
+    mutating func turnEnded(listing tasks: [BackgroundSubagentTask], workflowRunning: Bool = false, at date: Date) {
         noteBackground(tasks, at: date)
-        for index in records.indices where records[index].isRunning && !records[index].isBackground {
-            records[index].endedAt = date
-            noteEnded(records[index].id)
+        if !workflowRunning {
+            for index in records.indices where records[index].isRunning && !records[index].isBackground {
+                records[index].endedAt = date
+                noteEnded(records[index].id)
+            }
         }
         trim()
     }

@@ -344,7 +344,7 @@ public actor ClaudeSessionAdapter {
     private func resolveSubagentMeta(runID: UUID, agentID: String, file: URL, attempts: Int) async {
         for attempt in 0..<attempts {
             guard trackers[runID] != nil else { return }
-            if let meta = SubagentMeta.read(file) {
+            if let found = SubagentMeta.existingFile(agentID: agentID, at: file), let meta = SubagentMeta.read(found) {
                 while transitioningRuns.contains(runID) {
                     guard trackers[runID] != nil else { return }
                     try? await Task.sleep(for: .milliseconds(1))

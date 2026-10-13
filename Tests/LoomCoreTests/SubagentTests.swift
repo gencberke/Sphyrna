@@ -187,6 +187,24 @@ struct SubagentTests {
         #expect(records[0].endedAt == t0.addingTimeInterval(30))
     }
 
+    @Test func aStopThatListsARunningWorkflowEndsNoSubagent() async throws {
+        // FB3-3, seen with real Claude on 13 Oct: the parent's turn ended 15 s after it launched a workflow,
+        // and the workflow's agents, which ran for minutes more, showed as finished.
+        let (tracker, session, run) = try await tracker([("SessionStart", [:]), ("UserPromptSubmit", ["prompt": "go"])])
+        let t0 = Date(timeIntervalSince1970: 3_000)
+        _ = try await tracker.receive(envelope(session, run, "SubagentStart", fields: start("w1", "implementer"), sentAt: t0))
+        let workflow: [String: Any] = [
+            "id": "wf1", "type": "workflow", "status": "running", "description": "Draft the module atlas", "name": "atlas"]
+        _ = try await tracker.receive(envelope(
+            session, run, "Stop", fields: ["background_tasks": [workflow]], sentAt: t0.addingTimeInterval(15)))
+        var records = await tracker.subagentRecords()
+        #expect(records.count == 1 && records[0].isRunning, "a workflow's agents are never listed; none ends here")
+        _ = try await tracker.receive(envelope(
+            session, run, "SubagentStop", fields: stop("w1", "implementer"), sentAt: t0.addingTimeInterval(480)))
+        records = await tracker.subagentRecords()
+        #expect(!records[0].isRunning && records[0].endedAt == t0.addingTimeInterval(480))
+    }
+
     @Test func aStaleStopListCannotBringAFinishedSubagentBack() async throws {
         let (tracker, session, run) = try await tracker()
         _ = try await tracker.receive(envelope(session, run, "SubagentStart", fields: start("bg1")))
@@ -268,6 +286,32 @@ struct SubagentTests {
         #expect(SubagentMeta.fileURL(agentID: "a2", transcriptPath: nil, agentTranscriptPath: own) == nil)
         #expect(SubagentMeta.fileURL(agentID: "../etc", transcriptPath: transcript, agentTranscriptPath: nil) == nil)
         #expect(SubagentMeta.fileURL(agentID: "a1", transcriptPath: "relative/x.jsonl", agentTranscriptPath: nil) == nil)
+    }
+
+    @Test func aWorkflowsAgentIsFoundInItsRunFolderAndReadsAsBackground() throws {
+        // Claude writes "foreground" for a workflow's agents, which run on after the parent's turn.
+        let json = #"{"agentType":"implementer","description":"draft:mod-platform","workflowPhase":"Draft","spawnDepth":1,"requestShape":"foreground","requestNonInteractive":false}"#
+        #expect(try #require(SubagentMeta.parse(Data(json.utf8))).isBackground == true)
+
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-subagent-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let subagents = root.appendingPathComponent("subagents", isDirectory: true)
+        let runFolder = subagents.appendingPathComponent("workflows/wf_88d81e62-b58", isDirectory: true)
+        try FileManager.default.createDirectory(at: runFolder, withIntermediateDirectories: true)
+        // A workflow without phases: the folder alone says it.
+        try #"{"agentType":"implementer","requestShape":"foreground"}"#
+            .write(to: runFolder.appendingPathComponent("agent-w1.meta.json"), atomically: true, encoding: .utf8)
+        let found = try #require(SubagentMeta.existingFile(agentID: "w1", at: subagents.appendingPathComponent("agent-w1.meta.json")))
+        #expect(found.path == runFolder.appendingPathComponent("agent-w1.meta.json").path)
+        #expect(SubagentMeta.read(found)?.isBackground == true)
+        // A plain subagent's own file is used as is; an id with no file anywhere is not found.
+        try #"{"requestShape":"foreground"}"#.write(to: subagents.appendingPathComponent("agent-a1.meta.json"), atomically: true, encoding: .utf8)
+        let plain = subagents.appendingPathComponent("agent-a1.meta.json")
+        #expect(SubagentMeta.existingFile(agentID: "a1", at: plain) == plain)
+        #expect(SubagentMeta.read(plain)?.isBackground == false)
+        #expect(SubagentMeta.existingFile(agentID: "w2", at: subagents.appendingPathComponent("agent-w2.meta.json")) == nil)
+        // The name must be the agent's own.
+        #expect(SubagentMeta.existingFile(agentID: "w1", at: subagents.appendingPathComponent("agent-a1x.meta.json")) == nil)
     }
 
     @Test func metaDetailsFillTheRecordOnceAndOnlyOnce() async throws {
@@ -381,6 +425,54 @@ struct SubagentTests {
 
         #expect(try await supervisor.stop(sessionID: session, graceSeconds: 0.05).succeeded)
         #expect(await supervisor.events.snapshot().sessions[session]?.subagents == [])
+        #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
+    }
+
+    @Test func theAdapterKeepsAWorkflowsAgentRunningThroughTheParentsStop() async throws {
+        // FB3-3 end to end: the agent's meta is in the workflow's run folder, the parent's turn ends while it
+        // works, and only its own stop ends it.
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-subagent-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runFolder = root.appendingPathComponent(
+            "projects/-tmp-ws/\(conversation)/subagents/workflows/wf_88d81e62-b58", isDirectory: true)
+        try FileManager.default.createDirectory(at: runFolder, withIntermediateDirectories: true)
+        try #"{"agentType":"implementer","description":"draft:core-map","workflowPhase":"Draft","spawnDepth":1,"requestShape":"foreground"}"#
+            .write(to: runFolder.appendingPathComponent("agent-w1.meta.json"), atomically: true, encoding: .utf8)
+        let parent = root.appendingPathComponent("projects/-tmp-ws/\(conversation).jsonl").path
+
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
+        let session = UUID()
+        try await supervisor.createSession(ManagedSession(
+            id: session, provider: .claude, providerConversationID: conversation,
+            workingDirectory: FileManager.default.temporaryDirectory.path))
+        let launched = try await supervisor.launch(
+            sessionID: session, executable: childPath, arguments: ["stubborn"],
+            environment: LaunchEnvironment.make(path: "/usr/bin:/bin", runID: supervisor.ownershipRunID, sessionID: session))
+        let run = try #require(launched.session.currentRun?.id)
+        let adapter = ClaudeSessionAdapter(supervisor: supervisor)
+        func send(_ event: String, _ fields: [String: Any] = [:]) async throws {
+            var all = fields
+            all["transcript_path"] = parent
+            _ = try await adapter.receive(envelope(session, run, event, fields: all))
+        }
+
+        try await send("SessionStart", ["source": "startup"])
+        try await send("UserPromptSubmit", ["prompt": "map the modules"])
+        try await send("SubagentStart", start("w1", "implementer"))
+        var records = await settle(supervisor, session) { $0.first?.description != nil }
+        #expect(records.first?.description == "draft:core-map" && records.first?.isBackground == true)
+
+        // The parent's turn ends while the workflow runs; this Stop does not list it.
+        try await send("Stop", ["background_tasks": [] as [Any]])
+        records = await supervisor.events.snapshot().sessions[session]?.subagents ?? []
+        #expect(records.count == 1 && records[0].isRunning)
+
+        try await send("SubagentStop", stop("w1", "implementer").merging(
+            ["agent_transcript_path": runFolder.appendingPathComponent("agent-w1.jsonl").path]) { _, new in new })
+        records = await settle(supervisor, session) { $0.first?.isRunning == false }
+        #expect(records.count == 1 && !records[0].isRunning)
+
+        #expect(try await supervisor.stop(sessionID: session, graceSeconds: 0.05).succeeded)
         #expect((await supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 }

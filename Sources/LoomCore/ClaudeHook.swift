@@ -387,6 +387,8 @@ public struct ClaudeHookEvent: Equatable, Sendable {
     public let lastAssistantMessage: String?
     /// `Stop` only: the background subagents Claude reports as running at the end of the turn.
     public let backgroundSubagents: [BackgroundSubagentTask]
+    /// `Stop` only: a workflow is still in flight at the end of the turn; its agents are not listed.
+    public let listsRunningWorkflow: Bool
     /// `UserPromptSubmit` only: the harness injects hand-backs of background subagents
     /// (`<agent-message`) and task notifications (`<task-notification`) as prompts. They are
     /// not something the user typed and do not start a new turn from the user's point of view.
@@ -442,6 +444,7 @@ public struct ClaudeHookEvent: Equatable, Sendable {
         workingDirectory = object["cwd"] as? String
         lastAssistantMessage = object["last_assistant_message"] as? String
         backgroundSubagents = eventName == "Stop" ? BackgroundSubagentTask.parse(object["background_tasks"]) : []
+        listsRunningWorkflow = eventName == "Stop" && BackgroundSubagentTask.listsWorkflow(object["background_tasks"])
         promptIsSynthetic = eventName == "UserPromptSubmit"
             && (object["prompt"] as? String).map(Self.isSyntheticPrompt) == true
         switch eventName {
@@ -765,7 +768,9 @@ public actor ClaudeHookStateTracker {
             currentStatus.lastAssistantMessage = event.lastAssistantMessage
             currentStatus.backgroundTaskCount = backgroundTaskCount
             currentStatus.scheduledTaskCount = scheduledTaskCount
-            subagents.turnEnded(listing: event.backgroundSubagents, at: min(receivedAt, envelope.sentAt))
+            subagents.turnEnded(
+                listing: event.backgroundSubagents, workflowRunning: event.listsRunningWorkflow,
+                at: min(receivedAt, envelope.sentAt))
         case let .stopFailure(error, _):
             currentStatus.activity = .failed(error)
             currentStatus.lastAssistantMessage = event.lastAssistantMessage

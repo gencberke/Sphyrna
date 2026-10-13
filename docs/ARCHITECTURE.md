@@ -118,7 +118,7 @@ CatalogModel.startConversation -> ConversationController.start (creates Terminal
     status; a subagent's own permission prompt, PermissionRequest or a permission_prompt Notification, shows Needs approval until
     the registry's next "idle" or "busy" sample returns the state from before it (FB2-6); other events with an agent_id stay
     dropped as .childAgent); the adapter reads `meta.json` off the hook path (bounded
-    retry after a start, one try at the stop) and publishes `.subagents` to the hub; `SessionViewState.subagents` is cleared by a
+    retry after a start, one try at the stop; a workflow's agents keep it in subagents/workflows/<run>/ and count as background) and publishes `.subagents` to the hub; `SessionViewState.subagents` is cleared by a
     new run, a detach and the run's end, and a later update is ignored; SessionListEntry draws `SubagentTreeView` under the card
  -> SessionEventHub frame -> CatalogModel.apply (sequence fast path, full reconcile on a gap) -> SessionRowModel.live
  -> SessionIndicator(record:live:) -> IndicatorView / ChaseDots in sidebar row and detail header
