@@ -76,35 +76,45 @@ struct DetailHeader: View {
             if model.showsDevTerminal {
                 ProviderIcon(provider: .synthetic, size: LoomTheme.Layout.providerIconHeader)
                 Text("Synthetic terminal (development)").fontWeight(.semibold).lineLimit(1)
+                Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             } else if let row = model.selectedRow {
-                ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.providerIconHeader)
-                Text(model.title(of: row)).fontWeight(.semibold).lineLimit(1).truncationMode(.tail)
-                IndicatorView(indicator: row.indicator)
-                if model.busy[row.id] == .starting {
-                    Text("Starting — complete any prompts in the terminal")
-                        .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
-                        .lineLimit(1).layoutPriority(1)
-                } else if model.isDeleting(row.id) {
-                    Text("Deleting…").font(LoomTheme.Typography.statusLabel).foregroundStyle(LoomTheme.Text.secondary)
-                        .lineLimit(1).layoutPriority(1)
-                } else if let notice = model.preparingNotice {
-                    PreparingNotice(text: notice)
-                } else if let label = row.indicator.label {
-                    Text(label).font(LoomTheme.Typography.statusLabel).foregroundStyle(row.indicator.labelColor)
-                        .lineLimit(1).layoutPriority(1)
-                }
-                if let mark = model.projectMark(of: row.record) { ProjectHeaderMark(mark: mark) }
+                SessionHeaderRow(model: model, row: row)
             } else if let notice = model.preparingNotice {
                 PreparingNotice(text: notice)
+                Spacer(minLength: LoomTheme.Space.detailMinSpacer)
+            } else {
+                Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             }
-            Spacer(minLength: LoomTheme.Space.detailMinSpacer)
-            if !model.showsDevTerminal, let row = model.selectedRow, model.canStop(row) {
-                Button("Stop") { model.stopConversation(row.id) }
-                    .buttonStyle(AccentButtonStyle(kind: .tinted))
-                    .accessibilityLabel("Stop session")
-            }
-            if !model.showsDevTerminal, let row = model.selectedRow {
-                Menu {
+        }
+        .font(LoomTheme.Typography.body)
+        .foregroundStyle(LoomTheme.Text.primary)
+        .padding(.horizontal, LoomTheme.Space.detailInset)
+        // The window buttons are centered natively 26 pt below the window top
+        // (8 pt panel inset + 18 pt); the row's center line is the same.
+        .frame(height: Self.rowHeight)
+        .padding(.bottom, Self.bottomSpacing(stripVisible: model.tabStripIsVisible))
+    }
+}
+
+/// A selected session in the header row (D-53, "A with the branch"): the provider mark, then the title,
+/// which gives way first; at fixed places on the right the state pill (or a transient text in its place),
+/// the project chip ending with the branch, a hairline and the control group (`HeaderFlow`).
+struct SessionHeaderRow: View {
+    let model: CatalogModel
+    let row: SessionRowModel
+
+    var body: some View {
+        HStack(spacing: LoomTheme.Space.detailSpacing) {
+            ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.providerIconHeader)
+            HeaderFlow {
+                Text(model.title(of: row)).fontWeight(.semibold).lineLimit(1).truncationMode(.tail)
+                    .headerSlot(.title)
+                status
+                if let chip = model.headerChip(of: row.record) {
+                    ProjectBranchChip(chip: chip).headerSlot(.chip, dropsBranch: chip.dropsBranch)
+                }
+                HeaderRule().headerSlot(.rule)
+                HeaderControlGroup(canStop: model.canStop(row), stop: { model.stopConversation(row.id) }) {
                     Button("Rename…") { model.beginRename(row.id) }
                     Button("Open in Tab") { model.openTab(row.id) }
                         .disabled(model.tabs.isPinned(row.id))
@@ -115,21 +125,27 @@ struct DetailHeader: View {
                         .disabled(!model.canStop(row))
                     SessionLocationMenuItems(row: row)
                     DeletionMenuItems(model: model, row: row)
-                } label: {
-                    Image(systemName: "ellipsis")
                 }
-                .menuStyle(.button).buttonStyle(ChromeButtonStyle()).menuIndicator(.hidden).fixedSize()
-                .focusEffectDisabled()
-                .accessibilityLabel("Session actions")
+                .headerSlot(.group)
             }
+            .frame(maxWidth: .infinity)
         }
-        .font(LoomTheme.Typography.body)
-        .foregroundStyle(LoomTheme.Text.primary)
-        .padding(.horizontal, LoomTheme.Space.detailInset)
-        // The window buttons are centered natively 26 pt below the window top
-        // (8 pt panel inset + 18 pt); the row's center line is the same.
-        .frame(height: Self.rowHeight)
-        .padding(.bottom, Self.bottomSpacing(stripVisible: model.tabStripIsVisible))
+    }
+
+    /// The state pill, or in its place a transient text as plain secondary text; nothing for a run that ended.
+    @ViewBuilder private var status: some View {
+        if model.busy[row.id] == .starting {
+            Text("Starting — complete any prompts in the terminal")
+                .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+                .lineLimit(1).headerSlot(.status, shrinks: true)
+        } else if model.isDeleting(row.id) {
+            Text("Deleting…").font(LoomTheme.Typography.statusLabel).foregroundStyle(LoomTheme.Text.secondary)
+                .lineLimit(1).headerSlot(.status, shrinks: true)
+        } else if let notice = model.preparingNotice {
+            PreparingNotice(text: notice).headerSlot(.status, shrinks: true)
+        } else if let style = StatePillStyle(row.indicator) {
+            StatePill(indicator: row.indicator, style: style).headerSlot(.status)
+        }
     }
 }
 

@@ -17,9 +17,21 @@ extension CatalogModel {
         return projectTones[id]
     }
 
-    /// The project of a session for the tab and the detail header; nil while colours are off or the session has none.
+    /// The project of a session for the tab; nil while colours are off or the session has none.
     func projectMark(of record: CatalogSession) -> ProjectMark? {
         guard projectColorsEnabled, let name = projectName(for: record) else { return nil }
         return ProjectMark(name: name, tone: record.projectID.flatMap { projectTones[$0] })
+    }
+
+    /// The project of a session for the detail header's chip. The chip names the project whatever the
+    /// setting says (D-53): with colours off, or a project set to None, it is neutral (no tone).
+    func headerProjectMark(of record: CatalogSession) -> ProjectMark? {
+        guard let name = projectName(for: record) else { return nil }
+        return ProjectMark(name: name, tone: projectColorsEnabled ? record.projectID.flatMap { projectTones[$0] } : nil)
+    }
+
+    /// What the header chip shows for a session: its project and branch, or nil when there is neither.
+    func headerChip(of record: CatalogSession) -> SessionHeaderChip? {
+        SessionHeaderChip(project: headerProjectMark(of: record), branch: branches[record.session.workingDirectory])
     }
 }

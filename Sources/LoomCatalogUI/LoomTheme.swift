@@ -115,6 +115,9 @@ enum LoomTheme {
         /// (at least 4.5:1 on a resting tab, 3:1 for the glyph on the open tab).
         static let secondaryOnTintRGB = RGB(hex: 0x9297A8)
         static let secondaryOnTint = secondaryOnTintRGB.color
+        /// `secondaryOnTint` as a style: Increase Contrast takes the lifted secondary of that tier.
+        static let secondaryOnTintStyle = ContrastStyle(
+            standard: Tone(rgb: secondaryOnTintRGB, opacity: 1), increased: Tone(rgb: secondaryIncreasedRGB, opacity: 1))
     }
 
     /// The one brand color (the fleece of the mark). Fills carry dark text, never light text.
@@ -141,7 +144,7 @@ enum LoomTheme {
     }
 
     /// The project colour class (D-48): six soft tones besides the accent and the three status hues. Used
-    /// only for the sidebar stripe, the tab tint and the header stripe; never a dot, never in the
+    /// only for the sidebar stripe, the tab tint and the header chip's stripe and wash; never a dot, never in the
     /// indicator slot, never a text colour, never inside the terminal (DESIGN §6). The base colour is
     /// the stripe colour and the tint source; Increase Contrast swaps in a lighter stripe colour.
     /// Each base is at least 3:1 on the sidebar's worst case (`sidebarOverWhite`) and at least 30 degrees
@@ -192,10 +195,6 @@ enum LoomTheme {
             contrast == .increased ? stripeWidthIncreased : stripeWidth
         }
 
-        /// The detail header's mark after the status label: a stripe and the project name.
-        static let headerStripeHeight: CGFloat = 12
-        static let headerGap: CGFloat = 6
-
         // Tab tint (T5): a wash of the tone on every tab, a step stronger on hover; on the open tab a
         // stronger wash over the selection fill and a 1 pt stroke of the tone. Increase Contrast draws
         // that stroke in the lighter stripe colour at a higher opacity; the washes stay as they are.
@@ -211,6 +210,60 @@ enum LoomTheme {
         /// The menu swatch: a rounded square, never a dot.
         static let swatch: CGFloat = 12
         static let swatchRadius: CGFloat = 3
+    }
+
+    /// The detail header row (FB3-2, D-53; design/feedback-3-preview.html, "Chosen: A with the branch"):
+    /// the title on the left; at fixed places on the right a state pill, a project chip ending with the
+    /// branch, a hairline and one control group of a Stop segment and a ⋯ segment.
+    enum Header {
+        // State pill: a capsule with the indicator and the label. Working sits on a light white wash in
+        // primary text, the other neutral states on a fainter one in lifted secondary text; attention,
+        // failure and the unviewed finish take a low wash of their own colour and a lighter label of
+        // it (the plain status colours are 4.3 to 4.4:1 on their wash for failure and unviewed).
+        static let pillHeight: CGFloat = 22
+        static let pillLeading: CGFloat = 7
+        static let pillTrailing: CGFloat = 9
+        static let pillGap: CGFloat = 6
+        static let pillWorkingWash = 0.07
+        static let pillNeutralWash = 0.05
+        static let pillStatusWash = 0.15
+        static let attentionLabelRGB = RGB(hex: 0xFFB547)
+        static let failureLabelRGB = RGB(hex: 0xFF8A85)
+        static let unviewedLabelRGB = RGB(hex: 0x8FB0FF)
+
+        // Project chip: the tone stripe (full height), the project name, a hairline, the branch.
+        static let chipHeight: CGFloat = 22
+        /// Space after the stripe; a chip without a stripe insets its text `chipInset` instead.
+        static let chipStripeGap: CGFloat = 7
+        static let chipInset: CGFloat = 8
+        static let chipRuleGap: CGFloat = 8
+        static let chipRuleAfter: CGFloat = 7
+        static let chipRuleHeight: CGFloat = 14
+        static let chipBranchGap: CGFloat = 4
+        /// The glyph before the branch name.
+        static let chipGlyph = Font.system(size: 11)
+        /// A longer branch name ends in an ellipsis.
+        static let branchMaxWidth: CGFloat = 180
+        /// The neutral chip (no project, None, colours off): a white wash.
+        static let chipNeutralWash = 0.07
+        static let chipNeutral = Color.white.opacity(chipNeutralWash)
+
+        // The hairline before the control group, and the group.
+        static let ruleHeight: CGFloat = 16
+        static let ruleMargin: CGFloat = 2
+        static let groupHeight: CGFloat = 24
+        static let groupWash = 0.07
+        static let group = Color.white.opacity(groupWash)
+        static let stopGlyph: CGFloat = 8
+        static let stopGlyphRadius: CGFloat = 1.5
+        static let stopPadding: CGFloat = 10
+        static let stopGap: CGFloat = 6
+        static let menuSegmentWidth: CGFloat = 28
+
+        // Narrow rows: the title gives way down to this width, then the branch goes, then the project
+        // name shortens (never below the floor).
+        static let titleMinWidth: CGFloat = 100
+        static let chipFloorWidth: CGFloat = 56
     }
 
     enum Opacity {

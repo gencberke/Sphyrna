@@ -3,9 +3,9 @@ import LoomCore
 import SwiftUI
 
 // The project colour surfaces (D-48; DESIGN §6): the sidebar stripe, the tab tint, the detail header's
-// mark and the Color menu. Values are `LoomTheme.ProjectColor`'s; whether anything is drawn is decided
-// by `CatalogModel.projectTone(forProject:)` and `projectMark(of:)`, which answer nil while the
-// setting is off.
+// project chip (`ProjectBranchChip`) and the Color menu. Values are `LoomTheme.ProjectColor`'s; whether
+// anything is drawn is decided by `CatalogModel.projectTone(forProject:)`, `projectMark(of:)` and
+// `headerProjectMark(of:)`, which answer no tone while the setting is off.
 
 /// The 3 pt stripe (4 pt under Increase Contrast) of a project header or one of its cards. The caller
 /// places it `stripeOutset` left of the row's leading edge; it never takes a click or a VoiceOver stop.
@@ -50,29 +50,6 @@ struct ProjectTabStyle: Equatable {
             standard: LoomTheme.Tone(rgb: rgb, opacity: LoomTheme.ProjectColor.tabStrokeOpen),
             increased: LoomTheme.Tone(rgb: LoomTheme.ProjectColor.increasedRGB(tone),
                                       opacity: LoomTheme.ProjectColor.tabStrokeOpenIncreased)) : nil
-    }
-}
-
-/// The detail header's project mark, after the status label: a stripe in the tone (none for a project
-/// set to None) and the project name in secondary text.
-struct ProjectHeaderMark: View {
-    let mark: ProjectMark
-    @Environment(\.colorSchemeContrast) private var contrast
-
-    var body: some View {
-        HStack(spacing: LoomTheme.ProjectColor.headerGap) {
-            if let tone = mark.tone {
-                RoundedRectangle(cornerRadius: LoomTheme.ProjectColor.stripeRadius)
-                    .fill(LoomTheme.ProjectColor.stripe(tone))
-                    .frame(width: LoomTheme.ProjectColor.stripeWidth(for: contrast),
-                           height: LoomTheme.ProjectColor.headerStripeHeight)
-                    .accessibilityHidden(true)
-            }
-            Text(mark.name).font(LoomTheme.Typography.statusLabel)
-                .foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1).truncationMode(.tail)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Project: \(mark.name)")
     }
 }
 

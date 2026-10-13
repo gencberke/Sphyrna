@@ -685,7 +685,8 @@ public final class CatalogModel {
         }
     }
 
-    /// Keeps a branch only while a card, the selection or a tab shows its folder.
+    /// Keeps a branch only while a card, the selection or a tab shows its folder (the selection's and the
+    /// tabs' rows are always in `rowModels`, see `pruneRowModels`; the header chip reads the same data).
     private func pruneBranches() {
         // A requester's folder stays too: the origin line compares its branch with the card's.
         let shown = Set(rowModels.values.map { $0.record.session.workingDirectory })
@@ -854,8 +855,10 @@ public final class CatalogModel {
                 if selectedSessionID == id { select(nil) }
                 return
             }
-            await ensureBranches(for: [record])
             await ensureOrigins(for: [record])
+            // Last, with nothing awaited before the row exists: the row is what keeps its folder's
+            // branch, and a prune in between would drop the branch the header is about to show.
+            await ensureBranches(for: [record])
             guard selectedSessionID == id else { return }
             selectedRow = row(for: record)
         } catch {
@@ -966,8 +969,8 @@ public final class CatalogModel {
                 // Only a definite "no such session" unpins a tab; a read that failed leaves it for a later pass.
                 guard let record = try await readSession(id, catalog: catalog) else { forgetTab(id); continue }
                 guard tabs.isPinned(id) else { continue }
-                await ensureBranches(for: [record])
                 await ensureOrigins(for: [record])
+                await ensureBranches(for: [record]) // last: see `ensureSelectedRow`
                 guard tabs.isPinned(id) else { continue }
                 _ = row(for: record)
             } catch {
