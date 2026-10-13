@@ -304,11 +304,14 @@ struct SubagentTests {
         let found = try #require(SubagentMeta.existingFile(agentID: "w1", at: subagents.appendingPathComponent("agent-w1.meta.json")))
         #expect(found.path == runFolder.appendingPathComponent("agent-w1.meta.json").path)
         #expect(SubagentMeta.read(found)?.isBackground == true)
+        // The transcript is the meta file's sibling, in the run folder for a workflow's agent.
+        #expect(SubagentMeta.read(found)?.transcriptPath == runFolder.appendingPathComponent("agent-w1.jsonl").path)
         // A plain subagent's own file is used as is; an id with no file anywhere is not found.
         try #"{"requestShape":"foreground"}"#.write(to: subagents.appendingPathComponent("agent-a1.meta.json"), atomically: true, encoding: .utf8)
         let plain = subagents.appendingPathComponent("agent-a1.meta.json")
         #expect(SubagentMeta.existingFile(agentID: "a1", at: plain) == plain)
         #expect(SubagentMeta.read(plain)?.isBackground == false)
+        #expect(SubagentMeta.read(plain)?.transcriptPath == subagents.appendingPathComponent("agent-a1.jsonl").path)
         #expect(SubagentMeta.existingFile(agentID: "w2", at: subagents.appendingPathComponent("agent-w2.meta.json")) == nil)
         // The name must be the agent's own.
         #expect(SubagentMeta.existingFile(agentID: "w1", at: subagents.appendingPathComponent("agent-a1x.meta.json")) == nil)
@@ -317,12 +320,14 @@ struct SubagentTests {
     @Test func metaDetailsFillTheRecordOnceAndOnlyOnce() async throws {
         let (tracker, session, run) = try await tracker()
         _ = try await tracker.receive(envelope(session, run, "SubagentStart", fields: start("a1")))
-        let meta = SubagentMeta(agentType: "Explore", description: "Find it", depth: 2, isBackground: true)
+        let meta = SubagentMeta(agentType: "Explore", description: "Find it", depth: 2, isBackground: true,
+                                transcriptPath: "/tmp/cfg/projects/-tmp-ws/s/subagents/agent-a1.jsonl")
         #expect(await tracker.applySubagentMeta(id: "a1", meta))
         #expect(!(await tracker.applySubagentMeta(id: "a1", meta)))
         #expect(!(await tracker.applySubagentMeta(id: "unknown", meta)))
         let record = try #require(await tracker.subagentRecords().first)
         #expect(record.description == "Find it" && record.depth == 2 && record.isBackground)
+        #expect(record.transcriptPath == "/tmp/cfg/projects/-tmp-ws/s/subagents/agent-a1.jsonl")
     }
 
     // MARK: Event hub
@@ -404,6 +409,7 @@ struct SubagentTests {
         try meta.write(to: subagents.appendingPathComponent("agent-a1.meta.json"), atomically: true, encoding: .utf8)
         records = await settle(supervisor, session) { $0.first?.description != nil }
         #expect(records.first?.description == "Find login flow handlers")
+        #expect(records.first?.transcriptPath == subagents.appendingPathComponent("agent-a1.jsonl").path)
 
         try await send("SubagentStop", stop("a1"))
         records = await settle(supervisor, session) { $0.first?.isRunning == false }
@@ -461,6 +467,7 @@ struct SubagentTests {
         try await send("SubagentStart", start("w1", "implementer"))
         var records = await settle(supervisor, session) { $0.first?.description != nil }
         #expect(records.first?.description == "draft:core-map" && records.first?.isBackground == true)
+        #expect(records.first?.transcriptPath == runFolder.appendingPathComponent("agent-w1.jsonl").path)
 
         // The parent's turn ends while the workflow runs; this Stop does not list it.
         try await send("Stop", ["background_tasks": [] as [Any]])

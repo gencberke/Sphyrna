@@ -171,6 +171,73 @@ struct FakeClaude {
         }
     }
 
+    /// `/subagent <ms>`: a subagent that works for about `milliseconds`, as the real one does. It starts (the hook),
+    /// gets its `meta.json`, appends transcript lines one at a time (the brief, thinking, text, tool calls and
+    /// their results, an attachment line, an error) the way Claude's flush does, and stops (the hook). It
+    /// writes under `CLAUDE_CONFIG_DIR` only: without one the hooks still run and no file is written.
+    func subagent(milliseconds: Int) {
+        let agent = "fake" + UUID().uuidString.lowercased().prefix(8)
+        let folder = String(FileManager.default.currentDirectoryPath.map { $0.isLetter || $0.isNumber ? $0 : "-" })
+        let project = environment["CLAUDE_CONFIG_DIR"].map {
+            URL(fileURLWithPath: $0).appendingPathComponent("projects/\(folder)", isDirectory: true)
+        }
+        let parent = project?.appendingPathComponent("\(id).jsonl").path
+        let directory = project?.appendingPathComponent("\(id)/subagents", isDirectory: true)
+        let transcript = directory?.appendingPathComponent("agent-\(agent).jsonl")
+        func append(_ object: [String: Any]) {
+            guard let transcript, var line = try? JSONSerialization.data(withJSONObject: object) else { return }
+            line.append(UInt8(ascii: "\n"))
+            let descriptor = open(transcript.path, O_WRONLY | O_APPEND | O_CREAT, 0o600)
+            guard descriptor >= 0 else { return }
+            line.withUnsafeBytes { _ = write(descriptor, $0.baseAddress, $0.count) }
+            close(descriptor)
+        }
+        func assistant(_ block: [String: Any], thinking: Int? = nil) -> [String: Any] {
+            var object: [String: Any] = ["type": "assistant", "agentId": agent, "isSidechain": true,
+                                         "message": ["role": "assistant", "content": [block]]]
+            if let thinking { object["thinkingDurationMs"] = thinking }
+            return object
+        }
+        func result(_ content: Any, error: Bool = false) -> [String: Any] {
+            var block: [String: Any] = ["type": "tool_result", "tool_use_id": "toolu_fake", "content": content]
+            if error { block["is_error"] = true }
+            return ["type": "user", "agentId": agent, "isSidechain": true,
+                    "message": ["role": "user", "content": [block]],
+                    "toolUseResult": ["stdout": String(repeating: "bulk ", count: 40)]]
+        }
+        let steps: [[String: Any]] = [
+            ["type": "user", "agentId": agent, "isSidechain": true,
+             "message": ["role": "user", "content": "Map the fake module and write what you find to notes.md."]],
+            ["type": "attachment", "agentId": agent, "attachment": ["type": "skill_listing", "content": "ignored"]],
+            assistant(["type": "thinking", "thinking": "", "signature": "fake"], thinking: 1_500),
+            assistant(["type": "text", "text": "I'll map the module first, then write the summary."]),
+            assistant(["type": "tool_use", "id": "toolu_fake", "name": "Bash",
+                       "input": ["command": "rg -n \"class .*Service\" fake-module\nls fake-module", "description": "Find services"]]),
+            result([["type": "text", "text": "fake-module/A.swift:3:class AService\nfake-module/B.swift:9:class BService\nA.swift"]]),
+            assistant(["type": "tool_use", "id": "toolu_fake", "name": "Read", "input": ["file_path": "fake-module/Missing.swift"]]),
+            result("File does not exist.", error: true),
+            assistant(["type": "text", "text": "Done. The map is in notes.md."]),
+        ]
+        hook("UserPromptSubmit", ["prompt_id": "p\(promptCount)"])
+        var started: [String: Any] = ["agent_id": agent, "agent_type": "implementer"]
+        if let parent { started["transcript_path"] = parent }
+        hook("SubagentStart", started)
+        if let directory {
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let meta = #"{"agentType":"implementer","description":"map the fake module","spawnDepth":1,"requestShape":"foreground"}"#
+            try? meta.write(to: directory.appendingPathComponent("agent-\(agent).meta.json"), atomically: true, encoding: .utf8)
+        }
+        let pause = useconds_t(max(0, milliseconds) * 1_000 / steps.count)
+        for step in steps {
+            append(step)
+            usleep(pause)
+        }
+        var stopped = started
+        if let transcript { stopped["agent_transcript_path"] = transcript.path }
+        hook("SubagentStop", stopped)
+        hook("Stop", ["last_assistant_message": "subagent done"])
+    }
+
     func remember(_ line: String) {
         guard let url = history(for: id) else { return }
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -297,6 +364,10 @@ struct FakeClaude {
                 let end = Date().addingTimeInterval(Double(seconds))
                 while Date() < end { out(text); usleep(15_000) }
                 hook("Stop", ["last_assistant_message": "streamed"])
+            case "/subagent":
+                let milliseconds = Int(line.split(separator: " ").last.map(String.init) ?? "") ?? 1_500
+                out("SUBAGENT \(milliseconds)\r\n")
+                subagent(milliseconds: milliseconds)
             case "/background", "/hidden", "/delayed-background", "/delayed-hidden":
                 // Exercise both delivery orders of the asynchronous prompt hook.
                 // In the delayed case the helper runs only after user work starts.

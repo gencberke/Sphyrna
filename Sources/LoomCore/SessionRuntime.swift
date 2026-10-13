@@ -633,6 +633,11 @@ public actor SessionRuntime {
         ).configDirectory
     }
 
+    /// The profile's `projects` folder: the only place a subagent's transcript is read from (FB4-5).
+    public func claudeProjectsDirectory() -> URL {
+        claudeConfigDirectory().appendingPathComponent("projects", isDirectory: true)
+    }
+
     /// Resolved once per provider after it succeeds; a failure is retried on
     /// the next attempt.
     /// The toolchain is cached per provider while the executable it was read from is the same file

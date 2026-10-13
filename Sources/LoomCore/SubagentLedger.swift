@@ -15,11 +15,14 @@ public struct SubagentRecord: Equatable, Sendable, Identifiable {
     public var depth: Int
     public var startedAt: Date
     public var endedAt: Date?
+    /// Where Claude keeps the subagent's transcript, once its `meta.json` was found (its sibling). Not yet
+    /// checked: `SubagentTranscriptLocation` decides before anything is opened.
+    public var transcriptPath: String?
 
     public var isRunning: Bool { endedAt == nil }
 
     public init(id: String, agentType: String, description: String? = nil, isBackground: Bool = false,
-                depth: Int = 1, startedAt: Date, endedAt: Date? = nil) {
+                depth: Int = 1, startedAt: Date, endedAt: Date? = nil, transcriptPath: String? = nil) {
         self.id = id
         self.agentType = agentType
         self.description = description
@@ -27,6 +30,7 @@ public struct SubagentRecord: Equatable, Sendable, Identifiable {
         self.depth = depth
         self.startedAt = startedAt
         self.endedAt = endedAt
+        self.transcriptPath = transcriptPath
     }
 }
 
@@ -67,15 +71,19 @@ public struct SubagentMeta: Equatable, Sendable {
     public var description: String?
     public var depth: Int?
     public var isBackground: Bool?
+    /// Set by `read`: the transcript file beside the meta file (`agent-<id>.jsonl`).
+    public var transcriptPath: String?
 
     static let maximumDescriptionLength = 200
     static let maximumFileByteCount = 64 * 1024
 
-    public init(agentType: String? = nil, description: String? = nil, depth: Int? = nil, isBackground: Bool? = nil) {
+    public init(agentType: String? = nil, description: String? = nil, depth: Int? = nil, isBackground: Bool? = nil,
+                transcriptPath: String? = nil) {
         self.agentType = agentType
         self.description = description
         self.depth = depth
         self.isBackground = isBackground
+        self.transcriptPath = transcriptPath
     }
 
     /// Claude's ids are short alphanumeric strings; anything else never becomes part of a path.
@@ -160,7 +168,16 @@ public struct SubagentMeta: Equatable, Sendable {
         guard let data = try? handle.read(upToCount: maximumFileByteCount + 1),
               var meta = parse(data) else { return nil }
         if isInWorkflow(url) { meta.isBackground = true }
+        meta.transcriptPath = transcriptURL(besides: url)?.path
         return meta
+    }
+
+    /// `agent-<id>.meta.json` is written beside `agent-<id>.jsonl`, the subagent's own transcript.
+    static func transcriptURL(besides meta: URL) -> URL? {
+        let suffix = ".meta.json"
+        let name = meta.lastPathComponent
+        guard name.hasPrefix("agent-"), name.hasSuffix(suffix), name.count > "agent-".count + suffix.count else { return nil }
+        return meta.deletingLastPathComponent().appendingPathComponent(String(name.dropLast(suffix.count)) + ".jsonl")
     }
 }
 
@@ -253,6 +270,7 @@ public struct SubagentLedger: Equatable, Sendable {
         if let description = meta.description { record.description = description }
         if let depth = meta.depth { record.depth = depth }
         if let background = meta.isBackground { record.isBackground = background }
+        if let path = meta.transcriptPath { record.transcriptPath = path }
         guard record != records[index] else { return false }
         records[index] = record
         return true
