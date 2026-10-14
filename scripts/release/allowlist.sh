@@ -12,8 +12,8 @@ release_allow=(
   # release_exclude below) are not needed by the build.
   Vendor/SwiftTerm/Package.swift Vendor/SwiftTerm/LICENSE
   Vendor/SwiftTerm/Sources Vendor/SwiftTerm/Plugins Vendor/SwiftTerm/swifterm-terminfo
-  # Assets the app bundles (icon, provider marks).
-  assets/Loom.icns assets/harness/harness-claude.png assets/harness/harness-codex.png
+  # Assets the app bundles (icon, provider marks), and the pictures of the README (not bundled).
+  assets/Loom.icns assets/harness/harness-claude.png assets/harness/harness-codex.png assets/readme
 )
 
 # Git pathspecs removed from the export. Sources/loom-app/Evidence is the development-only acceptance
@@ -24,7 +24,7 @@ release_exclude=(
 )
 
 # Top-level entries the finished tree may contain.
-release_allowed_top=(.git .gitignore Package.swift Package.resolved README.md VERSION build.sh Sources Vendor assets)
+release_allowed_top=(.git .gitignore Package.swift Package.resolved README.md LICENSE VERSION build.sh Sources Vendor assets)
 
 # loom_stage_release_tree <dest> [rev]: exports the allowlist into <dest>, from the git revision <rev> (git archive,
 # like promote) or, without <rev>, from the checked-out tree (tracked and untracked files that are not ignored, so a

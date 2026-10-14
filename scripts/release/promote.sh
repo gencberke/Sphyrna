@@ -4,8 +4,8 @@
 #
 # Source is the loom-dev tag release/<version>, exported with `git archive`
 # (never the working tree). Only the allowlist below is exported; a release-only
-# Package.swift, build.sh (from build-loom.sh), README.md, VERSION and
-# .gitignore are generated. The loom tree gets one commit
+# Package.swift, build.sh (from build-loom.sh), README.md (from README.release.md,
+# with @VERSION@ filled in), LICENSE, VERSION and .gitignore are generated. The loom tree gets one commit
 # "Loom <version> (from loom-dev release/<version> <short-sha>)" and the tag
 # v<version>. Nothing is ever written into loom-dev.
 #
@@ -69,6 +69,10 @@ git -C "$dev" show "${tag}:scripts/release/Package.release.swift" > "$templates/
   || fail "tag '$tag' has no scripts/release/Package.release.swift; commit the release scripts before tagging"
 git -C "$dev" show "${tag}:scripts/release/build-loom.sh" > "$templates/build-loom.sh" 2>/dev/null \
   || fail "tag '$tag' has no scripts/release/build-loom.sh; commit the release scripts before tagging"
+for template in README.release.md LICENSE; do
+  git -C "$dev" show "${tag}:scripts/release/$template" > "$templates/$template" 2>/dev/null \
+    || fail "tag '$tag' has no scripts/release/$template; commit the release scripts before tagging"
+done
 if ! python3 - "$stage/dev-Package.swift" "$templates/Package.release.swift" <<'PY'
 import re, sys
 def norm(path):
@@ -115,27 +119,17 @@ then fail "scripts/release/Package.release.swift drifted from the loom-dev Packa
 rm "$stage/dev-Package.swift"
 cp "$templates/Package.release.swift" "$stage/Package.swift"
 cp "$templates/build-loom.sh" "$stage/build.sh"
+cp "$templates/LICENSE" "$stage/LICENSE"
+sed "s/@VERSION@/$version/g" "$templates/README.release.md" > "$stage/README.md"
 rm -rf "$templates"
 chmod +x "$stage/build.sh"
 print -r -- "$version" > "$stage/VERSION"
 printf '.build/\n.swiftpm/\n.DS_Store\n' > "$stage/.gitignore"
-cat > "$stage/README.md" <<README
-# Loom
-
-Source of the daily-use \`Loom.app\` (\`local.loom.desktop\`), version **$version**.
-
-This tree is **generated** from the loom-dev repository: tag \`release/$version\` at commit \`$short\`, exported with \`git archive\` through its \`scripts/release/promote.sh\`. Do not edit it by hand; every change arrives as a new promoted release (one commit and one \`v<version>\` tag each). It holds only the product sources, the vendored terminal engine (SwiftTerm, MIT, see \`Vendor/SwiftTerm/LICENSE\`), the bundled assets, a release \`Package.swift\` and \`build.sh\`.
-
-## Build and install
-
-    ./build.sh                        # release build, sign, verify, install to /Applications/Loom.app
-    ./build.sh --check-only           # validate signing identity and paths, build nothing
-    ./build.sh --target /path/Loom.app
-
-The build needs Xcode's Swift toolchain for macOS 27 and a stable local code-signing identity (default "Loom Dev Code Signing", or \`LOOM_CODESIGN_IDENTITY\`); ad-hoc signing is refused so macOS privacy grants persist. Build products go to \`~/Library/Caches/loom-release-build\` (\`LOOM_SCRATCH_PATH\`). The install is refused while Loom is running. Roll back by checking out an earlier \`v<version>\` tag and running \`./build.sh\` again.
-
-User data lives in \`~/Library/Application Support/Loom\` and \`~/.loom\`, never in this tree.
-README
+# The README shows pictures from assets/readme; each one it names must be in the release.
+! grep -q '@[A-Z]*@' "$stage/README.md" || fail "README.release.md has a placeholder promote does not fill"
+for picture in ${(f)"$(grep -o 'assets/readme/[A-Za-z0-9._-]*' "$stage/README.md" | sort -u)"}; do
+  [[ -f $stage/$picture ]] || fail "README.release.md shows $picture, which the release does not contain"
+done
 
 # Every staged path must be allowed: top-level entries and nothing dev-only.
 bad=()

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Loom README: a subagent's transcript</title>
+<!-- Source of a README picture (scripts/release/readme-shots.sh renders it into assets/readme/).
+     Cut from the design previews in design/ with neutral sample data; edit here, then re-render. -->
+<style>
+:root{
+  --sans: -apple-system, "SF Pro Text", "SF Pro", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --panel:#1D1C22; --side:#15171D;
+  --t1:#E0DBEB; --t2:#828799; --t3:#5A5F70; --acc:#8791CF;
+  --att:#FF9E0A; --unv:#5C8CFF; --fail:#F2615C; --tfg:#E8E6EE;
+  --hair:rgba(255,255,255,.10);
+  --rose:#E68EBA; --orchid:#D194E6; --aqua:#80D5DB; --mint:#83D8B0;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#07080B;color:#D9D7E0;font:13px/1.45 var(--sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1960px;margin:0 auto;padding:28px 28px 90px}
+.top h1{font-size:20px;font-weight:600;margin:0 0 4px}
+.top p{margin:2px 0 0;color:#8A8D99;font-size:12px;max-width:1100px}
+h2{font-size:17px;font-weight:600;margin:52px 0 4px}
+h3{font-size:11px;font-weight:600;color:#8A8D99;text-transform:uppercase;letter-spacing:.5px;margin:26px 0 8px}
+.note{color:#9A9DA8;font-size:12px;max-width:1100px;margin:4px 0 12px}
+.note b{color:#D9D7E0}
+.pick{margin:16px 0 0;max-width:1100px;font-size:12.5px;color:#C9CBD4;border-left:2px solid #3A3E4C;padding:4px 0 4px 12px}
+.grid{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start}
+.fig .lab{font-size:11.5px;color:#9A9DA8;margin-bottom:6px}
+.fig .lab b{color:#D9D7E0}
+ul.rules{margin:6px 0 0 18px;padding:0;color:#B9BBC5;font-size:12px;max-width:1000px}
+ul.rules li{margin:3px 0}
+
+/* sidebar */
+.side{width:300px;background:var(--side);border-radius:10px;border:1px solid rgba(255,255,255,.07);padding:10px 8px 12px 14px;color:var(--t1)}
+.dh{font-size:11px;font-weight:600;color:var(--t2);margin:12px 0 4px 2px;display:flex;align-items:center;gap:6px}
+.dh .n{font-weight:500;color:var(--t3)}
+.dh.active{color:var(--t1)}
+.card{position:relative;display:flex;gap:8px;padding:6px 8px 7px 6px;border-radius:10px;margin-bottom:2px}
+.card.sel{background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.10)}
+.card::before{content:"";position:absolute;left:-10px;top:4px;bottom:4px;width:3px;border-radius:2px;background:var(--tone,transparent)}
+.slot{width:12px;flex:none;padding-top:3px;display:flex;justify-content:center}
+.body{flex:1;min-width:0}
+.row1{display:flex;align-items:baseline;gap:8px}
+.row1 .t{flex:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row1 .tm{font-size:11px;color:var(--t2)}
+.row2{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2);margin-top:2px}
+.row2 .br{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row2 svg{width:10px;height:10px;flex:none}
+.mark{width:12px;height:12px;flex:none}
+.pip{width:8px;height:8px;border-radius:50%;display:block;margin-top:2px}
+.pip.att{background:var(--att)} .pip.unv{background:var(--unv)} .pip.fail{background:var(--fail)}
+.chase{position:relative;width:12px;height:12px;display:block}
+.chase i{position:absolute;width:2.9px;height:2.9px;border-radius:50%;background:var(--t1);opacity:.16;animation:chase .8s step-end infinite}
+.chase i:nth-child(1){left:.15px;top:.15px;opacity:1}
+.chase i:nth-child(2){left:4.55px;top:.15px;animation-delay:-.7s}
+.chase i:nth-child(3){left:8.95px;top:.15px;animation-delay:-.6s}
+.chase i:nth-child(4){left:8.95px;top:4.55px;animation-delay:-.5s}
+.chase i:nth-child(5){left:8.95px;top:8.95px;animation-delay:-.4s}
+.chase i:nth-child(6){left:4.55px;top:8.95px;opacity:.35;animation-delay:-.3s}
+.chase i:nth-child(7){left:.15px;top:8.95px;opacity:.55;animation-delay:-.2s}
+.chase i:nth-child(8){left:.15px;top:4.55px;opacity:.8;animation-delay:-.1s}
+@keyframes chase{0%{opacity:1}12.5%{opacity:.8}25%{opacity:.55}37.5%{opacity:.35}50%,100%{opacity:.16}}
+.chase.sm{transform:scale(.75)}
+.sub{display:flex;align-items:center;gap:7px;height:22px;font-size:11.5px;color:var(--t2);margin:0 0 0 18px;padding:0 8px 0 10px;border-left:1px solid var(--hair);border-radius:0 6px 6px 0}
+.sub b{color:var(--t1);font-weight:500}
+.sub.hl{background:rgba(135,145,207,.16);color:#C9CDEB}
+.sub .el{margin-left:auto}
+
+/* detail panel */
+.panel{background:var(--panel);border-radius:10px;border:1px solid rgba(255,255,255,.08);overflow:hidden;color:var(--t1)}
+.hdr{height:36px;display:flex;align-items:center;gap:8px;padding:0 8px 0 14px}
+.hdr .sp{flex:1}
+.ttl{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.crumb{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap}
+.crumb .par{color:var(--t2);font-weight:500;overflow:hidden;text-overflow:ellipsis}
+.crumb .sep{color:var(--t3)}
+.pill{height:22px;border-radius:11px;padding:0 9px 0 7px;display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500;background:rgba(255,255,255,.07);flex:none}
+.chip{height:22px;border-radius:6px;padding:0 8px 0 0;display:flex;align-items:center;gap:7px;font-size:12px;overflow:hidden;flex:none;background:color-mix(in srgb, var(--tone) 10%, transparent)}
+.chip::before{content:"";width:3px;align-self:stretch;background:var(--tone)}
+.chip .brn{display:flex;align-items:center;gap:4px;color:#9297A8;border-left:1px solid var(--hair);padding-left:7px}
+.chip .brn svg{width:11px;height:11px}
+.vsep{width:1px;height:16px;background:var(--hair);margin:0 2px;flex:none}
+.group{height:24px;border-radius:6px;background:rgba(255,255,255,.07);display:flex;align-items:stretch;overflow:hidden;flex:none}
+.seg{display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12px}
+.seg + .seg{border-left:1px solid var(--hair)}
+.seg.ic{padding:0;width:28px;justify-content:center;color:var(--t2)}
+.seg svg{width:14px;height:14px}
+.sq{width:8px;height:8px;border-radius:1.5px;background:var(--t1);display:block}
+.back{height:24px;border-radius:6px;background:rgba(255,255,255,.07);display:flex;align-items:center;gap:6px;padding:0 10px 0 8px;font-size:12px;flex:none}
+.back kbd{font:10.5px var(--sans);color:var(--t2);border:1px solid var(--hair);border-radius:4px;padding:0 4px}
+.tabs{height:32px;display:flex;align-items:center;gap:4px;padding:0 8px}
+.tab{flex:1 1 170px;min-width:96px;max-width:200px;height:24px;display:flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;font-size:12px;color:#9297A8;white-space:nowrap;overflow:hidden;background:color-mix(in srgb, var(--tone) 10%, transparent)}
+.tab span{overflow:hidden;text-overflow:ellipsis}
+.tab.open{color:var(--t1);background:color-mix(in srgb, var(--tone) 15%, transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--tone) 36%, transparent)}
+.tab.agent{background:rgba(135,145,207,.10)}
+.tab.agent.open{background:rgba(135,145,207,.18);box-shadow:inset 0 0 0 1px rgba(135,145,207,.45)}
+.term,.tx{margin:0 6px 6px;padding:8px;font:12px/1.5 var(--mono);color:var(--tfg);white-space:pre;overflow:hidden}
+.term .g{color:#7D8295}.term .c{color:#8BD5A6}.term .b{color:#82AAFF}
+.tx .dot{color:#E8E6EE}.tx .tool{font-weight:700}.tx .arg{color:#A9AEBF}.tx .res{color:#7D8295}.tx .ok{color:#8BD5A6}
+.tx .spin{color:#D97757}.tx .dim{color:#7D8295}
+.banner{display:flex;align-items:center;gap:10px;margin:0 6px 4px;padding:6px 10px;border-radius:8px;background:rgba(135,145,207,.08);font-size:11.5px;color:#B8BCD9}
+.banner b{color:var(--t1);font-weight:500}
+.split{display:flex}
+.split .left{flex:1;min-width:0}
+.split .right{width:380px;border-left:1px solid var(--hair);background:#19181E}
+.right .rh{height:36px;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--hair);font-size:12px}
+.right .rh .x{margin-left:auto;color:var(--t2)}
+.right .tx{margin:0;padding:10px;font-size:11.5px;white-space:pre-wrap}
+
+
+/* README shot framing: transparent page, the previews' wallpaper stage around the content */
+html,body{background:transparent!important;margin:0!important;padding:0!important}
+.shot{display:inline-flex;gap:24px;align-items:flex-start;padding:28px;border-radius:18px;background:
+  radial-gradient(120% 90% at 0% 0%, #2B5BFF 0%, transparent 55%),
+  radial-gradient(90% 80% at 100% 100%, #FF7A2B 0%, transparent 55%),
+  radial-gradient(80% 80% at 30% 100%, #B13BFF 0%, transparent 60%), #10131C}
+
+</style></head>
+<body><svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="claude" viewBox="0 0 24 24"><g fill="#D97757"><path d="M12 1.5l1.6 7.1 6.2-3.9-3.9 6.2 7.1 1.6-7.1 1.6 3.9 6.2-6.2-3.9L12 22.5l-1.6-7.1-6.2 3.9 3.9-6.2-7.1-1.6 7.1-1.6-3.9-6.2 6.2 3.9z"/></g></symbol>
+    <symbol id="dots" viewBox="0 0 16 16"><g fill="currentColor"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></g></symbol>
+    <symbol id="branch" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="4.5" cy="3.5" r="1.6"/><circle cx="4.5" cy="12.5" r="1.6"/><circle cx="11.5" cy="5.5" r="1.6"/><path d="M4.5 5.1v5.8M11.5 7.1c0 2.4-2.2 3-7 3.8"/></g></symbol>
+    <symbol id="back" viewBox="0 0 16 16"><path d="M9.5 3.5L5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="agent" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M3 3v5.5c0 1.4 1.1 2.5 2.5 2.5H12"/><path d="M9.5 8.5L12 11l-2.5 2.5"/></g></symbol>
+  </defs>
+</svg>
+<div class="shot" id="shot"><div class="panel" style="width:900px">
+      <div class="hdr"><svg width="16" height="16"><use href="#claude"/></svg>
+        <span class="crumb"><span class="par">Payment flow review</span><span class="sep">›</span><svg width="13" height="13" style="color:var(--t2)"><use href="#agent"/></svg><span class="ttl">implementer · draft:core-map</span></span><span class="sp"></span>
+        <span class="pill"><span class="chase sm"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Running 4m</span><span class="vsep"></span>
+        <span class="back"><svg width="12" height="12"><use href="#back"/></svg>Session<kbd>esc</kbd></span></div>
+      <div class="tabs"><div class="tab open" style="--tone:var(--rose)"><span>Payment flow review</span></div><div class="tab" style="--tone:var(--aqua)"><span>Playlist import</span></div><div class="tab" style="--tone:var(--rose)"><span>Module atlas</span></div></div>
+<div class="tx"><span class="dim">Brief  Map the core module: its packages, services and config entry points. Write the result to notes/modules.md …</span>
+
+<span class="dim">✻ Thought for 6s</span>
+
+<span class="dot">⏺</span> I'll map the core module first, then write the summary.
+
+<span class="dot">⏺</span> <span class="tool">Read</span><span class="arg">(core/src/main/kotlin/app/core/CoreConfig.kt)</span>
+  <span class="res">⎿  Read 142 lines</span>
+
+<span class="dot">⏺</span> <span class="tool">Bash</span><span class="arg">(rg -n "class .*Service" core | head -40)</span>
+  <span class="res">⎿  38 matches</span>
+
+<span class="dot">⏺</span> <span class="tool">Write</span><span class="arg">(notes/modules.md)</span>
+  <span class="res">⎿  Wrote 96 lines</span>
+
+<span class="spin">✻</span> <span class="dim">Running…</span></div>
+    </div></div>
+<script>/* readme-shots.sh reads the picture size from here */
+addEventListener("load", function () { var r = document.getElementById("shot").getBoundingClientRect();
+  document.documentElement.setAttribute("data-shot-size", Math.ceil(r.width) + "x" + Math.ceil(r.height)); });</script>
+</body></html>

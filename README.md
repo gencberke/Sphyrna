@@ -20,7 +20,7 @@ Status: in daily use on the user's Mac through releases of the clean loom tree; 
 | [AGENTS.md](AGENTS.md) | How agent sessions work in this repo |
 | [plans/README.md](plans/README.md) | Checkpoint plans and history |
 
-This repository is **loom-dev**, the development tree. The daily-use app is built from a separate clean **loom** tree that receives tested releases from here ([DEVELOPMENT.md §10](DEVELOPMENT.md#10-loom-dev-and-the-clean-loom-tree)).
+This repository is **loom-dev**, the development tree. The daily-use app is built from a separate clean **loom** tree that receives tested releases from here and is public at [github.com/gencberke/loom](https://github.com/gencberke/loom) ([DEVELOPMENT.md §10](DEVELOPMENT.md#10-loom-dev-and-the-clean-loom-tree)).
 
 ## Build
 

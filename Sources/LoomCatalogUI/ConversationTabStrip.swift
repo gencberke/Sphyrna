@@ -193,7 +193,7 @@ struct ConversationTabItem: View {
         .accessibilityAction(named: "Close Tab") { model.closeTab(id) }
     }
 
-    /// "<title>, Finished, project enmusait, not pinned"; the project only while project colors are on.
+    /// "<title>, Finished, project mixtape, not pinned"; the project only while project colors are on.
     static func accessibilityLabel(title: String, status: String?, transient: Bool, project: String? = nil) -> String {
         title + (status.map { ", \($0)" } ?? "") + (project.map { ", project \($0)" } ?? "")
             + (transient ? ", not pinned" : "")

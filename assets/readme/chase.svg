@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 12 12" role="img" aria-label="Loom's working indicator">
+  <!-- The working chase of design/DESIGN.md: eight dots, the head steps clockwise every 0.1 s. -->
+  <style>
+    circle { fill: #8791CF; opacity: .16; animation: chase .8s step-end infinite; }
+    @keyframes chase { 0% { opacity: 1 } 12.5% { opacity: .8 } 25% { opacity: .55 } 37.5% { opacity: .35 } 50%, 100% { opacity: .16 } }
+    @media (prefers-reduced-motion: reduce) { circle { animation: none; } .h { opacity: 1; } .t1 { opacity: .8; } .t2 { opacity: .55; } .t3 { opacity: .35; } }
+  </style>
+  <circle class="h" cx="1.6" cy="1.6" r="1.45" style="animation-delay: 0s"/>
+  <circle cx="6" cy="1.6" r="1.45" style="animation-delay: -.7s"/>
+  <circle cx="10.4" cy="1.6" r="1.45" style="animation-delay: -.6s"/>
+  <circle cx="10.4" cy="6" r="1.45" style="animation-delay: -.5s"/>
+  <circle cx="10.4" cy="10.4" r="1.45" style="animation-delay: -.4s"/>
+  <circle class="t3" cx="6" cy="10.4" r="1.45" style="animation-delay: -.3s"/>
+  <circle class="t2" cx="1.6" cy="10.4" r="1.45" style="animation-delay: -.2s"/>
+  <circle class="t1" cx="1.6" cy="6" r="1.45" style="animation-delay: -.1s"/>
+</svg>

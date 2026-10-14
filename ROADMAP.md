@@ -4,7 +4,7 @@ Path from today to Loom's first production release. Checkpoint numbers are ident
 
 ## Release target
 
-**First production release:** a macOS 27 app for one power user on their own Mac, signed with the stable local identity (no public distribution, [D-47](DECISIONS.md)), that hosts real Claude Code terminals in the accepted design and identity, with verified process ownership, state, resume, Stop and Quit, permanent deletion of a conversation and the CP4 retention rules ([D-26](DECISIONS.md)), inside the agreed resource budgets. Codex is frozen and not included ([D-14, D-28](DECISIONS.md)); CP3 coordination is not included ([D-27](DECISIONS.md)). Other providers, notifications and the ideas in contract §13 are out unless the user adds them; the user added a subagent view under each session ([D-39](DECISIONS.md)), a narrow, approval-gated "session opens session" ([D-40](DECISIONS.md)), a Dock badge ([D-45](DECISIONS.md)), a menu bar item, approval notifications and Open at Login ([D-47, D-49](DECISIONS.md)) and project colours ([D-48](DECISIONS.md)).
+**First production release:** a macOS 27 app for one power user on their own Mac, signed with the stable local identity and not notarized ([D-47](DECISIONS.md)), its source and package public on GitHub ([D-56](DECISIONS.md)), that hosts real Claude Code terminals in the accepted design and identity, with verified process ownership, state, resume, Stop and Quit, permanent deletion of a conversation and the CP4 retention rules ([D-26](DECISIONS.md)), inside the agreed resource budgets. Codex is frozen and not included ([D-14, D-28](DECISIONS.md)); CP3 coordination is not included ([D-27](DECISIONS.md)). Other providers, notifications and the ideas in contract §13 are out unless the user adds them; the user added a subagent view under each session ([D-39](DECISIONS.md)), a narrow, approval-gated "session opens session" ([D-40](DECISIONS.md)), a Dock badge ([D-45](DECISIONS.md)), a menu bar item, approval notifications and Open at Login ([D-47, D-49](DECISIONS.md)) and project colours ([D-48](DECISIONS.md)).
 
 ## Stages
 
@@ -69,7 +69,7 @@ Done when: contract §11 row 4 evidence passes on synthetic data and a real-Clau
 
 ### R: First-class app on the user's Mac
 
-Loom stays a personal app (D-47): no Developer ID, notarization or update mechanism; releases keep the promote path into the clean loom tree.
+Loom stays a personal app (D-47): no Developer ID, notarization or update mechanism; releases keep the promote path into the clean loom tree, which is public on GitHub from 0.4.4 on (D-56).
 
 - macOS integration, shipped in hardening round 1: the Dock badge (H1-A, 0.4.0); a menu bar item, approval notifications, Open at Login, an app category and numeric versions from the release (H1-F, 0.4.1, [D-49](DECISIONS.md)). Whether Loom now shows up in Screen Time is for the user to check ([HARDENING-1](plans/HARDENING-1.md)).
 - First-run experience: provider CLI detection, missing-CLI and launch errors, empty states.

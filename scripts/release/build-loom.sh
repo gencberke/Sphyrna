@@ -59,9 +59,11 @@ if [[ -n $(git -C "$root" status --porcelain) ]]; then
 fi
 revision=$(git -C "$root" rev-parse --short HEAD)
 # CFBundleVersion must be numeric: LaunchServices compares it to pick the newest copy of a bundle
-# id. The loom tree gains one commit per promote, so its commit count only grows; the commit
-# itself is LoomRevision.
-build_number=$(git -C "$root" rev-list --count HEAD)
+# id. It comes from VERSION (major * 10000 + minor * 100 + patch, so 0.4.4 is 404), which grows with
+# every release whatever the tree's history; the commit itself is LoomRevision.
+parts=(${(s:.:)${version%%[-+]*}})
+(( parts[2] < 100 && parts[3] < 100 )) || { echo "VERSION $version: minor and patch must stay below 100 for the build number" >&2; exit 1; }
+build_number=$(( parts[1] * 10000 + parts[2] * 100 + parts[3] ))
 
 # Any process executing from the target bundle (app, helpers, run hosts).
 running_from_target() {

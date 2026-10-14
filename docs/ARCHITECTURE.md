@@ -373,7 +373,8 @@ Design fact: one `codex app-server` per Codex session (contract §3).
 - Ownership sampling in `ProcessSupervisor` scans the process table; `persistLedger` rewrites the ledger JSON.
 - No `.github/` and no CI. Packaging: `scripts/package-dev-app.sh` for development packages and the clean loom tree's
   `build.sh` (`scripts/release/build-loom.sh`) for `Loom.app`, both signed with the stable local identity; notarization is not
-  needed ([D-47](../DECISIONS.md)). `CFBundleVersion` is the commit count of the tree that builds the app. `loom-app` has no unit tests; `AppDelegate`/`MainSplitViewController` and the views are
+  used ([D-47](../DECISIONS.md), [D-56](../DECISIONS.md)). `CFBundleVersion` is loom-dev's commit count for a development package and
+  major × 10000 + minor × 100 + patch of `VERSION` for `Loom.app`. `loom-app` has no unit tests; `AppDelegate`/`MainSplitViewController` and the views are
   covered only by manual acceptance scripts.
 
 ## 10. Keeping this file true
