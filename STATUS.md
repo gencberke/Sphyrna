@@ -1,11 +1,10 @@
 # Status
 
 - **Updated:** 2026-10-14
-- **Stage:** feedback round 4 is done; 0.4.4 is promoted and public on GitHub ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)), branch `swarm/1`. Next on the roadmap: stage R ([ROADMAP → Order](ROADMAP.md#order)).
+- **Stage:** feedback round 4 is done; 0.4.4 is released and public on GitHub ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)), branch `swarm/1`. Next on the roadmap: stage R ([ROADMAP → Order](ROADMAP.md#order)).
 - **Slice:** none open.
-- **State:** 0.4.3 is still the daily app; 0.4.4 waits for its build, after which its zip goes to the GitHub release.
+- **State:** 0.4.4 is the daily app and the latest GitHub release.
 - **Next owner:** the user:
-  - say when the Mac is idle, so the planner builds and installs 0.4.4 and publishes its release;
   - use Loom and give feedback, especially on a stopped fullscreen session's last screen and on the subagent panel during a real workflow;
   - look for Loom in Screen Time;
   - empty the Trash after the storage cleanup.
