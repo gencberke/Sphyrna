@@ -10,16 +10,7 @@ public struct SubagentTranscriptFile: Equatable, Sendable {
 
     /// Opens the file read-only, never through a final link, and only a regular file of this user.
     /// The caller closes the descriptor.
-    func openDescriptor() -> Int32? {
-        let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
-        guard descriptor >= 0 else { return nil }
-        var info = stat()
-        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid() else {
-            close(descriptor)
-            return nil
-        }
-        return descriptor
-    }
+    func openDescriptor() -> Int32? { openOwnRegularFile(path) }
 }
 
 /// Where a subagent's transcript may be read from (FB4-5). The path comes from a hook payload and the

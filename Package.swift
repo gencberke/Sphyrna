@@ -7,6 +7,7 @@ let package = Package(
     platforms: [.macOS("27.0")],
     products: [
         .library(name: "LoomCore", targets: ["LoomCore"]),
+        .library(name: "LoomChat", targets: ["LoomChat"]),
         .executable(name: "loom-app", targets: ["loom-app"]),
         .executable(name: "loom-catalog-fixture", targets: ["loom-catalog-fixture"]),
         .executable(name: "loom-hook", targets: ["loom-hook"]),
@@ -27,6 +28,8 @@ let package = Package(
             "LoomCore", .product(name: "SwiftTerm", package: "SwiftTerm"),
         ]),
         .target(name: "LoomCatalogUI", dependencies: ["LoomCore", "LoomTerminal"]),
+        // The chat engine's pure model and wire protocol (v2): no UI, no process spawning.
+        .target(name: "LoomChat", dependencies: ["LoomCore"]),
         // Pure launch-option rules (data root, evidence channel), testable without AppKit.
         .target(name: "LoomLaunchOptions"),
         // LOOM_EVIDENCE compiles Sources/loom-app/Evidence (acceptance tooling) into the development flavor only;
@@ -46,6 +49,7 @@ let package = Package(
         .executableTarget(name: "loom-fake-provider"),
         .testTarget(name: "LoomCoreTests", dependencies: ["LoomCore"]),
         .testTarget(name: "LoomTerminalTests", dependencies: ["LoomCore", "LoomTerminal"]),
+        .testTarget(name: "LoomChatTests", dependencies: ["LoomChat", "LoomCore"]),
         .testTarget(name: "LoomLaunchOptionsTests", dependencies: ["LoomLaunchOptions"]),
         .testTarget(name: "LoomCatalogUITests", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI"]),
     ]

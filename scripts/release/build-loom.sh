@@ -46,8 +46,8 @@ final_app=${target:A}
 given_app=${target:a}
 install_dir=${final_app:h}
 
-[[ -f "$root/VERSION" && -f "$root/Package.swift" && -f "$root/assets/Loom.icns" ]] \
-  || { echo "This is not a promoted loom tree (VERSION, Package.swift or assets/Loom.icns missing): $root" >&2; exit 1; }
+[[ -f "$root/VERSION" && -f "$root/Package.swift" && -f "$root/assets/Loom.icns" && -f "$root/THIRD-PARTY-NOTICES.md" ]] \
+  || { echo "This is not a promoted loom tree (VERSION, Package.swift, assets/Loom.icns or THIRD-PARTY-NOTICES.md missing): $root" >&2; exit 1; }
 version=$(<"$root/VERSION")
 version=${version//[[:space:]]/}
 version_re='^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
@@ -142,6 +142,8 @@ cat > "$host/Contents/Info.plist" <<PLIST
 PLIST
 # Provider marks shown on conversation cards.
 cp assets/harness/harness-claude.png assets/harness/harness-codex.png "$app/Contents/Resources/"
+# Third-party licenses (T3 Code MIT text; SwiftTerm is named there) ship inside the app.
+cp THIRD-PARTY-NOTICES.md "$app/Contents/Resources/"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

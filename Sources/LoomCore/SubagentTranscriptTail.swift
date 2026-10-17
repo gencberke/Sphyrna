@@ -27,16 +27,12 @@ final class SubagentTranscriptTail {
 
     private let file: SubagentTranscriptFile
     private let coldWindowBytes: Int
-    private let maximumLineBytes: Int
     private var descriptor: Int32
     private var device: dev_t = 0
     private var inode: ino_t = 0
     /// The file offset of the next byte to read.
     private var position: off_t = 0
-    /// Bytes read after the last newline: a line that is not complete yet.
-    private var carry: [UInt8] = []
-    /// Inside a line over the cap, looking for its newline.
-    private var discarding = false
+    private var splitter: TranscriptLineSplitter
     private var started = false
     private let chunk = UnsafeMutableRawPointer.allocate(byteCount: SubagentTranscriptTail.chunkBytes, alignment: 16)
     /// Bytes read from the file so far (a test measures a cold open with it).
@@ -47,7 +43,7 @@ final class SubagentTranscriptTail {
         guard let descriptor = file.openDescriptor() else { return nil }
         self.file = file
         self.coldWindowBytes = coldWindowBytes
-        self.maximumLineBytes = maximumLineBytes
+        splitter = TranscriptLineSplitter(maximumLineBytes: maximumLineBytes)
         self.descriptor = descriptor
         remember(descriptor)
     }
@@ -93,8 +89,9 @@ final class SubagentTranscriptTail {
             let count = pread(descriptor, chunk, wanted, position)
             guard count > 0 else { break }
             bytesRead += count
+            splitter.consume(UnsafeRawBufferPointer(start: chunk, count: count), at: UInt64(position),
+                             line: { _, bytes in line(bytes) }, oversized: { _, _ in })
             position += off_t(count)
-            consume(UnsafeRawBufferPointer(start: chunk, count: count), line)
         }
         return outcome
     }
@@ -111,15 +108,14 @@ final class SubagentTranscriptTail {
     /// Positions the first read; true when it starts inside the file.
     private func start(size: off_t, _ line: (UnsafeRawBufferPointer) -> Void) -> Bool {
         started = true
-        carry.removeAll(keepingCapacity: true)
-        discarding = false
+        splitter.reset(at: 0)
         guard size > off_t(coldWindowBytes) else { position = 0; return false }
         let window = size - off_t(coldWindowBytes)
         // The window starts at a line start only when the byte before it ends a line; otherwise the line
         // it cuts is skipped up to its newline.
         var before: UInt8 = 0
         if pread(descriptor, &before, 1, window - 1) == 1 { bytesRead += 1 }
-        discarding = before != 0x0A
+        splitter.reset(at: UInt64(window), cutMidLine: before != 0x0A)
         position = window
         deliverFirstLine(before: window, line)
         return true
@@ -136,38 +132,5 @@ final class SubagentTranscriptTail {
         guard let newline = memchr(head, 0x0A, count) else { return }
         let length = UnsafeRawPointer(head).distance(to: UnsafeRawPointer(newline))
         if length > 0 { line(UnsafeRawBufferPointer(start: head, count: length)) }
-    }
-
-    /// Splits `bytes` (the next bytes of the file) into lines after the carried partial one.
-    private func consume(_ bytes: UnsafeRawBufferPointer, _ line: (UnsafeRawBufferPointer) -> Void) {
-        var rest = bytes
-        if discarding {
-            guard let newline = memchr(rest.baseAddress, 0x0A, rest.count) else { return }
-            rest = UnsafeRawBufferPointer(rebasing: rest[(rest.baseAddress!.distance(to: UnsafeRawPointer(newline)) + 1)...])
-            discarding = false
-        }
-        while rest.count > 0 {
-            guard let newline = memchr(rest.baseAddress, 0x0A, rest.count) else {
-                // No newline yet: keep the bytes, unless the line is already over the cap.
-                if carry.count + rest.count > maximumLineBytes {
-                    carry.removeAll(keepingCapacity: true)
-                    discarding = true
-                } else {
-                    carry.append(contentsOf: rest)
-                }
-                return
-            }
-            let length = rest.baseAddress!.distance(to: UnsafeRawPointer(newline))
-            if carry.isEmpty {
-                if length > 0, length <= maximumLineBytes { line(UnsafeRawBufferPointer(rebasing: rest[..<length])) }
-            } else {
-                if carry.count + length <= maximumLineBytes {
-                    carry.append(contentsOf: UnsafeRawBufferPointer(rebasing: rest[..<length]))
-                    carry.withUnsafeBytes { line($0) }
-                }
-                carry.removeAll(keepingCapacity: true)
-            }
-            rest = UnsafeRawBufferPointer(rebasing: rest[(length + 1)...])
-        }
     }
 }

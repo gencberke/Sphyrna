@@ -3,8 +3,8 @@
 
 # The only paths exported from the loom-dev tag (promote) or the checked-out tree (check.sh --release-tree).
 release_allow=(
-  Package.resolved
-  Sources/CLoomPOSIX Sources/LoomCore Sources/LoomTerminal Sources/LoomCatalogUI
+  Package.resolved THIRD-PARTY-NOTICES.md
+  Sources/CLoomPOSIX Sources/LoomCore Sources/LoomTerminal Sources/LoomCatalogUI Sources/LoomChat
   Sources/LoomLaunchOptions Sources/loom-app Sources/loom-run-host Sources/loom-hook
   # Vendored SwiftTerm as patched: library, build-info generator + plugin, the
   # terminfo entry the generator reads, its manifest and license. Tests, samples,
@@ -24,7 +24,7 @@ release_exclude=(
 )
 
 # Top-level entries the finished tree may contain.
-release_allowed_top=(.git .gitignore Package.swift Package.resolved README.md LICENSE VERSION build.sh Sources Vendor assets)
+release_allowed_top=(.git .gitignore Package.swift Package.resolved README.md LICENSE THIRD-PARTY-NOTICES.md VERSION build.sh Sources Vendor assets)
 
 # loom_stage_release_tree <dest> [rev]: exports the allowlist into <dest>, from the git revision <rev> (git archive,
 # like promote) or, without <rev>, from the checked-out tree (tracked and untracked files that are not ignored, so a
