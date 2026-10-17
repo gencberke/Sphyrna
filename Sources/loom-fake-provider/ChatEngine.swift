@@ -1,0 +1,947 @@
+import Darwin
+import Foundation
+
+// Development/test fixture, chat mode: behaves like `claude -p --input-format stream-json
+// --output-format stream-json --verbose --include-partial-messages --replay-user-messages
+// --permission-prompt-tool stdio` without a model. NDJSON user messages and control requests come in on
+// stdin; NDJSON goes out on stdout. A user message picks a scenario by its text (ChatScenarios.swift):
+// `/scenario <name> [args]`, `/clear`, `/compact`, anything else is a plain streamed answer. Wire shapes:
+// ChatWire.swift.
+//
+// Environment: LOOM_FAKE_CHAT_DELAY_MS (pause between stream events, default 2), LOOM_FAKE_CHAT_CAPABILITIES
+// (comma list for `system/init`; `msg_lifecycle_v1` also gates `command_lifecycle`),
+// CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS / CLAUDE_CODE_SDK_READS_SESSION_STATE (`1`: emit
+// `system/session_state_changed`), CLAUDE_CONFIG_DIR (transcripts are written under it unless
+// `--no-session-persistence`).
+//
+// Behavior of the 2.1.300 recordings (S1): nothing is printed until input; `initialize` is answered at once;
+// a send is `queued` at accept, and `started` + `system/init` + the `isReplay` echo come when Claude reads
+// it. User-message priority:
+//   next (or absent)  waits for the whole running tool, then joins the running turn; if the turn ends first
+//                     it starts the next turn.
+//   later             waits for the turn's end and then starts its own turn (never coalesced).
+//   now + origin human  a running Bash moves to the background and the message is read at once, in the same
+//                     turn; the task's later completion arrives as a task notification. A stream, or any
+//                     other tool, is cut or finished first and the turn ends (aborted_*).
+//   now without origin  the running tool finishes, then the turn ends and the message starts the next turn.
+// Closing stdin lets the running turn finish (a pending `can_use_tool` fails as a tool error), then exits 0.
+
+typealias ChatObject = ChatWire.Object
+
+/// How a running turn ends early. Thrown out of every wait inside a scenario.
+enum TurnEnd: Error {
+    case interrupted
+    case abortedByNow
+}
+
+struct ChatConfig {
+    var sessionID: String
+    var resumed: Bool
+    var model: String
+    var permissionMode: String
+    var effort: String?
+    var partial: Bool
+    var replay: Bool
+    var permissionHost: Bool
+    var allowBypass: Bool
+    var persist: Bool
+    var cwd: String
+    var configDir: String?
+    var capabilities: [String]
+    var delayMs: Int
+    var emitState: Bool
+    var stateHostOnly: Bool
+
+    init(arguments: [String], environment: [String: String]) {
+        func value(_ flag: String) -> String? {
+            arguments.firstIndex(of: flag).flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
+        }
+        resumed = value("--resume") != nil
+        sessionID = value("--resume") ?? value("--session-id") ?? UUID().uuidString.lowercased()
+        model = value("--model") ?? "claude-fake-5-1"
+        permissionMode = value("--permission-mode") ?? "default"
+        effort = value("--effort")
+        partial = arguments.contains("--include-partial-messages")
+        replay = arguments.contains("--replay-user-messages")
+        permissionHost = value("--permission-prompt-tool") == "stdio"
+        allowBypass = arguments.contains("--allow-dangerously-skip-permissions")
+        persist = !arguments.contains("--no-session-persistence")
+        cwd = FileManager.default.currentDirectoryPath
+        configDir = environment["CLAUDE_CONFIG_DIR"]
+        capabilities = environment["LOOM_FAKE_CHAT_CAPABILITIES"].map { $0.split(separator: ",").map(String.init) }
+            ?? ["interrupt_receipt_v1", "interrupt_cancel_queued_v1", "interrupt_send_now_v1", "msg_lifecycle_v1",
+                "request_marker_lists_v1", "sdk_mcp_tools_list_changed", "sdk_mcp_manifests", "mcp_read_resource_v1",
+                "mcp_tool_ui_meta_v1", "ui_surface_v1"]
+        delayMs = environment["LOOM_FAKE_CHAT_DELAY_MS"].flatMap(Int.init) ?? 2
+        let emit = environment["CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS"] == "1"
+        let reads = environment["CLAUDE_CODE_SDK_READS_SESSION_STATE"] == "1"
+        emitState = emit || reads
+        stateHostOnly = reads && !emit
+    }
+}
+
+/// A user message the host sent.
+struct ChatUser {
+    var uuid: String
+    var content: Any
+    var text: String
+    var priority: String
+    var origin: ChatObject?
+
+    var isHuman: Bool { origin?["kind"] as? String == "human" }
+}
+
+enum ChatInbound {
+    case user(ChatUser)
+    case control(id: String, subtype: String, body: ChatObject)
+    case response(id: String, payload: ChatObject)
+    case cancel(String)
+    case ignored
+    case eof
+}
+
+/// Lines from stdin, handed from the reader thread to the engine.
+final class ChatInbox: @unchecked Sendable {
+    enum Item: Sendable {
+        case line(Data)
+        case eof
+    }
+
+    private let condition = NSCondition()
+    private var lines: [Data] = []
+    private var closed = false
+
+    func push(_ line: Data) {
+        condition.lock()
+        lines.append(line)
+        condition.signal()
+        condition.unlock()
+    }
+
+    func close() {
+        condition.lock()
+        closed = true
+        condition.broadcast()
+        condition.unlock()
+    }
+
+    /// The next line, `.eof` once input ended and every line was taken, or nil when `timeout` ran out.
+    /// A nil timeout waits for as long as it takes.
+    func next(timeout: TimeInterval?) -> Item? {
+        condition.lock()
+        defer { condition.unlock() }
+        let deadline = timeout.map { Date().addingTimeInterval($0) }
+        while lines.isEmpty, !closed {
+            if let deadline {
+                if !condition.wait(until: deadline) { break }
+            } else {
+                condition.wait()
+            }
+        }
+        if !lines.isEmpty { return .line(lines.removeFirst()) }
+        return closed ? .eof : nil
+    }
+
+    func startReading() {
+        Thread.detachNewThread { [self] in
+            var pending = Data()
+            var buffer = [UInt8](repeating: 0, count: 65_536)
+            while true {
+                let count = read(0, &buffer, buffer.count)
+                if count < 0 {
+                    if errno == EINTR { continue }
+                    break
+                }
+                if count == 0 { break }
+                var start = 0
+                for index in 0..<count where buffer[index] == 0x0A {
+                    pending.append(contentsOf: buffer[start..<index])
+                    if !pending.isEmpty { push(pending) }
+                    pending = Data()
+                    start = index + 1
+                }
+                pending.append(contentsOf: buffer[start..<count])
+            }
+            if !pending.isEmpty { push(pending) }
+            close()
+        }
+    }
+}
+
+func chatWrite(_ data: Data) {
+    data.withUnsafeBytes { raw in
+        guard let base = raw.baseAddress else { return }
+        var offset = 0
+        while offset < raw.count {
+            let count = write(1, base + offset, raw.count - offset)
+            if count < 0 {
+                if errno == EINTR { continue }
+                if errno == EAGAIN { usleep(1_000); continue }
+                exit(0) // the host went away
+            }
+            offset += count
+        }
+    }
+}
+
+/// `$CLAUDE_CONFIG_DIR/projects/<cwd with non-alphanumerics as '-'>/<session>.jsonl`, plus a subagent's
+/// `<session>/subagents/agent-<id>.{jsonl,meta.json}`, as the terminal mode's `/subagent` writes them.
+final class ChatTranscript {
+    private let directory: URL?
+    private var sessionID: String
+
+    init(config: ChatConfig) {
+        sessionID = config.sessionID
+        let folder = String(config.cwd.map { $0.isLetter || $0.isNumber ? $0 : "-" })
+        directory = config.persist
+            ? config.configDir.map { URL(fileURLWithPath: $0).appendingPathComponent("projects/\(folder)", isDirectory: true) }
+            : nil
+    }
+
+    func switchSession(_ id: String) { sessionID = id }
+
+    func append(_ record: ChatObject, agent: String? = nil) {
+        guard let directory else { return }
+        let url = agent.map {
+            directory.appendingPathComponent("\(sessionID)/subagents/agent-\($0).jsonl")
+        } ?? directory.appendingPathComponent("\(sessionID).jsonl")
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let descriptor = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o600)
+        guard descriptor >= 0 else { return }
+        let line = ChatWire.line(record)
+        line.withUnsafeBytes { _ = write(descriptor, $0.baseAddress, $0.count) }
+        close(descriptor)
+    }
+
+    func writeMeta(agent: String, type: String, description: String) {
+        guard let directory else { return }
+        let folder = directory.appendingPathComponent("\(sessionID)/subagents", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let meta: ChatObject = ["agentType": type, "description": description, "spawnDepth": 1, "requestShape": "foreground"]
+        guard let data = try? JSONSerialization.data(withJSONObject: meta, options: [.sortedKeys]) else { return }
+        try? data.write(to: folder.appendingPathComponent("agent-\(agent).meta.json"))
+    }
+}
+
+/// How the scenario wants the turn's `result` to read, when it is not a plain success.
+struct ChatOutcome {
+    var subtype = "success"
+    var isError = false
+    var terminalReason: String? = "completed"
+    var apiErrorStatus: Int?
+    var text: String?
+    var errors: [String] = []
+}
+
+/// The tool a turn is running right now. Only a Bash can move to the background.
+final class RunningTool {
+    let id: String
+    let movable: Bool
+    let description: String
+    let due: Date
+    var taskID: String?
+    var runID = ""
+    var moved = false
+
+    init(id: String, movable: Bool, description: String, due: Date) {
+        self.id = id
+        self.movable = movable
+        self.description = description
+        self.due = due
+    }
+}
+
+struct BackgroundTask {
+    var taskID: String
+    var runID: String
+    var toolUseID: String
+    var description: String
+    var due: Date
+}
+
+struct AgentInfo {
+    var id: String
+    var type: String
+    var description: String
+}
+
+final class ChatEngine {
+    var config: ChatConfig
+    var wire: ChatWire
+    let inbox = ChatInbox()
+    let transcript: ChatTranscript
+    var permissionMode: String
+
+    /// Sends accepted and not yet read, in arrival order.
+    var unread: [ChatUser] = []
+    /// `now` sends that moved a Bash to the background: read at the next boundary.
+    var readNow: [ChatUser] = []
+    var abortAfterTool = false
+    var sentTexts: [String: String] = [:]
+    var responses: [String: ChatObject] = [:]
+    var pendingIDs: [String] = []
+    var requestCounter = 0
+    var toolCounter = 0
+
+    var sessionBusy = false
+    var inputClosed = false
+    var running = false
+    var currentTool: RunningTool?
+    var awaitingPermission = false
+    var background: [BackgroundTask] = []
+    var interruptedInTool = false
+    var turnUUIDs: [String] = []
+    var turnStarted = Date()
+    var outputTokens = 0
+    var denials: [ChatObject] = []
+    var finalText = ""
+    var outcome = ChatOutcome()
+    var rateLimitStatus = "allowed"
+    var prePlanMode: String?
+    var cost = 0.0
+    var lastUUID: String?
+    var lastAssistantUUID: String?
+    /// The Agent tool_use id of a subagent that is running, to its identity.
+    var subagents: [String: AgentInfo] = [:]
+
+    let slashCommands = ["compact", "clear", "context", "review", "init"]
+    let skills = ["fake-skill"]
+    var tools: [String] {
+        let all = ["Agent", "Bash", "Edit", "Read", "Write", "Glob", "Grep", "AskUserQuestion", "ExitPlanMode", "TodoWrite"]
+        // Without a permission host the CLI removes the tools that need a person (S1 Q1).
+        return config.permissionHost ? all : all.filter { $0 != "AskUserQuestion" && $0 != "ExitPlanMode" }
+    }
+
+    init(config: ChatConfig) {
+        self.config = config
+        wire = ChatWire(session: config.sessionID, model: config.model)
+        transcript = ChatTranscript(config: config)
+        permissionMode = config.permissionMode
+    }
+
+    // MARK: Output
+
+    func send(_ object: ChatObject) { chatWrite(ChatWire.line(object)) }
+
+    func sendInit() {
+        send(wire.initMessage(
+            permissionMode: permissionMode, cwd: config.cwd, tools: tools, slashCommands: slashCommands, skills: skills,
+            capabilities: config.capabilities, effort: config.effort))
+    }
+
+    func lifecycle(_ uuid: String, _ state: String) {
+        if config.capabilities.contains("msg_lifecycle_v1") { send(wire.commandLifecycle(uuid: uuid, state: state)) }
+    }
+
+    func sessionState(_ state: String) {
+        if config.emitState { send(wire.sessionState(state, hostOnly: config.stateHostOnly)) }
+    }
+
+    func echo(_ message: ChatUser) {
+        if config.replay { send(wire.userEcho(uuid: message.uuid, content: message.content, origin: message.origin)) }
+    }
+
+    /// Sends a `user` or `assistant` record and writes it to the transcript (a subagent's to its own file).
+    func emitMessage(_ object: ChatObject, agent: String? = nil) {
+        send(object)
+        guard let type = object["type"] as? String, let message = object["message"] as? ChatObject,
+              let uuid = object["uuid"] as? String else { return }
+        var extra: ChatObject = [:]
+        if let structured = object["tool_use_result"] { extra["toolUseResult"] = structured }
+        transcript.append(wire.transcriptRecord(
+            type: type, uuid: uuid, message: message, parentUUID: agent == nil ? lastUUID : nil, cwd: config.cwd,
+            agentID: agent, extra: extra), agent: agent)
+        if agent == nil { lastUUID = uuid }
+        if type == "assistant", agent == nil { lastAssistantUUID = uuid }
+    }
+
+    func recordUser(_ message: ChatUser) {
+        transcript.append(wire.transcriptRecord(
+            type: "user", uuid: message.uuid, message: ["role": "user", "content": message.content],
+            parentUUID: lastUUID, cwd: config.cwd, extra: ["permissionMode": permissionMode]))
+        lastUUID = message.uuid
+    }
+
+    // MARK: Input
+
+    func decode(_ item: ChatInbox.Item) -> ChatInbound {
+        guard case .line(let data) = item else { return .eof }
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? ChatObject,
+              let type = object["type"] as? String else { return .ignored }
+        switch type {
+        case "user":
+            let content = (object["message"] as? ChatObject)?["content"] ?? ""
+            var text = content as? String ?? ""
+            if let blocks = content as? [ChatObject] {
+                text = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined(separator: "\n")
+            }
+            let priority = ["later", "now"].contains(object["priority"] as? String ?? "") ? object["priority"] as! String : "next"
+            return .user(ChatUser(
+                uuid: object["uuid"] as? String ?? wire.uuid(), content: content, text: text, priority: priority,
+                origin: object["origin"] as? ChatObject))
+        case "control_request":
+            guard let id = object["request_id"] as? String else { return .ignored }
+            let request = object["request"] as? ChatObject ?? [:]
+            return .control(id: id, subtype: request["subtype"] as? String ?? "", body: request)
+        case "control_response":
+            guard let response = object["response"] as? ChatObject, let id = response["request_id"] as? String else {
+                return .ignored
+            }
+            if response["subtype"] as? String == "success" { return .response(id: id, payload: response["response"] as? ChatObject ?? [:]) }
+            return .response(id: id, payload: ["behavior": "deny", "message": response["error"] as? String ?? "Request failed"])
+        case "control_cancel_request":
+            return (object["request_id"] as? String).map { .cancel($0) } ?? .ignored
+        default:
+            return .ignored
+        }
+    }
+
+    /// Takes one inbound item. While a turn runs, this is where an interrupt or a `now` send stops it.
+    func handle(_ inbound: ChatInbound) throws {
+        switch inbound {
+        case .ignored:
+            break
+        case .user(let message):
+            sentTexts[message.uuid] = message.text
+            if !sessionBusy { sessionBusy = true; sessionState("running") }
+            lifecycle(message.uuid, "queued")
+            guard running, message.priority == "now" else {
+                unread.append(message)
+                return
+            }
+            if let tool = currentTool, !awaitingPermission {
+                if message.isHuman, tool.movable, moveToBackground() {
+                    readNow.append(message)
+                } else {
+                    unread.insert(message, at: 0)
+                    abortAfterTool = true // the tool finishes first
+                }
+            } else {
+                unread.insert(message, at: 0)
+                throw TurnEnd.abortedByNow
+            }
+        case .control(let id, let subtype, let body):
+            try handleControl(id: id, subtype: subtype, body: body)
+        case .response(let id, let payload):
+            responses[id] = payload
+        case .cancel(let id):
+            if pendingIDs.contains(id) { responses[id] = ["behavior": "deny", "message": "Cancelled by the host"] }
+        case .eof:
+            inputClosed = true
+        }
+    }
+
+    func handleControl(id: String, subtype: String, body: ChatObject) throws {
+        switch subtype {
+        case "initialize":
+            send(wire.controlSuccess(id, wire.initializeResponse(
+                slashCommands: slashCommands, model: wire.model, permissionMode: permissionMode,
+                state: sessionBusy ? "running" : "idle", pid: getpid(),
+                // The real answer lists only ui_surface_v1; the ten capabilities come in system/init (S1 Q4).
+                capabilities: config.capabilities.filter { $0 == "ui_surface_v1" })))
+        case "interrupt":
+            // A request that waits for the host is withdrawn before the interrupt is answered (S1 t09-pending-interrupt).
+            let withdrew = !pendingIDs.isEmpty
+            for pending in pendingIDs { send(wire.controlCancel(pending)) }
+            pendingIDs = []
+            let cancel = (body["cancel_queued"] as? Bool ?? false) && config.capabilities.contains("interrupt_cancel_queued_v1")
+            let queued = unread.map(\.uuid)
+            if cancel {
+                unread.removeAll()
+                for uuid in queued { lifecycle(uuid, "cancelled") }
+                send(wire.controlSuccess(id, ["still_queued": [] as [String], "cancelled": queued]))
+            } else {
+                send(wire.controlSuccess(id, ["still_queued": queued]))
+            }
+            if withdrew { sessionState("running") } // the turn works again, on its way out (t09-pending-interrupt:28)
+            if running { throw TurnEnd.interrupted }
+        case "cancel_async_message":
+            // Unsends one message the CLI holds and has not read.
+            let uuid = body["message_uuid"] as? String
+            if let index = unread.firstIndex(where: { $0.uuid == uuid }) {
+                lifecycle(unread.remove(at: index).uuid, "cancelled")
+                send(wire.controlSuccess(id, ["cancelled": true]))
+            } else {
+                send(wire.controlSuccess(id, ["cancelled": false]))
+            }
+        case "set_permission_mode":
+            guard let mode = body["mode"] as? String,
+                  ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk", "auto"].contains(mode),
+                  mode != "bypassPermissions" || config.allowBypass else {
+                send(wire.controlError(id, "Invalid permission mode"))
+                return
+            }
+            permissionMode = mode
+            send(wire.status(nil, permissionMode: mode))
+            send(wire.controlSuccess(id, ["mode": mode]))
+        case "set_model":
+            wire.model = (body["model"] as? String).flatMap { $0 == "default" ? nil : $0 } ?? config.model
+            send(wire.controlSuccess(id, [:]))
+        case "apply_flag_settings":
+            let settings = body["settings"] as? ChatObject ?? [:]
+            if let model = settings["model"] as? String { wire.model = model }
+            if let effort = settings["effortLevel"] as? String { config.effort = effort }
+            send(wire.controlSuccess(id, [:]))
+        case "background_tasks":
+            // The Ctrl+B equivalent: a running Bash goes to the background.
+            if running { _ = moveToBackground() }
+            send(wire.controlSuccess(id, [:]))
+        case "side_question":
+            // No lifecycle, no turn, nothing in the transcript.
+            send(wire.controlProgress(id))
+            send(wire.controlSuccess(id, wire.sideQuestionResponse(body["question"] as? String ?? "")))
+        case "rewind_files":
+            send(wire.controlSuccess(id, wire.rewindFilesResponse(dryRun: body["dry_run"] as? Bool ?? false)))
+        case "rewind_conversation":
+            let target = body["target_message_uuid"] as? String ?? ""
+            send(wire.controlSuccess(id, wire.rewindConversationResponse(
+                target: target, prefill: sentTexts[target] ?? "", preceding: lastAssistantUUID ?? wire.uuid())))
+        case "get_usage":
+            send(wire.controlSuccess(id, wire.usageResponse()))
+        default:
+            send(wire.controlError(id, "Unsupported control request: \(subtype)"))
+        }
+    }
+
+    // MARK: Waiting
+
+    /// The next inbox item. After the end of input nothing more arrives, so it only sleeps.
+    func poll(_ timeout: TimeInterval?) -> ChatInbox.Item? {
+        if inputClosed {
+            if let timeout, timeout > 0 { usleep(UInt32(min(timeout, 0.05) * 1_000_000)) }
+            return nil
+        }
+        return inbox.next(timeout: timeout)
+    }
+
+    /// Waits for one input item, for at most `maxWait` (nil: until something arrives), and runs what falls due.
+    func serviceOnce(maxWait: TimeInterval?) throws {
+        if running { deliverDueBackground() }
+        var wait = maxWait
+        if let due = background.map(\.due).min() {
+            let remaining = max(0, due.timeIntervalSinceNow)
+            wait = wait.map { min($0, remaining) } ?? remaining
+        }
+        if let item = poll(wait) { try handle(decode(item)) }
+    }
+
+    /// Waits `milliseconds` and takes whatever arrives meanwhile. With 0, only what already arrived.
+    func pause(_ milliseconds: Int) throws {
+        if milliseconds <= 0 {
+            if running { deliverDueBackground() }
+            while let item = poll(0) { try handle(decode(item)) }
+            return
+        }
+        let deadline = Date().addingTimeInterval(Double(milliseconds) / 1_000)
+        while deadline.timeIntervalSinceNow > 0 { try serviceOnce(maxWait: deadline.timeIntervalSinceNow) }
+    }
+
+    // MARK: Background tasks
+
+    func announce(_ tool: RunningTool) {
+        guard tool.taskID == nil else { return }
+        tool.taskID = "b" + UUID().uuidString.lowercased().prefix(8)
+        tool.runID = "run-" + UUID().uuidString.lowercased().prefix(8)
+        send(wire.taskStarted(
+            taskID: tool.taskID!, runID: tool.runID, toolUseID: tool.id, description: tool.description, type: "local_bash"))
+    }
+
+    func backgroundList() -> [ChatObject] {
+        background.map { ["task_id": $0.taskID, "run_id": $0.runID, "task_type": "local_bash", "description": $0.description] }
+    }
+
+    /// Moves the running Bash to the background; it is not interrupted and finishes on its own clock.
+    @discardableResult
+    func moveToBackground() -> Bool {
+        guard let tool = currentTool, tool.movable, !tool.moved, !awaitingPermission else { return false }
+        announce(tool)
+        tool.moved = true
+        background.append(BackgroundTask(
+            taskID: tool.taskID!, runID: tool.runID, toolUseID: tool.id, description: tool.description, due: tool.due))
+        send(wire.backgroundTasksChanged(backgroundList()))
+        send(wire.taskUpdated(taskID: tool.taskID!, runID: tool.runID, patch: ["is_backgrounded": true]))
+        return true
+    }
+
+    /// A background task finished: its events, then the notification told to the model.
+    func completeBackground(_ task: BackgroundTask) {
+        background.removeAll { $0.taskID == task.taskID }
+        let summary = "Background command \"\(task.description)\" completed (exit code 0)"
+        send(wire.taskUpdated(taskID: task.taskID, runID: task.runID, patch: [
+            "status": "completed", "end_time": Int(Date().timeIntervalSince1970 * 1_000)]))
+        send(wire.taskNotification(
+            taskID: task.taskID, runID: task.runID, toolUseID: task.toolUseID, status: "completed", summary: summary))
+        send(wire.backgroundTasksChanged(backgroundList()))
+        send(wire.taskNotificationUser(
+            taskID: task.taskID, toolUseID: task.toolUseID, summary: summary, runID: task.runID))
+    }
+
+    func deliverDueBackground() {
+        for task in background where task.due <= Date() { completeBackground(task) }
+    }
+
+    // MARK: Turns
+
+    func run() -> Never {
+        inbox.startReading()
+        while true {
+            if !unread.isEmpty {
+                runTurn(unread.removeFirst())
+                continue
+            }
+            if let task = background.first(where: { $0.due <= Date() }) {
+                runTurn(nil, finished: task)
+                continue
+            }
+            if inputClosed, background.isEmpty { exit(0) }
+            try? serviceOnce(maxWait: inputClosed ? 0.05 : nil)
+        }
+    }
+
+    /// A turn for `first`, or (without one) the turn a finished background task starts by itself.
+    func runTurn(_ first: ChatUser?, finished: BackgroundTask? = nil) {
+        running = true
+        currentTool = nil
+        awaitingPermission = false
+        abortAfterTool = false
+        interruptedInTool = false
+        turnUUIDs = first.map { [$0.uuid] } ?? []
+        turnStarted = Date()
+        outputTokens = 0
+        denials = []
+        finalText = ""
+        outcome = ChatOutcome()
+        rateLimitStatus = "allowed"
+        prePlanMode = nil
+        if !sessionBusy { sessionBusy = true; sessionState("running") }
+        if let first {
+            lifecycle(first.uuid, "started")
+            sendInit()
+            send(wire.statusRequesting(turnUUIDs))
+            echo(first)
+            recordUser(first)
+        } else if let finished {
+            completeBackground(finished)
+            sendInit()
+            send(wire.statusRequesting([]))
+        }
+        do {
+            if let first {
+                try runScenario(first.text)
+            } else {
+                try assistantMessage([.text("The background command finished.")])
+            }
+            finishTurn(nil)
+        } catch let end as TurnEnd {
+            finishTurn(end)
+        } catch {
+            finishTurn(.interrupted)
+        }
+    }
+
+    func finishTurn(_ end: TurnEnd?) {
+        for id in pendingIDs { send(wire.controlCancel(id)) }
+        pendingIDs = []
+        responses = [:]
+        let millis = Int(Date().timeIntervalSince(turnStarted) * 1_000)
+        cost += 0.0123
+        let terminal = interruptedInTool ? "aborted_tools" : "aborted_streaming"
+        switch end {
+        case nil:
+            // A failed API call (not a rate-limit block) has no rate-limit event, and its command is cancelled, not
+            // completed (S1 t19-err-badmodel:7-9).
+            let failedCall = outcome.terminalReason == "api_error"
+            if !failedCall || rateLimitStatus == "rejected" {
+                send(wire.rateLimit(
+                    status: rateLimitStatus, resetsAt: Int(Date().timeIntervalSince1970) + 3_600, type: "five_hour",
+                    utilization: rateLimitStatus == "allowed" ? 0.41 : rateLimitStatus == "allowed_warning" ? 0.85 : 1.0))
+            }
+            send(wire.result(
+                subtype: outcome.subtype, isError: outcome.isError, text: outcome.text ?? finalText, durationMs: millis,
+                stopReason: "end_turn", terminalReason: outcome.terminalReason, apiErrorStatus: outcome.apiErrorStatus,
+                cost: cost, outputTokens: outputTokens, denials: denials, errors: outcome.errors, userUUIDs: turnUUIDs,
+                queued: unread.count))
+            for uuid in turnUUIDs { lifecycle(uuid, failedCall ? "cancelled" : "completed") }
+        case .interrupted?:
+            // An interrupt is an error without text; its commands end cancelled.
+            if !interruptedInTool { send(wire.userText("[Request interrupted by user]")) }
+            send(wire.result(
+                subtype: "error_during_execution", isError: true, text: nil, durationMs: millis, stopReason: nil,
+                terminalReason: terminal, apiErrorStatus: nil, cost: cost, outputTokens: outputTokens, denials: denials,
+                errors: [], userUUIDs: turnUUIDs, queued: unread.count))
+            for uuid in turnUUIDs { lifecycle(uuid, "cancelled") }
+        case .abortedByNow?:
+            // A `now` send ends the turn as a success with the partial text; the message starts the next turn.
+            send(wire.result(
+                subtype: "success", isError: false, text: finalText, durationMs: millis,
+                stopReason: interruptedInTool ? "tool_use" : nil, terminalReason: terminal, apiErrorStatus: nil,
+                cost: cost, outputTokens: outputTokens, denials: denials, errors: [], userUUIDs: turnUUIDs,
+                queued: unread.count))
+            for uuid in turnUUIDs { lifecycle(uuid, "cancelled") }
+        }
+        running = false
+        readNow = []
+        if unread.isEmpty {
+            sessionBusy = false
+            sessionState("idle")
+        }
+    }
+
+    // MARK: Boundaries
+
+    /// A tool boundary: the tool that ran is finished. A `now` send that waited for it ends the turn here;
+    /// `next` sends and `now` sends that moved a Bash to the background are read by the running turn.
+    func toolBoundary() throws {
+        try pause(0)
+        if abortAfterTool {
+            interruptedInTool = true
+            throw TurnEnd.abortedByNow
+        }
+        let next = unread.filter { $0.priority == "next" }
+        let joined = readNow + next
+        readNow = []
+        guard !joined.isEmpty else { return }
+        unread.removeAll { $0.priority == "next" }
+        for message in joined {
+            turnUUIDs.append(message.uuid)
+            echo(message)
+            lifecycle(message.uuid, "started")
+            send(wire.statusRequesting(turnUUIDs))
+            recordUser(message)
+        }
+        try assistantMessage([.text("Joined your message: " + joined.map(\.text).joined(separator: " / "))])
+    }
+
+    // MARK: Building blocks
+
+    enum Block {
+        case text(String)
+        case thinking(String)
+        case tool(id: String, name: String, input: ChatObject)
+    }
+
+    func nextToolID() -> String {
+        toolCounter += 1
+        return "toolu_fake\(toolCounter)"
+    }
+
+    func chunks(_ text: String, size: Int) -> [String] {
+        var result: [String] = []
+        var current = ""
+        for character in text {
+            current.append(character)
+            if current.count >= size { result.append(current); current = "" }
+        }
+        if !current.isEmpty { result.append(current) }
+        return result
+    }
+
+    func agentExtra(_ parent: String?) -> ChatObject {
+        parent.flatMap { subagents[$0] }.map { wire.agentFields(id: $0.id, type: $0.type, description: $0.description) } ?? [:]
+    }
+
+    /// One API message: its blocks stream as partial events (main thread only, with
+    /// `--include-partial-messages`) and each completed block is an `assistant` record. A pause after every
+    /// delta lets an interrupt land mid-stream; the text sent so far then becomes an `aborted` message.
+    func assistantMessage(_ blocks: [Block], parent: String? = nil) throws {
+        let messageID = "msg_fake" + UUID().uuidString.lowercased().prefix(8)
+        let agent = parent.flatMap { subagents[$0]?.id }
+        let extra = agentExtra(parent)
+        let streaming = config.partial && parent == nil
+        func stream(_ event: ChatObject) {
+            if streaming { send(wire.streamEvent(event, parent: parent, apiMessageID: messageID)) }
+        }
+        stream(wire.messageStart(id: messageID))
+        for (index, block) in blocks.enumerated() {
+            let isLast = index == blocks.count - 1
+            let final: ChatObject
+            var weight = 1
+            switch block {
+            case .text(let text):
+                stream(wire.blockStart(index: index, block: ["type": "text", "text": ""]))
+                var sent = ""
+                do {
+                    for piece in chunks(text, size: 10) {
+                        sent += piece
+                        stream(wire.blockDelta(index: index, delta: ["type": "text_delta", "text": piece]))
+                        try pause(config.delayMs)
+                    }
+                } catch {
+                    if parent == nil, !sent.isEmpty {
+                        finalText = sent
+                        var aborted = extra
+                        aborted["aborted"] = true
+                        emitMessage(wire.assistant(
+                            messageID: messageID, block: ["type": "text", "text": sent], stopReason: nil,
+                            outputTokens: max(1, sent.count / 4), parent: parent, extra: aborted))
+                    }
+                    throw error
+                }
+                stream(wire.blockStop(index: index))
+                final = ["type": "text", "text": text]
+                weight = text.count
+                if parent == nil { finalText = text }
+            case .thinking(let text):
+                stream(wire.blockStart(index: index, block: ["type": "thinking", "thinking": "", "signature": ""]))
+                for piece in chunks(text, size: 10) {
+                    stream(wire.blockDelta(index: index, delta: ["type": "thinking_delta", "thinking": piece]))
+                    try pause(config.delayMs)
+                }
+                stream(wire.blockDelta(index: index, delta: ["type": "signature_delta", "signature": "fake-signature"]))
+                stream(wire.blockStop(index: index))
+                final = ["type": "thinking", "thinking": text, "signature": "fake-signature"]
+                weight = text.count
+            case .tool(let id, let name, let input):
+                stream(wire.blockStart(index: index, block: ["type": "tool_use", "id": id, "name": name, "input": [:] as ChatObject]))
+                let json = (try? JSONSerialization.data(withJSONObject: input, options: [.sortedKeys, .withoutEscapingSlashes]))
+                    .map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+                for piece in chunks(json, size: max(1, json.count / 3 + 1)) {
+                    stream(wire.blockDelta(index: index, delta: ["type": "input_json_delta", "partial_json": piece]))
+                    try pause(config.delayMs)
+                }
+                stream(wire.blockStop(index: index))
+                final = ["type": "tool_use", "id": id, "name": name, "input": input]
+                weight = json.count
+            }
+            let tokens = max(1, weight / 4)
+            outputTokens += tokens
+            var stopReason: String?
+            if isLast {
+                if case .tool = block { stopReason = "tool_use" } else { stopReason = "end_turn" }
+            }
+            emitMessage(wire.assistant(
+                messageID: messageID, block: final, stopReason: stopReason, outputTokens: tokens, parent: parent,
+                extra: extra), agent: agent)
+        }
+        var lastStop = "end_turn"
+        if case .tool? = blocks.last { lastStop = "tool_use" }
+        stream(wire.messageDelta(stopReason: lastStop, outputTokens: outputTokens))
+        stream(wire.messageStop())
+    }
+
+    func toolResult(_ id: String, _ content: Any, error: Bool = false, structured: Any? = nil, parent: String? = nil) {
+        emitMessage(wire.toolResult(
+            toolUseID: id, content: content, isError: error, structured: structured, parent: parent,
+            extra: agentExtra(parent)), agent: parent.flatMap { subagents[$0]?.id })
+    }
+
+    /// An interrupt, a `now` send or a pending request cut a tool short: the CLI answers the tool_use with a
+    /// rejection and says why.
+    func abortTool(_ id: String, parent: String?, tool: RunningTool?) {
+        let first = !interruptedInTool
+        interruptedInTool = true
+        if let tool, let taskID = tool.taskID, !tool.moved {
+            send(wire.taskNotification(
+                taskID: taskID, runID: tool.runID, toolUseID: id, status: "stopped", summary: tool.description))
+        }
+        toolResult(id, "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a "
+            + "file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user "
+            + "to tell you how to proceed.", error: true, structured: "User rejected tool use", parent: parent)
+        if first { send(wire.userText("[Request interrupted by user for tool use]")) }
+    }
+
+    func whileTool<T>(_ id: String, parent: String? = nil, _ body: () throws -> T) throws -> T {
+        do {
+            return try body()
+        } catch {
+            abortTool(id, parent: parent, tool: nil)
+            throw error
+        }
+    }
+
+    /// Runs the tool for `milliseconds`, interruptibly. A Bash running a second or more announces itself
+    /// (`task_started`). Returns the tool; `moved` says it went to the background instead of finishing.
+    @discardableResult
+    func runTool(
+        _ id: String, name: String = "Bash", description: String = "", milliseconds: Int, parent: String? = nil
+    ) throws -> RunningTool {
+        let tool = RunningTool(
+            id: id, movable: name == "Bash" && parent == nil, description: description,
+            due: Date().addingTimeInterval(Double(milliseconds) / 1_000))
+        currentTool = tool
+        defer { currentTool = nil }
+        if tool.movable, milliseconds >= 1_000 { announce(tool) }
+        do {
+            repeat {
+                try serviceOnce(maxWait: max(0, tool.due.timeIntervalSinceNow))
+            } while !tool.moved && tool.due > Date()
+        } catch {
+            abortTool(id, parent: parent, tool: tool)
+            throw error
+        }
+        if let taskID = tool.taskID, !tool.moved {
+            send(wire.taskNotification(
+                taskID: taskID, runID: tool.runID, toolUseID: id, status: "completed", summary: tool.description))
+        }
+        return tool
+    }
+
+    /// A tool_use (after optional leading blocks of the same message), its run, its result and the boundary.
+    func toolStep(
+        id: String, name: String, input: ChatObject, milliseconds: Int = 15, leading: [Block] = [],
+        content: Any, error: Bool = false, structured: Any? = nil
+    ) throws {
+        try assistantMessage(leading + [.tool(id: id, name: name, input: input)])
+        let tool = try runTool(id, name: name, description: input["description"] as? String ?? name, milliseconds: milliseconds)
+        if tool.moved, let taskID = tool.taskID {
+            var moved = Self.bash(stdout: "")
+            moved["backgroundTaskId"] = taskID
+            toolResult(id, "Command was moved to the background (ID: \(taskID)) so that a message that arrived while it "
+                + "was running can reach you; it was not interrupted. You will be notified when it completes.", structured: moved)
+        } else {
+            toolResult(id, content, error: error, structured: structured)
+        }
+        try toolBoundary()
+    }
+
+    /// Sends a `can_use_tool` request and waits for the host's answer, interruptibly. Without a permission
+    /// host (`--permission-prompt-tool stdio`) the CLI denies on its own, so no request is sent. If input
+    /// ends while it waits, the request fails as a tool error and the turn goes on (`failed: true`).
+    func askPermission(
+        tool: String, input: ChatObject, toolUseID: String, description: String? = nil, suggestions: [ChatObject] = [],
+        reason: String? = nil, agentID: String? = nil, requiresInteraction: Bool = false, parent: String? = nil
+    ) throws -> ChatObject {
+        guard config.permissionHost else {
+            let message = "Claude requested permissions to use \(tool), but you haven't granted it yet."
+            send(wire.permissionDenied(tool: tool, toolUseID: toolUseID, message: message))
+            return ["behavior": "deny", "message": message]
+        }
+        requestCounter += 1
+        let id = "fake-req-\(requestCounter)"
+        pendingIDs.append(id)
+        // The state change comes first, then the request (S1 t08-interrupt-cancelqueued:19-20).
+        sessionState("requires_action")
+        send(wire.canUseTool(
+            requestID: id, tool: tool, input: input, toolUseID: toolUseID, description: description,
+            suggestions: suggestions, reason: reason, agentID: agentID, requiresInteraction: requiresInteraction))
+        awaitingPermission = true
+        defer { awaitingPermission = false }
+        let payload = try whileTool(toolUseID, parent: parent) { () throws -> ChatObject in
+            while responses[id] == nil {
+                if inputClosed {
+                    responses[id] = [
+                        "behavior": "deny", "failed": true,
+                        "message": "Tool permission request failed: AbortError: Tool permission stream closed before response received",
+                    ]
+                    break
+                }
+                try serviceOnce(maxWait: nil)
+            }
+            return responses[id] ?? [:]
+        }
+        responses[id] = nil
+        pendingIDs.removeAll { $0 == id }
+        sessionState("running")
+        return payload
+    }
+}
+
+func runFakeChat(arguments: [String]) -> Never {
+    signal(SIGPIPE, SIG_IGN)
+    let config = ChatConfig(arguments: arguments, environment: ProcessInfo.processInfo.environment)
+    if config.resumed, config.sessionID.hasPrefix("missing") {
+        FileHandle.standardError.write(Data("No conversation found with session ID: \(config.sessionID)\n".utf8))
+        exit(1)
+    }
+    ChatEngine(config: config).run()
+}

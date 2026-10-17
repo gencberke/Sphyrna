@@ -85,8 +85,14 @@ if arguments == ["--probe-flood"] {
     exit(0)
 }
 
-// The headless plan-limits request (`-p --input-format stream-json`), see UsageFixture.swift.
+// Stream-json mode, as the real CLI gets it. A chat session (`--session-id`/`--resume`, partial messages,
+// replayed user messages or a permission host: Loom's Chat face) is the scripted chat engine, see
+// ChatEngine.swift. The bare headless request (`-p --input-format stream-json`, the plan-limits ask) is the
+// usage probe, see UsageFixture.swift.
 if arguments.contains("--input-format"), arguments.contains("stream-json") {
+    let chatFlags = ["--session-id", "--resume", "--include-partial-messages", "--replay-user-messages",
+                     "--permission-prompt-tool"]
+    if chatFlags.contains(where: arguments.contains) { runFakeChat(arguments: arguments) }
     runFakeUsageProbe(arguments: arguments)
 }
 
