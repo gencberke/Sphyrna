@@ -98,7 +98,9 @@ public actor TranscriptLens {
 
     /// The whole line an entry came from (`ChatEntry.sourceOffset`): "Show all" for a clipped tool result, or a line that
     /// was too long to read.
-    public func line(at offset: UInt64) -> Data? { reader.readLine(at: offset) }
+    public func line(at offset: UInt64, maximumLineBytes: Int = 256 * 1024 * 1024) -> Data? {
+        reader.readLine(at: offset, maximumLineBytes: maximumLineBytes)
+    }
 
     // MARK: Private
 

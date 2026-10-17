@@ -27,7 +27,7 @@ let package = Package(
         .target(name: "LoomTerminal", dependencies: [
             "LoomCore", .product(name: "SwiftTerm", package: "SwiftTerm"),
         ]),
-        .target(name: "LoomCatalogUI", dependencies: ["LoomCore", "LoomTerminal"]),
+        .target(name: "LoomCatalogUI", dependencies: ["LoomCore", "LoomTerminal", "LoomChat"]),
         // The chat engine's pure model and wire protocol (v2): no UI, no process spawning.
         .target(name: "LoomChat", dependencies: ["LoomCore"]),
         // Pure launch-option rules (data root, evidence channel), testable without AppKit.
@@ -51,6 +51,6 @@ let package = Package(
         .testTarget(name: "LoomTerminalTests", dependencies: ["LoomCore", "LoomTerminal"]),
         .testTarget(name: "LoomChatTests", dependencies: ["LoomChat", "LoomCore"]),
         .testTarget(name: "LoomLaunchOptionsTests", dependencies: ["LoomLaunchOptions"]),
-        .testTarget(name: "LoomCatalogUITests", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI"]),
+        .testTarget(name: "LoomCatalogUITests", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomChat"]),
     ]
 )

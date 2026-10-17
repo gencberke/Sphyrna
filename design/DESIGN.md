@@ -105,3 +105,22 @@ Visual acceptance: compare against the reference at the same window size and sca
 | Sound | None. |
 
 Every new surface is checked against this section before review: theme tokens only, status through `IndicatorView`, copy in this voice, persistent animation only as a gated layer animation, Reduce Transparency handled, text at the contrast tier for its role.
+
+## 7. Chat view (V13)
+
+The stream of a Claude session read as chat (`Sources/LoomCatalogUI/Chat/`; the spec is `plans/v2/CHAT-SPEC.md`). It is drawn by `ChatTranscriptView`, read only for a stopped session and a live tail for a running terminal one. Values live in `LoomTheme+Chat.swift` (`LoomTheme.Chat`); the rules below are the ones a change must keep. Rules marked T3 follow T3 Code (MIT, Copyright 2026 T3 Tools Inc.); no T3 code is copied.
+
+| Item | Rule |
+| --- | --- |
+| Column | 700 pt reading column centred in the panel, 28 pt side padding; your message is a right-aligned bubble (user fill, hairline), Claude's prose has no bubble |
+| Rows | One row per message, work step, group, fold, marker or card; a row's id is stable (entry id, or `fold:`, `group:`, `live:`, `changes:` plus the turn or first tool), so only changed rows redraw. Work rows are 26 pt high, 16 pt indent per level |
+| Turn fold [T3] | A settled turn's work between your message and the final answer folds into one row, "Worked for 4m 12s · changed 5 files and ran 3 commands". It never folds while the turn is live, failed or interrupted, or when nothing is left to fold; plan cards and dividers stay visible. A new turn closes the previous turn's opened fold. Your own messages inside a folded turn stay visible too |
+| Group summary [T3] | Two or more tools in a row are one line that names the two best kinds by (rank, first appearance) and counts the rest ("Changed 3 files, ran 2 commands and 4 other actions"); the latest tool decides its state. TodoWrite is never a row. Work that never finished in a settled turn reads as stopped |
+| Live row | The one row at the end of a running turn: the chase, what Claude does now ("Editing a.py"), the clock (1 s, only while visible), and "No activity for Ns" after 40 s. Trailing tools of a live turn collapse into it |
+| Views | Normal (thought as one line), Thinking (adds thinking blocks), Verbose (opens every fold and group); ⌃O cycles them, the chip at the top right shows the view. The view, open folds and the reader's place are kept per session for the last 64 sessions. ⌃O works only while the stream has focus, so a terminal beside it keeps the key |
+| Content | Markdown without a dependency: a small block parser (paragraph, heading, list, quote, code, table, rule; nesting capped at 8) and `AttributedString(markdown:)` for inline text. Only http, https and mailto links open. Code blocks have Copy ("Copied" for 1.2 s) and a wrap toggle; syntax colours (VS Code Dark+) only for finished blocks of up to 20,000 characters; tool output over 16 lines scrolls; "Show all" reads the whole result from the transcript. "Show all" shows at most 1 MiB or 10,000 lines of a result, with a note where it was cut |
+| Changed-files card | Under the final answer of a turn that edited files: "N files changed +A −R" from the edit records (no git), a tree with single-child folders merged. Counts use the success colour, never a status colour. It also shows for an interrupted turn that edited files |
+| Scroll latch [T3] | Following keeps the end in view; Free leaves the view where the reader put it. The distance is measured from the true content bottom with the bottom inset taken off; within 40 pt of it the view follows again. Wheel up, scroller drag and ↑, Page Up, Home leave Following; programmatic scrolls never change the state. "Jump to latest" appears 150 ms after leaving the end and hides at once on return. Older turns load when the top is within one viewport and the top row holds its place. A message you just sent is held 24 pt from the top until the turn's first activity |
+| Motion | New rows fade in over 150 ms; none under Reduce Motion. The clock and the chase run only while the window can be seen and a live row exists |
+| Cost | Rows are virtualized (a view only for the rows near the viewport); heights are cached by row id and width; a delta applies at most about every 50 ms and redraws only the rows that changed; a hidden window or a closed view has no watcher and no timer |
+| Copy | "session" in every user-visible string, never "conversation"; times use the system locale ("yesterday at 14:05") |

@@ -1,0 +1,148 @@
+import AppKit
+import SwiftUI
+
+/// Chat stream tokens (CHAT-SPEC → Stream, concept §6.1/§6.2): geometry, type and the syntax palette of code
+/// blocks. Values that exist in Night Fleece 2 are used from there (`Surface`, `Text`, `Accent`, `Status`,
+/// `Success`, `Radius`, `TypeScale`, `Rhythm`); only what the chat adds lives here. This file is exempt from the theme
+/// guard like every `LoomTheme*.swift`.
+extension LoomTheme {
+    enum Chat {
+        // MARK: Geometry
+
+        /// The reading column (700) with its side padding; rows centre in the panel.
+        static let column = Rhythm.readingColumn
+        static let columnPadding: CGFloat = 28
+        static let streamTopInset: CGFloat = 12
+        static let streamBottomInset: CGFloat = 20
+
+        /// A one-line work row: icon, label, time on hover, chevron (spec: about 24 pt; the prototype draws 30).
+        static let workRowHeight: CGFloat = 26
+        static let workRowRadius: CGFloat = Radius.md
+        static let workRowPaddingH: CGFloat = 10
+        static let iconSlot: CGFloat = 16
+        /// One step of nesting (the tools of an open group).
+        static let indentStep: CGFloat = 16
+        static let rowSpacing: CGFloat = 6
+        static let blockSpacing: CGFloat = 10
+        static let cardPadding: CGFloat = 12
+        static let cardRadius: CGFloat = Radius.lg
+        static let codeRadius: CGFloat = Radius.md
+        static let codeHeaderHeight: CGFloat = 26
+        static let bodyMaxHeight: CGFloat = 16 * 19 + 14
+        static let bodyLineHeight: CGFloat = 19
+        static let diffMaxLines = 200
+        static let failedTailLines = 12
+        static let thoughtLineLimit = 4
+        static let userMaxWidthFraction: CGFloat = 0.82
+        static let userCollapsedLines = 7
+        static let userCollapseCharacters = 600
+        static let userCollapseLines = 8
+        static let planCollapseCharacters = 900
+        static let planCollapseLines = 20
+        static let planPreviewLines = 10
+        static let markerHeight: CGFloat = 28
+        static let jumpPillHeight: CGFloat = 28
+
+        // MARK: Scroll latch
+
+        /// Back to following only within this distance of the true content bottom (CHAT-SPEC → Scrolling).
+        static let followDistance: CGFloat = 40
+        /// "Jump to latest" appears this long after the reader leaves the end.
+        static let jumpDelay: TimeInterval = 0.15
+        /// A sent message scrolls to this far below the top.
+        static let sendAnchorOffset: CGFloat = 24
+        /// The stream asks for older turns when the top is within this many viewports.
+        static let olderTriggerViewports: CGFloat = 1
+        /// Keyboard line step.
+        static let lineStep: CGFloat = 44
+
+        // MARK: Timing
+
+        /// New blocks fade in; Reduce Motion makes it instant.
+        static let fadeDuration = 0.18
+        /// "No activity" after this long with nothing new.
+        static let quietAfter: TimeInterval = 40
+        /// Copy shows "Copied" for this long.
+        static let copiedDuration: TimeInterval = 1.2
+
+        // MARK: Type
+
+        static let reading = TypeScale.reading
+        /// 22 pt lines with the 14 pt reading size.
+        static let readingLineSpacing: CGFloat = TypeScale.readingLineHeight - TypeScale.readingSize * 1.2
+        static let readingMono = Font.system(size: 12.5, design: .monospaced)
+        static let toolLabel = Font.system(size: 12.5)
+        static let toolLabelStrong = Font.system(size: 12.5, weight: .medium)
+        static let toolMono = Font.system(size: 12, design: .monospaced)
+        static let meta = Font.system(size: 11.5)
+        static let metaMono = Font.system(size: 11.5, design: .monospaced)
+        static let body = Font.system(size: 12.5, design: .monospaced)
+        static let thinkingLabel = Font.system(size: 12.5)
+        static let thinkingText = Font.system(size: 13).italic()
+        static let heading1 = Font.system(size: 17, weight: .semibold)
+        static let heading2 = Font.system(size: 15.5, weight: .semibold)
+        static let heading3 = Font.system(size: 14.5, weight: .semibold)
+        static let markerText = Font.system(size: 11.5)
+        static let chevron = Font.system(size: 9, weight: .semibold)
+        static let rowIcon = Font.system(size: 12)
+        static let cardIcon = Font.system(size: 13)
+        static let jumpPill = Font.system(size: 12, weight: .medium)
+        static let viewChip = Font.system(size: 11, weight: .medium)
+
+        // MARK: Colour
+
+        /// Your message: an accent wash with a thin accent line (the prototype's `.um`).
+        static let userFill = Accent.base.opacity(0.12)
+        static let userStroke = Accent.base.opacity(0.20)
+        static let userRadius: CGFloat = 16
+        static let userTailRadius: CGFloat = 5
+        static let hoverFill = Color.white.opacity(Surface.controlHoverOpacity)
+        static let inlineCodeFill = Color.white.opacity(0.07)
+        static let inlineCodeRGB = RGB(hex: 0xE3DFF0)
+        static let outputFill = Color.black.opacity(0.12)
+        static let outputRGB = RGB(hex: 0xB9B5C6)
+        static let output = outputRGB.color
+        static let diffAddFill = Success.base.opacity(0.11)
+        static let diffRemoveFill = Status.failure.opacity(0.11)
+        static let diffAdd = Success.light
+        static let diffRemove = Status.failureLight
+        static let quoteBar = Color.white.opacity(0.18)
+        static let tableHeaderFill = Color.white.opacity(Surface.controlOpacity)
+        static let jumpFill = Surface.raised
+        static let foldFill = Color.white.opacity(0.02)
+        static let agentBadgeFill = Accent.base.opacity(0.16)
+
+        // MARK: Syntax (VS Code Dark+, the terminal's palette)
+
+        static let syntaxPlainRGB = RGB(hex: 0xCFCBDA)
+        static let syntaxKeywordRGB = RGB(hex: 0xC586C0)
+        static let syntaxFunctionRGB = RGB(hex: 0xDCDCAA)
+        static let syntaxStringRGB = RGB(hex: 0xCE9178)
+        static let syntaxCommentRGB = RGB(hex: 0x6A9955)
+        static let syntaxTypeRGB = RGB(hex: 0x4EC9B0)
+        static let syntaxNumberRGB = RGB(hex: 0xB5CEA8)
+        static let syntaxPlain = syntaxPlainRGB.color
+        static let syntaxKeyword = syntaxKeywordRGB.color
+        static let syntaxFunction = syntaxFunctionRGB.color
+        static let syntaxString = syntaxStringRGB.color
+        static let syntaxComment = syntaxCommentRGB.color
+        static let syntaxType = syntaxTypeRGB.color
+        static let syntaxNumber = syntaxNumberRGB.color
+
+        // MARK: ANSI colours in command output (the 16 standard colours; black is lifted so it reads on the canvas)
+
+        static let ansiStandard: [Color] = [0x666666, 0xCD3131, 0x0DBC79, 0xE5E510, 0x2472C8, 0xBC3FBC, 0x11A8CD, 0xE5E5E5]
+            .map { RGB(hex: $0).color }
+        static let ansiBright: [Color] = [0x666666, 0xF14C4C, 0x23D18B, 0xF5F543, 0x3B8EEA, 0xD670D6, 0x29B8DB, 0xFFFFFF]
+            .map { RGB(hex: $0).color }
+
+        // MARK: Small shapes
+
+        static let thumbnail = CGSize(width: 96, height: 72)
+        static let quoteBarWidth: CGFloat = 2
+    }
+}
+
+extension LoomTheme.RGB {
+    var nsColor: NSColor { NSColor(srgbRed: red, green: green, blue: blue, alpha: 1) }
+}
