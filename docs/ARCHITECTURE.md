@@ -3,6 +3,7 @@
 Loom is a native macOS 27 app (Swift 6.2 tools, SwiftPM, SwiftUI + AppKit, vendored SwiftTerm) that hosts Claude Code
 terminals in one window and tracks their conversations in a local catalog. Every provider process is started inside a
 Loom-owned run scope, so Loom can stop exactly what it started, and nothing else, on stop, quit, or after a crash.
+The exceptions are a few short-lived helpers that run outside a scope; Section 4 lists them.
 Read this before touching code; verify against the source when in doubt (the code wins).
 
 - **Scope of the first production release (6 Oct 2026):** Claude only. Codex code stays in the tree but is **paused, not in
@@ -63,7 +64,7 @@ Declared in `Package.swift`; all tests use swift-testing (`@Test`). Product bund
 | Transcripts | `ClaudeTranscriptFile` (`ClaudeTranscriptLocator`: `<profile>/projects/<folder>/<session id>.jsonl`, checked right before it is opened; `openOwnRegularFile`, shared with the subagent tail), `ClaudeTranscriptReader` (a main or subagent transcript read backward in bounded pages and forward for growth; a line over the cap is reported by offset and length, not read), `TranscriptLineSplitter` (whole lines from file bytes, shared with `SubagentTranscriptTail`), `JSONValueAccess` (nil-on-mismatch access to `JSONValue`) |
 | Logs and diagnostics | `LoomLog` (os.Logger categories, rate limit), `LoomSignposts` (launch and sidebar signposts), `DiagnosticJournal`, `DiagnosticsExport` (bundle, `HookDiagnostics`, `PlanLimitsFailure`), `SessionRuntime+Diagnostics` (launch/quit summary, `collectDiagnostics`), `CatalogBackups` (`CatalogBackupStore`, `CatalogRecovery`), `CrashResidue` (`StaleSocketSweep`), `SessionCatalog+Diagnostics` |
 | Provider setup | `LaunchEnvironment`, `EnvironmentResolutionJob`, `ProviderToolchain`, `ProviderLaunchProfile`, `ProviderResume` |
-| Claude | `ClaudeHook` (server, client, `ClaudeHookStateTracker`), `OpenSessionProtocol`/`OpenSessionCoordinator`/`OpenSessionCommand`/`LocalSocket` (a session asks Loom to open another one, D-40), `SubagentLedger` (the run's subagent list from `SubagentStart`/`SubagentStop`, `Stop.background_tasks` and each subagent's `meta.json`; D-39; a record also carries the transcript path beside the meta file), `SubagentTranscriptLocation` / `SubagentTranscriptParser` / `SubagentTranscriptTail` / `SubagentTranscriptFeed` (FB4-5: a subagent's live transcript, read-only), `ClaudeRegistry`, `ClaudeDataInventory` (planner and safe deleter of a session's files), `ClaudeProfileLayout`, `ClaudeUsageIndex` (with `ClaudeUsageParser`, `UsageSnapshot` and `UsagePricing`, the models' list prices for the cost estimate), `UsageTranscriptWatcher` (FSEvents over `<profile>/projects`), `ClaudePlanLimitsFetcher` (headless `get_usage` through the Claude CLI) |
+| Claude | `ClaudeHook` (server, client, `ClaudeHookStateTracker`), `OpenSessionProtocol`/`OpenSessionCoordinator`/`OpenSessionCommand`/`LocalSocket` (a session asks Loom to open another one, D-40), `SubagentLedger` (the run's subagent list from `SubagentStart`/`SubagentStop`, `Stop.background_tasks` and each subagent's `meta.json`; D-39; a record also carries the transcript path beside the meta file), `SubagentTranscriptLocation` / `SubagentTranscriptParser` / `SubagentTranscriptTail` / `SubagentTranscriptFeed` (FB4-5: a subagent's live transcript, read-only), `ClaudeRegistry`, `ClaudeDataInventory` (planner and safe deleter of a session's files), `ClaudeProfileLayout`, `ClaudeUsageIndex` (with `ClaudeUsageParser`, `UsageSnapshot` and `UsagePricing`, the models' list prices for the cost estimate; it also answers the latest main-thread message of a session, `SessionContext`, for the context ring), `UsageTranscriptWatcher` (FSEvents over `<profile>/projects`), `ClaudePlanLimitsFetcher` (headless `get_usage` with `skip_behaviors:true` through the Claude CLI, and `PlanPace`, the pace of a window against its elapsed time) |
 | Codex (paused) | `CodexAppServer`, `CodexAppServerManager`, `CodexSessionCoordinator`, `CodexSessionState`, `CodexWireDiagnostics`, `CodexRoutingDiagnostics` |
 
 Roles: `SessionRuntime` is the one application runtime (UI sends intents only). `ProcessSupervisor` (actor) owns runs, scopes,
@@ -125,7 +126,7 @@ CatalogModel.startConversation -> ConversationController.start (creates Terminal
     Notification types keep the state; dropped events are logged under subsystem local.loom.desktop, category ClaudeHooks)
     Resume passes the transcript's last recorded effort back as --effort (ClaudeTranscriptEffort; Claude keeps /effort per process)
     Subagents (D-39): SubagentStart/SubagentStop of the run's own conversation feed the tracker's `SubagentLedger` (never the
-    status; a subagent's own permission prompt, PermissionRequest or a permission_prompt Notification, shows Needs approval until
+    status; a subagent's own PermissionRequest (its Notification carries no agent_id) shows Needs approval until
     the registry's next "idle" or "busy" sample returns the state from before it (FB2-6); other events with an agent_id stay
     dropped as .childAgent); the adapter reads `meta.json` off the hook path (bounded
     retry after a start, one try at the stop; a workflow's agents keep it in subagents/workflows/<run>/ and count as background) and publishes `.subagents` to the hub; `SessionViewState.subagents` is cleared by a
@@ -141,6 +142,30 @@ CatalogModel.startConversation -> ConversationController.start (creates Terminal
     (a `memmem` gate drops attachment lines, a narrow Decodable never decodes `toolUseResult` and the other bulky duplicates, strings clip at 4 KiB)
     on a utility queue, coalesces writes to at most 5 reads a second and delivers `SubagentTranscriptBatch`es on an AsyncStream; the model keeps the
     last 400 entries and applies one batch as one update. The panel closes with any selection, the subagent's record dropping out and the run's end
+    Reason and status truth (V03, S0 recordings, Claude 2.1.300): the tracker also keeps a `StatusReason` (`StatusReason.swift`;
+    memory only, never logged, redacted when interpolated): the tool and command or path of an approval (`PermissionRequest`),
+    a question's header, "plan ready" (`ExitPlanMode`), the first line of `Stop.last_assistant_message` with what still runs
+    (`BackgroundWork`: running `shell`, `subagent` and other tasks from `Stop.background_tasks`, plus crons; a task Claude lists
+    as completed or killed is not work), a failure's category and first line, or an automatic turn's summary. The adapter publishes
+    `.reason` to the hub before the `.status` it explains, so the frame that first says Needs approval already says what for;
+    the hub drops an equal reason silently and clears it with a new run. A detach or the run's end keeps only a finished or failed
+    turn's line (`.turnDone`, `.failure`) for the card nobody has read yet; an approval cannot be answered once the run is gone.
+    A reason is dropped when it no longer holds for the activity (`StatusReason.holds`).
+    - *Needs you* comes from `PermissionRequest` (immediate). `Notification(permission_prompt)` arrives about 6 s later, or never
+      when the dialog is answered first, so it changes nothing, with one exception: it is the backup for a lost PermissionRequest
+      (the state is Working and no PermissionRequest was seen since the prompt), and then shows Needs approval with no reason. The
+      registry's "waiting" sample over Working is the second backup. Real Claude stamps "waiting" a few ms before the hook.
+    - *`idle_prompt`* (60 s after a Stop) is a reminder, not a state: it applies at rest (finished turn, at prompt, waiting,
+      unknown), never over an approval, a failure (sticky until the next prompt) or an ended session, and over Working only when
+      it is later than the last hook by more than the reorder window, for a turn whose idle sample was lost as stale.
+    - *Esc on a dialog or an interrupt fires no hook* (no Stop, no idle_prompt either, recorded). The registry is the second signal:
+      its "idle" sample (about 80 ms after the key) moves the activity to waiting for input and the reason that described the
+      dialog goes with it. The transcript's tool result would need a file read for the same answer.
+    - *Automatic turns*: a `UserPromptSubmit` whose prompt starts with `<task-notification` (a finished background task) or
+      `<agent-message` is Claude's own: reason `.automaticTurn`, not the user's use (no `lastUsedAt`, no use stamp), and it does not
+      clear the finished subagents. A `SubagentStop` with no start and an empty `agent_type` (the prompt-suggestion agent) is
+      ignored by `SubagentLedger`. The registry also reports `status: "shell"` while only a background shell runs (unknown to
+      `knownStatuses` today, so ignored).
  -> SessionEventHub frame -> CatalogModel.apply (sequence fast path, full reconcile on a gap) -> SessionRowModel.live
  -> SessionIndicator(record:live:) -> IndicatorView / ChaseDots in sidebar row and detail header
 ```
@@ -195,6 +220,8 @@ Engine limits live in `TerminalSurfaceLimits` (scrollback 2,000 lines, OSC 1 MiB
 **Terminal ownership per frame (H1-D1)** `ConversationController.reconcile(_:)` compares each live terminal with the frame's `SessionEventFrame.sessions`: an entry whose owner's `runID` is its run needs nothing; only an entry the frame does not show is confirmed with the supervisor (`ownerLookup`, one `activeSessionID` call) and then handled as before (run ended: kept ended screen or `runEnded()`; owner moved: `tabOwnerMoved`). This holds because `ProcessSupervisor` changes `activeSessionID` before it publishes `runStarted`/`runDetached`, removes the run before `runEnded`, and the hub keeps the newest frame with full states; the adoption path (`adopt`, a failed start) reconciles against a fresh `SessionEventHub.snapshot()`.
 
 **Finished turn and usage (H1-D1)** `UsageModel.refresh(reason: .turnComplete)` asks for a full transcript walk only when `setTranscriptWatcherRunning(false)` (the stream failed to start or the profile has no `projects` folder, set in `AppDelegate+Usage`). With the watcher running, the turn's own transcript write arrives through `UsageTranscriptWatcher` -> `transcriptsChanged` and `refreshChanged` reads just those files. While no Loom window or Usage page shows, the model only collects the watcher's changed paths (and a `needsFullScan` flag); the next activation reads just those files, inside the 10 s cooldown too, walks everything only after a watcher overflow or when the local day is not the day last read, and reads nothing when nothing changed. Without a running watcher (or before the launch scan finished) a change while hidden only marks the numbers stale and the next activation walks everything. The full walk also stays for launch, the Settings page opening and the manual refresh.
+
+**Context ring and plan pace (V10)** The ring's tokens come from `ClaudeUsageIndex.latestMainMessages(sessions:)`: one seek per session on `msg_session_main` (a partial index over non-sidechain rows, created on open when a file predates it), so no transcript is opened and nothing is scanned. The context figure is the last main-thread message's input plus both cache classes (output left out, as Claude Code's own figure does); subagent messages never count. `UsageModel.trackContext(sessions:)` names the sessions to follow and reads them once, then again after each refresh (no timer); `UsageModel.contexts` holds `ContextUsage`, which has a share only after `setContextWindow(_:forModel:)` told the model's window (from the Chat wire's `modelUsage.<model>.contextWindow`, keyed by canonical model id). `PlanLimits.paces(at:)` and `UsageModel.paces(at:)` compare each window's used share with the share of its fixed length (5 h, 7 d) that has passed, from the last `get_usage` answer: no ask, no process. `get_usage` carries `skip_behaviors:true`; without it the CLI reads every transcript of the last seven days on each ask. The views are `ContextRing` and `PlanPaceLine` (tokens in `LoomTheme+ContextPace.swift`); where they are placed belongs to the surfaces that show them.
 
 **Stop**
 `ConversationController.stop` -> `SessionRuntime.stopConversation` -> `ProcessSupervisor.stop`: provider prepare-stop hooks,
@@ -256,6 +283,14 @@ directory when every scope is shown empty; leftovers surface as `CatalogModel.ow
   TCC-responsible app: packages, fixtures and build scratch must live outside `~/Documents` (`scripts/dev-paths.sh`); the source checkout may stay there.
   Tests assemble a host bundle with `RunScopeLauncher.assembleOwnedBundle(executable:in:)` and remove it with `removeOwnedBundle(in:)`,
   which also unregisters it from LaunchServices (launching through `open` registers the bundle, and the record outlives the folder).
+- **Short-lived helpers outside a run scope.** Two things run as plain children of Loom, not in a scope, and end within
+  seconds: the plan-limits child (`ClaudePlanLimitsFetcher`, a `Foundation.Process` of `claude -p` that gets one `get_usage`
+  request, is asked to leave by closing its stdin, then `SIGTERM` and `SIGKILL` by pid, after a timeout or on cancel) and the
+  `log show` read of the diagnostics export (`DiagnosticsExport.runLogShow`, bounded in size and time). The helper
+  spawner is a third path: `HelperSpawner.scoped` puts an environment shell or a `--version`/`--help` probe in a scope
+  when a `scopeLauncher` is configured (the app always has one), while `HelperSpawner.local`, the default, starts it as
+  Loom's own child in its own process group, used when no scope launcher exists (tests and the probe) and killed by group on
+  abort. Every long-lived provider process still starts in a scope.
 - **Pipe children.** A run's child is either a PTY child (`SPAWN_PTY`: `launch`, `TerminalEndpoint`) or a pipe child
   (`SPAWN_STDIO`: `launchPipes`, `PipeEndpoint`). For a pipe child the host receives three descriptors (stdin, stdout, stderr)
   instead of a PTY master, and the child is otherwise the same: same scope, ledger, markers and same-session guard. The run
