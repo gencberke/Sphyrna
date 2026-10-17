@@ -122,14 +122,20 @@ struct SubagentTests {
             session, run, "PermissionRequest", fields: ["agent_id": "a1", "session_id": "other-conversation"], sentAt: t0))
         #expect(other == .wrongConversation)
         #expect(await tracker.status().activity == .working)
+        // The subagent's own PermissionRequest carries its agent_id (S0, hooks-s3); the Notification that
+        // follows ~6 s later has none and is no signal.
         _ = try await tracker.receive(envelope(
-            session, run, "Notification", fields: ["agent_id": "a1", "notification_type": "permission_prompt"],
+            session, run, "PermissionRequest",
+            fields: ["agent_id": "a1", "agent_type": "general-purpose", "tool_name": "Bash",
+                     "tool_input": ["command": "sleep 20", "description": "Sleep for 20 seconds"]],
             sentAt: t0.addingTimeInterval(1)))
         #expect(await tracker.status().activity == .waitingForApproval)
+        #expect(await tracker.status().reason?.kind == .approval(tool: "Bash"))
         let ms = t0.timeIntervalSince1970 * 1_000
         _ = await tracker.receiveRegistry(
             sample("busy", at: ms + 1_500), generation: await tracker.registryGeneration(), now: t0.addingTimeInterval(3))
         #expect(await tracker.status().activity == .working)
+        #expect(await tracker.status().reason == nil)
     }
 
     @Test func aSubagentEventBeforeTheConversationIsKnownDoesNotSpoilTheFirstStart() async throws {

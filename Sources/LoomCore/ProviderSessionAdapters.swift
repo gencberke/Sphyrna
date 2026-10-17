@@ -80,6 +80,9 @@ public actor ClaudeSessionAdapter {
               latest.activeSessionID == context.activeSessionID else { return }
         let status = await tracker.status()
         lastStatuses[latest.activeSessionID] = status
+        // An approval cancelled in the terminal fires no hook: the registry's sample is what moves the
+        // activity on, and the reason that described the approval goes with it.
+        await supervisor.events.publish(sessionID: latest.activeSessionID, change: .reason(status.reason))
         try? await supervisor.updateProviderWorkState(runID: runID, state: ProviderWorkState(
             activity: status.activity, pendingProviderWorkCount: status.backgroundTaskCount + status.scheduledTaskCount))
         if let issue {
@@ -172,6 +175,7 @@ public actor ClaudeSessionAdapter {
             return
         }
         try? await supervisor.updateProviderWorkState(runID: runID, state: ProviderWorkState(activity: .unknown))
+        await supervisor.events.publish(sessionID: context.activeSessionID, change: .reason(nil))
         await supervisor.events.publish(sessionID: context.activeSessionID,
             change: .issue("Claude hook events were lost; state is unknown. Stop and resume this session to restore reliable tracking."))
     }
@@ -185,7 +189,7 @@ public actor ClaudeSessionAdapter {
     public func status(sessionID: UUID) async -> ClaudeSessionStatus? {
         if let runID = await supervisor.session(id: sessionID)?.currentRun?.id {
             var status = await trackers[runID]?.status() ?? ClaudeSessionStatus()
-            if !supervisor.providerWorkStateIsReliable(runID: runID) { status.activity = .unknown }
+            if !supervisor.providerWorkStateIsReliable(runID: runID) { status.activity = .unknown; status.reason = nil }
             return status
         }
         guard var status = lastStatuses[sessionID] else {
@@ -196,7 +200,7 @@ public actor ClaudeSessionAdapter {
         }
         switch status.activity {
         case .failed, .sessionEnded: break
-        default: status.activity = .unknown
+        default: status.activity = .unknown; status.reason = nil
         }
         return status
     }
@@ -265,7 +269,8 @@ public actor ClaudeSessionAdapter {
             noteSubagentDetails(runID: envelope.managedRunID, event: event)
             return disposition
         }
-        if case .userPromptSubmit = event.kind {
+        if case .userPromptSubmit = event.kind, !event.promptIsSynthetic {
+            // A hand-back or a task notification starts Claude's own turn, not the user's use.
             // This is a usage timestamp only. An asynchronous helper may run
             // after user work starts, so it cannot establish a process baseline. A catalog that
             // cannot take it must not keep the turn's state from being published.
@@ -294,6 +299,8 @@ public actor ClaudeSessionAdapter {
         let activeSessionID = await supervisor.activeSessionID(runID: envelope.managedRunID)
             ?? context.activeSessionID
         lastStatuses[activeSessionID] = status
+        // The reason goes first, so a consumer that sees "needs approval" already has what for.
+        await supervisor.events.publish(sessionID: activeSessionID, change: .reason(status.reason))
         try await supervisor.updateProviderWorkState(
             runID: envelope.managedRunID,
             state: ProviderWorkState(

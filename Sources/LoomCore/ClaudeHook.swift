@@ -390,9 +390,17 @@ public struct ClaudeHookEvent: Equatable, Sendable {
     /// `Stop` only: a workflow is still in flight at the end of the turn; its agents are not listed.
     public let listsRunningWorkflow: Bool
     /// `UserPromptSubmit` only: the harness injects hand-backs of background subagents
-    /// (`<agent-message`) and task notifications (`<task-notification`) as prompts. They are
-    /// not something the user typed and do not start a new turn from the user's point of view.
+    /// (`<agent-message`) and task notifications (`<task-notification`, S0: what Claude starts a turn with
+    /// when a background task ends) as prompts. They are not something the user typed: the turn is
+    /// automatic, it is not the user's use of the session and it does not start a new turn from the
+    /// user's point of view.
     public let promptIsSynthetic: Bool
+    /// `Stop` only: what Claude lists as still running (S0: `shell` and `subagent` tasks, plus crons).
+    public let work: BackgroundWork
+    /// The reason this event states for the session's status, built here so that no payload text is kept
+    /// past parsing (`PermissionRequest`, `Stop`, `StopFailure`, an automatic `UserPromptSubmit`, an
+    /// MCP elicitation). Nil for events that state none.
+    public let reason: StatusReason?
     public let kind: Kind
 
     public var isSubagentLifecycle: Bool {
@@ -406,10 +414,8 @@ public struct ClaudeHookEvent: Equatable, Sendable {
     /// session's terminal (FB2-6).
     public var isSubagentPermissionPrompt: Bool {
         guard agentID != nil else { return false }
-        switch kind {
-        case .permissionRequest, .notification("permission_prompt"): return true
-        default: return false
-        }
+        if case .permissionRequest = kind { return true }
+        return false
     }
 
     public var name: String {
@@ -445,8 +451,26 @@ public struct ClaudeHookEvent: Equatable, Sendable {
         lastAssistantMessage = object["last_assistant_message"] as? String
         backgroundSubagents = eventName == "Stop" ? BackgroundSubagentTask.parse(object["background_tasks"]) : []
         listsRunningWorkflow = eventName == "Stop" && BackgroundSubagentTask.listsWorkflow(object["background_tasks"])
-        promptIsSynthetic = eventName == "UserPromptSubmit"
-            && (object["prompt"] as? String).map(Self.isSyntheticPrompt) == true
+        let prompt = eventName == "UserPromptSubmit" ? object["prompt"] as? String : nil
+        promptIsSynthetic = prompt.map(Self.isSyntheticPrompt) == true
+        work = eventName == "Stop"
+            ? BackgroundWork.parse(tasks: object["background_tasks"], scheduled: object["session_crons"]) : BackgroundWork()
+        switch eventName {
+        case "PermissionRequest":
+            reason = StatusReason.permission(toolName: object["tool_name"] as? String, toolInput: object["tool_input"])
+        case "Stop":
+            reason = StatusReason.turnDone(lastMessage: object["last_assistant_message"] as? String, work: work)
+        case "StopFailure":
+            reason = StatusReason.failure(
+                error: object["error"] as? String, message: object["last_assistant_message"] as? String,
+                details: object["error_details"] as? String)
+        case "UserPromptSubmit" where promptIsSynthetic:
+            reason = StatusReason.automaticTurn(prompt: prompt)
+        case "Notification" where ["agent_needs_input", "elicitation_dialog"].contains(object["notification_type"] as? String):
+            reason = StatusReason(.input)
+        default:
+            reason = nil
+        }
         switch eventName {
         case "SessionStart":
             kind = .sessionStart(source: object["source"] as? String)
@@ -457,10 +481,7 @@ public struct ClaudeHookEvent: Equatable, Sendable {
         case "Notification":
             kind = .notification(type: object["notification_type"] as? String)
         case "Stop":
-            kind = .stop(
-                backgroundTaskCount: Self.collectionCount(object["background_tasks"]),
-                scheduledTaskCount: Self.collectionCount(object["session_crons"])
-            )
+            kind = .stop(backgroundTaskCount: work.tasks, scheduledTaskCount: work.scheduled)
         case "StopFailure":
             kind = .stopFailure(
                 error: object["error"] as? String,
@@ -482,11 +503,6 @@ public struct ClaudeHookEvent: Equatable, Sendable {
         return head.hasPrefix("<agent-message") || head.hasPrefix("<task-notification")
     }
 
-    private static func collectionCount(_ value: Any?) -> Int {
-        if let values = value as? [Any] { return values.count }
-        if let values = value as? [String: Any] { return values.count }
-        return 0
-    }
 }
 
 public enum AgentActivity: Equatable, Sendable {
@@ -509,6 +525,8 @@ public struct ClaudeSessionStatus: Equatable, Sendable {
     public var lastAssistantMessage: String?
     public var backgroundTaskCount: Int
     public var scheduledTaskCount: Int
+    /// Why the session shows `activity` (see `StatusReason`); nil when nothing states it. Never logged.
+    public var reason: StatusReason?
 
     public init() {
         providerSessionID = nil
@@ -518,6 +536,7 @@ public struct ClaudeSessionStatus: Equatable, Sendable {
         lastAssistantMessage = nil
         backgroundTaskCount = 0
         scheduledTaskCount = 0
+        reason = nil
     }
 }
 
@@ -555,6 +574,9 @@ public actor ClaudeHookStateTracker {
     /// An event for a conversation not yet announced was dropped before the first SessionStart
     /// (a prompt typed at once): that start cannot claim the provider is idle at its prompt.
     private var droppedEarlyEvent = false
+    /// Whether a PermissionRequest was seen since the last prompt or stop. A `permission_prompt` notification
+    /// then belongs to it (and is no signal); without one the notification is the backup for a lost hook.
+    private var permissionRequestSeen = false
     /// The subagents of this run's conversation (`SubagentLedger` holds the rules).
     private var subagents = SubagentLedger()
     /// While a subagent's permission prompt is shown: the conversation's state before it, which the
@@ -565,6 +587,7 @@ public actor ClaudeHookStateTracker {
         let generation: UUID?
         let watermark: Double?
         let awaitsApproval: Bool
+        let reason: StatusReason?
     }
 
     func registryGeneration() -> UUID? { inputGeneration }
@@ -572,6 +595,19 @@ public actor ClaudeHookStateTracker {
     /// Millisecond provider metadata is a bounded freshness aid, not a total
     /// order. Ambiguous clocks remain unknown and cannot permit automatic idle.
     func receiveRegistry(_ result: ClaudeRegistryRead, generation: UUID?, now: Date) -> String? {
+        let issue = applyRegistry(result, generation: generation, now: now)
+        dropStaleReason()
+        return issue
+    }
+
+    /// An approval cancelled with Esc fires no hook (S0 Q7), so the registry is the second signal that
+    /// ends it: its "idle" or "busy" sample moves the activity on, and the reason that described the
+    /// approval goes with it.
+    private func dropStaleReason() {
+        if let reason = currentStatus.reason, !reason.holds(for: currentStatus.activity) { currentStatus.reason = nil }
+    }
+
+    private func applyRegistry(_ result: ClaudeRegistryRead, generation: UUID?, now: Date) -> String? {
         guard let generation, generation == inputGeneration else { return nil }
         guard case let .snapshot(snapshot) = result else {
             currentStatus.activity = .unknown
@@ -608,6 +644,7 @@ public actor ClaudeHookStateTracker {
             subagentApprovalReturn = nil
             inputGeneration = previous.generation; inputWatermark = previous.watermark
             inputAwaitsApproval = previous.awaitsApproval
+            currentStatus.reason = previous.reason
             switch previous.activity {
             case .atPrompt, .turnComplete, .waitingForInput: currentStatus.activity = previous.activity
             default: currentStatus.activity = status == "idle" ? .waitingForInput : .working
@@ -617,7 +654,12 @@ public actor ClaudeHookStateTracker {
         switch status {
         case "idle": currentStatus.activity = .waitingForInput
         case "busy": currentStatus.activity = .working
-        case "waiting": if inputAwaitsApproval { currentStatus.activity = .waitingForApproval }
+        case "waiting":
+            // Backup for a PermissionRequest hook that never arrived: Claude itself says it waits.
+            if inputAwaitsApproval || currentStatus.activity == .working {
+                currentStatus.activity = .waitingForApproval
+                inputAwaitsApproval = true
+            }
         // A status this build does not know says nothing against the hook state.
         default: break
         }
@@ -639,6 +681,7 @@ public actor ClaudeHookStateTracker {
         registryStartedAt = nil; registryTimestamp = nil
         hookEmissionWatermark = nil; lastHookEmission = nil; inputClockAmbiguous = false
         droppedEarlyEvent = false
+        permissionRequestSeen = false
         subagents = SubagentLedger()
         subagentApprovalReturn = nil
     }
@@ -691,18 +734,27 @@ public actor ClaudeHookStateTracker {
             if subagentApprovalReturn == nil, currentStatus.activity != .waitingForApproval {
                 subagentApprovalReturn = SubagentApprovalReturn(
                     activity: currentStatus.activity, generation: inputGeneration,
-                    watermark: inputWatermark, awaitsApproval: inputAwaitsApproval)
+                    watermark: inputWatermark, awaitsApproval: inputAwaitsApproval, reason: currentStatus.reason)
             }
             inputGeneration = UUID(); inputWatermark = envelope.sentAt.timeIntervalSince1970 * 1_000
             inputAwaitsApproval = true; registryTimestamp = nil
+            permissionRequestSeen = true
             noteEmission(envelope.sentAt)
             currentStatus.lastEventAt = receivedAt
             currentStatus.activity = .waitingForApproval
+            currentStatus.reason = event.reason
             return disposition
         }
-        if case let .notification(type) = event.kind, Self.notificationActivity(type) == nil {
+        let promotesLostApproval = event.kind == .notification(type: "permission_prompt")
+            && currentStatus.activity == .working && !permissionRequestSeen
+        if case let .notification(type) = event.kind, !promotesLostApproval,
+           Self.notificationActivity(type) == nil
+            || (type == "idle_prompt" && !acceptsIdleReminder(sentAt: envelope.sentAt)) {
             // Informational notifications (auth_success, types newer than this build) say
-            // nothing about the turn: the state and the pending registry check stay.
+            // nothing about the turn: the state and the pending registry check stay. So does a
+            // `permission_prompt`, which comes about 6 s after the PermissionRequest that already said
+            // it (or never, when the dialog was answered first), and an `idle_prompt` where the session
+            // is not at rest: it is a reminder 60 s after a Stop, not a state.
             noteEmission(envelope.sentAt)
             currentStatus.lastEventAt = receivedAt
             return disposition
@@ -732,15 +784,19 @@ public actor ClaudeHookStateTracker {
         switch event.kind {
         case .permissionRequest:
             inputGeneration = UUID(); inputWatermark = envelope.sentAt.timeIntervalSince1970 * 1_000; inputAwaitsApproval = true
+            permissionRequestSeen = true
         case .userPromptSubmit:
             inputGeneration = UUID(); inputWatermark = envelope.sentAt.timeIntervalSince1970 * 1_000
+            permissionRequestSeen = false
+        case .stop, .stopFailure, .sessionStart:
+            permissionRequestSeen = false
         default: break
-        }
-        if case .notification("permission_prompt") = event.kind {
-            inputGeneration = UUID(); inputWatermark = envelope.sentAt.timeIntervalSince1970 * 1_000; inputAwaitsApproval = true
         }
         // An MCP elicitation is answered in the terminal without a prompt hook: the registry's
         // later "busy" sample moves the card back to Working.
+        if promotesLostApproval {
+            inputGeneration = UUID(); inputWatermark = envelope.sentAt.timeIntervalSince1970 * 1_000; inputAwaitsApproval = true
+        }
         if case .notification("elicitation_dialog") = event.kind {
             inputGeneration = UUID(); inputWatermark = envelope.sentAt.timeIntervalSince1970 * 1_000
         }
@@ -755,16 +811,26 @@ public actor ClaudeHookStateTracker {
             droppedEarlyEvent = false
         case .userPromptSubmit:
             currentStatus.activity = .working
-            currentStatus.lastUsedAt = receivedAt
+            currentStatus.reason = event.reason
             // The next turn of the user ends the finished subagents of the last one; a hand-back
-            // of a background subagent is not that turn.
-            if !event.promptIsSynthetic { subagents.clearFinished() }
+            // of a background subagent or a task notification is not that turn, and not the user's use.
+            if !event.promptIsSynthetic {
+                currentStatus.lastUsedAt = receivedAt
+                subagents.clearFinished()
+            }
         case .permissionRequest:
             currentStatus.activity = .waitingForApproval
+            currentStatus.reason = event.reason
         case let .notification(type):
-            if let activity = Self.notificationActivity(type) { currentStatus.activity = activity }
+            if promotesLostApproval {
+                currentStatus.activity = .waitingForApproval
+            } else if let activity = Self.notificationActivity(type) {
+                currentStatus.activity = activity
+                if let reason = event.reason { currentStatus.reason = reason }
+            }
         case let .stop(backgroundTaskCount, scheduledTaskCount):
             currentStatus.activity = .turnComplete
+            currentStatus.reason = event.reason
             currentStatus.lastAssistantMessage = event.lastAssistantMessage
             currentStatus.backgroundTaskCount = backgroundTaskCount
             currentStatus.scheduledTaskCount = scheduledTaskCount
@@ -773,6 +839,7 @@ public actor ClaudeHookStateTracker {
                 at: min(receivedAt, envelope.sentAt))
         case let .stopFailure(error, _):
             currentStatus.activity = .failed(error)
+            currentStatus.reason = event.reason
             currentStatus.lastAssistantMessage = event.lastAssistantMessage
         case let .sessionEnd(reason):
             currentStatus.activity = .sessionEnded(reason)
@@ -781,15 +848,31 @@ public actor ClaudeHookStateTracker {
         case .subagentStart, .subagentStop:
             break // handled before the status; not reachable here
         }
+        dropStaleReason()
         return .applied(event)
     }
 
     /// The activity a notification type establishes; nil for informational types.
+    /// `permission_prompt` is not one: "needs you" comes from `PermissionRequest` (S0).
     static func notificationActivity(_ type: String?) -> AgentActivity? {
         switch type {
-        case "permission_prompt": .waitingForApproval
         case "idle_prompt", "agent_needs_input", "elicitation_dialog": .waitingForInput
         default: nil
+        }
+    }
+
+    /// An `idle_prompt` only reminds that Claude has waited a minute: it applies where the session is at
+    /// rest, never over an approval, a failure (which stays until the next prompt) or an ended session.
+    /// Over `.working` it applies only when it is clearly later than the last hook: a user interrupt runs
+    /// no Stop, and when the registry's "idle" sample is then lost as stale nothing else ends the turn.
+    /// A reminder within the reorder window of a hook may simply be older than the prompt that followed it.
+    func acceptsIdleReminder(sentAt: Date) -> Bool {
+        switch currentStatus.activity {
+        case .turnComplete, .waitingForInput, .atPrompt, .unknown: return true
+        case .waitingForApproval, .failed, .sessionEnded: return false
+        case .working:
+            guard !inputClockAmbiguous, let last = hookEmissionWatermark else { return false }
+            return sentAt.timeIntervalSince1970 * 1_000 > last + Self.maximumHookReorderMilliseconds
         }
     }
 

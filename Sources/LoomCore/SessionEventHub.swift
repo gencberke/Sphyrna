@@ -74,6 +74,12 @@ public struct SessionViewState: Equatable, Sendable {
     /// cleared by a new run, a detach and the end of the run, and an update that arrives after the run
     /// ended is ignored.
     public var subagents: [SubagentRecord]
+    /// Why the session shows its status: the tool and command of an approval, a question's header, "plan
+    /// ready", the first line of the last message, a failure's details. Changes only at hook boundaries
+    /// (and when the registry shows an approval was cancelled), never per frame. Memory only, never logged;
+    /// cleared by a new run. A detach or the end of the run keeps the last line of a finished or failed turn
+    /// (`.turnDone`, `.failure`) for the card that waits to be read, and drops any other reason.
+    public var reason: StatusReason?
 
     public init(
         status: ProviderWorkState? = nil, lifecycle: SessionLifecycle? = nil,
@@ -81,7 +87,7 @@ public struct SessionViewState: Equatable, Sendable {
         runID: UUID? = nil, blockers: Set<SessionIdleBlocker> = [],
         stopFailure: String? = nil, unviewedCompletion: Bool = false,
         waitingAcknowledged: Bool = false, activePhase: ActivePhase = .inactive, issue: String? = nil,
-        userRequests: [ProviderUserRequest] = [], subagents: [SubagentRecord] = []
+        userRequests: [ProviderUserRequest] = [], subagents: [SubagentRecord] = [], reason: StatusReason? = nil
     ) {
         self.status = status
         self.lifecycle = lifecycle
@@ -96,6 +102,7 @@ public struct SessionViewState: Equatable, Sendable {
         self.issue = issue
         self.userRequests = userRequests
         self.subagents = subagents
+        self.reason = reason
     }
 }
 
@@ -117,6 +124,9 @@ public enum SessionEventChange: Equatable, Sendable {
     case userRequests([ProviderUserRequest])
     /// The conversation's subagents changed (a start, a stop, details read, the next turn).
     case subagents([SubagentRecord])
+    /// The reason for the conversation's status changed (a permission request, a stop, a failure, a
+    /// prompt) or no longer holds. Published before the status it explains.
+    case reason(StatusReason?)
     /// The catalog moved this many conversations to `lifecycle` in one batch
     /// (aging). The frame carries no per-conversation entries: the catalog row
     /// is authoritative, and `catalogRevision` tells a consumer that skipped
@@ -222,11 +232,13 @@ public actor SessionEventHub {
             state.waitingAcknowledged = false
             state.activePhase = .inactive
             state.subagents = []
+            state.reason = nil
         // A late event of an earlier run must not end a newer run.
         case let .runDetached(value):
             if state.runID == value {
                 state.runID = nil; state.status = nil; state.waitingAcknowledged = false; state.subagents = []
                 state.activePhase = .inactive
+                state.reason = state.reason.flatMap(Self.keptAfterRun)
             }
         case let .runEnded(value, _):
             if state.runID == value {
@@ -236,6 +248,7 @@ public actor SessionEventHub {
                 state.activePhase = .inactive
                 state.userRequests = []
                 state.subagents = []
+                state.reason = state.reason.flatMap(Self.keptAfterRun)
             }
         case let .blockers(value): state.blockers = value
         case let .stopFailure(value): state.stopFailure = value
@@ -256,6 +269,10 @@ public actor SessionEventHub {
             // A late update must not bring subagents back to a session whose run is over.
             guard state.runID != nil || value.isEmpty else { return }
             state.subagents = value
+        case let .reason(value):
+            // A late reason must not come back to a session whose run is over.
+            guard state.runID != nil || value == nil else { return }
+            state.reason = value
         case .catalogLifecycle, .conversationDeleted, .deletionIncomplete, .activityRecorded: return
         }
         // A pure state event that changes nothing wakes nobody and does not
@@ -324,6 +341,15 @@ public actor SessionEventHub {
         guard let sessionID, let state = states[sessionID],
               state.unviewedCompletion || state.activePhase == .endedUnread else { return }
         publish(sessionID: sessionID, change: .unviewedCompletion(false))
+    }
+
+    /// The reason that outlives its run: what the turn ended with, for a card nobody has read yet. An
+    /// approval or a question cannot be answered once the run is gone.
+    private static func keptAfterRun(_ reason: StatusReason) -> StatusReason? {
+        switch reason.kind {
+        case .turnDone, .failure: reason
+        default: nil
+        }
     }
 
     /// The Active-section phase after a status. Work, an approval and background work after a turn put the run

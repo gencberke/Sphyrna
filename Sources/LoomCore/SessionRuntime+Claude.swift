@@ -60,7 +60,7 @@ extension SessionRuntime {
             if case let .notification(type)? = event?.kind {
                 name += "(\(type ?? "no type"))"
                 // Informational types keep the state; logged so a new type is visible.
-                if ClaudeHookStateTracker.notificationActivity(type) == nil {
+                if ClaudeHookStateTracker.notificationActivity(type) == nil, type != "permission_prompt" {
                     Self.hookLog.info("informational \(name, privacy: .public)")
                 }
             }
