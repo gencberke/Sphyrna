@@ -18,6 +18,8 @@ public protocol UsageIndexing: Sendable {
     func hasUsage() async throws -> Bool
     /// What the scans report about themselves (lines they could not understand).
     func diagnostics() async -> UsageDiagnostics
+    /// The latest main-thread message of each session, from the index's own database (the context ring).
+    func latestMainMessages(sessions: [String]) async throws -> [String: SessionContextSample]
 }
 
 /// What a stand-in without its own bucket query gets: the same answers from per-interval snapshots.
@@ -35,6 +37,8 @@ extension UsageIndexing {
     }
 
     public func diagnostics() async -> UsageDiagnostics { UsageDiagnostics() }
+
+    public func latestMainMessages(sessions: [String]) async throws -> [String: SessionContextSample] { [:] }
 
     public func buckets(size: UsageBucketSize, count: Int, endingAt now: Date, timeZone: TimeZone) async throws -> [UsageBucket] {
         var calendar = Calendar(identifier: .gregorian)
@@ -168,12 +172,22 @@ public final class UsageModel {
     public private(set) var limitsFailure: PlanLimitsFailure?
     /// Transcript lines the scans could not understand since Loom started: the totals may be low.
     public private(set) var linesNotUnderstood = 0
+    /// The context of each tracked session (`trackContext`), by session id. A session the index holds
+    /// no main-thread message of has no entry.
+    public private(set) var contexts: [String: ContextUsage] = [:]
 
     @ObservationIgnored private let index: any UsageIndexing
     @ObservationIgnored private let limitsSource: (any PlanLimitsFetching)?
     @ObservationIgnored private let cadence: PlanLimitsCadence
     @ObservationIgnored private var limitsTask: Task<Void, Never>?
     @ObservationIgnored private var lastLimitsAsk: Date?
+    /// The sessions whose context is kept current, the model windows known so far (`windowKey`)
+    /// and the pass that reads them.
+    @ObservationIgnored private var trackedSessions: [String] = []
+    @ObservationIgnored private var contextWindows: [String: Int64] = [:]
+    @ObservationIgnored private var contextTask: Task<Void, Never>?
+    /// The latest samples behind `contexts`, kept so a newly known window applies without a read.
+    @ObservationIgnored private var samples: [String: SessionContextSample] = [:]
     @ObservationIgnored private let clock: @Sendable () -> Date
     @ObservationIgnored public let timeZone: TimeZone
     @ObservationIgnored private let debounce: Duration
@@ -362,6 +376,7 @@ public final class UsageModel {
         await refreshTask?.value
         await loadingPeriod?.value
         await limitsTask?.value
+        await contextTask?.value
     }
 
     public func select(_ newPeriod: UsagePeriod) {
@@ -439,6 +454,7 @@ public final class UsageModel {
                 lastFailure = nil
                 updatedAt = clock()
                 setState(.ready)
+                await reloadContexts()
             } catch is CancellationError {
                 break
             } catch {
@@ -502,6 +518,69 @@ public final class UsageModel {
         if content != chip { chip = content }
     }
 
+    // MARK: Context
+
+    /// Names the sessions whose context the ring shows (the visible ones). Each is one indexed lookup
+    /// in the index's database, made now and again after every refresh; nothing is scanned and no
+    /// timer runs. Sessions not named lose their entry.
+    public func trackContext(sessions: [String]) {
+        let wanted = Array(Set(sessions)).sorted()
+        guard wanted != trackedSessions else { return }
+        trackedSessions = wanted
+        contextTask?.cancel()
+        contextTask = Task { [weak self] in await self?.reloadContexts() }
+    }
+
+    /// The context window of a model, in tokens, when it became known (the Chat wire reports it as
+    /// `modelUsage.<model>.contextWindow`). Until then a session on that model shows tokens only.
+    /// The 1M-context variant (`claude-opus-5-5[1m]`) is kept apart from the plain model. `nil` forgets it.
+    public func setContextWindow(_ window: Int64?, forModel model: String) {
+        let key = Self.windowKey(model)
+        if let window, window > 0 { contextWindows[key] = window } else { contextWindows[key] = nil }
+        applyContextWindows()
+    }
+
+    private static let extendedSuffix = "[1m]"
+
+    /// The canonical model id, plus `[1m]` for the extended-context variant: the two have different windows.
+    private static func windowKey(_ model: String) -> String {
+        UsagePricing.canonicalModelID(model) + (model.lowercased().contains(extendedSuffix) ? extendedSuffix : "")
+    }
+
+    /// The window a sample is shown against. Transcripts write the model without `[1m]`, so a session
+    /// cannot be told apart from its model id alone: the plain window holds while the context fits in it;
+    /// one that has grown past it can only be on the extended window, and without a known extended window
+    /// (or with no plain one) no share is shown rather than a wrong one.
+    private func window(for sample: SessionContextSample) -> Int64? {
+        let base = UsagePricing.canonicalModelID(sample.model)
+        let extended = contextWindows[base + Self.extendedSuffix]
+        if sample.model.lowercased().contains(Self.extendedSuffix) { return extended }
+        guard let plain = contextWindows[base] else { return nil }
+        if sample.contextTokens <= plain { return plain }
+        if let extended, sample.contextTokens <= extended { return extended }
+        return nil
+    }
+
+    private func reloadContexts() async {
+        let sessions = trackedSessions
+        guard !sessions.isEmpty else {
+            if !contexts.isEmpty { contexts = [:] }
+            samples = [:]
+            return
+        }
+        guard let found = try? await index.latestMainMessages(sessions: sessions), !Task.isCancelled else { return }
+        guard sessions == trackedSessions else { return } // the tracked set moved while reading
+        samples = found
+        applyContextWindows()
+    }
+
+    private func applyContextWindows() {
+        let next = samples.mapValues { sample in
+            ContextUsage(sample: sample, window: window(for: sample))
+        }
+        if next != contexts { contexts = next }
+    }
+
     // MARK: Plan limits
 
     /// Asks the Claude CLI for the plan limits when someone can see them, none is being asked for
@@ -524,6 +603,10 @@ public final class UsageModel {
             self.rebuildChip()
         }
     }
+
+    /// The pace of each plan window at `now` (five-hour first): are you on track for the limit? Pure
+    /// arithmetic over the last answer, so it needs no ask; the caller passes the time it draws at.
+    public func paces(at now: Date) -> [PlanPace] { limits?.paces(at: now) ?? [] }
 
     /// The facts the diagnostics export carries from here: the index's scan report and the plan-limits failure.
     public func diagnosticsSnapshot() async -> (usage: UsageDiagnostics, planLimitsFailure: PlanLimitsFailure?) {

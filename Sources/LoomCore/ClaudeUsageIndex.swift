@@ -348,6 +348,37 @@ public actor ClaudeUsageIndex {
         }
     }
 
+    /// The latest main-thread message of each given session, for the context ring: one indexed
+    /// lookup per session in the index's own database, no transcript is opened and nothing is
+    /// scanned. A session with no indexed main-thread message (or a forgotten one) is left out.
+    /// Subagent (sidechain) messages never count: they run in their own context.
+    public func latestMainMessages(sessions: [String]) throws -> [String: SessionContextSample] {
+        do {
+            return try latestMainMessagesOnce(sessions)
+        } catch let error as ClaudeUsageIndexError where error.isCorruption {
+            discardDatabase()
+            return try latestMainMessagesOnce(sessions)
+        }
+    }
+
+    private func latestMainMessagesOnce(_ sessions: [String]) throws -> [String: SessionContextSample] {
+        let database = try openDatabase()
+        var found: [String: SessionContextSample] = [:]
+        for session in sessions where found[session] == nil {
+            // Ids are written in lower case; a catalog id in another case still finds its rows.
+            let candidates = session == session.lowercased() ? [session] : [session, session.lowercased()]
+            for text in candidates {
+                guard let symbol = try database.symbolID(text),
+                      let row = try database.latestMainMessage(session: symbol) else { continue }
+                found[session] = SessionContextSample(
+                    model: try database.symbolText(row.model) ?? "",
+                    timestamp: Date(timeIntervalSince1970: Double(row.timestampMs) / 1_000), tokens: row.tokens)
+                break
+            }
+        }
+        return found
+    }
+
     private func bucketsOnce(size: UsageBucketSize, count: Int, now: Date, timeZone: TimeZone) throws -> [UsageBucket] {
         let database = try openDatabase()
         var calendar = Calendar(identifier: .gregorian)
@@ -797,6 +828,8 @@ extension ClaudeUsageIndexError {
 /// Owned by the index actor; never shared.
 final class UsageDatabase {
     private let handle: OpaquePointer
+    /// `msg_session_main` exists; without it `latestMainMessage` answers nil instead of scanning `msg`.
+    private(set) var hasMainThreadIndex = false
     private var statements: [String: OpaquePointer] = [:]
 
     init(url: URL) throws {
@@ -849,7 +882,15 @@ final class UsageDatabase {
         try execute("PRAGMA synchronous = NORMAL")
         try execute("PRAGMA cache_size = -8192") // 8 MiB page cache
         if needsMigration { try migrateFromSchemaOne() }
+        // Added after schema 2 shipped, so it is created on open for files that predate it. Best effort:
+        // a full disk or a busy file must not make all usage unavailable; the context lookup then
+        // reports nothing (it never falls back to scanning).
+        hasMainThreadIndex = (try? execute(Self.mainThreadIndexSQL)) != nil
     }
+
+    /// Makes "the latest main-thread message of a session" an index seek (`latestMainMessage`).
+    static let mainThreadIndexSQL =
+        "CREATE INDEX IF NOT EXISTS msg_session_main ON msg(session, ts_ms) WHERE session IS NOT NULL AND flags & 1 = 0"
 
     /// Schema 1 kept forgotten ids in clear text and left the session's symbol row. The ids become
     /// digests, their rows go, and the file is rewritten so none of the old bytes survive in it.
@@ -1248,6 +1289,30 @@ final class UsageDatabase {
             guard sqlite3_step(statement) == SQLITE_ROW else { throw error("range totals", sqlite3_errcode(handle)) }
             let (tokens, messages) = Self.quarterTotal(statement, offset: 1)
             return (tokens, messages)
+        }
+    }
+
+    /// The SQL of `latestMainMessage`, shared with the test that checks it is answered from
+    /// `msg_session_main` and not by a table scan.
+    static let latestMainMessageSQL = """
+        SELECT ts_ms, model, input, output, cw5, cw1, cr, web FROM msg
+        WHERE session = ?1 AND session IS NOT NULL AND flags & 1 = 0 ORDER BY ts_ms DESC, key DESC LIMIT 1
+        """
+
+    /// The newest non-sidechain message of a session (a symbol id), or nil.
+    func latestMainMessage(session: Int64) throws -> UsageRow? {
+        guard hasMainThreadIndex else { return nil }
+        return try cached(Self.latestMainMessageSQL) { statement in
+            bind(session, 1, statement)
+            guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+            return UsageRow(
+                key: 0, fileID: 0, timestampMs: sqlite3_column_int64(statement, 0), session: session,
+                model: sqlite3_column_int64(statement, 1),
+                tokens: UsageTokens(
+                    input: sqlite3_column_int64(statement, 2), output: sqlite3_column_int64(statement, 3),
+                    cacheWrite5m: sqlite3_column_int64(statement, 4), cacheWrite1h: sqlite3_column_int64(statement, 5),
+                    cacheRead: sqlite3_column_int64(statement, 6), webSearches: sqlite3_column_int64(statement, 7)),
+                flags: 0, total: 0, legacyCost: nil)
         }
     }
 

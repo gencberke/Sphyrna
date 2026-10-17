@@ -34,6 +34,81 @@ public struct PlanLimitWindow: Equatable, Sendable {
 
 public enum PlanLimitKind: Equatable, Sendable {
     case fiveHour, weekly
+
+    /// How long the window runs, from one reset to the next.
+    public var duration: TimeInterval {
+        switch self {
+        case .fiveHour: 5 * 3_600
+        case .weekly: 7 * 86_400
+        }
+    }
+}
+
+/// Whether the use of a limit window keeps in step with the time that has passed in it: the plan
+/// pace line. Pure arithmetic over one window and the clock; nothing is read or asked.
+public struct PlanPace: Equatable, Sendable {
+    public enum Status: Equatable, Sendable {
+        /// Too little of the window has passed for a rate to mean anything: how much is used can be
+        /// shown, but there is no verdict (not "it lasts", not "it runs out").
+        case tooEarly
+        /// Less is used than the time passed would allow.
+        case underPace
+        /// Within `tolerance` of the time passed.
+        case onPace
+        /// More is used than the time passed allows: at this rate the window runs out before it resets.
+        case overPace
+    }
+
+    /// How far use may differ from elapsed time and still count as on pace (5 points of the window).
+    public static let tolerance = 0.05
+    /// Before this share of the window had passed (when the answer was read), a rate says nothing: the
+    /// status is `tooEarly` and there is no projection. A window already used up is over pace at any time.
+    public static let minimumElapsedFraction = 0.05
+
+    public let kind: PlanLimitKind
+    /// Used share of the window, 0...1.
+    public let usedFraction: Double
+    /// Elapsed share of the window when the answer was read, 0...1: where an even pace stood then.
+    public let elapsedFraction: Double
+    public let status: Status
+    public let resetsAt: Date
+    /// When the window would run out at the rate so far; only while over pace (nil otherwise, and
+    /// early in the window). Never before `now`: a window used up already says now.
+    public let runsOutAt: Date?
+
+    /// The pace of `window` at `now`; nil when the window has ended or its reset time is unknown
+    /// (nothing can be said about a window whose length of time left is not known).
+    /// `measuredAt` is when the used share was read (`PlanLimits.fetchedAt`): the elapsed time is
+    /// measured there, so the two belong to the same moment and an old answer does not drift towards
+    /// "it lasts". It is taken as `now` when absent, and never later than `now`.
+    public init?(kind: PlanLimitKind, window: PlanLimitWindow, at now: Date, measuredAt: Date? = nil) {
+        guard let resetsAt = window.resetsAt, resetsAt > now else { return nil }
+        let measured = min(measuredAt ?? now, now)
+        let duration = kind.duration
+        // A reset further away than one window (a clock out of step) has not started yet.
+        let elapsed = min(max(duration - resetsAt.timeIntervalSince(measured), 0), duration)
+        let used = Double(window.usedPercent) / 100
+        let elapsedFraction = elapsed / duration
+        self.kind = kind
+        self.usedFraction = used
+        self.elapsedFraction = elapsedFraction
+        self.resetsAt = resetsAt
+        if used >= 1 {
+            status = .overPace
+            runsOutAt = now
+        } else if elapsedFraction < Self.minimumElapsedFraction {
+            status = .tooEarly
+            runsOutAt = nil
+        } else if used > elapsedFraction + Self.tolerance {
+            status = .overPace
+            // The window started `elapsed` before `measured`; at that rate it is full after elapsed / used.
+            let projected = measured.addingTimeInterval(-elapsed).addingTimeInterval(elapsed / used)
+            runsOutAt = max(projected, now)
+        } else {
+            status = used < elapsedFraction - Self.tolerance ? .underPace : .onPace
+            runsOutAt = nil
+        }
+    }
 }
 
 /// The plan limits at one moment. Only the two windows the product shows are kept; nothing else
@@ -56,6 +131,11 @@ public struct PlanLimits: Equatable, Sendable {
         if let fiveHour, fiveHour.isCurrent(at: now) { windows.append((.fiveHour, fiveHour)) }
         if let weekly, weekly.isCurrent(at: now) { windows.append((.weekly, weekly)) }
         return windows
+    }
+
+    /// The pace of each window that still exists at `now`, five-hour first, each measured at `fetchedAt`.
+    public func paces(at now: Date) -> [PlanPace] {
+        current(at: now).compactMap { PlanPace(kind: $0.kind, window: $0.window, at: now, measuredAt: fetchedAt) }
     }
 
     /// The window that runs out first: the lowest remaining percent, a tie going to the earlier reset.
@@ -186,7 +266,10 @@ enum PlanLimitsLine: Equatable, Sendable {
 
 enum PlanLimitsWire {
     static func request(id: String) -> Data {
-        let object: [String: Any] = ["type": "control_request", "request_id": id, "request": ["subtype": "get_usage"]]
+        // Without `skip_behaviors` the CLI reads every transcript touched in the last seven days to build
+        // its behavior statistics, on every ask; Loom reads only the limits.
+        let request: [String: Any] = ["subtype": "get_usage", "skip_behaviors": true]
+        let object: [String: Any] = ["type": "control_request", "request_id": id, "request": request]
         var data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data()
         data.append(0x0A)
         return data

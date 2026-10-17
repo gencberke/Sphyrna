@@ -14,21 +14,24 @@ import Foundation
 //   exit          exits non-zero without answering
 // LOOM_FAKE_USAGE_FIVE / _WEEK are the used percent, LOOM_FAKE_USAGE_FIVE_RESET / _WEEK_RESET the
 // ISO-8601 reset times, LOOM_FAKE_USAGE_LOG a file that receives the arguments, config directory
-// and working directory, LOOM_FAKE_PIDFILE the child's pid.
+// and working directory (and, once the request is read, `skipBehaviors` and `scansTranscripts`: whether
+// the real CLI would read the transcripts of the last week for this ask), LOOM_FAKE_PIDFILE the
+// child's pid.
 
 func runFakeUsageProbe(arguments: [String]) -> Never {
     let environment = ProcessInfo.processInfo.environment
     let mode = environment["LOOM_FAKE_USAGE"] ?? "ok"
     if let path = environment["LOOM_FAKE_PIDFILE"] { try? "\(getpid())".write(toFile: path, atomically: true, encoding: .utf8) }
-    if let path = environment["LOOM_FAKE_USAGE_LOG"] {
-        let record: [String: Any] = [
-            "arguments": arguments, "config": environment["CLAUDE_CONFIG_DIR"] ?? NSNull(),
-            "cwd": FileManager.default.currentDirectoryPath,
-        ]
-        if let data = try? JSONSerialization.data(withJSONObject: record) {
-            try? (String(decoding: data, as: UTF8.self) + "\n").write(toFile: path, atomically: true, encoding: .utf8)
-        }
+    var record: [String: Any] = [
+        "arguments": arguments, "config": environment["CLAUDE_CONFIG_DIR"] ?? NSNull(),
+        "cwd": FileManager.default.currentDirectoryPath,
+    ]
+    func writeLog() {
+        guard let path = environment["LOOM_FAKE_USAGE_LOG"],
+              let data = try? JSONSerialization.data(withJSONObject: record) else { return }
+        try? (String(decoding: data, as: UTF8.self) + "\n").write(toFile: path, atomically: true, encoding: .utf8)
     }
+    writeLog()
     switch mode {
     case "hang":
         sleep(60)
@@ -43,6 +46,12 @@ func runFakeUsageProbe(arguments: [String]) -> Never {
           request["type"] as? String == "control_request",
           (request["request"] as? [String: Any])?["subtype"] as? String == "get_usage",
           let id = request["request_id"] as? String else { exit(2) }
+    // The real CLI reads every transcript touched in the last seven days (for its behavior statistics)
+    // unless the request says `skip_behaviors:true`; the log says whether this one would have.
+    let body = request["request"] as? [String: Any]
+    record["skipBehaviors"] = body?["skip_behaviors"] as? Bool ?? false
+    record["scansTranscripts"] = body?["skip_behaviors"] as? Bool != true
+    writeLog()
 
     func send(_ object: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: object) else { return }
