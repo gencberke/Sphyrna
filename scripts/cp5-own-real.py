@@ -23,13 +23,15 @@ def module(name, path):
     value = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(value)
     return value
+sys.path.insert(0, str(ROOT / 'scripts/perf'))
+import perf_paths
 measure = module('measure', ROOT / 'scripts/cp5-d-measure.py')
 own = module('own', ROOT / 'scripts/cp5-own-native.py')
 
 PROBE = pathlib.Path.home() / 'Library/Application Support/Loom-Dev/probe'
 CLAUDE = PROBE / 'claude-config'
 CODEX = pathlib.Path.home() / '.loom-dev/codex-home'
-WORKSPACE = PROBE / 'workspace'   # already trusted by both isolated profiles
+WORKSPACE = pathlib.Path('/private/tmp/loom-real/workspace')   # outside HOME (perf_paths.WORK_ROOT); created and trusted in main()
 TOKENS = ['LOOM_OWN_C1', 'LOOM_OWN_X1', 'Try', 'OpenAI Codex', 'esc to interrupt', 'thinking',
           # Diagnostics only (presence, never text): what the TUI did instead.
           'Do you want', 'sleep 777', 'sleep 778', 'background', "can't", 'cannot', 'Bash(']
@@ -62,6 +64,7 @@ def main():
     app = pathlib.Path(sys.argv[1]).resolve()
     if str(app).startswith(str(pathlib.Path.home() / 'Documents')):
         raise SystemExit('Package the app outside ~/Documents (run-host TCC).')
+    perf_paths.real_work_dir(CLAUDE, 'workspace')
     base = PROBE / 'runs' / f'cp5-own-real-{uuid.uuid4()}'
     evidence, data = base / 'evidence', base / 'data'
     evidence.mkdir(parents=True)

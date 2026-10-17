@@ -20,12 +20,14 @@ loom-app (exe: NSApplication, AppDelegate, window, menus, dev evidence)
    |       `-------+-- LoomCore  (no UI: runtime, supervisor, catalog, ownership, hooks)
    |                       `-- CLoomPOSIX (C: PTY, process table, coalition reads, scope IO)
    `-- LoomLaunchOptions (pure CLI-flag rules, no dependencies)
+LoomChat (v2 chat engine: stream-json protocol, TurnModel, TranscriptLens; no UI, spawns nothing) -> LoomCore; the app does not link it yet
 helpers: loom-run-host (C, bundled LoomRunHost.app) -> CLoomPOSIX;  loom-hook -> LoomCore
 dev/test only: loom-test-child, loom-fake-provider, loom-catalog-fixture, loom-probe
 ```
 
 Rules: `LoomCore` imports no UI framework and keeps process/PTY/wait work off MainActor. Dependencies only point down the
-diagram. AppKit appears only in `LoomTerminal`, `LoomCatalogUI` and `loom-app`.
+diagram. AppKit appears only in `LoomTerminal`, `LoomCatalogUI` and `loom-app`. `LoomChat` imports `LoomCore` and no UI
+framework; starting and stopping the `claude` process stays in `LoomCore`'s supervisor (pipe children, Section 4).
 
 ## 2. Targets
 
@@ -38,12 +40,13 @@ Declared in `Package.swift`; all tests use swift-testing (`@Test`). Product bund
 | `LoomCore` | Everything non-UI: runtime, supervisor, catalog, ownership, hook server, provider setup, lifecycle, event hub | see below | `LoomCoreTests` |
 | `LoomTerminal` | SwiftTerm wrapper: output bridge, bounded input queue wiring, limits, theme, input rules (image paste, dropped paths, Option as the layout's character layer before Meta), A-slice synthetic-run state machine | `TerminalSurface.swift` (`TerminalSurface`, `TerminalOutputBridge`, `TerminalSurfaceLimits`, `LoomTerminalView`), `TerminalRunController.swift`, `TerminalTheme.swift` (colours as `TerminalRGB`, the 256-colour palette), `TerminalScreenSnapshot.swift` (FB4-3: the kept last screen) | `LoomTerminalTests` |
 | `LoomCatalogUI` | Sidebar, detail pane, `@Observable` `CatalogModel`, `ConversationController` (runtime to terminals glue), status indicator, UI preferences, git branch read | `CatalogModel.swift`, `ConversationController.swift`, `SidebarView.swift`, `DetailView.swift`, `SessionDisplay.swift` (`SessionIndicator`), `LoomTheme.swift` (all visual tokens; guarded by `scripts/check-theme-literals.sh`), `IndicatorView.swift` (`IndicatorView`, `ChaseDots`, `IndicatorEvidence`), `ProviderIcon.swift`, `UIPreferences.swift`, `GitBranch.swift`, `BranchCache.swift`, `SettingsView.swift`, `SessionNavigation.swift` (D-45: `AttentionOrder`, `QuitConfirmation`, `SessionShortcut`, `DockBadge`, `SessionCommandText`), `MenuBarState.swift` (H1-F: `MenuBarSummary`, `MenuBarState`, `MenuBarMenu`, derived beside the Dock count), `MenuBarMark.swift` (the mark's path data, `SVGPathParser`, `MenuBarArt` drawing), `MenuBarFace.swift` (status button image and the chase layers), `MenuBarRowText.swift`, `ApprovalNotifications.swift` (`ApprovalNotificationPlanner`, `SettingsNotice`, `SystemIntegration`), `CatalogModel+Navigation.swift` (jumps, next/previous session, Dock badge count, sidebar reveal), `CatalogModel+Subagents.swift` / `SubagentTranscriptModel.swift` / `SubagentTranscriptView.swift` / `SubagentPanelViews.swift` (FB4-5: the subagent panel), `EndedScreens.swift` (`EndedScreenStore`, FB4-3), `EndedScreenView.swift` (the static last screen), `SessionMenuItems.swift` (Reveal in Finder, Copy Claude Session ID, Copy Resume Command) | `LoomCatalogUITests` |
+| `LoomChat` | v2 chat engine, three layers, no UI and no process spawning (the app target does not link it yet). **Protocol/**: `StreamJSONDecoder` (NDJSON framing of Claude's stdout in chunks of any size, a bounded memory per line, an oversized or malformed line becomes a frame instead of an error), `StreamMessage`/`StreamTypes` (unknown types are kept as `unknown`, never fatal), `OutgoingUserMessage`, `ControlChannel` (control requests and responses by request id: timeout, cancel, closed, capability check against `system/init`) and `ControlMessages`. **Model/**: `TurnModel` (a value type: one chronological list of `ChatEntry` rows and their turns, fed by `apply(_:)` for live `StreamMessage`s and `apply(record:)` for transcript lines; every change returns a `ModelDelta`; ids are stable across live and transcript, so one renderer serves both), `ClippedText`, `ThoughtLine`. **Lens/**: `TranscriptLens` (an actor that fills a `TurnModel` from a transcript file: the newest turns first, older ones on demand, growth when the owner calls `readGrowth()`; stopped sessions, terminal sessions and subagent transcripts) | `Protocol/`, `Model/`, `Lens/` | `LoomChatTests` |
 | `LoomLaunchOptions` | Pure launch rules: data root resolution, `--evidence`, command-channel name | `LaunchOptions.swift` | `LoomLaunchOptionsTests` |
 | `loom-app` (exe) | `AppDelegate` (one window, menus, runtime wiring, Quit), `MainSplitViewController`, the menu bar item, needs-approval banners and the login item (H1-F: `MenuBarController`, `ApprovalNotifier`, `SystemServices` behind `NotificationService` / `LoginItemService` protocols, `AppDelegate+System`), dev evidence tooling | `AppDelegate.swift`, `MainSplitViewController.swift`, `MenuBarController.swift`, `ApprovalNotifier.swift`, `SystemServices.swift`, `DevelopmentEvidence.swift`, `EvidenceResourcePool.swift` | none (acceptance scripts in `scripts/`) |
 | `loom-run-host` (C exe) | Bundled `Contents/Helpers/LoomRunHost.app`; one instance per run scope; spawns PTY children, reports exits | `main.c` | `RunScopeTests` (assembles a real bundle) |
 | `loom-hook` | Claude hook command: reads stdin, sends an authenticated envelope to the hook socket. With arguments it is the agent command `"$LOOM_CLI" open ...` (`OpenSessionCommand` in LoomCore; D-40) | `main.swift` | `ClaudeHookTests`, `OpenSessionCommandTests` |
-| `loom-test-child` | Synthetic process fixture and the dev "terminal" | `main.swift` | used by many tests |
-| `loom-fake-provider` | Provider-shaped Claude/Codex fixture for tests and `--fake-providers`. Never bundled | `main.swift`, `CodexFixture.swift` | n/a |
+| `loom-test-child` | Synthetic process fixture and the dev "terminal"; its `pipe-*` modes are the pipe protocol fixtures | `main.swift` | used by many tests |
+| `loom-fake-provider` | Provider-shaped Claude/Codex fixture for tests and `--fake-providers`; its chat mode is a scripted stream-json engine for LoomChat. Never bundled | `main.swift`, `CodexFixture.swift`, `ChatEngine.swift`, `ChatScenarios.swift`, `ChatWire.swift` | `FakeProviderChatTests` (in `LoomCoreTests`) |
 | `loom-catalog-fixture` | Writes an isolated catalog for acceptance. Never bundled | `main.swift` | n/a |
 | `loom-probe` | Experiment/measurement CLI (Q1 experiments, Codex observer) | `main.swift` + 10 files | none |
 
@@ -56,6 +59,8 @@ Declared in `Package.swift`; all tests use swift-testing (`@Test`). Product bund
 | Persistence | `SessionCatalog` (core plus `+Sessions`, `+Runs`, `+Projects`, `+Titles`, `+Paging`, `+Deletions`: the deletion API and its state machine), `CatalogDatabase` (schema, migration, SQLite helpers), `ProjectTone` (the project colour palette's names, D-48) |
 | Retention | `CleanupPlanner` (`CleanupPolicy`, the cleanup arithmetic of DP-CP4-2, and which stale sessions are eligible), `CleanupCoordinator` (worktree protection, DP-CP4-3, and the rows of the cleanup review); the review (CP4-G) stays in development builds until DP-CP4-2 |
 | Terminal I/O | `TerminalEndpoint` (also `TerminalOutputSink`), `TerminalInputQueue`, `TerminalInputGate` |
+| Pipe children | `StdioProcess` (stdin/stdout/stderr pipes of one child: bounded stdin queue, both outputs always drained, `PipeOutputSink`), `PipeEndpoint` (the run-scoped IO capability beside `TerminalEndpoint`; also `RunEndpoint`, the supervisor's `terminal` or `pipe` case) |
+| Transcripts | `ClaudeTranscriptFile` (`ClaudeTranscriptLocator`: `<profile>/projects/<folder>/<session id>.jsonl`, checked right before it is opened; `openOwnRegularFile`, shared with the subagent tail), `ClaudeTranscriptReader` (a main or subagent transcript read backward in bounded pages and forward for growth; a line over the cap is reported by offset and length, not read), `TranscriptLineSplitter` (whole lines from file bytes, shared with `SubagentTranscriptTail`), `JSONValueAccess` (nil-on-mismatch access to `JSONValue`) |
 | Logs and diagnostics | `LoomLog` (os.Logger categories, rate limit), `LoomSignposts` (launch and sidebar signposts), `DiagnosticJournal`, `DiagnosticsExport` (bundle, `HookDiagnostics`, `PlanLimitsFailure`), `SessionRuntime+Diagnostics` (launch/quit summary, `collectDiagnostics`), `CatalogBackups` (`CatalogBackupStore`, `CatalogRecovery`), `CrashResidue` (`StaleSocketSweep`), `SessionCatalog+Diagnostics` |
 | Provider setup | `LaunchEnvironment`, `EnvironmentResolutionJob`, `ProviderToolchain`, `ProviderLaunchProfile`, `ProviderResume` |
 | Claude | `ClaudeHook` (server, client, `ClaudeHookStateTracker`), `OpenSessionProtocol`/`OpenSessionCoordinator`/`OpenSessionCommand`/`LocalSocket` (a session asks Loom to open another one, D-40), `SubagentLedger` (the run's subagent list from `SubagentStart`/`SubagentStop`, `Stop.background_tasks` and each subagent's `meta.json`; D-39; a record also carries the transcript path beside the meta file), `SubagentTranscriptLocation` / `SubagentTranscriptParser` / `SubagentTranscriptTail` / `SubagentTranscriptFeed` (FB4-5: a subagent's live transcript, read-only), `ClaudeRegistry`, `ClaudeDataInventory` (planner and safe deleter of a session's files), `ClaudeProfileLayout`, `ClaudeUsageIndex` (with `ClaudeUsageParser`, `UsageSnapshot` and `UsagePricing`, the models' list prices for the cost estimate), `UsageTranscriptWatcher` (FSEvents over `<profile>/projects`), `ClaudePlanLimitsFetcher` (headless `get_usage` through the Claude CLI) |
@@ -194,6 +199,7 @@ Engine limits live in `TerminalSurfaceLimits` (scrollback 2,000 lines, OSC 1 MiB
 **Stop**
 `ConversationController.stop` -> `SessionRuntime.stopConversation` -> `ProcessSupervisor.stop`: provider prepare-stop hooks,
 freeze then kill forked scope members (launchd-spawned members are never signalled), ownership resample, `SessionStopReport`.
+A pipe child (Section 4) is first asked to leave by closing its stdin; only what is still alive after the input-close grace gets signals.
 A failed stop stays visible (`SessionViewState.stopFailure`, "Stop it again to retry") and is retried by stopping again.
 
 **Delete a conversation** (CP4-C, `ConversationDeletion.swift`; Claude only, Codex and synthetic rows are refused, D-28)
@@ -250,6 +256,19 @@ directory when every scope is shown empty; leftovers surface as `CatalogModel.ow
   TCC-responsible app: packages, fixtures and build scratch must live outside `~/Documents` (`scripts/dev-paths.sh`); the source checkout may stay there.
   Tests assemble a host bundle with `RunScopeLauncher.assembleOwnedBundle(executable:in:)` and remove it with `removeOwnedBundle(in:)`,
   which also unregisters it from LaunchServices (launching through `open` registers the bundle, and the record outlives the folder).
+- **Pipe children.** A run's child is either a PTY child (`SPAWN_PTY`: `launch`, `TerminalEndpoint`) or a pipe child
+  (`SPAWN_STDIO`: `launchPipes`, `PipeEndpoint`). For a pipe child the host receives three descriptors (stdin, stdout, stderr)
+  instead of a PTY master, and the child is otherwise the same: same scope, ledger, markers and same-session guard. The run
+  keeps a `RunEndpoint` (`Runtime.endpoint`, formerly `Runtime.terminal`), so the shared stop path asks it, not a terminal.
+  The stdout and stderr pipes are drained whatever the consumer does (`PipeOutputSink` must bound its own storage); stdin
+  has a bounded queue, so a child that does not read stalls its writers instead of growing memory.
+- **Stop order.** A PTY child: `SIGHUP`, `SIGTERM`, `SIGKILL`, each after its grace period. A pipe child is asked to leave the
+  way its protocol says: stdin is closed first, the run gets its own input-close grace to exit on its own
+  (`inputCloseGraceSeconds`, default 2 s; the real CLI exits about 0.7 s after end-of-file), and only then `SIGTERM` and
+  `SIGKILL` after the signal grace (no `SIGHUP`: it means nothing without a terminal). Quit does the same on its one
+  app-wide clock: stdin of every pipe child closes, one shared input-close wait, then the signals (`SIGHUP` goes to terminal
+  runs only, never to a pipe run). A pipe child that exits before Loom reads its identity still delivers its output and
+  exit status.
 - **Scope and members.** `RunScope`/`RunScopeTable` track members via `CLoomPOSIX` reads. `RunScopeMember.launchdSpawned`
   separates launchd-spawned members (never signalled) from forked work (frozen, re-verified, killed). The app's own
   coalition is never an ownership seed.

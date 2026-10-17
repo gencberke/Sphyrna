@@ -21,7 +21,7 @@ from perf_paths import REPO as ROOT, load_module as module
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 perf_paths.add_common_arguments(parser, 'fb2-accept-real')
 parser.add_argument('--probe-root', type=pathlib.Path, default=perf_paths.PROBE,
-                    help='holds claude-config/ (isolated profile) and workspace/ (default: Loom-Dev/probe)')
+                    help='holds claude-config/ (isolated profile; default: Loom-Dev/probe); work dirs are under /private/tmp/loom-real')
 parser.add_argument('--only-subagents', action='store_true', help='run step 1 only (1 model turn)')
 parser.add_argument('--only-skill', action='store_true', help="run the skill check only (D-42; 1-2 model turns)")
 args = parser.parse_args()
@@ -32,8 +32,7 @@ own = module('own', ROOT / 'scripts/cp5-own-native.py')
 base = run_dir / 'fb2-accept-real'
 evidence, data, shots = base / 'evidence', base / 'data', base / 'shots'
 evidence.mkdir(parents=True); data.mkdir(); shots.mkdir()
-workspace = PROBE / 'workspace' / f'fb2-{time.strftime("%Y%m%dT%H%M%S")}'
-workspace.mkdir(parents=True)
+workspace = perf_paths.real_work_dir(PROBE / 'claude-config', f'fb2-{time.strftime("%Y%m%dT%H%M%S")}')
 for name in ('alpha.txt', 'beta.txt', 'gamma.txt'): (workspace / name).write_text(name + '\n')
 subprocess.run(['git', 'init', '-q', '-b', 'main', str(workspace)], check=True)
 (workspace / 'TEST-7-msg.txt').write_text('Reply with exactly LOOM_CHILD_OK and nothing else.\n')
@@ -41,7 +40,6 @@ if args.only_skill:
     (workspace / 'CLAUDE.md').write_text(
         '# Project rules\n\nWork on a ticket (keys like TEST-123) always happens in its own separate top-level session '
         'opened for that ticket, never in this session and never in a subagent.\n')
-perf_paths.trust_probe_workspace(PROBE / 'claude-config', workspace)
 TOKENS = ['Try', 'shortcuts', 'trust this folder', 'external imports', 'ZQX17', 'LOOM_CHILD_OK', 'LOOM_OPEN_ONE', 'LOOM_OPEN_TWO', 'started', 'exists']
 COMMAND = '"$LOOM_CLI" open --title "TEST-7 - fb2 probe" --ticket TEST-7 --message-file TEST-7-msg.txt'
 report = {'checks': {}, 'modelTurns': 0, 'details': {}}

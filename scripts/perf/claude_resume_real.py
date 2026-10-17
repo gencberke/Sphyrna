@@ -18,7 +18,7 @@ from perf_paths import REPO as ROOT, load_module as module
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 perf_paths.add_common_arguments(parser, 'claude-resume-real')
 parser.add_argument('--probe-root', type=pathlib.Path, default=perf_paths.PROBE,
-                    help='holds claude-config/ (isolated profile) and workspace/ (default: Loom-Dev/probe)')
+                    help='holds claude-config/ (isolated profile; default: Loom-Dev/probe); work dirs are under /private/tmp/loom-real')
 args = parser.parse_args()
 app, run_dir = perf_paths.resolve_common(args, 'claude-resume-real')
 PROBE = perf_paths.refuse_documents('Probe root', args.probe_root)
@@ -27,9 +27,7 @@ own = module('own', ROOT / 'scripts/cp5-own-native.py')
 base = run_dir / 'claude-resume-real'
 evidence, data = base / 'evidence', base / 'data'
 evidence.mkdir(parents=True); data.mkdir()
-workspace = PROBE / 'workspace' / f'resume-{time.strftime("%Y%m%dT%H%M%S")}'
-workspace.mkdir(parents=True)
-perf_paths.trust_probe_workspace(PROBE / 'claude-config', workspace)
+workspace = perf_paths.real_work_dir(PROBE / 'claude-config', f'resume-{time.strftime("%Y%m%dT%H%M%S")}')
 SECRET = 'LOOMWORD' + uuid.uuid4().hex[:6].upper()
 TOKENS = ['Try', 'shortcuts', 'trust this folder', 'external imports', 'LOOM_RESUME_ONE', 'LOOM_RESUME_TWO', SECRET, 'this session only']
 report = {'checks': {}, 'modelTurns': 0, 'details': {}}

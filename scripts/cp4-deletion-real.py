@@ -20,7 +20,7 @@ from perf_paths import REPO as ROOT, load_module as module
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 perf_paths.add_common_arguments(parser, 'cp4e-real-deletion')
 parser.add_argument('--probe-root', type=pathlib.Path, default=perf_paths.PROBE,
-                    help='holds claude-config/ (isolated profile) and workspace/ (default: Loom-Dev/probe)')
+                    help='holds claude-config/ (isolated profile; default: Loom-Dev/probe); work dirs are under /private/tmp/loom-real')
 parser.add_argument('--out', type=pathlib.Path, default=ROOT / 'plans/experiments/run1-CP4E-real-deletion.json')
 args = parser.parse_args()
 app, run_dir = perf_paths.resolve_common(args, 'cp4e-real-deletion')
@@ -36,8 +36,7 @@ measure = module('measure', ROOT / 'scripts/cp5-d-measure.py')
 base = run_dir
 evidence, evidence2, data = base / 'evidence', base / 'evidence-relaunch', base / 'data'
 for d in (evidence, evidence2, data): d.mkdir(parents=True)
-workspace = PROBE / 'workspace' / f'cp4e-{time.strftime("%Y%m%dT%H%M%S")}'
-workspace.mkdir(parents=True)
+workspace = perf_paths.real_work_dir(CONFIG, f'cp4e-{time.strftime("%Y%m%dT%H%M%S")}')
 TOKENS = 'Try,esc to interrupt,Do you want'
 report = {'checks': {}, 'details': {}, 'modelTurns': 0, 'model': 'haiku (probe settings.json)'}
 IDS = {}  # id -> placeholder used in evidence names
@@ -49,7 +48,8 @@ def check(name, ok, detail=None):
 def label(text):
     """Value-free form of a path or name: the two conversation ids become <A> and <B>."""
     for i, p in IDS.items(): text = re.sub(re.escape(i), p, text, flags=re.I)
-    return re.sub(r'-Users-[^/]*?-Library-Application-Support-Loom-Dev-probe', '<probe>', text)
+    text = re.sub(r'-Users-[^/]*?-Library-Application-Support-Loom-Dev-probe', '<probe>', text)
+    return text.replace('-private-tmp-loom-real', '<work>')
 
 def snap(directory, name):
     p = directory / f'state-{name}.json'; p.unlink(missing_ok=True)

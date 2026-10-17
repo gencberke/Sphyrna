@@ -18,7 +18,7 @@ from perf_paths import REPO as ROOT, load_module as module
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 perf_paths.add_common_arguments(parser, 'claude-real')
 parser.add_argument('--probe-root', type=pathlib.Path, default=perf_paths.PROBE,
-                    help='holds claude-config/ (isolated profile) and workspace/ (default: Loom-Dev/probe)')
+                    help='holds claude-config/ (isolated profile; default: Loom-Dev/probe); work dirs are under /private/tmp/loom-real')
 args = parser.parse_args()
 app, run_dir = perf_paths.resolve_common(args, 'claude-real')
 PROBE = perf_paths.refuse_documents('Probe root', args.probe_root)
@@ -83,7 +83,7 @@ try:
     app_pid = measure.wait_json(evidence / 'launched.json', 30)['pid']
     until('ready', lambda s: s['catalog']['ready'] and s['catalog']['actionsAvailable'], 30)
     measure.send('view-mode:projects', evidence)
-    measure.send('add-project:' + str(PROBE / 'workspace'), evidence)
+    measure.send('add-project:' + str(perf_paths.real_work_dir(PROBE / 'claude-config', 'workspace')), evidence)
     project = until('project', lambda s: len(s['catalog']['projects']) == 1, 30)['catalog']['projects'][0]['id']
     before = {t['owner'] for t in snap('before').get('conversationTerminals', [])}
     measure.send(f'start:claude:{project}', evidence)

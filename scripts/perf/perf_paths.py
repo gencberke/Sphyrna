@@ -12,6 +12,10 @@ DEV_ROOT = HOME / 'Library/Application Support/Loom-Dev'
 DEFAULT_APP = DEV_ROOT / 'app/Loom Dev.app'
 PROBE = DEV_ROOT / 'probe'
 RUNS = PROBE / 'runs'
+# Working directories of real-Claude runs. Outside HOME on purpose: Claude Code loads the CLAUDE.md of every ancestor
+# folder of its working directory as project memory (also with an isolated CLAUDE_CONFIG_DIR), so a work dir under HOME
+# would load the user's real ~/.claude/CLAUDE.md into the probe (spike S0).
+WORK_ROOT = pathlib.Path('/private/tmp/loom-real')
 
 
 def command_channel(directory):
@@ -47,6 +51,18 @@ def trust_probe_workspace(claude_config, workspace):
     entry.update(hasTrustDialogAccepted=True, hasClaudeMdExternalIncludesApproved=False,
                  hasClaudeMdExternalIncludesWarningShown=True)
     tmp = profile_json.with_suffix('.json.perftmp'); tmp.write_text(json.dumps(profile, indent=2)); tmp.replace(profile_json)
+
+
+def real_work_dir(claude_config, *parts):
+    """A throwaway working directory for a real-Claude run: WORK_ROOT/<parts>, created and trusted in the isolated
+    profile. Refuses a path under HOME (see WORK_ROOT)."""
+    path = WORK_ROOT.joinpath(*parts)
+    resolved = path.resolve()
+    if resolved == HOME.resolve() or HOME.resolve() in resolved.parents:
+        raise SystemExit(f'{path} is under HOME; a real-Claude work dir there loads the real ~/.claude/CLAUDE.md.')
+    path.mkdir(parents=True, exist_ok=True)
+    trust_probe_workspace(claude_config, path)
+    return path
 
 
 def load_module(name, path):
