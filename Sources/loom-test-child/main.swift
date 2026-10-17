@@ -342,6 +342,84 @@ do {
         try emit(["mode": "tcc-read-probe", "pid": getpid(),
                   "pathIsDocuments": pathIsDocuments, "success": success])
         loom_fixture_wait(0)
+    case "pipe-echo":
+        // Pipe protocol fixture: every stdin line comes back on stdout and
+        // stderr; stdin end-of-file ends the process.
+        try emit(["pid": getpid(), "mode": "pipe-echo"])
+        while let line = readLine() {
+            try FileHandle.standardOutput.write(contentsOf: Data("echo: \(line)\n".utf8))
+            try FileHandle.standardError.write(contentsOf: Data("err: \(line)\n".utf8))
+        }
+        exit(0)
+    case "pipe-flood":
+        // pipe-flood <MiB>: that much on stdout and on stderr, interleaved,
+        // while stdin is never read. Blocks unless the parent drains both.
+        let arguments = CommandLine.arguments
+        guard arguments.count == 3, let mebibytes = Int(arguments[2]), mebibytes > 0 else {
+            throw NSError(domain: "LoomTestChild", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "Usage: pipe-flood <MiB>"])
+        }
+        let chunk = Data(repeating: 0x6f, count: 64 * 1024)
+        let errorChunk = Data(repeating: 0x65, count: 64 * 1024)
+        for _ in 0..<(mebibytes * 16) {
+            try FileHandle.standardOutput.write(contentsOf: chunk)
+            try FileHandle.standardError.write(contentsOf: errorChunk)
+        }
+        exit(0)
+    case "pipe-count":
+        // pipe-count <delayMs|usr1>: reads nothing for a while (or until SIGUSR1),
+        // then counts stdin to end-of-file and reports the total.
+        let arguments = CommandLine.arguments
+        let delay = arguments.count == 3 ? (arguments[2] == "usr1" ? -1 : Int(arguments[2])) : nil
+        guard let delay, delay >= -1 else {
+            throw NSError(domain: "LoomTestChild", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "Usage: pipe-count <delayMs|usr1>"])
+        }
+        if delay < 0 {
+            // Blocked before the ready line, so a signal sent after it is never lost.
+            var blocked = sigset_t(), none = sigset_t()
+            sigemptyset(&blocked); sigaddset(&blocked, SIGUSR1); sigemptyset(&none)
+            signal(SIGUSR1) { _ in }
+            sigprocmask(SIG_BLOCK, &blocked, nil)
+            try emit(["pid": getpid(), "mode": "pipe-count"])
+            sigsuspend(&none)
+        } else {
+            try emit(["pid": getpid(), "mode": "pipe-count"])
+            usleep(useconds_t(delay) * 1_000)
+        }
+        var total = 0
+        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+        while true {
+            let count = Darwin.read(STDIN_FILENO, &buffer, buffer.count)
+            if count > 0 { total += count } else if count == 0 || errno != EINTR { break }
+        }
+        try emit(["stdinBytes": total])
+        exit(0)
+    case "pipe-fail":
+        // Says why on stderr and exits at once, as a failed resume does. Nothing
+        // is announced on stdout and stdin is never read.
+        try FileHandle.standardError.write(contentsOf: Data("pipe-fail: no conversation found\n".utf8))
+        exit(3)
+    case "pipe-exit-after-eof":
+        // pipe-exit-after-eof <delayMs>: waits for stdin end-of-file, then takes
+        // that long to leave, like a CLI shutting down.
+        let arguments = CommandLine.arguments
+        guard arguments.count == 3, let delay = Int(arguments[2]), delay >= 0 else {
+            throw NSError(domain: "LoomTestChild", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "Usage: pipe-exit-after-eof <delayMs>"])
+        }
+        try emit(["pid": getpid(), "mode": "pipe-exit-after-eof"])
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = Darwin.read(STDIN_FILENO, &buffer, buffer.count)
+            if count == 0 || (count < 0 && errno != EINTR) { break }
+        }
+        usleep(useconds_t(delay) * 1_000)
+        exit(0)
+    case "pipe-linger":
+        // Ignores stdin entirely (end-of-file included) and only SIGTERM ends it.
+        try emit(["pid": getpid(), "mode": "pipe-linger"])
+        loom_fixture_wait(0)
     case "inspect":
         var size = winsize()
         _ = ioctl(STDIN_FILENO, TIOCGWINSZ, &size)
@@ -406,7 +484,7 @@ do {
         loom_fixture_wait(0)
     default:
         throw NSError(domain: "LoomTestChild", code: 1,
-                      userInfo: [NSLocalizedDescriptionKey: "Expected terminal-sample, stream, spinner, interactive, native-links, inspect, stubborn, spawn-on-input, quick-exit, burst-exit, large-burst-exit, group, escape, escape-exit, apple-escape, churn, xpc-metal-client, tcc-read-probe, or mcp"])
+                      userInfo: [NSLocalizedDescriptionKey: "Expected terminal-sample, stream, spinner, interactive, native-links, inspect, stubborn, spawn-on-input, quick-exit, burst-exit, large-burst-exit, group, escape, escape-exit, apple-escape, churn, xpc-metal-client, tcc-read-probe, mcp, pipe-echo, pipe-flood, pipe-count, pipe-fail, pipe-exit-after-eof, or pipe-linger"])
     }
 } catch {
     try? FileHandle.standardError.write(contentsOf: Data("loom-test-child: \(error)\n".utf8))

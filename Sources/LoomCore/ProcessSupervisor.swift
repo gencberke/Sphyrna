@@ -22,7 +22,7 @@ public actor ProcessSupervisor {
         let launchSessionID: UUID
         var activeSessionID: UUID
         var run: ManagedRun
-        var terminal: TerminalEndpoint
+        var endpoint: RunEndpoint
         var outsideOwnership: [ProcessRecord]
         var catalogStarted: Bool
         var stopPhase: StopPhase = .unprepared
@@ -78,6 +78,14 @@ public actor ProcessSupervisor {
     /// Internal test boundary; normal ownership samples always use the OS table.
     func setOwnershipSamplingFailpointForTesting(_ failpoint: (@Sendable () throws -> Void)?) {
         ownershipSamplingFailpoint = failpoint
+    }
+
+    /// Runs between a spawn and the leader lookup; a test waits here until the
+    /// child is gone, which makes "exits before it is looked up" deterministic.
+    var afterSpawnFailpoint: (@Sendable (Int32) async -> Void)?
+
+    func setAfterSpawnFailpointForTesting(_ failpoint: (@Sendable (Int32) async -> Void)?) {
+        afterSpawnFailpoint = failpoint
     }
 
     /// `events` lets the application create the hub first (the UI model needs
@@ -285,6 +293,46 @@ public actor ProcessSupervisor {
                        outputSink: (any TerminalOutputSink)? = nil,
                        managedRunID requestedRunID: UUID? = nil,
                        scope requestedScope: RunScope? = nil) async throws -> ManagedSessionLaunch {
+        let (session, endpoint) = try await launchRun(
+            sessionID: sessionID, executable: executable, arguments: arguments,
+            environment: environment,
+            mode: .terminal(rows: rows, columns: columns, outputSink: outputSink),
+            managedRunID: requestedRunID, scope: requestedScope
+        )
+        guard case let .terminal(terminal) = endpoint else { preconditionFailure("terminal launch") }
+        return ManagedSessionLaunch(session: session, terminal: terminal)
+    }
+
+    /// Launches a run whose child has stdin, stdout and stderr pipes instead of
+    /// a terminal, in a run scope. Ownership markers, the same-session guard,
+    /// stop and Quit are those of `launch`; a pipe child is first asked to leave
+    /// by closing its stdin (see `stop`). `inputLimit` bounds the bytes queued
+    /// for stdin before writers wait.
+    @discardableResult
+    public func launchPipes(sessionID: UUID, executable: String, arguments: [String] = [],
+                            environment: [String: String],
+                            outputSink: any PipeOutputSink,
+                            inputLimit: Int = PipeEndpoint.defaultInputLimit,
+                            managedRunID requestedRunID: UUID? = nil,
+                            scope requestedScope: RunScope? = nil) async throws -> ManagedPipeLaunch {
+        let (session, endpoint) = try await launchRun(
+            sessionID: sessionID, executable: executable, arguments: arguments,
+            environment: environment, mode: .pipes(sink: outputSink, inputLimit: inputLimit),
+            managedRunID: requestedRunID, scope: requestedScope
+        )
+        guard case let .pipe(pipe) = endpoint else { preconditionFailure("pipe launch") }
+        return ManagedPipeLaunch(session: session, pipe: pipe)
+    }
+
+    enum LaunchMode {
+        case terminal(rows: UInt16, columns: UInt16, outputSink: (any TerminalOutputSink)?)
+        case pipes(sink: any PipeOutputSink, inputLimit: Int)
+    }
+
+    private func launchRun(sessionID: UUID, executable: String, arguments: [String],
+                           environment: [String: String], mode: LaunchMode,
+                           managedRunID requestedRunID: UUID?,
+                           scope requestedScope: RunScope?) async throws -> (ManagedSession, RunEndpoint) {
         guard !stopping else { throw SessionManagementError.shutdownStarted }
         guard var session = sessions[sessionID] else {
             throw SessionManagementError.sessionNotFound(sessionID)
@@ -341,7 +389,11 @@ public actor ProcessSupervisor {
         } else {
             scope = nil
         }
-        let process: PTYProcess
+        // Pipe children exist only in run scopes: their ownership is the scope's.
+        if case .pipes = mode, scope == nil {
+            throw RunScopeError.hostUnavailable("run scopes are not configured")
+        }
+        let process: SpawnedChild
         // Counted before spawning so a concurrent stop of another run in this
         // scope never treats itself as the last run and sweeps this one.
         if let scope { scopeRuns[scope.coalitionID, default: []].insert(runID) }
@@ -351,21 +403,34 @@ public actor ProcessSupervisor {
         }
         if let scope {
             do {
-                process = try await spawnInScope(
-                    scope, executable: executable, arguments: arguments,
-                    environment: runEnvironment, directory: session.workingDirectory,
-                    rows: rows, columns: columns
-                )
+                switch mode {
+                case let .terminal(rows, columns, _):
+                    process = .terminal(try await spawnInScope(
+                        scope, executable: executable, arguments: arguments,
+                        environment: runEnvironment, directory: session.workingDirectory,
+                        rows: rows, columns: columns
+                    ))
+                case .pipes:
+                    process = try await spawnPipesInScope(
+                        scope, executable: executable, arguments: arguments,
+                        environment: runEnvironment, directory: session.workingDirectory
+                    )
+                }
             } catch {
-                if ownsNewScope { _ = await releaseScope(scope) }
+                // The run is still counted in its scope (removed on the way out),
+                // so it must be named or the scope would never be released.
+                if ownsNewScope { _ = await releaseScope(scope, finishingRun: runID) }
                 throw error
             }
+        } else if case let .terminal(rows, columns, _) = mode {
+            process = .terminal(try PTYProcess(executable: executable, arguments: arguments,
+                                               environment: runEnvironment,
+                                               directory: session.workingDirectory,
+                                               rows: rows, columns: columns))
         } else {
-            process = try PTYProcess(executable: executable, arguments: arguments,
-                                     environment: runEnvironment,
-                                     directory: session.workingDirectory,
-                                     rows: rows, columns: columns)
+            preconditionFailure("pipe launch without a scope")
         }
+        await afterSpawnFailpoint?(process.pid)
         // Run scopes own membership, so the leader alone is read; only the
         // unscoped ledger needs the whole table.
         var snapshot: [ProcessRecord] = []
@@ -373,46 +438,68 @@ public actor ProcessSupervisor {
         if scopeLauncher == nil {
             do { snapshot = try ProcessTable.snapshot() }
             catch {
-                await abandonUnregistered(process, scope: scope, ownsNewScope: ownsNewScope)
+                await abandonUnregistered(process, scope: scope, ownsNewScope: ownsNewScope, runID: runID)
                 throw error
             }
             leaderRecord = snapshot.first(where: { $0.identity.pid == process.pid })
         } else {
             leaderRecord = ProcessTable.record(pid: process.pid)
         }
-        guard let leader = leaderRecord else {
-            await abandonUnregistered(process, scope: scope, ownsNewScope: ownsNewScope)
+        let leaderIdentity: ProcessIdentity
+        if let leaderRecord {
+            leaderIdentity = leaderRecord.identity
+        } else if case .pipes = mode {
+            // A pipe child that exits at once is already gone from the process
+            // table. Its pipes still hold what it wrote and the host holds its
+            // status, so the run is registered like any other: the endpoint
+            // delivers the output and the exit, and the exit stops the run. The
+            // placeholder identity (zero start time) matches no live process.
+            leaderIdentity = ProcessIdentity(pid: process.pid, startSeconds: 0, startMicroseconds: 0)
+        } else {
+            await abandonUnregistered(process, scope: scope, ownsNewScope: ownsNewScope, runID: runID)
             throw SessionManagementError.leaderIdentityUnavailable(process.pid)
         }
 
-        let run = ManagedRun(id: runID, leader: leader.identity, startedAt: Date(),
+        let run = ManagedRun(id: runID, leader: leaderIdentity, startedAt: Date(),
                              state: .running, exitStatus: nil,
-                             descendants: [leader.identity])
+                             descendants: [leaderIdentity])
         var reap: (@Sendable (Int32, UnsafeMutablePointer<Int32>) -> Int32)?
         if let scope {
             reap = { pid, status in scope.reap(pid, status) }
         }
-        let terminal = TerminalEndpoint(process: process, outputSink: outputSink, reap: reap) { [weak self] status in
+        let onExit: @Sendable (Int32?) -> Void = { [weak self] status in
             Task { await self?.recordLeaderExit(runID: runID, status: status) }
+        }
+        let endpoint: RunEndpoint
+        switch (process, mode) {
+        case let (.terminal(process), .terminal(_, _, outputSink)):
+            endpoint = .terminal(TerminalEndpoint(process: process, outputSink: outputSink,
+                                                  reap: reap, onExit: onExit))
+        case let (.pipes(pid, descriptors), .pipes(sink, inputLimit)):
+            // Pipes need a scope, so `reap` is the host's.
+            endpoint = .pipe(PipeEndpoint(pid: pid, descriptors: descriptors, sink: sink,
+                                          reap: reap!, inputLimit: inputLimit, onExit: onExit))
+        default:
+            preconditionFailure("spawned child does not match the launch mode")
         }
         session.currentRun = run
         sessions[sessionID] = session
         runtimes[runID] = Runtime(
             launchSessionID: sessionID, activeSessionID: sessionID,
-            run: run, terminal: terminal, outsideOwnership: [],
+            run: run, endpoint: endpoint, outsideOwnership: [],
             catalogStarted: catalog == nil, scope: scope
         )
         runRegistered = true
         await events.publish(sessionID: sessionID, change: .runStarted(runID))
         LoomLog.notice(.lifecycle, "Run \(runID.uuidString.prefix(8)) started")
-        markerInspected.insert(leader.identity)
-        managedRunMarkers[leader.identity] = runID
+        markerInspected.insert(leaderIdentity)
+        managedRunMarkers[leaderIdentity] = runID
 
         // Without run scopes the ledger is the recovery and final-shutdown
         // oracle; with them, scope records (persisted at openScope) are, and
         // only scope membership selects what may be signaled.
         if scopeLauncher == nil {
-            ledger.register(leader.identity)
+            ledger.register(leaderIdentity)
             _ = ledger.observe(snapshot)
         }
         do { if scopeLauncher == nil { try persistLedger() } }
@@ -435,7 +522,7 @@ public actor ProcessSupervisor {
             } else {
                 try await catalog.finishRun(
                     runID, reason: stopping ? .applicationQuit : .processExited,
-                    exitStatus: await terminal.exitStatus()
+                    exitStatus: await endpoint.exitStatus()
                 )
             }
         }
@@ -446,7 +533,7 @@ public actor ProcessSupervisor {
             }
             throw SessionManagementError.shutdownStarted
         }
-        return ManagedSessionLaunch(session: sessions[sessionID] ?? session, terminal: terminal)
+        return (sessions[sessionID] ?? session, endpoint)
     }
 
     /// Provider-independent durable conversation binding and in-TUI movement.

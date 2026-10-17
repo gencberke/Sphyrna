@@ -7,7 +7,9 @@ extension ProcessSupervisor {
     /// Applies one app-wide signal schedule, then records completion separately
     /// for every run. The ownership sweep also catches escaped marked processes.
     public func shutdown(graceSeconds: Double = 0.2,
-                         pendingOperationGraceSeconds: Double = 2.1) async -> ShutdownReport {
+                         pendingOperationGraceSeconds: Double = 2.1,
+                         inputCloseGraceSeconds: Double = ProcessSupervisor.defaultInputCloseGraceSeconds
+    ) async -> ShutdownReport {
         if shutdownInProgress {
             let deadline = ProcessInfo.processInfo.systemUptime + max(0.02, pendingOperationGraceSeconds)
             while shutdownInProgress, ProcessInfo.processInfo.systemUptime < deadline {
@@ -22,13 +24,15 @@ extension ProcessSupervisor {
         shutdownInProgress = true
         defer { shutdownInProgress = false }
         let report = await performShutdown(graceSeconds: graceSeconds,
-                                           pendingOperationGraceSeconds: pendingOperationGraceSeconds)
+                                           pendingOperationGraceSeconds: pendingOperationGraceSeconds,
+                                           inputCloseGraceSeconds: inputCloseGraceSeconds)
         lastShutdownReport = report
         return report
     }
 
     private func performShutdown(graceSeconds: Double,
-                                 pendingOperationGraceSeconds: Double) async -> ShutdownReport {
+                                 pendingOperationGraceSeconds: Double,
+                                 inputCloseGraceSeconds: Double) async -> ShutdownReport {
         stopping = true
         for job in environmentJobs.values { job.cancel() }
         let start = Date()
@@ -104,7 +108,29 @@ extension ProcessSupervisor {
         // Quit has one app-wide escalation clock. This sends each signal to all
         // owned runs before waiting, instead of paying a full grace window per
         // session. The per-run completion below still retains separate reports.
-        let sharedTermination = await terminate(graceSeconds: graceSeconds) {
+        // Pipe children are first asked to leave by closing their stdin, and
+        // get the input-close grace period to do so. They never get a hang-up,
+        // even when terminals are hung up in the same Quit: with only pipe
+        // children the schedule starts at SIGTERM, and with both the hang-up
+        // phase skips every process of a pipe run.
+        let pipeRuns = active.map(\.1).filter { runtimes[$0]?.endpoint.isPipe == true }
+        if !pipeRuns.isEmpty {
+            for runID in pipeRuns { await runtimes[runID]?.endpoint.closeInput() }
+            await awaitExit(of: pipeRuns, graceSeconds: inputCloseGraceSeconds)
+        }
+        let onlyPipes = !active.isEmpty && pipeRuns.count == active.count
+        let sharedTermination = await terminate(
+            graceSeconds: graceSeconds,
+            signals: onlyPipes ? Self.pipeSignals : Self.terminalSignals,
+            hangupExempt: { [self] in
+                var exempt: Set<ProcessIdentity> = []
+                for runID in pipeRuns {
+                    _ = try? sample(runID: runID)
+                    exempt.formUnion(runtimes[runID]?.run.descendants ?? [])
+                }
+                return exempt
+            }
+        ) {
             try sampleOwnership()
         }
         attempts += sharedTermination.attempts

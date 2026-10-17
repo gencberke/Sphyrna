@@ -6,7 +6,13 @@ import Synchronization
 extension ProcessSupervisor {
     /// Stops exactly one managed run: its own processes, or its whole run scope
     /// when it is the scope's last run.
-    public func stop(sessionID: UUID, graceSeconds: Double = 0.2) async throws -> SessionStopReport {
+    ///
+    /// `graceSeconds` separates the signals (terminal: hang-up, terminate, kill;
+    /// pipes: terminate, kill). A pipe child is first given
+    /// `inputCloseGraceSeconds` to leave on its own after its stdin closes.
+    public func stop(sessionID: UUID, graceSeconds: Double = 0.2,
+                     inputCloseGraceSeconds: Double = ProcessSupervisor.defaultInputCloseGraceSeconds
+    ) async throws -> SessionStopReport {
         guard !shutdownInProgress else { throw SessionManagementError.shutdownStarted }
         guard let session = sessions[sessionID] else {
             throw SessionManagementError.sessionNotFound(sessionID)
@@ -15,7 +21,7 @@ extension ProcessSupervisor {
             throw SessionManagementError.sessionNotRunning(sessionID)
         }
         return await stop(sessionID: sessionID, runID: runID, graceSeconds: graceSeconds,
-                          endReason: .requested)
+                          endReason: .requested, inputCloseGraceSeconds: inputCloseGraceSeconds)
     }
 
     /// The lifecycle controller uses a distinct durable reason so an automatic
@@ -74,7 +80,9 @@ extension ProcessSupervisor {
     }
 
     func stop(sessionID: UUID, runID: UUID, graceSeconds: Double,
-                      endReason: ManagedRunEndReason) async -> SessionStopReport {
+              endReason: ManagedRunEndReason,
+              inputCloseGraceSeconds: Double = ProcessSupervisor.defaultInputCloseGraceSeconds
+    ) async -> SessionStopReport {
         let start = Date()
         if stoppingRuns.contains(runID) {
             while stoppingRuns.contains(runID) { try? await Task.sleep(for: .milliseconds(10)) }
@@ -157,7 +165,18 @@ extension ProcessSupervisor {
             session.currentRun = runtime.run
             sessions[sessionID] = session
         }
-        let termination = await terminate(graceSeconds: graceSeconds) { try sample(runID: runID) }
+        // A pipe child is asked to leave the way its protocol says: stdin
+        // closes, and only a child still alive after its own, longer grace
+        // period gets signals (SIGTERM, then SIGKILL).
+        let isPipe = runtime.endpoint.isPipe
+        if isPipe {
+            await runtime.endpoint.closeInput()
+            await awaitExit(of: [runID], graceSeconds: inputCloseGraceSeconds)
+        }
+        let termination = await terminate(graceSeconds: graceSeconds,
+                                          signals: isPipe ? Self.pipeSignals : Self.terminalSignals) {
+            try sample(runID: runID)
+        }
         attempts += termination.attempts
         errors += termination.errors
         remaining = termination.remaining
@@ -220,7 +239,7 @@ extension ProcessSupervisor {
                                             catalogDeadline: Double) async -> [String] {
         guard let runtime = runtimes[runID] else { return ["Managed run not found during finalization"] }
         let exitStatus: Int32?
-        do { exitStatus = try await runtime.terminal.finish() }
+        do { exitStatus = try await runtime.endpoint.finish() }
         catch { return [String(describing: error)] }
         // The host must still report the leader's exit above; only then may it
         // go. A scope that cannot be shown empty keeps the run for a retry.
@@ -261,17 +280,45 @@ extension ProcessSupervisor {
             errors: errors, outsideOwnership: runtimes[runID]?.outsideOwnership ?? [])
     }
 
+    /// How long a pipe child gets to exit after its stdin closes. A CLI that
+    /// is idle takes up to about half a second (spike S1); the margin keeps
+    /// the common stop free of signals. Callers may pass their own.
+    public static let defaultInputCloseGraceSeconds = 2.0
+
+    static let terminalSignals = [SIGHUP, SIGTERM, SIGKILL]
+    /// A hang-up means nothing to a child without a terminal.
+    static let pipeSignals = [SIGTERM, SIGKILL]
+
+    /// Waits up to the grace period for every owned process of the runs to
+    /// exit on its own. Sampling errors end the wait: the signal schedule that
+    /// follows samples again and reports them.
+    func awaitExit(of runIDs: [UUID], graceSeconds: Double) async {
+        let deadline = ProcessInfo.processInfo.systemUptime + max(0.02, graceSeconds)
+        repeat {
+            guard let snapshot = try? ProcessTable.snapshot() else { return }
+            var live = false
+            for runID in runIDs {
+                guard let remaining = try? sample(runID: runID, snapshot: snapshot) else { return }
+                if remaining.contains(where: { !$0.zombie }) { live = true }
+            }
+            if !live { return }
+            try? await Task.sleep(for: .milliseconds(10))
+        } while ProcessInfo.processInfo.systemUptime < deadline
+    }
+
     /// The one escalation loop for both a session stop and the final app-wide
     /// recovery sweep. The caller supplies only the ownership scope.
     func terminate(
         graceSeconds: Double,
+        signals: [Int32] = ProcessSupervisor.terminalSignals,
+        hangupExempt: () -> Set<ProcessIdentity> = { [] },
         sample: () throws -> [ProcessRecord]
     ) async -> (attempts: [SignalAttempt], remaining: [ProcessRecord], errors: [String], countVerified: Bool) {
         var attempts: [SignalAttempt] = []
         var errors: [String] = []
         var remaining: [ProcessRecord] = []
         var countVerified = false
-        for signal in [SIGHUP, SIGTERM, SIGKILL] {
+        for signal in signals {
             let deadline = ProcessInfo.processInfo.systemUptime + max(0.02, graceSeconds)
             var signaled: Set<ProcessIdentity> = []
             repeat {
@@ -285,8 +332,13 @@ extension ProcessSupervisor {
                             try? ProcessTable.signal(record.identity, SIGSTOP)
                         }
                     }
+                    // Processes that never take a hang-up (pipe children) are
+                    // left for the next signal in a Quit that also hangs up
+                    // terminals.
+                    let exempt = signal == SIGHUP ? hangupExempt() : []
                     for record in remaining where !record.zombie
-                        && !signaled.contains(record.identity) {
+                        && !signaled.contains(record.identity)
+                        && !exempt.contains(record.identity) {
                         do {
                             try ProcessTable.signal(record.identity, signal)
                             attempts.append(SignalAttempt(

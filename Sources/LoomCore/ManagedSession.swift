@@ -49,6 +49,12 @@ public struct ManagedSessionLaunch: Sendable {
     public let terminal: TerminalEndpoint
 }
 
+/// A run started with stdin, stdout and stderr pipes instead of a terminal.
+public struct ManagedPipeLaunch: Sendable {
+    public let session: ManagedSession
+    public let pipe: PipeEndpoint
+}
+
 public enum SessionIdentityState: String, Equatable, Sendable {
     case known
     case ambiguous

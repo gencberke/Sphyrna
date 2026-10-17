@@ -87,6 +87,67 @@ extension ProcessSupervisor {
         return []
     }
 
+    /// What a launch started: a terminal child or a pipe child. Either holds
+    /// Loom's ends of the child's streams until an endpoint takes them over.
+    enum SpawnedChild {
+        case terminal(PTYProcess)
+        case pipes(pid: Int32, descriptors: PipeDescriptors)
+
+        var pid: Int32 {
+            switch self {
+            case let .terminal(process): process.pid
+            case let .pipes(pid, _): pid
+            }
+        }
+
+        func closeStreams() {
+            switch self {
+            case let .terminal(process): process.closeTerminal()
+            case let .pipes(_, descriptors): descriptors.closeAll()
+            }
+        }
+    }
+
+    /// A child with stdin, stdout and stderr pipes. Loom's ends are
+    /// close-on-exec and non-blocking, and a write to a closed stdin fails
+    /// with EPIPE instead of raising SIGPIPE; the child's ends go to the host
+    /// and are closed here.
+    func spawnPipesInScope(
+        _ scope: RunScope, executable: String, arguments: [String],
+        environment: [String: String], directory: String
+    ) async throws -> SpawnedChild {
+        var input: [Int32] = [-1, -1], output: [Int32] = [-1, -1], error: [Int32] = [-1, -1]
+        guard pipe(&input) == 0 else { throw LoomError.system("pipe open", errno) }
+        guard pipe(&output) == 0 else {
+            let code = errno
+            input.forEach { Darwin.close($0) }
+            throw LoomError.system("pipe open", code)
+        }
+        guard pipe(&error) == 0 else {
+            let code = errno
+            (input + output).forEach { Darwin.close($0) }
+            throw LoomError.system("pipe open", code)
+        }
+        for descriptor in input + output + error { _ = fcntl(descriptor, F_SETFD, FD_CLOEXEC) }
+        for descriptor in [input[1], output[0], error[0]] {
+            _ = fcntl(descriptor, F_SETFL, fcntl(descriptor, F_GETFL) | O_NONBLOCK)
+        }
+        _ = fcntl(input[1], F_SETNOSIGPIPE, 1)
+        let parentSide = PipeDescriptors(input: input[1], output: output[0], error: error[0])
+        defer { for descriptor in [input[0], output[1], error[1]] { Darwin.close(descriptor) } }
+        do {
+            let pid = try await scope.spawn(
+                executable: executable, arguments: arguments, environment: environment,
+                directory: directory,
+                stdio: .descriptors(input: input[0], output: output[1], error: error[1])
+            )
+            return .pipes(pid: pid, descriptors: parentSide)
+        } catch {
+            parentSide.closeAll()
+            throw error
+        }
+    }
+
     func spawnInScope(
         _ scope: RunScope, executable: String, arguments: [String],
         environment: [String: String], directory: String, rows: UInt16, columns: UInt16
@@ -111,17 +172,19 @@ extension ProcessSupervisor {
 
     /// A spawned leader that never became a run. Its scope is checked: a scope
     /// created for it is drained; a shared one loses only that process.
-    func abandonUnregistered(_ process: PTYProcess, scope: RunScope?, ownsNewScope: Bool) async {
+    func abandonUnregistered(_ child: SpawnedChild, scope: RunScope?, ownsNewScope: Bool,
+                             runID: UUID) async {
         guard let scope else {
-            process.terminateUnregisteredChild()
+            // Only a terminal child can start without a scope.
+            if case let .terminal(process) = child { process.terminateUnregisteredChild() }
             return
         }
-        process.closeTerminal()
+        child.closeStreams()
         if ownsNewScope {
             _ = loom_kill_scope_forked_members(scope.coalitionID, 0, 2)
-            _ = await releaseScope(scope)
-        } else if let member = RunScopeTable.lineage(pid: process.pid),
-                  member.identity.pid == process.pid, !member.launchdSpawned {
+            _ = await releaseScope(scope, finishingRun: runID)
+        } else if let member = RunScopeTable.lineage(pid: child.pid),
+                  member.identity.pid == child.pid, !member.launchdSpawned {
             try? RunScopeTable.signal(member, coalitionID: scope.coalitionID, SIGKILL)
         }
     }
