@@ -222,6 +222,32 @@ struct DisplayAndPreferencesTests {
         #expect(missing.current.openTabs.isEmpty && missing.current.viewMode == .projects)
     }
 
+    /// A file as 0.4.4 wrote it (every key it knew, none of the V2 ones) keeps its selection and tabs, and the
+    /// newer settings take their defaults.
+    @Test func aFileFromVersion044KeepsItsSessionsAndDefaultsTheNewSettings() throws {
+        let selected = UUID(), first = UUID(), second = UUID()
+        let url = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let json = """
+        {"viewMode": "projects", "selectedSessionID": "\(selected)", "sidebarWidth": 340, "sidebarCollapsed": false,
+         "terminalFontSize": 15, "openTabs": ["\(first)", "\(second)"],
+         "windowFrame": {"x": 100, "y": 80, "width": 1220, "height": 780},
+         "projectColors": false, "showInMenuBar": true, "notifyApprovals": false}
+        """
+        try Data(json.utf8).write(to: url)
+
+        let loaded = UIPreferencesStore(url: url)
+        #expect(loaded.loadNotice == nil)
+        #expect(loaded.current.selectedSessionID == selected)
+        #expect(loaded.current.openTabs == [first, second])
+        #expect(loaded.current.viewMode == .projects && loaded.current.sidebarWidth == 340)
+        #expect(loaded.current.projectColors == false && loaded.current.notifyApprovals == false)
+        #expect(loaded.current.sidebarStyle == .glass)
+        #expect(loaded.current.inspectorOpen.isEmpty)
+        #expect(loaded.current.launchView == .lastSession)
+    }
+
     @Test func deferredPreferenceChangesStayInMemoryUntilFlushed() throws {
         let url = temporaryFile()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

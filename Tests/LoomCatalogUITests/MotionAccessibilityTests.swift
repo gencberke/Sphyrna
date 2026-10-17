@@ -19,16 +19,16 @@ struct MotionAccessibilityTests {
     ]
 
     @Test func increaseContrastRaisesTheHairlineToThirtyPercent() {
-        #expect(LoomTheme.Surface.hairlineOpacity(for: .standard) == 0.10)
+        #expect(LoomTheme.Surface.hairlineOpacity(for: .standard) == 0.08)
         #expect(LoomTheme.Surface.hairlineOpacity(for: .increased) == 0.30)
-        #expect(LoomTheme.Surface.hairlineStyle.tone(for: .standard).opacity == 0.10)
+        #expect(LoomTheme.Surface.hairlineStyle.tone(for: .standard).opacity == 0.08)
         #expect(LoomTheme.Surface.hairlineStyle.tone(for: .increased).opacity == 0.30)
     }
 
     @Test func increaseContrastLiftsSecondaryTextToAAAOnEverySurface() {
         #expect(LoomTheme.Text.secondaryRGB(for: .standard) == LoomTheme.Text.secondaryRGB)
         let lifted = LoomTheme.Text.secondaryRGB(for: .increased)
-        for surface in Self.surfaces {
+        for surface in Self.surfaces + LoomTheme.Surface.panelLevelsRGB {
             #expect(lifted.contrast(with: surface) >= 7)
             #expect(lifted.contrast(with: surface) > LoomTheme.Text.secondaryRGB.contrast(with: surface))
         }
@@ -52,7 +52,7 @@ struct MotionAccessibilityTests {
         }
         var environment = EnvironmentValues()
         #expect(resolved(LoomTheme.Text.secondaryStyle, environment) == expected(LoomTheme.Text.secondaryRGB, 1, environment))
-        #expect(resolved(LoomTheme.Surface.hairlineStyle, environment) == expected(RGB(red: 1, green: 1, blue: 1), 0.10, environment))
+        #expect(resolved(LoomTheme.Surface.hairlineStyle, environment) == expected(RGB(red: 1, green: 1, blue: 1), 0.08, environment))
         environment._colorSchemeContrast = .increased
         #expect(resolved(LoomTheme.Text.secondaryStyle, environment)
                 == expected(LoomTheme.Text.secondaryIncreasedRGB, 1, environment))

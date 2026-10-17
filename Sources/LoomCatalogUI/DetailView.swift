@@ -8,13 +8,15 @@ public struct DetailView: View {
     public init(model: CatalogModel) { self.model = model }
 
     public var body: some View {
+        let route = model.detailRoute
         VStack(spacing: 0) {
             DetailTop(model: model)
             Banners(model: model)
             DeletionBanner(model: model)
-            DetailContent(model: model)
+            DetailContent(model: model, route: route)
+                .detailInspector(model: model)
         }
-        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).fill(LoomTheme.Surface.panel))
+        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).fill(route.surface))
         .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).stroke(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
         .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel))
         .padding(LoomTheme.Space.panelInset)
@@ -222,69 +224,6 @@ struct BannerRow: View {
                 .accessibilityLabel("Dismiss message")
         }
         .fadesIn()
-    }
-}
-
-struct DetailContent: View {
-    let model: CatalogModel
-
-    var body: some View {
-        Group {
-            if let error = model.startupError {
-                Message(symbol: "exclamationmark.triangle", title: "Loom could not open its catalog",
-                        text: "\(error)\n\nThe catalog file was left untouched. Nothing was created or overwritten.")
-            } else if model.showsDevTerminal, let terminal = model.devTerminal {
-                TerminalHost(panel: terminal.panel)
-            } else if let row = model.selectedRow {
-                if let viewed = model.viewedSubagent, viewed.sessionID == row.id, let panel = model.subagentPanel {
-                    // A subagent's transcript in place of the terminal (FB4-5). The terminal stays with its
-                    // controller, running; it is only not shown, and nothing above it changes size.
-                    VStack(spacing: 0) {
-                        RequestList(model: model, row: row, returnApproves: false)
-                        if let issue = SessionIssueNotice.message(for: row.live) { SessionIssueNotice(message: issue) }
-                        if row.indicator == .waitingForApproval { SubagentApprovalNotice(model: model) }
-                        // One view per panel model: a new model (the same subagent opened again) is put on screen too.
-                        SubagentTranscriptView(panel: panel).id(ObjectIdentifier(panel))
-                    }
-                } else if let terminal = model.terminalView(for: row.id) {
-                    VStack(spacing: 0) {
-                        RequestList(model: model, row: row, returnApproves: false)
-                        if let issue = SessionIssueNotice.message(for: row.live) { SessionIssueNotice(message: issue) }
-                        TerminalHost(panel: terminal).id(ObjectIdentifier(terminal))
-                    }
-                } else if let screen = model.endedScreen(for: row.id) {
-                    // The run ended and its last screen is kept (FB4-3): a static copy below a notice.
-                    VStack(spacing: 0) {
-                        RequestList(model: model, row: row, returnApproves: false)
-                        EndedScreenNotice(model: model, row: row)
-                        EndedScreenView(snapshot: screen, fontSize: model.terminalFontSize)
-                    }
-                } else {
-                    ConversationDetail(model: model, row: row)
-                }
-            } else if model.isReady && model.projects.isEmpty && model.list(for: .activity).rows.isEmpty
-                        && !model.isSearching {
-                VStack(spacing: LoomTheme.Space.emptyStateSpacing) {
-                    Message(symbol: "folder.badge.plus", title: "Add a project to begin",
-                            text: "Your projects and sessions appear in the sidebar.")
-                    HStack {
-                        Button("Add Project…") { model.presentAddProject() }
-                            .keyboardShortcut("o", modifiers: .command)
-                            .buttonStyle(AccentButtonStyle(kind: .filled))
-                        Button("New Claude Session") { model.startConversation(.claude, projectID: nil) }
-                            .disabled(!model.canStart(.claude, projectID: nil))
-                        if model.startableProviders.contains(.codex) {
-                            Button("New Codex Session") { model.startConversation(.codex, projectID: nil) }
-                                .disabled(!model.canStart(.codex, projectID: nil))
-                        }
-                    }
-                }
-            } else {
-                Message(symbol: "text.bubble", title: "No session selected",
-                        text: "Choose a session in the sidebar to see its details.")
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

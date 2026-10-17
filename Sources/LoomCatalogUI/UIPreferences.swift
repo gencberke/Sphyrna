@@ -43,6 +43,28 @@ public enum CatalogViewMode: String, Codable, Sendable, CaseIterable {
     case projects
 }
 
+/// Settings → General → Sidebar (D-57). Glass is the behind-window material under the dark tone at 0.6
+/// (D-44); Solid is the same tone, opaque. Reduce Transparency draws Solid whatever this says.
+public enum SidebarStyle: String, Codable, Sendable, CaseIterable {
+    case glass
+    case solid
+
+    /// The label in Settings.
+    public var title: String {
+        switch self {
+        case .glass: "Glass"
+        case .solid: "Solid"
+        }
+    }
+}
+
+/// What the main window opens on (Settings, later). Home arrives with its own slice; until then it
+/// shows no session, and only `lastSession` brings back the selection the window was closed with.
+public enum LaunchView: String, Codable, Sendable, CaseIterable {
+    case home
+    case lastSession
+}
+
 /// Presentation preferences only. Conversation identity, provider state and
 /// lifecycle stay in the catalog and the supervisor.
 public struct UIPreferences: Codable, Equatable, Sendable {
@@ -72,14 +94,23 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// Settings → General → Notify when a session needs approval. A file written before the setting
     /// existed reads as on. (Open at login is not a preference: the system holds it.)
     public var notifyApprovals: Bool
+    /// Settings → General → Sidebar: Glass or Solid (D-57). A file written before the setting existed reads as Glass.
+    public var sidebarStyle: SidebarStyle
+    /// What the window opens on. A file written before the setting existed reads as the last session.
+    public var launchView: LaunchView
+    /// The sessions whose inspector is open (V2: closed by default, remembered per session). Least recently
+    /// opened first, de-duplicated and capped.
+    public var inspectorOpen: [UUID]
 
     public static let maxOpenTabs = 8
+    public static let maxInspectorSessions = 64
 
     public init(viewMode: CatalogViewMode = .activity, selectedSessionID: UUID? = nil,
                 sidebarWidth: Double = UIPreferences.defaultSidebarWidth,
                 sidebarCollapsed: Bool = false, terminalFontSize: Double = UIPreferences.defaultTerminalFontSize,
                 openTabs: [UUID] = [], windowFrame: WindowFrame? = nil, projectColors: Bool = true,
-                showInMenuBar: Bool = true, notifyApprovals: Bool = true) {
+                showInMenuBar: Bool = true, notifyApprovals: Bool = true, sidebarStyle: SidebarStyle = .glass,
+                launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = []) {
         self.viewMode = viewMode
         self.selectedSessionID = selectedSessionID
         self.sidebarWidth = Self.clamped(sidebarWidth)
@@ -90,6 +121,9 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         self.projectColors = projectColors
         self.showInMenuBar = showInMenuBar
         self.notifyApprovals = notifyApprovals
+        self.sidebarStyle = sidebarStyle
+        self.launchView = launchView
+        self.inspectorOpen = Self.normalizedInspectors(inspectorOpen)
     }
 
     public init(from decoder: any Decoder) throws {
@@ -109,7 +143,11 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             windowFrame: (try? container.decodeIfPresent(WindowFrame.self, forKey: .windowFrame)) ?? nil,
             projectColors: (try? container.decodeIfPresent(Bool.self, forKey: .projectColors)) ?? true,
             showInMenuBar: (try? container.decodeIfPresent(Bool.self, forKey: .showInMenuBar)) ?? true,
-            notifyApprovals: (try? container.decodeIfPresent(Bool.self, forKey: .notifyApprovals)) ?? true
+            notifyApprovals: (try? container.decodeIfPresent(Bool.self, forKey: .notifyApprovals)) ?? true,
+            sidebarStyle: (try? container.decodeIfPresent(SidebarStyle.self, forKey: .sidebarStyle)) ?? .glass,
+            launchView: (try? container.decodeIfPresent(LaunchView.self, forKey: .launchView)) ?? .lastSession,
+            inspectorOpen: ((try? container.decodeIfPresent([Lossy<UUID>].self, forKey: .inspectorOpen)) ?? nil)?
+                .compactMap(\.value) ?? []
         )
     }
 
@@ -122,6 +160,12 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     static func normalizedTabs(_ ids: [UUID]) -> [UUID] {
         var seen = Set<UUID>()
         return Array(ids.filter { seen.insert($0).inserted }.prefix(maxOpenTabs))
+    }
+
+    /// First occurrence wins; the newest `maxInspectorSessions` entries are kept.
+    static func normalizedInspectors(_ ids: [UUID]) -> [UUID] {
+        var seen = Set<UUID>()
+        return Array(ids.filter { seen.insert($0).inserted }.suffix(maxInspectorSessions))
     }
 
     public static func clampedFontSize(_ size: Double) -> Double {
@@ -183,6 +227,7 @@ public final class UIPreferencesStore {
         updated.sidebarWidth = UIPreferences.clamped(updated.sidebarWidth)
         updated.terminalFontSize = UIPreferences.clampedFontSize(updated.terminalFontSize)
         updated.openTabs = UIPreferences.normalizedTabs(updated.openTabs)
+        updated.inspectorOpen = UIPreferences.normalizedInspectors(updated.inspectorOpen)
         if updated.windowFrame?.isValid == false { updated.windowFrame = nil }
         current = updated
     }

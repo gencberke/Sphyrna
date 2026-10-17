@@ -122,6 +122,13 @@ struct GeneralSettings: View {
                     .labelsHidden().toggleStyle(.switch)
                     .accessibilityLabel("Project colors")
                 }
+                SettingsRowDivider()
+                SettingsRow(title: "Sidebar",
+                            detail: "Glass lets the desktop show through softly. Solid is opaque. Reduce Transparency in System Settings always shows Solid.") {
+                    SegmentedControl(values: SidebarStyle.allCases, title: \.title, selection: model.sidebarStyle,
+                                     compact: true, onSelect: { model.setSidebarStyle($0) })
+                        .accessibilityLabel("Sidebar")
+                }
             }
             SystemSettingsCard(model: model, integration: model.integration)
             if let error = model.errorMessage {

@@ -40,11 +40,12 @@ struct SessionHeaderTests {
                 #expect(label.contrast(with: wash) >= floor, "\(style.label) (\(contrast)): \(label.contrast(with: wash))")
             }
         }
-        // The plain tokens would not do: that is why the pill has lighter ones.
+        // The plain status colours would not do: that is why the pill has lighter ones. (Plain secondary holds
+        // on the neutral wash since Night Fleece 2.)
         let failureWash = over(LoomTheme.Tone(rgb: LoomTheme.Status.failureRGB, opacity: LoomTheme.Header.pillStatusWash))
         #expect(LoomTheme.Status.failureRGB.contrast(with: failureWash) < 4.5)
         let neutralWash = over(LoomTheme.Tone(rgb: Self.white, opacity: LoomTheme.Header.pillNeutralWash))
-        #expect(LoomTheme.Text.secondaryRGB.contrast(with: neutralWash) < 4.5)
+        #expect(LoomTheme.Text.secondaryRGB.contrast(with: neutralWash) >= 4.5)
     }
 
     @Test func pillWashesAndLabelsFollowTheSpec() throws {

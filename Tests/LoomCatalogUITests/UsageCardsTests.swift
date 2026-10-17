@@ -143,8 +143,8 @@ struct UsageCardsTests {
             .composited(over: LoomTheme.Surface.panelRGB, opacity: LoomTheme.Surface.controlOpacity)
         #expect(LoomTheme.Text.secondaryOnCardRGB.contrast(with: card) >= 4.5)
         #expect(LoomTheme.Text.secondaryIncreasedRGB.contrast(with: card) >= 4.5)
-        // Why the cards do not use plain secondary: it reads below AA on the 6 % tone.
-        #expect(LoomTheme.Text.secondaryRGB.contrast(with: card) < 4.5)
+        // Night Fleece 2: plain secondary holds AA on the 6 % tone too, so the card tone is secondary.
+        #expect(LoomTheme.Text.secondaryRGB.contrast(with: card) >= 4.5)
     }
 
     // MARK: Render

@@ -240,6 +240,10 @@ public final class CatalogModel {
     /// Settings → General → Show in menu bar and Notify when a session needs approval (D-49, D-52).
     public private(set) var showInMenuBar: Bool
     public private(set) var notifyApprovals: Bool
+    /// Settings → General → Sidebar: Glass or Solid (D-57).
+    public private(set) var sidebarStyle: SidebarStyle
+    /// What the window opened on. Read once at launch; only `lastSession` restores the selection (Home has no screen yet).
+    public let launchView: LaunchView
     public private(set) var sessionCounts: [UUID?: Int] = [:]
     public private(set) var searchText = ""
     public private(set) var viewMode: CatalogViewMode
@@ -272,7 +276,13 @@ public final class CatalogModel {
     public var renameDraft: RenameDraft?
     public var devTerminal: DevTerminal?
     /// Acceptance-only override; normal launches follow the system preference.
-    public var sidebarTransparencyOverride: Bool?
+    private var evidenceTransparencyOverride: Bool?
+    /// What the sidebar is told instead of the system's Reduce Transparency: the acceptance override if set,
+    /// else opaque while the style is Solid, else nil (follow the system, which forces opaque on its own).
+    public var sidebarTransparencyOverride: Bool? {
+        get { evidenceTransparencyOverride ?? (sidebarStyle == .solid ? true : nil) }
+        set { evidenceTransparencyOverride = newValue }
+    }
     public var effectiveReduceTransparency: Bool {
         sidebarTransparencyOverride ?? NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
     }
@@ -398,6 +408,12 @@ public final class CatalogModel {
     public let tabs: ConversationTabs
     /// The delete flow's state (confirm sheet, unfinished deletions); logic in `CatalogModel+Deletion.swift`.
     public let deletions = DeletionState()
+    /// The per-session inspector (V2); the surfaces for the features below fill their holders in their own slices.
+    public let inspector: InspectorState
+    public let home = HomeState()
+    public let palette = PaletteState()
+    public let newSession = NewSessionState()
+    public let projectPage = ProjectPageState()
 
     /// `catalog == nil` means the catalog could not be opened (`startupError`
     /// says why); nothing is created or overwritten in that state.
@@ -410,12 +426,16 @@ public final class CatalogModel {
         self.events = events
         self.preferences = preferences
         viewMode = preferences.current.viewMode
-        selectedSessionID = preferences.current.selectedSessionID
+        launchView = preferences.current.launchView
+        // A Home launch shows no restored session; the stored selection stays in the file for the next last-session launch.
+        selectedSessionID = launchView == .lastSession ? preferences.current.selectedSessionID : nil
         sidebarCollapsed = preferences.current.sidebarCollapsed
         terminalFontSize = preferences.current.terminalFontSize
         projectColorsEnabled = preferences.current.projectColors
         showInMenuBar = preferences.current.showInMenuBar
         notifyApprovals = preferences.current.notifyApprovals
+        sidebarStyle = preferences.current.sidebarStyle
+        inspector = InspectorState(open: preferences.current.inspectorOpen)
         tabs = ConversationTabs(pinned: preferences.current.openTabs)
         today = Calendar.current.startOfDay(for: now)
     }
@@ -1191,6 +1211,20 @@ public final class CatalogModel {
         notifyApprovals = enabled
         persist { $0.notifyApprovals = enabled }
         onNotifyApprovalsChange?()
+    }
+
+    /// Settings → General → Sidebar (D-57). Applies at once: the sidebar reads `sidebarTransparencyOverride`.
+    public func setSidebarStyle(_ style: SidebarStyle) {
+        guard style != sidebarStyle else { return }
+        sidebarStyle = style
+        persist { $0.sidebarStyle = style }
+    }
+
+    /// Opens or closes the inspector of a session (remembered per session).
+    public func setInspectorOpen(_ open: Bool, for id: UUID) {
+        guard inspector.set(open, for: id) else { return }
+        let ids = inspector.openSessions
+        persist { $0.inspectorOpen = ids }
     }
 
     /// The Color menu: a tone, or nil for None. The projects are read again (the one project-change

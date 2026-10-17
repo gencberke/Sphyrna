@@ -3,9 +3,10 @@ import LoomCore
 import LoomTerminal
 import SwiftUI
 
-/// The one source of visual values for `LoomCatalogUI` (design/DESIGN.md §3).
+/// The one source of visual values for `LoomCatalogUI` (design/DESIGN.md §3). Night Fleece 2: today's
+/// tokens are here, the tokens added for v2 are in `LoomTheme+Surfaces`, `+Palette` and `+Shape`.
 /// Views use these tokens and no color literal, `.system(size:)` or literal
-/// corner radius of their own; `scripts/check-theme-literals.sh` enforces it.
+/// corner radius of their own; `scripts/check-theme-literals.sh` enforces it for every file but `LoomTheme*.swift`.
 /// Terminal colors stay in `LoomTerminal.TerminalTheme` (that target sits
 /// below this one); `Surface.panel` reads from it.
 enum LoomTheme {
@@ -59,7 +60,7 @@ enum LoomTheme {
         }
 
         // White overlays on the sidebar and the panel.
-        static let hairlineOpacity = 0.10
+        static let hairlineOpacity = 0.08
         static let selectedOpacity = 0.07
         static let controlOpacity = 0.06
         static let controlHoverOpacity = 0.09
@@ -75,7 +76,7 @@ enum LoomTheme {
         static let chipMeterTrack = Color.white.opacity(chipMeterTrackOpacity)
         static let focusRing = Accent.base
 
-        /// Hairlines and the selected stroke are white at 10 %; Increase Contrast raises them to 30 %.
+        /// Hairlines and the selected stroke are white at 8 %; Increase Contrast raises them to 30 %.
         static let hairlineIncreasedOpacity = 0.30
         static func hairlineOpacity(for contrast: ColorSchemeContrast) -> Double {
             contrast == .increased ? hairlineIncreasedOpacity : hairlineOpacity
@@ -95,31 +96,31 @@ enum LoomTheme {
     }
 
     enum Text {
-        static let primaryRGB = RGB(red: 0.88, green: 0.86, blue: 0.92)
-        static let secondaryRGB = RGB(hex: 0x828799)
+        static let primaryRGB = RGB(hex: 0xECE8F4)
+        static let secondaryRGB = RGB(hex: 0x9A9EB0)
         static let primary = primaryRGB.color
         static let secondary = secondaryRGB.color
-        /// Placeholders, disabled items and decoration only (about 2.6:1, below AA).
-        static let tertiaryRGB = RGB(hex: 0x5A5F70)
+        /// Placeholders, disabled items and decoration only (2.4 to 3.4:1, below AA); not on a popover (`OnPopover`).
+        static let tertiaryRGB = RGB(hex: 0x636779)
         static let tertiary = tertiaryRGB.color
         /// Increase Contrast lifts secondary text toward primary (at least 7:1 on every surface).
-        static let secondaryIncreasedRGB = RGB(hex: 0xA9AEBF)
+        static let secondaryIncreasedRGB = RGB(hex: 0xBCC0D0)
         static func secondaryRGB(for contrast: ColorSchemeContrast) -> RGB {
             contrast == .increased ? secondaryIncreasedRGB : secondaryRGB
         }
         /// Secondary text as a style that resolves against the environment's contrast setting.
         static let secondaryStyle = ContrastStyle(
             standard: Tone(rgb: secondaryRGB, opacity: 1), increased: Tone(rgb: secondaryIncreasedRGB, opacity: 1))
-        /// Secondary text and the close glyph on a tab washed with a project tone: the lightest wash
-        /// would take plain secondary text under 4.5:1, so this is lifted just enough to keep it
-        /// (at least 4.5:1 on a resting tab, 3:1 for the glyph on the open tab).
-        static let secondaryOnTintRGB = RGB(hex: 0x9297A8)
+        /// Secondary text and the close glyph on a tab washed with a project tone (at least 4.5:1 on a
+        /// resting tab, 3:1 for the glyph on the open tab). Before Night Fleece 2 plain secondary fell
+        /// short there and this was a lifted tone; the lifted secondary of Night Fleece 2 holds it, so the
+        /// name stays for the call sites and the value is secondary.
+        static let secondaryOnTintRGB = secondaryRGB
         static let secondaryOnTint = secondaryOnTintRGB.color
         /// `secondaryOnTint` as a style: Increase Contrast takes the lifted secondary of that tier.
         static let secondaryOnTintStyle = ContrastStyle(
             standard: Tone(rgb: secondaryOnTintRGB, opacity: 1), increased: Tone(rgb: secondaryIncreasedRGB, opacity: 1))
-        /// Secondary text on a Usage card (the 6 % control tone over the panel): plain secondary reads 4.0:1
-        /// there, so the cards take the lifted tone of `secondaryOnTint` (4.8:1).
+        /// Secondary text on a Usage card (the 6 % control tone over the panel): 5.4:1 in secondary.
         static let secondaryOnCardRGB = secondaryOnTintRGB
         static let secondaryOnCardStyle = secondaryOnTintStyle
     }
@@ -134,9 +135,9 @@ enum LoomTheme {
     }
 
     enum Status {
-        static let attentionRGB = RGB(red: 1.0, green: 0.62, blue: 0.04)
-        static let unviewedRGB = RGB(red: 0.36, green: 0.55, blue: 1.0)
-        static let failureRGB = RGB(red: 0.95, green: 0.38, blue: 0.36)
+        static let attentionRGB = RGB(hex: 0xFF9E0A)
+        static let unviewedRGB = RGB(hex: 0x5C8CFF)
+        static let failureRGB = RGB(hex: 0xF2615C)
         static let attention = attentionRGB.color
         static let unviewed = unviewedRGB.color
         static let failure = failureRGB.color
@@ -231,9 +232,9 @@ enum LoomTheme {
         static let pillWorkingWash = 0.07
         static let pillNeutralWash = 0.05
         static let pillStatusWash = 0.15
-        static let attentionLabelRGB = RGB(hex: 0xFFB547)
-        static let failureLabelRGB = RGB(hex: 0xFF8A85)
-        static let unviewedLabelRGB = RGB(hex: 0x8FB0FF)
+        static let attentionLabelRGB = Status.attentionLightRGB
+        static let failureLabelRGB = Status.failureLightRGB
+        static let unviewedLabelRGB = Status.unviewedLightRGB
 
         // Project chip: the tone stripe (full height), the project name, a hairline, the branch.
         static let chipHeight: CGFloat = 22
