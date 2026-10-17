@@ -242,12 +242,16 @@ public final class CatalogModel {
     public private(set) var notifyApprovals: Bool
     /// Settings → General → Sidebar: Glass or Solid (D-57).
     public private(set) var sidebarStyle: SidebarStyle
-    /// What the window opened on. Read once at launch; only `lastSession` restores the selection (Home has no screen yet).
+    /// What the window opened on. Read once at launch: `home` opens Home, `lastSession` restores the saved destination.
     public let launchView: LaunchView
     public private(set) var sessionCounts: [UUID?: Int] = [:]
     public private(set) var searchText = ""
     public private(set) var viewMode: CatalogViewMode
-    public private(set) var selectedSessionID: UUID?
+    /// Where the user is: a session, Home, a project's draft or a project page; nil is nothing selected.
+    /// `DetailRoute` is computed from it.
+    public private(set) var destination: Destination?
+    /// The selected session, derived from `destination`; nil on every other destination.
+    public var selectedSessionID: UUID? { destination?.sessionID }
     public private(set) var selectedRow: SessionRowModel?
     /// The subagent whose transcript the detail pane shows in place of its session's terminal (FB4-5).
     /// Transient: never persisted, and cleared by any selection, the subagent's end and the run's end.
@@ -414,6 +418,8 @@ public final class CatalogModel {
     public let palette = PaletteState()
     public let newSession = NewSessionState()
     public let projectPage = ProjectPageState()
+    /// The face choice per session and the read-only Chat flag (`DetailRoute`).
+    public let faces = SessionFaces()
 
     /// `catalog == nil` means the catalog could not be opened (`startupError`
     /// says why); nothing is created or overwritten in that state.
@@ -427,8 +433,9 @@ public final class CatalogModel {
         self.preferences = preferences
         viewMode = preferences.current.viewMode
         launchView = preferences.current.launchView
-        // A Home launch shows no restored session; the stored selection stays in the file for the next last-session launch.
-        selectedSessionID = launchView == .lastSession ? preferences.current.selectedSessionID : nil
+        // A Home launch shows Home and restores nothing; the stored destination stays in the file for the next
+        // last-session launch.
+        destination = launchView == .home ? .home : preferences.current.destination.flatMap { $0.isRestorable ? $0 : nil }
         sidebarCollapsed = preferences.current.sidebarCollapsed
         terminalFontSize = preferences.current.terminalFontSize
         projectColorsEnabled = preferences.current.projectColors
@@ -475,6 +482,8 @@ public final class CatalogModel {
         lastCatalogRevision = await events.snapshot().catalogRevision
         let began = ContinuousClock.now
         await refreshProjects()
+        // A restored project page or draft whose project is gone shows nothing.
+        if let projectID = destination?.projectID, !projects.contains(where: { $0.id == projectID }) { select(nil) }
         await reloadVisibleLists(force: true)
         await ensureTabRows()
         if selectedSessionID != nil { await ensureSelectedRow() }
@@ -877,12 +886,19 @@ public final class CatalogModel {
 
     /// `waiting` names the signpost interval that runs until the terminal view reaches the detail pane.
     private func select(_ id: UUID?, waiting interval: LoomSignposts.Interval, revealInList: Bool = true) {
+        navigate(to: id.map(Destination.session), waiting: interval, revealInList: revealInList)
+    }
+
+    /// Every move of the window goes through here: a session, Home, a draft, a project page, or nothing.
+    func navigate(to target: Destination?, waiting interval: LoomSignposts.Interval = .selectToTerminal,
+                  revealInList: Bool = true) {
         showsDevTerminal = false
-        // Any selection, the same session's card included, returns from a subagent's panel to the terminal.
+        // Any navigation, the same session's card included, returns from a subagent's panel to the terminal.
         closeSubagent()
-        if id != selectedSessionID {
+        if target != destination {
             let previous = selectedSessionID
-            selectedSessionID = id
+            destination = target
+            let id = target?.sessionID
             // Only a conversation that owns a run has a terminal to wait for.
             if let id, liveStates[id]?.runID != nil { LoomSignposts.begin(interval) }
             selectedRow = id.flatMap { rowModels[$0] }
@@ -890,7 +906,7 @@ public final class CatalogModel {
             previous.flatMap { rowModels[$0] }?.apply(selected: false)
             selectedRow?.apply(selected: true)
             moveActiveHold(to: id)
-            persistSelection(id)
+            persistDestination(target)
             if id != nil, selectedRow == nil { Task { await ensureSelectedRow() } }
             if revealInList, let id { requestReveal(id) }
         }
@@ -1179,6 +1195,8 @@ public final class CatalogModel {
         do {
             try await catalog.removeProject(id: id)
             errorMessage = nil
+            // The project's page or draft goes with it; the next new session no longer targets it.
+            if destination?.projectID == id { select(nil) }
             lists[.project(id)] = nil
             await refreshProjects()
             markAllStale()
@@ -1481,8 +1499,9 @@ public final class CatalogModel {
         return startupError == nil && intents != nil && !quitting
     }
 
-    /// Where the "new conversation" commands apply: the selected conversation's project.
-    public var contextProjectID: UUID? { selectedRow?.record.projectID }
+    /// Where the "new conversation" commands apply: the selected conversation's project, or the project of the
+    /// draft or project page on screen.
+    public var contextProjectID: UUID? { destination?.projectID ?? selectedRow?.record.projectID }
 
     public func startConversation(_ provider: ManagedSession.Provider, projectID: UUID?) {
         guard actionsAvailable, startableProviders.contains(provider) else { return }
@@ -1614,9 +1633,11 @@ public final class CatalogModel {
         persist { $0.openTabs = pinned }
     }
 
-    /// Selection changes in quick succession (tab switching) coalesce into one write.
-    private func persistSelection(_ id: UUID?) {
-        preferences.apply { $0.selectedSessionID = id }
+    /// Selection changes in quick succession (tab switching) coalesce into one write. A draft is not written:
+    /// the file keeps the last place that can be restored.
+    private func persistDestination(_ target: Destination?) {
+        guard target?.isRestorable ?? true else { return }
+        preferences.apply { $0.destination = target }
         scheduleFlush()
     }
 

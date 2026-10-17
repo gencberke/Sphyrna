@@ -17,6 +17,14 @@ enum DetailRoute: Equatable {
     case endedScreen(sessionID: UUID)
     /// The session's record (no run, no kept screen).
     case record(sessionID: UUID)
+    /// The read-only Chat view of a session (V13): its transcript, or the kept last screen when none resolves.
+    case chat(sessionID: UUID)
+    /// The Home screen (V05).
+    case home
+    /// A project's new-session draft (V07); `nil` is a draft with no project.
+    case draft(projectID: UUID?)
+    /// A project's page (V08).
+    case projectPage(projectID: UUID)
     /// A catalog with nothing in it.
     case addProject
     /// Nothing selected.
@@ -26,28 +34,79 @@ enum DetailRoute: Equatable {
     /// a route with its own surface (the chat canvas) changes it here.
     var surface: Color {
         switch self {
-        case .startupError, .devTerminal, .subagentTranscript, .terminal, .endedScreen, .record, .addProject, .noSelection:
+        case .startupError, .devTerminal, .subagentTranscript, .terminal, .endedScreen, .record, .addProject, .noSelection,
+             .chat, .home, .draft, .projectPage:
             LoomTheme.Surface.panel
+        }
+    }
+
+    /// Whether the header shows the selected session. Home, a draft and a project page are not about a session.
+    var showsSessionHeader: Bool {
+        switch self {
+        case .subagentTranscript, .terminal, .endedScreen, .record, .chat: true
+        case .startupError, .devTerminal, .addProject, .noSelection, .home, .draft, .projectPage: false
         }
     }
 }
 
 extension CatalogModel {
-    /// The first matching state wins, in this order: startup error, development terminal, the selected
-    /// session (subagent transcript, live terminal, kept screen, record), the empty catalog, no selection.
+    /// The first matching state wins, in this order: startup error, development terminal, Home, a draft or a
+    /// project page, the selected session (see `sessionRoute`), the empty catalog, no selection.
+    /// Reads only what the model holds in memory.
     var detailRoute: DetailRoute {
         if let error = startupError { return .startupError(error) }
         if showsDevTerminal, devTerminal != nil { return .devTerminal }
-        if let row = selectedRow {
-            if let viewed = viewedSubagent, viewed.sessionID == row.id, subagentPanel != nil {
-                return .subagentTranscript(sessionID: row.id)
-            }
-            if terminalView(for: row.id) != nil { return .terminal(sessionID: row.id) }
-            if endedScreen(for: row.id) != nil { return .endedScreen(sessionID: row.id) }
-            return .record(sessionID: row.id)
+        switch destination {
+        case .home: return .home
+        case .draft(let projectID): return .draft(projectID: projectID)
+        case .projectPage(let projectID): return .projectPage(projectID: projectID)
+        case .session, nil: break
         }
+        if let row = selectedRow { return sessionRoute(for: row) }
         if isReady && projects.isEmpty && list(for: .activity).rows.isEmpty && !isSearching { return .addProject }
         return .noSelection
+    }
+
+    /// A session's route: a subagent's transcript, then (with `readOnlyChatEnabled`, Claude sessions only) the
+    /// chat when the user picked it, or by default when the session is stopped, then the live terminal, the
+    /// kept screen and the record. A start, resume or stop under way is not "stopped": the record stays until
+    /// the terminal arrives. Codex and synthetic sessions keep the old routes.
+    private func sessionRoute(for row: SessionRowModel) -> DetailRoute {
+        let id = row.id
+        if let viewed = viewedSubagent, viewed.sessionID == id, subagentPanel != nil {
+            return .subagentTranscript(sessionID: id)
+        }
+        let hasTerminal = terminalView(for: id) != nil
+        if faces.readOnlyChatEnabled, row.record.session.provider == .claude {
+            switch faces.choice(for: id) {
+            case .chat: return .chat(sessionID: id)
+            case .terminal: break
+            case nil: if !hasTerminal && busy[id] == nil { return .chat(sessionID: id) }
+            }
+        }
+        if hasTerminal { return .terminal(sessionID: id) }
+        if endedScreen(for: id) != nil { return .endedScreen(sessionID: id) }
+        return .record(sessionID: id)
+    }
+
+    /// The flag behind the read-only Chat view; see `SessionFaces`.
+    public var readOnlyChatEnabled: Bool {
+        get { faces.readOnlyChatEnabled }
+        set { faces.readOnlyChatEnabled = newValue }
+    }
+
+    /// Whether the selected session has a Chat and a Terminal face to choose between: a Claude session, with
+    /// the Chat view switched on.
+    public var canChooseFace: Bool {
+        readOnlyChatEnabled && selectedRow?.record.session.provider == .claude
+    }
+
+    /// "Show Chat" and "Show Terminal": the face the selected session shows from now on, until a relaunch.
+    /// A stopped session shown as Terminal reads as it did before the Chat view: its kept screen or its record.
+    public func showFace(_ face: SessionFace) {
+        guard canChooseFace, let id = selectedSessionID else { return }
+        closeSubagent()
+        faces.choose(face, for: id)
     }
 }
 
@@ -95,6 +154,16 @@ struct DetailContent: View {
                 }
             case .record:
                 if let row = model.selectedRow { ConversationDetail(model: model, row: row) }
+            case .chat:
+                // V13's view replaces this placeholder.
+                Message(symbol: "text.bubble", title: "Chat view",
+                        text: "The read-only chat of this session arrives with the stream view.")
+            case .home:
+                HomeView(model: model)
+            case .draft(let projectID):
+                DraftSessionView(model: model, projectID: projectID)
+            case .projectPage(let projectID):
+                ProjectPageView(model: model, projectID: projectID)
             case .addProject:
                 VStack(spacing: LoomTheme.Space.emptyStateSpacing) {
                     Message(symbol: "folder.badge.plus", title: "Add a project to begin",

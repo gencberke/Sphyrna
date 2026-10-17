@@ -25,3 +25,11 @@ public final class InspectorState {
         return true
     }
 }
+
+extension CatalogModel {
+    /// "Toggle Inspector": opens or closes the selected session's inspector. Nothing without a selected session.
+    public func toggleInspector() {
+        guard let id = selectedSessionID else { return }
+        setInspectorOpen(!inspector.isOpen(for: id), for: id)
+    }
+}

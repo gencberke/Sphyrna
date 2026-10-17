@@ -1,9 +1,44 @@
 import AppKit
 import LoomCatalogUI
 
-/// The main menu. Every item targets this delegate; later slices add their items here, one at a time.
+/// The target of the Studio items (`ShellCommand`): titles, keys, enabling and actions come from the command,
+/// so a feature slice changes its holder file and never this menu. The menu items keep the target alive
+/// (`representedObject`), because `NSMenuItem.target` is weak.
+@MainActor
+final class ShellMenuTarget: NSObject, NSMenuItemValidation {
+    private let model: () -> CatalogModel?
+    private let bringForward: () -> Void
+
+    init(model: @escaping () -> CatalogModel?, bringForward: @escaping () -> Void) {
+        self.model = model
+        self.bringForward = bringForward
+    }
+
+    @objc func perform(_ sender: NSMenuItem) {
+        guard let command = ShellCommand(rawValue: sender.tag), let model = model() else { return }
+        if command.needsWindow { bringForward() }
+        command.run(on: model)
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        guard let command = ShellCommand(rawValue: item.tag), let model = model() else { return false }
+        return command.isEnabled(on: model)
+    }
+}
+
+/// The main menu. Every item targets this delegate or the shell target; later slices add their items here.
 extension AppDelegate {
     func installMenus() {
+        let shell = ShellMenuTarget(model: { [weak self] in self?.model },
+                                    bringForward: { [weak self] in self?.presentMainWindow(reason: "shell-menu") })
+        func addShellItem(_ command: ShellCommand, to menu: NSMenu) {
+            let item = menu.addItem(withTitle: command.title, action: #selector(ShellMenuTarget.perform(_:)),
+                                    keyEquivalent: command.keyEquivalent)
+            item.keyEquivalentModifierMask = command.modifiers
+            item.tag = command.rawValue
+            item.target = shell
+            item.representedObject = shell
+        }
         let main = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
@@ -19,9 +54,8 @@ extension AppDelegate {
         let fileMenu = NSMenu(title: "File")
         fileMenu.addItem(withTitle: "Add Project…", action: #selector(addProjectFromMenu(_:)),
                          keyEquivalent: "o").target = self
-        // New conversations start in the selected conversation's project (or none).
-        fileMenu.addItem(withTitle: "New Claude Session", action: #selector(newClaudeFromMenu(_:)),
-                         keyEquivalent: "n").target = self
+        // New conversations start in the selected conversation's project (or none), through the new-session holder.
+        addShellItem(.newSession, to: fileMenu)
         if !identity.isProduction {
             let codex = fileMenu.addItem(withTitle: "New Codex Session", action: #selector(newCodexFromMenu(_:)),
                                          keyEquivalent: "n")
@@ -62,10 +96,17 @@ extension AppDelegate {
         let viewItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
         // The same path as the Hide and Show buttons (SidebarCollapseSync), not AppKit's own toggle.
+        addShellItem(.home, to: viewMenu)
+        addShellItem(.commandPalette, to: viewMenu)
+        viewMenu.addItem(.separator())
+        addShellItem(.showChat, to: viewMenu)
+        addShellItem(.showTerminal, to: viewMenu)
+        viewMenu.addItem(.separator())
         let sidebar = viewMenu.addItem(withTitle: "Toggle Sidebar", action: #selector(toggleSidebarFromMenu(_:)),
                                        keyEquivalent: "s")
         sidebar.target = self
         sidebar.keyEquivalentModifierMask = [.control, .command]
+        addShellItem(.toggleInspector, to: viewMenu)
         viewMenu.addItem(.separator())
         viewMenu.addItem(withTitle: "Recent Activity", action: #selector(showActivityView(_:)),
                          keyEquivalent: "1").target = self

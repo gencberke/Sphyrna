@@ -216,7 +216,8 @@ struct ShellSeamsTests {
     @Test func everyRouteIsDrawnOnThePanelColourToday() {
         for route in [DetailRoute.startupError("x"), .devTerminal, .subagentTranscript(sessionID: UUID()),
                       .terminal(sessionID: UUID()), .endedScreen(sessionID: UUID()), .record(sessionID: UUID()),
-                      .addProject, .noSelection] {
+                      .addProject, .noSelection, .chat(sessionID: UUID()), .home, .draft(projectID: nil),
+                      .projectPage(projectID: UUID())] {
             #expect(route.surface == LoomTheme.Surface.panel)
         }
     }

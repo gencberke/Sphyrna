@@ -6,3 +6,8 @@ import Observation
 public final class HomeState {
     public init() {}
 }
+
+extension CatalogModel {
+    /// "Home": shows the Home screen. Deselects the current session (its run keeps going); nothing is stopped or started.
+    public func showHome() { navigate(to: .home) }
+}

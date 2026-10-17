@@ -10,7 +10,7 @@ public struct DetailView: View {
     public var body: some View {
         let route = model.detailRoute
         VStack(spacing: 0) {
-            DetailTop(model: model)
+            DetailTop(model: model, showsSessionHeader: route.showsSessionHeader)
             Banners(model: model)
             DeletionBanner(model: model)
             DetailContent(model: model, route: route)
@@ -38,10 +38,12 @@ public struct DetailView: View {
 /// below both, so nothing sits between a title and its tabs.
 struct DetailTop: View {
     let model: CatalogModel
+    /// False on Home, a draft and a project page: the header then carries no session.
+    var showsSessionHeader = true
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(model: model)
+            DetailHeader(model: model, showsSessionHeader: showsSessionHeader)
             if model.tabStripIsVisible { ConversationTabStrip(model: model) }
         }
     }
@@ -49,6 +51,7 @@ struct DetailTop: View {
 
 struct DetailHeader: View {
     let model: CatalogModel
+    var showsSessionHeader = true
     static let rowHeight = LoomTheme.Layout.detailRowHeight
 
     /// The rest of the 52 pt header block is spacing above the terminal; the strip, when shown,
@@ -79,7 +82,7 @@ struct DetailHeader: View {
                 ProviderIcon(provider: .synthetic, size: LoomTheme.Layout.providerIconHeader)
                 Text("Synthetic terminal (development)").fontWeight(.semibold).lineLimit(1)
                 Spacer(minLength: LoomTheme.Space.detailMinSpacer)
-            } else if let row = model.selectedRow {
+            } else if showsSessionHeader, let row = model.selectedRow {
                 if let viewed = model.viewedSubagent, viewed.sessionID == row.id {
                     SubagentHeaderRow(model: model, row: row, agentID: viewed.agentID)
                 } else {

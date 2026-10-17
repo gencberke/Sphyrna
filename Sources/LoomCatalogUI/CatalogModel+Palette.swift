@@ -6,3 +6,8 @@ import Observation
 public final class PaletteState {
     public init() {}
 }
+
+extension CatalogModel {
+    /// "Command Palette…" (⌘K). Does nothing until the palette slice fills it in.
+    public func openPalette() {}
+}

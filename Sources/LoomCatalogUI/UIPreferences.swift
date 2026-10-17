@@ -58,8 +58,8 @@ public enum SidebarStyle: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// What the main window opens on (Settings, later). Home arrives with its own slice; until then it
-/// shows no session, and only `lastSession` brings back the selection the window was closed with.
+/// What the main window opens on (Settings, later). `home` opens Home whatever was stored; only `lastSession`
+/// brings back the destination the window was closed with.
 public enum LaunchView: String, Codable, Sendable, CaseIterable {
     case home
     case lastSession
@@ -77,7 +77,9 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     public static let windowMinimumSize = CGSize(width: 780, height: 500)
 
     public var viewMode: CatalogViewMode
-    public var selectedSessionID: UUID?
+    /// Where the window was when it closed (a session, Home or a project page). A file written before
+    /// destinations existed holds only `selectedSessionID`, which reads as the session destination.
+    public var destination: Destination?
     public var sidebarWidth: Double
     public var sidebarCollapsed: Bool
     public var terminalFontSize: Double
@@ -102,17 +104,24 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// opened first, de-duplicated and capped.
     public var inspectorOpen: [UUID]
 
+    /// The selected session, as every caller before destinations knew it; setting it sets the destination.
+    /// The key is still written when the destination is a session, so an older build reads it too.
+    public var selectedSessionID: UUID? {
+        get { destination?.sessionID }
+        set { destination = newValue.map(Destination.session) }
+    }
+
     public static let maxOpenTabs = 8
     public static let maxInspectorSessions = 64
 
-    public init(viewMode: CatalogViewMode = .activity, selectedSessionID: UUID? = nil,
+    public init(viewMode: CatalogViewMode = .activity, selectedSessionID: UUID? = nil, destination: Destination? = nil,
                 sidebarWidth: Double = UIPreferences.defaultSidebarWidth,
                 sidebarCollapsed: Bool = false, terminalFontSize: Double = UIPreferences.defaultTerminalFontSize,
                 openTabs: [UUID] = [], windowFrame: WindowFrame? = nil, projectColors: Bool = true,
                 showInMenuBar: Bool = true, notifyApprovals: Bool = true, sidebarStyle: SidebarStyle = .glass,
                 launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = []) {
         self.viewMode = viewMode
-        self.selectedSessionID = selectedSessionID
+        self.destination = destination ?? selectedSessionID.map(Destination.session)
         self.sidebarWidth = Self.clamped(sidebarWidth)
         self.sidebarCollapsed = sidebarCollapsed
         self.terminalFontSize = Self.clampedFontSize(terminalFontSize)
@@ -132,6 +141,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         self.init(
             viewMode: (try? container.decodeIfPresent(CatalogViewMode.self, forKey: .viewMode)) ?? .activity,
             selectedSessionID: try? container.decodeIfPresent(UUID.self, forKey: .selectedSessionID),
+            // The newer key wins; an unreadable one falls back to the selected session.
+            destination: (try? container.decodeIfPresent(Destination.self, forKey: .destination)) ?? nil,
             sidebarWidth: (try? container.decodeIfPresent(Double.self, forKey: .sidebarWidth))
                 ?? Self.defaultSidebarWidth,
             sidebarCollapsed: (try? container.decodeIfPresent(Bool.self, forKey: .sidebarCollapsed)) ?? false,
@@ -149,6 +160,29 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             inspectorOpen: ((try? container.decodeIfPresent([Lossy<UUID>].self, forKey: .inspectorOpen)) ?? nil)?
                 .compactMap(\.value) ?? []
         )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case viewMode, selectedSessionID, destination, sidebarWidth, sidebarCollapsed, terminalFontSize, openTabs
+        case windowFrame, projectColors, showInMenuBar, notifyApprovals, sidebarStyle, launchView, inspectorOpen
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(viewMode, forKey: .viewMode)
+        try container.encodeIfPresent(destination, forKey: .destination)
+        try container.encodeIfPresent(selectedSessionID, forKey: .selectedSessionID)
+        try container.encode(sidebarWidth, forKey: .sidebarWidth)
+        try container.encode(sidebarCollapsed, forKey: .sidebarCollapsed)
+        try container.encode(terminalFontSize, forKey: .terminalFontSize)
+        try container.encode(openTabs, forKey: .openTabs)
+        try container.encodeIfPresent(windowFrame, forKey: .windowFrame)
+        try container.encode(projectColors, forKey: .projectColors)
+        try container.encode(showInMenuBar, forKey: .showInMenuBar)
+        try container.encode(notifyApprovals, forKey: .notifyApprovals)
+        try container.encode(sidebarStyle, forKey: .sidebarStyle)
+        try container.encode(launchView, forKey: .launchView)
+        try container.encode(inspectorOpen, forKey: .inspectorOpen)
     }
 
     private struct Lossy<Value: Decodable>: Decodable {
