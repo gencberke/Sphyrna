@@ -28,8 +28,8 @@ final class LiveChatViewModel {
         context.toggle = { [weak feed] id in feed?.presentation.toggle(id) }
         context.toggleFlag = { [weak feed] id, flag in feed?.presentation.toggleFlag(id, flag) }
         context.showAll = { [weak feed] entry in feed?.showAll(entry) }
-        // A live row has no line of its own: the feed finds its result in the transcript.
-        context.canShowAll = { _ in true }
+        // A live row has no line of its own: the feed finds its result in the transcript, when it knows the folder.
+        context.canShowAll = { [weak feed] entry in feed?.canShowAll(entry) ?? false }
         context.openSubagent = { [weak self] run in self?.onOpenSubagent?(run.agentID, run.toolUseID) }
         context.openImage = { image in ChatQuickLook.show(image) }
         controller.onNeedOlder = { [weak feed, weak controller] in feed?.loadOlder(controller) }
@@ -39,10 +39,11 @@ final class LiveChatViewModel {
             if isFollowing != following { isFollowing = following }
             if showsJump != jump { showsJump = jump }
         }
+        feed.viewAppeared()
     }
 
     isolated deinit {
-        feed.detach(controller)
+        if !closed { feed.viewWentAway(controller) }
         controller.stop()
     }
 
@@ -68,7 +69,7 @@ final class LiveChatViewModel {
     func close() {
         guard !closed else { return }
         closed = true
-        feed.detach(controller)
+        feed.viewWentAway(controller)
         controller.stop()
     }
 }

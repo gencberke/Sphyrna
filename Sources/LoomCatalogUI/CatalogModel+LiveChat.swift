@@ -26,14 +26,20 @@ extension CatalogModel {
         return chatSessions?.existingDriver(for: sessionID)
     }
 
-    /// The live stream of a driver (its presentation under the transcript's history), kept by the host for as long as it
-    /// keeps the driver. Made by the first view that shows it, with that view's session id and folder.
+    /// The live stream of a driver (its presentation under the transcript's history), kept by the host while a view shows
+    /// it or its run lives, and then among the few last used. Made by the first view that shows it, with that view's
+    /// session id and folder.
     func liveChatFeed(for driver: ChatSessionDriver, card: UUID, conversationID: String?, workingDirectory: String?) -> LiveChatFeed? {
         guard let host = chatSessions else { return nil }
         let config = claudeConfigDirectory
         return host.attachment(for: driver) {
-            LiveChatFeed(source: driver, card: card, conversationID: conversationID, configDirectory: config,
-                         workingDirectory: workingDirectory)
+            let feed = LiveChatFeed(source: driver, card: card, conversationID: conversationID, configDirectory: config,
+                                    workingDirectory: workingDirectory)
+            feed.onUnused = { [weak host, weak driver] in
+                guard let host, let driver else { return }
+                host.releaseAttachment(for: driver)
+            }
+            return feed
         }
     }
 

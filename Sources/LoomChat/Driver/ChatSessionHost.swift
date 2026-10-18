@@ -26,6 +26,10 @@ public final class ChatSessionHost {
     private let drivers = ChatDriverRegistry()
     /// What the app keeps per driver while the driver is here (the live chat's presentation), by driver.
     private var attachments: [ObjectIdentifier: (driver: ChatSessionDriver, value: AnyObject)] = [:]
+    /// The attachments by last use, the newest last: past `attachmentLimit`, the oldest one not in use goes.
+    private var attachmentOrder: [ObjectIdentifier] = []
+    /// How many attachments are kept at most, besides those in use (`ChatDriverAttachment.isInUse`).
+    public static let attachmentLimit = 4
 
     /// - Parameters:
     ///   - dataRoot: Loom's data folder; queues are kept in its `chat-queues` folder.
@@ -69,7 +73,9 @@ public final class ChatSessionHost {
 
     /// Something the app keeps for a driver for as long as the host keeps the driver: made by `make` on first use, then the
     /// same object, whichever card the driver's run is on (it follows a `/clear` with the driver). The live chat keeps
-    /// the session's presentation here, so it outlives the views that show it. Gone with `forget`.
+    /// the session's presentation here, so it outlives the views that show it. Gone with `forget`, with
+    /// `releaseAttachment` once nothing uses it, or as the least recently used of more than `attachmentLimit` (one in
+    /// use stays).
     public func existingAttachment<T: AnyObject>(for driver: ChatSessionDriver) -> T? {
         guard let found = attachments[ObjectIdentifier(driver)], found.driver === driver else { return nil }
         return found.value as? T
@@ -77,11 +83,40 @@ public final class ChatSessionHost {
 
     public func attachment<T: AnyObject>(for driver: ChatSessionDriver, make: () -> T) -> T {
         let key = ObjectIdentifier(driver)
+        attachmentOrder.removeAll { $0 == key }
+        attachmentOrder.append(key)
         if let found = attachments[key], found.driver === driver, let value = found.value as? T { return value }
         let value = make()
         attachments[key] = (driver, value)
+        trimAttachments()
         return value
     }
+
+    /// The driver's attachment goes unless it is in use; a view that shows the session again makes a new one.
+    public func releaseAttachment(for driver: ChatSessionDriver) {
+        let key = ObjectIdentifier(driver)
+        guard let found = attachments[key], found.driver === driver, !Self.isInUse(found.value) else { return }
+        dropAttachment(key)
+    }
+
+    /// The drivers that have an attachment, the least recently used first (tests).
+    public var attachedDriverOrder: [ObjectIdentifier] { attachmentOrder.filter { attachments[$0] != nil } }
+
+    private func trimAttachments() {
+        var excess = attachments.count - Self.attachmentLimit
+        for key in attachmentOrder where excess > 0 {
+            guard let found = attachments[key], !Self.isInUse(found.value) else { continue }
+            dropAttachment(key)
+            excess -= 1
+        }
+    }
+
+    private func dropAttachment(_ key: ObjectIdentifier) {
+        attachments[key] = nil
+        attachmentOrder.removeAll { $0 == key }
+    }
+
+    private static func isInUse(_ value: AnyObject) -> Bool { (value as? ChatDriverAttachment)?.isInUse ?? false }
 
     /// Starts a new Claude session in the Chat face from a draft (title, ticket, workspace, choices, first message).
     @discardableResult
@@ -119,7 +154,7 @@ public final class ChatSessionHost {
     /// The session was deleted through Loom: its driver goes, and its queue file with it (the items are what the user
     /// wrote).
     public func forget(sessionID: UUID) {
-        if let driver = drivers[sessionID] { attachments[ObjectIdentifier(driver)] = nil }
+        if let driver = drivers[sessionID] { dropAttachment(ObjectIdentifier(driver)) }
         drivers[sessionID] = nil
         do { try queueStore.forget(sessionID: sessionID) } catch {
             LoomLog.error(.lifecycle, "A deleted session's Chat queue could not be removed (\(LoomLog.category(of: error)))")
@@ -134,6 +169,12 @@ public final class ChatSessionHost {
             forget(sessionID: id)
         }
     }
+}
+
+/// An attachment that can say it is needed now (a view shows it, or its run lives): the host keeps it past its limit.
+@MainActor
+public protocol ChatDriverAttachment: AnyObject {
+    var isInUse: Bool { get }
 }
 
 /// The host's drivers by card, behind a lock: a driver re-keys itself here when its run moves.

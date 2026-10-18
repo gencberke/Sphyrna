@@ -182,6 +182,145 @@ struct LiveChatDriverViewTests {
     }
 }
 
+extension LiveChatDriverViewTests {
+    /// The sends of one run, as the fake writes them the way the CLI does (S1): an idle send and a slash command are `user`
+    /// records under the uuid Loom sent; a send a running turn reads (`next`, and `now` from the queue or "Read now") is a
+    /// `queued_command` attachment with a uuid of its own, naming Loom's as `source_uuid`, plus `queue-operation`
+    /// records. A history read that overlaps the whole run shows each prompt once. A driver made after a relaunch marks
+    /// its resume "Resumed", not "Session started".
+    @Test func everyKindOfSendShowsOnceUnderAnOverlappingHistoryRead() async throws {
+        final class Mismatches { var reports: [String] = [] }
+        let found = Mismatches()
+        #if DEBUG
+        ChatPresentation.verifiesRows = true
+        ChatPresentation.onMismatch = { found.reports.append($0) }
+        defer {
+            ChatPresentation.verifiesRows = false
+            ChatPresentation.onMismatch = nil
+        }
+        #endif
+        let rig = try await LiveRig.make()
+        let id = UUID()
+        let host = ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root)
+        let driver = try await host.startNewSession(projectID: nil, sessionID: id)
+        try await driver.send("plain send")
+        #expect(await idle(driver))
+        try await driver.send("/scenario bash")
+        #expect(await idle(driver))
+
+        // Turns of three one-second steps, each with a send that lands while a step runs (a send during the opening text
+        // would cut the turn instead). After each, a step "now" moved to the background may finish as a turn of its own.
+        let tools = { (model: TurnModel) in model.entries.filter { if case .tool = $0.body { true } else { false } }.count }
+        func whileAStepRuns(_ scenario: String, _ send: () async throws -> Void) async throws {
+            let before = tools(await driver.snapshot().model)
+            try await driver.send(scenario)
+            #expect(await waitUntil { tools(await driver.snapshot().model) > before }, "\(scenario)")
+            // The step's call streams first; the step itself runs a second after it.
+            try await Task.sleep(for: .milliseconds(300))
+            try await send()
+            #expect(await idle(driver), "\(scenario)")
+            try await Task.sleep(for: .seconds(2))
+            #expect(await idle(driver), "\(scenario)")
+        }
+        // `next`: read at the step's end.
+        try await whileAStepRuns("/scenario work 3000") { try await driver.send("mid-turn next") }
+        // "Read now": taken back and sent again with `now` under a new uuid.
+        try await whileAStepRuns("/scenario work 3001") {
+            guard case let .sent(uuid) = try await driver.send("read me now") else { return }
+            let taken = try await driver.readNow(messageID: uuid)
+            #expect(taken, "the step read the message before Read now")
+            #expect(await driver.snapshot().model.sentUUID(ofRow: uuid) != uuid)
+        }
+        // `now` from the queue.
+        try await whileAStepRuns("/scenario work 3002") {
+            _ = try await driver.send("from the queue", timing: .afterTurn)
+            let queued = try #require(await driver.snapshot().queue.items.first?.id)
+            try await driver.sendQueuedNow(id: queued)
+        }
+
+        // The transcript holds the run as the CLI writes it.
+        let conversation = try #require(await driver.liveState().conversationID)
+        let listing = FileManager.default.subpaths(atPath: rig.profile.path) ?? []
+        let file = try #require(ClaudeTranscriptLocator.locate(sessionID: conversation, configDirectory: rig.profile,
+                                                               workingDirectory: nil), "\(conversation) \(listing)")
+        let lines = try String(contentsOfFile: file.path, encoding: .utf8).split(separator: "\n")
+        for text in ["mid-turn next", "read me now", "from the queue"] {
+            #expect(lines.contains { $0.contains("\"queued_command\"") && $0.contains(text) }, "\(text): \(Self.shapes(lines))")
+        }
+        #expect(lines.contains { $0.contains("\"queue-operation\"") && $0.contains("absorbed_mid_turn") })
+
+        // The view opens after everything ran: the transcript overlaps the whole live run.
+        let feed = LiveChatFeed(source: driver, card: id, conversationID: conversation, configDirectory: rig.profile,
+                                workingDirectory: nil)
+        let stream = ChatHostedStream()
+        feed.attach(stream.controller)
+        feed.start()
+        let sent = ["plain send", "/scenario bash", "/scenario work 3000", "mid-turn next", "/scenario work 3001", "read me now",
+                    "/scenario work 3002", "from the queue"]
+        #expect(await waitUntil { feed.phase == .ready && Set(Self.prompts(feed.presentation.model)) == Set(sent) })
+        let prompts = Self.prompts(feed.presentation.model)
+        #expect(prompts.count == sent.count, "\(prompts)")
+        #expect(Self.userRows(stream.controller.rows) == sent.count)
+        // One "Session started": the run's own marker, no made-up row above it.
+        #expect(feed.presentation.model.markers.filter { if case .sessionStart = $0 { true } else { false } }.count == 1)
+        #expect(!stream.controller.rows.contains { $0.kind.tag == "start" })
+        #expect(found.reports.isEmpty, "\(found.reports)")
+        stream.controller.stop()
+        _ = try await driver.stop()
+
+        // The app runs again: a new host and driver resume the session.
+        let again = ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root)
+        let resumed = again.driver(for: id)
+        try await resumed.resume()
+        #expect(await idle(resumed))
+        let markers = await resumed.snapshot().model.markers
+        #expect(markers.contains(.resumed(secondsSinceLastActivity: nil)))
+        #expect(!markers.contains { if case .sessionStart = $0 { true } else { false } })
+        _ = try await resumed.stop()
+        await rig.finish()
+    }
+
+    private static func shapes(_ lines: [Substring]) -> [String] {
+        lines.map { line in
+            guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { return "?" }
+            let message = object["message"] as? [String: Any]
+            let content = (message?["content"] as? String) ?? (object["content"] as? String) ?? ""
+            let attachment = (object["attachment"] as? [String: Any])?["type"] as? String ?? ""
+            return "\(object["type"] ?? "")/\(object["operation"] ?? "")\(attachment) \(content.prefix(30))"
+        }
+    }
+
+    /// The host keeps the attachments in use and at most `attachmentLimit` others, the least recently used going first.
+    @Test func theHostKeepsAFewFeedsAndThoseInUse() async throws {
+        let rig = try await LiveRig.make()
+        let host = ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root)
+        let drivers = (0..<6).map { _ in host.driver(for: UUID()) }
+        var feeds: [LiveChatFeed] = []
+        for (index, driver) in drivers.enumerated() {
+            let feed = host.attachment(for: driver) {
+                LiveChatFeed(source: driver, card: UUID(), conversationID: nil, configDirectory: nil, workingDirectory: nil)
+            }
+            feed.onUnused = { [weak host, weak driver] in
+                guard let host, let driver else { return }
+                host.releaseAttachment(for: driver)
+            }
+            if index == 0 { feed.viewAppeared() }
+            feeds.append(feed)
+        }
+        let kept = { (driver: ChatSessionDriver) -> Bool in (host.existingAttachment(for: driver) as LiveChatFeed?) != nil }
+        #expect(host.attachedDriverOrder.count == ChatSessionHost.attachmentLimit)
+        #expect(kept(drivers[0]))
+        #expect(!kept(drivers[1]) && !kept(drivers[2]))
+        #expect(drivers[3...].allSatisfy(kept))
+        // Not let go while shown; let go once its view went (its run never lived).
+        host.releaseAttachment(for: drivers[0])
+        #expect(kept(drivers[0]))
+        feeds[0].viewWentAway(ChatStreamController(context: ChatRowContext()))
+        #expect(!kept(drivers[0]))
+        await rig.finish()
+    }
+}
+
 private extension TurnModel {
     var texts: [String] { entries.compactMap { if case let .assistantText(text) = $0.body { text.text } else { nil } } }
     var markers: [Marker] { entries.compactMap { if case let .marker(marker) = $0.body { marker } else { nil } } }

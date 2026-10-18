@@ -61,6 +61,28 @@ extension TurnModel {
         contextUsage = boundary.postTokens.map { TokenUsage(inputTokens: $0) }
     }
 
+    /// A send the running turn read at a tool boundary (`next`, `now`): the CLI writes it as an `attachment` of type
+    /// `queued_command`, not as a `user` record (S1 t07-priority-next and -now). It shows as your message inside the turn
+    /// that read it, under the uuid it was sent with (`source_uuid`), the id the live model gave its row. Other queued
+    /// commands (a finished task's notification) are not the user's and stay silent.
+    private mutating func ingestQueuedCommand(_ attachment: JSONValue, record: JSONValue, offset: UInt64?, delta: inout ModelDelta) {
+        guard (attachment["commandMode"]?.string ?? "prompt") == "prompt",
+              (attachment["origin"]?["kind"]?.string ?? "human") == "human" else { return }
+        let text: String
+        if let plain = attachment["prompt"]?.string {
+            text = plain
+        } else {
+            text = (attachment["prompt"]?.array ?? []).compactMap { $0["type"]?.string == "text" ? $0["text"]?.string : nil }
+                .joined(separator: "\n")
+        }
+        guard !text.allSatisfy(\.isWhitespace) else { return }
+        let id = attachment["source_uuid"]?.string ?? record["uuid"]?.string ?? rawID("queued", offset)
+        guard index[id] == nil else { return }
+        let time = WireTimestamp.parse(attachment["timestamp"]?.string) ?? WireTimestamp.parse(record["timestamp"]?.string)
+        place(id: id, thread: .main, timestamp: time, offset: offset, policy: .work, delta: &delta,
+              body: .user(UserPrompt(text: text, images: [], delivery: .read, command: nil, isBrief: false)))
+    }
+
     mutating func ingestUnknown(_ unknown: UnknownMessage, offset: UInt64?, now: Date, delta: inout ModelDelta) {
         if let type = unknown.type {
             if type == "system" {
@@ -90,6 +112,10 @@ extension TurnModel {
                     return
                 }
                 if let subtype = unknown.subtype, Self.silentSystemSubtypes.contains(subtype) { return }
+            } else if type == "attachment", source != .live, let attachment = unknown.raw["attachment"],
+                      attachment["type"]?.string == "queued_command" {
+                ingestQueuedCommand(attachment, record: unknown.raw, offset: offset, delta: &delta)
+                return
             } else if Self.silentTypes.contains(type) {
                 return
             }

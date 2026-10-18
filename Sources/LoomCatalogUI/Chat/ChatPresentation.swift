@@ -34,6 +34,9 @@ final class ChatPresentation {
     @ObservationIgnored private var fullOutputs: [String: ChatFullOutput] = [:]
     @ObservationIgnored private var liveStarts: [String: Date] = [:]
     @ObservationIgnored private var lastActivity: Date?
+    /// The last activity comes only from the source's own clock (`setLastActivity`: a chat driver's newest stdout line);
+    /// a change applied, a snapshot taken after Loom's own edit included, does not count as activity.
+    @ObservationIgnored var activityFromSource = false
     @ObservationIgnored private var lastTurnID: String?
     @ObservationIgnored private var lastSequence = 0
     @ObservationIgnored private var refusedSequence = 0
@@ -101,7 +104,7 @@ final class ChatPresentation {
             isLoaded = true
             lastSequence = change.sequence
             hasOlder = change.hasOlder
-            if change.kind == .replaced { lastActivity = first ? whole.entries.last?.timestamp : Date() }
+            if change.kind == .replaced, !activityFromSource { lastActivity = first ? whole.entries.last?.timestamp : Date() }
             rebuild(cause: reusesRows ? .older : .replaced, fresh: [])
         case .growth:
             guard isLoaded, change.sequence == lastSequence + 1, model.apply(change) else {
@@ -111,7 +114,7 @@ final class ChatPresentation {
             }
             lastSequence = change.sequence
             hasOlder = change.hasOlder
-            lastActivity = Date()
+            if !activityFromSource { lastActivity = Date() }
             pendingModelMs = Self.milliseconds(since: began)
             rebuild(cause: .growth(change.delta), fresh: Set(change.delta.inserted))
         }

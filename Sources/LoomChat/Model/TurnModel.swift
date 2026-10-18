@@ -106,15 +106,18 @@ public struct TurnModel: Sendable {
         }
     }
 
-    /// Records the `initialize` answer: the starting mode is known before any turn.
+    /// Records the `initialize` answer: the starting mode is known before any turn. The first one of a live model marks
+    /// the start: "Session started" for a new session, "Resumed" when the run resumed one (a model made after a relaunch
+    /// has no earlier rows of it, and the session did not start here).
     @discardableResult
-    public mutating func apply(ready response: InitializeResponse, at now: Date = Date()) -> ModelDelta {
+    public mutating func apply(ready response: InitializeResponse, resumed: Bool = false, at now: Date = Date()) -> ModelDelta {
         var delta = ModelDelta()
         ready = response
         if source == .live, !startMarkerPlaced {
             startMarkerPlaced = true
             place(id: nextID("start"), thread: .main, timestamp: now, offset: nil, policy: .standalone, delta: &delta,
-                  body: .marker(.sessionStart(model: nil, permissionMode: response.currentPermissionMode)))
+                  body: .marker(resumed ? .resumed(secondsSinceLastActivity: nil)
+                                        : .sessionStart(model: nil, permissionMode: response.currentPermissionMode)))
         }
         return delta
     }

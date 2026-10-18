@@ -58,9 +58,10 @@ actor ScriptedLiveSource: ChatLiveSource {
     }
 
     /// A new run begins (a resume): what the model holds now is the earlier runs'.
-    func startRun() {
+    func startRun(at time: Date = Date()) {
         state.runStart = LiveHistoryJoin.RunStart(entries: model.entries.count, turns: model.turns.count,
-                                                  unknownRecords: model.unknownRecordCount)
+                                                  unknownRecords: model.unknownRecordCount, time: time,
+                                                  generation: state.runStart.generation + 1)
         for continuation in updateSubscribers { continuation.yield() }
     }
 
@@ -227,6 +228,114 @@ extension ChatHosted {
             #expect(feed.presentation.model.rowInputsEqual(feed.joinedModelForTesting))
             #expect(reports.mismatches.isEmpty, "\(reports.mismatches)")
             stream.controller.stop()
+        }
+
+        /// Chat → Terminal → Chat, then a run that added nothing (stopped at once) and the terminal again: each new run
+        /// reads the history again by its generation, and the earlier runs' face markers stay, at their time.
+        @Test func aNewRunThatAddedNothingStillReadsTheHistoryAgainAndEarlierMarkersStay() async throws {
+            let reports = verifyRows()
+            defer { stopVerifying() }
+            let profile = try Profile(lines: [ChatFixture.user("prompt 1", uuid: "u1", at: 0),
+                                              ChatFixture.assistant("m1", uuid: "a1", blocks: [ChatFixture.text("answer 1")], at: 1)])
+            defer { profile.remove() }
+            let base = try #require(ISO8601DateFormatter().date(from: "2026-10-17T10:00:00Z"))
+            let card = UUID()
+            let source = ScriptedLiveSource(card: card, conversationID: profile.id)
+            await Self.liveTurn(source, 1)
+            await source.change { $0.appendMarker(.face(.continuedInTerminal), at: base.addingTimeInterval(5)) }
+            let feed = LiveChatFeed(source: source, card: card, conversationID: profile.id, configDirectory: profile.root,
+                                    workingDirectory: nil)
+            let stream = ChatHostedStream()
+            feed.attach(stream.controller)
+            feed.start()
+            #expect(await waitUntil { feed.phase == .ready && Self.prompts(feed.presentation.model) == ["prompt 1"] })
+            let markers = { feed.presentation.model.entries.compactMap { if case let .marker(marker) = $0.body { marker } else { nil } } }
+            #expect(markers() == [.face(.continuedInTerminal)])
+
+            try profile.append([ChatFixture.user("prompt 2", uuid: "u2", at: 10),
+                                ChatFixture.assistant("m2", uuid: "a2", blocks: [ChatFixture.text("answer 2")], at: 11)])
+            await source.startRun(at: base.addingTimeInterval(15))
+            #expect(await waitUntil { Self.prompts(feed.presentation.model) == ["prompt 1", "prompt 2"] })
+            #expect(markers() == [.face(.continuedInTerminal)])
+            let entries = feed.presentation.model.entries
+            let carried = entries.firstIndex { $0.body == .marker(.face(.continuedInTerminal)) }
+            let terminal = entries.firstIndex { $0.id == "u2" }
+            #expect(carried != nil && terminal != nil && carried! < terminal!)
+
+            // The second Chat run added nothing; the terminal ran a turn after it; a third run begins at the same counts.
+            try profile.append([ChatFixture.user("prompt 3", uuid: "u3", at: 20),
+                                ChatFixture.assistant("m3", uuid: "a3", blocks: [ChatFixture.text("answer 3")], at: 21)])
+            await source.startRun(at: base.addingTimeInterval(25))
+            #expect(await waitUntil { Self.prompts(feed.presentation.model) == ["prompt 1", "prompt 2", "prompt 3"] })
+            #expect(markers() == [.face(.continuedInTerminal)])
+            #expect(feed.presentation.model.rowInputsEqual(feed.joinedModelForTesting))
+            #expect(reports.mismatches.isEmpty, "\(reports.mismatches)")
+            stream.controller.stop()
+        }
+
+        /// The live row's "No activity" follows the driver's stdout time alone: Loom's own edits (a pending send) and the
+        /// snapshots it takes do not make the session look active.
+        @Test func theQuietTimerFollowsTheDriversStdoutOnly() async throws {
+            let card = UUID()
+            let source = ScriptedLiveSource(card: card, conversationID: nil)
+            await source.change { $0.appendPendingUser(uuid: "u1", text: "prompt 1") }
+            await source.change { $0.apply(Self.echo("prompt 1", uuid: "u1")) }
+            let feed = LiveChatFeed(source: source, card: card, conversationID: nil, configDirectory: nil, workingDirectory: nil)
+            let stream = ChatHostedStream()
+            feed.attach(stream.controller)
+            feed.start()
+            let heard = Date().addingTimeInterval(-60)
+            await source.setState { state in
+                state.turnRunning = true
+                state.lastActivity = heard
+            }
+            let live = { stream.controller.rows.compactMap { row -> LiveRow? in if case let .live(live) = row.kind { live } else { nil } }.first }
+            #expect(await waitUntil { live()?.lastActivity == heard })
+            await source.change { $0.appendPendingUser(uuid: "u2", text: "a message sent meanwhile") }
+            #expect(await waitUntil { Self.prompts(feed.presentation.model).count == 2 })
+            await stream.settle()
+            #expect(live()?.lastActivity == heard)
+            stream.controller.stop()
+        }
+
+        @Test func showAllNeedsTheTranscriptsFolderForALiveRow() throws {
+            let card = UUID()
+            let source = ScriptedLiveSource(card: card, conversationID: nil)
+            let feed = LiveChatFeed(source: source, card: card, conversationID: nil, configDirectory: nil, workingDirectory: nil)
+            var model = TurnModel(source: .live)
+            model.appendMarker(.notice("a live row"))
+            let live = try #require(model.entries.first)
+            var read = live
+            read.sourceOffset = 40
+            #expect(!feed.canShowAll(live))
+            #expect(feed.canShowAll(read))
+            let folder = LiveChatFeed(source: source, card: card, conversationID: nil,
+                                      configDirectory: FileManager.default.temporaryDirectory, workingDirectory: nil)
+            #expect(folder.canShowAll(live))
+        }
+
+        /// A feed nobody shows whose run is over goes (the host lets it go); while a view shows it, or its run lives, it stays.
+        @Test func aFeedNobodyShowsWhoseRunIsOverIsLetGo() async throws {
+            let card = UUID()
+            let source = ScriptedLiveSource(card: card, conversationID: nil)
+            let feed = LiveChatFeed(source: source, card: card, conversationID: nil, configDirectory: nil, workingDirectory: nil)
+            final class Released { var count = 0 }
+            let released = Released()
+            feed.onUnused = { released.count += 1 }
+            let view = LiveChatViewModel(feed: feed)
+            view.setWindowVisible(true)
+            view.setOnScreen(true)
+            #expect(feed.isInUse)
+            #expect(await waitUntil { feed.phase == .ready })
+            // The view goes while the run lives: kept.
+            view.close()
+            #expect(feed.viewCount == 0)
+            #expect(feed.isInUse)
+            #expect(released.count == 0)
+            // The run ends: nobody needs it.
+            await source.setState { $0.phase = .stopped }
+            #expect(await waitUntil { released.count == 1 })
+            #expect(!feed.isInUse)
         }
 
         @Test func aLostChangeAsksTheDriverForASnapshot() async throws {

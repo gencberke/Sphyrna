@@ -128,7 +128,7 @@ struct ChatRowStore {
         guard runs[0].turnID == segments[lastIndex].turnID else { return nil }
         for run in runs.dropFirst() where byTurn[run.turnID] != nil { return nil }
         // The start row waits for the first time stamp.
-        if let first = head.first, case .start(nil) = first.kind, ChatRowBuilder.startRow(entries) != first { return nil }
+        if let first = head.first, case .start(nil) = first.kind, ChatRowBuilder.head(input) != head { return nil }
 
         var dirty = Set<Int>()
         for id in touched { if let index = byTurn[id] { dirty.insert(index) } }
@@ -216,7 +216,7 @@ struct ChatRowStore {
     /// newest keeps its rows, and the change is a set of patches.
     private mutating func rebuild(_ input: ChatBuildInput, _ now: Inputs, reuse: Bool, touched: Set<String>) -> ChatRowsChange {
         let entries = input.model.entries
-        let newHead: [ChatRow] = entries.isEmpty ? [ChatRowBuilder.emptyRow] : (input.hasOlder ? [] : [ChatRowBuilder.startRow(entries)])
+        let newHead = ChatRowBuilder.head(input)
         let turns = ChatRowBuilder.turnsByID(input.model)
         let newest = now.newest.id
         var made: [Segment] = []

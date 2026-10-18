@@ -136,16 +136,18 @@ struct LiveHistoryJoinTests {
         Self.liveTurn(&live, uuid: "u1", text: "one", messageID: "m1", answer: "answer one")
         // A background tool of the first run, whose result comes later.
         live.apply(Fixture.message(Fixture.assistant(messageID: "m1t", uuid: "a1t", blocks: [Fixture.toolUse("t1", "Bash", ["command": "ls"])])))
-        live.appendMarker(.face(.continuedInTerminal))
+        // Loom's own rows of the first run (no transcript has them), between the first run and the terminal's turn.
+        live.appendMarker(.face(.continuedInTerminal), at: Self.time("10:00:30"))
         let start = LiveHistoryJoin.RunStart(entries: live.entries.count, turns: live.turns.count,
-                                             unknownRecords: live.unknownRecordCount)
+                                             unknownRecords: live.unknownRecordCount, generation: 2)
         live.appendMarker(.face(.backInChat))
         Self.liveTurn(&live, uuid: "u3", text: "three", messageID: "m3", answer: "answer three")
         var transcript = Transcript()
         transcript.add(Fixture.transcriptUser("one", uuid: "u1"),
                        Fixture.transcriptAssistant(messageID: "m1", uuid: "a1", blocks: [Fixture.textBlock("answer one")]))
-        transcript.add(Fixture.transcriptUser("two in the terminal", uuid: "u2"),
-                       Fixture.transcriptAssistant(messageID: "m2", uuid: "a2", blocks: [Fixture.textBlock("answer two")]))
+        transcript.add(Fixture.transcriptUser("two in the terminal", uuid: "u2", time: "2026-10-17T10:01:00.000Z"),
+                       Fixture.transcriptAssistant(messageID: "m2", uuid: "a2", blocks: [Fixture.textBlock("answer two")],
+                                                   time: "2026-10-17T10:01:05.000Z"))
         transcript.add(Fixture.transcriptUser("three", uuid: "u3"),
                        Fixture.transcriptAssistant(messageID: "m3", uuid: "a3", blocks: [Fixture.textBlock("answer three")]))
 
@@ -154,7 +156,11 @@ struct LiveHistoryJoinTests {
         join.setHistory(transcript.model, hasOlder: false)
         let model = join.model
         #expect(model.prompts.map(\.text) == ["one", "two in the terminal", "three"])
-        #expect(model.markers == [.face(.backInChat)])
+        // The earlier run's face marker is carried into the history at its time: before the terminal's turn.
+        #expect(model.markers == [.face(.continuedInTerminal), .face(.backInChat)])
+        let terminalAt = model.entries.firstIndex { if case let .user(prompt) = $0.body { prompt.text == "two in the terminal" } else { false } }
+        let carriedAt = model.entries.firstIndex { $0.body == .marker(.face(.continuedInTerminal)) }
+        #expect(carriedAt != nil && terminalAt != nil && carriedAt! < terminalAt!)
         #expect(Set(Self.ids(model)).count == model.entries.count)
 
         // Growth of the new run moves past the history and the hidden first run; a change to the first run shows nothing.
@@ -178,6 +184,89 @@ struct LiveHistoryJoinTests {
             return
         }
         #expect(mirror.rowInputsEqual(join.model))
+    }
+
+    private static func time(_ clock: String) -> Date {
+        ISO8601DateFormatter().date(from: "2026-10-17T\(clock)Z")!
+    }
+
+    /// A prompt a running turn read: the CLI writes a `queued_command` attachment with a uuid of its own, naming the uuid
+    /// Loom sent it with as `source_uuid` (S1).
+    private static func queuedCommand(_ text: String, sourceUUID: String, uuid: String, time: String) -> String {
+        Fixture.line(["type": "attachment", "uuid": .string(uuid), "sessionId": "s1", "timestamp": .string(time),
+                      "parentUuid": nil, "isSidechain": false,
+                      "attachment": ["type": "queued_command", "prompt": .string(text), "source_uuid": .string(sourceUUID),
+                                     "delivery_id": "d1", "commandMode": "prompt", "origin": ["kind": "human"],
+                                     "timestamp": .string(time), "humanTurn": true]])
+    }
+
+    /// The history before the run: a turn with "again" written before the run began.
+    private static func earlier() -> Transcript {
+        var transcript = Transcript()
+        transcript.add(Fixture.transcriptUser("again", uuid: "e1", time: "2026-10-17T10:00:00.000Z"),
+                       Fixture.transcriptAssistant(messageID: "me", uuid: "ae", blocks: [Fixture.textBlock("earlier")],
+                                                   time: "2026-10-17T10:00:05.000Z"))
+        return transcript
+    }
+
+    private static func run(_: TurnModel) -> LiveHistoryJoin.RunStart {
+        LiveHistoryJoin.RunStart(entries: 0, turns: 0, unknownRecords: 0, time: time("10:01:00"), generation: 1)
+    }
+
+    @Test func aPromptARunningTurnReadIsItsQueuedCommandAndShowsOnce() {
+        var live = TurnModel(source: .live)
+        Self.liveTurn(&live, uuid: "u1", text: "one", messageID: "m1", answer: "answer one")
+        live.appendPendingUser(uuid: "u2", text: "two mid-turn")
+        var transcript = Self.earlier()
+        // The run's own first lines are not in the file yet; the mid-turn read is.
+        transcript.add(Self.queuedCommand("two mid-turn", sourceUUID: "u2", uuid: "q2", time: "2026-10-17T10:01:10.000Z"))
+        #expect(transcript.model.prompts.map(\.text) == ["again", "two mid-turn"])
+        #expect(transcript.model.entry(id: "u2") != nil)
+
+        var join = LiveHistoryJoin(live: live)
+        join.setRunStart(Self.run(live))
+        join.setHistory(transcript.model, hasOlder: false)
+        #expect(join.model.prompts.map(\.text) == ["again", "one", "two mid-turn"])
+        #expect(Set(Self.ids(join.model)).count == join.model.entries.count)
+    }
+
+    @Test func aPromptReadNowSentAgainIsFoundByItsNewUUID() {
+        var live = TurnModel(source: .live)
+        live.appendPendingUser(uuid: "u3", text: "three")
+        live.rekeyPendingUser(from: "u3", to: "u3b")
+        var transcript = Self.earlier()
+        transcript.add(Fixture.transcriptUser("three", uuid: "u3b", time: "2026-10-17T10:01:20.000Z"))
+        var join = LiveHistoryJoin(live: live)
+        join.setRunStart(LiveHistoryJoin.RunStart(generation: 1))
+        join.setHistory(transcript.model, hasOlder: false)
+        #expect(join.model.prompts.map(\.text) == ["again", "three"])
+        #expect(join.model.entries.last?.id == "u3")
+    }
+
+    @Test func aPromptUnderAnotherUUIDIsTheRunsByItsTextOnlyWhenWrittenSinceTheRunBegan() {
+        var live = TurnModel(source: .live)
+        live.appendPendingUser(uuid: "u4", text: "again")
+        var transcript = Self.earlier()
+        transcript.add(Fixture.transcriptUser("again", uuid: "x4", time: "2026-10-17T10:01:30.000Z"))
+        var join = LiveHistoryJoin(live: live)
+        join.setRunStart(Self.run(live))
+        join.setHistory(transcript.model, hasOlder: false)
+        // The earlier "again" stays; the one written in the run is the live row.
+        #expect(join.model.prompts.map(\.text) == ["again", "again"])
+        #expect(Self.ids(join.model) == ["e1", "me#0", "u4"])
+
+        // Growth that brings a prompt whose text the run's part of the history holds cuts it again.
+        var later = TurnModel(source: .live)
+        var again = LiveHistoryJoin(live: later)
+        again.setRunStart(Self.run(later))
+        again.setHistory(transcript.model, hasOlder: false)
+        #expect(again.model.prompts.map(\.text) == ["again", "again"])
+        let delta = later.appendPendingUser(uuid: "u4", text: "again")
+        guard case .rebuilt = again.apply(later.growth(sequence: 1, entriesBefore: 0, turnsBefore: 0, delta: delta, hasOlder: false)) else {
+            Issue.record("the run's prompt written before the live model had it did not cut the history")
+            return
+        }
+        #expect(Self.ids(again.model) == ["e1", "me#0", "u4"])
     }
 
     @Test func aChangeNotMadeOnTheLiveModelIsRefused() {

@@ -8,6 +8,26 @@ import LoomCore
 struct ChatRowBuilderTests {
     private func tags(_ rows: [ChatRow]) -> [String] { rows.map(\.kind.tag) }
 
+    // MARK: Start
+
+    /// A chat driver's run places its own "Session started" marker first: no second start row is made up above it.
+    @Test func aModelThatOpensWithItsStartMarkerGetsNoMadeUpStartRow() {
+        var model = TurnModel(source: .live)
+        model.appendMarker(.sessionStart(model: "claude-opus-5-5", permissionMode: "default"))
+        model.appendPendingUser(uuid: "u1", text: "hello")
+        let input = ChatBuildInput(model: model)
+        let rows = ChatRowBuilder.rows(input)
+        #expect(Array(tags(rows).prefix(2)) == ["marker", "user"])
+        #expect(!tags(rows).contains("start"))
+        var store = ChatRowStore()
+        _ = store.update(input, cause: .replaced)
+        #expect(store.rows == rows)
+        // A resume opens with "Resumed": the start row stays.
+        var resumed = TurnModel(source: .live)
+        resumed.appendMarker(.resumed(secondsSinceLastActivity: nil))
+        #expect(tags(ChatRowBuilder.rows(ChatBuildInput(model: resumed))) == ["start", "marker"])
+    }
+
     // MARK: Folds
 
     @Test func settledTurnFoldsItsWorkBetweenPromptAndAnswer() {

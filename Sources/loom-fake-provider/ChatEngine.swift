@@ -378,8 +378,40 @@ final class ChatEngine {
     func recordUser(_ message: ChatUser) {
         transcript.append(wire.transcriptRecord(
             type: "user", uuid: message.uuid, message: ["role": "user", "content": message.content],
-            parentUUID: lastUUID, cwd: config.cwd, extra: ["permissionMode": permissionMode]))
+            parentUUID: lastUUID, cwd: config.cwd, extra: ["permissionMode": permissionMode, "origin": ["kind": "human"]]))
         lastUUID = message.uuid
+    }
+
+    /// When each send arrived (the `queued_command` attachment carries it).
+    var arrivals: [String: Date] = [:]
+
+    /// The transcript's queue bookkeeping (S1 t07): `enqueue` when a send arrives, `dequeue` when it starts a turn,
+    /// `remove` when a running turn absorbed it.
+    func recordQueueOperation(_ operation: String, _ fields: ChatObject = [:]) {
+        var record: ChatObject = ["type": "queue-operation", "operation": operation, "sessionId": wire.session,
+                                  "timestamp": ChatWire.timestamp()]
+        record.merge(fields) { _, new in new }
+        transcript.append(record)
+    }
+
+    /// A send a running turn read at a tool boundary, as the CLI writes it (S1 t07-priority-next and -now): not a `user`
+    /// record under the stdin uuid, but an `attachment` of type `queued_command` with a uuid of its own whose
+    /// `source_uuid` is the stdin uuid, then a `queue-operation` `remove` with reason `absorbed_mid_turn`.
+    func recordAbsorbed(_ message: ChatUser) {
+        let uuid = wire.uuid(), delivery = wire.uuid()
+        let arrived = ChatWire.timestamp(arrivals[message.uuid] ?? Date())
+        transcript.append([
+            "type": "attachment", "uuid": uuid, "parentUuid": ChatWire.orNull(lastUUID), "sessionId": wire.session,
+            "cwd": config.cwd, "isSidechain": false, "userType": "external", "entrypoint": "sdk-cli",
+            "version": "2.1.300-fake", "timestamp": ChatWire.timestamp(),
+            "attachment": [
+                "type": "queued_command", "prompt": message.text, "source_uuid": message.uuid, "delivery_id": delivery,
+                "commandMode": "prompt", "origin": ["kind": "human"], "timestamp": arrived, "humanTurn": true,
+            ] as ChatObject,
+        ])
+        lastUUID = uuid
+        recordQueueOperation("remove", ["content": message.text, "reason": "absorbed_mid_turn", "commandUuid": message.uuid,
+                                        "deliveryId": delivery])
     }
 
     /// The turn's one `rate_limit_event`: after its first message, or before the `result` of a turn without one.
@@ -477,6 +509,8 @@ final class ChatEngine {
             break
         case .user(let message):
             sentTexts[message.uuid] = message.text
+            arrivals[message.uuid] = Date()
+            recordQueueOperation("enqueue", ["content": message.text])
             if !sessionBusy { sessionBusy = true; sessionState("running") }
             lifecycle(message.uuid, "queued")
             guard running, message.priority == "now" else {
@@ -703,6 +737,7 @@ final class ChatEngine {
             sendInit()
             send(wire.statusRequesting(turnUUIDs))
             echo(first)
+            recordQueueOperation("dequeue")
             recordUser(first)
         } else if let finished {
             completeBackground(finished)
@@ -791,7 +826,7 @@ final class ChatEngine {
             echo(message)
             lifecycle(message.uuid, "started")
             send(wire.statusRequesting(turnUUIDs))
-            recordUser(message)
+            recordAbsorbed(message)
         }
         try assistantMessage([.text("Joined your message: " + joined.map(\.text).joined(separator: " / "))])
     }

@@ -315,7 +315,8 @@ public actor ChatSessionDriver {
         }
         guard !phase.isLive else { return }
         runStart = LiveHistoryJoin.RunStart(entries: model.entries.count, turns: model.turns.count,
-                                            unknownRecords: model.unknownRecordCount)
+                                            unknownRecords: model.unknownRecordCount, time: clock(),
+                                            generation: runStart.generation + 1)
         setPhase(.starting)
         stopRequested = false
         startCancelled = false
@@ -369,7 +370,7 @@ public actor ChatSessionDriver {
             guard run?.runID == runID, phase == .starting else { throw ChatDriverError.stopping }
             let response = reply.initializeResponse
             permissionMode = response.currentPermissionMode ?? permissionMode
-            note(model.apply(ready: response, at: clock()))
+            note(model.apply(ready: response, resumed: isResume, at: clock()))
             setPhase(.ready)
             await publish(.atPrompt)
             finishStartWaiters(true)
@@ -971,7 +972,8 @@ public actor ChatSessionDriver {
         fresh.rateLimit = model.rateLimit
         fresh.startMarkerPlaced = true
         model = fresh
-        runStart = LiveHistoryJoin.RunStart()
+        // The new card's stream starts at the marker. The run goes on, so its generation stays.
+        runStart = LiveHistoryJoin.RunStart(time: clock(), generation: runStart.generation)
         streamReplaced = true
         note(model.appendMarker(.reset(trigger: resetTrigger ?? "clear"), at: clock()))
         resetTrigger = nil

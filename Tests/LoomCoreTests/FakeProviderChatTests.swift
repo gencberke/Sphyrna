@@ -334,7 +334,10 @@ struct FakeProviderChatTests {
         let project = rig.configDirectory.appendingPathComponent("projects/" + String(realPath(rig.root).map { $0.isLetter || $0.isNumber ? $0 : "-" }))
         let main = try String(contentsOf: project.appendingPathComponent("\(rig.sessionID).jsonl"), encoding: .utf8)
         let lines = try main.split(separator: "\n").map { try #require(JSONSerialization.jsonObject(with: Data($0.utf8)) as? ChatRig.Record) }
-        #expect(lines.first?["type"] as? String == "user" && lines.first?["sessionId"] as? String == rig.sessionID)
+        // The CLI's queue records come first (S1): the send is enqueued and dequeued, then its `user` record.
+        #expect(lines.first?["type"] as? String == "queue-operation" && lines.first?["operation"] as? String == "enqueue")
+        let first = lines.first { $0["type"] as? String != "queue-operation" }
+        #expect(first?["type"] as? String == "user" && first?["sessionId"] as? String == rig.sessionID)
         #expect(lines.contains { $0["toolUseResult"] != nil }) // transcript spelling of tool_use_result
         let subagents = project.appendingPathComponent("\(rig.sessionID)/subagents")
         let files = try FileManager.default.contentsOfDirectory(atPath: subagents.path)

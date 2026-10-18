@@ -21,7 +21,7 @@ import Observation
 ///   drift that is not an unknown record (those have their own notice, from the rows).
 @MainActor
 @Observable
-final class LiveChatFeed {
+final class LiveChatFeed: ChatDriverAttachment {
     enum Phase: Equatable {
         /// The history and the driver's first snapshot are on their way: nothing is drawn yet.
         case opening
@@ -52,6 +52,16 @@ final class LiveChatFeed {
     @ObservationIgnored private var sequence = 0
     @ObservationIgnored private var historyRead = false
     @ObservationIgnored private var readingHistory = false
+    /// The run (`RunStart.generation`) the history was read for: a new one reads it again.
+    @ObservationIgnored private var readGeneration: Int?
+    /// "Show all" asked while the history was being read again: done once it is there.
+    @ObservationIgnored private var pendingShowAll: [ChatEntry] = []
+    /// Views showing the feed now (attached or not), and whether the driver's run lives: a feed nobody shows whose run
+    /// is over can go (`isInUse`).
+    @ObservationIgnored private(set) var viewCount = 0
+    @ObservationIgnored private var driverLive = false
+    /// The feed is no longer needed: its owner (the app's host) lets it go.
+    @ObservationIgnored var onUnused: (() -> Void)?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
     @ObservationIgnored private weak var controller: ChatStreamController?
@@ -82,6 +92,8 @@ final class LiveChatFeed {
         self.limits = limits
         self.locate = locate
         presentation = ChatPresentation(sessionID: conversationID ?? card.uuidString, workingDirectory: workingDirectory)
+        // The live row's "No activity" follows the driver's stdout, not Loom's own edits (`follow`).
+        presentation.activityFromSource = true
         wire(presentation)
     }
 
@@ -134,11 +146,17 @@ final class LiveChatFeed {
             if card == opened {
                 historyRead = true
                 presentWhole()
+                let waiting = pendingShowAll
+                pendingShowAll = []
+                for entry in waiting { loadingFull.remove(entry.id); showAll(entry) }
             }
         }
         let state = await source.liveState()
         guard card == opened else { return }
-        if state.sessionID == card { join.setRunStart(state.runStart) }
+        if state.sessionID == card {
+            join.setRunStart(state.runStart)
+            readGeneration = state.runStart.generation
+        }
         guard let lens = await openLens() else { return }
         let first = await lens.coldOpenChange()
         guard card == opened, let model = first.model else { return }
@@ -189,7 +207,7 @@ final class LiveChatFeed {
             if let last = driverSequence, change.sequence < last { return }
             let state = await source.liveState()
             if let last = driverSequence, change.sequence < last { return }
-            if state.sessionID != card { moved(to: state.sessionID) }
+            if state.sessionID != card { moved(to: state) }
             driverSequence = change.sequence
             _ = join.apply(change)
             presentWhole()
@@ -218,7 +236,8 @@ final class LiveChatFeed {
     }
 
     /// The run moved to a new card (`/clear`): a new presentation, no history.
-    private func moved(to newCard: UUID) {
+    private func moved(to state: ChatLiveState) {
+        let newCard = state.sessionID
         card = newCard
         conversationID = nil
         if let lens {
@@ -226,12 +245,17 @@ final class LiveChatFeed {
             Task { await lens.close() }
         }
         join.clearHistory()
-        join.setRunStart(LiveHistoryJoin.RunStart())
+        join.setRunStart(state.runStart)
+        readGeneration = state.runStart.generation
         historyRead = true
+        for entry in pendingShowAll { loadingFull.remove(entry.id) }
+        pendingShowAll = []
         let attached = controller
         presentation.detach()
         presentation = ChatPresentation(sessionID: newCard.uuidString, workingDirectory: workingDirectory,
                                         isWorking: presentation.isWorking)
+        presentation.activityFromSource = true
+        presentation.setLastActivity(state.lastActivity)
         wire(presentation)
         sequence = 0
         if let attached { presentation.attach(attached) }
@@ -262,7 +286,15 @@ final class LiveChatFeed {
 
     private func follow(_ state: ChatLiveState) {
         if state.sessionID == card, let id = state.conversationID { conversationID = id }
-        if state.sessionID == card, historyRead, !readingHistory, state.runStart != join.runStart { readHistoryAgain() }
+        // A new run, even one that added nothing: what ran since the last read (a terminal's turns) is read in.
+        if state.sessionID == card, historyRead, !readingHistory, let read = readGeneration, state.runStart.generation != read {
+            readHistoryAgain()
+        }
+        let live = state.phase.isLive || state.phase == .starting || state.phase == .stopping
+        if driverLive != live {
+            driverLive = live
+            if !live, viewCount == 0 { onUnused?() }
+        }
         presentation.setWorking(state.turnRunning)
         presentation.setLastActivity(state.lastActivity)
         if policySignal != state.policySignal { policySignal = state.policySignal }
@@ -272,7 +304,21 @@ final class LiveChatFeed {
 
     // MARK: Views
 
-    /// A view's stream shows the presentation (and the next one after a move) from now on.
+    /// The feed is shown by a view, or its run lives: the host keeps it.
+    var isInUse: Bool { viewCount > 0 || driverLive }
+
+    /// A view of the feed appeared (`attach` follows once it can be seen) or went for good.
+    func viewAppeared() { viewCount += 1 }
+
+    func viewWentAway(_ controller: ChatStreamController) {
+        detach(controller)
+        viewCount = max(0, viewCount - 1)
+        if viewCount == 0, !driverLive { onUnused?() }
+    }
+
+    /// A view's stream shows the presentation (and the next one after a move) from now on. One stream at a time: Loom
+    /// shows a session's chat in one place (the detail pane of its one window, for the selected session), and a second
+    /// view that attaches takes the presentation over; the earlier one keeps its last rows until it attaches again.
     func attach(_ controller: ChatStreamController) {
         guard self.controller !== controller || presentation.controller !== controller else { return }
         self.controller = controller
@@ -305,7 +351,8 @@ final class LiveChatFeed {
             let change = await lens.loadOlderChange()
             guard let self else { return }
             loadingOlder = false
-            if card == opened, let change, let model = change.model {
+            // A read again (a new run) or a move replaced the lens meanwhile: this read is of the old one.
+            if card == opened, self.lens === lens, let change, let model = change.model {
                 join.setHistory(model, hasOlder: change.hasOlder)
                 if canPresent {
                     sequence += 1
@@ -321,6 +368,11 @@ final class LiveChatFeed {
     func showAll(_ entry: ChatEntry) {
         let target = presentation
         guard !target.hasFullOutput(entry.id), loadingFull.insert(entry.id).inserted else { return }
+        // A live row's scan starts where the run's lines begin, which a history being read again does not know yet.
+        guard entry.sourceOffset != nil || historyRead else {
+            pendingShowAll.append(entry)
+            return
+        }
         let id = entry.id
         Task { [weak self] in
             guard let self else { return }
@@ -341,6 +393,9 @@ final class LiveChatFeed {
             target.setFullOutput(prepared, for: id)
         }
     }
+
+    /// "Show all" can read a clipped result: a history row has its line; a live row needs the transcript's folder.
+    func canShowAll(_ entry: ChatEntry) -> Bool { entry.sourceOffset != nil || configDirectory != nil }
 
     // MARK: Tests and evidence
 

@@ -39,7 +39,7 @@ enum ChatRowBuilder {
         guard !entries.isEmpty else { return [emptyRow] }
         var out: [ChatRow] = []
         out.reserveCapacity(entries.count)
-        if !input.hasOlder { out.append(startRow(entries)) }
+        out += head(input)
         let turns = turnsByID(input.model)
         let newest = input.model.turns.last?.id
         for run in runs(of: entries, from: 0) {
@@ -55,6 +55,16 @@ enum ChatRowBuilder {
     }
 
     static let emptyRow = ChatRow(id: "empty", kind: .empty)
+
+    /// The rows before the first turn: "Session started", unless older turns come first or the session opens with its own
+    /// start marker (a chat driver's run places one: the model's line says "Session started" itself).
+    static func head(_ input: ChatBuildInput) -> [ChatRow] {
+        let entries = input.model.entries
+        guard let first = entries.first else { return [emptyRow] }
+        if input.hasOlder { return [] }
+        if case .marker(.sessionStart) = first.body { return [] }
+        return [startRow(entries)]
+    }
 
     /// "Session started", dated by the first entry that has a time.
     static func startRow(_ entries: [ChatEntry]) -> ChatRow {
