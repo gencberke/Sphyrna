@@ -41,7 +41,8 @@ extension LoomTheme {
         static let agentIndent: CGFloat = 10
         static let agentMaxIndent = 2
         static let agentMarkWash = Opacity.accentTint
-        static let agentHover = Surface.raised
+        /// A panel level follows the tone, so it is computed, never stored.
+        static var agentHover: Color { Surface.raised }
 
         // The drill-down header over a transcript.
         static let detailHeaderGap: CGFloat = 8

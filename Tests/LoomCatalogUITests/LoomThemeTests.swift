@@ -1,3 +1,4 @@
+import LoomTerminal
 import Testing
 @testable import LoomCatalogUI
 
@@ -97,9 +98,11 @@ struct LoomThemeTests {
         #expect(Self.levels.map(\.rgb) == LoomTheme.Surface.panelLevelsRGB)
         #expect(Self.levels.map(\.rgb) == [RGB(hex: 0x141318), RGB(hex: 0x19181E), RGB(hex: 0x1D1C22),
                                             RGB(hex: 0x222128), RGB(hex: 0x2A2930), RGB(hex: 0x302F38)])
-        // The terminal level is today's panel, read from the terminal's own theme.
-        for (a, b) in [(LoomTheme.Surface.terminalRGB.red, Self.panel.red), (LoomTheme.Surface.terminalRGB.green, Self.panel.green),
-                       (LoomTheme.Surface.terminalRGB.blue, Self.panel.blue)] {
+        // The terminal level is today's panel, the terminal's own default background (the tone changes the live one).
+        let terminal = TerminalTheme.defaultBackgroundRGB
+        for (a, b) in [(LoomTheme.Surface.terminalRGB.red, Double(terminal.red) / 255),
+                       (LoomTheme.Surface.terminalRGB.green, Double(terminal.green) / 255),
+                       (LoomTheme.Surface.terminalRGB.blue, Double(terminal.blue) / 255)] {
             #expect(abs(a - b) < 0.5 / 255)
         }
         #expect(LoomTheme.Accent.highRGB == RGB(hex: 0xA9B0E3) && LoomTheme.Accent.lowRGB == RGB(hex: 0x5E68A8))

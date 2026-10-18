@@ -133,6 +133,11 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
         openRequestObserver = nil
     }
 
+    /// The main pane's tone changed (Settings → Theme): every live terminal takes the new background.
+    public func applyTerminalTheme() {
+        for entry in entries.values { entry.surface.applyTheme() }
+    }
+
     public func setTerminalFontSize(_ size: Double) {
         for entry in entries.values { entry.surface.setFontSize(size) }
     }

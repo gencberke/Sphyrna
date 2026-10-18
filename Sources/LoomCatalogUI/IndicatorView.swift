@@ -84,7 +84,11 @@ struct ChaseDots: NSViewRepresentable {
 
     func makeNSView(context: Context) -> LayerView { LayerView(scale: scale) }
 
-    func updateNSView(_ view: LayerView, context: Context) { view.setAnimating(animating) }
+    func updateNSView(_ view: LayerView, context: Context) {
+        // The chase takes the scheme the SwiftUI environment resolves (the terminal face's header is dark in Light).
+        view.setAppearance(LoomTheme.Appearance(context.environment.colorScheme))
+        view.setAnimating(animating)
+    }
 
     final class LayerView: NSView {
         static let key = "chase"
@@ -93,6 +97,12 @@ struct ChaseDots: NSViewRepresentable {
         private let scale: CGFloat
         private var trail = ChaseDots.trail
         private var rest = ChaseDots.rest
+        /// The chase's colour while it follows the theme; `configure(color:…)` (the menu bar item) replaces it with
+        /// a fixed one. Layers cannot see the SwiftUI environment, so this view resolves the dynamic colour itself.
+        private var followsTheme = true
+        private var appearanceOverride: LoomTheme.Appearance?
+        /// The colour the dots are drawn in now (test seam).
+        var dotColor: CGColor? { dots.first?.backgroundColor }
 
         /// Whether the keyframe animation is installed (test seam).
         var isRunning: Bool { dots.first?.animation(forKey: Self.key) != nil }
@@ -121,14 +131,33 @@ struct ChaseDots: NSViewRepresentable {
                 dot.bounds = CGRect(x: 0, y: 0, width: radius * 2, height: radius * 2)
                 dot.cornerRadius = radius
                 dot.position = CGPoint(x: inset + point.x * span, y: side - (inset + point.y * span))
-                dot.backgroundColor = LoomTheme.Status.workingNS.cgColor
                 dot.opacity = Float(ChaseDots.opacity(dot: index, step: 0))
                 layer?.addSublayer(dot)
                 dots.append(dot)
             }
+            applyThemeColor()
         }
 
         required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+        /// The look the SwiftUI environment resolves for this chase; nil follows the view's own appearance.
+        func setAppearance(_ appearance: LoomTheme.Appearance?) {
+            guard appearance != appearanceOverride else { return }
+            appearanceOverride = appearance
+            applyThemeColor()
+        }
+
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            applyThemeColor()
+        }
+
+        private func applyThemeColor() {
+            guard followsTheme else { return }
+            let look = appearanceOverride ?? LoomTheme.Appearance(effectiveAppearance)
+            let color = LoomTheme.Text.primaryPair[look].cgColor
+            for dot in dots { dot.backgroundColor = color }
+        }
 
         func setAnimating(_ value: Bool) {
             wantsAnimation = value
@@ -140,6 +169,7 @@ struct ChaseDots: NSViewRepresentable {
         func configure(color: CGColor, trail: [Double], rest: Double) {
             self.trail = trail
             self.rest = rest
+            followsTheme = false
             for (index, dot) in dots.enumerated() {
                 dot.backgroundColor = color
                 dot.opacity = Float(ChaseDots.opacity(dot: index, step: 0, trail: trail, rest: rest))

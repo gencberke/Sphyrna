@@ -61,8 +61,8 @@ struct ComposerTextEditor: NSViewRepresentable {
         textView.allowsUndo = true
         textView.drawsBackground = false
         textView.font = NSFont.systemFont(ofSize: LoomTheme.TypeScale.readingSize)
-        textView.textColor = NSColor(LoomTheme.Text.primary)
-        textView.insertionPointColor = NSColor(LoomTheme.Text.primary)
+        textView.textColor = LoomTheme.Text.primaryPair.nsColor
+        textView.insertionPointColor = LoomTheme.Text.primaryPair.nsColor
         textView.textContainerInset = Self.inset
         textView.textContainer?.lineFragmentPadding = 0
         textView.isAutomaticQuoteSubstitutionEnabled = false

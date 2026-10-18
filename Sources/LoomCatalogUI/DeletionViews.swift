@@ -42,7 +42,6 @@ struct DeleteConversationSheet: View {
         }
         .padding(LoomTheme.Space.sheetPadding)
         .frame(width: LoomTheme.Layout.sheetWidth)
-        .preferredColorScheme(.dark)
         .tint(LoomTheme.Accent.base)
         .accessibilityIdentifier("delete-confirm-sheet")
     }

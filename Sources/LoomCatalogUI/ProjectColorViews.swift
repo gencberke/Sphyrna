@@ -37,19 +37,31 @@ extension View {
 /// hover and on the open tab, and on the open tab a stroke of the tone in place of the hairline.
 /// No tone, no tint: the tab keeps today's fill and stroke.
 struct ProjectTabStyle: Equatable {
+    /// The wash in Dark; `washColor` is what the tab draws (the tone's own value in each appearance).
     let wash: LoomTheme.Tone?
+    let washColor: Color?
     let stroke: LoomTheme.ContrastStyle?
 
     init(tone: ProjectTone?, selected: Bool, hovering: Bool) {
-        guard let tone else { wash = nil; stroke = nil; return }
+        guard let tone else { wash = nil; washColor = nil; stroke = nil; return }
         let rgb = LoomTheme.ProjectColor.baseRGB(tone)
         let opacity = selected ? LoomTheme.ProjectColor.tabWashOpen
             : (hovering ? LoomTheme.ProjectColor.tabWashHover : LoomTheme.ProjectColor.tabWash)
         wash = LoomTheme.Tone(rgb: rgb, opacity: opacity)
+        washColor = LoomTheme.ProjectColor.wash(tone, opacity: opacity).color
         stroke = selected ? LoomTheme.ContrastStyle(
             standard: LoomTheme.Tone(rgb: rgb, opacity: LoomTheme.ProjectColor.tabStrokeOpen),
             increased: LoomTheme.Tone(rgb: LoomTheme.ProjectColor.increasedRGB(tone),
-                                      opacity: LoomTheme.ProjectColor.tabStrokeOpenIncreased)) : nil
+                                      opacity: LoomTheme.ProjectColor.tabStrokeOpenIncreased),
+            lightStandard: LoomTheme.Tone(rgb: LoomTheme.ProjectColor.lightBaseRGB(tone),
+                                          opacity: LoomTheme.ProjectColor.tabStrokeOpen),
+            lightIncreased: LoomTheme.Tone(rgb: LoomTheme.ProjectColor.lightIncreasedRGB(tone),
+                                           opacity: LoomTheme.ProjectColor.tabStrokeOpenIncreased)) : nil
+    }
+
+    /// `washColor` is derived from the tone and the opacity, and a dynamic colour has no identity to compare.
+    static func == (lhs: ProjectTabStyle, rhs: ProjectTabStyle) -> Bool {
+        lhs.wash == rhs.wash && lhs.stroke == rhs.stroke
     }
 }
 
@@ -62,9 +74,11 @@ enum ProjectSwatch {
         if let cached = cache[tone] { return cached }
         let side = LoomTheme.ProjectColor.swatch
         let radius = LoomTheme.ProjectColor.swatchRadius
-        let rgb = tone.map(LoomTheme.ProjectColor.baseRGB) ?? LoomTheme.Text.tertiaryRGB
         let filled = tone != nil
         let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            // The handler runs for each draw, under the menu's appearance: a swatch in a light menu takes the Light tone.
+            let appearance = LoomTheme.Appearance(NSAppearance.currentDrawing())
+            let rgb = tone.map { LoomTheme.ProjectColor.baseRGB($0, appearance) } ?? LoomTheme.Text.tertiaryPair[appearance]
             let color = NSColor(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
             if filled {
                 color.setFill()

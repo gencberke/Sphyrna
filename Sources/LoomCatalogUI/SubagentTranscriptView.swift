@@ -106,7 +106,7 @@ struct TranscriptEntryRow: View {
             }
         case let .toolCall(name, argument):
             TranscriptRow(glyph: "⏺", glyphStyle: LoomTheme.Text.primary) {
-                Text("\(Text(verbatim: name).font(LoomTheme.Typography.transcriptStrong).foregroundStyle(LoomTheme.Text.primary))\(Text(verbatim: argument.isEmpty ? "" : "(\(argument))").foregroundStyle(LoomTheme.Text.secondaryIncreasedRGB.color))")
+                Text("\(Text(verbatim: name).font(LoomTheme.Typography.transcriptStrong).foregroundStyle(LoomTheme.Text.primary))\(Text(verbatim: argument.isEmpty ? "" : "(\(argument))").foregroundStyle(LoomTheme.Text.secondaryIncreased))")
                     .lineLimit(3)
             }
             .accessibilityElement(children: .combine)

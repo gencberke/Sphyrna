@@ -8,7 +8,8 @@ import SwiftUI
 /// Views use these tokens and no color literal, `.system(size:)` or literal
 /// corner radius of their own; `scripts/check-theme-literals.sh` enforces it for every file but `LoomTheme*.swift`.
 /// Terminal colors stay in `LoomTerminal.TerminalTheme` (that target sits
-/// below this one); `Surface.panel` reads from it.
+/// below this one); the terminal face's background is the dark tone's panel (`Surface.levels`).
+/// Colour tokens are appearance-aware (D-63): see `LoomTheme+Appearance.swift`.
 enum LoomTheme {
     /// A color kept as data so tests can compute contrast ratios; `color` is the
     /// SwiftUI value views use.
@@ -44,47 +45,65 @@ enum LoomTheme {
     // MARK: Color
 
     enum Surface {
-        static let sidebarRGB = RGB(red: 0.043, green: 0.055, blue: 0.086)
-        static let sidebar = sidebarRGB.color
+        /// The sidebar tone (a dark navy; in Light a warm sand), the colour behind the detail panel, and the tint over
+        /// the sidebar material.
+        static let sidebarPair = Adaptive(dark: RGB(red: 0.043, green: 0.055, blue: 0.086), light: RGB(hex: 0xEFE9DF))
+        static let sidebarRGB = sidebarPair.dark
+        static let sidebarLightRGB = sidebarPair.light
+        static let sidebar = sidebarPair.color
         /// The opaque color behind the detail panel (the sidebar tone).
         static let backdrop = sidebar
         /// The dark tone over the sidebar material: low enough that the glass reads (the user's
         /// choice after the Liquid Glass trial, 12 Oct 2026; 0.86 before looked matte).
         static let sidebarTintOpacity = 0.6
-        /// The panel and the terminal share one background (TerminalTheme is the source).
-        static let panelNS = TerminalTheme.background
-        static let panel = Color(nsColor: panelNS)
-        static var panelRGB: RGB {
-            let c = panelNS.usingColorSpace(.sRGB) ?? panelNS
-            return RGB(red: Double(c.redComponent), green: Double(c.greenComponent), blue: Double(c.blueComponent))
-        }
+        /// The panel of the current tone: the terminal's background in Dark, its light counterpart in Light
+        /// (the Chat face, Home, a project page, Settings). Reading it in a view body subscribes the view to the tone.
+        static var panelNS: NSColor { current.panelNS }
+        static var panel: Color { current.panel }
+        /// Today's panel (Night fleece, Dark), the default tone's terminal background.
+        static var panelRGB: RGB { terminalRGB }
 
-        // White overlays on the sidebar and the panel.
+        // Overlays on the sidebar and the panel: white in Dark, the warm ink in Light.
         static let hairlineOpacity = 0.08
         static let selectedOpacity = 0.07
         static let controlOpacity = 0.06
         static let controlHoverOpacity = 0.09
         static let controlPressedOpacity = 0.14
-        static let hairline = Color.white.opacity(hairlineOpacity)
-        static let selected = Color.white.opacity(selectedOpacity)
-        static let control = Color.white.opacity(controlOpacity)
+        /// The same fills in Light, where an ink overlay of the dark theme's opacity would read heavier.
+        static let hairlineLightOpacity = 0.10
+        static let selectedLightOpacity = 0.07
+        static let controlLightOpacity = 0.05
+        static let controlHoverLightOpacity = 0.08
+        static let controlPressedLightOpacity = 0.12
+        static let hairlineTone = overlay(dark: hairlineOpacity, light: hairlineLightOpacity)
+        static let selectedTone = overlay(dark: selectedOpacity, light: selectedLightOpacity)
+        static let controlTone = overlay(dark: controlOpacity, light: controlLightOpacity)
+        static let controlHoverTone = overlay(dark: controlHoverOpacity, light: controlHoverLightOpacity)
+        static let controlPressedTone = overlay(dark: controlPressedOpacity, light: controlPressedLightOpacity)
+        static let hairline = hairlineTone.color
+        static let selected = selectedTone.color
+        static let control = controlTone.color
         static let controlSelected = selected
-        static let controlHover = Color.white.opacity(controlHoverOpacity)
-        static let controlPressed = Color.white.opacity(controlPressedOpacity)
-        /// The footer usage chip's meter track: white at 10 %.
+        static let controlHover = controlHoverTone.color
+        static let controlPressed = controlPressedTone.color
+        /// The footer usage chip's meter track: white at 10 % (ink at 10 % in Light).
         static let chipMeterTrackOpacity = 0.10
-        static let chipMeterTrack = Color.white.opacity(chipMeterTrackOpacity)
+        static let chipMeterTrackTone = overlay(dark: chipMeterTrackOpacity, light: 0.10)
+        static let chipMeterTrack = chipMeterTrackTone.color
         static let focusRing = Accent.base
 
-        /// Hairlines and the selected stroke are white at 8 %; Increase Contrast raises them to 30 %.
+        /// Hairlines and the selected stroke are white at 8 %; Increase Contrast raises them to 30 % (ink at 45 % in Light).
         static let hairlineIncreasedOpacity = 0.30
+        static let hairlineIncreasedLightOpacity = 0.45
         static func hairlineOpacity(for contrast: ColorSchemeContrast) -> Double {
             contrast == .increased ? hairlineIncreasedOpacity : hairlineOpacity
         }
         /// The hairline as a style that resolves against the environment's contrast setting.
         static let hairlineStyle = ContrastStyle(
-            standard: Tone(rgb: RGB(red: 1, green: 1, blue: 1), opacity: hairlineOpacity),
-            increased: Tone(rgb: RGB(red: 1, green: 1, blue: 1), opacity: hairlineIncreasedOpacity))
+            standard: Tone(rgb: whiteRGB, opacity: hairlineOpacity),
+            increased: Tone(rgb: whiteRGB, opacity: hairlineIncreasedOpacity),
+            lightStandard: Tone(rgb: inkRGB, opacity: hairlineLightOpacity),
+            lightIncreased: Tone(rgb: inkRGB, opacity: hairlineIncreasedLightOpacity))
 
         /// One hourly cell of the five-hour activity block: the primary text tone at an
         /// intensity from `activityCellFloor` (no activity) to `activityCellCeiling` (the busiest hour).
@@ -96,30 +115,37 @@ enum LoomTheme {
     }
 
     enum Text {
-        static let primaryRGB = RGB(hex: 0xECE8F4)
-        static let secondaryRGB = RGB(hex: 0x9A9EB0)
-        static let primary = primaryRGB.color
-        static let secondary = secondaryRGB.color
+        static let primaryPair = Adaptive(dark: RGB(hex: 0xECE8F4), light: inkRGB)
+        static let secondaryPair = Adaptive(dark: RGB(hex: 0x9A9EB0), light: RGB(hex: 0x5E5853))
+        static let primaryRGB = primaryPair.dark
+        static let secondaryRGB = secondaryPair.dark
+        static let primary = primaryPair.color
+        static let secondary = secondaryPair.color
         /// Placeholders, disabled items and decoration only (2.4 to 3.4:1, below AA); not on a popover (`OnPopover`).
-        static let tertiaryRGB = RGB(hex: 0x636779)
-        static let tertiary = tertiaryRGB.color
+        static let tertiaryPair = Adaptive(dark: RGB(hex: 0x636779), light: RGB(hex: 0x8C857E))
+        static let tertiaryRGB = tertiaryPair.dark
+        static let tertiary = tertiaryPair.color
         /// Increase Contrast lifts secondary text toward primary (at least 7:1 on every surface).
-        static let secondaryIncreasedRGB = RGB(hex: 0xBCC0D0)
+        static let secondaryIncreasedPair = Adaptive(dark: RGB(hex: 0xBCC0D0), light: RGB(hex: 0x47423E))
+        static let secondaryIncreasedRGB = secondaryIncreasedPair.dark
+        static let secondaryIncreased = secondaryIncreasedPair.color
         static func secondaryRGB(for contrast: ColorSchemeContrast) -> RGB {
             contrast == .increased ? secondaryIncreasedRGB : secondaryRGB
         }
         /// Secondary text as a style that resolves against the environment's contrast setting.
         static let secondaryStyle = ContrastStyle(
-            standard: Tone(rgb: secondaryRGB, opacity: 1), increased: Tone(rgb: secondaryIncreasedRGB, opacity: 1))
+            standard: Tone(rgb: secondaryRGB, opacity: 1), increased: Tone(rgb: secondaryIncreasedRGB, opacity: 1),
+            lightStandard: Tone(rgb: secondaryPair.light, opacity: 1),
+            lightIncreased: Tone(rgb: secondaryIncreasedPair.light, opacity: 1))
         /// Secondary text and the close glyph on a tab washed with a project tone (at least 4.5:1 on a
         /// resting tab, 3:1 for the glyph on the open tab). Before Night Fleece 2 plain secondary fell
         /// short there and this was a lifted tone; the lifted secondary of Night Fleece 2 holds it, so the
         /// name stays for the call sites and the value is secondary.
-        static let secondaryOnTintRGB = secondaryRGB
-        static let secondaryOnTint = secondaryOnTintRGB.color
+        static let secondaryOnTintPair = secondaryPair
+        static let secondaryOnTintRGB = secondaryOnTintPair.dark
+        static let secondaryOnTint = secondaryOnTintPair.color
         /// `secondaryOnTint` as a style: Increase Contrast takes the lifted secondary of that tier.
-        static let secondaryOnTintStyle = ContrastStyle(
-            standard: Tone(rgb: secondaryOnTintRGB, opacity: 1), increased: Tone(rgb: secondaryIncreasedRGB, opacity: 1))
+        static let secondaryOnTintStyle = secondaryStyle
         /// Secondary text on a Usage card (the 6 % control tone over the panel): 5.4:1 in secondary.
         static let secondaryOnCardRGB = secondaryOnTintRGB
         static let secondaryOnCardStyle = secondaryOnTintStyle
@@ -127,23 +153,33 @@ enum LoomTheme {
 
     /// The one brand color (the fleece of the mark). Fills carry dark text, never light text.
     enum Accent {
-        static let baseRGB = RGB(hex: 0x8791CF)
-        static let base = baseRGB.color
-        /// Text and symbols on an accent fill (6.4:1; light text there is 2.2 to 3.0:1).
-        static let onAccentRGB = Surface.sidebarRGB
-        static let onAccent = onAccentRGB.color
+        /// In Light the accent is a deeper step of the same hue: the dark theme's periwinkle is 2.9:1 on a light panel.
+        static let basePair = Adaptive(dark: RGB(hex: 0x8791CF), light: RGB(hex: 0x4B56A8))
+        static let baseRGB = basePair.dark
+        static let base = basePair.color
+        /// Text and symbols on an accent fill (6.4:1; light text there is 2.2 to 3.0:1). In Light the fill is deep
+        /// and the text a warm paper white.
+        static let onAccentPair = Adaptive(dark: Surface.sidebarRGB, light: RGB(hex: 0xFBF8F2))
+        static let onAccentRGB = onAccentPair.dark
+        static let onAccent = onAccentPair.color
     }
 
     enum Status {
-        static let attentionRGB = RGB(hex: 0xFF9E0A)
-        static let unviewedRGB = RGB(hex: 0x5C8CFF)
-        static let failureRGB = RGB(hex: 0xF2615C)
-        static let attention = attentionRGB.color
-        static let unviewed = unviewedRGB.color
-        static let failure = failureRGB.color
+        /// The three status hues, deeper in Light (the dark theme's are 2.2 to 3.0:1 on a light panel).
+        static let attentionPair = Adaptive(dark: RGB(hex: 0xFF9E0A), light: RGB(hex: 0x974700))
+        static let unviewedPair = Adaptive(dark: RGB(hex: 0x5C8CFF), light: RGB(hex: 0x2557CC))
+        static let failurePair = Adaptive(dark: RGB(hex: 0xF2615C), light: RGB(hex: 0xB22722))
+        static let attentionRGB = attentionPair.dark
+        static let unviewedRGB = unviewedPair.dark
+        static let failureRGB = failurePair.dark
+        static let attention = attentionPair.color
+        static let unviewed = unviewedPair.color
+        static let failure = failurePair.color
         /// The working chase is drawn in the primary text color.
         static let working = Text.primary
-        static let workingNS = NSColor(Text.primary)
+        /// The chase's colour for layers, which cannot see the SwiftUI environment: a dynamic colour the layer's
+        /// owner resolves again in `viewDidChangeEffectiveAppearance`.
+        static let workingNS = Text.primaryPair.nsColor
         /// Fill opacity of a callout tinted with a status color.
         static let tintOpacity = 0.10
     }
@@ -177,6 +213,38 @@ enum LoomTheme {
             }
         }
 
+        /// The Light tones: the same six hues, deep enough to hold as a 3 pt stripe on the light sidebar (at least 3:1
+        /// on its worst case). Increase Contrast goes deeper still, where the dark theme goes lighter.
+        static func lightBaseRGB(_ tone: ProjectTone) -> RGB {
+            switch tone {
+            case .rose: RGB(hex: 0xB03F78)
+            case .orchid: RGB(hex: 0x8A42AC)
+            case .aqua: RGB(hex: 0x10747E)
+            case .mint: RGB(hex: 0x1A7A51)
+            case .sage: RGB(hex: 0x557A28)
+            case .lemon: RGB(hex: 0x6F7500)
+            }
+        }
+
+        static func lightIncreasedRGB(_ tone: ProjectTone) -> RGB {
+            switch tone {
+            case .rose: RGB(hex: 0x962A60)
+            case .orchid: RGB(hex: 0x742E94)
+            case .aqua: RGB(hex: 0x0A5C65)
+            case .mint: RGB(hex: 0x12603C)
+            case .sage: RGB(hex: 0x435F1D)
+            case .lemon: RGB(hex: 0x555A00)
+            }
+        }
+
+        static func baseRGB(_ tone: ProjectTone, _ appearance: Appearance) -> RGB {
+            appearance == .dark ? baseRGB(tone) : lightBaseRGB(tone)
+        }
+
+        static func increasedRGB(_ tone: ProjectTone, _ appearance: Appearance) -> RGB {
+            appearance == .dark ? increasedRGB(tone) : lightIncreasedRGB(tone)
+        }
+
         static func stripeRGB(_ tone: ProjectTone, for contrast: ColorSchemeContrast) -> RGB {
             contrast == .increased ? increasedRGB(tone) : baseRGB(tone)
         }
@@ -184,7 +252,15 @@ enum LoomTheme {
         /// The stripe colour as a style that resolves against the environment's contrast setting.
         static func stripe(_ tone: ProjectTone) -> ContrastStyle {
             ContrastStyle(standard: Tone(rgb: baseRGB(tone), opacity: 1),
-                          increased: Tone(rgb: increasedRGB(tone), opacity: 1))
+                          increased: Tone(rgb: increasedRGB(tone), opacity: 1),
+                          lightStandard: Tone(rgb: lightBaseRGB(tone), opacity: 1),
+                          lightIncreased: Tone(rgb: lightIncreasedRGB(tone), opacity: 1))
+        }
+
+        /// A wash of the tone, in the appearance's own tone value.
+        static func wash(_ tone: ProjectTone, opacity: Double) -> AdaptiveTone {
+            AdaptiveTone(dark: Tone(rgb: baseRGB(tone), opacity: opacity),
+                         light: Tone(rgb: lightBaseRGB(tone), opacity: opacity))
         }
 
         // The stripe: 3 pt, 4 pt under Increase Contrast. In the sidebar it sits in the list gutter,
@@ -235,6 +311,9 @@ enum LoomTheme {
         static let attentionLabelRGB = Status.attentionLightRGB
         static let failureLabelRGB = Status.failureLightRGB
         static let unviewedLabelRGB = Status.unviewedLightRGB
+        static let attentionLabelPair = Status.attentionLightPair
+        static let failureLabelPair = Status.failureLightPair
+        static let unviewedLabelPair = Status.unviewedLightPair
 
         // Project chip: the tone stripe (full height), the project name, a hairline, the branch.
         static let chipHeight: CGFloat = 22
@@ -251,14 +330,19 @@ enum LoomTheme {
         static let branchMaxWidth: CGFloat = 320
         /// The neutral chip (no project, None, colours off): a white wash.
         static let chipNeutralWash = 0.07
-        static let chipNeutral = Color.white.opacity(chipNeutralWash)
+        static let chipNeutralTone = overlay(dark: chipNeutralWash, light: 0.06)
+        static let chipNeutral = chipNeutralTone.color
 
         // The hairline before the control group, and the group.
         static let ruleHeight: CGFloat = 16
         static let ruleMargin: CGFloat = 2
         static let groupHeight: CGFloat = 24
         static let groupWash = 0.07
-        static let group = Color.white.opacity(groupWash)
+        static let groupTone = overlay(dark: groupWash, light: 0.06)
+        static let group = groupTone.color
+        /// The state pill's washes in Light: working and neutral are ink overlays, a status wash is its own hue.
+        static let pillWorkingLightWash = 0.07
+        static let pillNeutralLightWash = 0.05
         static let stopGlyph: CGFloat = 8
         static let stopGlyphRadius: CGFloat = 1.5
         static let stopPadding: CGFloat = 10
@@ -465,6 +549,8 @@ enum LoomTheme {
         static let aboutHeadTop: CGFloat = 28
         static let aboutHeadBottom: CGFloat = 24
         static let aboutHeadSpacing: CGFloat = 4
+        /// Settings → Theme: the gap between the main pane row's parts.
+        static let toneRowGap: CGFloat = 10
     }
 
     // MARK: Layout
@@ -700,11 +786,28 @@ enum LoomTheme {
     struct ContrastStyle: ShapeStyle, Equatable, Sendable {
         let standard: Tone
         let increased: Tone
+        /// The Light values; a style that gives none draws its dark values in both appearances.
+        let lightStandard: Tone
+        let lightIncreased: Tone
 
-        func tone(for contrast: ColorSchemeContrast) -> Tone { contrast == .increased ? increased : standard }
+        init(standard: Tone, increased: Tone, lightStandard: Tone? = nil, lightIncreased: Tone? = nil) {
+            self.standard = standard
+            self.increased = increased
+            self.lightStandard = lightStandard ?? standard
+            self.lightIncreased = lightIncreased ?? increased
+        }
+
+        func tone(for contrast: ColorSchemeContrast, appearance: Appearance = .dark) -> Tone {
+            switch (appearance, contrast) {
+            case (.dark, .increased): increased
+            case (.dark, _): standard
+            case (.light, .increased): lightIncreased
+            case (.light, _): lightStandard
+            }
+        }
 
         func resolve(in environment: EnvironmentValues) -> Color {
-            tone(for: environment.colorSchemeContrast).color
+            tone(for: environment.colorSchemeContrast, appearance: Appearance(environment.colorScheme)).color
         }
     }
 }

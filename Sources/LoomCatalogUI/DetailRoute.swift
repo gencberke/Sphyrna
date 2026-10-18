@@ -37,6 +37,17 @@ enum DetailRoute: Equatable {
         }
     }
 
+    /// Whether the panel is drawn under a dark colour scheme whatever the appearance is (D-63). Claude's and Codex's
+    /// terminal UIs choose their colours for a dark background and Loom never writes their configuration, so a live
+    /// terminal, the kept screen of one and the development terminal keep the dark look in the chosen dark tone. The
+    /// Chat face, the record, Home, a draft and a project page follow the appearance.
+    var drawsDark: Bool {
+        switch self {
+        case .devTerminal, .terminal, .endedScreen: true
+        case .startupError, .record, .chat, .home, .draft, .projectPage, .noSelection: false
+        }
+    }
+
     /// Whether the header shows the selected session. Home, a draft and a project page are not about a session.
     var showsSessionHeader: Bool {
         switch self {

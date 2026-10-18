@@ -59,12 +59,14 @@ extension LoomTheme {
         static let strokeOpacity = 0.35
         static let planStrokeOpacity = 0.38
         static let iconFillOpacity = 0.16
-        static let cardFill = Surface.card
-        static let codeFill = Color.black.opacity(0.25)
-        static let optionFill = Color.white.opacity(0.02)
+        /// The card's fill is a panel level, so it follows the tone: computed, never stored.
+        static var cardFill: Color { Surface.card }
+        static let codeFill = AdaptiveTone(dark: Tone(rgb: RGB(red: 0, green: 0, blue: 0), opacity: 0.25),
+                                           light: Tone(rgb: inkRGB, opacity: 0.06)).color
+        static let optionFill = overlay(dark: 0.02, light: 0.025).color
         static let optionSelectedFill = Accent.base.opacity(0.08)
         static let optionSelectedStroke = Accent.base.opacity(0.55)
-        static let focusFill = Color.white.opacity(Surface.controlHoverOpacity)
+        static let focusFill = Surface.controlHover
 
         // MARK: Type
 

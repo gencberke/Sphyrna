@@ -233,6 +233,7 @@ struct ShellSeamsTests {
         let host = NSHostingView(rootView: DetailView(model: model))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 600), styleMask: [.titled],
                               backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua)   // the tokens compared below are the Dark ones
         window.contentView = host
         host.frame = NSRect(x: 0, y: 0, width: 1000, height: 600)
         host.layoutSubtreeIfNeeded()

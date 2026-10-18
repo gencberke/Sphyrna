@@ -25,7 +25,6 @@ public struct SidebarView: View {
         }
         .background(SidebarBackground(reduceTransparency: reduceTransparency, style: model.sidebarStyle))
         .ignoresSafeArea(.container, edges: .top)
-        .preferredColorScheme(.dark)
         .tint(LoomTheme.Accent.base)
         // Indicators stand still while the window is inactive/hidden or the sidebar is collapsed.
         .environment(\.indicatorsAnimate, Self.indicatorsAnimate(model))

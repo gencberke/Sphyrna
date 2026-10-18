@@ -101,45 +101,68 @@ extension LoomTheme {
         static let userStroke = Accent.base.opacity(0.20)
         static let userRadius: CGFloat = 16
         static let userTailRadius: CGFloat = 5
-        static let hoverFill = Color.white.opacity(Surface.controlHoverOpacity)
-        static let inlineCodeFill = Color.white.opacity(0.07)
-        static let inlineCodeRGB = RGB(hex: 0xE3DFF0)
-        static let outputFill = Color.black.opacity(0.12)
-        static let outputRGB = RGB(hex: 0xB9B5C6)
-        static let output = outputRGB.color
+        static let hoverFill = Surface.controlHover
+        static let inlineCodeFill = overlay(dark: 0.07, light: 0.06).color
+        static let inlineCodePair = Adaptive(dark: RGB(hex: 0xE3DFF0), light: RGB(hex: 0x3B3550))
+        static let inlineCodeRGB = inlineCodePair.dark
+        static let inlineCode = inlineCodePair.color
+        /// The dim backing of a command's output: black at 12 % in Dark, ink at 5 % in Light.
+        static let outputFill = AdaptiveTone(dark: Tone(rgb: RGB(red: 0, green: 0, blue: 0), opacity: 0.12),
+                                             light: Tone(rgb: inkRGB, opacity: 0.05)).color
+        static let outputPair = Adaptive(dark: RGB(hex: 0xB9B5C6), light: RGB(hex: 0x5A5568))
+        static let outputRGB = outputPair.dark
+        static let output = outputPair.color
         static let diffAddFill = Success.base.opacity(0.11)
         static let diffRemoveFill = Status.failure.opacity(0.11)
         static let diffAdd = Success.light
         static let diffRemove = Status.failureLight
-        static let quoteBar = Color.white.opacity(0.18)
-        static let tableHeaderFill = Color.white.opacity(Surface.controlOpacity)
-        static let jumpFill = Surface.raised
-        static let foldFill = Color.white.opacity(0.02)
+        static let quoteBar = overlay(dark: 0.18, light: 0.20).color
+        static let tableHeaderFill = Surface.control
+        /// The jump pill and other fills that are a panel level follow the tone, so they are computed.
+        static var jumpFill: Color { Surface.raised }
+        static let foldFill = overlay(dark: 0.02, light: 0.025).color
         static let agentBadgeFill = Accent.base.opacity(0.16)
 
-        // MARK: Syntax (VS Code Dark+, the terminal's palette)
+        // MARK: Syntax (VS Code Dark+, the terminal's palette; Light+ for the light theme, a step deeper where
+        // a Light+ colour fell under 4.5:1 on a card)
 
-        static let syntaxPlainRGB = RGB(hex: 0xCFCBDA)
-        static let syntaxKeywordRGB = RGB(hex: 0xC586C0)
-        static let syntaxFunctionRGB = RGB(hex: 0xDCDCAA)
-        static let syntaxStringRGB = RGB(hex: 0xCE9178)
-        static let syntaxCommentRGB = RGB(hex: 0x6A9955)
-        static let syntaxTypeRGB = RGB(hex: 0x4EC9B0)
-        static let syntaxNumberRGB = RGB(hex: 0xB5CEA8)
-        static let syntaxPlain = syntaxPlainRGB.color
-        static let syntaxKeyword = syntaxKeywordRGB.color
-        static let syntaxFunction = syntaxFunctionRGB.color
-        static let syntaxString = syntaxStringRGB.color
-        static let syntaxComment = syntaxCommentRGB.color
-        static let syntaxType = syntaxTypeRGB.color
-        static let syntaxNumber = syntaxNumberRGB.color
+        static let syntaxPlainPair = Adaptive(dark: RGB(hex: 0xCFCBDA), light: RGB(hex: 0x3B3846))
+        static let syntaxKeywordPair = Adaptive(dark: RGB(hex: 0xC586C0), light: RGB(hex: 0x8F2D9A))
+        static let syntaxFunctionPair = Adaptive(dark: RGB(hex: 0xDCDCAA), light: RGB(hex: 0x6F5620))
+        static let syntaxStringPair = Adaptive(dark: RGB(hex: 0xCE9178), light: RGB(hex: 0x9C2B1E))
+        static let syntaxCommentPair = Adaptive(dark: RGB(hex: 0x6A9955), light: RGB(hex: 0x2F6A2A))
+        static let syntaxTypePair = Adaptive(dark: RGB(hex: 0x4EC9B0), light: RGB(hex: 0x176579))
+        static let syntaxNumberPair = Adaptive(dark: RGB(hex: 0xB5CEA8), light: RGB(hex: 0x0A7048))
+        static let syntaxPairs = [syntaxPlainPair, syntaxKeywordPair, syntaxFunctionPair, syntaxStringPair,
+                                  syntaxCommentPair, syntaxTypePair, syntaxNumberPair]
+        static let syntaxPlainRGB = syntaxPlainPair.dark
+        static let syntaxKeywordRGB = syntaxKeywordPair.dark
+        static let syntaxFunctionRGB = syntaxFunctionPair.dark
+        static let syntaxStringRGB = syntaxStringPair.dark
+        static let syntaxCommentRGB = syntaxCommentPair.dark
+        static let syntaxTypeRGB = syntaxTypePair.dark
+        static let syntaxNumberRGB = syntaxNumberPair.dark
+        static let syntaxPlain = syntaxPlainPair.color
+        static let syntaxKeyword = syntaxKeywordPair.color
+        static let syntaxFunction = syntaxFunctionPair.color
+        static let syntaxString = syntaxStringPair.color
+        static let syntaxComment = syntaxCommentPair.color
+        static let syntaxType = syntaxTypePair.color
+        static let syntaxNumber = syntaxNumberPair.color
 
-        // MARK: ANSI colours in command output (the 16 standard colours; black is lifted so it reads on the canvas)
+        // MARK: ANSI colours in command output (the 16 standard colours; black is lifted so it reads on the canvas;
+        // in Light every colour is deep enough to read on a card)
 
-        static let ansiStandard: [Color] = [0x666666, 0xCD3131, 0x0DBC79, 0xE5E510, 0x2472C8, 0xBC3FBC, 0x11A8CD, 0xE5E5E5]
-            .map { RGB(hex: $0).color }
-        static let ansiBright: [Color] = [0x666666, 0xF14C4C, 0x23D18B, 0xF5F543, 0x3B8EEA, 0xD670D6, 0x29B8DB, 0xFFFFFF]
-            .map { RGB(hex: $0).color }
+        static let ansiStandardPairs: [Adaptive] = [
+            (0x666666, 0x3A3A3A), (0xCD3131, 0xB8281F), (0x0DBC79, 0x0E6F39), (0xE5E510, 0x7A5F00),
+            (0x2472C8, 0x1F5FBF), (0xBC3FBC, 0x8A3290), (0x11A8CD, 0x095F70), (0xE5E5E5, 0x5E5E66),
+        ].map { Adaptive(dark: RGB(hex: $0.0), light: RGB(hex: $0.1)) }
+        static let ansiBrightPairs: [Adaptive] = [
+            (0x666666, 0x5A5A5A), (0xF14C4C, 0xB5251C), (0x23D18B, 0x0B6B35), (0xF5F543, 0x6C5400),
+            (0x3B8EEA, 0x1A55B3), (0xD670D6, 0x8F2F95), (0x29B8DB, 0x0A6577), (0xFFFFFF, 0x4E4E57),
+        ].map { Adaptive(dark: RGB(hex: $0.0), light: RGB(hex: $0.1)) }
+        static let ansiStandard: [Color] = ansiStandardPairs.map(\.color)
+        static let ansiBright: [Color] = ansiBrightPairs.map(\.color)
 
         // MARK: Small shapes
 

@@ -43,7 +43,7 @@ public enum CatalogViewMode: String, Codable, Sendable, CaseIterable {
     case projects
 }
 
-/// Settings → General → Sidebar (D-57). Glass is the behind-window material under the dark tone at 0.6
+/// Settings → Theme → Sidebar (D-57; General until D-63). Glass is the behind-window material under the dark tone at 0.6
 /// (D-44); Solid is the same tone, opaque. Reduce Transparency draws Solid whatever this says.
 public enum SidebarStyle: String, Codable, Sendable, CaseIterable {
     case glass
@@ -54,6 +54,52 @@ public enum SidebarStyle: String, Codable, Sendable, CaseIterable {
         switch self {
         case .glass: "Glass"
         case .solid: "Solid"
+        }
+    }
+}
+
+/// Settings → Theme → Appearance (D-63). Dark is the default, so a file written before the setting existed
+/// looks as it did; Match system follows macOS live. The terminal face stays dark whatever this says.
+public enum AppearanceSetting: String, Codable, Sendable, CaseIterable {
+    case dark
+    case light
+    case system
+
+    /// The label in Settings.
+    public var title: String {
+        switch self {
+        case .dark: "Dark"
+        case .light: "Light"
+        case .system: "Match system"
+        }
+    }
+}
+
+/// Settings → Theme → Main pane (D-63): the tone of the session's main pane, where the terminal and the
+/// Chat face are drawn. The three panel colours of the identity directions A, B and C (design/identity-preview.html).
+public enum PaneTone: String, Codable, Sendable, CaseIterable {
+    /// Direction A, today's panel `#1D1C22`.
+    case nightFleece
+    /// Direction B, a warmer panel `#1E1C1A`.
+    case workshop
+    /// Direction C, a deeper panel `#16171B`.
+    case instrument
+
+    /// The label in Settings.
+    public var title: String {
+        switch self {
+        case .nightFleece: "Night fleece"
+        case .workshop: "Workshop"
+        case .instrument: "Instrument"
+        }
+    }
+
+    /// The line under the label.
+    public var detail: String {
+        switch self {
+        case .nightFleece: "Violet grey, as Loom has always looked."
+        case .workshop: "Warmer, with a brown cast."
+        case .instrument: "Deeper, with a blue cast."
         }
     }
 }
@@ -109,6 +155,10 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// Settings → General → New sessions start in (V19). A new Claude session opens in this face; sessions that
     /// already ran keep the face that owns them. A file written before the setting existed reads as Chat.
     public var newSessionFace: SessionFace
+    /// Settings → Theme → Appearance (D-63). A file written before the setting existed reads as Dark.
+    public var appearance: AppearanceSetting
+    /// Settings → Theme → Main pane (D-63). A file written before the setting existed reads as Night fleece.
+    public var paneTone: PaneTone
 
     /// The selected session, as every caller before destinations knew it; setting it sets the destination.
     /// The key is still written when the destination is a session, so an older build reads it too.
@@ -126,7 +176,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
                 openTabs: [UUID] = [], windowFrame: WindowFrame? = nil, projectColors: Bool = true,
                 showInMenuBar: Bool = true, notifyApprovals: Bool = true, sidebarStyle: SidebarStyle = .glass,
                 launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = [],
-                searchSessionText: Bool = true, newSessionFace: SessionFace = .chat) {
+                searchSessionText: Bool = true, newSessionFace: SessionFace = .chat,
+                appearance: AppearanceSetting = .dark, paneTone: PaneTone = .nightFleece) {
         self.viewMode = viewMode
         self.destination = destination ?? selectedSessionID.map(Destination.session)
         self.sidebarWidth = Self.clamped(sidebarWidth)
@@ -142,6 +193,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         self.inspectorOpen = Self.normalizedInspectors(inspectorOpen)
         self.searchSessionText = searchSessionText
         self.newSessionFace = newSessionFace
+        self.appearance = appearance
+        self.paneTone = paneTone
     }
 
     public init(from decoder: any Decoder) throws {
@@ -169,14 +222,16 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             inspectorOpen: ((try? container.decodeIfPresent([Lossy<UUID>].self, forKey: .inspectorOpen)) ?? nil)?
                 .compactMap(\.value) ?? [],
             searchSessionText: (try? container.decodeIfPresent(Bool.self, forKey: .searchSessionText)) ?? true,
-            newSessionFace: (try? container.decodeIfPresent(SessionFace.self, forKey: .newSessionFace)) ?? .chat
+            newSessionFace: (try? container.decodeIfPresent(SessionFace.self, forKey: .newSessionFace)) ?? .chat,
+            appearance: (try? container.decodeIfPresent(AppearanceSetting.self, forKey: .appearance)) ?? .dark,
+            paneTone: (try? container.decodeIfPresent(PaneTone.self, forKey: .paneTone)) ?? .nightFleece
         )
     }
 
     private enum CodingKeys: String, CodingKey {
         case viewMode, selectedSessionID, destination, sidebarWidth, sidebarCollapsed, terminalFontSize, openTabs
         case windowFrame, projectColors, showInMenuBar, notifyApprovals, sidebarStyle, launchView, inspectorOpen
-        case searchSessionText, newSessionFace
+        case searchSessionText, newSessionFace, appearance, paneTone
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -197,6 +252,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         try container.encode(inspectorOpen, forKey: .inspectorOpen)
         try container.encode(searchSessionText, forKey: .searchSessionText)
         try container.encode(newSessionFace, forKey: .newSessionFace)
+        try container.encode(appearance, forKey: .appearance)
+        try container.encode(paneTone, forKey: .paneTone)
     }
 
     private struct Lossy<Value: Decodable>: Decodable {

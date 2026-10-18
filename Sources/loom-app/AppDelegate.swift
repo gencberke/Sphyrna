@@ -70,8 +70,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         self.options = LaunchOptions(arguments: arguments)
     }
 
+    /// Applies Settings → Theme → Appearance to the app (the windows, the alerts and the panels follow it; Match
+    /// system is no appearance of its own) and the tone to the live terminals and the Settings window.
+    func applyTheme() {
+        guard let model else { return }
+        switch model.appearance {
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .system: NSApp.appearance = nil
+        }
+        conversations?.applyTerminalTheme()
+        settingsController?.window?.backgroundColor = model.themePanelBackground
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // The app is dark-only: alerts, open panels and other AppKit panels follow this, not the system.
+        // Dark until the stored Appearance is read (`applyTheme`): the question about a damaged catalog comes before the
+        // model exists. Alerts, open panels and other AppKit panels follow `NSApp.appearance`.
         NSApp.appearance = NSAppearance(named: .darkAqua)
         // One window by design: no tab bar, no "Show Tab Bar"/"Merge All Windows" items.
         NSWindow.allowsAutomaticWindowTabbing = false
@@ -117,6 +131,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         configureEvidenceAtLaunch(model: model)
         self.model = model
         model.onShowSettings = { [weak self] section in self?.showSettings(section: section) }
+        // Settings → Theme (D-63): the appearance and the main pane's tone, applied here to what SwiftUI does not reach.
+        model.onThemeChange = { [weak self] in self?.applyTheme() }
+        model.installTheme()
         installUsage(model: model, root: root, refused: refusal != nil)
         model.onTerminalFontSizeChange = { [weak self] size in
             self?.conversations?.setTerminalFontSize(size)
@@ -271,7 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // The frame is this app's own preference (below). AppKit's saved window state is keyed by
         // bundle identifier only, so it would carry one data root's frame into another.
         window.isRestorable = false
-        window.appearance = NSAppearance(named: .darkAqua)
+        // No appearance of its own: the window follows `NSApp.appearance` (Settings → Theme → Appearance).
         window.isOpaque = false
         window.backgroundColor = .clear
         window.delegate = self

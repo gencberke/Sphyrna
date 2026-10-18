@@ -1,5 +1,6 @@
 import AppKit
 import SwiftTerm
+import Synchronization
 
 /// An sRGB colour as a plain value, so a kept screen holds no AppKit object.
 public struct TerminalRGB: Sendable, Hashable {
@@ -33,10 +34,21 @@ public struct TerminalRGB: Sendable, Hashable {
 /// Loom installs the VS Code dark terminal palette and the standard xterm
 /// cube and gray ramp, all in sRGB.
 public enum TerminalTheme {
-    public static let backgroundRGB = TerminalRGB(red: 29, green: 28, blue: 34)
+    /// Night fleece, direction A's panel `#1D1C22` and the default tone (D-63).
+    public static let defaultBackgroundRGB = TerminalRGB(red: 29, green: 28, blue: 34)
     public static let foregroundRGB = TerminalRGB(red: 232, green: 230, blue: 238)
-    public static let background = backgroundRGB.nsColor
     public static let foreground = foregroundRGB.nsColor
+
+    /// The terminal face is dark in both appearances (D-63): the chosen dark tone's panel is its background.
+    /// Settings → Theme → Main pane changes it (`setBackground`), and the app applies it to the live
+    /// terminals (`TerminalSurface.applyTheme`). Read on the engine's feeding thread too, hence the lock.
+    private static let currentBackground = Mutex(defaultBackgroundRGB)
+    public static var backgroundRGB: TerminalRGB { currentBackground.withLock { $0 } }
+    public static var background: NSColor { backgroundRGB.nsColor }
+
+    public static func setBackground(_ rgb: TerminalRGB) {
+        currentBackground.withLock { $0 = rgb }
+    }
 
     /// ANSI 0-7 then bright 8-15.
     private static let base16: [TerminalRGB] = [

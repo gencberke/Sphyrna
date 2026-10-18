@@ -50,7 +50,9 @@ struct MotionAccessibilityTests {
             let value = rgb.color.opacity(opacity).resolve(in: environment)
             return [value.red, value.green, value.blue, value.opacity]
         }
+        // The default environment is Light; these are the Dark values.
         var environment = EnvironmentValues()
+        environment.colorScheme = .dark
         #expect(resolved(LoomTheme.Text.secondaryStyle, environment) == expected(LoomTheme.Text.secondaryRGB, 1, environment))
         #expect(resolved(LoomTheme.Surface.hairlineStyle, environment) == expected(RGB(red: 1, green: 1, blue: 1), 0.08, environment))
         environment._colorSchemeContrast = .increased

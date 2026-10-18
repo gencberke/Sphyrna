@@ -3,7 +3,7 @@ import LoomCatalogUI
 import LoomTerminal
 import SwiftUI
 
-/// The one Settings window: dark, a fixed 680×520, reused by Cmd+, the gear and the usage chip.
+/// The one Settings window: a fixed 680×520, reused by Cmd+, the gear and the usage chip.
 /// The title bar is transparent so the section switcher sits on the same 26 pt centerline as the
 /// main window's controls; the window is built on first use and only hidden when closed.
 @MainActor
@@ -49,8 +49,8 @@ final class SettingsWindowController {
         window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
-        window.appearance = NSAppearance(named: .darkAqua)
-        window.backgroundColor = TerminalTheme.background
+        // The window follows the app's appearance (Settings → Theme); its background is the main pane's panel.
+        window.backgroundColor = model.themePanelBackground
         for kind in [NSWindow.ButtonType.miniaturizeButton, .zoomButton] {
             window.standardWindowButton(kind)?.isHidden = true
         }

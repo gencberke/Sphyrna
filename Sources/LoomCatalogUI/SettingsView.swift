@@ -2,12 +2,13 @@ import AppKit
 import SwiftUI
 
 public enum SettingsSection: CaseIterable, Identifiable, Hashable, Sendable {
-    case general, usage, about, conversations
+    case general, theme, usage, about, conversations
 
     public var id: Self { self }
     public var title: String {
         switch self {
         case .general: "General"
+        case .theme: "Theme"
         case .usage: "Usage"
         case .about: "About"
         case .conversations: "Sessions"
@@ -48,7 +49,7 @@ public struct SettingsAbout: Equatable, Sendable {
     }
 }
 
-/// The Settings window's content: a top section switcher over General, Usage and About (and Conversations where offered), one fixed
+/// The Settings window's content: a top section switcher over General, Theme, Usage and About (and Conversations where offered), one fixed
 /// size for all (DESIGN §6; the window controller forces dark and sets the size).
 public struct SettingsView: View {
     let model: CatalogModel
@@ -79,6 +80,7 @@ public struct SettingsView: View {
             .frame(height: LoomTheme.Layout.settingsTopHeight)
             switch navigation.section {
             case .general: GeneralSettings(model: model)
+            case .theme: ThemeSettings(model: model)
             case .usage: UsageSettings(usage: usage, profile: about.claudeProfile)
             case .about: AboutSettings(about: about, diagnostics: diagnostics)
             case .conversations:
@@ -91,7 +93,6 @@ public struct SettingsView: View {
         .foregroundStyle(LoomTheme.Text.primary)
         .font(LoomTheme.Typography.body)
         .ignoresSafeArea()
-        .preferredColorScheme(.dark)
         .tint(LoomTheme.Accent.base)
     }
 }
@@ -121,15 +122,6 @@ struct GeneralSettings: View {
                     .accessibilityLabel("Terminal font size")
                 }
                 SettingsRowDivider()
-                SettingsRow(title: "Project colors",
-                            detail: "Give each project a color in the sidebar, the tab strip and the session header. Off shows Loom as before.") {
-                    Toggle("Project colors", isOn: Binding(
-                        get: { model.projectColorsEnabled }, set: { model.setProjectColors($0) }
-                    ))
-                    .labelsHidden().toggleStyle(.switch)
-                    .accessibilityLabel("Project colors")
-                }
-                SettingsRowDivider()
                 SettingsRow(title: "Search session text",
                             detail: "Let the command palette look inside your sessions. It reads Claude's transcript files only while you type, and keeps nothing. Off, it searches titles, projects and actions.") {
                     Toggle("Search session text", isOn: Binding(
@@ -137,13 +129,6 @@ struct GeneralSettings: View {
                     ))
                     .labelsHidden().toggleStyle(.switch)
                     .accessibilityLabel("Search session text")
-                }
-                SettingsRowDivider()
-                SettingsRow(title: "Sidebar",
-                            detail: "Glass lets the desktop show through softly. Solid is opaque. Reduce Transparency in System Settings always shows Solid.") {
-                    SegmentedControl(values: SidebarStyle.allCases, title: \.title, selection: model.sidebarStyle,
-                                     compact: true, onSelect: { model.setSidebarStyle($0) })
-                        .accessibilityLabel("Sidebar")
                 }
             }
             SystemSettingsCard(model: model, integration: model.integration)

@@ -4,6 +4,7 @@ import SwiftUI
 
 public struct DetailView: View {
     @Bindable var model: CatalogModel
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(model: CatalogModel) { self.model = model }
 
@@ -27,10 +28,12 @@ public struct DetailView: View {
         .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).fill(route.surface))
         .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).stroke(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
         .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel))
+        // The terminal face is dark in both appearances (D-63): the whole panel, header and inspector included,
+        // is drawn under a dark scheme; the sidebar, the backdrop and every other page follow the appearance.
+        .environment(\.colorScheme, route.drawsDark ? .dark : colorScheme)
         .padding(LoomTheme.Space.panelInset)
         .ignoresSafeArea(.container, edges: .top)
         .background(LoomTheme.Surface.backdrop.ignoresSafeArea())
-        .preferredColorScheme(.dark)
         .tint(LoomTheme.Accent.base)
         .environment(\.indicatorsAnimate, model.windowIsActive)
         .sheet(item: $model.renameDraft) { draft in
@@ -571,7 +574,6 @@ struct RenameSheet: View {
         }
         .padding(LoomTheme.Space.sheetPadding)
         .frame(width: LoomTheme.Layout.sheetWidth)
-        .preferredColorScheme(.dark)
         .tint(LoomTheme.Accent.base)
     }
 

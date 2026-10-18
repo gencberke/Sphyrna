@@ -12,6 +12,8 @@ import LoomCore
 ///   same model calls the section's buttons make; no-ops where the review is not installed).
 /// - `pin:<id>`, `unpin:<id>`: the card menu's Pin / Unpin.
 /// - `mark-read:<id>`: the card menu's Mark as Read.
+/// - `appearance:<dark|light|system>`, `tone:<nightFleece|workshop|instrument>`: Settings → Theme (D-63), the same calls
+///   the segmented control and the tone tiles make; the snapshot reports `appearance`, `effectiveAppearance`, `paneTone`.
 /// - `usage-select:<24h|7d|30d|90d>`: the period control.
 /// - `usage-refresh[:<label>]`: refreshes now and writes `ack-usage-refresh-<label>.json` when done.
 @MainActor
@@ -21,6 +23,12 @@ extension DevelopmentEvidence {
         guard let app else { return false }
         let label = argument.filter { $0.isLetter || $0.isNumber || $0 == "-" }
         switch name {
+        case "appearance":
+            if let setting = AppearanceSetting(rawValue: argument) { app.model?.setAppearance(setting) }
+        case "tone":
+            if let tone = PaneTone.allCases.first(where: { $0.rawValue.lowercased() == argument.lowercased() }) {
+                app.model?.setPaneTone(tone)
+            }
         case "open-settings":
             let sections = Dictionary(uniqueKeysWithValues: SettingsSection.allCases.map { ($0.title.lowercased(), $0) })
             app.showSettings(section: sections[argument])

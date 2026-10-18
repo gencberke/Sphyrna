@@ -309,6 +309,14 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
         NSWorkspace.shared.open(url)
     }
 
+    /// Settings → Theme → Main pane: the new background, drawn at once (installing the palette again clears the
+    /// renderer's colour cache and redraws every cell).
+    public func applyTheme() {
+        view.nativeBackgroundColor = TerminalTheme.background
+        view.nativeForegroundColor = TerminalTheme.foreground
+        view.installColors(TerminalTheme.ansi)
+    }
+
     public func setFontSize(_ size: Double) {
         view.font = Self.font(size: size.isFinite ? size : 14)
     }

@@ -60,5 +60,12 @@ extension LoomTheme {
         static let card = Depth(topHighlight: 0.03, shadow: ShadowLayer(opacity: 0.25, blur: 2, y: 1), ring: 0)
         static let raised = Depth(topHighlight: 0, shadow: ShadowLayer(opacity: 0.32, blur: 28, y: 10), ring: 0)
         static let popover = Depth(topHighlight: 0, shadow: ShadowLayer(opacity: 0.55, blur: 64, y: 24), ring: 0.08)
+
+        /// A shadow's colour: black at the layer's opacity in Dark, the warm ink at 45 % of it in Light, where the same
+        /// black would read as a stain on paper.
+        static func shadowColor(_ opacity: Double) -> Color {
+            AdaptiveTone(dark: Tone(rgb: RGB(red: 0, green: 0, blue: 0), opacity: opacity),
+                         light: Tone(rgb: inkRGB, opacity: opacity * 0.45)).color
+        }
     }
 }

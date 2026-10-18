@@ -168,8 +168,8 @@ struct ConversationTabItem: View {
                 RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
                     .fill(selected ? LoomTheme.Surface.selected
                           : (hovering && tint.wash == nil ? LoomTheme.Surface.controlHover : .clear))
-                if let wash = tint.wash {
-                    RoundedRectangle(cornerRadius: LoomTheme.Radius.control).fill(wash.color)
+                if let wash = tint.washColor {
+                    RoundedRectangle(cornerRadius: LoomTheme.Radius.control).fill(wash)
                 }
             }
         }

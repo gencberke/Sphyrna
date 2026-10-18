@@ -16,6 +16,10 @@ struct EndedScreenView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: EndedScreenContainerView, context: Context) {
+        // The kept screen is dark in both appearances; a change of the main pane's tone repaints its background
+        // (reading the tone here subscribes this update to it).
+        _ = LoomTheme.ThemeState.shared.tone
+        view.applyTheme()
         view.show(snapshot, fontSize: fontSize)
     }
 }
@@ -28,8 +32,15 @@ final class EndedScreenContainerView: NSView {
     /// Set by `show` until the area has a size: the screen then opens at its bottom row, first column.
     private var opensAtBottom = false
 
+    /// The terminal face is dark whatever the window's appearance is, scrollers included.
+    func applyTheme() {
+        scrollView.backgroundColor = TerminalTheme.background
+        textView.backgroundColor = TerminalTheme.background
+    }
+
     init() {
         super.init(frame: .zero)
+        appearance = NSAppearance(named: .darkAqua)
         scrollView.drawsBackground = true
         scrollView.backgroundColor = TerminalTheme.background
         scrollView.hasVerticalScroller = true

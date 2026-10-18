@@ -14,6 +14,8 @@ struct StatePillStyle: Equatable {
     let label: String
     let text: LoomTheme.ContrastStyle
     let wash: LoomTheme.Tone
+    /// The wash in Light, where the neutral washes are ink and a status wash is the hue's Light step.
+    let lightWash: LoomTheme.Tone
     /// Whether the indicator has anything to draw (Ready, Idle and Stale draw none): without a mark the
     /// label sits between two equal insets instead of after an empty slot.
     let showsIndicator: Bool
@@ -25,25 +27,31 @@ struct StatePillStyle: Equatable {
         guard let label = override ?? indicator.label else { return nil }
         self.label = label
         showsIndicator = ![.ready, .idle, .stale].contains(indicator)
-        func tone(_ rgb: LoomTheme.RGB) -> LoomTheme.ContrastStyle {
-            LoomTheme.ContrastStyle(standard: LoomTheme.Tone(rgb: rgb, opacity: 1), increased: LoomTheme.Tone(rgb: rgb, opacity: 1))
+        func tone(_ pair: LoomTheme.Adaptive) -> LoomTheme.ContrastStyle {
+            LoomTheme.ContrastStyle(
+                standard: LoomTheme.Tone(rgb: pair.dark, opacity: 1), increased: LoomTheme.Tone(rgb: pair.dark, opacity: 1),
+                lightStandard: LoomTheme.Tone(rgb: pair.light, opacity: 1), lightIncreased: LoomTheme.Tone(rgb: pair.light, opacity: 1))
         }
-        func status(_ rgb: LoomTheme.RGB, label lighter: LoomTheme.RGB) -> (LoomTheme.ContrastStyle, LoomTheme.Tone) {
-            (tone(lighter), LoomTheme.Tone(rgb: rgb, opacity: LoomTheme.Header.pillStatusWash))
+        func status(_ hue: LoomTheme.Adaptive, label lighter: LoomTheme.Adaptive)
+            -> (LoomTheme.ContrastStyle, LoomTheme.Tone, LoomTheme.Tone) {
+            (tone(lighter), LoomTheme.Tone(rgb: hue.dark, opacity: LoomTheme.Header.pillStatusWash),
+             LoomTheme.Tone(rgb: hue.light, opacity: LoomTheme.Header.pillStatusWash))
         }
         switch indicator {
         case .working:
-            text = tone(LoomTheme.Text.primaryRGB)
+            text = tone(LoomTheme.Text.primaryPair)
             wash = LoomTheme.Tone(rgb: Self.white, opacity: LoomTheme.Header.pillWorkingWash)
+            lightWash = LoomTheme.Tone(rgb: LoomTheme.inkRGB, opacity: LoomTheme.Header.pillWorkingLightWash)
         case .ready, .idle, .stale, .unknown, .ended:
             text = LoomTheme.Text.secondaryOnTintStyle
             wash = LoomTheme.Tone(rgb: Self.white, opacity: LoomTheme.Header.pillNeutralWash)
+            lightWash = LoomTheme.Tone(rgb: LoomTheme.inkRGB, opacity: LoomTheme.Header.pillNeutralLightWash)
         case .waitingForApproval, .waitingForInput, .identityUnclear:
-            (text, wash) = status(LoomTheme.Status.attentionRGB, label: LoomTheme.Header.attentionLabelRGB)
+            (text, wash, lightWash) = status(LoomTheme.Status.attentionPair, label: LoomTheme.Header.attentionLabelPair)
         case .failed, .stopUnverified, .problem:
-            (text, wash) = status(LoomTheme.Status.failureRGB, label: LoomTheme.Header.failureLabelRGB)
+            (text, wash, lightWash) = status(LoomTheme.Status.failurePair, label: LoomTheme.Header.failureLabelPair)
         case .unviewedCompletion:
-            (text, wash) = status(LoomTheme.Status.unviewedRGB, label: LoomTheme.Header.unviewedLabelRGB)
+            (text, wash, lightWash) = status(LoomTheme.Status.unviewedPair, label: LoomTheme.Header.unviewedLabelPair)
         }
     }
 }
@@ -62,7 +70,7 @@ struct StatePill: View {
         .padding(.leading, style.showsIndicator ? LoomTheme.Header.pillLeading : LoomTheme.Header.pillTrailing)
         .padding(.trailing, LoomTheme.Header.pillTrailing)
         .frame(height: LoomTheme.Header.pillHeight)
-        .background(Capsule().fill(style.wash.color))
+        .background(Capsule().fill(LoomTheme.AdaptiveTone(dark: style.wash, light: style.lightWash).color))
         .fixedSize()
         .accessibilityElement(children: .combine)
     }
@@ -129,7 +137,7 @@ struct ProjectBranchChip: View {
     }
 
     private var wash: Color {
-        chip.tone.map { LoomTheme.Tone(rgb: LoomTheme.ProjectColor.baseRGB($0), opacity: LoomTheme.ProjectColor.tabWash).color }
+        chip.tone.map { LoomTheme.ProjectColor.wash($0, opacity: LoomTheme.ProjectColor.tabWash).color }
             ?? LoomTheme.Header.chipNeutral
     }
 

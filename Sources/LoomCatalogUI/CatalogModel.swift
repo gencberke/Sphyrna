@@ -258,10 +258,13 @@ public final class CatalogModel {
     public private(set) var notifyApprovals: Bool
     /// Settings → General → Search session text: whether the command palette may read transcripts (default on).
     public private(set) var searchesSessionText: Bool
-    /// Settings → General → Sidebar: Glass or Solid (D-57).
+    /// Settings → Theme → Sidebar: Glass or Solid (D-57).
     public private(set) var sidebarStyle: SidebarStyle
     /// Settings → General → New sessions start in (V19): the face a new Claude session opens in. Chat by default.
     public private(set) var newSessionFace: SessionFace
+    /// Settings → Theme → Appearance and Main pane (D-63). The app applies them through `onThemeChange`.
+    public private(set) var appearance: AppearanceSetting
+    public private(set) var paneTone: PaneTone
     /// What the window opened on. Read once at launch: `home` opens Home, `lastSession` restores the saved destination.
     public let launchView: LaunchView
     public private(set) var sessionCounts: [UUID?: Int] = [:]
@@ -392,6 +395,9 @@ public final class CatalogModel {
     /// The Show in menu bar and Notify switches in Settings changed; the app reads `showInMenuBar` and `notifyApprovals`.
     @ObservationIgnored public var onShowInMenuBarChange: (@MainActor () -> Void)?
     @ObservationIgnored public var onNotifyApprovalsChange: (@MainActor () -> Void)?
+    /// The Appearance or Main pane setting changed (or `installTheme()` ran): the app reads `appearance` and `paneTone` and
+    /// applies them to what SwiftUI does not reach (the app's appearance, the live terminals, the Settings window).
+    @ObservationIgnored public var onThemeChange: (@MainActor () -> Void)?
     /// What the system says about notifications and the login item, and the calls Settings makes (the app installs them).
     public let integration = SystemIntegration()
     /// The sidebar scrolls to this session (selection changed by something other than a click in the list).
@@ -468,6 +474,8 @@ public final class CatalogModel {
         searchesSessionText = preferences.current.searchSessionText
         sidebarStyle = preferences.current.sidebarStyle
         newSessionFace = preferences.current.newSessionFace
+        appearance = preferences.current.appearance
+        paneTone = preferences.current.paneTone
         inspector = InspectorState(open: preferences.current.inspectorOpen)
         tabs = ConversationTabs(pinned: preferences.current.openTabs)
         today = Calendar.current.startOfDay(for: now)
@@ -1293,6 +1301,35 @@ public final class CatalogModel {
         newSessionFace = face
         persist { $0.newSessionFace = face }
     }
+
+    /// Settings → Theme → Appearance (D-63). Applies at once and is kept.
+    public func setAppearance(_ setting: AppearanceSetting) {
+        guard setting != appearance else { return }
+        appearance = setting
+        persist { $0.appearance = setting }
+        onThemeChange?()
+    }
+
+    /// Settings → Theme → Main pane (D-63). Applies at once and is kept: the tone is the terminal's background (the
+    /// dark tone's panel) and the panel family every view draws.
+    public func setPaneTone(_ tone: PaneTone) {
+        guard tone != paneTone else { return }
+        paneTone = tone
+        persist { $0.paneTone = tone }
+        installTheme()
+    }
+
+    /// Puts the stored tone to work: the observable tone the views read, the terminal engine's background. The
+    /// app calls it once at launch (a model made by a test touches no global), and it follows every change of tone.
+    public func installTheme() {
+        LoomTheme.ThemeState.shared.tone = paneTone
+        let panel = LoomTheme.Surface.levels(.dark, tone: paneTone).panel.bytes
+        TerminalTheme.setBackground(TerminalRGB(red: UInt8(panel.0), green: UInt8(panel.1), blue: UInt8(panel.2)))
+        onThemeChange?()
+    }
+
+    /// The main pane's panel as a dynamic colour (the Settings window's background).
+    public var themePanelBackground: NSColor { LoomTheme.Surface.panelNS }
 
     /// Opens or closes the inspector of a session (remembered per session).
     public func setInspectorOpen(_ open: Bool, for id: UUID) {

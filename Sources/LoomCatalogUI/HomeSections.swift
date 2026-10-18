@@ -13,7 +13,7 @@ struct HomeCard<Content: View>: View {
             .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.block).fill(LoomTheme.Surface.card))
             .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.block)
                 .strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
-            .shadow(color: .black.opacity(LoomTheme.Depth.card.shadow.opacity),
+            .shadow(color: LoomTheme.Depth.shadowColor(LoomTheme.Depth.card.shadow.opacity),
                     radius: LoomTheme.Depth.card.shadow.blur / 2, y: LoomTheme.Depth.card.shadow.y)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier(identifier)

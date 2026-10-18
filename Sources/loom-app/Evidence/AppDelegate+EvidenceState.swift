@@ -40,6 +40,16 @@ extension AppDelegate {
                 $0.sidebarStyle == .solid || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
                     ? "opaque" : "glass"
             } ?? "unknown",
+            // Settings → Theme (D-63): the settings, what the main window resolves them to, and the terminal's background.
+            "appearance": model?.appearance.rawValue ?? "unknown",
+            "effectiveAppearance": window.map {
+                $0.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? "dark" : "light"
+            } ?? "unknown",
+            "paneTone": model?.paneTone.rawValue ?? "unknown",
+            "terminalBackground": {
+                let rgb = TerminalTheme.backgroundRGB
+                return String(format: "#%02X%02X%02X", rgb.red, rgb.green, rgb.blue)
+            }(),
             "chaseIndicators": window?.contentView.map { IndicatorEvidence.chases(in: $0) } ?? [:],
             "systemReduceMotion": NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
             "runDirectory": runDirectory?.path ?? NSNull(),

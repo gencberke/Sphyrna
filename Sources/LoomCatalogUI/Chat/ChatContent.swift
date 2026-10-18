@@ -24,7 +24,7 @@ enum ChatContent {
         for range in codeRanges {
             result[range].font = LoomTheme.Chat.readingMono
             result[range].backgroundColor = LoomTheme.Chat.inlineCodeFill
-            result[range].foregroundColor = LoomTheme.Chat.inlineCodeRGB.color
+            result[range].foregroundColor = LoomTheme.Chat.inlineCode
         }
         for range in linkRanges {
             result[range].foregroundColor = LoomTheme.Accent.high

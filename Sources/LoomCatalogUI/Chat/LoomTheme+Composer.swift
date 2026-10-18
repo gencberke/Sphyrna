@@ -14,7 +14,8 @@ extension LoomTheme {
         static let dockBottomInset: CGFloat = 14
         static let dockTopInset: CGFloat = 6
         static let radius: CGFloat = Radius.xxl
-        static let fill = Surface.card
+        /// The card's fill is a panel level, so it follows the tone: computed, never stored.
+        static var fill: Color { Surface.card }
         static let stroke = Surface.strongHairline
         static let textInsetH: CGFloat = 18
         static let textTop: CGFloat = 10
@@ -47,7 +48,7 @@ extension LoomTheme {
 
         static let queueRowHeight: CGFloat = 30
         static let queueRadius: CGFloat = Radius.lg + 2
-        static let queueFill = Color.white.opacity(0.05)
+        static let queueFill = overlay(dark: 0.05, light: 0.045).color
         static let queueEditFill = Accent.base.opacity(0.16)
         static let queueMargin: CGFloat = 10
         static let queueRowSpacing: CGFloat = 2
@@ -59,7 +60,7 @@ extension LoomTheme {
 
         static let attachmentHeight: CGFloat = 30
         static let attachmentRadius: CGFloat = Radius.sm + 1
-        static let attachmentFill = Color.white.opacity(0.07)
+        static let attachmentFill = overlay(dark: 0.07, light: 0.06).color
         static let thumbnail = CGSize(width: 30, height: 22)
         static let attachmentSpacing: CGFloat = 6
         static let attachmentFont = Font.system(size: 11.5, weight: .medium)
@@ -95,28 +96,39 @@ extension LoomTheme {
         /// bar says how much a session may do without being loud. Each is at least 4.5:1 on a popover and on the card
         /// (`LoomThemeTests`). A mode of the CLI that Loom does not offer, and a mode not known yet, take the neutral tone.
         enum ModeTone {
-            static let askRGB = RGB(hex: 0x7FC8D8)
-            static let askBeforeEditsRGB = Accent.highRGB
-            static let acceptEditsRGB = RGB(hex: 0x86D3A4)
-            static let autoRGB = RGB(hex: 0xD9C677)
-            static let fullAccessRGB = RGB(hex: 0xEE9A6E)
-            static let planRGB = RGB(hex: 0xB9A0E6)
-            static let neutralRGB = Text.secondaryRGB
+            static let askPair = Adaptive(dark: RGB(hex: 0x7FC8D8), light: RGB(hex: 0x0E6B7A))
+            static let askBeforeEditsPair = Accent.highPair
+            static let acceptEditsPair = Adaptive(dark: RGB(hex: 0x86D3A4), light: RGB(hex: 0x1B6B3F))
+            static let autoPair = Adaptive(dark: RGB(hex: 0xD9C677), light: RGB(hex: 0x745B00))
+            static let fullAccessPair = Adaptive(dark: RGB(hex: 0xEF9C70), light: RGB(hex: 0x9E4108))
+            static let planPair = Adaptive(dark: RGB(hex: 0xB9A0E6), light: RGB(hex: 0x6B46B0))
+            static let neutralPair = Text.secondaryPair
+
+            static let askRGB = askPair.dark
+            static let askBeforeEditsRGB = askBeforeEditsPair.dark
+            static let acceptEditsRGB = acceptEditsPair.dark
+            static let autoRGB = autoPair.dark
+            static let fullAccessRGB = fullAccessPair.dark
+            static let planRGB = planPair.dark
+            static let neutralRGB = neutralPair.dark
 
             /// `raw` is the mode as Loom stores it (`ClaudePermissionMode.rawValue`).
-            static func rgb(forRaw raw: String?) -> RGB {
+            static func pair(forRaw raw: String?) -> Adaptive {
                 switch raw.flatMap(ClaudePermissionMode.init(rawValue:)) {
-                case .ask?: askRGB
-                case .askBeforeEdits?: askBeforeEditsRGB
-                case .acceptEdits?: acceptEditsRGB
-                case .auto?: autoRGB
-                case .fullAccess?: fullAccessRGB
-                case .plan?: planRGB
-                case nil: neutralRGB
+                case .ask?: askPair
+                case .askBeforeEdits?: askBeforeEditsPair
+                case .acceptEdits?: acceptEditsPair
+                case .auto?: autoPair
+                case .fullAccess?: fullAccessPair
+                case .plan?: planPair
+                case nil: neutralPair
                 }
             }
 
-            static func color(forRaw raw: String?) -> Color { rgb(forRaw: raw).color }
+            /// The Dark tone.
+            static func rgb(forRaw raw: String?) -> RGB { pair(forRaw: raw).dark }
+
+            static func color(forRaw raw: String?) -> Color { pair(forRaw: raw).color }
         }
 
         // MARK: Pickers (the mode list, the model list and the effort slider; D-63, after Codex's)
@@ -135,11 +147,11 @@ extension LoomTheme {
         static let pickSubtitleFont = Font.system(size: 11.5)
         static let pickCheck = Font.system(size: 11.5, weight: .semibold)
         static let pickIcon = Font.system(size: 13)
-        static let pickHoverFill = Color.white.opacity(Surface.controlHoverOpacity)
+        static let pickHoverFill = Surface.controlHover
         static let pickDivider = Surface.hairline
         /// The chip's two parts take a rounded fill under the pointer.
         static let chipRadius: CGFloat = Radius.md
-        static let chipHoverFill = Color.white.opacity(Surface.controlOpacity)
+        static let chipHoverFill = Surface.control
 
         static let effortWidth: CGFloat = 296
         static let effortPadding: CGFloat = 14
@@ -148,12 +160,17 @@ extension LoomTheme {
         static let effortThumb: CGFloat = 26
         static let effortDot: CGFloat = 4
         static let effortTrackInset: CGFloat = 3
-        static let effortTrack = Color.white.opacity(Surface.controlOpacity + 0.02)
+        static let effortTrackTone = overlay(dark: Surface.controlOpacity + 0.02, light: Surface.controlLightOpacity + 0.02)
+        static let effortTrack = effortTrackTone.color
         static let effortFill = Accent.base
-        static let effortThumbFill = Color.white
-        static let effortDotOnFill = Color.white.opacity(0.55)
-        static let effortDotOffFill = Color.white.opacity(0.22)
-        static let effortThumbShadow = Color.black.opacity(0.35)
+        static let effortThumbPair = Adaptive(dark: whiteRGB, light: Accent.onAccentPair.light)
+        static let effortThumbFill = effortThumbPair.color
+        static let effortDotOnTone = AdaptiveTone(dark: Tone(rgb: whiteRGB, opacity: 0.55), light: Tone(rgb: Accent.onAccentPair.light, opacity: 0.7))
+        static let effortDotOnFill = effortDotOnTone.color
+        static let effortDotOffTone = overlay(dark: 0.22, light: 0.22)
+        static let effortDotOffFill = effortDotOffTone.color
+        static let effortThumbShadowTone = AdaptiveTone(dark: Tone(rgb: RGB(red: 0, green: 0, blue: 0), opacity: 0.35), light: Tone(rgb: inkRGB, opacity: 0.30))
+        static let effortThumbShadow = effortThumbShadowTone.color
         static let effortThumbShadowRadius: CGFloat = 2
         static let effortNameFont = Font.system(size: 15, weight: .medium)
         static let effortNameColor = OnPopover.accent

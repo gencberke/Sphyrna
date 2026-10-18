@@ -14,7 +14,6 @@ enum PaletteMetrics {
     static let maximumListHeight: CGFloat = 420
     static let minimumListHeight: CGFloat = 120
     static let bottomMargin: CGFloat = 24
-    static let scrimOpacity = 0.4
     static let rowInset: CGFloat = 12
     static let rowRadius = LoomTheme.Radius.md
     static let emptyHeight: CGFloat = 64
@@ -39,7 +38,7 @@ struct PaletteOverlay: View {
         if model.palette.isOpen {
             GeometryReader { proxy in
                 ZStack(alignment: .top) {
-                    Color.black.opacity(PaletteMetrics.scrimOpacity)
+                    LoomTheme.Surface.scrim
                         .contentShape(Rectangle())
                         .onTapGesture { model.palette.close() }
                         .accessibilityHidden(true)
@@ -70,9 +69,8 @@ struct PalettePanel: View {
         .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.floating).fill(LoomTheme.Surface.popover))
         .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.floating)
             .strokeBorder(LoomTheme.Surface.hairline, lineWidth: LoomTheme.Line.hairline))
-        .shadow(color: .black.opacity(LoomTheme.Depth.popover.shadow.opacity),
+        .shadow(color: LoomTheme.Depth.shadowColor(LoomTheme.Depth.popover.shadow.opacity),
                 radius: LoomTheme.Depth.popover.shadow.blur / 2, y: LoomTheme.Depth.popover.shadow.y)
-        .preferredColorScheme(.dark)
         .tint(LoomTheme.Accent.base)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Command palette")
