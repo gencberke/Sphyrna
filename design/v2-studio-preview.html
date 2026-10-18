@@ -1,0 +1,1705 @@
+<!doctype html>
+<html lang="en" data-accent="fleece" data-sidebar="glass" data-density="comfortable" data-read="14" data-canvas="ink">
+<head>
+<meta charset="utf-8">
+<title>Loom v2 · Studio preview</title>
+<!-- Design proposal for the Loom v2 concept (plans/v2-research/V2-CONCEPT.md), 17 Oct 2026.
+     Mock-ups with neutral sample data, not screenshots. Nothing here is decided.
+     Open a screen directly with #home, #chat, #compose, #plan, #approve, #review, #side, #terminal,
+     #palette, #project, #newsession or #system; the arrow keys move between screens. -->
+<style>
+/* ======================================================================
+   Night Fleece 2: tokens
+   ====================================================================== */
+:root{
+  --sans: -apple-system, "SF Pro Text", "SF Pro", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+  /* surfaces, from back to front */
+  --side-rgb: 11,14,22; --side-alpha: .6;     /* sidebar glass, as today (D-44) */
+  --backdrop: #0B0E16;                         /* behind the panel, as today */
+  --insp: #141318;                             /* inspector (new) */
+  --canvas: #19181E;                           /* chat canvas (new) */
+  --term: #1D1C22;                             /* terminal panel, as today */
+  --s1: #222128;                               /* cards, composer (new) */
+  --s2: #2A2930;                               /* raised, hover (new) */
+  --s3: #302F38;                               /* popovers, palette (new) */
+  --line: rgba(255,255,255,.08);
+  --line2: rgba(255,255,255,.13);
+  --fill: rgba(255,255,255,.06);
+  --fill2: rgba(255,255,255,.09);
+
+  /* text */
+  --t1: #ECE8F4; --t2: #9A9EB0; --t3: #636779;
+
+  /* accent: a ramp around today's Fleece #8791CF */
+  --acc: #8791CF; --acc-rgb: 135,145,207; --acc-hi: #A9B0E3; --acc-lo: #5E68A8; --on-acc: #0B0E16;
+
+  /* status, as today, plus a success hue for content only (added lines, passing checks) */
+  --att: #FF9E0A; --att-l: #FFB547; --att-rgb: 255,158,10;
+  --unv: #5C8CFF; --unv-l: #8FB0FF; --unv-rgb: 92,140,255;
+  --fail: #F2615C; --fail-l: #FF8A85; --fail-rgb: 242,97,92;
+  --ok: #4CC38A; --ok-l: #7BDBA8; --ok-rgb: 76,195,138;
+
+  /* project tones (D-48) */
+  --aqua: #80D5DB; --rose: #E68EBA; --lemon: #CCE07B; --orchid: #D194E6; --mint: #83D8B0; --sage: #92C186;
+
+  /* shape and rhythm */
+  --r-xs: 4px; --r-sm: 6px; --r-md: 8px; --r-lg: 10px; --r-xl: 14px; --r-2xl: 18px;
+  --read: 14px; --read-lh: 22px; --col: 700px;
+  --row: 46px; --gap: 2px;
+  --shadow-1: 0 1px 0 rgba(255,255,255,.03) inset, 0 1px 2px rgba(0,0,0,.25);
+  --shadow-2: 0 10px 28px rgba(0,0,0,.32);
+  --shadow-3: 0 24px 64px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08);
+}
+[data-accent=iris]{--acc:#9C8CFF;--acc-rgb:156,140,255;--acc-hi:#BAAFFF;--acc-lo:#6F5FD0}
+[data-accent=glacier]{--acc:#7FB2E5;--acc-rgb:127,178,229;--acc-hi:#A6CBF0;--acc-lo:#4F82B8}
+[data-sidebar=deep]{--side-alpha:.86}
+[data-sidebar=solid]{--side-alpha:1}
+[data-density=compact]{--read:13px;--read-lh:20px;--row:40px;--col:760px}
+[data-read="13"]{--read:13px;--read-lh:20px}
+[data-read="15"]{--read:15px;--read-lh:24px}
+[data-canvas=graphite]{--canvas:#1E1D22;--insp:#18171C;--s1:#26252B;--s2:#2E2D33}
+[data-canvas=deep]{--canvas:#131218;--insp:#0F0E13;--s1:#1C1B22;--s2:#24232A}
+
+*{box-sizing:border-box}
+html,body{margin:0;background:#06070A;color:var(--t1);font:13px/1.45 var(--sans);-webkit-font-smoothing:antialiased}
+svg{display:block}
+.sp{flex:1}
+.mono{font-family:var(--mono)}
+.t2{color:var(--t2)} .t3{color:var(--t3)}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+
+/* ======================================================================
+   page chrome (not part of the app)
+   ====================================================================== */
+.top{position:sticky;top:0;z-index:50;background:rgba(6,7,10,.92);backdrop-filter:blur(12px);border-bottom:1px solid #15171E;padding:14px 28px 12px}
+.top .row1{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.top h1{font-size:17px;font-weight:600;margin:0;letter-spacing:-.01em}
+.top .subt{color:#7E8291;font-size:12px}
+.nav{display:flex;gap:4px;flex-wrap:wrap;margin-top:10px}
+.nav button{all:unset;cursor:pointer;height:26px;padding:0 10px;border-radius:7px;font:500 12px var(--sans);color:#9EA2B2;display:inline-flex;align-items:center;gap:6px}
+.nav button:hover{background:#151821;color:#D9DBE4}
+.nav button.on{background:#1C2030;color:#ECEEF6;box-shadow:inset 0 0 0 1px #2B3146}
+.nav button .n{font:600 10px var(--sans);color:#6E7386}
+.knobs{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.knob{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#7E8291}
+.seg-k{display:inline-flex;background:#11131A;border:1px solid #1E2230;border-radius:7px;padding:2px;gap:2px}
+.seg-k button{all:unset;cursor:pointer;height:20px;padding:0 8px;border-radius:5px;font:500 11px var(--sans);color:#8D92A3}
+.seg-k button.on{background:#262B3C;color:#E8EAF2}
+.page{padding:26px 28px 80px}
+.screen{display:flex;gap:28px;align-items:flex-start}
+.screen[hidden]{display:none}
+.stage{flex:none;border-radius:16px;padding:22px;background:
+  radial-gradient(110% 85% at 0% 0%, #2B5BFF 0%, transparent 55%),
+  radial-gradient(85% 75% at 100% 100%, #FF7A2B 0%, transparent 55%),
+  radial-gradient(80% 80% at 28% 100%, #B13BFF 0%, transparent 62%), #10131C}
+.cap{flex:1;min-width:300px;max-width:430px;padding-top:6px}
+.cap h2{font-size:18px;font-weight:600;margin:0 0 6px;letter-spacing:-.01em}
+.cap .lead{color:#B9BCC8;font-size:13px;line-height:1.55;margin:0 0 14px}
+.cap h3{font:600 11px var(--sans);color:#7E8291;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 8px}
+.cap ul{margin:0;padding-left:18px;color:#B4B7C3;font-size:12.5px;line-height:1.55}
+.cap li{margin-bottom:5px}
+.cap li b{color:#E3E5EE;font-weight:600}
+.cap .dec{margin-top:14px;padding:10px 12px;border:1px solid #232838;border-radius:10px;background:#0D0F15;font-size:12px;color:#A7ABB9;line-height:1.5}
+.cap .dec b{color:#DADCE6}
+.cap .mono{font-size:11.5px;color:#C9CCD8}
+.tag{display:inline-block;font:600 9.5px var(--sans);letter-spacing:.4px;text-transform:uppercase;padding:2px 6px;border-radius:4px;background:#1E2A4A;color:#9DB4FF;margin-left:4px;vertical-align:1px}
+.tag.today{background:#22252E;color:#9A9EAC}
+
+/* ======================================================================
+   window
+   ====================================================================== */
+.win{position:relative;width:1360px;height:860px;display:flex;border-radius:12px;overflow:hidden;
+  border:1px solid rgba(255,255,255,.13);box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 .5px rgba(0,0,0,.6)}
+.lights{position:absolute;left:18px;top:19px;display:flex;gap:8px;z-index:5}
+.lights i{width:12px;height:12px;border-radius:50%;display:block}
+.lights i:nth-child(1){background:#FF5F57}.lights i:nth-child(2){background:#FEBC2E}.lights i:nth-child(3){background:#28C840}
+
+/* ---------- sidebar ---------- */
+.sb{width:268px;flex:none;display:flex;flex-direction:column;background:rgba(var(--side-rgb),var(--side-alpha));
+  -webkit-backdrop-filter:blur(40px) saturate(1.25);backdrop-filter:blur(40px) saturate(1.25);color:var(--t1)}
+.sb-head{height:52px;display:flex;align-items:center;gap:2px;padding:0 10px 0 82px;flex:none}
+.ib{width:26px;height:24px;border-radius:var(--r-sm);display:grid;place-items:center;color:var(--t2);flex:none}
+.ib svg{width:15px;height:15px}
+.ib.on{background:var(--fill2);color:var(--t1)}
+.ib.acc{color:var(--t1)}
+.sb-search{margin:0 10px 8px;height:30px;border-radius:var(--r-md);background:var(--fill);display:flex;align-items:center;gap:7px;padding:0 6px 0 9px;color:var(--t3);font-size:12.5px;flex:none}
+.sb-search svg{width:13px;height:13px}
+.kbd{font:500 10.5px/1 var(--sans);color:var(--t2);border:1px solid var(--line2);border-radius:4px;padding:2px 4px;white-space:nowrap}
+.sb-nav{padding:0 8px 4px;display:flex;flex-direction:column;gap:1px;flex:none}
+.nrow{height:30px;border-radius:var(--r-md);display:flex;align-items:center;gap:9px;padding:0 10px;font:500 13px var(--sans);color:var(--t1)}
+.nrow svg{width:15px;height:15px;color:var(--t2)}
+.nrow.on{background:rgba(255,255,255,.08)}
+.nrow .badge{margin-left:auto;min-width:18px;height:17px;border-radius:9px;background:rgba(var(--att-rgb),.18);color:var(--att-l);font:600 10.5px/17px var(--sans);text-align:center;padding:0 5px}
+.sb-scroll{flex:1;min-height:0;overflow:hidden;padding-bottom:4px}
+.sb-sec{display:flex;align-items:center;gap:6px;padding:12px 18px 5px;font:600 11px var(--sans);color:var(--t2);letter-spacing:.1px}
+.sb-sec .cnt{font-weight:500;color:var(--t3)}
+.clist{padding:0 8px;display:flex;flex-direction:column;gap:var(--gap)}
+.card{position:relative;display:grid;grid-template-columns:12px minmax(0,1fr) auto;column-gap:8px;row-gap:1px;align-items:center;
+  padding:7px 10px;border-radius:var(--r-lg);min-height:var(--row)}
+.card .ttl{font:500 13px/18px var(--sans);color:var(--t1)}
+.card .time{font:11px var(--sans);color:var(--t2)}
+.card .meta{grid-column:2 / 4;display:flex;align-items:center;gap:5px;font:11.5px/16px var(--sans);color:var(--t2);min-width:0}
+.card.sel{background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.10)}
+.card.sel .ttl{font-weight:600}
+.card::before,.prow::before,.pgh::before{content:"";position:absolute;left:-4px;top:7px;bottom:7px;width:3px;border-radius:2px;background:var(--tone,transparent)}
+.ind{width:12px;height:16px;display:grid;place-items:center;flex:none}
+.pip{width:8px;height:8px;border-radius:50%;display:block;flex:none}
+.pip.att{background:var(--att)}.pip.unv{background:var(--unv)}.pip.fail{background:var(--fail)}.pip.ok{background:var(--ok)}
+.pgh{position:relative;display:flex;align-items:center;gap:7px;height:30px;padding:0 10px 0 12px;margin:2px 8px 0;font:600 12.5px var(--sans);color:var(--t1);border-radius:var(--r-md)}
+.pgh svg.chv{width:9px;height:9px;color:var(--t3);flex:none}
+.pgh svg.tr{width:13px;height:13px;color:var(--t2);flex:none}
+.pgh .pc{font:500 11px var(--sans);color:var(--t3)}
+.prow{position:relative;display:flex;align-items:center;gap:8px;height:28px;padding:0 10px 0 22px;margin:0 8px;border-radius:var(--r-md);font:13px var(--sans);color:var(--t1)}
+.prow .time{margin-left:auto;font-size:11px;color:var(--t3)}
+.prow.sel{background:rgba(255,255,255,.07)}
+.prow.idle .ttl{color:var(--t2)}
+.sb-foot{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px;border-top:1px solid rgba(255,255,255,.05)}
+.uchip{flex:1;height:26px;border-radius:var(--r-sm);display:flex;align-items:center;gap:6px;padding:0 8px;font:11.5px var(--sans);color:var(--t2);min-width:0}
+.uchip b{color:var(--t1);font-weight:600}
+.uchip .bar{width:34px;height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden}
+.uchip .bar i{display:block;height:100%;background:var(--t1);border-radius:2px}
+
+/* chase (working), identical to today's indicator */
+.chase{position:relative;width:12px;height:12px;display:block;flex:none}
+.chase i{position:absolute;width:2.9px;height:2.9px;border-radius:50%;background:var(--t1);opacity:.16;animation:chase .8s step-end infinite}
+.chase i:nth-child(1){left:.15px;top:.15px;opacity:1;animation-delay:0s}
+.chase i:nth-child(2){left:4.55px;top:.15px;animation-delay:-.7s}
+.chase i:nth-child(3){left:8.95px;top:.15px;animation-delay:-.6s}
+.chase i:nth-child(4){left:8.95px;top:4.55px;animation-delay:-.5s}
+.chase i:nth-child(5){left:8.95px;top:8.95px;animation-delay:-.4s}
+.chase i:nth-child(6){left:4.55px;top:8.95px;opacity:.35;animation-delay:-.3s}
+.chase i:nth-child(7){left:.15px;top:8.95px;opacity:.55;animation-delay:-.2s}
+.chase i:nth-child(8){left:.15px;top:4.55px;opacity:.8;animation-delay:-.1s}
+@keyframes chase{0%{opacity:1}12.5%{opacity:.8}25%{opacity:.55}37.5%{opacity:.35}50%,100%{opacity:.16}}
+
+/* ---------- detail panel: header across the panel, then the body ---------- */
+.detail{flex:1;min-width:0;display:flex;background:var(--backdrop);padding:8px 8px 8px 0}
+.panel{flex:1;min-width:0;display:flex;flex-direction:column;border-radius:var(--r-lg);overflow:hidden;border:1px solid rgba(255,255,255,.09);background:var(--canvas);position:relative}
+.pbody{flex:1;min-height:0;display:flex}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.hdr{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;border-bottom:1px solid var(--line)}
+.hdr .prov{width:16px;height:16px;flex:none}
+.hdr .ttl{font:600 13.5px var(--sans);white-space:nowrap}
+.hdr .tk{font:500 11px var(--mono);color:var(--t2);background:var(--fill);border-radius:5px;padding:2px 6px;white-space:nowrap}
+.pill{height:22px;border-radius:11px;display:inline-flex;align-items:center;gap:6px;padding:0 9px 0 7px;font:500 11px var(--sans);white-space:nowrap;flex:none}
+.pill.work{background:rgba(255,255,255,.07);color:var(--t1)}
+.pill.att{background:rgba(var(--att-rgb),.15);color:var(--att-l)}
+.pill.unv{background:rgba(var(--unv-rgb),.15);color:var(--unv-l)}
+.pill.fail{background:rgba(var(--fail-rgb),.15);color:var(--fail-l)}
+.pill.idle{background:rgba(255,255,255,.05);color:#9297A8;padding:0 9px}
+.pill .chase{transform:scale(.84)}
+.pill .el{color:var(--t2);font-weight:400}
+.pchip{height:22px;border-radius:6px;display:flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;flex:none;padding:0 8px 0 0;overflow:hidden;color:var(--t1);
+  background:color-mix(in srgb, var(--tone) 11%, transparent)}
+.pchip::before{content:"";width:3px;align-self:stretch;background:var(--tone)}
+.pchip .br{display:flex;align-items:center;gap:4px;color:#9297A8;border-left:1px solid rgba(255,255,255,.10);padding-left:7px}
+.pchip svg{width:11px;height:11px}
+.vsep{width:1px;height:16px;background:var(--line2);margin:0 2px;flex:none}
+.segc{display:inline-flex;height:24px;border-radius:7px;background:var(--fill);padding:2px;gap:2px;flex:none}
+.segc span{display:flex;align-items:center;gap:5px;padding:0 8px;border-radius:5px;font:500 11.5px var(--sans);color:var(--t2);white-space:nowrap}
+.segc span svg{width:12px;height:12px}
+.segc span.on{background:rgba(255,255,255,.12);color:var(--t1);box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.grp{display:inline-flex;height:24px;border-radius:6px;background:rgba(255,255,255,.07);flex:none}
+.grp .g{display:flex;align-items:center;gap:6px;padding:0 10px;font:500 12px var(--sans);color:var(--t1)}
+.grp .g+.g{border-left:1px solid rgba(255,255,255,.10)}
+.grp .g.ic{width:28px;padding:0;justify-content:center;color:var(--t2)}
+.grp .g svg{width:14px;height:14px}
+.grp .sq{width:8px;height:8px;border-radius:1.5px;background:var(--t1)}
+.tabs{height:34px;flex:none;display:flex;align-items:center;gap:4px;padding:0 8px;border-bottom:1px solid var(--line)}
+.tab{position:relative;height:24px;width:190px;border-radius:6px;display:flex;align-items:center;gap:6px;padding:0 8px;font:500 12px var(--sans);color:var(--t2);
+  background:color-mix(in srgb, var(--tone,#fff) 9%, transparent)}
+.tab.on{color:var(--t1);background:color-mix(in srgb, var(--tone,#fff) 15%, rgba(255,255,255,.04));box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--tone,#fff) 36%, transparent)}
+.tab .x{margin-left:auto;width:14px;height:14px;color:var(--t2)}
+
+/* ---------- conversation ---------- */
+/* The stream sticks to the bottom: when it is longer than the view, the oldest part is what is cut. */
+.stream{flex:1;min-height:0;overflow:hidden;position:relative;display:flex;flex-direction:column;justify-content:flex-end}
+.col{width:100%;max-width:var(--col);margin:0 auto;padding:16px 28px 4px}
+.sysline{display:flex;align-items:center;gap:10px;color:var(--t3);font-size:11.5px;margin:2px 0 14px}
+.sysline::before,.sysline::after{content:"";flex:1;height:1px;background:var(--line)}
+.sysline b{color:var(--t2);font-weight:500}
+.um{margin:6px 0 14px auto;max-width:82%;width:fit-content;background:rgba(var(--acc-rgb),.12);border:1px solid rgba(var(--acc-rgb),.20);
+  border-radius:16px 16px 5px 16px;padding:9px 14px 10px;font-size:var(--read);line-height:var(--read-lh);color:var(--t1)}
+.fchip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;background:rgba(255,255,255,.08);font:500 11.5px var(--mono);color:var(--t1);white-space:nowrap}
+.fchip svg{width:11px;height:11px;color:var(--t2)}
+.prose{font-size:var(--read);line-height:var(--read-lh);color:var(--t1)}
+.prose p{margin:0 0 10px}
+.prose ol,.prose ul{margin:0 0 10px;padding-left:22px}
+.prose li{margin:2px 0}
+.prose code,.planbody code{font:12.5px var(--mono);background:rgba(255,255,255,.07);border-radius:4px;padding:1px 5px;color:#E3DFF0}
+.caret{display:inline-block;width:7px;height:15px;background:var(--acc);vertical-align:-2px;margin-left:2px;border-radius:1px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+/* folded work: one line per step, and one line for a settled turn */
+.wb{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;margin:4px -10px 8px;border-radius:8px;color:var(--t2);font-size:12.5px}
+.wb svg{width:12px;height:12px;flex:none}
+.wb .chv{width:9px;height:9px;color:var(--t3)}
+.wb .dur{margin-left:auto;font-size:11.5px;color:var(--t3)}
+.wb b{color:var(--t1);font-weight:500}
+.wb > span:not(.dur){white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.wb.turn{border:1px solid var(--line);background:rgba(255,255,255,.02);margin:4px 0 12px}
+.think{display:flex;align-items:center;gap:8px;height:26px;margin:0 0 6px;color:var(--t3);font-size:12.5px}
+.think svg{width:12px;height:12px;flex:none}
+.think i{font-style:normal;color:var(--t2)}
+.think .chv{width:9px;height:9px}
+.tc{border:1px solid var(--line);background:var(--s1);border-radius:var(--r-lg);overflow:hidden;margin:8px 0 10px;box-shadow:var(--shadow-1)}
+.tc-h{height:34px;display:flex;align-items:center;gap:8px;padding:0 10px 0 12px;font-size:12.5px}
+.tc-h > svg{width:14px;height:14px;color:var(--t2);flex:none}
+.tc-h .verb{color:var(--t2);flex:none}
+.tc-h .tgt{font:12px var(--mono);color:var(--t1)}
+.tc-h .meta{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--t3);font-size:11.5px;flex:none}
+.tc-h .meta svg{width:12px;height:12px}
+.tc-b{border-top:1px solid var(--line);padding:4px 10px 6px}
+.add{color:var(--ok-l)} .del{color:var(--fail-l)}
+.okc{color:var(--ok-l);display:inline-flex;align-items:center;gap:4px}
+.okc svg{width:11px;height:11px}
+.diff{font:12px/19px var(--mono);border-top:1px solid var(--line);padding:4px 0}
+.diff .l{display:grid;grid-template-columns:38px 16px minmax(0,1fr);white-space:pre;color:#CFCBDA}
+.diff .l .n{color:var(--t3);text-align:right;padding-right:8px}
+.diff .l .s{color:var(--t3)}
+.diff .l.a{background:rgba(var(--ok-rgb),.11)} .diff .l.a .s{color:var(--ok-l)}
+.diff .l.d{background:rgba(var(--fail-rgb),.11)} .diff .l.d .s{color:var(--fail-l)}
+.diff .more{padding:4px 12px 2px 54px;color:var(--t3);font:11.5px var(--sans)}
+.kw{color:#C586C0}.fn{color:#DCDCAA}.str{color:#CE9178}.cm{color:#6A9955}.typ{color:#4EC9B0}.nu{color:#B5CEA8}
+.out{font:11.5px/18px var(--mono);color:#B9B5C6;border-top:1px solid var(--line);padding:7px 12px;white-space:pre;background:rgba(0,0,0,.12)}
+.agent{border:1px solid var(--line);background:var(--s1);border-radius:var(--r-lg);padding:10px 12px;margin:8px 0 10px;display:grid;grid-template-columns:22px 1fr auto;column-gap:10px;row-gap:3px;align-items:center}
+.agent .av{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;background:rgba(var(--acc-rgb),.16);color:var(--acc-hi)}
+.agent .av svg{width:13px;height:13px}
+.agent .nm{font:500 12.5px var(--sans)}
+.agent .nm .ty{color:var(--acc-hi);font-weight:600;margin-right:6px}
+.agent .st{display:flex;align-items:center;gap:6px;color:var(--t2);font-size:11.5px}
+.agent .ln{grid-column:2 / 4;color:var(--t2);font-size:11.5px}
+.agent .ln .mono{color:var(--t1);font-size:11px}
+.working{display:flex;align-items:center;gap:9px;margin:4px 0 12px;color:var(--t2);font-size:12.5px}
+.working .mono{color:var(--t1);font-size:11.5px}
+.working .sep{color:var(--t3)}
+.macts{display:flex;gap:2px;margin:-4px 0 14px -7px}
+.macts span{height:24px;padding:0 7px;border-radius:6px;display:inline-flex;align-items:center;gap:5px;font:500 11.5px var(--sans);color:var(--t2)}
+.macts span svg{width:12px;height:12px}
+.macts span.h{background:rgba(255,255,255,.07);color:var(--t1)}
+.btn{height:26px;padding:0 10px;border-radius:7px;font:500 12px var(--sans);display:inline-flex;align-items:center;gap:6px;color:var(--t1);background:rgba(255,255,255,.08);white-space:nowrap;flex:none}
+.btn svg{width:12px;height:12px}
+.btn.primary{background:var(--acc);color:var(--on-acc)}
+.btn.ghost{background:transparent;color:var(--t2)}
+.btn.danger{background:rgba(var(--fail-rgb),.14);color:var(--fail-l)}
+.btn.lg{height:30px;padding:0 14px;font-size:12.5px;border-radius:8px}
+.btn .kbd{border-color:rgba(0,0,0,.25);color:inherit;opacity:.7}
+
+/* decision cards: approval, question, plan */
+.dc{border-radius:12px;background:var(--s1);border:1px solid rgba(var(--att-rgb),.35);box-shadow:0 0 0 1px rgba(0,0,0,.2),var(--shadow-2);overflow:hidden}
+.dc-h{display:flex;align-items:center;gap:8px;padding:11px 14px 0;font:600 13px var(--sans)}
+.dc-h .ic{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;background:rgba(var(--att-rgb),.16);color:var(--att-l)}
+.dc-h .ic svg{width:12px;height:12px}
+.dc-h .who{margin-left:auto;font:500 11.5px var(--sans);color:var(--t3)}
+.stepper{display:inline-flex;align-items:center;gap:4px;font:500 11.5px var(--sans);color:var(--t2);margin-left:10px;padding-left:10px;border-left:1px solid var(--line2)}
+.stepper svg{width:9px;height:9px;color:var(--t3)}
+.dc-b{padding:9px 14px 12px}
+.cmd{font:12.5px/20px var(--mono);background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:8px;padding:8px 11px;color:#EDE9F6}
+.cmd .pr{color:var(--t3);margin-right:8px}
+.why{margin-top:8px;color:var(--t2);font-size:12.5px;line-height:1.5}
+.why b{color:var(--t1);font-weight:500}
+.dc-f{display:flex;align-items:center;gap:6px;padding:0 14px 12px}
+.dc-f .hint{color:var(--t3);font-size:11px;margin-right:auto}
+.dc.plan{border-color:rgba(var(--acc-rgb),.38)}
+.dc.plan .dc-h .ic{background:rgba(var(--acc-rgb),.18);color:var(--acc-hi)}
+.dc.doc{border-color:var(--line2);box-shadow:var(--shadow-1)}
+.planbody{max-height:300px;overflow:hidden;position:relative;border:1px solid var(--line);border-radius:9px;background:rgba(0,0,0,.14);padding:12px 14px 4px}
+.planbody::after{content:"";position:absolute;left:0;right:0;bottom:0;height:46px;background:linear-gradient(transparent,var(--s1))}
+.planbody h5{font:600 13px var(--sans);margin:0 0 6px}
+.planbody ol{margin:0 0 10px;padding-left:20px;font-size:13px;line-height:20px}
+.planbody li{margin:3px 0}
+.planbody code{font-size:12px}
+.planbody .meta{color:var(--t2);font-size:12px;margin:0 0 10px}
+.qa{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.opt{display:flex;align-items:flex-start;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.02)}
+.opt .rb{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--t3);margin-top:2px;flex:none}
+.opt.on{border-color:rgba(var(--acc-rgb),.55);background:rgba(var(--acc-rgb),.08)}
+.opt.on .rb{border-color:var(--acc);box-shadow:inset 0 0 0 3px var(--s1);background:var(--acc)}
+.opt .ot{font:500 12.5px var(--sans)}
+.opt .od{color:var(--t2);font-size:12px;margin-top:1px}
+.answered{display:flex;align-items:center;gap:8px;height:32px;padding:0 11px;border-radius:9px;border:1px solid var(--line);background:var(--s1);font-size:12.5px;color:var(--t2);margin:8px 0 10px}
+.answered svg{width:13px;height:13px;flex:none}
+.answered b{color:var(--t1);font-weight:500}
+.pending{border-color:rgba(var(--att-rgb),.30)}
+.pending .tc-h .meta{color:var(--att-l)}
+.banner{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 12px;border-radius:10px;border:1px solid rgba(var(--att-rgb),.3);background:rgba(var(--att-rgb),.08);font-size:12.5px;color:var(--t1)}
+.banner > svg{width:14px;height:14px;color:var(--att-l);flex:none}
+.banner b{font-weight:600}
+
+/* dock: rail, pinned cards, composer */
+.dock{flex:none;padding:6px 24px 14px;position:relative}
+.dock .pinned,.rail{max-width:calc(var(--col) - 20px);margin:0 auto 10px}
+.rail{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+.rp{height:26px;border-radius:13px;background:var(--s1);border:1px solid var(--line);display:inline-flex;align-items:center;gap:7px;padding:0 11px 0 9px;font:500 11.5px var(--sans);color:var(--t2);white-space:nowrap;min-width:0}
+.rp b{color:var(--t1);font-weight:500}
+.rp svg{width:12px;height:12px;flex:none}
+.rp .dots{display:flex;gap:2px}
+.rp .dots i{width:9px;height:3px;border-radius:2px;background:rgba(255,255,255,.14)}
+.rp .dots i.d{background:var(--ok)} .rp .dots i.c{background:var(--t1)}
+.rp .chase{transform:scale(.75)}
+.comp{position:relative;max-width:calc(var(--col) - 20px);margin:0 auto;background:var(--s1);border:1px solid var(--line2);border-radius:20px;box-shadow:var(--shadow-2)}
+.comp .q{display:flex;align-items:center;gap:8px;margin:8px 10px 0;padding:0 8px 0 10px;height:30px;border-radius:12px;background:rgba(255,255,255,.05);font-size:12px;color:var(--t2)}
+.comp .q svg{width:12px;height:12px;flex:none}
+.comp .q .qt{color:var(--t1)}
+.comp .q .ib{width:22px;height:22px}
+.comp .q .ib svg{width:12px;height:12px}
+.comp .ta{padding:14px 18px 4px;min-height:46px;font-size:var(--read);line-height:var(--read-lh);color:var(--t3)}
+.comp .ta.typed{color:var(--t1)}
+.comp .bar{display:flex;align-items:center;gap:2px;padding:2px 8px 8px}
+.comp .bar .ib,.start .bar .ib,.lf .ib{width:30px;height:30px;border-radius:15px;color:var(--t1)}
+.comp .bar .ib svg,.start .bar .ib svg,.lf .ib svg{width:17px;height:17px}
+.achips{display:flex;gap:6px;padding:10px 12px 0;flex-wrap:wrap}
+.achip{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 8px 0 4px;border-radius:7px;background:rgba(255,255,255,.07);font:500 11.5px var(--sans);color:var(--t1)}
+.achip .thumb{width:30px;height:22px;border-radius:4px;border:1px solid rgba(255,255,255,.2);
+  background:linear-gradient(180deg,#F4F1EA 0 28%,#C9C3B6 28% 33%,#F4F1EA 33% 58%,#D8D3C8 58% 63%,#F4F1EA 63% 80%,#E46F6F 80% 86%,#F4F1EA 86%)}
+.achip svg{width:9px;height:9px;color:var(--t2)}
+.cchip{height:24px;border-radius:7px;display:inline-flex;align-items:center;gap:5px;padding:0 8px;font:500 11.5px var(--sans);color:var(--t2);background:transparent;flex:none;white-space:nowrap}
+.cchip svg{width:11px;height:11px}
+.cchip.on{background:rgba(var(--acc-rgb),.16);color:var(--acc-hi)}
+.cchip.box{background:var(--fill)}
+/* Composer bar after Codex's (D-58): plain text controls, no boxes; every permission mode looks the same */
+.bk{height:30px;border-radius:15px;display:inline-flex;align-items:center;gap:6px;padding:0 9px;font:500 12.5px var(--sans);color:var(--t2);flex:none;white-space:nowrap}
+.bk svg{width:13px;height:13px}
+.bk svg.ch{width:10px;height:10px;color:var(--t3);margin-left:-1px}
+.bk.model{color:var(--t1)}
+.bk .lo{color:var(--t3)}
+.bk.plan{color:var(--acc-hi)}
+.ctx{display:inline-grid;place-items:center;width:30px;height:30px;flex:none}
+.ring{width:16px;height:16px;border-radius:50%;background:conic-gradient(var(--t2) calc(var(--p)*1%), rgba(255,255,255,.10) 0);display:grid;place-items:center;flex:none}
+.ring::after{content:"";width:11px;height:11px;border-radius:50%;background:var(--s1)}
+.send{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--t1);color:var(--on-acc);flex:none;margin-left:4px}
+.send svg{width:15px;height:15px}
+.send.off{background:rgba(255,255,255,.12);color:var(--t3)}
+.send.stop{background:var(--t1);color:var(--on-acc)}
+.send.stop i{width:10px;height:10px;border-radius:2.5px;background:var(--on-acc)}
+.hints{max-width:calc(var(--col) - 20px);margin:6px auto 0;display:flex;gap:12px;color:var(--t3);font-size:10.5px;padding:0 4px;white-space:nowrap}
+/* / and @ menu, anchored above the composer */
+.menu{position:absolute;left:0;right:0;bottom:calc(100% + 8px);background:var(--s3);border-radius:12px;box-shadow:var(--shadow-3);overflow:hidden;z-index:6}
+.mh{display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-bottom:1px solid var(--line);font:500 12px var(--sans);color:var(--t2)}
+.msec{padding:6px 6px 2px}
+.msec h6{font:600 11px var(--sans);color:var(--t3);margin:2px 8px 4px}
+.mi{display:flex;align-items:center;gap:10px;height:30px;border-radius:7px;padding:0 8px;font-size:12.5px}
+.mi svg{width:13px;height:13px;color:var(--t2);flex:none}
+.mi .cn{font:500 12.5px var(--mono);color:var(--t1);min-width:150px}
+.mi .ds{color:var(--t2);font-size:12px}
+.mi .r{margin-left:auto;color:var(--t3);font-size:11px;display:flex;gap:6px;align-items:center}
+.mi.on{background:rgba(var(--acc-rgb),.16)}
+.mi.dim .cn,.mi.dim .ds{color:var(--t3)}
+.mf{display:flex;gap:14px;padding:7px 14px;border-top:1px solid var(--line);color:var(--t3);font-size:11px;margin-top:4px}
+
+/* inspector */
+.insp{width:328px;flex:none;background:var(--insp);border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+.insp.wide{width:556px}
+.itabs{height:40px;flex:none;display:flex;align-items:center;gap:2px;padding:0 8px;border-bottom:1px solid var(--line)}
+.itab{height:26px;padding:0 8px;border-radius:6px;font:500 12px var(--sans);color:var(--t2);display:flex;align-items:center;gap:5px;white-space:nowrap}
+.itab svg{width:13px;height:13px}
+.itab.on{background:rgba(255,255,255,.08);color:var(--t1)}
+.itab .c{font-size:10.5px;color:var(--t3)}
+/* In the narrow inspector only the open tab shows its name; the others keep their icon and count. */
+.insp:not(.wide) .itab:not(.on){font-size:0;gap:4px;padding:0 7px}
+.ibody{flex:1;min-height:0;overflow:hidden;padding:14px}
+.isec{margin-bottom:18px}
+.isec h4{display:flex;align-items:center;gap:6px;font:600 11px var(--sans);color:var(--t2);margin:0 0 9px;letter-spacing:.2px}
+.isec h4 .sp + span{font-weight:500;color:var(--t3)}
+.kv{display:grid;grid-template-columns:92px minmax(0,1fr);row-gap:7px;font-size:12.5px;margin:0}
+.kv dt{color:var(--t2)} .kv dd{margin:0;color:var(--t1);min-width:0}
+.kv dd .t3{font-size:12px}
+.meter{height:6px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+.meter i{display:block;height:100%;border-radius:3px;background:var(--t1)}
+.meter.acc i{background:var(--acc)}
+.mrow{display:flex;justify-content:space-between;font-size:12px;color:var(--t2);margin-top:6px}
+.mrow b{color:var(--t1);font-weight:500}
+.frow{display:flex;align-items:center;gap:8px;height:28px;font-size:12px;border-radius:7px;padding:0 6px;margin:0 -6px}
+.frow svg{width:13px;height:13px;color:var(--t2);flex:none}
+.frow .fn2{font-family:var(--mono);font-size:11.5px;color:var(--t1)}
+.frow .ad{margin-left:auto;font:11px var(--mono);white-space:nowrap}
+.frow.on{background:rgba(255,255,255,.07)}
+.actl{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.actl .btn{justify-content:flex-start}
+.hr{height:1px;background:var(--line);margin:4px 0 16px}
+
+/* home */
+.home{flex:1;min-width:0;overflow:hidden;padding:26px 34px 0}
+.home-h{display:flex;align-items:flex-end;gap:12px;margin-bottom:18px}
+.home-h h1{font:600 24px/30px var(--sans);margin:0;letter-spacing:-.015em}
+.home-h .d{color:var(--t2);font-size:13px;margin-bottom:3px}
+.start{background:var(--s1);border:1px solid var(--line2);border-radius:20px;box-shadow:var(--shadow-2);margin-bottom:10px}
+.start .ta{padding:16px 18px 4px;min-height:58px;color:var(--t3);font-size:15px}
+.start .bar{display:flex;align-items:center;gap:2px;padding:2px 8px 8px}
+.hstrip{display:flex;align-items:center;gap:8px;margin:0 6px 16px;font-size:11.5px;color:var(--t3)}
+.presets{display:flex;gap:6px;margin:0 0 20px;flex-wrap:wrap}
+.preset{height:26px;border-radius:13px;border:1px solid var(--line2);padding:0 11px;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--t2)}
+.preset svg{width:11px;height:11px}
+.hgrid{display:grid;grid-template-columns:minmax(0,1fr) 312px;gap:18px}
+.hsec{margin-bottom:16px}
+.hsec h3{display:flex;align-items:center;gap:7px;font:600 12px var(--sans);color:var(--t2);margin:0 0 8px}
+.hsec h3 .cnt{color:var(--t3);font-weight:500}
+.hcard{background:var(--s1);border:1px solid var(--line);border-radius:12px}
+.hitem{display:grid;grid-template-columns:12px minmax(0,1fr) auto;column-gap:10px;row-gap:3px;padding:11px 12px;position:relative}
+.hitem + .hitem{border-top:1px solid var(--line)}
+.hitem .tt{font:500 13px var(--sans)}
+.hitem .pj{font-size:11.5px;color:var(--t2);display:flex;align-items:center;gap:6px}
+.hitem .pj i{width:3px;height:11px;border-radius:2px;background:var(--tone)}
+.hitem .bd{grid-column:2 / 4;font-size:12.5px;color:var(--t2);line-height:1.5}
+.hitem .bd .mono{color:var(--t1);font-size:11.5px}
+.hitem .ac{grid-column:2 / 4;display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.qchip{height:26px;border-radius:7px;border:1px solid var(--line2);padding:0 10px;display:inline-flex;align-items:center;font:500 12px var(--sans);color:var(--t1);white-space:nowrap}
+.qchip.rec{border-color:rgba(var(--acc-rgb),.5);background:rgba(var(--acc-rgb),.10)}
+.side-card{background:var(--s1);border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin-bottom:12px}
+.side-card h3{font:600 12px var(--sans);color:var(--t2);margin:0 0 10px;display:flex;align-items:center;gap:6px}
+.lim{margin-bottom:12px}
+.lim .lt{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px}
+.lim .lt span{color:var(--t2)}
+.lim .lt b{font-weight:600}
+.lim .ls{font-size:11.5px;color:var(--t2);margin-top:5px}
+.lim .ls .good{color:var(--ok-l)}
+.stat3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat3 div{font-size:11.5px;color:var(--t2)}
+.stat3 b{display:block;font:600 17px var(--sans);color:var(--t1);margin-bottom:1px}
+.bars{display:flex;align-items:flex-end;gap:3px;height:36px;margin-top:12px}
+.bars i{flex:1;background:rgba(255,255,255,.14);border-radius:2px 2px 0 0}
+.bars i.n{background:var(--t1)}
+.prj{display:flex;align-items:center;gap:8px;height:28px;font-size:12.5px}
+.prj i{width:3px;height:14px;border-radius:2px;background:var(--tone)}
+.prj .r{margin-left:auto;color:var(--t2);font-size:11.5px;display:flex;align-items:center;gap:6px;white-space:nowrap}
+
+/* project page */
+.proj{flex:1;min-width:0;overflow:hidden;padding:24px 30px 0}
+.proj-h{display:flex;align-items:center;gap:12px}
+.proj-h .stripe{width:4px;height:30px;border-radius:2px;background:var(--aqua)}
+.proj-h h1{font:600 22px var(--sans);margin:0;letter-spacing:-.01em}
+.proj-h .path{color:var(--t2);font:12px var(--mono)}
+.pstats{display:flex;gap:18px;margin:12px 0 16px 16px;color:var(--t2);font-size:12.5px}
+.pstats b{color:var(--t1);font-weight:600}
+.ptabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.ptab{height:32px;padding:0 12px;display:flex;align-items:center;font:500 12.5px var(--sans);color:var(--t2);border-bottom:2px solid transparent;margin-bottom:-1px}
+.ptab.on{color:var(--t1);border-color:var(--acc)}
+.pgrid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px}
+.srow{display:grid;grid-template-columns:12px minmax(0,1fr) 170px 44px;column-gap:12px;align-items:center;padding:10px 12px;border-radius:9px}
+.srow + .srow{border-top:1px solid var(--line)}
+.srow .tt{font:500 13px var(--sans)}
+.srow .ln2{font-size:12px;color:var(--t2);margin-top:2px}
+.srow .br{display:flex;align-items:center;gap:5px;font:11.5px var(--mono);color:var(--t2)}
+.srow .br svg{width:10px;height:10px;flex:none}
+.srow .tm{text-align:right;font-size:11.5px;color:var(--t3)}
+.srow.on{background:rgba(255,255,255,.05)}
+
+/* palette */
+.scrim{position:absolute;inset:0;background:rgba(5,6,10,.5);z-index:20;display:flex;justify-content:center;padding-top:96px}
+.pal{width:620px;height:fit-content;background:var(--s3);border-radius:14px;box-shadow:var(--shadow-3);overflow:hidden}
+.pal-in{height:50px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line);font-size:15px;color:var(--t1)}
+.pal-in svg{width:16px;height:16px;color:var(--t2)}
+.pal-in .cur{width:1.5px;height:18px;background:var(--acc);margin-left:-8px}
+.pal-sec{padding:8px 8px 4px}
+.pal-sec h6{font:600 11px var(--sans);color:var(--t3);margin:2px 10px 5px}
+.pi{display:flex;align-items:center;gap:10px;height:34px;border-radius:8px;padding:0 10px;font-size:13px}
+.pi svg{width:14px;height:14px;color:var(--t2);flex:none}
+.pi .ds{color:var(--t2);font-size:12px}
+.pi .r{margin-left:auto;display:flex;gap:6px;align-items:center;color:var(--t3);font-size:11.5px}
+.pi.on{background:rgba(var(--acc-rgb),.16)}
+.pal-f{display:flex;gap:16px;padding:8px 16px;border-top:1px solid var(--line);color:var(--t3);font-size:11px}
+
+/* terminal */
+.tnote{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px 0 14px;border-bottom:1px solid var(--line);font-size:12px;color:var(--t2);background:rgba(255,255,255,.02)}
+.tnote svg{width:13px;height:13px}
+.term{flex:1;min-height:0;background:var(--term);font:14px/1.38 var(--mono);color:#E8E6EE;white-space:pre;overflow:hidden;padding:10px 14px}
+.term .o{color:#D97757}.term .g{color:#4EC9B0}.term .d{color:#8A8796}.term .b{font-weight:700}.term .y{color:#DCDCAA}.term .gr{color:#6CCB8F}
+.term .tbox{display:block;border:1px solid #5D5A68;border-radius:5px;padding:1px 8px;margin:4px 0 2px}
+.term .cur{background:#E8E6EE;color:#1D1C22}
+
+/* new-session sheet */
+.sheet{position:absolute;left:50%;top:60px;transform:translateX(-50%);width:640px;background:var(--s3);border-radius:16px;box-shadow:var(--shadow-3);z-index:21;overflow:hidden}
+.sheet-h{display:flex;align-items:center;gap:10px;padding:16px 18px 6px;font:600 15px var(--sans)}
+.sheet .fld{padding:8px 18px}
+.sheet .lbl{font:600 11px var(--sans);color:var(--t2);margin-bottom:6px}
+.sheet .inp{height:32px;border-radius:8px;background:rgba(0,0,0,.22);border:1px solid var(--line2);display:flex;align-items:center;gap:8px;padding:0 10px;font-size:13px}
+.sheet .inp svg{width:13px;height:13px;color:var(--t2)}
+.sheet .area{min-height:92px;border-radius:10px;background:rgba(0,0,0,.22);border:1px solid var(--line2);padding:10px 12px;font-size:13.5px;line-height:21px}
+.sheet .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.optrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.sheet-f{display:flex;align-items:center;gap:8px;padding:14px 18px 16px}
+
+/* design system board */
+.board{flex:1;min-width:0;overflow:hidden;background:var(--canvas);padding:26px 30px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:26px;align-content:start}
+.board h4{font:600 12px var(--sans);color:var(--t2);margin:0 0 10px}
+.sw{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.sw div{height:46px;border-radius:8px;border:1px solid var(--line);position:relative}
+.sw div span{position:absolute;left:6px;bottom:4px;font:500 9.5px var(--sans);color:rgba(255,255,255,.78);text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.tscale div{display:flex;align-items:baseline;gap:12px;margin-bottom:8px}
+.tscale span.k{width:84px;flex:none;font-size:11px;color:var(--t3)}
+.comps{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.boardnote{font-size:12px;color:var(--t2);line-height:1.55;margin:0 0 14px}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+<defs>
+<symbol id="loom-mark" viewBox="0 0 512 512"><g fill="currentColor" transform="translate(0 512) scale(.1 -.1)" stroke="none"><path d="M2794 3710 c-129 -33 -299 -135 -359 -214 -21 -28 -26 -42 -21 -63 9 -38 154 -178 199 -192 32 -11 41 -9 104 23 171 86 354 70 475 -43 150 -138 150 -379 0 -511 -107 -95 -278 -94 -386 2 l-46 40 -11 -29 c-16 -40 -14 -122 4 -164 60 -144 264 -222 452 -174 360 92 559 494 430 868 -36 103 -81 173 -175 267 -71 72 -100 93 -180 132 -52 26 -127 54 -167 62 -96 21 -230 20 -319 -4z M2183 3695 c-116 -32 -221 -108 -273 -199 -17 -28 -30 -54 -30 -58 0 -4 20 1 45 12 66 28 220 68 294 76 64 7 65 7 137 83 40 41 71 77 69 79 -2 2 -21 8 -42 13 -55 12 -140 10 -200 -6z M2212 3388 c-159 -22 -390 -122 -559 -241 -299 -210 -585 -600 -609 -828 -12 -118 40 -251 125 -318 96 -76 178 -98 426 -116 110 -8 224 -21 254 -29 125 -34 230 -115 272 -211 11 -24 24 -81 30 -127 20 -170 65 -271 166 -374 34 -35 63 -65 63 -67 0 -1 -10 -27 -22 -57 -29 -76 -37 -259 -14 -350 42 -170 158 -318 311 -397 44 -23 98 -46 120 -52 22 -6 45 -14 51 -18 5 -5 15 -48 22 -96 6 -48 14 -92 17 -97 4 -6 415 -10 1131 -10 l1124 0 0 1584 0 1585 -55 -19 c-84 -29 -143 -68 -232 -154 l-83 -78 -54 49 c-111 102 -233 151 -391 160 -113 6 -199 -10 -298 -54 l-60 -27 -26 34 c-37 51 -120 134 -127 128 -3 -4 0 -34 7 -67 17 -89 7 -268 -21 -356 -103 -328 -377 -545 -688 -545 -161 0 -273 41 -373 137 -37 35 -66 75 -85 116 -79 173 -8 407 124 407 44 0 68 -14 117 -66 74 -78 167 -82 238 -9 60 62 72 147 33 231 -42 90 -120 130 -238 122 -50 -4 -85 -14 -131 -37 -89 -45 -122 -52 -176 -40 -92 20 -262 163 -302 253 -11 25 -21 45 -22 45 -1 -1 -30 -6 -65 -11z m-256 -505 c115 -88 129 -102 132 -131 2 -18 -2 -40 -9 -49 -7 -8 -69 -55 -138 -105 -103 -73 -130 -88 -151 -83 -35 8 -51 34 -48 74 3 31 12 42 83 92 44 31 80 61 82 66 1 4 -30 31 -69 58 -39 28 -77 56 -85 63 -18 19 -16 72 4 94 32 35 63 23 199 -79z m528 -88 c23 -24 28 -52 14 -82 l-13 -28 -141 -3 c-130 -2 -142 -1 -158 17 -23 26 -24 66 -1 91 16 18 32 20 151 20 105 0 136 -3 148 -15z"/></g></symbol>
+<symbol id="claude" viewBox="0 0 94 94"><path fill="#D97757" d="M18.7657 62.4437L37.1822 52.1167L37.4857 51.2122L37.1822 50.7085H36.2715L33.1852 50.5208L22.6615 50.2391L13.5545 49.8636L4.70044 49.3942L2.47428 48.9248L0.399902 46.1553L0.602281 44.794L2.47428 43.5266L5.15579 43.7613L11.0754 44.1837L19.98 44.794L26.4055 45.1695L35.9679 46.1553H37.4857L37.6881 45.545L37.1822 45.1695L36.7774 44.794L27.5692 38.5508L17.6021 31.9791L12.3908 28.1769L9.60812 26.2524L8.19147 24.4686L7.58433 20.5256L10.1141 17.7091L13.5545 17.9438L14.4146 18.1785L17.9056 20.8542L25.343 26.6279L35.0572 33.7629L36.4739 34.9364L37.0443 34.5514L37.1316 34.2792L36.4739 33.1996L31.212 23.6706L25.596 13.9539L23.0663 9.91695L22.4086 7.52296C22.1538 6.51831 22.0038 5.68714 22.0038 4.65957L24.8877 0.716544L26.5067 0.200195L30.4025 0.716544L32.0215 2.12477L34.4501 7.66379L38.3458 16.3478L44.4172 28.1769L46.188 31.6975L47.1493 34.9364L47.5035 35.9222H48.1106V35.3589L48.6166 28.6933L49.5273 20.5256L50.438 10.0108L50.7415 7.05356L52.2088 3.48605L55.1433 1.56148L57.42 2.64112L59.292 5.31674L59.039 7.05356L57.926 14.2824L55.7504 25.5952L54.3337 33.1996H55.1433L56.1046 32.2138L59.9497 27.1442L66.3752 19.0704L69.2085 15.8784L72.5478 12.3579L74.6728 10.668H78.7203L81.6548 15.0804L80.3394 19.6337L76.1906 24.8911L72.7502 29.3504L67.8172 35.9595L64.7562 41.2734L65.0307 41.7118L65.7681 41.6489L76.8989 39.255L82.9197 38.1753L90.1041 36.9549L93.3422 38.457L93.6963 40.006L92.4315 43.151L84.7411 45.0287L75.7353 46.8594L62.3244 50.0164L62.1759 50.1358L62.3512 50.3958L68.399 50.9432L70.9794 51.084H77.3037L89.0922 51.9759L92.1785 53.9944L93.9999 56.4822L93.6963 58.4068L88.9404 60.8008L82.5655 59.2987L67.6401 55.7312L62.5301 54.4638H61.8217V54.8862L66.0717 59.064L73.9139 66.1051L83.6786 75.2116L84.1845 77.4648L82.9197 79.2485L81.6042 79.0608L73.0032 72.5829L69.6639 69.6726L62.1759 63.3356H61.67V63.9928L63.3902 66.5276L72.5478 80.2812L73.0032 84.5059L72.3454 85.8672L69.9675 86.7121L67.3871 86.2427L61.9735 78.6852L56.4587 70.2359L52.0064 62.6315L51.4687 62.971L48.8189 91.2654L47.6047 92.7206L44.7714 93.8002L42.3934 92.0164L41.1286 89.1061L42.3934 83.3324L43.9113 75.8219L45.1255 69.8604L46.2386 62.4437L46.9184 59.9661L46.8583 59.8003L46.3153 59.8916L40.7238 67.5603L32.2239 79.0608L25.4948 86.2427L23.8758 86.8999L21.0931 85.4447L21.3461 82.863L22.9145 80.5629L32.2239 68.7338L37.8399 61.3641L41.4594 57.1337L41.4242 56.5218L41.2244 56.5048L16.489 72.6299L12.0873 73.1932L10.1647 71.4094L10.4176 68.4991L11.3283 67.5603L18.7657 62.4437Z"/></symbol>
+<symbol id="i-sidebar" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 2.5v11" stroke="currentColor" stroke-width="1.2"/></symbol>
+<symbol id="i-insp" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M10 2.5v11" stroke="currentColor" stroke-width="1.2"/><path d="M11.6 5h1.4M11.6 7h1.4M11.6 9h1.4" stroke="currentColor" stroke-width="1"/></symbol>
+<symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.8 4.2c0-.8.6-1.4 1.4-1.4h3l1.4 1.5h5.2c.8 0 1.4.6 1.4 1.4v6.1c0 .8-.6 1.4-1.4 1.4H3.2c-.8 0-1.4-.6-1.4-1.4z" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+<symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 4.6V8l2.4 1.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+<symbol id="i-ellipsis" viewBox="0 0 16 16"><circle cx="3.2" cy="8" r="1.25" fill="currentColor"/><circle cx="8" cy="8" r="1.25" fill="currentColor"/><circle cx="12.8" cy="8" r="1.25" fill="currentColor"/></symbol>
+<symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6l3.6 3.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+<symbol id="i-branch" viewBox="0 0 16 16"><path d="M5 2v12M5 9c0-3 6-2.5 6-6.5M9 4.5l2-2 2 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+<symbol id="i-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="8" r="4.6" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+<symbol id="i-x" viewBox="0 0 10 10"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+<symbol id="i-chev" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-chevr" viewBox="0 0 10 10"><path d="M3.5 2l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-chevl" viewBox="0 0 10 10"><path d="M6.5 2l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-agents" viewBox="0 0 16 16"><circle cx="5.5" cy="5.5" r="2.3" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="11" cy="6.5" r="1.9" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M1.8 13.2c.5-2.2 2-3.3 3.7-3.3s3.2 1.1 3.7 3.3M9.6 10.3c.4-.2.9-.3 1.4-.3 1.5 0 2.7.9 3.1 2.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+<symbol id="i-tray" viewBox="0 0 16 16"><path d="M1.8 9.2h3.4l.9 1.8h3.8l.9-1.8h3.4M1.8 9.2l1.6-5.6c.2-.6.7-1 1.4-1h6.4c.7 0 1.2.4 1.4 1l1.6 5.6v3c0 .7-.6 1.3-1.3 1.3H3.1c-.7 0-1.3-.6-1.3-1.3z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+<symbol id="i-home" viewBox="0 0 16 16"><path d="M2.5 7.2L8 2.6l5.5 4.6v5.6c0 .6-.5 1.1-1.1 1.1H9.6V10H6.4v3.9H3.6c-.6 0-1.1-.5-1.1-1.1z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></symbol>
+<symbol id="i-compose" viewBox="0 0 16 16"><path d="M13.5 8.6v3.6c0 .9-.7 1.6-1.6 1.6H3.8c-.9 0-1.6-.7-1.6-1.6V4.1c0-.9.7-1.6 1.6-1.6h3.6" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/><path d="M12.2 1.9l1.9 1.9-5.6 5.6-2.5.6.6-2.5z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></symbol>
+<symbol id="i-doc" viewBox="0 0 16 16"><path d="M4 1.8h5l3 3v8.4c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1V2.8c0-.6.4-1 1-1z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M9 1.8v3h3M5.4 8h5.2M5.4 10.4h5.2" fill="none" stroke="currentColor" stroke-width="1.1"/></symbol>
+<symbol id="i-pencil" viewBox="0 0 16 16"><path d="M10.8 2.6l2.6 2.6-7.6 7.6-3.3.7.7-3.3z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><path d="M9.3 4.1l2.6 2.6" stroke="currentColor" stroke-width="1.25"/></symbol>
+<symbol id="i-term" viewBox="0 0 16 16"><rect x="1.6" y="2.6" width="12.8" height="10.8" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M4.4 6.2l2 1.8-2 1.8M7.8 10.4h3.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-chat" viewBox="0 0 16 16"><path d="M2.4 4.2c0-1 .8-1.8 1.8-1.8h7.6c1 0 1.8.8 1.8 1.8v5c0 1-.8 1.8-1.8 1.8H7.2l-3.1 2.4V11H4.2c-1 0-1.8-.8-1.8-1.8z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+<symbol id="i-side" viewBox="0 0 16 16"><path d="M1.8 3.8c0-.8.6-1.4 1.4-1.4h5.4c.8 0 1.4.6 1.4 1.4v3.6c0 .8-.6 1.4-1.4 1.4H5.4L3.2 10.6V8.8c-.8 0-1.4-.6-1.4-1.4z" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/><path d="M11.4 5.6h1.4c.8 0 1.4.6 1.4 1.4v3.6c0 .8-.6 1.4-1.4 1.4v1.8l-2.2-1.8H8.2c-.8 0-1.4-.6-1.4-1.4v-.4" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/></symbol>
+<symbol id="i-tasks" viewBox="0 0 16 16"><rect x="2" y="2.4" width="4" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.15"/><path d="M2.9 4.4l.8.8 1.4-1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="2" y="9.4" width="4" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.15"/><path d="M8.4 4.4h5.4M8.4 11.4h5.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+<symbol id="i-diff" viewBox="0 0 16 16"><path d="M5 2v6M2 5h6M2 12.5h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><rect x="9.6" y="2.4" width="4.4" height="11.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.15"/></symbol>
+<symbol id="i-overview" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 7.2v4M8 4.8v.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+<symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2.2l6.3 11.1H1.7z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 6.4v3.2M8 11.4v.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+<symbol id="i-q" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6.2 6.2c.2-1 1-1.6 1.9-1.6 1 0 1.9.7 1.9 1.7 0 1.5-2 1.6-2 3M8 11.4v.1" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></symbol>
+<symbol id="i-plan" viewBox="0 0 16 16"><rect x="2.4" y="1.8" width="11.2" height="12.4" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5 5.4h6M5 8h6M5 10.6h3.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+<symbol id="i-up" viewBox="0 0 16 16"><path d="M8 13V3.4M3.8 7.4L8 3.2l4.2 4.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-at" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.25"/><path d="M10.6 8v1c0 1.1.7 1.8 1.6 1.8s1.6-.9 1.6-2.4A5.8 5.8 0 1 0 11 13.2" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></symbol>
+<symbol id="i-slash" viewBox="0 0 16 16"><rect x="1.8" y="1.8" width="12.4" height="12.4" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M9.8 4.6L6.2 11.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+<symbol id="i-cpu" viewBox="0 0 16 16"><path d="M8 1.6l1.5 3.4 3.7.4-2.8 2.5.8 3.6L8 9.6l-3.2 1.9.8-3.6-2.8-2.5 3.7-.4z" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/></symbol>
+<symbol id="i-shield" viewBox="0 0 16 16"><path d="M8 1.8l5.2 2v4c0 3.2-2.3 5.4-5.2 6.4-2.9-1-5.2-3.2-5.2-6.4v-4z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+<symbol id="i-fork" viewBox="0 0 16 16"><circle cx="4" cy="3.4" r="1.6" fill="none" stroke="currentColor" stroke-width="1.15"/><circle cx="12" cy="3.4" r="1.6" fill="none" stroke="currentColor" stroke-width="1.15"/><circle cx="8" cy="12.6" r="1.6" fill="none" stroke="currentColor" stroke-width="1.15"/><path d="M4 5v1.2c0 1.3 1 2.3 2.3 2.3h3.4C11 8.5 12 7.5 12 6.2V5M8 8.5v2.5" fill="none" stroke="currentColor" stroke-width="1.15"/></symbol>
+<symbol id="i-play" viewBox="0 0 16 16"><path d="M4.6 3v10l8.4-5z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></symbol>
+<symbol id="i-book" viewBox="0 0 16 16"><path d="M2.4 3c1.9-.6 3.8-.4 5.6.8v9.6c-1.8-1.2-3.7-1.4-5.6-.8zM13.6 3c-1.9-.6-3.8-.4-5.6.8v9.6c1.8-1.2 3.7-1.4 5.6-.8z" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/></symbol>
+<symbol id="i-ticket" viewBox="0 0 16 16"><path d="M1.8 5.2V3.6c0-.5.4-.9.9-.9h10.6c.5 0 .9.4.9.9v1.6a1.9 1.9 0 0 0 0 3.6v1.6c0 .5-.4.9-.9.9H2.7c-.5 0-.9-.4-.9-.9V8.8a1.9 1.9 0 0 0 0-3.6z" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/><path d="M10 3v8.4" stroke="currentColor" stroke-width="1.1" stroke-dasharray="1.4 1.4"/></symbol>
+<symbol id="i-comment" viewBox="0 0 16 16"><path d="M2.4 3.6c0-.8.6-1.4 1.4-1.4h8.4c.8 0 1.4.6 1.4 1.4v6c0 .8-.6 1.4-1.4 1.4H7l-3 2.4V11h-.2c-.8 0-1.4-.6-1.4-1.4z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M5.4 5.8h5.2M5.4 8h3.4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></symbol>
+<symbol id="i-resume" viewBox="0 0 16 16"><path d="M13.2 8A5.2 5.2 0 1 1 11.6 4.3M11.8 1.8v2.9H8.9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-rewind" viewBox="0 0 16 16"><path d="M2.8 8a5.2 5.2 0 1 0 1.6-3.7M4.2 1.8v2.9H1.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-copy" viewBox="0 0 16 16"><rect x="5" y="5" width="8.6" height="8.6" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M11 5V3.8c0-.8-.6-1.3-1.3-1.3H3.8c-.8 0-1.3.6-1.3 1.3v5.9c0 .8.6 1.3 1.3 1.3H5" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+<symbol id="i-spark" viewBox="0 0 16 16"><path d="M8 1.8c.4 3.2 1.9 4.8 5.2 5.2v.1c-3.3.4-4.8 2-5.2 5.2h-.1c-.4-3.2-1.9-4.8-5.1-5.2V7c3.2-.4 4.7-2 5.1-5.2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+<symbol id="i-image" viewBox="0 0 16 16"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="5.6" cy="6.3" r="1.2" fill="none" stroke="currentColor" stroke-width="1.1"/><path d="M2.4 12l3.6-3.4 2.6 2.2 2.4-2.4 3 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+<symbol id="i-plug" viewBox="0 0 16 16"><path d="M6 1.8v3M10 1.8v3M4.4 4.8h7.2v2.6a3.6 3.6 0 0 1-7.2 0zM8 11v3.2" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.2 10.2A5.6 5.6 0 0 1 5.8 2.8a5.6 5.6 0 1 0 7.4 7.4z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+</defs>
+</svg>
+
+<div class="top">
+  <div class="row1">
+    <h1>Loom v2 · Studio preview</h1>
+    <span class="subt">A fuller, chat-centred Loom in the Night Fleece 2 design system · 17 Oct 2026 · accepted with changes (D-57, D-58), planned in plans/V2-PLAN.md · the reasoning is in plans/v2-research/V2-CONCEPT.md · windows at 1360 × 860 (1 CSS px = 1 pt) · ← → change screens</span>
+  </div>
+  <div class="nav" id="nav"></div>
+  <div class="knobs">
+    <span class="knob">Accent <span class="seg-k" data-knob="accent"><button data-v="fleece" class="on">Fleece</button><button data-v="iris">Iris</button><button data-v="glacier">Glacier</button></span></span>
+    <span class="knob">Sidebar <span class="seg-k" data-knob="sidebar"><button data-v="glass" class="on">Glass 0.6</button><button data-v="deep">Glass 0.86</button><button data-v="solid">Solid</button></span></span>
+    <span class="knob">Canvas <span class="seg-k" data-knob="canvas"><button data-v="ink" class="on">Ink</button><button data-v="graphite">Graphite</button><button data-v="deep">Deep</button></span></span>
+    <span class="knob">Reading size <span class="seg-k" data-knob="read"><button data-v="13">13</button><button data-v="14" class="on">14</button><button data-v="15">15</button></span></span>
+    <span class="knob">Density <span class="seg-k" data-knob="density"><button data-v="comfortable" class="on">Comfortable</button><button data-v="compact">Compact</button></span></span>
+  </div>
+</div>
+
+<div class="page">
+
+<!-- =====================================================================
+     1 · HOME
+     ===================================================================== -->
+<section class="screen" id="home" data-title="Home">
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-sel="" data-nav="home"></aside>
+  <div class="detail"><div class="panel">
+    <div class="home">
+      <div class="home-h">
+        <h1>Today</h1><span class="d">Friday 17 October</span><span class="sp"></span>
+        <span class="btn ghost"><svg><use href="#i-search"/></svg>Jump to <span class="kbd">⌘K</span></span>
+      </div>
+      <div class="start">
+        <div class="ta">Start a session: describe the work, paste a ticket key, type / for a skill or drop files</div>
+        <div class="bar">
+          <span class="ib"><svg><use href="#i-plus"/></svg></span>
+          <span class="bk"><svg><use href="#i-shield"/></svg>Ask before edits</span>
+          <span class="sp"></span>
+          <span class="bk model">Opus 5.5 <span class="lo">High</span><svg class="ch"><use href="#i-chev"/></svg></span>
+          <span class="send off"><svg><use href="#i-up"/></svg></span>
+        </div>
+      </div>
+      <div class="hstrip"><span class="pchip" style="--tone:var(--aqua)">api-gateway<span class="br"><svg><use href="#i-branch"/></svg>main</span></span><span class="sp"></span><span>↵ starts it · mode and model as last used in api-gateway</span></div>
+      <div class="presets">
+        <span class="preset"><svg><use href="#i-play"/></svg>Run the test suite and fix failures</span>
+        <span class="preset"><svg><use href="#i-play"/></svg>Review my last commit</span>
+        <span class="preset"><svg><use href="#i-ticket"/></svg>New session from ticket…</span>
+        <span class="preset"><svg><use href="#i-plus"/></svg>Save a preset</span>
+      </div>
+      <div class="hgrid">
+        <div>
+          <div class="hsec">
+            <h3><span class="pip att"></span>Needs you <span class="cnt">3</span></h3>
+            <div class="hcard">
+              <div class="hitem">
+                <span class="ind"><span class="pip att"></span></span>
+                <span class="tt">Webhook signature check</span>
+                <span class="pj" style="--tone:var(--aqua)"><i></i>api-gateway · 2m</span>
+                <div class="bd">Wants to run <span class="mono">git push origin fix/webhook-sig</span> so CI runs the full suite.</div>
+                <div class="ac"><span class="btn">Deny</span><span class="btn">Allow once</span><span class="btn ghost">Open session</span></div>
+              </div>
+              <div class="hitem">
+                <span class="ind"><span class="pip att"></span></span>
+                <span class="tt">Invoice PDF export</span>
+                <span class="pj" style="--tone:var(--rose)"><i></i>billing · 6m</span>
+                <div class="bd">Which library should render the invoice PDFs?</div>
+                <div class="ac"><span class="qchip rec">WeasyPrint (recommended)</span><span class="qchip">ReportLab</span><span class="qchip">Something else…</span></div>
+              </div>
+              <div class="hitem">
+                <span class="ind"><span class="pip att"></span></span>
+                <span class="tt">Refactor tax rules</span>
+                <span class="pj" style="--tone:var(--rose)"><i></i>billing · 9m</span>
+                <div class="bd">Plan ready for review: 6 steps, touches 9 files, no behaviour change.</div>
+                <div class="ac"><span class="btn">Review plan</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="hsec">
+            <h3><span class="pip unv"></span>Finished, not read <span class="cnt">2</span></h3>
+            <div class="hcard">
+              <div class="hitem">
+                <span class="ind"><span class="pip unv"></span></span>
+                <span class="tt">Rate limiter tests</span>
+                <span class="pj" style="--tone:var(--aqua)"><i></i>api-gateway · 14m</span>
+                <div class="bd">Added 12 tests for the sliding-window limiter; all 214 tests pass. Fixed an off-by-one at the window edge in <span class="mono">limiter.py</span>.</div>
+              </div>
+              <div class="hitem">
+                <span class="ind"><span class="pip fail"></span></span>
+                <span class="tt">Nightly import job</span>
+                <span class="pj" style="--tone:var(--lemon)"><i></i>data-jobs · 31m</span>
+                <div class="bd">Stopped with 3 failing tests in <span class="mono">test_import.py</span> after the schema change.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="side-card">
+            <h3>Plan limits <span class="sp"></span><span class="t3" style="font-weight:500">updated 14:52</span></h3>
+            <div class="lim"><div class="lt"><b>5-hour window</b><span>62% left</span></div><div class="meter"><i style="width:38%"></i></div><div class="ls">Resets 16:40 · <span class="good">at this pace it lasts</span></div></div>
+            <div class="lim" style="margin-bottom:0"><div class="lt"><b>Weekly</b><span>41% left</span></div><div class="meter"><i style="width:59%"></i></div><div class="ls">Resets Monday 09:00</div></div>
+          </div>
+          <div class="side-card">
+            <h3>Today</h3>
+            <div class="stat3"><div><b>1.2M</b>tokens</div><div><b>9</b>sessions</div><div><b>82%</b>from cache</div></div>
+            <div class="bars"><i style="height:20%"></i><i style="height:35%"></i><i style="height:15%"></i><i style="height:55%"></i><i style="height:80%"></i><i style="height:62%"></i><i style="height:30%"></i><i style="height:45%"></i><i style="height:70%"></i><i class="n" style="height:52%"></i></div>
+          </div>
+          <div class="side-card">
+            <h3>Continue</h3>
+            <div class="t2" style="font-size:12.5px;line-height:1.5;margin-bottom:10px">One session was working when Loom quit yesterday.</div>
+            <div class="prj" style="--tone:var(--lemon)"><i></i>Backfill script<span class="r">data-jobs</span></div>
+            <div style="display:flex;gap:6px;margin-top:10px"><span class="btn"><svg><use href="#i-resume"/></svg>Resume</span><span class="btn ghost">Dismiss</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</div></div>
+<div class="cap">
+  <h2>Home <span class="tag">new</span></h2>
+  <p class="lead">Loom opens on a calm overview of the day instead of an empty pane. It only summarises what Loom already knows; nothing starts by itself.</p>
+  <ul>
+    <li><b>Start box:</b> the same composer as a new session, with the bar after Codex's: + for files and mentions, the mode, then model and effort. Project and branch sit under it; Return starts the session.</li>
+    <li><b>Presets:</b> saved starts (prompt, project, mode). One click starts a session.</li>
+    <li><b>Needs you:</b> approvals, questions and plans, answerable right here for the simple cases.</li>
+    <li><b>Finished, not read:</b> the last thing Claude said, so you can triage without opening the session.</li>
+    <li><b>Plan limits:</b> both windows with the reset time and a plain-language pace line.</li>
+    <li><b>Continue:</b> sessions cut by Quit or a crash, resumable in one click.</li>
+  </ul>
+  <h3>Sidebar v2</h3>
+  <ul>
+    <li><b>Home</b> row with the number of sessions that need you.</li>
+    <li><b>Active cards</b> say what each session waits for or did last; the branch moves to the session header.</li>
+    <li><b>Projects</b> below list their sessions as calm one-line rows.</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> the catalog, hooks and plan-limit reads Loom already has. Home adds no process and no polling of its own.</div>
+</div>
+</section>
+
+<!-- =====================================================================
+     2 · CHAT (working)
+     ===================================================================== -->
+<section class="screen" id="chat" data-title="Chat" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-sel="rotation"></aside>
+  <div class="detail"><div class="panel">
+    <div class="hdr">
+      <svg class="prov"><use href="#claude"/></svg><span class="ttl">Token rotation</span><span class="tk">PAY-412</span>
+      <span class="sp"></span>
+      <span class="pill work"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Working <span class="el">2m 41s</span></span>
+      <span class="pchip" style="--tone:var(--aqua)">api-gateway<span class="br"><svg><use href="#i-branch"/></svg>feat/token-rotation</span></span>
+      <span class="vsep"></span>
+      <span class="segc"><span class="on"><svg><use href="#i-chat"/></svg>Chat</span><span><svg><use href="#i-term"/></svg>Terminal</span></span>
+      <span class="ib on"><svg><use href="#i-insp"/></svg></span>
+      <span class="grp"><span class="g"><span class="sq"></span>Stop</span><span class="g ic"><svg><use href="#i-ellipsis"/></svg></span></span>
+    </div>
+    <div class="tabs">
+      <div class="tab on" style="--tone:var(--aqua)"><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><span class="ell">Token rotation</span><svg class="x"><use href="#i-x"/></svg></div>
+      <div class="tab" style="--tone:var(--rose)"><span class="ind"><span class="pip att"></span></span><span class="ell">Invoice PDF export</span></div>
+      <div class="tab" style="--tone:var(--lemon)"><span class="ind"><span class="pip fail"></span></span><span class="ell">Nightly import job</span></div>
+    </div>
+    <div class="pbody">
+      <div class="main">
+        <div class="stream"><div class="col">
+          <div class="sysline"><span><b>Session started</b> · Opus 5.5 · High effort · Ask before edits · 14:02</span></div>
+          <div class="um">Rotate refresh tokens on every use and revoke the old one. Existing sessions must stay valid. Ticket PAY-412.</div>
+          <div class="wb"><svg class="chv"><use href="#i-chevr"/></svg><svg><use href="#i-search"/></svg><span>Explored the auth code · <b>read 5 files</b>, searched 3 patterns</span><span class="dur">18s</span></div>
+          <div class="prose">
+            <p>Refresh tokens are issued in <code>TokenService._issue()</code> and stored in <code>token_families</code>. Today <code>rotate()</code> issues a new pair but never revokes the old token, so a leaked token stays valid until it expires. The plan:</p>
+            <ol><li>Revoke the previous token in the same transaction as the new issue.</li><li>Treat reuse of a revoked token as theft and revoke the whole family.</li><li>Back-fill <code>family_id</code> so sessions created before the change stay valid.</li></ol>
+          </div>
+          <div class="tc">
+            <div class="tc-h"><svg><use href="#i-pencil"/></svg><span class="verb">Edited</span><span class="tgt ell">src/auth/token_service.py</span><span class="meta"><span><span class="add">+31</span> <span class="del">−6</span></span><svg><use href="#i-chev"/></svg></span></div>
+            <div class="diff">
+              <div class="l"><span class="n">43</span><span class="s"> </span><span>        record = self._find_active(token)</span></div>
+              <div class="l d"><span class="n">44</span><span class="s">−</span><span>        <span class="kw">return</span> self._issue(record.user_id)</span></div>
+              <div class="l a"><span class="n">44</span><span class="s">+</span><span>        <span class="kw">if</span> record.revoked_at <span class="kw">is not</span> <span class="kw">None</span>:</span></div>
+              <div class="l a"><span class="n">45</span><span class="s">+</span><span>            self._revoke_family(record.family_id)</span></div>
+              <div class="l a"><span class="n">46</span><span class="s">+</span><span>            <span class="kw">raise</span> <span class="typ">TokenReuseError</span>(record.family_id)</span></div>
+              <div class="more">25 more lines · Open in editor · Comment</div>
+            </div>
+          </div>
+          <div class="tc">
+            <div class="tc-h"><svg><use href="#i-term"/></svg><span class="verb">Ran</span><span class="tgt ell">pytest tests/auth -q</span><span class="meta"><span class="okc"><svg><use href="#i-check"/></svg>42 passed</span><span>6.1s</span></span></div>
+          </div>
+          <div class="agent">
+            <span class="av"><svg><use href="#i-agents"/></svg></span>
+            <span class="nm"><span class="ty">Explore</span>Find other callers of rotate()</span>
+            <span class="st"><span class="chase" style="transform:scale(.75)"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>48s</span>
+            <span class="ln">Read 6 files, searched 3 patterns · now reading <span class="mono">src/api/routes/session.py</span></span>
+          </div>
+          <div class="think"><svg><use href="#i-spark"/></svg><span>Thinking</span><i>Should a reused token answer 401 or 403?</i><svg class="chv"><use href="#i-chevr"/></svg></div>
+          <div class="prose"><p>The service side is done and the tests pass. Now the session middleware: a reused token revokes its family and the request gets 401<span class="caret"></span></p></div>
+          <div class="working"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span>Editing <span class="mono">src/auth/middleware.py</span></span><span class="sep">·</span><span>2m 41s</span><span class="sp"></span><span class="t3">esc to interrupt</span></div>
+        </div></div>
+        <div class="dock">
+          <div class="rail">
+            <span class="rp"><svg><use href="#i-tasks"/></svg><b>Tasks 2/5</b><span class="dots"><i class="d"></i><i class="d"></i><i class="c"></i><i></i><i></i></span><span class="ell">Update the session middleware</span></span>
+            <span class="rp"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><b>1 agent</b>running</span>
+            <span class="rp"><svg><use href="#i-diff"/></svg><b>3 files</b><span class="add">+108</span><span class="del">−10</span></span>
+          </div>
+          <div class="comp">
+            <div class="q"><svg><use href="#i-clock"/></svg><span>After this turn:</span><span class="qt ell">Also add a short note to CHANGELOG.md under Security.</span><span class="sp"></span><span class="ib"><svg><use href="#i-pencil"/></svg></span><span class="ib"><svg><use href="#i-x"/></svg></span></div>
+            <div class="ta">Message Claude; it reads it after the current step</div>
+            <div class="bar"><span class="ib"><svg><use href="#i-plus"/></svg></span><span class="bk"><svg><use href="#i-shield"/></svg>Ask before edits</span><span class="sp"></span><span class="ctx"><span class="ring" style="--p:38"></span></span><span class="bk model">Opus 5.5 <span class="lo">High</span><svg class="ch"><use href="#i-chev"/></svg></span><span class="send stop"><i></i></span></div>
+          </div>
+          <div class="hints"><span>↵ send now</span><span>⌘↵ after this turn</span><span>@ files and sessions</span><span>/ commands and skills</span><span>⌃O every step</span><span>esc interrupt</span></div>
+        </div>
+      </div>
+      <aside class="insp">
+        <div class="itabs"><span class="itab on"><svg><use href="#i-overview"/></svg>Overview</span><span class="itab"><svg><use href="#i-diff"/></svg>Changes <span class="c">3</span></span><span class="itab"><svg><use href="#i-tasks"/></svg>Tasks</span><span class="itab"><svg><use href="#i-agents"/></svg>Agents <span class="c">1</span></span><span class="itab"><svg><use href="#i-side"/></svg>Side</span></div>
+        <div class="ibody">
+          <div class="isec"><h4>Session</h4>
+            <dl class="kv"><dt>Status</dt><dd>Working for 2m 41s</dd><dt>Runs as</dt><dd>Chat <span class="t3">· runs until you stop it</span></dd><dt>Model</dt><dd>Opus 5.5 · High effort</dd><dt>Permissions</dt><dd>Ask before edits</dd><dt>Usage</dt><dd>312k tokens <span class="t3">· 82% from cache · ~$1.84</span></dd></dl>
+          </div>
+          <div class="isec"><h4>Context <span class="sp"></span><span>76k of 200k</span></h4>
+            <div class="meter acc"><i style="width:38%"></i></div>
+            <div class="mrow"><span>Compacts on its own near the limit</span><b>38%</b></div>
+          </div>
+          <div class="isec"><h4>Changes <span class="sp"></span><span>+108 −10</span></h4>
+            <div class="frow"><svg><use href="#i-doc"/></svg><span class="fn2 ell">src/auth/token_service.py</span><span class="ad"><span class="add">+31</span> <span class="del">−6</span></span></div>
+            <div class="frow"><svg><use href="#i-doc"/></svg><span class="fn2 ell">src/auth/middleware.py</span><span class="ad"><span class="add">+19</span> <span class="del">−4</span></span></div>
+            <div class="frow"><svg><use href="#i-doc"/></svg><span class="fn2 ell">tests/auth/test_rotation.py</span><span class="ad"><span class="add">+58</span></span></div>
+          </div>
+          <div class="isec"><h4>Environment</h4>
+            <dl class="kv"><dt>MCP servers</dt><dd>3 connected <span class="t3">· 1 needs sign-in</span></dd><dt>Skills</dt><dd>6 available</dd><dt>Background</dt><dd class="t2">Nothing running</dd></dl>
+          </div>
+          <div class="isec"><h4>Git</h4>
+            <dl class="kv"><dt>Branch</dt><dd class="mono ell" style="font-size:12px">feat/token-rotation</dd><dt>Ahead</dt><dd>2 commits of main</dd><dt>Pull request</dt><dd class="t2">None yet</dd></dl>
+          </div>
+          <div class="actl"><span class="btn"><svg><use href="#i-doc"/></svg>Open in editor</span><span class="btn"><svg><use href="#i-term"/></svg>Continue in terminal</span></div>
+        </div>
+      </aside>
+    </div>
+  </div></div>
+</div></div>
+<div class="cap">
+  <h2>Chat <span class="tag">new</span></h2>
+  <p class="lead">A session's default face. Underneath runs the same Claude Code you use today, in the structured mode Claude's desktop app and VS Code extension use, so skills, MCP servers, hooks, CLAUDE.md and plugins all work. The terminal is one click away.</p>
+  <ul>
+    <li><b>Turn shape:</b> your message, Claude's prose, and the work between them as one-line rows. Reads and searches fold into "Explored · read 5 files"; edits, commands and subagents get cards.</li>
+    <li><b>Success is quiet, failure is loud:</b> a passing command is one line with a check; a failing one opens with its last lines.</li>
+    <li><b>Thinking</b> is one line with Claude's current heading; ⌃O switches to a view with every step and the full thinking.</li>
+    <li><b>Working line:</b> what Claude is doing and for how long. When nothing has arrived for 40 s it says so instead of looking busy.</li>
+    <li><b>Rail above the composer:</b> tasks, subagents and changed files as small pills; each opens a popover. No stacked panels push the composer down.</li>
+    <li><b>Composer:</b> ↵ sends now and Claude reads it after the current step; ⌘↵ holds it for after the turn. Mode, model and effort change the live session; the ring shows how full the context is.</li>
+    <li><b>Inspector:</b> Overview, Changes, Tasks, Agents and Side; closed by default and remembered per session.</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> a Claude Code process in its stream-json mode, started by Loom inside the session's run scope like today's terminal process. Status still comes from Loom's hooks; the stream adds the detail.</div>
+</div>
+</section>
+
+<!-- =====================================================================
+     3 · COMPOSER
+     ===================================================================== -->
+<section class="screen" id="compose" data-title="Composer" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-sel="refunds"></aside>
+  <div class="detail"><div class="panel">
+    <div class="hdr">
+      <svg class="prov"><use href="#claude"/></svg><span class="ttl">Partial refunds</span>
+      <span class="sp"></span>
+      <span class="pill idle">Stopped</span>
+      <span class="pchip" style="--tone:var(--rose)">billing<span class="br"><svg><use href="#i-branch"/></svg>feat/partial-refunds</span></span>
+      <span class="vsep"></span>
+      <span class="segc"><span class="on"><svg><use href="#i-chat"/></svg>Chat</span><span><svg><use href="#i-term"/></svg>Terminal</span></span>
+      <span class="ib"><svg><use href="#i-insp"/></svg></span>
+      <span class="grp"><span class="g ic"><svg><use href="#i-ellipsis"/></svg></span></span>
+    </div>
+    <div class="pbody">
+      <div class="main">
+        <div class="stream"><div class="col">
+          <div class="sysline"><span><b>Tuesday 14 October</b></span></div>
+          <div class="um">Support partial refunds: any amount up to what is left on the charge, more than once.</div>
+          <div class="wb turn"><svg class="chv"><use href="#i-chevr"/></svg><svg style="color:var(--t3)"><use href="#i-check"/></svg><span>Worked for 4m 12s · <b>read 9 files</b>, edited 5, ran 3 commands</span></div>
+          <div class="prose">
+            <p>Partial refunds work now. <code>Refund.amount</code> can be any value up to what is left on the charge, and each refund is its own row in <code>refunds</code>, so several are allowed. Invoices list the refunds under the total.</p>
+            <p>All 186 tests pass, including 11 new ones in <code>test_refunds.py</code>.</p>
+          </div>
+          <div class="tc">
+            <div class="tc-h"><svg><use href="#i-diff"/></svg><span>5 files changed</span><span class="meta"><span><span class="add">+164</span> <span class="del">−22</span></span><span class="btn" style="height:22px">Review</span></span></div>
+          </div>
+          <div class="macts"><span class="h"><svg><use href="#i-copy"/></svg>Copy</span><span><svg><use href="#i-fork"/></svg>Fork from here</span><span><svg><use href="#i-rewind"/></svg>Rewind files to here</span><span><svg><use href="#i-term"/></svg>Open in terminal</span></div>
+          <div class="sysline" style="margin-top:6px"><span><b>Stopped</b> 4 days ago · sending resumes it</span></div>
+          <div style="height:352px"></div><!-- room for the open menu, so the stream shows above it -->
+        </div></div>
+        <div class="dock">
+          <div class="comp">
+            <div class="menu">
+              <div class="mh">Commands and skills for this session<span class="sp"></span><span class="t3">from Claude's own list</span></div>
+              <div class="msec"><h6>Skills</h6>
+                <div class="mi on"><span class="cn">/review</span><span class="ds">Review the current changes</span><span class="r">built in</span></div>
+                <div class="mi"><span class="cn">/security-review</span><span class="ds">Check the changes for security problems</span><span class="r">built in</span></div>
+                <div class="mi"><span class="cn">/invoice-fixtures</span><span class="ds">Regenerate the golden invoice PDFs</span><span class="r">this project</span></div>
+              </div>
+              <div class="msec"><h6>Commands</h6>
+                <div class="mi"><span class="cn">/compact</span><span class="ds">Summarise the session to free context</span></div>
+                <div class="mi dim"><span class="cn">/agents</span><span class="ds">Manage subagents</span><span class="r">opens the terminal</span></div>
+              </div>
+              <div class="msec"><h6>Loom</h6>
+                <div class="mi"><svg><use href="#i-side"/></svg><span>Ask on the side</span><span class="r"><span class="kbd">⌘;</span></span></div>
+                <div class="mi"><svg><use href="#i-term"/></svg><span>Continue in terminal</span><span class="r"><span class="kbd">⌥⌘T</span></span></div>
+              </div>
+              <div class="mf"><span>↑↓ choose</span><span>↵ insert</span><span>⇥ complete</span><span>esc close</span></div>
+            </div>
+            <div class="achips">
+              <span class="achip"><span class="thumb"></span>totals-misaligned.png<svg><use href="#i-x"/></svg></span>
+              <span class="achip" style="padding-left:8px"><svg style="width:12px;height:12px"><use href="#i-doc"/></svg>docs/invoice-spec.md<svg><use href="#i-x"/></svg></span>
+            </div>
+            <div class="ta typed">/<span class="caret"></span></div>
+            <div class="bar"><span class="ib"><svg><use href="#i-plus"/></svg></span><span class="bk"><svg><use href="#i-shield"/></svg>Accept edits</span><span class="sp"></span><span class="ctx"><span class="ring" style="--p:27"></span></span><span class="bk model">Sonnet 5.5 <span class="lo">Medium</span><svg class="ch"><use href="#i-chev"/></svg></span><span class="send"><svg><use href="#i-up"/></svg></span></div>
+          </div>
+          <div class="hints"><span>↵ send · resumes the session</span><span>⇧↵ new line</span><span>↑ last messages</span><span>paste or drop images and files</span></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</div></div>
+<div class="cap">
+  <h2>Composer <span class="tag">new</span></h2>
+  <p class="lead">Where chat earns its keep: everything you can send Claude Code from the terminal, with less typing and nothing lost. Here you come back to a four-day-old session.</p>
+  <ul>
+    <li><b>The bar</b> follows Codex's composer: + on the left (images, files, @ mentions and / commands, each also on a shortcut), the permission mode as plain text, then the context ring, the model with its effort, and Send. No mode gets a warning colour or mark, Full access included.</li>
+    <li><b>/</b> lists the session's skills and commands, taken from Claude's own list, plus Loom's actions. A command that only works in the terminal says so and opens it.</li>
+    <li><b>@</b> finds files, folders and other sessions; a session reference gives Claude that session's transcript path and last answer.</li>
+    <li><b>Images and files:</b> paste, drop or +. A very large paste becomes an attachment instead of a wall of text.</li>
+    <li><b>Drafts</b> are kept per session; ↑ in an empty composer brings back your last messages.</li>
+    <li><b>Message actions</b> on hover: copy, fork from here, rewind files to that point, open in terminal.</li>
+    <li><b>Stopped:</b> a stopped session keeps its whole history; sending starts its process again in a second or two. Nothing stops by itself while idle (D-38); an opt-in idle stop for Chat sessions is an open decision.</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> sending is one JSON line on the process's input, with images as image blocks. A stopped session has no process at all; the next message starts one with <span class="mono">--resume</span>.</div>
+</div>
+</section>
+
+<!-- =====================================================================
+     4 · PLAN REVIEW
+     ===================================================================== -->
+<section class="screen" id="plan" data-title="Plan review" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-sel="tax"></aside>
+  <div class="detail"><div class="panel">
+    <div class="hdr">
+      <svg class="prov"><use href="#claude"/></svg><span class="ttl">Refactor tax rules</span>
+      <span class="sp"></span>
+      <span class="pill att"><span class="pip att"></span>Waiting for you</span>
+      <span class="pchip" style="--tone:var(--rose)">billing<span class="br"><svg><use href="#i-branch"/></svg>refactor/tax-rules</span></span>
+      <span class="vsep"></span>
+      <span class="segc"><span class="on"><svg><use href="#i-chat"/></svg>Chat</span><span><svg><use href="#i-term"/></svg>Terminal</span></span>
+      <span class="ib on"><svg><use href="#i-insp"/></svg></span>
+      <span class="grp"><span class="g ic"><svg><use href="#i-ellipsis"/></svg></span></span>
+    </div>
+    <div class="pbody">
+      <div class="main">
+        <div class="stream"><div class="col">
+          <div class="sysline"><span><b>Plan mode</b> · Claude reads and plans; nothing changes until you approve</span></div>
+          <div class="um">Plan a refactor of <code style="font:12.5px var(--mono)">tax_rules.py</code>: one rule object per region, no behaviour change. Plan first, then wait for me.</div>
+          <div class="wb"><svg class="chv"><use href="#i-chevr"/></svg><svg><use href="#i-search"/></svg><span>Explored the billing code · <b>read 11 files</b>, searched 4 patterns</span><span class="dur">22s</span></div>
+          <div class="answered"><svg style="color:var(--t3)"><use href="#i-plan"/></svg><span>Plan, version 1</span><span class="sp"></span><span>you asked to keep both rounding paths</span></div>
+          <div class="um">Keep both rounding paths until the golden files agree.</div>
+          <div class="dc doc">
+            <div class="dc-h"><span class="ic" style="background:rgba(var(--acc-rgb),.18);color:var(--acc-hi)"><svg><use href="#i-plan"/></svg></span>Plan, version 2<span class="who">6 steps · 9 files</span></div>
+            <div class="dc-b">
+              <div class="planbody">
+                <h5>Split tax_rules.py into per-region rule objects</h5>
+                <div class="meta">Behaviour stays identical; the golden-file tests decide.</div>
+                <ol>
+                  <li>Add a <code>TaxRule</code> protocol with <code>applies_to()</code> and <code>amount()</code>.</li>
+                  <li>Move the EU, UK, US and default branches into four classes under <code>billing/tax/</code>.</li>
+                  <li>Replace the 240-line <code>if region ==</code> chain with a registry lookup.</li>
+                  <li>Keep <code>calculate_tax()</code> as a thin wrapper so callers do not change.</li>
+                  <li>Record golden files for 120 invoices before the change; keep both rounding paths until they match.</li>
+                  <li>Delete the dead <code>LEGACY_VAT</code> path only if no golden file uses it.</li>
+                </ol>
+              </div>
+            </div>
+            <div class="dc-f"><span class="hint">Saved to .claude/plans/tax-rules.md</span><span class="btn ghost">Compare with version 1</span><span class="btn">Open full plan</span></div>
+          </div>
+          <div style="height:6px"></div>
+        </div></div>
+        <div class="dock">
+          <div class="pinned">
+            <div class="dc plan">
+              <div class="dc-h"><span class="ic"><svg><use href="#i-plan"/></svg></span>Build this plan?<span class="who">Claude waits in plan mode</span></div>
+              <div class="dc-f" style="padding-top:11px">
+                <span class="t2" style="font-size:12px">Then</span>
+                <span class="segc"><span class="on">Ask before edits</span><span>Accept edits</span><span>Auto</span></span>
+                <span class="sp"></span>
+                <span class="btn">Keep planning</span><span class="btn primary">Approve</span>
+              </div>
+            </div>
+          </div>
+          <div class="comp">
+            <div class="ta">Or say what to change in the plan</div>
+            <div class="bar"><span class="ib"><svg><use href="#i-plus"/></svg></span><span class="bk plan"><svg><use href="#i-plan"/></svg>Plan mode</span><span class="sp"></span><span class="ctx"><span class="ring" style="--p:21"></span></span><span class="bk model">Opus 5.5 <span class="lo">High</span><svg class="ch"><use href="#i-chev"/></svg></span><span class="send off"><svg><use href="#i-up"/></svg></span></div>
+          </div>
+        </div>
+      </div>
+      <aside class="insp">
+        <div class="itabs"><span class="itab"><svg><use href="#i-overview"/></svg>Overview</span><span class="itab"><svg><use href="#i-diff"/></svg>Changes</span><span class="itab on"><svg><use href="#i-tasks"/></svg>Tasks</span><span class="itab"><svg><use href="#i-agents"/></svg>Agents</span><span class="itab"><svg><use href="#i-side"/></svg>Side</span></div>
+        <div class="ibody">
+          <div class="isec"><h4>Plan <span class="sp"></span><span>waiting for approval</span></h4>
+            <div class="t2" style="font-size:12px;line-height:1.5;margin-bottom:10px">When you approve, these steps become Claude's task list and tick off as it works.</div>
+            <div class="frow"><svg><use href="#i-tasks"/></svg><span class="ell">Add a TaxRule protocol</span></div>
+            <div class="frow"><svg><use href="#i-tasks"/></svg><span class="ell">Move four regions into classes</span></div>
+            <div class="frow"><svg><use href="#i-tasks"/></svg><span class="ell">Replace the if-chain with a registry</span></div>
+            <div class="frow"><svg><use href="#i-tasks"/></svg><span class="ell">Keep calculate_tax() as a wrapper</span></div>
+            <div class="frow"><svg><use href="#i-tasks"/></svg><span class="ell">Golden files before and after</span></div>
+            <div class="frow"><svg><use href="#i-tasks"/></svg><span class="ell">Remove LEGACY_VAT if unused</span></div>
+          </div>
+          <div class="hr"></div>
+          <div class="isec"><h4>Versions</h4>
+            <div class="frow on"><svg><use href="#i-plan"/></svg><span>Version 2</span><span class="ad t2" style="font-family:var(--sans)">now · after your note</span></div>
+            <div class="frow"><svg><use href="#i-plan"/></svg><span>Version 1</span><span class="ad t2" style="font-family:var(--sans)">14:20</span></div>
+          </div>
+          <div class="isec"><h4>Plan file</h4>
+            <div class="frow"><svg><use href="#i-doc"/></svg><span class="fn2 ell">.claude/plans/tax-rules.md</span><span class="ad t2" style="font-family:var(--sans)">Open in editor</span></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div></div>
+</div></div>
+<div class="cap">
+  <h2>Plan review <span class="tag">new</span></h2>
+  <p class="lead">Plan mode becomes a first-class step. The plan reads like a document in the stream; the decision waits above the composer, like every request that needs you.</p>
+  <ul>
+    <li><b>Plan card:</b> Claude's plan with its file path; Open full plan shows all of it.</li>
+    <li><b>Approve:</b> pick how much freedom the build gets (Ask before edits, Accept edits, Auto); it applies at once.</li>
+    <li><b>Keep planning:</b> type what to change; Claude revises. Loom keeps every version, so you can compare them.</li>
+    <li><b>Tasks tab:</b> the steps become Claude's task list once you approve.</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> plan mode is Claude's own. The plan arrives as a permission request for leaving plan mode, so Approve and Keep planning are its allow and its deny-with-a-note. Each version is in the transcript.</div>
+</div>
+</section>
+
+<!-- =====================================================================
+     5 · APPROVALS
+     ===================================================================== -->
+<section class="screen" id="approve" data-title="Approvals" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-sel="webhook"></aside>
+  <div class="detail"><div class="panel">
+    <div class="hdr">
+      <svg class="prov"><use href="#claude"/></svg><span class="ttl">Webhook signature check</span>
+      <span class="sp"></span>
+      <span class="pill att"><span class="pip att"></span>Needs approval</span>
+      <span class="pchip" style="--tone:var(--aqua)">api-gateway<span class="br"><svg><use href="#i-branch"/></svg>fix/webhook-sig</span></span>
+      <span class="vsep"></span>
+      <span class="segc"><span class="on"><svg><use href="#i-chat"/></svg>Chat</span><span><svg><use href="#i-term"/></svg>Terminal</span></span>
+      <span class="ib on"><svg><use href="#i-insp"/></svg></span>
+      <span class="grp"><span class="g"><span class="sq"></span>Stop</span><span class="g ic"><svg><use href="#i-ellipsis"/></svg></span></span>
+    </div>
+    <div class="pbody">
+      <div class="main">
+        <div class="stream"><div class="col">
+          <div class="um">Verify webhook signatures with HMAC-SHA256 and reject replays older than five minutes.</div>
+          <div class="wb"><svg class="chv"><use href="#i-chevr"/></svg><svg><use href="#i-search"/></svg><span>Explored · <b>read 4 files</b></span><span class="dur">9s</span></div>
+          <div class="answered"><svg style="color:var(--acc-hi)"><use href="#i-q"/></svg><span>Asked: which header carries the signature?</span><span class="sp"></span><b>X-Signature-256</b><svg style="color:var(--ok-l)"><use href="#i-check"/></svg></div>
+          <div class="wb"><svg class="chv"><use href="#i-chevr"/></svg><svg><use href="#i-pencil"/></svg><span>Edited 2 files · <b>+105 −2</b></span><span class="dur">41s</span></div>
+          <div class="tc">
+            <div class="tc-h"><svg><use href="#i-term"/></svg><span class="verb">Ran</span><span class="tgt ell">pytest tests/test_webhooks.py -q</span><span class="meta"><span class="okc"><svg><use href="#i-check"/></svg>9 passed</span><span>1.4s</span></span></div>
+          </div>
+          <div class="agent">
+            <span class="av"><svg><use href="#i-agents"/></svg></span>
+            <span class="nm"><span class="ty">code-reviewer</span>Review the signature check</span>
+            <span class="st"><span class="okc"><svg><use href="#i-check"/></svg></span>41s</span>
+            <span class="ln">No issues. Uses a constant-time compare and rejects missing timestamps.</span>
+          </div>
+          <div class="prose"><p>Signature checks and the replay window are in place, and the nine new tests pass. I'll push the branch so CI runs the full suite.</p></div>
+          <div class="tc pending">
+            <div class="tc-h"><svg><use href="#i-term"/></svg><span class="verb">Run</span><span class="tgt ell">git push origin fix/webhook-sig</span><span class="meta">waiting for you</span></div>
+          </div>
+        </div></div>
+        <div class="dock">
+          <div class="pinned">
+            <div class="dc">
+              <div class="dc-h"><span class="ic"><svg><use href="#i-warn"/></svg></span>Allow this command?<span class="who">Bash · 2 minutes ago</span><span class="stepper"><svg><use href="#i-chevl"/></svg>1 of 2<svg><use href="#i-chevr"/></svg></span></div>
+              <div class="dc-b">
+                <div class="cmd"><span class="pr">$</span>git push origin fix/webhook-sig</div>
+                <div class="why"><b>Claude:</b> push the branch so CI runs the full suite.</div>
+              </div>
+              <div class="dc-f"><span class="hint">1 · 2 · 3 answer · esc leaves it waiting</span><span class="btn">Deny…</span><span class="btn">Allow once</span><span class="btn primary">Allow git push for this session</span></div>
+            </div>
+          </div>
+          <div class="comp">
+            <div class="ta">Or tell Claude what to do instead</div>
+            <div class="bar"><span class="ib"><svg><use href="#i-plus"/></svg></span><span class="bk"><svg><use href="#i-shield"/></svg>Ask before edits</span><span class="sp"></span><span class="ctx"><span class="ring" style="--p:24"></span></span><span class="bk model">Sonnet 5.5 <span class="lo">Medium</span><svg class="ch"><use href="#i-chev"/></svg></span><span class="send off"><svg><use href="#i-up"/></svg></span></div>
+          </div>
+        </div>
+      </div>
+      <aside class="insp">
+        <div class="itabs"><span class="itab"><svg><use href="#i-overview"/></svg>Overview</span><span class="itab"><svg><use href="#i-diff"/></svg>Changes <span class="c">2</span></span><span class="itab"><svg><use href="#i-tasks"/></svg>Tasks</span><span class="itab on"><svg><use href="#i-agents"/></svg>Agents <span class="c">2</span></span><span class="itab"><svg><use href="#i-side"/></svg>Side</span></div>
+        <div class="ibody">
+          <div class="isec"><h4>Finished <span class="sp"></span><span>2</span></h4>
+            <div class="agent" style="margin-top:0">
+              <span class="av"><svg><use href="#i-agents"/></svg></span>
+              <span class="nm"><span class="ty">code-reviewer</span></span>
+              <span class="st">41s</span>
+              <span class="ln">Review the signature check</span>
+            </div>
+            <div class="agent">
+              <span class="av"><svg><use href="#i-agents"/></svg></span>
+              <span class="nm"><span class="ty">Explore</span></span>
+              <span class="st">18s</span>
+              <span class="ln">Find the webhook handlers</span>
+            </div>
+          </div>
+          <div class="isec"><h4>code-reviewer · transcript</h4>
+            <div class="prose" style="font-size:12.5px;line-height:19px">
+              <p class="t2" style="margin-bottom:6px">Read <span class="mono" style="font-size:11px">verify.py</span>, <span class="mono" style="font-size:11px">test_webhooks.py</span></p>
+              <p>The check computes HMAC-SHA256 over the raw body and compares with <code>hmac.compare_digest</code>, which is constant-time. Requests without <code>X-Timestamp</code> are rejected before the comparison. The five-minute window uses the server clock; no issues.</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div></div>
+</div></div>
+<div class="cap">
+  <h2>Approvals and questions <span class="tag">new</span></h2>
+  <p class="lead">Claude's permission requests and questions become native cards, pinned above the composer until you answer. Nothing scrolls away while Claude waits.</p>
+  <ul>
+    <li><b>One at a time,</b> with a counter when several wait; a subagent's request shows the subagent's name.</li>
+    <li><b>The full command</b> and Claude's reason; long commands scroll inside the card.</li>
+    <li><b>Allow once, Allow for this session</b> (Claude's own suggested rule) or <b>Deny</b> with an optional note. Number keys answer; Esc never denies.</li>
+    <li><b>Typing in the composer</b> instead denies with your text as the reason, so Claude can change course.</li>
+    <li><b>Answered</b> requests and questions fold to one line in the stream (see "Asked: which header…").</li>
+    <li><b>Agents tab:</b> each subagent's result and transcript beside the main thread, not in its place.</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> in Chat, Claude's documented permission channel (the <span class="mono">can_use_tool</span> request), so Loom's answer is the answer. In Terminal mode the same card can answer through Claude's PermissionRequest hook; that path needs a spike first.</div>
+</div>
+</section>
+
+<!-- =====================================================================
+     6 · REVIEW CHANGES
+     ===================================================================== -->
+<section class="screen" id="review" data-title="Review changes" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-sel="rotation"></aside>
+  <div class="detail"><div class="panel">
+    <div class="hdr">
+      <svg class="prov"><use href="#claude"/></svg><span class="ttl">Token rotation</span><span class="tk">PAY-412</span>
+      <span class="sp"></span>
+      <span class="pill unv"><span class="pip unv"></span>Finished</span>
+      <span class="pchip" style="--tone:var(--aqua)">api-gateway<span class="br"><svg><use href="#i-branch"/></svg>feat/token-rotation</span></span>
+      <span class="vsep"></span>
+      <span class="segc"><span class="on"><svg><use href="#i-chat"/></svg>Chat</span><span><svg><use href="#i-term"/></svg>Terminal</span></span>
+      <span class="ib on"><svg><use href="#i-insp"/></svg></span>
+      <span class="grp"><span class="g ic"><svg><use href="#i-ellipsis"/></svg></span></span>
+    </div>
+    <div class="pbody">
+      <div class="main">
+        <div class="stream"><div class="col">
+          <div class="sysline"><span><b>Session started</b> · Opus 5.5 · High effort · 14:02</span></div>
+          <div class="um">How are refresh tokens stored today?</div>
+          <div class="wb turn"><svg class="chv"><use href="#i-chevr"/></svg><svg style="color:var(--t3)"><use href="#i-check"/></svg><span>Worked for 38s · <b>read 4 files</b></span></div>
+          <div class="prose"><p>One row per token in <code>token_families</code>, keyed by user. <code>rotate()</code> issues a new pair but never revokes the old one.</p></div>
+          <div class="um">Rotate refresh tokens on every use and revoke the old one. Existing sessions must stay valid. Ticket PAY-412.</div>
+          <div class="wb turn"><svg class="chv"><use href="#i-chevr"/></svg><svg style="color:var(--t3)"><use href="#i-check"/></svg><span>Worked for 6m 12s · <b>read 7 files</b>, edited 3, ran 2 commands</span></div>
+          <div class="prose">
+            <p>Done. Refresh tokens now rotate on every use:</p>
+            <ul><li>The old token is revoked in the same transaction as the new one.</li><li>Reusing a revoked token revokes its whole family and returns 401.</li><li>A migration back-fills <code>family_id</code>, so existing sessions stay valid.</li></ul>
+            <p>All 214 tests pass, including 9 new ones in <code>test_rotation.py</code>.</p>
+          </div>
+          <div class="tc">
+            <div class="tc-h"><svg><use href="#i-diff"/></svg><span>3 files changed</span><span class="meta"><span><span class="add">+108</span> <span class="del">−10</span></span></span></div>
+            <div class="tc-b">
+              <div class="frow"><svg><use href="#i-doc"/></svg><span class="fn2 ell">src/auth/token_service.py</span><span class="ad"><span class="add">+31</span> <span class="del">−6</span></span></div>
+              <div class="frow"><svg><use href="#i-doc"/></svg><span class="fn2 ell">src/auth/middleware.py</span><span class="ad"><span class="add">+19</span> <span class="del">−4</span></span></div>
+              <div class="frow"><svg><use href="#i-doc"/></svg><span class="fn2 ell">tests/auth/test_rotation.py</span><span class="ad"><span class="add">+58</span></span></div>
+            </div>
+          </div>
+          <div class="macts"><span><svg><use href="#i-copy"/></svg>Copy</span><span><svg><use href="#i-fork"/></svg>Fork</span><span class="h"><svg><use href="#i-rewind"/></svg>Rewind files</span><span><svg><use href="#i-term"/></svg>Open in terminal</span></div>
+        </div></div>
+        <div class="dock">
+          <div class="comp">
+            <div class="ta">Reply to Claude</div>
+            <div class="bar"><span class="ib"><svg><use href="#i-plus"/></svg></span><span class="sp"></span><span class="ctx"><span class="ring" style="--p:44"></span></span><span class="send off"><svg><use href="#i-up"/></svg></span></div>
+          </div>
+        </div>
+      </div>
+      <aside class="insp wide">
+        <div class="itabs"><span class="itab"><svg><use href="#i-overview"/></svg>Overview</span><span class="itab on"><svg><use href="#i-diff"/></svg>Changes <span class="c">3</span></span><span class="itab"><svg><use href="#i-tasks"/></svg>Tasks</span><span class="itab"><svg><use href="#i-agents"/></svg>Agents</span><span class="itab"><svg><use href="#i-side"/></svg>Side</span></div>
+        <div class="ibody" style="padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><span class="segc"><span class="on">Last turn</span><span>Whole session</span><span>Branch vs main</span></span><span class="sp"></span><span class="btn ghost">Open all in editor</span></div>
+          <div class="frow on"><svg><use href="#i-doc"/></svg><span class="fn2 ell">src/auth/token_service.py</span><span class="ad"><span class="add">+31</span> <span class="del">−6</span></span></div>
+          <div class="frow"><svg><use href="#i-doc"/></svg><span class="fn2 ell">src/auth/middleware.py</span><span class="ad"><span class="add">+19</span> <span class="del">−4</span> · 1 comment</span></div>
+          <div class="frow"><svg><use href="#i-doc"/></svg><span class="fn2 ell">tests/auth/test_rotation.py</span><span class="ad"><span class="add">+58</span></span></div>
+          <div class="tc" style="margin-top:10px">
+            <div class="tc-h"><svg><use href="#i-doc"/></svg><span class="tgt">src/auth/token_service.py</span><span class="meta"><span>Open in editor</span></span></div>
+            <div class="diff">
+              <div class="l"><span class="n">42</span><span class="s"> </span><span>    <span class="kw">def</span> <span class="fn">rotate</span>(self, token: <span class="typ">str</span>) -&gt; <span class="typ">TokenPair</span>:</span></div>
+              <div class="l"><span class="n">43</span><span class="s"> </span><span>        record = self._find_active(token)</span></div>
+              <div class="l d"><span class="n">44</span><span class="s">−</span><span>        <span class="kw">return</span> self._issue(record.user_id)</span></div>
+              <div class="l a"><span class="n">44</span><span class="s">+</span><span>        <span class="kw">if</span> record.revoked_at <span class="kw">is not</span> <span class="kw">None</span>:</span></div>
+              <div class="l a"><span class="n">45</span><span class="s">+</span><span>            self._revoke_family(record.family_id)</span></div>
+              <div class="l a"><span class="n">46</span><span class="s">+</span><span>            <span class="kw">raise</span> <span class="typ">TokenReuseError</span>(record.family_id)</span></div>
+              <div class="l a"><span class="n">47</span><span class="s">+</span><span>        <span class="kw">with</span> self.db.transaction():</span></div>
+              <div class="l a"><span class="n">48</span><span class="s">+</span><span>            record.revoked_at = now()</span></div>
+              <div class="l a"><span class="n">49</span><span class="s">+</span><span>            expires = now() + timedelta(days=<span class="nu">30</span>)</span></div>
+              <div style="margin:6px 12px 8px 54px;border:1px solid rgba(var(--acc-rgb),.4);border-radius:9px;background:rgba(var(--acc-rgb),.07);padding:9px 11px;font:12.5px/1.5 var(--sans);color:var(--t1)">
+                <div style="display:flex;align-items:center;gap:6px;color:var(--t2);font-size:11.5px;margin-bottom:4px"><svg style="width:12px;height:12px"><use href="#i-comment"/></svg>Your comment · line 49</div>
+                Use the existing <span class="mono" style="font-size:11.5px">REFRESH_TTL</span> setting instead of the literal 30 days.
+              </div>
+              <div class="l a"><span class="n">50</span><span class="s">+</span><span>            <span class="kw">return</span> self._issue(record.user_id,</span></div>
+              <div class="l a"><span class="n">51</span><span class="s">+</span><span>                family_id=record.family_id, expires_at=expires)</span></div>
+              <div class="l"><span class="n">52</span><span class="s"> </span><span></span></div>
+              <div class="l"><span class="n">53</span><span class="s"> </span><span>    <span class="kw">def</span> <span class="fn">_revoke_family</span>(self, family_id: <span class="typ">UUID</span>) -&gt; <span class="kw">None</span>:</span></div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--s1);border:1px solid var(--line)">
+            <svg style="width:14px;height:14px;color:var(--acc-hi)"><use href="#i-comment"/></svg><span style="font-size:12.5px"><b style="font-weight:600">2 comments</b> <span class="t2">in 2 files</span></span><span class="sp"></span><span class="btn ghost">Discard</span><span class="btn primary">Send to Claude</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div></div>
+</div></div>
+<div class="cap">
+  <h2>Review changes <span class="tag">new</span></h2>
+  <p class="lead">Reviewing is where your time goes, so it gets a real surface: what changed, in the session's own terms, with comments that go back to Claude as one message.</p>
+  <ul>
+    <li><b>Settled turns fold</b> to one line ("Worked for 6m 12s · …") above the answer and a changed-files card. Live, failed and waiting turns never fold.</li>
+    <li><b>Scope:</b> the last turn, the whole session, or the branch against main.</li>
+    <li><b>Comment on a line:</b> drafts stay in Loom until you send them; Send to Claude delivers them as one ordinary message.</li>
+    <li><b>The inspector widens</b> for review and narrows again after; the chat stays readable beside it.</li>
+    <li><b>Read only:</b> no staging or editing here. Open in editor is one click.</li>
+    <li><b>Rewind files</b> puts Claude's edits back to that point; the label says that shell commands' changes are not covered.</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> diffs come from git in the session's folder, scoped by the turn's own edit records. Rewind uses Claude's file checkpoints, which track Write, Edit and NotebookEdit only.</div>
+</div>
+</section>
+
+<!-- =====================================================================
+     7 · SIDE CHAT
+     ===================================================================== -->
+<section class="screen" id="side" data-title="Side chat" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-sel="rotation"></aside>
+  <div class="detail"><div class="panel">
+    <div class="hdr">
+      <svg class="prov"><use href="#claude"/></svg><span class="ttl">Token rotation</span><span class="tk">PAY-412</span>
+      <span class="sp"></span>
+      <span class="pill work"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Working <span class="el">3m 05s</span></span>
+      <span class="pchip" style="--tone:var(--aqua)">api-gateway<span class="br"><svg><use href="#i-branch"/></svg>feat/token-rotation</span></span>
+      <span class="vsep"></span>
+      <span class="segc"><span class="on"><svg><use href="#i-chat"/></svg>Chat</span><span><svg><use href="#i-term"/></svg>Terminal</span></span>
+      <span class="ib on"><svg><use href="#i-insp"/></svg></span>
+      <span class="grp"><span class="g"><span class="sq"></span>Stop</span><span class="g ic"><svg><use href="#i-ellipsis"/></svg></span></span>
+    </div>
+    <div class="pbody">
+      <div class="main">
+        <div class="stream"><div class="col">
+          <div class="sysline"><span><b>Session started</b> · Opus 5.5 · High effort · Ask before edits · 14:02</span></div>
+          <div class="um">Rotate refresh tokens on every use and revoke the old one. Existing sessions must stay valid. Ticket PAY-412.</div>
+          <div class="wb"><svg class="chv"><use href="#i-chevr"/></svg><svg><use href="#i-search"/></svg><span>Explored the auth code · <b>read 5 files</b>, searched 3 patterns</span><span class="dur">18s</span></div>
+          <div class="prose"><p>Today <code>rotate()</code> issues a new pair but never revokes the old token. I'll revoke it in the same transaction, treat reuse as theft, and back-fill <code>family_id</code> for existing sessions.</p></div>
+          <div class="wb"><svg class="chv"><use href="#i-chevr"/></svg><svg><use href="#i-pencil"/></svg><span>Edited 2 files · <b>+89 −6</b></span><span class="dur">1m 20s</span></div>
+          <div class="tc">
+            <div class="tc-h"><svg><use href="#i-term"/></svg><span class="verb">Ran</span><span class="tgt ell">pytest tests/auth -q</span><span class="meta"><span class="okc"><svg><use href="#i-check"/></svg>42 passed</span><span>6.1s</span></span></div>
+          </div>
+          <div class="tc">
+            <div class="tc-h"><svg><use href="#i-pencil"/></svg><span class="verb">Edited</span><span class="tgt ell">src/auth/middleware.py</span><span class="meta"><span><span class="add">+19</span> <span class="del">−4</span></span><svg><use href="#i-chev"/></svg></span></div>
+          </div>
+          <div class="tc">
+            <div class="tc-h"><svg><use href="#i-term"/></svg><span class="verb">Ran</span><span class="tgt ell">alembic revision -m "backfill token family"</span><span class="meta"><span class="okc"><svg><use href="#i-check"/></svg>done</span><span>0.8s</span></span></div>
+          </div>
+          <div class="prose"><p>Writing the back-fill migration. Existing tokens get a family of their own, so nobody is logged out when this ships<span class="caret"></span></p></div>
+          <div class="working"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span>Editing <span class="mono">migrations/0042_token_family.py</span></span><span class="sep">·</span><span>3m 05s</span><span class="sp"></span><span class="t3">esc to interrupt</span></div>
+        </div></div>
+        <div class="dock">
+          <div class="rail">
+            <span class="rp"><svg><use href="#i-tasks"/></svg><b>Tasks 3/5</b><span class="dots"><i class="d"></i><i class="d"></i><i class="d"></i><i class="c"></i><i></i></span><span class="ell">Back-fill family_id</span></span>
+            <span class="rp"><svg><use href="#i-diff"/></svg><b>4 files</b><span class="add">+131</span><span class="del">−10</span></span>
+          </div>
+          <div class="comp">
+            <div class="ta">Message Claude; it reads it after the current step</div>
+            <div class="bar"><span class="ib"><svg><use href="#i-plus"/></svg></span><span class="sp"></span><span class="ctx"><span class="ring" style="--p:41"></span></span><span class="bk model">Opus 5.5 <span class="lo">High</span><svg class="ch"><use href="#i-chev"/></svg></span><span class="send stop"><i></i></span></div>
+          </div>
+        </div>
+      </div>
+      <aside class="insp" style="width:392px">
+        <div class="itabs"><span class="itab"><svg><use href="#i-overview"/></svg>Overview</span><span class="itab"><svg><use href="#i-diff"/></svg>Changes</span><span class="itab"><svg><use href="#i-tasks"/></svg>Tasks</span><span class="itab"><svg><use href="#i-agents"/></svg>Agents</span><span class="itab on"><svg><use href="#i-side"/></svg>Side</span></div>
+        <div style="display:flex;align-items:flex-start;gap:9px;padding:10px 14px;border-bottom:1px solid var(--line)">
+          <svg style="width:14px;height:14px;color:var(--t2);margin-top:2px;flex:none"><use href="#i-fork"/></svg>
+          <div><div style="font:600 12.5px var(--sans)">Side chat</div><div class="t2" style="font-size:11.5px;line-height:1.45">Forked from this session at 14:05 · reads only · the main session never sees it</div></div>
+        </div>
+        <div class="ibody" style="display:flex;flex-direction:column">
+          <div class="um" style="max-width:92%;font-size:13px;line-height:20px">Why revoke the whole family on reuse instead of only the reused token?</div>
+          <div class="prose" style="font-size:13px;line-height:20px">
+            <p>A reused refresh token means two parties hold it: the real client and whoever copied it. The server cannot tell which one is honest, so revoking only that token leaves the other copy's next token alive.</p>
+            <p>Revoking the family logs both out and forces a fresh sign-in. That is the usual defence when refresh tokens rotate.</p>
+            <p class="t2" style="font-size:12px">Read <span class="mono" style="font-size:11px">token_service.py</span> · 6s</p>
+          </div>
+          <div style="display:flex;gap:6px;margin:-2px 0 12px"><span class="btn"><svg><use href="#i-up"/></svg>Send to main as a note</span><span class="btn ghost">Copy</span></div>
+          <div class="sp"></div>
+          <div class="comp" style="margin:0;max-width:none;border-radius:16px">
+            <div class="ta" style="min-height:38px;font-size:13px">Ask on the side</div>
+            <div class="bar"><span class="sp"></span><span class="bk">Close</span><span class="bk model">Opus 5.5<svg class="ch"><use href="#i-chev"/></svg></span><span class="send off"><svg><use href="#i-up"/></svg></span></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div></div>
+</div></div>
+<div class="cap">
+  <h2>Side chat <span class="tag">new</span></h2>
+  <p class="lead">Your long-standing wish: a side thread on the same context that never enters the main session. It opens beside the work, not in its place, so you can watch the main session while you ask.</p>
+  <ul>
+    <li><b>How:</b> a fork of the session at its last finished turn. It keeps the session's model and tools, so its first question can reuse the prompt cache instead of reading the whole context again; edits and commands are refused unless you allow them.</li>
+    <li><b>Keeps working:</b> the main session continues; the side answer streams on its own.</li>
+    <li><b>Bring back:</b> Send to main as a note queues a short summary for the main session. Nothing crosses without that click.</li>
+    <li><b>Lifetime:</b> it stays open until you close it. Closing stops its process; your next question there resumes it.</li>
+    <li><b>Quick version:</b> ⌘; asks a one-shot question without opening the panel (Claude's <span class="mono">/btw</span>).</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> a second Claude process started with <span class="mono">--resume</span> and <span class="mono">--fork-session</span>; it writes its own transcript and never the main one. The one-shot path uses an undocumented control request, so it waits for a spike.</div>
+</div>
+</section>
+
+<!-- =====================================================================
+     8 · TERMINAL MODE
+     ===================================================================== -->
+<section class="screen" id="terminal" data-title="Terminal mode" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-sel="polish"></aside>
+  <div class="detail"><div class="panel" style="background:var(--term)">
+    <div class="hdr">
+      <svg class="prov"><use href="#claude"/></svg><span class="ttl">Sidebar polish</span>
+      <span class="sp"></span>
+      <span class="pill work"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Working <span class="el">52s</span></span>
+      <span class="pchip" style="--tone:var(--orchid)">loom<span class="br"><svg><use href="#i-branch"/></svg>feat/sidebar</span></span>
+      <span class="vsep"></span>
+      <span class="segc"><span><svg><use href="#i-chat"/></svg>Chat</span><span class="on"><svg><use href="#i-term"/></svg>Terminal</span></span>
+      <span class="ib"><svg><use href="#i-insp"/></svg></span>
+      <span class="grp"><span class="g"><span class="sq"></span>Stop</span><span class="g ic"><svg><use href="#i-ellipsis"/></svg></span></span>
+    </div>
+    <div class="tnote"><svg><use href="#i-term"/></svg><span>This session runs in the terminal. Its Chat view is read-only.</span><span class="sp"></span><span class="btn" style="height:24px">Continue in Chat</span></div>
+    <div class="term"><span class="o"> ✻</span> <span class="b">Welcome to Claude Code</span>
+
+   <span class="d">/help for help, /status for your current setup</span>
+
+<span class="d">&gt;</span> Tighten the sidebar row spacing and keep the two-row cards at 46 pt.
+
+<span class="gr">●</span> I'll read the sidebar view and the theme tokens first.
+
+<span class="gr">●</span> <span class="b">Read</span>(Sources/LoomCatalogUI/SidebarView.swift)
+  <span class="d">⎿  Read 412 lines</span>
+
+<span class="gr">●</span> <span class="b">Update</span>(Sources/LoomCatalogUI/LoomTheme.swift)
+  <span class="d">⎿  Updated LoomTheme.swift with 3 additions and 2 removals</span>
+      <span class="g">+   static let cardGap: CGFloat = 2</span>
+      <span class="g">+   static let rowHeight: CGFloat = 46</span>
+
+<span class="o">✻</span> <span class="y">Fiddling… (52s · ↑ 2.1k tokens · esc to interrupt)</span>
+<span class="tbox"><span class="d">&gt;</span> <span class="cur"> </span></span>  <span class="d">? for shortcuts</span></div>
+  </div></div>
+</div></div>
+<div class="cap">
+  <h2>Terminal mode <span class="tag today">today's Loom</span></h2>
+  <p class="lead">The real Claude Code terminal stays, unchanged, as the other face of every session: for vim mode, the dialogs the chat does not model, or simply when you prefer it.</p>
+  <ul>
+    <li><b>Chat | Terminal</b> in the header says which one runs the session. Switching hands the session over, one owner at a time; it takes a second or two.</li>
+    <li><b>Reading is always native:</b> a terminal session's Chat view is a read-only rendering of the session, built from its transcript.</li>
+    <li><b>Per project or per session:</b> Settings pick the default face; a project can override it.</li>
+    <li><b>Safety valve:</b> if Claude's structured mode misbehaves or its terms change, one switch moves every new session to the terminal and nothing is lost.</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> today's PTY path, unchanged. A switch interrupts the current owner, waits for the turn to end, closes it, and starts the other with <span class="mono">--resume</span> and the same session id.</div>
+</div>
+</section>
+
+<!-- =====================================================================
+     9 · COMMAND PALETTE
+     ===================================================================== -->
+<section class="screen" id="palette" data-title="Command palette" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-sel="rotation"></aside>
+  <div class="detail"><div class="panel">
+    <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl">Token rotation</span><span class="tk">PAY-412</span><span class="sp"></span><span class="pill work"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Working</span></div>
+    <div class="pbody"><div class="main">
+      <div class="stream"><div class="col">
+        <div class="um">Rotate refresh tokens on every use and revoke the old one. Existing sessions must stay valid. Ticket PAY-412.</div>
+        <div class="prose"><p>Refresh tokens are issued in <code>TokenService._issue()</code> and stored in <code>token_families</code>. Today <code>rotate()</code> issues a new pair but never revokes the old token.</p></div>
+        <div class="working"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span>Editing <span class="mono">src/auth/middleware.py</span></span></div>
+      </div></div>
+      <div class="dock"><div class="comp"><div class="ta">Message Claude</div><div class="bar"><span class="sp"></span><span class="send stop"><i></i></span></div></div></div>
+    </div></div>
+  </div></div>
+  <div class="scrim">
+    <div class="pal">
+      <div class="pal-in"><svg><use href="#i-search"/></svg><span class="cur"></span><span class="t3">Sessions, projects, actions, skills, or text in any session</span></div>
+      <div class="pal-sec"><h6>Needs you</h6>
+        <div class="pi on"><span class="pip att"></span><span>Webhook signature check</span><span class="ds">· allow git push</span><span class="r">api-gateway <span class="kbd">↵</span></span></div>
+        <div class="pi"><span class="pip att"></span><span>Invoice PDF export</span><span class="ds">· asks which PDF library</span><span class="r">billing</span></div>
+      </div>
+      <div class="pal-sec"><h6>Recent</h6>
+        <div class="pi"><span class="pip unv"></span><span>Rate limiter tests</span><span class="r">api-gateway · 14m</span></div>
+        <div class="pi"><span class="pip fail"></span><span>Nightly import job</span><span class="r">data-jobs · 31m</span></div>
+      </div>
+      <div class="pal-sec"><h6>Actions</h6>
+        <div class="pi"><svg><use href="#i-compose"/></svg><span>New session</span><span class="ds">in api-gateway</span><span class="r"><span class="kbd">⌘N</span></span></div>
+        <div class="pi"><svg><use href="#i-ticket"/></svg><span>New session from ticket…</span><span class="r"><span class="kbd">⌥⌘N</span></span></div>
+        <div class="pi"><svg><use href="#i-side"/></svg><span>Ask on the side</span><span class="ds">in Token rotation</span><span class="r"><span class="kbd">⌘;</span></span></div>
+        <div class="pi"><svg><use href="#i-term"/></svg><span>Continue in terminal</span><span class="r"><span class="kbd">⌥⌘T</span></span></div>
+      </div>
+      <div class="pal-sec"><h6>Skills and commands</h6>
+        <div class="pi"><svg><use href="#i-slash"/></svg><span>/review</span><span class="ds">Review the current changes</span></div>
+        <div class="pi"><svg><use href="#i-slash"/></svg><span>/compact</span><span class="ds">Summarise the session to free context</span></div>
+      </div>
+      <div class="pal-f"><span>↑↓ move</span><span>↵ open</span><span>⌘↵ open in a tab</span><span>esc close</span></div>
+    </div>
+  </div>
+</div></div>
+<div class="cap">
+  <h2>Command palette <span class="tag">new</span></h2>
+  <p class="lead">One keystroke to any session, action or skill. With an empty query it is a small triage list; type to search titles, projects and the text of every session.</p>
+  <ul>
+    <li><b>Needs you first,</b> then recent sessions, then actions for the current session, then its slash commands and skills.</li>
+    <li><b>Full-text search</b> over local transcripts, read in bounded pieces and only while you type.</li>
+    <li><b>Ends the hunt:</b> with the palette and the Active list, tabs become optional.</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> the catalog and transcripts Loom already reads; each new keystroke cancels the previous search.</div>
+</div>
+</section>
+
+<!-- =====================================================================
+     10 · PROJECT PAGE
+     ===================================================================== -->
+<section class="screen" id="project" data-title="Project" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-sel="" data-nav="project"></aside>
+  <div class="detail"><div class="panel">
+    <div class="proj">
+      <div class="proj-h">
+        <span class="stripe"></span>
+        <div><h1>api-gateway</h1><div class="path">~/code/api-gateway</div></div>
+        <span class="sp"></span>
+        <span class="btn"><svg><use href="#i-doc"/></svg>Open in editor</span>
+        <span class="btn primary lg"><svg><use href="#i-compose"/></svg>New session</span>
+      </div>
+      <div class="pstats"><span><b>3</b> active</span><span><b>18</b> sessions</span><span><b>4.8M</b> tokens this week</span><span>main · clean</span></div>
+      <div class="ptabs"><span class="ptab on">Sessions</span><span class="ptab">Branches</span><span class="ptab">Usage</span><span class="ptab">Instructions</span></div>
+      <div class="pgrid">
+        <div>
+          <div class="srow on"><span class="ind"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><div><div class="tt">Token rotation</div><div class="ln2 ell">Editing src/auth/middleware.py · tasks 2 of 5</div></div><span class="br ell"><svg><use href="#i-branch"/></svg>feat/token-rotation</span><span class="tm">now</span></div>
+          <div class="srow"><span class="ind"><span class="pip att"></span></span><div><div class="tt">Webhook signature check</div><div class="ln2 ell">Wants to run git push origin fix/webhook-sig</div></div><span class="br ell"><svg><use href="#i-branch"/></svg>fix/webhook-sig</span><span class="tm">2m</span></div>
+          <div class="srow"><span class="ind"><span class="pip unv"></span></span><div><div class="tt">Rate limiter tests</div><div class="ln2 ell">Added 12 tests; all 214 pass</div></div><span class="br ell"><svg><use href="#i-branch"/></svg>test/rate-limit</span><span class="tm">14m</span></div>
+          <div class="srow"><span class="ind"></span><div><div class="tt">Rotate signing keys</div><div class="ln2 ell">Key rotation script and runbook</div></div><span class="br ell"><svg><use href="#i-branch"/></svg>main</span><span class="tm">2d</span></div>
+          <div class="srow"><span class="ind"></span><div><div class="tt">Login flow tests</div><div class="ln2 ell">31 tests for the OAuth callback</div></div><span class="br ell"><svg><use href="#i-branch"/></svg>main</span><span class="tm">3d</span></div>
+          <div class="srow"><span class="ind"></span><div><div class="tt t2">Cache headers</div><div class="ln2 ell">Stale · 16 days without use</div></div><span class="br ell"><svg><use href="#i-branch"/></svg>main</span><span class="tm">16d</span></div>
+        </div>
+        <div>
+          <div class="side-card"><h3>Presets <span class="sp"></span><span class="t3" style="font-weight:500">this project</span></h3>
+            <div class="prj"><svg style="width:12px;height:12px;color:var(--t2)"><use href="#i-play"/></svg>Run tests, fix failures<span class="r">Accept edits</span></div>
+            <div class="prj"><svg style="width:12px;height:12px;color:var(--t2)"><use href="#i-play"/></svg>Review the open branch<span class="r">Plan mode</span></div>
+            <div class="prj"><svg style="width:12px;height:12px;color:var(--t2)"><use href="#i-ticket"/></svg>Start from a PAY ticket<span class="r">Chat</span></div>
+          </div>
+          <div class="side-card"><h3>Instructions Claude loads</h3>
+            <div class="frow" style="margin:0"><svg><use href="#i-book"/></svg><span class="fn2">CLAUDE.md</span><span class="ad t2">142 lines · 3d</span></div>
+            <div class="frow" style="margin:0"><svg><use href="#i-book"/></svg><span class="fn2">.claude/skills</span><span class="ad t2">4 skills</span></div>
+            <div class="frow" style="margin:0"><svg><use href="#i-plug"/></svg><span class="fn2">.mcp.json</span><span class="ad t2">2 servers</span></div>
+          </div>
+          <div class="side-card"><h3>This week</h3>
+            <div class="stat3"><div><b>4.8M</b>tokens</div><div><b>7</b>sessions</div><div><b>~$31</b>estimate</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</div></div>
+<div class="cap">
+  <h2>Project page <span class="tag">new</span></h2>
+  <p class="lead">A click on a project's name opens its page: everything about one codebase in one place, without crowding the sidebar.</p>
+  <ul>
+    <li><b>Sessions</b> with their last line, so finished work is readable at a glance.</li>
+    <li><b>Presets</b> for this project, the CLAUDE.md, skills and MCP servers Claude will load, and the week's usage.</li>
+    <li><b>Branches:</b> which branch each session works on (and worktrees, if you use them).</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> catalog data plus a read of the project's own instruction files when the page opens; nothing new runs.</div>
+</div>
+</section>
+
+<!-- =====================================================================
+     11 · NEW SESSION SHEET
+     ===================================================================== -->
+<section class="screen" id="newsession" data-title="New session" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-sel="rotation"></aside>
+  <div class="detail"><div class="panel">
+    <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl">Token rotation</span><span class="tk">PAY-412</span><span class="sp"></span><span class="pill work"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Working</span></div>
+    <div class="pbody"><div class="main"><div class="stream"><div class="col"><div class="um">Rotate refresh tokens on every use and revoke the old one.</div></div></div></div></div>
+  </div></div>
+  <div class="scrim" style="padding-top:0"></div>
+  <div class="sheet">
+    <div class="sheet-h"><svg style="width:16px;height:16px;color:var(--t2)"><use href="#i-compose"/></svg>New session<span class="sp"></span><span class="kbd">esc</span></div>
+    <div class="fld"><div class="two">
+      <div><div class="lbl">Project</div><div class="inp"><span style="width:3px;height:14px;border-radius:2px;background:var(--rose)"></span>billing<span class="sp"></span><svg><use href="#i-chev"/></svg></div></div>
+      <div><div class="lbl">Ticket</div><div class="inp"><svg><use href="#i-ticket"/></svg><span>PAY-418</span><span class="sp"></span><span class="t2" style="font-size:12px">no session yet</span></div></div>
+    </div></div>
+    <div class="fld"><div class="lbl">First message</div><div class="area">Customers with a VAT number get the reverse-charge note on the invoice PDF. See PAY-418 for the wording.<span class="caret"></span></div></div>
+    <div class="fld"><div class="two">
+      <div><div class="lbl">Branch</div><div class="inp"><svg><use href="#i-branch"/></svg><span class="mono" style="font-size:12px">feat/PAY-418-reverse-charge</span><span class="sp"></span><span class="t2" style="font-size:11.5px">new</span></div></div>
+      <div><div class="lbl">Runs as</div><div class="optrow"><span class="qchip rec">Chat</span><span class="qchip">Terminal</span></div></div>
+    </div></div>
+    <div class="fld"><div class="lbl">Start in</div><div class="optrow"><span class="qchip">Plan mode</span><span class="qchip rec">Ask before edits</span><span class="qchip">Accept edits</span><span class="qchip">Auto</span><span class="sp"></span><span class="cchip box"><svg><use href="#i-cpu"/></svg>Opus 5.5 · High<svg><use href="#i-chev"/></svg></span></div></div>
+    <div class="sheet-f"><span class="t3" style="font-size:11.5px">Title: Reverse-charge note on invoices</span><span class="sp"></span><span class="btn ghost">Save as preset</span><span class="btn">Cancel</span><span class="btn primary lg">Start session <span class="kbd">⌘↵</span></span></div>
+  </div>
+</div></div>
+<div class="cap">
+  <h2>New session <span class="tag today">replaced · D-59</span></h2>
+  <div class="dec" style="margin:0 0 12px"><b>Replaced:</b> the user chose the draft session N1 instead of this sheet (D-59). See design/v2-new-session-preview.html.</div>
+  <p class="lead">Starting work takes one sheet: project, ticket, first message, branch, Chat or Terminal, and how much freedom Claude gets.</p>
+  <ul>
+    <li><b>Ticket key</b> fills the title and the branch name; an existing session for the same ticket is offered instead of a copy.</li>
+    <li><b>Branch:</b> stay on the current one or create one; a worktree is an option for projects that use them.</li>
+    <li><b>Save as preset</b> keeps the sheet for one-click starts on Home and the project page.</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> the same launch path as today's new session; the ticket check is the one the open-session command already uses.</div>
+</div>
+</section>
+
+<!-- =====================================================================
+     12 · DESIGN SYSTEM
+     ===================================================================== -->
+<section class="screen" id="system" data-title="Design system" hidden>
+<div class="stage"><div class="win" style="background:var(--canvas)">
+  <div class="board">
+    <div>
+      <h4>Surfaces, back to front</h4>
+      <div class="sw">
+        <div style="background:rgba(11,14,22,.9)"><span>Sidebar glass</span></div>
+        <div style="background:var(--backdrop)"><span>Backdrop</span></div>
+        <div style="background:var(--insp)"><span>Inspector</span></div>
+        <div style="background:var(--canvas)"><span>Canvas</span></div>
+        <div style="background:var(--term)"><span>Terminal</span></div>
+        <div style="background:var(--s1)"><span>Card</span></div>
+        <div style="background:var(--s2)"><span>Raised</span></div>
+        <div style="background:var(--s3)"><span>Popover</span></div>
+      </div>
+      <p class="boardnote">Today Loom has two surfaces (glass and terminal). Chat needs depth: cards sit one step above the canvas, popovers one more, and the inspector one step below so it recedes.</p>
+      <h4>Text</h4>
+      <div class="comps"><span style="color:var(--t1);font-weight:600">Primary #ECE8F4</span><span style="color:var(--t2)">Secondary #9A9EB0</span><span style="color:var(--t3)">Tertiary #636779</span></div>
+      <h4>Accent and status</h4>
+      <div class="sw">
+        <div style="background:var(--acc-hi)"><span>Accent high</span></div>
+        <div style="background:var(--acc)"><span>Accent</span></div>
+        <div style="background:var(--acc-lo)"><span>Accent low</span></div>
+        <div style="background:rgba(var(--acc-rgb),.16)"><span>Accent wash</span></div>
+        <div style="background:var(--att)"><span>Attention</span></div>
+        <div style="background:var(--unv)"><span>Unviewed</span></div>
+        <div style="background:var(--fail)"><span>Failure</span></div>
+        <div style="background:var(--ok)"><span>Success · new</span></div>
+      </div>
+      <p class="boardnote">Status keeps its three hues on cards and pills. The new success green only marks content: added lines, passing checks.</p>
+      <h4>Project tones (unchanged)</h4>
+      <div class="sw"><div style="background:var(--rose)"><span>Rose</span></div><div style="background:var(--orchid)"><span>Orchid</span></div><div style="background:var(--aqua)"><span>Aqua</span></div><div style="background:var(--mint)"><span>Mint</span></div></div>
+    </div>
+    <div>
+      <h4>Type scale</h4>
+      <div class="tscale">
+        <div><span class="k">Display 24</span><span style="font:600 24px var(--sans)">Today</span></div>
+        <div><span class="k">Title 17</span><span style="font:600 17px var(--sans)">Plan ready for review</span></div>
+        <div><span class="k">Reading 14/22</span><span style="font-size:14px">Claude's prose and your messages</span></div>
+        <div><span class="k">Body 13</span><span style="font-size:13px">Cards, lists, inspector</span></div>
+        <div><span class="k">Small 12</span><span style="font-size:12px;color:var(--t2)">Meta, hints, captions</span></div>
+        <div><span class="k">Label 11 med</span><span style="font:500 11px var(--sans);color:var(--t2)">Status labels, section heads</span></div>
+        <div><span class="k">Mono 12</span><span style="font:12px var(--mono)">src/auth/token_service.py</span></div>
+        <div><span class="k">Terminal 14</span><span style="font:14px var(--mono)">claude --resume</span></div>
+      </div>
+      <p class="boardnote">One reading size for messages and answers (14, adjustable 13–15) so long answers read like a document; the rest of the UI stays at today's compact 11–13.</p>
+      <h4>Radii and spacing</h4>
+      <div class="comps">
+        <span style="width:36px;height:24px;border-radius:4px;background:var(--s2);display:inline-block"></span>
+        <span style="width:36px;height:24px;border-radius:6px;background:var(--s2);display:inline-block"></span>
+        <span style="width:36px;height:24px;border-radius:8px;background:var(--s2);display:inline-block"></span>
+        <span style="width:36px;height:24px;border-radius:10px;background:var(--s2);display:inline-block"></span>
+        <span style="width:48px;height:28px;border-radius:14px;background:var(--s2);display:inline-block"></span>
+        <span class="t3" style="font-size:11px">4 · 6 · 8 · 10 · 14 · 4-pt grid</span>
+      </div>
+      <h4>Motion</h4>
+      <p class="boardnote">Folds open in 160 ms, cards fade in, text appears as it arrives. No glow or pulse; the chase stays the only lasting animation. Reduce Motion makes all of it instant.</p>
+      <h4>Markers and banners</h4>
+      <div class="sysline" style="margin:0 0 6px"><span><b>Context compacted</b> · 182k → 41k tokens</span></div>
+      <div class="sysline" style="margin:0 0 6px"><span><b>You stopped it</b> after 1m 04s</span></div>
+      <div class="sysline" style="margin:0 0 12px"><span><b>Continued in Chat</b> · it was in the terminal</span></div>
+      <div class="banner"><svg><use href="#i-warn"/></svg><span><b>Usage limit reached.</b> Resets at 16:40.</span><span class="sp"></span><span class="btn">Resume at 16:40</span></div>
+    </div>
+    <div>
+      <h4>Buttons and controls</h4>
+      <div class="comps"><span class="btn primary lg">Start session</span><span class="btn">Allow once</span><span class="btn ghost">Discard</span><span class="btn danger">Delete…</span></div>
+      <div class="comps"><span class="segc"><span class="on"><svg><use href="#i-chat"/></svg>Chat</span><span><svg><use href="#i-term"/></svg>Terminal</span></span><span class="bk plan"><svg><use href="#i-plan"/></svg>Plan mode</span><span class="bk model">Opus 5.5 <span class="lo">High</span><svg class="ch"><use href="#i-chev"/></svg></span><span class="bk"><svg><use href="#i-shield"/></svg>Ask before edits</span><span class="kbd">⌘K</span></div>
+      <h4>Status pills (unchanged language)</h4>
+      <div class="comps"><span class="pill work"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Working</span><span class="pill att"><span class="pip att"></span>Needs approval</span><span class="pill unv"><span class="pip unv"></span>Finished</span><span class="pill fail"><span class="pip fail"></span>Failed</span><span class="pill idle">Stopped</span></div>
+      <h4>Stream pieces</h4>
+      <div class="wb turn" style="margin:0 0 6px"><svg class="chv"><use href="#i-chevr"/></svg><svg style="color:var(--t3)"><use href="#i-check"/></svg><span>Worked for 6m 12s · <b>read 7 files</b>, edited 3</span></div>
+      <div class="tc" style="margin:0 0 8px"><div class="tc-h"><svg><use href="#i-term"/></svg><span class="verb">Ran</span><span class="tgt">pytest -q</span><span class="meta"><span class="okc"><svg><use href="#i-check"/></svg>42 passed</span></span></div></div>
+      <div class="think" style="margin:0 0 6px"><svg><use href="#i-spark"/></svg><span>Thinking</span><i>Which callers rely on the old token?</i></div>
+      <div class="rail" style="margin:0 0 10px"><span class="rp"><svg><use href="#i-tasks"/></svg><b>Tasks 2/5</b></span><span class="rp"><svg><use href="#i-diff"/></svg><b>3 files</b><span class="add">+108</span><span class="del">−10</span></span></div>
+      <div class="um" style="margin:0 0 12px auto">Your message</div>
+      <h4>View modes (⌃O)</h4>
+      <div class="comps"><span class="segc"><span class="on">Normal</span><span>Thinking</span><span>Verbose</span></span></div>
+      <p class="boardnote">Normal folds settled work and shows thinking as one line; Thinking adds the full thinking; Verbose shows every step. The choice holds everywhere.</p>
+    </div>
+  </div>
+</div></div>
+<div class="cap">
+  <h2>Night Fleece 2 <span class="tag">design system</span></h2>
+  <p class="lead">The same identity (dark, quiet, the ram mark's fleece accent, glass sidebar) with the depth a chat-centred app needs. The controls at the top of the page try accent, sidebar glass, canvas tone, reading size and density on every screen.</p>
+  <ul>
+    <li><b>Kept:</b> status language and colours, the chase, project tones and stripes, SF Pro and SF Mono, the 4-pt grid, dark only, no sound, sentence case.</li>
+    <li><b>Added:</b> canvas, card, raised and popover levels; the inspector tone; an accent ramp; a reading size; success green for content; decision cards; the composer and its rail.</li>
+    <li><b>Rules that change:</b> two surfaces become five levels; a right panel exists (one inspector, closed by default); anything that waits on you is pinned above the composer as well as marked in the sidebar.</li>
+    <li><b>Density:</b> Comfortable is the default; Compact tightens rows and the reading size for small screens.</li>
+  </ul>
+</div>
+</section>
+
+</div>
+
+<script>
+/* ---------- sample data (neutral, not the user's projects) ---------- */
+const P = {
+  api:  {name:'api-gateway', tone:'var(--aqua)'},
+  bill: {name:'billing',     tone:'var(--rose)'},
+  data: {name:'data-jobs',   tone:'var(--lemon)'},
+  loom: {name:'loom',        tone:'var(--orchid)'},
+};
+const S = {
+  webhook:  {p:'api',  t:'Webhook signature check', st:'att',  time:'2m',  r:'Allow: git push origin fix/webhook-sig'},
+  invoice:  {p:'bill', t:'Invoice PDF export',      st:'att',  time:'6m',  r:'Asks which PDF library to use'},
+  tax:      {p:'bill', t:'Refactor tax rules',      st:'att',  time:'9m',  r:'Plan ready for review · 6 steps'},
+  nightly:  {p:'data', t:'Nightly import job',      st:'fail', time:'31m', r:'3 tests failed in test_import.py'},
+  ratelimit:{p:'api',  t:'Rate limiter tests',      st:'unv',  time:'14m', r:'12 tests added, all pass'},
+  rotation: {p:'api',  t:'Token rotation',          st:'work', time:'now', r:'Editing middleware.py · tasks 2 of 5'},
+  polish:   {p:'loom', t:'Sidebar polish',          st:'work', time:'now', r:'In the terminal · 52s'},
+  keys:     {p:'api',  t:'Rotate signing keys',     st:'idle', time:'2d'},
+  backfill: {p:'data', t:'Backfill script',         st:'idle', time:'1d'},
+  refunds:  {p:'bill', t:'Partial refunds',         st:'idle', time:'4d'},
+  rebase:   {p:null,   t:'Quick question: git rebase', st:'idle', time:'3h'},
+};
+const ACTIVE = ['webhook','invoice','tax','nightly','ratelimit','rotation','polish'];
+const CHASE = '<span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>';
+const ind = st => st==='work' ? CHASE : (st==='idle' ? '' : `<span class="pip ${st}"></span>`);
+const use = id => `<svg><use href="#${id}"/></svg>`;
+
+function card(id, sel){
+  const s = S[id], tone = s.p ? P[s.p].tone : 'transparent';
+  return `<div class="card${sel===id?' sel':''}" style="--tone:${tone}"><span class="ind">${ind(s.st)}</span><span class="ttl ell">${s.t}</span><span class="time">${s.time}</span><span class="meta"><span class="ell">${s.r||''}</span></span></div>`;
+}
+function prow(id, sel){
+  const s = S[id];
+  return `<div class="prow${sel===id?' sel':''}${s.st==='idle'?' idle':''}"><span class="ind">${ind(s.st)}</span><span class="ttl ell">${s.t}</span><span class="time">${s.time}</span></div>`;
+}
+function group(key, open, sel, dot){
+  const p = P[key];
+  const ids = Object.keys(S).filter(k => S[k].p===key);
+  const head = `<div class="pgh" style="--tone:${p.tone}"><svg class="chv"><use href="#${open?'i-chev':'i-chevr'}"/></svg><span>${p.name}</span>${open?'':`<span class="pc">${ids.length}</span>`}<span class="sp"></span>${dot||''}</div>`;
+  return head + (open ? ids.map(i => prow(i, sel)).join('') : '');
+}
+function sidebar(el){
+  const sel = el.dataset.sel, nav = el.dataset.nav || '';
+  const openKey = sel && S[sel] ? S[sel].p : 'api';
+  const dots = {api:'<span class="pip att"></span>', bill:'<span class="pip att"></span>', data:'<span class="pip fail"></span>', loom:CHASE};
+  el.innerHTML = `
+    <div class="sb-head"><span class="ib">${use('i-sidebar')}</span><span class="sp"></span><span class="ib on">${use('i-folder')}</span><span class="ib">${use('i-clock')}</span><span class="ib acc">${use('i-compose')}</span></div>
+    <div class="sb-search">${use('i-search')}<span>Search or jump to</span><span class="sp"></span><span class="kbd">⌘K</span></div>
+    <div class="sb-nav"><div class="nrow${nav==='home'?' on':''}">${use('i-home')}Home<span class="badge">3</span></div></div>
+    <div class="sb-scroll">
+      <div class="sb-sec">Active <span class="cnt">${ACTIVE.length}</span></div>
+      <div class="clist">${ACTIVE.map(i => card(i, sel)).join('')}</div>
+      <div class="sb-sec" style="padding-top:16px">Projects</div>
+      ${['api','bill','data','loom'].map(k => group(k, k===openKey, sel, k===openKey ? '' : dots[k])).join('')}
+      <div class="pgh"><svg class="chv"><use href="#i-chevr"/></svg><svg class="tr"><use href="#i-tray"/></svg><span>Sessions</span><span class="pc">1</span></div>
+    </div>
+    <div class="sb-foot"><div class="uchip"><span><b>1.2M</b> today</span><span class="sp"></span><span>5h</span><span class="bar"><i style="width:62%"></i></span><b>62%</b></div><span class="ib">${use('i-gear')}</span></div>`;
+}
+document.querySelectorAll('aside.sb').forEach(sidebar);
+
+/* ---------- screen navigation ---------- */
+const screens = [...document.querySelectorAll('.screen')];
+const nav = document.getElementById('nav');
+screens.forEach((s, i) => {
+  const b = document.createElement('button');
+  b.dataset.s = s.id; b.innerHTML = `<span class="n">${i+1}</span>${s.dataset.title}`;
+  b.onclick = () => show(s.id);
+  nav.appendChild(b);
+});
+function show(id){
+  if (!screens.some(s => s.id===id)) id = screens[0].id;
+  screens.forEach(s => s.hidden = s.id!==id);
+  nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.s===id));
+  if (location.hash.slice(1)!==id) history.replaceState(null, '', '#'+id);
+}
+window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+document.addEventListener('keydown', e => {
+  const i = screens.findIndex(s => !s.hidden);
+  if (e.key==='ArrowRight') show(screens[Math.min(i+1, screens.length-1)].id);
+  if (e.key==='ArrowLeft') show(screens[Math.max(i-1, 0)].id);
+});
+show(location.hash.slice(1) || 'home');
+
+/* ---------- design knobs ---------- */
+document.querySelectorAll('.seg-k').forEach(g => g.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  g.querySelectorAll('button').forEach(x => x.classList.toggle('on', x===b));
+  document.documentElement.setAttribute('data-'+g.dataset.knob, b.dataset.v);
+}));
+</script>
+</body>
+</html>

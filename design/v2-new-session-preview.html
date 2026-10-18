@@ -1,0 +1,983 @@
+<!doctype html>
+<html lang="en" data-accent="fleece" data-sidebar="glass" data-density="comfortable" data-read="14" data-canvas="ink">
+<head>
+<meta charset="utf-8">
+<title>Loom v2 · New session options</title>
+<!-- New-session options for Loom v2 (plans/V2-PLAN.md), 17 Oct 2026. The user did not like the
+     sheet in design/v2-studio-preview.html#newsession; the user chose N1 (D-59); N2 and N3 stay for reference.
+     Mock-ups with neutral sample data. Screens: #draft, #ticket, #sent, #launcher, #inline. -->
+<style>
+/* ======================================================================
+   Night Fleece 2: tokens
+   ====================================================================== */
+:root{
+  --sans: -apple-system, "SF Pro Text", "SF Pro", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+  /* surfaces, from back to front */
+  --side-rgb: 11,14,22; --side-alpha: .6;     /* sidebar glass, as today (D-44) */
+  --backdrop: #0B0E16;                         /* behind the panel, as today */
+  --insp: #141318;                             /* inspector (new) */
+  --canvas: #19181E;                           /* chat canvas (new) */
+  --term: #1D1C22;                             /* terminal panel, as today */
+  --s1: #222128;                               /* cards, composer (new) */
+  --s2: #2A2930;                               /* raised, hover (new) */
+  --s3: #302F38;                               /* popovers, palette (new) */
+  --line: rgba(255,255,255,.08);
+  --line2: rgba(255,255,255,.13);
+  --fill: rgba(255,255,255,.06);
+  --fill2: rgba(255,255,255,.09);
+
+  /* text */
+  --t1: #ECE8F4; --t2: #9A9EB0; --t3: #636779;
+
+  /* accent: a ramp around today's Fleece #8791CF */
+  --acc: #8791CF; --acc-rgb: 135,145,207; --acc-hi: #A9B0E3; --acc-lo: #5E68A8; --on-acc: #0B0E16;
+
+  /* status, as today, plus a success hue for content only (added lines, passing checks) */
+  --att: #FF9E0A; --att-l: #FFB547; --att-rgb: 255,158,10;
+  --unv: #5C8CFF; --unv-l: #8FB0FF; --unv-rgb: 92,140,255;
+  --fail: #F2615C; --fail-l: #FF8A85; --fail-rgb: 242,97,92;
+  --ok: #4CC38A; --ok-l: #7BDBA8; --ok-rgb: 76,195,138;
+
+  /* project tones (D-48) */
+  --aqua: #80D5DB; --rose: #E68EBA; --lemon: #CCE07B; --orchid: #D194E6; --mint: #83D8B0; --sage: #92C186;
+
+  /* shape and rhythm */
+  --r-xs: 4px; --r-sm: 6px; --r-md: 8px; --r-lg: 10px; --r-xl: 14px; --r-2xl: 18px;
+  --read: 14px; --read-lh: 22px; --col: 700px;
+  --row: 46px; --gap: 2px;
+  --shadow-1: 0 1px 0 rgba(255,255,255,.03) inset, 0 1px 2px rgba(0,0,0,.25);
+  --shadow-2: 0 10px 28px rgba(0,0,0,.32);
+  --shadow-3: 0 24px 64px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08);
+}
+[data-accent=iris]{--acc:#9C8CFF;--acc-rgb:156,140,255;--acc-hi:#BAAFFF;--acc-lo:#6F5FD0}
+[data-accent=glacier]{--acc:#7FB2E5;--acc-rgb:127,178,229;--acc-hi:#A6CBF0;--acc-lo:#4F82B8}
+[data-sidebar=deep]{--side-alpha:.86}
+[data-sidebar=solid]{--side-alpha:1}
+[data-density=compact]{--read:13px;--read-lh:20px;--row:40px;--col:760px}
+[data-read="13"]{--read:13px;--read-lh:20px}
+[data-read="15"]{--read:15px;--read-lh:24px}
+[data-canvas=graphite]{--canvas:#1E1D22;--insp:#18171C;--s1:#26252B;--s2:#2E2D33}
+[data-canvas=deep]{--canvas:#131218;--insp:#0F0E13;--s1:#1C1B22;--s2:#24232A}
+
+*{box-sizing:border-box}
+html,body{margin:0;background:#06070A;color:var(--t1);font:13px/1.45 var(--sans);-webkit-font-smoothing:antialiased}
+svg{display:block}
+.sp{flex:1}
+.mono{font-family:var(--mono)}
+.t2{color:var(--t2)} .t3{color:var(--t3)}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+
+/* ======================================================================
+   page chrome (not part of the app)
+   ====================================================================== */
+.top{position:sticky;top:0;z-index:50;background:rgba(6,7,10,.92);backdrop-filter:blur(12px);border-bottom:1px solid #15171E;padding:14px 28px 12px}
+.top .row1{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.top h1{font-size:17px;font-weight:600;margin:0;letter-spacing:-.01em}
+.top .subt{color:#7E8291;font-size:12px}
+.nav{display:flex;gap:4px;flex-wrap:wrap;margin-top:10px}
+.nav button{all:unset;cursor:pointer;height:26px;padding:0 10px;border-radius:7px;font:500 12px var(--sans);color:#9EA2B2;display:inline-flex;align-items:center;gap:6px}
+.nav button:hover{background:#151821;color:#D9DBE4}
+.nav button.on{background:#1C2030;color:#ECEEF6;box-shadow:inset 0 0 0 1px #2B3146}
+.nav button .n{font:600 10px var(--sans);color:#6E7386}
+.knobs{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.knob{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#7E8291}
+.seg-k{display:inline-flex;background:#11131A;border:1px solid #1E2230;border-radius:7px;padding:2px;gap:2px}
+.seg-k button{all:unset;cursor:pointer;height:20px;padding:0 8px;border-radius:5px;font:500 11px var(--sans);color:#8D92A3}
+.seg-k button.on{background:#262B3C;color:#E8EAF2}
+.page{padding:26px 28px 80px}
+.screen{display:flex;gap:28px;align-items:flex-start}
+.screen[hidden]{display:none}
+.stage{flex:none;border-radius:16px;padding:22px;background:
+  radial-gradient(110% 85% at 0% 0%, #2B5BFF 0%, transparent 55%),
+  radial-gradient(85% 75% at 100% 100%, #FF7A2B 0%, transparent 55%),
+  radial-gradient(80% 80% at 28% 100%, #B13BFF 0%, transparent 62%), #10131C}
+.cap{flex:1;min-width:300px;max-width:430px;padding-top:6px}
+.cap h2{font-size:18px;font-weight:600;margin:0 0 6px;letter-spacing:-.01em}
+.cap .lead{color:#B9BCC8;font-size:13px;line-height:1.55;margin:0 0 14px}
+.cap h3{font:600 11px var(--sans);color:#7E8291;letter-spacing:.4px;text-transform:uppercase;margin:18px 0 8px}
+.cap ul{margin:0;padding-left:18px;color:#B4B7C3;font-size:12.5px;line-height:1.55}
+.cap li{margin-bottom:5px}
+.cap li b{color:#E3E5EE;font-weight:600}
+.cap .dec{margin-top:14px;padding:10px 12px;border:1px solid #232838;border-radius:10px;background:#0D0F15;font-size:12px;color:#A7ABB9;line-height:1.5}
+.cap .dec b{color:#DADCE6}
+.cap .mono{font-size:11.5px;color:#C9CCD8}
+.tag{display:inline-block;font:600 9.5px var(--sans);letter-spacing:.4px;text-transform:uppercase;padding:2px 6px;border-radius:4px;background:#1E2A4A;color:#9DB4FF;margin-left:4px;vertical-align:1px}
+.tag.today{background:#22252E;color:#9A9EAC}
+
+/* ======================================================================
+   window
+   ====================================================================== */
+.win{position:relative;width:1360px;height:860px;display:flex;border-radius:12px;overflow:hidden;
+  border:1px solid rgba(255,255,255,.13);box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 .5px rgba(0,0,0,.6)}
+.lights{position:absolute;left:18px;top:19px;display:flex;gap:8px;z-index:5}
+.lights i{width:12px;height:12px;border-radius:50%;display:block}
+.lights i:nth-child(1){background:#FF5F57}.lights i:nth-child(2){background:#FEBC2E}.lights i:nth-child(3){background:#28C840}
+
+/* ---------- sidebar ---------- */
+.sb{width:268px;flex:none;display:flex;flex-direction:column;background:rgba(var(--side-rgb),var(--side-alpha));
+  -webkit-backdrop-filter:blur(40px) saturate(1.25);backdrop-filter:blur(40px) saturate(1.25);color:var(--t1)}
+.sb-head{height:52px;display:flex;align-items:center;gap:2px;padding:0 10px 0 82px;flex:none}
+.ib{width:26px;height:24px;border-radius:var(--r-sm);display:grid;place-items:center;color:var(--t2);flex:none}
+.ib svg{width:15px;height:15px}
+.ib.on{background:var(--fill2);color:var(--t1)}
+.ib.acc{color:var(--t1)}
+.sb-search{margin:0 10px 8px;height:30px;border-radius:var(--r-md);background:var(--fill);display:flex;align-items:center;gap:7px;padding:0 6px 0 9px;color:var(--t3);font-size:12.5px;flex:none}
+.sb-search svg{width:13px;height:13px}
+.kbd{font:500 10.5px/1 var(--sans);color:var(--t2);border:1px solid var(--line2);border-radius:4px;padding:2px 4px;white-space:nowrap}
+.sb-nav{padding:0 8px 4px;display:flex;flex-direction:column;gap:1px;flex:none}
+.nrow{height:30px;border-radius:var(--r-md);display:flex;align-items:center;gap:9px;padding:0 10px;font:500 13px var(--sans);color:var(--t1)}
+.nrow svg{width:15px;height:15px;color:var(--t2)}
+.nrow.on{background:rgba(255,255,255,.08)}
+.nrow .badge{margin-left:auto;min-width:18px;height:17px;border-radius:9px;background:rgba(var(--att-rgb),.18);color:var(--att-l);font:600 10.5px/17px var(--sans);text-align:center;padding:0 5px}
+.sb-scroll{flex:1;min-height:0;overflow:hidden;padding-bottom:4px}
+.sb-sec{display:flex;align-items:center;gap:6px;padding:12px 18px 5px;font:600 11px var(--sans);color:var(--t2);letter-spacing:.1px}
+.sb-sec .cnt{font-weight:500;color:var(--t3)}
+.clist{padding:0 8px;display:flex;flex-direction:column;gap:var(--gap)}
+.card{position:relative;display:grid;grid-template-columns:12px minmax(0,1fr) auto;column-gap:8px;row-gap:1px;align-items:center;
+  padding:7px 10px;border-radius:var(--r-lg);min-height:var(--row)}
+.card .ttl{font:500 13px/18px var(--sans);color:var(--t1)}
+.card .time{font:11px var(--sans);color:var(--t2)}
+.card .meta{grid-column:2 / 4;display:flex;align-items:center;gap:5px;font:11.5px/16px var(--sans);color:var(--t2);min-width:0}
+.card.sel{background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.10)}
+.card.sel .ttl{font-weight:600}
+.card::before,.prow::before,.pgh::before{content:"";position:absolute;left:-4px;top:7px;bottom:7px;width:3px;border-radius:2px;background:var(--tone,transparent)}
+.ind{width:12px;height:16px;display:grid;place-items:center;flex:none}
+.pip{width:8px;height:8px;border-radius:50%;display:block;flex:none}
+.pip.att{background:var(--att)}.pip.unv{background:var(--unv)}.pip.fail{background:var(--fail)}.pip.ok{background:var(--ok)}
+.pgh{position:relative;display:flex;align-items:center;gap:7px;height:30px;padding:0 10px 0 12px;margin:2px 8px 0;font:600 12.5px var(--sans);color:var(--t1);border-radius:var(--r-md)}
+.pgh svg.chv{width:9px;height:9px;color:var(--t3);flex:none}
+.pgh svg.tr{width:13px;height:13px;color:var(--t2);flex:none}
+.pgh .pc{font:500 11px var(--sans);color:var(--t3)}
+.prow{position:relative;display:flex;align-items:center;gap:8px;height:28px;padding:0 10px 0 22px;margin:0 8px;border-radius:var(--r-md);font:13px var(--sans);color:var(--t1)}
+.prow .time{margin-left:auto;font-size:11px;color:var(--t3)}
+.prow.sel{background:rgba(255,255,255,.07)}
+.prow.idle .ttl{color:var(--t2)}
+.sb-foot{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px;border-top:1px solid rgba(255,255,255,.05)}
+.uchip{flex:1;height:26px;border-radius:var(--r-sm);display:flex;align-items:center;gap:6px;padding:0 8px;font:11.5px var(--sans);color:var(--t2);min-width:0}
+.uchip b{color:var(--t1);font-weight:600}
+.uchip .bar{width:34px;height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden}
+.uchip .bar i{display:block;height:100%;background:var(--t1);border-radius:2px}
+
+/* chase (working), identical to today's indicator */
+.chase{position:relative;width:12px;height:12px;display:block;flex:none}
+.chase i{position:absolute;width:2.9px;height:2.9px;border-radius:50%;background:var(--t1);opacity:.16;animation:chase .8s step-end infinite}
+.chase i:nth-child(1){left:.15px;top:.15px;opacity:1;animation-delay:0s}
+.chase i:nth-child(2){left:4.55px;top:.15px;animation-delay:-.7s}
+.chase i:nth-child(3){left:8.95px;top:.15px;animation-delay:-.6s}
+.chase i:nth-child(4){left:8.95px;top:4.55px;animation-delay:-.5s}
+.chase i:nth-child(5){left:8.95px;top:8.95px;animation-delay:-.4s}
+.chase i:nth-child(6){left:4.55px;top:8.95px;opacity:.35;animation-delay:-.3s}
+.chase i:nth-child(7){left:.15px;top:8.95px;opacity:.55;animation-delay:-.2s}
+.chase i:nth-child(8){left:.15px;top:4.55px;opacity:.8;animation-delay:-.1s}
+@keyframes chase{0%{opacity:1}12.5%{opacity:.8}25%{opacity:.55}37.5%{opacity:.35}50%,100%{opacity:.16}}
+
+/* ---------- detail panel: header across the panel, then the body ---------- */
+.detail{flex:1;min-width:0;display:flex;background:var(--backdrop);padding:8px 8px 8px 0}
+.panel{flex:1;min-width:0;display:flex;flex-direction:column;border-radius:var(--r-lg);overflow:hidden;border:1px solid rgba(255,255,255,.09);background:var(--canvas);position:relative}
+.pbody{flex:1;min-height:0;display:flex}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.hdr{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;border-bottom:1px solid var(--line)}
+.hdr .prov{width:16px;height:16px;flex:none}
+.hdr .ttl{font:600 13.5px var(--sans);white-space:nowrap}
+.hdr .tk{font:500 11px var(--mono);color:var(--t2);background:var(--fill);border-radius:5px;padding:2px 6px;white-space:nowrap}
+.pill{height:22px;border-radius:11px;display:inline-flex;align-items:center;gap:6px;padding:0 9px 0 7px;font:500 11px var(--sans);white-space:nowrap;flex:none}
+.pill.work{background:rgba(255,255,255,.07);color:var(--t1)}
+.pill.att{background:rgba(var(--att-rgb),.15);color:var(--att-l)}
+.pill.unv{background:rgba(var(--unv-rgb),.15);color:var(--unv-l)}
+.pill.fail{background:rgba(var(--fail-rgb),.15);color:var(--fail-l)}
+.pill.idle{background:rgba(255,255,255,.05);color:#9297A8;padding:0 9px}
+.pill .chase{transform:scale(.84)}
+.pill .el{color:var(--t2);font-weight:400}
+.pchip{height:22px;border-radius:6px;display:flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;flex:none;padding:0 8px 0 0;overflow:hidden;color:var(--t1);
+  background:color-mix(in srgb, var(--tone) 11%, transparent)}
+.pchip::before{content:"";width:3px;align-self:stretch;background:var(--tone)}
+.pchip .br{display:flex;align-items:center;gap:4px;color:#9297A8;border-left:1px solid rgba(255,255,255,.10);padding-left:7px}
+.pchip svg{width:11px;height:11px}
+.vsep{width:1px;height:16px;background:var(--line2);margin:0 2px;flex:none}
+.segc{display:inline-flex;height:24px;border-radius:7px;background:var(--fill);padding:2px;gap:2px;flex:none}
+.segc span{display:flex;align-items:center;gap:5px;padding:0 8px;border-radius:5px;font:500 11.5px var(--sans);color:var(--t2);white-space:nowrap}
+.segc span svg{width:12px;height:12px}
+.segc span.on{background:rgba(255,255,255,.12);color:var(--t1);box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.grp{display:inline-flex;height:24px;border-radius:6px;background:rgba(255,255,255,.07);flex:none}
+.grp .g{display:flex;align-items:center;gap:6px;padding:0 10px;font:500 12px var(--sans);color:var(--t1)}
+.grp .g+.g{border-left:1px solid rgba(255,255,255,.10)}
+.grp .g.ic{width:28px;padding:0;justify-content:center;color:var(--t2)}
+.grp .g svg{width:14px;height:14px}
+.grp .sq{width:8px;height:8px;border-radius:1.5px;background:var(--t1)}
+.tabs{height:34px;flex:none;display:flex;align-items:center;gap:4px;padding:0 8px;border-bottom:1px solid var(--line)}
+.tab{position:relative;height:24px;width:190px;border-radius:6px;display:flex;align-items:center;gap:6px;padding:0 8px;font:500 12px var(--sans);color:var(--t2);
+  background:color-mix(in srgb, var(--tone,#fff) 9%, transparent)}
+.tab.on{color:var(--t1);background:color-mix(in srgb, var(--tone,#fff) 15%, rgba(255,255,255,.04));box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--tone,#fff) 36%, transparent)}
+.tab .x{margin-left:auto;width:14px;height:14px;color:var(--t2)}
+
+/* ---------- conversation ---------- */
+/* The stream sticks to the bottom: when it is longer than the view, the oldest part is what is cut. */
+.stream{flex:1;min-height:0;overflow:hidden;position:relative;display:flex;flex-direction:column;justify-content:flex-end}
+.col{width:100%;max-width:var(--col);margin:0 auto;padding:16px 28px 4px}
+.sysline{display:flex;align-items:center;gap:10px;color:var(--t3);font-size:11.5px;margin:2px 0 14px}
+.sysline::before,.sysline::after{content:"";flex:1;height:1px;background:var(--line)}
+.sysline b{color:var(--t2);font-weight:500}
+.um{margin:6px 0 14px auto;max-width:82%;width:fit-content;background:rgba(var(--acc-rgb),.12);border:1px solid rgba(var(--acc-rgb),.20);
+  border-radius:16px 16px 5px 16px;padding:9px 14px 10px;font-size:var(--read);line-height:var(--read-lh);color:var(--t1)}
+.fchip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;background:rgba(255,255,255,.08);font:500 11.5px var(--mono);color:var(--t1);white-space:nowrap}
+.fchip svg{width:11px;height:11px;color:var(--t2)}
+.prose{font-size:var(--read);line-height:var(--read-lh);color:var(--t1)}
+.prose p{margin:0 0 10px}
+.prose ol,.prose ul{margin:0 0 10px;padding-left:22px}
+.prose li{margin:2px 0}
+.prose code,.planbody code{font:12.5px var(--mono);background:rgba(255,255,255,.07);border-radius:4px;padding:1px 5px;color:#E3DFF0}
+.caret{display:inline-block;width:7px;height:15px;background:var(--acc);vertical-align:-2px;margin-left:2px;border-radius:1px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+/* folded work: one line per step, and one line for a settled turn */
+.wb{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;margin:4px -10px 8px;border-radius:8px;color:var(--t2);font-size:12.5px}
+.wb svg{width:12px;height:12px;flex:none}
+.wb .chv{width:9px;height:9px;color:var(--t3)}
+.wb .dur{margin-left:auto;font-size:11.5px;color:var(--t3)}
+.wb b{color:var(--t1);font-weight:500}
+.wb > span:not(.dur){white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.wb.turn{border:1px solid var(--line);background:rgba(255,255,255,.02);margin:4px 0 12px}
+.think{display:flex;align-items:center;gap:8px;height:26px;margin:0 0 6px;color:var(--t3);font-size:12.5px}
+.think svg{width:12px;height:12px;flex:none}
+.think i{font-style:normal;color:var(--t2)}
+.think .chv{width:9px;height:9px}
+.tc{border:1px solid var(--line);background:var(--s1);border-radius:var(--r-lg);overflow:hidden;margin:8px 0 10px;box-shadow:var(--shadow-1)}
+.tc-h{height:34px;display:flex;align-items:center;gap:8px;padding:0 10px 0 12px;font-size:12.5px}
+.tc-h > svg{width:14px;height:14px;color:var(--t2);flex:none}
+.tc-h .verb{color:var(--t2);flex:none}
+.tc-h .tgt{font:12px var(--mono);color:var(--t1)}
+.tc-h .meta{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--t3);font-size:11.5px;flex:none}
+.tc-h .meta svg{width:12px;height:12px}
+.tc-b{border-top:1px solid var(--line);padding:4px 10px 6px}
+.add{color:var(--ok-l)} .del{color:var(--fail-l)}
+.okc{color:var(--ok-l);display:inline-flex;align-items:center;gap:4px}
+.okc svg{width:11px;height:11px}
+.diff{font:12px/19px var(--mono);border-top:1px solid var(--line);padding:4px 0}
+.diff .l{display:grid;grid-template-columns:38px 16px minmax(0,1fr);white-space:pre;color:#CFCBDA}
+.diff .l .n{color:var(--t3);text-align:right;padding-right:8px}
+.diff .l .s{color:var(--t3)}
+.diff .l.a{background:rgba(var(--ok-rgb),.11)} .diff .l.a .s{color:var(--ok-l)}
+.diff .l.d{background:rgba(var(--fail-rgb),.11)} .diff .l.d .s{color:var(--fail-l)}
+.diff .more{padding:4px 12px 2px 54px;color:var(--t3);font:11.5px var(--sans)}
+.kw{color:#C586C0}.fn{color:#DCDCAA}.str{color:#CE9178}.cm{color:#6A9955}.typ{color:#4EC9B0}.nu{color:#B5CEA8}
+.out{font:11.5px/18px var(--mono);color:#B9B5C6;border-top:1px solid var(--line);padding:7px 12px;white-space:pre;background:rgba(0,0,0,.12)}
+.agent{border:1px solid var(--line);background:var(--s1);border-radius:var(--r-lg);padding:10px 12px;margin:8px 0 10px;display:grid;grid-template-columns:22px 1fr auto;column-gap:10px;row-gap:3px;align-items:center}
+.agent .av{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;background:rgba(var(--acc-rgb),.16);color:var(--acc-hi)}
+.agent .av svg{width:13px;height:13px}
+.agent .nm{font:500 12.5px var(--sans)}
+.agent .nm .ty{color:var(--acc-hi);font-weight:600;margin-right:6px}
+.agent .st{display:flex;align-items:center;gap:6px;color:var(--t2);font-size:11.5px}
+.agent .ln{grid-column:2 / 4;color:var(--t2);font-size:11.5px}
+.agent .ln .mono{color:var(--t1);font-size:11px}
+.working{display:flex;align-items:center;gap:9px;margin:4px 0 12px;color:var(--t2);font-size:12.5px}
+.working .mono{color:var(--t1);font-size:11.5px}
+.working .sep{color:var(--t3)}
+.macts{display:flex;gap:2px;margin:-4px 0 14px -7px}
+.macts span{height:24px;padding:0 7px;border-radius:6px;display:inline-flex;align-items:center;gap:5px;font:500 11.5px var(--sans);color:var(--t2)}
+.macts span svg{width:12px;height:12px}
+.macts span.h{background:rgba(255,255,255,.07);color:var(--t1)}
+.btn{height:26px;padding:0 10px;border-radius:7px;font:500 12px var(--sans);display:inline-flex;align-items:center;gap:6px;color:var(--t1);background:rgba(255,255,255,.08);white-space:nowrap;flex:none}
+.btn svg{width:12px;height:12px}
+.btn.primary{background:var(--acc);color:var(--on-acc)}
+.btn.ghost{background:transparent;color:var(--t2)}
+.btn.danger{background:rgba(var(--fail-rgb),.14);color:var(--fail-l)}
+.btn.lg{height:30px;padding:0 14px;font-size:12.5px;border-radius:8px}
+.btn .kbd{border-color:rgba(0,0,0,.25);color:inherit;opacity:.7}
+
+/* decision cards: approval, question, plan */
+.dc{border-radius:12px;background:var(--s1);border:1px solid rgba(var(--att-rgb),.35);box-shadow:0 0 0 1px rgba(0,0,0,.2),var(--shadow-2);overflow:hidden}
+.dc-h{display:flex;align-items:center;gap:8px;padding:11px 14px 0;font:600 13px var(--sans)}
+.dc-h .ic{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;background:rgba(var(--att-rgb),.16);color:var(--att-l)}
+.dc-h .ic svg{width:12px;height:12px}
+.dc-h .who{margin-left:auto;font:500 11.5px var(--sans);color:var(--t3)}
+.stepper{display:inline-flex;align-items:center;gap:4px;font:500 11.5px var(--sans);color:var(--t2);margin-left:10px;padding-left:10px;border-left:1px solid var(--line2)}
+.stepper svg{width:9px;height:9px;color:var(--t3)}
+.dc-b{padding:9px 14px 12px}
+.cmd{font:12.5px/20px var(--mono);background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:8px;padding:8px 11px;color:#EDE9F6}
+.cmd .pr{color:var(--t3);margin-right:8px}
+.why{margin-top:8px;color:var(--t2);font-size:12.5px;line-height:1.5}
+.why b{color:var(--t1);font-weight:500}
+.dc-f{display:flex;align-items:center;gap:6px;padding:0 14px 12px}
+.dc-f .hint{color:var(--t3);font-size:11px;margin-right:auto}
+.dc.plan{border-color:rgba(var(--acc-rgb),.38)}
+.dc.plan .dc-h .ic{background:rgba(var(--acc-rgb),.18);color:var(--acc-hi)}
+.dc.doc{border-color:var(--line2);box-shadow:var(--shadow-1)}
+.planbody{max-height:300px;overflow:hidden;position:relative;border:1px solid var(--line);border-radius:9px;background:rgba(0,0,0,.14);padding:12px 14px 4px}
+.planbody::after{content:"";position:absolute;left:0;right:0;bottom:0;height:46px;background:linear-gradient(transparent,var(--s1))}
+.planbody h5{font:600 13px var(--sans);margin:0 0 6px}
+.planbody ol{margin:0 0 10px;padding-left:20px;font-size:13px;line-height:20px}
+.planbody li{margin:3px 0}
+.planbody code{font-size:12px}
+.planbody .meta{color:var(--t2);font-size:12px;margin:0 0 10px}
+.qa{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.opt{display:flex;align-items:flex-start;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.02)}
+.opt .rb{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--t3);margin-top:2px;flex:none}
+.opt.on{border-color:rgba(var(--acc-rgb),.55);background:rgba(var(--acc-rgb),.08)}
+.opt.on .rb{border-color:var(--acc);box-shadow:inset 0 0 0 3px var(--s1);background:var(--acc)}
+.opt .ot{font:500 12.5px var(--sans)}
+.opt .od{color:var(--t2);font-size:12px;margin-top:1px}
+.answered{display:flex;align-items:center;gap:8px;height:32px;padding:0 11px;border-radius:9px;border:1px solid var(--line);background:var(--s1);font-size:12.5px;color:var(--t2);margin:8px 0 10px}
+.answered svg{width:13px;height:13px;flex:none}
+.answered b{color:var(--t1);font-weight:500}
+.pending{border-color:rgba(var(--att-rgb),.30)}
+.pending .tc-h .meta{color:var(--att-l)}
+.banner{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 12px;border-radius:10px;border:1px solid rgba(var(--att-rgb),.3);background:rgba(var(--att-rgb),.08);font-size:12.5px;color:var(--t1)}
+.banner > svg{width:14px;height:14px;color:var(--att-l);flex:none}
+.banner b{font-weight:600}
+
+/* dock: rail, pinned cards, composer */
+.dock{flex:none;padding:6px 24px 14px;position:relative}
+.dock .pinned,.rail{max-width:calc(var(--col) - 20px);margin:0 auto 10px}
+.rail{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+.rp{height:26px;border-radius:13px;background:var(--s1);border:1px solid var(--line);display:inline-flex;align-items:center;gap:7px;padding:0 11px 0 9px;font:500 11.5px var(--sans);color:var(--t2);white-space:nowrap;min-width:0}
+.rp b{color:var(--t1);font-weight:500}
+.rp svg{width:12px;height:12px;flex:none}
+.rp .dots{display:flex;gap:2px}
+.rp .dots i{width:9px;height:3px;border-radius:2px;background:rgba(255,255,255,.14)}
+.rp .dots i.d{background:var(--ok)} .rp .dots i.c{background:var(--t1)}
+.rp .chase{transform:scale(.75)}
+.comp{position:relative;max-width:calc(var(--col) - 20px);margin:0 auto;background:var(--s1);border:1px solid var(--line2);border-radius:20px;box-shadow:var(--shadow-2)}
+.comp .q{display:flex;align-items:center;gap:8px;margin:8px 10px 0;padding:0 8px 0 10px;height:30px;border-radius:12px;background:rgba(255,255,255,.05);font-size:12px;color:var(--t2)}
+.comp .q svg{width:12px;height:12px;flex:none}
+.comp .q .qt{color:var(--t1)}
+.comp .q .ib{width:22px;height:22px}
+.comp .q .ib svg{width:12px;height:12px}
+.comp .ta{padding:14px 18px 4px;min-height:46px;font-size:var(--read);line-height:var(--read-lh);color:var(--t3)}
+.comp .ta.typed{color:var(--t1)}
+.comp .bar{display:flex;align-items:center;gap:2px;padding:2px 8px 8px}
+.comp .bar .ib,.start .bar .ib,.lf .ib{width:30px;height:30px;border-radius:15px;color:var(--t1)}
+.comp .bar .ib svg,.start .bar .ib svg,.lf .ib svg{width:17px;height:17px}
+.achips{display:flex;gap:6px;padding:10px 12px 0;flex-wrap:wrap}
+.achip{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 8px 0 4px;border-radius:7px;background:rgba(255,255,255,.07);font:500 11.5px var(--sans);color:var(--t1)}
+.achip .thumb{width:30px;height:22px;border-radius:4px;border:1px solid rgba(255,255,255,.2);
+  background:linear-gradient(180deg,#F4F1EA 0 28%,#C9C3B6 28% 33%,#F4F1EA 33% 58%,#D8D3C8 58% 63%,#F4F1EA 63% 80%,#E46F6F 80% 86%,#F4F1EA 86%)}
+.achip svg{width:9px;height:9px;color:var(--t2)}
+.cchip{height:24px;border-radius:7px;display:inline-flex;align-items:center;gap:5px;padding:0 8px;font:500 11.5px var(--sans);color:var(--t2);background:transparent;flex:none;white-space:nowrap}
+.cchip svg{width:11px;height:11px}
+.cchip.on{background:rgba(var(--acc-rgb),.16);color:var(--acc-hi)}
+.cchip.box{background:var(--fill)}
+/* Composer bar after Codex's (D-58): plain text controls, no boxes; every permission mode looks the same */
+.bk{height:30px;border-radius:15px;display:inline-flex;align-items:center;gap:6px;padding:0 9px;font:500 12.5px var(--sans);color:var(--t2);flex:none;white-space:nowrap}
+.bk svg{width:13px;height:13px}
+.bk svg.ch{width:10px;height:10px;color:var(--t3);margin-left:-1px}
+.bk.model{color:var(--t1)}
+.bk .lo{color:var(--t3)}
+.bk.plan{color:var(--acc-hi)}
+.ctx{display:inline-grid;place-items:center;width:30px;height:30px;flex:none}
+.ring{width:16px;height:16px;border-radius:50%;background:conic-gradient(var(--t2) calc(var(--p)*1%), rgba(255,255,255,.10) 0);display:grid;place-items:center;flex:none}
+.ring::after{content:"";width:11px;height:11px;border-radius:50%;background:var(--s1)}
+.send{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--t1);color:var(--on-acc);flex:none;margin-left:4px}
+.send svg{width:15px;height:15px}
+.send.off{background:rgba(255,255,255,.12);color:var(--t3)}
+.send.stop{background:var(--t1);color:var(--on-acc)}
+.send.stop i{width:10px;height:10px;border-radius:2.5px;background:var(--on-acc)}
+.hints{max-width:calc(var(--col) - 20px);margin:6px auto 0;display:flex;gap:12px;color:var(--t3);font-size:10.5px;padding:0 4px;white-space:nowrap}
+/* / and @ menu, anchored above the composer */
+.menu{position:absolute;left:0;right:0;bottom:calc(100% + 8px);background:var(--s3);border-radius:12px;box-shadow:var(--shadow-3);overflow:hidden;z-index:6}
+.mh{display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-bottom:1px solid var(--line);font:500 12px var(--sans);color:var(--t2)}
+.msec{padding:6px 6px 2px}
+.msec h6{font:600 11px var(--sans);color:var(--t3);margin:2px 8px 4px}
+.mi{display:flex;align-items:center;gap:10px;height:30px;border-radius:7px;padding:0 8px;font-size:12.5px}
+.mi svg{width:13px;height:13px;color:var(--t2);flex:none}
+.mi .cn{font:500 12.5px var(--mono);color:var(--t1);min-width:150px}
+.mi .ds{color:var(--t2);font-size:12px}
+.mi .r{margin-left:auto;color:var(--t3);font-size:11px;display:flex;gap:6px;align-items:center}
+.mi.on{background:rgba(var(--acc-rgb),.16)}
+.mi.dim .cn,.mi.dim .ds{color:var(--t3)}
+.mf{display:flex;gap:14px;padding:7px 14px;border-top:1px solid var(--line);color:var(--t3);font-size:11px;margin-top:4px}
+
+/* inspector */
+.insp{width:328px;flex:none;background:var(--insp);border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+.insp.wide{width:556px}
+.itabs{height:40px;flex:none;display:flex;align-items:center;gap:2px;padding:0 8px;border-bottom:1px solid var(--line)}
+.itab{height:26px;padding:0 8px;border-radius:6px;font:500 12px var(--sans);color:var(--t2);display:flex;align-items:center;gap:5px;white-space:nowrap}
+.itab svg{width:13px;height:13px}
+.itab.on{background:rgba(255,255,255,.08);color:var(--t1)}
+.itab .c{font-size:10.5px;color:var(--t3)}
+/* In the narrow inspector only the open tab shows its name; the others keep their icon and count. */
+.insp:not(.wide) .itab:not(.on){font-size:0;gap:4px;padding:0 7px}
+.ibody{flex:1;min-height:0;overflow:hidden;padding:14px}
+.isec{margin-bottom:18px}
+.isec h4{display:flex;align-items:center;gap:6px;font:600 11px var(--sans);color:var(--t2);margin:0 0 9px;letter-spacing:.2px}
+.isec h4 .sp + span{font-weight:500;color:var(--t3)}
+.kv{display:grid;grid-template-columns:92px minmax(0,1fr);row-gap:7px;font-size:12.5px;margin:0}
+.kv dt{color:var(--t2)} .kv dd{margin:0;color:var(--t1);min-width:0}
+.kv dd .t3{font-size:12px}
+.meter{height:6px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+.meter i{display:block;height:100%;border-radius:3px;background:var(--t1)}
+.meter.acc i{background:var(--acc)}
+.mrow{display:flex;justify-content:space-between;font-size:12px;color:var(--t2);margin-top:6px}
+.mrow b{color:var(--t1);font-weight:500}
+.frow{display:flex;align-items:center;gap:8px;height:28px;font-size:12px;border-radius:7px;padding:0 6px;margin:0 -6px}
+.frow svg{width:13px;height:13px;color:var(--t2);flex:none}
+.frow .fn2{font-family:var(--mono);font-size:11.5px;color:var(--t1)}
+.frow .ad{margin-left:auto;font:11px var(--mono);white-space:nowrap}
+.frow.on{background:rgba(255,255,255,.07)}
+.actl{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.actl .btn{justify-content:flex-start}
+.hr{height:1px;background:var(--line);margin:4px 0 16px}
+
+/* home */
+.home{flex:1;min-width:0;overflow:hidden;padding:26px 34px 0}
+.home-h{display:flex;align-items:flex-end;gap:12px;margin-bottom:18px}
+.home-h h1{font:600 24px/30px var(--sans);margin:0;letter-spacing:-.015em}
+.home-h .d{color:var(--t2);font-size:13px;margin-bottom:3px}
+.start{background:var(--s1);border:1px solid var(--line2);border-radius:20px;box-shadow:var(--shadow-2);margin-bottom:10px}
+.start .ta{padding:16px 18px 4px;min-height:58px;color:var(--t3);font-size:15px}
+.start .bar{display:flex;align-items:center;gap:2px;padding:2px 8px 8px}
+.hstrip{display:flex;align-items:center;gap:8px;margin:0 6px 16px;font-size:11.5px;color:var(--t3)}
+.presets{display:flex;gap:6px;margin:0 0 20px;flex-wrap:wrap}
+.preset{height:26px;border-radius:13px;border:1px solid var(--line2);padding:0 11px;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--t2)}
+.preset svg{width:11px;height:11px}
+.hgrid{display:grid;grid-template-columns:minmax(0,1fr) 312px;gap:18px}
+.hsec{margin-bottom:16px}
+.hsec h3{display:flex;align-items:center;gap:7px;font:600 12px var(--sans);color:var(--t2);margin:0 0 8px}
+.hsec h3 .cnt{color:var(--t3);font-weight:500}
+.hcard{background:var(--s1);border:1px solid var(--line);border-radius:12px}
+.hitem{display:grid;grid-template-columns:12px minmax(0,1fr) auto;column-gap:10px;row-gap:3px;padding:11px 12px;position:relative}
+.hitem + .hitem{border-top:1px solid var(--line)}
+.hitem .tt{font:500 13px var(--sans)}
+.hitem .pj{font-size:11.5px;color:var(--t2);display:flex;align-items:center;gap:6px}
+.hitem .pj i{width:3px;height:11px;border-radius:2px;background:var(--tone)}
+.hitem .bd{grid-column:2 / 4;font-size:12.5px;color:var(--t2);line-height:1.5}
+.hitem .bd .mono{color:var(--t1);font-size:11.5px}
+.hitem .ac{grid-column:2 / 4;display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.qchip{height:26px;border-radius:7px;border:1px solid var(--line2);padding:0 10px;display:inline-flex;align-items:center;font:500 12px var(--sans);color:var(--t1);white-space:nowrap}
+.qchip.rec{border-color:rgba(var(--acc-rgb),.5);background:rgba(var(--acc-rgb),.10)}
+.side-card{background:var(--s1);border:1px solid var(--line);border-radius:12px;padding:13px 14px;margin-bottom:12px}
+.side-card h3{font:600 12px var(--sans);color:var(--t2);margin:0 0 10px;display:flex;align-items:center;gap:6px}
+.lim{margin-bottom:12px}
+.lim .lt{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px}
+.lim .lt span{color:var(--t2)}
+.lim .lt b{font-weight:600}
+.lim .ls{font-size:11.5px;color:var(--t2);margin-top:5px}
+.lim .ls .good{color:var(--ok-l)}
+.stat3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat3 div{font-size:11.5px;color:var(--t2)}
+.stat3 b{display:block;font:600 17px var(--sans);color:var(--t1);margin-bottom:1px}
+.bars{display:flex;align-items:flex-end;gap:3px;height:36px;margin-top:12px}
+.bars i{flex:1;background:rgba(255,255,255,.14);border-radius:2px 2px 0 0}
+.bars i.n{background:var(--t1)}
+.prj{display:flex;align-items:center;gap:8px;height:28px;font-size:12.5px}
+.prj i{width:3px;height:14px;border-radius:2px;background:var(--tone)}
+.prj .r{margin-left:auto;color:var(--t2);font-size:11.5px;display:flex;align-items:center;gap:6px;white-space:nowrap}
+
+/* project page */
+.proj{flex:1;min-width:0;overflow:hidden;padding:24px 30px 0}
+.proj-h{display:flex;align-items:center;gap:12px}
+.proj-h .stripe{width:4px;height:30px;border-radius:2px;background:var(--aqua)}
+.proj-h h1{font:600 22px var(--sans);margin:0;letter-spacing:-.01em}
+.proj-h .path{color:var(--t2);font:12px var(--mono)}
+.pstats{display:flex;gap:18px;margin:12px 0 16px 16px;color:var(--t2);font-size:12.5px}
+.pstats b{color:var(--t1);font-weight:600}
+.ptabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.ptab{height:32px;padding:0 12px;display:flex;align-items:center;font:500 12.5px var(--sans);color:var(--t2);border-bottom:2px solid transparent;margin-bottom:-1px}
+.ptab.on{color:var(--t1);border-color:var(--acc)}
+.pgrid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px}
+.srow{display:grid;grid-template-columns:12px minmax(0,1fr) 170px 44px;column-gap:12px;align-items:center;padding:10px 12px;border-radius:9px}
+.srow + .srow{border-top:1px solid var(--line)}
+.srow .tt{font:500 13px var(--sans)}
+.srow .ln2{font-size:12px;color:var(--t2);margin-top:2px}
+.srow .br{display:flex;align-items:center;gap:5px;font:11.5px var(--mono);color:var(--t2)}
+.srow .br svg{width:10px;height:10px;flex:none}
+.srow .tm{text-align:right;font-size:11.5px;color:var(--t3)}
+.srow.on{background:rgba(255,255,255,.05)}
+
+/* palette */
+.scrim{position:absolute;inset:0;background:rgba(5,6,10,.5);z-index:20;display:flex;justify-content:center;padding-top:96px}
+.pal{width:620px;height:fit-content;background:var(--s3);border-radius:14px;box-shadow:var(--shadow-3);overflow:hidden}
+.pal-in{height:50px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line);font-size:15px;color:var(--t1)}
+.pal-in svg{width:16px;height:16px;color:var(--t2)}
+.pal-in .cur{width:1.5px;height:18px;background:var(--acc);margin-left:-8px}
+.pal-sec{padding:8px 8px 4px}
+.pal-sec h6{font:600 11px var(--sans);color:var(--t3);margin:2px 10px 5px}
+.pi{display:flex;align-items:center;gap:10px;height:34px;border-radius:8px;padding:0 10px;font-size:13px}
+.pi svg{width:14px;height:14px;color:var(--t2);flex:none}
+.pi .ds{color:var(--t2);font-size:12px}
+.pi .r{margin-left:auto;display:flex;gap:6px;align-items:center;color:var(--t3);font-size:11.5px}
+.pi.on{background:rgba(var(--acc-rgb),.16)}
+.pal-f{display:flex;gap:16px;padding:8px 16px;border-top:1px solid var(--line);color:var(--t3);font-size:11px}
+
+/* terminal */
+.tnote{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px 0 14px;border-bottom:1px solid var(--line);font-size:12px;color:var(--t2);background:rgba(255,255,255,.02)}
+.tnote svg{width:13px;height:13px}
+.term{flex:1;min-height:0;background:var(--term);font:14px/1.38 var(--mono);color:#E8E6EE;white-space:pre;overflow:hidden;padding:10px 14px}
+.term .o{color:#D97757}.term .g{color:#4EC9B0}.term .d{color:#8A8796}.term .b{font-weight:700}.term .y{color:#DCDCAA}.term .gr{color:#6CCB8F}
+.term .tbox{display:block;border:1px solid #5D5A68;border-radius:5px;padding:1px 8px;margin:4px 0 2px}
+.term .cur{background:#E8E6EE;color:#1D1C22}
+
+/* new-session sheet */
+.sheet{position:absolute;left:50%;top:60px;transform:translateX(-50%);width:640px;background:var(--s3);border-radius:16px;box-shadow:var(--shadow-3);z-index:21;overflow:hidden}
+.sheet-h{display:flex;align-items:center;gap:10px;padding:16px 18px 6px;font:600 15px var(--sans)}
+.sheet .fld{padding:8px 18px}
+.sheet .lbl{font:600 11px var(--sans);color:var(--t2);margin-bottom:6px}
+.sheet .inp{height:32px;border-radius:8px;background:rgba(0,0,0,.22);border:1px solid var(--line2);display:flex;align-items:center;gap:8px;padding:0 10px;font-size:13px}
+.sheet .inp svg{width:13px;height:13px;color:var(--t2)}
+.sheet .area{min-height:92px;border-radius:10px;background:rgba(0,0,0,.22);border:1px solid var(--line2);padding:10px 12px;font-size:13.5px;line-height:21px}
+.sheet .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.optrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.sheet-f{display:flex;align-items:center;gap:8px;padding:14px 18px 16px}
+
+/* design system board */
+.board{flex:1;min-width:0;overflow:hidden;background:var(--canvas);padding:26px 30px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:26px;align-content:start}
+.board h4{font:600 12px var(--sans);color:var(--t2);margin:0 0 10px}
+.sw{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.sw div{height:46px;border-radius:8px;border:1px solid var(--line);position:relative}
+.sw div span{position:absolute;left:6px;bottom:4px;font:500 9.5px var(--sans);color:rgba(255,255,255,.78);text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.tscale div{display:flex;align-items:baseline;gap:12px;margin-bottom:8px}
+.tscale span.k{width:84px;flex:none;font-size:11px;color:var(--t3)}
+.comps{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.boardnote{font-size:12px;color:var(--t2);line-height:1.55;margin:0 0 14px}
+
+/* ---------- new-session options ---------- */
+.draft{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 40px 70px}
+.draft .dh{text-align:center;margin-bottom:22px}
+.draft h2{font:600 24px var(--sans);letter-spacing:-.01em;margin:0 0 7px;color:var(--t1)}
+.draft .dh p{margin:0;color:var(--t2);font-size:13px}
+.draft .dh p b{color:var(--t1);font-weight:500}
+.comp.big{width:100%;max-width:720px;margin:0}
+.comp.big .ta{min-height:78px}
+.ctxrow{display:flex;gap:6px;align-items:center;padding:10px 12px 0}
+.ctxchip{position:relative;height:26px;border-radius:7px;display:inline-flex;align-items:center;gap:6px;padding:0 9px;font:500 12px var(--sans);color:var(--t1);background:rgba(255,255,255,.06);border:1px solid var(--line);white-space:nowrap}
+.ctxchip > svg{width:11px;height:11px;color:var(--t2)}
+.ctxchip.tone::before{content:"";width:3px;height:13px;border-radius:2px;background:var(--tone)}
+.ctxchip.open{border-color:rgba(var(--acc-rgb),.5);background:rgba(var(--acc-rgb),.10)}
+.ctxnote{font-size:11.5px;color:var(--t3)}
+.dpresets{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:14px;max-width:720px}
+.dalso{margin-top:26px;font-size:12px;color:var(--t3);display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:center}
+.dalso .ar{display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 10px 0 8px;border-radius:12px;background:var(--fill);color:var(--t2)}
+.tkchip{font:500 13px var(--mono);color:var(--acc-hi);background:rgba(var(--acc-rgb),.14);border-radius:5px;padding:1px 6px;margin-right:2px}
+.detect{width:100%;max-width:720px;margin-top:10px;display:flex;gap:8px;align-items:center;font-size:12px;color:var(--t2);padding:0 4px}
+.detect > svg{width:12px;height:12px;color:var(--t2)}
+.detect b{color:var(--t1);font-weight:500}
+.pop{position:absolute;top:-6px;left:calc(100% + 8px);width:340px;background:var(--s3);border-radius:12px;box-shadow:var(--shadow-3);padding:6px;z-index:8;white-space:normal}
+.pop .mi{font-weight:400;color:var(--t1)}
+.pop .mi.on{background:rgba(255,255,255,.07)}
+.pop .mi .ck{width:13px;color:var(--acc-hi)}
+.pop .hint{font-size:11.5px;color:var(--t3);padding:6px 8px 4px;line-height:1.45}
+.launcher{position:absolute;left:50%;top:104px;transform:translateX(-50%);width:660px;background:var(--s3);border-radius:16px;box-shadow:var(--shadow-3);z-index:21;overflow:hidden}
+.launcher .lh{display:flex;align-items:center;gap:6px;padding:12px 12px 0}
+.launcher .lh .lt{font:600 12.5px var(--sans);color:var(--t2);margin-right:4px}
+.launcher .ta{font-size:16px;min-height:64px;padding:12px 16px 8px;color:var(--t1)}
+.launcher .lf{display:flex;align-items:center;gap:6px;padding:8px 12px 12px}
+.launcher .lsec{padding:6px 6px 8px;border-top:1px solid var(--line)}
+.launcher .lsec h6{font:600 11px var(--sans);color:var(--t3);margin:4px 8px 4px}
+.prow.draftrow .ttl{color:var(--t2);font-style:italic}
+.prow.inl{height:auto;display:block;padding:7px 10px 8px 22px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(var(--acc-rgb),.45)}
+.prow.inl .in{font-size:12.5px;color:var(--t1);line-height:18px;white-space:normal}
+.prow.inl .m2{font-size:11px;color:var(--t3);margin-top:5px;line-height:15px}
+.dimmed{filter:saturate(.9) brightness(.92)}
+.cap .vs{margin:14px 0 0;font-size:12px;color:#A7ABB9;line-height:1.5}
+.cap .vs b{color:#DADCE6}
+.draft h2 .hpick{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 11px 0 12px;margin:0 2px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid var(--line);vertical-align:-5px;color:var(--t1)}
+.draft h2 .hpick::before{content:"";width:4px;height:17px;border-radius:2px;background:var(--tone)}
+.draft h2 .hpick svg{width:13px;height:13px;color:var(--t2)}
+.dstrip{width:100%;max-width:720px;display:flex;gap:6px;align-items:center;margin-top:10px;padding:0 4px}
+.pop.down{top:calc(100% + 6px);left:0}
+.tkline{display:flex;gap:8px;align-items:center;padding:11px 14px 0;font-size:12px;color:var(--t2)}
+.tkline > svg{width:12px;height:12px;color:var(--t2)}
+.tkline b{color:var(--t1);font-weight:500}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+<defs>
+<symbol id="loom-mark" viewBox="0 0 512 512"><g fill="currentColor" transform="translate(0 512) scale(.1 -.1)" stroke="none"><path d="M2794 3710 c-129 -33 -299 -135 -359 -214 -21 -28 -26 -42 -21 -63 9 -38 154 -178 199 -192 32 -11 41 -9 104 23 171 86 354 70 475 -43 150 -138 150 -379 0 -511 -107 -95 -278 -94 -386 2 l-46 40 -11 -29 c-16 -40 -14 -122 4 -164 60 -144 264 -222 452 -174 360 92 559 494 430 868 -36 103 -81 173 -175 267 -71 72 -100 93 -180 132 -52 26 -127 54 -167 62 -96 21 -230 20 -319 -4z M2183 3695 c-116 -32 -221 -108 -273 -199 -17 -28 -30 -54 -30 -58 0 -4 20 1 45 12 66 28 220 68 294 76 64 7 65 7 137 83 40 41 71 77 69 79 -2 2 -21 8 -42 13 -55 12 -140 10 -200 -6z M2212 3388 c-159 -22 -390 -122 -559 -241 -299 -210 -585 -600 -609 -828 -12 -118 40 -251 125 -318 96 -76 178 -98 426 -116 110 -8 224 -21 254 -29 125 -34 230 -115 272 -211 11 -24 24 -81 30 -127 20 -170 65 -271 166 -374 34 -35 63 -65 63 -67 0 -1 -10 -27 -22 -57 -29 -76 -37 -259 -14 -350 42 -170 158 -318 311 -397 44 -23 98 -46 120 -52 22 -6 45 -14 51 -18 5 -5 15 -48 22 -96 6 -48 14 -92 17 -97 4 -6 415 -10 1131 -10 l1124 0 0 1584 0 1585 -55 -19 c-84 -29 -143 -68 -232 -154 l-83 -78 -54 49 c-111 102 -233 151 -391 160 -113 6 -199 -10 -298 -54 l-60 -27 -26 34 c-37 51 -120 134 -127 128 -3 -4 0 -34 7 -67 17 -89 7 -268 -21 -356 -103 -328 -377 -545 -688 -545 -161 0 -273 41 -373 137 -37 35 -66 75 -85 116 -79 173 -8 407 124 407 44 0 68 -14 117 -66 74 -78 167 -82 238 -9 60 62 72 147 33 231 -42 90 -120 130 -238 122 -50 -4 -85 -14 -131 -37 -89 -45 -122 -52 -176 -40 -92 20 -262 163 -302 253 -11 25 -21 45 -22 45 -1 -1 -30 -6 -65 -11z m-256 -505 c115 -88 129 -102 132 -131 2 -18 -2 -40 -9 -49 -7 -8 -69 -55 -138 -105 -103 -73 -130 -88 -151 -83 -35 8 -51 34 -48 74 3 31 12 42 83 92 44 31 80 61 82 66 1 4 -30 31 -69 58 -39 28 -77 56 -85 63 -18 19 -16 72 4 94 32 35 63 23 199 -79z m528 -88 c23 -24 28 -52 14 -82 l-13 -28 -141 -3 c-130 -2 -142 -1 -158 17 -23 26 -24 66 -1 91 16 18 32 20 151 20 105 0 136 -3 148 -15z"/></g></symbol>
+<symbol id="claude" viewBox="0 0 94 94"><path fill="#D97757" d="M18.7657 62.4437L37.1822 52.1167L37.4857 51.2122L37.1822 50.7085H36.2715L33.1852 50.5208L22.6615 50.2391L13.5545 49.8636L4.70044 49.3942L2.47428 48.9248L0.399902 46.1553L0.602281 44.794L2.47428 43.5266L5.15579 43.7613L11.0754 44.1837L19.98 44.794L26.4055 45.1695L35.9679 46.1553H37.4857L37.6881 45.545L37.1822 45.1695L36.7774 44.794L27.5692 38.5508L17.6021 31.9791L12.3908 28.1769L9.60812 26.2524L8.19147 24.4686L7.58433 20.5256L10.1141 17.7091L13.5545 17.9438L14.4146 18.1785L17.9056 20.8542L25.343 26.6279L35.0572 33.7629L36.4739 34.9364L37.0443 34.5514L37.1316 34.2792L36.4739 33.1996L31.212 23.6706L25.596 13.9539L23.0663 9.91695L22.4086 7.52296C22.1538 6.51831 22.0038 5.68714 22.0038 4.65957L24.8877 0.716544L26.5067 0.200195L30.4025 0.716544L32.0215 2.12477L34.4501 7.66379L38.3458 16.3478L44.4172 28.1769L46.188 31.6975L47.1493 34.9364L47.5035 35.9222H48.1106V35.3589L48.6166 28.6933L49.5273 20.5256L50.438 10.0108L50.7415 7.05356L52.2088 3.48605L55.1433 1.56148L57.42 2.64112L59.292 5.31674L59.039 7.05356L57.926 14.2824L55.7504 25.5952L54.3337 33.1996H55.1433L56.1046 32.2138L59.9497 27.1442L66.3752 19.0704L69.2085 15.8784L72.5478 12.3579L74.6728 10.668H78.7203L81.6548 15.0804L80.3394 19.6337L76.1906 24.8911L72.7502 29.3504L67.8172 35.9595L64.7562 41.2734L65.0307 41.7118L65.7681 41.6489L76.8989 39.255L82.9197 38.1753L90.1041 36.9549L93.3422 38.457L93.6963 40.006L92.4315 43.151L84.7411 45.0287L75.7353 46.8594L62.3244 50.0164L62.1759 50.1358L62.3512 50.3958L68.399 50.9432L70.9794 51.084H77.3037L89.0922 51.9759L92.1785 53.9944L93.9999 56.4822L93.6963 58.4068L88.9404 60.8008L82.5655 59.2987L67.6401 55.7312L62.5301 54.4638H61.8217V54.8862L66.0717 59.064L73.9139 66.1051L83.6786 75.2116L84.1845 77.4648L82.9197 79.2485L81.6042 79.0608L73.0032 72.5829L69.6639 69.6726L62.1759 63.3356H61.67V63.9928L63.3902 66.5276L72.5478 80.2812L73.0032 84.5059L72.3454 85.8672L69.9675 86.7121L67.3871 86.2427L61.9735 78.6852L56.4587 70.2359L52.0064 62.6315L51.4687 62.971L48.8189 91.2654L47.6047 92.7206L44.7714 93.8002L42.3934 92.0164L41.1286 89.1061L42.3934 83.3324L43.9113 75.8219L45.1255 69.8604L46.2386 62.4437L46.9184 59.9661L46.8583 59.8003L46.3153 59.8916L40.7238 67.5603L32.2239 79.0608L25.4948 86.2427L23.8758 86.8999L21.0931 85.4447L21.3461 82.863L22.9145 80.5629L32.2239 68.7338L37.8399 61.3641L41.4594 57.1337L41.4242 56.5218L41.2244 56.5048L16.489 72.6299L12.0873 73.1932L10.1647 71.4094L10.4176 68.4991L11.3283 67.5603L18.7657 62.4437Z"/></symbol>
+<symbol id="i-sidebar" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 2.5v11" stroke="currentColor" stroke-width="1.2"/></symbol>
+<symbol id="i-insp" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M10 2.5v11" stroke="currentColor" stroke-width="1.2"/><path d="M11.6 5h1.4M11.6 7h1.4M11.6 9h1.4" stroke="currentColor" stroke-width="1"/></symbol>
+<symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.8 4.2c0-.8.6-1.4 1.4-1.4h3l1.4 1.5h5.2c.8 0 1.4.6 1.4 1.4v6.1c0 .8-.6 1.4-1.4 1.4H3.2c-.8 0-1.4-.6-1.4-1.4z" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+<symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 4.6V8l2.4 1.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+<symbol id="i-ellipsis" viewBox="0 0 16 16"><circle cx="3.2" cy="8" r="1.25" fill="currentColor"/><circle cx="8" cy="8" r="1.25" fill="currentColor"/><circle cx="12.8" cy="8" r="1.25" fill="currentColor"/></symbol>
+<symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.6 10.6l3.6 3.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+<symbol id="i-branch" viewBox="0 0 16 16"><path d="M5 2v12M5 9c0-3 6-2.5 6-6.5M9 4.5l2-2 2 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+<symbol id="i-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="8" r="4.6" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+<symbol id="i-x" viewBox="0 0 10 10"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+<symbol id="i-chev" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-chevr" viewBox="0 0 10 10"><path d="M3.5 2l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-chevl" viewBox="0 0 10 10"><path d="M6.5 2l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-agents" viewBox="0 0 16 16"><circle cx="5.5" cy="5.5" r="2.3" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="11" cy="6.5" r="1.9" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M1.8 13.2c.5-2.2 2-3.3 3.7-3.3s3.2 1.1 3.7 3.3M9.6 10.3c.4-.2.9-.3 1.4-.3 1.5 0 2.7.9 3.1 2.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+<symbol id="i-tray" viewBox="0 0 16 16"><path d="M1.8 9.2h3.4l.9 1.8h3.8l.9-1.8h3.4M1.8 9.2l1.6-5.6c.2-.6.7-1 1.4-1h6.4c.7 0 1.2.4 1.4 1l1.6 5.6v3c0 .7-.6 1.3-1.3 1.3H3.1c-.7 0-1.3-.6-1.3-1.3z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+<symbol id="i-home" viewBox="0 0 16 16"><path d="M2.5 7.2L8 2.6l5.5 4.6v5.6c0 .6-.5 1.1-1.1 1.1H9.6V10H6.4v3.9H3.6c-.6 0-1.1-.5-1.1-1.1z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></symbol>
+<symbol id="i-compose" viewBox="0 0 16 16"><path d="M13.5 8.6v3.6c0 .9-.7 1.6-1.6 1.6H3.8c-.9 0-1.6-.7-1.6-1.6V4.1c0-.9.7-1.6 1.6-1.6h3.6" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/><path d="M12.2 1.9l1.9 1.9-5.6 5.6-2.5.6.6-2.5z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></symbol>
+<symbol id="i-doc" viewBox="0 0 16 16"><path d="M4 1.8h5l3 3v8.4c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1V2.8c0-.6.4-1 1-1z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M9 1.8v3h3M5.4 8h5.2M5.4 10.4h5.2" fill="none" stroke="currentColor" stroke-width="1.1"/></symbol>
+<symbol id="i-pencil" viewBox="0 0 16 16"><path d="M10.8 2.6l2.6 2.6-7.6 7.6-3.3.7.7-3.3z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><path d="M9.3 4.1l2.6 2.6" stroke="currentColor" stroke-width="1.25"/></symbol>
+<symbol id="i-term" viewBox="0 0 16 16"><rect x="1.6" y="2.6" width="12.8" height="10.8" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M4.4 6.2l2 1.8-2 1.8M7.8 10.4h3.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-chat" viewBox="0 0 16 16"><path d="M2.4 4.2c0-1 .8-1.8 1.8-1.8h7.6c1 0 1.8.8 1.8 1.8v5c0 1-.8 1.8-1.8 1.8H7.2l-3.1 2.4V11H4.2c-1 0-1.8-.8-1.8-1.8z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+<symbol id="i-side" viewBox="0 0 16 16"><path d="M1.8 3.8c0-.8.6-1.4 1.4-1.4h5.4c.8 0 1.4.6 1.4 1.4v3.6c0 .8-.6 1.4-1.4 1.4H5.4L3.2 10.6V8.8c-.8 0-1.4-.6-1.4-1.4z" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/><path d="M11.4 5.6h1.4c.8 0 1.4.6 1.4 1.4v3.6c0 .8-.6 1.4-1.4 1.4v1.8l-2.2-1.8H8.2c-.8 0-1.4-.6-1.4-1.4v-.4" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/></symbol>
+<symbol id="i-tasks" viewBox="0 0 16 16"><rect x="2" y="2.4" width="4" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.15"/><path d="M2.9 4.4l.8.8 1.4-1.6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="2" y="9.4" width="4" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.15"/><path d="M8.4 4.4h5.4M8.4 11.4h5.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+<symbol id="i-diff" viewBox="0 0 16 16"><path d="M5 2v6M2 5h6M2 12.5h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><rect x="9.6" y="2.4" width="4.4" height="11.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.15"/></symbol>
+<symbol id="i-overview" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 7.2v4M8 4.8v.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+<symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2.2l6.3 11.1H1.7z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 6.4v3.2M8 11.4v.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+<symbol id="i-q" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6.2 6.2c.2-1 1-1.6 1.9-1.6 1 0 1.9.7 1.9 1.7 0 1.5-2 1.6-2 3M8 11.4v.1" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></symbol>
+<symbol id="i-plan" viewBox="0 0 16 16"><rect x="2.4" y="1.8" width="11.2" height="12.4" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5 5.4h6M5 8h6M5 10.6h3.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+<symbol id="i-up" viewBox="0 0 16 16"><path d="M8 13V3.4M3.8 7.4L8 3.2l4.2 4.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-at" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.25"/><path d="M10.6 8v1c0 1.1.7 1.8 1.6 1.8s1.6-.9 1.6-2.4A5.8 5.8 0 1 0 11 13.2" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></symbol>
+<symbol id="i-slash" viewBox="0 0 16 16"><rect x="1.8" y="1.8" width="12.4" height="12.4" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M9.8 4.6L6.2 11.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+<symbol id="i-cpu" viewBox="0 0 16 16"><path d="M8 1.6l1.5 3.4 3.7.4-2.8 2.5.8 3.6L8 9.6l-3.2 1.9.8-3.6-2.8-2.5 3.7-.4z" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/></symbol>
+<symbol id="i-shield" viewBox="0 0 16 16"><path d="M8 1.8l5.2 2v4c0 3.2-2.3 5.4-5.2 6.4-2.9-1-5.2-3.2-5.2-6.4v-4z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+<symbol id="i-fork" viewBox="0 0 16 16"><circle cx="4" cy="3.4" r="1.6" fill="none" stroke="currentColor" stroke-width="1.15"/><circle cx="12" cy="3.4" r="1.6" fill="none" stroke="currentColor" stroke-width="1.15"/><circle cx="8" cy="12.6" r="1.6" fill="none" stroke="currentColor" stroke-width="1.15"/><path d="M4 5v1.2c0 1.3 1 2.3 2.3 2.3h3.4C11 8.5 12 7.5 12 6.2V5M8 8.5v2.5" fill="none" stroke="currentColor" stroke-width="1.15"/></symbol>
+<symbol id="i-play" viewBox="0 0 16 16"><path d="M4.6 3v10l8.4-5z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></symbol>
+<symbol id="i-book" viewBox="0 0 16 16"><path d="M2.4 3c1.9-.6 3.8-.4 5.6.8v9.6c-1.8-1.2-3.7-1.4-5.6-.8zM13.6 3c-1.9-.6-3.8-.4-5.6.8v9.6c1.8-1.2 3.7-1.4 5.6-.8z" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/></symbol>
+<symbol id="i-ticket" viewBox="0 0 16 16"><path d="M1.8 5.2V3.6c0-.5.4-.9.9-.9h10.6c.5 0 .9.4.9.9v1.6a1.9 1.9 0 0 0 0 3.6v1.6c0 .5-.4.9-.9.9H2.7c-.5 0-.9-.4-.9-.9V8.8a1.9 1.9 0 0 0 0-3.6z" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/><path d="M10 3v8.4" stroke="currentColor" stroke-width="1.1" stroke-dasharray="1.4 1.4"/></symbol>
+<symbol id="i-comment" viewBox="0 0 16 16"><path d="M2.4 3.6c0-.8.6-1.4 1.4-1.4h8.4c.8 0 1.4.6 1.4 1.4v6c0 .8-.6 1.4-1.4 1.4H7l-3 2.4V11h-.2c-.8 0-1.4-.6-1.4-1.4z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M5.4 5.8h5.2M5.4 8h3.4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></symbol>
+<symbol id="i-resume" viewBox="0 0 16 16"><path d="M13.2 8A5.2 5.2 0 1 1 11.6 4.3M11.8 1.8v2.9H8.9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-rewind" viewBox="0 0 16 16"><path d="M2.8 8a5.2 5.2 0 1 0 1.6-3.7M4.2 1.8v2.9H1.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-copy" viewBox="0 0 16 16"><rect x="5" y="5" width="8.6" height="8.6" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M11 5V3.8c0-.8-.6-1.3-1.3-1.3H3.8c-.8 0-1.3.6-1.3 1.3v5.9c0 .8.6 1.3 1.3 1.3H5" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+<symbol id="i-spark" viewBox="0 0 16 16"><path d="M8 1.8c.4 3.2 1.9 4.8 5.2 5.2v.1c-3.3.4-4.8 2-5.2 5.2h-.1c-.4-3.2-1.9-4.8-5.1-5.2V7c3.2-.4 4.7-2 5.1-5.2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+<symbol id="i-image" viewBox="0 0 16 16"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="5.6" cy="6.3" r="1.2" fill="none" stroke="currentColor" stroke-width="1.1"/><path d="M2.4 12l3.6-3.4 2.6 2.2 2.4-2.4 3 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+<symbol id="i-plug" viewBox="0 0 16 16"><path d="M6 1.8v3M10 1.8v3M4.4 4.8h7.2v2.6a3.6 3.6 0 0 1-7.2 0zM8 11v3.2" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.2 10.2A5.6 5.6 0 0 1 5.8 2.8a5.6 5.6 0 1 0 7.4 7.4z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+</defs>
+</svg>
+
+
+<div class="top">
+  <div class="row1">
+    <h1>Loom v2 · New session options</h1>
+    <span class="subt">The first sheet was not liked; the user chose N1, the draft session (D-59), and N2 and N3 stay for reference · 17 Oct 2026 · the plan is in plans/V2-PLAN.md · windows at 1360 × 860 · ← → change screens</span>
+  </div>
+  <div class="nav" id="nav"></div>
+  <div class="knobs">
+    <span class="knob">Sidebar <span class="seg-k" data-knob="sidebar"><button data-v="glass" class="on">Glass</button><button data-v="solid">Solid</button></span></span>
+  </div>
+</div>
+<div class="page">
+
+<section class="screen" id="draft" data-title="N1 · Draft">
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-open="api"></aside>
+  <div class="detail"><div class="panel">
+    <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl" style="color:var(--t2)">New session</span><span class="sp"></span><span class="grp"><span class="g ic"><svg><use href="#i-ellipsis"/></svg></span></span></div>
+    <div class="pbody"><div class="main"><div class="draft">
+      <div class="dh"><h2>What should we work on in <span class="hpick" style="--tone:var(--aqua)">api-gateway<svg><use href="#i-chev"/></svg></span>?</h2><p>Claude starts in this folder with its CLAUDE.md, 6 skills and 3 MCP servers</p></div>
+      <div class="comp big">
+        <div class="ta"><span class="caret" style="margin:0 3px 0 0"></span>Describe the work, paste a ticket key, or type / for a skill</div>
+        <div class="bar"><span class="ib"><svg><use href="#i-plus"/></svg></span><span class="bk"><svg><use href="#i-shield"/></svg>Ask before edits</span><span class="sp"></span><span class="bk model">Opus 5.5 <span class="lo">High</span><svg class="ch"><use href="#i-chev"/></svg></span><span class="send off"><svg><use href="#i-up"/></svg></span></div>
+      </div>
+      <div class="dstrip"><span class="ctxchip"><svg><use href="#i-branch"/></svg>main<svg><use href="#i-chev"/></svg></span><span class="sp"></span><span class="ctxnote">Mode and model as last used in api-gateway</span></div>
+      <div class="dpresets"><span class="preset"><svg><use href="#i-play"/></svg>Run the test suite and fix failures</span><span class="preset"><svg><use href="#i-play"/></svg>Review my last commit</span><span class="preset"><svg><use href="#i-plan"/></svg>Plan first</span></div>
+      <div class="dalso">Already open in api-gateway<span class="ar"><span class="pip att"></span>Webhook signature check</span><span class="ar"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Token rotation</span><span class="ar"><span class="pip unv"></span>Rate limiter tests</span></div>
+    </div></div></div>
+  </div></div>
+
+</div></div>
+<div class="cap">
+  <h2>N1 · Draft session <span class="tag">chosen · D-59</span></h2>
+  <p class="lead">A new session starts as an empty chat with one question, not a form. You say what you want; everything else has a remembered default that you change in place. This is how T3 Code starts a thread, and Claude's desktop app is close to it.</p>
+  <ul>
+    <li><b>One way in:</b> ⌘N, the sidebar's compose button, "+" on a project, the palette, the menu bar and Home all open this draft, in the project you were last in. Home's start box is the same composer.</li>
+    <li><b>The project is in the question.</b> Click its name to pick another.</li>
+    <li><b>The composer is the session's own:</b> mode and model sit where they stay after the start, as last used in this project. One strip under it holds the branch.</li>
+    <li><b>Presets</b> are one-click first messages; "Plan first" starts in plan mode. Save as preset appears once you have typed something.</li>
+    <li><b>Already open:</b> the project's live sessions, so you can continue one instead of starting a copy.</li>
+    <li><b>Nothing runs before you send.</b> An empty draft is invisible, and each project keeps at most one; once you type, a draft row appears in the sidebar. ⌘↵ starts the session and opens a fresh draft.</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> today's launch path. The first send starts Claude with that message; the draft and its choices are Loom-only state until then. Defaults: your pick in the draft, then the last used in this project, then Loom's settings, then the CLI's own default.</div>
+</div>
+</section>
+
+<section class="screen" id="ticket" data-title="N1 · Ticket key" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-open="bill" data-draft="bill" data-dtitle="PAY-418 Add the reverse-charge note"></aside>
+  <div class="detail"><div class="panel">
+    <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl" style="color:var(--t2)">New session</span><span class="sp"></span><span class="grp"><span class="g ic"><svg><use href="#i-ellipsis"/></svg></span></span></div>
+    <div class="pbody"><div class="main"><div class="draft">
+      <div class="dh"><h2>What should we work on in <span class="hpick" style="--tone:var(--rose)">billing<svg><use href="#i-chev"/></svg></span>?</h2><p>Moved to billing because PAY tickets belong there</p></div>
+      <div class="comp big">
+        <div class="tkline"><svg><use href="#i-ticket"/></svg><span><b>PAY-418</b> · Reverse-charge note on invoices</span><span class="t3">·</span><span>no session for it yet</span></div>
+        <div class="ta typed"><span class="tkchip">PAY-418</span> Add the reverse-charge note to invoice PDFs for customers with a VAT number. The wording is in the ticket.<span class="caret"></span></div>
+        <div class="bar"><span class="ib"><svg><use href="#i-plus"/></svg></span><span class="bk"><svg><use href="#i-shield"/></svg>Ask before edits</span><span class="sp"></span><span class="bk model">Opus 5.5 <span class="lo">High</span><svg class="ch"><use href="#i-chev"/></svg></span><span class="send"><svg><use href="#i-up"/></svg></span></div>
+      </div>
+      <div class="dstrip"><span class="ctxchip open"><svg><use href="#i-branch"/></svg>feat/PAY-418-reverse-charge<svg><use href="#i-chev"/></svg>
+          <div class="pop down">
+            <div class="mi"><span class="ck"></span>Stay on <span class="mono" style="font-size:12px">main</span></div>
+            <div class="mi on"><svg class="ck"><use href="#i-check"/></svg>New branch <span class="mono" style="font-size:12px">feat/PAY-418-reverse-charge</span></div>
+            <div class="mi"><span class="ck"></span>New worktree<span class="t3" style="font-size:12px">· its own folder</span></div>
+            <div class="hint">Named from the ticket. Loom creates it when the session starts, never before.</div>
+          </div></span><span class="sp"></span><span class="preset"><svg><use href="#i-plus"/></svg>Save as preset</span></div>
+    </div></div></div>
+  </div></div>
+
+</div></div>
+<div class="cap">
+  <h2>N1 · Typing a ticket key</h2>
+  <p class="lead">The draft reads what you type. A ticket key fills in what the old sheet asked for, and you correct only what is wrong.</p>
+  <ul>
+    <li><b>Project:</b> a key whose prefix belongs to a project moves the draft there and says why.</li>
+    <li><b>Ticket line:</b> inside the composer, the ticket's title and whether it already has a session; when it has one, the line offers Open instead (today's open-session check).</li>
+    <li><b>Branch:</b> stay on the current one, a new branch named from the ticket, or a new worktree. The choice is a small menu on the strip's chip, not a field.</li>
+    <li><b>Title</b> comes from the ticket (or your first line) and can be renamed later.</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> ticket prefixes and the duplicate check already exist in the catalog (D-40). Loom creates the branch or worktree in the session's folder right before the first send.</div>
+</div>
+</section>
+
+<section class="screen" id="sent" data-title="N1 · After sending" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-open="bill" data-sel="newpay" data-extra="newpay"></aside>
+  <div class="detail"><div class="panel">
+    <div class="hdr">
+      <svg class="prov"><use href="#claude"/></svg><span class="ttl">Reverse-charge note on invoices</span><span class="tk">PAY-418</span>
+      <span class="sp"></span>
+      <span class="pill work"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Working <span class="el">4s</span></span>
+      <span class="pchip" style="--tone:var(--rose)">billing<span class="br"><svg><use href="#i-branch"/></svg>feat/PAY-418-reverse-charge</span></span>
+      <span class="vsep"></span>
+      <span class="ib"><svg><use href="#i-insp"/></svg></span>
+      <span class="grp"><span class="g"><span class="sq"></span>Stop</span><span class="g ic"><svg><use href="#i-ellipsis"/></svg></span></span>
+    </div>
+    <div class="pbody"><div class="main">
+      <div class="stream"><div class="col">
+        <div class="sysline"><span><b>Session started</b> · Opus 5.5 · High effort · Ask before edits · new branch feat/PAY-418-reverse-charge</span></div>
+        <div class="um"><span class="tkchip" style="font-size:12.5px">PAY-418</span> Add the reverse-charge note to invoice PDFs for customers with a VAT number. The wording is in the ticket.</div>
+        <div class="working"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span>Reading <span class="mono">src/invoices/pdf.py</span></span><span class="sep">·</span><span>4s</span><span class="sp"></span><span class="t3">esc to interrupt</span></div>
+      </div></div>
+      <div class="dock"><div class="comp">
+        <div class="ta">Message Claude; it reads it after the current step</div>
+        <div class="bar"><span class="ib"><svg><use href="#i-plus"/></svg></span><span class="bk"><svg><use href="#i-shield"/></svg>Ask before edits</span><span class="sp"></span><span class="ctx"><span class="ring" style="--p:3"></span></span><span class="bk model">Opus 5.5 <span class="lo">High</span><svg class="ch"><use href="#i-chev"/></svg></span><span class="send stop"><i></i></span></div>
+      </div></div>
+    </div></div>
+  </div></div>
+
+</div></div>
+<div class="cap">
+  <h2>N1 · After the first send</h2>
+  <p class="lead">Sending turns the draft into the session in place. Nothing jumps: the composer settles at the bottom and the work starts above it.</p>
+  <ul>
+    <li><b>The question and the strip leave.</b> Project and branch now live in the header, where every session shows them. Mode and model stay in the composer, because you may change them mid-session.</li>
+    <li><b>The session appears</b> at the top of Active and of its project, with the working indicator; the draft row is gone.</li>
+    <li><b>The first marker</b> records how it started: model, effort, mode and the new branch.</li>
+  </ul>
+  <div class="dec"><b>Underneath:</b> one launch, one process, as today. A draft you leave without sending stays as a draft row until you clear it.</div>
+</div>
+</section>
+
+<section class="screen" id="launcher" data-title="N2 · Quick launcher" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-sel="rotation"></aside>
+  <div class="detail"><div class="panel">
+    <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl">Token rotation</span><span class="tk">PAY-412</span><span class="sp"></span><span class="pill work"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Working <span class="el">2m 41s</span></span><span class="pchip" style="--tone:var(--aqua)">api-gateway<span class="br"><svg><use href="#i-branch"/></svg>feat/token-rotation</span></span><span class="vsep"></span><span class="ib"><svg><use href="#i-insp"/></svg></span><span class="grp"><span class="g"><span class="sq"></span>Stop</span><span class="g ic"><svg><use href="#i-ellipsis"/></svg></span></span></div>
+    <div class="pbody"><div class="main">
+      <div class="stream"><div class="col">
+          <div class="sysline"><span><b>Session started</b> · Opus 5.5 · High effort · Ask before edits · 14:02</span></div>
+          <div class="um">Rotate refresh tokens on every use and revoke the old one. Existing sessions must stay valid. Ticket PAY-412.</div>
+          <div class="wb"><svg class="chv"><use href="#i-chevr"/></svg><svg><use href="#i-search"/></svg><span>Explored the auth code · <b>read 5 files</b>, searched 3 patterns</span><span class="dur">18s</span></div>
+          <div class="prose">
+            <p>Refresh tokens are issued in <code>TokenService._issue()</code> and stored in <code>token_families</code>. Today <code>rotate()</code> issues a new pair but never revokes the old token, so a leaked token stays valid until it expires. The plan:</p>
+            <ol><li>Revoke the previous token in the same transaction as the new issue.</li><li>Treat reuse of a revoked token as theft and revoke the whole family.</li><li>Back-fill <code>family_id</code> so sessions created before the change stay valid.</li></ol>
+          </div>
+          <div class="tc">
+            <div class="tc-h"><svg><use href="#i-pencil"/></svg><span class="verb">Edited</span><span class="tgt ell">src/auth/token_service.py</span><span class="meta"><span><span class="add">+31</span> <span class="del">−6</span></span><svg><use href="#i-chev"/></svg></span></div>
+            <div class="diff">
+              <div class="l"><span class="n">43</span><span class="s"> </span><span>        record = self._find_active(token)</span></div>
+              <div class="l d"><span class="n">44</span><span class="s">−</span><span>        <span class="kw">return</span> self._issue(record.user_id)</span></div>
+              <div class="l a"><span class="n">44</span><span class="s">+</span><span>        <span class="kw">if</span> record.revoked_at <span class="kw">is not</span> <span class="kw">None</span>:</span></div>
+              <div class="l a"><span class="n">45</span><span class="s">+</span><span>            self._revoke_family(record.family_id)</span></div>
+              <div class="l a"><span class="n">46</span><span class="s">+</span><span>            <span class="kw">raise</span> <span class="typ">TokenReuseError</span>(record.family_id)</span></div>
+              <div class="more">25 more lines · Open in editor · Comment</div>
+            </div>
+          </div>
+          <div class="tc">
+            <div class="tc-h"><svg><use href="#i-term"/></svg><span class="verb">Ran</span><span class="tgt ell">pytest tests/auth -q</span><span class="meta"><span class="okc"><svg><use href="#i-check"/></svg>42 passed</span><span>6.1s</span></span></div>
+          </div>
+          <div class="agent">
+            <span class="av"><svg><use href="#i-agents"/></svg></span>
+            <span class="nm"><span class="ty">Explore</span>Find other callers of rotate()</span>
+            <span class="st"><span class="chase" style="transform:scale(.75)"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>48s</span>
+            <span class="ln">Read 6 files, searched 3 patterns · now reading <span class="mono">src/api/routes/session.py</span></span>
+          </div>
+          <div class="think"><svg><use href="#i-spark"/></svg><span>Thinking</span><i>Should a reused token answer 401 or 403?</i><svg class="chv"><use href="#i-chevr"/></svg></div>
+          <div class="prose"><p>The service side is done and the tests pass. Now the session middleware: a reused token revokes its family and the request gets 401<span class="caret"></span></p></div>
+          <div class="working"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span>Editing <span class="mono">src/auth/middleware.py</span></span><span class="sep">·</span><span>2m 41s</span><span class="sp"></span><span class="t3">esc to interrupt</span></div>
+      </div></div>
+      <div class="dock"><div class="comp"><div class="ta">Message Claude; it reads it after the current step</div><div class="bar"><span class="ib"><svg><use href="#i-plus"/></svg></span><span class="bk"><svg><use href="#i-shield"/></svg>Ask before edits</span><span class="sp"></span><span class="ctx"><span class="ring" style="--p:38"></span></span><span class="bk model">Opus 5.5 <span class="lo">High</span><svg class="ch"><use href="#i-chev"/></svg></span><span class="send stop"><i></i></span></div></div></div>
+    </div></div>
+  </div></div>
+  <div class="scrim" style="background:rgba(5,6,10,.42)"></div>
+  <div class="launcher">
+    <div class="lh"><span class="lt">New session</span><span class="ctxchip tone" style="--tone:var(--rose)">billing<svg><use href="#i-chev"/></svg></span><span class="ctxchip"><svg><use href="#i-branch"/></svg>main<svg><use href="#i-chev"/></svg></span><span class="sp"></span><span class="kbd">esc</span></div>
+    <div class="ta typed">Why do refunds over 30 days fail with a 409?<span class="caret"></span></div>
+    <div class="lf"><span class="ib"><svg><use href="#i-plus"/></svg></span><span class="bk"><svg><use href="#i-shield"/></svg>Ask before edits</span><span class="sp"></span><span class="bk model">Opus 5.5 <span class="lo">High</span><svg class="ch"><use href="#i-chev"/></svg></span><span class="send"><svg><use href="#i-up"/></svg></span></div>
+    <div class="lsec"><h6>Presets</h6>
+      <div class="mi"><svg><use href="#i-play"/></svg>Run the test suite and fix failures</div>
+      <div class="mi"><svg><use href="#i-plan"/></svg>Plan first</div>
+    </div>
+  </div>
+</div></div>
+<div class="cap">
+  <h2>N2 · Quick launcher</h2>
+  <p class="lead">A small floating box, like Spotlight, over whatever you are looking at. Type, press Return, and the session starts in the background while you stay where you were.</p>
+  <ul>
+    <li><b>Fast for side tasks:</b> start a question in another project without leaving the session you are watching.</li>
+    <li><b>Same defaults</b> as N1: project and branch chips, mode, model, presets.</li>
+    <li><b>Cost:</b> a second composer to build and keep in step with the main one; little room for long first messages, images or a ticket preview.</li>
+  </ul>
+  <p class="vs"><b>Against N1:</b> quicker for "fire and forget", weaker for real tasks. It can come later as an extra on top of N1 (the same parts), so it need not be either-or.</p>
+  <div class="dec"><b>Underneath:</b> the same launch path; ⌘↵ opens the new session, ↵ leaves it running in the sidebar.</div>
+</div>
+</section>
+
+<section class="screen" id="inline" data-title="N3 · Inline in the sidebar" hidden>
+<div class="stage"><div class="win">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <aside class="sb" data-open="bill" data-inline="bill"></aside>
+  <div class="detail"><div class="panel">
+    <div class="hdr"><svg class="prov"><use href="#claude"/></svg><span class="ttl">Token rotation</span><span class="tk">PAY-412</span><span class="sp"></span><span class="pill work"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Working <span class="el">2m 41s</span></span><span class="pchip" style="--tone:var(--aqua)">api-gateway<span class="br"><svg><use href="#i-branch"/></svg>feat/token-rotation</span></span><span class="vsep"></span><span class="ib"><svg><use href="#i-insp"/></svg></span><span class="grp"><span class="g"><span class="sq"></span>Stop</span><span class="g ic"><svg><use href="#i-ellipsis"/></svg></span></span></div>
+    <div class="pbody"><div class="main">
+      <div class="stream"><div class="col">
+          <div class="sysline"><span><b>Session started</b> · Opus 5.5 · High effort · Ask before edits · 14:02</span></div>
+          <div class="um">Rotate refresh tokens on every use and revoke the old one. Existing sessions must stay valid. Ticket PAY-412.</div>
+          <div class="wb"><svg class="chv"><use href="#i-chevr"/></svg><svg><use href="#i-search"/></svg><span>Explored the auth code · <b>read 5 files</b>, searched 3 patterns</span><span class="dur">18s</span></div>
+          <div class="prose">
+            <p>Refresh tokens are issued in <code>TokenService._issue()</code> and stored in <code>token_families</code>. Today <code>rotate()</code> issues a new pair but never revokes the old token, so a leaked token stays valid until it expires. The plan:</p>
+            <ol><li>Revoke the previous token in the same transaction as the new issue.</li><li>Treat reuse of a revoked token as theft and revoke the whole family.</li><li>Back-fill <code>family_id</code> so sessions created before the change stay valid.</li></ol>
+          </div>
+          <div class="tc">
+            <div class="tc-h"><svg><use href="#i-pencil"/></svg><span class="verb">Edited</span><span class="tgt ell">src/auth/token_service.py</span><span class="meta"><span><span class="add">+31</span> <span class="del">−6</span></span><svg><use href="#i-chev"/></svg></span></div>
+            <div class="diff">
+              <div class="l"><span class="n">43</span><span class="s"> </span><span>        record = self._find_active(token)</span></div>
+              <div class="l d"><span class="n">44</span><span class="s">−</span><span>        <span class="kw">return</span> self._issue(record.user_id)</span></div>
+              <div class="l a"><span class="n">44</span><span class="s">+</span><span>        <span class="kw">if</span> record.revoked_at <span class="kw">is not</span> <span class="kw">None</span>:</span></div>
+              <div class="l a"><span class="n">45</span><span class="s">+</span><span>            self._revoke_family(record.family_id)</span></div>
+              <div class="l a"><span class="n">46</span><span class="s">+</span><span>            <span class="kw">raise</span> <span class="typ">TokenReuseError</span>(record.family_id)</span></div>
+              <div class="more">25 more lines · Open in editor · Comment</div>
+            </div>
+          </div>
+          <div class="tc">
+            <div class="tc-h"><svg><use href="#i-term"/></svg><span class="verb">Ran</span><span class="tgt ell">pytest tests/auth -q</span><span class="meta"><span class="okc"><svg><use href="#i-check"/></svg>42 passed</span><span>6.1s</span></span></div>
+          </div>
+          <div class="agent">
+            <span class="av"><svg><use href="#i-agents"/></svg></span>
+            <span class="nm"><span class="ty">Explore</span>Find other callers of rotate()</span>
+            <span class="st"><span class="chase" style="transform:scale(.75)"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>48s</span>
+            <span class="ln">Read 6 files, searched 3 patterns · now reading <span class="mono">src/api/routes/session.py</span></span>
+          </div>
+          <div class="think"><svg><use href="#i-spark"/></svg><span>Thinking</span><i>Should a reused token answer 401 or 403?</i><svg class="chv"><use href="#i-chevr"/></svg></div>
+          <div class="prose"><p>The service side is done and the tests pass. Now the session middleware: a reused token revokes its family and the request gets 401<span class="caret"></span></p></div>
+          <div class="working"><span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span>Editing <span class="mono">src/auth/middleware.py</span></span><span class="sep">·</span><span>2m 41s</span><span class="sp"></span><span class="t3">esc to interrupt</span></div>
+      </div></div>
+      <div class="dock"><div class="comp"><div class="ta">Message Claude; it reads it after the current step</div><div class="bar"><span class="ib"><svg><use href="#i-plus"/></svg></span><span class="bk"><svg><use href="#i-shield"/></svg>Ask before edits</span><span class="sp"></span><span class="ctx"><span class="ring" style="--p:38"></span></span><span class="bk model">Opus 5.5 <span class="lo">High</span><svg class="ch"><use href="#i-chev"/></svg></span><span class="send stop"><i></i></span></div></div></div>
+    </div></div>
+  </div></div>
+
+</div></div>
+<div class="cap">
+  <h2>N3 · Inline in the sidebar</h2>
+  <p class="lead">"+" on a project header opens a one-line field at the top of that project. Type the first message and press Return; the project's remembered defaults do the rest.</p>
+  <ul>
+    <li><b>Lightest of the three:</b> no new screen and no overlay; the session appears exactly where it will live.</li>
+    <li><b>Limits:</b> the sidebar is narrow. No room for a long message, attachments, the branch choice or the ticket preview, so anything beyond the defaults needs N1 anyway.</li>
+  </ul>
+  <p class="vs"><b>Against N1:</b> good for a quick question in a known project, too cramped for real work. Like N2, it could sit on top of N1 later.</p>
+  <div class="dec"><b>Underneath:</b> the "+" on project headers exists today (D-37); it would gain the inline field.</div>
+</div>
+</section>
+
+</div>
+
+<script>
+/* ---------- sample data (neutral, not the user's projects) ---------- */
+const P = {
+  api:  {name:'api-gateway', tone:'var(--aqua)'},
+  bill: {name:'billing',     tone:'var(--rose)'},
+  data: {name:'data-jobs',   tone:'var(--lemon)'},
+  loom: {name:'loom',        tone:'var(--orchid)'},
+};
+const S = {
+  webhook:  {p:'api',  t:'Webhook signature check', st:'att',  time:'2m',  r:'Allow: git push origin fix/webhook-sig'},
+  invoice:  {p:'bill', t:'Invoice PDF export',      st:'att',  time:'6m',  r:'Asks which PDF library to use'},
+  tax:      {p:'bill', t:'Refactor tax rules',      st:'att',  time:'9m',  r:'Plan ready for review · 6 steps'},
+  nightly:  {p:'data', t:'Nightly import job',      st:'fail', time:'31m', r:'3 tests failed in test_import.py'},
+  ratelimit:{p:'api',  t:'Rate limiter tests',      st:'unv',  time:'14m', r:'12 tests added, all pass'},
+  rotation: {p:'api',  t:'Token rotation',          st:'work', time:'now', r:'Editing middleware.py · tasks 2 of 5'},
+  polish:   {p:'loom', t:'Sidebar polish',          st:'work', time:'now', r:'In the terminal · 52s'},
+  keys:     {p:'api',  t:'Rotate signing keys',     st:'idle', time:'2d'},
+  backfill: {p:'data', t:'Backfill script',         st:'idle', time:'1d'},
+  refunds:  {p:'bill', t:'Partial refunds',         st:'idle', time:'4d'},
+  rebase:   {p:null,   t:'Quick question: git rebase', st:'idle', time:'3h'},
+  newpay:   {p:'bill', t:'Reverse-charge note on invoices', st:'work', time:'now', r:'Reading src/invoices/pdf.py', only:true},
+};
+const ACTIVE = ['webhook','invoice','tax','nightly','ratelimit','rotation','polish'];
+const CHASE = '<span class="chase"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>';
+const ind = st => st==='work' ? CHASE : (st==='idle' ? '' : `<span class="pip ${st}"></span>`);
+const use = id => `<svg><use href="#${id}"/></svg>`;
+
+function card(id, sel){
+  const s = S[id], tone = s.p ? P[s.p].tone : 'transparent';
+  return `<div class="card${sel===id?' sel':''}" style="--tone:${tone}"><span class="ind">${ind(s.st)}</span><span class="ttl ell">${s.t}</span><span class="time">${s.time}</span><span class="meta"><span class="ell">${s.r||''}</span></span></div>`;
+}
+function prow(id, sel){
+  const s = S[id];
+  return `<div class="prow${sel===id?' sel':''}${s.st==='idle'?' idle':''}"><span class="ind">${ind(s.st)}</span><span class="ttl ell">${s.t}</span><span class="time">${s.time}</span></div>`;
+}
+function group(key, open, sel, dot, lead, extra){
+  const p = P[key];
+  let ids = Object.keys(S).filter(k => S[k].p===key && (!S[k].only || k===extra));
+  if (extra && ids.includes(extra)) ids = [extra].concat(ids.filter(k => k!==extra));
+  const head = `<div class="pgh" style="--tone:${p.tone}"><svg class="chv"><use href="#${open?'i-chev':'i-chevr'}"/></svg><span>${p.name}</span>${open?'':`<span class="pc">${ids.length}</span>`}<span class="sp"></span>${dot||''}</div>`;
+  return head + (open ? (lead||'') + ids.map(i => prow(i, sel)).join('') : '');
+}
+function sidebar(el){
+  const sel = el.dataset.sel, nav = el.dataset.nav || '', extra = el.dataset.extra;
+  const openKey = el.dataset.open || (sel && S[sel] ? S[sel].p : 'api');
+  const active = (extra ? [extra] : []).concat(ACTIVE);
+  let lead = '';
+  if (el.dataset.draft) lead = `<div class="prow draftrow sel"><span class="ind"></span><span class="ttl ell">${el.dataset.dtitle || 'New session'}</span><span class="time">draft</span></div>`;
+  if (el.dataset.inline) lead = `<div class="prow inl"><div class="in">Add the reverse-charge note to invoice PDFs<span class="caret"></span></div><div class="m2">↵ starts in billing · Ask before edits · Opus 5.5<br>esc cancels · ⌘N opens the full draft</div></div>`;
+  const dots = {api:'<span class="pip att"></span>', bill:'<span class="pip att"></span>', data:'<span class="pip fail"></span>', loom:CHASE};
+  const plus = k => (el.dataset.inline===k) ? `<span class="ib" style="width:20px;height:20px;background:var(--fill2);color:var(--t1)">${use('i-plus')}</span>` : '';
+  el.innerHTML = `
+    <div class="sb-head"><span class="ib">${use('i-sidebar')}</span><span class="sp"></span><span class="ib on">${use('i-folder')}</span><span class="ib">${use('i-clock')}</span><span class="ib acc">${use('i-compose')}</span></div>
+    <div class="sb-search">${use('i-search')}<span>Search or jump to</span><span class="sp"></span><span class="kbd">⌘K</span></div>
+    <div class="sb-nav"><div class="nrow${nav==='home'?' on':''}">${use('i-home')}Home<span class="badge">3</span></div></div>
+    <div class="sb-scroll">
+      <div class="sb-sec">Active <span class="cnt">${active.length}</span></div>
+      <div class="clist">${active.map(i => card(i, sel)).join('')}</div>
+      <div class="sb-sec" style="padding-top:16px">Projects</div>
+      ${['api','bill','data','loom'].map(k => group(k, k===openKey, sel, k===openKey ? plus(k) : dots[k], k===openKey ? lead : '', extra)).join('')}
+      <div class="pgh"><svg class="chv"><use href="#i-chevr"/></svg><svg class="tr"><use href="#i-tray"/></svg><span>Sessions</span><span class="pc">1</span></div>
+    </div>
+    <div class="sb-foot"><div class="uchip"><span><b>1.2M</b> today</span><span class="sp"></span><span>5h</span><span class="bar"><i style="width:62%"></i></span><b>62%</b></div><span class="ib">${use('i-gear')}</span></div>`;
+}
+document.querySelectorAll('aside.sb').forEach(sidebar);
+
+/* ---------- screen navigation ---------- */
+const screens = [...document.querySelectorAll('.screen')];
+const nav = document.getElementById('nav');
+screens.forEach((s, i) => {
+  const b = document.createElement('button');
+  b.dataset.s = s.id; b.innerHTML = `<span class="n">${i+1}</span>${s.dataset.title}`;
+  b.onclick = () => show(s.id);
+  nav.appendChild(b);
+});
+function show(id){
+  if (!screens.some(s => s.id===id)) id = screens[0].id;
+  screens.forEach(s => s.hidden = s.id!==id);
+  nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.s===id));
+  if (location.hash.slice(1)!==id) history.replaceState(null, '', '#'+id);
+}
+window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+document.addEventListener('keydown', e => {
+  const i = screens.findIndex(s => !s.hidden);
+  if (e.key==='ArrowRight') show(screens[Math.min(i+1, screens.length-1)].id);
+  if (e.key==='ArrowLeft') show(screens[Math.max(i-1, 0)].id);
+});
+show(location.hash.slice(1) || 'draft');
+
+/* ---------- design knobs ---------- */
+document.querySelectorAll('.seg-k').forEach(g => g.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  g.querySelectorAll('button').forEach(x => x.classList.toggle('on', x===b));
+  document.documentElement.setAttribute('data-'+g.dataset.knob, b.dataset.v);
+}));
+</script>
+</body>
+</html>
