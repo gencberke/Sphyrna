@@ -255,6 +255,8 @@ public final class CatalogModel {
     /// Settings → General → Show in menu bar and Notify when a session needs approval (D-49, D-52).
     public private(set) var showInMenuBar: Bool
     public private(set) var notifyApprovals: Bool
+    /// Settings → General → Search session text: whether the command palette may read transcripts (default on).
+    public private(set) var searchesSessionText: Bool
     /// Settings → General → Sidebar: Glass or Solid (D-57).
     public private(set) var sidebarStyle: SidebarStyle
     /// What the window opened on. Read once at launch: `home` opens Home, `lastSession` restores the saved destination.
@@ -424,6 +426,11 @@ public final class CatalogModel {
     public let projectPage = ProjectPageState()
     /// The face choice per session and the read-only Chat flag (`DetailRoute`).
     public let faces = SessionFaces()
+    /// The Claude config directory the app reads transcripts from, one value for the Chat view and the palette's
+    /// session text search. The app sets it at launch from the profile layout, before any window shows and without
+    /// the runtime (`setClaudeConfigDirectory`); nil means there is nothing to read, and the Chat view draws its
+    /// fallback.
+    public internal(set) var claudeConfigDirectory: URL?
 
     /// `catalog == nil` means the catalog could not be opened (`startupError`
     /// says why); nothing is created or overwritten in that state.
@@ -445,10 +452,12 @@ public final class CatalogModel {
         projectColorsEnabled = preferences.current.projectColors
         showInMenuBar = preferences.current.showInMenuBar
         notifyApprovals = preferences.current.notifyApprovals
+        searchesSessionText = preferences.current.searchSessionText
         sidebarStyle = preferences.current.sidebarStyle
         inspector = InspectorState(open: preferences.current.inspectorOpen)
         tabs = ConversationTabs(pinned: preferences.current.openTabs)
         today = Calendar.current.startOfDay(for: now)
+        palette.searchesConversations = searchesSessionText
     }
 
     deinit {
@@ -482,6 +491,8 @@ public final class CatalogModel {
             LoomSignposts.end(.launchToFirstPage)
         }
         guard catalog != nil else { isReady = true; return }
+        // The saved drafts are listed in the sidebar from the first frame.
+        prepareNewSession()
         // Taken before the lists are read, so a batch landing meanwhile is seen.
         lastCatalogRevision = await events.snapshot().catalogRevision
         let began = ContinuousClock.now
@@ -1233,6 +1244,15 @@ public final class CatalogModel {
         notifyApprovals = enabled
         persist { $0.notifyApprovals = enabled }
         onNotifyApprovalsChange?()
+    }
+
+    /// Settings → General → Search session text. Off, the palette's transcript search never opens a file; it
+    /// searches titles, projects and actions only.
+    public func setSearchesSessionText(_ enabled: Bool) {
+        guard enabled != searchesSessionText else { return }
+        searchesSessionText = enabled
+        palette.searchesConversations = enabled
+        persist { $0.searchSessionText = enabled }
     }
 
     /// Settings → General → Sidebar (D-57). Applies at once: the sidebar's background reads `sidebarStyle`.

@@ -247,11 +247,13 @@ struct ActivityList: View {
     var body: some View {
         let list = model.list(for: .activity)
         if list.rows.isEmpty {
+            DraftRows(model: model)
             EmptyListHint(model: model, isLoaded: list.isLoaded)
         } else {
             // Grouped once per list change, membership flip and calendar day (`model.today`), not once per minute.
             let layout = model.activityLayout()
             let lastRowID = layout.lastRowID
+            DraftRows(model: model)
             if !layout.active.isEmpty {
                 ActivityHeading {
                     HStack(spacing: LoomTheme.Space.sectionSpacing) {
@@ -290,10 +292,14 @@ struct ActivityHeading<Content: View>: View {
     }
 }
 
+/// The project view's list. It never reads the drafts itself: typing in a draft changes them on every keystroke,
+/// and a body that read them would redraw the whole list each time. The draft rows, and the notes that depend on
+/// whether a place has a draft, are children that read them.
 struct ProjectList: View {
     let model: CatalogModel
 
     var body: some View {
+        let _ = SidebarRenderProbe.projectList()
         let unassigned = model.list(for: .unassigned)
         let visibleProjects = model.projects.filter {
             !model.isSearching || !model.list(for: .project($0.id)).rows.isEmpty
@@ -305,25 +311,53 @@ struct ProjectList: View {
             ProjectHeader(model: model, project: project)
             let list = model.list(for: .project(project.id))
             if model.isSearching || !project.collapsed {
+                DraftRows(model: model, scope: .project(project.id))
                 ForEach(list.rows) { row in
                     SessionListEntry(row: row, model: model)
                         .id(row.id)
                         .onAppear { if row.id == list.rows.last?.id { model.loadMore(.project(project.id)) } }
                 }
                 if list.rows.isEmpty && list.isLoaded && !model.isSearching {
-                    Text("No sessions")
-                        .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
-                        .padding(.horizontal, LoomTheme.Space.emptyNoteInset).padding(.vertical, LoomTheme.Space.emptyNoteVertical)
+                    NoSessionsNote(model: model, projectID: project.id)
                 }
             }
         }
-        if !unassigned.rows.isEmpty {
+        if unassigned.rows.isEmpty {
+            LoneDraftsSection(model: model)
+        } else {
             SectionTitle(title: "Sessions", symbol: "tray")
+            DraftRows(model: model, scope: .project(nil))
             ForEach(unassigned.rows) { row in
                 SessionListEntry(row: row, model: model)
                     .id(row.id)
                     .onAppear { if row.id == unassigned.rows.last?.id { model.loadMore(.unassigned) } }
             }
+        }
+    }
+}
+
+/// "No sessions" under a project, unless the project has a draft row.
+private struct NoSessionsNote: View {
+    let model: CatalogModel
+    let projectID: UUID
+
+    var body: some View {
+        if DraftRows.drafts(in: .project(projectID), of: model).isEmpty {
+            Text("No sessions")
+                .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
+                .padding(.horizontal, LoomTheme.Space.emptyNoteInset).padding(.vertical, LoomTheme.Space.emptyNoteVertical)
+        }
+    }
+}
+
+/// The "Sessions" section when only drafts without a project are in it (no session without a project).
+private struct LoneDraftsSection: View {
+    let model: CatalogModel
+
+    var body: some View {
+        if !DraftRows.drafts(in: .project(nil), of: model).isEmpty {
+            SectionTitle(title: "Sessions", symbol: "tray")
+            DraftRows(model: model, scope: .project(nil))
         }
     }
 }
@@ -749,7 +783,14 @@ struct NewConversationAction {
     }
 
     @MainActor func perform(on model: CatalogModel, projectID: UUID?) {
-        model.startConversation(provider, projectID: projectID)
+        guard isEnabled(on: model, projectID: projectID) else { return }
+        // Claude starts from the draft (V07): a session exists only after its first send. Other providers keep
+        // their direct start.
+        if provider == .claude {
+            model.beginNewSession(projectID: projectID)
+        } else {
+            model.startConversation(provider, projectID: projectID)
+        }
     }
 
     @MainActor func isEnabled(on model: CatalogModel, projectID: UUID?) -> Bool {

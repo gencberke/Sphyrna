@@ -135,6 +135,23 @@ struct SidebarRenderTests {
         #expect(rows.allSatisfy { !$0.isSelected })
     }
 
+    /// Before: the project list read the drafts in its own body, so every keystroke in a draft redrew the list.
+    @Test func typingInADraftEvaluatesTheDraftsRowAndNeitherTheProjectListNorACard() async throws {
+        let hosted = try await host(cards: 8, mode: .projects)
+        defer { finish(hosted) }
+        let model = hosted.model
+        model.setDraftText("Fix the log", projectID: nil)
+        try await settle(hosted, until: { SidebarRenderProbe.draftRowBodies.isEmpty == false })
+        #expect(!SidebarRenderProbe.draftRowBodies.isEmpty, "the draft has its row")
+
+        SidebarRenderProbe.reset()
+        model.setDraftText("Fix the login", projectID: nil)
+        try await settle(hosted, until: { !SidebarRenderProbe.draftRowBodies.isEmpty })
+        #expect(SidebarRenderProbe.draftRowBodies.values.reduce(0, +) >= 1, "the draft's row follows the text")
+        #expect(SidebarRenderProbe.projectListBodies == 0, "project list bodies evaluated by typing: \(SidebarRenderProbe.projectListBodies)")
+        #expect(SidebarRenderProbe.cardTotal == 0, "card bodies evaluated by typing: \(SidebarRenderProbe.cardTotal)")
+    }
+
     /// Before: the minute tick evaluated all 30 cards (and regrouped the days); now only the 30 time labels.
     @Test func theMinuteTickEvaluatesOnlyTheTimeLabelsAndDoesNotRegroupTheDays() async throws {
         let hosted = try await host(cards: 30)

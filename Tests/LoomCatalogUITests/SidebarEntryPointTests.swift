@@ -47,16 +47,17 @@ struct SidebarEntryPointTests {
 
     // MARK: Item 1, the project header "+"
 
-    @Test func projectPlusStartsExactlyOneClaudeSessionInThatProject() async throws {
+    @Test func projectPlusOpensTheDraftOfThatProjectAndStartsNothing() async throws {
         let fixture = try await makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let entry = try #require(ClaudeStartEntry.inProject(fixture.project, on: fixture.model))
         #expect(entry.title == "New Claude session in rocket")
         #expect(entry.isEnabled(on: fixture.model))
         entry.perform(on: fixture.model)
-        #expect(fixture.intents.starts.count == 1)
-        #expect(fixture.intents.starts.first?.0 == .claude)
-        #expect(fixture.intents.starts.first?.1 == fixture.project.id)
+        // A Claude session exists only after the draft's first send (V07).
+        #expect(fixture.model.destination == .draft(projectID: fixture.project.id))
+        #expect(fixture.model.detailRoute == .draft(projectID: fixture.project.id))
+        #expect(fixture.intents.starts.isEmpty)
     }
 
     @Test func projectPlusIsDisabledAndInertWhileQuitting() async throws {
@@ -67,6 +68,7 @@ struct SidebarEntryPointTests {
         #expect(!entry.isEnabled(on: fixture.model))
         entry.perform(on: fixture.model)
         #expect(fixture.intents.starts.isEmpty)
+        #expect(fixture.model.destination == nil, "no draft opens either")
     }
 
     @Test func projectPlusIsAbsentWhereClaudeCannotBeStarted() async throws {
@@ -86,9 +88,8 @@ struct SidebarEntryPointTests {
         let entry = try #require(ClaudeStartEntry.withoutProject(title: ClaudeStartEntry.withoutProjectTitle, on: fixture.model))
         #expect(entry.title == "New Claude Session Without Project")
         entry.perform(on: fixture.model)
-        #expect(fixture.intents.starts.count == 1)
-        #expect(fixture.intents.starts.first?.0 == .claude)
-        #expect(fixture.intents.starts.first?.1 == nil)
+        #expect(fixture.model.destination == .draft(projectID: nil), "a draft with no project")
+        #expect(fixture.intents.starts.isEmpty)
     }
 
     @Test func theFooterOffersAProjectlessEntryOnlyWhereThePlainEntriesWouldStartInAProject() {

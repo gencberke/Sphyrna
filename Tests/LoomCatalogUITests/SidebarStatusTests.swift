@@ -59,15 +59,17 @@ struct SidebarStatusTests {
             #expect(action.isEnabled(on: model, projectID: project))
             action.perform(on: model, projectID: project)
         }
-        #expect(intents.starts.map(\.0) == [.claude, .codex])
-        #expect(intents.starts.allSatisfy { $0.1 == project })
+        // Claude opens the project's draft (V07); Codex keeps its direct start.
+        #expect(intents.starts.map(\.0) == [.codex] && intents.starts.allSatisfy { $0.1 == project })
+        #expect(model.destination == .draft(projectID: project))
         // Unavailable (Quit started) behaves like every other new-conversation entry.
         model.quitting = true
+        model.showHome()
         for action in NewConversationAction.startable(on: model) {
             #expect(!action.isEnabled(on: model, projectID: project))
             action.perform(on: model, projectID: project)
         }
-        #expect(intents.starts.count == 2)
+        #expect(intents.starts.count == 1 && model.destination == .home)
     }
 
     @Test func productionModelOffersAndStartsOnlyClaude() throws {
@@ -175,7 +177,11 @@ struct SidebarStatusTests {
         await model.start()
         await model.stopAndWait()
         #expect(model.projects.first?.collapsed == true)
+        // Claude opens a draft, which starts nothing; the project opens when the session starts from it.
         NewConversationAction.startable(on: model)[0].perform(on: model, projectID: project.id)
+        #expect(intents.starts.isEmpty && model.destination == .draft(projectID: project.id))
+        // A direct start (Codex) shows its new card: the collapsed project opens.
+        NewConversationAction.startable(on: model)[1].perform(on: model, projectID: project.id)
         await model.settle()
         for _ in 0..<40 where model.projects.first?.collapsed == true { try await Task.sleep(for: .milliseconds(50)) }
         #expect(intents.starts.count == 1)
