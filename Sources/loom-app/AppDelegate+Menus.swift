@@ -1,44 +1,12 @@
 import AppKit
 import LoomCatalogUI
 
-/// The target of the Studio items (`ShellCommand`): titles, keys, enabling and actions come from the command,
-/// so a feature slice changes its holder file and never this menu. The menu items keep the target alive
-/// (`representedObject`), because `NSMenuItem.target` is weak.
-@MainActor
-final class ShellMenuTarget: NSObject, NSMenuItemValidation {
-    private let model: () -> CatalogModel?
-    private let bringForward: () -> Void
-
-    init(model: @escaping () -> CatalogModel?, bringForward: @escaping () -> Void) {
-        self.model = model
-        self.bringForward = bringForward
-    }
-
-    @objc func runShellCommand(_ sender: NSMenuItem) {
-        guard let command = ShellCommand(rawValue: sender.tag), let model = model() else { return }
-        if command.needsWindow { bringForward() }
-        command.run(on: model)
-    }
-
-    func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        guard let command = ShellCommand(rawValue: item.tag), let model = model() else { return false }
-        return command.isEnabled(on: model)
-    }
-}
-
 /// The main menu. Every item targets this delegate or the shell target; later slices add their items here.
 extension AppDelegate {
     func installMenus() {
         let shell = ShellMenuTarget(model: { [weak self] in self?.model },
                                     bringForward: { [weak self] in self?.presentMainWindow(reason: "shell-menu") })
-        func addShellItem(_ command: ShellCommand, to menu: NSMenu) {
-            let item = menu.addItem(withTitle: command.title, action: #selector(ShellMenuTarget.runShellCommand(_:)),
-                                    keyEquivalent: command.keyEquivalent)
-            item.keyEquivalentModifierMask = command.modifiers
-            item.tag = command.rawValue
-            item.target = shell
-            item.representedObject = shell
-        }
+        func addShellItem(_ command: ShellCommand, to menu: NSMenu) { _ = shell.addItem(command, to: menu) }
         let main = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu()

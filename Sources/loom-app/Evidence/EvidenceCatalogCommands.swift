@@ -73,7 +73,8 @@ extension DevelopmentEvidence {
             app.saveScreenshot(to: directory.appendingPathComponent("screenshot-\(label).png"))
         default:
             if handleDeletionCommand(name, argument) || handleOpenRequestCommand(name, argument)
-                || handleSubagentCommand(name, argument) || handlePaletteCommand(name, argument) { break }
+                || handleSubagentCommand(name, argument) || handlePaletteCommand(name, argument)
+                || handleStudioCommand(name, argument) { break }
             var handled = await handleSettingsCommand(name, argument) || handleTabCommand(name, argument)
             if !handled { handled = await handleSystemCommand(name, argument) }
             guard handled else {

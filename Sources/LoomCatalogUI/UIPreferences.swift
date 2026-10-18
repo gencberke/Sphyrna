@@ -103,6 +103,9 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// The sessions whose inspector is open (V2: closed by default, remembered per session). Least recently
     /// opened first, de-duplicated and capped.
     public var inspectorOpen: [UUID]
+    /// Settings → General → Search session text. Off, the command palette never reads a transcript. A file written
+    /// before the setting existed reads as on.
+    public var searchSessionText: Bool
 
     /// The selected session, as every caller before destinations knew it; setting it sets the destination.
     /// The key is still written when the destination is a session, so an older build reads it too.
@@ -119,7 +122,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
                 sidebarCollapsed: Bool = false, terminalFontSize: Double = UIPreferences.defaultTerminalFontSize,
                 openTabs: [UUID] = [], windowFrame: WindowFrame? = nil, projectColors: Bool = true,
                 showInMenuBar: Bool = true, notifyApprovals: Bool = true, sidebarStyle: SidebarStyle = .glass,
-                launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = []) {
+                launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = [],
+                searchSessionText: Bool = true) {
         self.viewMode = viewMode
         self.destination = destination ?? selectedSessionID.map(Destination.session)
         self.sidebarWidth = Self.clamped(sidebarWidth)
@@ -133,6 +137,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         self.sidebarStyle = sidebarStyle
         self.launchView = launchView
         self.inspectorOpen = Self.normalizedInspectors(inspectorOpen)
+        self.searchSessionText = searchSessionText
     }
 
     public init(from decoder: any Decoder) throws {
@@ -158,13 +163,15 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             sidebarStyle: (try? container.decodeIfPresent(SidebarStyle.self, forKey: .sidebarStyle)) ?? .glass,
             launchView: (try? container.decodeIfPresent(LaunchView.self, forKey: .launchView)) ?? .lastSession,
             inspectorOpen: ((try? container.decodeIfPresent([Lossy<UUID>].self, forKey: .inspectorOpen)) ?? nil)?
-                .compactMap(\.value) ?? []
+                .compactMap(\.value) ?? [],
+            searchSessionText: (try? container.decodeIfPresent(Bool.self, forKey: .searchSessionText)) ?? true
         )
     }
 
     private enum CodingKeys: String, CodingKey {
         case viewMode, selectedSessionID, destination, sidebarWidth, sidebarCollapsed, terminalFontSize, openTabs
         case windowFrame, projectColors, showInMenuBar, notifyApprovals, sidebarStyle, launchView, inspectorOpen
+        case searchSessionText
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -183,6 +190,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         try container.encode(sidebarStyle, forKey: .sidebarStyle)
         try container.encode(launchView, forKey: .launchView)
         try container.encode(inspectorOpen, forKey: .inspectorOpen)
+        try container.encode(searchSessionText, forKey: .searchSessionText)
     }
 
     private struct Lossy<Value: Decodable>: Decodable {

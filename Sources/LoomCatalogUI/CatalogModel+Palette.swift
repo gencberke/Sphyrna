@@ -21,8 +21,11 @@ public final class PaletteState {
 
     /// The Claude profile's `projects` folder, set by the app; nil means no conversation search.
     @ObservationIgnored public var transcriptsDirectory: URL?
-    /// Settings has no switch for it yet: the search reads on typing only and keeps no copy.
-    @ObservationIgnored public var searchesConversations = true
+    /// Settings → General → Search session text (the model keeps it in step). Off, no transcript is read: not to
+    /// find a file, not to scan it. The search reads on typing only and keeps no copy.
+    @ObservationIgnored public var searchesConversations = true {
+        didSet { if oldValue, !searchesConversations { stopTextSearch() } }
+    }
     /// Where the keyboard goes back to on close: the window that was key when the palette opened.
     @ObservationIgnored var windowProvider: @MainActor () -> NSWindow? = { NSApp?.keyWindow ?? NSApp?.mainWindow }
     @ObservationIgnored var sourcesOverride: (any PaletteSources)?
@@ -118,6 +121,18 @@ public final class PaletteState {
         offersOlderSearch = false
         isSearching = false
         coverageNote = nil
+    }
+
+    /// The setting went off while the palette is open: the scan that is running stops reading at once and what it
+    /// found so far is dropped (a result could still come in after the switch was flipped).
+    private func stopTextSearch() {
+        guard isOpen else { return }
+        cancelSearch()
+        isSearching = false
+        hitRows = []
+        offersOlderSearch = false
+        coverageNote = nil
+        recompose()
     }
 
     private func cancelSearch() {

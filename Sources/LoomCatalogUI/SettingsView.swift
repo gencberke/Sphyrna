@@ -123,6 +123,15 @@ struct GeneralSettings: View {
                     .accessibilityLabel("Project colors")
                 }
                 SettingsRowDivider()
+                SettingsRow(title: "Search session text",
+                            detail: "Let the command palette look inside your sessions. It reads Claude's transcript files only while you type, and keeps nothing. Off, it searches titles, projects and actions.") {
+                    Toggle("Search session text", isOn: Binding(
+                        get: { model.searchesSessionText }, set: { model.setSearchesSessionText($0) }
+                    ))
+                    .labelsHidden().toggleStyle(.switch)
+                    .accessibilityLabel("Search session text")
+                }
+                SettingsRowDivider()
                 SettingsRow(title: "Sidebar",
                             detail: "Glass lets the desktop show through softly. Solid is opaque. Reduce Transparency in System Settings always shows Solid.") {
                     SegmentedControl(values: SidebarStyle.allCases, title: \.title, selection: model.sidebarStyle,

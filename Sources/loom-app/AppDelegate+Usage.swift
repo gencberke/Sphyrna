@@ -35,8 +35,9 @@ extension AppDelegate {
         }
         usage = usageModel
         model.usage = usageModel
-        // The command palette's conversation search reads the same Claude profile as usage (nothing when refused).
-        model.palette.transcriptsDirectory = refused ? nil : layout.projectsDirectory
+        // One Claude profile for usage, the palette's session text search and the Chat view (nothing when refused),
+        // known here at launch, before the window shows and without the runtime.
+        model.setClaudeConfigDirectory(refused ? nil : layout.configDirectory)
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "0.1.0"
         // "build 12, 611bc29": the numeric build and the commit it was built from.
