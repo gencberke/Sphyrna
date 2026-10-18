@@ -38,7 +38,8 @@ struct ConversationControllerTests {
         idle: SessionIdlePolicy = SessionIdlePolicy(), startWindowActive: Bool = false,
         extraEnvironment: [String: String] = [:], scoped: Bool = false,
         startableProviders: Set<ManagedSession.Provider> = [.claude, .codex],
-        toolchainDelay: Duration = .zero, toolchainFails: Bool = false
+        toolchainDelay: Duration = .zero, toolchainFails: Bool = false,
+        seed: ((URL, SessionCatalog) async throws -> Void)? = nil
     ) async throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loom-controller-\(UUID())", isDirectory: true)
@@ -49,6 +50,7 @@ struct ConversationControllerTests {
         }
         let socketDirectory = URL(fileURLWithPath: "/tmp/lc-\(UUID().uuidString.prefix(8))", isDirectory: true)
         let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
+        try await seed?(root, catalog)
         let hub = SessionEventHub()
         var binaries = Bundle(for: ControllerBundleAnchor.self).bundleURL.deletingLastPathComponent()
         var launcher: RunScopeLauncher?
@@ -108,6 +110,34 @@ struct ConversationControllerTests {
             root: root, socketDirectory: socketDirectory, catalog: catalog, hub: hub,
             supervisor: supervisor, runtime: runtime, model: model, controller: controller, home: home
         )
+    }
+
+    /// D11: what older builds kept in the new-session file (`launched`, `lastUsed`) is copied into the catalog the first time, and
+    /// the catalog says so; a later start reads nothing of the file's lists.
+    @Test func theOlderLaunchRecordsAreCopiedIntoTheCatalogOnce() async throws {
+        let first = ManagedSession(provider: .claude, workingDirectory: "/tmp")
+        let fixture = try await makeFixture { root, catalog in
+            try await catalog.insertSession(first)
+            let legacy = """
+            {"launched":[{"sessionID":"\(first.id.uuidString)","choices":{"permissionMode":"plan","model":"haiku"}}],
+             "lastUsed":{"none":{"permissionMode":"acceptEdits","model":"opus"}}}
+            """
+            try legacy.write(to: root.appendingPathComponent("new-session.json"), atomically: true, encoding: .utf8)
+        }
+        let catalog = fixture.catalog
+        #expect(try await catalog.launchChoices(sessionID: first.id) == ClaudeLaunchChoices(permissionMode: "plan", model: "haiku"))
+        #expect(try await catalog.lastUsedLaunchChoices()["none"] == ClaudeLaunchChoices(permissionMode: "acceptEdits", model: "opus"))
+        #expect(try await catalog.appState(ConversationController.launchImportKey) == "1")
+
+        // Again (a later launch): the file is not read for them. A session that has none stored stays without.
+        let second = ManagedSession(provider: .claude, workingDirectory: "/tmp")
+        try await catalog.insertSession(second)
+        fixture.model.newSession.store?.change {
+            $0.launched = [LaunchedSession(sessionID: second.id, choices: ClaudeLaunchChoices(model: "sonnet"))]
+        }
+        await fixture.controller.importLegacyLaunchRecords()
+        #expect(try await catalog.launchChoices(sessionID: second.id).isEmpty, "the import ran once")
+        await fixture.cleanup()
     }
 
     /// Runs a test body and always shuts the runtime down, so no fixture

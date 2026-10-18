@@ -551,5 +551,26 @@ extension ChatHosted {
             #expect(await waitUntil { again.controller.rows.filter { if case .user = $0.kind { true } else { false } }.count == 2 })
             again.close()
         }
+
+        /// D15: the feed's one-shot tasks (a history read per run, the cards' state per appearance of an ended view) leave its table
+        /// when they are done; a long-lived feed does not collect one per run.
+        @Test func finishedOneShotTasksDoNotPileUpInALongLivedFeed() async throws {
+            let card = UUID()
+            let source = ScriptedLiveSource(card: card, conversationID: nil)
+            let feed = LiveChatFeed(source: source, card: card, conversationID: nil, configDirectory: nil, workingDirectory: nil)
+            for _ in 0..<40 {
+                feed.endedViewAppeared()
+                feed.endedViewWentAway()
+            }
+            #expect(await waitUntil { feed.activeOneShots == 0 }, "\(feed.activeOneShots) tasks still held")
+            feed.start()
+            #expect(await waitUntil { feed.phase == .ready })
+            for generation in 0..<10 {
+                await source.startRun()
+                _ = generation
+            }
+            try await Task.sleep(for: .milliseconds(300))
+            #expect(feed.activeOneShots == 0)
+        }
     }
 }

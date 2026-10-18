@@ -294,11 +294,10 @@ struct NewSessionTests {
         #expect(resolved.model == ResolvedChoice(value: "opus", source: .lastUsed))
         model.beginNewSession(projectID: rig.otherProjectID)
         #expect(model.resolvedStart(for: rig.otherProjectID).choices == ClaudeLaunchChoices(permissionMode: "default"))
-        // A relaunch reads it back from the file.
+        // The file keeps no last-used list any more: across a relaunch it is the catalog's (see the catalog tests).
         let again = NewSessionState()
         again.attach(store: NewSessionStore(url: rig.storeURL))
-        #expect(again.lastUsed(for: rig.projectID) == ClaudeLaunchChoices(permissionMode: "acceptEdits", model: "opus", effort: "high"))
-        #expect(again.lastUsed(for: rig.otherProjectID) == nil)
+        #expect(again.lastUsed(for: rig.projectID) == nil)
     }
 
     /// D-63: a new session starts in the project's last used mode, else Ask before edits (`default`), and the mode is always
@@ -835,12 +834,47 @@ struct NewSessionTests {
         #expect(await waitUntil { rig.intents.sends.count == 2 })
         let session = UUID()
         rig.intents.sends[1].outcome(.started(session))
-        // S2: the CLI restores neither, so a resume passes what the session started with.
-        #expect(model.newSession.launchChoices(for: session) == ClaudeLaunchChoices(permissionMode: "plan"))
-        #expect(model.newSession.launchChoices(for: UUID()) == nil)
+        _ = session
+        // The catalog records the session's choices when its card is made (a resume passes them); the draft's file keeps no
+        // launch list of its own any more, and the project's next draft shows what this start used at once.
+        #expect(model.newSession.lastUsed(for: rig.projectID)?.permissionMode == "plan")
+        model.flushPreferences()
+        model.newSession.flush()
         let again = NewSessionState()
         again.attach(store: NewSessionStore(url: rig.storeURL))
-        #expect(again.launchChoices(for: session) == ClaudeLaunchChoices(permissionMode: "plan"))
+        #expect(again.legacyLaunchRecords().launched.isEmpty && again.legacyLaunchRecords().lastUsed.isEmpty,
+                "nothing is appended to the file's launched or lastUsed lists")
+    }
+
+    /// D11: a live change of mode, model or effort in a session is what its project's next draft starts with (the catalog
+    /// records it), and Full access is never remembered.
+    @Test func aLiveChangeInASessionIsWhatTheNextDraftOfItsProjectStartsWith() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        let session = ManagedSession(provider: .claude, workingDirectory: root.path)
+        try await rig.catalog.insertSession(session, title: "Live", projectID: rig.projectID)
+        #expect(model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "default", source: .loomDefault))
+
+        try await rig.catalog.recordLaunchChoices(ClaudeLaunchChoices(permissionMode: "acceptEdits"), sessionID: session.id)
+        model.refreshLastUsedChoices()
+        #expect(await waitUntil { model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "acceptEdits", source: .lastUsed) })
+        #expect(model.resolvedStart(for: rig.otherProjectID).mode.source == .loomDefault, "another project is untouched")
+
+        // Full access, picked live, is not what the next session starts in; the model next to it is remembered.
+        try await rig.catalog.recordLaunchChoices(
+            ClaudeLaunchChoices(permissionMode: ClaudePermissionMode.fullAccess.rawValue, model: "opus"), sessionID: session.id)
+        model.refreshLastUsedChoices()
+        #expect(await waitUntil { model.resolvedStart(for: rig.projectID).model == ResolvedChoice(value: "opus", source: .lastUsed) })
+        #expect(model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "acceptEdits", source: .lastUsed))
+        // The catalog is where it lives: a model made later reads it.
+        let later = CatalogModel(catalog: rig.catalog, events: SessionEventHub(),
+                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("prefs-later.json")))
+        await later.start()
+        defer { later.stop() }
+        #expect(later.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "acceptEdits", source: .lastUsed))
     }
 
     @Test func aDraftNeedsARuntimeThatCanStartIt() async throws {

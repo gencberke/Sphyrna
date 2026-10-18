@@ -48,11 +48,9 @@ extension ConversationController {
 
     private func runHandover(sessionID: UUID, to target: SessionFace) async {
         guard let model else { return }
-        let driver = model.chatSessions?.existingDriver(for: sessionID)
-        defer {
-            model.setHandover(nil, for: sessionID)
-            handoverTasks[sessionID] = nil
-        }
+        // The driver object, not its card: a `/clear` that moves the run re-keys it, and the move must still reach it.
+        let driver = target == .terminal ? model.chatSessions?.driver(for: sessionID)
+                                         : model.chatSessions?.existingDriver(for: sessionID)
         do {
             switch target {
             case .terminal: try await handOverToTerminal(sessionID)
@@ -63,12 +61,17 @@ extension ConversationController {
             if target == .terminal, model.handovers[sessionID]?.phase == .switching { await driver?.handoverFailed() }
             if error is CancellationError || Task.isCancelled {
                 // The user ended the move (Cancel, Stop): the session goes on where it was, or stays stopped.
-            } else if let reset = error as? ChatDriverError, reset == .clearedDuringHandover {
+            } else if Self.refusal(error) == .cleared {
                 model.showInfo(HandoverRefusal.cleared.description)
             } else {
                 report(Self.refusal(error).map { $0 as any Error } ?? error, "The session could not be moved")
             }
         }
+        // The move is over, made or not: the Chat driver was holding the session for it (a send was refused meanwhile), and
+        // it is its own again now.
+        await driver?.finishHandover()
+        model.setHandover(nil, for: sessionID)
+        handoverTasks[sessionID] = nil
     }
 
     /// Chat → Terminal: the Chat run ends (after its turn), then the terminal resumes the session.
@@ -80,11 +83,14 @@ extension ConversationController {
         })
         // A session with no run here had nothing to wait for: the move is at its point now.
         if model.handovers[sessionID]?.phase != .switching { await passPointOfNoReturn(sessionID, to: .terminal) }
-        // The Chat run has ended; the terminal starts unless a Stop came in meanwhile.
-        if moveEnded(sessionID) { throw CancellationError() }
+        // The Chat run has ended; the terminal starts unless a Stop came in meanwhile. The card the run ended on is the
+        // driver's now: a `/clear` that moved it after the point (while the stop ran) made a new card, and that card is the
+        // session's conversation, not the one the move began on.
+        let card = await driver.sessionID
+        if moveEnded(sessionID) || moveEnded(card) { throw CancellationError() }
         // Looking at the terminal from now on: a look at the transcript that was picked earlier does not hide it.
-        model.faces.choose(.terminal, for: sessionID)
-        try await resumeInTerminal(sessionID)
+        model.faces.choose(.terminal, for: card)
+        try await resumeInTerminal(card)
         await driver.noteFace(.continuedInTerminal)
     }
 
@@ -92,8 +98,12 @@ extension ConversationController {
     /// request or background work refuses. Then the terminal run ends and the Chat face resumes the session.
     private func handOverToChat(_ sessionID: UUID) async throws {
         guard let model, let host = model.chatSessions else { throw CatalogModel.LiveChatError.unavailable }
-        try await awaitTerminalRest(sessionID)
+        // The terminal run this move is about: a `/clear` there moves the run to a new card, and the session this move began
+        // on is then not the conversation that runs.
+        let run = await runtime.supervisor.session(id: sessionID)?.currentRun?.id
+        try await awaitTerminalRest(sessionID, run: run)
         await passPointOfNoReturn(sessionID, to: .chat)
+        try await requireRunStillOn(sessionID, run: run)
         _ = try await host.enterChat(sessionID: sessionID, beforeResume: { [weak self] in
             self?.moveEnded(sessionID) == false
         })
@@ -113,11 +123,27 @@ extension ConversationController {
     /// `handoverSettle`. A turn under way is waited for, and one that starts again within the settle time restarts it:
     /// the first idle frame between two hooks is not the end. A request waiting or background work refuses (also if it
     /// appears meanwhile); and the standing is looked at once more right before the move, refusing if work resumed.
-    private func awaitTerminalRest(_ sessionID: UUID) async throws {
+    ///
+    /// The wait is on the event hub (every change it publishes wakes the loop) and on the settle time, not on a timer that
+    /// fires while nothing changes: a terminal turn can run for an hour.
+    private func awaitTerminalRest(_ sessionID: UUID, run: UUID?) async throws {
         let clock = ContinuousClock()
         var restingSince: ContinuousClock.Instant?
+        let (wake, wakeUp) = AsyncStream.makeStream(of: Void.self, bufferingPolicy: .bufferingNewest(1))
+        let frames = await runtime.supervisor.events.subscribe()
+        let pump = Task { for await _ in frames { wakeUp.yield() } }
+        var settleTimer: Task<Void, Never>?
+        defer {
+            pump.cancel()
+            settleTimer?.cancel()
+            wakeUp.finish()
+        }
+        var changes = wake.makeAsyncIterator()
         while true {
             try Task.checkCancellation()
+            try await requireRunStillOn(sessionID, run: run)
+            settleTimer?.cancel()
+            settleTimer = nil
             switch await terminalStanding(sessionID) {
             case .stopped: return
             case .requestWaiting: throw HandoverRefusal.requestWaiting
@@ -126,7 +152,8 @@ extension ConversationController {
             case .idle:
                 let since = restingSince ?? clock.now
                 restingSince = since
-                if since.duration(to: clock.now) >= handoverSettle {
+                let rested = since.duration(to: clock.now)
+                if rested >= handoverSettle {
                     // Right before the move: work that resumed in the last moment refuses.
                     switch await terminalStanding(sessionID) {
                     case .stopped, .idle: return
@@ -135,13 +162,25 @@ extension ConversationController {
                     case .backgroundWork: throw HandoverRefusal.backgroundWork
                     }
                 }
+                let left = handoverSettle - rested
+                // A timer that is cancelled (the loop looked again before it fired) must not wake the loop: it would never rest.
+                settleTimer = Task { if (try? await Task.sleep(for: left)) != nil { wakeUp.yield() } }
             }
-            try await Task.sleep(for: min(.milliseconds(50), handoverSettle / 3))
+            _ = await changes.next()
         }
     }
 
+    /// The terminal run the move began with is still on the card it began on. A `/clear` in the terminal moves the run to a
+    /// new card: the card of this move then has no run (which reads as a stopped session that Chat may take), while the
+    /// terminal goes on with another conversation. The move ends, as the Chat side's does, and nothing moves.
+    private func requireRunStillOn(_ sessionID: UUID, run: UUID?) async throws {
+        guard let run, let card = await runtime.supervisor.activeSessionID(runID: run), card != sessionID else { return }
+        throw HandoverRefusal.cleared
+    }
+
     private func terminalStanding(_ sessionID: UUID) async -> HandoverStanding {
-        HandoverStanding(terminal: await runtime.supervisor.events.snapshot().sessions[sessionID])
+        standingReads += 1
+        return HandoverStanding(terminal: await runtime.supervisor.events.snapshot().sessions[sessionID])
     }
 
     /// The words of a refusal the Chat driver or the gate made, nil for any other error.

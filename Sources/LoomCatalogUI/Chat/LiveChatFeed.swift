@@ -65,7 +65,12 @@ final class LiveChatFeed: ChatDriverAttachment {
     /// The feed is no longer needed: its owner (the app's host) lets it go.
     @ObservationIgnored var onUnused: (() -> Void)?
     @ObservationIgnored private var started = false
+    /// The two tasks that follow the driver for as long as the feed lives.
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
+    /// Reads that end by themselves (a history read per run, the cards' state per appearance of an ended view): each leaves
+    /// the table when it is done, so a long-lived feed does not collect a finished task per run.
+    @ObservationIgnored private var oneShots: [Int: Task<Void, Never>] = [:]
+    @ObservationIgnored private var oneShotCount = 0
     @ObservationIgnored private weak var controller: ChatStreamController?
     @ObservationIgnored private var loadingOlder = false
     @ObservationIgnored private var loadingFull: Set<String> = []
@@ -102,6 +107,7 @@ final class LiveChatFeed: ChatDriverAttachment {
 
     isolated deinit {
         for task in tasks { task.cancel() }
+        for task in oneShots.values { task.cancel() }
         presentation.detach()
         if let lens { Task { await lens.close() } }
     }
@@ -138,8 +144,21 @@ final class LiveChatFeed: ChatDriverAttachment {
                 follow(state)
             }
         })
-        tasks.append(Task { [weak self] in await self?.readHistory() })
+        runOnce { await $0.readHistory() }
     }
+
+    /// Runs `work` as a task of its own that removes itself from `oneShots` when it ends.
+    private func runOnce(_ work: @escaping @MainActor (LiveChatFeed) async -> Void) {
+        let id = oneShotCount
+        oneShotCount += 1
+        oneShots[id] = Task { [weak self] in
+            if let self { await work(self) }
+            self?.oneShots[id] = nil
+        }
+    }
+
+    /// Tasks the feed still holds besides the two followers: finished ones are gone (tests).
+    var activeOneShots: Int { oneShots.count }
 
     private func readHistory() async {
         let opened = card
@@ -199,7 +218,7 @@ final class LiveChatFeed: ChatDriverAttachment {
             Task { await lens.close() }
         }
         join.clearHistory()
-        tasks.append(Task { [weak self] in await self?.readHistory() })
+        runOnce { await $0.readHistory() }
     }
 
     // MARK: The driver's changes
@@ -337,11 +356,11 @@ final class LiveChatFeed: ChatDriverAttachment {
     /// The driver's live state once, for the cards (a feed made for an ended view starts no history read or stream).
     private func followState() {
         let source = source
-        tasks.append(Task { [weak self] in
+        runOnce { feed in
             let state = await source.liveState()
-            guard let self, !Task.isCancelled else { return }
-            follow(state)
-        })
+            guard !Task.isCancelled else { return }
+            feed.follow(state)
+        }
     }
 
     /// A view's stream shows the presentation (and the next one after a move) from now on. One stream at a time: Loom

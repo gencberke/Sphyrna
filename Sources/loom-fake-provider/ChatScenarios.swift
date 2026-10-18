@@ -35,6 +35,7 @@ import Foundation
 //                                     SessionStart hook with source `clear` (the run moves to a new card)
 //   unknown                           an unknown record type, an unknown system subtype and keep_alive
 //   bigline [MiB]                     a Bash result whose line is about 2x MiB (default 3)
+//   flood [n]                         n small assistant rows at once (default 1000), no transcript, then an answer
 //   file <name> <text>                a Write of <text> to <name> in the work folder, decided by the permission rules
 //   run <command>                     a Bash call (`mkdir <d>` and `touch <f>` take effect), decided by the rules
 //   web WebFetch|WebSearch            a research call, decided by the rules (ChatPermissions.swift)
@@ -132,6 +133,12 @@ extension ChatEngine {
         case "unknown":
             for record in wire.unknownRecords() { send(record) }
             try assistantMessage([.text("The unknown records came first.")])
+        case "flood":
+            for row in 0..<max(1, args.first.flatMap(Int.init) ?? 1_000) {
+                send(wire.assistant(messageID: "msg_flood\(row)", block: ["type": "text", "text": "flood row \(row)"],
+                                    stopReason: nil, outputTokens: 1, parent: nil))
+            }
+            try assistantMessage([.text("Flooded.")])
         case "bigline":
             try bigLine(mebibytes: args.first.flatMap(Int.init) ?? 3)
         case "file":

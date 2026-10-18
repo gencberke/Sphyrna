@@ -84,6 +84,8 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
     var handoverSettle: Duration = .milliseconds(1500)
     /// Held at a handover's point of no return, with its target (tests act at that phase; nil in the app).
     var handoverGate: (@MainActor (UUID, SessionFace) async -> Void)?
+    /// How often a handover looked at the terminal session's standing in the hub (tests: a wait is on events, not on a timer).
+    var standingReads = 0
 
     public init(runtime: SessionRuntime, model: CatalogModel) {
         self.runtime = runtime
@@ -97,18 +99,36 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
         openRequestObserver?.cancel()
     }
 
+    /// What builds before V16 kept in the new-session file (`launched`: the choices of each session Loom started, `lastUsed`: each
+    /// project's) moves into the catalog once, and the catalog says so (`app_state`): the file's lists are not read again, so
+    /// a launch costs nothing for them. Only sessions with none stored take choices, and only projects the catalog remembers
+    /// nothing for take theirs.
+    func importLegacyLaunchRecords() async {
+        guard let model else { return }
+        // The file is opened here if the model has not yet: marking the import done without having read it would lose it.
+        model.prepareNewSession()
+        guard model.newSession.store != nil else { return }
+        let catalog = await runtime.catalog
+        do {
+            guard try await catalog.appState(Self.launchImportKey) == nil else { return }
+            let records = model.newSession.legacyLaunchRecords()
+            try await catalog.importLaunchChoices(records.launched)
+            try await catalog.importLastUsedLaunchChoices(records.lastUsed)
+            try await catalog.setAppState(Self.launchImportKey, to: "1")
+            model.refreshLastUsedChoices()
+        } catch {
+            LoomLog.error(.catalog, "Launch choices could not be copied to the catalog (\(LoomLog.category(of: error)))")
+        }
+    }
+
+    static let launchImportKey = "launch.legacy-import-done"
+
     /// Follows run ownership and run ends from the event hub. Every frame carries the full session
     /// states, so frames may coalesce: each one is compared with the entries locally and only what it
     /// does not confirm is asked of the supervisor (see `reconcile(_:)`).
     public func begin() async {
         guard observer == nil else { return }
-        // Choices recorded by builds before V16 (the new-session file's `launched` list) move into the catalog once:
-        // only sessions with none stored take them.
-        if let launched = model?.newSession.launchedChoices(), !launched.isEmpty {
-            do { try await runtime.catalog.importLaunchChoices(launched) } catch {
-                LoomLog.error(.catalog, "Launch choices could not be copied to the catalog (\(LoomLog.category(of: error)))")
-            }
-        }
+        await importLegacyLaunchRecords()
         let stream = await runtime.supervisor.events.subscribe()
         observer = Task { [weak self] in
             for await frame in stream {

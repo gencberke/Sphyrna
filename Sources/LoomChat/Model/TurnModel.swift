@@ -161,7 +161,9 @@ public struct TurnModel: Sendable {
                                            whileWorking: Bool = false, typedText: String? = nil) -> ModelDelta {
         var delta = ModelDelta()
         guard index[uuid] == nil else { return delta }
-        var prompt = UserPrompt(text: text, images: images, delivery: .pending, command: nil, isBrief: false)
+        // The row keeps what a history row would (`bounded`): the driver holds the full payload until Claude reads the message,
+        // and the echo keeps this copy, so an image over the limit would stay in memory for the life of the model.
+        var prompt = UserPrompt(text: text, images: images.map(Self.bounded), delivery: .pending, command: nil, isBrief: false)
         prompt.sentWhileWorking = whileWorking
         prompt.recallText = typedText
         place(id: uuid, thread: .main, timestamp: now, offset: nil, policy: .prompt, delta: &delta, body: .user(prompt))

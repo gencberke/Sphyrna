@@ -92,17 +92,16 @@ extension SessionRuntime {
     /// The rule of the terminal face about Ask (D-63), in the one place every terminal spawn goes through: `claudeProfile` with
     /// face `.terminal` (a new start, a resume, a handover to the terminal, an Open Session request). Ask is a mode of the Chat
     /// face. Its rules and style are live settings of the Chat driver, so a TUI started in `dontAsk` would refuse whatever asks
-    /// with nothing behind it: the terminal runs Ask before edits (`default`) instead. The spawn that follows (`launchClaude`)
-    /// records what really runs, so every later spawn in either face passes it, and says so in one line. Every other mode,
-    /// Full access included, goes through as chosen.
-    func terminalAskRule(_ choices: ClaudeLaunchChoices, sessionID: UUID) -> ClaudeLaunchChoices {
-        askReplacedInTerminal.remove(sessionID)
+    /// with nothing behind it: the terminal runs Ask before edits (`default`) instead. A pure function: whether it replaced Ask
+    /// goes into the profile (`ProviderLaunchProfile.replacedAsk`), and the spawn that follows (`launchClaude`) records what
+    /// really runs, so every later spawn in either face passes it, and says so in one line. Every other mode, Full access
+    /// included, goes through as chosen.
+    static func terminalAskRule(_ choices: ClaudeLaunchChoices) -> (choices: ClaudeLaunchChoices, replaced: Bool) {
         guard let mode = choices.permissionMode,
-              mode == ClaudePermissionMode.ask.rawValue || mode == ClaudePermissionMode.ask.cliValue else { return choices }
-        askReplacedInTerminal.insert(sessionID)
+              mode == ClaudePermissionMode.ask.rawValue || mode == ClaudePermissionMode.ask.cliValue else { return (choices, false) }
         var replaced = choices
         replaced.permissionMode = ClaudePermissionMode.askBeforeEdits.rawValue
-        return replaced
+        return (replaced, true)
     }
 
     func claudeProfile(
@@ -112,7 +111,7 @@ extension SessionRuntime {
         opening: ProviderLaunchProfile.ClaudeOpening? = nil,
         face: ProviderLaunchProfile.ClaudeFace = .terminal
     ) throws -> ProviderLaunchProfile {
-        let choices = face == .terminal ? terminalAskRule(choices, sessionID: sessionID) : choices
+        let (choices, askReplaced) = face == .terminal ? Self.terminalAskRule(choices) : (choices, false)
         let environment = LaunchEnvironment.make(
             base: toolchain.environment, runID: supervisor.ownershipRunID, sessionID: sessionID
         )
@@ -125,18 +124,17 @@ extension SessionRuntime {
             effort = ClaudeTranscriptEffort.last(conversationID: conversationID, projectsDirectory: profile.projectsDirectory)
         }
         reportCompatibility(toolchain: toolchain, route: route, opening: opening)
-        let profile = try ProviderLaunchProfile.claude(
+        let built = try ProviderLaunchProfile.claude(
             route: route, capabilities: toolchain.capabilities,
             config: toolchain.profileDirectory ?? URL(fileURLWithPath: "/"),
             environment: environment, hooks: hooks, effort: effort, choices: choices, opening: opening, face: face
         )
-        guard toolchain.profileDirectory == nil else { return profile }
+        var profileEnvironment = built.environment
         // The provider's own default profile: do not pin a config directory.
-        var defaulted = profile.environment
-        defaulted["CLAUDE_CONFIG_DIR"] = toolchain.environment["CLAUDE_CONFIG_DIR"]
+        if toolchain.profileDirectory == nil { profileEnvironment["CLAUDE_CONFIG_DIR"] = toolchain.environment["CLAUDE_CONFIG_DIR"] }
         return ProviderLaunchProfile(
-            arguments: profile.arguments, environment: defaulted,
-            trailingArguments: profile.trailingArguments
+            arguments: built.arguments, environment: profileEnvironment,
+            trailingArguments: built.trailingArguments, replacedAsk: askReplaced
         )
     }
 
@@ -148,8 +146,8 @@ extension SessionRuntime {
         // The run id is chosen here so a run that ends before `launch` returns
         // (an instant provider failure) is still known and diagnosed.
         let runID = runID ?? UUID()
-        // Ask was replaced for this spawn (`terminalAskRule`): the catalog records what runs before it does.
-        let askReplaced = askReplacedInTerminal.remove(sessionID) != nil
+        // Ask was replaced in this spawn's profile (`terminalAskRule`): the catalog records what runs before it does.
+        let askReplaced = profile.replacedAsk
         if askReplaced {
             await recordLaunchChoices(ClaudeLaunchChoices(permissionMode: ClaudePermissionMode.askBeforeEdits.rawValue), sessionID: sessionID)
         }

@@ -26,8 +26,8 @@ public enum NewSessionOutcome: Equatable, Sendable {
     case failed
 }
 
-/// The state of the new-session drafts (V07): one draft slot per project, the presets, what was last used in
-/// each project and the modes of the sessions Loom started from a draft. The slots live in memory; a slot with
+/// The state of the new-session drafts (V07): one draft slot per project, the presets and what was last used in
+/// each project (read from the catalog, which records it for a start and for a live change). The slots live in memory; a slot with
 /// text is written to `<data root>/new-session.json` 300 ms after the last change, an empty one never is, so a
 /// draft costs nothing until it is typed in or sent. Logic that needs the catalog or the runtime is in
 /// `CatalogModel+NewSession`.
@@ -45,6 +45,9 @@ public final class NewSessionState {
     /// The Git branch of each project's folder, read when its draft opens.
     private(set) var branches: [String: GitBranch] = [:]
     private(set) var settings = NewSessionSettings()
+    /// The mode, model and effort each project's next draft starts with, by `SessionDraft.id` (the catalog's record,
+    /// `SessionCatalog.lastUsedLaunchChoices`): a live change in a session counts as well as a start.
+    public private(set) var lastUsedChoices: [String: ClaudeLaunchChoices] = [:]
     /// What the user should know about the saved drafts, in plain words: a save that failed (what is typed is
     /// still here, but may not survive a restart), or an unreadable file that was moved aside. Nil when all is well.
     public private(set) var storeNotice: String?
@@ -195,36 +198,31 @@ public final class NewSessionState {
         persistDrafts()
     }
 
-    /// The session started: the project remembers what it was started with, the session's mode and model are
-    /// kept for a resume, and a draft that stayed in its slot (↵) is cleared.
-    func started(_ draft: SessionDraft, sessionID: UUID, choices: ClaudeLaunchChoices, clearsSlot: Bool) {
+    /// The session started: a draft that stayed in its slot (↵) is cleared. The project remembers what it was started with
+    /// in the catalog (the runtime records it when the card is made); the next draft shows it at once, and the catalog's own
+    /// record replaces this copy when it is read (`CatalogModel.refreshLastUsedChoices`).
+    func started(_ draft: SessionDraft, choices: ClaudeLaunchChoices, clearsSlot: Bool) {
         if clearsSlot { discard(projectID: draft.projectID) }
         endSending(draft.projectID)
-        store?.change { file in
-            var last = file.lastUsed[draft.id] ?? ClaudeLaunchChoices()
-            // Full access picked once is not what the next session starts in (Loom never picks it by itself): the project
-            // keeps the mode it had before.
-            if let mode = choices.permissionMode, mode != ClaudePermissionMode.fullAccess.rawValue { last.permissionMode = mode }
-            if let model = choices.model { last.model = model }
-            if let effort = choices.effort { last.effort = effort }
-            if !last.isEmpty { file.lastUsed[draft.id] = last }
-            if !choices.isEmpty { file.launched.append(LaunchedSession(sessionID: sessionID, choices: choices)) }
-        }
+        let updated = choices.remembered(over: lastUsedChoices[draft.id])
+        if !updated.isEmpty, updated != lastUsedChoices[draft.id] { lastUsedChoices[draft.id] = updated }
         store?.flush()
     }
 
-    func lastUsed(for projectID: UUID?) -> ClaudeLaunchChoices? { store?.file.lastUsed[SessionDraft.id(for: projectID)] }
-
-    /// Every recorded launch (newest wins), for the one-time copy into the catalog (V16).
-    public func launchedChoices() -> [UUID: ClaudeLaunchChoices] {
-        var choices: [UUID: ClaudeLaunchChoices] = [:]
-        for entry in store?.file.launched ?? [] { choices[entry.sessionID] = entry.choices }
-        return choices
+    /// The catalog's record wins for a project it has one for; a start's optimistic copy stays for one it does not have yet.
+    func setLastUsedChoices(_ all: [String: ClaudeLaunchChoices]) {
+        let merged = lastUsedChoices.merging(all) { _, catalog in catalog }
+        if merged != lastUsedChoices { lastUsedChoices = merged }
     }
 
-    /// The mode and model Loom started the session with; nil for a session it has no record of.
-    public func launchChoices(for sessionID: UUID) -> ClaudeLaunchChoices? {
-        store?.file.launched.last { $0.sessionID == sessionID }?.choices
+    func lastUsed(for projectID: UUID?) -> ClaudeLaunchChoices? { lastUsedChoices[SessionDraft.id(for: projectID)] }
+
+    /// What the older new-session file remembered: every launch (newest wins) and each project's last used choices, for the
+    /// one-time copy into the catalog (`ConversationController.begin`). Nothing writes either list any more.
+    public func legacyLaunchRecords() -> (launched: [UUID: ClaudeLaunchChoices], lastUsed: [String: ClaudeLaunchChoices]) {
+        var choices: [UUID: ClaudeLaunchChoices] = [:]
+        for entry in store?.file.launched ?? [] { choices[entry.sessionID] = entry.choices }
+        return (choices, store?.file.lastUsed ?? [:])
     }
 
     // MARK: Ticket and branch facts
@@ -279,6 +277,16 @@ extension CatalogModel {
 
     /// Opens the new-session file beside the catalog once; with no catalog the drafts stay in memory. The
     /// sidebar calls it before it lists `newSession.visibleDrafts` (one small read, nothing when the file is absent).
+    /// Reads what each project's next draft starts with from the catalog, which records a start and every live change of mode,
+    /// model or effort (`SessionCatalog.recordLaunchChoices`). Asked at start, after a start and after a live change.
+    func refreshLastUsedChoices() {
+        guard let catalog else { return }
+        Task { [weak self] in
+            guard let all = try? await catalog.lastUsedLaunchChoices() else { return }
+            self?.newSession.setLastUsedChoices(all)
+        }
+    }
+
     public func prepareNewSession() {
         guard newSession.store == nil, let catalog else { return }
         newSession.attach(store: NewSessionStore(url: catalog.dataRoot.appendingPathComponent("new-session.json")))
@@ -508,8 +516,9 @@ extension CatalogModel {
             ) { [weak self] outcome in
                 guard let self else { return }
                 switch outcome {
-                case .started(let sessionID):
-                    self.newSession.started(draft, sessionID: sessionID, choices: launch.choices, clearsSlot: !startsFreshDraft)
+                case .started:
+                    self.newSession.started(draft, choices: launch.choices, clearsSlot: !startsFreshDraft)
+                    self.refreshLastUsedChoices()
                     if let projectID, self.projects.first(where: { $0.id == projectID })?.collapsed == true {
                         Task { [weak self] in await self?.expandProject(projectID) }
                     }

@@ -258,6 +258,8 @@ public actor SessionRuntime {
     /// stop can refuse late input atomically (see `TerminalInputGate`).
     public nonisolated let inputGate: TerminalInputGate
     let configuration: SessionRuntimeConfiguration
+    /// Where a component that keeps data for a conversation registers its cleanup for a deletion (`ConversationForgetters`).
+    public nonisolated var conversationForgetters: ConversationForgetters { configuration.forgetters }
     let claudeAdapter: ClaudeSessionAdapter
     let codexAdapter: CodexSessionAdapter
     /// Requests of agents to open a session (D-40); the UI answers them (`SessionRuntime+OpenRequests`).
@@ -274,9 +276,6 @@ public actor SessionRuntime {
     var runs: [UUID: RunRecord] = [:]
     var startingNew: Set<StartKey> = []
     var startingSessions: Set<UUID> = []
-    /// Sessions whose newest terminal profile replaced Ask (`terminalAskRule`): the spawn that follows records what runs
-    /// and says so (`launchClaude`).
-    var askReplacedInTerminal: Set<UUID> = []
     /// Runs Loom itself is stopping (user stop, undone launch): their exit is
     /// not a provider failure.
     var stopRequestedRuns: Set<UUID> = []
@@ -594,6 +593,13 @@ public actor SessionRuntime {
     public func clearLaunchEffort(sessionID: UUID) async {
         do { try await catalog.clearLaunchEffort(sessionID: sessionID) } catch {
             LoomLog.error(.catalog, "The recorded effort could not be cleared (\(LoomLog.category(of: error)))")
+        }
+    }
+
+    /// Puts the recorded model back to `model` (nil: none). See `SessionCatalog.setLaunchModel`.
+    public func restoreLaunchModel(_ model: String?, sessionID: UUID) async {
+        do { try await catalog.setLaunchModel(model, sessionID: sessionID) } catch {
+            LoomLog.error(.catalog, "The recorded model could not be restored (\(LoomLog.category(of: error)))")
         }
     }
 

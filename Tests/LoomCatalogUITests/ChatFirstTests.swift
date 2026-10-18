@@ -483,6 +483,98 @@ struct ChatFirstTests {
         #expect(item.isUnavailable && item.detail == "This session is already moving.")
         await fixture.cleanup()
     }
+
+    // MARK: Fix round 2
+
+    /// D4, Chat to Terminal: a `/clear` moves the run to a new card after the point of no return. The terminal resumes the card
+    /// the run is on now (the new conversation), not the one the move began on, and the old card gets no run.
+    @Test func aCardChangeAfterThePointOfNoReturnResumesTheNewCardInTheTerminal() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let gate = PointGate()
+        fixture.controller.handoverGate = { _, target in await gate.hold(target) }
+        let (id, driver) = try await chatSession(fixture)
+        model.continueIn(.terminal, sessionID: id)
+        #expect(await waitUntil { gate.reached == [.terminal] })
+        let run = try #require(await driver.snapshot().runID)
+        let card = try await fixture.rig.runtime.supervisor.adoptConversation(
+            runID: run, conversationID: UUID().uuidString.lowercased(), transition: .automatic)
+        #expect(card != id, "the run moved to a new card")
+        gate.release()
+        #expect(await waitUntil { model.handovers[id] == nil && model.busy[card] == nil })
+        #expect(await driver.sessionID == card)
+        #expect(await endpoint(fixture, card) == .terminal)
+        #expect(await waitUntil { await hub(fixture, card)?.runID != nil }, "the terminal runs the new card")
+        #expect(await hub(fixture, id)?.runID == nil, "the old card was not resumed")
+        #expect(!(await driver.isHandingOver), "the move is over: the driver is its own again")
+        await fixture.cleanup()
+    }
+
+    /// D4, Terminal to Chat: a `/clear` in the terminal moves its run to a new card while the move waits. The move ends (the
+    /// session was cleared, it is not the one the user chose to move): Chat resumes neither card, the terminal goes on.
+    @Test func aTerminalClearDuringTheMoveEndsItInsteadOfResumingTheOldConversation() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let gate = PointGate()
+        let id = try await terminalSession(fixture)
+        fixture.controller.handoverGate = { _, target in await gate.hold(target) }
+        model.continueIn(.chat, sessionID: id)
+        #expect(await waitUntil { gate.reached == [.chat] })
+        #expect(fixture.controller.typeForEvidence("/clear", intoSession: id))
+        #expect(await waitUntil { await hub(fixture, id)?.runID == nil }, "the terminal run moved to a new card")
+        gate.release()
+        #expect(await waitUntil { model.handovers[id] == nil })
+        #expect(model.infoMessage == HandoverRefusal.cleared.description, "\(model.infoMessage ?? "-") / \(model.errorMessage ?? "-")")
+        #expect(await endpoint(fixture, id) == .terminal, "no Chat run took the old conversation")
+        let drivers = model.chatSessions.map { host in model.rowModels.keys.filter { host.existingDriver(for: $0) != nil } } ?? []
+        for card in drivers { #expect(await model.chatSessions?.existingDriver(for: card)?.currentPhase == .stopped) }
+        await fixture.cleanup()
+    }
+
+    /// D5, end to end: a message sent while a turn runs is in the draft file; after Loom starts again (a new host and a new
+    /// driver on the same data, the old child never ended its run) a new composer holds it once.
+    @Test func aMessageSentMidTurnReachesTheComposerOfALaterLaunchOnce() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let (id, driver) = try await chatSession(fixture)
+        try await driver.send("/scenario work 6000")
+        #expect(await waitUntil { await driver.currentPhase == .working })
+        // The turn's own prompt has been read once its first tool call shows; what is sent now is unread.
+        #expect(await waitUntil { await driver.snapshot().model.entries.contains { if case .tool = $0.body { true } else { false } } })
+        try await driver.send("sent while working")
+        #expect(try model.chatSessions?.draftStore.load(sessionID: id)?.held.map(\.text) == ["sent while working"])
+
+        // Loom starts again: a new host, and a driver and composer made on the data the first left.
+        model.installChatSessions(runtime: fixture.rig.runtime, dataRoot: fixture.rig.root)
+        let host = try #require(model.chatSessions)
+        let fresh = host.driver(for: id)
+        let row = try #require(model.selectedRow)
+        let feed = try #require(model.liveChatFeed(for: fresh, card: id, conversationID: row.record.session.providerConversationID,
+                                                   workingDirectory: row.record.session.workingDirectory))
+        let composer = try #require(model.liveChatComposer(for: fresh, row: row, feed: feed))
+        composer.start()
+        await composer.refresh()
+        await composer.attachmentsRestored()
+        #expect(composer.text == "sent while working", "found once: \(composer.text)")
+        #expect(try host.draftStore.load(sessionID: id)?.held.isEmpty == true)
+        await fixture.cleanup()
+    }
+
+    /// D15: Terminal to Chat waits for a long terminal turn on the hub's events, not on a 50 ms timer.
+    @Test func aLongTerminalTurnIsWaitedForOnTheHubAndNotByPolling() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let id = try await terminalSession(fixture, settle: .milliseconds(600))
+        #expect(fixture.controller.typeForEvidence("/work 3000", intoSession: id))
+        #expect(await waitUntil { await hub(fixture, id)?.status?.activity == .working })
+        let before = fixture.controller.standingReads
+        model.continueIn(.chat, sessionID: id)
+        #expect(await waitUntil(30) { await endpoint(fixture, id) == .pipe && model.handovers[id] == nil })
+        let reads = fixture.controller.standingReads - before
+        print("BUDGET handover standing reads over a 3 s terminal turn: \(reads)")
+        #expect(reads < 25, "\(reads) looks over a 3 s turn: a 50 ms timer makes about 70")
+        await fixture.cleanup()
+    }
 }
 
 private extension TurnModel {

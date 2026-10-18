@@ -256,7 +256,7 @@ struct ChatDriverTests {
         #expect(await waitUntil { await driver.snapshot().requests.first?.kind == .plan })
         #expect(await driver.snapshot().permissionMode == "plan")
         var plan = try #require(await driver.snapshot().requests.first)
-        try await driver.keepPlanning(requestID: plan.requestID, feedback: "Add a rollback step.")
+        try await driver.answer(requestID: plan.requestID, .keepPlanning(feedback: "Add a rollback step."))
         #expect(await idle(driver))
         #expect(await driver.snapshot().texts.last == "Staying in plan mode.")
         #expect(await driver.snapshot().permissionMode == "plan")
@@ -265,7 +265,7 @@ struct ChatDriverTests {
         #expect(await waitUntil { await driver.snapshot().requests.first?.kind == .plan })
         plan = try #require(await driver.snapshot().requests.first)
         // The plan card got the plan from the request.
-        try await driver.approvePlan(requestID: plan.requestID, mode: "acceptEdits")
+        try await driver.answer(requestID: plan.requestID, .approvePlan(mode: "acceptEdits"))
         #expect(await idle(driver))
         let done = await driver.snapshot()
         #expect(done.texts.last == "Implementing the plan in acceptEdits mode.")
@@ -568,7 +568,8 @@ struct ChatDriverTests {
             firstMessage: "", choices: ClaudeLaunchChoices(permissionMode: "acceptEdits", model: "claude-fake-5-1")))
         try await driver.send("/scenario work 6000")
         #expect(await waitUntil { await driver.currentPhase == .working })
-        try await host.leaveChat(sessionID: id)
+        try await driver.stop()
+        await driver.noteFace(.continuedInTerminal)
         // The child's end of output is read on its own: wait for it.
         #expect(await waitUntil { await driver.currentPhase == .stopped })
         #expect(await driver.snapshot().markers.contains(.face(.continuedInTerminal)))
@@ -585,7 +586,8 @@ struct ChatDriverTests {
         // With a card waiting.
         try await driver.send("/scenario approval")
         #expect(await waitUntil { await driver.currentPhase == .needsYou })
-        try await host.leaveChat(sessionID: id)
+        try await driver.stop()
+        await driver.noteFace(.continuedInTerminal)
         #expect(await driver.snapshot().requests.isEmpty)
         #expect(await rig.supervisor.lastStopReport(sessionID: id)?.signals.isEmpty == true)
         let again = TestScreen()

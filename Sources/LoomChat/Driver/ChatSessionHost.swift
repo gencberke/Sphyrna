@@ -56,6 +56,10 @@ public final class ChatSessionHost {
         self.choicesChanged = choicesChanged
         self.contextWindow = contextWindow
         self.driversChanged = driversChanged
+        // A deletion the runtime finishes by itself (launch recovery has no UI model) removes the host's files too.
+        runtime.conversationForgetters.register { [weak self] id, _ in
+            await MainActor.run { self?.forget(sessionID: id) }
+        }
     }
 
     /// The session's driver, made when first asked for.
@@ -158,15 +162,6 @@ public final class ChatSessionHost {
         return driver
     }
 
-    /// Chat → Terminal: ends the Chat-face run in the verified order. The caller then resumes the terminal face with
-    /// the same choices (`SessionRuntime.resumeConversation(sessionID:…choices:)`).
-    public func leaveChat(sessionID: UUID) async throws {
-        guard let driver = drivers[sessionID] else { return }
-        let phase = await driver.currentPhase
-        if phase.isLive || phase == .starting { try await driver.stop() }
-        await driver.noteFace(.continuedInTerminal)
-    }
-
     /// Terminal → Chat: stops the terminal run if one lives (the runtime's verified stop), then resumes the session in
     /// the Chat face. `beforeResume` runs after the stop, right before the Chat run starts: false ends the move there
     /// (a Stop or a cancel came in meanwhile) with a `CancellationError`.
@@ -180,7 +175,7 @@ public final class ChatSessionHost {
         }
         if let beforeResume, !beforeResume() { throw CancellationError() }
         try await driver.resume()
-        await driver.noteFace(.backInChat)
+        await driver.returnedToChat()
         return driver
     }
 
@@ -236,10 +231,19 @@ final class ChatDriverRegistry: Sendable {
         set { state.withLock { $0[sessionID] = newValue } }
     }
 
-    func move(from: UUID, to: UUID) {
+    /// Re-keys the driver of `from` to `to`. A different driver already under `to` is never replaced silently: the move is
+    /// refused and logged (false), and both stay where they are. Returns whether the driver was re-keyed.
+    @discardableResult
+    func move(from: UUID, to: UUID) -> Bool {
         state.withLock { drivers in
-            guard let driver = drivers.removeValue(forKey: from) else { return }
+            guard let driver = drivers[from] else { return false }
+            if let existing = drivers[to], existing !== driver {
+                LoomLog.error(.lifecycle, "A Chat driver was not re-keyed to its run's new card: another driver already has it")
+                return false
+            }
+            drivers.removeValue(forKey: from)
             drivers[to] = driver
+            return true
         }
     }
 }

@@ -124,9 +124,16 @@ public actor ChatSessionDriver {
     private var undelivered: [String] = []
     /// Requests whose answer is on its way: one answer per request.
     private var answering: Set<String> = []
-    /// Rows of Loom's own messages whose payload (images, pasted texts) the driver still holds: the unread ones. A read
-    /// message drops its payload.
-    private(set) var heldPayloads: Set<String> = []
+    /// Rows of Loom's own messages whose payload (images, pasted texts) the driver still holds: the unread ones, in the
+    /// order they were written (which is their order in the model's entries). A read message drops its payload. The unread
+    /// rows come from here, so reading them costs the unread messages, not the stream (`unreadRows`).
+    private(set) var heldPayloads: [String] = []
+    /// Whether the stored choices (the catalog's launch row) have been read into `choices`. A driver made for a session
+    /// that has some shows them before any launch (`loadStoredChoices`).
+    private var choicesLoaded = false
+    /// Ask's layer is being put on again after a reset and no transition holds the mode chain yet: a message waits for it.
+    private var askLayerPending = false
+    private var askLayerWaiters: [CheckedContinuation<Void, Never>] = []
     /// The model the user chose live: the chip and the ring show it until a newer `system/init` names the model.
     private var liveModel: String?
     private var drift: [ChatDrift] = []
@@ -166,6 +173,10 @@ public actor ChatSessionDriver {
         var model: String?
         var effort: String?
         var effortCleared = false
+        /// What the child matched before the first model pick of the hold: the chosen model and the chip's live name.
+        var childModel: (choice: String?, live: String?)?
+        /// What the child matched before the first effort pick of the hold.
+        var childEffort: (choice: String?, cleared: Bool)?
     }
     /// The newest `assistant.error` category of the running turn: the category of an `api_error` result.
     private var lastErrorCategory: String?
@@ -233,6 +244,13 @@ public actor ChatSessionDriver {
         // Items still queued when Loom starts again wait for the user.
         if !queue.isEmpty, queue.paused == nil { queue.paused = .relaunch }
         self.queue = queue
+        // Messages a run of an earlier Loom wrote and never confirmed read (a crash, a force quit) come back as the draft.
+        if let draftStore {
+            do { try draftStore.recoverHeld(sessionID: sessionID) } catch {
+                LoomLog.error(.lifecycle, "Messages Claude may not have read could not be restored to the draft (\(LoomLog.category(of: error)))")
+            }
+        }
+        Task { [weak self] in await self?.loadStoredChoices() }
     }
 
     deinit {
@@ -275,7 +293,7 @@ public actor ChatSessionDriver {
             models: model.ready?.models ?? [], commands: model.ready?.commands ?? [],
             slashCommands: initialized?.slashCommands ?? [], skills: initialized?.skills ?? [],
             terminalOnlyCommands: initialized?.terminalSlashCommands ?? [], backgroundTaskCount: background.count,
-            unreadMessageIDs: model.pendingUserMessageIDs.filter { sent[$0] != nil },
+            unreadMessageIDs: unreadRows,
             hasReturnedDrafts: !returnedDrafts.isEmpty, hasWithdrawnDrafts: !withdrawnDrafts.isEmpty,
             contextTokens: model.contextUsage.map(\.contextTokens), contextWindow: window, contextModel: resolved
         )
@@ -358,6 +376,17 @@ public actor ChatSessionDriver {
         note(model.appendMarker(.face(face), at: clock()))
     }
 
+    /// The session is back in Chat after a stay in the terminal: the marker, and the queue's pause for the move is over (it
+    /// would otherwise read "since the session moved to the terminal" in a session that is back). The queue then goes on as
+    /// it does when any pause is lifted: the first item goes out now that nothing runs.
+    public func returnedToChat() async {
+        noteFace(.backInChat)
+        guard queue.paused == .handover else { return }
+        queue.paused = nil
+        saveQueue()
+        await releaseQueueReportingIssue()
+    }
+
     /// Drafts an interrupt gave back, handed over once: the composer takes them.
     public func takeReturnedDrafts() -> [ChatReturnedDraft] {
         defer { returnedDrafts.removeAll() }
@@ -370,6 +399,21 @@ public actor ChatSessionDriver {
         defer { withdrawnDrafts.removeAll() }
         if !withdrawnDrafts.isEmpty { changed() }
         return withdrawnDrafts
+    }
+
+    /// Reads the session's stored mode, model and effort, once, so a stopped session opened after Loom started again shows
+    /// them (the composer's bar) before any launch. A launch reads them again; a live change made first wins, since it
+    /// is merged into the catalog's row as well.
+    func loadStoredChoices() async {
+        guard !choicesLoaded else { return }
+        let stored = try? await runtime.catalog.launchChoices(sessionID: sessionID)
+        guard !choicesLoaded else { return }
+        choicesLoaded = true
+        guard let stored else { return }
+        let merged = stored.merging(choices)
+        guard merged != choices else { return }
+        choices = merged
+        changed()
     }
 
     // MARK: Start, resume, stop
@@ -491,7 +535,10 @@ public actor ChatSessionDriver {
         Task { for await _ in drain {} }
         run = current
         let runID = launched.runID
-        if let stored = try? await runtime.catalog.launchChoices(sessionID: sessionID) { choices = stored }
+        if let stored = try? await runtime.catalog.launchChoices(sessionID: sessionID) {
+            choices = stored
+            choicesLoaded = true
+        }
         try? await runtime.supervisor.registerStopHooks(runID: runID, hooks: ManagedRunStopHooks(
             prepare: {}, completed: {},
             leave: { [weak self] request in await self?.leave(request) },
@@ -569,22 +616,49 @@ public actor ChatSessionDriver {
     ///
     /// A session with no run here has nothing to let go of: it returns at once. A second call while one is under way
     /// is refused (`busy`), so two handovers never race.
+    ///
+    /// **The hold outlives this call.** When it returns, the session is still the move's until the caller says the other
+    /// face has it or the move failed (`finishHandover()`): between the two, a send is refused (`handingOver`) and the
+    /// queue stays, so the driver never starts a run the terminal is about to take. A call that throws releases the hold
+    /// itself: the run stays here, so what was picked meanwhile reaches it and the queue goes on (a Cancel after the turn
+    /// ended would otherwise leave "After this turn" items with nothing to release them).
     public func handOverToTerminal(pointOfNoReturn: (@Sendable () async -> Void)? = nil) async throws {
         switch phase {
-        case .stopped, .failed: return
         case .starting, .stopping: throw ChatDriverError.busy
-        case .ready, .working, .needsYou: break
+        case .stopped, .failed, .ready, .working, .needsYou: break
         }
         guard !handoverHold else { throw ChatDriverError.busy }
+        if !phase.isLive {
+            // Nothing runs here to let go of; the session is still the move's until it is finished.
+            handoverHold = true
+            handoverCommitted = true
+            return
+        }
         guard requests.isEmpty else { throw ChatDriverError.requestWaiting }
         guard background.count == 0 else { throw ChatDriverError.backgroundWork }
         heldPicks = HeldPicks()
         do { try await holdForTerminal(pointOfNoReturn: pointOfNoReturn) } catch {
-            // The run stays: what was picked meanwhile reaches it now.
+            // The run stays: what was picked meanwhile reaches it now, then the queue goes on.
             await replayHeldPicks()
+            await releaseQueueReportingIssue()
             throw error
         }
         heldPicks = HeldPicks()
+    }
+
+    /// The other face has the session, or the move failed or was stopped: the driver is its own again. A send that comes now
+    /// resumes the session (when the terminal has it, the runtime refuses a second run).
+    public func finishHandover() {
+        guard handoverHold else { return }
+        clearHandoverState()
+    }
+
+    private func clearHandoverState() {
+        handoverHold = false
+        handoverCancelled = false
+        handoverCleared = false
+        handoverCommitted = false
+        handoverStopping = false
     }
 
     private func holdForTerminal(pointOfNoReturn: (@Sendable () async -> Void)?) async throws {
@@ -592,20 +666,23 @@ public actor ChatSessionDriver {
         handoverCancelled = false
         handoverCleared = false
         handoverCommitted = false
+        var moved = false
         defer {
-            handoverHold = false
-            handoverCancelled = false
-            handoverCleared = false
-            handoverCommitted = false
-            handoverStopping = false
+            // A move that is under way keeps its hold (`finishHandover`); one that ended without a move releases it.
+            if !moved { clearHandoverState() } else { handoverStopping = false }
         }
         while turnRunning, !handoverCancelled, run != nil { await waitForTurnEnd(seconds: 1) }
         if handoverCancelled { throw handoverCleared ? ChatDriverError.clearedDuringHandover : CancellationError() }
         // The run ended on its own while the handover waited: there is nothing left to stop.
-        guard run != nil, phase.isLive else { return }
+        guard run != nil, phase.isLive else {
+            moved = true
+            handoverCommitted = true
+            return
+        }
         // Checked again: a request or a task that began while the turn ran is not ended by a move.
         // A mode change that was already on its way to the child is let finish (its answer or the timeout); anything picked
         // from now on is held, not sent.
+        await handoverParked?()
         await serialMode {}
         if handoverCancelled { throw handoverCleared ? ChatDriverError.clearedDuringHandover : CancellationError() }
         guard requests.isEmpty else { throw ChatDriverError.requestWaiting }
@@ -614,6 +691,8 @@ public actor ChatSessionDriver {
         await pointOfNoReturn?()
         handoverStopping = true
         try await stop()
+        // The run is gone: the session stays the move's until the caller finishes it. A stop that threw releases the hold.
+        moved = true
     }
 
     /// Ends the wait of a handover that has not reached its point of no return; the session goes on in the Chat face.
@@ -625,6 +704,11 @@ public actor ChatSessionDriver {
 
     /// A handover to the terminal waits or is stopping the run.
     public var isHandingOver: Bool { handoverHold }
+
+    /// Tests park a handover here, once its wait for the turn is over and before it decides (the turn's end and the queue's
+    /// release come while it stays parked: the order a slow mode change gives it).
+    var handoverParked: (@Sendable () async -> Void)?
+    func setHandoverParked(_ pause: (@Sendable () async -> Void)?) { handoverParked = pause }
 
     /// The run a mode, model or effort pick may tell: none while a handover holds the session (the child is going away).
     private var pickableRun: Run? { handoverHold || !phase.isLive ? nil : run }
@@ -651,12 +735,34 @@ public actor ChatSessionDriver {
         if let name = held.model {
             do { try await setModel(name) } catch {
                 journal?.record("chat.held_model_failed", ["error": .string(LoomLog.category(of: error))])
+                // The pick was recorded when it was made, and the child never took it: the choice, the chip and the catalog
+                // go back to what the child runs.
+                if let child = held.childModel {
+                    choices.model = child.choice
+                    liveModel = child.live
+                    await runtime.restoreLaunchModel(child.choice, sessionID: sessionID)
+                    await followRun()
+                    changed()
+                    onChoicesChanged(choices)
+                }
             }
         }
         do {
             if held.effortCleared { try await clearEffort() } else if let level = held.effort { try await setEffort(level) }
         } catch {
             journal?.record("chat.held_effort_failed", ["error": .string(LoomLog.category(of: error))])
+            if let child = held.childEffort {
+                choices.effort = child.choice
+                effortCleared = child.cleared
+                if let level = child.choice {
+                    await runtime.recordLaunchChoices(ClaudeLaunchChoices(effort: level), sessionID: sessionID)
+                } else {
+                    await runtime.clearLaunchEffort(sessionID: sessionID)
+                }
+                await followRun()
+                changed()
+                onChoicesChanged(choices)
+            }
         }
     }
 
@@ -668,7 +774,10 @@ public actor ChatSessionDriver {
     }
 
     /// Ask's rules, style and mode again (after a reset). Best effort: the layer is already there if the CLI kept it.
+    /// `askLayerPending` was set when the reset was read, so a message sent between that and the moment this takes the
+    /// mode chain still waits (`write`); it clears when the layer is on, or could not be.
     private func reapplyAskLayer() async {
+        defer { finishAskLayerPending() }
         await serialMode {
             guard isAsk, let current = run, phase.isLive else { return }
             try? await applyAskLayer(on: current.channel)
@@ -740,7 +849,7 @@ public actor ChatSessionDriver {
         try await ensureLive()
         let uuid = try await write(message, priority: .next)
         sent[messageID] = nil
-        heldPayloads.remove(messageID)
+        heldPayloads.removeAll { $0 == messageID }
         note(model.noteFollowUp(.sentAgain, forRow: messageID))
         changed()
         if let at = undelivered.firstIndex(of: message.rowText) { undelivered.remove(at: at) }
@@ -767,7 +876,7 @@ public actor ChatSessionDriver {
     @discardableResult
     public func readNow(messageID: String) async throws -> Bool {
         guard let current = run, let message = sent[messageID],
-              model.pendingUserMessageIDs.contains(messageID) else { throw ChatDriverError.notPending(messageID) }
+              unreadRows.contains(messageID) else { throw ChatDriverError.notPending(messageID) }
         let reply = try await current.channel.request(.cancelAsyncMessage(messageUUID: model.sentUUID(ofRow: messageID)))
         guard reply.wasCancelled != false else { return false }
         let uuid = UUID().uuidString.lowercased()
@@ -789,12 +898,25 @@ public actor ChatSessionDriver {
     /// would stay in memory for nothing. Only unread messages (Read now, Retry, a draft handed back) need theirs.
     private func releasePayloads() {
         guard !heldPayloads.isEmpty else { return }
+        var read: [String] = []
         for row in heldPayloads {
             // Cancelled ones wait for `keepForUser`, which hands them back to the user first.
             if model.delivery(ofRow: row) == .read {
                 sent[row] = ChatSentMessage(text: sent[row]?.text ?? "", attachments: [])
-                heldPayloads.remove(row)
+                read.append(row)
             }
+        }
+        guard !read.isEmpty else { return }
+        heldPayloads.removeAll { read.contains($0) }
+        releaseFromDraft(read)
+    }
+
+    /// Loom's own messages the CLI holds unread, in the order they were written: the rows `Read now` offers. They come from
+    /// the payloads kept, not from a walk over the model's entries (that costs the whole stream on every read).
+    private var unreadRows: [String] {
+        heldPayloads.filter {
+            let delivery = model.delivery(ofRow: $0)
+            return delivery == .pending || delivery == .queued
         }
     }
 
@@ -814,10 +936,16 @@ public actor ChatSessionDriver {
     }
 
     private func write(_ message: ChatSentMessage, priority: OutgoingUserMessage.Priority) async throws -> String {
+        // A message goes out after the mode transition that is under way, and after Ask's layer is back on following a reset:
+        // it is the first thing the CLI does with the new rules, never a turn that runs before them. (The transitions
+        // run in order; this joins the chain behind them.)
+        await settleModeTransitions()
         guard let current = run else { throw ChatDriverError.stopping }
         let uuid = UUID().uuidString.lowercased()
         sent[uuid] = message
-        heldPayloads.insert(uuid)
+        heldPayloads.append(uuid)
+        // On disk before it is written: a crash or a Quit while Claude has not read it leaves it in the draft.
+        holdInDraft(uuid, message)
         note(model.appendPendingUser(uuid: uuid, text: message.rowText, images: message.images, at: clock(),
                                      whileWorking: turnRunning, typedText: message.text))
         do {
@@ -825,12 +953,44 @@ public actor ChatSessionDriver {
                               on: current.channel)
         } catch {
             // The caller keeps the text (the composer puts it back, the queue keeps the item): the row offers no Retry.
+            heldPayloads.removeAll { $0 == uuid }
+            releaseFromDraft([uuid])
             note(model.noteFollowUp(.handedBack, forRow: uuid))
             changed()
             throw error
         }
         await beginTurn()
         return uuid
+    }
+
+    /// Waits until no mode transition runs and Ask's layer is not being put back (a send right after a mode pick, or a
+    /// queued message released right after a reset). Joins the transitions' chain, so it comes after every one asked before.
+    private func settleModeTransitions() async {
+        while askLayerPending { await withCheckedContinuation { askLayerWaiters.append($0) } }
+        if modeBusy { await serialMode {} }
+    }
+
+    private func finishAskLayerPending() {
+        askLayerPending = false
+        let waiters = askLayerWaiters
+        askLayerWaiters.removeAll()
+        for waiter in waiters { waiter.resume() }
+    }
+
+    // MARK: Unread messages in the draft file
+
+    private func holdInDraft(_ row: String, _ message: ChatSentMessage) {
+        guard let draftStore else { return }
+        do { try draftStore.hold(id: row, text: message.text, attachments: message.attachments, sessionID: sessionID) } catch {
+            LoomLog.error(.lifecycle, "A message sent could not be kept in the draft until Claude reads it (\(LoomLog.category(of: error)))")
+        }
+    }
+
+    private func releaseFromDraft(_ rows: [String]) {
+        guard let draftStore, !rows.isEmpty else { return }
+        do { try draftStore.release(ids: rows, sessionID: sessionID) } catch {
+            LoomLog.error(.lifecycle, "A message Claude read could not be taken out of the draft (\(LoomLog.category(of: error)))")
+        }
     }
 
     /// Queues a message on the channel. One that cannot go out shows "Not delivered" and the error says why.
@@ -869,7 +1029,7 @@ public actor ChatSessionDriver {
         keepForUser(cancelledDrafts)
         for draft in cancelledDrafts {
             sent[draft.messageID] = ChatSentMessage(text: draft.text, attachments: [])
-            heldPayloads.remove(draft.messageID)
+            heldPayloads.removeAll { $0 == draft.messageID }
         }
         changed()
     }
@@ -882,7 +1042,9 @@ public actor ChatSessionDriver {
         var kept = drafts
         if let draftStore {
             do {
-                try draftStore.prepend(texts: drafts.map(\.text), attachments: drafts.flatMap(\.attachments), sessionID: sessionID)
+                // They leave the draft's held list (written when they were sent) and come into its text, in front.
+                try draftStore.prepend(texts: drafts.map(\.text), attachments: drafts.flatMap(\.attachments), sessionID: sessionID,
+                                       settling: drafts.map(\.messageID))
                 let at = clock()
                 for index in kept.indices { kept[index].persistedAt = at }
             } catch {
@@ -929,7 +1091,7 @@ public actor ChatSessionDriver {
         await retire(requestID: requestID, as: .answered, summary: record?.summary ?? "Answered: \(request.subject)")
         await afterRequestsChanged()
         // Messages the CLI holds unread come back as drafts, as on an interrupt.
-        if stops, model.pendingUserMessageIDs.contains(where: { sent[$0] != nil }), let again = run {
+        if stops, !unreadRows.isEmpty, let again = run {
             await sendInterrupt(on: again.channel, timeout: 10)
         }
     }
@@ -972,31 +1134,6 @@ public actor ChatSessionDriver {
             model.noteMarkedMode(wire)
             await recordChoices(ClaudeLaunchChoices(permissionMode: mode))
         }
-    }
-
-    /// Approves a plan and leaves plan mode for `mode` (sent every time, also when it is the mode Claude would pick).
-    public func approvePlan(requestID: String, mode: String, record: RequestRecord? = nil) async throws {
-        try await serialMode {
-            guard let request = requests.first(where: { $0.requestID == requestID }) else {
-                throw ChatDriverError.noSuchRequest(requestID)
-            }
-            // In Ask the plan is approved in Ask, whatever mode the card asked for (see `answer`).
-            let chosen = isAsk ? ClaudePermissionMode.ask.rawValue : mode
-            let wire = ClaudePermissionMode(rawValue: chosen)?.cliValue ?? chosen
-            try await respond(to: requestID, with: .allow(
-                updatedInput: request.request.input,
-                updatedPermissions: [.setMode(PermissionMode(rawValue: wire))],
-                toolUseID: request.request.toolUseID
-            ), record: record)
-            permissionMode = wire
-            model.noteMarkedMode(wire)
-            await recordChoices(ClaudeLaunchChoices(permissionMode: chosen))
-        }
-    }
-
-    /// Keeps planning: the plan is denied with the user's feedback, and Claude plans on in the same turn.
-    public func keepPlanning(requestID: String, feedback: String, record: RequestRecord? = nil) async throws {
-        try await respond(to: requestID, with: .deny(message: feedback, interrupt: false), record: record)
     }
 
     /// A request leaves the list: on its own id only (the user's answer, the CLI withdrawing it) or its own `tool_use_id`
@@ -1189,6 +1326,7 @@ public actor ChatSessionDriver {
             // The chip and the ring show the chosen model until a newer `system/init` names the one that runs.
             liveModel = name
         } else if holdsPicks {
+            if heldPicks.childModel == nil { heldPicks.childModel = (choices.model, liveModel) }
             heldPicks.model = name
             liveModel = name
         }
@@ -1208,6 +1346,7 @@ public actor ChatSessionDriver {
         if let current = pickableRun {
             _ = try await current.channel.request(.applyFlagSettings(.effortLevel(level)))
         } else if holdsPicks {
+            if heldPicks.childEffort == nil { heldPicks.childEffort = (choices.effort, effortCleared) }
             heldPicks.effort = level
             heldPicks.effortCleared = false
         }
@@ -1220,10 +1359,12 @@ public actor ChatSessionDriver {
         if let current = pickableRun {
             _ = try await current.channel.request(.applyFlagSettings(.effortLevel(nil)))
         } else if holdsPicks {
+            if heldPicks.childEffort == nil { heldPicks.childEffort = (choices.effort, effortCleared) }
             heldPicks.effort = nil
             heldPicks.effortCleared = true
         }
         effortCleared = true
+        await loadStoredChoices()
         choices.effort = nil
         await runtime.clearLaunchEffort(sessionID: sessionID)
         await followRun()
@@ -1232,6 +1373,7 @@ public actor ChatSessionDriver {
     }
 
     private func recordChoices(_ newer: ClaudeLaunchChoices) async {
+        await loadStoredChoices()
         choices = choices.merging(newer)
         await followRun()
         await runtime.recordLaunchChoices(newer, sessionID: sessionID)
@@ -1420,7 +1562,10 @@ public actor ChatSessionDriver {
             resetTrigger = reset.trigger
             // What the CLI keeps of live settings across a reset (`/clear`, a compaction) is not measured: Ask's layer goes on
             // again, in the chain. A task of its own: this loop is what delivers the answers to its requests.
-            if isAsk { Task { await self.reapplyAskLayer() } }
+            if isAsk {
+                askLayerPending = true
+                Task { await self.reapplyAskLayer() }
+            }
         default:
             let unknownBefore = model.unknownRecordCount
             note(model.apply(message, at: now))
@@ -1502,7 +1647,7 @@ public actor ChatSessionDriver {
         // A `now` send cut the turn, or the CLI holds more turns: the next turn follows at once.
         let continues = !stoppedByLoom && (
             (result.queuedTurnCount ?? 0) > 0
-                || model.pendingUserMessageIDs.contains { sent[$0] != nil }
+                || !unreadRows.isEmpty
         )
         guard !continues else { return }
         turnRunning = false
@@ -1513,6 +1658,16 @@ public actor ChatSessionDriver {
         let category = result.terminalReason ?? result.subtype.rawValue
         await publish(failed ? .failed(category) : .turnComplete)
         if let runID = run?.runID { try? await runtime.supervisor.markProviderActivity(runID: runID, at: now) }
+        if modeBusy || askLayerPending {
+            // A message waits for a mode transition (`write`), and this loop delivers the answers that transition waits for:
+            // the release goes on in a task of its own.
+            Task { await self.releaseQueueReportingIssue() }
+        } else {
+            await releaseQueueReportingIssue()
+        }
+    }
+
+    private func releaseQueueReportingIssue() async {
         do {
             try await releaseQueue()
         } catch {
@@ -1541,7 +1696,8 @@ public actor ChatSessionDriver {
         }
         requests.removeAll()
         background.removeAll()
-        let unread = model.pendingUserMessageIDs.filter { sent[$0] != nil }
+        finishAskLayerPending()
+        let unread = unreadRows
         note(model.markNotDelivered(unread))
         // What the user sent and Claude never read is theirs still: on disk before anything else can fail.
         let unreadMessages = unread.compactMap { id in sent[id].map { (id, $0) } }
@@ -1629,6 +1785,12 @@ public actor ChatSessionDriver {
                 try queueStore.remove(sessionID: old)
             } catch {
                 queueIssue = .notSaved(LoomLog.category(of: error))
+            }
+        }
+        // The draft file goes with the run, held messages included: the driver writes and releases them under the new card.
+        if let draftStore {
+            do { try draftStore.move(from: old, to: card) } catch {
+                LoomLog.error(.lifecycle, "A draft could not follow its run to the new card (\(LoomLog.category(of: error)))")
             }
         }
         var fresh = TurnModel(source: .live)

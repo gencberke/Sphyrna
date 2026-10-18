@@ -85,6 +85,9 @@ struct ChatHandoverTests {
         #expect(snapshot.model.turns.last?.status == .succeeded)
         #expect(!snapshot.youStopped)
         #expect(snapshot.queue.items.map(\.text) == ["after this turn"] && snapshot.queue.paused == .handover)
+        // The hold outlives the stop until the caller has finished the move (`finishHandover`).
+        #expect(await driver.isHandingOver)
+        await driver.finishHandover()
         #expect(!(await driver.isHandingOver))
         await rig.finish()
     }
@@ -213,6 +216,7 @@ struct ChatHandoverTests {
         let snapshot = await driver.snapshot()
         #expect(snapshot.queue.items.map(\.text) == ["for later"])
         #expect(snapshot.queue.paused == .interrupted, "a Stop is not a move: \(String(describing: snapshot.queue.paused))")
+        await driver.finishHandover()
         #expect(!(await driver.isHandingOver))
         await rig.finish()
     }

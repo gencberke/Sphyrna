@@ -42,11 +42,9 @@ struct LaunchedSession: Equatable, Codable {
 }
 
 /// The whole file: `<data root>/new-session.json`. Drafts with text, what was last used per project, the
-/// presets, the start defaults of Loom's settings, and the modes and models of the sessions Loom started
-/// from a draft (the newest `maxLaunched`).
+/// presets, and the start defaults of Loom's settings. `lastUsed` and `launched` are what older builds kept per project and
+/// per session: nothing writes them now (the catalog records both), and they are read once for the copy into the catalog.
 struct NewSessionFile: Equatable, Codable {
-    static let maxLaunched = 300
-
     var drafts: [StoredDraft] = []
     /// Keyed by the project id (`SessionDraft.id(for:)`).
     var lastUsed: [String: ClaudeLaunchChoices] = [:]
@@ -132,7 +130,6 @@ final class NewSessionStore {
 
     func change(_ edit: (inout NewSessionFile) -> Void) {
         edit(&file)
-        file.launched = Array(file.launched.suffix(NewSessionFile.maxLaunched))
         scheduleSave()
     }
 

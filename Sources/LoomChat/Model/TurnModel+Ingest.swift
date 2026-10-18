@@ -367,7 +367,7 @@ extension TurnModel {
         }
     }
 
-    private static func bounded(_ image: ImageRef) -> ImageRef {
+    static func bounded(_ image: ImageRef) -> ImageRef {
         var copy = image
         if copy.byteCount > maximumImageBytes { copy.data = nil }
         return copy

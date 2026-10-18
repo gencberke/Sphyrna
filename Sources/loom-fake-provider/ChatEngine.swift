@@ -78,6 +78,9 @@ struct ChatConfig {
     var failAskRules: Bool
     /// LOOM_FAKE_CHAT_RESET_FORGETS_SETTINGS=1: a `conversation_reset` drops the live settings (the unmeasured worst case).
     var resetForgetsSettings: Bool
+    /// LOOM_FAKE_CHAT_FAIL_PICKS: a comma list of `model` and `effort`; a live change of one is refused (`set_model`, the
+    /// settings' `effortLevel`).
+    var failPicks: Set<String>
     /// LOOM_FAKE_CHAT_RESET_ORDER=init-first: a reset writes `system/init` before the SessionStart hook runs (the real CLI
     /// writes the reset, then the hook, then `system/init`; the hook reaches Loom by another road, so either order can arrive).
     var resetInitFirst: Bool
@@ -127,6 +130,7 @@ struct ChatConfig {
         failModes = Set((environment["LOOM_FAKE_CHAT_FAIL_MODE"] ?? "").split(separator: ",").map(String.init))
         failAskRules = environment["LOOM_FAKE_CHAT_FAIL_ASK_RULES"] == "1"
         resetForgetsSettings = environment["LOOM_FAKE_CHAT_RESET_FORGETS_SETTINGS"] == "1"
+        failPicks = Set((environment["LOOM_FAKE_CHAT_FAIL_PICKS"] ?? "").split(separator: ",").map(String.init))
         resetInitFirst = environment["LOOM_FAKE_CHAT_RESET_ORDER"] == "init-first"
         initDelayMs = environment["LOOM_FAKE_CHAT_INIT_DELAY_MS"].flatMap(Int.init) ?? 0
         controlDelayMs = environment["LOOM_FAKE_CHAT_CONTROL_DELAY_MS"].flatMap(Int.init) ?? 0
@@ -633,6 +637,10 @@ final class ChatEngine {
             if config.controlDelayMs > 0 { usleep(UInt32(config.controlDelayMs) * 1_000) }
             setPermissionMode(id: id, body: body)
         case "set_model":
+            if config.failPicks.contains("model") {
+                send(wire.controlError(id, "The model could not be changed", code: "fail_model"))
+                return
+            }
             wire.model = (body["model"] as? String).flatMap { $0 == "default" ? nil : $0 } ?? config.model
             send(wire.controlSuccess(id, [:]))
         case "apply_flag_settings":

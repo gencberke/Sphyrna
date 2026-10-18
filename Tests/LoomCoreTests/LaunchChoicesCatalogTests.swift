@@ -186,12 +186,23 @@ struct LaunchChoicesCatalogTests {
         // The notice and the record belong to the spawn that follows the newest profile: a stale mark does not survive a
         // profile that replaced nothing.
         let session = UUID()
-        _ = try await context.runtime.claudeProfile(route: .new(session), toolchain: toolchain, sessionID: session, hooks: hooks,
-                                                    choices: ClaudeLaunchChoices(permissionMode: "ask"), face: .terminal)
-        #expect(await context.runtime.askReplacedInTerminal.contains(session))
-        _ = try await context.runtime.claudeProfile(route: .new(session), toolchain: toolchain, sessionID: session, hooks: hooks,
-                                                    choices: ClaudeLaunchChoices(permissionMode: "acceptEdits"), face: .terminal)
-        #expect(!(await context.runtime.askReplacedInTerminal.contains(session)))
+        let replaced = try await context.runtime.claudeProfile(
+            route: .new(session), toolchain: toolchain, sessionID: session, hooks: hooks,
+            choices: ClaudeLaunchChoices(permissionMode: "ask"), face: .terminal)
+        #expect(replaced.replacedAsk)
+        // Building a profile records nothing on the runtime: the profile says it, and a later profile does not inherit it.
+        let kept = try await context.runtime.claudeProfile(
+            route: .new(session), toolchain: toolchain, sessionID: session, hooks: hooks,
+            choices: ClaudeLaunchChoices(permissionMode: "acceptEdits"), face: .terminal)
+        #expect(!kept.replacedAsk)
+        // The rule itself is a pure function of the choices: nothing is remembered between calls.
+        let asked = ClaudeLaunchChoices(permissionMode: "ask", model: "haiku")
+        #expect(SessionRuntime.terminalAskRule(asked) == (ClaudeLaunchChoices(permissionMode: "default", model: "haiku"), true))
+        #expect(SessionRuntime.terminalAskRule(asked) == (ClaudeLaunchChoices(permissionMode: "default", model: "haiku"), true))
+        #expect(SessionRuntime.terminalAskRule(ClaudeLaunchChoices(permissionMode: "acceptEdits")).replaced == false)
+        #expect(!(try await context.runtime.claudeProfile(
+            route: .new(session), toolchain: toolchain, sessionID: session, hooks: hooks,
+            choices: ClaudeLaunchChoices(permissionMode: "ask"), face: .chat)).replacedAsk)
         #expect((await context.runtime.shutdown()).succeeded)
     }
 

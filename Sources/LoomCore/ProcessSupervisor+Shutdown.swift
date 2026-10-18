@@ -3,6 +3,20 @@ import Darwin
 import Foundation
 import Synchronization
 
+/// The pause between looks at a condition that nothing announces: 1 ms first, so a wait that ends at once costs one
+/// millisecond, then doubling up to 25 ms, so one that lasts (a Chat stop can take seconds) costs a few hundred looks and not
+/// thousands.
+struct PollBackoff {
+    static let first = Duration.milliseconds(1)
+    static let longest = Duration.milliseconds(25)
+    private var current = Duration.zero
+
+    mutating func next() -> Duration {
+        current = current == .zero ? Self.first : min(current * 2, Self.longest)
+        return current
+    }
+}
+
 extension ProcessSupervisor {
     /// Applies one app-wide signal schedule, then records completion separately
     /// for every run. The ownership sweep also catches escaped marked processes.
@@ -12,8 +26,9 @@ extension ProcessSupervisor {
     ) async -> ShutdownReport {
         if shutdownInProgress {
             let deadline = ProcessInfo.processInfo.systemUptime + max(0.02, pendingOperationGraceSeconds)
+            var backoff = PollBackoff()
             while shutdownInProgress, ProcessInfo.processInfo.systemUptime < deadline {
-                try? await Task.sleep(for: .milliseconds(1))
+                try? await Task.sleep(for: backoff.next())
             }
             if !shutdownInProgress, let lastShutdownReport { return lastShutdownReport }
             return ShutdownReport(remainingCountVerified: false,
@@ -46,12 +61,13 @@ extension ProcessSupervisor {
         // A pipe run's Stop takes longer by design (its owner's leave, then the input-close grace, then the
         // signals): Quit right after a Chat Stop waits for that stop to finish rather than failing.
         let pipeStopDeadline = pendingDeadline + 2 * inputCloseGraceSeconds + 4 * graceSeconds + 1
+        var backoff = PollBackoff()
         while (!reservedSessions.isEmpty || !environmentJobs.isEmpty || !transitioningRuns.isEmpty || !stoppingRuns.isEmpty) {
             let onlyPipeStops = reservedSessions.isEmpty && environmentJobs.isEmpty && transitioningRuns.isEmpty
                 // A run already released is finishing its stop.
                 && stoppingRuns.allSatisfy { runtimes[$0]?.endpoint.isPipe ?? true }
             if ProcessInfo.processInfo.systemUptime >= (onlyPipeStops ? pipeStopDeadline : pendingDeadline) { break }
-            try? await Task.sleep(for: .milliseconds(1))
+            try? await Task.sleep(for: backoff.next())
         }
         if !reservedSessions.isEmpty || !environmentJobs.isEmpty {
             errors.append(

@@ -172,12 +172,17 @@ extension ChatComposerModel {
         return at <= restoredAt
     }
 
-    /// The run moved to another card (`/clear`): the draft goes with it.
+    /// The run moved to another card (`/clear`): the draft goes with it. The driver already moved the draft file with the
+    /// run (its held messages are in it); what this composer holds is saved under the new card, which keeps them, and a file
+    /// the composer's own timer wrote under the old card meanwhile goes.
     func moveDraft(to newCard: UUID) {
         guard newCard != card else { return }
-        flushDraft()
-        try? drafts?.move(from: card, to: newCard)
+        let old = card
         card = newCard
+        // Saved again even when it equals the last save: that one was under the old card.
+        lastSavedDraft = nil
+        flushDraft()
+        try? drafts?.forget(sessionID: old, keepingUnreadable: true)
     }
 
     /// Messages an interrupt (or a Stop) gave back come into the composer (CHAT-SPEC → Queue → Pause): in front of what is

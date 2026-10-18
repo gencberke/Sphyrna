@@ -91,6 +91,17 @@ public struct ClaudeLaunchChoices: Equatable, Sendable, Codable {
                             effort: newer.effort ?? effort)
     }
 
+    /// What a project remembers for its next session after these choices were recorded on top of what it remembered:
+    /// each choice that is set replaces the old one, except Full access, which is never remembered (Loom never picks it by
+    /// itself), so the project keeps the mode it had.
+    public func remembered(over previous: ClaudeLaunchChoices?) -> ClaudeLaunchChoices {
+        var last = previous ?? ClaudeLaunchChoices()
+        if let mode = permissionMode, mode != ClaudePermissionMode.fullAccess.rawValue { last.permissionMode = mode }
+        if let model { last.model = model }
+        if let effort { last.effort = effort }
+        return last
+    }
+
     /// A value is passed to the CLI only when it cannot be taken for an option or hide a second argument:
     /// letters, digits and `. _ - : [ ]`, not starting with a dash, at most 80 characters.
     public static func isSafeToken(_ value: String) -> Bool {

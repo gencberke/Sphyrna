@@ -94,11 +94,15 @@ public struct ProviderLaunchProfile: Sendable {
     public let environment: [String: String]
     /// Goes after every option, including the toolchain's extra ones: Claude's first prompt.
     public let trailingArguments: [String]
+    /// The choices said Ask and this terminal profile runs Ask before edits instead (`SessionRuntime.terminalAskRule`). Building
+    /// the profile records nothing; the spawn that uses it (`launchClaude`) records what runs and says so.
+    public let replacedAsk: Bool
 
-    public init(arguments: [String], environment: [String: String], trailingArguments: [String] = []) {
+    public init(arguments: [String], environment: [String: String], trailingArguments: [String] = [], replacedAsk: Bool = false) {
         self.arguments = arguments
         self.environment = environment
         self.trailingArguments = trailingArguments
+        self.replacedAsk = replacedAsk
     }
 
     /// The whole command line in launch order: route and settings, the toolchain's extras, then the

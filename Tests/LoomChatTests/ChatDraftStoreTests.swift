@@ -112,3 +112,113 @@ struct ChatDraftStoreTests {
         #expect(try store.load(sessionID: id) == nil)
     }
 }
+
+// MARK: Fix round 2: messages held unread, and one lock for every operation on a draft
+
+extension ChatDraftStoreTests {
+    private func makeStore() throws -> (ChatDraftStore, URL) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-drafts-\(UUID())", isDirectory: true)
+        return (ChatDraftStore(directory: root.appendingPathComponent("chat-drafts", isDirectory: true)), root)
+    }
+
+    /// D5: the composer's save and the driver's held messages share one file and never drop each other's part.
+    @Test func aHeldMessageSurvivesTheComposersSavesAndLeavesWhenReleased() throws {
+        let (store, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let id = UUID()
+        try store.hold(id: "row-1", text: "sent while working", attachments: [.pastedText("long paste")], sessionID: id)
+        #expect(try store.load(sessionID: id)?.held.map(\.text) == ["sent while working"])
+        // The composer saves its own text: the held message stays; an empty composer does not delete the file.
+        try store.save(ChatDraft(text: "typed since"), sessionID: id)
+        var draft = try #require(try store.load(sessionID: id))
+        #expect(draft.text == "typed since" && draft.held.map(\.id) == ["row-1"])
+        try store.save(ChatDraft(), sessionID: id)
+        draft = try #require(try store.load(sessionID: id))
+        #expect(draft.text.isEmpty && draft.held.count == 1)
+        let file = try #require(draft.held.first?.attachments.first)
+        #expect(store.attachmentData(id: file.id, sessionID: id) == Data("long paste".utf8), "a save keeps the held message's file")
+        // Claude read it: the file goes with the last thing in it.
+        try store.release(ids: ["row-1"], sessionID: id)
+        #expect(try store.load(sessionID: id) == nil)
+        #expect(!FileManager.default.fileExists(atPath: store.folder(for: id).path))
+    }
+
+    /// D5: held messages settle into the text in front of what was typed (a run that ended), or after a crash (`recoverHeld`).
+    @Test func heldMessagesSettleIntoTheTextOnAnEndOrACrash() throws {
+        let (store, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let id = UUID()
+        try store.hold(id: "a", text: "first", attachments: [], sessionID: id)
+        try store.hold(id: "b", text: "second", attachments: [.pastedText("p")], sessionID: id)
+        try store.save(ChatDraft(text: "typed"), sessionID: id)
+        // The run ended with "a" unread: it comes back as text; "b" stays held.
+        try store.prepend(texts: ["first"], attachments: [], sessionID: id, settling: ["a"])
+        var draft = try #require(try store.load(sessionID: id))
+        #expect(draft.text == "first\n\ntyped" && draft.held.map(\.id) == ["b"])
+        // A crash: what is still held becomes text, in front, once.
+        #expect(try store.recoverHeld(sessionID: id))
+        draft = try #require(try store.load(sessionID: id))
+        #expect(draft.text == "second\n\nfirst\n\ntyped" && draft.held.isEmpty && draft.attachments.count == 1)
+        #expect(try store.recoverHeld(sessionID: id) == false, "nothing is recovered twice")
+        #expect(try store.load(sessionID: id)?.text == "second\n\nfirst\n\ntyped")
+        // A file from before this change (no held list) still reads.
+        let old = #"{"text":"old","attachments":[],"updatedAt":"2026-10-01T00:00:00Z"}"#
+        try Data(old.utf8).write(to: store.url(for: id))
+        #expect(try store.load(sessionID: id)?.text == "old" && store.load(sessionID: id)?.held.isEmpty == true)
+    }
+
+    /// D5: concurrent writers keep each other's text: many holds and many prepends from several threads while the composer saves.
+    @Test func concurrentWritersKeepBothTexts() async throws {
+        let (store, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let id = UUID()
+        let count = 60
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for index in 0..<count { try? store.hold(id: "row-\(index)", text: "held \(index)", attachments: [], sessionID: id) }
+            }
+            group.addTask {
+                for index in 0..<count { try? store.prepend(texts: ["returned \(index)"], attachments: [], sessionID: id) }
+            }
+            group.addTask {
+                // The composer saves a text that holds what it has taken; it never writes the other two's parts.
+                for _ in 0..<count { try? store.save(ChatDraft(text: "composer"), sessionID: id) }
+            }
+        }
+        let draft = try #require(try store.load(sessionID: id))
+        #expect(draft.held.count == count, "no held message was lost: \(draft.held.count)")
+        #expect(draft.held.map(\.id).sorted() == (0..<count).map { "row-\($0)" }.sorted())
+        // Prepends and saves race on the text: the composer's saves replace it, but a prepend made after the last save stays,
+        // and the file is always whole (a draft that reads).
+        #expect(!draft.text.isEmpty)
+    }
+
+    /// D5: the same race on `prepend` alone loses nothing: each one reads and writes under the lock.
+    @Test func concurrentPrependsAllLand() async throws {
+        let (store, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let id = UUID()
+        let count = 80
+        await withTaskGroup(of: Void.self) { group in
+            for index in 0..<count {
+                group.addTask { try? store.prepend(texts: ["message \(index)"], attachments: [], sessionID: id) }
+            }
+        }
+        let pieces = Set(try #require(try store.load(sessionID: id)).text.components(separatedBy: "\n\n"))
+        #expect(pieces == Set((0..<count).map { "message \($0)" }), "\(pieces.count) of \(count) landed")
+    }
+
+    /// A move that finds a draft already under the new card keeps the held messages of both, and the moved text.
+    @Test func aMoveOntoAnExistingDraftMergesTheHeldMessages() throws {
+        let (store, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let (old, new) = (UUID(), UUID())
+        try store.hold(id: "a", text: "held on old", attachments: [], sessionID: old)
+        try store.save(ChatDraft(text: "composer text"), sessionID: old)
+        try store.hold(id: "b", text: "held on new", attachments: [], sessionID: new)
+        try store.move(from: old, to: new)
+        let moved = try #require(try store.load(sessionID: new))
+        #expect(moved.text == "composer text" && Set(moved.held.map(\.id)) == ["a", "b"])
+        #expect(try store.load(sessionID: old) == nil)
+    }
+}

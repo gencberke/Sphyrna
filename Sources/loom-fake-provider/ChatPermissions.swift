@@ -120,6 +120,10 @@ extension ChatEngine {
             send(wire.controlError(id, "The settings could not be applied", code: "fail_settings"))
             return
         }
+        if config.failPicks.contains("effort"), settings["effortLevel"] != nil {
+            send(wire.controlError(id, "The effort could not be changed", code: "fail_effort"))
+            return
+        }
         if let model = settings["model"] as? String { wire.model = model }
         if let effort = settings["effortLevel"] as? String { config.effort = effort }
         if settings["effortLevel"] is NSNull { config.effort = nil }

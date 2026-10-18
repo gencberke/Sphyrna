@@ -124,7 +124,7 @@ struct RealClaudeAcceptanceTests {
             let plan = try #require(await rig.waitRequest(driver, 120))
             rig.log("plan request: kind \(plan.kind), tool \(plan.request.toolName), input keys \(Self.keys(plan.request.input))")
             #expect(plan.kind == .plan)
-            try await driver.approvePlan(requestID: plan.requestID, mode: "acceptEdits")
+            try await driver.answer(requestID: plan.requestID, .approvePlan(mode: "acceptEdits"))
             #expect(await rig.waitIdle(driver, 120))
             snapshot = await driver.snapshot()
             rig.log("after the approval: mode \(snapshot.permissionMode ?? "-"), choices mode \(snapshot.choices.permissionMode ?? "-"), plan-made.txt exists \(await rig.exists("plan-made.txt")), requests \(snapshot.requests.count), tools \(Self.toolStatuses(snapshot))")
