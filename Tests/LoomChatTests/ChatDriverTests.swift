@@ -16,12 +16,12 @@ private enum DriverFixture {
 }
 
 /// What the driver's callbacks reported.
-private final class Reports: Sendable {
+final class Reports: Sendable {
     let windows = Mutex<[String: Int]>([:])
     let choices = Mutex<[ClaudeLaunchChoices]>([])
 }
 
-private struct Rig {
+struct Rig {
     let root: URL
     let home: URL
     let profile: URL
@@ -83,11 +83,11 @@ private struct Rig {
                    supervisor: supervisor, runtime: runtime)
     }
 
-    func driver(_ sessionID: UUID = UUID(), queue: ChatQueueStore? = nil,
+    func driver(_ sessionID: UUID = UUID(), queue: ChatQueueStore? = nil, drafts: ChatDraftStore? = nil,
                 readyTimeout: Duration = .seconds(20)) -> ChatSessionDriver {
         let reports = reports
         return ChatSessionDriver(
-            sessionID: sessionID, runtime: runtime, queueStore: queue, readyTimeout: readyTimeout,
+            sessionID: sessionID, runtime: runtime, queueStore: queue, draftStore: drafts, readyTimeout: readyTimeout,
             onChoicesChanged: { value in reports.choices.withLock { $0.append(value) } },
             onContextWindow: { model, window in reports.windows.withLock { $0[model] = window } }
         )
@@ -110,7 +110,7 @@ private struct Rig {
     }
 }
 
-private func waitUntil(_ seconds: Double = 10, _ condition: () async -> Bool) async -> Bool {
+func waitUntil(_ seconds: Double = 10, _ condition: () async -> Bool) async -> Bool {
     let deadline = ProcessInfo.processInfo.systemUptime + seconds
     repeat {
         if await condition() { return true }
@@ -119,7 +119,7 @@ private func waitUntil(_ seconds: Double = 10, _ condition: () async -> Bool) as
     return false
 }
 
-private extension ChatDriverSnapshot {
+extension ChatDriverSnapshot {
     var texts: [String] {
         model.entries.compactMap { if case let .assistantText(text) = $0.body { text.text } else { nil } }
     }
@@ -138,7 +138,7 @@ private extension ChatDriverSnapshot {
     var isIdle: Bool { phase == .ready && !turnRunning }
 }
 
-private extension ChatSendReceipt {
+extension ChatSendReceipt {
     var id: String {
         switch self {
         case let .sent(id), let .queued(id): id
@@ -146,7 +146,7 @@ private extension ChatSendReceipt {
     }
 }
 
-private func idle(_ driver: ChatSessionDriver, _ seconds: Double = 10) async -> Bool {
+func idle(_ driver: ChatSessionDriver, _ seconds: Double = 10) async -> Bool {
     await waitUntil(seconds) { await driver.snapshot().isIdle }
 }
 
@@ -192,7 +192,7 @@ struct ChatDriverTests {
         let id = UUID()
         let driver = rig.driver(id)
         try await driver.startNew(projectID: nil)
-        for mode in ["default", "acceptEdits", "dontAsk"] {
+        for mode in ["default", "acceptEdits", "bypassPermissions", "dontAsk"] {
             try await driver.setPermissionMode(mode)
             #expect(await driver.snapshot().permissionMode == mode)
             try await driver.send("/scenario approval")
@@ -978,4 +978,24 @@ extension ChatDriverTests {
 
 private final class MoveCount: Sendable {
     let value = Mutex(0)
+}
+
+// MARK: The composer's chips (V17)
+
+extension ChatDriverTests {
+    /// The bar's mode, model and effort chips change the live run; one after the other, each keeps its own choice.
+    @Test func theChipsChangeTheRunOneAfterTheOther() async throws {
+        let rig = try await Rig.make()
+        let driver = rig.driver(UUID())
+        try await driver.startNew(projectID: nil)
+        try await driver.setEffort("high")
+        try await driver.setPermissionMode("acceptEdits")
+        #expect(await driver.composerState().permissionMode == "acceptEdits")
+        try await driver.setPermissionMode("plan")
+        try await driver.setEffort("low")
+        let state = await driver.composerState()
+        #expect(state.permissionMode == "plan")
+        #expect(state.choices.effort == "low")
+        await rig.finish()
+    }
 }

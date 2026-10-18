@@ -298,6 +298,8 @@ final class ChatEngine {
     var sentTexts: [String: String] = [:]
     var responses: [String: ChatObject] = [:]
     var pendingIDs: [String] = []
+    /// The next `finishTurn` leaves the waiting requests alone (the `orphan` scenario).
+    var keepPendingAtEnd = false
     var requestCounter = 0
     var toolCounter = 0
 
@@ -759,9 +761,14 @@ final class ChatEngine {
     }
 
     func finishTurn(_ end: TurnEnd?) {
-        for id in pendingIDs { send(wire.controlCancel(id)) }
-        pendingIDs = []
-        responses = [:]
+        // `orphan` leaves its request waiting across the turn's `result`, which the CLI never does: a host must not
+        // retire a card on a result (V18).
+        if !keepPendingAtEnd {
+            for id in pendingIDs { send(wire.controlCancel(id)) }
+            pendingIDs = []
+            responses = [:]
+        }
+        keepPendingAtEnd = false
         let millis = Int(Date().timeIntervalSince(turnStarted) * 1_000)
         cost += 0.0123
         let terminal = interruptedInTool ? "aborted_tools" : "aborted_streaming"

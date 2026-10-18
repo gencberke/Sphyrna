@@ -1,5 +1,6 @@
 import AppKit
 import LoomCatalogUI
+import LoomCore
 
 /// Needs-approval banners (D-49, D-52). It hears the set of sessions at Needs approval whenever the menu
 /// bar summary changes, asks `ApprovalNotificationPlanner` what to post and what to take back, and
@@ -34,7 +35,8 @@ final class ApprovalNotifier {
         approvals = current
         for id in plan.post {
             guard let session = model.titleAndProject(of: id) else { continue }
-            service.post(id: id, title: session.title, body: ApprovalNotificationPlanner.body(project: session.project))
+            service.post(id: id, title: session.title, body: ApprovalNotificationPlanner.body(
+                project: session.project, kind: model.firstWaitingRequestKind(of: id)))
         }
         if !plan.remove.isEmpty { service.remove(ids: plan.remove) }
     }

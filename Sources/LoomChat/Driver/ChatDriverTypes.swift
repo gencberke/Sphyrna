@@ -38,10 +38,47 @@ public enum ChatFailure: Sendable, Equatable {
 }
 
 /// When a message goes out. CHAT-SPEC → Keys: ↵ is `next` (read after the running tool; cancels nothing), ⌘↵ waits in
-/// Loom's own queue for the turn's end. `now` is only "Read now" (`readNow`).
+/// Loom's own queue for the turn's end. `now` is "Read now" (`readNow`), never a send of its own.
 public enum ChatSendTiming: Sendable, Equatable {
     case next
     case afterTurn
+}
+
+/// Something that goes out with a message besides its text (CHAT-SPEC → Attachments). Images are image blocks; a large
+/// paste is a text block of its own, in the same message. A file is an `@path` in the text, not an attachment.
+public enum ChatOutgoingAttachment: Sendable, Equatable {
+    case image(mediaType: String, base64: String)
+    case pastedText(String)
+}
+
+/// What Loom wrote to the CLI as one message: its text, then its attachments' text blocks, and its images.
+struct ChatSentMessage: Sendable, Equatable {
+    var text: String
+    var attachments: [ChatOutgoingAttachment]
+
+    /// Text first, then each pasted text, then the images (a model reads images before the words about them, but the
+    /// CLI keeps the order as sent; the row shows them above the text anyway).
+    var blocks: [OutgoingUserMessage.Block] {
+        var blocks: [OutgoingUserMessage.Block] = []
+        for case let .image(mediaType, base64) in attachments { blocks.append(.image(mediaType: mediaType, base64: base64)) }
+        if !text.isEmpty { blocks.append(.text(text)) }
+        for case let .pastedText(pasted) in attachments where !pasted.isEmpty { blocks.append(.text(pasted)) }
+        return blocks
+    }
+
+    /// What the row of the message reads: the typed text, then the pasted ones (the echo joins the text blocks).
+    var rowText: String {
+        ([text] + attachments.compactMap { if case let .pastedText(pasted) = $0 { pasted } else { nil } })
+            .filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
+
+    var images: [ImageRef] {
+        attachments.compactMap {
+            if case let .image(mediaType, base64) = $0 {
+                ImageRef(mediaType: mediaType, byteCount: base64.utf8.count, data: base64)
+            } else { nil }
+        }
+    }
 }
 
 public enum ChatSendReceipt: Sendable, Equatable {
@@ -55,6 +92,18 @@ public enum ChatSendReceipt: Sendable, Equatable {
 public struct ChatReturnedDraft: Sendable, Equatable {
     public var messageID: String
     public var text: String
+    /// Its images and pasted text come back with it.
+    public var attachments: [ChatOutgoingAttachment] = []
+    /// When the driver wrote it into the session's draft file (nil: not written). A composer made after that moment
+    /// restored it from the file already and must not take it again.
+    public var persistedAt: Date?
+
+    public init(messageID: String, text: String, attachments: [ChatOutgoingAttachment] = [], persistedAt: Date? = nil) {
+        self.messageID = messageID
+        self.text = text
+        self.attachments = attachments
+        self.persistedAt = persistedAt
+    }
 }
 
 /// A `can_use_tool` request that waits for the user. The driver never answers one by itself, in any mode (CHAT-SPEC →
@@ -65,6 +114,15 @@ public struct ChatPendingRequest: Sendable, Equatable, Identifiable {
     public let requestID: String
     public let request: ToolPermissionRequest
     public let arrivedAt: Date
+    /// The subagent that asked, when `agent_id` names one (joined with its `task_started` when the request arrived).
+    public let agent: ChatRequestAgent?
+
+    public init(requestID: String, request: ToolPermissionRequest, arrivedAt: Date, agent: ChatRequestAgent? = nil) {
+        self.requestID = requestID
+        self.request = request
+        self.arrivedAt = arrivedAt
+        self.agent = agent
+    }
 
     public var kind: Kind {
         switch request.toolName {
@@ -80,24 +138,27 @@ public struct ChatPendingRequest: Sendable, Equatable, Identifiable {
         case plan
     }
 
-    /// The provider-independent summary the event hub carries (`ProviderPendingRequest`).
+    /// The provider-independent summary the event hub carries (`ProviderPendingRequest`): what Home, the sidebar's reason
+    /// line and the notifications word a request from.
     public var summary: ProviderPendingRequest {
         let kind: ProviderPendingRequest.Kind
         let text: String
+        var note: String?
         switch self.kind {
         case .approval:
             kind = .approval
-            text = request.title ?? request.displayName ?? request.description ?? request.toolName
+            text = detail ?? request.toolName
+            note = request.description
         case .question:
             kind = .question
             let first = request.input["questions"]?.array?.first
-            text = first?["header"]?.string ?? first?["question"]?.string ?? "Question"
+            text = first?["header"]?.string ?? first?["question"]?.string ?? ""
         case .plan:
             kind = .plan
             text = "Plan ready"
         }
         return ProviderPendingRequest(requestID: requestID, toolUseID: request.toolUseID, kind: kind,
-                                      toolName: request.toolName, summary: text, arrivedAt: arrivedAt)
+                                      toolName: request.toolName, summary: text, note: note, arrivedAt: arrivedAt)
     }
 }
 
@@ -153,10 +214,17 @@ public struct ChatLiveState: Sendable, Equatable {
     public var policySignal: ChatPolicySignal?
     /// Where the newest run began in the live model: what came before it is in the transcript too.
     public var runStart: LiveHistoryJoin.RunStart
+    /// The requests that wait for the user, in order of arrival: the pinned cards.
+    public var requests: [ChatPendingRequest]
+    /// The newest requests that left (answered, cancelled, resolved, or cut off by the process ending).
+    public var settled: [ChatSettledRequest]
+    /// The texts of Loom's own messages that never reached the CLI ("Not delivered"): the ended view offers them.
+    public var undelivered: [String]
 
     public init(sessionID: UUID, conversationID: String? = nil, phase: ChatDriverPhase = .stopped, turnRunning: Bool = false,
                 lastActivity: Date? = nil, drift: [ChatDrift] = [], policySignal: ChatPolicySignal? = nil,
-                runStart: LiveHistoryJoin.RunStart = LiveHistoryJoin.RunStart()) {
+                runStart: LiveHistoryJoin.RunStart = LiveHistoryJoin.RunStart(), requests: [ChatPendingRequest] = [],
+                settled: [ChatSettledRequest] = [], undelivered: [String] = []) {
         self.sessionID = sessionID
         self.conversationID = conversationID
         self.phase = phase
@@ -165,6 +233,9 @@ public struct ChatLiveState: Sendable, Equatable {
         self.drift = drift
         self.policySignal = policySignal
         self.runStart = runStart
+        self.requests = requests
+        self.settled = settled
+        self.undelivered = undelivered
     }
 }
 
@@ -175,6 +246,19 @@ public protocol ChatLiveSource: AnyObject, Sendable {
     func snapshotChange() async -> ModelChange
     func liveState() async -> ChatLiveState
     func updates() async -> AsyncStream<Void>
+    /// A card's answer. Only a user action calls this.
+    func answer(requestID: String, _ answer: ChatRequestAnswer) async throws
+    /// Resumes the stopped session ("Claude stopped before you answered" offers it).
+    func resume() async throws
+}
+
+extension ChatLiveSource {
+    /// A source that answers nothing (a scripted stream in a test): every request is gone as far as it can tell.
+    public func answer(requestID: String, _ answer: ChatRequestAnswer) async throws {
+        throw ChatDriverError.noSuchRequest(requestID)
+    }
+
+    public func resume() async throws {}
 }
 
 extension ChatSessionDriver: ChatLiveSource {}
@@ -194,6 +278,8 @@ public struct ChatDriverSnapshot: Sendable {
     /// The session's mode, model and effort as Loom passes them on the next spawn.
     public var choices: ClaudeLaunchChoices
     public var requests: [ChatPendingRequest]
+    /// The newest requests that left the list, and how (`ChatSessionDriver.settledLimit` of them).
+    public var settled: [ChatSettledRequest]
     public var queue: ChatQueue
     /// Why the queue is not as it should be. Shown where the queue is; cleared by the next change that works.
     public var queueIssue: ChatQueueIssue?
@@ -219,4 +305,57 @@ public enum ChatQueueIssue: Sendable, Equatable {
     case unreadable(keptAs: String?)
     /// The next item could not be sent (the error's category); it is back at the head of the queue.
     case notSent(String)
+}
+
+/// What the composer reads from a driver (V17): the small part of the snapshot it draws, without the model (copying the
+/// model out would make the driver copy its buffers on the next change). `Equatable`, so a view redraws only when
+/// something it shows changed.
+public struct ChatComposerState: Sendable, Equatable {
+    /// The card the driver's run is on now: a `/clear` moves it to a new one.
+    public var sessionID: UUID
+    public var phase: ChatDriverPhase
+    /// A turn runs (also while a request waits).
+    public var turnRunning: Bool
+    /// How many requests (cards) wait for the user. Esc never interrupts while one does.
+    public var requestCount: Int
+    public var queue: ChatQueue
+    public var queueIssue: ChatQueueIssue?
+    /// The session's mode, model and effort as Loom passes them on the next spawn.
+    public var choices: ClaudeLaunchChoices
+    /// The mode the CLI runs in now (`initialize`, `system/init`, `system/status`).
+    public var permissionMode: String?
+    /// The model the CLI named in its newest `system/init`, once there is one (a turn has begun).
+    public var resolvedModel: String?
+    /// The effort `system/init` reported.
+    public var reportedEffort: String?
+    /// The `initialize` answer's model menu (alias, resolved name, display name, supported effort levels).
+    public var models: [ModelOption]
+    /// The commands the CLI listed in its `initialize` answer, with their descriptions.
+    public var commands: [CommandInfo]
+    /// The names `system/init` lists: slash commands, skills, and the commands that only run in the terminal.
+    public var slashCommands: [String]
+    public var skills: [String]
+    public var terminalOnlyCommands: [String]
+    public var backgroundTaskCount: Int
+    /// Messages Loom sent that the CLI holds unread (their rows offer "Read now").
+    public var unreadMessageIDs: [String]
+    /// Returned drafts wait for the composer (`takeReturnedDrafts`).
+    public var hasReturnedDrafts: Bool
+    /// The context of the newest main-thread message (input, cache and output tokens; after a compaction the size
+    /// after it), and the window of the session's model once a result named it.
+    public var contextTokens: Int?
+    public var contextWindow: Int?
+    public var contextModel: String?
+}
+
+extension ChatComposerState {
+    /// What a composer shows before its driver has been asked: nothing runs and nothing is known.
+    public static func idle(sessionID: UUID) -> ChatComposerState {
+        ChatComposerState(
+            sessionID: sessionID, phase: .stopped, turnRunning: false, requestCount: 0, queue: ChatQueue(), queueIssue: nil,
+            choices: ClaudeLaunchChoices(), permissionMode: nil, resolvedModel: nil, reportedEffort: nil, models: [],
+            commands: [], slashCommands: [], skills: [], terminalOnlyCommands: [], backgroundTaskCount: 0,
+            unreadMessageIDs: [], hasReturnedDrafts: false, contextTokens: nil, contextWindow: nil,
+            contextModel: nil)
+    }
 }

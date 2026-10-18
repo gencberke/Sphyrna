@@ -135,12 +135,26 @@ extension CatalogModel {
         ]
     }
 
-    /// Answers the oldest waiting request: allow it as asked, or deny it.
+    /// Answers the oldest waiting request as a click on its card does, through `answer(requestID:_:)`: so a plan gets its
+    /// `setMode`, a question its answers (the first option of each), and every answer its line in the stream. Allow is
+    /// Allow once, Approve (Ask before edits) or the first options; deny is Deny, Keep planning, or, for a question
+    /// (which has no plain Deny), Stop this turn.
     public func answerFirstChatRequest(_ sessionID: UUID, allow: Bool) async throws {
         let driver = try chatDriver(for: sessionID)
         guard let request = await driver.snapshot().requests.first else { return }
-        try await driver.respond(to: request.requestID, with: allow
-            ? .allow(updatedInput: request.request.input) : .deny(message: "The user denied this tool use."))
+        let answer: ChatRequestAnswer
+        switch (request.kind, allow) {
+        case (.approval, true): answer = .allowOnce
+        case (.approval, false): answer = .deny(note: nil)
+        case (.plan, true): answer = .approvePlan(mode: "default")
+        case (.plan, false): answer = .keepPlanning(feedback: nil)
+        case (.question, true):
+            answer = .answers(request.questions.map {
+                ChatQuestionAnswer(question: $0.question, picks: $0.options.first.map { [$0.label] } ?? [])
+            })
+        case (.question, false): answer = .denyAndStop(note: nil)
+        }
+        try await driver.answer(requestID: request.requestID, answer)
     }
 
     /// A content-free summary of a Chat session (evidence): phase, counts, delivery and request kinds.

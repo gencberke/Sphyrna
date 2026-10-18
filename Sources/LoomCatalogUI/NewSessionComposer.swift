@@ -4,12 +4,22 @@ import SwiftUI
 
 /// The draft's composer in the look of D-58 (design/v2-new-session-preview.html, N1): a card with the ticket
 /// line when the text holds a key, the text, and a bar with the permission mode as plain text with a shield, the
-/// model, and a round Send. Mode and model come from `NewSessionDefaults` and a pick overrides them. Small
-/// and replaceable: V17 builds the session's own composer, and this one is its draft-time stand-in.
+/// model, and a round Send. Mode and model come from `NewSessionDefaults` and a pick overrides them.
+///
+/// It is the session's own composer at draft time (D-59): the text field, the keys and the bar's pieces are the
+/// ones the live composer uses (`ComposerTextEditor`, `ComposerKeys`, `ComposerBar`); what differs is what the keys
+/// do (↵ starts the session) and what the draft keeps (ticket line, presets, branch strip, its save).
 struct NewSessionComposer: View {
     let model: CatalogModel
     let projectID: UUID?
-    @State private var height = NewSessionTextView.minimumHeight
+    @State private var height = NewSessionLayout.textMinimumHeight
+    @State private var host: DraftComposerHost
+
+    init(model: CatalogModel, projectID: UUID?) {
+        self.model = model
+        self.projectID = projectID
+        _host = State(initialValue: DraftComposerHost(model: model, projectID: projectID))
+    }
 
     private var draft: SessionDraft { model.newSession.draft(for: projectID) ?? SessionDraft(projectID: projectID) }
     private var sending: Bool { model.newSession.isSending(projectID) }
@@ -22,15 +32,13 @@ struct NewSessionComposer: View {
                 if draft.text.isEmpty {
                     Text("Describe the work, paste a ticket key, or add a skill with /")
                         .font(LoomTheme.TypeScale.reading).foregroundStyle(LoomTheme.Text.tertiary)
-                        .padding(.top, NewSessionTextView.inset.height).allowsHitTesting(false)
+                        .padding(.top, ComposerTextEditor.inset.height).allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
-                NewSessionTextView(
-                    text: Binding(get: { draft.text }, set: { model.setDraftText($0, projectID: projectID) }),
-                    height: $height, isEditable: !sending,
-                    onSend: { model.sendDraft(projectID: projectID) },
-                    onSendAndOpenFresh: { model.sendDraft(projectID: projectID, startsFreshDraft: true) },
-                    onBlur: { model.newSession.flush() })
+                ComposerTextEditor(host: host, height: $height, isEditable: !sending,
+                                   minimumHeight: NewSessionLayout.textMinimumHeight,
+                                   maximumHeight: NewSessionLayout.textMaximumHeight,
+                                   accessibilityIdentifier: "draft-composer", accessibilityLabel: "Message for the new session")
                     .frame(height: height)
             }
             .padding(.horizontal, NewSessionLayout.textInset).padding(.top, NewSessionLayout.textTop)
@@ -66,8 +74,8 @@ enum NewSessionLayout {
     static let popoverWidth: CGFloat = 320
     static let textInset: CGFloat = 18
     static let textTop: CGFloat = 10
-    static let barHeight: CGFloat = 34
-    static let sendSize: CGFloat = 30
+    static let textMinimumHeight: CGFloat = 60
+    static let textMaximumHeight: CGFloat = 220
     static let chipHeight: CGFloat = 26
     static let chipSpacing: CGFloat = 6
     static let headlinePickHeight: CGFloat = 36
@@ -118,21 +126,20 @@ private struct TicketLine: View {
     }
 }
 
-/// Mode and model chips and Send.
+/// Mode and model chips and Send: the bar of D-58 without a ring (no session yet) and without +, whose menus need a
+/// session's commands.
 private struct ComposerBar: View {
     let model: CatalogModel
     let projectID: UUID?
 
     var body: some View {
         let resolved = model.resolvedStart(for: projectID)
-        HStack(spacing: LoomTheme.Space.headerSpacing) {
+        ComposerBarFrame {
             modeMenu(resolved)
-            Spacer(minLength: LoomTheme.Space.detailMinSpacer)
+        } trailing: {
             modelMenu(resolved)
             SendButton(model: model, projectID: projectID)
         }
-        .padding(.horizontal, LoomTheme.Space.detailSpacing).padding(.bottom, LoomTheme.Space.detailSpacing)
-        .frame(minHeight: NewSessionLayout.barHeight)
     }
 
     private func modeMenu(_ resolved: ResolvedStart) -> some View {
@@ -156,16 +163,9 @@ private struct ComposerBar: View {
             }
         } label: {
             // Every mode looks the same: no warning colour or mark, Full access included (D-58).
-            HStack(spacing: LoomTheme.Space.hintSpacing) {
-                Image(systemName: "shield").font(LoomTheme.Typography.small)
-                Text(title).font(LoomTheme.Typography.smallMedium)
-                Image(systemName: "chevron.down").font(LoomTheme.Typography.chevron).foregroundStyle(LoomTheme.Text.tertiary)
-            }
-            .foregroundStyle(LoomTheme.Text.secondaryStyle)
-            .padding(.horizontal, LoomTheme.Space.cardH).frame(minHeight: NewSessionLayout.barHeight - LoomTheme.Space.headerSpacing)
-            .contentShape(Rectangle())
+            ComposerChipLabel(symbol: "shield", title: title)
         }
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+        .composerMenuStyle()
         .help("Permission mode of the new session")
         .accessibilityLabel("Permission mode, \(title)")
         .accessibilityIdentifier("draft-mode")
@@ -188,15 +188,9 @@ private struct ComposerBar: View {
                 Button("Use the default for this project") { model.setDraftModel(.inherit, projectID: projectID) }
             }
         } label: {
-            HStack(spacing: LoomTheme.Space.hintSpacing) {
-                Text(resolved.modelTitle).font(LoomTheme.Typography.smallMedium)
-                Image(systemName: "chevron.down").font(LoomTheme.Typography.chevron).foregroundStyle(LoomTheme.Text.tertiary)
-            }
-            .foregroundStyle(LoomTheme.Text.secondaryStyle)
-            .padding(.horizontal, LoomTheme.Space.cardH).frame(minHeight: NewSessionLayout.barHeight - LoomTheme.Space.headerSpacing)
-            .contentShape(Rectangle())
+            ComposerChipLabel(symbol: nil, title: resolved.modelTitle, titleColor: LoomTheme.Composer.modelColor)
         }
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+        .composerMenuStyle()
         .help("Model of the new session")
         .accessibilityLabel("Model, \(resolved.modelTitle)")
         .accessibilityIdentifier("draft-model")
@@ -210,18 +204,56 @@ private struct SendButton: View {
 
     var body: some View {
         let enabled = model.canSendDraft(projectID: projectID)
-        Button { model.sendDraft(projectID: projectID) } label: {
-            Image(systemName: "arrow.up").font(LoomTheme.Typography.bodyStrong)
-                .foregroundStyle(enabled ? LoomTheme.Accent.onAccent : LoomTheme.Text.tertiary)
-                .frame(width: NewSessionLayout.sendSize, height: NewSessionLayout.sendSize)
-                .background(Circle().fill(enabled ? LoomTheme.Text.primary : LoomTheme.Surface.controlPressed))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain).disabled(!enabled)
-        .help(enabled ? "Start the session (↵). ⌘↵ starts it and opens a fresh draft" : "Nothing to start yet")
-        .accessibilityLabel("Start session")
-        .accessibilityIdentifier("draft-send")
+        ComposerSendButton(
+            look: enabled ? .send : .disabled, label: "Start session",
+            help: enabled ? "Start the session (\u{21B5}). \u{2318}\u{21B5} starts it and opens a fresh draft" : "Nothing to start yet",
+            identifier: "draft-send") { _ in model.sendDraft(projectID: projectID) }
     }
+}
+
+/// The draft's composer as the text view's host: ↵ starts the session, ⌘↵ starts it and opens a fresh draft [T3], and the
+/// text goes to the project's draft slot (saved 300 ms after the last change, on blur and on Quit).
+@MainActor
+final class DraftComposerHost: ComposerEditorHost {
+    private let model: CatalogModel
+    private let projectID: UUID?
+
+    init(model: CatalogModel, projectID: UUID?) {
+        self.model = model
+        self.projectID = projectID
+    }
+
+    var keyMode: ComposerKeys.Mode { .draft }
+    var syncsByRevision: Bool { false }
+    var textRevision: Int { 0 }
+    var modelText: String { model.newSession.draft(for: projectID)?.text ?? "" }
+
+    func keyState(isRepeat: Bool, hasMarkedText: Bool, bridge: any ComposerEditorBridge) -> ComposerKeys.State {
+        var state = ComposerKeys.State()
+        state.mode = .draft
+        state.hasMarkedText = hasMarkedText
+        state.isRepeat = isRepeat
+        return state
+    }
+
+    func perform(_ action: ComposerKeys.Action, bridge: any ComposerEditorBridge, in window: NSWindow?) -> Bool {
+        switch action {
+        case .send: model.sendDraft(projectID: projectID)
+        case .sendSecondary: model.sendDraft(projectID: projectID, startsFreshDraft: true)
+        case .pastePlain:
+            guard let text = NSPasteboard.general.string(forType: .string) else { return true }
+            bridge.insertAtCaret(text)
+        case .ignore: break
+        default: return false
+        }
+        return true
+    }
+
+    func textChanged(_ text: String) { model.setDraftText(text, projectID: projectID) }
+    func editorEndedEditing() { model.newSession.flush() }
+    func paste(_ pasteboard: NSPasteboard, plain: Bool) -> Bool { false }
+    func drop(_ pasteboard: NSPasteboard) -> Bool { false }
+    func editorAttached(_ bridge: (any ComposerEditorBridge)?) {}
 }
 
 /// A quiet chip: the control fill, hairline, small text; used for presets and the strip.

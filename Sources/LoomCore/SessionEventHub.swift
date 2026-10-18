@@ -53,18 +53,40 @@ public struct ProviderPendingRequest: Equatable, Sendable, Identifiable {
     public let toolUseID: String?
     public let kind: Kind
     public let toolName: String
+    /// An approval's command or path (the tool's name when it has none), a question's header, "Plan ready".
     public let summary: String
+    /// Claude's own words about an approval (Bash's `description`), when it gave some.
+    public let note: String?
     /// When Loom learned of it; nil when the provider's request does not say (Codex).
     public let arrivedAt: Date?
 
     public init(requestID: String, toolUseID: String?, kind: Kind, toolName: String, summary: String,
-                arrivedAt: Date?) {
+                note: String? = nil, arrivedAt: Date?) {
         self.requestID = requestID
         self.toolUseID = toolUseID
         self.kind = kind
         self.toolName = toolName
         self.summary = summary
+        self.note = note
         self.arrivedAt = arrivedAt
+    }
+}
+
+extension StatusReason {
+    /// The reason line a waiting request states (the sidebar's Active card, Home's Needs you, the inspector): the same
+    /// words a hook-reported permission request gets, so a Chat-face request reads like a terminal one.
+    public init(request: ProviderPendingRequest) {
+        switch request.kind {
+        case .approval:
+            let tool = Self.oneLine(request.toolName, limit: 80) ?? "Tool"
+            let detail = request.summary == request.toolName ? nil : Self.oneLine(request.summary)
+            let note = request.note.flatMap { Self.oneLine($0) }
+            self.init(.approval(tool: tool), detail: detail, note: note == detail ? nil : note)
+        case .question:
+            self.init(.question, detail: Self.oneLine(request.summary))
+        case .plan:
+            self.init(.planReady)
+        }
     }
 }
 
@@ -152,14 +174,23 @@ public struct SessionViewState: Equatable, Sendable {
         self.reason = reason
     }
 
+    /// Why the session shows its status: the first waiting request (what the user is being asked, whichever provider
+    /// and face asked it), else the hook-reported `reason`. Changes only when a request arrives or leaves, or at a hook
+    /// boundary, never per frame.
+    public var displayReason: StatusReason? {
+        waitingRequests.first.map(StatusReason.init(request:)) ?? reason
+    }
+
     /// Every request of the live run that waits for the user, in one list whatever the provider: the Chat face's
     /// (`pendingRequests`), then Codex's answerable ones (`userRequests`: a command or a file change is an approval).
     public var waitingRequests: [ProviderPendingRequest] {
         pendingRequests + userRequests.filter(\.isAnswerable).map { request in
             let toolName: String
             switch request.kind {
-            case .command: toolName = "command"
-            case .fileChange: toolName = "fileChange"
+            // Named as Claude's tools are, so the reason line reads "Allow: <command>" and "Allow Edit: <file>" for either
+            // provider.
+            case .command: toolName = "Bash"
+            case .fileChange: toolName = "Edit"
             case let .unsupported(name): toolName = name
             }
             return ProviderPendingRequest(requestID: request.id, toolUseID: nil, kind: .approval, toolName: toolName,

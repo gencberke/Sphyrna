@@ -66,9 +66,10 @@ extension CatalogModel {
     /// inspector is open on Overview. These are the "visible sessions" of `UsageModel.trackContext`.
     var inspectorContextSessions: [String] {
         guard let row = selectedRow, row.record.session.provider == .claude,
-              inspector.isOpen(for: row.id), inspector.tab == .overview,
               let conversationID = row.record.session.providerConversationID else { return [] }
-        return [conversationID]
+        // The inspector's Overview shows the context; so does the ring of a live Chat session's composer (V17).
+        let inspectorShows = inspector.isOpen(for: row.id) && inspector.tab == .overview
+        return inspectorShows || runEndpoint(of: row) == .pipe ? [conversationID] : []
     }
 
     /// Hands `inspectorContextSessions` to the usage model: one indexed lookup per named session, and none

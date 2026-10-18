@@ -201,6 +201,11 @@ extension AppDelegate {
         // which the content view alone never shows.
         let framed = url.deletingPathExtension().appendingPathExtension("window.png")
         Self.writePNG(of: window?.contentView?.superview, to: framed)
+        // A popover is a window of its own: it is written beside the window, as `….popover<N>.png` (V17's ring popover).
+        for (index, child) in (window?.childWindows ?? []).enumerated() where child.isVisible {
+            Self.writePNG(of: child.contentView?.superview,
+                          to: url.deletingPathExtension().appendingPathExtension("popover\(index).png"))
+        }
     }
 
     static func writePNG(of view: NSView?, to url: URL) {

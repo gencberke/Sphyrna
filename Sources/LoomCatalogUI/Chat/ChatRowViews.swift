@@ -190,7 +190,8 @@ struct ChatUserMessageView: View {
         .padding(.vertical, 9)
         .background(userShape.fill(LoomTheme.Chat.userFill))
         .overlay(userShape.strokeBorder(LoomTheme.Chat.userStroke, lineWidth: LoomTheme.Line.hairline))
-        .opacity(prompt.delivery == .pending || prompt.delivery == .queued ? 0.6 : 1)
+        // Dimmed until the CLI has it (`queued`); after that it looks normal and only the mark says it waits (spec).
+        .opacity(prompt.delivery == .pending ? 0.6 : 1)
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
@@ -205,10 +206,25 @@ struct ChatUserMessageView: View {
             switch prompt.delivery {
             case .notDelivered:
                 Text("Not delivered").foregroundStyle(LoomTheme.Status.failureLight)
+                switch prompt.followUp {
+                case .sentAgain?: Text("Sent again below").foregroundStyle(LoomTheme.Text.secondaryStyle)
+                case .handedBack?: Text("Back where you wrote it").foregroundStyle(LoomTheme.Text.secondaryStyle)
+                case nil: EmptyView()
+                }
+                if context.canReadNow, prompt.followUp == nil {
+                    ChatLinkButton(title: "Retry") { context.retry(entry.id) }
+                    ChatCopyButton(text: prompt.text, context: context)
+                }
             case .cancelled:
                 Text("Withdrawn before Claude read it").foregroundStyle(LoomTheme.Text.secondaryStyle)
-            case .pending, .queued:
-                Text("Waiting for the current step").foregroundStyle(LoomTheme.Text.secondaryStyle)
+            case .pending:
+                EmptyView()
+            case .queued:
+                // Only a message sent while a turn ran waits for its step; an idle send's echo is just a moment away.
+                if prompt.sentWhileWorking {
+                    Text("Waiting for the current step").foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    if context.canReadNow { ChatLinkButton(title: "Read now") { context.readNow(entry.id) } }
+                }
             case .read:
                 if hovering {
                     if let time = entry.timestamp { Text(ChatTime.label(for: time)).foregroundStyle(LoomTheme.Text.secondaryStyle) }
@@ -223,6 +239,19 @@ struct ChatUserMessageView: View {
     static func isLong(_ text: String) -> Bool {
         text.count > LoomTheme.Chat.userCollapseCharacters
             || text.reduce(0) { $1 == "\n" ? $0 + 1 : $0 } + 1 > LoomTheme.Chat.userCollapseLines
+    }
+}
+
+/// A small text button of a row's footer (Retry, Read now).
+struct ChatLinkButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(title, action: action)
+            .buttonStyle(.plain).font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Accent.high)
+            .frame(minHeight: 18)
+            .accessibilityIdentifier("chat-row-" + title.lowercased().replacingOccurrences(of: " ", with: "-"))
     }
 }
 

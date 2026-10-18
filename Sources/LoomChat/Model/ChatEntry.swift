@@ -67,6 +67,21 @@ public struct UserPrompt: Equatable, Sendable {
     public var command: Command?
     /// A subagent transcript's first message: the task the parent gave.
     public var isBrief: Bool
+    /// What became of a message that was not delivered, once the user (or Loom, at the user's word) took care of it: its
+    /// row then offers neither Retry nor Copy.
+    public enum FollowUp: Sendable, Equatable {
+        /// "Retry" sent it again as a new message.
+        case sentAgain
+        /// The send failed and the text went back to where it came from (the composer, the queue).
+        case handedBack
+    }
+
+    public var followUp: FollowUp?
+    /// A turn was running when it was sent: only then does a message wait "for the current step" (an idle send's echo can
+    /// take a moment too, and then nothing waits).
+    public var sentWhileWorking = false
+    /// The typed text alone (the row's text also carries pasted chips): what ↑ recalls.
+    public var recallText: String?
 }
 
 public struct AssistantText: Equatable, Sendable {

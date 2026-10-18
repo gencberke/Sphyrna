@@ -137,7 +137,7 @@ extension CatalogModel {
             let entry = HomeEntry(
                 id: id, title: record.displayTitle(projectName: name), projectName: name,
                 tone: projectTone(forProject: record.projectID), indicator: candidate.indicator,
-                reason: SessionReasonLine(liveStates[id]?.reason), lastActivityAt: candidate.lastActivityAt)
+                reason: SessionReasonLine(liveStates[id]?.displayReason), lastActivityAt: candidate.lastActivityAt)
             if HomeBoard.isFinished(candidate.indicator) { board.finished.append(entry) } else { board.needsYou.append(entry) }
         }
         return board

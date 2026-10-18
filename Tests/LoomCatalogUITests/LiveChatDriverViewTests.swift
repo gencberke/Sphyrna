@@ -11,7 +11,7 @@ import Testing
 
 private final class LiveViewBundleAnchor: NSObject {}
 
-private struct LiveRig {
+struct LiveRig {
     let root: URL
     let profile: URL
     let socketDirectory: URL

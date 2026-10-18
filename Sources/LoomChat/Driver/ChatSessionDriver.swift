@@ -14,6 +14,16 @@ public enum ChatDriverError: Error, Equatable, Sendable {
     case noSuchQueueItem(String)
     /// The child's input queue is full (it stopped reading): the message was not sent.
     case inputFull
+    /// A queued message carries text only: a message with attachments is sent, not queued.
+    case queueTextOnly
+    /// Nothing to send: no text and no attachment.
+    case emptyMessage
+    /// The answer is not one the request takes (for example "for this session" where it is not offered).
+    case notOffered
+    /// A question was left without an answer.
+    case incompleteAnswer
+    /// A request is already being answered (the first answer is on its way): a second one is refused.
+    case answerInProgress
     /// The queue holds `ChatQueue.maximumItems` items or `ChatQueue.maximumBytes` bytes: the message was not queued.
     case queueFull
 }
@@ -40,6 +50,9 @@ public enum ChatDriverError: Error, Equatable, Sendable {
 public actor ChatSessionDriver {
     /// After this long without a stdout line during a turn, the turn reads "No activity for 40s" (S1 §D13).
     public static let quietAfter: TimeInterval = 40
+    /// How many settled requests the driver keeps: the cards fold the newest, and a card cut off by the process ending
+    /// stays until the next run.
+    public static let settledLimit = 16
     /// Capabilities the driver relies on (`system/init`); one that is missing is a drift notice.
     public static let requiredCapabilities = ["msg_lifecycle_v1"]
 
@@ -48,6 +61,8 @@ public actor ChatSessionDriver {
 
     private let runtime: SessionRuntime
     private let queueStore: ChatQueueStore?
+    /// Where the composer's drafts are kept: messages Claude never read are written here when a run ends.
+    private let draftStore: ChatDraftStore?
     private let journal: DiagnosticJournal?
     private let clock: @Sendable () -> Date
     private let readyTimeout: Duration
@@ -72,16 +87,27 @@ public actor ChatSessionDriver {
     private var choices = ClaudeLaunchChoices()
     private var permissionMode: String?
     private var requests: [ChatPendingRequest] = []
+    /// The newest requests that left the list, oldest first (`settledLimit`).
+    private var settled: [ChatSettledRequest] = []
     private var queue: ChatQueue
     private var queueIssue: ChatQueueIssue?
     private var returnedDrafts: [ChatReturnedDraft] = []
+    /// The texts of Loom's own messages that never reached the CLI in the newest run (the ended view offers them).
+    private var undelivered: [String] = []
+    /// Requests whose answer is on its way: one answer per request.
+    private var answering: Set<String> = []
+    /// Rows of Loom's own messages whose payload (images, pasted texts) the driver still holds: the unread ones. A read
+    /// message drops its payload.
+    private var heldPayloads: Set<String> = []
+    /// The model the user chose live: the chip and the ring show it until a newer `system/init` names the model.
+    private var liveModel: String?
     private var drift: [ChatDrift] = []
     private var driftKeys: Set<String> = []
     private var policySignal: ChatPolicySignal?
     private var lastActivity: Date?
     private var contextWindows: [String: Int] = [:]
-    /// Loom's own sends of this session, by row id: their text (a returned draft, "Read now").
-    private var sent: [String: String] = [:]
+    /// Loom's own sends of this session, by row id: what went out (a returned draft, "Read now", "Retry").
+    private var sent: [String: ChatSentMessage] = [:]
     private var turnRunning = false
     /// Loom asked this run to end (Stop, Quit, face switch, an idle stop): its exit is not a failure. Set by `stop()`
     /// and by the `leave` hook of a stop Loom made, never for an exit of the child's own.
@@ -126,7 +152,8 @@ public actor ChatSessionDriver {
     ///
     /// The callbacks are synchronous and must not wait for the main actor: a `result` read during Quit (the stop
     /// hook) calls them while the main thread may wait in a nested run loop. Hop with a task of your own.
-    public init(sessionID: UUID, runtime: SessionRuntime, queueStore: ChatQueueStore? = nil, journal: DiagnosticJournal? = nil,
+    public init(sessionID: UUID, runtime: SessionRuntime, queueStore: ChatQueueStore? = nil, draftStore: ChatDraftStore? = nil,
+                journal: DiagnosticJournal? = nil,
                 readyTimeout: Duration = .seconds(30),
                 clock: @escaping @Sendable () -> Date = { Date() },
                 onChoicesChanged: @escaping @Sendable (ClaudeLaunchChoices) -> Void = { _ in },
@@ -135,6 +162,7 @@ public actor ChatSessionDriver {
         self.sessionID = sessionID
         self.runtime = runtime
         self.queueStore = queueStore
+        self.draftStore = draftStore
         self.journal = journal
         self.readyTimeout = readyTimeout
         self.clock = clock
@@ -166,7 +194,7 @@ public actor ChatSessionDriver {
         ChatDriverSnapshot(
             sessionID: sessionID, phase: phase, model: model, runID: run?.runID, processID: run?.pipe.pid,
             permissionMode: permissionMode,
-            choices: choices, requests: requests, queue: queue, queueIssue: queueIssue,
+            choices: choices, requests: requests, settled: settled, queue: queue, queueIssue: queueIssue,
             backgroundTaskCount: background.count, returnedDrafts: returnedDrafts, drift: drift,
             policySignal: policySignal, lastActivity: lastActivity, contextWindows: contextWindows,
             turnRunning: turnRunning
@@ -174,6 +202,31 @@ public actor ChatSessionDriver {
     }
 
     public var currentPhase: ChatDriverPhase { phase }
+
+    /// What the composer draws (`ChatComposerState`): the parts of the snapshot it follows, without the model.
+    public func composerState() -> ChatComposerState {
+        let initialized = model.latestInit
+        // After a live change the chosen model's own name (its resolved id when the CLI listed it) until `system/init`.
+        let resolved = liveModel.map { chosen in
+            model.ready?.models.first { $0.value == chosen }?.resolvedModel ?? chosen
+        } ?? initialized?.model
+        let window = (resolved ?? choices.model).flatMap { name in
+            contextWindows[windowKey(name)] ?? contextWindows.first {
+                UsagePricing.canonicalModelID($0.key) == UsagePricing.canonicalModelID(name)
+            }?.value
+        }
+        return ChatComposerState(
+            sessionID: sessionID, phase: phase, turnRunning: turnRunning, requestCount: requests.count, queue: queue,
+            queueIssue: queueIssue, choices: choices, permissionMode: permissionMode, resolvedModel: resolved,
+            reportedEffort: initialized?.effort,
+            models: model.ready?.models ?? [], commands: model.ready?.commands ?? [],
+            slashCommands: initialized?.slashCommands ?? [], skills: initialized?.skills ?? [],
+            terminalOnlyCommands: initialized?.terminalSlashCommands ?? [], backgroundTaskCount: background.count,
+            unreadMessageIDs: model.pendingUserMessageIDs.filter { sent[$0] != nil },
+            hasReturnedDrafts: !returnedDrafts.isEmpty,
+            contextTokens: model.contextUsage.map(\.contextTokens), contextWindow: window, contextModel: resolved
+        )
+    }
 
     /// Fires (coalesced, newest only) whenever the snapshot changed, and once at once. Any number of readers, each
     /// with its own stream.
@@ -220,7 +273,8 @@ public actor ChatSessionDriver {
     /// its buffers on the next change).
     public func liveState() -> ChatLiveState {
         ChatLiveState(sessionID: sessionID, conversationID: conversationID, phase: phase, turnRunning: turnRunning,
-                      lastActivity: lastActivity, drift: drift, policySignal: policySignal, runStart: runStart)
+                      lastActivity: lastActivity, drift: drift, policySignal: policySignal, runStart: runStart,
+                      requests: requests, settled: settled, undelivered: undelivered)
     }
 
     private func dropModelSubscriber(_ id: UUID) {
@@ -320,6 +374,9 @@ public actor ChatSessionDriver {
         setPhase(.starting)
         stopRequested = false
         startCancelled = false
+        // A card the last run left unanswered was shown as cut off; this run starts clean.
+        settled.removeAll { $0.outcome == .processEnded }
+        undelivered = []
         let sink = ChatPipeSink(clock: clock)
         let launched: RuntimePipeLaunch
         do {
@@ -431,15 +488,38 @@ public actor ChatSessionDriver {
     // MARK: Sending
 
     /// Sends a message. `.next` goes to the CLI now (read after the running tool); `.afterTurn` waits in Loom's queue
-    /// while a turn runs, a request waits, or the queue already holds (or pauses) items. A stopped session is resumed
-    /// first.
+    /// while a turn runs, a request waits, or the queue already holds (or pauses) items. ↵ is always `next` (CHAT-SPEC →
+    /// Keys); `now` is only "Read now". A stopped session is resumed first. A queued message
+    /// carries text only: one with attachments is refused (`queueTextOnly`) rather than losing them.
     @discardableResult
-    public func send(_ text: String, timing: ChatSendTiming = .next) async throws -> ChatSendReceipt {
+    public func send(_ text: String, attachments: [ChatOutgoingAttachment] = [],
+                     timing: ChatSendTiming = .next) async throws -> ChatSendReceipt {
+        let message = ChatSentMessage(text: text, attachments: attachments)
+        guard !message.blocks.isEmpty else { throw ChatDriverError.emptyMessage }
         if timing == .afterTurn, turnRunning || !requests.isEmpty || !queue.isEmpty || queue.paused != nil {
+            guard attachments.isEmpty else { throw ChatDriverError.queueTextOnly }
             return .queued(try enqueue(text))
         }
         try await ensureLive()
-        return .sent(try await write(text, priority: .next))
+        return .sent(try await write(message, priority: .next))
+    }
+
+    /// "Retry" on a message that was not delivered (the process ended before the CLI took it): the same message is sent
+    /// again, as a new row. Loom never does this by itself (concept §5.4). The old row stays as the record of the
+    /// first try.
+    @discardableResult
+    public func retry(messageID: String) async throws -> String {
+        guard model.entry(id: messageID).map({ entry in
+            if case let .user(prompt) = entry.body { prompt.delivery == .notDelivered } else { false }
+        }) == true, let message = sent[messageID] else { throw ChatDriverError.notPending(messageID) }
+        try await ensureLive()
+        let uuid = try await write(message, priority: .next)
+        sent[messageID] = nil
+        heldPayloads.remove(messageID)
+        note(model.noteFollowUp(.sentAgain, forRow: messageID))
+        changed()
+        if let at = undelivered.firstIndex(of: message.rowText) { undelivered.remove(at: at) }
+        return uuid
     }
 
     /// "Read now": a sent message still waiting is taken back (`cancel_async_message`) and sent again with priority
@@ -447,14 +527,15 @@ public actor ChatSessionDriver {
     /// on (`TurnModel.sentUUID(ofRow:)`). False when the CLI had already taken it into the turn.
     @discardableResult
     public func readNow(messageID: String) async throws -> Bool {
-        guard let current = run, let text = sent[messageID],
+        guard let current = run, let message = sent[messageID],
               model.pendingUserMessageIDs.contains(messageID) else { throw ChatDriverError.notPending(messageID) }
         let reply = try await current.channel.request(.cancelAsyncMessage(messageUUID: model.sentUUID(ofRow: messageID)))
         guard reply.wasCancelled != false else { return false }
         let uuid = UUID().uuidString.lowercased()
         note(model.rekeyPendingUser(from: messageID, to: uuid))
-        sent[messageID] = text
-        try await deliver(OutgoingUserMessage(uuid: uuid, text: text, priority: .now), row: messageID, on: current.channel)
+        sent[messageID] = message
+        try await deliver(OutgoingUserMessage(uuid: uuid, content: message.blocks, priority: .now), row: messageID,
+                          on: current.channel)
         changed()
         return true
     }
@@ -465,6 +546,26 @@ public actor ChatSessionDriver {
         await sendInterrupt(on: current.channel, timeout: 10)
     }
 
+    /// A message Claude read (or that was withdrawn) keeps no payload here: the images and pasted texts of a long session
+    /// would stay in memory for nothing. Only unread messages (Read now, Retry, a draft handed back) need theirs.
+    private func releasePayloads() {
+        guard !heldPayloads.isEmpty else { return }
+        for row in heldPayloads {
+            // Cancelled ones wait for `keepForUser`, which hands them back to the user first.
+            if model.delivery(ofRow: row) == .read {
+                sent[row] = ChatSentMessage(text: sent[row]?.text ?? "", attachments: [])
+                heldPayloads.remove(row)
+            }
+        }
+    }
+
+    /// Esc: an interrupt, except that it does nothing while a request waits (Esc never denies, and never ends a turn a card
+    /// holds). The Interrupt button and Stop call `interrupt()`; the card's own buttons answer.
+    public func interruptFromEscape() async {
+        guard requests.isEmpty else { return }
+        await interrupt()
+    }
+
     private func ensureLive() async throws {
         switch phase {
         case .stopping: throw ChatDriverError.stopping
@@ -473,12 +574,22 @@ public actor ChatSessionDriver {
         }
     }
 
-    private func write(_ text: String, priority: OutgoingUserMessage.Priority) async throws -> String {
+    private func write(_ message: ChatSentMessage, priority: OutgoingUserMessage.Priority) async throws -> String {
         guard let current = run else { throw ChatDriverError.stopping }
         let uuid = UUID().uuidString.lowercased()
-        sent[uuid] = text
-        note(model.appendPendingUser(uuid: uuid, text: text, at: clock()))
-        try await deliver(OutgoingUserMessage(uuid: uuid, text: text, priority: priority), row: uuid, on: current.channel)
+        sent[uuid] = message
+        heldPayloads.insert(uuid)
+        note(model.appendPendingUser(uuid: uuid, text: message.rowText, images: message.images, at: clock(),
+                                     whileWorking: turnRunning, typedText: message.text))
+        do {
+            try await deliver(OutgoingUserMessage(uuid: uuid, content: message.blocks, priority: priority), row: uuid,
+                              on: current.channel)
+        } catch {
+            // The caller keeps the text (the composer puts it back, the queue keeps the item): the row offers no Retry.
+            note(model.noteFollowUp(.handedBack, forRow: uuid))
+            changed()
+            throw error
+        }
         await beginTurn()
         return uuid
     }
@@ -507,41 +618,100 @@ public actor ChatSessionDriver {
         } catch {
             receipt = nil
         }
+        var cancelledDrafts: [ChatReturnedDraft] = []
         for id in receipt?.cancelled ?? [] {
             let row = model.rowID(forSent: id)
-            guard let text = sent[row] else { continue }
-            returnedDrafts.append(ChatReturnedDraft(messageID: row, text: text))
+            guard let message = sent[row] else { continue }
+            cancelledDrafts.append(ChatReturnedDraft(messageID: row, text: message.text, attachments: message.attachments))
             if let lifecycle = CommandLifecycle(json: ["command_uuid": .string(id), "state": "cancelled"]) {
                 note(model.apply(.commandLifecycle(lifecycle), at: clock()))
             }
         }
+        keepForUser(cancelledDrafts)
+        for draft in cancelledDrafts {
+            sent[draft.messageID] = ChatSentMessage(text: draft.text, attachments: [])
+            heldPayloads.remove(draft.messageID)
+        }
         changed()
+    }
+
+    /// Messages Claude never read go back to the user: to a composer through `takeReturnedDrafts`, and into the session's
+    /// draft file at once, in front of what is typed, so they survive a crash or a Quit and a composer made later finds
+    /// them. Nothing the user sent is lost when a run ends.
+    private func keepForUser(_ drafts: [ChatReturnedDraft]) {
+        guard !drafts.isEmpty else { return }
+        var kept = drafts
+        if let draftStore {
+            do {
+                try draftStore.prepend(texts: drafts.map(\.text), attachments: drafts.flatMap(\.attachments), sessionID: sessionID)
+                let at = clock()
+                for index in kept.indices { kept[index].persistedAt = at }
+            } catch {
+                LoomLog.error(.lifecycle, "Messages Claude did not read could not be saved as a draft (\(LoomLog.category(of: error)))")
+            }
+        }
+        returnedDrafts += kept
     }
 
     // MARK: Requests (cards)
 
-    /// Answers a waiting request. A denial with `interrupt` stops the turn ("Deny and stop"). `record` is the one line
-    /// the stream keeps of the card.
+    /// Answers a waiting request with a decision. A denial with `interrupt` stops the turn ("Deny and stop"). `record` is
+    /// the one line the stream keeps of the card.
     public func respond(to requestID: String, with decision: PermissionDecision,
                         record: RequestRecord? = nil) async throws {
-        guard let current = run, requests.contains(where: { $0.requestID == requestID }) else {
+        // Nothing is answered while the session stops: the Stop's interrupt withdraws every request.
+        guard phase != .stopping else { throw ChatDriverError.stopping }
+        guard let current = run, let request = requests.first(where: { $0.requestID == requestID }) else {
             throw ChatDriverError.noSuchRequest(requestID)
         }
+        // One answer per request: a second call, while the first is on its way, is refused before it touches anything.
+        guard answering.insert(requestID).inserted else { throw ChatDriverError.answerInProgress }
+        defer { answering.remove(requestID) }
         let stops: Bool
         if case .deny(_, true) = decision { stops = true } else { stops = false }
-        if stops { model.noteInterruptSent() }
+        if stops {
+            model.noteInterruptSent()
+            // Deny and stop ends the turn like an interrupt does: nothing queued goes out behind it.
+            if !queue.isEmpty, queue.paused == nil { pauseQueue(.interrupted) }
+        }
         guard await current.channel.respond(to: requestID, with: decision) else {
             if stops { model.clearInterruptSent() }
             // Still waiting: the answer could not be queued (the input is full); the card stays answerable.
             if await current.channel.pendingRequests.contains(where: { $0.requestID == requestID }) {
                 throw ChatDriverError.inputFull
             }
-            await retire(requestID: requestID)
+            await retire(requestID: requestID, as: .resolved, summary: "No longer waiting: \(request.subject)")
+            await afterRequestsChanged()
             throw ChatDriverError.noSuchRequest(requestID)
         }
+        // The CLI withdrew it while the answer was on its way: its "Cancelled" line stands, and no "Allowed once" joins it.
+        guard requests.contains(where: { $0.requestID == requestID }) else { return }
         if let record { note(model.recordRequest(record, at: clock())) }
-        await retire(requestID: requestID)
+        await retire(requestID: requestID, as: .answered, summary: record?.summary ?? "Answered: \(request.subject)")
         await afterRequestsChanged()
+        // Messages the CLI holds unread come back as drafts, as on an interrupt.
+        if stops, model.pendingUserMessageIDs.contains(where: { sent[$0] != nil }), let again = run {
+            await sendInterrupt(on: again.channel, timeout: 10)
+        }
+    }
+
+    /// A card's answer, as the user gave it: builds the decision and the stream's line from the request and sends it. A
+    /// plan approval also records the mode as the session's choice.
+    public func answer(requestID: String, _ answer: ChatRequestAnswer) async throws {
+        guard phase != .stopping else { throw ChatDriverError.stopping }
+        guard let request = requests.first(where: { $0.requestID == requestID }) else {
+            throw ChatDriverError.noSuchRequest(requestID)
+        }
+        let plan: ChatAnswerPlan
+        do { plan = try request.answerPlan(for: answer) } catch let error as ChatAnswerError {
+            throw error == .incomplete ? ChatDriverError.incompleteAnswer : ChatDriverError.notOffered
+        }
+        try await respond(to: requestID, with: plan.decision, record: plan.record)
+        // A mode a plan approval, or an "Allow for this session" that carries `setMode`, sets is the session's choice.
+        if let mode = plan.mode {
+            permissionMode = mode
+            await recordChoices(ClaudeLaunchChoices(permissionMode: mode))
+        }
     }
 
     /// Approves a plan and leaves plan mode for `mode` (sent every time, also when it is the mode Claude would pick).
@@ -563,10 +733,18 @@ public actor ChatSessionDriver {
         try await respond(to: requestID, with: .deny(message: feedback, interrupt: false), record: record)
     }
 
-    private func retire(requestID: String) async {
+    /// A request leaves the list: on its own id only (the user's answer, the CLI withdrawing it) or its own `tool_use_id`
+    /// finishing, never on a `result`. It is kept, settled, with the one line it leaves.
+    private func retire(requestID: String, as outcome: ChatSettledRequest.Outcome, summary: String) async {
+        if let request = requests.first(where: { $0.requestID == requestID }) { settle(request, as: outcome, summary: summary) }
         requests.removeAll { $0.requestID == requestID }
         changed()
         await publishRequests()
+    }
+
+    private func settle(_ request: ChatPendingRequest, as outcome: ChatSettledRequest.Outcome, summary: String) {
+        settled.append(ChatSettledRequest(request: request, outcome: outcome, summary: summary, settledAt: clock()))
+        if settled.count > Self.settledLimit { settled.removeFirst(settled.count - Self.settledLimit) }
     }
 
     /// The run's pending requests, provider-independent, for Home, the sidebar and the Dock (and V18's cards).
@@ -601,6 +779,8 @@ public actor ChatSessionDriver {
     public func setModel(_ name: String) async throws {
         if let current = run, phase.isLive {
             _ = try await current.channel.request(.setModel(name))
+            // The chip and the ring show the chosen model until a newer `system/init` names the one that runs.
+            liveModel = name
         }
         await recordChoices(ClaudeLaunchChoices(model: name))
     }
@@ -666,7 +846,7 @@ public actor ChatSessionDriver {
         guard let i = queue.items.firstIndex(where: { $0.id == id }) else { throw ChatDriverError.noSuchQueueItem(id) }
         let item = queue.items.remove(at: i)
         do {
-            let uuid = try await write(item.text, priority: turnRunning ? .now : .next)
+            let uuid = try await write(ChatSentMessage(text: item.text, attachments: []), priority: turnRunning ? .now : .next)
             if queue.isEmpty { queue.paused = nil }
             saveQueue()
             return uuid
@@ -718,7 +898,7 @@ public actor ChatSessionDriver {
               queue.items.first?.id == first.id else { return }
         queue.items.removeFirst()
         do {
-            _ = try await write(first.text, priority: .next)
+            _ = try await write(ChatSentMessage(text: first.text, attachments: []), priority: .next)
             if case .notSent = queueIssue { queueIssue = nil }
             saveQueue()
         } catch {
@@ -761,23 +941,32 @@ public actor ChatSessionDriver {
             // Only Loom's own sends: a task notification has a uuid of its own and lifecycle records too.
             guard sent[model.rowID(forSent: lifecycle.commandUUID)] != nil else { return }
             note(model.apply(message, at: now))
+            releasePayloads()
         case let .result(result):
             await ingestResult(result, at: now)
         case let .controlRequest(request):
             guard case let .canUseTool(tool) = request.kind else { return }
-            requests.append(ChatPendingRequest(requestID: request.requestID, request: tool, arrivedAt: now))
+            let agent = tool.agentID.map { id -> ChatRequestAgent in
+                let task = model.subagentTask(agentID: id)
+                return ChatRequestAgent(id: id, type: task?.subagentType, description: task?.description)
+            }
+            // A request that comes while Loom stops the run is withdrawn by the Stop's interrupt: it is never listed, so
+            // no card shows it and nothing can answer it.
+            guard phase != .stopping else { return }
+            requests.append(ChatPendingRequest(requestID: request.requestID, request: tool, arrivedAt: now, agent: agent))
             if tool.toolName == "ExitPlanMode", let id = tool.toolUseID, let plan = tool.input["plan"]?.string {
                 note(model.updatePlan(toolUseID: id, markdown: plan, filePath: tool.input["planFilePath"]?.string))
             }
-            // A request that comes while Loom stops the run is withdrawn by the Stop's interrupt: it is not shown.
-            guard phase != .stopping else { return }
             await publishRequests()
             await beginTurn()
             setPhase(.needsYou)
             await publish(.waitingForApproval)
         case let .controlCancel(requestID):
-            guard requests.contains(where: { $0.requestID == requestID }) else { return }
-            await retire(requestID: requestID)
+            guard let request = requests.first(where: { $0.requestID == requestID }) else { return }
+            // The CLI withdrew it (an interrupt, a Stop): the card folds as cancelled, and the stream keeps the line.
+            let summary = "Cancelled: \(request.subject)"
+            note(model.recordRequest(RequestRecord(kind: request.recordKind, summary: summary), at: clock()))
+            await retire(requestID: requestID, as: .cancelled, summary: summary)
             await afterRequestsChanged()
         case let .conversationReset(reset):
             // The run goes to a new card, whose stream starts with the marker (`followMove`).
@@ -786,6 +975,7 @@ public actor ChatSessionDriver {
         default:
             let unknownBefore = model.unknownRecordCount
             note(model.apply(message, at: now))
+            releasePayloads()
             await observe(message, unknownBefore: unknownBefore)
         }
     }
@@ -798,6 +988,7 @@ public actor ChatSessionDriver {
         switch message {
         case let .systemInit(info):
             permissionMode = info.permissionMode ?? permissionMode
+            if info.model != nil { liveModel = nil }
             let listed = Set(info.capabilities ?? [])
             for capability in Self.requiredCapabilities where !listed.contains(capability) {
                 noteDrift(.missingCapability(capability))
@@ -814,9 +1005,12 @@ public actor ChatSessionDriver {
                 if case let .toolResult(result) = block { result.toolUseID } else { nil }
             })
             guard !finished.isEmpty else { return }
-            let before = requests.count
+            let done = requests.filter { $0.request.toolUseID.map(finished.contains) == true }
+            guard !done.isEmpty else { return }
+            // The tool call finished some other way: its card folds without a line (the tool's row says how it ended).
+            for request in done { settle(request, as: .resolved, summary: "Resolved: \(request.subject)") }
             requests.removeAll { $0.request.toolUseID.map(finished.contains) == true }
-            guard requests.count != before else { return }
+            changed()
             await publishRequests()
             await afterRequestsChanged()
         case let .assistant(assistant):
@@ -885,10 +1079,22 @@ public actor ChatSessionDriver {
         current.sink.close()
         await current.channel.close()
         current.writer?.cancel()
+        // A card still waiting when the process ends: cancelled when Loom stopped it, else Claude stopped before the user
+        // answered (the card stays, disabled, with Resume).
+        for request in requests {
+            let outcome: ChatSettledRequest.Outcome = stopRequested ? .cancelled : .processEnded
+            let summary = stopRequested ? "Cancelled: \(request.subject)" : "Not answered, Claude stopped: \(request.subject)"
+            note(model.recordRequest(RequestRecord(kind: request.recordKind, summary: summary), at: clock()))
+            settle(request, as: outcome, summary: summary)
+        }
         requests.removeAll()
         background.removeAll()
         let unread = model.pendingUserMessageIDs.filter { sent[$0] != nil }
         note(model.markNotDelivered(unread))
+        // What the user sent and Claude never read is theirs still: on disk before anything else can fail.
+        let unreadMessages = unread.compactMap { id in sent[id].map { (id, $0) } }
+        undelivered = unreadMessages.map { $0.1.rowText }
+        keepForUser(unreadMessages.map { ChatReturnedDraft(messageID: $0.0, text: $0.1.text, attachments: $0.1.attachments) })
         if turnRunning { note(model.endRunningTurn(at: clock())) }
         turnRunning = false
         wakeTurnEndWaiters()
@@ -899,7 +1105,8 @@ public actor ChatSessionDriver {
                                                               state: ProviderWorkState(activity: .sessionEnded(nil)))
         await runtime.supervisor.events.publish(sessionID: sessionID, change: .pendingRequests([]))
         if stopRequested {
-            setPhase(.stopped)
+            // A child that never answered stays "not ready" while Loom stops it (never flashes "stopped" in between).
+            if phase != .failed(.notReady) { setPhase(.stopped) }
         } else if endedStarting {
             // An exit at once (a bad flag, a resume of a conversation the CLI cannot find): its first stderr line.
             let line = await firstErrorLine(of: current.sink)

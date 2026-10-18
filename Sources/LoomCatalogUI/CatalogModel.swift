@@ -103,7 +103,7 @@ public final class SessionRowModel: Identifiable {
     public nonisolated let id: UUID
     public private(set) var record: CatalogSession
     public private(set) var live: SessionViewState?
-    /// Why the session shows its status (`live?.reason`), held on its own so that a card reads the reason
+    /// Why the session shows its status (`live?.displayReason`), held on its own so that a card reads the reason
     /// through this row alone. Written only when it differs, and the hub changes it only at hook boundaries
     /// (a permission request, a stop, a failure, a prompt), so the reason line never redraws per frame.
     public private(set) var reason: StatusReason?
@@ -122,7 +122,7 @@ public final class SessionRowModel: Identifiable {
         id = record.session.id
         self.record = record
         self.live = live
-        reason = live?.reason
+        reason = live?.displayReason
         self.awaitingOpenApproval = awaitingOpenApproval
         self.isSelected = isSelected
         self.inActiveSection = inActiveSection
@@ -134,7 +134,7 @@ public final class SessionRowModel: Identifiable {
     func apply(record: CatalogSession) { if record != self.record { self.record = record } }
     func apply(live: SessionViewState?) {
         if live != self.live { self.live = live }
-        let reason = live?.reason
+        let reason = live?.displayReason
         if reason != self.reason { self.reason = reason }
     }
     func apply(awaitingOpenApproval: Bool) {

@@ -716,4 +716,23 @@ struct FakeProviderChatTests {
         #expect(completed < (try #require(records.lastIndex(where: isType("system", "session_state_changed")))))
         #expect(await rig.finish())
     }
+
+    /// D-62: like the CLI, the fake takes a live switch to Full access only when launched with the flag, and refuses it
+    /// (and stays in its mode) otherwise.
+    @Test func aLiveSwitchToFullAccessNeedsTheLaunchFlag() async throws {
+        let with = try ChatRig(arguments: ["--allow-dangerously-skip-permissions"])
+        defer { with.stop() }
+        with.control("m1", "set_permission_mode", ["mode": "bypassPermissions"])
+        #expect(payload(try await with.wait(isResponse("m1")))["mode"] as? String == "bypassPermissions")
+        with.control("m2", "set_permission_mode", ["mode": "default"])
+        #expect(payload(try await with.wait(isResponse("m2")))["mode"] as? String == "default")
+
+        let without = try ChatRig()
+        defer { without.stop() }
+        without.control("m1", "set_permission_mode", ["mode": "bypassPermissions"])
+        let refused = try await without.wait(isResponse("m1"))
+        #expect((refused["response"] as? ChatRig.Record)?["subtype"] as? String == "error")
+        without.control("m2", "set_permission_mode", ["mode": "plan"])
+        #expect(payload(try await without.wait(isResponse("m2")))["mode"] as? String == "plan")
+    }
 }

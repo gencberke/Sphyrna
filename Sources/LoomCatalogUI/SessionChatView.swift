@@ -88,13 +88,16 @@ struct SessionChatView: View {
         if model.runEndpoint(of: row) == .pipe, let driver = model.liveChatDriver(for: row.id),
            let feed = model.liveChatFeed(for: driver, card: row.id, conversationID: claudeSessionID,
                                          workingDirectory: row.record.session.workingDirectory) {
-            LiveChatView(feed: feed, onOpenSubagent: { [model, sessionID = row.id] agentID, _ in
+            LiveChatView(feed: feed, composer: model.liveChatComposer(for: driver, row: row, feed: feed),
+                         onOpenSubagent: { [model, sessionID = row.id] agentID, _ in
                 model.openAgents(for: agentID, in: sessionID)
-            })
+            }, pinned: { maxHeight in PinnedCardsView(cards: feed.cards, maxHeight: maxHeight) })
             .id(ObjectIdentifier(feed))
             .onChange(of: row.record.session.workingDirectory) { _, value in feed.setWorkingDirectory(value) }
         } else {
+            // A run that ended shows its transcript; the card a dead process cut off (and the line of a cancelled one) stays above the bottom edge.
             transcript(indicator: indicator)
+                .safeAreaInset(edge: .bottom, spacing: 0) { EndedRunCards(model: model, sessionID: row.id) }
         }
     }
 

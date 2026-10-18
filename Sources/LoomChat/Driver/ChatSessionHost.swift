@@ -17,6 +17,8 @@ import Synchronization
 public final class ChatSessionHost {
     public let runtime: SessionRuntime
     public let queueStore: ChatQueueStore
+    /// The composers' unsent drafts (V17), in the data folder's `chat-drafts`.
+    public let draftStore: ChatDraftStore
     private let journal: DiagnosticJournal?
     private let choicesChanged: @MainActor (UUID, ClaudeLaunchChoices) -> Void
     private let contextWindow: @MainActor (String, Int) -> Void
@@ -24,12 +26,19 @@ public final class ChatSessionHost {
     /// By the card each driver's run is on. Re-keyed synchronously from the driver when its run moves (a driver must
     /// not wait for the main actor), so it is behind a lock rather than main-actor state.
     private let drivers = ChatDriverRegistry()
-    /// What the app keeps per driver while the driver is here (the live chat's presentation), by driver.
-    private var attachments: [ObjectIdentifier: (driver: ChatSessionDriver, value: AnyObject)] = [:]
-    /// The attachments by last use, the newest last: past `attachmentLimit`, the oldest one not in use goes.
-    private var attachmentOrder: [ObjectIdentifier] = []
-    /// How many attachments are kept at most, besides those in use (`ChatDriverAttachment.isInUse`).
+    /// What the app keeps per driver while the driver is here (the live chat's presentation, the composer), by driver and
+    /// by the type of the thing kept.
+    private var attachments: [AttachmentKey: (driver: ChatSessionDriver, value: AnyObject)] = [:]
+    /// The `ChatDriverAttachment`s by last use, the newest last: past `attachmentLimit`, the oldest one not in use goes.
+    /// Other attachments (the composer's model, which holds an unsent draft) are not trimmed.
+    private var attachmentOrder: [AttachmentKey] = []
+    /// How many `ChatDriverAttachment`s are kept at most, besides those in use (`ChatDriverAttachment.isInUse`).
     public static let attachmentLimit = 4
+
+    private struct AttachmentKey: Hashable {
+        let driver: ObjectIdentifier
+        let type: ObjectIdentifier
+    }
 
     /// - Parameters:
     ///   - dataRoot: Loom's data folder; queues are kept in its `chat-queues` folder.
@@ -42,6 +51,7 @@ public final class ChatSessionHost {
                 driversChanged: @escaping @MainActor () -> Void = {}) {
         self.runtime = runtime
         queueStore = ChatQueueStore(directory: dataRoot.appendingPathComponent("chat-queues", isDirectory: true))
+        draftStore = ChatDraftStore(directory: dataRoot.appendingPathComponent("chat-drafts", isDirectory: true))
         self.journal = journal
         self.choicesChanged = choicesChanged
         self.contextWindow = contextWindow
@@ -56,7 +66,7 @@ public final class ChatSessionHost {
         let changed = driversChanged
         let registry = drivers
         let driver = ChatSessionDriver(
-            sessionID: sessionID, runtime: runtime, queueStore: queueStore, journal: journal,
+            sessionID: sessionID, runtime: runtime, queueStore: queueStore, draftStore: draftStore, journal: journal,
             onChoicesChanged: { choices in Task { @MainActor in record(sessionID, choices) } },
             onContextWindow: { model, size in Task { @MainActor in window(model, size) } },
             onMoved: { from, to in
@@ -77,33 +87,50 @@ public final class ChatSessionHost {
     /// `releaseAttachment` once nothing uses it, or as the least recently used of more than `attachmentLimit` (one in
     /// use stays).
     public func existingAttachment<T: AnyObject>(for driver: ChatSessionDriver) -> T? {
-        guard let found = attachments[ObjectIdentifier(driver)], found.driver === driver else { return nil }
+        guard let found = attachments[AttachmentKey(driver: ObjectIdentifier(driver), type: ObjectIdentifier(T.self))],
+              found.driver === driver else { return nil }
         return found.value as? T
     }
 
     public func attachment<T: AnyObject>(for driver: ChatSessionDriver, make: () -> T) -> T {
-        let key = ObjectIdentifier(driver)
-        attachmentOrder.removeAll { $0 == key }
-        attachmentOrder.append(key)
-        if let found = attachments[key], found.driver === driver, let value = found.value as? T { return value }
+        let key = AttachmentKey(driver: ObjectIdentifier(driver), type: ObjectIdentifier(T.self))
+        if let found = attachments[key], found.driver === driver, let value = found.value as? T {
+            if value is ChatDriverAttachment { touch(key) }
+            return value
+        }
         let value = make()
         attachments[key] = (driver, value)
+        if value is ChatDriverAttachment { touch(key) }
         trimAttachments()
         return value
     }
 
-    /// The driver's attachment goes unless it is in use; a view that shows the session again makes a new one.
-    public func releaseAttachment(for driver: ChatSessionDriver) {
-        let key = ObjectIdentifier(driver)
-        guard let found = attachments[key], found.driver === driver, !Self.isInUse(found.value) else { return }
-        dropAttachment(key)
+    private func touch(_ key: AttachmentKey) {
+        attachmentOrder.removeAll { $0 == key }
+        attachmentOrder.append(key)
     }
 
-    /// The drivers that have an attachment, the least recently used first (tests).
-    public var attachedDriverOrder: [ObjectIdentifier] { attachmentOrder.filter { attachments[$0] != nil } }
+    /// The driver's trimmable attachments go unless they are in use; a view that shows the session again makes a new one.
+    public func releaseAttachment(for driver: ChatSessionDriver) {
+        let id = ObjectIdentifier(driver)
+        for key in attachmentOrder where key.driver == id {
+            guard let found = attachments[key], found.driver === driver, !Self.isInUse(found.value) else { continue }
+            dropAttachment(key)
+        }
+    }
+
+    /// The drivers that have a trimmable attachment, the least recently used first (tests).
+    public var attachedDriverOrder: [ObjectIdentifier] {
+        attachmentOrder.filter { attachments[$0] != nil }.map(\.driver)
+    }
+
+    /// Everything of one type the host keeps for its drivers (Quit flushes the composers this way).
+    public func kept<T: AnyObject>(ofType type: T.Type) -> [T] {
+        attachments.values.compactMap { $0.value as? T }
+    }
 
     private func trimAttachments() {
-        var excess = attachments.count - Self.attachmentLimit
+        var excess = attachmentOrder.count - Self.attachmentLimit
         for key in attachmentOrder where excess > 0 {
             guard let found = attachments[key], !Self.isInUse(found.value) else { continue }
             dropAttachment(key)
@@ -111,7 +138,7 @@ public final class ChatSessionHost {
         }
     }
 
-    private func dropAttachment(_ key: ObjectIdentifier) {
+    private func dropAttachment(_ key: AttachmentKey) {
         attachments[key] = nil
         attachmentOrder.removeAll { $0 == key }
     }
@@ -151,24 +178,41 @@ public final class ChatSessionHost {
         return driver
     }
 
-    /// The session was deleted through Loom: its driver goes, and its queue file with it (the items are what the user
-    /// wrote).
+    /// The session was deleted through Loom: its driver goes, and its queue and draft files with it (they are what the
+    /// user wrote).
     public func forget(sessionID: UUID) {
-        if let driver = drivers[sessionID] { dropAttachment(ObjectIdentifier(driver)) }
+        if let driver = drivers[sessionID] {
+            let id = ObjectIdentifier(driver)
+            for key in Array(attachments.keys) where key.driver == id {
+                // What the session's composer still holds in memory must not write the draft again.
+                (attachments[key]?.value as? ChatHostedAttachment)?.hostForgot()
+                dropAttachment(key)
+            }
+        }
         drivers[sessionID] = nil
         do { try queueStore.forget(sessionID: sessionID) } catch {
             LoomLog.error(.lifecycle, "A deleted session's Chat queue could not be removed (\(LoomLog.category(of: error)))")
         }
+        do { try draftStore.forget(sessionID: sessionID) } catch {
+            LoomLog.error(.lifecycle, "A deleted session's Chat draft could not be removed (\(LoomLog.category(of: error)))")
+        }
     }
 
-    /// Removes queue files of sessions the catalog no longer has (deleted while no host ran, or by launch recovery).
+    /// Removes queue and draft files of sessions the catalog no longer has (deleted while no host ran, or by launch
+    /// recovery).
     public func removeQueuesOfDeletedSessions() async {
-        for id in queueStore.sessionIDs() {
+        for id in queueStore.sessionIDs().union(draftStore.sessionIDs()) {
             // A catalog that cannot answer removes nothing.
             guard (try? await runtime.catalog.session(id: id).map { _ in true } ?? false) == false else { continue }
             forget(sessionID: id)
         }
     }
+}
+
+/// An attachment that learns the host forgot its session (deleted through Loom): it stops writing the session's files.
+@MainActor
+public protocol ChatHostedAttachment: AnyObject {
+    func hostForgot()
 }
 
 /// An attachment that can say it is needed now (a view shows it, or its run lives): the host keeps it past its limit.

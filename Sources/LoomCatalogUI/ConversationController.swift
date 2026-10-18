@@ -180,6 +180,7 @@ public final class ConversationController: NewSessionIntents {
         model?.quitting = true
         model?.flushPreferences()
         model?.newSession.flush()
+        model?.flushChatComposers()
     }
 
     // MARK: ConversationIntents

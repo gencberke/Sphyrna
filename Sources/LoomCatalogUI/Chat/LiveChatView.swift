@@ -20,7 +20,7 @@ final class LiveChatViewModel {
     @ObservationIgnored private var windowVisible = false
     @ObservationIgnored private var closed = false
 
-    init(feed: LiveChatFeed) {
+    init(feed: LiveChatFeed, composer: ChatComposerModel? = nil) {
         self.feed = feed
         let context = ChatRowContext()
         context.workingDirectory = feed.workingDirectory
@@ -32,6 +32,13 @@ final class LiveChatViewModel {
         context.canShowAll = { [weak feed] entry in feed?.canShowAll(entry) ?? false }
         context.openSubagent = { [weak self] run in self?.onOpenSubagent?(run.agentID, run.toolUseID) }
         context.openImage = { image in ChatQuickLook.show(image) }
+        // Delivery actions on the user's own rows (V17): Read now on a message Claude has not read, Retry on one that was not
+        // delivered.
+        if let composer {
+            context.canReadNow = true
+            context.readNow = { [weak composer] rowID in composer?.readNow(rowID: rowID) }
+            context.retry = { [weak composer] rowID in composer?.retry(rowID: rowID) }
+        }
         controller.onNeedOlder = { [weak feed, weak controller] in feed?.loadOlder(controller) }
         controller.onCycleView = { [weak feed] in feed?.presentation.cycleViewMode() }
         controller.onLatchChange = { [weak self] following, jump in
@@ -75,16 +82,19 @@ final class LiveChatViewModel {
 }
 
 /// The stream of a Chat-face session while its driver lives: the transcript's history above the driver's live turns,
-/// with the stream's folds, views (⌃O), "Show all", live row, jump pill and notices.
-struct LiveChatView: View {
+/// with the stream's folds, views (⌃O), "Show all", live row, jump pill and notices; under it `pinned` (the cards that wait
+/// for the user, V18) and the session's composer (V17).
+struct LiveChatView<Pinned: View>: View {
     let feed: LiveChatFeed
+    let composer: ChatComposerModel?
     let onOpenSubagent: ((String?, String) -> Void)?
+    @ViewBuilder let pinned: (_ maxHeight: CGFloat?) -> Pinned
     @State private var model: LiveChatViewModel?
 
     var body: some View {
         ZStack {
             if let model {
-                LiveChatContent(model: model, feed: feed, onOpenSubagent: onOpenSubagent)
+                LiveChatContent(model: model, feed: feed, composer: composer, onOpenSubagent: onOpenSubagent, pinned: pinned)
             } else {
                 LoomTheme.Surface.canvas
             }
@@ -92,22 +102,43 @@ struct LiveChatView: View {
         .task(id: ObjectIdentifier(feed)) {
             if model?.feed !== feed {
                 model?.close()
-                model = LiveChatViewModel(feed: feed)
+                model = LiveChatViewModel(feed: feed, composer: composer)
             }
         }
     }
 }
 
-struct LiveChatContent: View {
+extension LiveChatView where Pinned == EmptyView {
+    init(feed: LiveChatFeed, composer: ChatComposerModel? = nil, onOpenSubagent: ((String?, String) -> Void)?) {
+        self.init(feed: feed, composer: composer, onOpenSubagent: onOpenSubagent, pinned: { _ in EmptyView() })
+    }
+}
+
+struct LiveChatContent<Pinned: View>: View {
     let model: LiveChatViewModel
     let feed: LiveChatFeed
+    let composer: ChatComposerModel?
     let onOpenSubagent: ((String?, String) -> Void)?
+    /// The cards that wait for the user, between the stream and the composer. They get the most they may take.
+    @ViewBuilder let pinned: (_ maxHeight: CGFloat?) -> Pinned
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var width: CGFloat = 0
+    @State private var height: CGFloat = 0
 
     var body: some View {
+        VStack(spacing: 0) {
+            stream
+            // The slot between the stream and the composer: V18's card stack. The stream gives way to it and to the composer.
+            pinned(height > 0 ? height * LoomTheme.Pinned.stackMaxHeightFraction : nil)
+            if let composer { ChatComposerDock(model: composer) }
+        }
+        .background(LoomTheme.Surface.canvas)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+    }
+
+    private var stream: some View {
         let presentation = feed.presentation
-        ZStack {
+        return ZStack {
             LoomTheme.Surface.canvas
             if feed.phase == .ready {
                 ZStack(alignment: .bottom) {

@@ -804,13 +804,40 @@ struct NewSessionTests {
 
     // MARK: The composer's keys
 
+    @MainActor
     @Test func returnSendsCommandReturnOpensAFreshDraftShiftReturnIsANewLineAndAnInputMethodIsLeftAlone() throws {
-        var sends = 0, fresh = 0
-        let host = NewSessionTextView(
-            text: .constant(""), height: .constant(60), isEditable: true,
-            onSend: { sends += 1 }, onSendAndOpenFresh: { fresh += 1 }, onBlur: {})
-        let coordinator = host.makeCoordinator()
-        let view = NewSessionTextView.ComposerTextView()
+        // The draft's composer is the shared text field with the draft's host: the keys are the shared rules (`ComposerKeys`).
+        final class Host: ComposerEditorHost {
+            var sends = 0, fresh = 0
+            var keyMode: ComposerKeys.Mode { .draft }
+            var syncsByRevision: Bool { false }
+            var textRevision: Int { 0 }
+            var modelText: String { "" }
+            func keyState(isRepeat: Bool, hasMarkedText: Bool, bridge: any ComposerEditorBridge) -> ComposerKeys.State {
+                var state = ComposerKeys.State()
+                state.mode = .draft
+                state.isRepeat = isRepeat
+                state.hasMarkedText = hasMarkedText
+                return state
+            }
+            func perform(_ action: ComposerKeys.Action, bridge: any ComposerEditorBridge, in window: NSWindow?) -> Bool {
+                switch action {
+                case .send: sends += 1
+                case .sendSecondary: fresh += 1
+                default: return false
+                }
+                return true
+            }
+            func textChanged(_ text: String) {}
+            func editorEndedEditing() {}
+            func paste(_ pasteboard: NSPasteboard, plain: Bool) -> Bool { false }
+            func drop(_ pasteboard: NSPasteboard) -> Bool { false }
+            func editorAttached(_ bridge: (any ComposerEditorBridge)?) {}
+        }
+        let host = Host()
+        let editor = ComposerTextEditor(host: host, height: .constant(60), minimumHeight: 60, maximumHeight: 220)
+        let coordinator = editor.makeCoordinator()
+        let view = ComposerTextEditor.ComposerTextView()
         view.coordinator = coordinator
         coordinator.textView = view
         func press(_ modifiers: NSEvent.ModifierFlags, code: UInt16 = 36, repeating: Bool = false) throws {
@@ -820,25 +847,25 @@ struct NewSessionTests {
             view.keyDown(with: event)
         }
         try press([])
-        #expect(sends == 1 && fresh == 0)
+        #expect(host.sends == 1 && host.fresh == 0)
         try press([], code: 76)
-        #expect(sends == 2, "the keypad's Enter too")
+        #expect(host.sends == 2, "the keypad's Enter too")
         try press([.command])
-        #expect(sends == 2 && fresh == 1)
+        #expect(host.sends == 2 && host.fresh == 1)
         try press([], repeating: true)
         try press([.command], repeating: true)
-        #expect(sends == 2 && fresh == 1, "a held key never sends twice")
+        #expect(host.sends == 2 && host.fresh == 1, "a held key never sends twice")
         view.string = "ab"
         view.setSelectedRange(NSRange(location: 1, length: 0))
         try press([.shift])
-        #expect(view.string == "a\nb" && sends == 2, "Shift-Return is a new line")
+        #expect(view.string == "a\nb" && host.sends == 2, "Shift-Return is a new line")
         try press([.option])
         #expect(view.string == "a\n\nb")
         // While an input method composes, Return belongs to it.
         view.setMarkedText("ö", selectedRange: NSRange(location: 0, length: 1), replacementRange: NSRange(location: NSNotFound, length: 0))
         #expect(view.hasMarkedText())
         try press([])
-        #expect(sends == 2)
+        #expect(host.sends == 2)
     }
 
     @Test func theDraftScreenDrawsWithoutStartingAnything() async throws {

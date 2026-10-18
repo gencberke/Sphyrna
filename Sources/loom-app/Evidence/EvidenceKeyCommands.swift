@@ -6,7 +6,7 @@ import LoomCatalogUI
 ///
 /// - `focus-terminal`: makes the selected conversation's terminal the first responder (what a click into it does).
 /// - `focus-search`: makes the main window's search field the first responder through Edit > Find's own model call.
-/// - `key:<return|escape|cmd-f>`: sends that key as a native event (`NSApp.sendEvent` to the main window;
+/// - `key:<return|escape|cmd-f|…>`: sends that key as a native event (`NSApp.sendEvent` to the main window;
 ///   Cmd+F through the real main menu, as `tab-key` does). Every command writes `ack-key-<arg>.json`
 ///   with the first responder's class, whether it is the selected terminal or a text field, the search text
 ///   and how many requests the selected card still shows, so a Return that answered an approval is visible.
@@ -36,6 +36,22 @@ extension DevelopmentEvidence {
             switch argument {
             case "return": app.sendKeyForEvidence("\r", keyCode: 36, modifiers: [])
             case "escape": app.sendKeyForEvidence("\u{1b}", keyCode: 53, modifiers: [])
+            // The composer's keys (V17), by key code as the composer reads them.
+            case "cmd-return": app.sendKeyForEvidence("\r", keyCode: 36, modifiers: [.command])
+            case "shift-return": app.sendKeyForEvidence("\r", keyCode: 36, modifiers: [.shift])
+            case "up": app.sendKeyForEvidence("\u{F700}", keyCode: 126, modifiers: [])
+            case "down": app.sendKeyForEvidence("\u{F701}", keyCode: 125, modifiers: [])
+            case "tab": app.sendKeyForEvidence("\t", keyCode: 48, modifiers: [])
+            case "shift-tab": app.sendKeyForEvidence("\u{19}", keyCode: 48, modifiers: [.shift])
+            // A pinned card's keys (V18): the arrows move between its buttons, Space presses one, digits pick an option.
+            case "left": app.sendKeyForEvidence("\u{F702}", keyCode: 123, modifiers: [])
+            case "right": app.sendKeyForEvidence("\u{F703}", keyCode: 124, modifiers: [])
+            case "space": app.sendKeyForEvidence(" ", keyCode: 49, modifiers: [])
+            case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+                let codes: [String: UInt16] = ["1": 18, "2": 19, "3": 20, "4": 21, "5": 23, "6": 22, "7": 26, "8": 28, "9": 25]
+                app.sendKeyForEvidence(argument, keyCode: codes[argument] ?? 18, modifiers: [])
+            case "cmd-shift-m": app.sendKeyForEvidence("M", keyCode: 46, modifiers: [.command, .shift])
+            case "cmd-shift-k": app.sendKeyForEvidence("K", keyCode: 40, modifiers: [.command, .shift])
             case "cmd-f":
                 let items = (NSApp.mainMenu?.items ?? []).flatMap { $0.submenu?.items ?? [] }
                     .filter { $0.action.map(NSStringFromSelector) == "findFromMenu:" }

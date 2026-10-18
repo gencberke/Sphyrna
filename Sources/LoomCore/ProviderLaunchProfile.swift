@@ -125,9 +125,14 @@ public struct ProviderLaunchProfile: Sendable {
 
     /// The options that make a Chat-face child (S1): NDJSON both ways, partial messages, the echo of every send,
     /// requests over the control channel. Never `--bare` (it skips the user's login).
+    ///
+    /// `--allow-dangerously-skip-permissions` (D-62) is passed on every Chat spawn and resume: it only makes Full access
+    /// selectable in the live chip (the CLI refuses a live switch to `bypassPermissions` without it). It starts the child
+    /// in no mode; Loom never picks Full access by itself. The terminal face's spawn does not carry it.
     public static let claudeChatArguments = [
         "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
         "--include-partial-messages", "--replay-user-messages", "--permission-prompt-tool", "stdio",
+        "--allow-dangerously-skip-permissions",
     ]
 
     /// A new session an agent asked Loom to open (D-40): Claude gets the title as its session name

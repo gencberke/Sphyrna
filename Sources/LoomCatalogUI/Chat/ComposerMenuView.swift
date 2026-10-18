@@ -1,0 +1,122 @@
+import SwiftUI
+
+/// The `/` and `@` menu, anchored above the composer (design/v2-studio-preview.html `.menu`): one flat list, ↑ and ↓ wrap,
+/// ↵ or Tab inserts, Esc closes.
+struct ComposerMenuPanel: View {
+    let model: ChatComposerModel
+    let menu: ComposerMenuState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var title: String {
+        switch menu.kind {
+        case .commands: "Commands and skills"
+        case .mention: "Files, folders and sessions"
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: LoomTheme.Space.bannerRowSpacing) {
+                Text(title).font(LoomTheme.Typography.smallMedium).foregroundStyle(LoomTheme.OnPopover.placeholder)
+                if menu.loading {
+                    Text("Searching\u{2026}").font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.OnPopover.placeholder)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, LoomTheme.Space.requestPadding + 2).frame(height: LoomTheme.Composer.menuFooterHeight + 6)
+            Divider().overlay(LoomTheme.Surface.hairline)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(menu.items.enumerated()), id: \.element.id) { index, item in
+                            row(item, index: index)
+                        }
+                    }
+                    .padding(LoomTheme.Composer.menuInset)
+                }
+                .frame(height: min(CGFloat(max(menu.items.count, 1)), CGFloat(LoomTheme.Composer.menuMaxRows))
+                    * LoomTheme.Composer.menuRowHeight + LoomTheme.Composer.menuInset * 2)
+                .onChange(of: menu.selection) { _, selection in
+                    guard menu.items.indices.contains(selection) else { return }
+                    proxy.scrollTo(menu.items[selection].id)
+                }
+            }
+            Divider().overlay(LoomTheme.Surface.hairline)
+            HStack(spacing: LoomTheme.Space.requestPadding + 2) {
+                Text("\u{2191}\u{2193} move")
+                Text("\u{21B5} insert")
+                Text("esc close")
+                Spacer(minLength: 0)
+            }
+            .font(LoomTheme.Composer.menuHintFont).foregroundStyle(LoomTheme.OnPopover.placeholder)
+            .padding(.horizontal, LoomTheme.Space.requestPadding + 2).frame(height: LoomTheme.Composer.menuFooterHeight)
+        }
+        .background(RoundedRectangle(cornerRadius: LoomTheme.Composer.menuRadius).fill(LoomTheme.Surface.popover))
+        .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Composer.menuRadius))
+        .overlay(RoundedRectangle(cornerRadius: LoomTheme.Composer.menuRadius)
+            .strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
+        .shadow(color: .black.opacity(LoomTheme.Depth.popover.shadow.opacity),
+                radius: LoomTheme.Depth.popover.shadow.blur / 2, y: LoomTheme.Depth.popover.shadow.y / 2)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("composer-menu")
+    }
+
+    private func row(_ item: ComposerMenuItem, index: Int) -> some View {
+        let selected = index == menu.selection
+        let dimmed = item.isTerminalOnly
+        return Button { model.choose(item) } label: {
+            HStack(spacing: LoomTheme.Space.chipInset + 2) {
+                icon(for: item)
+                switch item.kind {
+                case .command, .skill, .terminalOnly:
+                    Text(item.title).font(LoomTheme.Composer.menuCommandFont).lineLimit(1)
+                        .frame(minWidth: LoomTheme.Composer.menuNameColumn, alignment: .leading)
+                        .foregroundStyle(dimmed ? LoomTheme.OnPopover.placeholder : LoomTheme.Text.primary)
+                    if let detail = item.detail {
+                        Text(detail).font(LoomTheme.Composer.menuDetailFont).lineLimit(1).truncationMode(.tail)
+                            .foregroundStyle(LoomTheme.OnPopover.placeholder)
+                    }
+                default:
+                    Text(item.title).font(LoomTheme.Composer.menuTitleFont).lineLimit(1).truncationMode(.middle)
+                        .foregroundStyle(LoomTheme.Text.primary)
+                    if let detail = item.detail {
+                        Text(detail).font(LoomTheme.Composer.menuDetailFont).lineLimit(1)
+                            .foregroundStyle(LoomTheme.OnPopover.placeholder)
+                    }
+                }
+                Spacer(minLength: LoomTheme.Space.detailMinSpacer)
+                if let trailing = item.trailing {
+                    Text(trailing).font(LoomTheme.Composer.menuHintFont).lineLimit(1)
+                        .foregroundStyle(LoomTheme.OnPopover.placeholder)
+                }
+            }
+            .padding(.horizontal, LoomTheme.Space.chipInset)
+            .frame(height: LoomTheme.Composer.menuRowHeight)
+            .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.sm + 1)
+                .fill(selected ? LoomTheme.Composer.menuSelectedFill : Color.clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onContinuousHover { phase in
+            if case .active = phase, menu.selection != index { model.selectMenuItem(at: index) }
+        }
+        .id(item.id)
+        .accessibilityLabel(item.title + (item.detail.map { ", \($0)" } ?? ""))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    @ViewBuilder private func icon(for item: ComposerMenuItem) -> some View {
+        let symbol: String? = switch item.kind {
+        case .file: "doc"
+        case .folder: "folder"
+        case .session: "bubble.left"
+        case .action: "terminal"
+        case .command, .skill, .terminalOnly: nil
+        }
+        if let symbol {
+            Image(systemName: symbol).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                .frame(width: LoomTheme.Layout.indicatorSlot.width)
+        }
+    }
+}

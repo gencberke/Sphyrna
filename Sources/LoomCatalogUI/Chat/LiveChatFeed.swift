@@ -38,6 +38,8 @@ final class LiveChatFeed: ChatDriverAttachment {
     var wireDriftDismissed = false
 
     @ObservationIgnored let source: any ChatLiveSource
+    /// The cards that wait above the composer (approvals, questions, plans): V18. They follow the driver's live state.
+    @ObservationIgnored let cards: PinnedCardsModel
     @ObservationIgnored private(set) var card: UUID
     @ObservationIgnored private var conversationID: String?
     @ObservationIgnored private let configDirectory: URL?
@@ -85,6 +87,7 @@ final class LiveChatFeed: ChatDriverAttachment {
              ClaudeTranscriptLocator.locate(sessionID: $0, configDirectory: $1, workingDirectory: $2)
          }) {
         self.source = source
+        cards = PinnedCardsModel(source: source)
         self.card = card
         self.conversationID = conversationID
         self.configDirectory = configDirectory
@@ -295,6 +298,7 @@ final class LiveChatFeed: ChatDriverAttachment {
             driverLive = live
             if !live, viewCount == 0 { onUnused?() }
         }
+        cards.apply(state)
         presentation.setWorking(state.turnRunning)
         presentation.setLastActivity(state.lastActivity)
         if policySignal != state.policySignal { policySignal = state.policySignal }
@@ -396,6 +400,19 @@ final class LiveChatFeed: ChatDriverAttachment {
 
     /// "Show all" can read a clipped result: a history row has its line; a live row needs the transcript's folder.
     func canShowAll(_ entry: ChatEntry) -> Bool { entry.sourceOffset != nil || configDirectory != nil }
+
+    // MARK: The composer
+
+    /// The session's earlier messages, oldest first: what ↑ in the composer recalls (history and live, main thread). Read
+    /// when a recall begins, never per keystroke.
+    func userMessageTexts() -> [String] {
+        join.model.entries.compactMap { entry in
+            // The typed text alone: a pasted chip's content is never recalled into the field.
+            guard entry.thread == .main, case let .user(prompt) = entry.body, !prompt.isBrief,
+                  case let text = prompt.recallText ?? prompt.text, !text.isEmpty else { return nil }
+            return text
+        }
+    }
 
     // MARK: Tests and evidence
 

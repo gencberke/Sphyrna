@@ -106,7 +106,7 @@ private struct ProjectSessionRow: View {
         let live = model.liveStates[id]
         let indicator = SessionIndicator(
             record: record, live: live, awaitingOpenApproval: model.awaitingOpenApproval.contains(id))
-        let reason = live?.reason
+        let reason = live?.displayReason
         let line = ProjectSessionLine.text(reason: reason, transcript: model.projectPage.lastLines[id])
         let branch = model.branches[record.session.workingDirectory]
         let time = RelativeTime.string(from: record.lastActivityAt, to: model.now)

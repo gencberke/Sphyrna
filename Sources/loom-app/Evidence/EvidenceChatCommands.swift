@@ -12,9 +12,15 @@ import LoomCore
 /// - `chat-interrupt:<session id>`, `chat-stop:<session id>`, `chat-resume:<session id>`.
 /// - `chat-allow:<session id>` and `chat-deny:<session id>`: the oldest waiting request.
 /// - `chat-read-now:<session id>`: "Read now" on the newest message the CLI holds unread.
+/// - `card:<session id>:<action>`: one action on the session's pinned card, as a click does it (`allow-once`,
+///   `allow-session`, `deny[:note]`, `deny-stop[:note]`, `approve-plan:<mode>`, `keep-planning[:feedback]`, `pick:<n>`,
+///   `next`, `back`, `submit`, `step:<+1|-1>`, `note:<text>`, `resume`, `open-held`, `expire-folded`); writes `card-ack.json`.
+/// - `card-state:<session id>:<label>`: writes `card-state-<label>.json` (counts and kinds, no text).
 /// - `chat-view:<session id>:<label>`: writes `chat-view-<label>.json`, the live chat view of that session (counts and
 ///   kinds of its rows, the live row's label and quiet seconds, notices; no text).
 /// - `chat-state:<label>`: writes `chat-state-<label>.json` for the newest Chat session (or the selected one).
+/// - `composer-focus|type|clear|attach|paste|mode|model|effort|ring:<session id>[:<text, path or KB>]` and `composer-state:<session id>:<label>`:
+///   the session's composer as the user drives it (V17); `composer-state` writes `composer-<label>.json` (kinds and counts).
 /// Failures are written as `chat-error-<command>.json` with the error's category only.
 @MainActor
 extension DevelopmentEvidence {
@@ -48,6 +54,14 @@ extension DevelopmentEvidence {
                 await run { try await model.answerFirstChatRequest(session, allow: name == "chat-allow") }
             }
         case "chat-read-now": if let session = id(argument) { await run { try await model.readNowChat(session) } }
+        case "card":
+            guard let session = id(argument) else { return true }
+            let done = await model.pinnedCardAction(session, rest(argument))
+            write("card-ack", ["done": done])
+        case "card-state":
+            guard let session = id(argument) else { return true }
+            let label = rest(argument).filter { $0.isLetter || $0.isNumber || $0 == "-" }
+            write("card-state-\(label)", model.pinnedCardsSummary(session))
         case "chat-view":
             guard let session = id(argument) else { return true }
             let label = rest(argument).filter { $0.isLetter || $0.isNumber || $0 == "-" }
@@ -62,6 +76,20 @@ extension DevelopmentEvidence {
             state["sessionID"] = session.uuidString
             state["route"] = model.detailRouteKind
             write("chat-state-\(label)", state)
+        case "composer-focus", "composer-type", "composer-clear", "composer-attach", "composer-paste", "composer-state",
+             "composer-mode", "composer-model", "composer-effort", "composer-ring", "composer-folder":
+            // `composer-<command>:<session id>:<label or argument>`; `composer-state` writes `composer-<label>.json`.
+            guard let session = id(argument) else { return true }
+            let command = String(name.dropFirst("composer-".count))
+            let tail = rest(argument)
+            let label = command == "state" ? tail.filter { $0.isLetter || $0.isNumber || $0 == "-" } : ""
+            var summary = await model.composerEvidence(session: session, command: command, argument: tail)
+            if command == "state" {
+                if app?.redactsContent == true { summary["menuTitles"] = nil }
+                write("composer-\(label)", summary)
+            } else {
+                write("composer-last-\(command)", summary)
+            }
         default: return false
         }
         return true

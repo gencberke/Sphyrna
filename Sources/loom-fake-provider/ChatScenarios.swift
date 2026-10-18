@@ -11,6 +11,15 @@ import Foundation
 //   subagent [ms] [approval]          an Agent whose messages carry parent_tool_use_id and agent_id, announced by
 //                                     task_started (and its own transcript); `approval`: its Bash asks first
 //   approval | question | plan        can_use_tool round trips (Bash, AskUserQuestion, ExitPlanMode)
+//   approval <variant>                the same round trip for another kind of tool: edit (an Edit, suggestion
+//                                     setMode acceptEdits), write (a new file), web (WebFetch), mcp (an MCP tool),
+//                                     redirect (a Bash command with `> file`: the CLI asks again every time),
+//                                     bare (a Bash command with no description, reason or suggestion), long (a
+//                                     twelve-line command)
+//   orphan [resolve]                  two Bash requests left waiting across the turn's `result` (the CLI never does
+//                                     this; a host must keep a card until its own id is answered or withdrawn, or
+//                                     its own tool_use_id finishes: `resolve` finishes the first one's)
+//   approvals [n]                     n Bash requests at once (default 3), one assistant message: the cards' counter
 //   work [ms]                         three Bash steps over `ms` (default 600): room to interrupt, or to send
 //                                     `next`/`later`/`now` messages (a step of a second or more announces itself
 //                                     with task_started, so `now` + human origin can move it to the background)
@@ -78,7 +87,11 @@ extension ChatEngine {
         case "subagent":
             try subagent(milliseconds: args.compactMap(Int.init).first ?? 60, approval: args.contains("approval"))
         case "approval":
-            try approval()
+            try approval(variant: args.first)
+        case "orphan":
+            try orphan(resolve: args.first == "resolve")
+        case "approvals":
+            try approvals(count: args.first.flatMap(Int.init) ?? 3)
         case "question":
             try question()
         case "plan":
@@ -220,7 +233,8 @@ extension ChatEngine {
         try assistantMessage([.text("The subagent found two services.")])
     }
 
-    func approval() throws {
+    func approval(variant: String? = nil) throws {
+        if let variant, variant != "bash" { return try approvalVariant(variant) }
         let id = nextToolID()
         let input: ChatObject = ["command": "rm -rf build", "description": "Remove the build folder"]
         var ask = PermissionAsk.answered([:])
@@ -243,6 +257,143 @@ extension ChatEngine {
                 ? "The command could not run because the permission request failed."
                 : "Understood, I left the build folder alone.")])
         }
+    }
+
+    /// One request for another kind of tool (see the scenario list). Allowed, the tool runs and its result follows; denied,
+    /// the denial is its result.
+    func approvalVariant(_ variant: String) throws {
+        let id = nextToolID()
+        var name = "Bash"
+        var input: ChatObject
+        var reason: String? = "This command requires approval"
+        var suggestions: [ChatObject] = []
+        var lead = "I need to run something first."
+        var output = "done"
+        var structured: Any? = Self.bash(stdout: "done")
+        switch variant {
+        case "edit":
+            name = "Edit"
+            input = ["file_path": "/tmp/fake-project/App.swift", "old_string": "let limit = 1\nlet name = \"fake\"",
+                     "new_string": "let limit = 2\nlet name = \"fake\"\nlet retries = 3"]
+            reason = "Edits need approval in this mode"
+            suggestions = [["type": "setMode", "mode": "acceptEdits", "destination": "session"] as ChatObject]
+            lead = "I'll raise the limit."
+            output = "The file /tmp/fake-project/App.swift has been updated successfully."
+            structured = ["filePath": "/tmp/fake-project/App.swift"] as ChatObject
+        case "write":
+            name = "Write"
+            input = ["file_path": "/tmp/fake-project/notes.txt", "content": "alpha\nbeta\ngamma\n"]
+            reason = "Edits need approval in this mode"
+            suggestions = [["type": "setMode", "mode": "acceptEdits", "destination": "session"] as ChatObject]
+            lead = "I'll write the notes."
+            output = "File created successfully at: /tmp/fake-project/notes.txt"
+            structured = ["type": "create", "filePath": "/tmp/fake-project/notes.txt"] as ChatObject
+        case "web":
+            name = "WebFetch"
+            input = ["url": "https://example.com/docs/limits", "prompt": "Find the rate limits"]
+            reason = "WebFetch needs approval for this domain"
+            suggestions = [["type": "addRules", "rules": [["toolName": "WebFetch", "ruleContent": "domain:example.com"] as ChatObject],
+                            "behavior": "allow", "destination": "localSettings"] as ChatObject]
+            lead = "Let me read the docs."
+            output = "The limit is 100 requests a minute."
+            structured = nil
+        case "mcp":
+            name = "mcp__docs__search"
+            input = ["query": "webhook signature replay window"]
+            reason = "This MCP tool needs approval"
+            suggestions = [["type": "addRules", "rules": [["toolName": "mcp__docs__search"] as ChatObject],
+                            "behavior": "allow", "destination": "localSettings"] as ChatObject]
+            lead = "I'll search the docs server."
+            output = "3 results"
+            structured = nil
+        case "redirect":
+            input = ["command": "echo done > out.txt", "description": "Write a marker file"]
+            suggestions = [["type": "addRules", "rules": [["toolName": "Bash", "ruleContent": "echo done:*"] as ChatObject],
+                            "behavior": "allow", "destination": "localSettings"] as ChatObject]
+            lead = "I'll leave a marker."
+        case "bare":
+            input = ["command": "make release"]
+            reason = nil
+            lead = "Building the release."
+        case "long":
+            input = ["command": (1...12).map { "echo step \($0) of the release script && sleep 1" }.joined(separator: "\n"),
+                     "description": "Run the release steps"]
+            suggestions = [["type": "addRules", "rules": [["toolName": "Bash", "ruleContent": "echo step:*"] as ChatObject],
+                            "behavior": "allow", "destination": "localSettings"] as ChatObject]
+            lead = "I'll run the release steps."
+        default:
+            input = ["command": "ls -1", "description": "List files"]
+        }
+        var ask = PermissionAsk.answered([:])
+        try assistantMessage([.text(lead), .tool(id: id, name: name, input: input)]) {
+            ask = requestPermission(
+                tool: name, input: input, toolUseID: id, description: input["description"] as? String,
+                suggestions: suggestions, reason: reason)
+        }
+        let answer = try awaitPermission(ask, toolUseID: id)
+        if answer["behavior"] as? String == "allow" {
+            try runTool(id, name: name, milliseconds: 15)
+            toolResult(id, output, structured: structured)
+            try toolBoundary()
+            // What the host sent with its allow, so a test can read it from the stream.
+            let granted = (answer["updatedPermissions"] as? [ChatObject]).flatMap {
+                try? JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys])
+            }.map { String(decoding: $0, as: UTF8.self) } ?? "none"
+            try assistantMessage([.text("That went through. Permissions: \(granted)")])
+        } else {
+            try deny(id: id, tool: name, input: input, answer: answer)
+            try assistantMessage([.text("Understood, I did not do it.")])
+        }
+    }
+
+    /// Two requests that are never awaited: the turn ends with its `result` while both still wait. With `resolve`, the
+    /// first tool call finishes some other way before that (its tool_result arrives).
+    func orphan(resolve: Bool) throws {
+        let first = nextToolID()
+        let second = nextToolID()
+        let inputs: [ChatObject] = [["command": "make deploy", "description": "Deploy the build"],
+                                    ["command": "make notify", "description": "Tell the team"]]
+        try assistantMessage([.text("Deploying."), .tool(id: first, name: "Bash", input: inputs[0]),
+                              .tool(id: second, name: "Bash", input: inputs[1])]) {
+            _ = requestPermission(tool: "Bash", input: inputs[0], toolUseID: first, description: "Deploy the build",
+                                  reason: "This command requires approval")
+            _ = requestPermission(tool: "Bash", input: inputs[1], toolUseID: second, description: "Tell the team",
+                                  reason: "This command requires approval")
+        }
+        if resolve { toolResult(first, "Ran somewhere else", structured: Self.bash(stdout: "Ran somewhere else")) }
+        keepPendingAtEnd = true
+        try assistantMessage([.text("Waiting on you.")])
+    }
+
+    /// Several requests at once, from one assistant message: they wait in order of arrival and may be answered in any order.
+    func approvals(count: Int) throws {
+        let ids = (0..<max(1, count)).map { _ in nextToolID() }
+        let inputs: [ChatObject] = ids.indices.map { index in
+            ["command": "make step\(index + 1)", "description": "Run build step \(index + 1)"]
+        }
+        var asks: [PermissionAsk] = []
+        var blocks: [Block] = [.text("Three steps need your approval.")]
+        for index in ids.indices { blocks.append(.tool(id: ids[index], name: "Bash", input: inputs[index])) }
+        try assistantMessage(blocks) {
+            for index in ids.indices {
+                asks.append(requestPermission(
+                    tool: "Bash", input: inputs[index], toolUseID: ids[index], description: "Run build step \(index + 1)",
+                    reason: "This command requires approval"))
+            }
+        }
+        var allowed = 0
+        for index in ids.indices {
+            let answer = try awaitPermission(asks[index], toolUseID: ids[index])
+            if answer["behavior"] as? String == "allow" {
+                allowed += 1
+                try runTool(ids[index], milliseconds: 15)
+                toolResult(ids[index], "step \(index + 1) done", structured: Self.bash(stdout: "step \(index + 1) done"))
+            } else {
+                try deny(id: ids[index], tool: "Bash", input: inputs[index], answer: answer)
+            }
+        }
+        try toolBoundary()
+        try assistantMessage([.text("\(allowed) of \(ids.count) steps ran.")])
     }
 
     /// A denied tool: the tool_result is the denial message, and `interrupt: true` ends the turn.

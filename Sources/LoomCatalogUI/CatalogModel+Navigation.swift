@@ -81,6 +81,12 @@ extension CatalogModel {
         return (record.displayTitle(projectName: project), project)
     }
 
+    /// What the first request that waits for this session is (an approval, a question or a plan), whichever provider and
+    /// face asked it: the notification's wording.
+    public func firstWaitingRequestKind(of id: UUID) -> ProviderPendingRequest.Kind? {
+        liveStates[id]?.waitingRequests.first?.kind
+    }
+
     // MARK: Select next and previous
 
     /// The sessions in the order the current view draws them: the activity list's Active rows, then its day

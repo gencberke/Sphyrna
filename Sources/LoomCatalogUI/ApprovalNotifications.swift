@@ -1,4 +1,5 @@
 import Foundation
+import LoomCore
 
 /// Needs-approval notifications (D-49, D-52): what to post and what to take back when the set of
 /// sessions at Needs approval changes. Pure, so the decision is tested without a notification center;
@@ -22,9 +23,14 @@ public enum ApprovalNotificationPlanner {
                     remove: ordered(previous.subtracting(current)))
     }
 
-    /// "<project> · Claude is waiting for your approval." Without a project: "Claude is waiting for your approval."
-    public static func body(project: String?) -> String {
-        let sentence = "Claude is waiting for your approval."
+    /// "<project> · Claude is waiting for your approval." Without a project: "Claude is waiting for your approval." A
+    /// question and a plan say what they are (`kind`: the first request that waits).
+    public static func body(project: String?, kind: ProviderPendingRequest.Kind? = nil) -> String {
+        let sentence = switch kind {
+        case .question?: "Claude has a question for you."
+        case .plan?: "Claude has a plan ready for your review."
+        case .approval?, nil: "Claude is waiting for your approval."
+        }
         guard let project, !project.isEmpty else { return sentence }
         return "\(project) · \(sentence)"
     }

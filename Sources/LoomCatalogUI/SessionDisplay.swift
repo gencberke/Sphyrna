@@ -46,6 +46,13 @@ public enum SessionIndicator: Equatable, Sendable {
             self = .waitingForApproval
             return
         }
+        // A request that waits for an answer is what the session needs, whatever the work state last said: a Chat-face
+        // card (or a Codex request) stays answerable after a `result`, and the sidebar, Home, the Dock and the
+        // notifications must keep saying so for as long as it does.
+        if let live, live.runID != nil, !live.waitingRequests.isEmpty {
+            self = .waitingForApproval
+            return
+        }
         if let live, live.runID != nil {
             switch live.status?.activity {
             case nil, .unknown?: self = .unknown

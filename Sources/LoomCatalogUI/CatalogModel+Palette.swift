@@ -367,7 +367,7 @@ extension CatalogModel {
         let indicator = SessionIndicator(record: record, live: live, awaitingOpenApproval: awaiting)
         let project = projectName(for: record)
         let title = record.displayTitle(projectName: project)
-        let reason = PaletteReasonText.line(reason: live?.reason, indicator: indicator, awaitingOpenApproval: awaiting)
+        let reason = PaletteReasonText.line(reason: live?.displayReason, indicator: indicator, awaitingOpenApproval: awaiting)
         return PaletteSessionInfo(
             id: id, title: title, project: project, provider: record.session.provider,
             lastActivityAt: record.lastActivityAt, indicator: indicator, reason: reason,

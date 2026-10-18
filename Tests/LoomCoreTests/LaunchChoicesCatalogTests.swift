@@ -131,9 +131,24 @@ struct LaunchChoicesCatalogTests {
         #expect(profile.environment["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"] == "true")
         #expect(profile.environment["CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS"] == "1")
 
+        // D-62: Full access is selectable in the live chip, on every Chat spawn and resume; never in the terminal's.
+        #expect(args.contains("--allow-dangerously-skip-permissions"))
+        #expect(Self.value(after: "--permission-mode", in: args) == "plan", "the flag starts the child in no mode of its own")
+        let resumed = try ProviderLaunchProfile.claude(
+            route: .resume("abc-123"), capabilities: capabilities, config: URL(fileURLWithPath: "/cfg"), environment: [:],
+            choices: ClaudeLaunchChoices(permissionMode: "acceptEdits"), face: .chat)
+        #expect(resumed.launchArguments().contains("--allow-dangerously-skip-permissions"))
+        let fullAccessChoice = try ProviderLaunchProfile.claude(
+            route: .new(UUID()), capabilities: capabilities, config: URL(fileURLWithPath: "/cfg"), environment: [:], face: .chat)
+        #expect(Self.value(after: "--permission-mode", in: fullAccessChoice.launchArguments()) == nil, "no mode unless a choice names one")
+
         // The terminal face is unchanged: the TUI keeps its own checkpoints.
         let terminal = try ProviderLaunchProfile.claude(
             route: .new(UUID()), capabilities: capabilities, config: URL(fileURLWithPath: "/cfg"), environment: [:])
+        #expect(!terminal.launchArguments().contains("--allow-dangerously-skip-permissions"))
+        let terminalResume = try ProviderLaunchProfile.claude(
+            route: .resume("abc-123"), capabilities: capabilities, config: URL(fileURLWithPath: "/cfg"), environment: [:])
+        #expect(!terminalResume.launchArguments().contains("--allow-dangerously-skip-permissions"))
         #expect(terminal.environment["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"] == nil)
         #expect(!terminal.launchArguments().contains("--input-format"))
 
@@ -175,7 +190,8 @@ struct LaunchChoicesCatalogTests {
             pendingRequests: [chat])
         #expect(state.waitingRequests.map(\.requestID) == ["r1", "c1"])
         #expect(state.waitingRequests.last?.kind == .approval)
-        #expect(state.waitingRequests.last?.toolName == "command")
+        // Named as Claude's own tools are, so every place that words a request reads a Codex command like a Bash one.
+        #expect(state.waitingRequests.last?.toolName == "Bash")
         #expect(state.waitingRequests.last?.arrivedAt == nil)
     }
 }

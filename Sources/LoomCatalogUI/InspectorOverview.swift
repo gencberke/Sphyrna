@@ -18,7 +18,7 @@ struct InspectorOverviewContent: Equatable {
     @MainActor init(row: SessionRowModel, project: String?, branch: String?) {
         let record = row.record
         status = row.indicator.label ?? (record.lifecycle == .active ? "Not running" : "—")
-        reason = row.live?.reason.flatMap(InspectorReasonText.line)
+        reason = row.live?.displayReason.flatMap(InspectorReasonText.line)
         self.project = project
         self.branch = branch
         folder = (record.session.workingDirectory as NSString).abbreviatingWithTildeInPath

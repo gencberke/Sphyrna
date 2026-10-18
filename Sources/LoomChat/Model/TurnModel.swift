@@ -130,12 +130,32 @@ public struct TurnModel: Sendable {
     /// Shows a message Loom just sent (sent with `uuid`), dimmed until its `isReplay` echo arrives. Starts a turn, or
     /// joins the running one.
     @discardableResult
-    public mutating func appendPendingUser(uuid: String, text: String, images: [ImageRef] = [], at now: Date = Date()) -> ModelDelta {
+    public mutating func appendPendingUser(uuid: String, text: String, images: [ImageRef] = [], at now: Date = Date(),
+                                           whileWorking: Bool = false, typedText: String? = nil) -> ModelDelta {
         var delta = ModelDelta()
         guard index[uuid] == nil else { return delta }
-        place(id: uuid, thread: .main, timestamp: now, offset: nil, policy: .prompt, delta: &delta,
-              body: .user(UserPrompt(text: text, images: images, delivery: .pending, command: nil, isBrief: false)))
+        var prompt = UserPrompt(text: text, images: images, delivery: .pending, command: nil, isBrief: false)
+        prompt.sentWhileWorking = whileWorking
+        prompt.recallText = typedText
+        place(id: uuid, thread: .main, timestamp: now, offset: nil, policy: .prompt, delta: &delta, body: .user(prompt))
         return delta
+    }
+
+    /// Notes what became of a message that was not delivered (see `UserPrompt.FollowUp`).
+    @discardableResult
+    public mutating func noteFollowUp(_ followUp: UserPrompt.FollowUp, forRow row: String) -> ModelDelta {
+        var delta = ModelDelta()
+        guard let i = index[row], case var .user(prompt) = entries[i].body, prompt.followUp != followUp else { return delta }
+        prompt.followUp = followUp
+        entries[i].body = .user(prompt)
+        delta.noteUpdated(row)
+        return delta
+    }
+
+    /// The delivery of one of Loom's own messages, by row id.
+    public func delivery(ofRow row: String) -> UserPrompt.Delivery? {
+        guard let i = index[row], case let .user(prompt) = entries[i].body else { return nil }
+        return prompt.delivery
     }
 
     /// The process ended before it took these messages: they show "Not delivered". One the CLI already held (`queued`) is

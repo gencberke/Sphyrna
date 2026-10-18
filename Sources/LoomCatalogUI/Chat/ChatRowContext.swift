@@ -48,6 +48,11 @@ final class ChatRowContext {
     var canShowAll: (_ entry: ChatEntry) -> Bool = { $0.sourceOffset != nil }
     var openSubagent: ((SubagentRun) -> Void)?
     var openImage: (_ image: ImageRef) -> Void = { _ in }
+    /// Delivery actions of a live chat's own rows (V17): "Read now" on a message the CLI holds unread, "Retry" on one that
+    /// was not delivered. A transcript's stream has no composer behind it, and its rows offer neither.
+    var canReadNow = false
+    var readNow: (_ rowID: String) -> Void = { _ in }
+    var retry: (_ rowID: String) -> Void = { _ in }
     var copy: (_ text: String) -> Void = { text in
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
