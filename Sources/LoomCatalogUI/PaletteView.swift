@@ -160,6 +160,8 @@ struct PalettePanel: View {
             if palette.isSearching {
                 ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 14, height: 14)
                 Text("Searching session text…").lineLimit(1)
+            } else if let failure = palette.searchFailure {
+                Text(failure).lineLimit(1).accessibilityIdentifier("palette-search-failure")
             } else if let note = palette.coverageNote {
                 Text(note).lineLimit(1)
             }

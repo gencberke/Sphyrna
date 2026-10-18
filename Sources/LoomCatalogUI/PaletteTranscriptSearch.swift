@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import LoomCore
 
 /// Transcript search, stage 1 (V2-PLAN V06): a scan on demand, with no index, no watcher and no timer. It runs
 /// only for a query the user typed in the open palette, reads each transcript once from the front in 1 MiB
@@ -78,8 +79,11 @@ struct PaletteTranscriptCoverage: Equatable, Sendable {
     var windowDays = 0
     /// The profile has no `projects` folder or the setting is off: nothing was searched.
     var unavailable = false
+    /// The pass looked at the newest sessions only: the catalog held more than this many, and the oldest one looked
+    /// at was still inside the window, so sessions inside it were left out. Nil when the list was not cut.
+    var sessionCap: Int?
 
-    var isComplete: Bool { stop == .completed && !unavailable }
+    var isComplete: Bool { stop == .completed && !unavailable && sessionCap == nil }
 }
 
 struct PaletteTranscriptOutcome: Equatable, Sendable {
@@ -120,7 +124,7 @@ enum PaletteTranscriptScanner {
             if shouldStop() { outcome.coverage.stop = .cancelled; return outcome }
             if elapsed() >= budget.maxSeconds { outcome.coverage.stop = .time; return outcome }
             if outcome.coverage.bytesRead >= budget.maxBytes { outcome.coverage.stop = .bytes; return outcome }
-            guard let descriptor = openOwnFile(file.path) else { continue }
+            guard let descriptor = openOwnRegularFile(file.path) else { continue }
             defer { close(descriptor) }
 
             var fileHits = 0
@@ -257,18 +261,6 @@ enum PaletteTranscriptScanner {
         }
     }
 
-    /// Opens a regular file of this user without following a final link.
-    private static func openOwnFile(_ path: String) -> Int32? {
-        let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
-        guard descriptor >= 0 else { return nil }
-        var info = stat()
-        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid() else {
-            close(descriptor)
-            return nil
-        }
-        return descriptor
-    }
-
     // MARK: Decode
 
     // Claude writes compact JSON; the spaced spelling is accepted too, so a change of style costs nothing.
@@ -322,26 +314,14 @@ enum PaletteTranscriptScanner {
             timestamp: (object["timestamp"] as? String).flatMap(parseTimestamp), offset: offset)
     }
 
-    /// Whitespace runs become one space; control, bidirectional and zero-width scalars are dropped (agent and user
-    /// text is shown as data, never as layout).
-    static func oneLine(_ text: Substring) -> String {
-        var result = String.UnicodeScalarView()
-        var pendingSpace = false
-        for scalar in text.unicodeScalars {
-            if scalar.properties.isWhitespace {
-                pendingSpace = !result.isEmpty
-                continue
-            }
-            switch scalar.value {
-            case 0x00...0x1F, 0x7F...0x9F, 0x200B, 0x200E, 0x200F, 0x202A...0x202E, 0x2060...0x2064, 0x2066...0x2069, 0x061C, 0xFEFF:
-                continue
-            default: break
-            }
-            if pendingSpace { result.append(" "); pendingSpace = false }
-            result.append(scalar)
-        }
-        return String(result)
+    /// A piece of the text on one line, cleaned the way every line of agent and user text is (`StatusReason.oneLine`:
+    /// whitespace runs become one space, control, bidirectional and zero-width scalars are dropped). The pieces
+    /// are a snippet's head, match and tail, so the cap is far above what any of them holds.
+    private static func oneLine(_ text: Substring) -> String {
+        StatusReason.oneLine(String(text), limit: snippetPartLimit) ?? ""
     }
+
+    private static let snippetPartLimit = 1_000
 
     private static func parseTimestamp(_ text: String) -> Date? {
         let formatter = ISO8601DateFormatter()

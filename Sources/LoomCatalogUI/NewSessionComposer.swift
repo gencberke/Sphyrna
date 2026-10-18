@@ -41,6 +41,12 @@ struct NewSessionComposer: View {
                     .padding(.horizontal, NewSessionLayout.textInset).padding(.bottom, LoomTheme.Space.requestPadding)
                     .accessibilityIdentifier("draft-send-block")
             }
+            if let notice = model.newSession.storeNotice {
+                Text(notice).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, NewSessionLayout.textInset).padding(.bottom, LoomTheme.Space.requestPadding)
+                    .accessibilityIdentifier("draft-store-notice")
+            }
             ComposerBar(model: model, projectID: projectID)
         }
         .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.xxl).fill(LoomTheme.Surface.card))

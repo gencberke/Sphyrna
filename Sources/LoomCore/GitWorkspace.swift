@@ -212,58 +212,72 @@ public enum GitWorkspace {
     /// One `git` call: no prompts, no user pager, output capped at 64 KiB, killed after `timeout`. A failure
     /// carries git's own first line. The reads stop at the deadline, at the cap and when git has exited, not at
     /// the end of the pipe: a hook that leaves a background child holding the pipe cannot keep the call waiting.
+    ///
+    /// The waiting is done on a thread of its own (the call is made of sleeps and polls for up to `timeout`
+    /// plus a few seconds), never on a thread of Swift's cooperative pool: several git steps at once, or one
+    /// that hangs on a hook, must not starve the async work of the rest of the app.
     static func run(_ git: String, _ arguments: [String], timeout: TimeInterval) async throws -> String {
-        try await Task.detached(priority: .userInitiated) { () throws -> String in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: git)
-            process.arguments = arguments
-            process.environment = [
-                "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-                "HOME": NSHomeDirectory(), "LC_ALL": "C", "GIT_TERMINAL_PROMPT": "0", "GIT_PAGER": "cat",
-            ]
-            let output = Pipe(), errors = Pipe()
-            process.standardOutput = output
-            process.standardError = errors
-            process.standardInput = FileHandle.nullDevice
-            do { try process.run() } catch { throw Failure.git("Git could not be started.") }
-            let deadline = Date().addingTimeInterval(timeout)
-            let timedOut = Mutex(false)
-            let watchdog = DispatchWorkItem {
-                timedOut.withLock { $0 = true }
-                if process.isRunning { process.terminate() }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, any Error>) in
+            let thread = Thread {
+                continuation.resume(with: Result { try runBlocking(git, arguments, timeout: timeout) })
             }
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: watchdog)
-            // Stderr is read on its own thread so neither pipe can fill and stall the child.
-            let errorData = Mutex(Data())
-            let errorHandle = errors.fileHandleForReading
-            let finished = Mutex(false)
-            let drain = Thread {
-                let data = readCapped(errorHandle.fileDescriptor, process: process, deadline: deadline)
-                errorData.withLock { $0 = data }
-                finished.withLock { $0 = true }
-            }
-            drain.start()
-            let data = readCapped(output.fileHandleForReading.fileDescriptor, process: process, deadline: deadline)
-            while !finished.withLock({ $0 }) { usleep(1_000) }
-            try? output.fileHandleForReading.close()
-            try? errorHandle.close()
-            // The pipes are done; git may still be exiting. Past the deadline it is told to end and only reaped.
-            while process.isRunning, Date() < deadline { usleep(2_000) }
-            if process.isRunning {
-                timedOut.withLock { $0 = true }
-                process.terminate()
-            }
-            watchdog.cancel()
-            let reapBy = Date().addingTimeInterval(2)
-            while process.isRunning, Date() < reapBy { usleep(2_000) }
-            if timedOut.withLock({ $0 }) || process.isRunning { throw Failure.timedOut }
-            guard process.terminationStatus == 0 else {
-                let text = String(decoding: errorData.withLock { $0 }, as: UTF8.self)
-                let line = text.split(separator: "\n").first.map(String.init) ?? "Git exited with status \(process.terminationStatus)."
-                throw Failure.git(line)
-            }
-            return String(decoding: data, as: UTF8.self)
-        }.value
+            thread.name = "loom.git"
+            thread.qualityOfService = .userInitiated
+            thread.start()
+        }
+    }
+
+    /// `run`'s body: blocks the calling thread until git has exited, the deadline has passed or the output is read.
+    private static func runBlocking(_ git: String, _ arguments: [String], timeout: TimeInterval) throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: git)
+        process.arguments = arguments
+        process.environment = [
+            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+            "HOME": NSHomeDirectory(), "LC_ALL": "C", "GIT_TERMINAL_PROMPT": "0", "GIT_PAGER": "cat",
+        ]
+        let output = Pipe(), errors = Pipe()
+        process.standardOutput = output
+        process.standardError = errors
+        process.standardInput = FileHandle.nullDevice
+        do { try process.run() } catch { throw Failure.git("Git could not be started.") }
+        let deadline = Date().addingTimeInterval(timeout)
+        let timedOut = Mutex(false)
+        let watchdog = DispatchWorkItem {
+            timedOut.withLock { $0 = true }
+            if process.isRunning { process.terminate() }
+        }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: watchdog)
+        // Stderr is read on its own thread so neither pipe can fill and stall the child.
+        let errorData = Mutex(Data())
+        let errorHandle = errors.fileHandleForReading
+        let finished = Mutex(false)
+        let drain = Thread {
+            let data = readCapped(errorHandle.fileDescriptor, process: process, deadline: deadline)
+            errorData.withLock { $0 = data }
+            finished.withLock { $0 = true }
+        }
+        drain.start()
+        let data = readCapped(output.fileHandleForReading.fileDescriptor, process: process, deadline: deadline)
+        while !finished.withLock({ $0 }) { usleep(1_000) }
+        try? output.fileHandleForReading.close()
+        try? errorHandle.close()
+        // The pipes are done; git may still be exiting. Past the deadline it is told to end and only reaped.
+        while process.isRunning, Date() < deadline { usleep(2_000) }
+        if process.isRunning {
+            timedOut.withLock { $0 = true }
+            process.terminate()
+        }
+        watchdog.cancel()
+        let reapBy = Date().addingTimeInterval(2)
+        while process.isRunning, Date() < reapBy { usleep(2_000) }
+        if timedOut.withLock({ $0 }) || process.isRunning { throw Failure.timedOut }
+        guard process.terminationStatus == 0 else {
+            let text = String(decoding: errorData.withLock { $0 }, as: UTF8.self)
+            let line = text.split(separator: "\n").first.map(String.init) ?? "Git exited with status \(process.terminationStatus)."
+            throw Failure.git(line)
+        }
+        return String(decoding: data, as: UTF8.self)
     }
 
     /// Reads a pipe until its end, or until the process has exited and nothing more is waiting, or the deadline:

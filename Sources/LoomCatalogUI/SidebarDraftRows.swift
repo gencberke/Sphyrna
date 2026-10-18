@@ -11,9 +11,15 @@ struct DraftRow: View {
     var showsProject = false
     @State private var hovering = false
 
-    /// The draft's first line, which is what the user typed first.
+    /// The longest title read; the row shows one line, and a draft can be 128 KiB of one.
+    static let maximumTitleLength = 200
+
+    /// The draft's first line, which is what the user typed first. Found by scanning to the first line break (at
+    /// most `maximumTitleLength` characters of it), never the whole text: the row redraws on every keystroke.
     static func title(of draft: SessionDraft) -> String {
-        draft.trimmedText.split(whereSeparator: \.isNewline).first.map(String.init) ?? "New session"
+        let line = draft.text.drop { $0.isWhitespace }.prefix { !$0.isNewline }.prefix(maximumTitleLength)
+        let title = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "New session" : title
     }
 
     static func accessibilityLabel(title: String, project: String?) -> String {

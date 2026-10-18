@@ -45,7 +45,12 @@ public final class NewSessionState {
     /// The Git branch of each project's folder, read when its draft opens.
     private(set) var branches: [String: GitBranch] = [:]
     private(set) var settings = NewSessionSettings()
+    /// What the user should know about the saved drafts, in plain words: a save that failed (what is typed is
+    /// still here, but may not survive a restart), or an unreadable file that was moved aside. Nil when all is well.
+    public private(set) var storeNotice: String?
     @ObservationIgnored var store: NewSessionStore?
+    /// How often the ticket key was looked for in a draft's text (tests): once per settled edit, never per keystroke.
+    @ObservationIgnored private(set) var ticketScans = 0
     @ObservationIgnored var ticketTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored var clock: () -> Date = { Date() }
 
@@ -60,6 +65,9 @@ public final class NewSessionState {
     func attach(store: NewSessionStore) {
         guard self.store == nil else { return }
         self.store = store
+        store.draftsSnapshot = { [weak self] in self?.visibleDrafts.map(StoredDraft.init) ?? [] }
+        store.onFailureChange = { [weak self] error in self?.setSaveFailure(error) }
+        storeNotice = store.loadNotice
         for stored in store.file.drafts where drafts[stored.projectID] == nil {
             let draft = stored.draft
             if draft.isVisible { drafts[draft.projectID] = draft }
@@ -71,7 +79,16 @@ public final class NewSessionState {
     /// Writes what is pending now (a send, a blur, Quit).
     public func flush() { store?.flush() }
 
-    var storeFailure: (any Error)? { store?.lastFailure }
+    private func setSaveFailure(_ error: (any Error)?) {
+        guard let error else {
+            storeNotice = store?.loadNotice
+            return
+        }
+        storeNotice = "This draft could not be saved (\(error.localizedDescription)). "
+            + "What you typed is still here, but it may be gone after a restart."
+    }
+
+    func countTicketScan() { ticketScans += 1 }
 
     func setSettings(_ value: NewSessionSettings) {
         guard value != settings else { return }
@@ -111,6 +128,16 @@ public final class NewSessionState {
         persistDrafts()
     }
 
+    /// The text of a draft, typed or pasted: the one edit that happens on every keystroke, so it makes no
+    /// comparison of whole drafts and builds nothing for the file (that happens when the save is due).
+    func setText(_ text: String, for projectID: UUID?) {
+        var draft = drafts[projectID] ?? SessionDraft(projectID: projectID, updatedAt: clock())
+        draft.text = text
+        draft.updatedAt = clock()
+        drafts[projectID] = draft
+        persistDrafts()
+    }
+
     /// Throws the draft away: the slot is empty again and the file forgets it.
     public func discard(projectID: UUID?) {
         drafts[projectID] = SessionDraft(projectID: projectID, updatedAt: clock())
@@ -134,11 +161,8 @@ public final class NewSessionState {
         persistDrafts()
     }
 
-    private func persistDrafts() {
-        let stored = visibleDrafts.map(StoredDraft.init)
-        guard let store, store.file.drafts != stored else { return }
-        store.change { $0.drafts = stored }
-    }
+    /// The drafts changed: the file takes them when the save is due (`NewSessionStore.draftsSnapshot`), not now.
+    private func persistDrafts() { store?.draftsChanged() }
 
     // MARK: A send
 
@@ -260,15 +284,11 @@ extension CatalogModel {
 
     // MARK: Editing
 
+    /// A keystroke: stores the text and nothing more. The ticket key is looked for, and the file written, after a
+    /// pause (`refreshTicket`, `NewSessionStore`), so the cost of a keystroke does not grow with the text.
     public func setDraftText(_ text: String, projectID: UUID?) {
         guard newSession.draft(for: projectID)?.text != text else { return }
-        newSession.update(projectID) {
-            $0.text = text
-            // A second session for the ticket is a decision about the ticket in the text.
-            if $0.allowDuplicateTicket, TicketPattern.generic.firstKey(in: text) != newSession.ticketStatus(for: projectID).key {
-                $0.allowDuplicateTicket = false
-            }
-        }
+        newSession.setText(text, for: projectID)
         refreshTicket(projectID: projectID)
     }
 
@@ -337,24 +357,41 @@ extension CatalogModel {
     // MARK: Ticket check (D-40)
 
     /// Reads the ticket key in the draft's text and asks the catalog whether the project has a session for it.
-    /// Debounced: typing costs one read after 300 ms of quiet, and none without a key.
+    /// Debounced: typing costs one look at the text, off the main thread, and one read after 300 ms of quiet,
+    /// and none of either before. A second session for the ticket is a decision about the ticket in the text, so
+    /// it is taken back here when the key in the text is not the one the user decided on.
     func refreshTicket(projectID: UUID?) {
         let id = SessionDraft.id(for: projectID)
         newSession.ticketTasks[id]?.cancel()
-        guard let text = newSession.draft(for: projectID)?.text,
-              TicketPattern.generic.firstKey(in: text) != nil || newSession.ticketStatus(for: projectID) != .none else { return }
+        newSession.ticketTasks[id] = nil
+        guard newSession.draft(for: projectID) != nil else { return }
         newSession.ticketTasks[id] = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled, let self else { return }
-            let status = await self.ticketStatus(of: self.newSession.draft(for: projectID)?.text ?? "", projectID: projectID)
+            let key = await self.ticketKey(in: self.newSession.draft(for: projectID)?.text ?? "")
+            guard !Task.isCancelled else { return }
+            if newSession.draft(for: projectID)?.allowDuplicateTicket == true, key != newSession.ticketStatus(for: projectID).key {
+                newSession.update(projectID, touching: false) { $0.allowDuplicateTicket = false }
+            }
+            let status = await self.ticketStatus(forKey: key, projectID: projectID)
             guard !Task.isCancelled else { return }
             self.newSession.setTicketStatus(status, for: projectID)
         }
     }
 
+    /// The first ticket key in `text`, looked for off the main actor (a draft can be 128 KiB).
+    func ticketKey(in text: String) async -> String? {
+        newSession.countTicketScan()
+        return await Task.detached(priority: .userInitiated) { TicketPattern.generic.firstKey(in: text) }.value
+    }
+
     /// The ticket of `text` and whether its project already has a session for it. No project, no lookup.
     func ticketStatus(of text: String, projectID: UUID?) async -> TicketStatus {
-        guard let key = TicketPattern.generic.firstKey(in: text) else { return .none }
+        await ticketStatus(forKey: ticketKey(in: text), projectID: projectID)
+    }
+
+    func ticketStatus(forKey key: String?, projectID: UUID?) async -> TicketStatus {
+        guard let key else { return .none }
         guard let projectID, let catalog else { return .free(key: key) }
         guard let existing = try? await catalog.session(projectID: projectID, ticket: key) else { return .free(key: key) }
         return .exists(key: key, sessionID: existing.session.id, title: existing.title)
@@ -388,7 +425,10 @@ extension CatalogModel {
     /// Why ↵ would not start a draft that has text, when the text itself is the reason: a first message that is
     /// too long to be one argument of the process. Checked before any git step.
     public func draftSendBlock(projectID: UUID?) -> String? {
+        // The trimmed text is never longer than the text, so the common case needs no trimming: this is asked on
+        // every redraw of the draft.
         guard let draft = newSession.draft(for: projectID),
+              draft.text.utf8.count > NewSessionLaunch.maxFirstMessageBytes,
               draft.trimmedText.utf8.count > NewSessionLaunch.maxFirstMessageBytes else { return nil }
         return "This message is too long to start a session with (the limit is "
             + "\(NewSessionLaunch.maxFirstMessageBytes / 1024) KB). Shorten it, or keep the long part in a file and name it here."
@@ -417,10 +457,16 @@ extension CatalogModel {
         newSession.beginSending(projectID)
         Task { [weak self] in
             guard let self else { return }
-            // The key may have been typed a moment ago: ask again before anything starts.
+            // The key may have been typed a moment ago: ask again before anything starts. A second session was
+            // allowed for the key the line showed; another key in the text has not been allowed by anyone.
+            let shown = self.newSession.ticketStatus(for: projectID).key
             let status = await self.ticketStatus(of: snapshot.text, projectID: projectID)
             self.newSession.setTicketStatus(status, for: projectID)
-            if case .exists = status, !snapshot.allowDuplicateTicket {
+            let allowed = snapshot.allowDuplicateTicket && status.key == shown
+            if snapshot.allowDuplicateTicket, !allowed {
+                self.newSession.update(projectID, touching: false) { $0.allowDuplicateTicket = false }
+            }
+            if case .exists = status, !allowed {
                 self.newSession.endSending(projectID)
                 return
             }

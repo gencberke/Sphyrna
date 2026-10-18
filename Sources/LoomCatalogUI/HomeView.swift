@@ -21,6 +21,9 @@ struct HomeView: View {
         .task(id: model.homeReadKey) {
             await model.refreshHome()
         }
+        .task(id: model.homeTodayKey) {
+            await model.refreshHomeToday()
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home")
     }

@@ -58,6 +58,7 @@ extension DevelopmentEvidence {
                 "query": app.redactsContent ? "" : palette.query,
                 "searching": palette.isSearching,
                 "coverage": app.redactsContent ? "" : (palette.coverageNote ?? ""),
+                "searchFailure": palette.searchFailure ?? "",
                 "selected": palette.selectedID ?? NSNull(),
                 "groups": palette.groups.map { group in
                     ["section": group.title, "items": group.items.map { item in

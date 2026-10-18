@@ -330,7 +330,7 @@ struct HomeTests {
         #expect(entry.endedAt == noon.addingTimeInterval(-1_800))
     }
 
-    @Test func homeReadsAgainWhenTheUsageRefreshEndsSoTodayFollowsATurn() async throws {
+    @Test func aUsageRefreshReadsOnlyTodaysCountAndNotTheWholeHomeAgain() async throws {
         let rig = try await catalogRig()
         defer { cleanup(rig) }
         let model = rig.model
@@ -339,18 +339,40 @@ struct HomeTests {
         model.usage = usage
         await model.refreshHome()
         let before = model.homeReadKey
-        #expect(before.usageRefreshed == nil)
+        let stamp = model.homeTodayKey
+        #expect(stamp == nil && model.home.reads == 1 && model.home.todayReads == 0)
 
         // A turn in a session that already exists (last week's, here) changes no count of sessions...
         let today = try #require(model.home.sessionsToday)
         try await rig.catalog.markActivity(sessionID: rig.old, at: noon)
         #expect(model.homeReadKey == before, "no count moved")
         #expect(model.home.sessionsToday == today, "Home still shows the old number")
-        // ... the usage refresh that follows the turn moves the key, and the read finds one more session today.
+        // ... the usage refresh that follows the turn does not move the key of the full read (the Continue
+        // query scans the runs, and every finished turn ends in a refresh) ...
         await usage.refreshNow(reason: .turnComplete)
-        #expect(model.homeReadKey != before)
-        await model.refreshHome()
+        #expect(model.homeReadKey == before, "the full read does not run again")
+        #expect(model.homeTodayKey != stamp, "the refresh is what the second task waits on")
+        // ... it re-reads one count, and Home finds one more session today.
+        await model.refreshHomeToday()
         #expect(model.home.sessionsToday == today + 1)
+        #expect(model.home.reads == 1 && model.home.todayReads == 1, "one count, not the whole read")
+        // The same refresh is not read twice (the task runs again when Home reappears).
+        await model.refreshHomeToday()
+        #expect(model.home.todayReads == 1)
+    }
+
+    @Test func theCountAfterARefreshWaitsForTheFirstFullRead() async throws {
+        let rig = try await catalogRig()
+        defer { cleanup(rig) }
+        let model = rig.model
+        let usage = UsageModel(index: KindsUsageIndex(output: 1_000), clock: { Date() }, timeZone: TimeZone(identifier: "UTC")!)
+        model.usage = usage
+        await usage.refreshNow(reason: .turnComplete)
+        await model.refreshHomeToday()
+        #expect(model.home.todayReads == 0 && model.home.sessionsToday == nil, "the full read comes first, and it brings the count")
+        await model.refreshHome()
+        await model.refreshHomeToday()
+        #expect(model.home.reads == 1 && model.home.todayReads == 0, "the full read already went with this refresh")
     }
 
     // MARK: The start box

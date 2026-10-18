@@ -17,8 +17,12 @@ public final class HomeState {
     public internal(set) var chosenProjectID: UUID?
     /// The catalog was read at least once, so an empty Continue is "none", not "not read yet".
     public internal(set) var hasRead = false
-    /// How many times the catalog was read for Home (a test counts it).
+    /// How many times the catalog was read for Home in full (a test counts it).
     @ObservationIgnored public internal(set) var reads = 0
+    /// How many times only "sessions today" was read again, after a usage refresh (a test counts it).
+    @ObservationIgnored public internal(set) var todayReads = 0
+    /// The usage refresh time the last read of "sessions today" went with.
+    @ObservationIgnored var todayStamp: Date?
 
     public init() {}
 }
@@ -88,16 +92,16 @@ struct HomeContinueEntry: Identifiable, Equatable {
     let endedAt: Date
 }
 
-/// What a read of the catalog for Home depends on: it runs when Home appears, once the model is ready, when the
-/// day turns, when the number of sessions changes, when the runtime has closed the runs an earlier Loom left
-/// open, and when the usage refresh ends (a turn in a session that already exists moves "sessions today"
-/// without changing any count; the refresh is already debounced and reads no timer).
+/// What a full read of the catalog for Home depends on: it runs when Home appears, once the model is ready, when
+/// the day turns, when the number of sessions changes, and when the runtime has closed the runs an earlier Loom
+/// left open. The usage refresh is not part of it: a turn in a session that already exists moves "sessions
+/// today" and nothing else, and every finished turn ends in a refresh, so the refresh re-reads only that number
+/// (`CatalogModel.refreshHomeToday`, keyed on `CatalogModel.homeTodayKey`).
 struct HomeReadKey: Equatable {
     let ready: Bool
     let day: Date
     let counts: [UUID?: Int]
     let runsRecovered: Int
-    let usageRefreshed: Date?
 }
 
 /// How far back Continue looks and how many sessions one read returns.
@@ -112,9 +116,11 @@ extension CatalogModel {
 
     /// The key Home's read task runs on (`HomeView`).
     var homeReadKey: HomeReadKey {
-        HomeReadKey(ready: isReady, day: today, counts: sessionCounts, runsRecovered: runsRecovered,
-                    usageRefreshed: usage?.updatedAt)
+        HomeReadKey(ready: isReady, day: today, counts: sessionCounts, runsRecovered: runsRecovered)
     }
+
+    /// The key of Home's second read task: the time the usage refresh last ended.
+    var homeTodayKey: Date? { usage?.updatedAt }
 
     // MARK: Needs you, Finished
 
@@ -246,6 +252,7 @@ extension CatalogModel {
     /// process, no timer.
     func refreshHome() async {
         guard let catalog, isReady else { return }
+        home.todayStamp = usage?.updatedAt
         let read = currentDate()
         let since = read.addingTimeInterval(-TimeInterval(HomeLimits.continueDays) * 86_400)
         let startOfDay = Calendar.current.startOfDay(for: read)
@@ -258,6 +265,23 @@ extension CatalogModel {
             if home.lastUsedProjectID != last { home.lastUsedProjectID = last }
             home.hasRead = true
             home.reads += 1
+        } catch {
+            report(error, "Home could not read the session list")
+        }
+    }
+
+    /// The usage refresh ended (a turn finished): reads "sessions today" again and nothing else, one count
+    /// instead of the full read's scan of the runs. The Continue list and the start box's project wait for the
+    /// next full read. Skipped before the first full read, and when the full read that just ran went with this
+    /// refresh.
+    func refreshHomeToday() async {
+        guard let catalog, isReady, home.hasRead, home.todayStamp != usage?.updatedAt else { return }
+        let stamp = usage?.updatedAt
+        home.todayStamp = stamp
+        do {
+            let today = try await catalog.sessionCount(activeSince: Calendar.current.startOfDay(for: currentDate()))
+            if home.sessionsToday != today { home.sessionsToday = today }
+            home.todayReads += 1
         } catch {
             report(error, "Home could not read the session list")
         }

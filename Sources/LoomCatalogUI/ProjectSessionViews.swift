@@ -245,6 +245,7 @@ private struct ProjectUsageCard: View {
                 }
             } else {
                 Text(page.usageLoad == .loading ? "Reading usage\u{2026}"
+                     : page.usageFailed ? "Could not read this project's usage."
                      : model.usage == nil ? "No usage index is available." : "No usage in the past 7 days.")
                     .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
             }

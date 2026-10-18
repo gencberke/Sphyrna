@@ -16,6 +16,9 @@ public final class PaletteState {
     public private(set) var isSearching = false
     /// What the conversation search covered, once it has run: "Searched 63 sessions · last 14 days".
     public private(set) var coverageNote: String?
+    /// A search that could not run to its end, in plain words (the footer shows it in place of the coverage, so a
+    /// failed search never reads as "no matches"). Nil when nothing failed.
+    public private(set) var searchFailure: String?
     /// Bumped each time the palette opens, so the view takes the keyboard again.
     public private(set) var openCount = 0
 
@@ -44,12 +47,22 @@ public final class PaletteState {
     /// How many searches started since the palette last opened (a test counts it).
     @ObservationIgnored private(set) var searchesStarted = 0
     @ObservationIgnored private(set) var searchesCancelled = 0
+    /// The sessions' titles, projects and reasons folded for matching, kept from open to close: a keystroke folds
+    /// nothing it has folded before.
+    @ObservationIgnored private var folds = PaletteFoldCache()
 
     public init() {}
 
     public var items: [PaletteItem] { groups.flatMap(\.items) }
 
     var searchIsRunning: Bool { searchTask != nil }
+
+    /// How many sessions were folded since the palette opened (a test counts it: one per session, however many
+    /// queries are typed).
+    var foldsComputed: Int { folds.computed }
+
+    /// The sources of the open palette, when they are the live ones (a test reads what they looked up).
+    var liveSources: LivePaletteSources? { sources as? LivePaletteSources }
 
     // MARK: Open and close
 
@@ -69,6 +82,7 @@ public final class PaletteState {
         })
         query = ""
         resetSearch()
+        folds = PaletteFoldCache()
         isOpen = true
         openCount &+= 1
         rebuildLocal()
@@ -85,6 +99,7 @@ public final class PaletteState {
         query = ""
         groups = []
         local = []
+        folds = PaletteFoldCache()
         selectedID = nil
         sources = nil
         restoreFocus()
@@ -121,6 +136,7 @@ public final class PaletteState {
         offersOlderSearch = false
         isSearching = false
         coverageNote = nil
+        searchFailure = nil
     }
 
     /// The setting went off while the palette is open: the scan that is running stops reading at once and what it
@@ -163,12 +179,18 @@ public final class PaletteState {
         guard isCurrent(generation), let sources, let model else { return }
         searchesStarted += 1
         if budget == .first {
-            if let found = try? await sources.olderSessions(matching: term), isCurrent(generation) {
-                let known = Set(local.flatMap(\.items).compactMap(\.sessionID))
-                olderRows = found.filter { !known.contains($0.session.id) }.map {
-                    PaletteRanking.item(for: model.paletteSession(for: $0), now: Date())
+            do {
+                let found = try await sources.olderSessions(matching: term)
+                if isCurrent(generation) {
+                    let known = Set(local.flatMap(\.items).compactMap(\.sessionID))
+                    olderRows = found.filter { !known.contains($0.session.id) }.map {
+                        PaletteRanking.item(for: model.paletteSession(for: $0), now: Date())
+                    }
+                    recompose()
                 }
-                recompose()
+            } catch {
+                // A newer keystroke cancels this one: only a search that is still wanted reports its failure.
+                if isCurrent(generation) { searchFailure = "Older sessions could not be searched." }
             }
         }
         guard term.count >= PaletteSearchBudget.minimumQueryLength, searchesConversations, isCurrent(generation) else {
@@ -176,9 +198,17 @@ public final class PaletteState {
             return
         }
         isSearching = true
-        let outcome = try? await sources.searchTranscripts(query: term, budget: budget) { [weak self] partial in
-            guard let self, self.isCurrent(generation), self.isSearching else { return }
-            self.apply(partial, budget: budget, finished: false)
+        let outcome: PaletteTranscriptOutcome?
+        do {
+            outcome = try await sources.searchTranscripts(query: term, budget: budget) { [weak self] partial in
+                guard let self, self.isCurrent(generation), self.isSearching else { return }
+                self.apply(partial, budget: budget, finished: false)
+            }
+        } catch {
+            outcome = nil
+            if isCurrent(generation) {
+                searchFailure = "Session text could not be searched. What is shown may be incomplete."
+            }
         }
         guard isCurrent(generation) else { return }
         if let outcome { apply(outcome, budget: budget, finished: true) }
@@ -222,7 +252,8 @@ public final class PaletteState {
 
     private func rebuildLocal() {
         guard let model else { local = []; groups = []; return }
-        let sessions = model.paletteSessions()
+        // An empty query ranks by time and need, not by text: nothing to fold until a word is typed.
+        let sessions = model.paletteSessions(folds: PaletteRanking.words(of: query).isEmpty ? nil : folds)
         let projects = model.projects.map { PaletteProjectInfo(id: $0.id, name: $0.name, path: $0.path) }
         let actions = PaletteAction.allCases.filter { $0.isEnabled(on: model) }.map { ($0, $0.detail(on: model)) }
         local = PaletteRanking.groups(query: query, sessions: sessions, projects: projects, actions: actions, now: Date())
@@ -299,7 +330,8 @@ public final class PaletteState {
 /// What a conversation pass says about itself. A pass that stopped early never reads as "no matches".
 enum PaletteCoverageText {
     static func line(_ coverage: PaletteTranscriptCoverage, hits: Int) -> String {
-        let window = coverage.windowDays == 1 ? "last day" : "last \(coverage.windowDays) days"
+        let window = (coverage.windowDays == 1 ? "last day" : "last \(coverage.windowDays) days")
+            + (coverage.sessionCap.map { " · newest \($0) sessions only" } ?? "")
         let sessions = coverage.filesInWindow == 1 ? "1 session" : "\(coverage.filesInWindow) sessions"
         let searched = coverage.filesSearched == 1 ? "1 session" : "\(coverage.filesSearched) sessions"
         switch coverage.stop {
@@ -322,21 +354,23 @@ extension CatalogModel {
 
     /// Every session the model holds in memory, with what the palette ranks on. No catalog read: the palette's
     /// own open costs nothing the sidebar has not already loaded.
-    func paletteSessions() -> [PaletteSessionInfo] {
+    func paletteSessions(folds: PaletteFoldCache? = nil) -> [PaletteSessionInfo] {
         var records = rowModels.mapValues(\.record)
         for (id, record) in liveRecords where records[id] == nil { records[id] = record }
-        return records.values.filter { !isDeleting($0.session.id) }.map(paletteSession(for:))
+        return records.values.filter { !isDeleting($0.session.id) }.map { paletteSession(for: $0, folds: folds) }
     }
 
-    func paletteSession(for record: CatalogSession) -> PaletteSessionInfo {
+    func paletteSession(for record: CatalogSession, folds: PaletteFoldCache? = nil) -> PaletteSessionInfo {
         let id = record.session.id
         let live = liveStates[id]
         let awaiting = awaitingOpenApproval.contains(id)
         let indicator = SessionIndicator(record: record, live: live, awaitingOpenApproval: awaiting)
         let project = projectName(for: record)
+        let title = record.displayTitle(projectName: project)
+        let reason = PaletteReasonText.line(reason: live?.reason, indicator: indicator, awaitingOpenApproval: awaiting)
         return PaletteSessionInfo(
-            id: id, title: record.displayTitle(projectName: project), project: project, provider: record.session.provider,
-            lastActivityAt: record.lastActivityAt, indicator: indicator,
-            reason: PaletteReasonText.line(reason: live?.reason, indicator: indicator, awaitingOpenApproval: awaiting))
+            id: id, title: title, project: project, provider: record.session.provider,
+            lastActivityAt: record.lastActivityAt, indicator: indicator, reason: reason,
+            folded: folds?.folded(for: id, title: title, project: project, reason: reason))
     }
 }

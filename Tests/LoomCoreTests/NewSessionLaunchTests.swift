@@ -302,6 +302,25 @@ struct GitWorkspaceTests {
         #expect(out.utf8.count == 65_536)
     }
 
+    @Test func manyGitStepsAtOnceDoNotStarveTheAsyncPool() async throws {
+        // More steps than the pool can grow to (libdispatch adds threads while the pool's own are blocked, up to a
+        // limit of a few dozen), each waiting a second and a half for its child (`sleep` stands in for a git that is
+        // slow, or hung on a hook). The wait must not hold a thread of the pool.
+        let steps = 140
+        let began = ContinuousClock.now
+        let running = (0..<steps).map { _ in
+            Task { try await GitWorkspace.run("/bin/sleep", ["1.5"], timeout: 20) }
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        // Other async work still starts at once: a task of the pool is not queued behind the waiting steps.
+        let asked = ContinuousClock.now
+        let answered = await Task.detached { ContinuousClock.now }.value
+        #expect(answered - asked < .milliseconds(750), "a task waited \(answered - asked) for a thread of the pool")
+        for step in running { _ = try await step.value }
+        // All the waits overlapped.
+        #expect(ContinuousClock.now - began < .seconds(8), "\(steps) steps took \(ContinuousClock.now - began)")
+    }
+
     @Test func aFolderNameIsOneSafeComponent() {
         #expect(GitWorkspace.folderName(for: "feat/PAY-418-note") == "feat-PAY-418-note")
         #expect(GitWorkspace.folderName(for: "../..") == "session")

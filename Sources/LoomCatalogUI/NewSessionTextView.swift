@@ -40,6 +40,7 @@ struct NewSessionTextView: NSViewRepresentable {
         textView.setAccessibilityIdentifier("draft-composer")
         textView.setAccessibilityLabel("Message for the new session")
         textView.string = text
+        context.coordinator.synced = text
         let scroll = NSScrollView()
         scroll.documentView = textView
         scroll.drawsBackground = false
@@ -56,22 +57,33 @@ struct NewSessionTextView: NSViewRepresentable {
         guard let textView = scroll.documentView as? ComposerTextView else { return }
         textView.isEditable = isEditable
         // A change that came from the view is already in the field; only an outside change (a preset, a
-        // restored draft) is written, so the caret never jumps while typing.
-        if textView.string != text, !textView.hasMarkedText() {
-            textView.string = text
-            context.coordinator.measure()
+        // restored draft) is written, so the caret never jumps while typing. The coordinator remembers the text
+        // the field and the model last agreed on: while the model still holds it, there is nothing to compare
+        // with the field, which would read the whole text again on every redraw.
+        let coordinator = context.coordinator
+        if text != coordinator.synced, !textView.hasMarkedText() {
+            coordinator.synced = text
+            if textView.string != text {
+                textView.string = text
+                coordinator.measure()
+            }
         }
     }
 
     @MainActor final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: NewSessionTextView
         weak var textView: ComposerTextView?
+        /// The text the field and the model last agreed on.
+        var synced = ""
 
         init(_ parent: NewSessionTextView) { self.parent = parent }
 
         func textDidChange(_ notification: Notification) {
             guard let textView else { return }
-            if parent.text != textView.string { parent.text = textView.string }
+            // The field's text is read once; the model ignores a value it already holds.
+            let value = textView.string
+            synced = value
+            parent.text = value
             measure()
         }
 

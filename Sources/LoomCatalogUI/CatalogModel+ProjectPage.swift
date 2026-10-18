@@ -43,6 +43,8 @@ public final class ProjectPageState {
     public internal(set) var isLoadingMore = false
     /// The past seven days; nil until read, or when the index could not answer.
     public internal(set) var usage: ProjectUsage?
+    /// The index could not answer: the page says the usage could not be read, not that there is none.
+    public internal(set) var usageFailed = false
     public internal(set) var usageLoad = ProjectPageLoad.idle
     var branches: ProjectBranches?
     public internal(set) var branchesLoad = ProjectPageLoad.idle
@@ -81,6 +83,7 @@ public final class ProjectPageState {
         isLoadingMore = false
         cursor = nil
         usage = nil
+        usageFailed = false
         usageLoad = .loading
         branches = nil
         branchesLoad = .loading
@@ -104,6 +107,7 @@ public final class ProjectPageState {
         hasMore = false
         cursor = nil
         usage = nil
+        usageFailed = false
         usageLoad = .idle
         branches = nil
         branchesLoad = .idle
@@ -257,9 +261,14 @@ extension CatalogModel {
             return id
         }
         page.reads.usageLookups += 1
-        let usage = await self.usage?.projectUsage(sessions: identifiers)
+        var usage: ProjectUsage?
+        var usageFailed = false
+        if let model = self.usage {
+            do { usage = try await model.projectUsage(sessions: identifiers) } catch { usageFailed = !Task.isCancelled }
+        }
         guard isCurrent(generation) else { return }
         page.usage = usage
+        page.usageFailed = usageFailed
         page.usageLoad = .done
     }
 
@@ -373,7 +382,7 @@ extension CatalogModel {
             "project": page.projectID?.uuidString ?? "none", "tab": page.tab.rawValue.lowercased(),
             "loads": ["sessions": load(page.sessionsLoad), "usage": load(page.usageLoad),
                       "branches": load(page.branchesLoad), "instructions": load(page.instructionsLoad)],
-            "sessions": page.records.count, "hasMore": page.hasMore, "sessionsFailed": page.sessionsFailed, "usage": usage,
+            "sessions": page.records.count, "hasMore": page.hasMore, "sessionsFailed": page.sessionsFailed, "usageFailed": page.usageFailed, "usage": usage,
             "lastLines": ["read": page.lastLines.count, "found": page.lastLines.values.filter { !$0.isEmpty }.count],
             "branches": page.branches.map { ["count": $0.branches.count, "truncated": $0.truncated] as [String: Any] } ?? [:],
             "instructions": page.instructions.map { ["lines": $0.lineCount ?? -1, "bytes": $0.byteCount, "truncated": $0.truncated] as [String: Any] } ?? [:],

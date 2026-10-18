@@ -615,10 +615,11 @@ public final class UsageModel {
 
     /// What the given sessions used over the past seven days (today and the six days before), for the
     /// project page: one indexed lookup per session in the index's database, asked once when the page opens.
-    /// It starts no scan and keeps nothing; a failure reads as nil (the page then says there is no usage).
-    public func projectUsage(sessions: [String]) async -> ProjectUsage? {
+    /// It starts no scan and keeps nothing; a failure is thrown (the page then says the usage could not be read,
+    /// which is not the same as "no usage").
+    public func projectUsage(sessions: [String]) async throws -> ProjectUsage {
         guard !sessions.isEmpty else { return .empty }
-        return try? await index.projectUsage(sessions: sessions, range: .days(7), now: clock(), timeZone: timeZone)
+        return try await index.projectUsage(sessions: sessions, range: .days(7), now: clock(), timeZone: timeZone)
     }
 
     // MARK: Plan limits

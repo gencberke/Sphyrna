@@ -75,28 +75,56 @@ struct NewSessionFile: Equatable, Codable {
 
 /// Reads and writes the new-session file. Written atomically after `delay` of quiet (CHAT-SPEC: 300 ms after
 /// the last change), on `flush()` (a send, a blur, Quit), and only when the content differs from what is on
-/// disk; a draft that was never typed in never makes a write.
+/// disk; a draft that was never typed in never makes a write. The drafts are not copied into `file` per change:
+/// a change to them only marks them (`draftsChanged()`), and the saved form is built from the live drafts when
+/// the write is due (`draftsSnapshot`), so typing in a long draft costs the same as typing in a short one.
 @MainActor
 final class NewSessionStore {
     let url: URL
     private(set) var file: NewSessionFile
     private var lastSaved: NewSessionFile
     private var saveTask: Task<Void, Never>?
+    private var draftsDirty = false
     /// Successful writes (tests and evidence).
     private(set) var writeCount = 0
+    /// How often the saved form of the drafts was built (tests): once per write that is due, never per change.
+    private(set) var snapshotsBuilt = 0
     /// The last write failure, for the model to report.
-    private(set) var lastFailure: (any Error)?
+    private(set) var lastFailure: (any Error)? {
+        didSet { if oldValue != nil || lastFailure != nil { onFailureChange?(lastFailure) } }
+    }
+    /// Set when an unreadable file was moved aside at load time.
+    private(set) var loadNotice: String?
     var delay: Duration = .milliseconds(300)
+    /// Called when a write fails and again when the next one succeeds.
+    var onFailureChange: (((any Error)?) -> Void)?
+    /// The drafts with text in their saved form, asked for when a write is due.
+    var draftsSnapshot: (() -> [StoredDraft])?
 
     init(url: URL) {
         self.url = url
-        // A missing or unreadable file reads as empty and counts as saved: nothing is written until something changes.
-        let loaded = (try? Data(contentsOf: url)).flatMap { try? JSONDecoder.newSession.decode(NewSessionFile.self, from: $0) }
+        var loaded: NewSessionFile?
+        if FileManager.default.fileExists(atPath: url.path) {
+            loaded = (try? Data(contentsOf: url)).flatMap { try? JSONDecoder.newSession.decode(NewSessionFile.self, from: $0) }
+            // A file that cannot be read is kept, not replaced: the next change would otherwise overwrite what
+            // the user may still be able to recover by hand.
+            if loaded == nil { loadNotice = Self.moveAside(url) }
+        }
+        // A missing file reads as empty and counts as saved: nothing is written until something changes.
         file = loaded ?? NewSessionFile()
         lastSaved = file
     }
 
     deinit { saveTask?.cancel() }
+
+    private static func moveAside(_ url: URL) -> String {
+        let aside = url.deletingLastPathComponent()
+            .appendingPathComponent("new-session.unreadable-\(Int(Date().timeIntervalSince1970)).json")
+        if (try? FileManager.default.moveItem(at: url, to: aside)) != nil {
+            return "Your saved drafts could not be read. The old file was kept as \(aside.lastPathComponent)."
+        }
+        return "Your saved drafts could not be read, and the file could not be moved aside."
+    }
 
     func change(_ edit: (inout NewSessionFile) -> Void) {
         edit(&file)
@@ -104,8 +132,14 @@ final class NewSessionStore {
         scheduleSave()
     }
 
+    /// The live drafts changed: they are read when the write is due, not now.
+    func draftsChanged() {
+        draftsDirty = true
+        scheduleSave()
+    }
+
     func scheduleSave() {
-        guard file != lastSaved else { return }
+        guard draftsDirty || file != lastSaved else { return }
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             guard let delay = self?.delay else { return }
@@ -118,6 +152,14 @@ final class NewSessionStore {
     func flush() {
         saveTask?.cancel()
         saveTask = nil
+        if draftsDirty {
+            draftsDirty = false
+            if let draftsSnapshot {
+                snapshotsBuilt += 1
+                let drafts = draftsSnapshot()
+                if file.drafts != drafts { file.drafts = drafts }
+            }
+        }
         guard file != lastSaved else { return }
         do {
             try FileManager.default.createDirectory(

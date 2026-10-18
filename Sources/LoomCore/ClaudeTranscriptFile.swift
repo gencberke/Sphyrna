@@ -2,8 +2,9 @@ import Darwin
 import Foundation
 
 /// Opens `path` read-only, never through a final link, and only a regular file of this user. The caller closes the
-/// descriptor. The one place both transcript kinds (subagent and main session) get their descriptors.
-func openOwnRegularFile(_ path: String) -> Int32? {
+/// descriptor. The one place both transcript kinds (subagent and main session) get their descriptors, and every
+/// reader of a transcript's bytes outside this target (the palette's scan).
+package func openOwnRegularFile(_ path: String) -> Int32? {
     let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
     guard descriptor >= 0 else { return nil }
     var info = stat()
@@ -39,9 +40,14 @@ public enum ClaudeTranscriptLocator {
     /// The session's transcript in the one folder Claude names after `workingDirectory`, and nowhere else: a
     /// miss is a miss (no other project folder is listed). For callers that must stay bounded.
     public static func locate(sessionID: String, configDirectory: URL, onlyIn workingDirectory: String) -> ClaudeTranscriptFile? {
-        let projects = configDirectory.appendingPathComponent("projects", isDirectory: true)
+        locate(sessionID: sessionID, projectsDirectory: configDirectory.appendingPathComponent("projects", isDirectory: true),
+               onlyIn: workingDirectory)
+    }
+
+    /// `locate(sessionID:configDirectory:onlyIn:)` for a caller that holds the `projects` folder itself.
+    public static func locate(sessionID: String, projectsDirectory: URL, onlyIn workingDirectory: String) -> ClaudeTranscriptFile? {
         guard isPlainIdentifier(sessionID) else { return nil }
-        return inWorkingDirectoryFolder(sessionID: sessionID, projectsDirectory: projects, workingDirectory: workingDirectory)
+        return inWorkingDirectoryFolder(sessionID: sessionID, projectsDirectory: projectsDirectory, workingDirectory: workingDirectory)
     }
 
     public static func locate(sessionID: String, projectsDirectory: URL, workingDirectory: String? = nil) -> ClaudeTranscriptFile? {

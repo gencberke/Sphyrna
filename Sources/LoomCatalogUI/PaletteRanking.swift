@@ -71,8 +71,12 @@ enum PaletteRanking {
     /// The match of all `words` against a title and the weaker fields; nil when a word matches nowhere.
     static func match(_ words: [String], title: String, others: [String]) -> Double? {
         guard !words.isEmpty else { return 0 }
-        let foldedTitle = fold(title)
-        let foldedOthers = others.map(fold)
+        return match(words, foldedTitle: fold(title), foldedOthers: others.map(fold))
+    }
+
+    /// `match` for fields that are folded already (a session's, kept for the whole open of the palette).
+    static func match(_ words: [String], foldedTitle: String, foldedOthers: [String]) -> Double? {
+        guard !words.isEmpty else { return 0 }
         var total = 0.0
         for word in words {
             var best = tier(of: word, in: foldedTitle, fuzzy: true)
@@ -143,8 +147,8 @@ enum PaletteRanking {
 
         var scoredSessions: [(PaletteSessionInfo, Double)] = []
         for session in sessions {
-            guard let score = match(words, title: session.title, others: [session.project, session.reason].compactMap { $0 })
-            else { continue }
+            let folded = session.folded ?? PaletteSessionInfo.Folded(title: session.title, project: session.project, reason: session.reason)
+            guard let score = match(words, foldedTitle: folded.title, foldedOthers: folded.others) else { continue }
             scoredSessions.append((session, score + (session.needsYou ? needsYouMargin : 0)
                                    + recencyBonus(session.lastActivityAt, now: now)))
         }

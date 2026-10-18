@@ -343,9 +343,10 @@ struct NewSessionTests {
 
         model.allowDuplicateTicket(projectID: rig.projectID)
         #expect(model.canSendDraft(projectID: rig.projectID))
-        // Changing the ticket in the text takes the permission back.
+        // Changing the ticket in the text takes the permission back (once the typing pauses: the key is looked
+        // for in the debounced task, not on the keystroke).
         model.setDraftText("PAY-419 add the note", projectID: rig.projectID)
-        #expect(model.newSession.draft(for: rig.projectID)?.allowDuplicateTicket == false)
+        #expect(await waitUntil { model.newSession.draft(for: rig.projectID)?.allowDuplicateTicket == false })
         model.setDraftText("PAY-418 add the note", projectID: rig.projectID)
         #expect(await waitUntil { if case .exists = model.newSession.ticketStatus(for: rig.projectID) { true } else { false } })
         model.allowDuplicateTicket(projectID: rig.projectID)
@@ -356,6 +357,122 @@ struct NewSessionTests {
         // Open: shows the session the ticket has.
         model.openExistingTicketSession(projectID: rig.projectID)
         #expect(model.destination == .session(existing.id))
+    }
+
+    @Test func aSecondSessionAllowedForOneTicketIsNotAllowedForAnotherTypedJustBeforeTheSend() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        let folder = root.appendingPathComponent("api").path
+        for key in ["PAY-418", "PAY-500"] {
+            try await rig.catalog.insertSession(
+                ManagedSession(provider: .claude, workingDirectory: folder), title: "Done \(key)", projectID: rig.projectID, ticketKey: key)
+        }
+        model.showDraft(projectID: rig.projectID)
+        model.setDraftText("PAY-418 add the note", projectID: rig.projectID)
+        #expect(await waitUntil { model.newSession.ticketStatus(for: rig.projectID).key == "PAY-418" })
+        #expect(await waitUntil { if case .exists = model.newSession.ticketStatus(for: rig.projectID) { true } else { false } })
+        model.allowDuplicateTicket(projectID: rig.projectID)
+
+        // The text now names another ticket that has a session; the line has not caught up, and ↵ is pressed.
+        model.setDraftText("PAY-500 add the note", projectID: rig.projectID)
+        model.sendDraft(projectID: rig.projectID)
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(rig.intents.sends.isEmpty, "the permission was for PAY-418, not for PAY-500")
+        #expect(await waitUntil { model.newSession.draft(for: rig.projectID)?.allowDuplicateTicket == false })
+    }
+
+    // MARK: Typing in a long draft
+
+    @Test func aKeystrokeCostsTheSameInAShortDraftAndALongOne() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        model.beginNewSession(projectID: rig.projectID)
+        let store = try #require(model.newSession.store)
+        // The timer never fires inside this test: the saves below are asked for.
+        store.delay = .seconds(60)
+        let id = rig.projectID
+
+        var text = ""
+        // From a few words to the cap of one message (128 KiB), each size typed into for fifty keystrokes.
+        for size in [40, 4_000, 32_000, NewSessionLaunch.maxFirstMessageBytes - 100] {
+            let firstScan = model.newSession.ticketScans
+            text = String(repeating: "word ", count: size / 5)
+            model.setDraftText(text, projectID: id)
+            #expect(await waitUntil { model.newSession.ticketScans == firstScan + 1 })
+            model.newSession.flush()
+            let scans = model.newSession.ticketScans
+            let snapshots = store.snapshotsBuilt
+            let writes = store.writeCount
+
+            let began = ContinuousClock.now
+            for _ in 0..<50 {
+                text += "x"
+                model.setDraftText(text, projectID: id)
+            }
+            let spent = ContinuousClock.now - began
+            #expect(model.newSession.ticketScans == scans, "no keystroke looks for a ticket key (\(size) bytes)")
+            #expect(store.snapshotsBuilt == snapshots, "no keystroke builds the saved form of the drafts (\(size) bytes)")
+            #expect(store.writeCount == writes, "and none writes (\(size) bytes)")
+            // Loose guard against a pass over the text that grows with it, not a measurement.
+            #expect(spent < .seconds(2), "50 keystrokes took \(spent) at \(size) bytes")
+
+            // The pause does the work once: one look at the text, one saved form, one write.
+            #expect(await waitUntil { model.newSession.ticketScans == scans + 1 })
+            model.newSession.flush()
+            #expect(store.snapshotsBuilt == snapshots + 1 && store.writeCount == writes + 1)
+        }
+        #expect(model.newSession.draft(for: id)?.text == text)
+        #expect(store.file.drafts.map(\.text) == [text], "what was saved is what was typed")
+    }
+
+    @Test func whetherADraftHasTextIsKnownWithoutReadingItAndItsRowTitleStopsAtTheFirstLine() {
+        var draft = SessionDraft(projectID: nil)
+        #expect(!draft.isVisible && !draft.hasText)
+        draft.text = " \n\t  \n"
+        #expect(!draft.isVisible && draft.trimmedText.isEmpty, "white space alone is not a draft")
+        draft.text = "\n  fix the flaky test   \nsecond line"
+        #expect(draft.isVisible && DraftRow.title(of: draft) == "fix the flaky test")
+        draft.text = "   "
+        #expect(DraftRow.title(of: draft) == "New session")
+        // One line of the cap's size: the title is cut, and the cut is made without reading the rest.
+        draft.text = String(repeating: "a", count: NewSessionLaunch.maxFirstMessageBytes)
+        #expect(DraftRow.title(of: draft).count == DraftRow.maximumTitleLength)
+        draft.text = "PAY-418 add the note\r\nmore"
+        #expect(DraftRow.title(of: draft) == "PAY-418 add the note")
+        #expect(NewSessionBranchNames.suggest(ticket: "PAY-418", text: "\nPAY-418 add the note\nsecond line about other things")
+            == "feat/PAY-418-add-the-note")
+    }
+
+    // MARK: A save that goes wrong
+
+    @Test func aFailedSaveIsSaidWhereTheDraftIsAndTheNextGoodSaveClearsIt() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        model.beginNewSession(projectID: rig.projectID)
+        #expect(model.newSession.storeNotice == nil)
+        // The file's place is taken by a folder that is not empty: the write cannot replace it.
+        try FileManager.default.createDirectory(at: rig.storeURL, withIntermediateDirectories: true)
+        try "keep".write(to: rig.storeURL.appendingPathComponent("inside"), atomically: true, encoding: .utf8)
+
+        model.setDraftText("words that must not be lost", projectID: rig.projectID)
+        model.newSession.flush()
+        let notice = try #require(model.newSession.storeNotice)
+        #expect(notice.contains("could not be saved") && notice.contains("still here"))
+        #expect(model.newSession.draft(for: rig.projectID)?.text == "words that must not be lost", "the text itself is untouched")
+
+        try FileManager.default.removeItem(at: rig.storeURL)
+        model.newSession.flush()
+        #expect(model.newSession.storeNotice == nil, "the next good save clears it")
+        #expect(NewSessionStore(url: rig.storeURL).file.drafts.map(\.text) == ["words that must not be lost"])
     }
 
     // MARK: The first send
@@ -640,6 +757,33 @@ struct NewSessionTests {
         #expect(again.presets.map(\.name) == ["Run the test suite and fix failures", "Review my last commit"])
         model.removePreset(preset)
         #expect(model.presets(for: rig.projectID).map(\.name) == ["Review my last commit"])
+    }
+
+    @MainActor
+    @Test func anUnreadableFileIsKeptAsideAndTheNextSaveDoesNotReplaceIt() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("new-session.json")
+        let garbage = "{\"drafts\": [ this is not json"
+        try garbage.write(to: url, atomically: true, encoding: .utf8)
+
+        let store = NewSessionStore(url: url)
+        #expect(store.file == NewSessionFile(), "it reads as empty")
+        let notice = try #require(store.loadNotice)
+        #expect(!FileManager.default.fileExists(atPath: url.path), "and is moved out of the way")
+        let aside = try FileManager.default.contentsOfDirectory(atPath: root.path).filter { $0.hasPrefix("new-session.unreadable-") }
+        #expect(aside.count == 1 && notice.contains(aside[0]))
+        #expect(try String(contentsOf: root.appendingPathComponent(aside[0]), encoding: .utf8) == garbage, "as it was")
+
+        // The next change writes a new file; the old one is still there.
+        store.change { $0.settings = NewSessionSettings(permissionMode: "plan", model: nil) }
+        store.flush()
+        #expect(FileManager.default.fileExists(atPath: url.path) && store.lastFailure == nil)
+        #expect(try String(contentsOf: root.appendingPathComponent(aside[0]), encoding: .utf8) == garbage)
+
+        // A file that reads fine is left where it is, and so is a missing one.
+        #expect(NewSessionStore(url: url).loadNotice == nil)
+        #expect(NewSessionStore(url: root.appendingPathComponent("nothing.json")).loadNotice == nil)
     }
 
     @Test func anUnreadableFileOrEntryReadsAsEmptyAndTheRestSurvives() throws {

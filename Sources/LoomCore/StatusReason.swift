@@ -173,8 +173,9 @@ public struct StatusReason: Equatable, Sendable, CustomStringConvertible, Custom
     }
 
     /// One bounded line: whitespace collapsed, control, bidirectional and zero-width scalars dropped, cut
-    /// at a character boundary. Nil when nothing is left. Agent text is untrusted and shown verbatim.
-    static func oneLine(_ text: String, limit: Int = maximumDetailLength) -> String? {
+    /// at a character boundary. Nil when nothing is left. Agent text is untrusted and shown verbatim. Package-visible so
+    /// that every place that shows a line of agent or user text cleans it the same way.
+    package static func oneLine(_ text: String, limit: Int = maximumDetailLength) -> String? {
         var result = String.UnicodeScalarView()
         var pendingSpace = false
         for scalar in text.unicodeScalars.prefix(limit * 8) {

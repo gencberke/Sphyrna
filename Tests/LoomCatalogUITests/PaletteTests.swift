@@ -397,10 +397,14 @@ struct PaletteTests {
         var older: [CatalogSession] = []
         var hits: [String: [PaletteTranscriptHit]] = [:]
         var hold = true
+        /// A search that fails instead of answering.
+        var olderError: (any Error)?
+        var transcriptError: (any Error)?
         private var waiters: [String: CheckedContinuation<Void, Never>] = [:]
 
         func olderSessions(matching query: String) async throws -> [CatalogSession] {
             olderCalls += 1
+            if let olderError { throw olderError }
             return older
         }
 
@@ -408,6 +412,7 @@ struct PaletteTests {
                                progress: @escaping @MainActor (PaletteTranscriptOutcome) -> Void) async throws -> PaletteTranscriptOutcome {
             transcriptCalls += 1
             transcriptQueries.append(query)
+            if let transcriptError { throw transcriptError }
             if hold {
                 await withTaskCancellationHandler {
                     await withCheckedContinuation { waiters[query] = $0 }
@@ -518,6 +523,181 @@ struct PaletteTests {
         #expect(await waitUntil { fake.transcriptCalls == 2 && !palette.isSearching && palette.coverageNote != nil })
         #expect(palette.coverageNote == "No matches in session text · Searched 3 sessions · last 30 days")
         #expect(!palette.items.contains { $0.target == .searchOlder }, "it is offered once")
+    }
+
+    struct Broken: Error {}
+
+    @Test func aSearchThatFailsSaysSoInsteadOfLookingLikeNoMatches() async throws {
+        let rig = try await makeRig()
+        defer { rig.cleanup() }
+        let palette = rig.model.palette
+        let fake = FakeSources()
+        fake.hold = false
+        fake.olderError = Broken()
+        palette.sourcesOverride = fake
+        palette.settle = .milliseconds(5)
+        rig.model.openPalette()
+        palette.setQuery("invoice")
+        #expect(await waitUntil { fake.transcriptCalls == 1 && !palette.searchIsRunning })
+        // The older sessions could not be searched: the footer says that, whatever else was found.
+        #expect(palette.searchFailure == "Older sessions could not be searched.")
+        #expect(palette.coverageNote == "No matches in session text · Searched 3 sessions · last 14 days",
+                "the text search itself went on")
+
+        fake.olderError = nil
+        fake.transcriptError = Broken()
+        palette.setQuery("invoices")
+        #expect(await waitUntil { fake.transcriptCalls == 2 && !palette.searchIsRunning })
+        #expect(palette.searchFailure == "Session text could not be searched. What is shown may be incomplete.")
+        #expect(palette.coverageNote == nil, "a failed pass has no coverage to print, and it is not \"no matches\"")
+
+        // A new query starts clean, and closing leaves nothing behind.
+        fake.transcriptError = nil
+        palette.setQuery("webhook")
+        #expect(palette.searchFailure == nil)
+        #expect(await waitUntil { !palette.searchIsRunning })
+        #expect(palette.searchFailure == nil && palette.coverageNote != nil)
+        palette.close()
+        #expect(palette.searchFailure == nil)
+    }
+
+    @Test func aSearchThatTheNextKeystrokeCancelledIsNotReportedAsFailed() async throws {
+        let rig = try await makeRig()
+        defer { rig.cleanup() }
+        let palette = rig.model.palette
+        let fake = FakeSources()
+        palette.sourcesOverride = fake
+        palette.settle = .milliseconds(5)
+        rig.model.openPalette()
+        palette.setQuery("web")
+        #expect(await waitUntil { fake.transcriptCalls == 1 })
+        palette.setQuery("webhook")
+        #expect(await waitUntil { fake.cancelledQueries == ["web"] && fake.transcriptCalls == 2 })
+        #expect(palette.searchFailure == nil, "the first search ended in a cancellation, not a failure")
+        fake.release("webhook")
+        #expect(await waitUntil { !palette.isSearching })
+        #expect(palette.searchFailure == nil)
+    }
+
+    // MARK: Once per open
+
+    /// The Claude profile's `projects` folder with the transcripts of some of the rig's sessions, each in the folder
+    /// Claude names after the session's working directory.
+    private func transcripts(in rig: Rig, _ files: [(conversation: String, lines: [String])], folder: String? = nil) throws -> URL {
+        let projects = rig.root.appendingPathComponent("claude/projects", isDirectory: true)
+        let cwd = rig.root.appendingPathComponent("api-gateway").path
+        let name = folder ?? String(cwd.unicodeScalars.map { $0.isASCII && CharacterSet.alphanumerics.contains($0) ? Character($0) : "-" })
+        let directory = projects.appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for file in files {
+            try file.lines.joined(separator: "\n").appending("\n")
+                .write(to: directory.appendingPathComponent(file.conversation + ".jsonl"), atomically: true, encoding: .utf8)
+        }
+        return projects
+    }
+
+    @Test func aSecondQueryInTheSameOpenLocatesAndReadsTheCatalogForNothingAgain() async throws {
+        let rig = try await makeRig()
+        defer { rig.cleanup() }
+        let projects = try transcripts(in: rig, [
+            ("conv-2", [user("Which PDF library renders the invoice best?"), assistant("WeasyPrint handles CSS page rules well.")]),
+            ("conv-3", [user("The limiter drops bursts."), assistant("Use a token bucket for the burst case.")]),
+        ])
+        let palette = rig.model.palette
+        palette.transcriptsDirectory = projects
+        palette.settle = .milliseconds(5)
+        rig.model.openPalette()
+
+        palette.setQuery("weasyprint")
+        #expect(await waitUntil { palette.coverageNote != nil && !palette.isSearching })
+        let live = try #require(palette.liveSources)
+        #expect(palette.items.contains { $0.target == .hit(rig.ids[2]) })
+        let located = live.locateCalls
+        #expect(located == 5 && live.candidateReads == 1, "every session of the window was looked for once")
+
+        palette.setQuery("token bucket")
+        #expect(await waitUntil { palette.items.contains { $0.target == .hit(rig.ids[3]) } && !palette.isSearching })
+        palette.setQuery("css page")
+        #expect(await waitUntil { palette.items.contains { $0.target == .hit(rig.ids[2]) } && !palette.isSearching })
+        #expect(live.locateCalls == located && live.candidateReads == 1, "the next queries locate nothing and ask the catalog nothing")
+
+        // "Search older" adds only the sessions between 14 and 30 days: none here.
+        palette.setQuery("weasyprint")
+        #expect(await waitUntil { palette.coverageNote != nil && !palette.isSearching })
+        let offer = try #require(palette.items.first { $0.target == .searchOlder })
+        palette.activate(offer.id)
+        #expect(await waitUntil { palette.coverageNote?.hasSuffix("last 30 days") == true && !palette.isSearching })
+        #expect(live.locateCalls == located)
+
+        // Closing forgets it all: the next open looks again.
+        palette.close()
+        rig.model.openPalette()
+        palette.setQuery("weasyprint")
+        #expect(await waitUntil { palette.coverageNote != nil && !palette.isSearching })
+        #expect(try #require(palette.liveSources).locateCalls == located)
+        #expect(try #require(palette.liveSources) !== live)
+    }
+
+    @Test func aTranscriptOutsideTheSessionsOwnFolderIsNeverSearchedFor() async throws {
+        let rig = try await makeRig()
+        defer { rig.cleanup() }
+        // conv-2's transcript sits in another project's folder: the folder scan that would find it is not made.
+        let projects = try transcripts(in: rig, [
+            ("conv-2", [user("Which PDF library renders the invoice best?"), assistant("WeasyPrint handles CSS page rules well.")]),
+        ], folder: "-tmp-somewhere-else")
+        let palette = rig.model.palette
+        palette.transcriptsDirectory = projects
+        palette.settle = .milliseconds(5)
+        rig.model.openPalette()
+        palette.setQuery("weasyprint")
+        #expect(await waitUntil { palette.coverageNote != nil && !palette.isSearching })
+        #expect(!palette.items.contains { $0.target == .hit(rig.ids[2]) })
+        #expect(palette.coverageNote == "No matches in session text · Searched 0 sessions · last 14 days")
+    }
+
+    @Test func aSessionsFieldsAreFoldedOncePerOpenNotOncePerKeystroke() async throws {
+        let rig = try await makeRig()
+        defer { rig.cleanup() }
+        let palette = rig.model.palette
+        palette.settle = .seconds(30)
+        rig.model.openPalette()
+        #expect(palette.foldsComputed == 0, "an empty query matches nothing, so folds nothing")
+        for query in ["r", "ra", "rat", "rate", "rate l", "rate li", "rate limiter"] { palette.setQuery(query) }
+        #expect(palette.foldsComputed == rig.ids.count, "five sessions, folded on the first query and kept")
+        #expect(titles(of: palette.groups.first { $0.section == .sessions }).first == "Rate limiter tests")
+
+        // A session whose reason changed is folded again, and only that one.
+        await needsApproval(rig, 1, reason: StatusReason(.approval(tool: "Bash"), detail: "git push"))
+        #expect(await waitUntil { rig.model.liveStates[rig.ids[1]]?.reason != nil })
+        palette.setQuery("rate limite")
+        #expect(palette.foldsComputed == rig.ids.count + 1)
+        palette.close()
+        #expect(palette.foldsComputed == 0, "and nothing is kept once it closes")
+    }
+
+    // MARK: What a pass covered
+
+    @Test func aPassOverACutListSaysItLookedAtTheNewestSessionsOnly() async throws {
+        let rig = try await makeRig()
+        defer { rig.cleanup() }
+        let projects = try transcripts(in: rig, [
+            ("conv-4", [user("Nightly import of the ledger"), assistant("The ledger import runs at two.")]),
+        ])
+        // Five sessions in the catalog, all active in the last 14 days; the source looks at the newest three.
+        let capped = LivePaletteSources(model: rig.model, maximumSessions: 3, transcriptsDirectory: { projects })
+        let cut = try await capped.searchTranscripts(query: "ledger", budget: .first) { _ in }
+        #expect(cut.coverage.sessionCap == 3 && cut.coverage.stop == .completed && !cut.coverage.isComplete)
+        let line = PaletteCoverageText.line(cut.coverage, hits: cut.hits.count)
+        #expect(line.hasSuffix("last 14 days · newest 3 sessions only"), "\(line)")
+
+        // The same pass over a list the cap did not cut says nothing of the kind.
+        let whole = LivePaletteSources(model: rig.model, transcriptsDirectory: { projects })
+        let all = try await whole.searchTranscripts(query: "ledger", budget: .first) { _ in }
+        #expect(all.coverage.sessionCap == nil && all.coverage.isComplete)
+        #expect(!PaletteCoverageText.line(all.coverage, hits: all.hits.count).contains("newest"))
+        // A cap that leaves out only sessions older than the window is no cut.
+        let exact = LivePaletteSources(model: rig.model, maximumSessions: 5, transcriptsDirectory: { projects })
+        #expect(try await exact.searchTranscripts(query: "ledger", budget: .first) { _ in }.coverage.sessionCap == nil)
     }
 
     // MARK: The scan

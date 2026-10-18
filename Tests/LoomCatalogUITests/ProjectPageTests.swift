@@ -11,6 +11,9 @@ import Testing
 final class ProjectUsageFakeIndex: UsageIndexing, @unchecked Sendable {
     private let state = Mutex<[[String]]>([])
     var answer = ProjectUsage(tokens: UsageTokens(input: 4_000_000, output: 800_000), estimatedCostUSD: 31, messageCount: 90, sessionCount: 2)
+    /// The index cannot answer a project lookup.
+    var fails = false
+    struct Unreadable: Error {}
     var lookups: [[String]] { state.withLock { $0 } }
 
     func refreshAll() async throws -> UsageScanReport { UsageScanReport() }
@@ -19,6 +22,7 @@ final class ProjectUsageFakeIndex: UsageIndexing, @unchecked Sendable {
     }
     func projectUsage(sessions: [String], range: UsageRange, now: Date, timeZone: TimeZone) async throws -> ProjectUsage {
         state.withLock { $0.append(sessions) }
+        if fails { throw Unreadable() }
         return answer
     }
 }
@@ -208,6 +212,28 @@ struct ProjectPageTests {
         model.usage = nil
         await model.openProjectPage(rig.projectID)
         #expect(model.projectPage.usage == nil && model.projectPage.usageLoad == .done)
+    }
+
+    @Test func anIndexThatCannotAnswerIsSaidSoAndIsNotNoUsage() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        rig.index.fails = true
+        await model.openProjectPage(rig.projectID)
+        #expect(model.projectPage.usage == nil && model.projectPage.usageLoad == .done)
+        #expect(model.projectPage.usageFailed, "the card says the usage could not be read")
+        #expect(model.projectPageEvidence()["usageFailed"] as? Bool == true)
+
+        // The page opened again over an index that answers: the failure is gone with the page that had it.
+        rig.index.fails = false
+        await model.openProjectPage(rig.projectID)
+        #expect(!model.projectPage.usageFailed && model.projectPage.usage?.tokens.total == 4_800_000)
+        // No index at all is another thing again: nothing failed.
+        model.usage = nil
+        await model.openProjectPage(rig.projectID)
+        #expect(!model.projectPage.usageFailed && model.projectPage.usage == nil)
     }
 
     // MARK: Lazy last lines
@@ -408,11 +434,14 @@ struct ProjectPageTests {
         #expect(ClaudeTranscriptLocator.locate(sessionID: "sess", projectsDirectory: projects, workingDirectory: "/tmp/here") != nil,
                 "the general search still finds it for the callers that want that")
         #expect(ClaudeTranscriptLocator.locate(sessionID: "sess", configDirectory: root, onlyIn: "/tmp/here") == nil)
+        #expect(ClaudeTranscriptLocator.locate(sessionID: "sess", projectsDirectory: projects, onlyIn: "/tmp/here") == nil,
+                "the same for a caller that holds the projects folder")
         #expect(ProjectLastLine.read(sessionID: "sess", configDirectory: root, workingDirectory: "/tmp/here") == nil,
                 "a miss shows no line")
         // In its own folder it is found.
         try write(Self.assistant("here") + "\n", to: projects.appendingPathComponent("-tmp-here/sess.jsonl"))
         #expect(ProjectLastLine.read(sessionID: "sess", configDirectory: root, workingDirectory: "/tmp/here") == "here")
+        #expect(ClaudeTranscriptLocator.locate(sessionID: "sess", projectsDirectory: projects, onlyIn: "/tmp/here") != nil)
         // Not a path out of the profile either.
         #expect(ClaudeTranscriptLocator.locate(sessionID: "../sess", configDirectory: root, onlyIn: "/tmp/here") == nil)
     }

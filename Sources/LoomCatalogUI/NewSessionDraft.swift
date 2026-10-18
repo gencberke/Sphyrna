@@ -13,7 +13,10 @@ enum BranchKind: String, Equatable, Sendable, Codable, CaseIterable {
 public struct SessionDraft: Equatable, Identifiable, Sendable {
     /// The project the draft belongs to; nil is a draft with no project.
     public let projectID: UUID?
-    public var text: String
+    public var text: String { didSet { hasText = Self.containsContent(text) } }
+    /// Whether the text holds anything but white space. Kept up to date when the text is set, so asking is free
+    /// on every redraw; the scan stops at the first character that is not white space.
+    public private(set) var hasText: Bool
     var modePick: DraftPick = .inherit
     var modelPick: DraftPick = .inherit
     var branchKind: BranchKind = .stay
@@ -30,11 +33,16 @@ public struct SessionDraft: Equatable, Identifiable, Sendable {
     init(projectID: UUID?, text: String = "", updatedAt: Date = Date()) {
         self.projectID = projectID
         self.text = text
+        self.hasText = Self.containsContent(text)
         self.updatedAt = updatedAt
     }
 
+    private static func containsContent(_ text: String) -> Bool {
+        text.unicodeScalars.contains { !CharacterSet.whitespacesAndNewlines.contains($0) }
+    }
+
     /// A draft with text is kept and listed; an empty one is invisible (CHAT-SPEC → Draft session).
-    public var isVisible: Bool { !trimmedText.isEmpty }
+    public var isVisible: Bool { hasText }
 
     public var trimmedText: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 }
@@ -64,7 +72,8 @@ public struct NewSessionPreset: Equatable, Identifiable, Sendable, Codable {
 enum NewSessionBranchNames {
     /// `feat/PAY-418-reverse-charge-note` with a ticket, `loom/fix-the-flaky-test` without; never empty.
     static func suggest(ticket: String?, text: String, now: Date = Date()) -> String {
-        var rest = text
+        // Only the first line is ever used, so only it is read: this runs on every redraw of a draft with a branch choice.
+        var rest = firstLine(of: text)
         if let ticket { rest = rest.replacingOccurrences(of: ticket, with: " ") }
         let words = slug(rest, words: 4, limit: 32)
         if let ticket { return words.isEmpty ? "feat/\(ticket)" : "feat/\(ticket)-\(words)" }
@@ -75,10 +84,14 @@ enum NewSessionBranchNames {
         return "loom/session-\(formatter.string(from: now))"
     }
 
+    /// The first line with something on it, found by scanning up to its end and no further.
+    static func firstLine(of text: String) -> String {
+        String(text.drop { $0.isNewline }.prefix { !$0.isNewline })
+    }
+
     /// Lowercase ASCII words of the first line joined by dashes, at most `words` words and `limit` characters.
     static func slug(_ text: String, words: Int, limit: Int) -> String {
-        let firstLine = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
-        let folded = firstLine.replacingOccurrences(of: "ı", with: "i")
+        let folded = firstLine(of: text).replacingOccurrences(of: "ı", with: "i")
             .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
             .lowercased()
         var parts: [String] = []
