@@ -39,6 +39,8 @@ import Foundation
 //   run <command>                     a Bash call (`mkdir <d>` and `touch <f>` take effect), decided by the rules
 //   web WebFetch|WebSearch            a research call, decided by the rules (ChatPermissions.swift)
 //   bg-agent [ms]                     an Agent in the background; its end starts a CLI turn that tries to write its report
+//   stream <seconds> <chars/s>        Markdown text deltas at that rate for that time, a short tool call every few seconds
+//                                     (ChatStreamScenario.swift; the resource-measurement load)
 
 extension ChatEngine {
     func runScenario(_ text: String) throws {
@@ -140,6 +142,8 @@ extension ChatEngine {
             try webScenario(tool: args.first ?? "WebFetch")
         case "bg-agent":
             try backgroundAgentScenario(milliseconds: args.first.flatMap(Int.init) ?? 300)
+        case "stream":
+            try streamScenario(args)
         default:
             try assistantMessage([.text("Unknown scenario '\(name)'.")])
         }

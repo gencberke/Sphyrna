@@ -433,6 +433,8 @@ class Driver:
                     'resourceBefore': before, 'resourceAfter': self.sample()['result']}
         count, rate = {'idle0': (0, -1), 'idle1': (1, -1), 'idle10': (10, -1), 'idle50': (50, -1),
                        'stream1': (1, 1048576), 'spinner1': (1, SPINNER_FPS), 'stream10': (10, 102400), 'burst': (1, 0), 'smoke': (2, 10240),
+                       # Release B: the terminal at the Chat stream cell's rates (bytes/s = characters/s of chat_stream_cost.py).
+                       'stream600': (1, 600), 'stream6000': (1, 6000),
                        'instrument': (0, -1), 'latency': (1, -1)}[scenario]
         warmup, duration = self.args.warmup, self.args.duration
         if scenario == 'smoke':
@@ -820,7 +822,7 @@ def main():
     parser.add_argument('--app', type=Path, default=DEFAULT_APP)
     parser.add_argument('--launch-services', action='store_true',
                         help='Launch a fresh app instance through LaunchServices; its coalition must be independently checked for attribution')
-    parser.add_argument('--scenario', choices=['smoke', 'idle0', 'idle1', 'idle10', 'idle50', 'stream1', 'spinner1', 'stream10', 'burst', 'cycles', 'instrument', 'latency'], default='smoke')
+    parser.add_argument('--scenario', choices=['smoke', 'idle0', 'idle1', 'idle10', 'idle50', 'stream1', 'spinner1', 'stream10', 'stream600', 'stream6000', 'burst', 'cycles', 'instrument', 'latency'], default='smoke')
     parser.add_argument('--latency-samples', type=int, default=200)
     parser.add_argument('--warmup', type=float, default=10)
     parser.add_argument('--duration', type=float, default=600)
