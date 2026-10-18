@@ -10,10 +10,31 @@ final class ChatTableView: NSTableView {
     override var acceptsFirstResponder: Bool { true }
     override var needsPanelToBecomeKey: Bool { false }
 
+    /// The text a key press types, when it is printable: no control character, no function or arrow key (those carry
+    /// private-use characters), not a space (Space scrolls a table) and nothing while an input method composes.
+    static func printableText(of event: NSEvent) -> String? {
+        guard let characters = event.characters, !characters.isEmpty else { return nil }
+        return printable(characters)
+    }
+
+    static func printable(_ characters: String) -> String? {
+        guard !characters.isEmpty, characters != " ", characters.unicodeScalars.allSatisfy({ scalar in
+            scalar.value >= 0x20 && scalar.value != 0x7F && !(0xF700...0xF8FF).contains(scalar.value)
+        }) else { return nil }
+        return characters
+    }
+
     override func keyDown(with event: NSEvent) {
         let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
         if flags == .control, event.charactersIgnoringModifiers?.lowercased() == "o" {
             controller?.onCycleView?()
+            return
+        }
+        // Type to focus [T3]: a printable key typed in the stream goes to the composer, as the event (Option and Shift
+        // make characters on other layouts: `@`, `[`, `{`, `|`; ⌘ and ⌃ make shortcuts).
+        if flags.intersection([.command, .control]).isEmpty, Self.printableText(of: event) != nil,
+           let take = controller?.onTypeToFocus {
+            take(event)
             return
         }
         guard flags.isEmpty else { return super.keyDown(with: event) }

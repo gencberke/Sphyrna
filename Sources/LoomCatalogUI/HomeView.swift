@@ -1,9 +1,10 @@
 import LoomCore
 import SwiftUI
 
-/// The launch view (V05): what needs you, what finished unread, the plan limits, Today, what Quit cut short,
-/// and a box to start a session. It summarises what Loom already knows; it starts nothing by itself and has
-/// no timer of its own. `DetailContent` draws it for `.home`.
+/// The launch view (V05): what needs you, what finished unread, the plan limits, Today and what Quit cut short.
+/// It summarises what Loom already knows; it starts nothing by itself and has no timer of its own. The top of the
+/// page below the header is left clear (V19: the start box went; an assistant takes that place later). Sessions start
+/// from the sidebar's New session. `DetailContent` draws it for `.home`.
 struct HomeView: View {
     let model: CatalogModel
 
@@ -29,7 +30,7 @@ struct HomeView: View {
     }
 }
 
-/// Home with something in the catalog: the header, the start box and the sections.
+/// Home with something in the catalog: the header and the sections.
 private struct HomeBoardView: View {
     let model: CatalogModel
 
@@ -39,11 +40,7 @@ private struct HomeBoardView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: LoomTheme.Home.blockGap) {
                     HomeHeader(model: model)
-                    if model.homeClaudeCLIMissing {
-                        HomeNoClaudeNotice(model: model)
-                    } else {
-                        HomeStartBox(model: model)
-                    }
+                    if model.homeClaudeCLIMissing { HomeNoClaudeNotice(model: model) }
                     if content >= LoomTheme.Home.wideFrom {
                         HStack(alignment: .top, spacing: LoomTheme.Home.columnGap) {
                             HomeLists(model: model).frame(maxWidth: .infinity, alignment: .topLeading)
@@ -60,9 +57,6 @@ private struct HomeBoardView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .onAppear { model.prepareHomeStart() }
-        // The last-used project arrives with the catalog read: the start box follows it to that project's slot.
-        .onChange(of: model.homeStartProjectID) { model.prepareHomeStart() }
     }
 }
 

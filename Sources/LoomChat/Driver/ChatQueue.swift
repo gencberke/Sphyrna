@@ -26,6 +26,8 @@ public struct ChatQueue: Sendable, Equatable, Codable {
         case processEnded
         /// Loom was started again with items still queued.
         case relaunch
+        /// The session moved to the terminal (V19) with items still queued: they wait for its return.
+        case handover
     }
 
     /// At most this many items wait (CHAT-SPEC → Queue): one more is refused, not dropped.

@@ -97,3 +97,14 @@ extension SessionCatalog {
         }
     }
 }
+
+extension SessionCatalog {
+    /// Forgets the session's recorded effort: a model without effort levels must not be started with `--effort` (the merge in
+    /// `recordLaunchChoices` cannot clear a value).
+    public func clearLaunchEffort(sessionID: UUID) throws {
+        try database.withStatement("UPDATE sessions SET effort = NULL WHERE id = ?") { statement in
+            try database.bind(sessionID.uuidString, at: 1, to: statement)
+            try database.stepDone(statement, operation: "clear launch effort")
+        }
+    }
+}

@@ -10,9 +10,17 @@ public struct DetailView: View {
     public var body: some View {
         let route = model.detailRoute
         VStack(spacing: 0) {
-            DetailTop(model: model, showsSessionHeader: route.showsSessionHeader)
-            Banners(model: model)
-            DeletionBanner(model: model)
+            // The whole top stack sits above the content: the Chat stream is an AppKit scroll view that is laid over its
+            // neighbours (it hid the header and the banners, so a handover's refusal was never seen). It has the page's
+            // own fill, so no row shows through behind it, and it takes the clicks on its transparent parts.
+            VStack(spacing: 0) {
+                DetailTop(model: model, showsSessionHeader: route.showsSessionHeader)
+                Banners(model: model)
+                DeletionBanner(model: model)
+            }
+            .background(route.surface)
+            .contentShape(Rectangle())
+            .zIndex(1)
             DetailContent(model: model, route: route)
                 .detailInspector(model: model)
         }
@@ -141,6 +149,7 @@ struct SessionHeaderRow: View {
                             Button(ShellCommand.showChat.title) { model.showFace(.chat) }
                             Button(ShellCommand.showTerminal.title) { model.showFace(.terminal) }
                         }
+                        continueItems
                         Divider()
                         Button("Resume") { model.resumeConversation(row.id) }
                             .disabled(!model.canResume(row))
@@ -157,11 +166,34 @@ struct SessionHeaderRow: View {
         }
     }
 
+    /// "Continue in Terminal" / "Continue in Chat" (V19), or the way to end a wait that has begun.
+    @ViewBuilder private var continueItems: some View {
+        if let handover = model.handover(of: row.id) {
+            Divider()
+            if handover.phase == .waiting {
+                Button("Cancel " + CatalogModel.continueTitle(handover.target)) { model.cancelHandover(sessionID: row.id) }
+            }
+        } else if model.canContinue(in: .terminal, row: row) || model.canContinue(in: .chat, row: row) {
+            Divider()
+            if model.canContinue(in: .terminal, row: row) {
+                Button(CatalogModel.continueTitle(.terminal)) { model.continueIn(.terminal, sessionID: row.id) }
+                    .help(CatalogModel.continueHelp(.terminal))
+            }
+            if model.canContinue(in: .chat, row: row) {
+                Button(CatalogModel.continueTitle(.chat)) { model.continueIn(.chat, sessionID: row.id) }
+                    .help(CatalogModel.continueHelp(.chat))
+            }
+        }
+    }
+
     /// The state pill, or in its place a transient text as plain secondary text; nothing for a run that ended.
     @ViewBuilder private var status: some View {
         if model.busy[row.id] == .starting {
             Text("Starting — complete any prompts in the terminal")
                 .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+                .lineLimit(1).headerSlot(.status, shrinks: true)
+        } else if let notice = model.handoverNotice(of: row.id) {
+            Text(notice).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
                 .lineLimit(1).headerSlot(.status, shrinks: true)
         } else if model.isDeleting(row.id) {
             Text("Deleting…").font(LoomTheme.Typography.statusLabel).foregroundStyle(LoomTheme.Text.secondary)

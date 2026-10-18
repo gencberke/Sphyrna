@@ -490,13 +490,14 @@ public actor ProcessSupervisor {
             catalogStarted: catalog == nil, scope: scope
         )
         runRegistered = true
-        await events.publish(sessionID: sessionID, change: .runStarted(runID))
+        // The owning face is a fact of the session, kept with it before anyone is told the run started: the row a
+        // frame makes the UI read again already names the face (V19: a stopped session resumes in it).
         let endpointKind: RunEndpointKind = endpoint.isPipe ? .pipe : .terminal
-        await events.publish(sessionID: sessionID, change: .runEndpoint(runID, endpointKind))
-        // The owning face is a fact of the session, kept with it (V19's handover reads it).
         do { try await catalog?.setRunEndpoint(endpointKind, sessionID: sessionID) } catch {
             LoomLog.error(.catalog, "The run's endpoint could not be recorded (\(LoomLog.category(of: error)))")
         }
+        await events.publish(sessionID: sessionID, change: .runStarted(runID))
+        await events.publish(sessionID: sessionID, change: .runEndpoint(runID, endpointKind))
         LoomLog.notice(.lifecycle, "Run \(runID.uuidString.prefix(8)) started")
         markerInspected.insert(leaderIdentity)
         managedRunMarkers[leaderIdentity] = runID
@@ -669,13 +670,10 @@ public actor ProcessSupervisor {
         await events.publish(
             sessionID: destination.id, change: .conversationIdentity(conversationID)
         )
-        await events.publish(
-            sessionID: destination.id, change: .runStarted(runID)
-        )
         let endpoint: RunEndpointKind = runtime.endpoint.isPipe ? .pipe : .terminal
-        await events.publish(sessionID: destination.id, change: .runEndpoint(runID, endpoint))
         // The run's launch choices and its face go with it: the new card is resumed with the mode, model and effort
-        // the run had, in the face that ran it (choices the destination already has are kept).
+        // the run had, in the face that ran it (choices the destination already has are kept). Written before anyone is
+        // told the run started on the card (V19: the row a frame makes the UI read again already names the face).
         if let catalog {
             do {
                 try await catalog.carryLaunchState(from: current.id, to: destination.id, endpoint: endpoint)
@@ -683,6 +681,10 @@ public actor ProcessSupervisor {
                 LoomLog.error(.catalog, "A moved run's launch choices were not copied (\(LoomLog.category(of: error)))")
             }
         }
+        await events.publish(
+            sessionID: destination.id, change: .runStarted(runID)
+        )
+        await events.publish(sessionID: destination.id, change: .runEndpoint(runID, endpoint))
         if let moved = stopHooks[runID]?.moved {
             let card = destination.id
             Task { await moved(card) }

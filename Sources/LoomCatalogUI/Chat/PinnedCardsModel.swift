@@ -181,6 +181,9 @@ final class PinnedCardsModel {
     /// Nothing can be answered while the session stops: the buttons are off.
     var isStopping: Bool { phase == .stopping }
 
+    /// Ask is the session's mode: a plan is approved in Ask, so its card offers no other mode (the driver sees to it too).
+    private(set) var askIsOn = false
+
     func planMode(for request: ChatPendingRequest) -> String { planModes[request.requestID] ?? "default" }
 
     /// The modes a plan can continue in, in the order the card offers them (CHAT-SPEC → Plans).
@@ -190,6 +193,7 @@ final class PinnedCardsModel {
 
     func apply(_ state: ChatLiveState) {
         if phase != state.phase { phase = state.phase }
+        if askIsOn != state.isAsk { askIsOn = state.isAsk }
         if undelivered != state.undelivered { undelivered = state.undelivered }
         let incoming = state.requests
         let now = typingClock()
@@ -438,7 +442,7 @@ final class PinnedCardsModel {
     }
 
     func approvePlan(_ request: ChatPendingRequest) async {
-        await send(request, .approvePlan(mode: planMode(for: request)))
+        await send(request, .approvePlan(mode: askIsOn ? ClaudePermissionMode.ask.rawValue : planMode(for: request)))
     }
 
     func keepPlanning(_ request: ChatPendingRequest) async {

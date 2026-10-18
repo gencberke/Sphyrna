@@ -146,11 +146,15 @@ public final class ChatSessionHost {
     private static func isInUse(_ value: AnyObject) -> Bool { (value as? ChatDriverAttachment)?.isInUse ?? false }
 
     /// Starts a new Claude session in the Chat face from a draft (title, ticket, workspace, choices, first message).
+    /// `onReady` runs once Claude answered `initialize` (Ready), before the first message goes out: the caller tells the
+    /// draft and shows the session then. A start that fails before that throws and keeps nothing; a first message that
+    /// fails afterwards goes to the session's own draft.
     @discardableResult
-    public func startNewSession(projectID: UUID?, sessionID: UUID = UUID(), draft: NewSessionLaunch? = nil)
+    public func startNewSession(projectID: UUID?, sessionID: UUID = UUID(), draft: NewSessionLaunch? = nil,
+                                onReady: (@Sendable () async -> Void)? = nil)
         async throws -> ChatSessionDriver {
         let driver = driver(for: sessionID)
-        try await driver.startNew(projectID: projectID, draft: draft)
+        try await driver.startNew(projectID: projectID, draft: draft, onReady: onReady)
         return driver
     }
 
@@ -164,8 +168,9 @@ public final class ChatSessionHost {
     }
 
     /// Terminal → Chat: stops the terminal run if one lives (the runtime's verified stop), then resumes the session in
-    /// the Chat face.
-    public func enterChat(sessionID: UUID) async throws -> ChatSessionDriver {
+    /// the Chat face. `beforeResume` runs after the stop, right before the Chat run starts: false ends the move there
+    /// (a Stop or a cancel came in meanwhile) with a `CancellationError`.
+    public func enterChat(sessionID: UUID, beforeResume: (@MainActor () -> Bool)? = nil) async throws -> ChatSessionDriver {
         let driver = driver(for: sessionID)
         let terminalLives = await runtime.supervisor.session(id: sessionID)?.currentRun != nil
         let chatLives = await driver.currentPhase.isLive
@@ -173,6 +178,7 @@ public final class ChatSessionHost {
             let report = try await runtime.stopConversation(sessionID: sessionID)
             guard report.succeeded else { throw SessionRuntimeError.unverifiedStop(sessionID) }
         }
+        if let beforeResume, !beforeResume() { throw CancellationError() }
         try await driver.resume()
         await driver.noteFace(.backInChat)
         return driver

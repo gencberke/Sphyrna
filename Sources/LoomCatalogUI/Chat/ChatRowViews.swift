@@ -1,5 +1,6 @@
 import AppKit
 import LoomChat
+import LoomCore
 import SwiftUI
 
 /// One row of the stream, drawn inside a table cell. The reading column is centred; each kind lives in its own view.
@@ -73,10 +74,16 @@ enum ChatMarkerText {
         return "Session started \u{00B7} " + ChatTime.label(for: date)
     }
 
+    /// A mode as the CLI reports it, under Loom's name. `dontAsk` is what Ask runs on, and Loom does not start the Chat face in
+    /// that mode for any other reason.
+    static func modeName(_ raw: String) -> String {
+        raw == ClaudePermissionMode.ask.cliValue ? ClaudePermissionMode.ask.title : ClaudePermissionMode.title(forRaw: raw)
+    }
+
     static func text(_ marker: Marker) -> String {
         switch marker {
         case let .sessionStart(model, mode):
-            return (["Session started"] + [model, mode].compactMap { $0 }).joined(separator: " \u{00B7} ")
+            return (["Session started"] + [model, mode.map(modeName)].compactMap { $0 }).joined(separator: " \u{00B7} ")
         case let .resumed(seconds):
             if let seconds, seconds >= 60 { return "Resumed after \(ChatTime.gap(seconds: seconds))" }
             return "Resumed"
@@ -91,7 +98,7 @@ enum ChatMarkerText {
             if let attempt, let maxRetries { return "Retrying \u{00B7} attempt \(attempt) of \(maxRetries)" }
             return "Retrying"
         case let .modeChanged(mode):
-            return "Mode changed to \(mode)"
+            return "Mode changed to \(modeName(mode))"
         case let .modelChanged(model):
             return "Model changed to \(model)"
         case let .face(face):

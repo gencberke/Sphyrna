@@ -521,7 +521,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         model?.onToggleSidebar?()
     }
     @objc func newClaudeFromMenu(_ sender: Any?) {
-        model?.beginNewSession(projectID: model?.contextProjectID)
+        model?.beginNewSessionFromCommand()
     }
     @objc func newCodexFromMenu(_ sender: Any?) {
         model?.startConversation(.codex, projectID: model?.contextProjectID)

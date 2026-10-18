@@ -69,7 +69,8 @@ struct SessionChatView: View {
             // A question the provider asked stays answerable while the chat is shown; Return never approves it.
             RequestList(model: model, row: row, returnApproves: false)
             if let issue = SessionIssueNotice.message(for: row.live) { SessionIssueNotice(message: issue) }
-            if Self.showsNotRunning(isRunning: model.isRunning(row)) {
+            // A stopped session the Chat face owns has its composer instead: sending resumes it (V19).
+            if Self.showsNotRunning(isRunning: model.isRunning(row)), !model.showsStoppedLiveChat(row) {
                 EndedScreenNotice(model: model, row: row, showsDetails: false)
             }
             content(indicator: indicator)
@@ -84,20 +85,27 @@ struct SessionChatView: View {
 
     @ViewBuilder
     private func content(indicator: SessionIndicator) -> some View {
-        // A Chat-face run: the driver's live model, not the transcript (V16).
-        if model.runEndpoint(of: row) == .pipe, let driver = model.liveChatDriver(for: row.id),
+        // A Chat-face run: the driver's live model, not the transcript (V16). So is a stopped session the Chat face owns
+        // (V19): the driver is stopped, and its composer resumes the session.
+        if model.runEndpoint(of: row) == .pipe || model.showsStoppedLiveChat(row),
+           let driver = model.liveChatDriverForDisplay(of: row),
            let feed = model.liveChatFeed(for: driver, card: row.id, conversationID: claudeSessionID,
                                          workingDirectory: row.record.session.workingDirectory) {
             LiveChatView(feed: feed, composer: model.liveChatComposer(for: driver, row: row, feed: feed),
                          onOpenSubagent: { [model, sessionID = row.id] agentID, _ in
                 model.openAgents(for: agentID, in: sessionID)
-            }, pinned: { maxHeight in PinnedCardsView(cards: feed.cards, maxHeight: maxHeight) })
+            }, onContinueInTerminal: model.canContinue(in: .terminal, row: row)
+                ? { [model, sessionID = row.id] in model.continueIn(.terminal, sessionID: sessionID) } : nil,
+               pinned: { maxHeight in PinnedCardsView(cards: feed.cards, maxHeight: maxHeight) })
             .id(ObjectIdentifier(feed))
             .onChange(of: row.record.session.workingDirectory) { _, value in feed.setWorkingDirectory(value) }
         } else {
             // A run that ended shows its transcript; the card a dead process cut off (and the line of a cancelled one) stays above the bottom edge.
             transcript(indicator: indicator)
-                .safeAreaInset(edge: .bottom, spacing: 0) { EndedRunCards(model: model, sessionID: row.id) }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    EndedRunCards(model: model, sessionID: row.id, conversationID: claudeSessionID,
+                                  workingDirectory: row.record.session.workingDirectory)
+                }
         }
     }
 

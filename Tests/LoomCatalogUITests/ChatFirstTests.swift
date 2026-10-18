@@ -1,0 +1,491 @@
+import AppKit
+import Foundation
+import Testing
+@testable import LoomCatalogUI
+@testable import LoomChat
+@testable import LoomCore
+
+// V19, Chat first, end to end with the real model, controller, runtime and driver on the fake provider: a new session
+// starts in the face Settings name (Chat by default), a stopped Chat session shows its composer and a send resumes it in
+// Chat, and the handover moves a session between the faces without cutting a turn or losing a message.
+
+@MainActor
+@Suite(.serialized, .processHeavy, .timeLimit(.minutes(10)))
+struct ChatFirstTests {
+    struct Fixture {
+        let rig: LiveRig
+        let model: CatalogModel
+        let controller: ConversationController
+
+        @MainActor func cleanup() async {
+            controller.stopObserving()
+            model.stop()
+            await rig.finish()
+        }
+    }
+
+    private func makeFixture(environment: [String: String] = [:]) async throws -> Fixture {
+        let rig = try await LiveRig.make(environment: environment)
+        let model = CatalogModel(
+            catalog: await rig.runtime.catalog, events: await rig.runtime.supervisor.events,
+            preferences: UIPreferencesStore(url: rig.root.appendingPathComponent("ui-preferences.json")))
+        let controller = ConversationController(runtime: rig.runtime, model: model)
+        await controller.begin()
+        await model.start()
+        model.installChatSessions(runtime: rig.runtime, dataRoot: rig.root)
+        model.setClaudeConfigDirectory(rig.profile)
+        return Fixture(rig: rig, model: model, controller: controller)
+    }
+
+    private func waitUntil(_ seconds: Double = 15, _ condition: () async -> Bool) async -> Bool {
+        let deadline = ProcessInfo.processInfo.systemUptime + seconds
+        repeat {
+            if await condition() { return true }
+            try? await Task.sleep(for: .milliseconds(20))
+        } while ProcessInfo.processInfo.systemUptime < deadline
+        return false
+    }
+
+    /// Sends the project-less draft and returns the session it started.
+    private func startFromDraft(_ fixture: Fixture, text: String) async throws -> UUID {
+        let model = fixture.model
+        model.showDraft(projectID: nil)
+        model.setDraftText(text, projectID: nil)
+        model.sendDraft(projectID: nil)
+        #expect(await waitUntil { model.destination?.sessionID != nil })
+        return try #require(model.destination?.sessionID)
+    }
+
+    private func endpoint(_ fixture: Fixture, _ id: UUID) async -> RunEndpointKind? {
+        try? await fixture.rig.runtime.catalog.runEndpoint(sessionID: id)
+    }
+
+    // MARK: The default face and the setting
+
+    @Test func aNewSessionStartsInChatByDefaultAndInTheTerminalWhenSettingsSaySo() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        #expect(model.newSessionFace == .chat)
+        let chat = try await startFromDraft(fixture, text: "hello from the draft")
+        #expect(await waitUntil { await endpoint(fixture, chat) == .pipe })
+        #expect(await waitUntil { model.detailRouteKind == "chat" })
+        let driver = try #require(model.chatSessions?.existingDriver(for: chat))
+        #expect(await waitUntil {
+            await driver.snapshot().model.entries.contains { if case let .user(prompt) = $0.body { prompt.text == "hello from the draft" } else { false } }
+        })
+        // The draft was cleared once the session started, and the project remembers nothing odd.
+        #expect(model.newSession.draft(for: nil)?.isVisible != true)
+
+        // The switch moves every new session to the terminal; the first one keeps its face.
+        model.setNewSessionFace(.terminal)
+        let terminal = try await startFromDraft(fixture, text: "hello from the terminal draft")
+        #expect(terminal != chat)
+        #expect(await waitUntil { await endpoint(fixture, terminal) == .terminal })
+        #expect(await waitUntil { model.detailRouteKind == "terminal" })
+        #expect(await endpoint(fixture, chat) == .pipe)
+        await fixture.cleanup()
+    }
+
+    @Test func theSettingIsKeptAndAnOlderFileReadsAsChat() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-face-pref-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(UIPreferences().newSessionFace == .chat)
+        let old = try JSONDecoder().decode(UIPreferences.self, from: Data(#"{"viewMode":"activity"}"#.utf8))
+        #expect(old.newSessionFace == .chat)
+        let store = UIPreferencesStore(url: root.appendingPathComponent("p.json"))
+        try store.update { $0.newSessionFace = .terminal }
+        try store.flush()
+        #expect(UIPreferencesStore(url: root.appendingPathComponent("p.json")).current.newSessionFace == .terminal)
+    }
+
+    // MARK: A stopped Chat session
+
+    @Test func aStoppedChatSessionShowsItsComposerAndASendResumesItInChat() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let id = try await startFromDraft(fixture, text: "hello")
+        let driver = try #require(model.chatSessions?.existingDriver(for: id))
+        #expect(await waitUntil { let s = await driver.snapshot(); return s.phase == .ready && !s.turnRunning })
+        // A long turn with a message Claude never reads, then a Stop: the message comes back as the draft.
+        try await driver.send("/scenario work 6000")
+        #expect(await waitUntil { await driver.currentPhase == .working })
+        _ = try await driver.send("never read")
+        model.stopConversation(id)
+        #expect(await waitUntil { await driver.currentPhase == .stopped })
+        // A verified Stop closes the session's tab; the user opens the session again.
+        #expect(await waitUntil { model.busy[id] == nil })
+        model.select(id)
+        #expect(await waitUntil { model.selectedRow?.live?.runID == nil })
+        #expect(await waitUntil { model.selectedRow?.record.runEndpoint == .pipe })
+
+        // The stopped session the Chat face owns shows its live chat, not the "not running" screen.
+        let row = try #require(model.selectedRow)
+        #expect(model.detailRoute == .chat(sessionID: id))
+        #expect(model.showsStoppedLiveChat(row) && !model.canChooseFace)
+        #expect(model.owningFace(of: row) == .chat)
+        let shown = try #require(model.liveChatDriverForDisplay(of: row))
+        let feed = try #require(model.liveChatFeed(for: shown, card: id, conversationID: row.record.session.providerConversationID,
+                                                   workingDirectory: row.record.session.workingDirectory))
+        let composer = try #require(model.liveChatComposer(for: shown, row: row, feed: feed))
+        composer.start()
+        await composer.refresh()
+        // The unsent message is in the field, in front of nothing, and the draft file holds it too.
+        #expect(composer.text.contains("never read"))
+        #expect(try model.chatSessions?.draftStore.load(sessionID: id)?.text.contains("never read") == true)
+
+        composer.setText("and now a new message")
+        composer.submit(secondary: false)
+        #expect(await waitUntil { await driver.snapshot().model.assistantTexts.last == "Fake answer to: and now a new message" })
+        // It resumed in the Chat face: a pipe run, the same owner.
+        #expect(model.runEndpoint(of: try #require(model.selectedRow)) == .pipe)
+        #expect(await endpoint(fixture, id) == .pipe)
+        await fixture.cleanup()
+    }
+
+    // MARK: The handover
+
+    @Test func continueInTerminalAndBackMovesTheSessionWithoutTwoOwners() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let id = try await startFromDraft(fixture, text: "hello")
+        let driver = try #require(model.chatSessions?.existingDriver(for: id))
+        #expect(await waitUntil { let s = await driver.snapshot(); return s.phase == .ready && !s.turnRunning })
+        #expect(await waitUntil { model.selectedRow?.record.runEndpoint == .pipe })
+        let row = try #require(model.selectedRow)
+        #expect(model.canContinue(in: .terminal, row: row) && !model.canContinue(in: .chat, row: row))
+
+        model.continueIn(.terminal, sessionID: id)
+        #expect(await waitUntil { await endpoint(fixture, id) == .terminal })
+        #expect(await waitUntil { model.detailRouteKind == "terminal" && model.handovers[id] == nil })
+        #expect(await driver.currentPhase == .stopped)
+        #expect(await driver.snapshot().model.markerList.contains(.face(.continuedInTerminal)))
+        let afterTerminal = try #require(model.selectedRow)
+        #expect(model.owningFace(of: afterTerminal) == .terminal)
+        #expect(model.canContinue(in: .chat, row: afterTerminal) && !model.canContinue(in: .terminal, row: afterTerminal))
+
+        model.continueIn(.chat, sessionID: id)
+        #expect(await waitUntil { await endpoint(fixture, id) == .pipe })
+        #expect(await waitUntil { model.detailRouteKind == "chat" && model.handovers[id] == nil })
+        #expect(await waitUntil { await driver.currentPhase == .ready })
+        #expect(await driver.snapshot().model.markerList.contains(.face(.backInChat)))
+        // One owner at a time: the terminal run is gone.
+        #expect(model.terminalView(for: id) == nil)
+        await fixture.cleanup()
+    }
+
+    @Test func aHandoverWaitsForARunningTurnAndRefusesAWaitingRequest() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let id = try await startFromDraft(fixture, text: "hello")
+        let driver = try #require(model.chatSessions?.existingDriver(for: id))
+        #expect(await waitUntil { let s = await driver.snapshot(); return s.phase == .ready && !s.turnRunning })
+        #expect(await waitUntil { model.selectedRow?.record.runEndpoint == .pipe })
+
+        // A request waits: refused, with the reason on the banner, and nothing moved.
+        try await driver.send("/scenario approval")
+        #expect(await waitUntil { await driver.currentPhase == .needsYou })
+        model.continueIn(.terminal, sessionID: id)
+        #expect(await waitUntil { model.errorMessage != nil })
+        #expect(model.errorMessage?.contains("waiting for your answer") == true)
+        #expect(model.handovers[id] == nil)
+        #expect(await endpoint(fixture, id) == .pipe && model.terminalView(for: id) == nil)
+        model.dismissError()
+        try await model.answerFirstChatRequest(id, allow: true)
+        #expect(await waitUntil { let s = await driver.snapshot(); return s.phase == .ready && !s.turnRunning })
+
+        // A turn runs: the handover waits for it, shows that it waits, and the turn is not cut.
+        try await driver.send("/scenario work 2500")
+        #expect(await waitUntil { await driver.currentPhase == .working })
+        model.continueIn(.terminal, sessionID: id)
+        #expect(await waitUntil { model.handovers[id]?.phase == .waiting })
+        #expect(model.handoverNotice(of: id) == "Continuing in Terminal when this turn ends")
+        #expect(await endpoint(fixture, id) == .pipe)
+        #expect(await waitUntil { await endpoint(fixture, id) == .terminal })
+        #expect(await waitUntil { model.handovers[id] == nil })
+        let snapshot = await driver.snapshot()
+        #expect(snapshot.model.turns.last?.status == .succeeded
+            && !snapshot.model.markerList.contains { if case .interrupted = $0 { true } else { false } })
+        await fixture.cleanup()
+    }
+
+    // MARK: Fix round
+
+    /// Holds a handover at its point of no return (`ConversationController.handoverGate`) until the test lets it go.
+    @MainActor private final class PointGate {
+        private var continuation: CheckedContinuation<Void, Never>?
+        private(set) var reached: [SessionFace] = []
+
+        func hold(_ target: SessionFace) async {
+            reached.append(target)
+            await withCheckedContinuation { continuation = $0 }
+        }
+
+        func release() {
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
+    /// A Chat session that has answered once and then moved to the terminal, which has resumed it and rests at its prompt.
+    private func terminalSession(_ fixture: Fixture, settle: Duration = .milliseconds(300)) async throws -> UUID {
+        fixture.controller.handoverSettle = settle
+        let model = fixture.model
+        let id = try await startFromDraft(fixture, text: "hello")
+        let driver = try #require(model.chatSessions?.existingDriver(for: id))
+        #expect(await waitUntil { let s = await driver.snapshot(); return s.phase == .ready && !s.turnRunning })
+        #expect(await waitUntil { model.selectedRow?.record.runEndpoint == .pipe })
+        model.continueIn(.terminal, sessionID: id)
+        #expect(await waitUntil { await endpoint(fixture, id) == .terminal && model.handovers[id] == nil })
+        #expect(await waitUntil {
+            fixture.controller.terminalEvidence(tokens: ["RESUMED"]).first?.tokenPresence["RESUMED"] == true
+        })
+        return id
+    }
+
+    private func hub(_ fixture: Fixture, _ id: UUID) async -> SessionViewState? {
+        await fixture.rig.runtime.supervisor.events.snapshot().sessions[id]
+    }
+
+    private func chatSession(_ fixture: Fixture) async throws -> (UUID, ChatSessionDriver) {
+        let id = try await startFromDraft(fixture, text: "hello")
+        let driver = try #require(fixture.model.chatSessions?.existingDriver(for: id))
+        #expect(await waitUntil { let s = await driver.snapshot(); return s.phase == .ready && !s.turnRunning })
+        #expect(await waitUntil { fixture.model.selectedRow?.record.runEndpoint == .pipe })
+        return (id, driver)
+    }
+
+    /// B1 and S4, end to end: a terminal session whose `idle_prompt` reminder arrived (the fake's `/idle-prompt`) is at rest,
+    /// not "a request waiting", and moves to Chat once it has rested for the settle time.
+    @Test func aTerminalSessionAtItsIdleReminderMovesToChatAfterTheSettleTime() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let id = try await terminalSession(fixture, settle: .milliseconds(600))
+        #expect(fixture.controller.typeForEvidence("/idle-prompt", intoSession: id))
+        #expect(await waitUntil { await hub(fixture, id)?.status?.activity == .waitingForInput })
+        #expect(await hub(fixture, id)?.reason?.kind != .input)
+        let began = ContinuousClock.now
+        model.continueIn(.chat, sessionID: id)
+        #expect(await waitUntil { await endpoint(fixture, id) == .pipe && model.handovers[id] == nil })
+        #expect(model.errorMessage == nil, "the reminder is not a request: \(model.errorMessage ?? "")")
+        #expect(began.duration(to: .now) >= .milliseconds(550), "it rested for the settle time first")
+        await fixture.cleanup()
+    }
+
+    /// S4: a turn under way is waited for, and the settle time counts from its end.
+    @Test func aWorkingTerminalTurnIsWaitedForAndTheSettleTimeStartsAfterIt() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let id = try await terminalSession(fixture, settle: .milliseconds(600))
+        #expect(fixture.controller.typeForEvidence("/work 1500", intoSession: id))
+        #expect(await waitUntil { await hub(fixture, id)?.status?.activity == .working })
+        let began = ContinuousClock.now
+        model.continueIn(.chat, sessionID: id)
+        #expect(await waitUntil { model.handovers[id]?.phase == .waiting })
+        #expect(model.handoverNotice(of: id) == "Continuing in Chat when the session rests")
+        try await Task.sleep(for: .milliseconds(700))
+        #expect(await endpoint(fixture, id) == .terminal, "the turn is not cut")
+        #expect(await waitUntil { await endpoint(fixture, id) == .pipe && model.handovers[id] == nil })
+        #expect(began.duration(to: .now) >= .milliseconds(1_700), "the turn's end plus the settle time")
+        await fixture.cleanup()
+    }
+
+    /// S3 (terminal side) end to end is `aTerminalSessionAtItsPromptIsIdleNotARequest`'s `pending` cases; here the refusal
+    /// reaches the user in the words of the gate.
+    @Test func aRefusalReadsTheSameWhoeverMadeIt() {
+        #expect(ConversationController.refusal(ChatDriverError.requestWaiting) == .requestWaiting)
+        #expect(ConversationController.refusal(ChatDriverError.backgroundWork) == .backgroundWork)
+        #expect(ConversationController.refusal(ChatDriverError.clearedDuringHandover) == .cleared)
+        #expect(HandoverRefusal.cleared.description.contains("cleared"))
+        #expect(ConversationController.refusal(CancellationError()) == nil)
+    }
+
+    /// S1, Chat to Terminal, before the point: Cancel ends the wait and the session goes on in Chat; Stop ends it and the
+    /// session stays stopped, with no terminal.
+    @Test func cancelAndStopDuringTheWaitKeepTheSessionInChat() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let (id, driver) = try await chatSession(fixture)
+
+        try await driver.send("/scenario work 3000")
+        #expect(await waitUntil { await driver.currentPhase == .working })
+        model.continueIn(.terminal, sessionID: id)
+        #expect(await waitUntil { model.handovers[id]?.phase == .waiting })
+        model.cancelHandover(sessionID: id)
+        #expect(await waitUntil { model.handovers[id] == nil })
+        #expect(await waitUntil { let s = await driver.snapshot(); return s.phase == .ready && !s.turnRunning })
+        #expect(await endpoint(fixture, id) == .pipe && model.terminalView(for: id) == nil)
+        #expect(await driver.snapshot().runID != nil, "the Chat run lives")
+
+        try await driver.send("/scenario work 3000")
+        #expect(await waitUntil { await driver.currentPhase == .working })
+        model.continueIn(.terminal, sessionID: id)
+        #expect(await waitUntil { model.handovers[id]?.phase == .waiting })
+        model.stopConversation(id)
+        #expect(await waitUntil { model.handovers[id] == nil && model.busy[id] == nil })
+        #expect(await waitUntil { await driver.currentPhase == .stopped })
+        #expect(await endpoint(fixture, id) == .pipe && model.terminalView(for: id) == nil)
+        await fixture.cleanup()
+    }
+
+    /// S1, Chat to Terminal, at the point: the phase is `.switching` (Cancel is not offered and does nothing), and the move
+    /// goes on.
+    @Test func cancelAtThePointOfNoReturnDoesNothingAndTheTerminalStarts() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let gate = PointGate()
+        fixture.controller.handoverGate = { _, target in await gate.hold(target) }
+        let (id, _) = try await chatSession(fixture)
+        model.continueIn(.terminal, sessionID: id)
+        #expect(await waitUntil { gate.reached == [.terminal] })
+        #expect(model.handovers[id]?.phase == .switching)
+        #expect(model.handoverNotice(of: id) == "Moving to Terminal…")
+        model.cancelHandover(sessionID: id)
+        #expect(model.handovers[id]?.phase == .switching, "Cancel is not offered after the point")
+        gate.release()
+        #expect(await waitUntil { await endpoint(fixture, id) == .terminal && model.handovers[id] == nil })
+        await fixture.cleanup()
+    }
+
+    /// S1, Chat to Terminal, at the point: a Stop ends the terminal's start. The session stays stopped in Chat.
+    @Test func aStopAtThePointOfNoReturnEndsTheTerminalStart() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let gate = PointGate()
+        fixture.controller.handoverGate = { _, target in await gate.hold(target) }
+        let (id, driver) = try await chatSession(fixture)
+        model.continueIn(.terminal, sessionID: id)
+        #expect(await waitUntil { gate.reached == [.terminal] })
+        model.stopConversation(id)
+        #expect(await waitUntil { model.busy[id] == .stopping })
+        gate.release()
+        #expect(await waitUntil { model.handovers[id] == nil && model.busy[id] == nil })
+        #expect(await waitUntil { await driver.currentPhase == .stopped })
+        #expect(await endpoint(fixture, id) == .pipe, "no terminal run took the session")
+        #expect(model.terminalView(for: id) == nil)
+        await fixture.cleanup()
+    }
+
+    /// S1, Terminal to Chat, before the point: Cancel ends the wait (the terminal run goes on); Stop ends it and the session
+    /// stays stopped.
+    @Test func cancelAndStopDuringTheTerminalWaitKeepTheSessionInTheTerminal() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let id = try await terminalSession(fixture)
+
+        #expect(fixture.controller.typeForEvidence("/work 4000", intoSession: id))
+        #expect(await waitUntil { await hub(fixture, id)?.status?.activity == .working })
+        model.continueIn(.chat, sessionID: id)
+        #expect(await waitUntil { model.handovers[id]?.phase == .waiting })
+        model.cancelHandover(sessionID: id)
+        #expect(await waitUntil { model.handovers[id] == nil })
+        #expect(await endpoint(fixture, id) == .terminal)
+        #expect(await model.chatSessions?.existingDriver(for: id)?.currentPhase == .stopped, "no Chat run started")
+        #expect(await waitUntil { await hub(fixture, id)?.status?.activity != .working })
+
+        #expect(fixture.controller.typeForEvidence("/work 4000", intoSession: id))
+        #expect(await waitUntil { await hub(fixture, id)?.status?.activity == .working })
+        model.continueIn(.chat, sessionID: id)
+        #expect(await waitUntil { model.handovers[id]?.phase == .waiting })
+        model.stopConversation(id)
+        #expect(await waitUntil { model.handovers[id] == nil && model.busy[id] == nil })
+        #expect(await waitUntil { await hub(fixture, id)?.runID == nil })
+        #expect(await model.chatSessions?.existingDriver(for: id)?.currentPhase == .stopped, "no Chat run started")
+        await fixture.cleanup()
+    }
+
+    /// S1, Terminal to Chat, at the point: Cancel does nothing. A Stop then ends the Chat start: the terminal run is gone,
+    /// and no Chat run replaces it.
+    @Test func atThePointOfNoReturnCancelDoesNothingAndAStopEndsTheChatStart() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let gate = PointGate()
+        let id = try await terminalSession(fixture)
+        fixture.controller.handoverGate = { _, target in await gate.hold(target) }
+        model.continueIn(.chat, sessionID: id)
+        #expect(await waitUntil { gate.reached == [.chat] })
+        #expect(model.handovers[id]?.phase == .switching)
+        model.cancelHandover(sessionID: id)
+        #expect(model.handovers[id]?.phase == .switching)
+        model.stopConversation(id)
+        #expect(await waitUntil { model.busy[id] == .stopping })
+        gate.release()
+        #expect(await waitUntil { model.handovers[id] == nil && model.busy[id] == nil })
+        #expect(await hub(fixture, id)?.runID == nil)
+        #expect(await endpoint(fixture, id) == .terminal, "no Chat run took the session")
+        await fixture.cleanup()
+    }
+
+    /// S2: a stopped Chat session resumes in Chat when nothing in the window has a row for it (Home's Continue card and
+    /// other paths): the face comes from the catalog.
+    @Test func aChatOwnedSessionResumesInChatWithNoRow() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let (id, driver) = try await chatSession(fixture)
+        _ = try await driver.stop()
+        #expect(await waitUntil { await driver.currentPhase == .stopped && model.busy[id] == nil })
+        model.rowModels.removeAll()
+        fixture.controller.resume(sessionID: id)
+        #expect(await waitUntil { await driver.currentPhase == .ready })
+        #expect(await endpoint(fixture, id) == .pipe)
+        #expect(model.terminalView(for: id) == nil)
+        await fixture.cleanup()
+    }
+
+    /// S5 / M4: a Chat start whose child dies before Ready tells the draft page it failed, and nothing else: the text stays
+    /// on the draft page, no card is created and the first message is not kept twice.
+    @Test func aChatStartThatFailsBeforeReadyKeepsTheTextOnTheDraftPage() async throws {
+        let fixture = try await makeFixture(environment: ["LOOM_FAKE_CHAT_INIT": "exit"])
+        let model = fixture.model
+        model.showDraft(projectID: nil)
+        model.setDraftText("do the thing", projectID: nil)
+        model.sendDraft(projectID: nil)
+        #expect(await waitUntil { model.errorMessage != nil })
+        #expect(await waitUntil { !model.newSession.isSending(nil) })
+        #expect(model.destination == .draft(projectID: nil), "no session was shown")
+        #expect(model.newSession.draft(for: nil)?.text == "do the thing")
+        let ids = model.chatSessions.map { host in model.rowModels.keys.filter { host.existingDriver(for: $0) != nil } } ?? []
+        #expect(ids.isEmpty)
+        await fixture.cleanup()
+    }
+
+    /// M1 / M8: while a session moves, the composer says so, keeps the text and its send is off; the `/` menu's row is
+    /// disabled with the reason.
+    @Test func theComposerSaysWhyWhileTheSessionMovesAndTheMenuRowIsDisabled() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let (id, driver) = try await chatSession(fixture)
+        try await driver.send("/scenario work 3000")
+        #expect(await waitUntil { await driver.currentPhase == .working })
+        model.continueIn(.terminal, sessionID: id)
+        #expect(await waitUntil { model.handovers[id]?.phase == .waiting })
+
+        let row = try #require(model.selectedRow)
+        let shown = try #require(model.liveChatDriverForDisplay(of: row))
+        let feed = try #require(model.liveChatFeed(for: shown, card: id, conversationID: row.record.session.providerConversationID,
+                                                   workingDirectory: row.record.session.workingDirectory))
+        let composer = try #require(model.liveChatComposer(for: shown, row: row, feed: feed))
+        composer.start()
+        await composer.refresh()
+        let editor = FakeComposerEditor(model: composer)
+        editor.replaceAll(with: "typed meanwhile")
+        composer.textChanged("typed meanwhile")
+        #expect(composer.handoverPending == "Moving to the terminal…")
+        #expect(composer.sendKind(commandHeld: false) == .sendDisabled)
+        composer.submit(secondary: false)
+        #expect(composer.notice?.text.contains("Moving to the terminal") == true, "a refused send says why")
+        #expect(composer.text == "typed meanwhile" && editor.text == "typed meanwhile", "the text stays")
+        // The `/` menu offers Continue in Terminal, disabled, with the reason as its detail.
+        editor.replaceAll(with: "")
+        composer.textChanged("")
+        editor.type("/")
+        let item = try #require(composer.menu?.items.first { $0.id == "action:terminal" })
+        #expect(item.isUnavailable && item.detail == "This session is already moving.")
+        await fixture.cleanup()
+    }
+}
+
+private extension TurnModel {
+    var assistantTexts: [String] { entries.compactMap { if case let .assistantText(text) = $0.body { text.text } else { nil } } }
+    var markerList: [Marker] { entries.compactMap { if case let .marker(marker) = $0.body { marker } else { nil } } }
+}

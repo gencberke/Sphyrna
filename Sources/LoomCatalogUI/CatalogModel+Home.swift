@@ -3,7 +3,7 @@ import LoomCore
 import Observation
 
 /// The state of the Home screen (V05) that the model does not already hold: what the catalog was asked when
-/// Home opened, and the project the start box is on. Everything else Home shows (the sessions that need the
+/// Home opened. Everything else Home shows (the sessions that need the
 /// user, the plan limits, the clock) is read from the model when it draws; nothing here polls.
 @MainActor @Observable
 public final class HomeState {
@@ -11,10 +11,8 @@ public final class HomeState {
     public internal(set) var quitRuns: [CatalogQuitRun] = []
     /// How many sessions were used since the start of the day; nil until the first read.
     public internal(set) var sessionsToday: Int?
-    /// The project of the most recently used session: where the start box begins.
+    /// The project of the most recently used session, as the catalog says (the sidebar's New session falls back to it).
     public internal(set) var lastUsedProjectID: UUID?
-    /// A project picked in the start box, for this window run only.
-    public internal(set) var chosenProjectID: UUID?
     /// The catalog was read at least once, so an empty Continue is "none", not "not read yet".
     public internal(set) var hasRead = false
     /// How many times the catalog was read for Home in full (a test counts it).
@@ -33,7 +31,7 @@ public struct HomeSummary: Equatable, Sendable {
     public let finished: [UUID]
     public let continueSessions: [UUID]
     public let sessionsToday: Int?
-    public let startProjectID: UUID?
+    public let newSessionProjectID: UUID?
     public let emptyCatalog: Bool
     public let claudeMissing: Bool
     public let paces: Int
@@ -151,13 +149,12 @@ extension CatalogModel {
         return HomeSummary(
             needsYou: board.needsYou.map(\.id), finished: board.finished.map(\.id),
             continueSessions: homeContinueEntries().map(\.id), sessionsToday: home.sessionsToday,
-            startProjectID: homeStartProjectID, emptyCatalog: homeCatalogIsEmpty, claudeMissing: homeClaudeCLIMissing,
+            newSessionProjectID: mostRecentProjectID, emptyCatalog: homeCatalogIsEmpty, claudeMissing: homeClaudeCLIMissing,
             paces: homePaces().count, reads: home.reads)
     }
 
-    /// Development evidence: Resume on a Continue card, and another project in the start box.
+    /// Development evidence: Resume on a Continue card.
     public func resumeHomeForEvidence(_ id: UUID) { resumeFromHome(id) }
-    public func chooseHomeProjectForEvidence(_ id: UUID) { chooseHomeStartProject(id) }
 
     // MARK: Plan limits
 
@@ -199,32 +196,46 @@ extension CatalogModel {
         home.quitRuns.removeAll { $0.session.session.id == id }
     }
 
-    // MARK: The start box
+    // MARK: New session
 
-    /// The project the start box is on: the one picked there, else the project of the most recently used
-    /// session, else the first project. Nil when there is no project (the draft then has none).
-    var homeStartProjectID: UUID? {
+    /// The project the sidebar's "New session" opens its draft in, as far as the window knows it: the catalog's last-used
+    /// project (kept by the last read), else the first project. Nil when there is no project. `beginNewSessionInRecentProject`
+    /// asks the catalog itself, so the view, a search or a relaunch change nothing.
+    var mostRecentProjectID: UUID? {
         let known = Set(projects.map(\.id))
-        if let chosen = home.chosenProjectID, known.contains(chosen) { return chosen }
         if let last = home.lastUsedProjectID, known.contains(last) { return last }
         return projects.first?.id
     }
 
-    /// The start box is on another project; its draft slot starts empty or as it was left.
-    func chooseHomeStartProject(_ id: UUID) {
-        guard home.chosenProjectID != id else { return }
-        home.chosenProjectID = id
-        prepareHomeStart()
+    /// Whether the sidebar's "New session" row works: only whether Claude can start at all. A start somewhere else does not
+    /// matter, since the row opens a draft and starts nothing.
+    var newSessionRowAvailable: Bool { actionsAvailable && startableProviders.contains(.claude) }
+
+    /// The most recently used project, read from the catalog now (the project of the newest session that has one); the
+    /// last known one or the first project when the read fails or finds none.
+    func recentProjectForNewSession() async -> UUID? {
+        let known = Set(projects.map(\.id))
+        if let catalog, let last = try? await catalog.lastUsedProjectID(), known.contains(last) {
+            if home.lastUsedProjectID != last { home.lastUsedProjectID = last }
+            return last
+        }
+        return mostRecentProjectID
     }
 
-    /// Opens the draft slot behind the start box, as the draft screen does: a slot with text comes back as
-    /// it was, an empty one lives in memory only.
-    func prepareHomeStart() {
-        let projectID = homeStartProjectID
-        prepareNewSession()
-        newSession.open(projectID: projectID)
-        loadDraftBranch(projectID: projectID)
-        refreshTicket(projectID: projectID)
+    /// The sidebar's "New session" row (and ⌘N on Home): the draft page in the most recently used project. The project
+    /// is the persisted one, read when the row is clicked, so it holds in the Projects view, with a search and after a
+    /// relaunch. The draft's own project picker still changes it.
+    public func beginNewSessionInRecentProject() {
+        Task { [weak self] in
+            guard let self else { return }
+            beginNewSession(projectID: await recentProjectForNewSession())
+        }
+    }
+
+    /// ⌘N and the menu's "New Claude Session": on Home the same draft as the sidebar's row; elsewhere the draft of the
+    /// project on screen.
+    public func beginNewSessionFromCommand() {
+        if destination == .home { beginNewSessionInRecentProject() } else { beginNewSession(projectID: contextProjectID) }
     }
 
     // MARK: First run and the empty catalog

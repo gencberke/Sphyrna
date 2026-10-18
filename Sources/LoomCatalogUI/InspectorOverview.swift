@@ -41,8 +41,7 @@ enum InspectorReasonText {
     static func line(_ reason: StatusReason) -> String? {
         switch reason.kind {
         case let .approval(tool):
-            guard let detail = reason.detail, !detail.isEmpty else { return "Allow \(tool)" }
-            return tool == "Bash" ? "Allow: \(detail)" : "Allow \(tool): \(detail)"
+            return SessionReasonLine.approvalText(tool: tool, detail: reason.detail)
         case .question:
             return reason.detail.map { "Question: \($0)" } ?? "Has a question"
         case .planReady:

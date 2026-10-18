@@ -42,13 +42,30 @@ struct PinnedCardsView: View {
 struct EndedRunCards: View {
     let model: CatalogModel
     let sessionID: UUID
+    var conversationID: String?
+    var workingDirectory: String?
+    /// The feed whose cards show, counted as a view while this one is on screen (`LiveChatFeed.endedViewAppeared`).
+    @State private var feed: LiveChatFeed?
 
     var body: some View {
-        if let cards = model.pinnedCards(for: sessionID) {
-            VStack(spacing: 0) {
-                if !cards.undelivered.isEmpty { EndedUndeliveredLine(texts: cards.undelivered) }
-                PinnedCardsView(cards: cards)
+        Group {
+            if let cards = feed?.cards {
+                VStack(spacing: 0) {
+                    if !cards.undelivered.isEmpty { EndedUndeliveredLine(texts: cards.undelivered) }
+                    PinnedCardsView(cards: cards)
+                }
             }
+        }
+        .onAppear {
+            guard feed == nil, let driver = model.liveChatDriver(for: sessionID),
+                  let made = model.liveChatFeed(for: driver, card: sessionID, conversationID: conversationID,
+                                                workingDirectory: workingDirectory) else { return }
+            feed = made
+            made.endedViewAppeared()
+        }
+        .onDisappear {
+            feed?.endedViewWentAway()
+            feed = nil
         }
     }
 }
@@ -345,17 +362,17 @@ struct PinnedPlanCard: View {
                 }
             }
             // One row when it fits; else the modes to continue in above, Keep planning and Approve below (the labels never cut).
-            let modes = Array(actions.prefix(PinnedCardsModel.planModeChoices.count))
+            let modes = Array(actions.prefix(cards.askIsOn ? 0 : PinnedCardsModel.planModeChoices.count))
             let decisions = Array(actions.dropFirst(modes.count))
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: LoomTheme.Pinned.buttonSpacing) {
-                    Text("Then").font(LoomTheme.Pinned.detail).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    Text(cards.askIsOn ? "Stays in Ask" : "Then").font(LoomTheme.Pinned.detail).foregroundStyle(LoomTheme.Text.secondaryStyle)
                     Spacer(minLength: 8)
                     PinnedButtonRow(actions: actions, focused: cards.focusedIndex)
                 }
                 VStack(alignment: .trailing, spacing: LoomTheme.Pinned.buttonSpacing) {
                     HStack(spacing: LoomTheme.Pinned.buttonSpacing) {
-                        Text("Then").font(LoomTheme.Pinned.detail).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                        Text(cards.askIsOn ? "Stays in Ask" : "Then").font(LoomTheme.Pinned.detail).foregroundStyle(LoomTheme.Text.secondaryStyle)
                         Spacer(minLength: 8)
                         PinnedButtonRow(actions: modes, focused: cards.focusedIndex)
                     }
@@ -367,7 +384,8 @@ struct PinnedPlanCard: View {
     }
 
     private func actions(mode: String, busy: Bool) -> [PinnedAction] {
-        var list = PinnedCardsModel.planModeChoices.map { choice in
+        // In Ask the plan is approved in Ask: no mode to continue in.
+        var list = (cards.askIsOn ? [] : PinnedCardsModel.planModeChoices).map { choice in
             PinnedAction(id: "mode-\(choice)", title: ChatModeNames.title(choice), isOn: choice == mode, isEnabled: !busy) {
                 cards.setPlanMode(choice, for: request)
             }

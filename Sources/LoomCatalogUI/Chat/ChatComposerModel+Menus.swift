@@ -58,8 +58,10 @@ extension ChatComposerModel {
 
     private var actionItems: [ComposerMenuItem] {
         guard environment.continueInTerminal != nil else { return [] }
+        let refusal = environment.continueInTerminalRefusal()
         return [ComposerMenuItem(id: "action:terminal", kind: .action, title: "Continue in Terminal",
-                                 detail: "Run this session in the terminal", trailing: nil, insertion: "")]
+                                 detail: refusal ?? "Run this session in the terminal", trailing: nil, insertion: "",
+                                 unavailableReason: refusal)]
     }
 
     private func showCommands(_ trigger: ComposerTrigger) {
@@ -176,6 +178,13 @@ extension ChatComposerModel {
                 show("\(item.title) only runs in the terminal.")
             }
         case .action:
+            // Not allowed now: the row said why; choosing it keeps the text and says it again.
+            if let reason = item.unavailableReason {
+                closeMenuState()
+                dismissedTrigger = (current.kind, range.location)
+                show(reason)
+                return
+            }
             editor.replace(range, with: "")
             environment.continueInTerminal?()
         case .session:

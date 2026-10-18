@@ -260,6 +260,8 @@ public final class CatalogModel {
     public private(set) var searchesSessionText: Bool
     /// Settings → General → Sidebar: Glass or Solid (D-57).
     public private(set) var sidebarStyle: SidebarStyle
+    /// Settings → General → New sessions start in (V19): the face a new Claude session opens in. Chat by default.
+    public private(set) var newSessionFace: SessionFace
     /// What the window opened on. Read once at launch: `home` opens Home, `lastSession` restores the saved destination.
     public let launchView: LaunchView
     public private(set) var sessionCounts: [UUID?: Int] = [:]
@@ -332,6 +334,8 @@ public final class CatalogModel {
     /// that read `actionsAvailable` re-evaluate when the runtime attaches after the first page.
     public private(set) var intentsRevision = 0
     public private(set) var busy: [UUID: ConversationBusy] = [:]
+    /// Handovers between the faces that wait or run (V19), by session.
+    public internal(set) var handovers: [UUID: Handover] = [:]
     /// The Conversations section's model; set by the app only where permanent deletion is offered (CP4-G).
     public internal(set) var cleanupReview: CleanupReviewModel?
     public private(set) var startingKeys: Set<StartKey> = []
@@ -463,6 +467,7 @@ public final class CatalogModel {
         notifyApprovals = preferences.current.notifyApprovals
         searchesSessionText = preferences.current.searchSessionText
         sidebarStyle = preferences.current.sidebarStyle
+        newSessionFace = preferences.current.newSessionFace
         inspector = InspectorState(open: preferences.current.inspectorOpen)
         tabs = ConversationTabs(pinned: preferences.current.openTabs)
         today = Calendar.current.startOfDay(for: now)
@@ -1279,6 +1284,14 @@ public final class CatalogModel {
         guard style != sidebarStyle else { return }
         sidebarStyle = style
         persist { $0.sidebarStyle = style }
+    }
+
+    /// Settings → General → New sessions start in (V19). Only sessions started after this change: one that already
+    /// ran stays in the face that owns it, and the handover moves it.
+    public func setNewSessionFace(_ face: SessionFace) {
+        guard face != newSessionFace else { return }
+        newSessionFace = face
+        persist { $0.newSessionFace = face }
     }
 
     /// Opens or closes the inspector of a session (remembered per session).

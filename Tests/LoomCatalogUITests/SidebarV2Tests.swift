@@ -29,9 +29,9 @@ struct SidebarV2Tests {
 
     @Test func aReasonLineSaysWhatTheSessionWaitsForOrDidLast() {
         func text(_ reason: StatusReason) -> String? { SessionReasonLine(reason)?.text }
-        #expect(text(approval()) == "Allow: git push origin fix/webhook-sig")
-        #expect(text(StatusReason(.approval(tool: "Write"), detail: "/tmp/ws/hello.txt")) == "Allow Write: /tmp/ws/hello.txt")
-        #expect(text(StatusReason(.approval(tool: "Edit"))) == "Allow Edit")
+        #expect(text(approval()) == "Asks to run: git push origin fix/webhook-sig")
+        #expect(text(StatusReason(.approval(tool: "Write"), detail: "/tmp/ws/hello.txt")) == "Asks to write: /tmp/ws/hello.txt")
+        #expect(text(StatusReason(.approval(tool: "Edit"))) == "Asks to edit a file")
         #expect(text(StatusReason(.approval(tool: "Bash"))) == "Asks to run a command")
         #expect(text(StatusReason(.question, detail: "PDF library")) == "Asks: PDF library")
         #expect(text(StatusReason(.question)) == "Asks a question")
@@ -59,7 +59,7 @@ struct SidebarV2Tests {
 
     @Test func theTooltipAddsTheCommandsOwnDescription() {
         let line = SessionReasonLine(approval())
-        #expect(line?.help == "Allow: git push origin fix/webhook-sig\nPush the branch")
+        #expect(line?.help == "Asks to run: git push origin fix/webhook-sig\nPush the branch")
         #expect(SessionReasonLine(StatusReason(.planReady))?.help == "Plan ready for review")
     }
 

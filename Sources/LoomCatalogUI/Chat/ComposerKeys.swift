@@ -20,6 +20,7 @@ enum ComposerKeys {
     static let letterA: UInt16 = 0
     static let letterM: UInt16 = 46
     static let letterK: UInt16 = 40
+    static let letterO: UInt16 = 31
 
     /// The modifiers that count; caps lock, the numeric-pad and function flags do not.
     static let relevantModifiers: NSEvent.ModifierFlags = [.shift, .command, .option, .control]
@@ -81,6 +82,9 @@ enum ComposerKeys {
         case recallNewer
         case pastePlain
         case openMenu(MenuRequest)
+        /// ⌃O: the stream's view (Chat | Concise | Verbose), also while the composer has the keyboard (V19: the key acts on
+        /// the face shown; in the terminal it stays Claude's own).
+        case cycleView
         /// The key is taken and does nothing (Esc while a card waits, a held ↵).
         case ignore
         /// The text view handles the key as it would.
@@ -139,6 +143,8 @@ enum ComposerKeys {
             if state.menuOpen { return .menuMove(1) }
             return state.recalling && state.holdsUneditedRecall && !state.hasSelection && state.caretOnLastLine
                 ? .recallNewer : .passThrough
+        case letterO where modifiers == [.control]:
+            return state.mode == .live && !state.hasMarkedText ? .cycleView : .passThrough
         case letterV where modifiers == [.command, .shift]:
             return .pastePlain
         case letterA where modifiers == [.command, .shift]:

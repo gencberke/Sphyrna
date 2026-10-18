@@ -81,8 +81,8 @@ extension SessionCatalog {
     private static let runLastActive = "MIN(r.ended_at, MAX(\(activityExpression), r.started_at))"
 
     /// The columns after `sessionColumns` in `sessionsEndedByQuit`'s rows.
-    private static let quitRunEndedColumn: Int32 = 15
-    private static let quitRunIDColumn: Int32 = 16
+    private static let quitRunEndedColumn: Int32 = sessionColumnCount
+    private static let quitRunIDColumn: Int32 = sessionColumnCount + 1
 
     /// How many sessions were really used since `date` (start, prompt, finished turn): Home's "Today".
     public func sessionCount(activeSince date: Date) throws -> Int {

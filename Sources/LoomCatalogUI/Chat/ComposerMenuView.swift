@@ -64,7 +64,7 @@ struct ComposerMenuPanel: View {
 
     private func row(_ item: ComposerMenuItem, index: Int) -> some View {
         let selected = index == menu.selection
-        let dimmed = item.isTerminalOnly
+        let dimmed = item.isTerminalOnly || item.isUnavailable
         return Button { model.choose(item) } label: {
             HStack(spacing: LoomTheme.Space.chipInset + 2) {
                 icon(for: item)
@@ -79,7 +79,7 @@ struct ComposerMenuPanel: View {
                     }
                 default:
                     Text(item.title).font(LoomTheme.Composer.menuTitleFont).lineLimit(1).truncationMode(.middle)
-                        .foregroundStyle(LoomTheme.Text.primary)
+                        .foregroundStyle(dimmed ? LoomTheme.OnPopover.placeholder : LoomTheme.Text.primary)
                     if let detail = item.detail {
                         Text(detail).font(LoomTheme.Composer.menuDetailFont).lineLimit(1)
                             .foregroundStyle(LoomTheme.OnPopover.placeholder)

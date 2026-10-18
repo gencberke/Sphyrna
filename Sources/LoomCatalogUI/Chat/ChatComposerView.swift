@@ -10,6 +10,8 @@ struct ChatComposerView: View {
     @State private var height = LoomTheme.Composer.minimumTextHeight
 
     var body: some View {
+        // While a card waits above, the composer is one line and a bar, so the card's buttons stay on screen in a short window.
+        let compact = model.cardShown
         VStack(spacing: 0) {
             ComposerQueueStrip(model: model)
             ComposerAttachmentsRow(model: model)
@@ -18,11 +20,12 @@ struct ChatComposerView: View {
                 HStack(spacing: LoomTheme.Space.headerSpacing) {
                     Image(systemName: "arrow.turn.up.left").font(LoomTheme.Composer.cardNoteIcon)
                         .accessibilityHidden(true)
-                    Text(hint).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    Text(hint).lineLimit(compact ? 1 : 2).truncationMode(.tail).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                 }
                 .font(LoomTheme.Composer.cardNoteFont).foregroundStyle(LoomTheme.Composer.cardNoteColor)
-                .padding(.horizontal, LoomTheme.Composer.textInsetH).padding(.top, LoomTheme.Composer.cardNoteTop)
+                .padding(.horizontal, LoomTheme.Composer.textInsetH)
+                .padding(.top, compact ? LoomTheme.Composer.compactTextTop : LoomTheme.Composer.cardNoteTop)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("composer-card-note")
             }
@@ -32,11 +35,19 @@ struct ChatComposerView: View {
                         .font(LoomTheme.TypeScale.reading).foregroundStyle(LoomTheme.Text.tertiary)
                         .padding(.top, ComposerTextEditor.inset.height).allowsHitTesting(false).accessibilityHidden(true)
                 }
-                ComposerTextEditor(host: model, height: $height, accessibilityIdentifier: "composer-text",
-                                   accessibilityLabel: "Message for Claude")
+                ComposerTextEditor(host: model, height: $height,
+                                   minimumHeight: compact ? LoomTheme.Composer.compactTextHeight : LoomTheme.Composer.minimumTextHeight,
+                                   maximumHeight: compact ? LoomTheme.Composer.compactMaximumTextHeight : LoomTheme.Composer.maximumTextHeight,
+                                   accessibilityIdentifier: "composer-text", accessibilityLabel: "Message for Claude")
                     .frame(height: height)
             }
-            .padding(.horizontal, LoomTheme.Composer.textInsetH).padding(.top, LoomTheme.Composer.textTop)
+            .padding(.horizontal, LoomTheme.Composer.textInsetH)
+            .padding(.top, compact ? LoomTheme.Composer.compactTextTop : LoomTheme.Composer.textTop)
+            if let moving = model.handoverPending {
+                Text(moving).font(LoomTheme.Composer.noticeFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .padding(.horizontal, LoomTheme.Composer.noticeInset).padding(.bottom, LoomTheme.Space.headerSpacing)
+                    .accessibilityIdentifier("composer-handover")
+            }
             if let notice = model.notice {
                 Text(notice.text).font(LoomTheme.Composer.noticeFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
                     .fixedSize(horizontal: false, vertical: true)
@@ -75,13 +86,16 @@ struct ChatComposerDock: View {
     let model: ChatComposerModel
 
     var body: some View {
+        let compact = model.cardShown
         VStack(spacing: LoomTheme.Space.headerSpacing + 2) {
             ChatComposerView(model: model)
-            ComposerHints(model: model)
+            // The keys are on the card then (its own hint line), so the dock's line goes with the room it takes.
+            if !compact { ComposerHints(model: model) }
         }
         .frame(maxWidth: LoomTheme.Composer.column)
         .padding(.horizontal, LoomTheme.Composer.dockSideInset)
-        .padding(.top, LoomTheme.Composer.dockTopInset).padding(.bottom, LoomTheme.Composer.dockBottomInset)
+        .padding(.top, compact ? LoomTheme.Composer.compactDockTopInset : LoomTheme.Composer.dockTopInset)
+        .padding(.bottom, compact ? LoomTheme.Composer.compactDockBottomInset : LoomTheme.Composer.dockBottomInset)
         .frame(maxWidth: .infinity)
     }
 }
@@ -177,7 +191,7 @@ struct ComposerAttachmentsRow: View {
 
 // MARK: Bar
 
-/// The live composer's bar: +, the mode, then the ring, the model with its effort, and Send.
+/// The live composer's bar: +, the mode, then the ring, the model with its effort, and Send (the pickers are `ComposerPickers`).
 struct LiveComposerBar: View {
     let model: ChatComposerModel
     @State private var commandHeld = false
@@ -186,12 +200,12 @@ struct LiveComposerBar: View {
         let state = model.state
         ComposerBarFrame {
             plusMenu
-            modeMenu(state)
+            modeChip(state)
         } trailing: {
             ComposerRing(usage: ComposerBarText.contextUsage(state, fallback: model.environment.contextFallback()),
                          canCompact: state.phase == .ready && !state.turnRunning && state.requestCount == 0,
                          onCompact: { model.compactNow() }, showsPopover: Bindable(model).ringPopoverOpen)
-            modelMenu(state)
+            modelChip(state)
             sendButton
         }
         .onModifierKeysChanged(mask: .command, initial: true) { _, new in commandHeld = new.contains(.command) }
@@ -215,59 +229,28 @@ struct LiveComposerBar: View {
         .accessibilityIdentifier("composer-plus")
     }
 
-    private func modeMenu(_ state: ChatComposerState) -> some View {
-        let current = ComposerBarText.selectedMode(permissionMode: state.permissionMode, choices: state.choices)
-        let title = ComposerBarText.modeTitle(permissionMode: state.permissionMode, choices: state.choices)
-        return Menu {
-            ForEach(ClaudePermissionMode.allCases, id: \.self) { mode in
-                Button { model.setMode(mode.rawValue) } label: {
-                    if current == mode.rawValue { Label(mode.title, systemImage: "checkmark") } else { Text(mode.title) }
-                }
-            }
-        } label: {
-            // Every mode looks the same: no warning colour or mark, Full access included (D-58).
-            ComposerChipLabel(symbol: "shield", title: title)
-        }
-        .composerMenuStyle()
-        .help("Permission mode of this session. It changes at once.")
-        .accessibilityLabel("Permission mode, \(title)")
-        .accessibilityIdentifier("composer-mode")
+    private func modeChip(_ state: ChatComposerState) -> some View {
+        ComposerModeChip(
+            selected: ComposerBarText.selectedMode(permissionMode: state.permissionMode, choices: state.choices),
+            title: ComposerBarText.modeTitle(permissionMode: state.permissionMode, choices: state.choices),
+            help: "Permission mode of this session. It changes at once.", identifier: "composer-mode", reset: nil,
+            isOpen: Bindable(model).modePopoverOpen) { mode in model.setMode(mode.rawValue) }
     }
 
-    private func modelMenu(_ state: ChatComposerState) -> some View {
-        let title = ComposerBarText.modelTitle(state)
-        let effort = ComposerBarText.effortTitle(state)
-        let chosenModel = state.choices.model
-        let chosenEffort = state.choices.effort ?? state.reportedEffort
-        return Menu {
-            Section("Model") {
-                ForEach(ComposerBarText.modelChoices(state), id: \.value) { choice in
-                    Button { model.setModel(choice.value) } label: {
-                        if chosenModel == choice.value { Label(choice.title, systemImage: "checkmark") } else { Text(choice.title) }
-                    }
-                }
-            }
-            Section("Effort") {
-                ForEach(ComposerBarText.effortLevels(state), id: \.self) { level in
-                    Button { model.setEffort(level) } label: {
-                        let name = ComposerBarText.effortLabel(level)
-                        if chosenEffort == level { Label(name, systemImage: "checkmark") } else { Text(name) }
-                    }
-                }
-            }
-        } label: {
-            ComposerChipLabel(symbol: nil, title: title, lighter: effort, titleColor: LoomTheme.Composer.modelColor)
-        }
-        .composerMenuStyle()
-        .help("Model and effort of this session. They change at once.")
-        .accessibilityLabel("Model, \(title)" + (effort.map { ", effort \($0)" } ?? ""))
-        .accessibilityIdentifier("composer-model")
+    private func modelChip(_ state: ChatComposerState) -> some View {
+        ComposerModelChip(
+            picker: model.modelPicker, identifier: "composer-model",
+            help: "Model of this session. It changes at once.",
+            modelOpen: Bindable(model).modelPopoverOpen, effortOpen: Bindable(model).effortPopoverOpen,
+            onPickModel: { model.setModel($0 ?? ComposerModelChip.defaultID) }, onPickEffort: { model.setEffort($0) },
+            onResetEffort: { model.resetEffort() })
     }
 
     private var sendButton: some View {
         let kind = model.sendKind(commandHeld: commandHeld)
         let (look, label, help): (ComposerSendLook, String, String) = switch kind {
-        case .sendDisabled: (.disabled, "Send", model.cardShown ? "Answer the request above first. Your text goes with the answer"
+        case .sendDisabled: (.disabled, "Send", model.handoverPending != nil ? "Moving to the terminal. Your text stays here"
+            : model.cardShown ? "Answer the request above first. Your text goes with the answer"
             : "Nothing to send yet")
         case .send: (.send, "Send", "Send (\u{21B5})")
         case .sendNow: (.send, "Send now", "Send now (\u{21B5}): Claude reads it after the current step. \u{2318}\u{21B5} sends it after this turn")

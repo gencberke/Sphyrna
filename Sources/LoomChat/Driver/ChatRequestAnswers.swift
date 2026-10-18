@@ -292,19 +292,9 @@ extension Array where Element == PermissionUpdate {
     }
 }
 
-/// How permission modes read in the stream and on the plan card.
+/// How permission modes read in the stream and on the plan card: under Loom's names (D-63), as everywhere else.
 public enum ChatModeNames {
-    public static func title(_ mode: String) -> String {
-        switch mode {
-        case "default": "Ask before edits"
-        case "acceptEdits": "Accept edits"
-        case "auto": "Auto"
-        case "plan": "Plan"
-        case "dontAsk": "Don't ask"
-        case "bypassPermissions": "Bypass permissions"
-        default: mode
-        }
-    }
+    public static func title(_ mode: String) -> String { ClaudePermissionMode.title(forRaw: mode) }
 }
 
 // MARK: Building the answer
@@ -373,8 +363,10 @@ extension ChatPendingRequest {
                 decision: .allow(updatedInput: .object(updated), toolUseID: id),
                 record: RequestRecord(kind: .question, summary: line("Asked: \(subject) · You chose: \(chosen.joined(separator: " / "))")))
         case let (.plan, .approvePlan(mode)):
+            // The CLI is told its own word for the mode (Ask is `dontAsk`); the stream's line and the session keep Loom's.
+            let wire = ClaudePermissionMode(rawValue: mode)?.cliValue ?? mode
             return ChatAnswerPlan(
-                decision: .allow(updatedInput: input, updatedPermissions: [.setMode(PermissionMode(rawValue: mode))], toolUseID: id),
+                decision: .allow(updatedInput: input, updatedPermissions: [.setMode(PermissionMode(rawValue: wire))], toolUseID: id),
                 record: RequestRecord(kind: .plan, summary: "Approved the plan · \(ChatModeNames.title(mode))"), mode: mode)
         case let (.plan, .keepPlanning(feedback)):
             let text = feedback?.trimmingCharacters(in: .whitespacesAndNewlines)

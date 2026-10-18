@@ -26,6 +26,22 @@ public enum ChatDriverError: Error, Equatable, Sendable {
     case answerInProgress
     /// The queue holds `ChatQueue.maximumItems` items or `ChatQueue.maximumBytes` bytes: the message was not queued.
     case queueFull
+    /// The session is moving to the terminal (V19): a message that would start a turn waits for the other face. One
+    /// "After this turn" is still queued.
+    case handingOver
+    /// A request (approval, question or plan) waits for the user: a handover is refused until it is answered, and a
+    /// message is never sent with priority `now` into it (the queue's "Send now", V24).
+    case requestWaiting
+    /// Background tasks still run under the finished turn: a handover would end them, so it is refused.
+    case backgroundWork
+    /// The session is starting, stopping or already being handed over.
+    case busy
+    /// A `/clear` moved the run to a new card while the handover waited: the handover ended, nothing moved.
+    case clearedDuringHandover
+    /// A mode change failed and nothing changed: the session keeps its mode (`staysInAsk`: and Ask's rules are back on).
+    case modeNotChanged(staysInAsk: Bool)
+    /// Ask cannot be turned on: the CLI did not find Loom's output style (its plugin folder could not be written).
+    case askUnavailable
 }
 
 /// The engine of a Chat-face session (V16): the user's own `claude` speaking stream-json over pipes, inside the
@@ -86,19 +102,31 @@ public actor ChatSessionDriver {
     /// The session's mode, model and effort as the catalog holds them (the runtime passes them on every spawn).
     private var choices = ClaudeLaunchChoices()
     private var permissionMode: String?
+    /// The mode (Loom's word) the session had when Ask was turned on in this process: Ask's way back. Not kept across a
+    /// relaunch; without it, leaving Ask goes to Ask before edits (Loom never picks Full access by itself).
+    private var modeBeforeAsk: String?
+    /// The chain every mode transition runs in (the picker, Ask's two directions, the launch's Ask layer, the mode a plan
+    /// approval sets): one at a time, in the order asked. The actor is reentrant at every `await` of a control request,
+    /// so without it two transitions interleave and the CLI ends in a mix of their states.
+    /// The effort was cleared (to the CLI's own) and no `system/init` has said what that is: nothing is reported meanwhile.
+    private var effortCleared = false
+    private var modeBusy = false
+    private var modeWaiters: [CheckedContinuation<Void, Never>] = []
     private var requests: [ChatPendingRequest] = []
     /// The newest requests that left the list, oldest first (`settledLimit`).
     private var settled: [ChatSettledRequest] = []
     private var queue: ChatQueue
     private var queueIssue: ChatQueueIssue?
     private var returnedDrafts: [ChatReturnedDraft] = []
+    /// Messages that came back as drafts and were then sent again (Retry): a composer that took them takes them out again.
+    private var withdrawnDrafts: [ChatReturnedDraft] = []
     /// The texts of Loom's own messages that never reached the CLI in the newest run (the ended view offers them).
     private var undelivered: [String] = []
     /// Requests whose answer is on its way: one answer per request.
     private var answering: Set<String> = []
     /// Rows of Loom's own messages whose payload (images, pasted texts) the driver still holds: the unread ones. A read
     /// message drops its payload.
-    private var heldPayloads: Set<String> = []
+    private(set) var heldPayloads: Set<String> = []
     /// The model the user chose live: the chip and the ring show it until a newer `system/init` names the model.
     private var liveModel: String?
     private var drift: [ChatDrift] = []
@@ -114,6 +142,31 @@ public actor ChatSessionDriver {
     private var stopRequested = false
     /// A Stop came while the child was still spawning: the start ends as soon as the spawn returns.
     private var startCancelled = false
+    /// A handover to the terminal is under way (V19): it waits for the running turn and ends the run. While it does,
+    /// nothing starts a turn here (no send, no queue release), so the run never gets a second turn it would have to
+    /// cut. `handoverCancelled` ends the wait.
+    private var handoverHold = false
+    private var handoverCancelled = false
+    /// The wait ended because a `/clear` moved the run (not because the user cancelled).
+    private var handoverCleared = false
+    /// The point of no return: the wait is over and the run is being ended for the other face. Cancel no longer works.
+    private var handoverCommitted = false
+    /// The handover's own `stop()` runs: only that stop pauses the queue with `.handover`.
+    private var handoverStopping = false
+    /// Mode, model and effort picked while a handover holds the session: the child is going away, so it is not told. They are
+    /// the session's choice (`choices`, the catalog), the target face's launch applies them, and a handover that ends with the
+    /// run still here (Cancel, `/clear`, a refusal) tells the child afterwards (`replayHeldPicks`).
+    private var heldPicks = HeldPicks()
+
+    private struct HeldPicks {
+        /// What the child matched before the first mode pick of the hold: `choices.permissionMode`, the CLI's mode and
+        /// `modeBeforeAsk`. The replay starts its transitions from there.
+        var childMode: (choice: String?, wire: String?, before: String?)?
+        var mode: String?
+        var model: String?
+        var effort: String?
+        var effortCleared = false
+    }
     /// The newest `assistant.error` category of the running turn: the category of an `api_error` result.
     private var lastErrorCategory: String?
     private var conversationID: String?
@@ -218,12 +271,12 @@ public actor ChatSessionDriver {
         return ChatComposerState(
             sessionID: sessionID, phase: phase, turnRunning: turnRunning, requestCount: requests.count, queue: queue,
             queueIssue: queueIssue, choices: choices, permissionMode: permissionMode, resolvedModel: resolved,
-            reportedEffort: initialized?.effort,
+            reportedEffort: effortCleared ? nil : initialized?.effort,
             models: model.ready?.models ?? [], commands: model.ready?.commands ?? [],
             slashCommands: initialized?.slashCommands ?? [], skills: initialized?.skills ?? [],
             terminalOnlyCommands: initialized?.terminalSlashCommands ?? [], backgroundTaskCount: background.count,
             unreadMessageIDs: model.pendingUserMessageIDs.filter { sent[$0] != nil },
-            hasReturnedDrafts: !returnedDrafts.isEmpty,
+            hasReturnedDrafts: !returnedDrafts.isEmpty, hasWithdrawnDrafts: !withdrawnDrafts.isEmpty,
             contextTokens: model.contextUsage.map(\.contextTokens), contextWindow: window, contextModel: resolved
         )
     }
@@ -274,8 +327,11 @@ public actor ChatSessionDriver {
     public func liveState() -> ChatLiveState {
         ChatLiveState(sessionID: sessionID, conversationID: conversationID, phase: phase, turnRunning: turnRunning,
                       lastActivity: lastActivity, drift: drift, policySignal: policySignal, runStart: runStart,
-                      requests: requests, settled: settled, undelivered: undelivered)
+                      requests: requests, settled: settled, undelivered: undelivered, isAsk: isAsk)
     }
+
+    /// Ask is the session's mode (its choice, as Loom keeps it).
+    private var isAsk: Bool { choices.permissionMode == ClaudePermissionMode.ask.rawValue }
 
     private func dropModelSubscriber(_ id: UUID) {
         modelSubscribers[id] = nil
@@ -309,20 +365,39 @@ public actor ChatSessionDriver {
         return returnedDrafts
     }
 
+    /// Drafts that were sent again after they came back, handed over once: the composer takes them out of its text.
+    public func takeWithdrawnDrafts() -> [ChatReturnedDraft] {
+        defer { withdrawnDrafts.removeAll() }
+        if !withdrawnDrafts.isEmpty { changed() }
+        return withdrawnDrafts
+    }
+
     // MARK: Start, resume, stop
 
     /// Starts this (new) session in the Chat face with the draft's title, ticket, workspace and choices. Ready when
     /// it returns: the CLI answered `initialize`; the draft's first message (if any) was then sent over stdin.
+    /// `onReady` runs once `initialize` succeeded, before the first message goes out (V19: "started" is told then,
+    /// not when the child is spawned). A start that fails before that throws with nothing kept: the caller still has
+    /// the text and gives it back to the draft. A first message that cannot go out afterwards goes to this session's
+    /// own draft, because the draft page is gone by then.
     @discardableResult
-    public func startNew(projectID: UUID?, draft: NewSessionLaunch? = nil) async throws -> ChatSendReceipt? {
+    public func startNew(projectID: UUID?, draft: NewSessionLaunch? = nil,
+                         onReady: (@Sendable () async -> Void)? = nil) async throws -> ChatSendReceipt? {
         let id = sessionID
+        let message = (draft?.firstMessage).flatMap { $0.isEmpty ? nil : $0 }
         try await launch(isResume: false) { sink in
             try await self.runtime.startChatConversation(
                 projectID: projectID, sessionID: id, draft: draft, outputSink: sink
             )
         }
-        guard let message = draft?.firstMessage, !message.isEmpty else { return nil }
-        return try await send(message)
+        await onReady?()
+        guard let message else { return nil }
+        do {
+            return try await send(message)
+        } catch {
+            keepForUser([ChatReturnedDraft(messageID: "", text: message, attachments: [])])
+            throw error
+        }
     }
 
     /// Resumes the stopped session in the Chat face (`--resume`, with the mode, model and effort the catalog holds).
@@ -360,7 +435,8 @@ public actor ChatSessionDriver {
     }
 
     private func launch(
-        isResume: Bool, _ start: @escaping @Sendable (ChatPipeSink) async throws -> RuntimePipeLaunch
+        isResume: Bool,
+        _ start: @escaping @Sendable (ChatPipeSink) async throws -> RuntimePipeLaunch
     ) async throws {
         if phase == .stopping { throw ChatDriverError.stopping }
         if phase == .starting {
@@ -372,6 +448,10 @@ public actor ChatSessionDriver {
                                             unknownRecords: model.unknownRecordCount, time: clock(),
                                             generation: runStart.generation + 1)
         setPhase(.starting)
+        // The start holds the mode chain until the process is ready (and, for an Ask session, has Ask's layer on): a mode
+        // picked meanwhile runs after it.
+        await acquireMode()
+        defer { releaseMode() }
         stopRequested = false
         startCancelled = false
         // A card the last run left unanswered was shown as cut off; this run starts clean.
@@ -422,12 +502,21 @@ public actor ChatSessionDriver {
             finishStartWaiters(false)
             throw ChatDriverError.stopping
         }
+        var askFailed = false
         do {
             let reply = try await channel.request(.initialize, timeout: readyTimeout)
             guard run?.runID == runID, phase == .starting else { throw ChatDriverError.stopping }
             let response = reply.initializeResponse
             permissionMode = response.currentPermissionMode ?? permissionMode
             note(model.apply(ready: response, resumed: isResume, at: clock()))
+            // A session that is in Ask starts in it: the rules and the style are live settings, so neither the spawn nor
+            // `--resume` brings them back. Before anything else is sent, or the first message would run without them.
+            if isAsk {
+                do { try await applyAskLayer(on: channel) } catch {
+                    askFailed = true
+                    throw error
+                }
+            }
             setPhase(.ready)
             await publish(.atPrompt)
             finishStartWaiters(true)
@@ -435,6 +524,13 @@ public actor ChatSessionDriver {
             finishStartWaiters(false)
             // A Stop during Starting: the start is cancelled, not failed.
             if stopRequested || startCancelled || phase == .stopping { throw ChatDriverError.stopping }
+            if askFailed, run?.runID == runID {
+                // Ask could not be turned on: the session does not run without it (a message would reach a Claude that may edit).
+                setPhase(.failed(.couldNotStart("ask")))
+                await runtime.supervisor.events.publish(sessionID: sessionID, change: .issue("Ask mode could not be turned on."))
+                Task { try? await self.stopAfterFailure() }
+                throw ChatDriverError.couldNotStart("ask")
+            }
             guard run?.runID == runID else {
                 // The child ended before it was ready; `outputEnded` says why (it may still be reading stderr).
                 if phase == .starting { await waitForRunEnd() }
@@ -449,6 +545,133 @@ public actor ChatSessionDriver {
             journal?.record("chat.not_ready", ["error": .string(LoomLog.category(of: error))])
             Task { try? await self.stopAfterFailure() }
             throw ChatDriverError.couldNotStart("no answer to initialize")
+        }
+    }
+
+    // MARK: Handover (V19)
+
+    /// Chat → Terminal, up to the point where the terminal takes over: this face lets go of the session, and nothing is
+    /// cut. The caller then resumes the terminal face (`SessionRuntime.resumeConversation`).
+    ///
+    /// - A request that waits for the user, background tasks under the finished turn and a start or stop under way
+    ///   are refused (`requestWaiting`, `backgroundWork`, `busy`): nothing changes.
+    /// - A turn that runs is waited for, not interrupted; the session keeps its run until the turn's `result`. From
+    ///   the call on nothing starts another turn here (`handingOver`), and "After this turn" items stay queued. A
+    ///   `cancelHandover()` ends the wait with a `CancellationError`, and the session carries on as it was; so does a
+    ///   Stop. Requests and background work are checked again after the wait, right before the point of no return
+    ///   (a request or a task that began meanwhile refuses).
+    /// - `pointOfNoReturn` runs once, when the wait is over and the run is about to end: from then on a cancel does
+    ///   nothing, and the caller tells the user that the move is under way.
+    /// - Then the run ends in the verified order (`stop()`: stdin closes, the exit is awaited). Queued messages stay,
+    ///   paused with `PauseReason.handover` (only by this stop: a Stop or Quit of the user pauses with `interrupted`);
+    ///   unread messages and drafts are kept as for any run end. The marker "Continued in Terminal" is the caller's, once
+    ///   the terminal has the session (`noteFace`), and `handoverFailed()` when it does not.
+    ///
+    /// A session with no run here has nothing to let go of: it returns at once. A second call while one is under way
+    /// is refused (`busy`), so two handovers never race.
+    public func handOverToTerminal(pointOfNoReturn: (@Sendable () async -> Void)? = nil) async throws {
+        switch phase {
+        case .stopped, .failed: return
+        case .starting, .stopping: throw ChatDriverError.busy
+        case .ready, .working, .needsYou: break
+        }
+        guard !handoverHold else { throw ChatDriverError.busy }
+        guard requests.isEmpty else { throw ChatDriverError.requestWaiting }
+        guard background.count == 0 else { throw ChatDriverError.backgroundWork }
+        heldPicks = HeldPicks()
+        do { try await holdForTerminal(pointOfNoReturn: pointOfNoReturn) } catch {
+            // The run stays: what was picked meanwhile reaches it now.
+            await replayHeldPicks()
+            throw error
+        }
+        heldPicks = HeldPicks()
+    }
+
+    private func holdForTerminal(pointOfNoReturn: (@Sendable () async -> Void)?) async throws {
+        handoverHold = true
+        handoverCancelled = false
+        handoverCleared = false
+        handoverCommitted = false
+        defer {
+            handoverHold = false
+            handoverCancelled = false
+            handoverCleared = false
+            handoverCommitted = false
+            handoverStopping = false
+        }
+        while turnRunning, !handoverCancelled, run != nil { await waitForTurnEnd(seconds: 1) }
+        if handoverCancelled { throw handoverCleared ? ChatDriverError.clearedDuringHandover : CancellationError() }
+        // The run ended on its own while the handover waited: there is nothing left to stop.
+        guard run != nil, phase.isLive else { return }
+        // Checked again: a request or a task that began while the turn ran is not ended by a move.
+        // A mode change that was already on its way to the child is let finish (its answer or the timeout); anything picked
+        // from now on is held, not sent.
+        await serialMode {}
+        if handoverCancelled { throw handoverCleared ? ChatDriverError.clearedDuringHandover : CancellationError() }
+        guard requests.isEmpty else { throw ChatDriverError.requestWaiting }
+        guard background.count == 0 else { throw ChatDriverError.backgroundWork }
+        handoverCommitted = true
+        await pointOfNoReturn?()
+        handoverStopping = true
+        try await stop()
+    }
+
+    /// Ends the wait of a handover that has not reached its point of no return; the session goes on in the Chat face.
+    public func cancelHandover() {
+        guard handoverHold, !handoverCommitted else { return }
+        handoverCancelled = true
+        wakeTurnEndWaiters()
+    }
+
+    /// A handover to the terminal waits or is stopping the run.
+    public var isHandingOver: Bool { handoverHold }
+
+    /// The run a mode, model or effort pick may tell: none while a handover holds the session (the child is going away).
+    private var pickableRun: Run? { handoverHold || !phase.isLive ? nil : run }
+
+    /// A live run is held by a handover: a pick is kept for the target face and not sent.
+    private var holdsPicks: Bool { handoverHold && run != nil && phase.isLive }
+
+    /// Tells the run what was picked while the handover held it (a handover that ended without moving the session). The
+    /// transitions start from the state the child was in, so Ask's layer, the CLI's mode and the markers come out as for any
+    /// pick; a transition that fails leaves the child as it was and the choice back at what it matches.
+    private func replayHeldPicks() async {
+        let held = heldPicks
+        heldPicks = HeldPicks()
+        guard run != nil, phase.isLive else { return }
+        if let mode = held.mode, let child = held.childMode {
+            choices.permissionMode = child.choice
+            permissionMode = child.wire
+            modeBeforeAsk = child.before
+            do { try await setPermissionMode(mode) } catch {
+                journal?.record("chat.held_mode_failed", ["error": .string(LoomLog.category(of: error))])
+                if let choice = child.choice { await recordChoices(ClaudeLaunchChoices(permissionMode: choice)) }
+            }
+        }
+        if let name = held.model {
+            do { try await setModel(name) } catch {
+                journal?.record("chat.held_model_failed", ["error": .string(LoomLog.category(of: error))])
+            }
+        }
+        do {
+            if held.effortCleared { try await clearEffort() } else if let level = held.effort { try await setEffort(level) }
+        } catch {
+            journal?.record("chat.held_effort_failed", ["error": .string(LoomLog.category(of: error))])
+        }
+    }
+
+    /// The terminal did not take the session after the run ended (its resume failed, or a Stop ended the move): the
+    /// queue was paused for a move that did not happen, so it says it was interrupted.
+    public func handoverFailed() {
+        guard queue.paused == .handover else { return }
+        pauseQueue(.interrupted)
+    }
+
+    /// Ask's rules, style and mode again (after a reset). Best effort: the layer is already there if the CLI kept it.
+    private func reapplyAskLayer() async {
+        await serialMode {
+            guard isAsk, let current = run, phase.isLive else { return }
+            try? await applyAskLayer(on: current.channel)
         }
     }
 
@@ -476,8 +699,8 @@ public actor ChatSessionDriver {
         guard let current = run, request.reason != .processExited else { return }
         stopRequested = true
         setPhase(.stopping)
-        // Nothing queued goes out during the Stop.
-        if !queue.isEmpty, queue.paused == nil { pauseQueue(.interrupted) }
+        // Nothing queued goes out during the Stop. A handover keeps the queue and says why it waits.
+        if !queue.isEmpty, queue.paused == nil { pauseQueue(handoverStopping ? .handover : .interrupted) }
         guard turnRunning || !requests.isEmpty else { return }
         let started = clock()
         await sendInterrupt(on: current.channel, timeout: request.graceSeconds)
@@ -500,6 +723,7 @@ public actor ChatSessionDriver {
             guard attachments.isEmpty else { throw ChatDriverError.queueTextOnly }
             return .queued(try enqueue(text))
         }
+        guard !handoverHold else { throw ChatDriverError.handingOver }
         try await ensureLive()
         return .sent(try await write(message, priority: .next))
     }
@@ -512,6 +736,7 @@ public actor ChatSessionDriver {
         guard model.entry(id: messageID).map({ entry in
             if case let .user(prompt) = entry.body { prompt.delivery == .notDelivered } else { false }
         }) == true, let message = sent[messageID] else { throw ChatDriverError.notPending(messageID) }
+        guard !handoverHold else { throw ChatDriverError.handingOver }
         try await ensureLive()
         let uuid = try await write(message, priority: .next)
         sent[messageID] = nil
@@ -519,7 +744,21 @@ public actor ChatSessionDriver {
         note(model.noteFollowUp(.sentAgain, forRow: messageID))
         changed()
         if let at = undelivered.firstIndex(of: message.rowText) { undelivered.remove(at: at) }
+        withdrawFromDrafts(messageID: messageID, message: message)
         return uuid
+    }
+
+    /// The message went out again, so the copy that came back as a draft goes: from the composers that have not taken it, from
+    /// the draft file, and (`withdrawnDrafts`) from a composer that has. Without it a successful Retry left the message twice.
+    private func withdrawFromDrafts(messageID: String, message: ChatSentMessage) {
+        returnedDrafts.removeAll { $0.messageID == messageID }
+        withdrawnDrafts.append(ChatReturnedDraft(messageID: messageID, text: message.text, attachments: message.attachments))
+        if let draftStore {
+            do { try draftStore.withdraw(text: message.text, attachments: message.attachments, sessionID: sessionID) } catch {
+                LoomLog.error(.lifecycle, "A message sent again could not be taken out of its draft (\(LoomLog.category(of: error)))")
+            }
+        }
+        changed()
     }
 
     /// "Read now": a sent message still waiting is taken back (`cancel_async_message`) and sent again with priority
@@ -696,36 +935,63 @@ public actor ChatSessionDriver {
     }
 
     /// A card's answer, as the user gave it: builds the decision and the stream's line from the request and sends it. A
-    /// plan approval also records the mode as the session's choice.
+    /// plan approval also records the mode as the session's choice (in the mode chain).
     public func answer(requestID: String, _ answer: ChatRequestAnswer) async throws {
+        if case .approvePlan = answer {
+            try await serialMode { try await answerNow(requestID: requestID, answer) }
+        } else {
+            try await answerNow(requestID: requestID, answer)
+        }
+    }
+
+    private func answerNow(requestID: String, _ answer: ChatRequestAnswer) async throws {
         guard phase != .stopping else { throw ChatDriverError.stopping }
         guard let request = requests.first(where: { $0.requestID == requestID }) else {
             throw ChatDriverError.noSuchRequest(requestID)
         }
+        // Ask refuses every tool approval; none is allowed while it is on (a card that was waiting when Ask came on is
+        // refused when Ask is chosen, so this is the defence for the one that arrives some other way).
+        if isAsk {
+            switch answer {
+            case .allowOnce, .allowForSession: throw ChatDriverError.notOffered
+            default: break
+            }
+        }
         let plan: ChatAnswerPlan
+        // While Ask is on a plan is approved in Ask: any other mode would lift `dontAsk` and leave the deny rules with Bash open.
+        var answer = answer
+        if isAsk, case .approvePlan = answer { answer = .approvePlan(mode: ClaudePermissionMode.ask.rawValue) }
         do { plan = try request.answerPlan(for: answer) } catch let error as ChatAnswerError {
             throw error == .incomplete ? ChatDriverError.incompleteAnswer : ChatDriverError.notOffered
         }
         try await respond(to: requestID, with: plan.decision, record: plan.record)
         // A mode a plan approval, or an "Allow for this session" that carries `setMode`, sets is the session's choice.
         if let mode = plan.mode {
-            permissionMode = mode
+            let wire = ClaudePermissionMode(rawValue: mode)?.cliValue ?? mode
+            permissionMode = wire
+            model.noteMarkedMode(wire)
             await recordChoices(ClaudeLaunchChoices(permissionMode: mode))
         }
     }
 
     /// Approves a plan and leaves plan mode for `mode` (sent every time, also when it is the mode Claude would pick).
     public func approvePlan(requestID: String, mode: String, record: RequestRecord? = nil) async throws {
-        guard let request = requests.first(where: { $0.requestID == requestID }) else {
-            throw ChatDriverError.noSuchRequest(requestID)
+        try await serialMode {
+            guard let request = requests.first(where: { $0.requestID == requestID }) else {
+                throw ChatDriverError.noSuchRequest(requestID)
+            }
+            // In Ask the plan is approved in Ask, whatever mode the card asked for (see `answer`).
+            let chosen = isAsk ? ClaudePermissionMode.ask.rawValue : mode
+            let wire = ClaudePermissionMode(rawValue: chosen)?.cliValue ?? chosen
+            try await respond(to: requestID, with: .allow(
+                updatedInput: request.request.input,
+                updatedPermissions: [.setMode(PermissionMode(rawValue: wire))],
+                toolUseID: request.request.toolUseID
+            ), record: record)
+            permissionMode = wire
+            model.noteMarkedMode(wire)
+            await recordChoices(ClaudeLaunchChoices(permissionMode: chosen))
         }
-        try await respond(to: requestID, with: .allow(
-            updatedInput: request.request.input,
-            updatedPermissions: [.setMode(PermissionMode(rawValue: mode))],
-            toolUseID: request.request.toolUseID
-        ), record: record)
-        permissionMode = mode
-        await recordChoices(ClaudeLaunchChoices(permissionMode: mode))
     }
 
     /// Keeps planning: the plan is denied with the user's feedback, and Claude plans on in the same turn.
@@ -767,29 +1033,202 @@ public actor ChatSessionDriver {
 
     // MARK: Mode, model, effort
 
-    /// Changes the mode now (and on every later spawn).
+    private func acquireMode() async {
+        if modeBusy {
+            await withCheckedContinuation { modeWaiters.append($0) }
+        } else {
+            modeBusy = true
+        }
+    }
+
+    private func releaseMode() {
+        if modeWaiters.isEmpty { modeBusy = false } else { modeWaiters.removeFirst().resume() }
+    }
+
+    /// Runs one mode transition in the chain: after every one asked before it, and before every one asked after it.
+    private func serialMode<T>(_ body: () async throws -> T) async rethrows -> T {
+        await acquireMode()
+        defer { releaseMode() }
+        return try await body()
+    }
+
+    /// Changes the mode now (and on every later spawn). `mode` is Loom's word (`ClaudePermissionMode`); the CLI is told its
+    /// own (`cliValue`), and the session keeps Loom's word for the next spawn. Ask is not a mode of the CLI alone: entering
+    /// it sets the mode, the deny rules and the style together, and any other choice while it is on clears all three.
+    /// Transitions run one at a time, in the order asked (`serialMode`); a pick made while the process starts waits for
+    /// the start, and for the Ask layer a resumed Ask session gets.
     public func setPermissionMode(_ mode: String) async throws {
-        if let current = run, phase.isLive {
-            _ = try await current.channel.request(.setPermissionMode(PermissionMode(rawValue: mode)))
-            permissionMode = mode
+        try await serialMode {
+            if holdsPicks {
+                if heldPicks.childMode == nil {
+                    heldPicks.childMode = (choices.permissionMode, permissionMode, modeBeforeAsk)
+                }
+                heldPicks.mode = mode
+            }
+            if mode == ClaudePermissionMode.ask.rawValue {
+                try await enterAsk()
+            } else if isAsk {
+                try await leaveAskNow(to: mode)
+            } else {
+                try await changeMode(to: mode)
+            }
+        }
+    }
+
+    /// The mode a stopped session shows is the one chosen: the last CLI mode of a run that ended is not.
+    private func noteModeWithoutProcess() { permissionMode = nil }
+
+    private func changeMode(to mode: String) async throws {
+        let wire = ClaudePermissionMode(rawValue: mode)?.cliValue ?? mode
+        if let current = pickableRun {
+            _ = try await current.channel.request(.setPermissionMode(PermissionMode(rawValue: wire)))
+            permissionMode = wire
+            note(model.markMode(wire, at: clock()))
+        } else {
+            noteModeWithoutProcess()
         }
         await recordChoices(ClaudeLaunchChoices(permissionMode: mode))
     }
 
+    /// Turns Ask on: remembers the mode it replaces (Full access included: `bypassPermissions` leaves Bash open), then
+    /// sets `dontAsk`, the deny rules and the style. No relaunch, no turn needed (spike S9). Refused while a tool approval
+    /// waits (the driver never answers a request itself) and when the CLI has no `loom:Ask` style (the plugin is missing).
+    private func enterAsk() async throws {
+        let before = permissionMode ?? choices.permissionMode
+        guard let current = pickableRun else {
+            if !isAsk { modeBeforeAsk = Self.remembered(before) }
+            noteModeWithoutProcess()
+            await recordChoices(ClaudeLaunchChoices(permissionMode: ClaudePermissionMode.ask.rawValue))
+            return
+        }
+        if isAsk {
+            // Ask is the choice, but the CLI's mode left `dontAsk` (plan mode inside Ask): the rules and the style stay, the mode returns.
+            if permissionMode != ChatAskMode.mode.rawValue {
+                _ = try await current.channel.request(.setPermissionMode(ChatAskMode.mode))
+                permissionMode = ChatAskMode.mode.rawValue
+                note(model.markMode(ChatAskMode.mode.rawValue, at: clock()))
+            }
+            return
+        }
+        guard !requests.contains(where: { $0.kind == .approval }) else { throw ChatDriverError.requestWaiting }
+        if let styles = model.ready?.availableOutputStyles, !styles.contains(ClaudeLoomPlugin.askStyleName) {
+            throw ChatDriverError.askUnavailable
+        }
+        try await applyAskLayer(on: current.channel, restoring: before)
+        permissionMode = ChatAskMode.mode.rawValue
+        modeBeforeAsk = Self.remembered(before)
+        let text = background.count > 0 ? "Mode changed to Ask. Background work started earlier keeps running." : nil
+        note(model.markMode(ChatAskMode.mode.rawValue, text: text, at: clock()))
+        await recordChoices(ClaudeLaunchChoices(permissionMode: ClaudePermissionMode.ask.rawValue))
+    }
+
+    private static func remembered(_ mode: String?) -> String? {
+        mode.flatMap { ClaudePermissionMode(rawValue: $0) }.flatMap { $0 == .ask ? nil : $0.rawValue }
+    }
+
+    /// Turns Ask off for `mode` (nil: the mode it replaced, else Ask before edits).
+    public func leaveAsk(to mode: String? = nil) async throws {
+        try await serialMode { try await leaveAskNow(to: mode) }
+    }
+
+    /// The rules and the style go first, then the CLI's mode, so there is never a moment with the mode lifted and the rules
+    /// still on that leaves Bash open. When the second step fails the first is taken back (fresh mirror, best effort): the
+    /// session stays in Ask, as `choices` say.
+    private func leaveAskNow(to mode: String?) async throws {
+        guard isAsk else { return }
+        let target = mode ?? modeBeforeAsk ?? ClaudePermissionMode.askBeforeEdits.rawValue
+        let wire = ClaudePermissionMode(rawValue: target)?.cliValue ?? target
+        if let current = pickableRun {
+            do {
+                _ = try await current.channel.request(.applyFlagSettings(ChatAskMode.leaveSettings))
+                _ = try await current.channel.request(.setPermissionMode(PermissionMode(rawValue: wire)))
+            } catch {
+                await restoreAskRules(on: current.channel)
+                throw ChatDriverError.modeNotChanged(staysInAsk: true)
+            }
+            permissionMode = wire
+            note(model.markMode(wire, at: clock()))
+        } else {
+            noteModeWithoutProcess()
+        }
+        modeBeforeAsk = nil
+        await recordChoices(ClaudeLaunchChoices(permissionMode: target))
+    }
+
+    /// Ask's rules and style again, read fresh (best effort: a failure leaves the CLI as it is).
+    private func restoreAskRules(on channel: ControlChannel) async {
+        let rules = (try? await channel.request(.other(subtype: "list_permission_rules", fields: [:])))?.permissionRules ?? []
+        _ = try? await channel.request(.applyFlagSettings(ChatAskMode.enterSettings(mirroring: rules)))
+    }
+
+    /// The requests of Ask: the CLI's `dontAsk`, then the live rules and style. If the second fails, the rules are taken off
+    /// again and the mode goes back to what it was (`restoring`, the CLI's word), so a half-turned Ask is not left behind.
+    private func applyAskLayer(on channel: ControlChannel, restoring previous: String? = nil) async throws {
+        _ = try await channel.request(.setPermissionMode(ChatAskMode.mode))
+        do {
+            // The rules the user's own settings hold are read each time Ask is entered; a rule added while Ask is on is not
+            // mirrored until Ask is entered again.
+            let rules = try await channel.request(.other(subtype: "list_permission_rules", fields: [:])).permissionRules
+            _ = try await channel.request(.applyFlagSettings(ChatAskMode.enterSettings(mirroring: rules)))
+        } catch {
+            _ = try? await channel.request(.applyFlagSettings(ChatAskMode.leaveSettings))
+            if let previous {
+                _ = try? await channel.request(.setPermissionMode(
+                    PermissionMode(rawValue: ClaudePermissionMode(rawValue: previous)?.cliValue ?? previous)))
+            }
+            throw error
+        }
+    }
+
+    /// Changes the model. An effort the new model does not offer is not kept: it is clamped to the nearest level below (or
+    /// the lowest), and cleared for a model without effort, live and in the catalog, so no later spawn passes a `--effort`
+    /// the model lacks.
     public func setModel(_ name: String) async throws {
-        if let current = run, phase.isLive {
+        if let current = pickableRun {
             _ = try await current.channel.request(.setModel(name))
             // The chip and the ring show the chosen model until a newer `system/init` names the one that runs.
             liveModel = name
+        } else if holdsPicks {
+            heldPicks.model = name
+            liveModel = name
         }
         await recordChoices(ClaudeLaunchChoices(model: name))
+        guard let option = model.ready?.models.first(where: { $0.value == name }),
+              model.ready?.models.contains(where: { !$0.supportedEffortLevels.isEmpty }) == true else { return }
+        let effort = effortCleared ? nil : (choices.effort ?? model.latestInit?.effort)
+        guard let effort else { return }
+        if let kept = ChatEffort.clamped(effort, to: option.supportedEffortLevels) {
+            if kept != effort { try await setEffort(kept) }
+        } else {
+            try await clearEffort()
+        }
     }
 
     public func setEffort(_ level: String) async throws {
-        if let current = run, phase.isLive {
+        if let current = pickableRun {
             _ = try await current.channel.request(.applyFlagSettings(.effortLevel(level)))
+        } else if holdsPicks {
+            heldPicks.effort = level
+            heldPicks.effortCleared = false
         }
+        effortCleared = false
         await recordChoices(ClaudeLaunchChoices(effort: level))
+    }
+
+    /// Back to the CLI's own effort (the slider's Default): the live setting and the catalog's record are cleared.
+    public func clearEffort() async throws {
+        if let current = pickableRun {
+            _ = try await current.channel.request(.applyFlagSettings(.effortLevel(nil)))
+        } else if holdsPicks {
+            heldPicks.effort = nil
+            heldPicks.effortCleared = true
+        }
+        effortCleared = true
+        choices.effort = nil
+        await runtime.clearLaunchEffort(sessionID: sessionID)
+        await followRun()
+        changed()
+        onChoicesChanged(choices)
     }
 
     private func recordChoices(_ newer: ClaudeLaunchChoices) async {
@@ -842,11 +1281,16 @@ public actor ChatSessionDriver {
     @discardableResult
     public func sendQueuedNow(id: String) async throws -> String {
         guard queue.items.contains(where: { $0.id == id }) else { throw ChatDriverError.noSuchQueueItem(id) }
+        guard !handoverHold else { throw ChatDriverError.handingOver }
+        // `now` cancels the running step: into a waiting approval it would land on the request. The user answers it first.
+        guard requests.isEmpty else { throw ChatDriverError.requestWaiting }
         try await ensureLive()
         guard let i = queue.items.firstIndex(where: { $0.id == id }) else { throw ChatDriverError.noSuchQueueItem(id) }
+        guard requests.isEmpty else { throw ChatDriverError.requestWaiting }
         let item = queue.items.remove(at: i)
         do {
-            let uuid = try await write(ChatSentMessage(text: item.text, attachments: []), priority: turnRunning ? .now : .next)
+            let uuid = try await write(ChatSentMessage(text: item.text, attachments: []),
+                                       priority: turnRunning && requests.isEmpty ? .now : .next)
             if queue.isEmpty { queue.paused = nil }
             saveQueue()
             return uuid
@@ -891,10 +1335,10 @@ public actor ChatSessionDriver {
     /// Sends the first item when nothing runs, nothing waits and the queue is not paused. The item leaves the queue
     /// only once it is written; one that cannot be goes back to the head and the error is thrown.
     private func releaseQueue() async throws {
-        guard queue.paused == nil, phase != .stopping, !turnRunning, requests.isEmpty,
+        guard queue.paused == nil, !handoverHold, phase != .stopping, !turnRunning, requests.isEmpty,
               let first = queue.items.first else { return }
         try await ensureLive()
-        guard queue.paused == nil, phase != .stopping, !turnRunning, requests.isEmpty,
+        guard queue.paused == nil, !handoverHold, phase != .stopping, !turnRunning, requests.isEmpty,
               queue.items.first?.id == first.id else { return }
         queue.items.removeFirst()
         do {
@@ -972,6 +1416,9 @@ public actor ChatSessionDriver {
             // The run goes to a new card, whose stream starts with the marker (`followMove`).
             resetTrigger = reset.trigger
             if let id = reset.newConversationID { await adopt(id, transition: .new) }
+            // What the CLI keeps of live settings across a reset (`/clear`, a compaction) is not measured: Ask's layer goes on
+            // again, in the chain. A task of its own: this loop is what delivers the answers to its requests.
+            if isAsk { Task { await self.reapplyAskLayer() } }
         default:
             let unknownBefore = model.unknownRecordCount
             note(model.apply(message, at: now))
@@ -988,6 +1435,7 @@ public actor ChatSessionDriver {
         switch message {
         case let .systemInit(info):
             permissionMode = info.permissionMode ?? permissionMode
+            if info.effort != nil { effortCleared = false }
             if info.model != nil { liveModel = nil }
             let listed = Set(info.capabilities ?? [])
             for capability in Self.requiredCapabilities where !listed.contains(capability) {
@@ -1075,6 +1523,8 @@ public actor ChatSessionDriver {
         guard let current = run else { return }
         // The run is gone for every other call from here on, whatever the awaits below let in.
         run = nil
+        // The last mode the CLI reported is not the session's mode any more: the bar shows the chosen one (`choices`).
+        permissionMode = nil
         let endedStarting = phase == .starting
         current.sink.close()
         await current.channel.close()
@@ -1163,6 +1613,12 @@ public actor ChatSessionDriver {
     /// (the old card keeps the old conversation's transcript).
     func followMove(to card: UUID) async {
         guard card != sessionID, run != nil else { return }
+        // A handover that still waits ends: the session was cleared, it is not the one the user chose to move.
+        if handoverHold, !handoverCommitted {
+            handoverCleared = true
+            handoverCancelled = true
+            wakeTurnEndWaiters()
+        }
         let old = sessionID
         sessionID = card
         if let queueStore {
@@ -1178,6 +1634,7 @@ public actor ChatSessionDriver {
         fresh.latestInit = model.latestInit
         fresh.rateLimit = model.rateLimit
         fresh.startMarkerPlaced = true
+        fresh.markedMode = model.markedMode
         model = fresh
         // The new card's stream starts at the marker. The run goes on, so its generation stays.
         runStart = LiveHistoryJoin.RunStart(time: clock(), generation: runStart.generation)

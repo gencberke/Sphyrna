@@ -44,6 +44,10 @@ public struct TurnModel: Sendable {
     /// requests) is its task id.
     public internal(set) var tasks: [String: TaskStarted] = [:]
     var startMarkerPlaced = false
+    /// The CLI's mode the stream last stated (the start marker, or a "Mode changed" marker): the next one is placed only
+    /// when the mode differs, so a change the driver confirmed and the next turn's `system/init` that reports it make one
+    /// marker, and the marker sits before the turn it affects. Live only.
+    var markedMode: String?
     /// Loom sent an interrupt (or a denial that stops) and the turn's `result` has not come yet: only then is an aborted
     /// turn the user's stop. Live only.
     var interruptSent = false
@@ -115,11 +119,35 @@ public struct TurnModel: Sendable {
         ready = response
         if source == .live, !startMarkerPlaced {
             startMarkerPlaced = true
+            markedMode = response.currentPermissionMode
             place(id: nextID("start"), thread: .main, timestamp: now, offset: nil, policy: .standalone, delta: &delta,
                   body: .marker(resumed ? .resumed(secondsSinceLastActivity: nil)
                                         : .sessionStart(model: nil, permissionMode: response.currentPermissionMode)))
+        } else if source == .live, resumed, let mode = response.currentPermissionMode {
+            // A run that resumes a session this model already knows (a Stop and a resume, a handover and back): the mode it
+            // comes up in may not be the one the last run ended in (picked on the stopped bar, or what the terminal ran).
+            // The change is marked now, before the message that starts the run's first turn, not after it by that turn's init.
+            delta.merge(markMode(mode, at: now))
         }
         return delta
+    }
+
+    /// A mode change the driver confirmed (the CLI's word): the marker goes in now, before the turn it affects. Nothing is
+    /// placed when the stream already states that mode. `text` replaces the marker's usual line (the one Ask's entry
+    /// reads while background work runs).
+    @discardableResult
+    public mutating func markMode(_ mode: String, text: String? = nil, at now: Date = Date()) -> ModelDelta {
+        var delta = ModelDelta()
+        guard source == .live, markedMode != nil, markedMode != mode else { return delta }
+        markedMode = mode
+        place(id: nextID("mode"), thread: .main, timestamp: now, offset: nil, policy: .standalone, delta: &delta,
+              body: .marker(text.map(Marker.notice) ?? .modeChanged(mode)))
+        return delta
+    }
+
+    /// The stream already states `mode` some other way (a plan card's line): the next `system/init` that reports it makes no marker.
+    public mutating func noteMarkedMode(_ mode: String) {
+        if source == .live, markedMode != nil { markedMode = mode }
     }
 
     /// The name of the subagent that owns `agentID`: what its card shows ("reviewer: Review auth").

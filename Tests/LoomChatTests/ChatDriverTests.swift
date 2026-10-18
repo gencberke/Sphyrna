@@ -33,7 +33,9 @@ struct Rig {
 
     var events: SessionEventHub { supervisor.events }
 
-    static func make(environment: [String: String] = [:], version: String = "fake 1") async throws -> Rig {
+    /// - Parameter plugin: Loom's Claude plugin is written and passed as `--plugin-dir` (the output style of Ask comes
+    ///   from it); false is a Loom whose plugin folder cannot be written.
+    static func make(environment: [String: String] = [:], version: String = "fake 1", plugin: Bool = true) async throws -> Rig {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-chat-\(UUID())", isDirectory: true)
         let home = root.appendingPathComponent("home", isDirectory: true)
         let profile = root.appendingPathComponent("claude-config", isDirectory: true)
@@ -75,6 +77,7 @@ struct Rig {
                 hookHelperPath: DriverFixture.binaries.appendingPathComponent("loom-hook").path,
                 socketDirectory: socketDirectory, homeDirectory: home.path,
                 idlePolicy: SessionIdlePolicy(), codexIdentityTimeout: 3,
+                claudePluginDirectory: plugin ? root.appendingPathComponent("claude-plugin", isDirectory: true) : nil,
                 hookSilenceGrace: 3, catalogBackupDelay: nil
             )
         )

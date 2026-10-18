@@ -1,4 +1,5 @@
 import Foundation
+import LoomCore
 import Observation
 
 /// Where the user is in the window: the one fact the detail panel and the persisted selection derive from.
@@ -63,23 +64,38 @@ extension Destination: Codable {
     }
 }
 
-/// The two faces of a Claude session. The terminal is today's panel; the chat is the read-only rendering of
-/// the transcript (V13).
-public enum SessionFace: String, Equatable, Sendable {
+/// The two faces of a Claude session: Chat (the live stream-json face, V16) and the terminal. As a *view* choice on
+/// a session that runs in the terminal, Chat is the read-only transcript (V13); as the *owner* of a session, a face
+/// is the run's endpoint, persisted with the session (`CatalogSession.runEndpoint`, V19).
+public enum SessionFace: String, Codable, CaseIterable, Equatable, Sendable {
     case chat
     case terminal
+
+    /// The label in Settings ("New sessions start in").
+    public var title: String {
+        switch self {
+        case .chat: "Chat"
+        case .terminal: "Terminal"
+        }
+    }
+
+    /// The face that owns a run of this endpoint.
+    public init(endpoint: RunEndpointKind) {
+        self = endpoint == .pipe ? .chat : .terminal
+    }
+
+    /// The run endpoint of this face.
+    public var endpoint: RunEndpointKind { self == .chat ? .pipe : .terminal }
 }
 
-/// Which face the user picked per session, in memory only, and the flag that turns the read-only Chat view
-/// on. Not persisted: a relaunch starts from the defaults (stopped: chat, running: terminal).
+/// Which face the user picked per session to *look at*, in memory only. Not persisted: a relaunch starts from the
+/// defaults (stopped: chat, running: terminal). The owning face of a session is not here: it is the runtime's
+/// persisted fact (`CatalogSession.runEndpoint`).
 @MainActor @Observable
 public final class SessionFaces {
     /// On since the stream view (V13) is routed. A kill switch: with it off no route is `.chat`, and a Claude
     /// session shows its terminal, kept screen or record as in 0.4.4.
     public var readOnlyChatEnabled = true
-    /// The live Chat face (V16): Claude driven over stream-json pipes. Off until V19 makes it the default; only tests
-    /// and evidence turn it on. A session whose run already is a pipe run shows its live chat either way.
-    public var liveChatEnabled = false
     public private(set) var choices: [UUID: SessionFace] = [:]
 
     public init() {}

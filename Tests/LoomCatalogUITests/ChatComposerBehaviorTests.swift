@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 import SwiftUI
 import Testing
@@ -54,11 +55,13 @@ struct ChatComposerBehaviorTests {
         var store: ChatDraftStore { host.draftStore }
     }
 
-    private func make(files: String? = nil, started: Bool = true) async throws -> Fixture {
+    private func make(files: String? = nil, started: Bool = true, choices: ClaudeLaunchChoices? = nil) async throws -> Fixture {
         let rig = try await LiveRig.make()
         let id = UUID()
         let host = ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root)
-        let driver = started ? try await host.startNewSession(projectID: nil, sessionID: id) : host.driver(for: id)
+        let driver = started
+            ? try await host.startNewSession(projectID: nil, sessionID: id, draft: choices.map { NewSessionLaunch(firstMessage: "", choices: $0) })
+            : host.driver(for: id)
         var environment = ComposerEnvironment()
         environment.draftDelay = .milliseconds(40)
         environment.mentionDebounce = .milliseconds(10)
@@ -66,6 +69,7 @@ struct ChatComposerBehaviorTests {
         let composer = ChatComposerModel(driver: driver, card: id, drafts: host.draftStore, environment: environment)
         composer.start()
         await composer.refresh()
+        await composer.attachmentsRestored()
         return Fixture(rig: rig, host: host, driver: driver, composer: composer, id: id)
     }
 
@@ -608,6 +612,133 @@ struct ChatComposerBehaviorTests {
         await fixture.rig.finish()
     }
 
+    // MARK: V24 (D-63 and the checkpoint follow-ups)
+
+    /// The live bar's pickers: the mode through Loom's words, the model from the CLI's list, the effort from the model's levels,
+    /// and the reset back to what the session opened with.
+    @Test func theLiveBarChangesModeModelAndEffortAndTheResetGoesBackToWhatTheSessionOpenedWith() async throws {
+        let fixture = try await make(choices: ClaudeLaunchChoices(model: "opus", effort: "medium"))
+        let composer = fixture.composer
+        // Modes: Ask is a mode like the others and the bar names it in Loom's words.
+        await composer.setMode("ask").value
+        #expect(ComposerBarText.modeTitle(permissionMode: composer.state.permissionMode, choices: composer.state.choices) == "Ask")
+        await composer.setMode("acceptEdits").value
+        #expect(ComposerBarText.modeTitle(permissionMode: composer.state.permissionMode, choices: composer.state.choices) == "Accept edits")
+        await composer.setMode("default").value
+        #expect(ComposerBarText.modeTitle(permissionMode: composer.state.permissionMode, choices: composer.state.choices) == "Ask before edits")
+        // Model: the CLI's own list, the chosen one is the chip's name and the picker's choice.
+        let listed = ComposerBarText.modelRows(composer.state)
+        #expect(listed.map(\.value) == ["opus", "sonnet", "haiku"], "\(listed)")
+        let row = try #require(listed.first { $0.value == "opus" })
+        await composer.setModel(row.value).value
+        #expect(composer.modelPicker.chosenModel == row.value && !ComposerBarText.isDefaultModelChosen(composer.modelPicker.chosenModel))
+        // Effort: the slider offers the levels of this model; a pick is the session's effort; reset returns to the one it opened with.
+        let levels = composer.modelPicker.levels
+        #expect(levels == ["low", "medium", "high", "xhigh", "max"], "\(levels)")
+        #expect(composer.effortBaseline == "medium" && !composer.modelPicker.canResetEffort)
+        await composer.setEffort("max").value
+        #expect(composer.modelPicker.chosenLevel == "max" && composer.modelPicker.canResetEffort)
+        await composer.resetEffort().value
+        #expect(composer.modelPicker.chosenLevel == "medium" && !composer.modelPicker.canResetEffort)
+        await fixture.rig.finish()
+    }
+
+    /// M2: the baseline is what the session had when it opened, never the first level the user picks; with none, the reset goes
+    /// to Default (the CLI's own effort) and clears the choice.
+    @Test func theEffortResetNeverTakesTheUsersFirstPickAsItsBaseline() async throws {
+        let fixture = try await make()
+        let composer = fixture.composer
+        #expect(composer.effortBaseline == nil && composer.state.choices.effort == nil)
+        await composer.setEffort("high").value
+        #expect(composer.effortBaseline == nil, "the first pick is not what the session opened with")
+        #expect(composer.modelPicker.chosenLevel == "high" && composer.modelPicker.canResetEffort)
+        await composer.resetEffort().value
+        #expect(composer.state.choices.effort == nil && !composer.modelPicker.canResetEffort)
+        #expect(try await fixture.rig.runtime.catalog.launchChoices(sessionID: fixture.id).effort == nil, "the next spawn passes none")
+        await fixture.rig.finish()
+    }
+
+    /// M2: a model without effort clears the effort and the slider; one with fewer levels clamps it.
+    @Test func aModelThatLacksTheEffortClampsOrClearsItInTheBar() async throws {
+        let fixture = try await make(choices: ClaudeLaunchChoices(model: "opus", effort: "max"))
+        let composer = fixture.composer
+        await composer.setModel("sonnet").value
+        #expect(composer.state.choices.effort == "high" && composer.modelPicker.levels == ["low", "medium", "high"])
+        await composer.setModel("haiku").value
+        #expect(composer.state.choices.effort == nil && composer.modelPicker.levels.isEmpty && composer.modelPicker.effortTitle == nil)
+        await fixture.rig.finish()
+    }
+
+    /// S2 in the bar: Ask is refused while a tool approval waits, the notice says so, and the request stays.
+    @Test func askIsRefusedWithANoticeWhileAnApprovalWaits() async throws {
+        let fixture = try await make()
+        let composer = fixture.composer
+        try await fixture.driver.send("/scenario approval")
+        #expect(await waitUntil { await composer.refresh(); return composer.state.requestCount == 1 })
+        await composer.setMode("ask").value
+        #expect(composer.notice?.text == "Answer the waiting request first.", "\(String(describing: composer.notice?.text))")
+        #expect(composer.state.requestCount == 1 && composer.state.choices.permissionMode != "ask")
+        await fixture.rig.finish()
+    }
+
+    /// A message that came back as a draft is in the composer; a successful Retry sends it again, and it leaves the composer and
+    /// the draft file (it used to be twice).
+    @Test func aRetriedMessageLeavesTheComposerAndItsDraftFile() async throws {
+        let fixture = try await make()
+        let composer = fixture.composer
+        try await fixture.driver.send("/scenario work 6000")
+        #expect(await waitUntil { await fixture.driver.snapshot().model.entries.contains { if case .tool = $0.body { true } else { false } } })
+        let receipt = try await fixture.driver.send("please retry me")
+        guard case let .sent(heldID) = receipt else { Issue.record("not sent"); return }
+        #expect(await waitUntil {
+            if case let .user(prompt)? = await fixture.driver.snapshot().model.entry(id: heldID)?.body { prompt.delivery == .queued } else { false }
+        })
+        let pid = try #require(await fixture.driver.snapshot().processID)
+        #expect(kill(pid, SIGKILL) == 0)
+        #expect(await waitUntil { await fixture.driver.currentPhase == .failed(.ended) })
+        #expect(await waitUntil { await composer.refresh(); return composer.text.contains("please retry me") }, "it came back: \(composer.text)")
+        #expect(await waitUntil { await fixture.rig.runtime.supervisor.session(id: fixture.id)?.currentRun == nil })
+        _ = try await fixture.driver.retry(messageID: heldID)
+        #expect(await waitUntil { await composer.refresh(); return !composer.text.contains("please retry me") }, "gone: \(composer.text)")
+        composer.flushDraft()
+        #expect(try fixture.store.load(sessionID: fixture.id)?.text.contains("please retry me") != true)
+        await fixture.rig.finish()
+    }
+
+    /// The draft is read off the main thread: text typed before it is back is kept after the draft's own, and is saved once the
+    /// draft is known (saves waited for the file, or they would replace it with the typed words alone).
+    @Test func textTypedBeforeTheDraftFileIsReadStaysAfterTheDraft() async throws {
+        let fixture = try await make()
+        try fixture.store.save(ChatDraft(text: "saved earlier"), sessionID: fixture.id)
+        var environment = ComposerEnvironment()
+        environment.draftDelay = .milliseconds(40)
+        let again = ChatComposerModel(driver: fixture.driver, card: fixture.id, drafts: fixture.store, environment: environment)
+        again.start()
+        let editor = FakeComposerEditor(model: again)
+        editor.type("typed at once")
+        // A blur or a Quit right away: nothing can be written before the file is read, and nothing may be lost for it.
+        again.flushDraft()
+        await again.attachmentsRestored()
+        #expect(again.text == "saved earlier\n\ntyped at once", "\(again.text)")
+        #expect(await waitUntil { (try? fixture.store.load(sessionID: fixture.id)?.text) == "saved earlier\n\ntyped at once" })
+        await fixture.rig.finish()
+    }
+
+    /// The same with no draft file at all: the blur right away still keeps what was typed (the first save waited for the read).
+    @Test func textTypedBeforeTheDraftFileIsReadIsSavedWhenThereIsNoDraft() async throws {
+        let fixture = try await make()
+        #expect(try fixture.store.load(sessionID: fixture.id) == nil)
+        var environment = ComposerEnvironment()
+        environment.draftDelay = .milliseconds(40)
+        let again = ChatComposerModel(driver: fixture.driver, card: fixture.id, drafts: fixture.store, environment: environment)
+        again.start()
+        FakeComposerEditor(model: again).type("first words")
+        again.flushDraft()
+        await again.attachmentsRestored()
+        #expect(await waitUntil { (try? fixture.store.load(sessionID: fixture.id)?.text) == "first words" })
+        await fixture.rig.finish()
+    }
+
     // MARK: Fix round (V17)
 
     /// Fix 2: a send that fails puts the attachments back with the text, and their files stay beside the draft.
@@ -748,5 +879,35 @@ struct ComposerTextViewTests {
         let after = storage.attributes(at: 0, effectiveRange: nil)
         #expect(after[.font] as? NSFont == view.font)
         #expect(after[.foregroundColor] as? NSColor == view.textColor)
+    }
+
+    /// The Edit menu's Undo, Redo and Cut are the standard selectors sent to the first responder (`AppDelegate+Menus`): the
+    /// composer's text view must be that responder and answer them. The menu itself lives in the app target, so this sends the
+    /// same selectors the menu items do, through the responder chain of a window that is never shown.
+    @Test func theEditMenusUndoRedoAndCutReachTheComposersTextView() throws {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 200), styleMask: [.titled], backing: .buffered, defer: true)
+        let view = ComposerTextEditor.ComposerTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 100))
+        view.isRichText = false
+        view.allowsUndo = true
+        window.contentView?.addSubview(view)
+        #expect(window.makeFirstResponder(view), "the field takes the focus")
+        #expect(window.firstResponder === view)
+        let undo = Selector(("undo:")), redo = Selector(("redo:")), cut = #selector(NSText.cut(_:))
+        #expect(view.responds(to: cut))
+
+        func type(_ text: String) { view.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0)) }
+        type("hello world")
+        #expect(view.string == "hello world")
+        // Undo and Redo from the menu have a nil target: the action walks the responder chain from the first responder.
+        #expect(view.tryToPerform(undo, with: nil), "something in the chain answers undo:")
+        #expect(view.string.isEmpty, "Undo took back the typing: \(view.string)")
+        #expect(view.tryToPerform(redo, with: nil), "something in the chain answers redo:")
+        #expect(view.string == "hello world", "Redo put it back: \(view.string)")
+        // Cut is enabled for a selection and not without one (it is not performed here: it would take the user's clipboard).
+        let item = NSMenuItem(title: "Cut", action: cut, keyEquivalent: "x")
+        view.setSelectedRange(NSRange(location: 5, length: 6))
+        #expect(view.validateMenuItem(item), "Cut is enabled with a selection")
+        view.setSelectedRange(NSRange(location: 5, length: 0))
+        #expect(!view.validateMenuItem(item), "and disabled without one")
     }
 }

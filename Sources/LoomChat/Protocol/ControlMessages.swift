@@ -293,6 +293,8 @@ public struct InitializeResponse: Sendable, Equatable {
     public var pid: Int?
     public var fastModeState: String?
     public var outputStyle: String?
+    /// The styles the CLI found (`plugin:Name` for a plugin's). Nil when the answer does not say.
+    public var availableOutputStyles: [String]?
     public var models: [ModelOption]
     public var commands: [CommandInfo]
     /// Only `ui_surface_v1` on 2.1.300; gate on the capabilities of `system/init` instead.
@@ -305,6 +307,7 @@ public struct InitializeResponse: Sendable, Equatable {
         pid = json["pid"]?.int
         fastModeState = json["fast_mode_state"]?.string
         outputStyle = json["output_style"]?.string
+        availableOutputStyles = json["available_output_styles"]?.array.map { $0.compactMap(\.string) }
         capabilities = (json["capabilities"]?.array ?? []).compactMap(\.string)
         models = (json["models"]?.array ?? []).compactMap { model in
             model["value"]?.string.map {

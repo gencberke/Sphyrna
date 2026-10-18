@@ -389,8 +389,146 @@ struct ComposerBarTextTests {
             #expect(!title.contains("\u{26A0}"))
             #expect(!title.contains("!"))
         }
-        #expect(ComposerBarText.modeTitle(permissionMode: nil, choices: ClaudeLaunchChoices()) == "Claude's default")
+        #expect(ComposerBarText.modeTitle(permissionMode: nil, choices: ClaudeLaunchChoices()) == "Mode")
         #expect(ComposerBarText.modeTitle(permissionMode: nil, choices: ClaudeLaunchChoices(permissionMode: "plan")) == ClaudePermissionMode.plan.title)
+    }
+
+    /// D-63: five modes, Loom's names, Ask first, no Plan, and no "Claude's default" anywhere.
+    @Test func theModeListHasTheFiveModesUnderLoomsNames() {
+        let titles = ClaudePermissionMode.menuModes.map(\.title)
+        #expect(titles == ["Ask", "Ask before edits", "Accept edits", "Auto", "Full access"])
+        #expect(!ClaudePermissionMode.menuModes.contains(.plan), "Plan is a card's choice, not a mode of the list")
+        #expect(ClaudePermissionMode.plan.title == "Plan", "a plan session still reads as Plan")
+        for mode in ClaudePermissionMode.allCases {
+            #expect(!ComposerBarText.modeDetail(mode).isEmpty)
+            #expect(!mode.title.contains("Claude"), "no \"Claude's default\" mode any more")
+            #expect(!ComposerBarText.modeDetail(mode).localizedCaseInsensitiveContains("conversation"))
+        }
+        // Ask is Loom's own: the CLI is told `dontAsk`, every other mode keeps its word.
+        #expect(ClaudePermissionMode.ask.cliValue == "dontAsk")
+        #expect(ClaudePermissionMode.askBeforeEdits.cliValue == "default" && ClaudePermissionMode.fullAccess.cliValue == "bypassPermissions")
+        #expect(ClaudePermissionMode.isOffered("ask") && ClaudePermissionMode.isOffered("default") && !ClaudePermissionMode.isOffered("plan"))
+    }
+
+    /// An older session, or one the CLI put in a mode of its own, reads under Loom's name or as the CLI wrote it.
+    @Test func aModeLoomDoesNotKnowReadsAsTheCliWroteIt() {
+        let none = ClaudeLaunchChoices()
+        #expect(ComposerBarText.modeTitle(permissionMode: "default", choices: none) == "Ask before edits")
+        #expect(ComposerBarText.modeTitle(permissionMode: "bypassPermissions", choices: none) == "Full access")
+        #expect(ComposerBarText.modeTitle(permissionMode: "dontAsk", choices: none) == "Ask", "dontAsk is Ask's word to the CLI")
+        #expect(ComposerBarText.modeTitle(permissionMode: "somethingNewer", choices: none) == "somethingNewer")
+        // A session in Ask reports the CLI's `dontAsk` (or nothing yet, or nothing at all once it stopped): the bar says Ask.
+        let ask = ClaudeLaunchChoices(permissionMode: "ask")
+        #expect(ComposerBarText.modeTitle(permissionMode: nil, choices: ask) == "Ask")
+        #expect(ComposerBarText.modeTitle(permissionMode: "dontAsk", choices: ask) == "Ask")
+        // A stopped session shows the mode chosen, not the one the CLI reported last (`permissionMode` is nil then).
+        #expect(ComposerBarText.modeTitle(permissionMode: nil, choices: ClaudeLaunchChoices(permissionMode: "acceptEdits")) == "Accept edits")
+        // Once the CLI reports another mode (the mode was changed, a plan was approved), the bar follows it.
+        #expect(ComposerBarText.modeTitle(permissionMode: "plan", choices: ask) == "Plan")
+        #expect(ComposerBarText.modeTitle(permissionMode: "acceptEdits", choices: ask) == "Accept edits")
+    }
+
+    @Test func eachModeHasItsOwnIconAndToneAndTheToneIsReadableOnAPopoverAndACard() {
+        var symbols = Set<String>()
+        var tones: [LoomTheme.RGB] = []
+        for mode in ClaudePermissionMode.menuModes {
+            symbols.insert(ComposerModeLook.symbol(forRaw: mode.rawValue))
+            let tone = LoomTheme.Composer.ModeTone.rgb(forRaw: mode.rawValue)
+            tones.append(tone)
+            for surface in [LoomTheme.Surface.popoverRGB, LoomTheme.Surface.cardRGB] {
+                #expect(tone.contrast(with: surface) >= 4.5, "\(mode.title) on \(surface)")
+            }
+        }
+        #expect(symbols.count == ClaudePermissionMode.menuModes.count, "one icon per mode")
+        #expect(Set(tones.map { "\($0.red),\($0.green),\($0.blue)" }).count == tones.count, "one colour per mode")
+        #expect(ComposerModeLook.symbol(forRaw: "dontAsk") == "shield" && LoomTheme.Composer.ModeTone.rgb(forRaw: "dontAsk") == LoomTheme.Composer.ModeTone.neutralRGB)
+    }
+
+    /// What each model offers for effort: its own list from the CLI, none for a model without effort, else the five.
+    @Test func theEffortLevelsFollowTheModelTheCliListed() {
+        func state(_ models: [ModelOption], chosen: String? = nil, resolved: String? = nil) -> ChatComposerState {
+            var state = ChatComposerState.idle(sessionID: UUID())
+            state.models = models
+            state.choices.model = chosen
+            state.resolvedModel = resolved
+            return state
+        }
+        let five = ["low", "medium", "high", "xhigh", "max"]
+        let opus = ModelOption(value: "opus", resolvedModel: "claude-opus-5-5", displayName: "Opus", supportedEffortLevels: five)
+        let sonnet = ModelOption(value: "sonnet", resolvedModel: "claude-sonnet-5-5", displayName: "Sonnet",
+                                 supportedEffortLevels: ["low", "medium", "high"])
+        let haiku = ModelOption(value: "haiku", resolvedModel: "claude-haiku-4-5", displayName: "Haiku", supportedEffortLevels: [])
+        let models = [opus, sonnet, haiku]
+        #expect(ComposerBarText.effortLevels(state(models, chosen: "opus")) == five)
+        #expect(ComposerBarText.effortLevels(state(models, chosen: "sonnet")) == ["low", "medium", "high"])
+        #expect(ComposerBarText.effortLevels(state(models, chosen: "haiku")).isEmpty, "a model without effort offers no slider")
+        #expect(ComposerBarText.effortLevels(state(models, resolved: "claude-sonnet-5-5")) == ["low", "medium", "high"])
+        // A CLI that listed no effort for any model has not said anything about this one: the five the CLI takes.
+        let silent = ModelOption(value: "opus", resolvedModel: "claude-opus-5-5", displayName: nil, supportedEffortLevels: [])
+        #expect(ComposerBarText.effortLevels(state([silent], chosen: "opus")) == five)
+        #expect(ComposerBarText.effortLevels(state([])) == five)
+        #expect(NewSessionModels.effortLevels == five)
+    }
+
+    @Test func theModelPickerOffersDefaultThenTheCliModelsAndResetsEffortOnlyWhenItMoved() {
+        var state = ChatComposerState.idle(sessionID: UUID())
+        let plain = ComposerBarText.modelPicker(state, effortBaseline: nil)
+        #expect(plain.rows.map(\.title) == ["Opus", "Sonnet", "Haiku"] && ComposerBarText.isDefaultModelChosen(plain.chosenModel))
+        #expect(!plain.canResetEffort)
+        state.reportedEffort = "medium"
+        #expect(!ComposerBarText.modelPicker(state, effortBaseline: "medium").canResetEffort)
+        state.choices.effort = "high"
+        let moved = ComposerBarText.modelPicker(state, effortBaseline: "medium")
+        #expect(moved.canResetEffort && moved.chosenLevel == "high" && moved.effortTitle == "High")
+        #expect(!ComposerBarText.isDefaultModelChosen("opus") && ComposerBarText.isDefaultModelChosen("default"))
+    }
+
+    /// M2: the reset goes to the effort the session opened with, as the model now chosen takes it; with none, to Default.
+    @Test func theEffortResetGoesToTheBaselineAsTheModelTakesItOrToDefault() {
+        var state = ChatComposerState.idle(sessionID: UUID())
+        let sonnet = ModelOption(value: "sonnet", resolvedModel: "claude-sonnet-5-5", displayName: "Sonnet",
+                                 supportedEffortLevels: ["low", "medium", "high"])
+        state.models = [sonnet]
+        state.choices.model = "sonnet"
+        state.choices.effort = "low"
+        #expect(ComposerBarText.resetTarget(state, effortBaseline: "xhigh") == "high", "the baseline the model lacks is clamped")
+        #expect(ComposerBarText.resetTarget(state, effortBaseline: "medium") == "medium")
+        #expect(ComposerBarText.resetTarget(state, effortBaseline: nil) == nil, "no baseline: Default")
+        #expect(ComposerBarText.modelPicker(state, effortBaseline: nil).canResetEffort, "an effort chosen over none can go back to Default")
+        state.choices.effort = nil
+        #expect(!ComposerBarText.modelPicker(state, effortBaseline: nil).canResetEffort)
+    }
+
+    /// The notices of a mode change that did not happen say what is true now.
+    @Test func aRefusedModeChangeSaysWhatIsTrueNow() {
+        #expect(ChatComposerModel.modeFailure(ChatDriverError.requestWaiting) == "Answer the waiting request first.")
+        #expect(ChatComposerModel.modeFailure(ChatDriverError.modeNotChanged(staysInAsk: true))
+            == "The mode was not changed; the session stays in Ask.")
+        #expect(ChatComposerModel.modeFailure(ChatDriverError.askUnavailable).hasSuffix("The mode was not changed."))
+        #expect(ChatComposerModel.modeFailure(ChatDriverError.inputFull) == "The mode was not changed.")
+    }
+
+    /// B1: where the session starts in the terminal, Ask is in the mode list but cannot be chosen, and says why.
+    @MainActor @Test func askIsListedButDisabledWhereTheSessionStartsInTheTerminal() throws {
+        let chat = ComposerModeChip.rows(selected: "default")
+        let ask = try #require(chat.first { $0.id == "ask" })
+        #expect(ask.isEnabled && ask.subtitle == ComposerBarText.modeDetail(.ask))
+        let terminal = ComposerModeChip.rows(selected: "default", askAllowed: false)
+        let blocked = try #require(terminal.first { $0.id == "ask" })
+        #expect(!blocked.isEnabled && blocked.subtitle == "Chat only" && !blocked.checked)
+        #expect(terminal.filter { $0.id != "ask" }.allSatisfy { $0.isEnabled })
+        #expect(terminal.map { $0.id } == chat.map { $0.id })
+    }
+
+    @Test func theEffortSliderPicksTheNearestStopAndSpansTheTrack() {
+        let positions = EffortSliderMath.positions(count: 5, width: 200, thumb: 20, inset: 4)
+        #expect(positions.count == 5 && abs(positions[0] - 14) < 0.001 && abs(positions[4] - 186) < 0.001)
+        #expect(zip(positions, positions.dropFirst()).allSatisfy { $1 > $0 })
+        #expect(EffortSliderMath.nearest(to: -50, in: positions) == 0 && EffortSliderMath.nearest(to: 500, in: positions) == 4)
+        #expect(EffortSliderMath.nearest(to: positions[2] + 3, in: positions) == 2)
+        #expect(EffortSliderMath.positions(count: 0, width: 200, thumb: 20, inset: 4).isEmpty)
+        #expect(EffortSliderMath.positions(count: 1, width: 200, thumb: 20, inset: 4) == [100])
+        #expect(EffortSliderMath.nearest(to: 10, in: []) == nil)
     }
 
     @Test func theContextReadsFromTheDriverElseTheUsageIndex() {

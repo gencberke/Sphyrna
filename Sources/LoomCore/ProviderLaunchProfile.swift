@@ -216,7 +216,9 @@ public struct ProviderLaunchProfile: Sendable {
                 throw LoomError.message("This Claude CLI does not take --permission-mode (\(capabilities.version))")
             }
             guard ClaudeLaunchChoices.isSafeToken(mode) else { throw LoomError.message("The permission mode is not valid") }
-            choiceArguments += ["--permission-mode", mode]
+            // The CLI's word for the mode. Ask is Loom's own mode of the Chat face: there it runs on `dontAsk` (with rules and a
+            // style set by control requests), and a terminal launch starts it in Ask before edits instead (D-63).
+            choiceArguments += ["--permission-mode", ClaudePermissionMode(rawValue: mode)?.launchValue(chat: face == .chat) ?? mode]
         }
         if let model = choices.model {
             guard capabilities.claudeAcceptsModel else {
@@ -327,7 +329,7 @@ public struct ClaudeHookLaunchConfiguration: Equatable, Sendable {
     public let authenticationToken: String
     /// The request/response socket of `loom-hook open`; nil when this run has none.
     public let controlSocketPath: String?
-    /// `ClaudeLoomPlugin`'s folder, passed as `--plugin-dir`; nil without the control socket it describes.
+    /// `ClaudeLoomPlugin`'s folder, passed as `--plugin-dir`; nil when it could not be written.
     public let pluginDirectory: String?
 
     public init(helperPath: String, socketPath: String, authenticationToken: String,

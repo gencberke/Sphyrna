@@ -124,7 +124,7 @@ struct NewSessionTests {
         let store = try #require(model.newSession.store)
         store.delay = .milliseconds(60)
         model.setDraftBranch(.newBranch, name: "feat/mine", projectID: rig.projectID)
-        model.setDraftMode(.claudeDefault, projectID: rig.projectID)
+        model.setDraftMode(.value("auto"), projectID: rig.projectID)
         #expect(store.writeCount == 0, "picks on an empty draft are not saved")
 
         for letter in ["f", "fi", "fix", "fix it"] { model.setDraftText(letter, projectID: rig.projectID) }
@@ -141,7 +141,7 @@ struct NewSessionTests {
         again.prepareNewSession()
         let restored = try #require(again.newSession.visibleDrafts.first)
         #expect(restored.projectID == rig.projectID && restored.text == "fix it")
-        #expect(restored.branchKind == .newBranch && restored.branchName == "feat/mine" && restored.modePick == .claudeDefault)
+        #expect(restored.branchKind == .newBranch && restored.branchName == "feat/mine" && restored.modePick == .value("auto"))
 
         // Clearing the text makes it invisible again and the file forgets it.
         model.setDraftText("   ", projectID: rig.projectID)
@@ -186,31 +186,33 @@ struct NewSessionTests {
 
     @Test func theDefaultsFollowThePickThenLastUsedThenSettingsThenTheCli() {
         let last = ClaudeLaunchChoices(permissionMode: "acceptEdits", model: "sonnet")
-        let settings = NewSessionSettings(permissionMode: "plan", model: "haiku")
+        let settings = NewSessionSettings(permissionMode: "auto", model: "haiku")
         func resolve(_ mode: DraftPick = .inherit, _ model: DraftPick = .inherit, last: ClaudeLaunchChoices? = nil,
                      settings: NewSessionSettings = NewSessionSettings()) -> ResolvedStart {
             NewSessionDefaults.resolve(modePick: mode, modelPick: model, lastUsed: last, settings: settings)
         }
-        // 4: nothing says anything, so nothing is passed and the chip still names it.
+        // 4: nothing says anything: the mode is Ask before edits, passed explicitly (D-63); the model and the effort are left to the CLI.
         let none = resolve()
-        #expect(none.mode == ResolvedChoice(value: nil, source: .cliDefault) && none.model == ResolvedChoice(value: nil, source: .cliDefault))
-        #expect(none.choices.isEmpty && none.modeTitle == "Claude's default")
-        #expect(none.modelTitle == "Default model", "the two chips never both read Claude's default")
+        #expect(none.mode == ResolvedChoice(value: "default", source: .loomDefault))
+        #expect(none.model == ResolvedChoice(value: nil, source: .cliDefault) && none.effort == ResolvedChoice(value: nil, source: .cliDefault))
+        #expect(none.choices == ClaudeLaunchChoices(permissionMode: "default") && none.modeTitle == "Ask before edits")
+        #expect(none.modelTitle == "Default model" && none.effortTitle == nil)
         // 3: Loom's settings.
-        #expect(resolve(settings: settings).mode == ResolvedChoice(value: "plan", source: .settings))
+        #expect(resolve(settings: settings).mode == ResolvedChoice(value: "auto", source: .settings))
         #expect(resolve(settings: settings).model == ResolvedChoice(value: "haiku", source: .settings))
         // 2: what was last used in the project beats the settings.
         let remembered = resolve(last: last, settings: settings)
         #expect(remembered.mode == ResolvedChoice(value: "acceptEdits", source: .lastUsed))
         #expect(remembered.model == ResolvedChoice(value: "sonnet", source: .lastUsed))
         #expect(remembered.modeTitle == "Accept edits" && remembered.modelTitle == "Sonnet")
-        // 1: a pick beats everything, and choosing Claude's default on purpose is a pick too.
-        let picked = resolve(.value("auto"), .value("opus"), last: last, settings: settings)
-        #expect(picked.mode == ResolvedChoice(value: "auto", source: .pick) && picked.model == ResolvedChoice(value: "opus", source: .pick))
+        // 1: a pick beats everything, and choosing the model's own default on purpose is a pick too.
+        let picked = resolve(.value("ask"), .value("opus"), last: last, settings: settings)
+        #expect(picked.mode == ResolvedChoice(value: "ask", source: .pick) && picked.model == ResolvedChoice(value: "opus", source: .pick))
         let explicit = resolve(.claudeDefault, .claudeDefault, last: last, settings: settings)
-        #expect(explicit.mode == ResolvedChoice(value: nil, source: .pick) && explicit.choices.isEmpty)
+        #expect(explicit.model == ResolvedChoice(value: nil, source: .pick), "the model's default is a pick")
+        #expect(explicit.mode == ResolvedChoice(value: "acceptEdits", source: .lastUsed), "the mode has no such pick: an old one reads as nothing")
         // Each chip follows its own levels.
-        let mixed = resolve(.value("plan"), last: last)
+        let mixed = resolve(.value("ask"), last: last)
         #expect(mixed.mode.source == .pick && mixed.model == ResolvedChoice(value: "sonnet", source: .lastUsed))
     }
 
@@ -219,17 +221,53 @@ struct NewSessionTests {
         let last = ClaudeLaunchChoices(permissionMode: full)
         // A remembered or configured Full access is skipped: the next level answers.
         #expect(NewSessionDefaults.resolve(modePick: .inherit, modelPick: .inherit, lastUsed: last,
-                                           settings: NewSessionSettings(permissionMode: "plan")).mode
-            == ResolvedChoice(value: "plan", source: .settings))
+                                           settings: NewSessionSettings(permissionMode: "auto")).mode
+            == ResolvedChoice(value: "auto", source: .settings))
         #expect(NewSessionDefaults.resolve(modePick: .inherit, modelPick: .inherit, lastUsed: last,
                                            settings: NewSessionSettings(permissionMode: full)).mode
-            == ResolvedChoice(value: nil, source: .cliDefault))
+            == ResolvedChoice(value: "default", source: .loomDefault))
         // Only a pick in this draft carries it, and it looks like every other mode.
         let picked = NewSessionDefaults.resolve(modePick: .value(full), modelPick: .inherit, lastUsed: nil, settings: NewSessionSettings())
         #expect(picked.mode == ResolvedChoice(value: full, source: .pick) && picked.modeTitle == "Full access")
         // A value that could be taken for an option never resolves.
         #expect(NewSessionDefaults.resolve(modePick: .value("--x"), modelPick: .inherit, lastUsed: nil, settings: NewSessionSettings())
-            .mode.value == nil)
+            .mode == ResolvedChoice(value: "default", source: .loomDefault))
+    }
+
+    /// Review B1: Ask is a Chat mode. Where the session starts in the terminal, a picked, remembered or configured Ask becomes
+    /// Ask before edits for that start; where it starts in Chat, Ask stays.
+    @Test func askFallsBackToAskBeforeEditsWhereTheSessionStartsInTheTerminal() {
+        let remembered = ClaudeLaunchChoices(permissionMode: "ask", model: "opus")
+        func resolve(_ pick: DraftPick = .inherit, last: ClaudeLaunchChoices? = nil, settings: NewSessionSettings = NewSessionSettings(),
+                     askAllowed: Bool) -> ResolvedStart {
+            NewSessionDefaults.resolve(modePick: pick, modelPick: .inherit, lastUsed: last, settings: settings, askAllowed: askAllowed)
+        }
+        #expect(resolve(.value("ask"), askAllowed: true).mode == ResolvedChoice(value: "ask", source: .pick))
+        #expect(resolve(.value("ask"), askAllowed: false).mode == ResolvedChoice(value: "default", source: .pick))
+        #expect(resolve(last: remembered, askAllowed: true).mode == ResolvedChoice(value: "ask", source: .lastUsed))
+        #expect(resolve(last: remembered, askAllowed: false).mode == ResolvedChoice(value: "default", source: .lastUsed))
+        #expect(resolve(settings: NewSessionSettings(permissionMode: "ask"), askAllowed: false).mode
+            == ResolvedChoice(value: "default", source: .settings))
+        // Every other mode is the same in both faces, and the launch choices carry the fallback.
+        #expect(resolve(.value("acceptEdits"), askAllowed: false).mode == ResolvedChoice(value: "acceptEdits", source: .pick))
+        #expect(resolve(last: remembered, askAllowed: false).choices.permissionMode == "default")
+    }
+
+    /// The start face for the mode menu is one question (`newSessionStartsInChat`), Settings → "New sessions start in".
+    @Test func theDraftsModeListFollowsTheFaceTheSessionStartsIn() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        model.beginNewSession(projectID: rig.projectID)
+        model.setDraftMode(.value("ask"), projectID: rig.projectID)
+        model.setNewSessionFace(.terminal)
+        #expect(!model.newSessionStartsInChat && !model.newSessionAllowsAsk)
+        #expect(model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "default", source: .pick))
+        model.setNewSessionFace(.chat)
+        #expect(model.newSessionStartsInChat && model.newSessionAllowsAsk)
+        #expect(model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "ask", source: .pick))
     }
 
     @Test func whatWasLastUsedInAProjectIsRememberedPerProjectAndAcrossRelaunches() async throws {
@@ -239,8 +277,9 @@ struct NewSessionTests {
         let model = rig.model
         defer { model.stop() }
         model.showDraft(projectID: rig.projectID)
-        model.setDraftMode(.value("plan"), projectID: rig.projectID)
+        model.setDraftMode(.value("acceptEdits"), projectID: rig.projectID)
         model.setDraftModel(.value("opus"), projectID: rig.projectID)
+        model.setDraftEffort(.value("high"), projectID: rig.projectID)
         model.setDraftText("go", projectID: rig.projectID)
         model.sendDraft(projectID: rig.projectID)
         #expect(await waitUntil { !rig.intents.sends.isEmpty })
@@ -250,15 +289,114 @@ struct NewSessionTests {
         model.showHome()
         model.beginNewSession(projectID: rig.projectID)
         let resolved = model.resolvedStart(for: rig.projectID)
-        #expect(resolved.mode == ResolvedChoice(value: "plan", source: .lastUsed))
+        #expect(resolved.mode == ResolvedChoice(value: "acceptEdits", source: .lastUsed))
+        #expect(resolved.effort == ResolvedChoice(value: "high", source: .lastUsed))
         #expect(resolved.model == ResolvedChoice(value: "opus", source: .lastUsed))
         model.beginNewSession(projectID: rig.otherProjectID)
-        #expect(model.resolvedStart(for: rig.otherProjectID).choices.isEmpty)
+        #expect(model.resolvedStart(for: rig.otherProjectID).choices == ClaudeLaunchChoices(permissionMode: "default"))
         // A relaunch reads it back from the file.
         let again = NewSessionState()
         again.attach(store: NewSessionStore(url: rig.storeURL))
-        #expect(again.lastUsed(for: rig.projectID) == ClaudeLaunchChoices(permissionMode: "plan", model: "opus"))
+        #expect(again.lastUsed(for: rig.projectID) == ClaudeLaunchChoices(permissionMode: "acceptEdits", model: "opus", effort: "high"))
         #expect(again.lastUsed(for: rig.otherProjectID) == nil)
+    }
+
+    /// D-63: a new session starts in the project's last used mode, else Ask before edits (`default`), and the mode is always
+    /// passed to the CLI explicitly. Full access is never picked by itself, not even when it was the last used.
+    @Test func aNewSessionStartsInTheLastUsedModeElseAskBeforeEditsAndNeverInFullAccessByItself() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        model.setNewSessionFace(.chat) // Ask is a Chat mode: the draft offers it where the session starts in Chat
+        func sendOne(mode: DraftPick?) async throws -> NewSessionLaunch {
+            let count = rig.intents.sends.count
+            await openDraft(model, rig.projectID)
+            if let mode { model.setDraftMode(mode, projectID: rig.projectID) }
+            model.setDraftText("go \(count)", projectID: rig.projectID)
+            model.sendDraft(projectID: rig.projectID)
+            #expect(await waitUntil { rig.intents.sends.count == count + 1 })
+            let sent = rig.intents.sends[count]
+            sent.outcome(.started(UUID()))
+            #expect(await waitUntil { !model.newSession.isSending(rig.projectID) })
+            model.showHome()
+            return sent.launch
+        }
+        // Nothing used yet: Ask before edits, passed as `default`.
+        #expect(try await sendOne(mode: nil).choices.permissionMode == "default")
+        // A pick is used and remembered per project.
+        #expect(try await sendOne(mode: .value("ask")).choices.permissionMode == "ask")
+        #expect(try await sendOne(mode: nil).choices.permissionMode == "ask", "the next session starts where the last one was")
+        #expect(model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "ask", source: .lastUsed))
+        #expect(model.resolvedStart(for: rig.otherProjectID).mode == ResolvedChoice(value: "default", source: .loomDefault))
+        // Full access is chosen on purpose, and the next session does not inherit it.
+        #expect(try await sendOne(mode: .value("bypassPermissions")).choices.permissionMode == "bypassPermissions")
+        #expect(try await sendOne(mode: nil).choices.permissionMode == "ask", "Full access is not remembered")
+    }
+
+    /// The draft has the model and the effort pickers of the live bar: a pick goes to the launch, `claudeDefault` is the
+    /// model's own default on purpose, and the effort a session used is the next one's start.
+    @Test func theDraftsModelAndEffortPicksReachTheLaunchAndAreRemembered() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        await openDraft(model, rig.projectID)
+        #expect(NewSessionModels.effortLevels == ["low", "medium", "high", "xhigh", "max"])
+        model.setDraftModel(.value("sonnet"), projectID: rig.projectID)
+        model.setDraftEffort(.value("xhigh"), projectID: rig.projectID)
+        let picked = model.resolvedStart(for: rig.projectID)
+        #expect(picked.model == ResolvedChoice(value: "sonnet", source: .pick) && picked.effort == ResolvedChoice(value: "xhigh", source: .pick))
+        #expect(picked.modelTitle == "Sonnet" && picked.effortTitle == "Extra high")
+        // An effort the CLI does not take never reaches a launch.
+        model.setDraftEffort(.value("turbo"), projectID: rig.projectID)
+        model.setDraftEffort(.value("--x"), projectID: rig.projectID)
+        #expect(model.resolvedStart(for: rig.projectID).effort.value == nil)
+        model.setDraftEffort(.value("xhigh"), projectID: rig.projectID)
+        model.setDraftText("go", projectID: rig.projectID)
+        model.sendDraft(projectID: rig.projectID)
+        #expect(await waitUntil { !rig.intents.sends.isEmpty })
+        #expect(rig.intents.sends[0].launch.choices == ClaudeLaunchChoices(permissionMode: "default", model: "sonnet", effort: "xhigh"))
+        rig.intents.sends[0].outcome(.started(UUID()))
+        #expect(await waitUntil { model.newSession.lastUsed(for: rig.projectID)?.effort == "xhigh" })
+        // The next draft of the project starts from them; choosing the default on purpose is a pick of its own.
+        model.showHome()
+        model.beginNewSession(projectID: rig.projectID)
+        #expect(model.resolvedStart(for: rig.projectID).effort == ResolvedChoice(value: "xhigh", source: .lastUsed))
+        model.setDraftModel(.claudeDefault, projectID: rig.projectID)
+        let reset = model.resolvedStart(for: rig.projectID)
+        #expect(reset.model == ResolvedChoice(value: nil, source: .pick) && reset.modelTitle == "Default model")
+    }
+
+    @Test func aDraftFileFromBeforeTheEffortPickerStillReads() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        model.beginNewSession(projectID: rig.projectID)
+        model.setDraftText("old words", projectID: rig.projectID)
+        model.setDraftMode(.claudeDefault, projectID: rig.projectID)
+        model.setDraftModel(.value("opus"), projectID: rig.projectID)
+        model.setDraftEffort(.value("high"), projectID: rig.projectID)
+        model.newSession.flush()
+        // The file as the version before wrote it: no effort pick.
+        var file = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: rig.storeURL)) as? [String: Any])
+        var drafts = try #require(file["drafts"] as? [[String: Any]])
+        #expect(drafts.allSatisfy { $0["effortPick"] != nil }, "the new file carries the pick")
+        for index in drafts.indices { drafts[index]["effortPick"] = nil }
+        file["drafts"] = drafts
+        try JSONSerialization.data(withJSONObject: file).write(to: rig.storeURL)
+        let state = NewSessionState()
+        state.attach(store: NewSessionStore(url: rig.storeURL))
+        let draft = try #require(state.draft(for: rig.projectID))
+        #expect(draft.text == "old words" && draft.effortPick == .inherit && draft.modelPick == .value("opus"))
+        // The mode had a "Claude's default" pick: it reads as nothing chosen, so the session starts in Ask before edits.
+        let resolved = NewSessionDefaults.resolve(modePick: draft.modePick, modelPick: draft.modelPick, effortPick: draft.effortPick,
+                                                  lastUsed: nil, settings: NewSessionSettings())
+        #expect(resolved.mode == ResolvedChoice(value: "default", source: .loomDefault))
     }
 
     @Test func loomsOwnDefaultsAreTheThirdLevelAndSurviveARelaunch() async throws {
@@ -267,18 +405,18 @@ struct NewSessionTests {
         let rig = try await rig(root: root)
         let model = rig.model
         defer { model.stop() }
-        model.setNewSessionDefaults(permissionMode: "plan", model: "haiku")
+        model.setNewSessionDefaults(permissionMode: "acceptEdits", model: "haiku")
         model.beginNewSession(projectID: rig.projectID)
-        #expect(model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "plan", source: .settings))
+        #expect(model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "acceptEdits", source: .settings))
         #expect(model.resolvedStart(for: rig.projectID).model == ResolvedChoice(value: "haiku", source: .settings))
         model.setDraftText("go", projectID: rig.projectID)
         model.sendDraft(projectID: rig.projectID)
         #expect(await waitUntil { rig.intents.sends.count == 1 })
-        #expect(rig.intents.sends[0].launch.choices == ClaudeLaunchChoices(permissionMode: "plan", model: "haiku"))
+        #expect(rig.intents.sends[0].launch.choices == ClaudeLaunchChoices(permissionMode: "acceptEdits", model: "haiku"))
         model.newSession.flush()
         let again = NewSessionState()
         again.attach(store: NewSessionStore(url: rig.storeURL))
-        #expect(again.settings == NewSessionSettings(permissionMode: "plan", model: "haiku"))
+        #expect(again.settings == NewSessionSettings(permissionMode: "acceptEdits", model: "haiku"))
         model.setNewSessionDefaults(permissionMode: "--bad", model: nil)
         #expect(model.newSession.settings == NewSessionSettings())
     }
@@ -521,7 +659,8 @@ struct NewSessionTests {
         model.sendDraft(projectID: rig.projectID)
         #expect(await waitUntil { rig.intents.sends.count == 1 })
         let plain = rig.intents.sends[0].launch
-        #expect(plain.workspace == .projectFolder && plain.title == nil && plain.ticketKey == nil && plain.choices.isEmpty)
+        #expect(plain.workspace == .projectFolder && plain.title == nil && plain.ticketKey == nil
+            && plain.choices == ClaudeLaunchChoices(permissionMode: "default"))
         rig.intents.sends[0].outcome(.failed)
 
         model.setDraftBranch(.newWorktree, name: "feat/mine", projectID: rig.projectID)

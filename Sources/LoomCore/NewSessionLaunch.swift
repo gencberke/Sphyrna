@@ -1,24 +1,62 @@
 import Foundation
 
-/// The permission modes Loom offers when it starts a Claude session (the `--permission-mode` values).
-/// "Ask before edits" is Claude's `default`. Loom lists Full access like the others (no warning colour,
-/// DESIGN and CHAT-SPEC → The bar) but never picks it by itself: only a choice the user makes in the draft
-/// reaches the launch (`NewSessionDefaults`).
+/// The permission modes of a Claude session, under Loom's own names (D-63). The raw value is what Loom stores in a
+/// session's launch choices; for every mode but Ask it is also the CLI's word, and `cliValue` is what the CLI is told.
+/// The menus offer `menuModes`: Ask, Ask before edits, Accept edits, Auto and Full access. `plan` is not offered any more,
+/// but a session can be in plan mode anyway (its card, a preset), so it keeps its name. Loom lists Full access like the
+/// others but never picks it by itself: only a choice the user makes reaches a launch (`NewSessionDefaults`).
 public enum ClaudePermissionMode: String, CaseIterable, Codable, Sendable {
+    /// Loom's own mode: Claude researches and answers, explains more, and changes nothing. The CLI has no such mode:
+    /// it is `dontAsk` with deny rules for the edit tools and an output style (`cliValue`, `ChatAskMode`).
+    case ask
+    /// The CLI's `default`.
     case askBeforeEdits = "default"
     case acceptEdits
     case plan
     case auto
     case fullAccess = "bypassPermissions"
 
+    /// The modes the menus offer, in order.
+    public static let menuModes: [ClaudePermissionMode] = [.ask, .askBeforeEdits, .acceptEdits, .auto, .fullAccess]
+
     public var title: String {
         switch self {
+        case .ask: "Ask"
         case .askBeforeEdits: "Ask before edits"
         case .acceptEdits: "Accept edits"
-        case .plan: "Plan mode"
+        case .plan: "Plan"
         case .auto: "Auto"
         case .fullAccess: "Full access"
         }
+    }
+
+    /// The word the CLI takes for `--permission-mode` and `set_permission_mode`. Ask runs on the CLI's `dontAsk` mode, which
+    /// refuses whatever would ask; the deny rules and the output style that complete Ask are control requests of the Chat
+    /// driver (`ChatAskMode`), never launch arguments, because a rule given at launch cannot be taken back (spike S9).
+    public var cliValue: String {
+        switch self {
+        case .ask: "dontAsk"
+        default: rawValue
+        }
+    }
+
+    /// The word a launch passes. Ask exists in the Chat face only (D-63, review fix B1): the terminal's TUI has no rules and no
+    /// output style behind `dontAsk`, so a terminal start or resume of an Ask session runs in Ask before edits.
+    public func launchValue(chat: Bool) -> String {
+        self == .ask && !chat ? ClaudePermissionMode.askBeforeEdits.rawValue : cliValue
+    }
+
+    /// A mode as Loom names it, from a stored choice or what the CLI reports (`current_permission_mode`, `system/status`).
+    /// `dontAsk` is Ask's word to the CLI (D-63) and reads "Ask"; a word that is not a mode of ours (a newer one) reads as the
+    /// CLI wrote it, never as another mode.
+    public static func title(forRaw raw: String) -> String {
+        if let mode = ClaudePermissionMode(rawValue: raw) { return mode.title }
+        return raw == ask.cliValue ? ask.title : raw
+    }
+
+    /// Whether `raw` is one of the modes the menus offer.
+    public static func isOffered(_ raw: String) -> Bool {
+        ClaudePermissionMode(rawValue: raw).map(menuModes.contains) ?? false
     }
 }
 

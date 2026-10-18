@@ -114,6 +114,8 @@ public struct ToolCall: Equatable, Sendable {
         case failed
         /// The user denied it (or a rule did).
         case denied
+        /// Ask mode refused it, as it is meant to: the session is read-only, so this is no failure and no denial.
+        case refusedInAsk
         /// The turn ended before it finished.
         case interrupted
     }

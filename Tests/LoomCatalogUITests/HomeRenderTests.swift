@@ -93,9 +93,10 @@ struct HomeRenderTests {
         try await settle(window) { self.identifiers(in: hosting.view).contains("home-continue") }
 
         let found = Set(identifiers(in: hosting.view))
-        for id in ["home", "home-start", "home-needs-you", "home-finished", "home-limits", "home-today", "home-continue"] {
+        for id in ["home", "home-needs-you", "home-finished", "home-limits", "home-today", "home-continue"] {
             #expect(found.contains(id), "\(id) is on Home at \(Int(size.width)) pt")
         }
+        #expect(!found.contains("home-start"), "Home has no start box any more (V19)")
         #expect(!found.contains("home-nothing-waiting") && !found.contains("home-no-claude") && !found.contains("home-empty-catalog"))
         let said = labels(in: hosting.view)
         #expect(said.contains("Needs you, 1") && said.contains("Finished, not read, 1"))
@@ -112,7 +113,7 @@ struct HomeRenderTests {
         defer { window.close() }
         try await settle(window) { self.identifiers(in: hosting.view).contains("home-nothing-waiting") }
         let found = Set(identifiers(in: hosting.view))
-        #expect(found.contains("home-nothing-waiting") && found.contains("home-start"))
+        #expect(found.contains("home-nothing-waiting") && !found.contains("home-start"))
         #expect(!found.contains("home-needs-you") && !found.contains("home-finished") && !found.contains("home-continue"))
         #expect(!found.contains("home-limits") && !found.contains("home-no-claude"), "no usage model, no plan limits")
     }

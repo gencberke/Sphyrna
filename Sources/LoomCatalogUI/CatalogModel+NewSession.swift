@@ -153,6 +153,7 @@ public final class NewSessionState {
         var moved = SessionDraft(projectID: new, text: source.text, updatedAt: clock())
         moved.modePick = source.modePick
         moved.modelPick = source.modelPick
+        moved.effortPick = source.effortPick
         moved.branchKind = source.branchKind
         moved.branchName = source.branchName
         drafts[new] = moved
@@ -201,8 +202,11 @@ public final class NewSessionState {
         endSending(draft.projectID)
         store?.change { file in
             var last = file.lastUsed[draft.id] ?? ClaudeLaunchChoices()
-            if let mode = choices.permissionMode { last.permissionMode = mode }
+            // Full access picked once is not what the next session starts in (Loom never picks it by itself): the project
+            // keeps the mode it had before.
+            if let mode = choices.permissionMode, mode != ClaudePermissionMode.fullAccess.rawValue { last.permissionMode = mode }
             if let model = choices.model { last.model = model }
+            if let effort = choices.effort { last.effort = effort }
             if !last.isEmpty { file.lastUsed[draft.id] = last }
             if !choices.isEmpty { file.launched.append(LaunchedSession(sessionID: sessionID, choices: choices)) }
         }
@@ -320,6 +324,8 @@ extension CatalogModel {
 
     func setDraftModel(_ pick: DraftPick, projectID: UUID?) { newSession.update(projectID) { $0.modelPick = pick } }
 
+    func setDraftEffort(_ pick: DraftPick, projectID: UUID?) { newSession.update(projectID) { $0.effortPick = pick } }
+
     func setDraftBranch(_ kind: BranchKind, name: String? = nil, projectID: UUID?) {
         newSession.update(projectID) {
             $0.branchKind = kind
@@ -349,8 +355,19 @@ extension CatalogModel {
     func resolvedStart(draft: SessionDraft?, projectID: UUID?) -> ResolvedStart {
         NewSessionDefaults.resolve(
             modePick: draft?.modePick ?? .inherit, modelPick: draft?.modelPick ?? .inherit,
-            lastUsed: newSession.lastUsed(for: projectID), settings: newSession.settings)
+            effortPick: draft?.effortPick ?? .inherit,
+            lastUsed: newSession.lastUsed(for: projectID), settings: newSession.settings, askAllowed: newSessionAllowsAsk)
     }
+
+    /// Development evidence: the choices a new session of this project would start with, resolved as the draft resolves them (a
+    /// project with no remembered mode starts with the explicit `default`).
+    public func draftStartChoices(projectID: UUID?) -> ClaudeLaunchChoices { resolvedStart(for: projectID).choices }
+
+    /// Whether a new session starts in the face that has Ask: Ask is a Chat mode (D-63), and the terminal never runs it. The
+    /// one place that says which face a new session starts in for the mode menu: Settings → "New sessions start in" (V19).
+    var newSessionStartsInChat: Bool { newSessionFace == .chat }
+
+    var newSessionAllowsAsk: Bool { newSessionStartsInChat }
 
     /// Loom's own start defaults, the third level of the order (no Settings screen writes them yet). Nil clears
     /// one. A mode that could pass for an option is not stored.

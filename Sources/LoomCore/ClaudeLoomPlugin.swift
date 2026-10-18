@@ -1,8 +1,8 @@
 import Foundation
 
 /// The plugin Loom gives the Claude sessions it starts (`--plugin-dir`, D-42): one skill that tells the agent
-/// how to ask Loom for another session (`"$LOOM_CLI" open`, D-40). Claude sees only the skill's description
-/// until it is used. The files come from this source and are written into Loom's data folder, so they follow
+/// how to ask Loom for another session (`"$LOOM_CLI" open`, D-40), and the output style of Ask mode. Claude sees only
+/// the skill's description until it is used. The files come from this source and are written into Loom's data folder, so they follow
 /// the app's version and need nothing from the bundle.
 public enum ClaudeLoomPlugin {
     static let manifest = """
@@ -53,6 +53,22 @@ public enum ClaudeLoomPlugin {
 
         """
 
+    /// The output style of Ask mode (D-63, spike S9): the model-facing half of Ask, switched live with `outputStyle`. It lives
+    /// in this plugin because a style set from a plugin needs nothing in the user's own `~/.claude`.
+    static let askStyle = """
+        ---
+        name: Ask
+        description: Research and answer; explain more; change nothing
+        keep-coding-instructions: true
+        ---
+        # Ask mode
+        You are in Ask mode. The user wants answers, not changes. Research with read-only tools (Read, Grep, Glob, read-only shell commands, web search) and answer. Never create, edit, delete, move or format files and never run a command that writes. If the user asks for a change, do not attempt it: explain what the change would be and why, and say that Ask mode is read-only. Explain more than usual: give the reasoning and context, point to file paths and line numbers.
+
+        """
+
+    /// The name `outputStyle` takes for `askStyle`: `<plugin>:<style>`.
+    public static let askStyleName = "loom:Ask"
+
     /// Writes the plugin into `directory` (created when missing); a file that already has this content is left
     /// alone. Returns the folder to pass as `--plugin-dir`.
     @discardableResult
@@ -60,6 +76,7 @@ public enum ClaudeLoomPlugin {
         let files = [
             (".claude-plugin/plugin.json", manifest),
             ("skills/open-session/SKILL.md", skill),
+            ("output-styles/ask.md", askStyle),
         ]
         for (path, content) in files {
             let url = directory.appendingPathComponent(path)

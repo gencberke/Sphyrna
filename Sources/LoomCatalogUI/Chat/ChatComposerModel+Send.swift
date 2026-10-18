@@ -11,6 +11,8 @@ extension ChatComposerModel {
     func sendKind(commandHeld: Bool) -> ComposerSendKind {
         if editing != nil { return hasContent ? .update : .sendDisabled }
         if state.phase == .stopping { return .sendDisabled }
+        // Moving to the terminal: nothing starts a turn here. A running turn can still be interrupted.
+        if handoverPending != nil { return state.turnRunning && !hasContent ? .interrupt : .sendDisabled }
         // A card is shown: the text is the card's. Send waits (the card's own buttons answer); Interrupt stays.
         if cardShown { return state.turnRunning && !hasContent ? .interrupt : .sendDisabled }
         if state.turnRunning {
@@ -44,6 +46,11 @@ extension ChatComposerModel {
         guard !cardShown, hasContent, preparing == 0 else { return }
         if editing != nil { updateQueuedMessage(); return }
         guard state.phase != .stopping else { return }
+        // Moving to the terminal: the text stays in the field, and the notice says why nothing was sent.
+        if let moving = handoverPending {
+            show("\(moving) Send it when the session is back in Chat, or cancel the move.")
+            return
+        }
         let message = currentText()
         let outgoing = attachments
         let working = state.turnRunning
@@ -109,6 +116,8 @@ extension ChatComposerModel {
         case .queueFull?: return "The queue is full (100 messages or 1 MB)." + back
         case .queueTextOnly?: return "A queued message carries text only."
         case .stopping?: return "The session is stopping." + back
+        case .handingOver?: return "The session is moving to the terminal." + back
+        case .busy?: return "The session is busy." + back
         case .inputFull?: return "Claude is not reading its input." + back
         case .couldNotStart?: return "The session could not start." + back
         default: return "The message was not sent." + back
@@ -156,7 +165,9 @@ extension ChatComposerModel {
     func sendQueuedNow(_ id: String) {
         if editing?.itemID == id { cancelEdit() }
         Task { [driver, weak self] in
-            do { _ = try await driver.sendQueuedNow(id: id) } catch { self?.show("That message could not be sent now.") }
+            do { _ = try await driver.sendQueuedNow(id: id) } catch ChatDriverError.requestWaiting {
+                self?.show("Answer the request above first. The message stays in the queue.")
+            } catch { self?.show("That message could not be sent now.") }
             await self?.refresh()
         }
     }
@@ -282,8 +293,18 @@ extension ChatComposerModel {
 
     @discardableResult func setMode(_ raw: String) -> Task<Void, Never> {
         Task { [driver, weak self] in
-            do { try await driver.setPermissionMode(raw) } catch { self?.show("The mode was not changed.") }
+            do { try await driver.setPermissionMode(raw) } catch { self?.show(Self.modeFailure(error)) }
             await self?.refresh()
+        }
+    }
+
+    /// The notice for a mode change that did not happen: what is true now, in one line.
+    nonisolated static func modeFailure(_ error: Error) -> String {
+        switch error as? ChatDriverError {
+        case .requestWaiting: "Answer the waiting request first."
+        case .modeNotChanged(staysInAsk: true): "The mode was not changed; the session stays in Ask."
+        case .askUnavailable: "Ask is not available: Loom's Ask style did not load. The mode was not changed."
+        default: "The mode was not changed."
         }
     }
 
@@ -295,10 +316,29 @@ extension ChatComposerModel {
     }
 
     @discardableResult func setEffort(_ level: String) -> Task<Void, Never> {
-        Task { [driver, weak self] in
+        effortChanged = true
+        return Task { [driver, weak self] in
             do { try await driver.setEffort(level) } catch { self?.show("The effort was not changed.") }
             await self?.refresh()
         }
+    }
+
+    /// The slider's reset: back to the effort this session had when it was opened (`effortBaseline`), or to Default (the
+    /// CLI's own) when it had none.
+    @discardableResult func resetEffort() -> Task<Void, Never> {
+        effortChanged = true
+        guard let target = ComposerBarText.resetTarget(state, effortBaseline: effortBaseline) else {
+            return Task { [driver, weak self] in
+                do { try await driver.clearEffort() } catch { self?.show("The effort was not changed.") }
+                await self?.refresh()
+            }
+        }
+        return setEffort(target)
+    }
+
+    /// What the model chip and its two popovers show now.
+    var modelPicker: ComposerModelPicker {
+        ComposerBarText.modelPicker(state, effortBaseline: effortBaseline)
     }
 
     /// Resolves once the sends made so far have reached the driver (tests).

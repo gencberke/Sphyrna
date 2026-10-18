@@ -19,6 +19,7 @@ public struct SessionDraft: Equatable, Identifiable, Sendable {
     public private(set) var hasText: Bool
     var modePick: DraftPick = .inherit
     var modelPick: DraftPick = .inherit
+    var effortPick: DraftPick = .inherit
     var branchKind: BranchKind = .stay
     /// A branch name the user typed; nil follows the suggestion made from the text.
     var branchName: String?

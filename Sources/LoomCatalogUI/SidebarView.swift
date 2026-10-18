@@ -19,6 +19,7 @@ public struct SidebarView: View {
                 .padding(.horizontal, LoomTheme.Space.searchInset)
                 .padding(.bottom, LoomTheme.Space.searchBottom)
             HomeRow(model: model)
+            NewSessionRow(model: model)
             SidebarList(model: model)
             SidebarFooter(model: model)
         }
@@ -123,6 +124,40 @@ struct HomeRow: View {
         .accessibilityLabel(Self.accessibilityLabel(count: count))
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
         .help("Home")
+    }
+}
+
+/// The New session row under Home (V19): opens the draft page in the most recently used project; the draft's own
+/// project picker changes it. It is an action, so it is never drawn selected.
+struct NewSessionRow: View {
+    let model: CatalogModel
+
+    static let title = "New session"
+
+    var body: some View {
+        // Whether Claude can start at all is asked here. A start somewhere else does not matter: the row opens a draft, it
+        // starts nothing, and the project is read when the row is clicked.
+        let enabled = model.newSessionRowAvailable
+        Button { model.beginNewSessionInRecentProject() } label: {
+            HStack(spacing: LoomTheme.Sidebar.homeRowSpacing) {
+                Image(systemName: "square.and.pencil").font(LoomTheme.Sidebar.homeGlyph)
+                    .foregroundStyle(LoomTheme.Text.secondaryStyle).accessibilityHidden(true)
+                Text(Self.title).font(LoomTheme.Typography.cardTitle(selected: false))
+                    .foregroundStyle(LoomTheme.Text.primary)
+                Spacer(minLength: LoomTheme.Space.headerSpacing)
+            }
+            .padding(.horizontal, LoomTheme.Sidebar.homeRowInset)
+            .frame(height: LoomTheme.Sidebar.homeRowHeight)
+            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.search))
+        }
+        .buttonStyle(RowButtonStyle()).focusEffectDisabled()
+        .disabled(!enabled)
+        .padding(.horizontal, LoomTheme.Space.listInset)
+        .padding(.bottom, LoomTheme.Sidebar.homeRowBottom)
+        .accessibilityLabel(Self.title)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("sidebar-new-session")
+        .help("New session in the project you used last (\u{2318}N on Home does the same)")
     }
 }
 

@@ -65,6 +65,8 @@ struct ChatToolRowView: View {
             Text("Exit code \(code)").font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Status.failureLight)
         } else if call.status == .denied {
             Text("Denied").font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Status.failureLight)
+        } else if call.status == .refusedInAsk {
+            Text("Not allowed in Ask").font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.secondaryStyle)
         } else if call.status == .interrupted {
             Text("Stopped").font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.secondaryStyle)
         }
@@ -88,6 +90,7 @@ struct ChatToolRowView: View {
         switch call.status {
         case .failed: text += ", failed"
         case .denied: text += ", denied"
+        case .refusedInAsk: text += ", not allowed in Ask"
         case .interrupted: text += ", stopped"
         default: break
         }
@@ -115,6 +118,8 @@ struct ChatToolIcon: View {
                 Image(systemName: "exclamationmark.triangle").foregroundStyle(LoomTheme.Status.failureLight)
             case .denied:
                 Image(systemName: "hand.raised").foregroundStyle(LoomTheme.Status.failureLight)
+            case .refusedInAsk:
+                Image(systemName: "bubble.left").foregroundStyle(LoomTheme.Text.secondaryStyle)
             case .interrupted:
                 Image(systemName: "stop.circle").foregroundStyle(LoomTheme.Text.secondaryStyle)
             case .succeeded:

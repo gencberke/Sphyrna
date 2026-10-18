@@ -34,6 +34,15 @@ public struct ControlReply: Sendable, Equatable {
     /// For a `rewind_conversation` reply: the original text of the message, to put back in the composer.
     public var prefillText: String? { payload["prefillText"]?.string }
 
+    /// For a `list_permission_rules` reply: `{state:{rules:[{behavior, source, rule, …}]}}`.
+    public var permissionRules: [PermissionRuleRow] {
+        (payload["state"]?["rules"]?.array ?? []).compactMap { row in
+            guard let behavior = row["behavior"]?.string, let source = row["source"]?.string, let rule = row["rule"]?.string
+            else { return nil }
+            return PermissionRuleRow(behavior: behavior, source: source, rule: rule)
+        }
+    }
+
     /// For a `side_question` reply.
     public var sideQuestionResponse: String? { payload["response"]?.string }
 }

@@ -270,6 +270,9 @@ public actor SessionRuntime {
     var runs: [UUID: RunRecord] = [:]
     var startingNew: Set<StartKey> = []
     var startingSessions: Set<UUID> = []
+    /// Sessions whose newest terminal profile replaced Ask (`terminalAskRule`): the spawn that follows records what runs
+    /// and says so (`launchClaude`).
+    var askReplacedInTerminal: Set<UUID> = []
     /// Runs Loom itself is stopping (user stop, undone launch): their exit is
     /// not a provider failure.
     var stopRequestedRuns: Set<UUID> = []
@@ -581,6 +584,13 @@ public actor SessionRuntime {
     func resumeChoices(sessionID: UUID, passed: ClaudeLaunchChoices) async throws -> ClaudeLaunchChoices {
         await recordLaunchChoices(passed, sessionID: sessionID)
         return try await catalog.launchChoices(sessionID: sessionID).merging(passed)
+    }
+
+    /// Clears the recorded effort (see `SessionCatalog.clearLaunchEffort`).
+    public func clearLaunchEffort(sessionID: UUID) async {
+        do { try await catalog.clearLaunchEffort(sessionID: sessionID) } catch {
+            LoomLog.error(.catalog, "The recorded effort could not be cleared (\(LoomLog.category(of: error)))")
+        }
     }
 
     /// Records a session's mode, model or effort (a start, or a live change that succeeded in the Chat face), so

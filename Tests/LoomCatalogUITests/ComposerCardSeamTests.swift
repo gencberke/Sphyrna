@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Synchronization
+import SwiftUI
 import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
@@ -94,6 +95,36 @@ struct ComposerCardSeamTests {
     private func folded(_ fixture: Fixture) async -> String? {
         _ = await waitUntil { fixture.cards.folded != nil }
         return fixture.cards.folded?.summary
+    }
+
+    // MARK: Compact
+
+    /// At 780 by 500 a card plus a full composer left no room for the card's buttons. With a card shown the composer is a
+    /// line and a bar and the dock drops its hints line: the dock gets shorter by what the window cannot spare, and the
+    /// pinned stack may take more of the window.
+    @Test func theComposerIsCompactWhileACardWaits() async throws {
+        let fixture = try await make()
+        func dockHeight() -> CGFloat {
+            let host = NSHostingView(rootView: ChatComposerDock(model: fixture.composer).frame(width: 700))
+            host.frame = NSRect(x: 0, y: 0, width: 700, height: 600)
+            host.layoutSubtreeIfNeeded()
+            return host.fittingSize.height
+        }
+        let normal = dockHeight()
+        try await shown(fixture, "approval")
+        let compact = dockHeight()
+        print("dock height: normal \(normal), compact \(compact)")
+        // The card's note line comes with a card; the hints line goes and the field is one line. Without the compact form the
+        // same composer measured 157 with a card.
+        #expect(compact < normal, "compact \(compact) against \(normal)")
+        #expect(compact <= 125, "a line, the card's note and the bar: \(compact)")
+        #expect(LoomTheme.Pinned.compactStackMaxHeightFraction > LoomTheme.Pinned.stackMaxHeightFraction)
+        // The card is answered: the composer is full size again.
+        let request = try #require(await fixture.driver.snapshot().requests.first)
+        try await fixture.driver.answer(requestID: request.requestID, .allowOnce)
+        #expect(await waitUntil { await fixture.composer.refresh(); return !fixture.cards.isShowingCard })
+        #expect(abs(dockHeight() - normal) < 1, "back to \(normal)")
+        await fixture.finish()
     }
 
     // MARK: Keys

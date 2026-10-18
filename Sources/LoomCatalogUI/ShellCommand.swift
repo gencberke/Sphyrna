@@ -60,7 +60,7 @@ public enum ShellCommand: Int, CaseIterable, Sendable {
         switch self {
         case .home: model.showHome()
         case .commandPalette: model.openPalette()
-        case .newSession: model.beginNewSession(projectID: model.contextProjectID)
+        case .newSession: model.beginNewSessionFromCommand()
         case .showChat: model.showFace(.chat)
         case .showTerminal: model.showFace(.terminal)
         case .toggleInspector: model.toggleInspector()

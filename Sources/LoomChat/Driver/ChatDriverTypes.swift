@@ -220,11 +220,13 @@ public struct ChatLiveState: Sendable, Equatable {
     public var settled: [ChatSettledRequest]
     /// The texts of Loom's own messages that never reached the CLI ("Not delivered"): the ended view offers them.
     public var undelivered: [String]
+    /// Ask is the session's mode: a plan is approved in Ask there, so its card offers no other mode.
+    public var isAsk: Bool
 
     public init(sessionID: UUID, conversationID: String? = nil, phase: ChatDriverPhase = .stopped, turnRunning: Bool = false,
                 lastActivity: Date? = nil, drift: [ChatDrift] = [], policySignal: ChatPolicySignal? = nil,
                 runStart: LiveHistoryJoin.RunStart = LiveHistoryJoin.RunStart(), requests: [ChatPendingRequest] = [],
-                settled: [ChatSettledRequest] = [], undelivered: [String] = []) {
+                settled: [ChatSettledRequest] = [], undelivered: [String] = [], isAsk: Bool = false) {
         self.sessionID = sessionID
         self.conversationID = conversationID
         self.phase = phase
@@ -236,6 +238,7 @@ public struct ChatLiveState: Sendable, Equatable {
         self.requests = requests
         self.settled = settled
         self.undelivered = undelivered
+        self.isAsk = isAsk
     }
 }
 
@@ -341,6 +344,8 @@ public struct ChatComposerState: Sendable, Equatable {
     public var unreadMessageIDs: [String]
     /// Returned drafts wait for the composer (`takeReturnedDrafts`).
     public var hasReturnedDrafts: Bool
+    /// Returned drafts that were sent again: the composer takes them out of its text (`takeWithdrawnDrafts`).
+    public var hasWithdrawnDrafts: Bool
     /// The context of the newest main-thread message (input, cache and output tokens; after a compaction the size
     /// after it), and the window of the session's model once a result named it.
     public var contextTokens: Int?
@@ -355,7 +360,7 @@ extension ChatComposerState {
             sessionID: sessionID, phase: .stopped, turnRunning: false, requestCount: 0, queue: ChatQueue(), queueIssue: nil,
             choices: ClaudeLaunchChoices(), permissionMode: nil, resolvedModel: nil, reportedEffort: nil, models: [],
             commands: [], slashCommands: [], skills: [], terminalOnlyCommands: [], backgroundTaskCount: 0,
-            unreadMessageIDs: [], hasReturnedDrafts: false, contextTokens: nil, contextWindow: nil,
+            unreadMessageIDs: [], hasReturnedDrafts: false, hasWithdrawnDrafts: false, contextTokens: nil, contextWindow: nil,
             contextModel: nil)
     }
 }

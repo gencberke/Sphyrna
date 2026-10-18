@@ -102,6 +102,12 @@ struct ComposerTextEditor: NSViewRepresentable {
         coordinator.parent = self
         guard let textView = scroll.documentView as? ComposerTextView else { return }
         textView.isEditable = isEditable
+        // A new size range (the composer went compact for a card, or back) is measured at once.
+        let range = [minimumHeight, maximumHeight]
+        if coordinator.measuredRange != range {
+            coordinator.measuredRange = range
+            coordinator.measure()
+        }
         // A change that came from the field is in the field already; only an outside change (a recall, a returned draft, a
         // preset, a restored draft) is written, so the caret never jumps while typing.
         guard !textView.hasMarkedText() else { return }
@@ -128,6 +134,8 @@ struct ComposerTextEditor: NSViewRepresentable {
         /// The text the field and the composer last agreed on.
         var synced = ""
         var revision = 0
+        /// The minimum and maximum height the field was last measured for.
+        var measuredRange: [CGFloat] = []
 
         init(_ parent: ComposerTextEditor) { self.parent = parent }
 
@@ -307,6 +315,11 @@ struct ComposerTextEditor: NSViewRepresentable {
 
         func focus() {
             window?.makeFirstResponder(self)
+        }
+
+        func typeIn(_ event: NSEvent) {
+            focus()
+            keyDown(with: event)
         }
     }
 }

@@ -17,7 +17,7 @@ struct LiveRig {
     let socketDirectory: URL
     let runtime: SessionRuntime
 
-    static func make() async throws -> LiveRig {
+    static func make(environment: [String: String] = [:]) async throws -> LiveRig {
         let binaries = Bundle(for: LiveViewBundleAnchor.self).bundleURL.deletingLastPathComponent()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-live-view-\(UUID())", isDirectory: true)
         let home = root.appendingPathComponent("home", isDirectory: true)
@@ -46,7 +46,7 @@ struct LiveRig {
                         + "--permission-mode <mode> --model <model>",
                     serverHelp: "--listen <URL>"
                 ),
-                environment: ["PATH": "/usr/bin:/bin", "HOME": home.path],
+                environment: ["PATH": "/usr/bin:/bin", "HOME": home.path].merging(environment) { _, new in new },
                 profileDirectory: profile, extraArguments: []
             )
         }
@@ -57,6 +57,7 @@ struct LiveRig {
                 hookHelperPath: binaries.appendingPathComponent("loom-hook").path,
                 socketDirectory: socketDirectory, homeDirectory: home.path,
                 idlePolicy: SessionIdlePolicy(), codexIdentityTimeout: 3,
+                claudePluginDirectory: root.appendingPathComponent("claude-plugin", isDirectory: true),
                 hookSilenceGrace: 3, catalogBackupDelay: nil
             )
         )

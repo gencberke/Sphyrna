@@ -48,6 +48,24 @@ struct ChatWorkTests {
         #expect(ChatWork.summary(of: calls, capitalized: false).hasPrefix("changed 3 files"))
     }
 
+    /// Ask refused the call: nothing was changed or run, so the summary says so instead of "changed 1 file".
+    @Test func aCallAskRefusedIsNotCountedAsWorkAndIsSaidOnce() {
+        var refused = call("Write", ["file_path": "/p/a", "content": "x"], output: "Permission to use Write has been denied.")
+        refused.status = .refusedInAsk
+        #expect(ChatWork.summary(of: [refused]) == "Worked \u{00B7} 1 refused in Ask")
+        #expect(ChatWork.summary(of: [refused], capitalized: false) == "1 refused in Ask")
+        let read = call("Read", ["file_path": "/p/r"])
+        #expect(ChatWork.summary(of: [read, refused]) == "Read 1 file \u{00B7} 1 refused in Ask")
+        #expect(ChatWork.summary(of: [read]) == "Read 1 file")
+    }
+
+    @Test func markersNameModesInLoomsWordsAndDontAskIsAsk() {
+        #expect(ChatMarkerText.text(.modeChanged("dontAsk")) == "Mode changed to Ask")
+        #expect(ChatMarkerText.text(.modeChanged("default")) == "Mode changed to Ask before edits")
+        #expect(ChatMarkerText.text(.modeChanged("bypassPermissions")) == "Mode changed to Full access")
+        #expect(ChatMarkerText.text(.sessionStart(model: "Opus 5.5", permissionMode: "default")) == "Session started \u{00B7} Opus 5.5 \u{00B7} Ask before edits")
+    }
+
     @Test func editsToOneFileCountAsOneFile() {
         let calls = [call("Edit", ["file_path": "/p/a"]), call("Edit", ["file_path": "/p/a"]), call("Bash", ["command": "x"])]
         #expect(ChatWork.summary(of: calls) == "Changed 1 file and ran 1 command")

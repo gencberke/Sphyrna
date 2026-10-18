@@ -45,6 +45,7 @@ extension ChatComposerModel: ComposerEditorHost {
         case let .openMenu(request):
             if request == .attach { pickFiles(in: window) } else { openMenu(request) }
         case .focusCard: cards?.focus()
+        case .cycleView: environment.cycleView?()
         case .ignore: break
         case .newline, .passThrough: return false
         }
@@ -52,6 +53,12 @@ extension ChatComposerModel: ComposerEditorHost {
     }
 
     func editorEndedEditing() { flushDraft() }
+
+    /// A printable key was typed while the stream had the keyboard: the field takes the focus and the event, so the
+    /// first key goes through the input method like the rest (Option characters such as `@` or `|`).
+    func typeToFocus(_ event: NSEvent) {
+        editor?.typeIn(event)
+    }
 
     /// The field gained or lost the keyboard: the cards' typing guard follows it (leaving the composer lets a held stack show).
     func editorFocusChanged(_ focused: Bool) {

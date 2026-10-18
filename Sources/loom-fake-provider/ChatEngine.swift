@@ -64,6 +64,24 @@ struct ChatConfig {
     var initBehavior: String?
     /// LOOM_FAKE_CHAT_IGNORE_INTERRUPT=1: an interrupt is answered but the running turn goes on (a CLI slow to stop).
     var ignoreInterrupt: Bool
+    /// The launch layer of permission rules (`--settings` permissions, `--disallowedTools`): never removable live (S9).
+    var launchAllow: [String]
+    var launchDeny: [String]
+    /// `--plugin-dir` folders: their `output-styles/*.md` are listed as `<plugin>:<Name>`.
+    var pluginDirs: [String]
+    /// LOOM_FAKE_CHAT_USER_RULES: a JSON list of `{behavior, source, rule}` the user's own settings hold (user, project, local
+    /// or policy), which `list_permission_rules` shows with their source.
+    var userRules: [ChatRuleRow]
+    /// LOOM_FAKE_CHAT_FAIL_MODE: a comma list of modes `set_permission_mode` refuses (a request that fails halfway).
+    var failModes: Set<String>
+    /// LOOM_FAKE_CHAT_FAIL_ASK_RULES=1: `apply_flag_settings` refuses the settings that turn Ask's style on.
+    var failAskRules: Bool
+    /// LOOM_FAKE_CHAT_RESET_FORGETS_SETTINGS=1: a `conversation_reset` drops the live settings (the unmeasured worst case).
+    var resetForgetsSettings: Bool
+    /// LOOM_FAKE_CHAT_INIT_DELAY_MS: `initialize` is answered after this long (a start that stays in Starting for a while).
+    var initDelayMs: Int
+    /// LOOM_FAKE_CHAT_CONTROL_DELAY_MS: the mode, settings and rule requests are answered after this long (a window for races).
+    var controlDelayMs: Int
 
     init(arguments: [String], environment: [String: String]) {
         func value(_ flag: String) -> String? {
@@ -95,6 +113,25 @@ struct ChatConfig {
         hookHelper = ((start?["hooks"] as? [ChatObject])?.first?["command"]) as? String
         initBehavior = environment["LOOM_FAKE_CHAT_INIT"]
         ignoreInterrupt = environment["LOOM_FAKE_CHAT_IGNORE_INTERRUPT"] == "1"
+        let permissions = settings?["permissions"] as? ChatObject
+        var disallowed: [String] = []
+        if let at = arguments.firstIndex(where: { $0 == "--disallowedTools" || $0 == "--disallowed-tools" }) {
+            disallowed = Array(arguments[(at + 1)...].prefix { !$0.hasPrefix("--") })
+        }
+        launchDeny = (permissions?["deny"] as? [String] ?? []) + disallowed
+        launchAllow = permissions?["allow"] as? [String] ?? []
+        pluginDirs = arguments.indices.filter { arguments[$0] == "--plugin-dir" && $0 + 1 < arguments.count }.map { arguments[$0 + 1] }
+        failModes = Set((environment["LOOM_FAKE_CHAT_FAIL_MODE"] ?? "").split(separator: ",").map(String.init))
+        failAskRules = environment["LOOM_FAKE_CHAT_FAIL_ASK_RULES"] == "1"
+        resetForgetsSettings = environment["LOOM_FAKE_CHAT_RESET_FORGETS_SETTINGS"] == "1"
+        initDelayMs = environment["LOOM_FAKE_CHAT_INIT_DELAY_MS"].flatMap(Int.init) ?? 0
+        controlDelayMs = environment["LOOM_FAKE_CHAT_CONTROL_DELAY_MS"].flatMap(Int.init) ?? 0
+        userRules = (environment["LOOM_FAKE_CHAT_USER_RULES"]
+            .flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) } as? [ChatObject] ?? []).compactMap { row in
+            guard let behavior = row["behavior"] as? String, let source = row["source"] as? String,
+                  let rule = row["rule"] as? String else { return nil }
+            return ChatRuleRow(behavior: behavior, source: source, rule: rule)
+        }
     }
 }
 
@@ -275,6 +312,8 @@ struct BackgroundTask {
     var toolUseID: String
     var description: String
     var due: Date
+    /// A background subagent (S9b): its end starts a turn in which the model goes on with its report.
+    var isAgent = false
 }
 
 struct AgentInfo {
@@ -319,6 +358,11 @@ final class ChatEngine {
     var rateLimitStatus = "allowed"
     var rateLimitSent = false
     var prePlanMode: String?
+    /// The live settings layer of `apply_flag_settings` (S9): a top-level key is replaced as a whole, `null` removes it. It is
+    /// merged with the launch layer, never over it.
+    var liveSettings: ChatObject = [:]
+    /// `permissions.disableBypassPermissionsMode` was set live: Full access is gone for this process (a one-way door).
+    var bypassDisabled = false
     var cost = 0.0
     var lastUUID: String?
     var lastAssistantUUID: String?
@@ -329,9 +373,12 @@ final class ChatEngine {
     let slashCommands = ["compact", "clear", "context", "review", "init"]
     let skills = ["fake-skill"]
     var tools: [String] {
-        let all = ["Agent", "Bash", "Edit", "Read", "Write", "Glob", "Grep", "AskUserQuestion", "ExitPlanMode", "TodoWrite"]
-        // Without a permission host the CLI removes the tools that need a person (S1 Q1).
-        return config.permissionHost ? all : all.filter { $0 != "AskUserQuestion" && $0 != "ExitPlanMode" }
+        let all = ["Agent", "Bash", "Edit", "Read", "Write", "NotebookEdit", "Glob", "Grep", "WebFetch", "WebSearch",
+                   "AskUserQuestion", "ExitPlanMode", "TodoWrite"]
+        // Without a permission host the CLI removes the tools that need a person (S1 Q1). A rule given at launch removes a
+        // tool from the list; the same rule applied live leaves it there and refuses the call (S9).
+        let available = config.permissionHost ? all : all.filter { $0 != "AskUserQuestion" && $0 != "ExitPlanMode" }
+        return available.filter { !config.launchDeny.contains($0) }
     }
 
     init(config: ChatConfig) {
@@ -348,7 +395,7 @@ final class ChatEngine {
     func sendInit() {
         send(wire.initMessage(
             permissionMode: permissionMode, cwd: config.cwd, tools: tools, slashCommands: slashCommands, skills: skills,
-            capabilities: config.capabilities, effort: config.effort))
+            capabilities: config.capabilities, effort: config.effort, outputStyle: outputStyle))
     }
 
     func lifecycle(_ uuid: String, _ state: String) {
@@ -545,11 +592,13 @@ final class ChatEngine {
         switch subtype {
         case "initialize":
             if config.initBehavior == "silent" { return }
+            if config.initDelayMs > 0 { usleep(UInt32(config.initDelayMs) * 1_000) }
             send(wire.controlSuccess(id, wire.initializeResponse(
                 slashCommands: slashCommands, model: wire.model, permissionMode: permissionMode,
                 state: sessionBusy ? "running" : "idle", pid: getpid(),
                 // The real answer lists only ui_surface_v1; the ten capabilities come in system/init (S1 Q4).
-                capabilities: config.capabilities.filter { $0 == "ui_surface_v1" })))
+                capabilities: config.capabilities.filter { $0 == "ui_surface_v1" },
+                outputStyle: outputStyle, availableStyles: availableOutputStyles)))
         case "interrupt":
             // A request that waits for the host is withdrawn before the interrupt is answered (S1 t09-pending-interrupt).
             let withdrew = !pendingIDs.isEmpty
@@ -576,23 +625,17 @@ final class ChatEngine {
                 send(wire.controlSuccess(id, ["cancelled": false]))
             }
         case "set_permission_mode":
-            guard let mode = body["mode"] as? String,
-                  ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk", "auto"].contains(mode),
-                  mode != "bypassPermissions" || config.allowBypass else {
-                send(wire.controlError(id, "Invalid permission mode"))
-                return
-            }
-            permissionMode = mode
-            send(wire.status(nil, permissionMode: mode))
-            send(wire.controlSuccess(id, ["mode": mode]))
+            if config.controlDelayMs > 0 { usleep(UInt32(config.controlDelayMs) * 1_000) }
+            setPermissionMode(id: id, body: body)
         case "set_model":
             wire.model = (body["model"] as? String).flatMap { $0 == "default" ? nil : $0 } ?? config.model
             send(wire.controlSuccess(id, [:]))
         case "apply_flag_settings":
-            let settings = body["settings"] as? ChatObject ?? [:]
-            if let model = settings["model"] as? String { wire.model = model }
-            if let effort = settings["effortLevel"] as? String { config.effort = effort }
-            send(wire.controlSuccess(id, [:]))
+            if config.controlDelayMs > 0 { usleep(UInt32(config.controlDelayMs) * 1_000) }
+            applyFlagSettings(id: id, body: body)
+        case "list_permission_rules":
+            if config.controlDelayMs > 0 { usleep(UInt32(config.controlDelayMs) * 1_000) }
+            send(wire.controlSuccess(id, ["state": ["rules": permissionRuleRows()] as ChatObject]))
         case "background_tasks":
             // The Ctrl+B equivalent: a running Bash goes to the background.
             if running { _ = moveToBackground() }
@@ -658,7 +701,10 @@ final class ChatEngine {
     }
 
     func backgroundList() -> [ChatObject] {
-        background.map { ["task_id": $0.taskID, "run_id": $0.runID, "task_type": "local_bash", "description": $0.description] }
+        background.map {
+            ["task_id": $0.taskID, "run_id": $0.runID, "task_type": $0.isAgent ? "local_agent" : "local_bash",
+             "description": $0.description]
+        }
     }
 
     /// Moves the running Bash to the background; it is not interrupted and finishes on its own clock.
@@ -677,7 +723,8 @@ final class ChatEngine {
     /// A background task finished: its events, then the notification told to the model.
     func completeBackground(_ task: BackgroundTask) {
         background.removeAll { $0.taskID == task.taskID }
-        let summary = "Background command \"\(task.description)\" completed (exit code 0)"
+        let summary = task.isAgent ? "Agent \"\(task.description)\" completed"
+            : "Background command \"\(task.description)\" completed (exit code 0)"
         send(wire.taskUpdated(taskID: task.taskID, runID: task.runID, patch: [
             "status": "completed", "end_time": Int(Date().timeIntervalSince1970 * 1_000)]))
         send(wire.taskNotification(
@@ -749,6 +796,9 @@ final class ChatEngine {
         do {
             if let first {
                 try runScenario(first.text)
+            } else if finished?.isAgent == true {
+                // S9b: the model goes on with the agent's report, and tries to write it down.
+                try fileScenario(["agent-report.txt", "Survey findings"])
             } else {
                 try assistantMessage([.text("The background command finished.")])
             }
@@ -1012,6 +1062,13 @@ final class ChatEngine {
         content: Any, error: Bool = false, structured: Any? = nil
     ) throws {
         try assistantMessage(leading + [.tool(id: id, name: name, input: input)])
+        // The rules refuse what they refuse in every scenario (`dontAsk` with no request to the host, a deny rule), as the CLI
+        // does; what would ask the host runs here as it always did, so the older scenarios stay as they were.
+        if case let .refuse(reasonType, message) = gate(tool: name, input: input) {
+            refuseCall(id: id, tool: name, input: input, reasonType: reasonType, message: message)
+            try toolBoundary()
+            return
+        }
         let tool = try runTool(id, name: name, description: input["description"] as? String ?? name, milliseconds: milliseconds)
         if tool.moved, let taskID = tool.taskID {
             var moved = Self.bash(stdout: "")

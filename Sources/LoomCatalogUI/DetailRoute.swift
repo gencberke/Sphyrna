@@ -65,14 +65,17 @@ extension CatalogModel {
         return .noSelection
     }
 
-    /// A session's route: (with `readOnlyChatEnabled`, Claude sessions only) the chat when the user picked it,
-    /// or by default when the session is stopped, then the live terminal, the
+    /// A session's route: the live Chat when a pipe run drives it, or when it is stopped and the Chat face owns it
+    /// (V19: its composer resumes it); then (with `readOnlyChatEnabled`, Claude sessions only) the read-only chat when
+    /// the user picked it, or by default when the session is stopped, then the live terminal, the
     /// kept screen and the record. A start, resume or stop under way is not "stopped": the record stays until
     /// the terminal arrives. Codex and synthetic sessions keep the old routes.
     private func sessionRoute(for row: SessionRowModel) -> DetailRoute {
         let id = row.id
         // A pipe run has no terminal: it is the live Chat face, whatever the flags say.
         if runEndpoint(of: row) == .pipe { return .chat(sessionID: id) }
+        // A stopped session the Chat face owns shows its live chat: the composer resumes it in that face.
+        if showsStoppedLiveChat(row) { return .chat(sessionID: id) }
         let hasTerminal = terminalView(for: id) != nil
         if faces.readOnlyChatEnabled, row.record.session.provider == .claude {
             switch faces.choice(for: id) {
@@ -109,18 +112,12 @@ extension CatalogModel {
         set { faces.readOnlyChatEnabled = newValue }
     }
 
-    /// Whether the selected session has a Chat and a Terminal face to choose between: a Claude session, with
-    /// the Chat view switched on.
+    /// Whether the selected session has a Chat and a Terminal face to look at: a Claude session, with the Chat view
+    /// switched on, that the Chat face does not own. A Chat-face run has no terminal to show, and a stopped session
+    /// the Chat face owns shows its live chat; moving either to the terminal is a handover (`continueIn`).
     public var canChooseFace: Bool {
         guard readOnlyChatEnabled, let row = selectedRow, row.record.session.provider == .claude else { return false }
-        // A Chat-face run has no terminal to show; switching it is a handover (V19).
-        return runEndpoint(of: row) != .pipe
-    }
-
-    /// The flag behind the live Chat face; see `SessionFaces.liveChatEnabled`.
-    public var liveChatEnabled: Bool {
-        get { faces.liveChatEnabled }
-        set { faces.liveChatEnabled = newValue }
+        return runEndpoint(of: row) != .pipe && !showsStoppedLiveChat(row)
     }
 
     /// "Show Chat" and "Show Terminal": the face the selected session shows from now on, until a relaunch.

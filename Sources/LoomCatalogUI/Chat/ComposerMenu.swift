@@ -78,8 +78,11 @@ struct ComposerMenuItem: Identifiable, Equatable {
     var trailing: String?
     /// The text that replaces the trigger when the row is chosen.
     var insertion: String
+    /// An action row that cannot run now says why (its detail); choosing it explains and does nothing.
+    var unavailableReason: String?
 
     var isTerminalOnly: Bool { kind == .terminalOnly }
+    var isUnavailable: Bool { unavailableReason != nil }
 }
 
 /// The ranking of a menu's flat list [T3]: exact, prefix, word start, contains, fuzzy, each with a length penalty. The

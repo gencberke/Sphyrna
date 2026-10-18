@@ -59,14 +59,24 @@ struct ChatWire {
 
     /// The answer to `initialize`. S1: `capabilities` here is short, `system/init` lists the full set.
     func initializeResponse(
-        slashCommands: [String], model: String, permissionMode: String, state: String, pid: Int32, capabilities: [String]
+        slashCommands: [String], model: String, permissionMode: String, state: String, pid: Int32, capabilities: [String],
+        outputStyle: String = "default", availableStyles: [String] = ["default", "Concise"]
     ) -> Object {
         ["commands": slashCommands.map { ["name": $0, "description": "Fake \($0)", "argumentHint": ""] as Object },
          "agents": [["name": "Explore", "description": "Fake read-only search agent"] as Object],
-         "output_style": "default", "available_output_styles": ["default", "Concise"],
+         "output_style": outputStyle, "available_output_styles": availableStyles,
+         // As the CLI lists them: Default, then the aliases, each with the effort levels it takes (Haiku has none).
          "models": [["value": "default", "resolvedModel": model, "displayName": "Default (fake)",
                      "description": "Fake model", "supportsEffort": true,
-                     "supportedEffortLevels": ["low", "medium", "high"]] as Object],
+                     "supportedEffortLevels": ["low", "medium", "high"]] as Object,
+                    ["value": "opus", "resolvedModel": "claude-opus-fake-5-1", "displayName": "Opus (fake)",
+                     "description": "Fake model", "supportsEffort": true,
+                     "supportedEffortLevels": ["low", "medium", "high", "xhigh", "max"]] as Object,
+                    ["value": "sonnet", "resolvedModel": "claude-sonnet-fake-5-1", "displayName": "Sonnet (fake)",
+                     "description": "Fake model", "supportsEffort": true,
+                     "supportedEffortLevels": ["low", "medium", "high"]] as Object,
+                    ["value": "haiku", "resolvedModel": "claude-haiku-fake-4-5", "displayName": "Haiku (fake)",
+                     "description": "Fake model", "supportsEffort": false] as Object],
          "account": ["email": "user@example.invalid", "organization": "Example Organization",
                      "subscriptionType": "Fake plan", "apiProvider": "firstParty"],
          "pid": Int(pid), "claude_code_version": "2.1.300-fake", "current_permission_mode": permissionMode,
@@ -76,13 +86,13 @@ struct ChatWire {
     /// Emitted at the start of every turn, never before the first send.
     func initMessage(
         permissionMode: String, cwd: String, tools: [String], slashCommands: [String], skills: [String],
-        capabilities: [String], effort: String?
+        capabilities: [String], effort: String?, outputStyle: String = "default"
     ) -> Object {
         var object = system("init", [
             "claude_code_version": "2.1.300-fake", "cwd": cwd, "model": model, "permissionMode": permissionMode,
             "tools": tools, "slash_commands": slashCommands, "terminal_slash_commands": ["doctor", "color", "focus"],
             "skills": skills, "agents": ["general-purpose", "Explore"], "mcp_servers": [] as [Any],
-            "plugins": [] as [Any], "output_style": "default", "apiKeySource": "none", "capabilities": capabilities,
+            "plugins": [] as [Any], "output_style": outputStyle, "apiKeySource": "none", "capabilities": capabilities,
         ])
         if let effort { object["effort"] = effort }
         return object
@@ -308,8 +318,10 @@ struct ChatWire {
         ["type": "control_response", "response": ["subtype": "success", "request_id": requestID, "response": payload]]
     }
 
-    func controlError(_ requestID: String, _ message: String) -> Object {
-        ["type": "control_response", "response": ["subtype": "error", "request_id": requestID, "error": message]]
+    func controlError(_ requestID: String, _ message: String, code: String? = nil) -> Object {
+        var response: Object = ["subtype": "error", "request_id": requestID, "error": message]
+        if let code { response["error_code"] = code }
+        return ["type": "control_response", "response": response]
     }
 
     func controlCancel(_ requestID: String) -> Object {
@@ -317,8 +329,10 @@ struct ChatWire {
     }
 
     /// Without a permission host, what needs approval is denied and this event says so (S1 Q1).
-    func permissionDenied(tool: String, toolUseID: String, message: String) -> Object {
-        system("permission_denied", ["tool_name": tool, "tool_use_id": toolUseID, "message": message])
+    func permissionDenied(tool: String, toolUseID: String, message: String, reasonType: String? = nil) -> Object {
+        var fields: Object = ["tool_name": tool, "tool_use_id": toolUseID, "message": message]
+        if let reasonType { fields["decision_reason_type"] = reasonType }
+        return system("permission_denied", fields)
     }
 
     func controlProgress(_ requestID: String) -> Object {

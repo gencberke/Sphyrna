@@ -106,6 +106,9 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// Settings → General → Search session text. Off, the command palette never reads a transcript. A file written
     /// before the setting existed reads as on.
     public var searchSessionText: Bool
+    /// Settings → General → New sessions start in (V19). A new Claude session opens in this face; sessions that
+    /// already ran keep the face that owns them. A file written before the setting existed reads as Chat.
+    public var newSessionFace: SessionFace
 
     /// The selected session, as every caller before destinations knew it; setting it sets the destination.
     /// The key is still written when the destination is a session, so an older build reads it too.
@@ -123,7 +126,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
                 openTabs: [UUID] = [], windowFrame: WindowFrame? = nil, projectColors: Bool = true,
                 showInMenuBar: Bool = true, notifyApprovals: Bool = true, sidebarStyle: SidebarStyle = .glass,
                 launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = [],
-                searchSessionText: Bool = true) {
+                searchSessionText: Bool = true, newSessionFace: SessionFace = .chat) {
         self.viewMode = viewMode
         self.destination = destination ?? selectedSessionID.map(Destination.session)
         self.sidebarWidth = Self.clamped(sidebarWidth)
@@ -138,6 +141,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         self.launchView = launchView
         self.inspectorOpen = Self.normalizedInspectors(inspectorOpen)
         self.searchSessionText = searchSessionText
+        self.newSessionFace = newSessionFace
     }
 
     public init(from decoder: any Decoder) throws {
@@ -164,14 +168,15 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             launchView: (try? container.decodeIfPresent(LaunchView.self, forKey: .launchView)) ?? .lastSession,
             inspectorOpen: ((try? container.decodeIfPresent([Lossy<UUID>].self, forKey: .inspectorOpen)) ?? nil)?
                 .compactMap(\.value) ?? [],
-            searchSessionText: (try? container.decodeIfPresent(Bool.self, forKey: .searchSessionText)) ?? true
+            searchSessionText: (try? container.decodeIfPresent(Bool.self, forKey: .searchSessionText)) ?? true,
+            newSessionFace: (try? container.decodeIfPresent(SessionFace.self, forKey: .newSessionFace)) ?? .chat
         )
     }
 
     private enum CodingKeys: String, CodingKey {
         case viewMode, selectedSessionID, destination, sidebarWidth, sidebarCollapsed, terminalFontSize, openTabs
         case windowFrame, projectColors, showInMenuBar, notifyApprovals, sidebarStyle, launchView, inspectorOpen
-        case searchSessionText
+        case searchSessionText, newSessionFace
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -191,6 +196,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         try container.encode(launchView, forKey: .launchView)
         try container.encode(inspectorOpen, forKey: .inspectorOpen)
         try container.encode(searchSessionText, forKey: .searchSessionText)
+        try container.encode(newSessionFace, forKey: .newSessionFace)
     }
 
     private struct Lossy<Value: Decodable>: Decodable {

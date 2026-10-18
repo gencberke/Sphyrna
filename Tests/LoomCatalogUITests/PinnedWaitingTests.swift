@@ -40,12 +40,12 @@ struct PinnedWaitingTests {
         #expect(model.rowModels[id]?.indicator == .waitingForApproval)
         // Home's Needs you, with what it waits for.
         let entry = try #require(model.homeBoard().needsYou.first { $0.id == id })
-        #expect(entry.line == "Allow: rm -rf build")
+        #expect(entry.line == "Asks to run: rm -rf build")
         #expect(model.homeBoard().finished.isEmpty)
         // The sidebar's Active section and its reason line.
         #expect(model.activeIDs.contains(id))
         let line = try #require(SessionReasonLine(model.rowModels[id]?.reason))
-        #expect(line.text == "Allow: rm -rf build" && line.note == "Remove the build folder")
+        #expect(line.text == "Asks to run: rm -rf build" && line.note == "Remove the build folder")
         // The Dock badge, the same number as the lists.
         #expect(model.attentionCount == 1 && badge == 1)
         #expect(DockBadge.label(count: badge) == "1")
@@ -85,7 +85,7 @@ struct PinnedWaitingTests {
         try await rig.feed(.pendingRequests([plan()]), for: ids[2])
         for id in ids { try await rig.feed(.status(ProviderWorkState(activity: .waitingForApproval)), for: id) }
         func line(_ id: UUID) -> String? { model.homeBoard().needsYou.first { $0.id == id }?.line }
-        #expect(line(ids[0]) == "Allow: rm -rf build")
+        #expect(line(ids[0]) == "Asks to run: rm -rf build")
         #expect(line(ids[1]) == "Asks: Database")
         #expect(line(ids[2]) == "Plan ready for review")
         #expect(model.attentionCount == 3, "a session counts once, however many requests wait")
@@ -114,7 +114,7 @@ struct PinnedWaitingTests {
         #expect(model.attentionCount == 2 && model.menuBarSummary.approvals == [chat, codex])
         #expect(model.liveStates[chat]?.waitingRequests.map(\.requestID) == ["r1"])
         #expect(model.liveStates[codex]?.waitingRequests.map(\.requestID) == ["c1"])
-        #expect(model.homeBoard().needsYou.first { $0.id == codex }?.line == "Allow: rm -rf build", "a Codex command reads as a Bash request does")
+        #expect(model.homeBoard().needsYou.first { $0.id == codex }?.line == "Asks to run: rm -rf build", "a Codex command reads as a Bash request does")
 
         // A Codex request that cannot be answered here is not a card and is not counted as one.
         let state = SessionViewState(userRequests: [ProviderUserRequest(id: "u", kind: .unsupported("userInput"), summary: "x")])
@@ -146,7 +146,7 @@ struct PinnedWaitingTests {
         #expect(rig.model.homeBoard().count == 0)
     }
 
-    /// Fix 10: a Codex request reads in the words of Claude's own tools ("Allow: <command>", "Allow Edit: <file>"), never
+    /// Fix 10: a Codex request reads in the words of Claude's own tools ("Asks to run: <command>", "Asks to edit: <file>"), never
     /// the raw kind ("Allow fileChange: ...").
     @Test func aCodexFileChangeReadsAsAnEditAndNeverAsItsRawKind() {
         let edit = SessionViewState(userRequests: [ProviderUserRequest(id: "f1", kind: .fileChange, summary: "src/App.swift")])
@@ -155,7 +155,7 @@ struct PinnedWaitingTests {
         #expect(edit.waitingRequests.first?.toolName == "Edit")
         let command = SessionViewState(userRequests: [ProviderUserRequest(id: "c1", kind: .command, summary: "make test")])
         #expect(command.displayReason?.kind == .approval(tool: "Bash") && command.displayReason?.detail == "make test")
-        #expect(reason.flatMap(InspectorReasonText.line) == "Allow Edit: src/App.swift")
-        #expect(command.displayReason.flatMap(InspectorReasonText.line) == "Allow: make test")
+        #expect(reason.flatMap(InspectorReasonText.line) == "Asks to edit: src/App.swift")
+        #expect(command.displayReason.flatMap(InspectorReasonText.line) == "Asks to run: make test")
     }
 }

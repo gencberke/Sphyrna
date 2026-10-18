@@ -509,7 +509,9 @@ struct StudioNavigationTests {
 
         // New Session (V07): opens the draft of the place the user is on; nothing starts until its first send.
         run(.newSession)
-        #expect(model.destination == .draft(projectID: nil) && model.detailRoute == .draft(projectID: nil))
+        // On Home it is the sidebar row's draft (V19): the persisted last-used project, read from the catalog a moment later.
+        for _ in 0..<300 where model.destination != .draft(projectID: rig.projectID) { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(model.destination == .draft(projectID: rig.projectID) && model.detailRoute == .draft(projectID: rig.projectID))
         model.showProjectPage(rig.projectID)
         run(.newSession)
         #expect(model.destination == .draft(projectID: rig.projectID))
@@ -519,7 +521,7 @@ struct StudioNavigationTests {
         #expect(rig.intents.starts.isEmpty, "opening a draft starts no session")
         // The draft's own place is the draft of that project: ⌘N again reuses it.
         run(.newSession)
-        #expect(model.destination == .draft(projectID: rig.projectID) && model.newSession.drafts.count == 2)
+        #expect(model.destination == .draft(projectID: rig.projectID) && model.newSession.drafts.count == 1)
         await select(rig.claude, in: model)
 
         // The inspector toggles the selected session's inspector and remembers it.
@@ -607,7 +609,8 @@ struct StudioNavigationTests {
         #expect(model.palette.isOpen && brought.value == 2)
         model.palette.close()
         #expect(try send(.newSession))
-        #expect(model.destination == .draft(projectID: nil) && brought.value == 3)
+        for _ in 0..<300 where model.destination?.projectID == nil { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(model.destination == .draft(projectID: rig.projectID) && brought.value == 3)
         #expect(rig.intents.starts.isEmpty, "a draft starts nothing")
 
         // A selected Claude session turns on the rest.

@@ -6,18 +6,35 @@ import LoomCore
 /// Pure, so each rule is tested without a view.
 enum ComposerBarText {
     static let defaultModel = "Default model"
-    static let claudeDefaultMode = "Claude's default"
+    /// The mode chip before anything says which mode runs (an older session no process has reported on yet).
+    static let unknownMode = "Mode"
 
     // MARK: Mode
 
-    /// The mode the session runs in (the CLI's word, else the one Loom passes), as its title.
-    static func modeTitle(permissionMode: String?, choices: ClaudeLaunchChoices) -> String {
-        guard let raw = permissionMode ?? choices.permissionMode else { return claudeDefaultMode }
-        return ClaudePermissionMode(rawValue: raw)?.title ?? raw
+    /// The mode the bar selects: the CLI's mode once the process reported one (`dontAsk` is Ask's word, D-63), else the
+    /// session's chosen mode (a stopped session, or one that has not reported yet).
+    static func selectedMode(permissionMode: String?, choices: ClaudeLaunchChoices) -> String? {
+        if permissionMode == ClaudePermissionMode.ask.cliValue { return ClaudePermissionMode.ask.rawValue }
+        return permissionMode ?? choices.permissionMode
     }
 
-    static func selectedMode(permissionMode: String?, choices: ClaudeLaunchChoices) -> String? {
-        permissionMode ?? choices.permissionMode
+    /// The mode's title under Loom's name; "Mode" while nothing says. The CLI's `current_permission_mode` of an older
+    /// session reads here as Loom names it ("default" is Ask before edits).
+    static func modeTitle(permissionMode: String?, choices: ClaudeLaunchChoices) -> String {
+        guard let raw = selectedMode(permissionMode: permissionMode, choices: choices) else { return unknownMode }
+        return ClaudePermissionMode.title(forRaw: raw)
+    }
+
+    /// The one line under a mode's name in the mode list.
+    static func modeDetail(_ mode: ClaudePermissionMode) -> String {
+        switch mode {
+        case .ask: "Researches and answers. Changes nothing."
+        case .askBeforeEdits: "Asks before it edits or runs a command."
+        case .acceptEdits: "Edits files without asking."
+        case .auto: "Approves safe actions, asks about the rest."
+        case .fullAccess: "Runs everything without asking."
+        case .plan: "Plans first, then asks to build."
+        }
     }
 
     // MARK: Model and effort
@@ -72,27 +89,58 @@ enum ComposerBarText {
         }
     }
 
-    /// The effort levels to offer: the chosen model's own list, else the standard five.
-    static func effortLevels(_ state: ChatComposerState) -> [String] {
-        let chosen = state.choices.model
-        let option = state.models.first { $0.value == chosen }
-            ?? state.models.first { $0.resolvedModel != nil && $0.resolvedModel == state.resolvedModel }
-        let own = option?.supportedEffortLevels ?? []
-        return own.isEmpty ? ["low", "medium", "high", "xhigh", "max"] : own
+    /// The model option the bar's model chip stands for: the one chosen (`default` when none), else the one that runs.
+    private static func currentOption(_ state: ChatComposerState) -> ModelOption? {
+        if let chosen = state.choices.model, let option = state.models.first(where: { $0.value == chosen }) { return option }
+        if let resolved = state.resolvedModel, let option = state.models.first(where: { $0.value != "default" && $0.resolvedModel == resolved })
+            ?? state.models.first(where: { $0.resolvedModel == resolved }) { return option }
+        return state.models.first { $0.value == "default" }
     }
 
-    /// The models to offer: the aliases the CLI listed (an id is left out), else Loom's three.
-    static func modelChoices(_ state: ChatComposerState) -> [(value: String, title: String)] {
-        let listed = state.models.filter { !$0.value.hasPrefix("claude-") && !$0.value.contains("[") }
-        guard !listed.isEmpty else { return NewSessionModels.all.map { ($0.alias, $0.title) } }
+    /// The effort levels to offer: the model's own list when the CLI sent them (`supportedEffortLevels`, and none for a model
+    /// without effort: Haiku 4.5 on 2.1.300), else the five the CLI takes. A CLI that sends no list for any model has not
+    /// told us about this one either.
+    static func effortLevels(_ state: ChatComposerState) -> [String] {
+        let standard = NewSessionModels.effortLevels
+        guard state.models.contains(where: { !$0.supportedEffortLevels.isEmpty }) else { return standard }
+        guard let option = currentOption(state) else { return standard }
+        return option.supportedEffortLevels
+    }
+
+    /// One row of the model list.
+    struct ModelRow: Equatable, Identifiable {
+        var value: String
+        var title: String
+        var id: String { value }
+    }
+
+    /// The models to offer after Default: the aliases the CLI listed (an id is left out), else Loom's three.
+    static func modelRows(_ state: ChatComposerState) -> [ModelRow] {
+        let listed = state.models.filter { $0.value != "default" && !$0.value.hasPrefix("claude-") && !$0.value.contains("[") }
+        guard !listed.isEmpty else { return NewSessionModels.all.map { ModelRow(value: $0.alias, title: $0.title) } }
         return listed.map { option in
-            let title: String
-            if option.value == "default" { title = defaultModel } else {
-                title = option.resolvedModel.map(prettyModel) ?? option.displayName ?? NewSessionModels.title(of: option.value)
-            }
-            return (option.value, title)
+            ModelRow(value: option.value,
+                     title: option.resolvedModel.map(prettyModel) ?? option.displayName ?? NewSessionModels.title(of: option.value))
         }
     }
+
+    /// Where the slider's reset goes: the effort the session had when it was opened, as the model now chosen takes it; nil is
+    /// the CLI's own (Default) when it had none, or the model offers none.
+    static func resetTarget(_ state: ChatComposerState, effortBaseline: String?) -> String? {
+        effortBaseline.flatMap { ChatEffort.clamped($0, to: effortLevels(state)) }
+    }
+
+    /// What the model chip and its popovers show for a session.
+    static func modelPicker(_ state: ChatComposerState, effortBaseline: String?) -> ComposerModelPicker {
+        let level = state.choices.effort ?? state.reportedEffort
+        return ComposerModelPicker(
+            modelTitle: modelTitle(state), effortTitle: effortTitle(state), rows: modelRows(state),
+            chosenModel: state.choices.model, levels: effortLevels(state), chosenLevel: level,
+            canResetEffort: level != nil && level != resetTarget(state, effortBaseline: effortBaseline))
+    }
+
+    /// Whether the Default row is the chosen one: no choice, or the choice named `default`.
+    static func isDefaultModelChosen(_ choice: String?) -> Bool { choice == nil || choice == "default" || choice?.isEmpty == true }
 
     // MARK: Context
 

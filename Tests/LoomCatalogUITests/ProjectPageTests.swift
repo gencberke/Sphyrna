@@ -285,7 +285,7 @@ struct ProjectPageTests {
 
     @Test func aLastLineIsTheReasonLoomHoldsElseTheTranscript() {
         let approval = StatusReason(.approval(tool: "Bash"), detail: "git push origin main")
-        #expect(ProjectSessionLine.text(reason: approval, transcript: "old words") == "Allow: git push origin main")
+        #expect(ProjectSessionLine.text(reason: approval, transcript: "old words") == "Asks to run: git push origin main")
         #expect(ProjectSessionLine.holdsLine(approval))
 
         let done = StatusReason(.turnDone, detail: "Rate limiter tests pass")

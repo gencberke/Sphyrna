@@ -6,8 +6,10 @@ import LoomCore
 /// Live Chat face commands (V16): the model's live-chat actions, for runs on the fake provider (or a real Claude
 /// under an isolated profile). Nothing written holds content: `chat-state` records phases, counts and kinds.
 ///
-/// - `live-chat:<on|off>`: the Loom-wide switch (`SessionFaces.liveChatEnabled`, off until V19).
-/// - `chat-start:<project id|none>[:<first message>]`: a new Claude session in the Chat face, selected.
+/// - `live-chat:<on|off>`: Settings → "New sessions start in" (Chat on, Terminal off; Chat is the default since V19).
+/// - `continue-in:<session id>:<chat|terminal>` and `cancel-handover:<session id>`: the ⋯ menu's Continue in Chat / Terminal
+///   (V19) and the way to end its wait.
+/// - `chat-start:<project id|none>[:<first message>]`: a new Claude session in the Chat face, selected, with the choices the draft resolves for the project.
 /// - `chat-send:<session id>:<text>` and `chat-send-after:<session id>:<text>`: ↵ and ⌘↵.
 /// - `chat-interrupt:<session id>`, `chat-stop:<session id>`, `chat-resume:<session id>`.
 /// - `chat-allow:<session id>` and `chat-deny:<session id>`: the oldest waiting request.
@@ -19,7 +21,7 @@ import LoomCore
 /// - `chat-view:<session id>:<label>`: writes `chat-view-<label>.json`, the live chat view of that session (counts and
 ///   kinds of its rows, the live row's label and quiet seconds, notices; no text).
 /// - `chat-state:<label>`: writes `chat-state-<label>.json` for the newest Chat session (or the selected one).
-/// - `composer-focus|type|clear|attach|paste|mode|model|effort|ring:<session id>[:<text, path or KB>]` and `composer-state:<session id>:<label>`:
+/// - `composer-focus|type|clear|attach|paste|mode|model|effort|ring|popover:<session id>[:<text, path or KB>]` and `composer-state:<session id>:<label>`:
 ///   the session's composer as the user drives it (V17); `composer-state` writes `composer-<label>.json` (kinds and counts).
 /// Failures are written as `chat-error-<command>.json` with the error's category only.
 @MainActor
@@ -37,12 +39,18 @@ extension DevelopmentEvidence {
             }
         }
         switch name {
-        case "live-chat": model.liveChatEnabled = argument == "on"
+        case "live-chat": model.setNewSessionFace(argument == "on" ? .chat : .terminal)
+        case "continue-in":
+            guard let session = id(argument), let target = SessionFace(rawValue: rest(argument)) else { return true }
+            model.continueIn(target, sessionID: session)
+        case "cancel-handover": if let session = id(argument) { model.cancelHandover(sessionID: session) }
         case "chat-start":
             let parts = argument.split(separator: ":", maxSplits: 1).map(String.init)
             let project = parts.first == "none" ? nil : parts.first.flatMap { UUID(uuidString: $0) }
+            // The choices the draft would resolve for the project: with no remembered mode, the explicit `default`.
             await run { Self.newestChatSession = try await model.startChatSession(
-                projectID: project, firstMessage: parts.count > 1 ? parts[1] : "") }
+                projectID: project, firstMessage: parts.count > 1 ? parts[1] : "",
+                choices: model.draftStartChoices(projectID: project)) }
         case "chat-send", "chat-send-after":
             guard let session = id(argument) else { return true }
             await run { _ = try await model.sendChatMessage(rest(argument), to: session, afterTurn: name == "chat-send-after") }
@@ -77,7 +85,7 @@ extension DevelopmentEvidence {
             state["route"] = model.detailRouteKind
             write("chat-state-\(label)", state)
         case "composer-focus", "composer-type", "composer-clear", "composer-attach", "composer-paste", "composer-state",
-             "composer-mode", "composer-model", "composer-effort", "composer-ring", "composer-folder":
+             "composer-mode", "composer-model", "composer-effort", "composer-ring", "composer-folder", "composer-popover":
             // `composer-<command>:<session id>:<label or argument>`; `composer-state` writes `composer-<label>.json`.
             guard let session = id(argument) else { return true }
             let command = String(name.dropFirst("composer-".count))

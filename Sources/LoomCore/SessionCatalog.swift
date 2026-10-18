@@ -37,13 +37,18 @@ public struct CatalogSession: Equatable, Sendable {
     public let ticketKey: String?
     /// The session whose agent asked for this one to be opened (D-40); nil for a session the user started.
     public let openedBy: UUID?
+    /// How the session's latest run was driven: the face that owns the session (V19). `.pipe` is the Chat face,
+    /// `.terminal` the terminal; nil for a session that has not run since V16. The runtime writes it when a run
+    /// starts, so it is the persisted fact a stopped session is resumed by, never a view flag.
+    public let runEndpoint: RunEndpointKind?
 
     public init(
         session: ManagedSession, title: String?, createdAt: Date, lastUsedAt: Date,
         lifecycle: SessionLifecycle, pinned: Bool, projectID: UUID? = nil,
         titleIsCustom: Bool = false, staleSince: Date? = nil, lastActivityAt: Date? = nil,
-        ticketKey: String? = nil, openedBy: UUID? = nil
+        ticketKey: String? = nil, openedBy: UUID? = nil, runEndpoint: RunEndpointKind? = nil
     ) {
+        self.runEndpoint = runEndpoint
         self.ticketKey = ticketKey
         self.openedBy = openedBy
         self.lastActivityAt = lastActivityAt ?? lastUsedAt
@@ -193,8 +198,10 @@ public actor SessionCatalog {
     static let sessionColumns = """
         s.id, s.provider, s.provider_conversation_id, s.working_directory, s.title,
         s.created_at, s.last_used_at, s.lifecycle, s.pinned, s.project_id, s.title_is_custom,
-        s.stale_since, \(activityExpression), s.ticket_key, s.opened_by
+        s.stale_since, \(activityExpression), s.ticket_key, s.opened_by, s.run_endpoint
         """
+    /// How many columns `sessionColumns` has: a query that adds its own columns reads them after this many.
+    static let sessionColumnCount: Int32 = 16
     /// A row an older build wrote has no activity time yet: it reads as its use time.
     static let activityExpression = "COALESCE(s.last_activity_at, s.last_used_at)"
     /// Excludes conversations with a `deletions` row (fence); `s` is the sessions alias.
@@ -349,7 +356,8 @@ public actor SessionCatalog {
             lastActivityAt: database.optionalDouble(statement, column: 12).map(Date.init(timeIntervalSince1970:)),
             ticketKey: database.optionalText(statement, column: 13),
             // A requester id that does not parse is dropped, never a reason to skip the row.
-            openedBy: database.optionalText(statement, column: 14).flatMap(UUID.init(uuidString:))
+            openedBy: database.optionalText(statement, column: 14).flatMap(UUID.init(uuidString:)),
+            runEndpoint: database.optionalText(statement, column: 15).flatMap(RunEndpointKind.init(rawValue:))
         )
     }
 

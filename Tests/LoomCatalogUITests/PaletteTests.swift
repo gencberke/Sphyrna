@@ -177,9 +177,9 @@ struct PaletteTests {
             PaletteReasonText.line(reason: reason, indicator: indicator, awaitingOpenApproval: open)
         }
         // The sidebar's and Home's words (`SessionReasonLine`), not a second wording of the same reason.
-        #expect(text(StatusReason(.approval(tool: "Bash"), detail: "git push"), .waitingForApproval) == "Allow: git push")
+        #expect(text(StatusReason(.approval(tool: "Bash"), detail: "git push"), .waitingForApproval) == "Asks to run: git push")
         #expect(text(StatusReason(.approval(tool: "Bash")), .waitingForApproval) == "Asks to run a command")
-        #expect(text(StatusReason(.approval(tool: "Edit"), detail: "src/a.swift"), .waitingForApproval) == "Allow Edit: src/a.swift")
+        #expect(text(StatusReason(.approval(tool: "Edit"), detail: "src/a.swift"), .waitingForApproval) == "Asks to edit: src/a.swift")
         #expect(text(StatusReason(.question, detail: "PDF library"), .waitingForApproval) == "Asks: PDF library")
         #expect(text(StatusReason(.planReady), .waitingForApproval) == "Plan ready for review")
         #expect(text(StatusReason(.turnDone, detail: "Added 12 tests"), .unviewedCompletion) == "Added 12 tests")
@@ -210,7 +210,7 @@ struct PaletteTests {
         #expect(groups.map(\.section) == [.needsYou, .sessions, .actions])
         #expect(titles(of: groups[0]) == ["Invoice export", "Webhook signature check"], "same class, so the more recent first")
         let webhook = try #require(groups[0].items.first { $0.title == "Webhook signature check" })
-        #expect(webhook.detail == "· Allow: git push origin fix" && webhook.indicator == .waitingForApproval)
+        #expect(webhook.detail == "· Asks to run: git push origin fix" && webhook.indicator == .waitingForApproval)
         #expect(webhook.trailing?.hasPrefix("api-gateway · ") == true)
         // The rest is recent, most recent first, without the two above.
         #expect(titles(of: groups[1]) == ["Nightly import", "Rate limiter tests", "Token rotation"])

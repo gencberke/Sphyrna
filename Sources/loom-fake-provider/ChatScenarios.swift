@@ -35,6 +35,10 @@ import Foundation
 //                                     SessionStart hook with source `clear` (the run moves to a new card)
 //   unknown                           an unknown record type, an unknown system subtype and keep_alive
 //   bigline [MiB]                     a Bash result whose line is about 2x MiB (default 3)
+//   file <name> <text>                a Write of <text> to <name> in the work folder, decided by the permission rules
+//   run <command>                     a Bash call (`mkdir <d>` and `touch <f>` take effect), decided by the rules
+//   web WebFetch|WebSearch            a research call, decided by the rules (ChatPermissions.swift)
+//   bg-agent [ms]                     an Agent in the background; its end starts a CLI turn that tries to write its report
 
 extension ChatEngine {
     func runScenario(_ text: String) throws {
@@ -128,6 +132,14 @@ extension ChatEngine {
             try assistantMessage([.text("The unknown records came first.")])
         case "bigline":
             try bigLine(mebibytes: args.first.flatMap(Int.init) ?? 3)
+        case "file":
+            try fileScenario(args)
+        case "run":
+            try runScenario(command: args.joined(separator: " "))
+        case "web":
+            try webScenario(tool: args.first ?? "WebFetch")
+        case "bg-agent":
+            try backgroundAgentScenario(milliseconds: args.first.flatMap(Int.init) ?? 300)
         default:
             try assistantMessage([.text("Unknown scenario '\(name)'.")])
         }
@@ -517,6 +529,8 @@ extension ChatEngine {
         wire.session = newID
         transcript.switchSession(newID)
         lastUUID = nil
+        // Not measured on the real CLI: whether live settings (rules, style) survive a reset. The worst case on demand.
+        if config.resetForgetsSettings { liveSettings = [:] }
         sendInit()
         hook("SessionStart", ["source": "clear"])
         outcome.text = ""

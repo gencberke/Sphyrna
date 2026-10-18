@@ -356,6 +356,14 @@ struct FakeClaude {
                 usleep(2_000)
                 registry("idle")
                 out("INTERRUPTED-WORK\r\n")
+            case "/idle-prompt":
+                // A turn, then Claude's own reminder a minute after it (here at once): `Notification` with
+                // `notification_type` `idle_prompt`. The session rests at its prompt; it asks for nothing.
+                promptCount += 1
+                hook("UserPromptSubmit", ["prompt_id": "p\(promptCount)"])
+                out("IDLE-PROMPT\r\n")
+                hook("Stop", ["last_assistant_message": "done"])
+                hook("Notification", ["notification_type": "idle_prompt", "message": "Claude is waiting for your input"])
             case "/work":
                 let milliseconds = Int(line.split(separator: " ").last.map(String.init) ?? "") ?? 300
                 hook("UserPromptSubmit", ["prompt_id": "p\(promptCount)"])

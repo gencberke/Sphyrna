@@ -38,6 +38,7 @@ extension TurnModel {
         guard source == .live else { return }
         if previous == nil, !startMarkerPlaced {
             startMarkerPlaced = true
+            markedMode = info.permissionMode
             place(id: nextID("start"), thread: .main, timestamp: now, offset: nil, policy: .standalone, delta: &delta,
                   body: .marker(.sessionStart(model: info.model, permissionMode: info.permissionMode)))
             return
@@ -46,8 +47,9 @@ extension TurnModel {
             place(id: nextID("model"), thread: .main, timestamp: now, offset: nil, policy: .standalone, delta: &delta,
                   body: .marker(.modelChanged(model)))
         }
-        let before = previous?.permissionMode ?? ready?.currentPermissionMode
+        let before = markedMode ?? previous?.permissionMode ?? ready?.currentPermissionMode
         if let mode = info.permissionMode, before != nil, mode != before {
+            markedMode = mode
             place(id: nextID("mode"), thread: .main, timestamp: now, offset: nil, policy: .standalone, delta: &delta,
                   body: .marker(.modeChanged(mode)))
         }
@@ -374,7 +376,12 @@ extension TurnModel {
                                           offset: UInt64?, delta: inout ModelDelta) {
         guard let id = result.toolUseID else { return }
         let images = result.images.map(Self.bounded)
-        let (status, exitCode) = Self.classify(result)
+        var (status, exitCode) = Self.classify(result)
+        // A refusal in Ask is what Ask is for: expected, and shown quietly (not as a denied call or a failure). The text of
+        // the CLI's `dontAsk` mode says so by itself; a deny rule's text does with Ask on at the turn's `system/init`.
+        if status == .denied, ChatAskMode.isRefusal(text: result.text, askIsOn: latestInit?.permissionMode == ChatAskMode.mode.rawValue) {
+            status = .refusedInAsk
+        }
         guard let i = index[id] else {
             // The call lies before what was read: keep the result, with no call.
             place(id: id, thread: thread, timestamp: time, offset: offset, policy: .work, delta: &delta,

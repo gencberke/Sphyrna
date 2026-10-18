@@ -45,6 +45,8 @@ extension LoomTheme {
         /// Below this stream width the view chip shrinks to its glyph and key: the full chip would sit over the
         /// text, which fills the pane once it is narrower than the reading column.
         static let chipCompactBelow: CGFloat = 700
+        /// Below this stream height (a card, the banner and the composer take the rest) the view chip is not drawn.
+        static let viewChipMinimumStreamHeight: CGFloat = 90
 
         // MARK: Scroll latch
 

@@ -104,6 +104,13 @@ struct GeneralSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LoomTheme.Space.settingsSectionGap) {
             SettingsCard {
+                SettingsRow(title: "New sessions start in",
+                            detail: "A session keeps its face. Its menu moves it to the other.") {
+                    SegmentedControl(values: SessionFace.allCases, title: \.title, selection: model.newSessionFace,
+                                     compact: true, onSelect: { model.setNewSessionFace($0) })
+                        .accessibilityLabel("New sessions start in")
+                }
+                SettingsRowDivider()
                 SettingsRow(title: "Terminal font size", detail: "Applies to existing and new terminals.") {
                     Picker("Terminal font size", selection: Binding(
                         get: { model.terminalFontSize }, set: { model.setTerminalFontSize($0) }

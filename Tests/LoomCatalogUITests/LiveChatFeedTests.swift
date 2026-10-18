@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import LoomChat
+@testable import LoomChat
 import LoomCore
 import Testing
 @testable import LoomCatalogUI
@@ -334,6 +334,67 @@ extension ChatHosted {
             #expect(released.count == 0)
             // The run ends: nobody needs it.
             await source.setState { $0.phase = .stopped }
+            #expect(await waitUntil { released.count == 1 })
+            #expect(!feed.isInUse)
+        }
+
+        private func cutOffState(_ source: ScriptedLiveSource) async {
+            let input: JSONValue = ["command": "rm -rf build", "description": "Remove it"]
+            let fields: [String: JSONValue] = ["subtype": "can_use_tool", "tool_name": "Bash", "input": input, "tool_use_id": "toolu_a"]
+            let pending = ChatPendingRequest(requestID: "a", request: ToolPermissionRequest(json: .object(fields))!,
+                                             arrivedAt: Date(), agent: nil)
+            let cut = ChatSettledRequest(request: pending, outcome: .processEnded, summary: "Not answered, Claude stopped: rm -rf build",
+                                         settledAt: Date())
+            // The process is killed while the request waits.
+            await source.setState { $0.phase = .failed(.ended); $0.settled = [cut] }
+        }
+
+        /// A run that ended with a request unanswered leaves a cut-off card that the ended view draws from this feed. The ended view
+        /// counts as a view of it, so the host keeps the feed while that view is shown and lets it go when it goes (M3: a cut-off
+        /// card used to keep the feed for as long as the app ran, for a session nobody showed).
+        @Test func aFeedOnlyAnEndedViewShowsIsReleasedWhenThatViewGoes() async throws {
+            let card = UUID()
+            let source = ScriptedLiveSource(card: card, conversationID: nil)
+            let feed = LiveChatFeed(source: source, card: card, conversationID: nil, configDirectory: nil, workingDirectory: nil)
+            final class Released { var count = 0 }
+            let released = Released()
+            feed.onUnused = { released.count += 1 }
+            await cutOffState(source)
+            feed.endedViewAppeared()
+            #expect(await waitUntil { feed.cards.cutOff.count == 1 }, "the cut-off card shows from the driver's settled requests")
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(released.count == 0 && feed.isInUse, "the ended view is on screen")
+            feed.endedViewWentAway()
+            #expect(released.count == 1 && !feed.isInUse, "nobody shows the feed: the host may let it go")
+        }
+
+        /// The driver keeps what was cut off, so a feed that was let go is made again when the session is opened, and shows it.
+        @Test func aReleasedFeedShowsTheCutOffCardAgainWhenTheSessionIsOpened() async throws {
+            let card = UUID()
+            let source = ScriptedLiveSource(card: card, conversationID: nil)
+            await cutOffState(source)
+            let first = LiveChatFeed(source: source, card: card, conversationID: nil, configDirectory: nil, workingDirectory: nil)
+            first.endedViewAppeared()
+            #expect(await waitUntil { first.cards.cutOff.count == 1 })
+            first.endedViewWentAway()
+            let again = LiveChatFeed(source: source, card: card, conversationID: nil, configDirectory: nil, workingDirectory: nil)
+            again.endedViewAppeared()
+            #expect(await waitUntil { again.cards.cutOff.count == 1 })
+            again.endedViewWentAway()
+        }
+
+        /// A run that ends while no view shows its feed lets it go, cut-off card or not.
+        @Test func aRunThatEndsUnseenReleasesItsFeedEvenWithACutOffCard() async throws {
+            let card = UUID()
+            let source = ScriptedLiveSource(card: card, conversationID: nil)
+            let feed = LiveChatFeed(source: source, card: card, conversationID: nil, configDirectory: nil, workingDirectory: nil)
+            final class Released { var count = 0 }
+            let released = Released()
+            feed.onUnused = { released.count += 1 }
+            feed.start()
+            await source.setState { $0.phase = .ready }
+            #expect(await waitUntil { feed.isInUse })
+            await cutOffState(source)
             #expect(await waitUntil { released.count == 1 })
             #expect(!feed.isInUse)
         }

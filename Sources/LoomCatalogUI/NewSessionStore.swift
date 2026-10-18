@@ -7,6 +7,8 @@ struct StoredDraft: Equatable, Codable {
     var text: String
     var modePick: DraftPick
     var modelPick: DraftPick
+    /// Absent in a file written before the effort slider (D-63): nothing chosen.
+    var effortPick: DraftPick?
     var branchKind: BranchKind
     var branchName: String?
     var updatedAt: Date
@@ -16,6 +18,7 @@ struct StoredDraft: Equatable, Codable {
         text = draft.text
         modePick = draft.modePick
         modelPick = draft.modelPick
+        effortPick = draft.effortPick
         branchKind = draft.branchKind
         branchName = draft.branchName
         updatedAt = draft.updatedAt
@@ -25,6 +28,7 @@ struct StoredDraft: Equatable, Codable {
         var value = SessionDraft(projectID: projectID, text: text, updatedAt: updatedAt)
         value.modePick = modePick
         value.modelPick = modelPick
+        value.effortPick = effortPick ?? .inherit
         value.branchKind = branchKind
         value.branchName = branchName
         return value

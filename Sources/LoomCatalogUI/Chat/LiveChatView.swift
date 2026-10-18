@@ -40,6 +40,7 @@ final class LiveChatViewModel {
             context.retry = { [weak composer] rowID in composer?.retry(rowID: rowID) }
         }
         controller.onNeedOlder = { [weak feed, weak controller] in feed?.loadOlder(controller) }
+        controller.onTypeToFocus = composer.map { composer in { [weak composer] event in composer?.typeToFocus(event) } }
         controller.onCycleView = { [weak feed] in feed?.presentation.cycleViewMode() }
         controller.onLatchChange = { [weak self] following, jump in
             guard let self else { return }
@@ -88,13 +89,16 @@ struct LiveChatView<Pinned: View>: View {
     let feed: LiveChatFeed
     let composer: ChatComposerModel?
     let onOpenSubagent: ((String?, String) -> Void)?
+    /// "Continue in Terminal" on the policy banner; nil where the session cannot be moved.
+    var onContinueInTerminal: (() -> Void)?
     @ViewBuilder let pinned: (_ maxHeight: CGFloat?) -> Pinned
     @State private var model: LiveChatViewModel?
 
     var body: some View {
         ZStack {
             if let model {
-                LiveChatContent(model: model, feed: feed, composer: composer, onOpenSubagent: onOpenSubagent, pinned: pinned)
+                LiveChatContent(model: model, feed: feed, composer: composer, onOpenSubagent: onOpenSubagent,
+                                onContinueInTerminal: onContinueInTerminal, pinned: pinned)
             } else {
                 LoomTheme.Surface.canvas
             }
@@ -119,21 +123,48 @@ struct LiveChatContent<Pinned: View>: View {
     let feed: LiveChatFeed
     let composer: ChatComposerModel?
     let onOpenSubagent: ((String?, String) -> Void)?
+    var onContinueInTerminal: (() -> Void)?
     /// The cards that wait for the user, between the stream and the composer. They get the most they may take.
     @ViewBuilder let pinned: (_ maxHeight: CGFloat?) -> Pinned
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var width: CGFloat = 0
     @State private var height: CGFloat = 0
+    /// The stream's own height: with a card, the banner and the composer under it, a short window leaves it a sliver.
+    @State private var streamHeight: CGFloat = .infinity
 
     var body: some View {
         VStack(spacing: 0) {
             stream
+            banner
             // The slot between the stream and the composer: V18's card stack. The stream gives way to it and to the composer.
-            pinned(height > 0 ? height * LoomTheme.Pinned.stackMaxHeightFraction : nil)
+            pinned(height > 0 ? height * (composer?.cardShown == true ? LoomTheme.Pinned.compactStackMaxHeightFraction
+                                          : LoomTheme.Pinned.stackMaxHeightFraction) : nil)
+                // Laid out before the stream: the stream gives way to the card (up to its share), not the card to the stream.
+                .layoutPriority(1)
             if let composer { ChatComposerDock(model: composer) }
         }
         .background(LoomTheme.Surface.canvas)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+    }
+
+    /// The one banner above the composer (CHAT-SPEC → Markers and banners): the policy signal with Continue in Terminal,
+    /// then wire drift and unknown records behind a "+N".
+    private var banner: some View {
+        let presentation = feed.presentation
+        let items = feed.phase == .ready ? ChatBanners.items(
+            policySignal: feed.policySignal != nil, policyDismissed: feed.policyDismissed,
+            canContinueInTerminal: onContinueInTerminal != nil, owner: .chat,
+            wireDrift: feed.wireDrift, wireDriftDismissed: feed.wireDriftDismissed,
+            unknownRecords: presentation.unknownRecordCount, recordsDismissed: presentation.driftDismissed) : []
+        return ChatBannerView(items: items, dismiss: { kind in
+            switch kind {
+            case .policy: feed.policyDismissed = true
+            case .wireDrift: feed.wireDriftDismissed = true
+            case .unknownRecords: presentation.dismissDrift()
+            }
+        }, perform: { kind in
+            if kind == .policy { onContinueInTerminal?() }
+        })
     }
 
     private var stream: some View {
@@ -148,28 +179,20 @@ struct LiveChatContent<Pinned: View>: View {
                             ChatJumpPill { model.jumpToLatest() }
                                 .transition(reduceMotion ? .identity : .opacity)
                         }
-                        if feed.policySignal != nil, !feed.policyDismissed {
-                            ChatNotice(message: "Claude says this account's plan may not allow the Chat face. The terminal still runs this session.",
-                                       dismiss: { feed.policyDismissed = true })
-                        }
-                        if feed.wireDrift > 0, !feed.wireDriftDismissed {
-                            ChatNotice(message: "Claude sent something this version of Loom does not expect. The session goes on; some of it may not show.",
-                                       dismiss: { feed.wireDriftDismissed = true })
-                        }
-                        if presentation.unknownRecordCount > 0, !presentation.driftDismissed {
-                            ChatDriftNotice(count: presentation.unknownRecordCount) { presentation.dismissDrift() }
-                        }
                     }
                     .padding(.bottom, 12)
                     .animation(reduceMotion ? nil : .easeOut(duration: LoomTheme.Chat.fadeDuration), value: model.showsJump)
                 }
                 .overlay(alignment: .topTrailing) {
-                    ChatViewChip(mode: presentation.viewMode, compact: ChatViewChip.isCompact(width: width)) {
-                        presentation.cycleViewMode()
+                    // Not in a sliver of a stream: it would stick out from under the banner.
+                    if streamHeight >= LoomTheme.Chat.viewChipMinimumStreamHeight {
+                        ChatViewChip(mode: presentation.viewMode, compact: ChatViewChip.isCompact(width: width)) {
+                            presentation.cycleViewMode()
+                        }
+                        .padding(.top, 10).padding(.trailing, 14)
                     }
-                    .padding(.top, 10).padding(.trailing, 14)
                 }
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { width = $0.width; streamHeight = $0.height }
             }
             ChatWindowVisibility { model.setWindowVisible($0) }.frame(width: 0, height: 0)
         }

@@ -158,13 +158,21 @@ enum ChatWork {
                 buckets.append(Bucket(kind: kind, first: position, count: 1, paths: path.map { [$0] } ?? []))
             }
         }
+        var refused = 0
         for (position, call) in calls.enumerated() {
+            // Ask refused it: nothing was changed or run, so it is not counted as work.
+            if call.status == .refusedInAsk { refused += 1; continue }
             let kind = kind(of: call)
             let path = kind == .edit ? (call.input["file_path"]?.string ?? call.input["notebook_path"]?.string) : nil
             note(kind, at: position, path: path)
         }
         for _ in 0..<agents { note(.agent, at: calls.count) }
+        let refusedNote = refused > 0 ? " \u{00B7} \(refused) refused in Ask" : ""
         guard !buckets.isEmpty else {
+            if refused > 0 {
+                // The lowercase form follows a header that already says "Worked".
+                return capitalized ? "Worked" + refusedNote : "\(refused) refused in Ask"
+            }
             return thinkingOnly ? (capitalized ? "Thought" : "thought") : (capitalized ? "Worked" : "worked")
         }
         let named = buckets.sorted { ($0.kind.rank, $0.first) < ($1.kind.rank, $1.first) }.prefix(2)
@@ -179,7 +187,7 @@ enum ChatWork {
         case 2: text = "\(phrases[0]) and \(phrases[1])"
         default: text = phrases.dropLast().joined(separator: ", ") + " and " + phrases[phrases.count - 1]
         }
-        return capitalized ? text.prefix(1).uppercased() + text.dropFirst() : text.prefix(1).lowercased() + text.dropFirst()
+        return (capitalized ? text.prefix(1).uppercased() + text.dropFirst() : text.prefix(1).lowercased() + text.dropFirst()) + refusedNote
 
         func phrase(_ bucket: Bucket) -> String {
             switch bucket.kind {

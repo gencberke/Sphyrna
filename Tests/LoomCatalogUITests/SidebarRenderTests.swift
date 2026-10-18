@@ -339,7 +339,7 @@ struct SidebarRenderTests {
 
         // The Active card names the reason after its state; a card in a day section does not.
         let active = try #require(label(hosted, hasPrefix: "Card 12, "))
-        #expect(active.label == "Card 12, Claude, Needs approval, Allow: git push origin fix/webhook-sig")
+        #expect(active.label == "Card 12, Claude, Needs approval, Asks to run: git push origin fix/webhook-sig")
         let day = try #require(label(hosted, hasPrefix: "Card 11, "))
         #expect(day.label == "Card 11, Claude, Idle")
 

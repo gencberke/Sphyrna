@@ -22,6 +22,9 @@ final class ChatStreamController: NSObject {
 
     var onNeedOlder: (() -> Void)?
     var onCycleView: (() -> Void)?
+    /// A printable key typed while the stream has the keyboard: the composer takes the focus and the text (V19). Nil: the
+    /// stream has no composer (the read-only view), and the key does nothing.
+    var onTypeToFocus: ((NSEvent) -> Void)?
     /// Following changed, or "Jump to latest" should show or hide.
     var onLatchChange: ((_ following: Bool, _ showsJump: Bool) -> Void)?
 

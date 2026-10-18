@@ -3,9 +3,8 @@ import LoomChat
 import LoomCore
 
 /// The live Chat face's actions on the model (V16): thin calls into the app's `ChatSessionHost`, which owns the
-/// drivers and their state. The composer (V17) and the cards (V18) call these; evidence does today. Each refuses
-/// while the live Chat face is switched off (`SessionFaces.liveChatEnabled`), except for a session whose run already
-/// is a Chat-face run.
+/// drivers and their state. The composer (V17) and the cards (V18) call these; evidence does too. Each refuses
+/// without the app's Chat host, and for a session whose run is a terminal run (that is a handover, V19).
 extension CatalogModel {
     /// Makes the Chat face's holder for this runtime; the app calls it once, with the runtime. Each turn's context
     /// window feeds the context ring.
@@ -24,6 +23,14 @@ extension CatalogModel {
     func liveChatDriver(for sessionID: UUID) -> ChatSessionDriver? {
         _ = chatDriversRevision
         return chatSessions?.existingDriver(for: sessionID)
+    }
+
+    /// The driver the session's live chat shows: the one that exists, or, for a stopped session the Chat face owns,
+    /// a new one in the stopped phase (its composer resumes the session). Made on the first look and kept by the host.
+    func liveChatDriverForDisplay(of row: SessionRowModel) -> ChatSessionDriver? {
+        if let driver = liveChatDriver(for: row.id) { return driver }
+        guard showsStoppedLiveChat(row) else { return nil }
+        return chatSessions?.driver(for: row.id)
     }
 
     /// The live stream of a driver (its presentation under the transcript's history), kept by the host while a view shows
@@ -53,7 +60,7 @@ extension CatalogModel {
     @discardableResult
     public func startChatSession(projectID: UUID?, firstMessage: String = "",
                                  choices: ClaudeLaunchChoices = ClaudeLaunchChoices()) async throws -> UUID {
-        guard faces.liveChatEnabled, let host = chatSessions else { throw LiveChatError.unavailable }
+        guard let host = chatSessions else { throw LiveChatError.unavailable }
         let id = UUID()
         select(id)
         try await host.startNewSession(projectID: projectID, sessionID: id,
@@ -61,11 +68,13 @@ extension CatalogModel {
         return id
     }
 
-    /// The session's driver: one that exists, or (with the live Chat face on) a new one.
+    /// The session's driver: one that exists, or a new one unless a terminal run holds the session.
     func chatDriver(for sessionID: UUID) throws -> ChatSessionDriver {
         guard let host = chatSessions else { throw LiveChatError.unavailable }
         if let driver = host.existingDriver(for: sessionID) { return driver }
-        guard faces.liveChatEnabled else { throw LiveChatError.noDriver(sessionID) }
+        if let row = rowModels[sessionID], runEndpoint(of: row) == .terminal || terminalView(for: sessionID) != nil {
+            throw LiveChatError.noDriver(sessionID)
+        }
         return host.driver(for: sessionID)
     }
 

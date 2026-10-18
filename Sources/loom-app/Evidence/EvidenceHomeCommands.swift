@@ -6,8 +6,8 @@ import LoomCatalogUI
 ///
 /// - `show-home`: what the sidebar's Home row and ⌃⌘H do (`showHome`).
 /// - `home-resume:<session id>`: Resume on a Continue card.
-/// - `home-project:<project id>`: another project in the start box.
-/// The snapshot gains `home{needsYou, finished, continue, sessionsToday, startProject, emptyCatalog, claudeMissing,
+/// - `sidebar-new-session`: what the sidebar's New session row does (`beginNewSessionInRecentProject`).
+/// The snapshot gains `home{needsYou, finished, continue, sessionsToday, newSessionProject, emptyCatalog, claudeMissing,
 /// paces, reads}`: ids and numbers only, never a title or a line.
 @MainActor
 extension DevelopmentEvidence {
@@ -19,9 +19,7 @@ extension DevelopmentEvidence {
         case "home-resume":
             guard let id = UUID(uuidString: argument) else { return false }
             model.resumeHomeForEvidence(id)
-        case "home-project":
-            guard let id = UUID(uuidString: argument) else { return false }
-            model.chooseHomeProjectForEvidence(id)
+        case "sidebar-new-session": model.beginNewSessionInRecentProject()
         default: return false
         }
         return true
@@ -36,7 +34,7 @@ extension AppDelegate {
             "needsYou": summary.needsYou.map(\.uuidString), "finished": summary.finished.map(\.uuidString),
             "continue": summary.continueSessions.map(\.uuidString),
             "sessionsToday": summary.sessionsToday ?? NSNull(),
-            "startProject": summary.startProjectID?.uuidString ?? NSNull(),
+            "newSessionProject": summary.newSessionProjectID?.uuidString ?? NSNull(),
             "emptyCatalog": summary.emptyCatalog, "claudeMissing": summary.claudeMissing,
             "paces": summary.paces, "reads": summary.reads,
         ]

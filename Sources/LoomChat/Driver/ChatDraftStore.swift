@@ -41,6 +41,36 @@ public struct ChatDraft: Codable, Equatable, Sendable {
     }
 }
 
+/// Taking one message's text out of a draft's text, where `prepend` and the composer joined messages with a blank line.
+public enum ChatDraftText {
+    /// `text` without the first occurrence of `piece` that is a whole message of it (at the start or after a blank line, and
+    /// at the end or before one), and one blank-line separator beside it (the one after it, else the one before). A
+    /// prefix of the user's own words ("yes" in "yesterday's build failed") is not a message. Unchanged when `piece` is
+    /// empty or is not there as a message.
+    public static func removing(_ piece: String, from text: String) -> String {
+        guard !piece.isEmpty else { return text }
+        var searchFrom = text.startIndex
+        while searchFrom < text.endIndex, let range = text.range(of: piece, range: searchFrom..<text.endIndex) {
+            var lower = range.lowerBound
+            var upper = range.upperBound
+            let startsMessage = lower == text.startIndex || text[..<lower].hasSuffix("\n\n")
+            let endsMessage = upper == text.endIndex || text[upper...].hasPrefix("\n\n")
+            if startsMessage, endsMessage {
+                if text[upper...].hasPrefix("\n\n") {
+                    upper = text.index(upper, offsetBy: 2)
+                } else if text[..<lower].hasSuffix("\n\n") {
+                    lower = text.index(lower, offsetBy: -2)
+                }
+                var result = text
+                result.removeSubrange(lower..<upper)
+                return result
+            }
+            searchFrom = text.index(after: range.lowerBound)
+        }
+        return text
+    }
+}
+
 public enum ChatDraftStoreError: Error, Equatable, Sendable {
     /// The file could not be read as a draft. It was renamed aside to `keptAs` (nothing is overwritten).
     case unreadable(keptAs: String?)
@@ -135,6 +165,26 @@ public struct ChatDraftStore: Sendable {
         let front = texts.filter { !$0.isEmpty }.joined(separator: "\n\n")
         let joined = front.isEmpty ? existing.text : existing.text.isEmpty ? front : front + "\n\n" + existing.text
         try save(ChatDraft(text: joined, attachments: listed + existing.attachments), sessionID: sessionID)
+    }
+
+    /// Takes a message out of the draft again: its text and its attachments (matched by their bytes), as `prepend` put them
+    /// in. Used when a message the draft got back was sent again (Retry), so it is not in the draft twice.
+    public func withdraw(text: String, attachments: [ChatOutgoingAttachment], sessionID: UUID) throws {
+        guard var draft = try load(sessionID: sessionID) else { return }
+        draft.text = ChatDraftText.removing(text, from: draft.text)
+        for attachment in attachments {
+            let bytes: Data?
+            let kind: ChatDraft.Attachment.Kind
+            switch attachment {
+            case let .pastedText(pasted): (bytes, kind) = (Data(pasted.utf8), .pastedText)
+            case let .image(_, base64): (bytes, kind) = (Data(base64Encoded: base64), .image)
+            }
+            guard let bytes, let index = draft.attachments.firstIndex(where: {
+                $0.kind == kind && attachmentData(id: $0.id, sessionID: sessionID) == bytes
+            }) else { continue }
+            draft.attachments.remove(at: index)
+        }
+        try save(draft, sessionID: sessionID)
     }
 
     /// Keeps an attachment's bytes (the draft's file lists it).

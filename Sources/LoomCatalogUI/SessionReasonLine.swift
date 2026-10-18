@@ -20,12 +20,7 @@ struct SessionReasonLine: Equatable {
         guard let reason else { return nil }
         switch reason.kind {
         case .approval(let tool):
-            let subject = tool == "Bash" ? "" : " \(tool)"
-            if let detail = reason.detail {
-                self.init(text: "Allow\(subject): \(detail)", note: reason.note)
-            } else {
-                self.init(text: tool == "Bash" ? "Asks to run a command" : "Allow\(subject)", note: reason.note)
-            }
+            self.init(text: Self.approvalText(tool: tool, detail: reason.detail), note: reason.note)
         case .question:
             self.init(text: reason.detail.map { "Asks: \($0)" } ?? "Asks a question")
         case .planReady:
@@ -45,6 +40,24 @@ struct SessionReasonLine: Equatable {
         case .automaticTurn:
             self.init(text: reason.detail ?? "Continuing after a background task")
         }
+    }
+
+    /// What an approval reads on every surface and in both faces (Home, the sidebar, the palette, the inspector): what
+    /// Claude asks to do, in words, then the command or path when it is known. A Chat-face request and a terminal-face one
+    /// are the same `StatusReason`, so they read the same ("Asks to run: make test", "Asks to edit: src/App.swift").
+    static func approvalText(tool: String, detail: String?) -> String {
+        let asks: String
+        let bare: String
+        switch tool {
+        case "Bash": (asks, bare) = ("Asks to run", "Asks to run a command")
+        case "Edit", "MultiEdit", "NotebookEdit": (asks, bare) = ("Asks to edit", "Asks to edit a file")
+        case "Write": (asks, bare) = ("Asks to write", "Asks to write a file")
+        case "Read": (asks, bare) = ("Asks to read", "Asks to read a file")
+        case "WebFetch": (asks, bare) = ("Asks to fetch", "Asks to fetch a page")
+        default: (asks, bare) = ("Asks to use \(tool)", "Asks to use \(tool)")
+        }
+        guard let detail, !detail.isEmpty else { return bare }
+        return "\(asks): \(detail)"
     }
 
     /// The tooltip: the whole line, then the note.

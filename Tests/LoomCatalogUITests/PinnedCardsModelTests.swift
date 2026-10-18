@@ -316,6 +316,26 @@ struct PinnedCardsModelTests {
         #expect(PinnedCardsModel.failureText(ChatDriverError.noSuchRequest("a")) == "This request is no longer waiting.")
     }
 
+    /// The "no longer waiting" path: the CLI withdrew the request (or it was answered elsewhere) while the button was pressed.
+    /// The card says so, then goes when the driver's state drops it; nothing is sent twice.
+    @Test func aRequestThatIsNoLongerWaitingSaysSoAndGoesWithTheNextState() async {
+        let (cards, source, _) = make()
+        let a = request("a")
+        let b = request("b")
+        cards.apply(state([a, b]))
+        await source.fail(with: ChatDriverError.noSuchRequest("a"))
+        await cards.deny(a)
+        #expect(cards.failures["a"] == "This request is no longer waiting.")
+        #expect(cards.current?.requestID == "a", "the card stays until the driver's state drops it")
+        #expect(cards.answering.isEmpty)
+        // The state catches up: the withdrawn request is gone, the next one takes its place, and the reason goes with it.
+        cards.apply(state([b]))
+        #expect(cards.current?.requestID == "b" && cards.failures["a"] == nil)
+        await source.fail(with: nil)
+        await cards.deny(b)
+        #expect(await source.answers.map(\.requestID) == ["b"], "the withdrawn request was never answered")
+    }
+
     // MARK: Questions
 
     @Test func aSingleSelectPickMovesOnAfterAMomentUnlessAnotherPickOrAChangeComesFirst() async {

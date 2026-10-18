@@ -18,6 +18,12 @@ struct ComposerEnvironment {
     var sessionMention: (UUID) -> String? = { _ in nil }
     /// Runs the terminal face (V19 provides it); nil until then, and "Continue in Terminal" is not offered.
     var continueInTerminal: (() -> Void)?
+    /// ⌃O in the field: cycles the stream's view (V19).
+    var cycleView: (() -> Void)?
+    /// Why "Continue in Terminal" cannot run now (nil when it can): the `/` menu shows it and disables the row.
+    var continueInTerminalRefusal: () -> String? = { nil }
+    /// What the composer says while the session is being moved to the other face; nil when it is not. Sending waits.
+    var handoverNotice: () -> String? = { nil }
     /// The file scan for `@` (a test replaces it).
     var scanFiles: @Sendable (URL, ComposerCancel) -> [ComposerFileEntry] = { root, cancel in
         ComposerFileIndex.scan(root: root, isCancelled: { cancel.isCancelled })
@@ -58,6 +64,13 @@ protocol ComposerEditorBridge: AnyObject {
     /// Whether the caret is on the first / last line of the text.
     func caretLines() -> (first: Bool, last: Bool)
     func focus()
+    /// A key typed while the stream had the keyboard: the field takes the focus and then the event itself, so the input
+    /// method (Option characters, dead keys, composition) sees the first key as it sees every other.
+    func typeIn(_ event: NSEvent)
+}
+
+extension ComposerEditorBridge {
+    func typeIn(_ event: NSEvent) { focus() }
 }
 
 struct ComposerNotice: Equatable {
@@ -128,6 +141,17 @@ final class ChatComposerModel {
     private(set) var notice: ComposerNotice?
     /// The context ring's popover is open (a model property so evidence can open it).
     var ringPopoverOpen = false
+    /// The session is being moved to the terminal: sending waits, and the text stays where it is (V19).
+    var handoverPending: String? { environment.handoverNotice() }
+    /// The bar's mode list, model list and effort slider are open (model properties so evidence can open them).
+    var modePopoverOpen = false
+    var modelPopoverOpen = false
+    var effortPopoverOpen = false
+    /// The effort this session had when its composer first knew one: what the slider's reset goes back to (the CLI has no
+    /// "no effort"; an unset level cannot be told to it live).
+    private(set) var effortBaseline: String?
+    /// The user set an effort from this bar: what the driver holds from now on is theirs, not the baseline.
+    var effortChanged = false
     /// True when there is text (not only spaces) or an attachment: what Send needs.
     private(set) var hasContent = false
     /// No characters at all (the placeholder shows).
@@ -172,8 +196,8 @@ final class ChatComposerModel {
     @ObservationIgnored private(set) var fullTextReads = 0
     @ObservationIgnored private var noticeTask: Task<Void, Never>?
     @ObservationIgnored var lastSavedDraft: ChatDraft?
-    /// The draft's attachments that are being read back (the draft lists them until they are in the composer).
-    @ObservationIgnored var pendingRestore: [ChatDraft.Attachment] = []
+    /// The saved draft has been read (off the main thread): no save is written before, so it cannot be overwritten.
+    @ObservationIgnored var draftLoaded = false
     @ObservationIgnored var restoreTask: Task<Void, Never>?
     @ObservationIgnored var fileWrites: Task<Void, Never>?
     /// Attachment files asked for and not yet on disk; a flush (Quit, blur) writes these itself rather than leave a draft that lists a missing file.
@@ -219,8 +243,16 @@ final class ChatComposerModel {
     func refresh() async {
         let next = await driver.composerState()
         if next != state { state = next }
+        // The baseline is what the session had at open: the stored choice, else the effort the CLI reports (its `system/init`
+        // comes with the first turn). Never one the user set from this bar.
+        if effortBaseline == nil, !effortChanged, let level = next.choices.effort ?? next.reportedEffort { effortBaseline = level }
         if next.sessionID != card { moveDraft(to: next.sessionID) }
-        if next.hasReturnedDrafts { takeReturnedDrafts(await driver.takeReturnedDrafts()) }
+        if next.hasReturnedDrafts || next.hasWithdrawnDrafts {
+            // The saved draft first: what the driver wrote into it is not taken twice (`restoredAlready`).
+            await restoreTask?.value
+            if next.hasReturnedDrafts { await takeReturnedDrafts(await driver.takeReturnedDrafts()) }
+            if next.hasWithdrawnDrafts { takeWithdrawnDrafts(await driver.takeWithdrawnDrafts()) }
+        }
         endEditIfItemLeft()
     }
 
@@ -340,7 +372,11 @@ final class ChatComposerModel {
         let state = state
         return [
             "mode": state.permissionMode ?? "none", "model": state.resolvedModel ?? "none", "effort": state.reportedEffort ?? "none",
-            "contextTokens": state.contextTokens ?? -1, "contextWindow": state.contextWindow ?? -1, "ringOpen": ringPopoverOpen, "noticeText": notice?.text ?? "", "choicesMode": state.choices.permissionMode ?? "none",
+            "contextTokens": state.contextTokens ?? -1, "contextWindow": state.contextWindow ?? -1, "ringOpen": ringPopoverOpen,
+            "modeOpen": modePopoverOpen, "modelOpen": modelPopoverOpen, "effortOpen": effortPopoverOpen,
+            "modeTitle": ComposerBarText.modeTitle(permissionMode: state.permissionMode, choices: state.choices),
+            "modelTitle": ComposerBarText.modelTitle(state), "effortTitle": ComposerBarText.effortTitle(state) ?? "none",
+            "effortLevels": ComposerBarText.effortLevels(state), "noticeText": notice?.text ?? "", "choicesMode": state.choices.permissionMode ?? "none",
             "textLength": text.utf16.count, "attachments": attachments.map { $0.isImage ? "image" : "pastedText" },
             "menu": menu.map { String(describing: $0.kind) } ?? "none", "menuItems": menu?.items.count ?? 0,
             "editing": editing != nil, "queue": state.queue.items.count, "queuePaused": state.queue.paused?.rawValue ?? "none",

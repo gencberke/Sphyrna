@@ -15,6 +15,8 @@ extension LoomTheme {
         /// The card stack never takes more than this share of the chat pane (stream, cards and composer): past it the stack
         /// scrolls, so the composer stays on screen.
         static let stackMaxHeightFraction: CGFloat = 0.55
+        /// With a card shown the composer is compact (`LoomTheme.Composer.compactTextHeight`), so the stack may take more.
+        static let compactStackMaxHeightFraction: CGFloat = 0.68
         static let iconSlot: CGFloat = 22
         static let iconRadius: CGFloat = Radius.sm
         static let buttonHeight: CGFloat = 28

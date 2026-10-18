@@ -133,7 +133,7 @@ struct HomeTests {
         let states = try await drive(rig)
         let board = rig.model.homeBoard()
         func line(_ id: UUID) -> String? { (board.needsYou + board.finished).first { $0.id == id }?.line }
-        #expect(line(states.approval) == "Allow: git push origin fix/webhook-sig")
+        #expect(line(states.approval) == "Asks to run: git push origin fix/webhook-sig")
         #expect(line(states.input) == "Waiting for your input")
         #expect(line(states.question) == "Asks: PDF library")
         // The last turn's words stay after the run, so a finished card keeps its line.
@@ -151,7 +151,7 @@ struct HomeTests {
         #expect(entry(.waitingForApproval).line == "Needs approval")
         #expect(entry(.unviewedCompletion).line == "Finished")
         #expect(entry(.problem("Claude could not be resumed")).line == "Claude could not be resumed")
-        #expect(entry(.waitingForApproval, reason: approval()).line.hasPrefix("Allow"))
+        #expect(entry(.waitingForApproval, reason: approval()).line.hasPrefix("Asks"))
         #expect(entry(.unviewedCompletion).canMarkRead && !entry(.failed(nil)).canMarkRead)
         // Where each need goes: a finished turn and a failed one are Finished; every other need is Needs you.
         #expect(HomeBoard.isFinished(.unviewedCompletion) && HomeBoard.isFinished(.failed("x")))
@@ -392,42 +392,23 @@ struct HomeTests {
         #expect(model.home.reads == 1 && model.home.todayReads == 0, "the full read already went with this refresh")
     }
 
-    // MARK: The start box
+    // MARK: New session (V19: the start box went; the sidebar's row opens the draft)
 
-    @Test func theStartBoxBeginsOnTheLastUsedProjectAndKeepsAPick() async throws {
+    @Test func newSessionOpensTheDraftInTheMostRecentlyUsedProject() async throws {
         let rig = try await catalogRig()
         defer { cleanup(rig) }
         let model = rig.model
-        let api = rig.projects[0], billing = rig.projects[1]
-        // Before the read there is no last-used project: the first one.
-        #expect(model.homeStartProjectID == api.id)
-        await model.refreshHome()
+        let api = rig.projects[0]
         // The most recent activity in the catalog is the stopped session of api, an hour before noon.
-        #expect(model.home.lastUsedProjectID == api.id && model.homeStartProjectID == api.id)
-
-        model.chooseHomeStartProject(billing.id)
-        #expect(model.homeStartProjectID == billing.id)
-        #expect(model.newSession.draft(for: billing.id) != nil, "the pick opens that project's draft slot")
-        // A pick of a project that is gone falls back to the last used one.
-        model.chooseHomeStartProject(UUID())
-        #expect(model.homeStartProjectID == api.id)
+        model.beginNewSessionInRecentProject()
+        #expect(await waitFor { model.destination == .draft(projectID: api.id) })
+        // The draft's own project picker still changes it.
+        let billing = rig.projects[1]
+        model.chooseDraftProject(billing.id, from: api.id)
+        #expect(model.destination == .draft(projectID: billing.id))
     }
 
-    @Test func theStartBoxUsesTheProjectsOwnDraftSlot() async throws {
-        let rig = try await catalogRig()
-        defer { cleanup(rig) }
-        let model = rig.model
-        await model.refreshHome()
-        let project = try #require(model.homeStartProjectID)
-        model.prepareHomeStart()
-        model.setDraftText("Run the test suite and fix failures", projectID: project)
-        // What is typed on Home is the draft the sidebar lists and the draft screen shows.
-        #expect(model.visibleDrafts.map(\.projectID) == [project])
-        model.showDraft(projectID: project)
-        #expect(model.newSession.draft(for: project)?.text == "Run the test suite and fix failures")
-    }
-
-    @Test func withoutProjectsTheStartBoxHasNone() async throws {
+    @Test func newSessionFallsBackToTheFirstProjectAndToNoneWithoutProjects() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let model = CatalogModel(catalog: try SessionCatalog(url: root.appendingPathComponent("c.sqlite3")),
@@ -435,8 +416,56 @@ struct HomeTests {
                                  preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
         await model.start()
         await model.stopAndWait()
-        #expect(model.homeStartProjectID == nil)
+        #expect(model.mostRecentProjectID == nil)
+        model.beginNewSessionInRecentProject()
+        #expect(await waitFor { model.destination == .draft(projectID: nil) })
         model.stop()
+    }
+
+    /// M6: the row's project is the catalog's, read when it is used: it holds when the window has not read Home yet (a
+    /// relaunch), in the Projects view and with a search typed, and an unrelated start does not disable the row.
+    @Test func theNewSessionRowUsesThePersistedProjectWhateverTheWindowShows() async throws {
+        let rig = try await catalogRig()
+        defer { cleanup(rig) }
+        let model = rig.model
+        // The newest session is in "billing", the second project: the last-used project is not the first of the list.
+        let billing = rig.projects[1]
+        let newest = ManagedSession(provider: .claude, providerConversationID: "newest", workingDirectory: billing.path)
+        try await rig.catalog.insertSession(newest, title: "newest", createdAt: noon.addingTimeInterval(-600), lastUsedAt: noon,
+                                            lifecycle: .idle, projectID: billing.id, lastActivityAt: noon)
+                // As after a relaunch: the window has not kept anything from a Home read.
+        model.home.lastUsedProjectID = nil
+        model.select(nil)
+        model.setViewMode(.projects)
+        model.setSearchText("api")
+        let persisted = try await rig.catalog.lastUsedProjectID()
+        #expect(persisted == billing.id)
+        #expect(model.mostRecentProjectID == rig.projects[0].id, "what the window alone knows is the first project")
+        #expect(await model.recentProjectForNewSession() == billing.id, "not the first project of a filtered or other list")
+        model.beginNewSessionInRecentProject()
+        #expect(await waitFor { model.destination == .draft(projectID: billing.id) })
+        // The row depends on Claude being startable, not on any start elsewhere.
+        #expect(model.newSessionRowAvailable == (model.actionsAvailable && model.startableProviders.contains(.claude)))
+    }
+
+    /// M6: ⌘N and the menu item on Home open the same draft as the sidebar's row.
+    @Test func commandNOnHomeOpensTheSameDraftAsTheRow() async throws {
+        let rig = try await catalogRig()
+        defer { cleanup(rig) }
+        let model = rig.model
+        let api = rig.projects[0]
+        model.showHome()
+        model.beginNewSessionFromCommand()
+        #expect(await waitFor { model.destination == .draft(projectID: api.id) })
+    }
+
+    private func waitFor(_ seconds: Double = 5, _ condition: () -> Bool) async -> Bool {
+        let deadline = ProcessInfo.processInfo.systemUptime + seconds
+        repeat {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+        } while ProcessInfo.processInfo.systemUptime < deadline
+        return false
     }
 
     // MARK: First run and empty states

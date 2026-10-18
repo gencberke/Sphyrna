@@ -86,9 +86,9 @@ struct InspectorTests {
         func line(_ kind: StatusReason.Kind, _ detail: String? = nil, work: BackgroundWork = BackgroundWork()) -> String? {
             InspectorReasonText.line(StatusReason(kind, detail: detail, work: work))
         }
-        #expect(line(.approval(tool: "Bash"), "git push origin fix/webhook-sig") == "Allow: git push origin fix/webhook-sig")
-        #expect(line(.approval(tool: "Edit"), "src/auth.py") == "Allow Edit: src/auth.py")
-        #expect(line(.approval(tool: "WebFetch")) == "Allow WebFetch")
+        #expect(line(.approval(tool: "Bash"), "git push origin fix/webhook-sig") == "Asks to run: git push origin fix/webhook-sig")
+        #expect(line(.approval(tool: "Edit"), "src/auth.py") == "Asks to edit: src/auth.py")
+        #expect(line(.approval(tool: "WebFetch")) == "Asks to fetch a page")
         #expect(line(.question, "Which database?") == "Question: Which database?")
         #expect(line(.planReady) == "Plan ready for review")
         #expect(line(.turnDone, "Done: 3 files changed") == "Done: 3 files changed")

@@ -127,73 +127,52 @@ private struct TicketLine: View {
 }
 
 /// Mode and model chips and Send: the bar of D-58 without a ring (no session yet) and without +, whose menus need a
-/// session's commands.
+/// session's commands. The chips and their popovers are the live composer's (`ComposerPickers`, D-63).
 private struct ComposerBar: View {
     let model: CatalogModel
     let projectID: UUID?
+    @State private var modeOpen = false
+    @State private var modelOpen = false
+    @State private var effortOpen = false
 
     var body: some View {
         let resolved = model.resolvedStart(for: projectID)
         ComposerBarFrame {
-            modeMenu(resolved)
+            modeChip(resolved)
         } trailing: {
-            modelMenu(resolved)
+            modelChip(resolved)
             SendButton(model: model, projectID: projectID)
         }
     }
 
-    private func modeMenu(_ resolved: ResolvedStart) -> some View {
+    private func modeChip(_ resolved: ResolvedStart) -> some View {
         let draft = model.newSession.draft(for: projectID)
         // Full access that was not picked on this screen says where it comes from, in the chip's own style.
         let kept = model.draftKeepsFullAccess(projectID: projectID)
         let title = kept ? "\(resolved.modeTitle), kept from earlier" : resolved.modeTitle
-        return Menu {
-            ForEach(ClaudePermissionMode.allCases, id: \.self) { mode in
-                Button { model.setDraftMode(.value(mode.rawValue), projectID: projectID) } label: {
-                    if resolved.mode.value == mode.rawValue { Label(mode.title, systemImage: "checkmark") } else { Text(mode.title) }
-                }
-            }
-            Divider()
-            Button { model.setDraftMode(.claudeDefault, projectID: projectID) } label: {
-                if resolved.mode.value == nil { Label(NewSessionDefaults.claudeDefaultTitle, systemImage: "checkmark") }
-                else { Text(NewSessionDefaults.claudeDefaultTitle) }
-            }
-            if let draft, draft.modePick != .inherit {
-                Button("Use the default for this project") { model.setDraftMode(.inherit, projectID: projectID) }
-            }
-        } label: {
-            // Every mode looks the same: no warning colour or mark, Full access included (D-58).
-            ComposerChipLabel(symbol: "shield", title: title)
+        let picked = draft.map { $0.modePick != .inherit && $0.modePick != .claudeDefault } ?? false
+        return ComposerModeChip(
+            selected: resolved.mode.value, title: title, help: "Permission mode of the new session", identifier: "draft-mode",
+            reset: picked ? { model.setDraftMode(.inherit, projectID: projectID) } : nil,
+            askAllowed: model.newSessionAllowsAsk, isOpen: $modeOpen) { mode in
+            model.setDraftMode(.value(mode.rawValue), projectID: projectID)
         }
-        .composerMenuStyle()
-        .help("Permission mode of the new session")
-        .accessibilityLabel("Permission mode, \(title)")
-        .accessibilityIdentifier("draft-mode")
     }
 
-    private func modelMenu(_ resolved: ResolvedStart) -> some View {
+    private func modelChip(_ resolved: ResolvedStart) -> some View {
         let draft = model.newSession.draft(for: projectID)
-        return Menu {
-            ForEach(NewSessionModels.all, id: \.alias) { entry in
-                Button { model.setDraftModel(.value(entry.alias), projectID: projectID) } label: {
-                    if resolved.model.value == entry.alias { Label(entry.title, systemImage: "checkmark") } else { Text(entry.title) }
-                }
-            }
-            Divider()
-            Button { model.setDraftModel(.claudeDefault, projectID: projectID) } label: {
-                if resolved.model.value == nil { Label(NewSessionDefaults.defaultModelTitle, systemImage: "checkmark") }
-                else { Text(NewSessionDefaults.defaultModelTitle) }
-            }
-            if let draft, draft.modelPick != .inherit {
-                Button("Use the default for this project") { model.setDraftModel(.inherit, projectID: projectID) }
-            }
-        } label: {
-            ComposerChipLabel(symbol: nil, title: resolved.modelTitle, titleColor: LoomTheme.Composer.modelColor)
-        }
-        .composerMenuStyle()
-        .help("Model of the new session")
-        .accessibilityLabel("Model, \(resolved.modelTitle)")
-        .accessibilityIdentifier("draft-model")
+        let picker = ComposerModelPicker(
+            modelTitle: resolved.modelTitle, effortTitle: resolved.effortTitle,
+            rows: NewSessionModels.all.map { ComposerBarText.ModelRow(value: $0.alias, title: $0.title) },
+            chosenModel: resolved.model.value, levels: NewSessionModels.effortLevels, chosenLevel: resolved.effort.value,
+            canResetEffort: (draft?.effortPick ?? .inherit) != .inherit,
+            resetHelp: "Back to the effort this project starts with")
+        return ComposerModelChip(
+            picker: picker, identifier: "draft-model", help: "Model of the new session",
+            modelOpen: $modelOpen, effortOpen: $effortOpen,
+            onPickModel: { value in model.setDraftModel(value.map { .value($0) } ?? .claudeDefault, projectID: projectID) },
+            onPickEffort: { model.setDraftEffort(.value($0), projectID: projectID) },
+            onResetEffort: { model.setDraftEffort(.inherit, projectID: projectID) })
     }
 }
 

@@ -12,7 +12,10 @@ extension CatalogModel {
         let composer = host.attachment(for: driver) {
             ChatComposerModel(driver: driver, card: id, drafts: drafts, environment: composerEnvironment(feed: feed))
         }
-        // The feed's pinned cards take the composer's text and keys (the composer outlives a feed the host let go of).
+        // The composer outlives a feed the host let go of, and its environment holds the feed it was made with weakly: every
+        // view binds it to the feed it shows now (else the folder, history, "Continue in Terminal" and the handover notice
+        // would answer nothing after the feed was released), and the feed's pinned cards take the composer's text and keys.
+        composer.environment = composerEnvironment(feed: feed)
         composer.attach(cards: feed.cards)
         return composer
     }
@@ -36,6 +39,20 @@ extension CatalogModel {
             }
         }
         environment.sessionMention = { [weak self] id in self?.sessionMentionText(for: id) }
+        environment.cycleView = { [weak feed] in feed?.presentation.cycleViewMode() }
+        // "Continue in Terminal" in the `/` menu is the ⋯ menu's handover (V19).
+        environment.continueInTerminal = { [weak self, weak feed] in
+            guard let self, let feed else { return }
+            continueIn(.terminal, sessionID: feed.card)
+        }
+        environment.continueInTerminalRefusal = { [weak self, weak feed] in
+            guard let self, let feed else { return nil }
+            return continueUnavailableReason(sessionID: feed.card)
+        }
+        environment.handoverNotice = { [weak self, weak feed] in
+            guard let self, let feed else { return nil }
+            return composerHandoverNotice(of: feed.card)
+        }
         return environment
     }
 
@@ -75,7 +92,7 @@ extension CatalogModel {
 
     /// Drives the composer as the user does and reports what it holds (kinds and counts; the evidence driver decides whether
     /// titles may be written). `command`: `focus`, `type` (the text goes in through the text view, `\n` is a new line),
-    /// `clear`, `mode|model|effort` (a chip's choice), `ring` (`on|off`: the popover), `attach` (a file path), `paste` (a text of that many KB, as a paste), `state`.
+    /// `clear`, `mode|model|effort` (a chip's choice), `ring` (`on|off`: the popover), `popover` (`mode|model|effort|off`: a picker's popover), `attach` (a file path), `paste` (a text of that many KB, as a paste), `state`.
     public func composerEvidence(session: UUID, command: String, argument: String) async -> [String: Any] {
         guard let composer = composer(of: session) else { return ["composer": false] }
         var applied: Bool?
@@ -96,6 +113,12 @@ extension CatalogModel {
             // folder, which is not scanned).
             composer.environment.workingDirectory = { argument }
         case "ring": composer.ringPopoverOpen = argument != "off"
+        case "popover":
+            // The bar's pickers (D-63): `mode`, `model` or `effort` opens that popover and closes the others; `off` closes all.
+            composer.ringPopoverOpen = false
+            composer.modePopoverOpen = argument == "mode"
+            composer.modelPopoverOpen = argument == "model"
+            composer.effortPopoverOpen = argument == "effort"
         case "paste": composer.addPastedText(String(repeating: "pasted line of text\n", count: max(1, (Int(argument) ?? 1) * 52)))
         default: break
         }

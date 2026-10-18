@@ -293,12 +293,13 @@ final class LiveChatFeed: ChatDriverAttachment {
         if state.sessionID == card, historyRead, !readingHistory, let read = readGeneration, state.runStart.generation != read {
             readHistoryAgain()
         }
+        cards.apply(state)
         let live = state.phase.isLive || state.phase == .starting || state.phase == .stopping
         if driverLive != live {
+            let wasInUse = isInUse
             driverLive = live
-            if !live, viewCount == 0 { onUnused?() }
+            if wasInUse, !isInUse { onUnused?() }
         }
-        cards.apply(state)
         presentation.setWorking(state.turnRunning)
         presentation.setLastActivity(state.lastActivity)
         if policySignal != state.policySignal { policySignal = state.policySignal }
@@ -317,7 +318,30 @@ final class LiveChatFeed: ChatDriverAttachment {
     func viewWentAway(_ controller: ChatStreamController) {
         detach(controller)
         viewCount = max(0, viewCount - 1)
-        if viewCount == 0, !driverLive { onUnused?() }
+        if !isInUse { onUnused?() }
+    }
+
+    /// The ended view of a session (its transcript, with the cards its run's end cut off above the bottom edge) shows the
+    /// feed's cards: it counts as a view, so the host keeps the feed while that view is on screen and lets it go (as the least
+    /// recently used) once nobody shows it. The driver keeps what was cut off, so the next view reads it again.
+    func endedViewAppeared() {
+        viewCount += 1
+        followState()
+    }
+
+    func endedViewWentAway() {
+        viewCount = max(0, viewCount - 1)
+        if !isInUse { onUnused?() }
+    }
+
+    /// The driver's live state once, for the cards (a feed made for an ended view starts no history read or stream).
+    private func followState() {
+        let source = source
+        tasks.append(Task { [weak self] in
+            let state = await source.liveState()
+            guard let self, !Task.isCancelled else { return }
+            follow(state)
+        })
     }
 
     /// A view's stream shows the presentation (and the next one after a move) from now on. One stream at a time: Loom
