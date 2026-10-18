@@ -23,7 +23,7 @@ The primary target is the user's 27 Sep 2026 attachment `Herdr Desktop Appshot 2
 
 ## 3. Sizes and colors
 
-All sizes are points, not Retina pixels. The code is the source of truth; tokens live in `Sources/LoomCatalogUI/LoomTheme.swift` and its `LoomTheme+Surfaces.swift`, `+Palette.swift`, `+Shape.swift`, `+Sidebar.swift`, `+Inspector.swift` and `+ContextPace.swift` extensions (the chat view's are in `Chat/LoomTheme+Chat.swift`; terminal colours in `Sources/LoomTerminal/TerminalTheme.swift`) unless noted. `scripts/check-theme-literals.sh` keeps colour, font-size and radius literals out of every `LoomCatalogUI` file but `LoomTheme*.swift`, and `LoomThemeTests` checks the contrast tiers.
+All sizes are points, not Retina pixels. The code is the source of truth; tokens live in `Sources/LoomCatalogUI/LoomTheme.swift` and its `LoomTheme+Surfaces.swift`, `+Palette.swift`, `+Shape.swift`, `+Sidebar.swift`, `+Inspector.swift`, `+ProjectPage.swift` and `+ContextPace.swift` extensions (the chat view's are in `Chat/LoomTheme+Chat.swift`; terminal colours in `Sources/LoomTerminal/TerminalTheme.swift`) unless noted. `scripts/check-theme-literals.sh` keeps colour, font-size and radius literals out of every `LoomCatalogUI` file but `LoomTheme*.swift`, and `LoomThemeTests` checks the contrast tiers.
 
 | Item | Value | Where |
 | --- | --- | --- |
@@ -141,3 +141,30 @@ A project's new-session page (`DraftSessionView`, `Sources/LoomCatalogUI/`; prev
 | Keys | ↵ starts the session and shows it; ⌘↵ starts it in the background and leaves a fresh draft; ⇧↵ (and ⌥↵) a new line. ↵ never sends while an input method composes. A start that fails keeps every word |
 | Branch strip | Stay on the current branch, New branch (in this folder) or New worktree (its own folder, `<repo>/.claude/worktrees/<slug>`); Git runs only at the first send, and only for the two new choices |
 | Presets | A row of saved starts (name, message, mode, model); "Save as preset" appears once there is text |
+
+## 9. Home (V05)
+
+The launch view (`HomeView`, `Sources/LoomCatalogUI/`; preview `design/v2-studio-preview.html`, Home). It uses the existing tokens; `LoomTheme.Home` (`LoomTheme+Home.swift`) holds its sizes. A summary of what Loom already knows: it starts nothing by itself.
+
+| Item | Rule |
+| --- | --- |
+| Column | At most 1,000 wide, 34 side inset, 26 above, 32 below; blocks 18 apart. The panel colour, no session header |
+| Cards | Night Fleece 2 card fill, radius 12 (`Radius.block`), hairline and the card depth. List cards: a heading row above (7 pt status dot in the attention or unviewed colour, title, count), rows 12 padded and divided by a hairline. Side cards: 14 padded, title and an optional right-hand note in caption |
+| Two columns | From 820 of content width the side column (340, 24 from the lists) sits beside the lists; below it, under them, with Continue first because it is the one block that asks for a click |
+| Row | Indicator, title, project (3×12 tone stripe) and age on one line, the reason line in small secondary (two lines at most), then Open Session (tinted accent) and Mark as Read (chip) |
+| Empty states | Centred message with symbol, title and text; the no-Claude notice over a catalog with sessions is a card with an attention-coloured symbol |
+| Today | Tokens, sessions and "NN% from cache", then four bars of today's tokens by kind (input, output, cache read, cache write); cache read is drawn in the text colour |
+| Continue | Each card says "Last active <age> ago": the session's last use, capped at the run's recorded end and never before the run began. The 7-day window uses the same time |
+
+## 10. Project page (V08)
+
+A project's page (`ProjectPageView`, `Sources/LoomCatalogUI/`; preview `design/v2-studio-preview.html`, Project). Tokens are `LoomTheme.ProjectPage` (`LoomTheme+ProjectPage.swift`); colours, hairlines and text tones are the existing ones.
+
+| Item | Rule |
+| --- | --- |
+| Page | A column in a scroll view: 30 side inset (20 below 760 of pane width), 24 above, 32 below. Two columns from 760 |
+| Header | The project's tone stripe 4×30, name 22 semibold, folder in 12 mono secondary, New session as a filled accent button at the trailing edge. The stats line under it (small, secondary, figures semibold primary), 12 below the header and 16 above the tabs |
+| Tabs | A 32 high bar on a hairline, labels 12.5 medium (primary when open, else secondary), 12 side padding, a 2 accent underline on the open one |
+| Session row | 12×10 padding, radius 9, control fill on hover; indicator slot, title 13 medium and a last line in 12 secondary (one line each), branch in 11.5 mono (170 wide, dropped when the row is under 460), time 11.5 (44 wide, trailing); rows divided by a hairline |
+| Side column | 300 wide, 20 from the list. Cards (Presets, Past 7 days): card fill and radius, hairline, 14 padded, title 12.5 semibold; preset rows 28 high; the week's figures 18 semibold tabular with a caption label |
+| Branches, Instructions | Both read in a column of at most 700. Branch rows 34 high, 12.5 mono names (the current one primary, with an accent-high "current" label). CLAUDE.md in a card, 18 padded, rendered with the chat's Markdown |
