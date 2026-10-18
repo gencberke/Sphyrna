@@ -65,36 +65,39 @@ struct ComposerMenuPanel: View {
     private func row(_ item: ComposerMenuItem, index: Int) -> some View {
         let selected = index == menu.selection
         let dimmed = item.isTerminalOnly || item.isUnavailable
+        // The row draws the hover fill: its secondary text takes the lifted tone that holds 4.5:1 on it (`OnPopover`).
+        let lit = selected || LookEvidence.forcesHover("menu:\(item.id)")
+        let secondary = LoomTheme.OnPopover.secondary(lit: lit)
         return Button { model.choose(item) } label: {
             HStack(spacing: LoomTheme.Space.chipInset) {
-                icon(for: item)
+                icon(for: item, lit: lit)
                 switch item.kind {
                 case .command, .skill, .terminalOnly:
                     Text(item.title).font(LoomTheme.Composer.menuCommandFont).lineLimit(1)
                         .frame(minWidth: LoomTheme.Composer.menuNameColumn, alignment: .leading)
-                        .foregroundStyle(dimmed ? LoomTheme.OnPopover.placeholder : LoomTheme.Text.primary)
+                        .foregroundStyle(dimmed ? AnyShapeStyle(secondary) : AnyShapeStyle(LoomTheme.Text.primary))
                     if let detail = item.detail {
                         Text(detail).font(LoomTheme.Composer.menuDetailFont).lineLimit(1).truncationMode(.tail)
-                            .foregroundStyle(LoomTheme.OnPopover.placeholder)
+                            .foregroundStyle(secondary)
                     }
                 default:
                     Text(item.title).font(LoomTheme.Composer.menuTitleFont).lineLimit(1).truncationMode(.middle)
-                        .foregroundStyle(dimmed ? LoomTheme.OnPopover.placeholder : LoomTheme.Text.primary)
+                        .foregroundStyle(dimmed ? AnyShapeStyle(secondary) : AnyShapeStyle(LoomTheme.Text.primary))
                     if let detail = item.detail {
                         Text(detail).font(LoomTheme.Composer.menuDetailFont).lineLimit(1)
-                            .foregroundStyle(LoomTheme.OnPopover.placeholder)
+                            .foregroundStyle(secondary)
                     }
                 }
                 Spacer(minLength: LoomTheme.Space.detailMinSpacer)
                 if let trailing = item.trailing {
                     Text(trailing).font(LoomTheme.Composer.menuHintFont).lineLimit(1)
-                        .foregroundStyle(LoomTheme.OnPopover.placeholder)
+                        .foregroundStyle(secondary)
                 }
             }
             .padding(.horizontal, LoomTheme.Space.chipInset)
             .frame(height: LoomTheme.Composer.menuRowHeight)
             .background(RowHighlight(
-                state: .resolve(selected: false, hovering: selected || LookEvidence.forcesHover("menu:\(item.id)")),
+                state: .resolve(selected: false, hovering: lit),
                 radius: LoomTheme.Highlight.radiusCompact))
             .contentShape(Rectangle())
         }
@@ -107,7 +110,7 @@ struct ComposerMenuPanel: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    @ViewBuilder private func icon(for item: ComposerMenuItem) -> some View {
+    @ViewBuilder private func icon(for item: ComposerMenuItem, lit: Bool) -> some View {
         let symbol: String? = switch item.kind {
         case .file: "doc"
         case .folder: "folder"
@@ -116,7 +119,7 @@ struct ComposerMenuPanel: View {
         case .command, .skill, .terminalOnly: nil
         }
         if let symbol {
-            Image(systemName: symbol).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            Image(systemName: symbol).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.OnPopover.secondary(lit: lit))
                 .frame(width: LoomTheme.Layout.indicatorSlot.width)
         }
     }

@@ -51,7 +51,18 @@ extension ChatComposerModel {
         mentionCancel = nil
         // A walk still under way stops, and what it found so far is not kept.
         fileScanCancel?.cancel()
+        releaseMentionData()
         if menu != nil { setMenu(nil) }
+    }
+
+    /// What the `@` menu kept for its opening: the file index (up to `ComposerFileIndex.maximumEntries` entries) and the session
+    /// rows. A closed menu holds neither, so a composer nobody is mentioning from costs no index; the next opening scans again.
+    private func releaseMentionData() {
+        fileScan = nil
+        fileEntries = []
+        fileEntriesRoot = nil
+        fileEntriesAt = nil
+        mentionSessions = nil
     }
 
     // MARK: Commands
@@ -81,7 +92,7 @@ extension ChatComposerModel {
 
     private func showMention(_ trigger: ComposerTrigger) {
         let opening = menu?.kind != .mention
-        let sessions = rankedSessions(trigger.query)
+        let sessions = rankedSessions(trigger.query, at: trigger.range.location)
         let keptFiles = menu?.kind == .mention ? menu!.items.filter { $0.kind == .file || $0.kind == .folder } : []
         let ready = fileEntriesRoot == environment.workingDirectory() && fileEntriesAt != nil
         var next = ComposerMenuState(kind: .mention, trigger: trigger, items: keptFiles + sessions, loading: !ready)
@@ -90,14 +101,19 @@ extension ChatComposerModel {
         refreshFiles(for: trigger.query, immediately: opening)
     }
 
-    private func rankedSessions(_ query: String) -> [ComposerMenuItem] {
-        let items = environment.sessionCandidates()
-            .sorted { $0.lastActivity > $1.lastActivity }
-            .map { candidate in
-                ComposerMenuItem(id: "session:" + candidate.id.uuidString, kind: .session, title: candidate.title,
-                                 detail: candidate.project, trailing: "Session", insertion: "")
-            }
-        return ComposerRanking.rank(items, query: query, limit: Self.sessionLimit) { [$0.detail ?? ""] }
+    /// The session rows for `query`. The candidates (the catalog's rows, their titles and projects, their order) are built once
+    /// per opening of the menu, at the `@` it opened on, and kept until the menu closes: a keystroke only ranks them.
+    private func rankedSessions(_ query: String, at location: Int) -> [ComposerMenuItem] {
+        if mentionSessions?.location != location {
+            let items = environment.sessionCandidates()
+                .sorted { $0.lastActivity > $1.lastActivity }
+                .map { candidate in
+                    ComposerMenuItem(id: "session:" + candidate.id.uuidString, kind: .session, title: candidate.title,
+                                     detail: candidate.project, trailing: "Session", insertion: "")
+                }
+            mentionSessions = (location, items)
+        }
+        return ComposerRanking.rank(mentionSessions?.items ?? [], query: query, limit: Self.sessionLimit) { [$0.detail ?? ""] }
     }
 
     /// Ranks the files again after typing pauses (120 ms), off the main thread, and stops when the query moves on.
@@ -125,7 +141,8 @@ extension ChatComposerModel {
         }
     }
 
-    /// The files of the session's folder: scanned when the menu first opens, kept for 15 s.
+    /// The files of the session's folder: scanned when the menu first opens and kept while it is open, for 15 s at most (a
+    /// closed menu drops them, `releaseMentionData`).
     private func ensureFileEntries() async -> [ComposerFileEntry] {
         guard let folder = environment.workingDirectory() else { return [] }
         if fileEntriesRoot == folder, let at = fileEntriesAt, Date().timeIntervalSince(at) < 15 { return fileEntries }

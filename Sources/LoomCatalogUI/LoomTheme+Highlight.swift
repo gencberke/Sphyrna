@@ -8,8 +8,9 @@ import SwiftUI
 /// Selection reads stronger than hover: a stronger fill and a hairline. The fills are white overlays in Dark and ink
 /// overlays in Light, like every other fill, and are chosen so the text tiers hold on the pill (`ThemeAppearanceTests`):
 /// primary at least 7:1 on every surface under every state, secondary at least 4.5:1 under the selected fill on the
-/// sidebar, panel, canvas, inspector and card, and at least 4.0:1 under the hover fill on a popover, where a plain 4.5:1
-/// leaves room for no visible fill at all.
+/// sidebar, panel, canvas, inspector and card, and at least 4.5:1 under the hover fill on those and on a popover. On a
+/// popover the plain secondary reads 4.1:1 there (Dark, Night fleece and Workshop), so a row under the pointer or the cursor
+/// lifts its secondary text (`OnPopover.hoveredSecondaryPair`) and the fill stays as visible as everywhere else.
 extension LoomTheme {
     enum Highlight {
         /// A row or card of 34 pt and more; a row under 32 pt (a sidebar line, a Home row) takes the compact radius, a chrome

@@ -65,20 +65,50 @@ struct UsageCardsTests {
         #expect(UsageCardText.models(3) == "3 models")
     }
 
-    @Test func aPlanLimitRowShowsTheUsedShareAndKeepsTheRemainingShareInItsTooltip() {
+    /// Fix round 2, item 2: every plan meter fills the share still left, from the leading edge, with "N% left", as Home's line
+    /// and the footer chip do. The used share is the tooltip now.
+    @Test func aPlanLimitRowShowsTheRemainingShareAndKeepsTheUsedShareInItsTooltip() {
         let window = PlanLimitWindow(usedPercent: 62, resetsAt: Self.now.addingTimeInterval(3_600))
-        let row = UsageCardText.planLimitRow(.fiveHour, window, now: Self.now, timeZone: Self.zone)
+        let row = UsageCardText.planLimitRow(.fiveHour, window, now: Self.now, timeZone: Self.zone, measuredAt: Self.now)
         #expect(row.title == "5-hour")
-        #expect(row.used == "62% used")
         #expect(row.left == "38% left")
+        #expect(row.used == "62% used", "the tooltip")
+        #expect(row.remainingFraction == 0.38, "the fill is what is left, not what is used")
+        #expect(!row.isLow)
         let reset = UsageText.time(Self.now.addingTimeInterval(3_600), Self.zone)
         #expect(row.reset == "Resets \(reset)")
-        #expect(!row.used.contains("left"))
         #expect(row.accessibilityLabel == "5-hour limit, 62 percent used, 38 percent remaining, resets \(reset)")
         let weekly = UsageCardText.planLimitRow(.weekly, PlanLimitWindow(usedPercent: 31, resetsAt: nil),
                                                 now: Self.now, timeZone: Self.zone)
         #expect(weekly.title == "Weekly" && weekly.reset == nil)
+        #expect(weekly.left == "69% left" && weekly.remainingFraction == 0.69)
         #expect(weekly.accessibilityLabel == "Weekly limit, 31 percent used, 69 percent remaining")
+    }
+
+    /// The colour rules are Home's (`PlanPaceLine.isLow`): neutral, orange under 20 % left or when the window runs out before it
+    /// resets; nothing is green.
+    @Test func aPlanMeterTurnsOrangeUnderTwentyPercentLeftOrOverPaceAndIsNeutralOtherwise() {
+        func row(_ kind: PlanLimitKind, used: Int, resetsIn: TimeInterval?) -> UsagePlanLimitRowText {
+            UsageCardText.planLimitRow(kind, PlanLimitWindow(usedPercent: used, resetsAt: resetsIn.map { Self.now.addingTimeInterval($0) }),
+                                       now: Self.now, timeZone: Self.zone, measuredAt: Self.now)
+        }
+        // 38 % left, 80 % of the window gone: under pace.
+        #expect(!row(.fiveHour, used: 62, resetsIn: 3_600).isLow)
+        // 15 % left.
+        #expect(row(.fiveHour, used: 85, resetsIn: 600).isLow)
+        // Exactly 20 % left is not under 20.
+        #expect(!row(.fiveHour, used: 80, resetsIn: 600).isLow)
+        // 30 % left but 70 % used a tenth into the window: it runs out first.
+        #expect(row(.fiveHour, used: 70, resetsIn: 4.5 * 3_600).isLow)
+        // No reset time: only the share left says anything.
+        #expect(row(.weekly, used: 85, resetsIn: nil).isLow)
+        #expect(!row(.weekly, used: 50, resetsIn: nil).isLow)
+        // The meter and the Home line agree on every one of these.
+        for (used, resetsIn) in [(62, 3_600.0), (85, 600.0), (70, 4.5 * 3_600)] {
+            let window = PlanLimitWindow(usedPercent: used, resetsAt: Self.now.addingTimeInterval(resetsIn))
+            let pace = PlanPace(kind: .fiveHour, window: window, at: Self.now, measuredAt: Self.now)!
+            #expect(row(.fiveHour, used: used, resetsIn: resetsIn).isLow == PlanPaceLine.isLow(pace))
+        }
     }
 
     @Test func theCostIsHiddenOnlyWhenItIsZeroBecauseAModelHasNoPrice() {

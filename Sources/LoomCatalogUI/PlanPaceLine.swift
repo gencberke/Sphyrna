@@ -83,9 +83,12 @@ struct PlanPaceLine: View {
     /// What is left: a fill from the leading edge, as the footer chip draws it, in the neutral tone; orange when the window runs
     /// out or little is left. The tick is where an even pace would leave the remainder now: a fill beyond it is a limit that
     /// lasts.
-    static func remainingFraction(_ pace: PlanPace) -> Double { min(max(1 - pace.usedFraction, 0), 1) }
+    nonisolated static func remainingFraction(_ pace: PlanPace) -> Double { min(max(1 - pace.usedFraction, 0), 1) }
     static func tickFraction(_ pace: PlanPace) -> Double { min(max(1 - pace.elapsedFraction, 0), 1) }
-    static func isLow(_ pace: PlanPace) -> Bool { pace.status == .overPace || remainingFraction(pace) < LoomTheme.PlanPaceLine.lowBelow }
+    /// Under 20 % left, in whole percent as the footer chip counts it: exactly 20 % left is not low (1 - 0.8 is 0.19999999999999996).
+    nonisolated static func isLow(_ pace: PlanPace) -> Bool {
+        pace.status == .overPace || (remainingFraction(pace) * 100).rounded() < LoomTheme.PlanPaceLine.lowBelow * 100
+    }
 
     private var meter: some View {
         GeometryReader { proxy in

@@ -545,6 +545,95 @@ struct ChatComposerBehaviorTests {
         await fixture.rig.finish()
     }
 
+    /// A count a `@Sendable` scan and a main-actor closure can both bump.
+    private final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = 0
+        var count: Int { lock.withLock { value } }
+        func bump() { lock.withLock { value += 1 } }
+    }
+
+    private func mentionFolder() throws -> URL {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("loom-mention-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for name in ["README.md", "readme-draft.md", "Package.swift"] { try Data("x".utf8).write(to: folder.appendingPathComponent(name)) }
+        return folder
+    }
+
+    /// Fix round 2, item 6: every composer kept its `@` file index (up to 20,000 entries) for the whole app run. A closed menu
+    /// holds none, whichever way it closed; the next opening scans again, and typing inside one opening does not.
+    @Test func theAtMenuReleasesItsFileIndexWhenItClosesAndScansOncePerOpening() async throws {
+        let folder = try mentionFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let fixture = try await make(files: folder.path)
+        let composer = fixture.composer
+        let scans = Counter()
+        var environment = composer.environment
+        environment.scanFiles = { root, cancel in
+            scans.bump()
+            return ComposerFileIndex.scan(root: root, isCancelled: { cancel.isCancelled })
+        }
+        composer.environment = environment
+        let editor = FakeComposerEditor(model: composer)
+
+        editor.type("@read")
+        #expect(await waitUntil { composer.menu?.items.contains { $0.title == "README.md" } == true && composer.menu?.loading == false })
+        #expect(!composer.fileEntries.isEmpty && composer.fileEntriesRoot == folder.path, "an open menu keeps the index it ranks")
+        // More keystrokes in the same opening rank the index again; they do not scan.
+        editor.type("m")
+        #expect(await waitUntil { composer.menu?.trigger.query == "readm" && composer.menu?.loading == false })
+        #expect(scans.count == 1)
+
+        // The trigger goes away (a space ends the word): the menu closes and the index goes with it.
+        editor.type(" ")
+        #expect(composer.menu == nil)
+        #expect(composer.fileEntries.isEmpty && composer.fileEntriesRoot == nil && composer.fileEntriesAt == nil && composer.fileScan == nil)
+
+        // The next opening scans again (the index is not kept for it) and Esc releases it the same way.
+        editor.type("@Pack")
+        #expect(await waitUntil { composer.menu?.items.contains { $0.title == "Package.swift" } == true })
+        #expect(scans.count == 2)
+        #expect(!composer.fileEntries.isEmpty)
+        composer.closeMenu()
+        #expect(composer.menu == nil)
+        #expect(composer.fileEntries.isEmpty && composer.fileEntriesRoot == nil, "Esc releases the index")
+        await fixture.rig.finish()
+    }
+
+    /// Fix round 2, item 6: the menu rebuilt every session candidate (title, project, sort) on each keystroke. The candidates
+    /// are built when the menu opens at an `@` and kept until it closes; a keystroke only ranks them.
+    @Test func typingInAnOpenAtMenuDoesNotRebuildTheSessionCandidates() async throws {
+        let folder = try mentionFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let fixture = try await make(files: folder.path)
+        let composer = fixture.composer
+        let builds = Counter()
+        let login = ComposerSessionCandidate(id: UUID(), title: "Fix the login bug", project: "Web", lastActivity: Date())
+        let docs = ComposerSessionCandidate(id: UUID(), title: "Write the docs", project: "Site", lastActivity: Date().addingTimeInterval(-60))
+        var environment = composer.environment
+        environment.sessionCandidates = {
+            builds.bump()
+            return [docs, login]
+        }
+        composer.environment = environment
+        let editor = FakeComposerEditor(model: composer)
+
+        editor.type("@")
+        #expect(builds.count == 1)
+        for character in "login" { editor.type(String(character)) }
+        #expect(await waitUntil { composer.menu?.trigger.query == "login" && composer.menu?.loading == false })
+        #expect(composer.menu?.items.first { $0.kind == .session }?.title == "Fix the login bug", "ranked from the kept candidates")
+        #expect(builds.count == 1, "six keystrokes in one opening built the candidates \(builds.count) times")
+
+        // A new opening builds them again: the catalog may have changed in between.
+        editor.type(" ")
+        #expect(composer.menu == nil)
+        editor.type("@")
+        #expect(composer.menu?.kind == .mention)
+        #expect(builds.count == 2)
+        await fixture.rig.finish()
+    }
+
     @Test func aSessionInTheHomeFolderMentionsSessionsOnlyAndNeverScansIt() async throws {
         let fixture = try await make(files: NSHomeDirectory())
         let composer = fixture.composer

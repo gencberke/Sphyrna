@@ -27,11 +27,15 @@ struct UsageTokenKindRow: Equatable {
     var value: String { UsageFormat.tokens(tokens) }
 }
 
-/// A plan-limit row's texts: the used share shows, the remaining share is the tooltip.
+/// A plan-limit row's texts and meter: the remaining share shows ("38% left", the same words and direction as Home's line and
+/// the footer chip), the used share is the tooltip. The meter fills what is left, from the leading edge; `isLow` turns it
+/// attention orange (under 20 % left, or the window runs out before it resets), as `PlanPaceLine` does.
 struct UsagePlanLimitRowText: Equatable {
     let title: String
     let used: String
     let left: String
+    let remainingFraction: Double
+    let isLow: Bool
     /// Capitalised, e.g. `Resets 14:20`; nil when the CLI did not say.
     let reset: String?
     let accessibilityLabel: String
@@ -62,11 +66,17 @@ enum UsageCardText {
         "Updated \(UsageText.time(fetchedAt, timeZone))" + (notRefreshed ? " · could not refresh" : "")
     }
 
-    static func planLimitRow(_ kind: PlanLimitKind, _ window: PlanLimitWindow, now: Date,
-                             timeZone: TimeZone) -> UsagePlanLimitRowText {
+    /// `measuredAt` is when the used share was read (`PlanLimits.fetchedAt`), which the pace is measured at.
+    static func planLimitRow(_ kind: PlanLimitKind, _ window: PlanLimitWindow, now: Date, timeZone: TimeZone,
+                             measuredAt: Date? = nil) -> UsagePlanLimitRowText {
         let reset = UsageChipContent.resetPhrase(window, now: now, timeZone: timeZone)
+        let remaining = Double(window.remainingPercent) / 100
+        // Over pace needs a reset time; without one only the share left says anything.
+        let isLow = PlanPace(kind: kind, window: window, at: now, measuredAt: measuredAt).map(PlanPaceLine.isLow)
+            ?? (remaining < LoomTheme.PlanPaceLine.lowBelow)
         return UsagePlanLimitRowText(
             title: kind.title, used: "\(UsageFormat.percent(window.usedPercent)) used", left: "\(UsageFormat.percent(window.remainingPercent)) left",
+            remainingFraction: remaining, isLow: isLow,
             reset: reset?.capitalizedFirst,
             accessibilityLabel: "\(kind.title) limit, \(window.usedPercent) percent used, "
                 + "\(window.remainingPercent) percent remaining" + (reset.map { ", " + $0 } ?? ""))
@@ -168,17 +178,19 @@ struct UsageCard<Content: View>: View {
     }
 }
 
-/// A thin used-share track; the fill never shrinks below 2 pt, so a small share stays visible.
+/// A thin share track; the fill never shrinks below 2 pt, so a small share stays visible. `track` is the neutral track every
+/// plan meter shares (`LoomTheme.PlanPaceLine.track`, the footer chip's) unless a caller asks for another.
 private struct UsageMeterBar: View {
     let fraction: Double
     let fill: Color
     let height: CGFloat
+    var track: Color = LoomTheme.Surface.activityCell(0)
 
     var body: some View {
         GeometryReader { proxy in
             let share = CGFloat(min(max(fraction, 0), 1))
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim).fill(LoomTheme.Surface.activityCell(0))
+                RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim).fill(track)
                 RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim).fill(fill)
                     .frame(width: share > 0 ? min(proxy.size.width, max(2, proxy.size.width * share)) : 0)
             }
@@ -227,8 +239,8 @@ struct UsageReportView: View {
                                                              timeZone: timeZone)) {
                     VStack(spacing: 0) {
                         ForEach(limits.current(at: now), id: \.kind) { item in
-                            planLimitRow(UsageCardText.planLimitRow(item.kind, item.window, now: now, timeZone: timeZone),
-                                         used: item.window.usedPercent)
+                            planLimitRow(UsageCardText.planLimitRow(item.kind, item.window, now: now, timeZone: timeZone,
+                                                                    measuredAt: limits.fetchedAt))
                         }
                     }
                 }
@@ -248,18 +260,20 @@ struct UsageReportView: View {
         }
     }
 
-    private func planLimitRow(_ text: UsagePlanLimitRowText, used: Int) -> some View {
+    private func planLimitRow(_ text: UsagePlanLimitRowText) -> some View {
         HStack(spacing: LoomTheme.Space.usageLocalGap) {
             Text(text.title).frame(width: LoomTheme.Layout.planLimitLabelWidth, alignment: .leading)
-            UsageMeterBar(fraction: Double(used) / 100, fill: LoomTheme.Text.primary,
-                          height: LoomTheme.Layout.planLimitBarHeight)
-            Text(text.used).frame(width: LoomTheme.Layout.planLimitUsedWidth, alignment: .trailing)
+            UsageMeterBar(fraction: text.remainingFraction,
+                          fill: text.isLow ? LoomTheme.PlanPaceLine.fillOver : LoomTheme.PlanPaceLine.fill,
+                          height: LoomTheme.Layout.planLimitBarHeight, track: LoomTheme.PlanPaceLine.track)
+            Text(text.left).foregroundStyle(text.isLow ? LoomTheme.Status.attentionLight : LoomTheme.Text.primary)
+                .frame(width: LoomTheme.Layout.planLimitUsedWidth, alignment: .trailing)
             Text(text.reset ?? "").foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
                 .frame(width: LoomTheme.Layout.planLimitResetWidth, alignment: .trailing)
         }
         .font(LoomTheme.Typography.small)
         .frame(height: LoomTheme.Layout.usageHeaderRowHeight)
-        .help(text.left)
+        .help(text.used)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text.accessibilityLabel)
     }

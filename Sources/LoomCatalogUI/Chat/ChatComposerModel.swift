@@ -183,6 +183,8 @@ final class ChatComposerModel {
     @ObservationIgnored var fileEntriesAt: Date?
     @ObservationIgnored var fileScan: Task<[ComposerFileEntry], Never>?
     @ObservationIgnored var fileScanCancel: ComposerCancel?
+    /// The `@` menu's session rows, built when it opened at that `@` (offset in the text) and dropped when it closes.
+    @ObservationIgnored var mentionSessions: (location: Int, items: [ComposerMenuItem])?
     /// The trigger the user dismissed with Esc: ignored until a different one.
     @ObservationIgnored var dismissedTrigger: (kind: ComposerMenuState.Kind, location: Int)?
     /// Messages cleared from the field for a send that has not been accepted yet; they stay in the saved draft, so a crash

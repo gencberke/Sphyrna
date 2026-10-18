@@ -153,24 +153,38 @@ struct ChatUserMessageView: View {
     let entry: ChatEntry
     let open: Bool
     let context: ChatRowContext
-    @State private var hovering = false
+    /// The row's hover. It lives in an object only the footer reads, so the pointer entering or leaving never evaluates this
+    /// view's body, which is where a long message would be measured (`ChatUserText`).
+    @State private var hover: ChatRowHover
+
+    init(entry: ChatEntry, open: Bool, context: ChatRowContext, hover: ChatRowHover = ChatRowHover()) {
+        self.entry = entry
+        self.open = open
+        self.context = context
+        _hover = State(initialValue: hover)
+    }
 
     private var prompt: UserPrompt? { if case let .user(prompt) = entry.body { prompt } else { nil } }
+
+    /// The evidence run's name for this row: `chat-user:<entry id>`.
+    static func highlightKey(_ id: String) -> String { "chat-user:\(id)" }
 
     var body: some View {
         if let prompt {
             VStack(alignment: .trailing, spacing: 2) {
                 bubble(prompt)
-                footer(prompt)
+                ChatUserFooter(entry: entry, prompt: prompt, context: context, hover: hover)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.top, 4)
-            .onHover { hovering = $0 }
+            .onHover { hover.isOver = $0 }
         }
     }
 
     private func bubble(_ prompt: UserPrompt) -> some View {
-        let collapsed = Self.isLong(prompt.text) && !open
+        let _ = ChatUserText.bubbleEvaluated(entry.id)
+        let long = ChatUserText.isLong(prompt.text)
+        let collapsed = long && !open
         return VStack(alignment: .leading, spacing: 8) {
             if !prompt.images.isEmpty {
                 HStack(spacing: 8) {
@@ -180,7 +194,7 @@ struct ChatUserMessageView: View {
                 }
             }
             if !prompt.text.isEmpty {
-                Text(verbatim: prompt.text)
+                Text(verbatim: collapsed ? String(ChatUserText.collapsedPrefix(prompt.text)) : prompt.text)
                     .font(prompt.command != nil ? LoomTheme.Chat.readingMono : LoomTheme.Chat.reading)
                     .lineSpacing(LoomTheme.Chat.readingLineSpacing)
                     .foregroundStyle(LoomTheme.Text.primary)
@@ -188,7 +202,7 @@ struct ChatUserMessageView: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if Self.isLong(prompt.text) {
+            if long {
                 Button(open ? "Show less" : "Show full message") { context.toggle(entry.id) }
                     .buttonStyle(.plain).font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Accent.high)
             }
@@ -206,9 +220,19 @@ struct ChatUserMessageView: View {
         UnevenRoundedRectangle(cornerRadii: .init(topLeading: LoomTheme.Chat.userRadius, bottomLeading: LoomTheme.Chat.userRadius,
                                                   bottomTrailing: LoomTheme.Chat.userTailRadius, topTrailing: LoomTheme.Chat.userRadius))
     }
+}
 
-    /// The time and Copy on hover, or what became of a message that was not read.
-    @ViewBuilder private func footer(_ prompt: UserPrompt) -> some View {
+/// The time and Copy on hover, or what became of a message that was not read. It reads the row's hover itself, so a hover
+/// evaluates this view and nothing above it.
+private struct ChatUserFooter: View {
+    let entry: ChatEntry
+    let prompt: UserPrompt
+    let context: ChatRowContext
+    let hover: ChatRowHover
+
+    var body: some View {
+        let hovering = hover.isOver || LookEvidence.forcesHover(ChatUserMessageView.highlightKey(entry.id))
+        let _ = ChatUserText.footerEvaluated(entry.id)
         HStack(spacing: 8) {
             switch prompt.delivery {
             case .notDelivered:
@@ -241,11 +265,6 @@ struct ChatUserMessageView: View {
         }
         .font(LoomTheme.Chat.meta)
         .frame(height: 16)
-    }
-
-    static func isLong(_ text: String) -> Bool {
-        text.count > LoomTheme.Chat.userCollapseCharacters
-            || text.reduce(0) { $1 == "\n" ? $0 + 1 : $0 } + 1 > LoomTheme.Chat.userCollapseLines
     }
 }
 

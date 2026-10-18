@@ -49,6 +49,19 @@ extension LoomTheme {
         static let accentPair = Accent.highPair
         static let unviewedPair = Status.unviewedLightPair
         static let failurePair = Status.failureLightPair
+        /// Secondary text on a popover row that is under the pointer or the cursor. The plain secondary reads 4.1:1 (Night
+        /// fleece and Workshop, Dark) on the hover fill over a popover, under DESIGN's 4.5:1; lifting the text keeps the fill
+        /// visible, where a fill faint enough for 4.5:1 would not be. Light needs no lift (6.0:1 and up).
+        static let hoveredSecondaryPair = Adaptive(dark: RGB(hex: 0xA6AABD), light: Text.secondaryPair.light)
+        static let hoveredSecondaryRGB = hoveredSecondaryPair.dark
+        static let hoveredSecondaryStyle = ContrastStyle(
+            standard: Tone(rgb: hoveredSecondaryRGB, opacity: 1), increased: Tone(rgb: Text.secondaryIncreasedRGB, opacity: 1),
+            lightStandard: Tone(rgb: hoveredSecondaryPair.light, opacity: 1),
+            lightIncreased: Tone(rgb: Text.secondaryIncreasedPair.light, opacity: 1))
+
+        /// The secondary text of a popover row: `lit` while the row draws the hover fill (the pointer or the cursor is on it).
+        static func secondary(lit: Bool) -> ContrastStyle { lit ? hoveredSecondaryStyle : Text.secondaryStyle }
+
         static let placeholderRGB = placeholderPair.dark
         static let accentRGB = accentPair.dark
         static let unviewedRGB = unviewedPair.dark

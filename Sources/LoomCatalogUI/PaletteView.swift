@@ -197,6 +197,10 @@ struct PaletteRow: View {
     /// The evidence run's name for this row: `palette-row:<item id>`.
     private var highlightKey: String { "palette-row:\(item.id)" }
 
+    /// The row draws the hover fill (the cursor or the pointer is on it): its secondary text takes the lifted tone that holds
+    /// 4.5:1 on that fill over the popover surface (`OnPopover`).
+    private var lit: Bool { selected || hovering || LookEvidence.forcesHover(highlightKey) }
+
     var body: some View {
         Button(action: activate) {
             if let snippet = item.snippet { hit(snippet) } else { line }
@@ -205,9 +209,9 @@ struct PaletteRow: View {
         .padding(.horizontal, PaletteMetrics.rowInset)
         .frame(height: item.snippet == nil ? PaletteMetrics.rowHeight : PaletteMetrics.hitRowHeight)
         .background(RowHighlight(
-            // The cursor row and the row under the pointer take the same fill: the palette is a popover surface, where only the
-            // hover fill keeps the secondary text above 4:1 (`HighlightTests`).
-            state: .resolve(selected: false, hovering: selected || hovering || LookEvidence.forcesHover(highlightKey)),
+            // The cursor row and the row under the pointer take the same fill; the secondary text of a lit row is lifted so it
+            // keeps 4.5:1 on it over the popover surface (`HighlightTests`).
+            state: .resolve(selected: false, hovering: lit),
             radius: PaletteMetrics.rowRadius))
         .onHover { hovering = $0 }
         .accessibilityElement(children: .combine)
@@ -215,7 +219,8 @@ struct PaletteRow: View {
     }
 
     private var line: some View {
-        HStack(spacing: 10) {
+        let secondary = LoomTheme.OnPopover.secondary(lit: lit)
+        return HStack(spacing: 10) {
             leading
             Text(item.title)
                 .font(LoomTheme.Typography.body)
@@ -224,7 +229,7 @@ struct PaletteRow: View {
             if let detail = item.detail {
                 Text(detail)
                     .font(LoomTheme.Typography.small)
-                    .foregroundStyle(LoomTheme.Text.secondary)
+                    .foregroundStyle(secondary)
                     .lineLimit(1)
                     .layoutPriority(-1)
             }
@@ -232,7 +237,7 @@ struct PaletteRow: View {
             if let trailing = item.trailing, !trailing.isEmpty {
                 Text(trailing)
                     .font(LoomTheme.Typography.small)
-                    .foregroundStyle(LoomTheme.Text.secondary)
+                    .foregroundStyle(secondary)
                     .lineLimit(1)
             }
         }
@@ -247,10 +252,10 @@ struct PaletteRow: View {
                     Text(item.title).font(LoomTheme.Typography.body).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
                     Spacer(minLength: 8)
                     if let trailing = item.trailing, !trailing.isEmpty {
-                        Text(trailing).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
+                        Text(trailing).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.OnPopover.secondary(lit: lit)).lineLimit(1)
                     }
                 }
-                Text(Self.attributed(snippet))
+                Text(Self.attributed(snippet, lit: lit))
                     .font(LoomTheme.Typography.small)
                     .lineLimit(1)
             }
@@ -259,15 +264,17 @@ struct PaletteRow: View {
     }
 
     /// The role, the words before, the match in the accent colour, the words after.
-    static func attributed(_ snippet: PaletteSnippet) -> AttributedString {
+    static func attributed(_ snippet: PaletteSnippet, lit: Bool = false) -> AttributedString {
         func part(_ text: String, _ color: Color, bold: Bool = false) -> AttributedString {
             var result = AttributedString(text)
             result.foregroundColor = color
             if bold { result.inlinePresentationIntent = .stronglyEmphasized }
             return result
         }
-        return part(snippet.role.label + "  ", LoomTheme.Text.secondary) + part(snippet.before, LoomTheme.Text.secondary)
-            + part(snippet.match, LoomTheme.OnPopover.accent, bold: true) + part(snippet.after, LoomTheme.Text.secondary)
+        // An attributed run takes a colour, not a style: the lifted tone for a row under the cursor, the plain secondary otherwise.
+        let secondary = lit ? LoomTheme.OnPopover.hoveredSecondaryPair.color : LoomTheme.Text.secondary
+        return part(snippet.role.label + "  ", secondary) + part(snippet.before, secondary)
+            + part(snippet.match, LoomTheme.OnPopover.accent, bold: true) + part(snippet.after, secondary)
     }
 
     @ViewBuilder private var leading: some View {
@@ -277,7 +284,7 @@ struct PaletteRow: View {
             } else if let symbol = item.symbol {
                 Image(systemName: symbol)
                     .font(LoomTheme.Typography.small)
-                    .foregroundStyle(LoomTheme.Text.secondary)
+                    .foregroundStyle(LoomTheme.OnPopover.secondary(lit: lit))
             } else {
                 Color.clear
             }

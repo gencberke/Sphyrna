@@ -102,11 +102,14 @@ struct ComposerPickList: View {
     }
 
     private func rowView(_ row: ComposerPickRow, index: Int) -> some View {
-        Button { if row.isEnabled { onPick(row.id) } } label: {
+        // The row draws the hover fill: its secondary text takes the lifted tone that holds 4.5:1 on it (`OnPopover`).
+        let lit = row.isEnabled && (highlighted == index || LookEvidence.forcesHover("pick:\(row.id)"))
+        return Button { if row.isEnabled { onPick(row.id) } } label: {
             HStack(alignment: row.subtitle == nil ? .center : .top, spacing: LoomTheme.Space.requestPadding) {
                 if let symbol = row.symbol {
                     Image(systemName: symbol).font(LoomTheme.Composer.pickIcon)
-                        .foregroundStyle(row.isEnabled ? row.tint ?? LoomTheme.Text.secondary : LoomTheme.OnPopover.placeholder)
+                        .foregroundStyle(row.isEnabled ? row.tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(LoomTheme.OnPopover.secondary(lit: lit))
+                                         : AnyShapeStyle(LoomTheme.OnPopover.placeholder))
                         .frame(width: LoomTheme.Composer.pickIconSide, height: LoomTheme.Composer.pickIconSide)
                         .accessibilityHidden(true)
                 }
@@ -114,7 +117,7 @@ struct ComposerPickList: View {
                     Text(row.title).font(LoomTheme.Composer.pickTitleFont)
                         .foregroundStyle(row.isEnabled ? row.tint ?? LoomTheme.Text.primary : LoomTheme.OnPopover.placeholder)
                     if let subtitle = row.subtitle {
-                        Text(subtitle).font(LoomTheme.Composer.pickSubtitleFont).foregroundStyle(LoomTheme.OnPopover.placeholder)
+                        Text(subtitle).font(LoomTheme.Composer.pickSubtitleFont).foregroundStyle(LoomTheme.OnPopover.secondary(lit: lit))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -127,8 +130,7 @@ struct ComposerPickList: View {
             .padding(.horizontal, LoomTheme.Composer.pickRowPaddingH).padding(.vertical, LoomTheme.Composer.pickRowPaddingV)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RowHighlight(
-                state: .resolve(selected: false, hovering: highlighted == index || LookEvidence.forcesHover("pick:\(row.id)"),
-                                enabled: row.isEnabled),
+                state: .resolve(selected: false, hovering: lit, enabled: row.isEnabled),
                 radius: LoomTheme.Composer.pickRowRadius))
             .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Composer.pickRowRadius))
         }

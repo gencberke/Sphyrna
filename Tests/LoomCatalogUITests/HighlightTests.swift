@@ -117,16 +117,38 @@ struct HighlightTests {
         }
     }
 
-    @Test func secondaryTextKeepsItsTierUnderTheHoverFillExceptOnAPopoverWhichKeepsFourToOne() {
+    /// Item 1 of Release B's fix round 2: a popover row under the pointer or the cursor reads its secondary text at 4.5:1 too,
+    /// in both appearances and all three tones. The plain secondary does not there (4.1:1 in Dark, Night fleece and Workshop);
+    /// the row lifts it (`OnPopover.hoveredSecondaryPair`) instead of using a hover fill too faint to see. The floor was 4.0.
+    @Test func secondaryTextKeepsItsTierUnderTheHoverFillOnEverySurfaceIncludingAPopoverRow() {
         for appearance in Appearance.allCases {
             // A raised level is a card's own hover fill, never a row's surface.
             for (name, surface, level) in Self.surfaces(appearance) where level != "raised" {
                 let pill = Self.under(.hover, surface, appearance)
-                let floor = level == "popover" ? 4.0 : 4.5
-                #expect(LoomTheme.Text.secondaryPair[appearance].contrast(with: pill) >= floor,
-                        "secondary under hover on \(appearance) \(name): \(LoomTheme.Text.secondaryPair[appearance].contrast(with: pill))")
+                // The text a row draws on that surface: a popover's rows lift theirs while they are lit.
+                let text = level == "popover" ? LoomTheme.OnPopover.hoveredSecondaryPair : LoomTheme.Text.secondaryPair
+                #expect(text[appearance].contrast(with: pill) >= 4.5,
+                        "secondary under hover on \(appearance) \(name): \(text[appearance].contrast(with: pill))")
             }
         }
+    }
+
+    /// The lift is a lift, not a second palette: it stays below primary and above the plain secondary, and the hover fill it
+    /// sits on is the same one every other surface draws (the popover has no fill of its own).
+    @Test func theLiftedPopoverTextStaysBetweenSecondaryAndPrimaryAndTheHoverFillIsTheSameEverywhere() {
+        let lifted = LoomTheme.OnPopover.hoveredSecondaryPair
+        let popover = LoomTheme.Surface.levels(.dark, tone: .nightFleece).popover
+        let hovered = Self.under(.hover, popover, .dark)
+        #expect(lifted.dark.contrast(with: hovered) > LoomTheme.Text.secondaryPair.dark.contrast(with: hovered))
+        #expect(lifted.dark.contrast(with: hovered) < LoomTheme.Text.primaryPair.dark.contrast(with: hovered))
+        #expect(lifted.light == LoomTheme.Text.secondaryPair.light, "Light already clears 4.5:1 and takes no lift")
+        // The hover stays visible: the fill is the shared token, 0.06 over the popover in Dark.
+        #expect(HighlightState.hover.tone![.dark].opacity == 0.06)
+        #expect(abs(hovered.luminance - popover.luminance) > 0.004, "the hover fill is a visible step on a popover")
+        // Lit and unlit take the lifted and the plain style; Increase Contrast lifts both to the same tone.
+        #expect(LoomTheme.OnPopover.secondary(lit: true) == LoomTheme.OnPopover.hoveredSecondaryStyle)
+        #expect(LoomTheme.OnPopover.secondary(lit: false) == LoomTheme.Text.secondaryStyle)
+        #expect(LoomTheme.OnPopover.hoveredSecondaryStyle.increased == LoomTheme.Text.secondaryStyle.increased)
     }
 
     @Test func increaseContrastSecondaryStaysAtSevenUnderTheSelectedAndHoverFills() {
@@ -195,7 +217,7 @@ struct HighlightTests {
             ("Sidebar.homeRowInset", LoomTheme.Sidebar.homeRowInset), ("Sidebar.homeRowSpacing", LoomTheme.Sidebar.homeRowSpacing),
             ("Sidebar.badgePadding", LoomTheme.Sidebar.badgePadding), ("Sidebar.headerFillInset", LoomTheme.Sidebar.headerFillInset),
             ("Chat.columnPadding", LoomTheme.Chat.columnPadding), ("Chat.workRowPaddingH", LoomTheme.Chat.workRowPaddingH),
-            ("Chat.rowSpacing", LoomTheme.Chat.rowSpacing), ("Chat.blockSpacing", LoomTheme.Chat.blockSpacing),
+            ("Chat.blockSpacing", LoomTheme.Chat.blockSpacing),
             ("Composer.dockBottomInset", LoomTheme.Composer.dockBottomInset), ("Composer.dockTopInset", LoomTheme.Composer.dockTopInset),
             ("Composer.textInsetH", LoomTheme.Composer.textInsetH), ("Composer.textTop", LoomTheme.Composer.textTop),
             ("Composer.chipGap", LoomTheme.Composer.chipGap), ("Composer.queueMargin", LoomTheme.Composer.queueMargin),

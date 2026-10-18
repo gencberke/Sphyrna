@@ -72,12 +72,14 @@ enum NewSessionLayout {
     /// The question sits above the middle of the page (the preview's 70 pt of bottom padding).
     static let bottomLift: CGFloat = 70
     static let popoverWidth: CGFloat = 320
-    static let textInset: CGFloat = 18
-    static let textTop: CGFloat = 10
+    /// The draft's composer is the live one (D-58, D-59, V17): its text inset, top and chip spacing are the live composer's
+    /// tokens, so the two cards look the same. `FixRoundLookTests` ties them.
+    static let textInset: CGFloat = LoomTheme.Composer.textInsetH
+    static let textTop: CGFloat = LoomTheme.Composer.textTop
     static let textMinimumHeight: CGFloat = 60
     static let textMaximumHeight: CGFloat = 220
     static let chipHeight: CGFloat = 26
-    static let chipSpacing: CGFloat = 6
+    static let chipSpacing: CGFloat = LoomTheme.Composer.chipGap
     static let headlinePickHeight: CGFloat = 36
     static let toneStripe = CGSize(width: 4, height: 17)
     static let glyph: CGFloat = 12

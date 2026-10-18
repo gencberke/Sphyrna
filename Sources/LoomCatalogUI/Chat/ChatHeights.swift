@@ -53,7 +53,8 @@ enum ChatRowEstimate {
         case let .user(entry):
             guard case let .user(prompt) = entry.body else { return 60 }
             let bubble = content * LoomTheme.Chat.userMaxWidthFraction - 32
-            let count = lines(prompt.text, charsPerLine: bubble / 7.4)
+            // A collapsed row shows seven lines, so the start of a long message says as much as all of it (a chip can be 16 MB).
+            let count = lines(row.open ? prompt.text : String(ChatUserText.collapsedPrefix(prompt.text)), charsPerLine: bubble / 7.4)
             let shown = row.open ? count : min(count, LoomTheme.Chat.userCollapsedLines)
             return CGFloat(shown) * 22 + 16 + 26 + (prompt.images.isEmpty ? 0 : 80)
         case let .prose(entry, settled):
