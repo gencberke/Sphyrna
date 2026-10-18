@@ -216,9 +216,11 @@ final class OpenSessionControlServer: @unchecked Sendable {
     private let socketPath: String
     private let authenticationToken: String
     private let handler: Handler
-    private let acceptQueue = DispatchQueue(label: "dev.loom.open-session.accept", qos: .utility)
+    // A session is waiting on this answer, so the queues do not run at utility priority: in a process that
+    // is CPU-bound at higher priority (the full test target) utility work waited more than 10 s for a CPU.
+    private let acceptQueue = DispatchQueue(label: "dev.loom.open-session.accept", qos: .userInitiated)
     private let serveQueue = DispatchQueue(
-        label: "dev.loom.open-session.serve", qos: .utility, attributes: .concurrent
+        label: "dev.loom.open-session.serve", qos: .userInitiated, attributes: .concurrent
     )
     private let stateLock = NSLock()
     private var source: DispatchSourceRead?
@@ -318,7 +320,7 @@ final class OpenSessionControlServer: @unchecked Sendable {
             ticketKey: wire.ticketKey, project: wire.project, message: wire.message
         )
         let handler = self.handler
-        Task.detached(priority: .utility) { [self] in
+        Task.detached(priority: .userInitiated) { [self] in
             finish(connection, await handler(call))
         }
     }

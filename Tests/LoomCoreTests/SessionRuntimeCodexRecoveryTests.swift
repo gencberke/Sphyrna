@@ -49,7 +49,7 @@ struct SessionRuntimeCodexRecoveryTests {
         try await screenA.send("a still works")
         #expect(await screenA.contains("CODEX-TURN-DONE completed echo a still works", timeout: 5))
         #expect(try await context.runtime.stopConversation(sessionID: launch.sessionID).succeeded)
-        #expect(await context.runtime.codexServerState().servers == 0)
+        #expect(await SessionRuntimeTests.waitUntil(10) { await context.runtime.codexServerState().servers == 0 })
         #expect((await context.runtime.shutdown()).succeeded)
     }
 

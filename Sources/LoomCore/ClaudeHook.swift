@@ -234,7 +234,7 @@ public final class ClaudeHookServer: @unchecked Sendable {
     private let authenticationToken: String
     private let handler: @Sendable (ClaudeHookEnvelope) -> Void
     private let receiveQueue = DispatchQueue(
-        label: "dev.loom.claude-hooks.receive", qos: .utility
+        label: "dev.loom.claude-hooks.receive", qos: .userInitiated
     )
     private let stateLock = NSLock()
     private var source: DispatchSourceRead?

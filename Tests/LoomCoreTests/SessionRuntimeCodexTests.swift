@@ -1105,7 +1105,8 @@ struct SessionRuntimeCodexTests {
         #expect(await context.runtime.codexServerSessionIDs() == [secondServer])
 
         #expect(try await context.runtime.stopConversation(sessionID: second.sessionID).succeeded)
-        #expect(await context.runtime.codexServerState().servers == 0)
+        // The server's teardown follows the stop; under a loaded machine it lags the call's return.
+        #expect(await SessionRuntimeTests.waitUntil(10) { await context.runtime.codexServerState().servers == 0 })
         #expect(await context.runtime.codexServerSessionIDs().isEmpty)
         #expect(await context.supervisor.session(id: secondServer) == nil)
         #expect((await context.runtime.shutdown()).succeeded)

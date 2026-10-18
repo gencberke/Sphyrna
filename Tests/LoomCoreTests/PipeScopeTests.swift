@@ -426,11 +426,11 @@ struct PipeScopeTests {
         // The first run settles one-off descriptors (the scope's socket traffic, queues).
         try await cycle()
         let before = openPipeCount()
-        let runs = 12
+        let runs = 30
         for _ in 0..<runs { try await cycle() }
-        // A leaked descriptor per run (three pipes each) would add at least `runs`;
-        // other suites running at the same moment account for the small slack.
-        #expect(openPipeCount() - before < runs / 2, "pipes \(before) -> \(openPipeCount())")
+        // A leaked descriptor per run (three pipes each) would add at least `runs`, three times that
+        // for a full leak; other suites running at the same moment account for the slack.
+        #expect(openPipeCount() - before < runs, "pipes \(before) -> \(openPipeCount())")
         #expect(try await supervisor.stop(sessionID: keeper.session.id,
                                           inputCloseGraceSeconds: 0.2).succeeded)
         #expect(await supervisor.ledgerSnapshot().scopes?.isEmpty == true)
@@ -547,7 +547,9 @@ struct PipeScopeTests {
         #expect(await supervisor.ledgerSnapshot().scopes?.isEmpty == true)
         let before = descriptorCounts()
 
-        let runs = 8
+        // Descriptor counts are process-wide and other suites run in parallel, so the run count is large
+        // enough that a leak of even one pipe a launch stays above that noise.
+        let runs = 40
         for _ in 0..<runs {
             let sessionID = UUID()
             try await supervisor.createSession(ManagedSession(
@@ -565,9 +567,9 @@ struct PipeScopeTests {
         }
         let after = descriptorCounts()
         // Three pipes (six descriptors) a launch would add 3 * runs pipes; other
-        // suites running at the same moment account for the small slack.
-        #expect(after.pipes - before.pipes < runs / 2, "pipes \(before.pipes) -> \(after.pipes)")
-        #expect(after.all - before.all < runs / 2, "descriptors \(before.all) -> \(after.all)")
+        // suites running at the same moment account for the slack.
+        #expect(after.pipes - before.pipes < runs, "pipes \(before.pipes) -> \(after.pipes)")
+        #expect(after.all - before.all < runs, "descriptors \(before.all) -> \(after.all)")
         #expect(await supervisor.runningSessionIDs().isEmpty)
         let scopes = await supervisor.ledgerSnapshot().scopes
         #expect(scopes?.isEmpty == true, "\(String(describing: scopes))")
