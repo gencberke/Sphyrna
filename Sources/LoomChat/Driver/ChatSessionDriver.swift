@@ -376,15 +376,11 @@ public actor ChatSessionDriver {
         note(model.appendMarker(.face(face), at: clock()))
     }
 
-    /// The session is back in Chat after a stay in the terminal: the marker, and the queue's pause for the move is over (it
-    /// would otherwise read "since the session moved to the terminal" in a session that is back). The queue then goes on as
-    /// it does when any pause is lifted: the first item goes out now that nothing runs.
+    /// The session is back in Chat after a stay in the terminal: the marker. A queue paused for the move stays paused: what
+    /// was queued before the session left may not fit what was done in the terminal, so nothing goes out until the user
+    /// resumes it (Resume), as after an interrupt or a relaunch.
     public func returnedToChat() async {
         noteFace(.backInChat)
-        guard queue.paused == .handover else { return }
-        queue.paused = nil
-        saveQueue()
-        await releaseQueueReportingIssue()
     }
 
     /// Drafts an interrupt gave back, handed over once: the composer takes them.

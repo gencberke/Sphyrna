@@ -99,8 +99,9 @@ struct ChatFixRound2DriverTests {
         await rig.finish()
     }
 
-    /// D14: "Back in Chat" ends the queue's pause for the move, and the queue goes on.
-    @Test func backInChatEndsTheQueuesPauseForTheMove() async throws {
+    /// D14, the planner's call: "Back in Chat" keeps the queue paused for the move. What was queued before the session went
+    /// to the terminal may not fit what was done there, so nothing goes out until the user resumes the queue.
+    @Test func backInChatKeepsTheQueuePausedUntilTheUserResumesIt() async throws {
         let rig = try await Rig.make()
         let id = UUID()
         let host = await MainActor.run { ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root) }
@@ -115,9 +116,13 @@ struct ChatFixRound2DriverTests {
         #expect(await waitUntil { screen.text.lowercased().contains("resumed \(id.uuidString.lowercased())") })
 
         _ = try await host.enterChat(sessionID: id)
-        #expect(await waitUntil { await driver.snapshot().queue.paused != .handover }, "the pause for the move is over")
-        #expect(await waitUntil(15) { await driver.snapshot().texts.contains("Fake answer to: for later") },
-                "the queue goes on once the session is back")
+        #expect(await idle(driver))
+        try await Task.sleep(for: .milliseconds(500))
+        let back = await driver.snapshot()
+        #expect(back.queue.paused == .handover, "the queue still waits for the user")
+        #expect(!back.texts.contains("Fake answer to: for later"), "nothing queued went out by itself")
+        try await driver.resumeQueue()
+        #expect(await waitUntil(15) { await driver.snapshot().texts.contains("Fake answer to: for later") }, "Resume sends it")
         #expect(await driver.snapshot().queue.isEmpty)
         await rig.finish()
     }

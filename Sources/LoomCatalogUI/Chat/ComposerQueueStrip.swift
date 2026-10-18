@@ -14,7 +14,7 @@ enum ComposerQueueText {
         case .failedTurn?: "Queue paused because the turn failed"
         case .processEnded?: "Queue paused because Claude ended"
         case .relaunch?: "Queue paused since Loom started again"
-        case .handover?: "Queue paused since the session moved to the terminal"
+        case .handover?: "Queue paused because the session moved to the terminal"
         }
     }
 
