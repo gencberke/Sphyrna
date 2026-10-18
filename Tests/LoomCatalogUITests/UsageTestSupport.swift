@@ -20,6 +20,26 @@ enum UsageSnapshotFactory {
     }
 }
 
+/// An index that answers every snapshot with the same tokens by kind and records the ranges it was asked for.
+final class KindsUsageIndex: UsageIndexing, @unchecked Sendable {
+    private let ranges = Mutex<[UsageRange]>([])
+    private let kinds: Mutex<(input: Int64, output: Int64, cacheWrite: Int64, cacheRead: Int64)>
+    init(input: Int64 = 0, output: Int64 = 0, cacheWrite: Int64 = 0, cacheRead: Int64 = 0) {
+        kinds = Mutex((input, output, cacheWrite, cacheRead))
+    }
+    var snapshotRanges: [UsageRange] { ranges.withLock { $0 } }
+    func set(input: Int64, output: Int64, cacheWrite: Int64, cacheRead: Int64) {
+        kinds.withLock { $0 = (input, output, cacheWrite, cacheRead) }
+    }
+    func refreshAll() async throws -> UsageScanReport { UsageScanReport() }
+    func snapshot(range: UsageRange, now: Date, timeZone: TimeZone) async throws -> UsageSnapshot {
+        ranges.withLock { $0.append(range) }
+        let value = kinds.withLock { $0 }
+        return UsageSnapshotFactory.snapshot(range: range, now: now, input: value.input, output: value.output,
+                                             cacheWrite: value.cacheWrite, cacheRead: value.cacheRead)
+    }
+}
+
 /// A scripted `UsageIndexing`: counts calls, records the thread each ran on, can block a refresh.
 final class FakeUsageIndex: UsageIndexing, @unchecked Sendable {
     struct State {

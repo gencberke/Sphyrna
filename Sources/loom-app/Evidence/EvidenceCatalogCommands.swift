@@ -74,7 +74,8 @@ extension DevelopmentEvidence {
         default:
             if handleDeletionCommand(name, argument) || handleOpenRequestCommand(name, argument)
                 || handleSubagentCommand(name, argument) || handlePaletteCommand(name, argument)
-                || handleStudioCommand(name, argument) { break }
+                || handleStudioCommand(name, argument) || handleHomeCommand(name, argument)
+                || handleProjectPageCommand(name, argument) { break }
             var handled = await handleSettingsCommand(name, argument) || handleTabCommand(name, argument)
             if !handled { handled = await handleSystemCommand(name, argument) }
             guard handled else {

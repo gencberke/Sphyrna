@@ -20,6 +20,8 @@ public protocol UsageIndexing: Sendable {
     func diagnostics() async -> UsageDiagnostics
     /// The latest main-thread message of each session, from the index's own database (the context ring).
     func latestMainMessages(sessions: [String]) async throws -> [String: SessionContextSample]
+    /// What the given sessions (a project's) used in the range, from the index's own database (the project page).
+    func projectUsage(sessions: [String], range: UsageRange, now: Date, timeZone: TimeZone) async throws -> ProjectUsage
 }
 
 /// What a stand-in without its own bucket query gets: the same answers from per-interval snapshots.
@@ -40,6 +42,10 @@ extension UsageIndexing {
 
     public func latestMainMessages(sessions: [String]) async throws -> [String: SessionContextSample] { [:] }
 
+    public func projectUsage(sessions: [String], range: UsageRange, now: Date, timeZone: TimeZone) async throws -> ProjectUsage {
+        .empty
+    }
+
     public func buckets(size: UsageBucketSize, count: Int, endingAt now: Date, timeZone: TimeZone) async throws -> [UsageBucket] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
@@ -56,6 +62,21 @@ extension UsageIndexing {
 extension ClaudeUsageIndex: UsageIndexing {
     public func refreshAll() async throws -> UsageScanReport { try await refresh(paths: nil) }
     public func refreshChanged(_ paths: [URL]) async throws -> UsageScanReport { try await refresh(paths: paths) }
+}
+
+/// Today's tokens by kind, as the latest read of the index found them (the same summary the footer chip is
+/// made from). Home's Today block shows its cache share and bars.
+public struct UsageToday: Equatable, Sendable {
+    public let tokens: UsageTokens
+    public init(_ tokens: UsageTokens) { self.tokens = tokens }
+
+    public var input: Int64 { tokens.input }
+    public var output: Int64 { tokens.output }
+    public var cacheRead: Int64 { tokens.cacheRead }
+    public var cacheWrite: Int64 { tokens.cacheWrite }
+    public var total: Int64 { tokens.total }
+    /// Cache reads over everything sent as prompt, or nil when nothing was.
+    public var cacheShare: Double? { tokens.cacheShare }
 }
 
 public enum UsageState: Equatable, Sendable {
@@ -165,6 +186,9 @@ public final class UsageModel {
     public private(set) var lastFailure: String?
     /// The footer's text; replaced only when it changes, so its readers redraw only then.
     public private(set) var chip: UsageChipContent?
+    /// Today's tokens by kind, from the read the chip is made from; nil until the first read. Replaced only
+    /// when a figure changes.
+    public private(set) var todayUsage: UsageToday?
     /// The Claude plan limits, nil while unknown or unavailable.
     public private(set) var limits: PlanLimits?
     /// Why the last plan-limits ask failed; nil after a success or before any ask. The page says
@@ -191,6 +215,8 @@ public final class UsageModel {
     @ObservationIgnored private let clock: @Sendable () -> Date
     @ObservationIgnored public let timeZone: TimeZone
     @ObservationIgnored private let debounce: Duration
+    /// How the debounce waits; a test replaces it with one it releases by hand.
+    @ObservationIgnored private let sleep: @Sendable (Duration) async throws -> Void
     @ObservationIgnored private let activationCooldown: Duration
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var debounceTask: Task<Void, Never>?
@@ -228,7 +254,8 @@ public final class UsageModel {
         index: any UsageIndexing, limits limitsSource: (any PlanLimitsFetching)? = nil,
         cadence: PlanLimitsCadence = PlanLimitsCadence(), clock: @escaping @Sendable () -> Date = { Date() },
         timeZone: TimeZone = .current, debounce: Duration = .seconds(2),
-        activationCooldown: Duration = .seconds(10)
+        activationCooldown: Duration = .seconds(10),
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) {
         self.index = index
         self.limitsSource = limitsSource
@@ -236,6 +263,7 @@ public final class UsageModel {
         self.clock = clock
         self.timeZone = timeZone
         self.debounce = debounce
+        self.sleep = sleep
         self.activationCooldown = activationCooldown
     }
 
@@ -396,8 +424,8 @@ public final class UsageModel {
     /// about every `debounce`, not once at its end and not on every line).
     private func scheduleDebounced() {
         guard debounceTask == nil else { return }
-        debounceTask = Task { [weak self, debounce] in
-            try? await Task.sleep(for: debounce)
+        debounceTask = Task { [weak self, debounce, sleep] in
+            try? await sleep(debounce)
             guard !Task.isCancelled, let self else { return }
             self.debounceTask = nil
             // Everyone looked away during the debounce: with the watcher keeping track, coming back
@@ -484,6 +512,8 @@ public final class UsageModel {
         let now = clock()
         let day = try await index.summary(range: .days(1), now: now, timeZone: timeZone)
         today = day
+        let kinds = UsageToday(day.tokens)
+        if todayUsage != kinds { todayUsage = kinds }
         // Decided before it is assigned: a false in between would swap the report for the
         // empty notice (and reset its scroll) for the length of the await.
         var history = day.messageCount > 0
@@ -579,6 +609,16 @@ public final class UsageModel {
             ContextUsage(sample: sample, window: window(for: sample))
         }
         if next != contexts { contexts = next }
+    }
+
+    // MARK: Project
+
+    /// What the given sessions used over the past seven days (today and the six days before), for the
+    /// project page: one indexed lookup per session in the index's database, asked once when the page opens.
+    /// It starts no scan and keeps nothing; a failure reads as nil (the page then says there is no usage).
+    public func projectUsage(sessions: [String]) async -> ProjectUsage? {
+        guard !sessions.isEmpty else { return .empty }
+        return try? await index.projectUsage(sessions: sessions, range: .days(7), now: clock(), timeZone: timeZone)
     }
 
     // MARK: Plan limits

@@ -10,10 +10,49 @@ import Testing
 struct UsageModelTests {
     private func model(
         _ index: FakeUsageIndex, debounce: Duration = .milliseconds(40), cooldown: Duration = .zero,
-        limits: (any PlanLimitsFetching)? = nil, clock: TestClock? = nil
+        limits: (any PlanLimitsFetching)? = nil, clock: TestClock? = nil, gate: DebounceGate? = nil
     ) -> UsageModel {
-        UsageModel(index: index, limits: limits, clock: { clock?.now ?? Date() },
-                   timeZone: TimeZone(identifier: "UTC")!, debounce: debounce, activationCooldown: cooldown)
+        if let gate {
+            return UsageModel(index: index, limits: limits, clock: { clock?.now ?? Date() },
+                              timeZone: TimeZone(identifier: "UTC")!, debounce: debounce, activationCooldown: cooldown,
+                              sleep: { _ in await gate.wait() })
+        }
+        return UsageModel(index: index, limits: limits, clock: { clock?.now ?? Date() },
+                          timeZone: TimeZone(identifier: "UTC")!, debounce: debounce, activationCooldown: cooldown)
+    }
+
+    /// The debounce's wait, held until the test opens it: a burst is judged against the debounce itself, not
+    /// against how long the machine takes between two lines of the test.
+    final class DebounceGate: Sendable {
+        private struct State {
+            var opened = false
+            var waiting: [CheckedContinuation<Void, Never>] = []
+            var waits = 0
+        }
+        private let state = Mutex(State())
+        /// How many debounce windows have started.
+        var waits: Int { state.withLock { $0.waits } }
+
+        func wait() async {
+            await withCheckedContinuation { continuation in
+                let resumeNow = state.withLock { state -> Bool in
+                    state.waits += 1
+                    if state.opened { return true }
+                    state.waiting.append(continuation)
+                    return false
+                }
+                if resumeNow { continuation.resume() }
+            }
+        }
+
+        func open() {
+            let waiting = state.withLock { state -> [CheckedContinuation<Void, Never>] in
+                state.opened = true
+                defer { state.waiting = [] }
+                return state.waiting
+            }
+            for continuation in waiting { continuation.resume() }
+        }
     }
 
     @Test func firstRefreshIsIndexingThenReadyAndLaterOnesStayReady() async {
@@ -42,19 +81,44 @@ struct UsageModelTests {
         #expect(!usage.isRefreshing)
     }
 
+    @Test func todayUsageHoldsTodaysTokensByKindFromTheReadTheChipIsMadeFrom() async {
+        let index = KindsUsageIndex(input: 1_000, output: 200, cacheWrite: 300, cacheRead: 9_000)
+        let usage = UsageModel(index: index, clock: { Date() }, timeZone: TimeZone(identifier: "UTC")!)
+        #expect(usage.todayUsage == nil)
+        await usage.refreshNow(reason: .launch)
+        let today = usage.todayUsage
+        #expect(today?.input == 1_000 && today?.output == 200 && today?.cacheWrite == 300 && today?.cacheRead == 9_000)
+        #expect(today?.total == 10_500)
+        #expect(today.flatMap(\.cacheShare).map { (0.87...0.88).contains($0) } == true, "9,000 of 10,300 prompt tokens")
+        // No read of its own: the one day summary the chip is made from.
+        #expect(index.snapshotRanges.filter { $0 == .days(1) }.count == 1)
+
+        // A read that finds the same figures writes nothing.
+        let write = ObservedWrite { _ = usage.todayUsage }
+        await usage.refreshNow(reason: .manual)
+        #expect(!write.wrote)
+        index.set(input: 1_000, output: 250, cacheWrite: 300, cacheRead: 9_000)
+        await usage.refreshNow(reason: .manual)
+        #expect(usage.todayUsage?.output == 250)
+    }
+
     @Test func turnCompletionBurstIsDebouncedIntoOneRefresh() async throws {
         let index = FakeUsageIndex()
-        let usage = model(index, debounce: .milliseconds(250))
+        let gate = DebounceGate()
+        let usage = model(index, debounce: .milliseconds(250), gate: gate)
         for _ in 0..<3 {
             usage.refresh(reason: .turnComplete)
-            try await Task.sleep(for: .milliseconds(30))
+            await Task.yield()
             #expect(index.refreshCalls == 0) // still waiting out the debounce
         }
+        #expect(gate.waits == 1, "the later requests of the burst join the first one's wait")
+        gate.open() // the debounce ends
         await usage.settle()
         #expect(index.refreshCalls == 1)
         usage.refresh(reason: .turnComplete)
         await usage.settle()
         #expect(index.refreshCalls == 2)
+        #expect(gate.waits == 2, "a request after the burst starts a debounce of its own")
     }
 
     @Test func requestsDuringARunningRefreshCoalesceIntoOneMoreRun() async {

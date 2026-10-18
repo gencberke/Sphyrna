@@ -132,7 +132,8 @@ struct SessionRuntimeTests {
         hookSilenceGrace: TimeInterval = 3,
         catalogBackupDelay: TimeInterval? = nil,
         claudeVersion: String = "fake 1",
-        extraClaudeHelp: String = ""
+        extraClaudeHelp: String = "",
+        runsRecovered: (@Sendable () async -> Void)? = nil
     ) async throws -> RuntimeContext {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loom-runtime-\(UUID())", isDirectory: true)
@@ -193,7 +194,8 @@ struct SessionRuntimeTests {
                 socketDirectory: socketDirectory, homeDirectory: home.path,
                 idlePolicy: idlePolicy, codexIdentityTimeout: 3,
                 claudePluginDirectory: claudePlugin ? root.appendingPathComponent("claude-plugin", isDirectory: true) : nil,
-                hookSilenceGrace: hookSilenceGrace, catalogBackupDelay: catalogBackupDelay
+                hookSilenceGrace: hookSilenceGrace, catalogBackupDelay: catalogBackupDelay,
+                runsRecovered: runsRecovered
             )
         )
         if startRuntime { try await runtime.start() }
@@ -612,7 +614,7 @@ struct SessionRuntimeTests {
         })
         await idleDiagnostics(context, launch.sessionID, label: "quiet automatic idle")
         #expect(await context.supervisor.runningSessionIDs().isEmpty)
-        #expect(await context.runtime.liveRunCount() == 0)
+        #expect(await Self.waitUntil(5) { await context.runtime.liveRunCount() == 0 })
         let run = try #require(try await context.catalog.runs().first { $0.id == launch.runID })
         #expect(run.endReason == .idle)
         #expect((await context.runtime.shutdown()).succeeded)

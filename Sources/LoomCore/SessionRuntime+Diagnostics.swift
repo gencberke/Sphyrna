@@ -94,6 +94,7 @@ extension SessionRuntime {
         } catch {
             LoomLog.error(.recovery, key: "close-runs", "Open runs of an earlier Loom could not be closed (\(LoomLog.category(of: error)))")
         }
+        await configuration.runsRecovered?()
     }
 
     // MARK: Backup

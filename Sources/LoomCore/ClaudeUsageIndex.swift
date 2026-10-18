@@ -379,6 +379,59 @@ public actor ClaudeUsageIndex {
         return found
     }
 
+    /// The most sessions one `projectUsage` lookup reads (the rest are left out; the caller passes the
+    /// sessions active in the range, newest first).
+    public static let maxProjectUsageSessions = 500
+
+    /// What the given sessions (a project's) used in `range`: one indexed seek per session in the
+    /// index's own database, like `latestMainMessages`. No transcript is opened and nothing is scanned;
+    /// at most `maxProjectUsageSessions` sessions are read. Sidechain (subagent) messages count: the
+    /// project paid for them.
+    public func projectUsage(sessions: [String], range: UsageRange, now: Date, timeZone: TimeZone) throws -> ProjectUsage {
+        do {
+            return try projectUsageOnce(sessions, range: range, now: now, timeZone: timeZone)
+        } catch let error as ClaudeUsageIndexError where error.isCorruption {
+            discardDatabase()
+            return try projectUsageOnce(sessions, range: range, now: now, timeZone: timeZone)
+        }
+    }
+
+    private func projectUsageOnce(_ sessions: [String], range: UsageRange, now: Date, timeZone: TimeZone) throws -> ProjectUsage {
+        let database = try openDatabase()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let bounds = range.bounds(now: now, calendar: calendar)
+        let lower = bounds.start.map { Int64(($0.timeIntervalSince1970 * 1_000).rounded(.down)) } ?? Int64.min
+        let upper = bounds.end.map { Int64(($0.timeIntervalSince1970 * 1_000).rounded(.down)) } ?? Int64.max
+        var total = Accumulator()
+        var used = 0
+        var seen: Set<Int64> = []
+        var prices: [Int64: UsageModelPrice?] = [:]
+        for session in sessions.prefix(Self.maxProjectUsageSessions) {
+            // Ids are written in lower case; a catalog id in another case still finds its rows.
+            let candidates = session == session.lowercased() ? [session] : [session, session.lowercased()]
+            for text in candidates {
+                guard let symbol = try database.symbolID(text) else { continue }
+                guard seen.insert(symbol).inserted else { break }
+                var found = false
+                for group in try database.sessionAggregates(session: symbol, lower: lower, upper: upper) {
+                    found = true
+                    if prices[group.model] == nil {
+                        prices[group.model] = .some(UsagePricing.price(forModel: try database.symbolText(group.model) ?? ""))
+                    }
+                    let cost = Self.cost(price: prices[group.model] ?? nil, tokens: group.tokens, flags: group.flags,
+                                         legacy: group.hasLegacyCost ? group.legacyCost : nil)
+                    total.add(tokens: group.tokens, cost: cost, messages: group.messages)
+                }
+                if found { used += 1 }
+                break
+            }
+        }
+        return ProjectUsage(
+            tokens: total.tokens, estimatedCostUSD: total.hasUnknownCost ? nil : total.cost,
+            messageCount: total.messages, sessionCount: used)
+    }
+
     private func bucketsOnce(size: UsageBucketSize, count: Int, now: Date, timeZone: TimeZone) throws -> [UsageBucket] {
         let database = try openDatabase()
         var calendar = Calendar(identifier: .gregorian)
@@ -1313,6 +1366,39 @@ final class UsageDatabase {
                     cacheWrite5m: sqlite3_column_int64(statement, 4), cacheWrite1h: sqlite3_column_int64(statement, 5),
                     cacheRead: sqlite3_column_int64(statement, 6), webSearches: sqlite3_column_int64(statement, 7)),
                 flags: 0, total: 0, legacyCost: nil)
+        }
+    }
+
+    /// The SQL of `sessionAggregates`, shared with the test that checks it is answered from the
+    /// `msg_session` index and not by a table scan.
+    static let sessionAggregatesSQL = """
+        SELECT model, flags & 6, cost IS NOT NULL, SUM(COALESCE(cost, 0)),
+               SUM(input), SUM(output), SUM(cw5), SUM(cw1), SUM(cr), SUM(web), COUNT(*)
+        FROM msg WHERE session = ?1 AND session IS NOT NULL AND ts_ms >= ?2 AND ts_ms < ?3 GROUP BY 1, 2, 3
+        """
+
+    /// One session's totals in a range, grouped by model, speed/geography flags and legacy cost.
+    func sessionAggregates(session: Int64, lower: Int64, upper: Int64) throws -> [UsageAggregate] {
+        try cached(Self.sessionAggregatesSQL) { statement in
+            bind(session, 1, statement)
+            bind(lower, 2, statement)
+            bind(upper, 3, statement)
+            var result: [UsageAggregate] = []
+            while true {
+                let step = sqlite3_step(statement)
+                if step == SQLITE_DONE { break }
+                guard step == SQLITE_ROW else { throw error("session aggregate", step) }
+                result.append(UsageAggregate(
+                    bucket: 0, model: sqlite3_column_int64(statement, 0),
+                    flags: sqlite3_column_int64(statement, 1), hasLegacyCost: sqlite3_column_int(statement, 2) != 0,
+                    legacyCost: sqlite3_column_double(statement, 3),
+                    tokens: UsageTokens(
+                        input: sqlite3_column_int64(statement, 4), output: sqlite3_column_int64(statement, 5),
+                        cacheWrite5m: sqlite3_column_int64(statement, 6), cacheWrite1h: sqlite3_column_int64(statement, 7),
+                        cacheRead: sqlite3_column_int64(statement, 8), webSearches: sqlite3_column_int64(statement, 9)),
+                    messages: Int(sqlite3_column_int64(statement, 10))))
+            }
+            return result
         }
     }
 

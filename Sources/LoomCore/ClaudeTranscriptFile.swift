@@ -36,12 +36,19 @@ public enum ClaudeTranscriptLocator {
                workingDirectory: workingDirectory)
     }
 
+    /// The session's transcript in the one folder Claude names after `workingDirectory`, and nowhere else: a
+    /// miss is a miss (no other project folder is listed). For callers that must stay bounded.
+    public static func locate(sessionID: String, configDirectory: URL, onlyIn workingDirectory: String) -> ClaudeTranscriptFile? {
+        let projects = configDirectory.appendingPathComponent("projects", isDirectory: true)
+        guard isPlainIdentifier(sessionID) else { return nil }
+        return inWorkingDirectoryFolder(sessionID: sessionID, projectsDirectory: projects, workingDirectory: workingDirectory)
+    }
+
     public static func locate(sessionID: String, projectsDirectory: URL, workingDirectory: String? = nil) -> ClaudeTranscriptFile? {
         guard isPlainIdentifier(sessionID) else { return nil }
-        if let workingDirectory {
-            let candidate = projectsDirectory.appendingPathComponent(folderName(forWorkingDirectory: workingDirectory), isDirectory: true)
-                .appendingPathComponent(sessionID + ".jsonl")
-            if let found = resolve(path: candidate.path, sessionID: sessionID, projectsDirectory: projectsDirectory) { return found }
+        if let workingDirectory,
+           let found = inWorkingDirectoryFolder(sessionID: sessionID, projectsDirectory: projectsDirectory, workingDirectory: workingDirectory) {
+            return found
         }
         let manager = FileManager.default
         guard let folders = try? manager.contentsOfDirectory(
@@ -54,6 +61,12 @@ public enum ClaudeTranscriptLocator {
             .sorted { modified($0) > modified($1) }
             .lazy.compactMap { resolve(path: $0.path, sessionID: sessionID, projectsDirectory: projectsDirectory) }
             .first
+    }
+
+    private static func inWorkingDirectoryFolder(sessionID: String, projectsDirectory: URL, workingDirectory: String) -> ClaudeTranscriptFile? {
+        let candidate = projectsDirectory.appendingPathComponent(folderName(forWorkingDirectory: workingDirectory), isDirectory: true)
+            .appendingPathComponent(sessionID + ".jsonl")
+        return resolve(path: candidate.path, sessionID: sessionID, projectsDirectory: projectsDirectory)
     }
 
     /// Checks a path someone else named (a hook payload's `transcript_path`).

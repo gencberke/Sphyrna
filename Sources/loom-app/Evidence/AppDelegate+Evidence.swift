@@ -113,8 +113,22 @@ extension AppDelegate {
             let state = root.appendingPathComponent("fake-state", isDirectory: true)
             // Acceptance: a slow environment resolution, so Quit can land mid-start.
             let delay = value(after: "--fake-toolchain-delay").flatMap(Double.init) ?? 0
+            // Home's first-run evidence (V05): `LOOM_FAKE_NO_CLAUDE=1` makes the Claude toolchain fail the way a
+            // machine without the CLI does, and the fixture's own `LOOM_FAKE_USAGE*` variables (the plan limits it
+            // answers) pass from this process to the fixture.
+            let noClaude = ProcessInfo.processInfo.environment["LOOM_FAKE_NO_CLAUDE"] == "1"
+            let fixtureEnvironment: [String: String] = {
+                var environment = ["PATH": "/usr/bin:/bin", "HOME": NSHomeDirectory(), "LOOM_FAKE_STATE": state.path]
+                for (key, text) in ProcessInfo.processInfo.environment where key.hasPrefix("LOOM_FAKE_USAGE") {
+                    environment[key] = text
+                }
+                return environment
+            }()
             return { provider in
                 if delay > 0 { try await Task.sleep(for: .seconds(delay)) }
+                if noClaude, provider == .claude {
+                    throw ProviderToolchainError.executableNotFound(provider: .claude, searched: 0)
+                }
                 return ProviderToolchain(
                     provider: provider, executable: fake,
                     capabilities: ProviderCapabilities(
@@ -122,8 +136,7 @@ extension AppDelegate {
                         help: "--settings <settings> --session-id <id> --remote <ADDR>",
                         serverHelp: "--listen <URL>"
                     ),
-                    environment: ["PATH": "/usr/bin:/bin", "HOME": NSHomeDirectory(),
-                                  "LOOM_FAKE_STATE": state.path],
+                    environment: fixtureEnvironment,
                     profileDirectory: root.appendingPathComponent(
                         provider == .codex ? "codex-home" : "claude-config", isDirectory: true
                     )

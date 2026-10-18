@@ -262,6 +262,10 @@ public final class CatalogModel {
     /// What the window opened on. Read once at launch: `home` opens Home, `lastSession` restores the saved destination.
     public let launchView: LaunchView
     public private(set) var sessionCounts: [UUID?: Int] = [:]
+    /// How many times the runtime has finished closing the runs an earlier Loom left open (once per launch).
+    /// The model is ready before that happens, and a list built from runs (Home's Continue) changes when it
+    /// does, so such a read keys on this number.
+    public private(set) var runsRecovered = 0
     public private(set) var searchText = ""
     public private(set) var viewMode: CatalogViewMode
     /// Where the user is: a session, Home, a project's draft or a project page; nil is nothing selected.
@@ -540,6 +544,7 @@ public final class CatalogModel {
         await viewingTask?.value
         await preferenceWriteTask?.value
         await branchTask?.value
+        await projectPage.refreshTask?.value
         await revealTask?.value
         await deletions.refreshTask?.value
     }
@@ -591,6 +596,9 @@ public final class CatalogModel {
             self.updateAttentionCount()
         }
     }
+
+    /// The runtime closed the runs an earlier Loom left open (crashed or force-quit).
+    public func runsWereRecovered() { runsRecovered &+= 1 }
 
     public func visibleListKeys() -> [CatalogListKey] {
         switch viewMode {
@@ -759,12 +767,14 @@ public final class CatalogModel {
         }
     }
 
-    /// Keeps a branch only while a card, the selection or a tab shows its folder (the selection's and the
+    /// Keeps a branch only while a card, the selection, a tab or the open project page shows its folder (the selection's and the
     /// tabs' rows are always in `rowModels`, see `pruneRowModels`; the header chip reads the same data).
     private func pruneBranches() {
         // A requester's folder stays too: the origin line compares its branch with the card's.
+        // An open project page keeps the folders of its sessions: its branch column and the Branches tab read them.
         let shown = Set(rowModels.values.map { $0.record.session.workingDirectory })
             .union(origins.values.map { $0.session.workingDirectory })
+            .union(projectPage.folders)
         guard branches.keys.contains(where: { !shown.contains($0) }) else { return }
         branches = branches.filter { shown.contains($0.key) }
         Task { [branchCache] in await branchCache.retain(shown) }
@@ -848,7 +858,11 @@ public final class CatalogModel {
                 })
             }
             let freshCounts = try await catalog.sessionCounts()
-            if freshCounts != sessionCounts { sessionCounts = freshCounts }
+            if freshCounts != sessionCounts {
+                let before = sessionCounts
+                sessionCounts = freshCounts
+                projectSessionCountsChanged(from: before)
+            }
         } catch {
             report(error, "Projects could not be read")
         }

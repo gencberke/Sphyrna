@@ -42,6 +42,10 @@ public struct SessionRuntimeConfiguration: Sendable {
     /// Called after a provider launch failed, so whatever resolves toolchains can forget its cache
     /// (the runtime re-resolves on its own in any case). `SystemProviderToolchains.invalidate`.
     public var toolchainInvalidator: (@Sendable (ManagedSession.Provider) async -> Void)?
+    /// Called once `start()` has closed the runs an earlier Loom left open (also when none were), so whatever
+    /// listed sessions by their runs before that (Home's Continue) can read again. The catalog already holds
+    /// the closed runs when it is called.
+    public var runsRecovered: (@Sendable () async -> Void)?
 
     public init(
         toolchains: @escaping ProviderToolchainResolver, hookHelperPath: String,
@@ -57,7 +61,8 @@ public struct SessionRuntimeConfiguration: Sendable {
         claudePluginDirectory: URL? = nil,
         hookSilenceGrace: TimeInterval = 3,
         catalogBackupDelay: TimeInterval? = 10,
-        toolchainInvalidator: (@Sendable (ManagedSession.Provider) async -> Void)? = nil
+        toolchainInvalidator: (@Sendable (ManagedSession.Provider) async -> Void)? = nil,
+        runsRecovered: (@Sendable () async -> Void)? = nil
     ) {
         self.toolchains = toolchains
         self.hookHelperPath = hookHelperPath
@@ -76,6 +81,7 @@ public struct SessionRuntimeConfiguration: Sendable {
         self.hookSilenceGrace = hookSilenceGrace
         self.catalogBackupDelay = catalogBackupDelay
         self.toolchainInvalidator = toolchainInvalidator
+        self.runsRecovered = runsRecovered
     }
 }
 

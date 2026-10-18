@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Synchronization
 import Testing
 @testable import LoomCore
 
@@ -109,6 +110,42 @@ struct CrashResidueTests {
         let journal = DiagnosticJournal.forDataRoot(context.catalog.dataRoot).lines()
         #expect(journal.contains { $0.contains("recovery_runs_closed") })
         #expect(journal.contains { $0.contains("recovery_sockets") })
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    /// What the runtime's "runs recovered" hook found in the catalog when it was called.
+    private final class RecoveryProbe: Sendable {
+        private struct State {
+            var catalog: SessionCatalog?
+            var openRunsWhenCalled: [Int] = []
+        }
+        private let state = Mutex(State())
+        func use(_ catalog: SessionCatalog) { state.withLock { $0.catalog = catalog } }
+        var openRunsWhenCalled: [Int] { state.withLock { $0.openRunsWhenCalled } }
+        func called() async {
+            let catalog = state.withLock { $0.catalog }
+            let open = (try? await catalog?.runs().filter { $0.endedAt == nil }.count) ?? -1
+            state.withLock { $0.openRunsWhenCalled.append(open) }
+        }
+    }
+
+    @Test func theRuntimeSaysRunsAreRecoveredOnlyAfterTheCrashedOnesAreClosed() async throws {
+        let probe = RecoveryProbe()
+        let context = try await SessionRuntimeTests.makeContext(startRuntime: false, runsRecovered: { await probe.called() })
+        defer { context.cleanup() }
+        probe.use(context.catalog)
+        let session = ManagedSession(provider: .claude, workingDirectory: context.home.path)
+        try await context.catalog.insertSession(session)
+        let gone = ProcessIdentity(pid: 2_999_999, startSeconds: 1_700_000_000, startMicroseconds: 5)
+        let crashed = ManagedRun(id: UUID(), leader: gone, startedAt: Date(timeIntervalSinceNow: -3_600),
+                                 state: .running, exitStatus: nil, descendants: [gone])
+        try await context.catalog.startRun(crashed, sessionID: session.id)
+
+        #expect(probe.openRunsWhenCalled.isEmpty, "nothing is said before the runtime starts")
+        try await context.runtime.start()
+        #expect(probe.openRunsWhenCalled == [0], "called once, with the crashed run already closed in the catalog")
+        let found = try await context.catalog.sessionsEndedByQuit(since: Date(timeIntervalSinceNow: -86_400), limit: 5)
+        #expect(found.map(\.session.session.id) == [session.id], "what Home reads then lists the crashed session")
         #expect((await context.runtime.shutdown()).succeeded)
     }
 

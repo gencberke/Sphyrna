@@ -434,7 +434,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             if let catalog {
                 let created = SessionRuntime(
                     supervisor: supervisor, catalog: catalog,
-                    configuration: runtimeConfiguration(root: root, supervisor: supervisor)
+                    configuration: runtimeConfiguration(root: root, supervisor: supervisor, model: model)
                 )
                 try await created.start()
                 let conversations = ConversationController(runtime: created, model: model)
@@ -470,7 +470,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     /// Provider CLIs come from the user's real terminal environment; only the development
     /// flavor's acceptance runs (`--evidence`) may substitute fixture providers and isolated profiles.
-    private func runtimeConfiguration(root: URL, supervisor: ProcessSupervisor) -> SessionRuntimeConfiguration {
+    private func runtimeConfiguration(root: URL, supervisor: ProcessSupervisor, model: CatalogModel) -> SessionRuntimeConfiguration {
         let helpers = Bundle.main.executableURL!.deletingLastPathComponent()
         let socketDirectory = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(identity.socketDirectoryName, isDirectory: true)
@@ -494,7 +494,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             claudeProfileDirectory: evidenceClaudeProfile(root: root),
             claudePluginDirectory: root.appendingPathComponent("claude-plugin", isDirectory: true),
             // A failed start makes the next one read the CLI again instead of reusing the cache.
-            toolchainInvalidator: { provider in await system.invalidate(provider) }
+            toolchainInvalidator: { provider in await system.invalidate(provider) },
+            // Home's Continue lists runs by what the catalog says; it reads again once the open runs are closed.
+            runsRecovered: { await model.runsWereRecovered() }
         )
     }
 
