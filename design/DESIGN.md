@@ -137,7 +137,7 @@ A project's new-session page (`DraftSessionView`, `Sources/LoomCatalogUI/`; prev
 | Item | Rule |
 | --- | --- |
 | Page | One question, "What should we work on in [project]?", where the project name is the picker; under it the project's folder, the composer, the branch strip and the presets. 720 pt column, 40 pt side inset, lifted 70 pt above the middle. One page per project |
-| Composer | A card (radius 18, strong hairline) with the ticket line when the text holds a ticket key (the key and "no session for it yet", or "already has a session" with Open and Start anyway), the text, and a 34 pt bar: the permission mode as plain text with a shield, the model ("Default model" until one is chosen), a round 30 pt Send |
+| Composer | The shared composer (§11): a card (radius 18, strong hairline) with the ticket line when the text holds a ticket key (the key and "no session for it yet", or "already has a session" with Open and Start anyway), the text, and a 34 pt bar: the permission mode as plain text with a shield, the model ("Default model" until one is chosen), a round 30 pt Send |
 | Keys | ↵ starts the session and shows it; ⌘↵ starts it in the background and leaves a fresh draft; ⇧↵ (and ⌥↵) a new line. ↵ never sends while an input method composes. A start that fails keeps every word |
 | Branch strip | Stay on the current branch, New branch (in this folder) or New worktree (its own folder, `<repo>/.claude/worktrees/<slug>`); Git runs only at the first send, and only for the two new choices |
 | Presets | A row of saved starts (name, message, mode, model); "Save as preset" appears once there is text |
@@ -168,3 +168,35 @@ A project's page (`ProjectPageView`, `Sources/LoomCatalogUI/`; preview `design/v
 | Session row | 12×10 padding, radius 9, control fill on hover; indicator slot, title 13 medium and a last line in 12 secondary (one line each), branch in 11.5 mono (170 wide, dropped when the row is under 460), time 11.5 (44 wide, trailing); rows divided by a hairline |
 | Side column | 300 wide, 20 from the list. Cards (Presets, Past 7 days): card fill and radius, hairline, 14 padded, title 12.5 semibold; preset rows 28 high; the week's figures 18 semibold tabular with a caption label |
 | Branches, Instructions | Both read in a column of at most 700. Branch rows 34 high, 12.5 mono names (the current one primary, with an accent-high "current" label). CLAUDE.md in a card, 18 padded, rendered with the chat's Markdown |
+
+## 11. Chat composer (V17)
+
+One composer for the draft session and the live session (`ChatComposerView`, `ChatComposerDock`, `ComposerTextEditor` in `Sources/LoomCatalogUI/Chat/`; tokens in `LoomTheme+Composer.swift`; spec CHAT-SPEC → Composer; [D-58, D-59, D-62](../DECISIONS.md)).
+
+| Item | Rule |
+| --- | --- |
+| Dock | Top to bottom: the queue strip, the attachment row, the text, a notice line and the 34 pt bar, with the keys line under the card. Typed text is `LoomTheme.TypeScale.reading` in `LoomTheme.Text.primary` |
+| Bar | `+` (attach, `@` mention, `/` commands), the permission mode as plain text with a shield, the context ring, the model with its effort as a lighter word, and a round Send. Every mode looks the same, Full access included; the model reads the resolved name, else "Default model", and shows a live change at once |
+| Keys | ↵ sends; while Claude works it sends `next`, read after the current step. ⌘↵ puts the message in Loom's queue while Claude works. Esc closes a menu, else interrupts a working turn, and never loses text. With a card shown, ↵ and ⌘↵ send nothing and Esc only closes a menu (§12). ⇧⌘A, ⇧⌘M and ⇧⌘K open the attach, mention and command menus; ⇧⌘V pastes plain text |
+| Delivery | Your rows read Queued ("Waiting for the current step" with Read now, only when a turn was running at send time), Read, Cancelled, or Not delivered with Retry and Copy |
+| Queue strip | Edit, drag or ⌥↑/⌥↓ to reorder, Send now, Remove; Resume and Clear when paused; the queue's issue line |
+| Menus | `/` (only at the start of a message) and `@` open above the card, up to 80 rows; terminal-only commands are dimmed. `@` never walks the home folder, `/`, an ancestor of home or a volume root |
+| Attachments | Images are scaled to 2000 px at most, and files over 40 MB are refused; a paste of 32 KiB or more becomes a chip; ⌘↵ queues text only |
+| Drafts | Per session, never lost: an interrupt or the end of a run hands unread messages back in front of the typed text |
+| Edit menu | Undo, Redo and Cut work in the composer |
+
+## 12. Pinned cards (V18)
+
+A live Chat session's requests (approvals, questions, plans) as one card at a time between the stream and the composer (`PinnedCards.swift`, `PinnedCardParts.swift`, `PinnedCardsModel.swift`, `PinnedApprovalContent.swift`, `PinnedKeys.swift` in `Sources/LoomCatalogUI/Chat/`; tokens in `LoomTheme+Pinned.swift`; spec CHAT-SPEC → Requests).
+
+| Item | Rule |
+| --- | --- |
+| Stack | One card with a counter ("1 of 3") when several wait, in order of arrival, at most 0.55 of the pane's height; a subagent's request names the subagent |
+| Answers | Approvals: Allow once, Allow for this session (the CLI's own rule, or a rule that names the whole tool; not offered for a command that writes to a file), Deny, and ⋯ Deny and stop. Questions: options by click or digit, Submit. Plans: Approve with a build mode (Ask before edits preselected, Accept edits, Auto) or Keep planning |
+| Composer text | The composer's text is the deny note, a question's own answer and the plan feedback; a line above the composer says so while a card waits. Typing clears a question's picks and picking clears the text |
+| Keys | No default button: ↵ never approves and Esc never denies. Tab and Shift-Tab move between the composer and the card; ← and → move the ring, which starts on no button; Space presses; digits pick a question's options |
+| Typing guard | A card that arrives within 1.5 s of typing waits as "1 request waiting" until a pause, leaving the composer or a send; it never takes the composer's text or focus |
+| Afterwards | The card folds to one line for 4 s; the stream keeps one line per request ("Allowed once: …", "Denied: … · note", "Cancelled: …") |
+| Cut off | A card whose process ended stays, disabled, with "Claude stopped before you answered" and Resume; messages Claude never read show as "Not delivered: N messages" with Copy |
+| Short windows | The plan's text gives way so its buttons stay on screen. At 780×500 an approval card's buttons can fall below the fold (open item) |
+
