@@ -18,14 +18,32 @@ import LoomCore
 /// A watch that cannot be made (the file was replaced and the new one does not exist yet) is retried after 0.25 s, then at
 /// doubling intervals up to 5 s, and only while there is no watch.
 ///
+/// A feed delivers either whole models (`updates`, the default) or `ModelChange`s (`changes`): `Delivery` is chosen when it is
+/// made, and the stream of the other kind stays empty. A view that keeps its own copy of the model takes changes, so the
+/// lens never copies a model the view still holds.
+///
+/// Changes are delivered one at a time: after one is yielded the next read waits for `acknowledge()`, which the consumer
+/// calls once it has applied the change. While the consumer is busy (the main thread is blocked) the file goes on growing, and
+/// the next read takes everything written meanwhile as one change, so a slow consumer costs one rebuild, not one for every
+/// 50 ms. The first read after `start()` is always delivered, even when it found nothing: an empty change carries the lens's
+/// current sequence number, so a receiver that lost a change when a feed was stopped (one was in flight) sees it is behind.
+///
 /// A feed is used once: `start()` begins it, `stop()` ends it (cancels the source, finishes `updates`), and neither does
 /// anything a second time. `stop()` returns at once; an update yielded before the teardown ran may still arrive. The
 /// feed never closes the lens; its owner does.
-public final class TranscriptGrowthFeed: @unchecked Sendable {
+public final class TranscriptGrowthFeed: @unchecked Sendable, ModelChangeSource {
     public static let defaultCoalescing: TimeInterval = 0.05
 
+    public enum Delivery: Sendable {
+        case updates
+        case changes
+    }
+
     public let updates: AsyncStream<TranscriptLens.Update>
+    public let changes: AsyncStream<ModelChange>
     private let continuation: AsyncStream<TranscriptLens.Update>.Continuation
+    private let changeContinuation: AsyncStream<ModelChange>.Continuation
+    private let delivery: Delivery
     private let queue = DispatchQueue(label: "loom.chat.transcript.growth", qos: .userInitiated)
     private let coalescing: TimeInterval
     private let path: String
@@ -47,12 +65,16 @@ public final class TranscriptGrowthFeed: @unchecked Sendable {
     private var deliverNext = false
     private var attachRetry: DispatchWorkItem?
     private var attachFailures = 0
+    /// A change was yielded and the consumer has not acknowledged it (`.changes` only).
+    private var awaitingConsumer = false
 
-    public init(file: ClaudeTranscriptFile, lens: TranscriptLens, coalescing: TimeInterval = defaultCoalescing) {
+    public init(file: ClaudeTranscriptFile, lens: TranscriptLens, coalescing: TimeInterval = defaultCoalescing, delivery: Delivery = .updates) {
         path = file.path
         self.lens = lens
         self.coalescing = coalescing
+        self.delivery = delivery
         (updates, continuation) = AsyncStream.makeStream(of: TranscriptLens.Update.self)
+        (changes, changeContinuation) = AsyncStream.makeStream(of: ModelChange.self)
     }
 
     deinit { teardown() }
@@ -71,6 +93,17 @@ public final class TranscriptGrowthFeed: @unchecked Sendable {
     /// Stops for good and returns at once. Idempotent.
     public func stop() {
         queue.async { [self] in teardown() }
+    }
+
+    /// The consumer applied the last change: the next read may begin (`.changes` only). Idempotent.
+    public func acknowledge() {
+        queue.async { [self] in
+            guard awaitingConsumer else { return }
+            awaitingConsumer = false
+            guard phase == .running, dirty else { return }
+            dirty = false
+            schedule(reattach: false)
+        }
     }
 
     /// `stop()`, then waits until the watched descriptor is closed and `updates` has ended (tests).
@@ -97,6 +130,7 @@ public final class TranscriptGrowthFeed: @unchecked Sendable {
         source?.cancel()
         source = nil
         continuation.finish()
+        changeContinuation.finish()
     }
 
     private func attachSource() {
@@ -161,24 +195,36 @@ public final class TranscriptGrowthFeed: @unchecked Sendable {
 
     private func beginRead() {
         guard phase == .running else { return }
-        guard !readInFlight else {
+        guard !readInFlight, !awaitingConsumer else {
             dirty = true
             return
         }
         readInFlight = true
         reads += 1
         let lens = lens
+        let delivery = delivery
         Task.detached { [weak self] in
-            let update = await lens.readGrowth()
-            guard let feed = self else { return }
-            feed.queue.async { feed.finishRead(update) }
+            switch delivery {
+            case .updates:
+                let update = await lens.readGrowth()
+                guard let feed = self else { return }
+                feed.queue.async { feed.finishRead { $0.continuation.yield(update) } deliver: { !update.delta.isEmpty || update.restarted } }
+            case .changes:
+                let change = await lens.readGrowthChange()
+                guard let feed = self else { return }
+                feed.queue.async { feed.finishRead { $0.changeContinuation.yield(change) } deliver: { !change.isEmpty } }
+            }
         }
     }
 
-    private func finishRead(_ update: TranscriptLens.Update) {
+    /// A read ended: hand it over when it has something (or it is the first after `start()`), then go on with what came meanwhile.
+    private func finishRead(_ yield: (TranscriptGrowthFeed) -> Void, deliver hasNews: () -> Bool) {
         readInFlight = false
         guard phase == .running else { return }
-        if !update.delta.isEmpty || update.restarted || deliverNext { continuation.yield(update) }
+        if hasNews() || deliverNext {
+            yield(self)
+            if delivery == .changes { awaitingConsumer = true }
+        }
         deliverNext = false
         if reattachNeeded {
             reattachNeeded = false
@@ -186,7 +232,7 @@ public final class TranscriptGrowthFeed: @unchecked Sendable {
             // Whatever was written between the old file's last event and the new watch is read now.
             dirty = true
         }
-        if dirty {
+        if dirty, !awaitingConsumer {
             dirty = false
             schedule(reattach: false)
         }

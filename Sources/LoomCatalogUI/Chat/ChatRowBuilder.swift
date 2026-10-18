@@ -32,20 +32,50 @@ enum ChatRowBuilder {
     static func groupID(_ firstToolID: String) -> String { "group:" + firstToolID }
     static func changesID(_ turnID: String) -> String { "changes:" + turnID }
 
+    /// All the rows, derived from scratch. `ChatRowStore` keeps them between changes and rebuilds only what changed; this is
+    /// the reference it must equal.
     static func rows(_ input: ChatBuildInput) -> [ChatRow] {
         let entries = input.model.entries
-        guard !entries.isEmpty else { return [ChatRow(id: "empty", kind: .empty)] }
+        guard !entries.isEmpty else { return [emptyRow] }
         var out: [ChatRow] = []
         out.reserveCapacity(entries.count)
-        if !input.hasOlder { out.append(ChatRow(id: "start", kind: .start(entries.first(where: { $0.timestamp != nil })?.timestamp))) }
-        let turns = Dictionary(input.model.turns.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        if !input.hasOlder { out.append(startRow(entries)) }
+        let turns = turnsByID(input.model)
         let newest = input.model.turns.last?.id
-        var start = 0
+        for run in runs(of: entries, from: 0) {
+            out += rows(for: entries[run.range], turn: turns[run.turnID], isNewest: run.turnID == newest, input: input)
+        }
+        return out
+    }
+
+    /// The turns by id. When an id is there twice (reads that overlapped), the later one wins: `ChatRowStore` looks a turn up from
+    /// the end of the model, so both agree.
+    static func turnsByID(_ model: TurnModel) -> [String: ChatTurn] {
+        Dictionary(model.turns.map { ($0.id, $0) }, uniquingKeysWith: { _, later in later })
+    }
+
+    static let emptyRow = ChatRow(id: "empty", kind: .empty)
+
+    /// "Session started", dated by the first entry that has a time.
+    static func startRow(_ entries: [ChatEntry]) -> ChatRow {
+        ChatRow(id: "start", kind: .start(entries.first(where: { $0.timestamp != nil })?.timestamp))
+    }
+
+    /// A stretch of entries of one turn (the entries of a turn lie together).
+    struct Run {
+        var turnID: String
+        var range: Range<Int>
+    }
+
+    /// The runs from `start` (the first entry of a run) to the end.
+    static func runs(of entries: [ChatEntry], from start: Int) -> [Run] {
+        var out: [Run] = []
+        var start = start
         while start < entries.count {
             let turnID = entries[start].turnID
             var end = start + 1
             while end < entries.count, entries[end].turnID == turnID { end += 1 }
-            out += rows(for: entries[start..<end], turn: turns[turnID], isNewest: turnID == newest, input: input)
+            out.append(Run(turnID: turnID, range: start..<end))
             start = end
         }
         return out
@@ -53,7 +83,8 @@ enum ChatRowBuilder {
 
     // MARK: One turn
 
-    private static func rows(for run: ArraySlice<ChatEntry>, turn: ChatTurn?, isNewest: Bool, input: ChatBuildInput) -> [ChatRow] {
+    /// The rows of one turn's entries.
+    static func rows(for run: ArraySlice<ChatEntry>, turn: ChatTurn?, isNewest: Bool, input: ChatBuildInput) -> [ChatRow] {
         let mode = input.mode
         let live = turn.map { $0.status == .running || (input.isWorking && isNewest && $0.status == .open) } ?? false
         var visible = run.filter { entry in

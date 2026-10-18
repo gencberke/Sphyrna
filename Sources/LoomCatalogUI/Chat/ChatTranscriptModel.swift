@@ -36,9 +36,10 @@ enum ChatSessionMemoryStore {
 }
 
 /// The chat view of one session whose history is a transcript file: stopped (read only) or running in a terminal
-/// (live tail). It finds the file, cold-opens the newest turns through a `TranscriptLens`, derives the rows, and follows
-/// the file with a `TranscriptGrowthFeed` only while the view is on screen and the window can be seen. Everything that
-/// draws or scrolls is the `ChatStreamController`'s.
+/// (live tail). It finds the file, cold-opens the newest turns through a `TranscriptLens`, and follows the file with a
+/// `TranscriptGrowthFeed` only while the view is on screen and the window can be seen. It hands the lens's changes to the
+/// session's `ChatPresentation`, which holds the model and the reader's state and derives the rows; everything that draws or
+/// scrolls is the `ChatStreamController`'s.
 @MainActor
 @Observable
 final class ChatTranscriptModel {
@@ -50,60 +51,54 @@ final class ChatTranscriptModel {
     }
 
     private(set) var phase = Phase.resolving
-    private(set) var viewMode = ChatViewMode.normal
     private(set) var isFollowing = true
     private(set) var showsJump = false
-    private(set) var unknownRecordCount = 0
-    private(set) var driftDismissed = false
+    var viewMode: ChatViewMode { presentation.viewMode }
+    var unknownRecordCount: Int { presentation.unknownRecordCount }
+    var driftDismissed: Bool { presentation.driftDismissed }
+    var hasOlder: Bool { presentation.hasOlder }
     var isFeeding: Bool { feed != nil }
-    private(set) var hasOlder = false
+    var isWorking: Bool { presentation.isWorking }
+    var workingDirectory: String? { presentation.workingDirectory }
+    /// The model the rows come from: the presentation's own copy.
+    var model: TurnModel { presentation.model }
 
     @ObservationIgnored let controller: ChatStreamController
+    @ObservationIgnored let presentation: ChatPresentation
     @ObservationIgnored let sessionID: String
-    @ObservationIgnored private(set) var workingDirectory: String?
     @ObservationIgnored let configDirectory: URL
     @ObservationIgnored private let locate: @Sendable (String, URL, String?) -> ClaudeTranscriptFile?
+    @ObservationIgnored private let limits: TranscriptLens.Limits
     @ObservationIgnored private var lens: TranscriptLens?
     @ObservationIgnored private var feed: TranscriptGrowthFeed?
     @ObservationIgnored private var file: ClaudeTranscriptFile?
     @ObservationIgnored private var consumer: Task<Void, Never>?
     @ObservationIgnored private var opening: Task<Void, Never>?
     @ObservationIgnored private var generation = 0
-    @ObservationIgnored private(set) var model = TurnModel(source: .sessionTranscript)
-    @ObservationIgnored private var toggled: Set<String> = []
-    @ObservationIgnored private var flags: [String: Set<String>] = [:]
-    @ObservationIgnored private var fullOutputs: [String: ChatFullOutput] = [:]
     @ObservationIgnored private var loadingFull: Set<String> = []
-    @ObservationIgnored private var liveStarts: [String: Date] = [:]
-    @ObservationIgnored private var lastActivity: Date?
-    @ObservationIgnored private var lastBytes = 0
     @ObservationIgnored private var loadingOlder = false
+    @ObservationIgnored private var resyncing = false
     @ObservationIgnored private var onScreen = false
     @ObservationIgnored private var windowVisible = false
     @ObservationIgnored private var closed = false
-    @ObservationIgnored private(set) var isWorking: Bool
-    @ObservationIgnored private var lastTurnID: String?
     @ObservationIgnored var onOpenSubagent: ((_ agentID: String?, _ toolUseID: String) -> Void)?
 
     init(sessionID: String, configDirectory: URL, workingDirectory: String?, isWorking: Bool = false,
+         limits: TranscriptLens.Limits = TranscriptLens.Limits(),
          locate: @escaping @Sendable (String, URL, String?) -> ClaudeTranscriptFile? = {
              ClaudeTranscriptLocator.locate(sessionID: $0, configDirectory: $1, workingDirectory: $2)
          }) {
         self.sessionID = sessionID
         self.configDirectory = configDirectory
-        self.workingDirectory = workingDirectory
-        self.isWorking = isWorking
         self.locate = locate
+        self.limits = limits
+        presentation = ChatPresentation(sessionID: sessionID, workingDirectory: workingDirectory, isWorking: isWorking)
         let context = ChatRowContext()
         context.workingDirectory = workingDirectory
         controller = ChatStreamController(context: context)
-        if let memory = ChatSessionMemoryStore.memory(for: sessionID) {
-            viewMode = memory.viewMode
-            toggled = memory.toggled
-            flags = memory.flags
-            driftDismissed = memory.driftDismissed
-        }
         wireController()
+        presentation.attach(controller)
+        presentation.onGap = { [weak self] in self?.resync() }
     }
 
     isolated deinit {
@@ -118,8 +113,8 @@ final class ChatTranscriptModel {
 
     private func wireController() {
         let context = controller.context
-        context.toggle = { [weak self] id in self?.toggle(id) }
-        context.toggleFlag = { [weak self] id, flag in self?.toggleFlag(id, flag) }
+        context.toggle = { [weak self] id in self?.presentation.toggle(id) }
+        context.toggleFlag = { [weak self] id, flag in self?.presentation.toggleFlag(id, flag) }
         context.showAll = { [weak self] entry in self?.showAll(entry) }
         context.openSubagent = { [weak self] run in self?.onOpenSubagent?(run.agentID, run.toolUseID) }
         context.openImage = { image in ChatQuickLook.show(image) }
@@ -137,16 +132,16 @@ final class ChatTranscriptModel {
     /// Finds the transcript and reads its newest turns. Idempotent.
     func open() {
         guard opening == nil, lens == nil, !closed else { return }
-        let id = sessionID, config = configDirectory, directory = workingDirectory, locate = locate
+        let id = sessionID, config = configDirectory, directory = workingDirectory, locate = locate, limits = limits
         opening = Task { [weak self] in
             let found = await Task.detached(priority: .userInitiated) { locate(id, config, directory) }.value
             guard !Task.isCancelled, let self else { return }
-            guard let found, let opened = TranscriptLens(file: found) else {
+            guard let found, let opened = TranscriptLens(file: found, limits: limits) else {
                 phase = .unavailable
                 opening = nil
                 return
             }
-            let update = await opened.coldOpen()
+            let first = await opened.coldOpenChange()
             guard !closed, !Task.isCancelled else {
                 await opened.close()
                 return
@@ -154,12 +149,9 @@ final class ChatTranscriptModel {
             lens = opened
             file = found
             opening = nil
-            lastBytes = update.bytesRead
-            model = update.model
-            hasOlder = update.hasOlder
-            lastActivity = update.model.entries.last?.timestamp
+            presentation.beginSource()
             phase = .ready
-            rebuild(initial: true)
+            presentation.apply(first)
             reconcileFeed()
         }
     }
@@ -182,20 +174,13 @@ final class ChatTranscriptModel {
     }
 
     /// The session works now (from the session's status): its newest turn is live and shows the live row.
-    func setWorking(_ value: Bool) {
-        guard isWorking != value else { return }
-        isWorking = value
-        if phase == .ready { rebuild() }
-    }
+    func setWorking(_ value: Bool) { presentation.setWorking(value) }
 
     func setWorkingDirectory(_ value: String?) {
-        workingDirectory = value
-        controller.context.workingDirectory = value
+        presentation.setWorkingDirectory(value)
     }
 
-    func dismissDrift() {
-        driftDismissed = true
-    }
+    func dismissDrift() { presentation.dismissDrift() }
 
     // MARK: Feed
 
@@ -207,15 +192,16 @@ final class ChatTranscriptModel {
 
     private func startFeed() {
         guard feed == nil, let lens, let file else { return }
-        let opened = TranscriptGrowthFeed(file: file, lens: lens)
+        let opened = TranscriptGrowthFeed(file: file, lens: lens, delivery: .changes)
         feed = opened
         generation += 1
         let mine = generation
-        let updates = opened.updates
+        let changes = opened.changes
         consumer = Task { [weak self] in
-            for await update in updates {
+            for await change in changes {
                 guard let self, !Task.isCancelled, generation == mine else { return }
-                apply(update)
+                presentation.apply(change)
+                opened.acknowledge()
             }
         }
         opened.start()
@@ -229,17 +215,35 @@ final class ChatTranscriptModel {
         feed = nil
     }
 
-    /// The file grew (or was replaced): take the lens's model and redraw the rows it touched.
+    /// The lens (tests read it to lose a change).
+    var lensForTesting: TranscriptLens? { lens }
+
+    /// The presentation missed a change (one was lost with a stopped feed, or arrived out of order): ask the lens for the model
+    /// as it is. A change that was refused while the snapshot was on its way is behind that snapshot only if the snapshot was
+    /// taken first; the presentation says so (`isBehind`), and the snapshot is asked for again.
+    private func resync(again: Bool = true) {
+        guard !resyncing, let lens else { return }
+        resyncing = true
+        Task { [weak self] in
+            let snapshot = await lens.snapshotChange()
+            guard let self else { return }
+            resyncing = false
+            presentation.apply(snapshot)
+            if again, presentation.isBehind, !closed { resync(again: false) }
+        }
+    }
+
+    /// Takes a whole `TranscriptLens.Update` (a caller that holds a lens of its own, tests): the first one is the model, the
+    /// later ones are growth by the update's delta.
     func apply(_ update: TranscriptLens.Update) {
-        // An update computed before a later one (an older page was loaded meanwhile) would put the model back.
-        guard update.bytesRead >= lastBytes else { return }
-        lastBytes = update.bytesRead
-        model = update.model
-        hasOlder = update.hasOlder
-        lastActivity = Date()
-        var fresh = Set(update.delta.inserted)
-        if update.restarted { fresh = [] }
-        rebuild(fresh: fresh)
+        let next = presentation.nextSequence
+        if !presentation.isLoaded || update.restarted {
+            presentation.apply(update.model.snapshot(sequence: next, hasOlder: update.hasOlder))
+        } else {
+            presentation.apply(update.model.growth(sequence: next, entriesBefore: presentation.model.entries.count,
+                                                   turnsBefore: presentation.model.turns.count, delta: update.delta,
+                                                   hasOlder: update.hasOlder))
+        }
     }
 
     // MARK: Older turns
@@ -251,69 +255,26 @@ final class ChatTranscriptModel {
         }
         loadingOlder = true
         Task { [weak self] in
-            let update = await lens.loadOlder()
+            let change = await lens.loadOlderChange()
             guard let self else { return }
             loadingOlder = false
-            if let update, update.bytesRead >= lastBytes {
-                lastBytes = update.bytesRead
-                model = update.model
-                hasOlder = update.hasOlder
-                rebuild()
-            }
+            if let change { presentation.apply(change) }
             controller.olderLoadFinished()
         }
     }
 
-    // MARK: Rows
-
-    /// Derives the rows from the model and the view's state, and hands them to the stream.
-    func rebuild(fresh: Set<String> = [], initial: Bool = false) {
-        if let turn = model.turns.last {
-            if lastTurnID != turn.id {
-                // A new turn closes the previous turn's fold if the reader had opened it.
-                if let previous = lastTurnID, viewMode != .verbose { toggled.remove(ChatRowBuilder.foldID(previous)) }
-                lastTurnID = turn.id
-            }
-            if isWorking, turn.startedAt == nil, liveStarts[turn.id] == nil { liveStarts[turn.id] = Date() }
-        }
-        let input = ChatBuildInput(model: model, mode: viewMode, toggled: toggled, flags: flags, fullOutputs: fullOutputs,
-                                   isWorking: isWorking, hasOlder: hasOlder, workingDirectory: workingDirectory,
-                                   liveStarts: liveStarts, lastActivity: lastActivity)
-        let rows = ChatRowBuilder.rows(input)
-        unknownRecordCount = model.unknownRecordCount
-        controller.apply(rows, fresh: fresh, hasOlder: hasOlder,
-                         initial: initial ? ChatSessionMemoryStore.memory(for: sessionID)?.scroll : nil)
-    }
-
     // MARK: Actions
 
-    func toggle(_ rowID: String) {
-        if toggled.contains(rowID) { toggled.remove(rowID) } else { toggled.insert(rowID) }
-        rebuild()
-    }
+    func toggle(_ rowID: String) { presentation.toggle(rowID) }
 
-    func toggleFlag(_ rowID: String, _ flag: String) {
-        var set = flags[rowID] ?? []
-        if set.contains(flag) { set.remove(flag) } else { set.insert(flag) }
-        flags[rowID] = set.isEmpty ? nil : set
-        rebuild()
-    }
+    func cycleViewMode() { presentation.cycleViewMode() }
 
-    func cycleViewMode() {
-        viewMode = viewMode.next
-        rebuild()
-    }
-
-    func setViewMode(_ mode: ChatViewMode) {
-        guard viewMode != mode else { return }
-        viewMode = mode
-        rebuild()
-    }
+    func setViewMode(_ mode: ChatViewMode) { presentation.setViewMode(mode) }
 
     /// "Show all": reads the whole result of a clipped tool call from the transcript. The read and the cut to about 1 MiB
     /// happen off the main thread; the row gets the cut text, or says the result could not be read.
     func showAll(_ entry: ChatEntry) {
-        guard let lens, let offset = entry.sourceOffset, fullOutputs[entry.id] == nil, loadingFull.insert(entry.id).inserted else { return }
+        guard let lens, let offset = entry.sourceOffset, !presentation.hasFullOutput(entry.id), loadingFull.insert(entry.id).inserted else { return }
         let id = entry.id
         Task { [weak self] in
             let prepared = await Task.detached(priority: .userInitiated) { () -> ChatFullOutput in
@@ -323,8 +284,7 @@ final class ChatTranscriptModel {
             guard let self else { return }
             loadingFull.remove(id)
             guard !closed else { return }
-            fullOutputs[id] = prepared
-            rebuild()
+            presentation.setFullOutput(prepared, for: id)
         }
     }
 
@@ -332,16 +292,12 @@ final class ChatTranscriptModel {
 
     // MARK: Memory and shutdown
 
-    func saveMemory() {
-        guard phase == .ready else { return }
-        ChatSessionMemoryStore.save(ChatSessionMemory(viewMode: viewMode, toggled: toggled, flags: flags,
-                                                      scroll: controller.memory, driftDismissed: driftDismissed), for: sessionID)
-    }
+    func saveMemory() { presentation.saveMemory() }
 
     /// The view is closed for good: nothing watches, ticks or animates any more.
     func close() {
         guard !closed else { return }
-        saveMemory()
+        presentation.detach()
         closed = true
         opening?.cancel()
         stopFeed()

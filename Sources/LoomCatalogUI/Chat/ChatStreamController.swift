@@ -29,6 +29,8 @@ final class ChatStreamController: NSObject {
 
     private(set) var rows: [ChatRow] = []
     private var rowIndex: [String: Int] = [:]
+    /// Rows that need the one-second clock (the live row, a running subagent), kept as rows come and go.
+    private var clockRows = 0
     private(set) var heights = ChatHeightCache()
     private(set) var latch = ChatScrollLatch()
     private var measurer: ChatRowMeasurer
@@ -158,15 +160,69 @@ final class ChatStreamController: NSObject {
         let plan = Self.plan(from: old, to: newRows)
         rows = newRows
         rowIndex = Dictionary(newRows.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
-        // Rows that fade in are marked fresh until drawn; a mark for a row that is gone, or too many of them, are dropped.
-        if !self.fresh.isEmpty {
-            self.fresh = self.fresh.filter { rowIndex[$0] != nil }
-            if self.fresh.count > Self.freshLimit { self.fresh.removeAll() }
-        }
-        for index in plan.updated { heights.invalidate(newRows[index].id) }
-        if heights.count > newRows.count * 2 + 64 { heights.removeAll(except: Set(rowIndex.keys)) }
+        clockRows = Self.clockRowCount(newRows)
+        commit(plan, wasFollowing: wasFollowing, anchor: anchor, initial: initial, reload: old.isEmpty || plan.reloadAll)
+    }
 
-        if old.isEmpty || plan.reloadAll {
+    /// Replaces stretches of the rows (`ChatRowStore`): the cost is the stretches, not the list. `patches` are ascending in
+    /// the indexes the rows had before the call. The first rows of a stream go through `apply(_:)`.
+    func apply(patches: [ChatRowsPatch], fresh: Set<String> = [], hasOlder: Bool) {
+        self.hasOlder = hasOlder
+        self.fresh.formUnion(fresh)
+        let oldCount = rows.count
+        let anchor = (oldCount > 0 && positioned && !latch.isFollowing) ? captureAnchor() : nil
+        let wasFollowing = latch.isFollowing
+
+        // The plan of each stretch, in the numbering of the whole list: removals by the old index, insertions by the new.
+        var plan = Plan()
+        var shift = 0
+        var reindex = false
+        for patch in patches {
+            let end = patch.start + patch.removed
+            let window = Self.plan(from: Array(rows[patch.start..<end]), to: patch.rows)
+            if window.reloadAll { plan.reloadAll = true }
+            for index in window.removed { plan.removed.insert(patch.start + index) }
+            for index in window.inserted { plan.inserted.insert(patch.start + shift + index) }
+            for index in window.updated { plan.updated.insert(patch.start + shift + index) }
+            shift += patch.rows.count - patch.removed
+            // Rows after a stretch that changed length move, and each one's index changes: the index is made again (O(rows), once).
+            // That is a stretch in the middle changing length, which a reader's action does (opening an old fold); the deltas of a
+            // growing transcript change the end and patch the index.
+            if shift != 0, end < oldCount { reindex = true }
+        }
+        for patch in patches {
+            for row in rows[patch.start..<(patch.start + patch.removed)] {
+                rowIndex[row.id] = nil
+                if Self.runsClock(row) { clockRows -= 1 }
+            }
+        }
+        for patch in patches.reversed() {
+            rows.replaceSubrange(patch.start..<(patch.start + patch.removed), with: patch.rows)
+        }
+        if reindex {
+            rowIndex = Dictionary(rows.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        } else {
+            var before = 0
+            for patch in patches {
+                for (offset, row) in patch.rows.enumerated() { rowIndex[row.id] = patch.start + before + offset }
+                before += patch.rows.count - patch.removed
+            }
+        }
+        for patch in patches { for row in patch.rows where Self.runsClock(row) { clockRows += 1 } }
+        commit(plan, wasFollowing: wasFollowing, anchor: anchor, initial: nil, reload: plan.reloadAll)
+    }
+
+    /// What follows a change of the rows once `rows` and `rowIndex` are new: the marks, the heights, the table, the place.
+    private func commit(_ plan: Plan, wasFollowing: Bool, anchor: Anchor?, initial: ChatScrollMemory?, reload: Bool) {
+        // Rows that fade in are marked fresh until drawn; a mark for a row that is gone, or too many of them, are dropped.
+        if !fresh.isEmpty {
+            fresh = fresh.filter { rowIndex[$0] != nil }
+            if fresh.count > Self.freshLimit { fresh.removeAll() }
+        }
+        for index in plan.updated { heights.invalidate(rows[index].id) }
+        if heights.count > rows.count * 2 + 64 { heights.removeAll(except: Set(rowIndex.keys)) }
+
+        if reload {
             table.reloadData()
         } else if !plan.removed.isEmpty || !plan.inserted.isEmpty || !plan.updated.isEmpty {
             NSAnimationContext.runAnimationGroup { animation in
@@ -615,13 +671,16 @@ final class ChatStreamController: NSObject {
 
     /// The one-second clock runs only while a live row or a running subagent is on a stream that can be seen.
     func syncClock() {
-        let needs = context.animates && rows.contains {
-            if case .live = $0.kind { return true }
-            if case let .subagent(entry) = $0.kind, case let .subagent(run) = entry.body { return run.status == .running }
-            return false
-        }
-        context.clock.setActive(needs)
+        context.clock.setActive(context.animates && clockRows > 0)
     }
+
+    private static func runsClock(_ row: ChatRow) -> Bool {
+        if case .live = row.kind { return true }
+        if case let .subagent(entry) = row.kind, case let .subagent(run) = entry.body { return run.status == .running }
+        return false
+    }
+
+    private static func clockRowCount(_ rows: [ChatRow]) -> Int { rows.reduce(0) { $0 + (runsClock($1) ? 1 : 0) } }
 
     /// Stops the timers for good (the view is going away).
     func stop() {

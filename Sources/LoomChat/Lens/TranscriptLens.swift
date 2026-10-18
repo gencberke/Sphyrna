@@ -41,6 +41,8 @@ public actor TranscriptLens {
     private let source: TurnModel.Source
     private let limits: Limits
     private var model: TurnModel
+    /// The changes handed out as `ModelChange`s so far (see `readGrowthChange()`).
+    private var sequence = 0
 
     public init?(file: ClaudeTranscriptFile, limits: Limits = Limits()) {
         guard let reader = ClaudeTranscriptReader(file: file) else { return nil }
@@ -62,25 +64,12 @@ public actor TranscriptLens {
 
     /// Reads the newest turns. Call it once, first (it is called again by `readGrowth()` when the file was replaced).
     public func coldOpen() -> Update {
-        model = TurnModel(source: source)
-        var delta = ModelDelta()
-        for record in collectBackward(targetPrompts: limits.coldOpenTurns, byteBudget: limits.coldOpenBytes) {
-            delta.merge(model.apply(record: record))
-        }
-        return update(delta: delta, restarted: false)
+        update(delta: openNewest(), restarted: false)
     }
 
     /// The next older turns, or nil when the model already starts at the file's start.
     public func loadOlder() -> Update? {
-        guard reader.historyOffset > 0 else { return nil }
-        var fragment = TurnModel(source: source)
-        var delta = ModelDelta()
-        for record in collectBackward(targetPrompts: limits.olderTurns, byteBudget: limits.olderBytes) {
-            delta.merge(fragment.apply(record: record))
-        }
-        model.prepend(fragment)
-        delta.turnsChanged = true
-        return update(delta: delta, restarted: false)
+        readOlder().map { update(delta: $0, restarted: false) }
     }
 
     /// The lines the file gained since the last call.
@@ -94,6 +83,66 @@ public actor TranscriptLens {
         var delta = ModelDelta()
         for record in growth.records { delta.merge(model.apply(record: record)) }
         return update(delta: delta, restarted: false)
+    }
+
+    // MARK: Changes
+
+    // The same reads, handed out as `ModelChange`s: a growth carries the entries and turns it touched and nothing else, so the
+    // receiver (the chat view's own copy of the model) and this lens never share the buffers of a model that grows.
+
+    /// `coldOpen()` as a `.replaced` change.
+    public func coldOpenChange() -> ModelChange {
+        _ = openNewest()
+        return snapshotChange()
+    }
+
+    /// `loadOlder()` as an `.older` change, or nil when the model already starts at the file's start.
+    public func loadOlderChange() -> ModelChange? {
+        guard readOlder() != nil else { return nil }
+        sequence += 1
+        return model.snapshot(sequence: sequence, kind: .older, hasOlder: reader.historyOffset > 0)
+    }
+
+    /// `readGrowth()` as a change: `.growth` with what the new lines touched, or `.replaced` when the file was replaced. A growth
+    /// that touched nothing keeps the sequence number (`isEmpty`), so its number tells a receiver whether it missed a change.
+    public func readGrowthChange() -> ModelChange {
+        let growth = reader.readGrowth()
+        if growth.restarted { return coldOpenChange() }
+        let entriesBefore = model.entries.count, turnsBefore = model.turns.count, activityBefore = model.activity
+        var delta = ModelDelta()
+        for record in growth.records { delta.merge(model.apply(record: record)) }
+        let change = model.growth(sequence: sequence + 1, entriesBefore: entriesBefore, turnsBefore: turnsBefore, delta: delta,
+                                  hasOlder: reader.historyOffset > 0, activityChanged: model.activity != activityBefore)
+        if change.isEmpty { return ModelChange(kind: .growth, sequence: sequence, hasOlder: change.hasOlder) }
+        sequence += 1
+        return change
+    }
+
+    /// The model as it is, as a `.replaced` change that takes the next sequence number: what a receiver that lost track asks for.
+    public func snapshotChange() -> ModelChange {
+        sequence += 1
+        return model.snapshot(sequence: sequence, hasOlder: reader.historyOffset > 0)
+    }
+
+    private func openNewest() -> ModelDelta {
+        model = TurnModel(source: source)
+        var delta = ModelDelta()
+        for record in collectBackward(targetPrompts: limits.coldOpenTurns, byteBudget: limits.coldOpenBytes) {
+            delta.merge(model.apply(record: record))
+        }
+        return delta
+    }
+
+    private func readOlder() -> ModelDelta? {
+        guard reader.historyOffset > 0 else { return nil }
+        var fragment = TurnModel(source: source)
+        var delta = ModelDelta()
+        for record in collectBackward(targetPrompts: limits.olderTurns, byteBudget: limits.olderBytes) {
+            delta.merge(fragment.apply(record: record))
+        }
+        model.prepend(fragment)
+        delta.turnsChanged = true
+        return delta
     }
 
     /// The whole line an entry came from (`ChatEntry.sourceOffset`): "Show all" for a clipped tool result, or a line that
