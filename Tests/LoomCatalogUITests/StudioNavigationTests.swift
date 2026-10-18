@@ -261,7 +261,8 @@ struct StudioNavigationTests {
         await rig.hub.publish(sessionID: rig.claude, change: .subagents([record]))
         #expect(await waitUntil { model.liveStates[rig.claude]?.subagents == [record] })
         model.openSubagent("a1", in: rig.claude)
-        #expect(model.detailRoute == .subagentTranscript(sessionID: rig.claude))
+        #expect(model.detailRoute == .chat(sessionID: rig.claude), "a subagent's transcript no longer replaces the face")
+        #expect(model.viewedSubagent?.agentID == "a1" && model.inspector.isOpen(for: rig.claude))
         model.closeSubagent()
         #expect(model.detailRoute == .chat(sessionID: rig.claude), "the choice survived")
     }
@@ -500,15 +501,20 @@ struct StudioNavigationTests {
         run(.home)
         #expect(model.destination == .home && model.detailRoute == .home)
 
-        // New Session: today's flow, in the project of the place the user is on.
+        // New Session (V07): opens the draft of the place the user is on; nothing starts until its first send.
         run(.newSession)
-        #expect(rig.intents.starts.count == 1 && rig.intents.starts[0].provider == .claude && rig.intents.starts[0].projectID == nil)
+        #expect(model.destination == .draft(projectID: nil) && model.detailRoute == .draft(projectID: nil))
         model.showProjectPage(rig.projectID)
         run(.newSession)
-        #expect(rig.intents.starts.count == 2 && rig.intents.starts[1].projectID == rig.projectID)
+        #expect(model.destination == .draft(projectID: rig.projectID))
         await select(rig.claude, in: model)
         run(.newSession)
-        #expect(rig.intents.starts.count == 3 && rig.intents.starts[2].projectID == rig.projectID)
+        #expect(model.destination == .draft(projectID: rig.projectID), "a session's context is its project")
+        #expect(rig.intents.starts.isEmpty, "opening a draft starts no session")
+        // The draft's own place is the draft of that project: ⌘N again reuses it.
+        run(.newSession)
+        #expect(model.destination == .draft(projectID: rig.projectID) && model.newSession.drafts.count == 2)
+        await select(rig.claude, in: model)
 
         // The inspector toggles the selected session's inspector and remembers it.
         #expect(enabled(.toggleInspector) && !model.inspector.isOpen(for: rig.claude))

@@ -179,14 +179,14 @@ struct SubagentPanelTests {
         #expect(TranscriptEntryRow.resultText(firstLine: "", lineCount: 0) == "(no output)")
     }
 
-    // MARK: Header
+    // MARK: Title and state
 
-    @Test func theHeaderNamesTheSubagentAndItsStateReadsRunningOrFinished() {
+    @Test func aSubagentIsNamedByItsTypeAndDescriptionAndItsStateReadsRunningOrFinished() {
         var record = SubagentRecord(id: "a1", agentType: "implementer", description: "draft:core-map", startedAt: t0)
-        #expect(SubagentHeaderRow.agentTitle(record) == "implementer · draft:core-map")
+        #expect(SubagentTitle.text(record) == "implementer · draft:core-map")
         record.description = nil
-        #expect(SubagentHeaderRow.agentTitle(record) == "implementer")
-        #expect(SubagentHeaderRow.agentTitle(nil) == "Subagent")
+        #expect(SubagentTitle.text(record) == "implementer")
+        #expect(SubagentTitle.text(nil) == "Subagent")
 
         #expect(SubagentPillContent(record: record, now: t0.addingTimeInterval(10)).label == "Running")
         let running = SubagentPillContent(record: record, now: t0.addingTimeInterval(4 * 60 + 5))
@@ -386,7 +386,7 @@ struct SubagentPanelTests {
 
     // MARK: Hosted
 
-    @Test func theDetailPaneShowsThePanelInPlaceOfTheTerminalAndGivesItBack() async throws {
+    @Test func theInspectorShowsThePanelBesideTheSessionAndGivesItBack() async throws {
         enableAccessibilityTree()
         let rig = try await makeRig()
         defer { rig.cleanup() }
@@ -420,21 +420,23 @@ struct SubagentPanelTests {
         func labels() -> [String] { accessibilityElements(in: hosting.view).compactMap { $0.accessibilityLabel?() } }
         func roles() -> [String] { accessibilityElements(in: hosting.view).compactMap { $0.accessibilityRole?()?.rawValue } }
         try await settle()
-        #expect(!labels().contains("Back to the session"), "the session's own header while no panel is open")
+        #expect(!labels().contains("Back to the list of agents") && !labels().contains("Agents, 1"), "no inspector while it is closed")
 
         rig.model.openSubagent("a1", in: rig.ids[1])
         try await settle()
-        #expect(labels().contains("Back to the session"), "the Session control is in the header")
+        #expect(labels().contains("Back to the list of agents"), "the inspector's own back control")
+        #expect(!labels().contains("Back to the session"), "the header has no back control any more")
         // The view put the panel on screen: the feed runs and the file's entries are drawn.
         let panel = try #require(rig.model.subagentPanel)
         #expect(await waitUntil { panel.isFeeding && panel.items.count == 1 })
         try await settle()
         #expect(roles().contains("AXScrollArea"), "the transcript is drawn")
-        #expect(roles().count(where: { $0 == "AXStaticText" }) >= 4, "the crumb, the pill and the rows are text")
+        #expect(roles().count(where: { $0 == "AXStaticText" }) >= 4, "the title, the pill and the rows are text")
 
         rig.model.closeSubagent()
         try await settle()
-        #expect(!labels().contains("Back to the session") && !panel.isFeeding)
+        #expect(!labels().contains("Back to the list of agents") && !panel.isFeeding)
+        #expect(labels().contains { $0.hasPrefix("implementer, map the module") }, "the list of agents is back")
     }
 
     @Test func openingTheShownSubagentAgainKeepsItsPanelReading() async throws {

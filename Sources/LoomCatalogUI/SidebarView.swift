@@ -18,10 +18,11 @@ public struct SidebarView: View {
             SearchField(model: model)
                 .padding(.horizontal, LoomTheme.Space.searchInset)
                 .padding(.bottom, LoomTheme.Space.searchBottom)
+            HomeRow(model: model)
             SidebarList(model: model)
             SidebarFooter(model: model)
         }
-        .background(SidebarBackground(reduceTransparency: model.sidebarTransparencyOverride ?? reduceTransparency))
+        .background(SidebarBackground(reduceTransparency: reduceTransparency, style: model.sidebarStyle))
         .ignoresSafeArea(.container, edges: .top)
         .preferredColorScheme(.dark)
         .tint(LoomTheme.Accent.base)
@@ -80,6 +81,78 @@ struct ModeButton: View {
         .help(help)
         .accessibilityLabel(mode == .projects ? "Group by project" : "Recent activity")
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// The Home row under the search field: opens Home and shows how many sessions need the user (the Dock
+/// badge's count). It is its own view and reads only the destination and that count, so a selection or a
+/// frame that changes neither redraws nothing here.
+struct HomeRow: View {
+    let model: CatalogModel
+
+    /// "Home, 3 sessions need you"; the count is left out when nothing does.
+    static func accessibilityLabel(count: Int) -> String {
+        switch count {
+        case ..<1: "Home"
+        case 1: "Home, 1 session needs you"
+        default: "Home, \(count) sessions need you"
+        }
+    }
+
+    var body: some View {
+        let selected = model.destination == .home
+        let count = model.attentionCount
+        Button { model.showHome() } label: {
+            HStack(spacing: LoomTheme.Sidebar.homeRowSpacing) {
+                Image(systemName: "house").font(LoomTheme.Sidebar.homeGlyph)
+                    .foregroundStyle(LoomTheme.Text.secondaryStyle).accessibilityHidden(true)
+                Text("Home").font(LoomTheme.Typography.cardTitle(selected: selected))
+                    .foregroundStyle(LoomTheme.Text.primary)
+                Spacer(minLength: LoomTheme.Space.headerSpacing)
+                if count > 0 { HomeCountBadge(count: count) }
+            }
+            .padding(.horizontal, LoomTheme.Sidebar.homeRowInset)
+            .frame(height: LoomTheme.Sidebar.homeRowHeight)
+            .background(SelectedRowBackground(selected: selected, radius: LoomTheme.Radius.search))
+            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.search))
+        }
+        .buttonStyle(RowButtonStyle()).focusEffectDisabled()
+        .padding(.horizontal, LoomTheme.Space.listInset)
+        .padding(.bottom, LoomTheme.Sidebar.homeRowBottom)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Self.accessibilityLabel(count: count))
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
+        .help("Home")
+    }
+}
+
+/// The count on the Home row: the light attention text on an attention wash.
+struct HomeCountBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text("\(count)").font(LoomTheme.Sidebar.badgeFont)
+            .foregroundStyle(LoomTheme.Status.attentionLight)
+            .padding(.horizontal, LoomTheme.Sidebar.badgePadding)
+            .frame(minWidth: LoomTheme.Sidebar.badgeMinWidth, minHeight: LoomTheme.Sidebar.badgeHeight)
+            .background(Capsule().fill(LoomTheme.Status.attention.opacity(LoomTheme.Sidebar.badgeWash)))
+            .accessibilityHidden(true)
+    }
+}
+
+/// The fill and hairline of a selected row, the same on a card, a one-line row and the Home row.
+struct SelectedRowBackground: View {
+    let selected: Bool
+    let radius: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius)
+            .fill(selected ? LoomTheme.Surface.selected : .clear)
+            .overlay(RoundedRectangle(cornerRadius: radius)
+                .stroke(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline)
+                .opacity(selected ? 1 : 0))
+            .animation(LoomTheme.Motion.animation(.selection, reduceMotion: reduceMotion), value: selected)
     }
 }
 
@@ -271,6 +344,8 @@ struct SectionTitle: View {
     }
 }
 
+/// A project's row in the project view, one line. A click on its name opens the project page (concept §3);
+/// the chevron beside it expands and collapses the project's sessions, as the whole row did before.
 struct ProjectHeader: View {
     let model: CatalogModel
     let project: CatalogProject
@@ -278,17 +353,21 @@ struct ProjectHeader: View {
     /// A search shows every matching project open, whatever its collapsed flag says.
     static func isExpanded(collapsed: Bool, searching: Bool) -> Bool { searching || !collapsed }
 
+    /// The chevron's value for assistive technologies.
+    static func disclosureValue(expanded: Bool) -> String { expanded ? "Expanded" : "Collapsed" }
+
     var body: some View {
         let count = model.sessionCounts[project.id] ?? 0
         let attention = model.attention(forProject: project.id)
         let index = model.projects.firstIndex { $0.id == project.id } ?? 0
         let expanded = Self.isExpanded(collapsed: project.collapsed, searching: model.isSearching)
+        let selected = model.destination == .projectPage(project.id)
         let projectMenuExtra = (ChromeButtonStyle.hitSize(for: LoomTheme.Layout.projectMenuButton).height
                                 - LoomTheme.Layout.projectMenuButton.height) / 2
         HStack(spacing: LoomTheme.Space.sectionSpacing) {
             // The row's own button is what the keyboard and VoiceOver operate; a mouse click anywhere
             // on the padded row (the tap gesture below) does the same.
-            Button { Task { await model.toggleCollapsed(project.id) } } label: {
+            Button { model.showProjectPage(project.id) } label: {
                 HStack(spacing: LoomTheme.Space.sectionSpacing) {
                     Image(systemName: "folder").foregroundStyle(LoomTheme.Text.secondaryStyle)
                     Text(project.name).font(LoomTheme.Typography.bodyStrong)
@@ -297,15 +376,20 @@ struct ProjectHeader: View {
                     if let attention {
                         Circle().fill(attention.color).frame(width: LoomTheme.Layout.projectDot, height: LoomTheme.Layout.projectDot)
                     }
-                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                        .font(LoomTheme.Typography.chevron).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(RowButtonStyle()).focusEffectDisabled()
             .accessibilityLabel(project.name + (attention.map { ", \($0.label)" } ?? ""))
-            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
-            .accessibilityAddTraits(.isHeader)
+            .accessibilityHint("Opens the project page")
+            .accessibilityAddTraits(selected ? [.isHeader, .isSelected] : .isHeader)
+            Button { Task { await model.toggleCollapsed(project.id) } } label: {
+                Image(systemName: expanded ? "chevron.down" : "chevron.right").font(LoomTheme.Typography.chevron)
+            }
+            .buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.projectMenuButton))
+            .help(expanded ? "Collapse" : "Expand")
+            .accessibilityLabel("Sessions in \(project.name)")
+            .accessibilityValue(Self.disclosureValue(expanded: expanded))
             ProjectStartButton(model: model, project: project)
             Menu {
                 Button("Move Up") { Task { await model.moveProject(project.id, by: -1) } }
@@ -329,13 +413,17 @@ struct ProjectHeader: View {
             .help(count > 0 ? "Only an empty project can be removed" : "Project actions")
             .accessibilityLabel("Actions for \(project.name)")
         }
+        // The open page's fill reaches the row's own padding, so the content keeps its place inside it.
+        .padding(.horizontal, LoomTheme.Sidebar.headerFillInset)
+        .background(SelectedRowBackground(selected: selected, radius: LoomTheme.Radius.search))
         // The menu button's 24 pt hit area is taller than its 20 pt drawing; the row keeps its height.
-        .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop - projectMenuExtra)
+        .padding(.horizontal, LoomTheme.Space.sectionInset - LoomTheme.Sidebar.headerFillInset)
+        .padding(.top, LoomTheme.Space.sectionTop - projectMenuExtra)
         .padding(.bottom, LoomTheme.Space.sectionBottom - projectMenuExtra)
         .projectStripe(model.projectTone(forProject: project.id),
                        top: LoomTheme.ProjectColor.headerStripeTop, bottom: LoomTheme.ProjectColor.headerStripeBottom)
         .contentShape(Rectangle())
-        .onTapGesture { Task { await model.toggleCollapsed(project.id) } }
+        .onTapGesture { model.showProjectPage(project.id) }
         .contextMenu {
             NewConversationButtons(model: model, projectID: project.id)
             if model.projectColorsEnabled {
@@ -370,12 +458,11 @@ struct EmptyListHint: View {
     }
 }
 
-/// A card with the subagents of its session below it (D-39). A session without subagents draws exactly the
-/// card: the stack holds no second view and adds no space.
+/// A card (activity view) or a one-line row (project view) with the subagents of its session below it (D-39).
+/// A session without subagents draws exactly the card: the stack holds no second view and adds no space.
 struct SessionListEntry: View {
     let row: SessionRowModel
     let model: CatalogModel
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SessionCardView(row: row, model: model)
@@ -407,14 +494,14 @@ struct CardTimeLabel: View {
 struct SessionCardView: View {
     let row: SessionRowModel
     let model: CatalogModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     /// The project name appears on a card only where the card is not already grouped under its project
     /// (activity view). The mode is read from the model inside `body`, not handed down by the list: the
     /// same card ids exist in both views, and a flag passed in kept the value of the view that drew the
     /// card first. The projectless "Sessions" group exists only in the project view, so the mode alone decides.
     static func projectLabel(mode: CatalogViewMode, name: String?) -> String? { mode == .activity ? name : nil }
     static func repeatsProject(mode: CatalogViewMode) -> Bool { mode == .activity }
+    /// The project view lists its sessions as calm one-line rows; the activity view keeps the two-row card.
+    static func isOneLine(mode: CatalogViewMode) -> Bool { mode == .projects }
 
     /// What Pin promises. "Out of cleanup" is true only where the cleanup review exists (development
     /// builds); the daily app has none, and pinning never blocks a manual delete.
@@ -428,11 +515,12 @@ struct SessionCardView: View {
         cleanupReviewOffered ? "Pinned: kept out of session cleanup" : "Pinned"
     }
 
-    /// "<title>, Claude, Needs approval, opened by <requester>, pinned".
+    /// "<title>, Claude, Needs approval, <reason>, opened by <requester>, pinned".
     static func accessibilityLabel(title: String, provider: ManagedSession.Provider, status: String?,
-                                   origin: SessionOrigin?, pinned: Bool) -> String {
+                                   reason: String? = nil, origin: SessionOrigin?, pinned: Bool) -> String {
         var parts = [title, ProviderName.title(provider)]
         if let status { parts.append(status) }
+        if let reason { parts.append(reason) }
         if let origin { parts.append(origin.accessibilityPhrase) }
         if pinned { parts.append("pinned") }
         return parts.joined(separator: ", ")
@@ -443,59 +531,22 @@ struct SessionCardView: View {
         let indicator = row.indicator
         let selected = row.isSelected
         let mode = model.viewMode
+        let oneLine = Self.isOneLine(mode: mode)
         let title = model.title(of: row, repeatsProject: Self.repeatsProject(mode: mode))
         let projectName = model.projectName(for: row.record)
         let origin = model.origin(of: row)
+        // The reason is read from the row's own property: only this card depends on it.
+        // Only a card of the Active section says it; `inActiveSection` is held per row, like the selection.
+        // While a search shows the plain result there is no Active section, so no reason line either.
+        let reasonLine = row.inActiveSection && !oneLine && !model.isSearching ? SessionReasonLine(row.reason) : nil
         // A click in the list never scrolls it (the card is already under the pointer).
         Button { model.selectFromList(row.id) } label: {
-            HStack(alignment: .top, spacing: LoomTheme.Space.cardSpacing) {
-                IndicatorView(indicator: indicator)
-                    .padding(.top, LoomTheme.Space.cardIndicatorTop)
-                VStack(alignment: .leading, spacing: LoomTheme.Space.cardLineSpacing) {
-                    HStack(spacing: LoomTheme.Space.cardRowSpacing) {
-                        Text(title)
-                            .font(LoomTheme.Typography.cardTitle(selected: selected))
-                            .foregroundStyle(indicator == .stale ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
-                            .lineLimit(1).truncationMode(.tail)
-                        Spacer(minLength: LoomTheme.Space.headerSpacing)
-                        CardTimeLabel(row: row, model: model)
-                    }
-                    HStack(spacing: LoomTheme.Space.cardRowSpacing) {
-                        if let origin, origin.replacesBranch {
-                            // Same branch as the session that opened this one: the origin says more than the branch.
-                            Label(origin.cardLabel, systemImage: "arrow.turn.down.right")
-                                .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
-                                .help(origin.tooltip)
-                        } else {
-                            Label((model.branches[row.record.session.workingDirectory] ?? .unavailable).label,
-                                  systemImage: "arrow.triangle.branch")
-                                .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
-                                .help(origin.map { "Git branch. " + $0.tooltip } ?? "Git branch")
-                        }
-                        if row.record.pinned {
-                            Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
-                                .foregroundStyle(LoomTheme.Text.secondary)
-                                .help(Self.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
-                        }
-                        Spacer(minLength: LoomTheme.Space.headerSpacing)
-                        if let projectName = SessionCardView.projectLabel(mode: mode, name: projectName) {
-                            Text(projectName).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
-                                .lineLimit(1)
-                        }
-                        ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.providerIconCard)
-                    }
-                }
+            if oneLine {
+                lineLabel(title: title, indicator: indicator, selected: selected)
+            } else {
+                cardLabel(title: title, indicator: indicator, selected: selected, mode: mode,
+                          projectName: projectName, origin: origin, reasonLine: reasonLine)
             }
-            .padding(.horizontal, LoomTheme.Space.cardH).padding(.vertical, LoomTheme.Space.cardV)
-            .background(
-                RoundedRectangle(cornerRadius: LoomTheme.Radius.card)
-                    .fill(selected ? LoomTheme.Surface.selected : .clear)
-                    .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.card)
-                        .stroke(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline)
-                        .opacity(selected ? 1 : 0))
-                    .animation(LoomTheme.Motion.animation(.selection, reduceMotion: reduceMotion), value: selected)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.card))
         }
         .buttonStyle(.plain)
         .projectStripe(model.projectTone(forProject: row.record.projectID))
@@ -515,8 +566,95 @@ struct SessionCardView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Self.accessibilityLabel(
             title: title, provider: row.record.session.provider, status: indicator.label,
-            origin: origin, pinned: row.record.pinned))
+            reason: reasonLine?.text, origin: origin, pinned: row.record.pinned))
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
+    }
+
+    // MARK: Activity view: the two-row card
+
+    @ViewBuilder
+    private func cardLabel(title: String, indicator: SessionIndicator, selected: Bool, mode: CatalogViewMode,
+                           projectName: String?, origin: SessionOrigin?, reasonLine: SessionReasonLine?) -> some View {
+        HStack(alignment: .top, spacing: LoomTheme.Space.cardSpacing) {
+            IndicatorView(indicator: indicator)
+                .padding(.top, LoomTheme.Space.cardIndicatorTop)
+            VStack(alignment: .leading, spacing: LoomTheme.Space.cardLineSpacing) {
+                HStack(spacing: LoomTheme.Space.cardRowSpacing) {
+                    Text(title)
+                        .font(LoomTheme.Typography.cardTitle(selected: selected))
+                        .foregroundStyle(indicator == .stale ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
+                        .lineLimit(1).truncationMode(.tail)
+                    Spacer(minLength: LoomTheme.Space.headerSpacing)
+                    CardTimeLabel(row: row, model: model)
+                }
+                HStack(spacing: LoomTheme.Space.cardRowSpacing) {
+                    if let reasonLine {
+                        // What the session waits for or did last, in place of the branch (the branch is in the header).
+                        Text(reasonLine.text)
+                            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
+                            .truncationMode(.tail)
+                            .help(reasonLine.help)
+                    } else if let origin, origin.replacesBranch {
+                        // Same branch as the session that opened this one: the origin says more than the branch.
+                        Label(origin.cardLabel, systemImage: "arrow.turn.down.right")
+                            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
+                            .help(origin.tooltip)
+                    } else {
+                        Label((model.branches[row.record.session.workingDirectory] ?? .unavailable).label,
+                              systemImage: "arrow.triangle.branch")
+                            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
+                            .help(origin.map { "Git branch. " + $0.tooltip } ?? "Git branch")
+                    }
+                    if row.record.pinned {
+                        Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
+                            .foregroundStyle(LoomTheme.Text.secondary)
+                            .help(Self.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
+                    }
+                    Spacer(minLength: LoomTheme.Space.headerSpacing)
+                    if let projectName = SessionCardView.projectLabel(mode: mode, name: projectName) {
+                        Text(projectName).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+                            .lineLimit(1).layoutPriority(reasonLine == nil ? 0 : 1)
+                    }
+                    // The reason is the line that gives way: the project and the provider keep their room.
+                    ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.providerIconCard)
+                        .layoutPriority(reasonLine == nil ? 0 : 1)
+                }
+            }
+        }
+        .padding(.horizontal, LoomTheme.Space.cardH).padding(.vertical, LoomTheme.Space.cardV)
+        .background(SelectedRowBackground(selected: selected, radius: LoomTheme.Radius.card))
+        .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.card))
+    }
+
+    // MARK: Project view: the one-line row
+
+    /// Indicator, title and time on one 28 pt line, on the card's leading edge (the subagent guide and the
+    /// project stripe keep their places). The branch, the origin and the reason are not drawn here: the
+    /// header and the Active section carry them, and the project page lists the rest.
+    @ViewBuilder
+    private func lineLabel(title: String, indicator: SessionIndicator, selected: Bool) -> some View {
+        HStack(spacing: LoomTheme.Space.cardSpacing) {
+            IndicatorView(indicator: indicator)
+            Text(title)
+                .font(selected ? LoomTheme.Typography.bodyStrong : LoomTheme.Typography.body)
+                .foregroundStyle(indicator == .stale ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
+                .lineLimit(1).truncationMode(.tail)
+            if row.record.pinned {
+                Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
+                    .foregroundStyle(LoomTheme.Text.secondary)
+                    .help(Self.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
+            }
+            Spacer(minLength: LoomTheme.Space.headerSpacing)
+            // Claude is the only provider of the daily app; a mark appears only where it tells sessions apart.
+            if row.record.session.provider != .claude {
+                ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.providerIconCard)
+            }
+            CardTimeLabel(row: row, model: model)
+        }
+        .padding(.horizontal, LoomTheme.Space.cardH)
+        .frame(height: LoomTheme.Sidebar.lineRowHeight)
+        .background(SelectedRowBackground(selected: selected, radius: LoomTheme.Radius.search))
+        .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.search))
     }
 }
 
@@ -616,106 +754,5 @@ struct NewConversationAction {
 
     @MainActor func isEnabled(on model: CatalogModel, projectID: UUID?) -> Bool {
         model.canStart(provider, projectID: projectID)
-    }
-}
-
-/// Monochrome chrome button: explicit colors (a plain button otherwise picks up
-/// the accent tint for its symbol), hover and pressed backgrounds, and a
-/// subtle ring while focused (the system focus effect is switched off).
-struct ChromeButtonStyle: ButtonStyle {
-    var selected = false
-    var size = LoomTheme.Layout.chromeButton
-
-    /// A mouse user's launch focus must not draw a ring: only with keyboard navigation on.
-    static func showsFocusRing(focused: Bool, keyboardNavigation: Bool) -> Bool { focused && keyboardNavigation }
-
-    /// The area that answers a click on a control drawn at `size`: at least
-    /// `LoomTheme.Layout.minimumHitTarget`. SwiftUI hit-tests only inside a view's layout frame,
-    /// so the frame itself grows; the drawn control keeps its size, centered in it.
-    static func hitSize(for size: CGSize) -> CGSize {
-        CGSize(width: max(size.width, LoomTheme.Layout.minimumHitTarget.width),
-               height: max(size.height, LoomTheme.Layout.minimumHitTarget.height))
-    }
-
-    func makeBody(configuration: Configuration) -> some View {
-        Chrome(configuration: configuration, selected: selected, size: size)
-    }
-
-    private struct Chrome: View {
-        let configuration: ButtonStyle.Configuration
-        let selected: Bool
-        let size: CGSize
-        @State private var hovering = false
-        @Environment(\.isEnabled) private var enabled
-        @Environment(\.isFocused) private var focused
-        @Environment(\.colorSchemeContrast) private var contrast
-
-        var body: some View {
-            let hit = ChromeButtonStyle.hitSize(for: size)
-            let background: Color = configuration.isPressed ? LoomTheme.Surface.controlPressed
-                : (hovering ? LoomTheme.Surface.controlHover : (selected ? LoomTheme.Surface.selected : .clear))
-            configuration.label
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(selected || hovering || configuration.isPressed ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
-                .frame(width: size.width, height: size.height)
-                .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.control).fill(background))
-                .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
-                    .strokeBorder(ChromeButtonStyle.showsFocusRing(
-                        focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)
-                        ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast)))
-                .frame(width: hit.width, height: hit.height)
-                .contentShape(Rectangle())
-                .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
-                .onHover { hovering = $0 }
-        }
-    }
-}
-
-/// A row that is a button (a project header): no drawn state of its own, only the focus ring
-/// while it has keyboard focus under Full Keyboard Access.
-struct RowButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Row(configuration: configuration)
-    }
-
-    private struct Row: View {
-        let configuration: ButtonStyle.Configuration
-        @Environment(\.isFocused) private var focused
-        @Environment(\.colorSchemeContrast) private var contrast
-
-        var body: some View {
-            configuration.label
-                .opacity(configuration.isPressed ? LoomTheme.Opacity.rowPressed : 1)
-                .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
-                    .strokeBorder(ChromeButtonStyle.showsFocusRing(
-                        focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)
-                        ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast))
-                        .padding(-LoomTheme.Space.rowFocusOutset))
-        }
-    }
-}
-
-/// Whether Full Keyboard Access is on, read once and refreshed when a window
-/// becomes key (the setting changes in System Settings, outside the app), so
-/// each chrome button only reads a flag instead of subscribing on its own.
-@MainActor @Observable
-final class KeyboardNavigation {
-    static let shared = KeyboardNavigation()
-
-    private(set) var isEnabled = NSApplication.shared.isFullKeyboardAccessEnabled
-    @ObservationIgnored private var observer: NSObjectProtocol?
-
-    /// Internal so a test can make its own; the app uses `shared`.
-    init() {
-        observer = NotificationCenter.default.addObserver(
-            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refresh() }
-        }
-    }
-
-    /// Writes only a change: a write re-renders every chrome button that reads the flag.
-    func refresh(_ value: Bool = NSApplication.shared.isFullKeyboardAccessEnabled) {
-        if value != isEnabled { isEnabled = value }
     }
 }

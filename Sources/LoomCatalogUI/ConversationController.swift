@@ -39,7 +39,7 @@ final class TerminalContainerView: NSView {
 /// while it owns that run, so after `/clear` or `/new` the same terminal
 /// belongs to the new card and callbacks bound to the old card do nothing.
 @MainActor
-public final class ConversationController: ConversationIntents {
+public final class ConversationController: NewSessionIntents {
     struct Entry {
         let runID: UUID
         let surface: TerminalSurface
@@ -172,43 +172,72 @@ public final class ConversationController: ConversationIntents {
         releaseAllEndedScreens()
         model?.quitting = true
         model?.flushPreferences()
+        model?.newSession.flush()
     }
 
     // MARK: ConversationIntents
 
+    public func startSession(projectID: UUID?, launch: NewSessionLaunch, focus: NewSessionFocus,
+                             outcome: @escaping @MainActor (NewSessionOutcome) -> Void) {
+        start(provider: .claude, projectID: projectID, draft: launch, focus: focus, outcome: outcome)
+    }
+
     public func start(provider: ManagedSession.Provider, projectID: UUID?) {
-        guard let model, model.actionsAvailable, model.startableProviders.contains(provider) else { return }
+        start(provider: provider, projectID: projectID, draft: nil, focus: .session, outcome: nil)
+    }
+
+    /// The one start path. `draft` is a new-session draft's first send (V07): the runtime starts Claude with
+    /// that message, mode, model and branch choice. `focus` says whether the new session is shown (↵) or the
+    /// window moves on to a fresh draft (⌘↵); `outcome` is told once whether the card exists.
+    private func start(provider: ManagedSession.Provider, projectID: UUID?, draft: NewSessionLaunch?,
+                       focus: NewSessionFocus, outcome: (@MainActor (NewSessionOutcome) -> Void)?) {
+        guard let model, model.actionsAvailable, model.startableProviders.contains(provider) else {
+            outcome?(.failed)
+            return
+        }
         let key = StartKey(provider: provider, projectID: projectID)
-        guard model.beginStart(key) else { return }
+        guard model.beginStart(key) else {
+            outcome?(.failed)
+            return
+        }
         let surface = TerminalSurface(fontSize: model.terminalFontSize)
         let size = surface.gridSize
         Task {
             var pendingSessionID: UUID?
+            var reported = false
             defer {
                 model.endStart(key)
                 if let pendingSessionID { model.setBusy(pendingSessionID, nil) }
             }
+            /// The card exists: the draft is told, then the session is shown unless a fresh draft is.
+            @MainActor func cardReady(_ launch: RuntimeLaunch) {
+                guard !reported else { return }
+                reported = true
+                outcome?(.started(launch.sessionID))
+                if focus == .session { model.showStarted(launch.sessionID) }
+            }
             do {
                 let launch = try await runtime.startConversation(
                     provider: provider, projectID: projectID, rows: size.rows,
-                    columns: size.columns, outputSink: surface.outputSink,
+                    columns: size.columns, outputSink: surface.outputSink, draft: draft,
                     onTerminalReady: { launch in
                         pendingSessionID = launch.sessionID
                         model.cardCreated(for: key)
                         self.adopt(launch, surface: surface)
                         model.setBusy(launch.sessionID, .starting)
-                        model.showStarted(launch.sessionID)
+                        cardReady(launch)
                     }
                 )
                 if pendingSessionID == nil {
                     model.cardCreated(for: key)
                     adopt(launch, surface: surface)
-                    model.showStarted(launch.sessionID)
+                    cardReady(launch)
                 }
             } catch {
                 surface.runEnded()
                 await reconcile()
                 report(error, "\(ProviderName.title(provider)) could not be started")
+                if !reported { outcome?(.failed) }
             }
         }
     }
@@ -229,9 +258,12 @@ public final class ConversationController: ConversationIntents {
                    !model.startableProviders.contains(provider) {
                     return
                 }
+                // S2: the CLI restores neither mode nor model, so a session Loom started from a draft resumes
+                // with the ones it was started with.
                 let launch = try await runtime.resumeConversation(
                     sessionID: sessionID, rows: size.rows, columns: size.columns,
-                    outputSink: surface.outputSink
+                    outputSink: surface.outputSink,
+                    choices: model.newSession.launchChoices(for: sessionID) ?? ClaudeLaunchChoices()
                 )
                 adopt(launch, surface: surface)
                 model.showStarted(launch.sessionID)

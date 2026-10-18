@@ -373,14 +373,23 @@ public actor SessionRuntime {
         rows: UInt16 = 24, columns: UInt16 = 80,
         outputSink: (any TerminalOutputSink)? = nil,
         opening: SessionOpening? = nil,
+        draft: NewSessionLaunch? = nil,
         onTerminalReady: (@MainActor @Sendable (RuntimeLaunch) async -> Void)? = nil
     ) async throws -> RuntimeLaunch {
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
         guard provider == .claude || provider == .codex else {
             throw SessionRuntimeError.unsupportedProvider(provider)
         }
-        guard opening == nil || provider == .claude else {
+        guard (opening == nil && draft == nil) || provider == .claude else {
             throw SessionRuntimeError.unsupportedProvider(provider)
+        }
+        guard opening == nil || draft == nil else {
+            throw LoomError.message("A start takes an opening or a draft, never both.")
+        }
+        // Before any git step or card: a message that cannot be an argument is refused here, whoever asks.
+        if let draft, draft.firstMessage.utf8.count > NewSessionLaunch.maxFirstMessageBytes {
+            throw LoomError.message("The first message is too long to start a session with (the limit is "
+                + "\(NewSessionLaunch.maxFirstMessageBytes / 1024) KB).")
         }
         let key = StartKey(provider: provider, projectID: projectID)
         guard startingNew.insert(key).inserted else {
@@ -397,21 +406,35 @@ public actor SessionRuntime {
             // Validated before the card exists: an unsupported CLI leaves nothing behind.
             let profile = try claudeProfile(
                 route: .new(sessionID), toolchain: toolchain, sessionID: sessionID, hooks: hooks,
+                choices: draft?.choices ?? ClaudeLaunchChoices(),
                 opening: opening.map {
                     ProviderLaunchProfile.ClaudeOpening(title: $0.title, firstMessage: $0.firstMessage)
+                } ?? draft.map {
+                    ProviderLaunchProfile.ClaudeOpening(title: $0.title ?? "", firstMessage: $0.firstMessage)
                 }
             )
-            try await supervisor.createSession(
-                ManagedSession(id: sessionID, provider: .claude, workingDirectory: directory),
-                projectID: projectID, title: opening?.title, ticketKey: opening?.ticketKey,
-                openedBy: opening?.openedBy
-            )
-            startingSessions.insert(sessionID)
-            defer { startingSessions.remove(sessionID) }
-            return try await launchClaude(
-                sessionID: sessionID, runID: runID, toolchain: toolchain, profile: profile,
-                rows: rows, columns: columns, outputSink: outputSink, tee: nil
-            )
+            // The branch or worktree of a draft's strip is made now: after everything that can refuse the
+            // start without a trace, right before the card, and only when the user picked it.
+            let prepared = try await GitWorkspace.begin(draft?.workspace ?? .projectFolder, projectFolder: directory)
+            do {
+                try await supervisor.createSession(
+                    ManagedSession(id: sessionID, provider: .claude, workingDirectory: prepared.folder),
+                    projectID: projectID, title: opening?.title ?? draft?.title,
+                    ticketKey: opening?.ticketKey ?? draft?.ticketKey, openedBy: opening?.openedBy
+                )
+                startingSessions.insert(sessionID)
+                defer { startingSessions.remove(sessionID) }
+                return try await launchClaude(
+                    sessionID: sessionID, runID: runID, toolchain: toolchain, profile: profile,
+                    rows: rows, columns: columns, outputSink: outputSink, tee: nil
+                )
+            } catch {
+                // A start that fails after the branch or worktree was made puts them back. What cannot be put
+                // back is told with the failure; a card that was already made stays, with its error.
+                let problems = await GitWorkspace.undo(prepared)
+                guard !problems.isEmpty else { throw error }
+                throw LoomError.message("\(error). Not undone: \(problems.joined(separator: "; "))")
+            }
         case .codex:
             let (server, coordinator) = try await ensureCodex(card: sessionID, toolchain: toolchain)
             let profile: ProviderLaunchProfile
@@ -443,9 +466,13 @@ public actor SessionRuntime {
     /// Resumes a stopped conversation with its recorded provider identity and
     /// working directory. A missing identity, directory or provider history is
     /// an error the user sees; it never becomes a new conversation.
+    ///
+    /// `choices` are the mode and model Loom recorded when it started the session (S2: the CLI restores
+    /// neither on a resume); a session Loom has no record of resumes as before.
     public func resumeConversation(
         sessionID: UUID, rows: UInt16 = 24, columns: UInt16 = 80,
-        outputSink: (any TerminalOutputSink)? = nil
+        outputSink: (any TerminalOutputSink)? = nil,
+        choices: ClaudeLaunchChoices = ClaudeLaunchChoices()
     ) async throws -> RuntimeLaunch {
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
         guard startingSessions.insert(sessionID).inserted else {
@@ -479,7 +506,7 @@ public actor SessionRuntime {
             let hooks = try ensureHooks()
             let profile = try claudeProfile(
                 route: .resume(conversationID), toolchain: toolchain,
-                sessionID: sessionID, hooks: hooks
+                sessionID: sessionID, hooks: hooks, choices: choices
             )
             return try await launchClaude(
                 sessionID: sessionID, runID: nil, toolchain: toolchain, profile: profile,

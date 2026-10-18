@@ -102,25 +102,40 @@ public final class SessionRowModel: Identifiable {
     public nonisolated let id: UUID
     public private(set) var record: CatalogSession
     public private(set) var live: SessionViewState?
+    /// Why the session shows its status (`live?.reason`), held on its own so that a card reads the reason
+    /// through this row alone. Written only when it differs, and the hub changes it only at hook boundaries
+    /// (a permission request, a stop, a failure, a prompt), so the reason line never redraws per frame.
+    public private(set) var reason: StatusReason?
     /// This session's agent asked to open a session and the user has not answered (D-40).
     public private(set) var awaitingOpenApproval: Bool
     /// This is the selected session. Held per row (the model sets the old and the new row), so a card reads
     /// its own flag and a selection change redraws two cards, not all of them.
     public private(set) var isSelected: Bool
+    /// The card is drawn under "Active" (activity view). Held per row, like `isSelected`, so a membership flip
+    /// reaches the moved card only: the reason line is for an Active card, and a view that moves between the
+    /// list's sections must not depend on an input its parent passed it.
+    public private(set) var inActiveSection: Bool
 
     init(record: CatalogSession, live: SessionViewState?, awaitingOpenApproval: Bool = false,
-         isSelected: Bool = false) {
+         isSelected: Bool = false, inActiveSection: Bool = false) {
         id = record.session.id
         self.record = record
         self.live = live
+        reason = live?.reason
         self.awaitingOpenApproval = awaitingOpenApproval
         self.isSelected = isSelected
+        self.inActiveSection = inActiveSection
     }
 
+    func apply(active: Bool) { if active != inActiveSection { inActiveSection = active } }
     func apply(selected: Bool) { if selected != isSelected { isSelected = selected } }
 
     func apply(record: CatalogSession) { if record != self.record { self.record = record } }
-    func apply(live: SessionViewState?) { if live != self.live { self.live = live } }
+    func apply(live: SessionViewState?) {
+        if live != self.live { self.live = live }
+        let reason = live?.reason
+        if reason != self.reason { self.reason = reason }
+    }
     func apply(awaitingOpenApproval: Bool) {
         if awaitingOpenApproval != self.awaitingOpenApproval { self.awaitingOpenApproval = awaitingOpenApproval }
     }
@@ -279,18 +294,6 @@ public final class CatalogModel {
     public var statusMessage: String?
     public var renameDraft: RenameDraft?
     public var devTerminal: DevTerminal?
-    /// Acceptance-only override; normal launches follow the system preference.
-    private var evidenceTransparencyOverride: Bool?
-    /// What the sidebar is told instead of the system's Reduce Transparency: the acceptance override if set,
-    /// else opaque while the style is Solid, else nil (follow the system, which forces opaque on its own).
-    public var sidebarTransparencyOverride: Bool? {
-        get { evidenceTransparencyOverride ?? (sidebarStyle == .solid ? true : nil) }
-        set { evidenceTransparencyOverride = newValue }
-    }
-    public var effectiveReduceTransparency: Bool {
-        sidebarTransparencyOverride ?? NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
-    }
-    public var effectiveSidebarMaterial: String { effectiveReduceTransparency ? "opaque" : "glass" }
     public private(set) var terminalFontSize: Double
     public private(set) var branches: [String: GitBranch] = [:]
     /// The requests of agents to open a session, and the notices that a ticket already has one (D-40).
@@ -367,8 +370,9 @@ public final class CatalogModel {
     /// another session is selected, so a card does not jump under the cursor when the user reads it.
     @ObservationIgnored var heldActiveID: UUID?
     /// Sessions that need the user (`AttentionOrder`), kept for the Dock badge. Updated whenever live state,
-    /// a record or an open-session wait changes; `onAttentionCountChange` fires on a change only.
-    @ObservationIgnored public internal(set) var attentionCount = 0
+    /// a record or an open-session wait changes; `onAttentionCountChange` fires on a change only. Observed:
+    /// the sidebar's Home row shows it, and the write below happens only when the count differs.
+    public internal(set) var attentionCount = 0
     @ObservationIgnored public var onAttentionCountChange: (@MainActor (Int) -> Void)?
     /// The menu bar item in numbers (working changes the Dock badge never sees), kept beside the count and
     /// fired from the same places on a change only. The menu itself is built when it opens (`menuBarState()`).
@@ -694,7 +698,7 @@ public final class CatalogModel {
         }
         let created = SessionRowModel(record: record, live: liveStates[id],
                                       awaitingOpenApproval: awaitingOpenApproval.contains(id),
-                                      isSelected: id == selectedSessionID)
+                                      isSelected: id == selectedSessionID, inActiveSection: activeIDs.contains(id))
         rowModels[id] = created
         if liveStates[id] != nil { updateAttentionCount() }
         if tabs.isPinned(id) || id == selectedSessionID { tabRowsRevision &+= 1 }
@@ -1231,7 +1235,7 @@ public final class CatalogModel {
         onNotifyApprovalsChange?()
     }
 
-    /// Settings → General → Sidebar (D-57). Applies at once: the sidebar reads `sidebarTransparencyOverride`.
+    /// Settings → General → Sidebar (D-57). Applies at once: the sidebar's background reads `sidebarStyle`.
     public func setSidebarStyle(_ style: SidebarStyle) {
         guard style != sidebarStyle else { return }
         sidebarStyle = style

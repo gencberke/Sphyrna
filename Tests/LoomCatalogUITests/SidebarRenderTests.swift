@@ -273,4 +273,91 @@ struct SidebarRenderTests {
         #expect((SidebarRenderProbe.cardBodies[target] ?? 0) <= 1)
         #expect(others() == 0)
     }
+
+    // MARK: Sidebar v2 (V04)
+
+    private func label(_ hosted: Hosted, hasPrefix prefix: String) -> (label: String, element: AnyObject)? {
+        for element in accessibilityElements(in: hosted.hosting.view) {
+            if let label = element.accessibilityLabel?(), label.hasPrefix(prefix) { return (label, element) }
+        }
+        return nil
+    }
+
+    /// The reason line shows only on an Active card and changes only at hook boundaries: a reason that arrives
+    /// evaluates its own card and no other, the card says it to VoiceOver, and the minute tick still evaluates
+    /// no card at all. The Home row counts the session and opens Home.
+    @Test func aReasonChangeEvaluatesOnlyItsOwnCardAndTheTickLeavesItAlone() async throws {
+        enableAccessibilityTree()
+        let hosted = try await host(cards: 30)
+        defer { finish(hosted) }
+        let model = hosted.model
+        let reader = FrameReader(await hosted.hub.subscribe())
+        model.apply(try #require(await reader.next())) // the initial snapshot
+        let target = hosted.ids[12]
+        func feed(_ change: SessionEventChange) async throws {
+            await hosted.hub.publish(sessionID: target, change: change)
+            model.apply(try #require(await reader.next()))
+        }
+        func others() -> Int { SidebarRenderProbe.cardTotal - (SidebarRenderProbe.cardBodies[target] ?? 0) }
+
+        try await feed(.runStarted(UUID()))
+        try await feed(.status(ProviderWorkState(activity: .working)))
+        await model.settle()
+        try await settle(hosted, until: { model.activityLayout().active.map(\.id) == [target] })
+        #expect(model.activityLayout().active.map(\.id) == [target])
+        try await settle(hosted)
+
+        // The reason arrives before the status it explains: its card is evaluated, nobody else's.
+        SidebarRenderProbe.reset()
+        let reason = StatusReason(.approval(tool: "Bash"), detail: "git push origin fix/webhook-sig")
+        try await feed(.reason(reason))
+        try await settle(hosted, until: { SidebarRenderProbe.cardBodies[target] != nil })
+        #expect(model.list(for: .activity).rows.first { $0.id == target }?.reason == reason)
+        #expect(others() == 0, "other cards evaluated by a reason: \(others())")
+
+        SidebarRenderProbe.reset()
+        try await feed(.status(ProviderWorkState(activity: .waitingForApproval)))
+        try await settle(hosted, until: { SidebarRenderProbe.cardBodies[target] != nil })
+        #expect(others() == 0, "other cards evaluated by the status it explains: \(others())")
+
+        // The Active card names the reason after its state; a card in a day section does not.
+        let active = try #require(label(hosted, hasPrefix: "Card 12, "))
+        #expect(active.label == "Card 12, Claude, Needs approval, Allow: git push origin fix/webhook-sig")
+        let day = try #require(label(hosted, hasPrefix: "Card 11, "))
+        #expect(day.label == "Card 11, Claude, Idle")
+
+        // The Home row counts it and opens Home.
+        let home = try #require(label(hosted, hasPrefix: "Home"))
+        #expect(home.label == "Home, 1 session needs you")
+        #expect(model.destination != .home)
+        #expect(home.element.accessibilityPerformPress?() == true)
+        #expect(model.destination == .home)
+
+        // The minute tick redraws the time labels, never a card, with the reason on screen.
+        model.setWindowVisible(true)
+        #expect(await waitUntil { hosted.gate.requested.count == 1 })
+        try await settle(hosted)
+        SidebarRenderProbe.reset()
+        hosted.clock.set(local(10, 12, 1))
+        hosted.gate.release()
+        #expect(await waitUntil { model.now == local(10, 12, 1) })
+        try await settle(hosted, until: { SidebarRenderProbe.timeLabelTotal == 30 })
+        #expect(SidebarRenderProbe.cardTotal == 0, "card bodies evaluated by a minute tick: \(SidebarRenderProbe.cardTotal)")
+    }
+
+    /// The project view lists its sessions as one 28 pt line; the activity view keeps the two-row card.
+    @Test func theProjectViewDrawsOneLineRowsAndTheActivityViewDrawsTwoRowCards() async throws {
+        enableAccessibilityTree()
+        func rowHeight(mode: CatalogViewMode) async throws -> CGFloat {
+            let hosted = try await host(cards: 5, mode: mode)
+            defer { finish(hosted) }
+            try await settle(hosted)
+            let row = try #require(label(hosted, hasPrefix: "Card 1, "))
+            return try #require(row.element.accessibilityFrame?()).height
+        }
+        let line = try await rowHeight(mode: .projects)
+        let card = try await rowHeight(mode: .activity)
+        #expect(abs(line - LoomTheme.Sidebar.lineRowHeight) < 1.5, "one-line row height \(line)")
+        #expect(card >= LoomTheme.Rhythm.sessionCardRow - 4, "card height \(card)")
+    }
 }

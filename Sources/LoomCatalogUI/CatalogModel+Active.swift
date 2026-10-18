@@ -28,6 +28,7 @@ extension CatalogModel {
         let shown = member || heldActiveID == id
         let changed = shown ? activeIDs.insert(id).inserted : activeIDs.remove(id) != nil
         if changed { activeRevision &+= 1 }
+        rowModels[id]?.apply(active: shown)
     }
 
     /// The selection moved: the held session goes (it stays only if it is a member), and a selected member is

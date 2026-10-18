@@ -11,6 +11,10 @@ public struct ProviderCapabilities: Codable, Sendable {
     public let supportsEffort: Bool
     public let supportsName: Bool
     public let supportsPluginDirectory: Bool
+    /// Whether `--help` lists `--permission-mode` and `--model`. Neither is a reason to leave the option
+    /// out (`claudeAcceptsPermissionMode`, `claudeAcceptsModel`): both are decided by version too.
+    public let listsPermissionMode: Bool
+    public let listsModel: Bool
 
     public init(version: String, help: String, serverHelp: String = "", features: String = "") {
         self.version = version.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -25,6 +29,45 @@ public struct ProviderCapabilities: Codable, Sendable {
         supportsEffort = help.contains("--effort <")
         supportsName = help.contains("--name <")
         supportsPluginDirectory = help.contains("--plugin-dir <")
+        listsPermissionMode = help.contains("--permission-mode <")
+        listsModel = help.contains("--model <")
+    }
+
+    /// The first `major.minor[.patch]` token of the CLI's `--version` line ("2.1.300 (Claude Code)"); nil
+    /// when there is none (a fixture or an unreadable answer).
+    public var claudeVersion: [Int]? {
+        for token in version.split(whereSeparator: \.isWhitespace) {
+            let parts = token.split(separator: ".", omittingEmptySubsequences: false)
+            guard (2...3).contains(parts.count) else { continue }
+            let numbers = parts.compactMap { Int($0) }
+            if numbers.count == parts.count { return numbers }
+        }
+        return nil
+    }
+
+    /// Whether the CLI's version is at least `floor` (a missing patch counts as 0). A version that cannot
+    /// be read is not at least anything.
+    public func claudeVersionAtLeast(_ floor: [Int]) -> Bool {
+        guard let actual = claudeVersion else { return false }
+        for index in 0..<max(actual.count, floor.count) {
+            let have = index < actual.count ? actual[index] : 0
+            let need = index < floor.count ? floor[index] : 0
+            if have != need { return have > need }
+        }
+        return true
+    }
+
+    /// The first Claude Code release line that has both options (the 2.x series). `--help` is text that can
+    /// change shape and a flag can be left out of it, so a flag that is not listed is gated by this version
+    /// and never by the help text alone.
+    public static let claudeLaunchChoicesFloor = [2, 0, 0]
+
+    public var claudeAcceptsPermissionMode: Bool {
+        listsPermissionMode || claudeVersionAtLeast(Self.claudeLaunchChoicesFloor)
+    }
+
+    public var claudeAcceptsModel: Bool {
+        listsModel || claudeVersionAtLeast(Self.claudeLaunchChoicesFloor)
     }
 
     /// The Claude options this build looked for in `--help` and found, by name: what a journal or a
@@ -112,6 +155,7 @@ public struct ProviderLaunchProfile: Sendable {
         environment: [String: String],
         hooks: ClaudeHookLaunchConfiguration? = nil,
         effort: String? = nil,
+        choices: ClaudeLaunchChoices = ClaudeLaunchChoices(),
         opening: ClaudeOpening? = nil
     ) throws -> Self {
         // `--help` is text that can change shape without the option going away, so an option it does
@@ -132,13 +176,32 @@ public struct ProviderLaunchProfile: Sendable {
         if capabilities.supportsEffort, let effort, ClaudeTranscriptEffort.levels.contains(effort) {
             effortArguments = ["--effort", effort]
         }
+        // The session's mode and model (V07). A choice the user made is never dropped quietly: a CLI that
+        // cannot take the option, or a value that is not a plain word, refuses the start before any card
+        // exists, so the draft keeps its text.
+        var choiceArguments: [String] = []
+        if let mode = choices.permissionMode {
+            guard capabilities.claudeAcceptsPermissionMode else {
+                throw LoomError.message("This Claude CLI does not take --permission-mode (\(capabilities.version))")
+            }
+            guard ClaudeLaunchChoices.isSafeToken(mode) else { throw LoomError.message("The permission mode is not valid") }
+            choiceArguments += ["--permission-mode", mode]
+        }
+        if let model = choices.model {
+            guard capabilities.claudeAcceptsModel else {
+                throw LoomError.message("This Claude CLI does not take --model (\(capabilities.version))")
+            }
+            guard ClaudeLaunchChoices.isSafeToken(model) else { throw LoomError.message("The model is not valid") }
+            choiceArguments += ["--model", model]
+        }
         var openingArguments: [String] = []
         var trailing: [String] = []
         if let opening {
             guard case .new = route else {
                 throw LoomError.message("Only a new Claude session can start with a first message")
             }
-            openingArguments = ["-n", opening.title]
+            // An empty title leaves the naming to Claude.
+            if !opening.title.isEmpty { openingArguments = ["-n", opening.title] }
             // After `--` a message that starts with a dash is still the prompt, not an option.
             trailing = ["--", opening.firstMessage]
         }
@@ -159,8 +222,8 @@ public struct ProviderLaunchProfile: Sendable {
         }
         let settings = try claudeSettings(hooks: hooks)
         return Self(
-            arguments: routeArguments + effortArguments + ["--settings", settings] + pluginArguments
-                + openingArguments,
+            arguments: routeArguments + effortArguments + choiceArguments + ["--settings", settings]
+                + pluginArguments + openingArguments,
             environment: env, trailingArguments: trailing
         )
     }
@@ -173,7 +236,7 @@ public struct ProviderLaunchProfile: Sendable {
         var missing: [String] = []
         if !capabilities.supportsSettings { missing.append("--settings") }
         if case .new = route, !capabilities.supportsSessionID { missing.append("--session-id") }
-        if opening != nil, !capabilities.supportsName { missing.append("--name") }
+        if let opening, !opening.title.isEmpty, !capabilities.supportsName { missing.append("--name") }
         return missing
     }
 

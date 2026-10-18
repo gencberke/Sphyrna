@@ -93,25 +93,33 @@ struct SidebarAccessibilityTests {
         return (model, root, project.id)
     }
 
-    @Test func projectHeaderIsAHeaderThatReportsExpandedAndCollapsedAndPresses() async throws {
+    @Test func projectHeaderIsAHeaderThatOpensThePageAndItsChevronReportsExpandedAndCollapsed() async throws {
         enableAccessibilityTree()
-        let (model, root, _) = try await fixture()
+        let (model, root, projectID) = try await fixture()
         defer { try? FileManager.default.removeItem(at: root) }
         model.setViewMode(.projects)
         await model.settle()
         let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 300, height: 500))
         defer { window.orderOut(nil) }
         try await Task.sleep(for: .milliseconds(500))
-        func header() -> (node: AXNode, element: AnyObject)? {
-            for element in accessibilityElements(in: hosting.view) where (element.accessibilityLabel?() ?? "") == "proj" {
+        func element(labelled text: String) -> (node: AXNode, element: AnyObject)? {
+            for element in accessibilityElements(in: hosting.view) where (element.accessibilityLabel?() ?? "") == text {
                 return (axTree(of: element), element)
             }
             return nil
         }
-        let expanded = try #require(header())
-        #expect(expanded.node.role == "AXButton", "operable by keyboard and VoiceOver, not a bare tap gesture")
-        #expect(expanded.node.isHeader)
-        #expect(expanded.node.value == "Expanded")
+        // The name: a header that is a button, and opens the project page.
+        let name = try #require(element(labelled: "proj"))
+        #expect(name.node.role == "AXButton", "operable by keyboard and VoiceOver, not a bare tap gesture")
+        #expect(name.node.isHeader)
+        #expect(name.node.help == "Opens the project page")
+        print("AXDUMP header:", name.node.description, "traits=\(name.node.traits)")
+
+        // The chevron beside it keeps the old affordance: expanded or collapsed, and it presses.
+        let chevron = try #require(element(labelled: "Sessions in proj"))
+        #expect(chevron.node.role == "AXButton")
+        #expect(chevron.node.value == "Expanded")
+
         // The project actions button keeps its drawn size but answers over at least 24 x 24.
         let menu = try #require(accessibilityElements(in: hosting.view).first {
             ($0.accessibilityRole?() == .menuButton) && ($0.accessibilityHelp?() ?? "").contains("Only an empty project")
@@ -119,15 +127,22 @@ struct SidebarAccessibilityTests {
         let menuFrame = try #require(menu.accessibilityFrame?())
         print("AXDUMP project actions frame:", menuFrame)
         #expect(menuFrame.width >= 24 && menuFrame.height >= 24)
-        print("AXDUMP header:", expanded.node.description, "traits=\(expanded.node.traits)")
+        let chevronFrame = try #require(chevron.element.accessibilityFrame?())
+        #expect(chevronFrame.width >= 24 && chevronFrame.height >= 24)
 
-        #expect(expanded.element.accessibilityPerformPress?() == true)
+        #expect(chevron.element.accessibilityPerformPress?() == true)
         try await Task.sleep(for: .milliseconds(600))
         await model.settle()
-        let again = try #require(header())
+        let again = try #require(element(labelled: "Sessions in proj"))
         print("AXDUMP after press:", again.node.description)
         #expect(again.node.value == "Collapsed")
-        #expect(again.node.isHeader)
+        #expect(model.destination != .projectPage(projectID), "collapsing does not open the page")
+
+        #expect(name.element.accessibilityPerformPress?() == true)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(model.destination == .projectPage(projectID))
+        let selected = try #require(element(labelled: "proj"))
+        #expect(selected.node.isHeader)
     }
 
     @Test func dayHeadingsAndTheSessionsSectionAreHeadings() async throws {

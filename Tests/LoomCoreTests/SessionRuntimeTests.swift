@@ -130,7 +130,9 @@ struct SessionRuntimeTests {
         claudePlugin: Bool = false,
         hookHelperPath: String? = nil,
         hookSilenceGrace: TimeInterval = 3,
-        catalogBackupDelay: TimeInterval? = nil
+        catalogBackupDelay: TimeInterval? = nil,
+        claudeVersion: String = "fake 1",
+        extraClaudeHelp: String = ""
     ) async throws -> RuntimeContext {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loom-runtime-\(UUID())", isDirectory: true)
@@ -173,7 +175,9 @@ struct SessionRuntimeTests {
             return ProviderToolchain(
                 provider: provider, executable: fake,
                 capabilities: ProviderCapabilities(
-                    version: "fake 1", help: "--settings <settings> --session-id <id> --remote <ADDR> --effort <level> -n, --name <name> --plugin-dir <path>",
+                    version: claudeVersion,
+                    help: "--settings <settings> --session-id <id> --remote <ADDR> --effort <level> -n, --name <name> --plugin-dir <path> "
+                        + extraClaudeHelp,
                     serverHelp: "--listen <URL>"
                 ),
                 environment: ["PATH": "/usr/bin:/bin", "HOME": home.path, "LOOM_FAKE_STATE": state.path]

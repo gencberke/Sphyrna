@@ -9,8 +9,6 @@ enum DetailRoute: Equatable {
     case startupError(String)
     /// The development terminal fixture.
     case devTerminal
-    /// A subagent's transcript in place of its session's terminal (FB4-5).
-    case subagentTranscript(sessionID: UUID)
     /// A live terminal.
     case terminal(sessionID: UUID)
     /// The kept last screen of a run that ended (FB4-3).
@@ -34,7 +32,7 @@ enum DetailRoute: Equatable {
     /// a route with its own surface (the chat canvas) changes it here.
     var surface: Color {
         switch self {
-        case .startupError, .devTerminal, .subagentTranscript, .terminal, .endedScreen, .record, .addProject, .noSelection,
+        case .startupError, .devTerminal, .terminal, .endedScreen, .record, .addProject, .noSelection,
              .chat, .home, .draft, .projectPage:
             LoomTheme.Surface.panel
         }
@@ -43,7 +41,7 @@ enum DetailRoute: Equatable {
     /// Whether the header shows the selected session. Home, a draft and a project page are not about a session.
     var showsSessionHeader: Bool {
         switch self {
-        case .subagentTranscript, .terminal, .endedScreen, .record, .chat: true
+        case .terminal, .endedScreen, .record, .chat: true
         case .startupError, .devTerminal, .addProject, .noSelection, .home, .draft, .projectPage: false
         }
     }
@@ -67,15 +65,12 @@ extension CatalogModel {
         return .noSelection
     }
 
-    /// A session's route: a subagent's transcript, then (with `readOnlyChatEnabled`, Claude sessions only) the
-    /// chat when the user picked it, or by default when the session is stopped, then the live terminal, the
+    /// A session's route: (with `readOnlyChatEnabled`, Claude sessions only) the chat when the user picked it,
+    /// or by default when the session is stopped, then the live terminal, the
     /// kept screen and the record. A start, resume or stop under way is not "stopped": the record stays until
     /// the terminal arrives. Codex and synthetic sessions keep the old routes.
     private func sessionRoute(for row: SessionRowModel) -> DetailRoute {
         let id = row.id
-        if let viewed = viewedSubagent, viewed.sessionID == id, subagentPanel != nil {
-            return .subagentTranscript(sessionID: id)
-        }
         let hasTerminal = terminalView(for: id) != nil
         if faces.readOnlyChatEnabled, row.record.session.provider == .claude {
             switch faces.choice(for: id) {
@@ -124,17 +119,6 @@ struct DetailContent: View {
                         text: "\(error)\n\nThe catalog file was left untouched. Nothing was created or overwritten.")
             case .devTerminal:
                 if let terminal = model.devTerminal { TerminalHost(panel: terminal.panel) }
-            case .subagentTranscript:
-                if let row = model.selectedRow, let panel = model.subagentPanel {
-                    // The terminal stays with its controller, running; it is only not shown, and nothing above it changes size.
-                    VStack(spacing: 0) {
-                        RequestList(model: model, row: row, returnApproves: false)
-                        if let issue = SessionIssueNotice.message(for: row.live) { SessionIssueNotice(message: issue) }
-                        if row.indicator == .waitingForApproval { SubagentApprovalNotice(model: model) }
-                        // One view per panel model: a new model (the same subagent opened again) is put on screen too.
-                        SubagentTranscriptView(panel: panel).id(ObjectIdentifier(panel))
-                    }
-                }
             case .terminal:
                 if let row = model.selectedRow, let terminal = model.terminalView(for: row.id) {
                     VStack(spacing: 0) {

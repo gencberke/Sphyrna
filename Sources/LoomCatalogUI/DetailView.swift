@@ -83,11 +83,7 @@ struct DetailHeader: View {
                 Text("Synthetic terminal (development)").fontWeight(.semibold).lineLimit(1)
                 Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             } else if showsSessionHeader, let row = model.selectedRow {
-                if let viewed = model.viewedSubagent, viewed.sessionID == row.id {
-                    SubagentHeaderRow(model: model, row: row, agentID: viewed.agentID)
-                } else {
-                    SessionHeaderRow(model: model, row: row)
-                }
+                SessionHeaderRow(model: model, row: row)
             } else if let notice = model.preparingNotice {
                 PreparingNotice(text: notice)
                 Spacer(minLength: LoomTheme.Space.detailMinSpacer)
@@ -123,18 +119,23 @@ struct SessionHeaderRow: View {
                     ProjectBranchChip(chip: chip).headerSlot(.chip, dropsBranch: chip.dropsBranch)
                 }
                 HeaderRule().headerSlot(.rule)
-                HeaderControlGroup(canStop: model.canStop(row), stop: { model.stopConversation(row.id) }) {
-                    Button("Rename…") { model.beginRename(row.id) }
-                    Button("Open in Tab") { model.openTab(row.id) }
-                        .disabled(model.tabs.isPinned(row.id))
-                    Divider()
-                    Button("Resume") { model.resumeConversation(row.id) }
-                        .disabled(!model.canResume(row))
-                    Button("Stop") { model.stopConversation(row.id) }
-                        .disabled(!model.canStop(row))
-                    SessionLocationMenuItems(row: row)
-                    DeletionMenuItems(model: model, row: row)
+                // The inspector toggle sits beside the control group and shares its place in the row.
+                HStack(spacing: LoomTheme.Inspector.toggleGap) {
+                    InspectorToggleButton(model: model, sessionID: row.id)
+                    HeaderControlGroup(canStop: model.canStop(row), stop: { model.stopConversation(row.id) }) {
+                        Button("Rename…") { model.beginRename(row.id) }
+                        Button("Open in Tab") { model.openTab(row.id) }
+                            .disabled(model.tabs.isPinned(row.id))
+                        Divider()
+                        Button("Resume") { model.resumeConversation(row.id) }
+                            .disabled(!model.canResume(row))
+                        Button("Stop") { model.stopConversation(row.id) }
+                            .disabled(!model.canStop(row))
+                        SessionLocationMenuItems(row: row)
+                        DeletionMenuItems(model: model, row: row)
+                    }
                 }
+                .fixedSize()
                 .headerSlot(.group)
             }
             .frame(maxWidth: .infinity)

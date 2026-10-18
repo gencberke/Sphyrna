@@ -5,8 +5,10 @@ import Synchronization
 /// A private CLI capability, never a conversation identity authority.
 struct ClaudeRegistrySnapshot: Sendable, Equatable {
     /// The `status` values this build understands. Any other value still makes a snapshot (the
-    /// process identity does not depend on it); the tracker ignores it.
-    static let knownStatuses: Set<String> = ["idle", "busy", "waiting"]
+    /// process identity does not depend on it); the tracker ignores it. `shell` shows while a background
+    /// shell runs (seen in the V03 recordings); the work itself is counted from `Stop.background_tasks`,
+    /// not from this value.
+    static let knownStatuses: Set<String> = ["idle", "busy", "waiting", "shell"]
 
     let sessionID: String
     let startedAt: Double

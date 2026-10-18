@@ -1,24 +1,136 @@
 import SwiftUI
 
 /// The inspector column on the right of the detail panel: closed by default, open per session
-/// (`CatalogModel.inspector`). Empty for now; the Inspector and Agents slice fills it.
+/// (`CatalogModel.inspector`). A tab bar, then the open tab: Overview or Agents (V09).
 struct InspectorContainer: View {
+    let model: CatalogModel
+
     var body: some View {
-        LoomTheme.Surface.inspector
-            .inspectorColumnWidth(min: LoomTheme.Rhythm.inspectorWidth, ideal: LoomTheme.Rhythm.inspectorWidth,
-                                  max: LoomTheme.Rhythm.inspectorWidthReview)
-            .accessibilityIdentifier("inspector")
+        VStack(spacing: 0) {
+            InspectorTabBar(model: model)
+            if let row = model.selectedRow {
+                switch model.inspector.tab {
+                case .overview: InspectorOverview(model: model, row: row)
+                case .agents: InspectorAgents(model: model, row: row)
+                }
+            } else {
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(LoomTheme.Surface.inspector, ignoresSafeAreaEdges: [])
+        .overlay(alignment: .leading) {
+            Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(width: LoomTheme.Line.hairline)
+                .accessibilityHidden(true)
+        }
+        .frame(width: LoomTheme.Rhythm.inspectorWidth)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inspector")
+    }
+}
+
+/// The tabs: the open one shows its name, the others their symbol and count.
+struct InspectorTabBar: View {
+    let model: CatalogModel
+
+    private static func symbol(_ tab: InspectorTab) -> String {
+        switch tab {
+        case .overview: "info.circle"
+        case .agents: "person.crop.circle"
+        }
+    }
+
+    static func title(_ tab: InspectorTab) -> String {
+        switch tab {
+        case .overview: "Overview"
+        case .agents: "Agents"
+        }
+    }
+
+    private func count(_ tab: InspectorTab) -> Int? {
+        switch tab {
+        case .overview: nil
+        case .agents: model.selectedRow?.live?.subagents.count.nonZero
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: LoomTheme.Inspector.tabGap) {
+            ForEach(InspectorTab.allCases, id: \.self) { tab in
+                let selected = model.inspector.tab == tab
+                Button { model.selectInspectorTab(tab) } label: {
+                    HStack(spacing: LoomTheme.Inspector.tabContentGap) {
+                        Image(systemName: Self.symbol(tab)).font(LoomTheme.Inspector.tabGlyph)
+                            .accessibilityHidden(true)
+                        if selected { Text(Self.title(tab)).font(LoomTheme.Typography.smallMedium) }
+                        if let count = count(tab) {
+                            Text("\(count)").font(LoomTheme.Typography.caption).monospacedDigit()
+                                .foregroundStyle(LoomTheme.Text.secondaryStyle)
+                        }
+                    }
+                    .padding(.horizontal, selected ? LoomTheme.Inspector.tabInset : LoomTheme.Inspector.tabInsetCompact)
+                    .frame(height: LoomTheme.Inspector.tabHeight)
+                    .foregroundStyle(selected ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
+                    .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
+                        .fill(selected ? LoomTheme.Surface.controlHover : .clear))
+                    .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
+                }
+                .buttonStyle(.plain).focusEffectDisabled()
+                .accessibilityLabel(count(tab).map { "\(Self.title(tab)), \($0)" } ?? Self.title(tab))
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, LoomTheme.Inspector.tabBarInset)
+        .frame(height: LoomTheme.Inspector.tabBarHeight)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+private extension Int {
+    var nonZero: Int? { self == 0 ? nil : self }
+}
+
+/// The header's inspector toggle: one segment in a group of its own, beside the control group. It does what
+/// View > Toggle Inspector does, and shows whether the session's inspector is open.
+struct InspectorToggleButton: View {
+    let model: CatalogModel
+    let sessionID: UUID
+
+    var body: some View {
+        let open = model.inspector.isOpen(for: sessionID)
+        Button { model.setInspector(open: !open, for: sessionID) } label: {
+            Image(systemName: "sidebar.right").frame(width: LoomTheme.Inspector.toggleWidth)
+        }
+        .buttonStyle(HeaderSegmentStyle(secondaryUntilHovered: !open)).focusEffectDisabled()
+        .frame(height: LoomTheme.Header.groupHeight)
+        .background(open ? LoomTheme.Surface.controlHover : LoomTheme.Header.group)
+        .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
+        .fixedSize()
+        .help(open ? "Hide Inspector (⌥⌘B)" : "Show Inspector (⌥⌘B)")
+        .accessibilityLabel(open ? "Hide inspector" : "Show inspector")
+        .accessibilityIdentifier("inspector-toggle")
     }
 }
 
 extension View {
-    /// Mounts the inspector for the selected session. With no selected session it stays closed.
+    /// Puts the inspector of the selected session to the right of the content. With no selected session it
+    /// stays closed. It is a plain column in the same layout pass as the content, not a SwiftUI `.inspector`:
+    /// that one slides in over many frames and lags the content by a pass, so a terminal was resized on every
+    /// frame of a toggle and twice on a change of selection. Here the width changes once, by the user's toggle
+    /// only, and never animates (DESIGN §6, Motion: a width change is a PTY resize).
     func detailInspector(model: CatalogModel) -> some View {
-        inspector(isPresented: Binding(
-            get: { model.inspector.isOpen(for: model.selectedSessionID) },
-            set: { open in
-                if let id = model.selectedSessionID { model.setInspectorOpen(open, for: id) }
+        let open = model.inspector.isOpen(for: model.selectedSessionID)
+        return HStack(spacing: 0) {
+            self
+            if open {
+                InspectorContainer(model: model).transition(.identity)
             }
-        )) { InspectorContainer() }
+        }
+        .transaction(value: open) { $0.animation = nil; $0.disablesAnimations = true }
+        .task(id: model.inspectorContextSessions) { model.trackInspectorContext() }
     }
 }

@@ -20,10 +20,12 @@ extension AppDelegate {
 
     func configureEvidenceAtLaunch(model: CatalogModel) {
         guard options.isEvidence else { return }
+        // The flag sets the sidebar style (Glass | Solid) in the isolated data root; the system's Reduce
+        // Transparency still forces Solid, and no OS setting is changed.
         switch value(after: "--evidence-transparency") {
-        case "glass": model.sidebarTransparencyOverride = false
-        case "opaque": model.sidebarTransparencyOverride = true
-        default: break // system is the normal behavior; no OS setting is changed.
+        case "glass": model.setSidebarStyle(.glass)
+        case "opaque": model.setSidebarStyle(.solid)
+        default: break
         }
         // Acceptance: hold the deleting state long enough for a screenshot.
         if let delay = value(after: "--delete-delay").flatMap(Double.init), delay > 0 {

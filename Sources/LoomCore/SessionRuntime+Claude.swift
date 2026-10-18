@@ -87,6 +87,7 @@ extension SessionRuntime {
     func claudeProfile(
         route: ProviderLaunchProfile.ClaudeRoute, toolchain: ProviderToolchain,
         sessionID: UUID, hooks: ClaudeHookLaunchConfiguration,
+        choices: ClaudeLaunchChoices = ClaudeLaunchChoices(),
         opening: ProviderLaunchProfile.ClaudeOpening? = nil
     ) throws -> ProviderLaunchProfile {
         let environment = LaunchEnvironment.make(
@@ -103,7 +104,7 @@ extension SessionRuntime {
         let profile = try ProviderLaunchProfile.claude(
             route: route, capabilities: toolchain.capabilities,
             config: toolchain.profileDirectory ?? URL(fileURLWithPath: "/"),
-            environment: environment, hooks: hooks, effort: effort, opening: opening
+            environment: environment, hooks: hooks, effort: effort, choices: choices, opening: opening
         )
         guard toolchain.profileDirectory == nil else { return profile }
         // The provider's own default profile: do not pin a config directory.

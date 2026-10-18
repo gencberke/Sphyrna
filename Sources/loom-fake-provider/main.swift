@@ -51,7 +51,7 @@ if arguments == ["--version"] {
     exit(0)
 }
 if arguments == ["--help"] {
-    out("--remote <ADDR> --settings <settings> --session-id <id> --effort <level>\n")
+    out("--remote <ADDR> --settings <settings> --session-id <id> --effort <level> --permission-mode <mode> --model <model>\n")
     exit(0)
 }
 if arguments == ["app-server", "--help"] {

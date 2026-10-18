@@ -17,15 +17,17 @@ public struct SubagentPanelState: Equatable, Sendable {
     public let phase: String
 }
 
-/// The subagent panel (FB4-5, P1): a click on a subagent row shows its transcript in place of the terminal.
-/// The terminal stays with its controller and keeps running; only the detail pane stops showing it.
+/// The subagent panel (FB4-5, P1; V09): a click on a subagent row shows its transcript in the Agents tab of its
+/// session's inspector. The terminal stays on screen beside it, untouched.
 extension CatalogModel {
-    /// Selects the subagent's session if needed and opens its transcript. A subagent the session's live state
-    /// does not list (it dropped out meanwhile) opens nothing.
+    /// Selects the subagent's session if needed, opens its inspector on the Agents tab and starts reading the
+    /// subagent's transcript. A subagent the session's live state does not list (it dropped out meanwhile)
+    /// opens nothing. Opening the inspector is the click's doing, so a terminal resizes once, here.
     public func openSubagent(_ agentID: String, in sessionID: UUID) {
         guard let record = liveStates[sessionID]?.subagents.first(where: { $0.id == agentID }) else { return }
         // A second click on the subagent already shown changes nothing: its panel goes on reading.
-        if viewedSubagent == ViewedSubagent(sessionID: sessionID, agentID: agentID), subagentPanel != nil { return }
+        if viewedSubagent == ViewedSubagent(sessionID: sessionID, agentID: agentID), subagentPanel != nil,
+           inspector.isOpen(for: sessionID), inspector.tab == .agents { return }
         // Selecting closes a panel that is open, so this is also how one subagent's panel gives way to the next.
         select(sessionID, revealInList: false)
         let panel = SubagentTranscriptModel(
@@ -34,9 +36,11 @@ extension CatalogModel {
             locate: { [weak self] path in await self?.intents?.subagentTranscript(path: path, agentID: agentID) })
         subagentPanel = panel
         viewedSubagent = ViewedSubagent(sessionID: sessionID, agentID: agentID)
+        _ = inspector.select(.agents)
+        setInspectorOpen(true, for: sessionID)
     }
 
-    /// Back to the session's terminal (Esc, the Session control, and every other way out).
+    /// Back to the list of agents (the inspector's back control, and every other way out).
     public func closeSubagent() {
         guard viewedSubagent != nil else { return }
         subagentPanel?.close()

@@ -386,6 +386,9 @@ struct ClaudeRegistryTests {
         // Known values are unaffected, and a malformed status is still unavailable.
         guard case let .snapshot(known) = try decoded(status: "busy") else { Issue.record("busy"); return }
         #expect(!known.hasUnknownStatus)
+        // `shell` (a background shell is running) is known: it is not reported as drift.
+        guard case let .snapshot(shell) = try decoded(status: "shell") else { Issue.record("shell"); return }
+        #expect(shell.status == "shell" && !shell.hasUnknownStatus)
         let identity = ProcessIdentity(pid: 97823, startSeconds: 1790762096, startMicroseconds: 704705)
         let reader = ClaudeRegistryReader(config: URL(fileURLWithPath: "/tmp/own-claude"), leader: identity, directory: "/tmp/own-claude")
         let wrongType = try JSONSerialization.data(withJSONObject: ["pidDomain": "darwin", "kind": "interactive", "cwd": "/tmp/own-claude",

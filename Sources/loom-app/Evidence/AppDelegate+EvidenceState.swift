@@ -32,11 +32,16 @@ extension AppDelegate {
                 "buttons": $0.buttons.map(\.title),
             ] as [String: Any] } ?? NSNull(),
             "renderer": evidenceMode && arguments.contains("--metal") ? "metal" : "coregraphics",
-            "sidebarMaterial": model?.effectiveSidebarMaterial ?? "unknown",
-            "effectiveReduceTransparency": model?.effectiveReduceTransparency ?? true,
+            // The setting on its own (Settings → General → Sidebar), the system's Reduce Transparency on its own,
+            // and what the sidebar draws: opaque in Solid or under Reduce Transparency, else glass (D-57).
+            "sidebarStyle": model?.sidebarStyle.rawValue ?? "unknown",
+            "systemReduceTransparency": NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
+            "sidebarMaterial": model.map {
+                $0.sidebarStyle == .solid || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+                    ? "opaque" : "glass"
+            } ?? "unknown",
             "chaseIndicators": window?.contentView.map { IndicatorEvidence.chases(in: $0) } ?? [:],
             "systemReduceMotion": NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-            "transparencyOverride": model?.sidebarTransparencyOverride.map { $0 ? "opaque" : "glass" } ?? "system",
             "runDirectory": runDirectory?.path ?? NSNull(),
         ]
         if let model {
@@ -85,6 +90,8 @@ extension AppDelegate {
                      "lastUsed": row.record.lastUsedAt.timeIntervalSince1970,
                      "lastActivity": row.record.lastActivityAt.timeIntervalSince1970,
                      "issue": row.live?.issue ?? "",
+                     // Whether a reason line exists, never its text: it is built from commands, paths and replies.
+                     "hasReason": row.reason != nil,
                      "openedBy": row.record.openedBy?.uuidString ?? "",
                      "origin": redactsContent ? "" : (model.origin(of: row)?.cardLabel ?? ""),
                      "originReplacesBranch": model.origin(of: row)?.replacesBranch ?? false] as [String: Any]

@@ -14,7 +14,7 @@ final class ShellMenuTarget: NSObject, NSMenuItemValidation {
         self.bringForward = bringForward
     }
 
-    @objc func perform(_ sender: NSMenuItem) {
+    @objc func runShellCommand(_ sender: NSMenuItem) {
         guard let command = ShellCommand(rawValue: sender.tag), let model = model() else { return }
         if command.needsWindow { bringForward() }
         command.run(on: model)
@@ -32,7 +32,7 @@ extension AppDelegate {
         let shell = ShellMenuTarget(model: { [weak self] in self?.model },
                                     bringForward: { [weak self] in self?.presentMainWindow(reason: "shell-menu") })
         func addShellItem(_ command: ShellCommand, to menu: NSMenu) {
-            let item = menu.addItem(withTitle: command.title, action: #selector(ShellMenuTarget.perform(_:)),
+            let item = menu.addItem(withTitle: command.title, action: #selector(ShellMenuTarget.runShellCommand(_:)),
                                     keyEquivalent: command.keyEquivalent)
             item.keyEquivalentModifierMask = command.modifiers
             item.tag = command.rawValue

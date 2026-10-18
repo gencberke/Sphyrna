@@ -45,6 +45,18 @@ final class MainSplitViewController: NSSplitViewController {
         splitView.setPosition(CGFloat(width), ofDividerAt: 0)
     }
 
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        // The command palette (⌘K) is one window-level overlay over both panes; it draws and takes clicks only while open.
+        let palette = makePaletteOverlayView(model: model)
+        palette.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(palette)
+        NSLayoutConstraint.activate([
+            palette.leadingAnchor.constraint(equalTo: view.leadingAnchor), palette.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            palette.topAnchor.constraint(equalTo: view.topAnchor), palette.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+    }
+
     override func viewDidLayout() {
         super.viewDidLayout()
         guard !restored, view.bounds.width > 0 else { return }

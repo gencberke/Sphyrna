@@ -32,34 +32,33 @@ struct ShellSeamsTests {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let model = model(at: root)
-        #expect(model.sidebarStyle == .glass && model.sidebarTransparencyOverride == nil)
+        #expect(model.sidebarStyle == .glass)
 
+        // The sidebar's background reads the style itself (`SidebarBackground(style:)`); there is no bridge
+        // through Reduce Transparency any more.
         model.setSidebarStyle(.solid)
         #expect(model.sidebarStyle == .solid)
-        // The sidebar is told to draw opaque, and the model reports it.
-        #expect(model.sidebarTransparencyOverride == true && model.effectiveReduceTransparency)
         #expect(try stored(root).sidebarStyle == .solid)
         #expect(model.preferencesSnapshot.projectColors, "nothing else changed")
 
         model.setSidebarStyle(.glass)
-        #expect(model.sidebarTransparencyOverride == nil)
+        #expect(model.sidebarStyle == .glass)
         #expect(try stored(root).sidebarStyle == .glass)
 
         // A new window reads what was saved.
         model.setSidebarStyle(.solid)
         let again = self.model(at: root)
-        #expect(again.sidebarStyle == .solid && again.effectiveReduceTransparency)
+        #expect(again.sidebarStyle == .solid)
     }
 
-    @Test func theAcceptanceOverrideStillWinsOverTheStyle() throws {
-        let root = try temporaryRoot()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let model = model(at: root)
-        model.setSidebarStyle(.solid)
-        model.sidebarTransparencyOverride = false
-        #expect(model.sidebarTransparencyOverride == false && !model.effectiveReduceTransparency)
-        model.sidebarTransparencyOverride = nil
-        #expect(model.effectiveReduceTransparency)
+    @Test func theBackgroundDrawsTheStyleTheModelHoldsAndReduceTransparencyForcesSolid() {
+        // The tint the sidebar draws for each pair of (style, system Reduce Transparency).
+        func tint(_ style: SidebarStyle, _ reduce: Bool) -> Double {
+            LoomTheme.Surface.sidebarTintOpacity(for: SidebarBackground.effectiveStyle(style, reduceTransparency: reduce))
+        }
+        #expect(tint(.glass, false) == LoomTheme.Surface.sidebarTintOpacity)
+        #expect(tint(.solid, false) == 1)
+        #expect(tint(.glass, true) == 1 && tint(.solid, true) == 1)
     }
 
     @Test func preferencesRoundTripAndAnOldOrOddFileReadsAsTheDefaults() throws {
@@ -205,7 +204,8 @@ struct ShellSeamsTests {
         await hub.publish(sessionID: session.id, change: .subagents([record]))
         #expect(await waitUntil { model.liveStates[session.id]?.subagents == [record] })
         model.openSubagent("a1", in: session.id)
-        #expect(model.detailRoute == .subagentTranscript(sessionID: session.id))
+        #expect(model.detailRoute == .terminal(sessionID: session.id), "the terminal stays on screen")
+        #expect(model.viewedSubagent?.agentID == "a1")
         model.closeSubagent()
         #expect(model.detailRoute == .terminal(sessionID: session.id))
 
@@ -214,7 +214,7 @@ struct ShellSeamsTests {
     }
 
     @Test func everyRouteIsDrawnOnThePanelColourToday() {
-        for route in [DetailRoute.startupError("x"), .devTerminal, .subagentTranscript(sessionID: UUID()),
+        for route in [DetailRoute.startupError("x"), .devTerminal,
                       .terminal(sessionID: UUID()), .endedScreen(sessionID: UUID()), .record(sessionID: UUID()),
                       .addProject, .noSelection, .chat(sessionID: UUID()), .home, .draft(projectID: nil),
                       .projectPage(projectID: UUID())] {
