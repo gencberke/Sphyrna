@@ -500,8 +500,13 @@ public actor ClaudeUsageIndex {
     ) -> Double? {
         if let legacy { return legacy }
         guard let price else { return nil }
-        return UsagePricing.costUSD(price: price, tokens: tokens, fast: flags & 2 != 0, usGeo: flags & 4 != 0)
+        return UsagePricing.costUSD(price: price, tokens: tokens, fast: flags & 2 != 0, usGeo: flags & 4 != 0,
+                                    longPrompt: flags & Self.longPromptFlag != 0)
     }
+
+    /// Bit 3 of the flags a query returns (never stored): the message's prompt is above `UsagePricing.longPromptThreshold`.
+    /// A group of messages is split by it, since the price tier is a property of one request and a sum has no length.
+    static let longPromptFlag: Int64 = 8
 
     private static func ordered(_ models: [String: Accumulator], names: [String: String]) -> [UsageModelTotal] {
         models.map { key, accumulator in
@@ -1268,11 +1273,18 @@ final class UsageDatabase {
 
     // MARK: queries
 
+    /// The speed and geography bits of a row plus the long-prompt bit (`ClaudeUsageIndex.longPromptFlag`), for grouping.
+    static let queryFlagsSQL =
+        "(flags & 6) | (CASE WHEN input + cw5 + cw1 + cr > \(UsagePricing.longPromptThreshold) THEN 8 ELSE 0 END)"
+    /// All stored bits of a row plus the long-prompt bit.
+    static let messageFlagsSQL =
+        "(flags | (CASE WHEN input + cw5 + cw1 + cr > \(UsagePricing.longPromptThreshold) THEN 8 ELSE 0 END))"
+
     /// Totals grouped by quarter-hour bucket, model, speed/geography flags and whether the rows
     /// carry a legacy cost.
     func aggregates(lower: Int64, upper: Int64) throws -> [UsageAggregate] {
         try cached("""
-            SELECT ts_ms / 900000, model, flags & 6, cost IS NOT NULL, SUM(COALESCE(cost, 0)),
+            SELECT ts_ms / 900000, model, \(UsageDatabase.queryFlagsSQL), cost IS NOT NULL, SUM(COALESCE(cost, 0)),
                    SUM(input), SUM(output), SUM(cw5), SUM(cw1), SUM(cr), SUM(web), COUNT(*)
             FROM msg WHERE ts_ms >= ?1 AND ts_ms < ?2 GROUP BY 1, 2, 3, 4
             """) { statement in
@@ -1372,7 +1384,7 @@ final class UsageDatabase {
     /// The SQL of `sessionAggregates`, shared with the test that checks it is answered from the
     /// `msg_session` index and not by a table scan.
     static let sessionAggregatesSQL = """
-        SELECT model, flags & 6, cost IS NOT NULL, SUM(COALESCE(cost, 0)),
+        SELECT model, \(queryFlagsSQL), cost IS NOT NULL, SUM(COALESCE(cost, 0)),
                SUM(input), SUM(output), SUM(cw5), SUM(cw1), SUM(cr), SUM(web), COUNT(*)
         FROM msg WHERE session = ?1 AND session IS NOT NULL AND ts_ms >= ?2 AND ts_ms < ?3 GROUP BY 1, 2, 3
         """
@@ -1458,7 +1470,7 @@ final class UsageDatabase {
     func messages(lower: Int64, upper: Int64) throws -> MessageCursor {
         var statement: OpaquePointer?
         let result = sqlite3_prepare_v2(handle, """
-            SELECT ts_ms, model, flags, input, output, cw5, cw1, cr, web, cost FROM msg
+            SELECT ts_ms, model, \(Self.messageFlagsSQL), input, output, cw5, cw1, cr, web, cost FROM msg
             WHERE ts_ms >= ?1 AND ts_ms <= ?2 ORDER BY ts_ms
             """, -1, &statement, nil)
         guard result == SQLITE_OK, let statement else { throw error("prepare", result) }

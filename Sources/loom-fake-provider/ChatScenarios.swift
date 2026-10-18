@@ -413,7 +413,8 @@ extension ChatEngine {
         let message = answer["message"] as? String ?? "The user denied this tool use."
         // A request that failed (input closed) is a tool error, not a denial.
         if answer["failed"] as? Bool != true { denials.append(["tool_name": tool, "tool_use_id": id, "tool_input": input]) }
-        toolResult(id, message, error: true, structured: "Error: " + message, parent: parent)
+        toolResult(id, message, error: true, structured: "Error: " + message, parent: parent,
+                   refusal: answer["failed"] as? Bool == true ? nil : "permission-rule")
         if answer["interrupt"] as? Bool == true {
             interruptedInTool = true
             throw TurnEnd.interrupted
@@ -523,16 +524,24 @@ extension ChatEngine {
             subtype: "success", isError: true, terminalReason: "api_error", apiErrorStatus: status, text: text)
     }
 
+    /// A conversation reset as the real CLI 2.1.300 writes it (v2 fix round B, F1): `conversation_reset` first, whose
+    /// `new_conversation_id` is the record's own uuid and NOT the new session (the transcript is written under the id that
+    /// follows); then the SessionStart hook with source `clear` and `system/init`, both under the new session id.
     func reset(trigger: String) {
         let newID = UUID().uuidString.lowercased()
-        send(wire.conversationReset(newID: newID, trigger: trigger))
+        send(wire.conversationReset(newID: UUID().uuidString.lowercased(), trigger: trigger))
         wire.session = newID
         transcript.switchSession(newID)
         lastUUID = nil
         // Not measured on the real CLI: whether live settings (rules, style) survive a reset. The worst case on demand.
         if config.resetForgetsSettings { liveSettings = [:] }
-        sendInit()
-        hook("SessionStart", ["source": "clear"])
+        if config.resetInitFirst {
+            sendInit()
+            hook("SessionStart", ["source": "clear"])
+        } else {
+            hook("SessionStart", ["source": "clear"])
+            sendInit()
+        }
         outcome.text = ""
     }
 

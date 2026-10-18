@@ -404,6 +404,28 @@ import Testing
         #expect(abs(try #require(byModel["claude-opus-5-5"]?.estimatedCostUSD) - 74.63) < 1e-9)
     }
 
+    /// Haiku 5.5's tier belongs to one request. Two requests of the same quarter-hour, model and flags, one at the threshold and
+    /// one above it, must not be summed into one group (their sum is above it): each is priced in its own tier.
+    @Test func aPromptTierIsDecidedPerMessageNotPerGroup() async throws {
+        let fixture = try UsageFixture()
+        let model = "claude-haiku-5-5"
+        try fixture.write(json(
+            UsageLine(id: "low", request: "r1", model: model, input: 1_000, output: 1_000_000, cacheRead: 99_000),   // 100,000: low
+            UsageLine(id: "high", request: "r2", model: model, input: 1, output: 1_000_000, cacheRead: 100_000),     // 100,001: high
+            UsageLine(id: "geo", request: "r3", model: model, input: 200_000, output: 0, geo: "us")),                // high, US
+            to: fixture.transcript())
+        let index = fixture.makeIndex()
+        try await index.refresh()
+        let snapshot = try await index.all()
+        let low = (1_000 * 0.1 + 99_000 * 0.01 + 1_000_000 * 0.5) / 1e6
+        let high = (1 * 0.5 + 100_000 * 0.05 + 1_000_000 * 2.5) / 1e6
+        let geo = 200_000 * 0.5 / 1e6 * 1.1
+        #expect(abs(snapshot.estimatedCostUSD - (low + high + geo)) < 1e-9, "\(snapshot.estimatedCostUSD)")
+        // The same messages read by session (the per-project path) and by window price the same way.
+        let projects = try await index.projectUsage(sessions: ["sess-1"], range: .all, now: UsageFixture.now, timeZone: UsageFixture.utc)
+        #expect(abs(try #require(projects.estimatedCostUSD) - (low + high + geo)) < 1e-9)
+    }
+
     @Test func unknownModelKeepsTokensButHasNoCost() async throws {
         let fixture = try UsageFixture()
         try fixture.write(json(UsageLine(id: "u", request: "ru", model: "claude-nova-9-20271231", input: 10, output: 20),

@@ -55,18 +55,43 @@ public struct ExecutableStamp: Equatable, Sendable {
     }
 }
 
+/// How a capability probe failed, without its output: what the journal may keep (an output can carry a path or provider text).
+public enum ProbeFailureKind: Equatable, Sendable, CustomStringConvertible {
+    case timeout
+    /// The CLI ran and exited with this status.
+    case exit(Int32)
+    /// It could not be started or read (a spawn, pipe or scope error).
+    case spawn
+
+    public var description: String {
+        switch self {
+        case .timeout: "timeout"
+        case let .exit(status): "exit \(status)"
+        case .spawn: "spawn"
+        }
+    }
+
+    init(_ error: any Error) {
+        switch error {
+        case LoomError.environmentTimeout: self = .timeout
+        case let LoomError.helperExit(status, _): self = .exit(status)
+        default: self = .spawn
+        }
+    }
+}
+
 /// Failures the user can fix and retry; none of them leaves a catalog row,
 /// process or reservation behind.
 public enum ProviderToolchainError: Error, CustomStringConvertible, Equatable, Sendable {
     case executableNotFound(provider: ManagedSession.Provider, searched: Int)
-    case capabilityProbeFailed(command: String, detail: String)
+    case capabilityProbeFailed(command: String, detail: String, kind: ProbeFailureKind)
     case unsupported(String)
 
     public var description: String {
         switch self {
         case let .executableNotFound(provider, searched):
             "\(provider.rawValue) was not found on the PATH of your terminal environment (\(searched) folders searched)"
-        case let .capabilityProbeFailed(command, detail):
+        case let .capabilityProbeFailed(command, detail, _):
             "\(command) could not be inspected: \(detail)"
         case let .unsupported(reason):
             reason
@@ -217,7 +242,8 @@ public actor SystemProviderToolchains {
         } catch let error as SessionManagementError {
             throw error
         } catch {
-            throw ProviderToolchainError.capabilityProbeFailed(command: command, detail: String(describing: error))
+            throw ProviderToolchainError.capabilityProbeFailed(
+                command: command, detail: String(describing: error), kind: ProbeFailureKind(error))
         }
     }
 }

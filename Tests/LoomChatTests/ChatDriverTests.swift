@@ -35,7 +35,9 @@ struct Rig {
 
     /// - Parameter plugin: Loom's Claude plugin is written and passed as `--plugin-dir` (the output style of Ask comes
     ///   from it); false is a Loom whose plugin folder cannot be written.
-    static func make(environment: [String: String] = [:], version: String = "fake 1", plugin: Bool = true) async throws -> Rig {
+    /// - Parameter probeFailures: the first this many toolchain resolutions fail as a capability probe does (a timeout).
+    static func make(environment: [String: String] = [:], version: String = "fake 1", plugin: Bool = true,
+                     probeFailures: Int = 0) async throws -> Rig {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-chat-\(UUID())", isDirectory: true)
         let home = root.appendingPathComponent("home", isDirectory: true)
         let profile = root.appendingPathComponent("claude-config", isDirectory: true)
@@ -57,8 +59,17 @@ struct Rig {
             scopeLauncher: RunScopeLauncher(hostBundle: bundle, socketDirectory: socketDirectory.appendingPathComponent("rs"))
         )
         let fakePath = fake.path
+        let failuresLeft = Mutex(probeFailures)
         let resolver: ProviderToolchainResolver = { provider in
-            ProviderToolchain(
+            let fails = failuresLeft.withLock { left -> Bool in
+                guard left > 0 else { return false }
+                left -= 1
+                return true
+            }
+            if fails {
+                throw ProviderToolchainError.capabilityProbeFailed(command: "claude --help", detail: "timed out", kind: .timeout)
+            }
+            return ProviderToolchain(
                 provider: provider, executable: fakePath,
                 capabilities: ProviderCapabilities(
                     version: version,
@@ -78,7 +89,8 @@ struct Rig {
                 socketDirectory: socketDirectory, homeDirectory: home.path,
                 idlePolicy: SessionIdlePolicy(), codexIdentityTimeout: 3,
                 claudePluginDirectory: plugin ? root.appendingPathComponent("claude-plugin", isDirectory: true) : nil,
-                hookSilenceGrace: 3, catalogBackupDelay: nil
+                hookSilenceGrace: 3, catalogBackupDelay: nil,
+                toolchainProbeRetryPause: .milliseconds(50)
             )
         )
         try await runtime.start()

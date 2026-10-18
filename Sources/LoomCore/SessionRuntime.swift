@@ -46,6 +46,8 @@ public struct SessionRuntimeConfiguration: Sendable {
     /// listed sessions by their runs before that (Home's Continue) can read again. The catalog already holds
     /// the closed runs when it is called.
     public var runsRecovered: (@Sendable () async -> Void)?
+    /// How long a failed capability probe waits before its one retry (`SessionRuntime.toolchain(for:)`).
+    public var toolchainProbeRetryPause: Duration
 
     public init(
         toolchains: @escaping ProviderToolchainResolver, hookHelperPath: String,
@@ -62,7 +64,8 @@ public struct SessionRuntimeConfiguration: Sendable {
         hookSilenceGrace: TimeInterval = 3,
         catalogBackupDelay: TimeInterval? = 10,
         toolchainInvalidator: (@Sendable (ManagedSession.Provider) async -> Void)? = nil,
-        runsRecovered: (@Sendable () async -> Void)? = nil
+        runsRecovered: (@Sendable () async -> Void)? = nil,
+        toolchainProbeRetryPause: Duration = .seconds(1)
     ) {
         self.toolchains = toolchains
         self.hookHelperPath = hookHelperPath
@@ -82,6 +85,7 @@ public struct SessionRuntimeConfiguration: Sendable {
         self.catalogBackupDelay = catalogBackupDelay
         self.toolchainInvalidator = toolchainInvalidator
         self.runsRecovered = runsRecovered
+        self.toolchainProbeRetryPause = toolchainProbeRetryPause
     }
 }
 
@@ -760,7 +764,7 @@ public actor SessionRuntime {
             LoomLog.notice(.toolchain, "\(provider.rawValue) executable changed on disk; resolving again")
         }
         let previous = toolchains[provider]
-        let value = try await configuration.toolchains(provider)
+        let value = try await resolveToolchain(provider)
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
         toolchains[provider] = value
         toolchainStamps[provider] = value.executableStamp ?? ExecutableStamp.read(value.executable)
@@ -770,6 +774,34 @@ public actor SessionRuntime {
         }
         noteToolchain(value, previous: previous)
         return value
+    }
+
+    /// One capability probe that fails (a timeout, an exit status, a spawn error: seen once in six app launches on the real
+    /// CLI, with no journal detail) is tried once more after a short pause. Every failure is journaled by its kind, never by
+    /// the CLI's output. A second failure goes on to the caller, whose draft keeps its text.
+    private func resolveToolchain(_ provider: ManagedSession.Provider) async throws -> ProviderToolchain {
+        do {
+            return try await configuration.toolchains(provider)
+        } catch let first as ProviderToolchainError {
+            guard case let .capabilityProbeFailed(_, _, kind) = first, !shuttingDown else { throw first }
+            journal.record("toolchain_probe_failed", [
+                "provider": .string(provider.rawValue), "kind": .string(kind.description), "attempt": .int(1), "retrying": .bool(true),
+            ])
+            LoomLog.error(.toolchain, "\(provider.rawValue) capability probe failed (\(kind)); trying once more")
+            try await Task.sleep(for: configuration.toolchainProbeRetryPause)
+            guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
+            do {
+                return try await configuration.toolchains(provider)
+            } catch let second as ProviderToolchainError {
+                if case let .capabilityProbeFailed(_, _, kind) = second {
+                    journal.record("toolchain_probe_failed", [
+                        "provider": .string(provider.rawValue), "kind": .string(kind.description), "attempt": .int(2),
+                        "retrying": .bool(false),
+                    ])
+                }
+                throw second
+            }
+        }
     }
 
     /// What the runtime has cached for a provider (diagnostics read it; nothing resolves here).

@@ -647,13 +647,15 @@ struct FakeProviderChatTests {
         #expect(rig.all().contains { $0["type"] as? String == "hologram" })
         #expect(rig.all().contains { $0["subtype"] as? String == "future_event" })
 
-        // A conversation reset: a new session id, announced and then used by everything after it.
+        // A conversation reset as the real CLI writes it: the reset record's id is not a session (it is the record's own uuid);
+        // `system/init` and everything after carry the new session id.
         rig.user("/clear", uuid: "e5")
         let reset = try await rig.wait(isType("conversation_reset"))
-        let newID = try #require(reset["new_conversation_id"] as? String)
-        #expect(newID != rig.sessionID && reset["trigger"] as? String == "clear")
+        let resetID = try #require(reset["new_conversation_id"] as? String)
+        #expect(resetID != rig.sessionID && reset["trigger"] as? String == "clear")
         let reinit = try await rig.wait(isType("system", "init"))
-        #expect(reinit["session_id"] as? String == newID)
+        let newID = try #require(reinit["session_id"] as? String)
+        #expect(newID != rig.sessionID && newID != resetID)
         let afterReset = try await rig.waitResult()
         #expect(afterReset["session_id"] as? String == newID)
         #expect(await rig.finish())

@@ -199,6 +199,11 @@ public struct UserMessage: Sendable, Equatable {
     /// The structured result of the tool a `tool_result` block answers (`tool_use_result` on the wire, `toolUseResult`
     /// in transcripts).
     public var toolUseResult: JSONValue?
+    /// The tool calls of this record that did not run because a permission decision refused them (the user's deny with or
+    /// without a note, a deny rule, a mode): `tool_result_meta[].non_execution_kind` is `user-rejected` or `permission-rule`
+    /// on the wire, `toolDenialKind` the same in transcripts. The result text of a deny with a note is the note alone, so the
+    /// text cannot say it (measured, CLI 2.1.300).
+    public var refusedToolUseIDs: Set<String>
     public var timestamp: Date?
     public var priority: String?
     /// `origin.kind`: `human` for what Loom sent, `task-notification` for a finished background task. Stdout carries
@@ -216,10 +221,20 @@ public struct UserMessage: Sendable, Equatable {
         isMeta = json["isMeta"]?.bool ?? false
         isSidechain = json["isSidechain"]?.bool ?? false
         toolUseResult = json["tool_use_result"] ?? json["toolUseResult"]
+        var refused = Set<String>()
+        for meta in json["tool_result_meta"]?.array ?? [] {
+            if let id = meta["id"]?.string, Self.isRefusalKind(meta["non_execution_kind"]?.string) { refused.insert(id) }
+        }
+        if Self.isRefusalKind(json["toolDenialKind"]?.string) {
+            for case let .toolResult(result) in content { if let id = result.toolUseID { refused.insert(id) } }
+        }
+        refusedToolUseIDs = refused
         timestamp = WireTimestamp.parse(json["timestamp"]?.string)
         priority = json["priority"]?.string
         originKind = json["origin"]?["kind"]?.string
     }
+
+    private static func isRefusalKind(_ kind: String?) -> Bool { kind == "user-rejected" || kind == "permission-rule" }
 
     /// The text blocks joined, or nil when there are none.
     public var text: String? {

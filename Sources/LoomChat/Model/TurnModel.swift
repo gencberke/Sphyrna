@@ -35,7 +35,6 @@ public struct TurnModel: Sendable {
     public internal(set) var activity: String?
     /// `idle`, `running` or `requires_action`, from `system/session_state_changed`.
     public internal(set) var sessionState: String?
-    public internal(set) var conversationID: String?
     /// Records kept raw because their type is unknown (the renderer shows one drift notice per session).
     public internal(set) var unknownRecordCount = 0
     /// The `initialize` answer: the model is Ready, and these are its menus (never the account).
@@ -420,7 +419,6 @@ public struct TurnModel: Sendable {
         case let .commandLifecycle(lifecycle): ingestLifecycle(lifecycle, delta: &delta)
         case let .taskStarted(task): ingestTask(task, delta: &delta)
         case let .conversationReset(reset):
-            conversationID = reset.newConversationID ?? conversationID
             place(id: nextID("reset"), thread: .main, timestamp: now, offset: offset, policy: .standalone, delta: &delta,
                   body: .marker(.reset(trigger: reset.trigger)))
         case .controlRequest, .controlResponse, .controlCancel, .controlProgress, .keepAlive: break

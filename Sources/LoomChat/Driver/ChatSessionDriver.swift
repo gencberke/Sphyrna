@@ -1413,9 +1413,11 @@ public actor ChatSessionDriver {
             await retire(requestID: requestID, as: .cancelled, summary: summary)
             await afterRequestsChanged()
         case let .conversationReset(reset):
-            // The run goes to a new card, whose stream starts with the marker (`followMove`).
+            // The run goes to a new card, whose stream starts with the marker (`followMove`). The reset's own
+            // `new_conversation_id` is NOT adopted: the real CLI fills it with the record's uuid, and the transcript is written
+            // under the session id of the SessionStart hook and of the `system/init` that follow (measured, 2.1.300). Taking
+            // it made an empty card, and the real id a second move.
             resetTrigger = reset.trigger
-            if let id = reset.newConversationID { await adopt(id, transition: .new) }
             // What the CLI keeps of live settings across a reset (`/clear`, a compaction) is not measured: Ask's layer goes on
             // again, in the chain. A task of its own: this loop is what delivers the answers to its requests.
             if isAsk { Task { await self.reapplyAskLayer() } }

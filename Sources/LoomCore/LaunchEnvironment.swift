@@ -241,7 +241,7 @@ public enum LaunchEnvironment {
         guard output.status == 0 else {
             let detail = String(decoding: (output.stderr.isEmpty ? output.stdout : output.stderr).prefix(300), as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw LoomError.message("exit status \(output.status >> 8)" + (detail.isEmpty ? "" : ": \(detail)"))
+            throw LoomError.helperExit(status: output.status >> 8, detail: detail)
         }
         return String(decoding: output.stdout, as: UTF8.self)
     }
@@ -444,6 +444,8 @@ public enum LoomError: Error, CustomStringConvertible {
     case system(String, Int32)
     case message(String)
     case environmentTimeout
+    /// A helper (a capability probe, `--version`) exited with a status other than 0; `detail` is the head of its output.
+    case helperExit(status: Int32, detail: String)
     case unsupportedShell(String)
     case providerHistoryUnavailable(provider: ManagedSession.Provider, conversationID: String)
 
@@ -453,6 +455,7 @@ public enum LoomError: Error, CustomStringConvertible {
         case let .message(message): message
         case .environmentTimeout:
             "Terminal shell startup timed out; check startup files for hangs or input prompts"
+        case let .helperExit(status, detail): "exit status \(status)" + (detail.isEmpty ? "" : ": \(detail)")
         case let .unsupportedShell(shell):
             "Terminal environment resolution currently supports macOS /bin/zsh; unsupported shell: \(shell)"
         case let .providerHistoryUnavailable(provider, conversationID):

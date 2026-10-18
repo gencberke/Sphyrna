@@ -389,7 +389,8 @@ struct RealClaudeAcceptanceTests {
 
     @Test func a8ClearMovesTheRunToANewCardAndASendWorks() async throws {
         try await AccRig.run("a8-clear") { rig in
-            let driver = rig.driver()
+            let moves = Mutex<[UUID]>([])
+            let driver = rig.driver(onMoved: { _, to in moves.withLock { $0.append(to) } })
             let first = await driver.sessionID
             try await driver.startNew(projectID: nil, draft: rig.draft(mode: "default"))
             let pid = await driver.snapshot().processID
@@ -399,12 +400,44 @@ struct RealClaudeAcceptanceTests {
             rig.log("/clear: card changed \(moved), same process \(await driver.snapshot().processID == pid), phase \(await driver.currentPhase)")
             #expect(moved)
             #expect(await rig.waitIdle(driver, 30))
+            // Release B fix round (F1): the CLI writes the reset, the SessionStart hook and `system/init`, and the hook and the
+            // init carry the session the transcript is written under. Wait past a late second signal.
+            try await Task.sleep(for: .seconds(3))
+            rig.log("moves after one /clear: \(moves.withLock { $0.count }), the last one is the active card \(moves.withLock { $0.last } == card)")
+            #expect(moves.withLock { $0 } == [card])
             rig.turn("A8 send on the new card")
             try await driver.send("Reply with the single word: pong")
             #expect(await rig.waitIdle(driver, 90))
             let snapshot = await driver.snapshot()
             rig.log("send on the new card: turn \(snapshot.model.turns.last.map { "\($0.status)" } ?? "-"), card is the new one \(snapshot.sessionID == card), markers \(snapshot.model.entries.compactMap { if case let .marker(m) = $0.body { "\(m)" } else { nil } }.count)")
             #expect(snapshot.model.turns.last?.status == .succeeded)
+            // The card's conversation id is the one the transcript is written under, and no card is left without a transcript.
+            let conversation = try #require(await driver.liveState().conversationID)
+            let cards = try await rig.catalog.sessions().filter { $0.session.workingDirectory == rig.work.path }
+                .compactMap(\.session.providerConversationID)
+            rig.log("cards for the work folder \(cards.count); the active card's conversation has the pong in its transcript \(rig.transcriptContains(conversation, "pong")); every card but the first has a transcript \(cards.filter { rig.transcript($0).isEmpty }.count == 1)")
+            #expect(rig.transcriptContains(conversation, "pong"))
+            #expect(try await rig.catalog.session(id: card)?.session.providerConversationID == conversation)
+            #expect(cards.count == 2)
+            #expect(cards.filter { rig.transcript($0).isEmpty }.count <= 1)
+        }
+    }
+
+    // MARK: A2b. A denied tool reads as denied (release B fix round, F2)
+
+    @Test func a2bADeniedToolIsDeniedNotFailed() async throws {
+        try await AccRig.run("a2-approval") { rig in
+            let driver = rig.driver()
+            try await driver.startNew(projectID: nil, draft: rig.draft(mode: "default"))
+            rig.turn("A2b deny with a note: touch")
+            try await driver.send("Use the Bash tool to run exactly: touch denied-b.txt. If it is refused, say so in one sentence.")
+            let request = try #require(await rig.waitRequest(driver, 90))
+            try await driver.answer(requestID: request.requestID, .deny(note: "NOTE-ACC-8: do not create files here"))
+            #expect(await rig.waitIdle(driver, 90))
+            let statuses = Self.toolStatuses(await driver.snapshot())
+            rig.log("denied with a note: tool statuses \(statuses), denied-b.txt exists \(await rig.exists("denied-b.txt"))")
+            #expect(statuses == ["Bash:denied"])
+            #expect(await !rig.exists("denied-b.txt"))
         }
     }
 
@@ -570,6 +603,7 @@ private struct UsageRow {
 private final class AccRig: Sendable {
     let runtime: SessionRuntime
     let supervisor: ProcessSupervisor
+    let catalog: SessionCatalog
     let config: URL
     let work: URL
     let root: URL
@@ -579,10 +613,11 @@ private final class AccRig: Sendable {
     let spiedIDs = Mutex<Set<String>>([])
     let turns = Mutex(0)
 
-    init(runtime: SessionRuntime, supervisor: ProcessSupervisor, config: URL, work: URL, root: URL, socketDirectory: URL,
-         name: String, evidence: URL?) {
+    init(runtime: SessionRuntime, supervisor: ProcessSupervisor, catalog: SessionCatalog, config: URL, work: URL, root: URL,
+         socketDirectory: URL, name: String, evidence: URL?) {
         self.runtime = runtime
         self.supervisor = supervisor
+        self.catalog = catalog
         self.config = config
         self.work = work
         self.root = root
@@ -649,7 +684,7 @@ private final class AccRig: Sendable {
                 hookSilenceGrace: 10, catalogBackupDelay: nil))
         try await runtime.start()
         let evidence = env["LOOM_ACC_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
-        return AccRig(runtime: runtime, supervisor: supervisor, config: config, work: work, root: root,
+        return AccRig(runtime: runtime, supervisor: supervisor, catalog: catalog, config: config, work: work, root: root,
                       socketDirectory: socketDirectory, name: name, evidence: evidence)
     }
 
@@ -673,8 +708,8 @@ private final class AccRig: Sendable {
         try? FileManager.default.removeItem(at: root)
     }
 
-    func driver() -> ChatSessionDriver {
-        ChatSessionDriver(sessionID: UUID(), runtime: runtime, readyTimeout: .seconds(30))
+    func driver(onMoved: @escaping @Sendable (UUID, UUID) -> Void = { _, _ in }) -> ChatSessionDriver {
+        ChatSessionDriver(sessionID: UUID(), runtime: runtime, readyTimeout: .seconds(30), onMoved: onMoved)
     }
 
     func draft(mode: String) -> NewSessionLaunch {

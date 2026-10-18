@@ -78,6 +78,9 @@ struct ChatConfig {
     var failAskRules: Bool
     /// LOOM_FAKE_CHAT_RESET_FORGETS_SETTINGS=1: a `conversation_reset` drops the live settings (the unmeasured worst case).
     var resetForgetsSettings: Bool
+    /// LOOM_FAKE_CHAT_RESET_ORDER=init-first: a reset writes `system/init` before the SessionStart hook runs (the real CLI
+    /// writes the reset, then the hook, then `system/init`; the hook reaches Loom by another road, so either order can arrive).
+    var resetInitFirst: Bool
     /// LOOM_FAKE_CHAT_INIT_DELAY_MS: `initialize` is answered after this long (a start that stays in Starting for a while).
     var initDelayMs: Int
     /// LOOM_FAKE_CHAT_CONTROL_DELAY_MS: the mode, settings and rule requests are answered after this long (a window for races).
@@ -124,6 +127,7 @@ struct ChatConfig {
         failModes = Set((environment["LOOM_FAKE_CHAT_FAIL_MODE"] ?? "").split(separator: ",").map(String.init))
         failAskRules = environment["LOOM_FAKE_CHAT_FAIL_ASK_RULES"] == "1"
         resetForgetsSettings = environment["LOOM_FAKE_CHAT_RESET_FORGETS_SETTINGS"] == "1"
+        resetInitFirst = environment["LOOM_FAKE_CHAT_RESET_ORDER"] == "init-first"
         initDelayMs = environment["LOOM_FAKE_CHAT_INIT_DELAY_MS"].flatMap(Int.init) ?? 0
         controlDelayMs = environment["LOOM_FAKE_CHAT_CONTROL_DELAY_MS"].flatMap(Int.init) ?? 0
         userRules = (environment["LOOM_FAKE_CHAT_USER_RULES"]
@@ -417,6 +421,7 @@ final class ChatEngine {
               let uuid = object["uuid"] as? String else { return }
         var extra: ChatObject = [:]
         if let structured = object["tool_use_result"] { extra["toolUseResult"] = structured }
+        if let kind = (object["tool_result_meta"] as? [ChatObject])?.first?["non_execution_kind"] { extra["toolDenialKind"] = kind }
         transcript.append(wire.transcriptRecord(
             type: type, uuid: uuid, message: message, parentUUID: agent == nil ? lastUUID : nil, cwd: config.cwd,
             agentID: agent, extra: extra), agent: agent)
@@ -999,10 +1004,18 @@ final class ChatEngine {
         if parent == nil { sendRateLimit() }
     }
 
-    func toolResult(_ id: String, _ content: Any, error: Bool = false, structured: Any? = nil, parent: String? = nil) {
+    /// `refusal` (`user-rejected`, `permission-rule`) marks a call a permission decision refused, as the CLI does in the
+    /// record's `tool_result_meta` (and `toolDenialKind` in the transcript); the text of a deny with a note is the note alone.
+    func toolResult(_ id: String, _ content: Any, error: Bool = false, structured: Any? = nil, parent: String? = nil,
+                    refusal: String? = nil) {
+        var extra = agentExtra(parent)
+        if let refusal {
+            extra["tool_result_meta"] = [["id": id, "non_execution_kind": refusal,
+                                          "permission_decision": ["decision": "reject", "source": "user_reject"] as ChatObject] as ChatObject]
+        }
         emitMessage(wire.toolResult(
             toolUseID: id, content: content, isError: error, structured: structured, parent: parent,
-            extra: agentExtra(parent)), agent: parent.flatMap { subagents[$0]?.id })
+            extra: extra), agent: parent.flatMap { subagents[$0]?.id })
     }
 
     /// An interrupt, a `now` send or a pending request cut a tool short: the CLI answers the tool_use with a
@@ -1016,7 +1029,8 @@ final class ChatEngine {
         }
         toolResult(id, "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a "
             + "file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user "
-            + "to tell you how to proceed.", error: true, structured: "User rejected tool use", parent: parent)
+            + "to tell you how to proceed.", error: true, structured: "User rejected tool use", parent: parent,
+            refusal: "user-rejected")
         if first { send(wire.userText("[Request interrupted by user for tool use]")) }
     }
 

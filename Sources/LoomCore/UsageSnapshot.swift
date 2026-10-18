@@ -24,6 +24,8 @@ public struct UsageTokens: Sendable, Equatable {
     }
 
     public var cacheWrite: Int64 { cacheWrite5m + cacheWrite1h }
+    /// Every input token of the request: input, cache reads and cache writes (the length a prompt-tier price looks at).
+    public var promptTokens: Int64 { input + cacheWrite + cacheRead }
     /// Input, output and both cache classes; web searches are not tokens.
     public var total: Int64 { input + output + cacheWrite + cacheRead }
     /// Cache reads over all prompt-side tokens, or nil when there are none.

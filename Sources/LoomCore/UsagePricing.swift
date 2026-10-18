@@ -2,14 +2,19 @@ import Foundation
 
 /// Static list prices for Claude models, in USD per million tokens.
 ///
-/// Source: https://platform.claude.com/docs/en/about-claude/pricing, fetched
-/// 2026-10-07 (the page carries no date of its own). The table is hard-coded
+/// Source: https://platform.claude.com/docs/en/about-claude/pricing, checked
+/// 2026-10-18 (the page carries no date of its own). The table is hard-coded
 /// on purpose: Loom never fetches prices, and a table update re-prices history
-/// because cost is computed at query time from stored token counts.
+/// because cost is computed at query time from stored token counts (the index's
+/// `msg.cost` column holds only the cost an old transcript recorded itself, which
+/// stays authoritative).
 ///
 /// Every cache price on that page is a multiple of the base input price: a 5m
-/// write is 1.25x, a 1h write 2x, a read 0.1x (0.05x on Opus 5.5, 0.025x on
-/// Fable/Mythos 5.1). Fast mode replaces the base input and output prices and
+/// write is 1.25x, a 1h write 2x, a read 0.1x (0.05x on Opus 5.5 and Sonnet 5.5,
+/// 0.025x on Fable/Mythos 5.1). Haiku 5.5 has a second input and output price for
+/// a prompt above 100,000 tokens (every input token of the request: input, cache
+/// reads and cache writes); the cache multipliers apply to the price of the tier
+/// the request is in. Fast mode replaces the base input and output prices and
 /// the cache multipliers apply on top of the fast input price. `inference_geo`
 /// "us" multiplies every token category by 1.1 on Claude 4.6 and later models.
 /// Web search is $10 per 1,000 searches and is not multiplied. Batch pricing
@@ -25,6 +30,10 @@ public struct UsageModelPrice: Sendable, Equatable {
     public let fastInputPerMTok: Double?
     public let fastOutputPerMTok: Double?
     public let supportsUSGeo: Bool
+    /// Input and output prices of a request whose prompt is longer than `UsagePricing.longPromptThreshold` tokens; nil when
+    /// the model has a single price.
+    public let longPromptInputPerMTok: Double?
+    public let longPromptOutputPerMTok: Double?
 
     static let cacheWrite5mMultiplier = 1.25
     static let cacheWrite1hMultiplier = 2.0
@@ -32,17 +41,21 @@ public struct UsageModelPrice: Sendable, Equatable {
 
 public enum UsagePricing {
     /// Date the table was last checked against the official page.
-    public static let asOf = "2026-10-07"
+    public static let asOf = "2026-10-18"
+    /// A request with more prompt tokens than this (input, cache reads and cache writes) is in the long tier of a model that
+    /// has one. The usage index marks such messages in its groups, because a sum of requests has no request length.
+    public static let longPromptThreshold: Int64 = 100_000
     public static let sourceURL = "https://platform.claude.com/docs/en/about-claude/pricing"
     static let webSearchUSD = 10.0 / 1_000.0
 
     private static func price(
         _ name: String, _ input: Double, _ output: Double, read: Double = 0.1,
-        fast: (Double, Double)? = nil, geo: Bool = true
+        fast: (Double, Double)? = nil, geo: Bool = true, longPrompt: (Double, Double)? = nil
     ) -> UsageModelPrice {
         UsageModelPrice(
             displayName: name, inputPerMTok: input, outputPerMTok: output, cacheReadMultiplier: read,
-            fastInputPerMTok: fast?.0, fastOutputPerMTok: fast?.1, supportsUSGeo: geo)
+            fastInputPerMTok: fast?.0, fastOutputPerMTok: fast?.1, supportsUSGeo: geo,
+            longPromptInputPerMTok: longPrompt?.0, longPromptOutputPerMTok: longPrompt?.1)
     }
 
     /// Keyed by canonical id (see `canonicalModelID`).
@@ -59,11 +72,12 @@ public enum UsagePricing {
         "claude-opus-4-5": price("Opus 4.5", 5, 25, geo: false),
         "claude-opus-4-1": price("Opus 4.1", 15, 75, geo: false),
         "claude-opus-4": price("Opus 4", 15, 75, geo: false),
-        "claude-sonnet-5-5": price("Sonnet 5.5", 2, 10),
+        "claude-sonnet-5-5": price("Sonnet 5.5", 2, 10, read: 0.05),
         "claude-sonnet-5": price("Sonnet 5", 2, 10),
         "claude-sonnet-4-6": price("Sonnet 4.6", 3, 15),
         "claude-sonnet-4-5": price("Sonnet 4.5", 3, 15, geo: false),
         "claude-sonnet-4": price("Sonnet 4", 3, 15, geo: false),
+        "claude-haiku-5-5": price("Haiku 5.5", 0.1, 0.5, longPrompt: (0.5, 2.5)),
         "claude-haiku-4-5": price("Haiku 4.5", 1, 5, geo: false),
         "claude-haiku-3-5": price("Haiku 3.5", 0.8, 4, geo: false),
     ]
@@ -98,17 +112,27 @@ public enum UsagePricing {
     }
 
     /// Estimated cost of one message or an aggregate of messages sharing the
-    /// same speed and geography; nil when the model has no price.
-    public static func costUSD(model raw: String, tokens: UsageTokens, fast: Bool, usGeo: Bool) -> Double? {
-        price(forModel: raw).map { costUSD(price: $0, tokens: tokens, fast: fast, usGeo: usGeo) }
+    /// same speed, geography and prompt tier; nil when the model has no price.
+    /// `longPrompt` says the request(s) had a prompt above the threshold; nil reads it from `tokens`, which is only right
+    /// for a single message.
+    public static func costUSD(
+        model raw: String, tokens: UsageTokens, fast: Bool, usGeo: Bool, longPrompt: Bool? = nil
+    ) -> Double? {
+        price(forModel: raw).map { costUSD(price: $0, tokens: tokens, fast: fast, usGeo: usGeo, longPrompt: longPrompt) }
     }
 
-    static func costUSD(price: UsageModelPrice, tokens: UsageTokens, fast: Bool, usGeo: Bool) -> Double {
+    static func costUSD(
+        price: UsageModelPrice, tokens: UsageTokens, fast: Bool, usGeo: Bool, longPrompt: Bool? = nil
+    ) -> Double {
         var input = price.inputPerMTok
         var output = price.outputPerMTok
         if fast, let fastInput = price.fastInputPerMTok, let fastOutput = price.fastOutputPerMTok {
             input = fastInput
             output = fastOutput
+        } else if longPrompt ?? (tokens.promptTokens > longPromptThreshold),
+                  let longInput = price.longPromptInputPerMTok, let longOutput = price.longPromptOutputPerMTok {
+            input = longInput
+            output = longOutput
         }
         var perMillion = Double(tokens.input) * input
         perMillion += Double(tokens.output) * output

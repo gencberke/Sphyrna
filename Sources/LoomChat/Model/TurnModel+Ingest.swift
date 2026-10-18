@@ -293,7 +293,8 @@ extension TurnModel {
             }
             for result in results {
                 applyToolResult(result, structured: results.count == 1 ? message.toolUseResult : nil, thread: thread, time: time,
-                                offset: offset, delta: &delta)
+                                offset: offset, refused: result.toolUseID.map(message.refusedToolUseIDs.contains) ?? false,
+                                delta: &delta)
             }
             return
         }
@@ -373,10 +374,12 @@ extension TurnModel {
     }
 
     private mutating func applyToolResult(_ result: ToolResultBlock, structured: JSONValue?, thread: ChatThread, time: Date?,
-                                          offset: UInt64?, delta: inout ModelDelta) {
+                                          offset: UInt64?, refused: Bool, delta: inout ModelDelta) {
         guard let id = result.toolUseID else { return }
         let images = result.images.map(Self.bounded)
         var (status, exitCode) = Self.classify(result)
+        // A call a permission decision refused is denied, whatever its text says (a deny with a note: the note alone).
+        if refused, result.isError { status = .denied }
         // A refusal in Ask is what Ask is for: expected, and shown quietly (not as a denied call or a failure). The text of
         // the CLI's `dontAsk` mode says so by itself; a deny rule's text does with Ask on at the turn's `system/init`.
         if status == .denied, ChatAskMode.isRefusal(text: result.text, askIsOn: latestInit?.permissionMode == ChatAskMode.mode.rawValue) {

@@ -227,7 +227,7 @@ extension ChatEngine {
     func refuseCall(id: String, tool: String, input: ChatObject, reasonType: String, message: String) {
         send(wire.permissionDenied(tool: tool, toolUseID: id, message: message, reasonType: reasonType))
         denials.append(["tool_name": tool, "tool_use_id": id, "tool_input": input])
-        toolResult(id, message, error: true, structured: "Error: " + message)
+        toolResult(id, message, error: true, structured: "Error: " + message, refusal: "permission-rule")
     }
 
     /// One tool call decided by the rules: it runs (`effect` gives its result), asks the host, or is refused. True when it ran.

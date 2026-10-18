@@ -278,9 +278,26 @@ def session_row(session):
     return next((r for r in rows if r['id'] == session), None)
 
 
+def conversation_from_catalog(session):
+    """The provider conversation id the catalog has for a card (read-only; the sidebar's row details are empty in the projects view)."""
+    import sqlite3
+    path = data / 'catalog.sqlite3'
+    if not path.exists():
+        return None
+    try:
+        db = sqlite3.connect(f'file:{path}?mode=ro', uri=True, timeout=5)
+        try:
+            row = db.execute('SELECT provider_conversation_id FROM sessions WHERE upper(id) = upper(?)', (session,)).fetchone()
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return None
+    return row[0] if row and row[0] else None
+
+
 def conversation_of(session):
     row = session_row(session)
-    return (row or {}).get('conversationID') or session
+    return (row or {}).get('conversationID') or conversation_from_catalog(session) or session
 
 
 def new_session_id(before_ids):
@@ -475,6 +492,25 @@ def rows_summary():
             'route': c.get('route')}
 
 
+def sidebar_rows():
+    """How many rows the sidebar lists for the project (the catalog's loaded rows)."""
+    return catalog('sidebar').get('loadedRows')
+
+
+def journal_events(name):
+    """How many journal lines of this event the app under test has written (event names only)."""
+    path = data / 'diagnostics' / 'journal.jsonl'
+    if not path.exists():
+        return 0
+    count = 0
+    for line in path.read_text(errors='replace').splitlines():
+        try:
+            count += json.loads(line).get('event') == name
+        except ValueError:
+            pass
+    return count
+
+
 def check_b12():
     work, project = launch('app-b12')
     claude_before = claude_pids_now()
@@ -491,9 +527,13 @@ def check_b12():
     while time.monotonic() < end and not new:
         time.sleep(1.5)
         new = new_session_id(before)
+    time.sleep(3)  # a second move would come within milliseconds; wait well past that
     after_summary = rows_summary()
-    step(f'after /clear: {after_summary}; new card found in the catalog: {new is not None}')
-    verdict('b12.clearMovesToNewCard', new is not None, {'before': before_summary, 'after': after_summary})
+    rows_after_clear, moves = sidebar_rows(), journal_events('chat.moved')
+    step(f'after /clear: {after_summary}; new card found in the catalog: {new is not None}; sidebar rows {rows_after_clear}; chat.moved {moves}')
+    # Release B fix round, F1: one /clear is one move and two rows (the original and the new card), no empty middle card.
+    verdict('b12.clearMovesToNewCard', new is not None and rows_after_clear == 2 and moves == 1,
+            {'before': before_summary, 'after': after_summary, 'sidebarRows': rows_after_clear, 'chatMoved': moves})
     target = new or session
     cmd(f'select:{target}')
     time.sleep(1.5)
@@ -506,9 +546,13 @@ def check_b12():
         v = until(answered, 100, 'turn on the new card')
     except RuntimeError:
         v = chat_view(target, 'clear-late')
-    conv = (session_row(target) or {}).get('conversationID') or target
+    conv = conversation_of(target)
     pongs = [t for t in assistant_texts(conv) if 'pong' in t.lower()] if transcript_path(conv) else []
-    verdict('b12.sendOnNewCard', v.get('turns') == ['succeeded'], {'turns': v.get('turns'), 'entries': v.get('entries'), 'rowKinds': v.get('rowKinds'), 'transcriptHasThePong': bool(pongs), 'summary': rows_summary()})
+    rows_after_send = sidebar_rows()
+    # The /clear itself ends in a result on the new card, so its turns end with the pong's; the transcript is the card's own.
+    verdict('b12.sendOnNewCard', (v.get('turns') or [])[-1:] == ['succeeded'] and bool(pongs) and rows_after_send == 2,
+            {'turns': v.get('turns'), 'entries': v.get('entries'), 'rowKinds': v.get('rowKinds'), 'transcriptHasThePong': bool(pongs),
+             'sidebarRows': rows_after_send, 'summary': rows_summary()})
     shot('b12-chat-after-clear')
     exited, seconds = quit_app(60)
     hosts, claude = leftover_processes(claude_before)
