@@ -165,11 +165,18 @@ extension ProcessSupervisor {
             session.currentRun = runtime.run
             sessions[sessionID] = session
         }
-        // A pipe child is asked to leave the way its protocol says: stdin
-        // closes, and only a child still alive after its own, longer grace
-        // period gets signals (SIGTERM, then SIGKILL).
+        // A pipe child is asked to leave the way its protocol says: its owner
+        // ends the work under way (`leave`: the Chat face interrupts and waits
+        // for the turn's result), stdin closes, and only a child still alive
+        // after its own, longer grace period gets signals (SIGTERM, then
+        // SIGKILL). Never a signal in the middle of a turn.
         let isPipe = runtime.endpoint.isPipe
         if isPipe {
+            // A leader that already exited cannot be asked anything (and its owner must not take its end for a
+            // stop it asked for).
+            if endReason != .processExited, runtime.run.exitStatus == nil, let leave = stopHooks[runID]?.leave {
+                await leave(ManagedRunLeave(graceSeconds: inputCloseGraceSeconds, reason: endReason))
+            }
             await runtime.endpoint.closeInput()
             await awaitExit(of: [runID], graceSeconds: inputCloseGraceSeconds)
         }
@@ -295,15 +302,37 @@ extension ProcessSupervisor {
     func awaitExit(of runIDs: [UUID], graceSeconds: Double) async {
         let deadline = ProcessInfo.processInfo.systemUptime + max(0.02, graceSeconds)
         repeat {
-            guard let snapshot = try? ProcessTable.snapshot() else { return }
-            var live = false
-            for runID in runIDs {
-                guard let remaining = try? sample(runID: runID, snapshot: snapshot) else { return }
-                if remaining.contains(where: { !$0.zombie }) { live = true }
-            }
-            if !live { return }
+            guard let live = try? anyProcessLives(of: runIDs), live else { return }
             try? await Task.sleep(for: .milliseconds(10))
         } while ProcessInfo.processInfo.systemUptime < deadline
+    }
+
+    /// Whether a process of the runs still lives. A run alone in its run scope (every pipe run has one) is read
+    /// from the scope's own members, so a 10 ms wait does not take a process-table snapshot per pass; other runs
+    /// are sampled from one snapshot. A run that is gone throws, which ends the wait.
+    func anyProcessLives(of runIDs: [UUID]) throws -> Bool {
+        var sampled: [UUID] = []
+        for runID in runIDs {
+            if let members = try exclusiveScopeMembers(of: runID) {
+                if members.contains(where: { !$0.zombie }) { return true }
+            } else {
+                sampled.append(runID)
+            }
+        }
+        guard !sampled.isEmpty else { return false }
+        let snapshot = try ProcessTable.snapshot()
+        for runID in sampled where try sample(runID: runID, snapshot: snapshot).contains(where: { !$0.zombie }) {
+            return true
+        }
+        return false
+    }
+
+    /// The forked members of the run's scope when the run is the scope's only one (then they are exactly what it
+    /// owns); nil otherwise.
+    func exclusiveScopeMembers(of runID: UUID) throws -> [RunScopeMember]? {
+        guard let runtime = runtimes[runID] else { throw SessionManagementError.runNotFound(runID) }
+        guard let scope = runtime.scope, scopeRuns[scope.coalitionID] == [runID] else { return nil }
+        return try scope.forkedMembers()
     }
 
     /// The one escalation loop for both a session stop and the final app-wide

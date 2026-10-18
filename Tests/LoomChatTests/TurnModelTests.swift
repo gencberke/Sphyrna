@@ -102,8 +102,10 @@ struct TurnModelLiveTests {
         var model = TurnModel(source: .live)
         model.appendPendingUser(uuid: "u1", text: "run the build", at: t0)
         _ = apply(&model,
-                  Fixture.assistant(messageID: "m1", uuid: "a1", blocks: [Fixture.toolUse("t1", "Bash", ["command": "make"])]),
-                  Fixture.result("error_during_execution", isError: true, terminalReason: "aborted_tools"))
+                  Fixture.assistant(messageID: "m1", uuid: "a1", blocks: [Fixture.toolUse("t1", "Bash", ["command": "make"])]))
+        // Loom's own interrupt (V16: only then is an aborted turn the user's stop).
+        model.noteInterruptSent()
+        _ = apply(&model, Fixture.result("error_during_execution", isError: true, terminalReason: "aborted_tools"))
         #expect(model.tools[0].status == .interrupted)
         #expect(model.turns[0].status == .interrupted)
         #expect(model.markers.last == .interrupted(afterMs: 4200))
@@ -199,6 +201,7 @@ struct TurnModelLiveTests {
                             "duration_ms": 10, "session_id": "s1"]))
         #expect(model.turns[0].status == .failed("api_error"))
         model.appendPendingUser(uuid: "u2", text: "again", at: t0)
+        model.noteInterruptSent()
         apply(&model, Fixture.line(["type": "result", "subtype": "error_during_execution", "is_error": true, "terminal_reason": "aborted_tools", "session_id": "s1"]))
         #expect(model.turns[1].status == .interrupted)
     }

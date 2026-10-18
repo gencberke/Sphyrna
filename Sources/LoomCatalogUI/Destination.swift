@@ -77,6 +77,9 @@ public final class SessionFaces {
     /// On since the stream view (V13) is routed. A kill switch: with it off no route is `.chat`, and a Claude
     /// session shows its terminal, kept screen or record as in 0.4.4.
     public var readOnlyChatEnabled = true
+    /// The live Chat face (V16): Claude driven over stream-json pipes. Off until V19 makes it the default; only tests
+    /// and evidence turn it on. A session whose run already is a pipe run shows its live chat either way.
+    public var liveChatEnabled = false
     public private(set) var choices: [UUID: SessionFace] = [:]
 
     public init() {}

@@ -10,6 +10,9 @@ public enum ControlError: Error, Equatable, Sendable {
     case cancelled(requestID: String)
     /// The channel was closed (the process ended) before an answer came.
     case closed
+    /// `outgoing` already holds `ControlChannel.outgoingLimit` lines nobody wrote to the process (its stdin is stuck
+    /// or full): nothing was queued.
+    case outputFull
     /// The CLI answered with an error.
     case rejected(requestID: String, message: String)
 }
@@ -44,6 +47,9 @@ public enum ControlEvent: Sendable, Equatable {
     /// A request of a kind Loom does not handle. The channel already answered it with an error, so the CLI is not left
     /// waiting.
     case unsupported(requestID: String, subtype: String?)
+    /// A request Loom sent is under way (`control_request_progress`, e.g. `started` before a `side_question`'s
+    /// answer). Only for a request still waiting for its answer.
+    case progress(requestID: String, status: String?)
 }
 
 /// The control half of the stream-json conversation: request ids and the table of requests in flight, both ways.
@@ -56,8 +62,13 @@ public enum ControlEvent: Sendable, Equatable {
 /// - `system/init` capabilities gate the requests that need one.
 ///
 /// The channel does no I/O: the owner feeds it decoded messages (`receive`) and writes every line of `outgoing` to the
-/// process's stdin in order.
+/// process's stdin in order. `outgoing` is bounded (`outgoingLimit` lines): when the writer cannot keep up (the child
+/// stopped reading, its stdin queue is full) a further line is refused with `ControlError.outputFull` instead of being
+/// held without limit.
 public actor ControlChannel {
+    /// The most lines `outgoing` holds that were not written yet.
+    public static let outgoingLimit = 256
+
     public nonisolated let outgoing: AsyncStream<Data>
     public nonisolated let events: AsyncStream<ControlEvent>
 
@@ -76,12 +87,14 @@ public actor ControlChannel {
     private var waiting: [IncomingControlRequest] = []
     private var capabilities: Set<String>?
     private var isClosed = false
+    private var reportedFull = false
 
-    public init(defaultTimeout: Duration = .seconds(30),
+    public init(defaultTimeout: Duration = .seconds(30), outgoingLimit: Int = ControlChannel.outgoingLimit,
                 makeRequestID: @escaping @Sendable () -> String = { "loom-" + UUID().uuidString.lowercased() }) {
         self.defaultTimeout = defaultTimeout
         self.makeRequestID = makeRequestID
-        (outgoing, outgoingContinuation) = AsyncStream.makeStream(of: Data.self)
+        (outgoing, outgoingContinuation) = AsyncStream.makeStream(
+            of: Data.self, bufferingPolicy: .bufferingOldest(outgoingLimit))
         (events, eventContinuation) = AsyncStream.makeStream(of: ControlEvent.self)
     }
 
@@ -110,11 +123,21 @@ public actor ControlChannel {
                     await self?.finish(id, throwing: .timedOut(requestID: id), tellCLI: true)
                 }
                 pending[id] = Pending(continuation: continuation, subtype: request.subtype, timer: timer)
-                outgoingContinuation.yield(ControlWire.requestLine(id: id, request))
+                if !enqueue(ControlWire.requestLine(id: id, request)) {
+                    finish(id, throwing: .outputFull, tellCLI: false)
+                }
             }
         } onCancel: {
             Task { await self.finish(id, throwing: .cancelled(requestID: id), tellCLI: true) }
         }
+    }
+
+    /// Queues a line that is not a control message (a user message) on `outgoing`, so it keeps its order with the control
+    /// lines around it: an interrupt and the message sent right after it reach the CLI in that order. Throws `.closed`
+    /// once closed and `.outputFull` when `outgoing` is full.
+    public func write(_ line: Data) throws {
+        guard !isClosed else { throw ControlError.closed }
+        guard enqueue(line) else { throw ControlError.outputFull }
     }
 
     /// Sends a request and does not wait for its answer (the answer is ignored). Returns its id.
@@ -122,8 +145,7 @@ public actor ControlChannel {
     public func send(_ request: OutgoingControlRequest) -> String? {
         guard !isClosed else { return nil }
         let id = makeRequestID()
-        outgoingContinuation.yield(ControlWire.requestLine(id: id, request))
-        return id
+        return enqueue(ControlWire.requestLine(id: id, request)) ? id : nil
     }
 
     // MARK: CLI to host
@@ -148,9 +170,11 @@ public actor ControlChannel {
                 eventContinuation.yield(.request(request))
             case let .other(subtype, _):
                 let name = subtype ?? "unknown"
-                outgoingContinuation.yield(ControlWire.errorLine(id: request.requestID, "Loom does not handle \(name) requests"))
+                enqueue(ControlWire.errorLine(id: request.requestID, "Loom does not handle \(name) requests"))
                 eventContinuation.yield(.unsupported(requestID: request.requestID, subtype: subtype))
             }
+        case let .controlProgress(requestID, status):
+            if pending[requestID] != nil { eventContinuation.yield(.progress(requestID: requestID, status: status)) }
         case let .controlCancel(requestID):
             if let index = waiting.firstIndex(where: { $0.requestID == requestID }) {
                 eventContinuation.yield(.cancelled(waiting.remove(at: index)))
@@ -193,11 +217,24 @@ public actor ControlChannel {
 
     // MARK: Private
 
+    /// An answer that cannot be queued leaves the request waiting (and returns false), so it can be answered again.
     private func answer(_ requestID: String, _ line: Data) -> Bool {
-        guard let index = waiting.firstIndex(where: { $0.requestID == requestID }) else { return false }
+        guard let index = waiting.firstIndex(where: { $0.requestID == requestID }), enqueue(line) else { return false }
         waiting.remove(at: index)
-        outgoingContinuation.yield(line)
         return true
+    }
+
+    /// Queues one line; false when the channel is closed or `outgoing` is full (the line is dropped and logged once
+    /// per channel).
+    @discardableResult
+    private func enqueue(_ line: Data) -> Bool {
+        guard !isClosed else { return false }
+        if case .enqueued = outgoingContinuation.yield(line) { return true }
+        if !reportedFull {
+            reportedFull = true
+            LoomLog.error(.lifecycle, "A Chat session's input queue is full; Loom refused a line instead of holding it")
+        }
+        return false
     }
 
     private func resolve(_ id: String, with result: Result<ControlReply, ControlError>) {
@@ -209,6 +246,6 @@ public actor ControlChannel {
     private func finish(_ id: String, throwing error: ControlError, tellCLI: Bool) {
         guard pending[id] != nil else { return }
         resolve(id, with: .failure(error))
-        if tellCLI, !isClosed { outgoingContinuation.yield(ControlWire.cancelLine(id: id)) }
+        if tellCLI { enqueue(ControlWire.cancelLine(id: id)) }
     }
 }

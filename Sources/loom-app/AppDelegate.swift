@@ -454,6 +454,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 )
                 try await created.start()
                 let conversations = ConversationController(runtime: created, model: model)
+                model.installChatSessions(runtime: created, dataRoot: root)
                 await conversations.begin()
                 // The launch is recorded in both flavors; the cleanup review (which deletes in bulk)
                 // is offered only where the identity enables it (CP4-G, DP-CP4-2).

@@ -131,31 +131,6 @@ extension ChatFixture {
     }
 }
 
-extension ChatRow.Kind {
-    /// A short name for asserting the order of rows.
-    var tag: String {
-        switch self {
-        case .start: "start"
-        case .marker: "marker"
-        case .divider: "divider"
-        case .user: "user"
-        case let .prose(_, settled): settled ? "answer" : "prose"
-        case .thinking: "thinking"
-        case .tool: "tool"
-        case .group: "group"
-        case .subagent: "subagent"
-        case .plan: "plan"
-        case .request: "request"
-        case .raw: "raw"
-        case .turnFold: "fold"
-        case .changedFiles: "changes"
-        case .thought: "thought"
-        case .live: "live"
-        case .empty: "empty"
-        }
-    }
-}
-
 extension ChatFixture {
     /// The bytes the lines take in a file (each followed by a newline).
     static func size(of lines: [String]) -> UInt64 { lines.reduce(0) { $0 + UInt64($1.utf8.count + 1) } }

@@ -1,4 +1,5 @@
 import Foundation
+import LoomChat
 import LoomCore
 import SwiftUI
 
@@ -68,7 +69,7 @@ struct SessionChatView: View {
             // A question the provider asked stays answerable while the chat is shown; Return never approves it.
             RequestList(model: model, row: row, returnApproves: false)
             if let issue = SessionIssueNotice.message(for: row.live) { SessionIssueNotice(message: issue) }
-            if model.terminalView(for: row.id) == nil {
+            if Self.showsNotRunning(isRunning: model.isRunning(row)) {
                 EndedScreenNotice(model: model, row: row, showsDetails: false)
             }
             content(indicator: indicator)
@@ -77,8 +78,28 @@ struct SessionChatView: View {
         .onChange(of: indicator) { _, value in noteState(value) }
     }
 
+    /// "This session is not running" belongs only to a session without a run: a Chat-face (pipe) run has no terminal
+    /// and is running all the same.
+    nonisolated static func showsNotRunning(isRunning: Bool) -> Bool { !isRunning }
+
     @ViewBuilder
     private func content(indicator: SessionIndicator) -> some View {
+        // A Chat-face run: the driver's live model, not the transcript (V16).
+        if model.runEndpoint(of: row) == .pipe, let driver = model.liveChatDriver(for: row.id),
+           let feed = model.liveChatFeed(for: driver, card: row.id, conversationID: claudeSessionID,
+                                         workingDirectory: row.record.session.workingDirectory) {
+            LiveChatView(feed: feed, onOpenSubagent: { [model, sessionID = row.id] agentID, _ in
+                model.openAgents(for: agentID, in: sessionID)
+            })
+            .id(ObjectIdentifier(feed))
+            .onChange(of: row.record.session.workingDirectory) { _, value in feed.setWorkingDirectory(value) }
+        } else {
+            transcript(indicator: indicator)
+        }
+    }
+
+    @ViewBuilder
+    private func transcript(indicator: SessionIndicator) -> some View {
         // Read here, so the view follows the folder: a row shown before it is known switches once it is.
         if let id = claudeSessionID, let directory = model.claudeConfigDirectory {
             ChatTranscriptView(

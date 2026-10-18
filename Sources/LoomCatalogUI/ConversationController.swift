@@ -79,6 +79,13 @@ public final class ConversationController: NewSessionIntents {
     /// does not confirm is asked of the supervisor (see `reconcile(_:)`).
     public func begin() async {
         guard observer == nil else { return }
+        // Choices recorded by builds before V16 (the new-session file's `launched` list) move into the catalog once:
+        // only sessions with none stored take them.
+        if let launched = model?.newSession.launchedChoices(), !launched.isEmpty {
+            do { try await runtime.catalog.importLaunchChoices(launched) } catch {
+                LoomLog.error(.catalog, "Launch choices could not be copied to the catalog (\(LoomLog.category(of: error)))")
+            }
+        }
         let stream = await runtime.supervisor.events.subscribe()
         observer = Task { [weak self] in
             for await frame in stream {
@@ -258,12 +265,11 @@ public final class ConversationController: NewSessionIntents {
                    !model.startableProviders.contains(provider) {
                     return
                 }
-                // S2: the CLI restores neither mode nor model, so a session Loom started from a draft resumes
-                // with the ones it was started with.
+                // S2: the CLI restores neither mode nor model nor effort; the runtime passes the session's own,
+                // from the catalog (V16).
                 let launch = try await runtime.resumeConversation(
                     sessionID: sessionID, rows: size.rows, columns: size.columns,
-                    outputSink: surface.outputSink,
-                    choices: model.newSession.launchChoices(for: sessionID) ?? ClaudeLaunchChoices()
+                    outputSink: surface.outputSink
                 )
                 adopt(launch, surface: surface)
                 model.showStarted(launch.sessionID)

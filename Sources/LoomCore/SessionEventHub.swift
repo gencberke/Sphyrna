@@ -29,6 +29,45 @@ public struct ProviderUserRequest: Equatable, Sendable, Identifiable {
     }
 }
 
+/// How a live run is driven: a terminal (the provider's TUI in a PTY) or pipes (Claude's stream-json child,
+/// driven by the Chat face, V16). A running session is one with a run, whatever its endpoint: views must not take
+/// "has a terminal view" for "running". Persisted with the session as its owning face (`SessionCatalog.runEndpoint`).
+public enum RunEndpointKind: String, Equatable, Sendable, Codable {
+    case terminal
+    case pipe
+}
+
+/// A request of a live run that waits for the user, whatever the provider: an approval, a question or a plan.
+/// Keyed by the provider's request id and the tool call it is about. Home, the sidebar and the Dock read these;
+/// the Chat face's cards (V18) are built on them. The summary is display text (a tool name, a question's
+/// header); it is held in memory only and never logged.
+public struct ProviderPendingRequest: Equatable, Sendable, Identifiable {
+    public enum Kind: Equatable, Sendable {
+        case approval
+        case question
+        case plan
+    }
+
+    public var id: String { requestID }
+    public let requestID: String
+    public let toolUseID: String?
+    public let kind: Kind
+    public let toolName: String
+    public let summary: String
+    /// When Loom learned of it; nil when the provider's request does not say (Codex).
+    public let arrivedAt: Date?
+
+    public init(requestID: String, toolUseID: String?, kind: Kind, toolName: String, summary: String,
+                arrivedAt: Date?) {
+        self.requestID = requestID
+        self.toolUseID = toolUseID
+        self.kind = kind
+        self.toolName = toolName
+        self.summary = summary
+        self.arrivedAt = arrivedAt
+    }
+}
+
 /// Where a live run stands for the activity view's Active section (FB4-2): a turn is under way, or it
 /// ended while nobody was looking and the user has not read the end yet. Derived here, beside
 /// `unviewedCompletion`, so card states keep one source (`SessionEventHub.publish`).
@@ -49,6 +88,8 @@ public struct SessionViewState: Equatable, Sendable {
     public var conversationID: String?
     public var identity: SessionIdentityState
     public var runID: UUID?
+    /// How the live run is driven; nil without a run (and for a moment after `runStarted`).
+    public var runEndpoint: RunEndpointKind?
     public var blockers: Set<SessionIdleBlocker>
     /// Why the last stop of this conversation could not be verified; cleared by
     /// a verified stop or a new run. Survives skipped frames.
@@ -70,6 +111,9 @@ public struct SessionViewState: Equatable, Sendable {
     /// new run; survives skipped frames.
     public var issue: String?
     public var userRequests: [ProviderUserRequest]
+    /// The live run's requests that wait for the user (provider-independent; the Chat face publishes them).
+    /// Cleared by a new run and by the end of the run.
+    public var pendingRequests: [ProviderPendingRequest]
     /// The subagents the run's conversation has under it (D-39). Only a live run has any: the list is
     /// cleared by a new run, a detach and the end of the run, and an update that arrives after the run
     /// ended is ignored.
@@ -87,8 +131,11 @@ public struct SessionViewState: Equatable, Sendable {
         runID: UUID? = nil, blockers: Set<SessionIdleBlocker> = [],
         stopFailure: String? = nil, unviewedCompletion: Bool = false,
         waitingAcknowledged: Bool = false, activePhase: ActivePhase = .inactive, issue: String? = nil,
-        userRequests: [ProviderUserRequest] = [], subagents: [SubagentRecord] = [], reason: StatusReason? = nil
+        userRequests: [ProviderUserRequest] = [], subagents: [SubagentRecord] = [], reason: StatusReason? = nil,
+        runEndpoint: RunEndpointKind? = nil, pendingRequests: [ProviderPendingRequest] = []
     ) {
+        self.runEndpoint = runEndpoint
+        self.pendingRequests = pendingRequests
         self.status = status
         self.lifecycle = lifecycle
         self.conversationID = conversationID
@@ -104,6 +151,21 @@ public struct SessionViewState: Equatable, Sendable {
         self.subagents = subagents
         self.reason = reason
     }
+
+    /// Every request of the live run that waits for the user, in one list whatever the provider: the Chat face's
+    /// (`pendingRequests`), then Codex's answerable ones (`userRequests`: a command or a file change is an approval).
+    public var waitingRequests: [ProviderPendingRequest] {
+        pendingRequests + userRequests.filter(\.isAnswerable).map { request in
+            let toolName: String
+            switch request.kind {
+            case .command: toolName = "command"
+            case .fileChange: toolName = "fileChange"
+            case let .unsupported(name): toolName = name
+            }
+            return ProviderPendingRequest(requestID: request.id, toolUseID: nil, kind: .approval, toolName: toolName,
+                                          summary: request.summary, arrivedAt: nil)
+        }
+    }
 }
 
 public enum SessionEventChange: Equatable, Sendable {
@@ -113,6 +175,10 @@ public enum SessionEventChange: Equatable, Sendable {
     case conversationIdentity(String?)
     case identityState(SessionIdentityState)
     case runStarted(UUID)
+    /// The endpoint of a run that started (published right after its `runStarted`).
+    case runEndpoint(UUID, RunEndpointKind)
+    /// The live run's pending requests, the whole list.
+    case pendingRequests([ProviderPendingRequest])
     case runDetached(UUID)
     case runEnded(UUID, ManagedRunEndReason)
     case blockers(Set<SessionIdleBlocker>)
@@ -226,6 +292,8 @@ public actor SessionEventHub {
         case let .identityState(value): state.identity = value
         case let .runStarted(value):
             state.runID = value
+            state.runEndpoint = nil
+            state.pendingRequests = []
             state.stopFailure = nil
             state.issue = nil
             state.userRequests = []
@@ -238,12 +306,15 @@ public actor SessionEventHub {
         case let .runDetached(value):
             if state.runID == value {
                 state.runID = nil; state.status = nil; state.waitingAcknowledged = false; state.subagents = []
+                state.runEndpoint = nil; state.pendingRequests = []
                 state.activePhase = .inactive
                 state.reason = state.reason.flatMap(Self.keptAfterRun)
             }
         case let .runEnded(value, _):
             if state.runID == value {
                 state.runID = nil
+                state.runEndpoint = nil
+                state.pendingRequests = []
                 state.status = nil
                 state.waitingAcknowledged = false
                 state.activePhase = .inactive
@@ -266,6 +337,13 @@ public actor SessionEventHub {
             if Self.isAtPromptPeriod(state.status?.activity) { state.waitingAcknowledged = true }
         case let .issue(value): state.issue = value
         case let .userRequests(value): state.userRequests = value
+        case let .runEndpoint(run, kind):
+            guard state.runID == run else { return }
+            state.runEndpoint = kind
+        case let .pendingRequests(value):
+            // A late list must not bring requests back to a session whose run is over.
+            guard state.runID != nil || value.isEmpty else { return }
+            state.pendingRequests = value
         case let .subagents(value):
             // A late update must not bring subagents back to a session whose run is over.
             guard state.runID != nil || value.isEmpty else { return }

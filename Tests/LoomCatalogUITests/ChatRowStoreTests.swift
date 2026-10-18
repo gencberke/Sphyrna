@@ -205,6 +205,8 @@ struct ChatRowStoreTests {
         Self.live(&session, LiveScript.block(0, ["type": "tool_use", "id": "t2", "name": "Bash"]), "tool running")
         Self.live(&session, LiveScript.jsonDelta(0, "{\"command\":\"sleep 99\"}"))
         Self.live(&session, LiveScript.stop(0))
+        // The user's stop: Loom sent the interrupt (an aborted turn without one is a failure, V16).
+        session.model.noteInterruptSent()
         Self.live(&session, LiveScript.result(terminalReason: "aborted_tools"), "interrupted")
         #expect(session.model.turns.last?.status == .interrupted)
         #expect(session.flat.contains { $0.kind.tag == "divider" })

@@ -43,8 +43,14 @@ extension ProcessSupervisor {
         // its process cannot appear after the active-run snapshot below.
         let pendingDeadline = ProcessInfo.processInfo.systemUptime
             + max(0.02, pendingOperationGraceSeconds)
-        while (!reservedSessions.isEmpty || !environmentJobs.isEmpty || !transitioningRuns.isEmpty || !stoppingRuns.isEmpty),
-              ProcessInfo.processInfo.systemUptime < pendingDeadline {
+        // A pipe run's Stop takes longer by design (its owner's leave, then the input-close grace, then the
+        // signals): Quit right after a Chat Stop waits for that stop to finish rather than failing.
+        let pipeStopDeadline = pendingDeadline + 2 * inputCloseGraceSeconds + 4 * graceSeconds + 1
+        while (!reservedSessions.isEmpty || !environmentJobs.isEmpty || !transitioningRuns.isEmpty || !stoppingRuns.isEmpty) {
+            let onlyPipeStops = reservedSessions.isEmpty && environmentJobs.isEmpty && transitioningRuns.isEmpty
+                // A run already released is finishing its stop.
+                && stoppingRuns.allSatisfy { runtimes[$0]?.endpoint.isPipe ?? true }
+            if ProcessInfo.processInfo.systemUptime >= (onlyPipeStops ? pipeStopDeadline : pendingDeadline) { break }
             try? await Task.sleep(for: .milliseconds(1))
         }
         if !reservedSessions.isEmpty || !environmentJobs.isEmpty {
@@ -115,6 +121,16 @@ extension ProcessSupervisor {
         // phase skips every process of a pipe run.
         let pipeRuns = active.map(\.1).filter { runtimes[$0]?.endpoint.isPipe == true }
         if !pipeRuns.isEmpty {
+            // The order of a Stop, for all of them at once: each owner ends the
+            // work under way (bounded by the same grace), then stdin closes.
+            let leaving = pipeRuns.filter { runtimes[$0]?.run.exitStatus == nil }.compactMap { stopHooks[$0]?.leave }
+            if !leaving.isEmpty {
+                await withTaskGroup(of: Void.self) { group in
+                    for leave in leaving {
+                        group.addTask { await leave(ManagedRunLeave(graceSeconds: inputCloseGraceSeconds, reason: .applicationQuit)) }
+                    }
+                }
+            }
             for runID in pipeRuns { await runtimes[runID]?.endpoint.closeInput() }
             await awaitExit(of: pipeRuns, graceSeconds: inputCloseGraceSeconds)
         }
@@ -125,6 +141,11 @@ extension ProcessSupervisor {
             hangupExempt: { [self] in
                 var exempt: Set<ProcessIdentity> = []
                 for runID in pipeRuns {
+                    // A pipe run alone in its scope: its members, without a process-table snapshot per pass.
+                    if let members = try? exclusiveScopeMembers(of: runID) {
+                        exempt.formUnion(members.map(\.identity))
+                        continue
+                    }
                     _ = try? sample(runID: runID)
                     exempt.formUnion(runtimes[runID]?.run.descendants ?? [])
                 }

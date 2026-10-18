@@ -142,6 +142,15 @@ final class ChatPresentation {
         if isLoaded { rebuild() }
     }
 
+    /// When the source last heard from the session (a chat driver's newest stdout line, which can come with no change of
+    /// the rows): the live row's "No activity" rule reads it. It only moves forward, and by a second or more, so a busy run
+    /// redraws its live row at most once a second for it.
+    func setLastActivity(_ value: Date?) {
+        guard let value, value.timeIntervalSince(lastActivity ?? .distantPast) >= 1 else { return }
+        lastActivity = value
+        if isLoaded { rebuild() }
+    }
+
     func setWorkingDirectory(_ value: String?) {
         workingDirectory = value
         controller?.context.workingDirectory = value

@@ -44,6 +44,13 @@ public struct TurnModel: Sendable {
     /// requests) is its task id.
     public internal(set) var tasks: [String: TaskStarted] = [:]
     var startMarkerPlaced = false
+    /// Loom sent an interrupt (or a denial that stops) and the turn's `result` has not come yet: only then is an aborted
+    /// turn the user's stop. Live only.
+    var interruptSent = false
+    /// Messages sent again under a new uuid ("Read now"): the new uuid to the row's id, and the row's id to the newest
+    /// uuid. Live only.
+    var sentAliases: [String: String] = [:]
+    var resentUUIDs: [String: String] = [:]
     /// How background agents ended, by the Agent call's id, for calls that lie before what was read.
     struct SubagentFinish: Sendable {
         var status: SubagentRun.Status
@@ -134,13 +141,64 @@ public struct TurnModel: Sendable {
     public mutating func markNotDelivered(_ uuids: [String]) -> ModelDelta {
         var delta = ModelDelta()
         for uuid in uuids {
-            guard let i = index[uuid], case var .user(prompt) = entries[i].body,
+            let row = rowID(forSent: uuid)
+            guard let i = index[row], case var .user(prompt) = entries[i].body,
                   prompt.delivery == .pending || prompt.delivery == .queued else { continue }
             prompt.delivery = .notDelivered
             entries[i].body = .user(prompt)
-            delta.noteUpdated(uuid)
+            delta.noteUpdated(row)
         }
         return delta
+    }
+
+    /// The driver sent an interrupt (Esc, Stop, a face switch, "Deny and stop"): the aborted turn that follows reads "You
+    /// stopped". Without this an aborted turn was cut by a `now` send and goes on with the new message.
+    public mutating func noteInterruptSent() {
+        interruptSent = true
+    }
+
+    /// The process ended while a turn ran: the turn ends interrupted, with what streamed so far, and no `result` will
+    /// come. A stop Loom asked for reads "You stopped"; any other end says the session ended.
+    @discardableResult
+    public mutating func endRunningTurn(at now: Date = Date()) -> ModelDelta {
+        var delta = ModelDelta()
+        guard source == .live, let position = turns.lastIndex(where: { $0.status == .running }) else { return delta }
+        let turnID = turns[position].id
+        settleTurn(at: position, status: .interrupted, now: now, delta: &delta)
+        let body: ChatEntry.Body = interruptSent
+            ? .marker(.interrupted(afterMs: nil)) : .marker(.notice("The session ended before this turn finished."))
+        interruptSent = false
+        place(id: "interrupted:\(turnID)", thread: .main, timestamp: now, offset: nil, policy: .standalone, delta: &delta,
+              body: body)
+        return delta
+    }
+
+    /// A message Loom sent again under a new uuid ("Read now": unsent, then sent with `priority: now`) keeps its row
+    /// and the row's id: the row is pending again, and from now on the CLI's records for `new` (lifecycle, echo) are
+    /// the row's, while the old uuid's are not. The change is one updated row, as any other delivery change.
+    @discardableResult
+    public mutating func rekeyPendingUser(from old: String, to new: String) -> ModelDelta {
+        var delta = ModelDelta()
+        let row = rowID(forSent: old)
+        guard index[new] == nil, sentAliases[new] == nil, let i = index[row],
+              case var .user(prompt) = entries[i].body else { return delta }
+        prompt.delivery = .pending
+        entries[i].body = .user(prompt)
+        sentAliases[new] = row
+        resentUUIDs[row] = new
+        delta.noteUpdated(row)
+        return delta
+    }
+
+    /// The row of a message Loom sent under `uuid` (its own uuid, or a later one "Read now" gave it).
+    public func rowID(forSent uuid: String) -> String { sentAliases[uuid] ?? uuid }
+
+    /// The uuid the CLI knows the message of this row by now: what `rewind_files` and `cancel_async_message` name.
+    public func sentUUID(ofRow id: String) -> String { resentUUIDs[id] ?? id }
+
+    /// The interrupt Loom meant to send did not go out (a "Deny and stop" whose answer could not be written).
+    public mutating func clearInterruptSent() {
+        interruptSent = false
     }
 
     /// Every message that has not been read (nor cancelled) yet.
@@ -314,7 +372,7 @@ public struct TurnModel: Sendable {
             conversationID = reset.newConversationID ?? conversationID
             place(id: nextID("reset"), thread: .main, timestamp: now, offset: offset, policy: .standalone, delta: &delta,
                   body: .marker(.reset(trigger: reset.trigger)))
-        case .controlRequest, .controlResponse, .controlCancel, .keepAlive: break
+        case .controlRequest, .controlResponse, .controlCancel, .controlProgress, .keepAlive: break
         case let .unknown(unknown): ingestUnknown(unknown, offset: offset, now: now, delta: &delta)
         }
         return delta
@@ -362,6 +420,8 @@ public struct TurnModel: Sendable {
         if source != .live, let last = turns.indices.last, turns[last].status == .open {
             turns[last].status = .ended
         }
+        // A new turn: an interrupt sent for an earlier one (an Esc right at its end) says nothing about this one.
+        if source == .live { interruptSent = false }
         turns.append(ChatTurn(id: "turn:" + entryID, status: source == .live ? .running : .open, startedAt: timestamp, endedAt: nil,
                               hasUserPrompt: policy == .prompt, firstEntryID: entryID, result: nil))
         delta.turnsChanged = true

@@ -76,6 +76,7 @@ final class CatalogDatabase: @unchecked Sendable {
         else if version < SessionCatalog.schemaVersion { try migrate(from: version) }
         try ensureActivityColumn()
         try ensureOriginColumns()
+        try ensureLaunchColumns()
         try ensureProjectColors()
         try validateSchema()
         guard try scalarText("PRAGMA journal_mode = WAL").lowercased() == "wal" else {
@@ -258,6 +259,23 @@ final class CatalogDatabase: @unchecked Sendable {
             // Read again under the write lock: another process may have added them meanwhile.
             if try !present("ticket_key") { try execute("ALTER TABLE sessions ADD COLUMN ticket_key TEXT") }
             if try !present("opened_by") { try execute("ALTER TABLE sessions ADD COLUMN opened_by TEXT") }
+        }
+    }
+
+    /// `sessions.permission_mode`, `model`, `effort` and `run_endpoint` (V16): the mode, model and effort Loom passes
+    /// on every spawn of the session (S2: a resume restores none of them), and the endpoint of its latest run (the
+    /// owning face). Added to schema 3 on open like the origin columns: nullable, no `user_version` bump.
+    func ensureLaunchColumns() throws {
+        let names = ["permission_mode", "model", "effort", "run_endpoint"]
+        func missing() throws -> [String] {
+            try names.filter {
+                try scalarInt64("SELECT count(*) FROM pragma_table_info('sessions') WHERE name = '\($0)'") == 0
+            }
+        }
+        guard try !missing().isEmpty else { return }
+        try transaction {
+            // Read again under the write lock: another process may have added them meanwhile.
+            for name in try missing() { try execute("ALTER TABLE sessions ADD COLUMN \(name) TEXT") }
         }
     }
 

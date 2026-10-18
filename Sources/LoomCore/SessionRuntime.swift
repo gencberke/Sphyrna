@@ -235,13 +235,14 @@ public actor SessionRuntime {
         let startedAt: Date
         let isResume: Bool
         let diagnostics: DiagnosticOutputTee?
-        let terminal: TerminalEndpoint
+        /// The run's terminal, or the pipes of a Chat-face child (`SessionRuntime+Chat`).
+        let endpoint: RunEndpoint
         /// The card the run was last seen on; where a teardown failure is shown.
         var activeSession: UUID
         var baselineSessions: Set<UUID> = []
     }
 
-    private struct StartKey: Hashable {
+    struct StartKey: Hashable {
         let provider: ManagedSession.Provider
         let projectID: UUID?
     }
@@ -267,7 +268,7 @@ public actor SessionRuntime {
     var backupTask: Task<Void, Never>?
     private var toolchainWarnings: [String] = []
     var runs: [UUID: RunRecord] = [:]
-    private var startingNew: Set<StartKey> = []
+    var startingNew: Set<StartKey> = []
     var startingSessions: Set<UUID> = []
     /// Runs Loom itself is stopping (user stop, undone launch): their exit is
     /// not a provider failure.
@@ -386,6 +387,96 @@ public actor SessionRuntime {
         guard provider == .claude || provider == .codex else {
             throw SessionRuntimeError.unsupportedProvider(provider)
         }
+        let sessionID = UUID(), runID = UUID()
+        return try await withNewStart(provider: provider, projectID: projectID, opening: opening, draft: draft) {
+            directory, toolchain in
+            switch provider {
+            case .claude:
+                return try await self.startClaude(
+                    sessionID: sessionID, projectID: projectID, directory: directory, toolchain: toolchain,
+                    opening: opening, draft: draft, face: .terminal
+                ) { profile in
+                    try await self.launchClaude(
+                        sessionID: sessionID, runID: runID, toolchain: toolchain, profile: profile,
+                        rows: rows, columns: columns, outputSink: outputSink, tee: nil
+                    )
+                }
+            case .codex:
+                let (server, coordinator) = try await self.ensureCodex(card: sessionID, toolchain: toolchain)
+                let profile: ProviderLaunchProfile
+                do {
+                    profile = try self.codexNewProfile(
+                        toolchain: toolchain, sessionID: sessionID, directory: directory, server: server
+                    )
+                    try await self.supervisor.createSession(
+                        ManagedSession(id: sessionID, provider: .codex, workingDirectory: directory),
+                        projectID: projectID
+                    )
+                } catch {
+                    // No card exists to show a failed cleanup on: the caller gets it.
+                    throw await self.startFailure(error, cleaning: server)
+                }
+                self.startingSessions.insert(sessionID)
+                defer { self.startingSessions.remove(sessionID) }
+                return try await self.launchNewCodex(
+                    sessionID: sessionID, runID: runID, directory: directory,
+                    toolchain: toolchain, profile: profile, server: server, coordinator: coordinator,
+                    rows: rows, columns: columns, outputSink: outputSink,
+                    onTerminalReady: onTerminalReady
+                )
+            case .synthetic:
+                throw SessionRuntimeError.unsupportedProvider(provider)
+            }
+        }
+    }
+
+    /// Resumes a stopped conversation with its recorded provider identity and
+    /// working directory. A missing identity, directory or provider history is
+    /// an error the user sees; it never becomes a new conversation.
+    ///
+    /// A Claude session resumes with the mode, model and effort the catalog holds for it (S2: the CLI restores
+    /// none of them); `choices` that are set replace those and are recorded.
+    public func resumeConversation(
+        sessionID: UUID, rows: UInt16 = 24, columns: UInt16 = 80,
+        outputSink: (any TerminalOutputSink)? = nil,
+        choices: ClaudeLaunchChoices = ClaudeLaunchChoices()
+    ) async throws -> RuntimeLaunch {
+        try await withResume(sessionID: sessionID, providers: [.claude, .codex]) { session, conversationID, toolchain in
+            let tee = DiagnosticOutputTee(downstream: outputSink)
+            switch session.provider {
+            case .claude:
+                let hooks = try self.ensureHooks()
+                let profile = try self.claudeProfile(
+                    route: .resume(conversationID), toolchain: toolchain,
+                    sessionID: sessionID, hooks: hooks,
+                    choices: try await self.resumeChoices(sessionID: sessionID, passed: choices)
+                )
+                return try await self.launchClaude(
+                    sessionID: sessionID, runID: nil, toolchain: toolchain, profile: profile,
+                    rows: rows, columns: columns, outputSink: outputSink, tee: tee
+                )
+            case .codex:
+                let (server, coordinator) = try await self.ensureCodex(card: sessionID, toolchain: toolchain)
+                return try await self.resumeCodex(
+                    session: session, conversationID: conversationID, toolchain: toolchain,
+                    server: server, coordinator: coordinator,
+                    rows: rows, columns: columns, tee: tee
+                )
+            case .synthetic:
+                throw SessionRuntimeError.unsupportedProvider(session.provider)
+            }
+        }
+    }
+
+    // MARK: Shared start and resume guards (both faces)
+
+    /// The guards and preparation of every new start, in either face: shutdown, the opening/draft rules, the first
+    /// message's size, one start per project at a time, the folder and the toolchain. `body` creates the card.
+    func withNewStart<T: Sendable>(
+        provider: ManagedSession.Provider, projectID: UUID?, opening: SessionOpening?, draft: NewSessionLaunch?,
+        _ body: (_ directory: String, _ toolchain: ProviderToolchain) async throws -> T
+    ) async throws -> T {
+        guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
         guard (opening == nil && draft == nil) || provider == .claude else {
             throw SessionRuntimeError.unsupportedProvider(provider)
         }
@@ -402,84 +493,59 @@ public actor SessionRuntime {
             throw SessionRuntimeError.alreadyStarting(projectID ?? UUID())
         }
         defer { startingNew.remove(key) }
-
         let directory = try await workingDirectory(projectID: projectID)
         let toolchain = try await toolchain(for: provider)
-        let sessionID = UUID(), runID = UUID()
-        switch provider {
-        case .claude:
-            let hooks = try ensureHooks()
-            // Validated before the card exists: an unsupported CLI leaves nothing behind.
-            let profile = try claudeProfile(
-                route: .new(sessionID), toolchain: toolchain, sessionID: sessionID, hooks: hooks,
-                choices: draft?.choices ?? ClaudeLaunchChoices(),
-                opening: opening.map {
-                    ProviderLaunchProfile.ClaudeOpening(title: $0.title, firstMessage: $0.firstMessage)
-                } ?? draft.map {
-                    ProviderLaunchProfile.ClaudeOpening(title: $0.title ?? "", firstMessage: $0.firstMessage)
-                }
+        return try await body(directory, toolchain)
+    }
+
+    /// A new Claude session in `face`: the profile is validated before the card exists, the draft's branch or
+    /// worktree is made right before the card (and undone when the start fails), the choices are recorded with the
+    /// card, then `launch` spawns.
+    func startClaude<T: Sendable>(
+        sessionID: UUID, projectID: UUID?, directory: String, toolchain: ProviderToolchain,
+        opening: SessionOpening?, draft: NewSessionLaunch?, face: ProviderLaunchProfile.ClaudeFace,
+        launch: (ProviderLaunchProfile) async throws -> T
+    ) async throws -> T {
+        let hooks = try ensureHooks()
+        let choices = draft?.choices ?? ClaudeLaunchChoices()
+        // Validated before the card exists: an unsupported CLI leaves nothing behind.
+        let profile = try claudeProfile(
+            route: .new(sessionID), toolchain: toolchain, sessionID: sessionID, hooks: hooks, choices: choices,
+            opening: opening.map {
+                ProviderLaunchProfile.ClaudeOpening(title: $0.title, firstMessage: $0.firstMessage)
+            } ?? draft.map {
+                ProviderLaunchProfile.ClaudeOpening(title: $0.title ?? "", firstMessage: $0.firstMessage)
+            },
+            face: face
+        )
+        // The branch or worktree of a draft's strip is made now: after everything that can refuse the
+        // start without a trace, right before the card, and only when the user picked it.
+        let prepared = try await GitWorkspace.begin(draft?.workspace ?? .projectFolder, projectFolder: directory)
+        do {
+            try await supervisor.createSession(
+                ManagedSession(id: sessionID, provider: .claude, workingDirectory: prepared.folder),
+                projectID: projectID, title: opening?.title ?? draft?.title,
+                ticketKey: opening?.ticketKey ?? draft?.ticketKey, openedBy: opening?.openedBy
             )
-            // The branch or worktree of a draft's strip is made now: after everything that can refuse the
-            // start without a trace, right before the card, and only when the user picked it.
-            let prepared = try await GitWorkspace.begin(draft?.workspace ?? .projectFolder, projectFolder: directory)
-            do {
-                try await supervisor.createSession(
-                    ManagedSession(id: sessionID, provider: .claude, workingDirectory: prepared.folder),
-                    projectID: projectID, title: opening?.title ?? draft?.title,
-                    ticketKey: opening?.ticketKey ?? draft?.ticketKey, openedBy: opening?.openedBy
-                )
-                startingSessions.insert(sessionID)
-                defer { startingSessions.remove(sessionID) }
-                return try await launchClaude(
-                    sessionID: sessionID, runID: runID, toolchain: toolchain, profile: profile,
-                    rows: rows, columns: columns, outputSink: outputSink, tee: nil
-                )
-            } catch {
-                // A start that fails after the branch or worktree was made puts them back. What cannot be put
-                // back is told with the failure; a card that was already made stays, with its error.
-                let problems = await GitWorkspace.undo(prepared)
-                guard !problems.isEmpty else { throw error }
-                throw LoomError.message("\(error). Not undone: \(problems.joined(separator: "; "))")
-            }
-        case .codex:
-            let (server, coordinator) = try await ensureCodex(card: sessionID, toolchain: toolchain)
-            let profile: ProviderLaunchProfile
-            do {
-                profile = try codexNewProfile(
-                    toolchain: toolchain, sessionID: sessionID, directory: directory, server: server
-                )
-                try await supervisor.createSession(
-                    ManagedSession(id: sessionID, provider: .codex, workingDirectory: directory),
-                    projectID: projectID
-                )
-            } catch {
-                // No card exists to show a failed cleanup on: the caller gets it.
-                throw await startFailure(error, cleaning: server)
-            }
+            await recordLaunchChoices(choices, sessionID: sessionID)
             startingSessions.insert(sessionID)
             defer { startingSessions.remove(sessionID) }
-            return try await launchNewCodex(
-                sessionID: sessionID, runID: runID, directory: directory,
-                toolchain: toolchain, profile: profile, server: server, coordinator: coordinator,
-                rows: rows, columns: columns, outputSink: outputSink,
-                onTerminalReady: onTerminalReady
-            )
-        case .synthetic:
-            throw SessionRuntimeError.unsupportedProvider(provider)
+            return try await launch(profile)
+        } catch {
+            // A start that fails after the branch or worktree was made puts them back. What cannot be put
+            // back is told with the failure; a card that was already made stays, with its error.
+            let problems = await GitWorkspace.undo(prepared)
+            guard !problems.isEmpty else { throw error }
+            throw LoomError.message("\(error). Not undone: \(problems.joined(separator: "; "))")
         }
     }
 
-    /// Resumes a stopped conversation with its recorded provider identity and
-    /// working directory. A missing identity, directory or provider history is
-    /// an error the user sees; it never becomes a new conversation.
-    ///
-    /// `choices` are the mode and model Loom recorded when it started the session (S2: the CLI restores
-    /// neither on a resume); a session Loom has no record of resumes as before.
-    public func resumeConversation(
-        sessionID: UUID, rows: UInt16 = 24, columns: UInt16 = 80,
-        outputSink: (any TerminalOutputSink)? = nil,
-        choices: ClaudeLaunchChoices = ClaudeLaunchChoices()
-    ) async throws -> RuntimeLaunch {
+    /// The guards of every resume, in either face: shutdown, one start per session, a pending deletion, a known
+    /// session of an allowed provider, no live run, a verified last stop, a recorded identity, an existing folder.
+    func withResume<T: Sendable>(
+        sessionID: UUID, providers: Set<ManagedSession.Provider>,
+        _ body: (_ session: ManagedSession, _ conversationID: String, _ toolchain: ProviderToolchain) async throws -> T
+    ) async throws -> T {
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
         guard startingSessions.insert(sessionID).inserted else {
             throw SessionRuntimeError.alreadyStarting(sessionID)
@@ -498,7 +564,7 @@ public actor SessionRuntime {
         if let report = await supervisor.lastStopReport(sessionID: sessionID), !report.succeeded {
             throw SessionRuntimeError.unverifiedStop(sessionID)
         }
-        guard session.provider == .claude || session.provider == .codex else {
+        guard providers.contains(session.provider) else {
             throw SessionRuntimeError.unsupportedProvider(session.provider)
         }
         guard let conversationID = session.providerConversationID, !conversationID.isEmpty else {
@@ -506,27 +572,23 @@ public actor SessionRuntime {
         }
         try requireDirectory(session.workingDirectory)
         let toolchain = try await toolchain(for: session.provider)
-        let tee = DiagnosticOutputTee(downstream: outputSink)
-        switch session.provider {
-        case .claude:
-            let hooks = try ensureHooks()
-            let profile = try claudeProfile(
-                route: .resume(conversationID), toolchain: toolchain,
-                sessionID: sessionID, hooks: hooks, choices: choices
-            )
-            return try await launchClaude(
-                sessionID: sessionID, runID: nil, toolchain: toolchain, profile: profile,
-                rows: rows, columns: columns, outputSink: outputSink, tee: tee
-            )
-        case .codex:
-            let (server, coordinator) = try await ensureCodex(card: sessionID, toolchain: toolchain)
-            return try await resumeCodex(
-                session: session, conversationID: conversationID, toolchain: toolchain,
-                server: server, coordinator: coordinator,
-                rows: rows, columns: columns, tee: tee
-            )
-        case .synthetic:
-            throw SessionRuntimeError.unsupportedProvider(session.provider)
+        return try await body(session, conversationID, toolchain)
+    }
+
+    // MARK: Launch choices (V16)
+
+    /// The mode, model and effort a resume passes: the catalog's, with `passed` choices on top (and recorded).
+    func resumeChoices(sessionID: UUID, passed: ClaudeLaunchChoices) async throws -> ClaudeLaunchChoices {
+        await recordLaunchChoices(passed, sessionID: sessionID)
+        return try await catalog.launchChoices(sessionID: sessionID).merging(passed)
+    }
+
+    /// Records a session's mode, model or effort (a start, or a live change that succeeded in the Chat face), so
+    /// every later spawn in either face passes them. A failed write is logged; the session goes on.
+    public func recordLaunchChoices(_ choices: ClaudeLaunchChoices, sessionID: UUID) async {
+        guard !choices.isEmpty else { return }
+        do { try await catalog.recordLaunchChoices(choices, sessionID: sessionID) } catch {
+            LoomLog.error(.catalog, "Launch choices could not be recorded (\(LoomLog.category(of: error)))")
         }
     }
 
@@ -637,7 +699,7 @@ public actor SessionRuntime {
 
     // MARK: Launch helpers
 
-    private func workingDirectory(projectID: UUID?) async throws -> String {
+    func workingDirectory(projectID: UUID?) async throws -> String {
         guard let projectID else {
             try requireDirectory(configuration.homeDirectory)
             return configuration.homeDirectory
@@ -649,7 +711,7 @@ public actor SessionRuntime {
         return project.path
     }
 
-    private func requireDirectory(_ path: String) throws {
+    func requireDirectory(_ path: String) throws {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
               isDirectory.boolValue else {
@@ -717,7 +779,7 @@ public actor SessionRuntime {
         runs[runID] = RunRecord(
             runID: runID, launchSessionID: launch.session.id, provider: provider,
             server: server, startedAt: Date(),
-            isResume: tee != nil, diagnostics: tee, terminal: launch.terminal,
+            isResume: tee != nil, diagnostics: tee, endpoint: .terminal(launch.terminal),
             activeSession: launch.session.id
         )
         let result = RuntimeLaunch(
@@ -836,7 +898,7 @@ public actor SessionRuntime {
         guard record.isResume, let diagnostics = record.diagnostics,
               !stopRequestedRuns.contains(record.runID), !shuttingDown,
               Date().timeIntervalSince(record.startedAt) <= configuration.resumeDiagnosticsWindow,
-              let status = await record.terminal.exitStatus(), status != 0,
+              let status = await record.endpoint.exitStatus(), status != 0,
               let conversationID = await catalogConversationID(record.launchSessionID),
               let error = ProviderResumeDiagnostics.error(
                 provider: record.provider, conversationID: conversationID,

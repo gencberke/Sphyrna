@@ -1,4 +1,5 @@
 import AppKit
+import LoomChat
 import LoomCore
 import SwiftUI
 
@@ -70,6 +71,8 @@ extension CatalogModel {
     /// the terminal arrives. Codex and synthetic sessions keep the old routes.
     private func sessionRoute(for row: SessionRowModel) -> DetailRoute {
         let id = row.id
+        // A pipe run has no terminal: it is the live Chat face, whatever the flags say.
+        if runEndpoint(of: row) == .pipe { return .chat(sessionID: id) }
         let hasTerminal = terminalView(for: id) != nil
         if faces.readOnlyChatEnabled, row.record.session.provider == .claude {
             switch faces.choice(for: id) {
@@ -81,6 +84,18 @@ extension CatalogModel {
         if hasTerminal { return .terminal(sessionID: id) }
         if endedScreen(for: id) != nil { return .endedScreen(sessionID: id) }
         return .record(sessionID: id)
+    }
+
+    /// How the session's live run is driven, nil when it has none. "Running" is a run, not a terminal view: a
+    /// Chat-face (pipe) run has no terminal (V16).
+    public func runEndpoint(of row: SessionRowModel) -> RunEndpointKind? {
+        guard let live = row.live, live.runID != nil else { return nil }
+        return live.runEndpoint ?? (terminalView(for: row.id) != nil ? .terminal : nil)
+    }
+
+    /// The session runs: a live run of either kind, or a terminal still attached.
+    public func isRunning(_ row: SessionRowModel) -> Bool {
+        runEndpoint(of: row) != nil || terminalView(for: row.id) != nil
     }
 
     /// The case of `detailRoute` without its identities ("chat", "terminal", "draft"): what acceptance runs read.
@@ -97,7 +112,15 @@ extension CatalogModel {
     /// Whether the selected session has a Chat and a Terminal face to choose between: a Claude session, with
     /// the Chat view switched on.
     public var canChooseFace: Bool {
-        readOnlyChatEnabled && selectedRow?.record.session.provider == .claude
+        guard readOnlyChatEnabled, let row = selectedRow, row.record.session.provider == .claude else { return false }
+        // A Chat-face run has no terminal to show; switching it is a handover (V19).
+        return runEndpoint(of: row) != .pipe
+    }
+
+    /// The flag behind the live Chat face; see `SessionFaces.liveChatEnabled`.
+    public var liveChatEnabled: Bool {
+        get { faces.liveChatEnabled }
+        set { faces.liveChatEnabled = newValue }
     }
 
     /// "Show Chat" and "Show Terminal": the face the selected session shows from now on, until a relaunch.

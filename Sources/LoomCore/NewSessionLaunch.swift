@@ -22,19 +22,36 @@ public enum ClaudePermissionMode: String, CaseIterable, Codable, Sendable {
     }
 }
 
-/// What a Claude launch is told about the session's mode and model, as the CLI's own words. Both are
-/// optional: nil leaves the choice to Claude (its settings, then its default). S2: the CLI restores
-/// neither on a resume, so Loom passes them on every spawn it can.
+/// What a Claude launch is told about the session's mode, model and effort, as the CLI's own words. All
+/// are optional: nil leaves the choice to Claude (its settings, then its default). S2: the CLI restores
+/// none of them on a resume, in either face, so Loom passes them on every spawn it can, the terminal's
+/// `--resume` included.
+///
+/// The source of truth for a session's choices is the catalog's `sessions` row (`SessionCatalog.launchChoices`,
+/// V16): the runtime writes it when it starts a session and whenever a live change of mode, model or effort
+/// succeeds, a moved run (`/clear`) carries it to its new card, and every spawn in either face reads it. The
+/// new-session file's older `launched` list is copied into it once (`SessionCatalog.importLaunchChoices`). A
+/// session with nothing stored (older ones, sessions an agent opened) passes nothing for mode and model, and the
+/// effort its transcript last recorded (`ClaudeTranscriptEffort`), as before.
 public struct ClaudeLaunchChoices: Equatable, Sendable, Codable {
     public var permissionMode: String?
     public var model: String?
+    /// `low`, `medium`, `high`, `xhigh` or `max`. Older records have none (decoded as nil).
+    public var effort: String?
 
-    public init(permissionMode: String? = nil, model: String? = nil) {
+    public init(permissionMode: String? = nil, model: String? = nil, effort: String? = nil) {
         self.permissionMode = permissionMode
         self.model = model
+        self.effort = effort
     }
 
-    public var isEmpty: Bool { permissionMode == nil && model == nil }
+    public var isEmpty: Bool { permissionMode == nil && model == nil && effort == nil }
+
+    /// Each choice of `newer` that is set replaces this one's.
+    public func merging(_ newer: ClaudeLaunchChoices) -> ClaudeLaunchChoices {
+        ClaudeLaunchChoices(permissionMode: newer.permissionMode ?? permissionMode, model: newer.model ?? model,
+                            effort: newer.effort ?? effort)
+    }
 
     /// A value is passed to the CLI only when it cannot be taken for an option or hide a second argument:
     /// letters, digits and `. _ - : [ ]`, not starting with a dash, at most 80 characters.

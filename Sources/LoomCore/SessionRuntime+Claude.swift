@@ -88,13 +88,15 @@ extension SessionRuntime {
         route: ProviderLaunchProfile.ClaudeRoute, toolchain: ProviderToolchain,
         sessionID: UUID, hooks: ClaudeHookLaunchConfiguration,
         choices: ClaudeLaunchChoices = ClaudeLaunchChoices(),
-        opening: ProviderLaunchProfile.ClaudeOpening? = nil
+        opening: ProviderLaunchProfile.ClaudeOpening? = nil,
+        face: ProviderLaunchProfile.ClaudeFace = .terminal
     ) throws -> ProviderLaunchProfile {
         let environment = LaunchEnvironment.make(
             base: toolchain.environment, runID: supervisor.ownershipRunID, sessionID: sessionID
         )
         var effort: String?
-        if case let .resume(conversationID) = route, toolchain.capabilities.supportsEffort {
+        // The session's own record names the effort first (`ClaudeLaunchChoices`); the transcript is the fallback.
+        if choices.effort == nil, case let .resume(conversationID) = route, toolchain.capabilities.supportsEffort {
             let profile = ClaudeProfileLayout(
                 toolchain: toolchain, home: URL(fileURLWithPath: configuration.homeDirectory, isDirectory: true)
             )
@@ -104,7 +106,7 @@ extension SessionRuntime {
         let profile = try ProviderLaunchProfile.claude(
             route: route, capabilities: toolchain.capabilities,
             config: toolchain.profileDirectory ?? URL(fileURLWithPath: "/"),
-            environment: environment, hooks: hooks, effort: effort, choices: choices, opening: opening
+            environment: environment, hooks: hooks, effort: effort, choices: choices, opening: opening, face: face
         )
         guard toolchain.profileDirectory == nil else { return profile }
         // The provider's own default profile: do not pin a config directory.

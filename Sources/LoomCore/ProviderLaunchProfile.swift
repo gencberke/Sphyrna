@@ -15,6 +15,7 @@ public struct ProviderCapabilities: Codable, Sendable {
     /// out (`claudeAcceptsPermissionMode`, `claudeAcceptsModel`): both are decided by version too.
     public let listsPermissionMode: Bool
     public let listsModel: Bool
+    public let listsThinkingDisplay: Bool
 
     public init(version: String, help: String, serverHelp: String = "", features: String = "") {
         self.version = version.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -31,6 +32,7 @@ public struct ProviderCapabilities: Codable, Sendable {
         supportsPluginDirectory = help.contains("--plugin-dir <")
         listsPermissionMode = help.contains("--permission-mode <")
         listsModel = help.contains("--model <")
+        listsThinkingDisplay = help.contains("--thinking-display <")
     }
 
     /// The first `major.minor[.patch]` token of the CLI's `--version` line ("2.1.300 (Claude Code)"); nil
@@ -70,6 +72,14 @@ public struct ProviderCapabilities: Codable, Sendable {
         listsModel || claudeVersionAtLeast(Self.claudeLaunchChoicesFloor)
     }
 
+    /// The first release `--thinking-display summarized` was seen working in (spike S1). The option is hidden from
+    /// `--help`, and an unknown option stops the CLI, so an older or unreadable version goes without it.
+    public static let claudeThinkingDisplayFloor = [2, 1, 300]
+
+    public var claudeAcceptsThinkingDisplay: Bool {
+        listsThinkingDisplay || claudeVersionAtLeast(Self.claudeThinkingDisplayFloor)
+    }
+
     /// The Claude options this build looked for in `--help` and found, by name: what a journal or a
     /// diagnostics export says the CLI supports.
     public var detectedClaudeOptions: [String] {
@@ -105,6 +115,20 @@ public struct ProviderLaunchProfile: Sendable {
         case new(UUID)
         case resume(String)
     }
+
+    /// How Loom talks to the Claude it starts: the TUI in a terminal, or the stream-json child of the Chat face
+    /// (V16, spike S1) with pipes and the same hooks, plugin and choices.
+    public enum ClaudeFace: Equatable, Sendable {
+        case terminal
+        case chat
+    }
+
+    /// The options that make a Chat-face child (S1): NDJSON both ways, partial messages, the echo of every send,
+    /// requests over the control channel. Never `--bare` (it skips the user's login).
+    public static let claudeChatArguments = [
+        "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+        "--include-partial-messages", "--replay-user-messages", "--permission-prompt-tool", "stdio",
+    ]
 
     /// A new session an agent asked Loom to open (D-40): Claude gets the title as its session name
     /// and the message as its first prompt.
@@ -156,7 +180,8 @@ public struct ProviderLaunchProfile: Sendable {
         hooks: ClaudeHookLaunchConfiguration? = nil,
         effort: String? = nil,
         choices: ClaudeLaunchChoices = ClaudeLaunchChoices(),
-        opening: ClaudeOpening? = nil
+        opening: ClaudeOpening? = nil,
+        face: ClaudeFace = .terminal
     ) throws -> Self {
         // `--help` is text that can change shape without the option going away, so an option it does
         // not mention is passed anyway: if Claude really lacks it, Claude's own error is what the
@@ -171,10 +196,11 @@ public struct ProviderLaunchProfile: Sendable {
             }
             routeArguments = ["--resume", providerSessionID]
         }
-        // The level the conversation ran at; without it Claude falls back to the saved default.
+        // The level the session's record names, else the one its transcript last recorded; without either Claude
+        // falls back to the saved default.
         var effortArguments: [String] = []
-        if capabilities.supportsEffort, let effort, ClaudeTranscriptEffort.levels.contains(effort) {
-            effortArguments = ["--effort", effort]
+        if capabilities.supportsEffort, let level = choices.effort ?? effort, ClaudeTranscriptEffort.levels.contains(level) {
+            effortArguments = ["--effort", level]
         }
         // The session's mode and model (V07). A choice the user made is never dropped quietly: a CLI that
         // cannot take the option, or a value that is not a plain word, refuses the start before any card
@@ -196,7 +222,13 @@ public struct ProviderLaunchProfile: Sendable {
         }
         var openingArguments: [String] = []
         var trailing: [String] = []
-        if let opening {
+        if let opening, face == .chat {
+            // The Chat face sends its first message over stdin; only the name is an option.
+            guard case .new = route else {
+                throw LoomError.message("Only a new Claude session can start with a first message")
+            }
+            if !opening.title.isEmpty { openingArguments = ["-n", opening.title] }
+        } else if let opening {
             guard case .new = route else {
                 throw LoomError.message("Only a new Claude session can start with a first message")
             }
@@ -208,6 +240,19 @@ public struct ProviderLaunchProfile: Sendable {
         var env = environment
         env["CLAUDE_CONFIG_DIR"] = config.path
         env["CLAUDE_CODE_DISABLE_AGENT_VIEW"] = "1"
+        var faceArguments: [String] = []
+        if face == .chat {
+            faceArguments = claudeChatArguments
+            // Readable thinking (S1 §D14): the default `updates` display sends empty thinking text. A hidden option,
+            // so it is passed only where it is known to exist.
+            if capabilities.claudeAcceptsThinkingDisplay { faceArguments += ["--thinking-display", "summarized"] }
+            // `system/session_state_changed` (S1 §D8): idle, running, requires_action.
+            env["CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS"] = "1"
+            // File checkpoints from the session's first turn (S8): without them `rewind_files` answers "File rewinding
+            // is not enabled", and a message sent before the switch has no checkpoint. `rewind_files` takes the uuid
+            // Loom put on its own user line (the id of its row in the live model). The terminal keeps its own.
+            env["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"] = "true"
+        }
         if let hooks {
             env["LOOM_HOOK_SOCKET"] = hooks.socketPath
             env["LOOM_HOOK_TOKEN"] = hooks.authenticationToken
@@ -222,7 +267,7 @@ public struct ProviderLaunchProfile: Sendable {
         }
         let settings = try claudeSettings(hooks: hooks)
         return Self(
-            arguments: routeArguments + effortArguments + choiceArguments + ["--settings", settings]
+            arguments: faceArguments + routeArguments + effortArguments + choiceArguments + ["--settings", settings]
                 + pluginArguments + openingArguments,
             environment: env, trailingArguments: trailing
         )

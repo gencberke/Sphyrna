@@ -200,7 +200,7 @@ struct ChatToolBody: View {
                 if tail {
                     Button("Show all output") { context.toggleFlag(row.id, "all") }
                 }
-                if row.fullOutput == nil, let output = call.output, output.isClipped, entry.sourceOffset != nil {
+                if row.fullOutput == nil, let output = call.output, output.isClipped, context.canShowAll(entry) {
                     Button("Show all \(ChatBytes.text(output.totalBytes))") { context.showAll(entry) }
                 }
             }

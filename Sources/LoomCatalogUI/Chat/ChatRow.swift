@@ -129,3 +129,28 @@ struct LiveRow: Equatable {
     /// Tools that trail the turn and are collapsed into this row.
     var hiddenTools: [ChatEntry]
 }
+
+extension ChatRow.Kind {
+    /// A short name of the kind: tests assert the order of rows with it, evidence counts rows by it (no content).
+    var tag: String {
+        switch self {
+        case .start: "start"
+        case .marker: "marker"
+        case .divider: "divider"
+        case .user: "user"
+        case let .prose(_, settled): settled ? "answer" : "prose"
+        case .thinking: "thinking"
+        case .tool: "tool"
+        case .group: "group"
+        case .subagent: "subagent"
+        case .plan: "plan"
+        case .request: "request"
+        case .raw: "raw"
+        case .turnFold: "fold"
+        case .changedFiles: "changes"
+        case .thought: "thought"
+        case .live: "live"
+        case .empty: "empty"
+        }
+    }
+}

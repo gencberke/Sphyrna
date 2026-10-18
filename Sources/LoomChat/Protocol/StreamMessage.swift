@@ -20,6 +20,9 @@ public enum StreamMessage: Sendable, Equatable {
     case controlRequest(IncomingControlRequest)
     case controlResponse(ControlResponse)
     case controlCancel(requestID: String)
+    /// `system/control_request_progress{request_id, status}`: a request Loom sent is under way (a `side_question`
+    /// says `started` once before its answer; spike S6). Known, never drift.
+    case controlProgress(requestID: String, status: String?)
     /// `{"type":"keep_alive"}`: liveness only.
     case keepAlive
     case unknown(UnknownMessage)
@@ -35,6 +38,12 @@ public enum StreamMessage: Sendable, Equatable {
             case "api_retry": self = .apiRetry(APIRetry(json: json))
             case "compact_boundary": self = .compactBoundary(CompactBoundary(json: json))
             case "session_state_changed": self = .sessionState(SessionStateChange(json: json))
+            case "control_request_progress":
+                if let id = json["request_id"]?.string {
+                    self = .controlProgress(requestID: id, status: json["status"]?.string)
+                } else {
+                    self = .unknown(UnknownMessage(type: type, subtype: "control_request_progress", raw: json))
+                }
             case "task_started":
                 if let started = TaskStarted(json: json) {
                     self = .taskStarted(started)

@@ -37,7 +37,7 @@ private func failedReport(_ errors: [String]) -> ShutdownReport {
 }
 
 @MainActor
-@Suite(.serialized, .timeLimit(.minutes(1)))
+@Suite(.serialized, .processHeavy, .timeLimit(.minutes(1)))
 struct AppShutdownCoordinatorTests {
     private var productsDirectory: URL {
         Bundle(for: ShutdownTestBundleAnchor.self).bundleURL.deletingLastPathComponent()

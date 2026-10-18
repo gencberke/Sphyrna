@@ -39,7 +39,18 @@ private final class Wire: Sendable {
     func start(sink: @escaping @Sendable (Data) -> Void = { _ in }) {
         let channel = channel
         Task { for await event in channel.events { state.withLock { $0.events.append(event) } } }
-        Task { for await line in channel.outgoing { state.withLock { $0.written.append(line) }; sink(line) } }
+        // The harness is the host: like the driver, it tells the live model when it sent an interrupt (only then is an
+        // aborted turn the user's stop).
+        Task {
+            for await line in channel.outgoing {
+                let isInterrupt = (try? JSONDecoder().decode(JSONValue.self, from: line))?["request"]?["subtype"]?.string == "interrupt"
+                state.withLock {
+                    $0.written.append(line)
+                    if isInterrupt { $0.model.noteInterruptSent() }
+                }
+                sink(line)
+            }
+        }
     }
 
     func feed(_ data: Data) async {
@@ -65,6 +76,9 @@ private final class Wire: Sendable {
     }
 
     func sent(_ uuid: String, _ text: String) { state.withLock { _ = $0.model.appendPendingUser(uuid: uuid, text: text) } }
+
+    /// A recording plays the interrupt before the turn it stops exists here: the host notes it for that turn.
+    func noteInterrupt() { state.withLock { $0.model.noteInterruptSent() } }
 
     func snapshot() -> State { state.withLock { $0 } }
 
@@ -259,7 +273,7 @@ private func expectInterruptWhilePending(_ seen: Observed, uuid: String, sourceL
         switch event {
         case let .request(request): (request.requestID, false)
         case let .cancelled(request): (request.requestID, true)
-        case .unsupported: nil
+        case .unsupported, .progress: nil
         }
     }
     #expect(requests.count == 2 && requests[0].1 == false && requests[1].1 == true && requests[0].0 == requests[1].0, sourceLocation: sourceLocation)
@@ -359,6 +373,7 @@ struct ContractTests {
         let interrupt = Task { try await wire.channel.request(.interrupt(cancelQueued: true)) }
         try await wire.waitUntil("interrupt to go out") { $0.written.count == 2 }
         for uuid in [first] + held { wire.sent(uuid, "sent") }
+        wire.noteInterrupt()
         // The host allows the Bash call as soon as it is asked.
         await play(S1Recording.interruptWithQueued, into: wire) { request in
             if case let .canUseTool(permission) = request.kind {
@@ -396,6 +411,7 @@ struct ContractTests {
         let interrupt = Task { try await wire.channel.request(.interrupt(cancelQueued: false)) }
         try await wire.waitUntil("interrupt to go out") { $0.written.count == 2 }
         wire.sent(uuid, "sent")
+        wire.noteInterrupt()
         await play(S1Recording.interruptWhilePending, into: wire)
         try await wire.waitUntil("both events") { $0.events.count == 2 }
         let receipt = try await interrupt.value.interruptReceipt

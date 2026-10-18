@@ -285,7 +285,9 @@ extension TurnModel {
             break
         case .interruptNotice:
             if source == .live {
-                guard let turn = turns.last else { break }
+                // Only an interrupt Loom sent is the user's stop. A `now` send that cuts the stream prints the same
+                // line, and the turn simply goes on with the new message.
+                guard interruptSent, let turn = turns.last else { break }
                 place(id: "interrupted:\(turn.id)", thread: .main, timestamp: time, offset: offset, policy: .standalone, delta: &delta,
                       body: .marker(.interrupted(afterMs: nil)))
             } else {
@@ -301,7 +303,7 @@ extension TurnModel {
             place(id: rawID("notice", offset), thread: .main, timestamp: time, offset: offset, policy: .standalone, delta: &delta,
                   body: .marker(.notice(text)))
         case let .prompt(text, command):
-            let id = message.uuid ?? rawID("user", offset)
+            let id = message.uuid.map { rowID(forSent: $0) } ?? rawID("user", offset)
             let images = message.content.compactMap { block -> ImageRef? in
                 if case let .image(image) = block { Self.bounded(image) } else { nil }
             }
@@ -425,7 +427,10 @@ extension TurnModel {
     // MARK: Delivery and tasks
 
     mutating func ingestLifecycle(_ lifecycle: CommandLifecycle, delta: inout ModelDelta) {
-        guard let i = index[lifecycle.commandUUID], case var .user(prompt) = entries[i].body else { return }
+        let row = rowID(forSent: lifecycle.commandUUID)
+        // Only the uuid the row goes by now: the one "Read now" took back says nothing more about it.
+        guard sentUUID(ofRow: row) == lifecycle.commandUUID, let i = index[row],
+              case var .user(prompt) = entries[i].body else { return }
         let before = prompt.delivery
         switch lifecycle.state {
         case .queued: if prompt.delivery == .pending { prompt.delivery = .queued }
@@ -435,7 +440,7 @@ extension TurnModel {
         }
         guard prompt.delivery != before else { return }
         entries[i].body = .user(prompt)
-        delta.noteUpdated(lifecycle.commandUUID)
+        delta.noteUpdated(row)
     }
 
     mutating func ingestTask(_ task: TaskStarted, delta: inout ModelDelta) {
@@ -455,15 +460,23 @@ extension TurnModel {
 
     mutating func ingestResult(_ result: TurnResult, now: Date, delta: inout ModelDelta) {
         guard source == .live else { return }
+        // Every result is a turn boundary: an interrupt Loom sent belongs to this turn at most.
+        let stoppedByLoom = interruptSent
+        interruptSent = false
         if !turns.contains(where: { $0.status == .running }) {
-            // A result with no turn: a failure before any work (a startup failure, a refusal). Keep what it says.
-            guard result.isError else { return }
+            // A result with no turn: a failure before any work (a startup failure, a refusal). Keep what it says;
+            // an interrupt's own result says nothing.
+            guard result.isError, !(stoppedByLoom && result.wasInterrupted) else { return }
             place(id: nextID("failure"), thread: .main, timestamp: now, offset: nil, policy: .work, delta: &delta,
                   body: .marker(.notice(result.result ?? result.errors.first ?? result.subtype.rawValue)))
         }
         guard let position = turns.lastIndex(where: { $0.status == .running }) else { return }
         let status: ChatTurn.Status
-        if result.wasInterrupted {
+        if result.wasInterrupted, !stoppedByLoom {
+            // Cut by a `now` send (`aborted_streaming` or `aborted_tools`, with `is_error` true or false, S1 §0.9): not
+            // a stop; the message Loom sent goes on in the next turn. Only Loom's own interrupt is the user's stop.
+            status = .succeeded
+        } else if result.wasInterrupted {
             status = .interrupted
         } else if result.isError || result.subtype != .success {
             // `subtype` alone says nothing: a failed API call is "success" with `is_error`.
@@ -471,13 +484,22 @@ extension TurnModel {
         } else {
             status = .succeeded
         }
-        turns[position].status = status
         turns[position].result = result
+        settleTurn(at: position, status: status, now: now, delta: &delta)
+        if status == .interrupted {
+            place(id: "interrupted:\(turns[position].id)", thread: .main, timestamp: now, offset: nil, policy: .standalone, delta: &delta,
+                  body: .marker(.interrupted(afterMs: result.durationMs)))
+        }
+    }
+
+    /// Ends the turn at `position` with `status`: whatever was still streaming has stopped, and work that never finished
+    /// in a stopped or failed turn is interrupted. (Work that goes on after a successful turn, like a background agent,
+    /// keeps running.)
+    mutating func settleTurn(at position: Int, status: ChatTurn.Status, now: Date, delta: inout ModelDelta) {
+        turns[position].status = status
         turns[position].endedAt = now
         delta.turnsChanged = true
         let turnID = turns[position].id
-        // Whatever was still streaming has stopped; work that never finished in a stopped or failed turn is interrupted.
-        // (Work that goes on after a successful turn, like a background agent, keeps running.)
         let unfinished = status != .succeeded
         let start = index[turns[position].firstEntryID] ?? 0
         for i in start..<entries.count where entries[i].turnID == turnID {
@@ -507,10 +529,6 @@ extension TurnModel {
             if changed { delta.noteUpdated(entries[i].id) }
         }
         inflight.removeAll()
-        if status == .interrupted {
-            place(id: "interrupted:\(turnID)", thread: .main, timestamp: now, offset: nil, policy: .standalone, delta: &delta,
-                  body: .marker(.interrupted(afterMs: result.durationMs)))
-        }
     }
 
     // MARK: Partial messages

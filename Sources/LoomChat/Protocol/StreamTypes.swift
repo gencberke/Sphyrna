@@ -510,6 +510,8 @@ public struct TaskStarted: Sendable, Equatable {
     public var toolUseID: String?
     public var description: String?
     public var subagentType: String?
+    /// `is_backgrounded`: the task runs in the background (it outlives the turn).
+    public var isBackgrounded: Bool
 
     init?(json: JSONValue) {
         guard let id = json["task_id"]?.string else { return nil }
@@ -518,6 +520,7 @@ public struct TaskStarted: Sendable, Equatable {
         toolUseID = json["tool_use_id"]?.string
         description = json["description"]?.string
         subagentType = json["subagent_type"]?.string
+        isBackgrounded = json["is_backgrounded"]?.bool ?? false
     }
 }
 
@@ -558,6 +561,9 @@ public struct TurnResult: Sendable, Equatable {
     public var apiErrorStatus: Int?
     public var sessionID: String?
     public var uuid: String?
+    /// `modelUsage.<model>.contextWindow` of every model the turn used, keyed as the CLI names the model: the context
+    /// ring's denominator (S1: 1,000,000 for Haiku 5.5).
+    public var contextWindows: [String: Int]
 
     /// The user stopped the turn (an interrupt ends it with an aborted terminal reason).
     public var wasInterrupted: Bool { terminalReason?.hasPrefix("aborted") == true }
@@ -579,6 +585,11 @@ public struct TurnResult: Sendable, Equatable {
         apiErrorStatus = json["api_error_status"]?.int
         sessionID = json["session_id"]?.string
         uuid = json["uuid"]?.string
+        var windows: [String: Int] = [:]
+        for (model, usage) in json["modelUsage"]?.object ?? [:] {
+            if let window = usage["contextWindow"]?.int, window > 0 { windows[model] = window }
+        }
+        contextWindows = windows
     }
 }
 

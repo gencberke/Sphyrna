@@ -27,6 +27,44 @@ struct ControlChannelTests {
 
     // MARK: Host to CLI
 
+    /// `outgoing` is bounded: a writer that cannot keep up (the child stopped reading) makes the next line fail with
+    /// `outputFull` instead of piling up, and a request is not left waiting for an answer to a line never sent.
+    @Test func aFullOutgoingQueueRefusesTheNextLineVisibly() async throws {
+        let channel = ControlChannel(defaultTimeout: .seconds(5), outgoingLimit: 2, makeRequestID: Self.sequentialIDs())
+        try await channel.write(Data("a\n".utf8))
+        try await channel.write(Data("b\n".utf8))
+        await #expect(throws: ControlError.outputFull) { try await channel.write(Data("c\n".utf8)) }
+        await #expect(throws: ControlError.outputFull) { try await channel.request(.interrupt(cancelQueued: false)) }
+        #expect(await channel.send(.interrupt(cancelQueued: false)) == nil)
+        // Once the writer takes a line, there is room again, in order.
+        var lines = channel.outgoing.makeAsyncIterator()
+        #expect(await lines.next() == Data("a\n".utf8))
+        try await channel.write(Data("d\n".utf8))
+        #expect(await lines.next() == Data("b\n".utf8))
+        #expect(await lines.next() == Data("d\n".utf8))
+    }
+
+    /// `system/control_request_progress` (S6: one `started` before a `side_question`'s answer) is a known message, never
+    /// drift, and reaches the request's waiter as an event.
+    @Test func requestProgressIsKnownAndReachesTheWaiter() async throws {
+        let progress = Fixture.message(Fixture.line(["type": "system", "subtype": "control_request_progress",
+                                                     "request_id": "req-1", "status": "started"]))
+        #expect(progress == .controlProgress(requestID: "req-1", status: "started"))
+        var model = TurnModel(source: .live)
+        #expect(model.apply(progress).isEmpty)
+        #expect(model.unknownRecordCount == 0)
+
+        let channel = channel()
+        var lines = channel.outgoing.makeAsyncIterator()
+        var events = channel.events.makeAsyncIterator()
+        let reply = Task { try await channel.request(.sideQuestion("why?")) }
+        _ = await lines.next()
+        await channel.receive(progress)
+        #expect(await events.next() == .progress(requestID: "req-1", status: "started"))
+        await channel.receive(response("req-1", ["response": "because", "synthetic": false]))
+        #expect(try await reply.value.sideQuestionResponse == "because")
+    }
+
     @Test func aRequestGetsItsAnswerByIdAndAnInterruptReceiptIsTyped() async throws {
         let channel = channel()
         var lines = channel.outgoing.makeAsyncIterator()

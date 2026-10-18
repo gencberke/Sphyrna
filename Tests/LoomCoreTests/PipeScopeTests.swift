@@ -104,7 +104,7 @@ private final class Finished: Sendable {
 }
 
 /// Pipe children in real run scopes: ownership, Stop and Quit as for terminals.
-@Suite(.serialized, .timeLimit(.minutes(3)))
+@Suite(.serialized, .processHeavy, .timeLimit(.minutes(3)))
 struct PipeScopeTests {
     private let scratch = PipeScratch()
 

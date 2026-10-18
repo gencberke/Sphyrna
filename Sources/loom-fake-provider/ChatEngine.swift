@@ -9,7 +9,8 @@ import Foundation
 // ChatWire.swift.
 //
 // Environment: LOOM_FAKE_CHAT_DELAY_MS (pause between stream events, default 2), LOOM_FAKE_CHAT_CAPABILITIES
-// (comma list for `system/init`; `msg_lifecycle_v1` also gates `command_lifecycle`),
+// (comma list for `system/init`; `msg_lifecycle_v1` also gates `command_lifecycle`), LOOM_FAKE_CHAT_INIT
+// (`silent`, `exit`, `exit-on-resume`), LOOM_FAKE_CHAT_IGNORE_INTERRUPT (`1`),
 // CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS / CLAUDE_CODE_SDK_READS_SESSION_STATE (`1`: emit
 // `system/session_state_changed`), CLAUDE_CONFIG_DIR (transcripts are written under it unless
 // `--no-session-persistence`).
@@ -25,6 +26,11 @@ import Foundation
 //                     other tool, is cut or finished first and the turn ends (aborted_*).
 //   now without origin  the running tool finishes, then the turn ends and the message starts the next turn.
 // Closing stdin lets the running turn finish (a pending `can_use_tool` fails as a tool error), then exits 0.
+// Order as the CLI writes it (S1 t04): a `can_use_tool` comes before its message's `message_delta`/`message_stop`, and
+// the turn's `rate_limit_event` right after its first message. With CLAUDE_CONFIG_DIR set, the process keeps a session
+// registry entry (`sessions/<pid>.json`, `entrypoint: sdk-cli`, busy while a turn runs) as a stream child does.
+// Hooks fire for a stream child too (S1 §D7): with `--settings` naming a hook command, SessionStart, UserPromptSubmit,
+// PermissionRequest and Stop run it like the terminal mode does (Stop right after the `result`).
 
 typealias ChatObject = ChatWire.Object
 
@@ -51,6 +57,13 @@ struct ChatConfig {
     var delayMs: Int
     var emitState: Bool
     var stateHostOnly: Bool
+    /// The hook command of `--settings` (Loom's helper), if any.
+    var hookHelper: String?
+    /// LOOM_FAKE_CHAT_INIT: `silent` never answers `initialize`; `exit` writes one stderr line and exits 1 at once
+    /// (a start or resume that fails before Ready); `exit-on-resume` does so only when resumed.
+    var initBehavior: String?
+    /// LOOM_FAKE_CHAT_IGNORE_INTERRUPT=1: an interrupt is answered but the running turn goes on (a CLI slow to stop).
+    var ignoreInterrupt: Bool
 
     init(arguments: [String], environment: [String: String]) {
         func value(_ flag: String) -> String? {
@@ -77,6 +90,11 @@ struct ChatConfig {
         let reads = environment["CLAUDE_CODE_SDK_READS_SESSION_STATE"] == "1"
         emitState = emit || reads
         stateHostOnly = reads && !emit
+        let settings = value("--settings").flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) } as? ChatObject
+        let start = ((settings?["hooks"] as? ChatObject)?["SessionStart"] as? [ChatObject])?.first
+        hookHelper = ((start?["hooks"] as? [ChatObject])?.first?["command"]) as? String
+        initBehavior = environment["LOOM_FAKE_CHAT_INIT"]
+        ignoreInterrupt = environment["LOOM_FAKE_CHAT_IGNORE_INTERRUPT"] == "1"
     }
 }
 
@@ -297,6 +315,7 @@ final class ChatEngine {
     var finalText = ""
     var outcome = ChatOutcome()
     var rateLimitStatus = "allowed"
+    var rateLimitSent = false
     var prePlanMode: String?
     var cost = 0.0
     var lastUUID: String?
@@ -304,6 +323,7 @@ final class ChatEngine {
     /// The Agent tool_use id of a subagent that is running, to its identity.
     var subagents: [String: AgentInfo] = [:]
 
+    let registryStartedAt = Date()
     let slashCommands = ["compact", "clear", "context", "review", "init"]
     let skills = ["fake-skill"]
     var tools: [String] {
@@ -360,6 +380,60 @@ final class ChatEngine {
             type: "user", uuid: message.uuid, message: ["role": "user", "content": message.content],
             parentUUID: lastUUID, cwd: config.cwd, extra: ["permissionMode": permissionMode]))
         lastUUID = message.uuid
+    }
+
+    /// The turn's one `rate_limit_event`: after its first message, or before the `result` of a turn without one.
+    func sendRateLimit() {
+        guard !rateLimitSent else { return }
+        rateLimitSent = true
+        send(wire.rateLimit(
+            status: rateLimitStatus, resetsAt: Int(Date().timeIntervalSince1970) + 3_600, type: "five_hour",
+            utilization: rateLimitStatus == "allowed" ? 0.41 : rateLimitStatus == "allowed_warning" ? 0.85 : 1.0))
+    }
+
+    /// `$CLAUDE_CONFIG_DIR/sessions/<pid>.json` as a stream child writes it: `entrypoint: sdk-cli`.
+    func registry(_ status: String) {
+        guard let folder = config.configDir else { return }
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        var process = kinfo_proc()
+        var length = MemoryLayout<kinfo_proc>.size
+        guard sysctl(&mib, UInt32(mib.count), &process, &length, nil, 0) == 0 else { return }
+        let birth = Date(timeIntervalSince1970: Double(process.kp_proc.p_starttime.tv_sec))
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX"); format.timeZone = TimeZone(secondsFromGMT: 0)
+        format.dateFormat = "EEE MMM d HH:mm:ss yyyy"
+        let directory = URL(fileURLWithPath: folder).appendingPathComponent("sessions", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                                                 attributes: [.posixPermissions: 0o700])
+        let object: ChatObject = [
+            "kind": "interactive", "entrypoint": "sdk-cli", "pidDomain": "darwin", "procStart": format.string(from: birth),
+            "startedAt": floor(registryStartedAt.timeIntervalSince1970 * 1_000), "sessionId": wire.session,
+            "cwd": config.cwd, "status": status,
+            "statusUpdatedAt": floor(Date().timeIntervalSince1970 * 1_000),
+        ]
+        guard let bytes = try? JSONSerialization.data(withJSONObject: object) else { return }
+        let fd = open(directory.appendingPathComponent("\(getpid()).json").path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { return }
+        bytes.withUnsafeBytes { _ = Darwin.write(fd, $0.baseAddress, $0.count) }
+        close(fd)
+    }
+
+    /// Sends one hook event through the hook command, like the CLI does (and waits for it).
+    func hook(_ event: String, _ fields: ChatObject = [:]) {
+        guard let helper = config.hookHelper else { return }
+        var payload: ChatObject = ["session_id": wire.session, "hook_event_name": event, "cwd": config.cwd]
+        payload.merge(fields) { _, new in new }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: helper)
+        let input = Pipe()
+        process.standardInput = input
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return }
+        input.fileHandleForWriting.write(data)
+        try? input.fileHandleForWriting.close()
+        process.waitUntilExit()
     }
 
     // MARK: Input
@@ -434,6 +508,7 @@ final class ChatEngine {
     func handleControl(id: String, subtype: String, body: ChatObject) throws {
         switch subtype {
         case "initialize":
+            if config.initBehavior == "silent" { return }
             send(wire.controlSuccess(id, wire.initializeResponse(
                 slashCommands: slashCommands, model: wire.model, permissionMode: permissionMode,
                 state: sessionBusy ? "running" : "idle", pid: getpid(),
@@ -454,7 +529,7 @@ final class ChatEngine {
                 send(wire.controlSuccess(id, ["still_queued": queued]))
             }
             if withdrew { sessionState("running") } // the turn works again, on its way out (t09-pending-interrupt:28)
-            if running { throw TurnEnd.interrupted }
+            if running, !config.ignoreInterrupt { throw TurnEnd.interrupted }
         case "cancel_async_message":
             // Unsends one message the CLI holds and has not read.
             let uuid = body["message_uuid"] as? String
@@ -583,7 +658,13 @@ final class ChatEngine {
     // MARK: Turns
 
     func run() -> Never {
+        if config.initBehavior == "exit" || (config.initBehavior == "exit-on-resume" && config.resumed) {
+            FileHandle.standardError.write(Data("Error: the fake CLI could not start (LOOM_FAKE_CHAT_INIT=exit)\nmore detail\n".utf8))
+            exit(1)
+        }
         inbox.startReading()
+        registry("idle")
+        hook("SessionStart", ["source": config.resumed ? "resume" : "startup"])
         while true {
             if !unread.isEmpty {
                 runTurn(unread.removeFirst())
@@ -612,10 +693,13 @@ final class ChatEngine {
         finalText = ""
         outcome = ChatOutcome()
         rateLimitStatus = "allowed"
+        rateLimitSent = false
         prePlanMode = nil
+        registry("busy")
         if !sessionBusy { sessionBusy = true; sessionState("running") }
         if let first {
             lifecycle(first.uuid, "started")
+            hook("UserPromptSubmit", ["prompt_id": first.uuid])
             sendInit()
             send(wire.statusRequesting(turnUUIDs))
             echo(first)
@@ -651,17 +735,14 @@ final class ChatEngine {
             // A failed API call (not a rate-limit block) has no rate-limit event, and its command is cancelled, not
             // completed (S1 t19-err-badmodel:7-9).
             let failedCall = outcome.terminalReason == "api_error"
-            if !failedCall || rateLimitStatus == "rejected" {
-                send(wire.rateLimit(
-                    status: rateLimitStatus, resetsAt: Int(Date().timeIntervalSince1970) + 3_600, type: "five_hour",
-                    utilization: rateLimitStatus == "allowed" ? 0.41 : rateLimitStatus == "allowed_warning" ? 0.85 : 1.0))
-            }
+            if !failedCall || rateLimitStatus == "rejected" { sendRateLimit() }
             send(wire.result(
                 subtype: outcome.subtype, isError: outcome.isError, text: outcome.text ?? finalText, durationMs: millis,
                 stopReason: "end_turn", terminalReason: outcome.terminalReason, apiErrorStatus: outcome.apiErrorStatus,
                 cost: cost, outputTokens: outputTokens, denials: denials, errors: outcome.errors, userUUIDs: turnUUIDs,
                 queued: unread.count))
             for uuid in turnUUIDs { lifecycle(uuid, failedCall ? "cancelled" : "completed") }
+            hook("Stop", ["last_assistant_message": "done"])
         case .interrupted?:
             // An interrupt is an error without text; its commands end cancelled.
             if !interruptedInTool { send(wire.userText("[Request interrupted by user]")) }
@@ -671,9 +752,11 @@ final class ChatEngine {
                 errors: [], userUUIDs: turnUUIDs, queued: unread.count))
             for uuid in turnUUIDs { lifecycle(uuid, "cancelled") }
         case .abortedByNow?:
-            // A `now` send ends the turn as a success with the partial text; the message starts the next turn.
+            // A `now` send ends the turn as a success with the partial text; the message starts the next turn. S1 §0.9
+            // says such a result carries `is_error: true` (the t07/t23 recordings show false): the fake sends true, the
+            // harder shape, and Loom decides on its own interrupt alone.
             send(wire.result(
-                subtype: "success", isError: false, text: finalText, durationMs: millis,
+                subtype: "success", isError: true, text: finalText, durationMs: millis,
                 stopReason: interruptedInTool ? "tool_use" : nil, terminalReason: terminal, apiErrorStatus: nil,
                 cost: cost, outputTokens: outputTokens, denials: denials, errors: [], userUUIDs: turnUUIDs,
                 queued: unread.count))
@@ -681,6 +764,7 @@ final class ChatEngine {
         }
         running = false
         readNow = []
+        registry("idle")
         if unread.isEmpty {
             sessionBusy = false
             sessionState("idle")
@@ -743,7 +827,9 @@ final class ChatEngine {
     /// One API message: its blocks stream as partial events (main thread only, with
     /// `--include-partial-messages`) and each completed block is an `assistant` record. A pause after every
     /// delta lets an interrupt land mid-stream; the text sent so far then becomes an `aborted` message.
-    func assistantMessage(_ blocks: [Block], parent: String? = nil) throws {
+    /// `beforeStop` runs after the last block and before `message_delta`/`message_stop`: where the CLI sends a
+    /// `can_use_tool` for the message's tool call.
+    func assistantMessage(_ blocks: [Block], parent: String? = nil, beforeStop: () -> Void = {}) throws {
         let messageID = "msg_fake" + UUID().uuidString.lowercased().prefix(8)
         let agent = parent.flatMap { subagents[$0]?.id }
         let extra = agentExtra(parent)
@@ -813,10 +899,12 @@ final class ChatEngine {
                 messageID: messageID, block: final, stopReason: stopReason, outputTokens: tokens, parent: parent,
                 extra: extra), agent: agent)
         }
+        beforeStop()
         var lastStop = "end_turn"
         if case .tool? = blocks.last { lastStop = "tool_use" }
         stream(wire.messageDelta(stopReason: lastStop, outputTokens: outputTokens))
         stream(wire.messageStop())
+        if parent == nil { sendRateLimit() }
     }
 
     func toolResult(_ id: String, _ content: Any, error: Bool = false, structured: Any? = nil, parent: String? = nil) {
@@ -894,6 +982,12 @@ final class ChatEngine {
         try toolBoundary()
     }
 
+    /// A permission request on its way: answered already (no permission host), or waiting under its request id.
+    enum PermissionAsk {
+        case answered(ChatObject)
+        case pending(String)
+    }
+
     /// Sends a `can_use_tool` request and waits for the host's answer, interruptibly. Without a permission
     /// host (`--permission-prompt-tool stdio`) the CLI denies on its own, so no request is sent. If input
     /// ends while it waits, the request fails as a tool error and the turn goes on (`failed: true`).
@@ -901,19 +995,39 @@ final class ChatEngine {
         tool: String, input: ChatObject, toolUseID: String, description: String? = nil, suggestions: [ChatObject] = [],
         reason: String? = nil, agentID: String? = nil, requiresInteraction: Bool = false, parent: String? = nil
     ) throws -> ChatObject {
+        let ask = requestPermission(
+            tool: tool, input: input, toolUseID: toolUseID, description: description, suggestions: suggestions,
+            reason: reason, agentID: agentID, requiresInteraction: requiresInteraction)
+        return try awaitPermission(ask, toolUseID: toolUseID, parent: parent)
+    }
+
+    /// Sends the request only (the CLI sends it before its message's `message_stop`); `awaitPermission` waits.
+    func requestPermission(
+        tool: String, input: ChatObject, toolUseID: String, description: String? = nil, suggestions: [ChatObject] = [],
+        reason: String? = nil, agentID: String? = nil, requiresInteraction: Bool = false
+    ) -> PermissionAsk {
         guard config.permissionHost else {
             let message = "Claude requested permissions to use \(tool), but you haven't granted it yet."
             send(wire.permissionDenied(tool: tool, toolUseID: toolUseID, message: message))
-            return ["behavior": "deny", "message": message]
+            return .answered(["behavior": "deny", "message": message])
         }
         requestCounter += 1
         let id = "fake-req-\(requestCounter)"
         pendingIDs.append(id)
         // The state change comes first, then the request (S1 t08-interrupt-cancelqueued:19-20).
         sessionState("requires_action")
+        hook("PermissionRequest", ["tool_name": tool])
         send(wire.canUseTool(
             requestID: id, tool: tool, input: input, toolUseID: toolUseID, description: description,
             suggestions: suggestions, reason: reason, agentID: agentID, requiresInteraction: requiresInteraction))
+        return .pending(id)
+    }
+
+    func awaitPermission(_ ask: PermissionAsk, toolUseID: String, parent: String? = nil) throws -> ChatObject {
+        guard case let .pending(id) = ask else {
+            if case let .answered(answer) = ask { return answer }
+            return [:]
+        }
         awaitingPermission = true
         defer { awaitingPermission = false }
         let payload = try whileTool(toolUseID, parent: parent) { () throws -> ChatObject in

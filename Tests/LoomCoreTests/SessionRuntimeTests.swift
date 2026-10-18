@@ -119,7 +119,7 @@ struct RuntimeContext {
     let socketDirectory: URL
 }
 
-@Suite(.serialized, .timeLimit(.minutes(2)))
+@Suite(.serialized, .processHeavy, .timeLimit(.minutes(2)))
 struct SessionRuntimeTests {
     static func makeContext(
         idlePolicy: SessionIdlePolicy = SessionIdlePolicy(),

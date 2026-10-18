@@ -103,7 +103,7 @@ private actor StoppedCodexFixture {
     }
 }
 
-@Suite(.serialized, .timeLimit(.minutes(1)))
+@Suite(.serialized, .processHeavy, .timeLimit(.minutes(1)))
 struct ProcessSupervisorTests {
     private var childPath: String {
         Bundle(for: SupervisorTestBundleAnchor.self).bundleURL.deletingLastPathComponent()

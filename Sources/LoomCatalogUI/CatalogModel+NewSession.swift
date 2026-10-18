@@ -211,6 +211,13 @@ public final class NewSessionState {
 
     func lastUsed(for projectID: UUID?) -> ClaudeLaunchChoices? { store?.file.lastUsed[SessionDraft.id(for: projectID)] }
 
+    /// Every recorded launch (newest wins), for the one-time copy into the catalog (V16).
+    public func launchedChoices() -> [UUID: ClaudeLaunchChoices] {
+        var choices: [UUID: ClaudeLaunchChoices] = [:]
+        for entry in store?.file.launched ?? [] { choices[entry.sessionID] = entry.choices }
+        return choices
+    }
+
     /// The mode and model Loom started the session with; nil for a session it has no record of.
     public func launchChoices(for sessionID: UUID) -> ClaudeLaunchChoices? {
         store?.file.launched.last { $0.sessionID == sessionID }?.choices

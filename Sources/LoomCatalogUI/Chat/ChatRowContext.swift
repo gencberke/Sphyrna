@@ -44,6 +44,8 @@ final class ChatRowContext {
     var toggle: (_ rowID: String) -> Void = { _ in }
     var toggleFlag: (_ rowID: String, _ flag: String) -> Void = { _, _ in }
     var showAll: (_ entry: ChatEntry) -> Void = { _ in }
+    /// Whether "Show all" can read a clipped result: from a transcript, the entry's own line; a live chat scans the file.
+    var canShowAll: (_ entry: ChatEntry) -> Bool = { $0.sourceOffset != nil }
     var openSubagent: ((SubagentRun) -> Void)?
     var openImage: (_ image: ImageRef) -> Void = { _ in }
     var copy: (_ text: String) -> Void = { text in

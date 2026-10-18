@@ -15,6 +15,19 @@ public actor ClaudeSessionAdapter {
     }
     private var registryWatches: [UUID: RegistryObservation] = [:]
     private var registryIssues: [UUID: String] = [:]
+    /// Chat-face runs (V16). Their driver reads the child's own stream and is the one authority for the work
+    /// state: hooks still fire for a stream child (S1 §D7) and keep everything else they do here (the
+    /// conversation's identity, use and activity times, subagents, the reason line), but their activity is not
+    /// published, so the two never contradict each other. Such a run has no registry watch either.
+    /// Read from the ingress thread too (a lost hook does not make a driver's state unknown).
+    private let driverRuns = Mutex<Set<UUID>>([])
+
+    /// From now on this run's work state comes from its driver alone (`SessionRuntime+Chat`).
+    func handOverWorkState(runID: UUID) {
+        _ = driverRuns.withLock { $0.insert(runID) }
+    }
+
+    private func isDriverRun(_ runID: UUID) -> Bool { driverRuns.withLock { $0.contains(runID) } }
     /// Runs for which at least one hook message reached Loom, whatever became of it. Set from the
     /// ingress thread, so it lives outside the actor's state.
     private let hookArrivals = Mutex<Set<UUID>>([])
@@ -51,6 +64,7 @@ public actor ClaudeSessionAdapter {
         registryIssues[runID] = nil
         if discardTracker {
             trackers[runID] = nil
+            _ = driverRuns.withLock { $0.remove(runID) }
             silenceWatchdogs.removeValue(forKey: runID)?.cancel()
             silenceIssues[runID] = nil
             _ = hookArrivals.withLock { $0.remove(runID) }
@@ -58,6 +72,9 @@ public actor ClaudeSessionAdapter {
     }
 
     private func receiveRegistry(runID: UUID, watchID: UUID, generation: UUID?, result: ClaudeRegistryRead) async {
+        // A stream child's entry (`entrypoint: sdk-cli`) says nothing its driver does not know first.
+        if isDriverRun(runID) { return }
+        if case let .snapshot(snapshot) = result, snapshot.isStreamChild { return }
         while transitioningRuns.contains(runID) {
             guard !Task.isCancelled, registryWatches[runID]?.watch.id == watchID else { return }
             try? await Task.sleep(for: .milliseconds(1))
@@ -104,6 +121,8 @@ public actor ClaudeSessionAdapter {
     /// Called synchronously by bounded ingress, outside the lossy delta queue.
     nonisolated func noteHookLoss(runID: UUID) {
         HookDiagnostics.note(.lostToOverflow)
+        // A Chat-face run's state does not come from hooks.
+        guard !driverRuns.withLock({ $0.contains(runID) }) else { return }
         guard supervisor.invalidateProviderWorkState(runID: runID) else { return }
         LoomLog.error(.claudeHooks, key: "hook-overflow", "Hook events were lost because the intake was full; the run's state is unknown")
         Task { await publishHookLoss(runID: runID) }
@@ -255,6 +274,9 @@ public actor ClaudeSessionAdapter {
             } catch SessionManagementError.conversationBeingDeleted {
                 // A deleted conversation never comes back; this is not an error to show.
                 return .staleRun
+            } catch SessionManagementError.runNotFound {
+                // The run is being stopped (a Stop right after the start): its identity no longer matters.
+                return .staleRun
             }
         }
         guard supervisor.providerWorkStateIsReliable(runID: envelope.managedRunID) else {
@@ -301,14 +323,17 @@ public actor ClaudeSessionAdapter {
         lastStatuses[activeSessionID] = status
         // The reason goes first, so a consumer that sees "needs approval" already has what for.
         await supervisor.events.publish(sessionID: activeSessionID, change: .reason(status.reason))
-        try await supervisor.updateProviderWorkState(
-            runID: envelope.managedRunID,
-            state: ProviderWorkState(
-                activity: status.activity,
-                pendingProviderWorkCount:
-                    status.backgroundTaskCount + status.scheduledTaskCount
+        // A Chat-face run's work state is its driver's (see `driverRuns`).
+        if !isDriverRun(envelope.managedRunID) {
+            try await supervisor.updateProviderWorkState(
+                runID: envelope.managedRunID,
+                state: ProviderWorkState(
+                    activity: status.activity,
+                    pendingProviderWorkCount:
+                        status.backgroundTaskCount + status.scheduledTaskCount
+                )
             )
-        )
+        }
         switch event.kind {
         case .sessionStart, .userPromptSubmit, .stop:
             // A new conversation, the next real prompt and the end of a turn change the list.

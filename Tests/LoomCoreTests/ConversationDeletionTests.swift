@@ -18,7 +18,7 @@ extension SessionCatalog {
     }
 }
 
-@Suite(.serialized, .timeLimit(.minutes(3)))
+@Suite(.serialized, .processHeavy, .timeLimit(.minutes(3)))
 struct ConversationDeletionTests {
     // MARK: Fixture
 

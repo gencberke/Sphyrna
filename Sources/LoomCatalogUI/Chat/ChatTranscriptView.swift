@@ -182,9 +182,20 @@ struct ChatDriftNotice: View {
     let dismiss: () -> Void
 
     var body: some View {
+        ChatNotice(message: "\(count) record\(count == 1 ? "" : "s") in this session \(count == 1 ? "has" : "have") a shape Loom does not know. They show as raw rows.",
+                   dismiss: dismiss)
+    }
+}
+
+/// A dismissible notice over the bottom of the stream.
+struct ChatNotice: View {
+    let message: String
+    let dismiss: () -> Void
+
+    var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.circle").font(LoomTheme.Chat.rowIcon).foregroundStyle(LoomTheme.Status.attentionLight)
-            Text("\(count) record\(count == 1 ? "" : "s") in this session \(count == 1 ? "has" : "have") a shape Loom does not know. They show as raw rows.")
+            Text(message)
                 .font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.primary).lineLimit(2)
             Button(action: dismiss) {
                 Image(systemName: "xmark").font(LoomTheme.Chat.chevron).foregroundStyle(LoomTheme.Text.secondaryStyle)

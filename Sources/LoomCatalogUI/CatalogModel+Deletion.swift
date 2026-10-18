@@ -198,6 +198,8 @@ extension CatalogModel {
     /// (not handed to a neighboring tab, which closing a tab would do).
     func deletionFinished(_ id: UUID) {
         deletions.finish(id)
+        // Its Chat queue (what the user wrote and had not sent) goes with it.
+        chatSessions?.forget(sessionID: id)
         let wasSelected = selectedSessionID == id
         forget(sessionID: id)
         if wasSelected { select(nil) }

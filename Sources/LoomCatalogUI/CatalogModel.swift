@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import LoomChat
 import LoomCore
 import LoomTerminal
 import Observation
@@ -430,6 +431,10 @@ public final class CatalogModel {
     public let projectPage = ProjectPageState()
     /// The face choice per session and the read-only Chat flag (`DetailRoute`).
     public let faces = SessionFaces()
+    /// The Chat face's drivers (V16): their own object, made by the app with the runtime; nil without one.
+    @ObservationIgnored public var chatSessions: ChatSessionHost?
+    /// Moves when a Chat driver moved to another card (`/clear`): a view that looked a driver up by card reads again.
+    public internal(set) var chatDriversRevision = 0
     /// The Claude config directory the app reads transcripts from, one value for the Chat view and the palette's
     /// session text search. The app sets it at launch from the profile layout, before any window shows and without
     /// the runtime (`setClaudeConfigDirectory`); nil means there is nothing to read, and the Chat view draws its

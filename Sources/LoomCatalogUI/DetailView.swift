@@ -397,7 +397,7 @@ struct ConversationDetail: View {
                             .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     }
                     HStack {
-                        if Self.showsResume(inChat: inChat, hasTerminal: model.terminalView(for: row.id) != nil) {
+                        if Self.showsResume(inChat: inChat, hasTerminal: model.isRunning(row)) {
                             Button(record.lifecycle == .stale ? "Reactivate and Resume" : "Resume") {
                                 model.resumeConversation(row.id)
                             }

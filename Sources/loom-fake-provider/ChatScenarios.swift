@@ -20,9 +20,10 @@ import Foundation
 //                                     with subtype success, is_error true, terminal_reason api_error
 //                                     (default 404 model_not_found)
 //   rate-limit [status]               the turn's rate_limit_event status (allowed | allowed_warning | rejected)
-//   api-retry [n]                     n system/api_retry records (default 2), then an answer
+//   api-retry [n] [error]             n system/api_retry records (default 2, error `overloaded`), then an answer
 //   compact [trigger]                 status compacting, status null, compact_boundary
-//   reset [trigger]                   conversation_reset to a new session id, then a fresh system/init
+//   reset [trigger]                   conversation_reset to a new session id, a fresh system/init, and the
+//                                     SessionStart hook with source `clear` (the run moves to a new card)
 //   unknown                           an unknown record type, an unknown system subtype and keep_alive
 //   bigline [MiB]                     a Bash result whose line is about 2x MiB (default 3)
 
@@ -94,8 +95,10 @@ extension ChatEngine {
             try rateLimit(status: args.first ?? "allowed_warning")
         case "api-retry":
             let count = args.first.flatMap(Int.init) ?? 2
+            let error = args.dropFirst().first ?? "overloaded"
             for attempt in 1...max(1, count) {
-                send(wire.apiRetry(attempt: attempt, maxRetries: max(3, count), delayMs: 500 * attempt, status: 529, error: "overloaded"))
+                send(wire.apiRetry(attempt: attempt, maxRetries: max(3, count), delayMs: 500 * attempt,
+                                   status: error == "overloaded" ? 529 : 400, error: error))
                 try pause(config.delayMs)
             }
             try assistantMessage([.text("The request went through after \(count) retries.")])
@@ -220,12 +223,15 @@ extension ChatEngine {
     func approval() throws {
         let id = nextToolID()
         let input: ChatObject = ["command": "rm -rf build", "description": "Remove the build folder"]
-        try assistantMessage([.text("The build folder is stale, so I'll remove it."), .tool(id: id, name: "Bash", input: input)])
-        let answer = try askPermission(
-            tool: "Bash", input: input, toolUseID: id, description: "Remove the build folder",
-            suggestions: [["type": "addRules", "rules": [["toolName": "Bash", "ruleContent": "rm -rf build"]],
-                           "behavior": "allow", "destination": "localSettings"] as ChatObject],
-            reason: "This command requires approval")
+        var ask = PermissionAsk.answered([:])
+        try assistantMessage([.text("The build folder is stale, so I'll remove it."), .tool(id: id, name: "Bash", input: input)]) {
+            ask = requestPermission(
+                tool: "Bash", input: input, toolUseID: id, description: "Remove the build folder",
+                suggestions: [["type": "addRules", "rules": [["toolName": "Bash", "ruleContent": "rm -rf build"]],
+                               "behavior": "allow", "destination": "localSettings"] as ChatObject],
+                reason: "This command requires approval")
+        }
+        let answer = try awaitPermission(ask, toolUseID: id)
         if answer["behavior"] as? String == "allow" {
             try runTool(id, milliseconds: 15)
             toolResult(id, "", structured: Self.bash(stdout: ""))
@@ -262,9 +268,11 @@ extension ChatEngine {
                          ["label": "Metrics", "description": "Basic counters"] as ChatObject]],
         ]
         let input: ChatObject = ["questions": questions]
-        try assistantMessage([.tool(id: id, name: "AskUserQuestion", input: input)])
-        let answer = try askPermission(
-            tool: "AskUserQuestion", input: input, toolUseID: id, requiresInteraction: true)
+        var ask = PermissionAsk.answered([:])
+        try assistantMessage([.tool(id: id, name: "AskUserQuestion", input: input)]) {
+            ask = requestPermission(tool: "AskUserQuestion", input: input, toolUseID: id, requiresInteraction: true)
+        }
+        let answer = try awaitPermission(ask, toolUseID: id)
         if answer["behavior"] as? String == "allow" {
             let answers = (answer["updatedInput"] as? ChatObject)?["answers"] as? [String: String] ?? [:]
             let summary = answers.keys.sorted().map { "\"\($0)\"=\"\(answers[$0] ?? "")\"" }.joined(separator: ", ")
@@ -285,9 +293,12 @@ extension ChatEngine {
         let id = nextToolID()
         let path = "/tmp/fake-project/.claude/plans/fake-plan.md"
         let plan = "# Fake plan\n\n1. Read the module.\n2. Change the constant.\n3. Run the tests.\n"
-        try assistantMessage([.text("I have a plan."), .tool(id: id, name: "ExitPlanMode", input: [:])])
         let input: ChatObject = ["plan": plan, "planFilePath": path] // ASSUMPTION: the CLI injects both
-        let answer = try askPermission(tool: "ExitPlanMode", input: input, toolUseID: id, requiresInteraction: true)
+        var ask = PermissionAsk.answered([:])
+        try assistantMessage([.text("I have a plan."), .tool(id: id, name: "ExitPlanMode", input: [:])]) {
+            ask = requestPermission(tool: "ExitPlanMode", input: input, toolUseID: id, requiresInteraction: true)
+        }
+        let answer = try awaitPermission(ask, toolUseID: id)
         if answer["behavior"] as? String == "allow" {
             let update = (answer["updatedPermissions"] as? [ChatObject])?.first { $0["type"] as? String == "setMode" }
             // setMode in the answer picks the mode; a plain allow returns to the mode before the plan.
@@ -333,7 +344,7 @@ extension ChatEngine {
             try apiError(status: 429, category: "rate_limit")
             return
         }
-        try assistantMessage([.text("The limit event comes with the result.")])
+        try assistantMessage([.text("The limit event follows the first message.")])
     }
 
     func apiError(status: Int, category: String) throws {
@@ -356,6 +367,7 @@ extension ChatEngine {
         transcript.switchSession(newID)
         lastUUID = nil
         sendInit()
+        hook("SessionStart", ["source": "clear"])
         outcome.text = ""
     }
 

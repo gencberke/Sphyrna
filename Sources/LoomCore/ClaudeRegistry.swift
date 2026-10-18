@@ -14,8 +14,15 @@ struct ClaudeRegistrySnapshot: Sendable, Equatable {
     let startedAt: Double
     let status: String?
     let statusUpdatedAt: Double?
+    /// `cli` for the TUI, `sdk-cli` for a stream-json child (`claude -p`, the Chat face; spike S1 Q7).
+    var entrypoint: String? = nil
 
     var hasUnknownStatus: Bool { status.map { !Self.knownStatuses.contains($0) } ?? false }
+
+    /// The entry of a stream-json child. Its driver reads the child's own stream, which is the authority for its
+    /// state; the registry's `busy`/`idle` would only repeat it late, so nothing is derived from it (V16).
+    var isStreamChild: Bool { entrypoint == Self.streamEntrypoint }
+    static let streamEntrypoint = "sdk-cli"
 }
 
 enum ClaudeRegistryRead: Sendable {
@@ -94,7 +101,7 @@ struct ClaudeRegistryReader: Sendable {
         let updated = number(object["statusUpdatedAt"])
         guard status == nil || updated != nil else { return .unavailable }
         return .snapshot(ClaudeRegistrySnapshot(sessionID: session, startedAt: started,
-            status: status, statusUpdatedAt: updated))
+            status: status, statusUpdatedAt: updated, entrypoint: object["entrypoint"] as? String))
     }
 
     private func number(_ value: Any?) -> Double? { ClaudeRegistryFields.number(value) }

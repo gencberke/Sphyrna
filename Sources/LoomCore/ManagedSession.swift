@@ -151,15 +151,40 @@ public struct ManagedRunStopHooks: Sendable {
     public let threadID: String?
     public let prepare: @Sendable () async throws -> Void
     public let completed: @Sendable () async throws -> Void
+    /// Pipe runs only, on Stop and on Quit: asks the child to end its work the way its protocol says, before its
+    /// stdin closes (the Chat face interrupts a running turn or a waiting request and waits for the turn's
+    /// `result`, spike S1 §D6). It gets the stop's input-close grace as its bound and the stop's reason, must
+    /// return within the grace, and cannot fail the stop: whatever it leaves, the closed stdin and the signals
+    /// after the grace end. Not called when the leader already exited (`processExited`): there is nobody to ask.
+    public let leave: (@Sendable (ManagedRunLeave) async -> Void)?
+    /// The run moved to another card (`/clear`, a fork: `adoptConversation` with a new conversation), with the
+    /// card it is on now. Called once per move, after the move's events are published, from a task of its own.
+    public let moved: (@Sendable (_ sessionID: UUID) async -> Void)?
 
     public init(
         threadID: String? = nil,
         prepare: @escaping @Sendable () async throws -> Void,
-        completed: @escaping @Sendable () async throws -> Void
+        completed: @escaping @Sendable () async throws -> Void,
+        leave: (@Sendable (ManagedRunLeave) async -> Void)? = nil,
+        moved: (@Sendable (_ sessionID: UUID) async -> Void)? = nil
     ) {
         self.threadID = threadID
         self.prepare = prepare
         self.completed = completed
+        self.leave = leave
+        self.moved = moved
+    }
+}
+
+/// What a pipe run's `leave` hook is told: how long it may take, and why the run is stopping (a Stop, an idle stop,
+/// Quit). The owner tells a stop it asked for from an end it did not.
+public struct ManagedRunLeave: Sendable, Equatable {
+    public let graceSeconds: Double
+    public let reason: ManagedRunEndReason
+
+    public init(graceSeconds: Double, reason: ManagedRunEndReason) {
+        self.graceSeconds = graceSeconds
+        self.reason = reason
     }
 }
 

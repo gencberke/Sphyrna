@@ -491,6 +491,12 @@ public actor ProcessSupervisor {
         )
         runRegistered = true
         await events.publish(sessionID: sessionID, change: .runStarted(runID))
+        let endpointKind: RunEndpointKind = endpoint.isPipe ? .pipe : .terminal
+        await events.publish(sessionID: sessionID, change: .runEndpoint(runID, endpointKind))
+        // The owning face is a fact of the session, kept with it (V19's handover reads it).
+        do { try await catalog?.setRunEndpoint(endpointKind, sessionID: sessionID) } catch {
+            LoomLog.error(.catalog, "The run's endpoint could not be recorded (\(LoomLog.category(of: error)))")
+        }
         LoomLog.notice(.lifecycle, "Run \(runID.uuidString.prefix(8)) started")
         markerInspected.insert(leaderIdentity)
         managedRunMarkers[leaderIdentity] = runID
@@ -666,6 +672,21 @@ public actor ProcessSupervisor {
         await events.publish(
             sessionID: destination.id, change: .runStarted(runID)
         )
+        let endpoint: RunEndpointKind = runtime.endpoint.isPipe ? .pipe : .terminal
+        await events.publish(sessionID: destination.id, change: .runEndpoint(runID, endpoint))
+        // The run's launch choices and its face go with it: the new card is resumed with the mode, model and effort
+        // the run had, in the face that ran it (choices the destination already has are kept).
+        if let catalog {
+            do {
+                try await catalog.carryLaunchState(from: current.id, to: destination.id, endpoint: endpoint)
+            } catch {
+                LoomLog.error(.catalog, "A moved run's launch choices were not copied (\(LoomLog.category(of: error)))")
+            }
+        }
+        if let moved = stopHooks[runID]?.moved {
+            let card = destination.id
+            Task { await moved(card) }
+        }
         return destination.id
     }
 
