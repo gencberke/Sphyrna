@@ -4,6 +4,9 @@ import SwiftUI
 /// (`CatalogModel.inspector`). A tab bar, then the open tab: Overview or Agents (V09).
 struct InspectorContainer: View {
     let model: CatalogModel
+    /// Drawn over the content (a narrow pane): the popover surface and shadow, so it reads as above the content
+    /// and not as part of it.
+    var overlays = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,14 +21,29 @@ struct InspectorContainer: View {
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(LoomTheme.Surface.inspector, ignoresSafeAreaEdges: [])
+        .background(overlays ? LoomTheme.Surface.popover : LoomTheme.Surface.inspector, ignoresSafeAreaEdges: [])
         .overlay(alignment: .leading) {
             Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(width: LoomTheme.Line.hairline)
                 .accessibilityHidden(true)
         }
         .frame(width: LoomTheme.Rhythm.inspectorWidth)
+        .modifier(OverlayShadow(overlays: overlays))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inspector")
+    }
+}
+
+/// The popover shadow of an overlaid inspector; a column has none (and adds no layer for it).
+private struct OverlayShadow: ViewModifier {
+    let overlays: Bool
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if overlays {
+            content.shadow(color: .black.opacity(LoomTheme.Depth.popover.shadow.opacity),
+                           radius: LoomTheme.Depth.popover.shadow.blur / 2, x: LoomTheme.Inspector.overlayShadowX)
+        } else {
+            content
+        }
     }
 }
 
@@ -116,20 +134,55 @@ struct InspectorToggleButton: View {
     }
 }
 
+/// Where the inspector of the selected session goes for a detail pane this wide (pure, so a test reads it).
+enum InspectorPlacement: Equatable {
+    /// Closed, or no session selected.
+    case closed
+    /// A column beside the content, which gives up its width (the terminal resizes once, on the user's toggle).
+    case column
+    /// Drawn over the content at the trailing edge: the content keeps its width, so nothing resizes.
+    case overlay
+
+    /// The column is only used while the content keeps at least `minimumContent` beside it; below that the
+    /// inspector covers the content's trailing edge instead of squeezing it.
+    static func of(open: Bool, detailWidth: CGFloat) -> InspectorPlacement {
+        guard open else { return .closed }
+        return detailWidth - LoomTheme.Rhythm.inspectorWidth < LoomTheme.Inspector.minimumContent ? .overlay : .column
+    }
+
+    /// The width the content gets.
+    func contentWidth(detailWidth: CGFloat) -> CGFloat {
+        self == .column ? detailWidth - LoomTheme.Rhythm.inspectorWidth : detailWidth
+    }
+}
+
 extension View {
-    /// Puts the inspector of the selected session to the right of the content. With no selected session it
-    /// stays closed. It is a plain column in the same layout pass as the content, not a SwiftUI `.inspector`:
-    /// that one slides in over many frames and lags the content by a pass, so a terminal was resized on every
-    /// frame of a toggle and twice on a change of selection. Here the width changes once, by the user's toggle
-    /// only, and never animates (DESIGN §6, Motion: a width change is a PTY resize).
+    /// Puts the inspector of the selected session beside the content, or over it when the pane is too narrow to
+    /// keep `LoomTheme.Inspector.minimumContent` of content next to it (`InspectorPlacement`). With no selected
+    /// session it stays closed. It is a plain column in the same layout pass as the content, not a SwiftUI
+    /// `.inspector`: that one slides in over many frames and lags the content by a pass, so a terminal was
+    /// resized on every frame of a toggle and twice on a change of selection. Here the width changes once, by
+    /// the user's toggle only, and never animates (DESIGN §6, Motion: a width change is a PTY resize). The
+    /// content is one view in every placement, given its width explicitly from the pane's width in the same
+    /// pass; crossing the threshold changes that width once.
     func detailInspector(model: CatalogModel) -> some View {
         let open = model.inspector.isOpen(for: model.selectedSessionID)
-        return HStack(spacing: 0) {
-            self
-            if open {
-                InspectorContainer(model: model).transition(.identity)
+        return GeometryReader { proxy in
+            let placement = InspectorPlacement.of(open: open, detailWidth: proxy.size.width)
+            HStack(spacing: 0) {
+                self.frame(width: placement.contentWidth(detailWidth: proxy.size.width))
+                if placement == .column {
+                    InspectorContainer(model: model).transition(.identity)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
+            .overlay(alignment: .trailing) {
+                if placement == .overlay {
+                    InspectorContainer(model: model, overlays: true).transition(.identity)
+                }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transaction(value: open) { $0.animation = nil; $0.disablesAnimations = true }
         .task(id: model.inspectorContextSessions) { model.trackInspectorContext() }
     }

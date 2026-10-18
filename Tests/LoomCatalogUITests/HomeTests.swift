@@ -70,6 +70,23 @@ struct HomeTests {
         return states
     }
 
+    @Test func aFailedTurnTheUserHasReadLeavesHomeAndTheBadgeLikeTheSidebarsActiveSection() async throws {
+        let rig = try await ListRig.make(projects: 1, perProject: 2, unassigned: 0, mode: .activity)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let id = try #require(rig.ids[rig.projects[0].id]?.first)
+        try await rig.feed(.runStarted(UUID()), for: id)
+        // A failure with no turn seen under way before it is still news: unread, so on Home and in Active.
+        try await rig.feed(.status(ProviderWorkState(activity: .failed("rate_limit"))), for: id)
+        #expect(model.homeBoard().finished.map(\.id) == [id] && model.attentionCount == 1)
+        #expect(model.activeIDs.contains(id))
+        // Read (viewed or marked read): out of Active, and out of Home and the badge with it. The card keeps its red dot.
+        try await rig.feed(.markedRead, for: id)
+        #expect(!model.activeIDs.contains(id))
+        #expect(model.homeBoard().count == 0 && model.attentionCount == 0)
+        #expect(model.rowModels[id]?.indicator == .failed("rate_limit"))
+    }
+
     @Test func theTwoListsAreTheSidebarsAndTheDockBadgesCountSplitInTwo() async throws {
         let rig = try await ListRig.make(projects: 1, perProject: 7, unassigned: 0, mode: .activity)
         defer { rig.cleanup() }
@@ -424,7 +441,7 @@ struct HomeTests {
 
     // MARK: First run and empty states
 
-    @Test func anEmptyCatalogOpensOnHomeWithItsOwnStateAndNotOnAddAProject() async throws {
+    @Test func anEmptyCatalogOpensOnHomeWithItsOwnStateWithoutAnyDestination() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let model = CatalogModel(catalog: try SessionCatalog(url: root.appendingPathComponent("c.sqlite3")),
@@ -435,8 +452,8 @@ struct HomeTests {
         await model.stopAndWait()
         await model.settle()
         #expect(model.homeCatalogIsEmpty)
-        // Without a destination the old screen stays; Home comes first once it is the destination.
-        #expect(model.detailRoute == .addProject)
+        // First run: no saved destination, and the empty catalog still opens on Home (not the old start screen).
+        #expect(model.destination == nil && model.detailRoute == .home)
         model.showHome()
         #expect(model.detailRoute == .home && model.homeCatalogIsEmpty)
         #expect(model.homeBoard().count == 0 && model.homeContinueEntries().isEmpty)

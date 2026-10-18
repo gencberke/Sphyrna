@@ -5,6 +5,12 @@ import SwiftUI
 /// `Rhythm.inspectorWidth`.
 extension LoomTheme {
     enum Inspector {
+        /// The content keeps at least this much width beside the inspector column (the detail pane's own
+        /// minimum); in a narrower pane the inspector is drawn over the content instead of squeezing it.
+        static let minimumContent: CGFloat = 480
+        /// The overlaid inspector's shadow falls to its left, over the content, not downwards.
+        static let overlayShadowX: CGFloat = -12
+
         // Tabs: a 40 pt bar; the open tab shows its name, the others their symbol and count.
         static let tabBarHeight: CGFloat = 40
         static let tabBarInset: CGFloat = 8

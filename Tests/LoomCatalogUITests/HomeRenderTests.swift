@@ -138,6 +138,34 @@ struct HomeRenderTests {
         #expect(!found.contains("home-start") && !found.contains("home-no-claude") && !found.contains("home-check-again"))
     }
 
+    @Test func theFirstRunPanelIsHomeWithItsEmptyStateNotTheOldStartScreen() async throws {
+        enableAccessibilityTree()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-home-firstrun-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = CatalogModel(catalog: try SessionCatalog(url: root.appendingPathComponent("c.sqlite3")),
+                                 events: SessionEventHub(),
+                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
+        await model.start()
+        await model.stopAndWait()
+        await model.settle()
+        // No destination was ever chosen: this is what a first launch draws.
+        #expect(model.destination == nil && model.detailRoute == .home)
+        let hosting = NSHostingController(rootView: DetailContent(model: model, route: model.detailRoute))
+        hosting.sizingOptions = []
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 940, height: 740), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.contentViewController = hosting
+        window.setContentSize(NSSize(width: 940, height: 740))
+        window.isReleasedWhenClosed = false
+        defer { window.close(); model.stop() }
+        try await settle(window) { self.identifiers(in: hosting.view).contains("home-add-project") }
+        let found = Set(identifiers(in: hosting.view))
+        #expect(found.contains("home-add-project") && found.contains("home-new-session"), "\(found.sorted())")
+        #expect(!found.contains("home-start") && !found.contains("home-no-claude"))
+        #expect(!labels(in: hosting.view).contains("Add a project to begin"))
+    }
+
     @Test func withoutClaudeAnEmptyCatalogSaysSoAndOffersCheckAgain() async throws {
         enableAccessibilityTree()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-home-noclaude-\(UUID())", isDirectory: true)

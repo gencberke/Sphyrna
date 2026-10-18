@@ -11,7 +11,7 @@ enum PlanPaceText {
     }
 
     static func remaining(_ pace: PlanPace) -> String {
-        "\(100 - Int((pace.usedFraction * 100).rounded()))% left"
+        "\(UsageFormat.percent(100 - Int((pace.usedFraction * 100).rounded()))) left"
     }
 
     /// `16:40`, or `Mon 09:00` when it is not today.

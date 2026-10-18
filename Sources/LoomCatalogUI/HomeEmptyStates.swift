@@ -47,6 +47,12 @@ struct HomeEmptyCatalog: View {
                         .disabled(!model.canStart(.claude, projectID: nil))
                         .accessibilityIdentifier("home-new-session")
                 }
+                // Only a build that includes Codex offers it (`startableProviders` is the build's decision).
+                if model.startableProviders.contains(.codex) {
+                    Button("New Codex Session") { model.startConversation(.codex, projectID: nil) }
+                        .disabled(!model.canStart(.codex, projectID: nil))
+                        .accessibilityIdentifier("home-new-codex-session")
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

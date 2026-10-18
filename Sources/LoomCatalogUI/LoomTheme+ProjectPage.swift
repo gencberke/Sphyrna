@@ -22,6 +22,8 @@ extension LoomTheme {
         static let statsGap: CGFloat = 18
         /// Between a figure and its noun in the stats line ("18" "sessions").
         static let figureGap: CGFloat = 4
+        /// Between lines of the stats line when its items wrap.
+        static let statsLineGap: CGFloat = 4
         static let statsTop: CGFloat = 12
         static let statsBottom: CGFloat = 16
         static let name = Font.system(size: 22, weight: .semibold)

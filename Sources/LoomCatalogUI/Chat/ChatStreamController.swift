@@ -123,6 +123,13 @@ final class ChatStreamController: NSObject {
         return measured > 1 ? measured : (lastWidth > 1 ? lastWidth : LoomTheme.Chat.column)
     }
 
+    /// The column is exactly as wide as the visible area, on every layout pass (see `ChatScrollView.tile`).
+    func fitColumnToView() {
+        let visible = scrollView.contentSize.width
+        guard visible > 1, let column = table.tableColumns.first, abs(column.width - visible) > 0.5 else { return }
+        column.width = visible
+    }
+
     private var viewportHeight: CGFloat { clip.bounds.height }
     private var minOffset: CGFloat { -scrollView.contentInsets.top }
     private var maxOffset: CGFloat { max(minOffset, table.frame.height + bottomInset - viewportHeight) }

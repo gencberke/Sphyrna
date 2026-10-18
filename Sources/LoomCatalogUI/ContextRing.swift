@@ -7,14 +7,21 @@ enum ContextRingText {
     static func label(_ usage: ContextUsage) -> String {
         let tokens = UsageFormat.tokens(usage.tokens)
         guard let percent = usage.percent else { return tokens }
-        return "\(tokens) · \(percent)%"
+        return "\(tokens) · \(UsageFormat.percent(percent))"
     }
 
     /// The tooltip: `Context: 84,200 of 200,000 tokens (42%)`, or without the window `Context: 84,200 tokens`.
     static func detail(_ usage: ContextUsage) -> String {
         let used = UsageFormat.grouped(usage.tokens)
         guard let window = usage.window, let percent = usage.percent else { return "Context: \(used) tokens" }
-        return "Context: \(used) of \(UsageFormat.grouped(window)) tokens (\(percent)%)"
+        return "Context: \(used) of \(UsageFormat.grouped(window)) tokens (\(UsageFormat.percent(percent)))"
+    }
+
+    /// The line under the ring in the inspector: it adds what the label beside the ring does not say, the
+    /// exact tokens against the window, or that the window is not known (so there is no share to show).
+    static func caption(_ usage: ContextUsage) -> String {
+        guard let window = usage.window else { return "Window unknown" }
+        return "\(UsageFormat.grouped(usage.tokens)) of \(UsageFormat.grouped(window)) tokens"
     }
 
     /// What VoiceOver says: the same facts with spoken counts.

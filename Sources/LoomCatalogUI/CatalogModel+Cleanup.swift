@@ -127,7 +127,7 @@ enum CleanupText {
         case .running: "Running"
         case .deleting: "Being deleted"
         case .notStale: "Not stale"
-        case .waitUntil(let date): "Waits until \(date.formatted(date: .abbreviated, time: .omitted))"
+        case .waitUntil(let date): "Waits until \(LoomDateFormat.date(date))"
         case .worktree(let detail): detail
         case .task: "Linked to an unfinished task"
         }

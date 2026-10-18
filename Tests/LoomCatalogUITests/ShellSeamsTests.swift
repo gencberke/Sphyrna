@@ -161,7 +161,7 @@ struct ShellSeamsTests {
         let empty = model(at: root)
         #expect(empty.detailRoute == .noSelection, "before the first page is read")
         await empty.start()
-        #expect(empty.detailRoute == .addProject)
+        #expect(empty.detailRoute == .home, "an empty catalog opens on Home, which carries the first-run states")
         empty.showDevTerminal(DevTerminal(panel: NSView()))
         #expect(empty.detailRoute == .devTerminal)
         empty.stop()
@@ -220,7 +220,7 @@ struct ShellSeamsTests {
     @Test func everyRouteIsDrawnOnThePanelColourToday() {
         for route in [DetailRoute.startupError("x"), .devTerminal,
                       .terminal(sessionID: UUID()), .endedScreen(sessionID: UUID()), .record(sessionID: UUID()),
-                      .addProject, .noSelection, .chat(sessionID: UUID()), .home, .draft(projectID: nil),
+                      .noSelection, .chat(sessionID: UUID()), .home, .draft(projectID: nil),
                       .projectPage(projectID: UUID())] {
             #expect(route.surface == LoomTheme.Surface.panel)
         }

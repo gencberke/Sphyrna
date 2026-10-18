@@ -79,8 +79,10 @@ struct ResolvedStart: Equatable, Sendable {
         mode.value.flatMap { ClaudePermissionMode(rawValue: $0)?.title ?? $0 } ?? NewSessionDefaults.claudeDefaultTitle
     }
 
+    /// The model as the bar names it: the chosen one, else "Default model" (the CLI decides which; the mode
+    /// chip's "Claude's default" would read the same twice in one bar).
     var modelTitle: String {
-        model.value.map(NewSessionModels.title(of:)) ?? NewSessionDefaults.claudeDefaultTitle
+        model.value.map(NewSessionModels.title(of:)) ?? NewSessionDefaults.defaultModelTitle
     }
 }
 
@@ -91,6 +93,7 @@ struct ResolvedStart: Equatable, Sendable {
 /// configured one is skipped and the next level answers.
 enum NewSessionDefaults {
     static let claudeDefaultTitle = "Claude's default"
+    static let defaultModelTitle = "Default model"
 
     static func resolve(modePick: DraftPick, modelPick: DraftPick, lastUsed: ClaudeLaunchChoices?,
                         settings: NewSessionSettings) -> ResolvedStart {

@@ -48,7 +48,7 @@ struct UsageCardsTests {
         #expect(byTitle["Output"] == "118,900")
         #expect(byTitle["Cache read"] == "842,200")
         #expect(byTitle["Cache write"] == "5 min 200,000, 1 h 2,010")
-        #expect(UsageCardText.servedFromCache(tokens) == "78 %")
+        #expect(UsageCardText.servedFromCache(tokens) == "78%")
     }
 
     // MARK: Texts
@@ -59,8 +59,8 @@ struct UsageCardsTests {
     }
 
     @Test func countsAreSingularForOne() {
-        #expect(UsageCardText.sessions(1) == "1 session")
-        #expect(UsageCardText.sessions(41) == "41 sessions")
+        #expect(UsageCardText.sessions(1) == "1 session with usage")
+        #expect(UsageCardText.sessions(41) == "41 sessions with usage")
         #expect(UsageCardText.models(1) == "1 model")
         #expect(UsageCardText.models(3) == "3 models")
     }
@@ -71,9 +71,10 @@ struct UsageCardsTests {
         #expect(row.title == "5-hour")
         #expect(row.used == "62% used")
         #expect(row.left == "38% left")
-        #expect(row.reset == "Resets 15:13")
+        let reset = UsageText.time(Self.now.addingTimeInterval(3_600), Self.zone)
+        #expect(row.reset == "Resets \(reset)")
         #expect(!row.used.contains("left"))
-        #expect(row.accessibilityLabel == "5-hour limit, 62 percent used, 38 percent remaining, resets 15:13")
+        #expect(row.accessibilityLabel == "5-hour limit, 62 percent used, 38 percent remaining, resets \(reset)")
         let weekly = UsageCardText.planLimitRow(.weekly, PlanLimitWindow(usedPercent: 31, resetsAt: nil),
                                                 now: Self.now, timeZone: Self.zone)
         #expect(weekly.title == "Weekly" && weekly.reset == nil)
@@ -106,7 +107,7 @@ struct UsageCardsTests {
     @Test func thePeakIsTheLargestBarAndAbsentWithoutTokens() {
         let bars = [UsageBar(start: Self.now, tokens: 5, isCurrent: false),
                     UsageBar(start: Self.now.addingTimeInterval(86_400), tokens: 13_200_000, isCurrent: true)]
-        #expect(UsageCardText.peak(bars, period: .days7, timeZone: Self.zone) == "Peak 13.2M, Tue 22 Sep")
+        #expect(UsageCardText.peak(bars, period: .days7, timeZone: Self.zone) == "Peak 13.2M, \(UsageText.bucket(Self.now.addingTimeInterval(86_400), .days7, Self.zone))")
         #expect(UsageCardText.peak([UsageBar(start: Self.now, tokens: 0, isCurrent: true)],
                                    period: .days7, timeZone: Self.zone) == nil)
         #expect(UsageCardText.activityTitle(.hours24) == "Tokens per hour")

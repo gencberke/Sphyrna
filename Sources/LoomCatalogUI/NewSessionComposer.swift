@@ -181,8 +181,8 @@ private struct ComposerBar: View {
             }
             Divider()
             Button { model.setDraftModel(.claudeDefault, projectID: projectID) } label: {
-                if resolved.model.value == nil { Label(NewSessionDefaults.claudeDefaultTitle, systemImage: "checkmark") }
-                else { Text(NewSessionDefaults.claudeDefaultTitle) }
+                if resolved.model.value == nil { Label(NewSessionDefaults.defaultModelTitle, systemImage: "checkmark") }
+                else { Text(NewSessionDefaults.defaultModelTitle) }
             }
             if let draft, draft.modelPick != .inherit {
                 Button("Use the default for this project") { model.setDraftModel(.inherit, projectID: projectID) }
@@ -192,7 +192,7 @@ private struct ComposerBar: View {
                 Text(resolved.modelTitle).font(LoomTheme.Typography.smallMedium)
                 Image(systemName: "chevron.down").font(LoomTheme.Typography.chevron).foregroundStyle(LoomTheme.Text.tertiary)
             }
-            .foregroundStyle(LoomTheme.Text.primary)
+            .foregroundStyle(LoomTheme.Text.secondaryStyle)
             .padding(.horizontal, LoomTheme.Space.cardH).frame(minHeight: NewSessionLayout.barHeight - LoomTheme.Space.headerSpacing)
             .contentShape(Rectangle())
         }

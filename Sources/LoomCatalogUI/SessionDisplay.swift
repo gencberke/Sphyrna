@@ -221,23 +221,19 @@ public enum DayGrouping {
         return result
     }
 
-    private static let formatters = FormatterCache()
-    static var formattersCreated: Int { formatters.created }
+    static var formattersCreated: Int { LoomDateFormat.formattersCreated }
 
-    static func title(for day: Date, now: Date, calendar: Calendar) -> String {
+    /// "Today", "Yesterday", the weekday for the last week, then the date (the year only when it is not this
+    /// one), in the system locale (`LoomDateFormat`).
+    static func title(for day: Date, now: Date, calendar: Calendar, locale: Locale = .current) -> String {
         let today = calendar.startOfDay(for: now)
         let days = calendar.dateComponents([.day], from: day, to: today).day ?? 0
         if days <= 0 { return "Today" }
         if days == 1 { return "Yesterday" }
-        let pattern: String
-        if days < 7 { pattern = "EEEE" }
-        else if calendar.component(.year, from: day) == calendar.component(.year, from: now) { pattern = "MMM d" }
-        else { pattern = "MMM d, yyyy" }
-        let key = "\(pattern)|\(calendar.identifier)|\(calendar.timeZone.identifier)|\(calendar.firstWeekday)"
-        return formatters.string(from: day, key: key) {
-            $0.calendar = calendar
-            $0.locale = Locale(identifier: "en_US")
-            $0.dateFormat = pattern
+        if days < 7 { return LoomDateFormat.weekdayLong(day, locale: locale, calendar: calendar) }
+        if calendar.component(.year, from: day) == calendar.component(.year, from: now) {
+            return LoomDateFormat.dayMonth(day, locale: locale, calendar: calendar)
         }
+        return LoomDateFormat.date(day, locale: locale, calendar: calendar)
     }
 }

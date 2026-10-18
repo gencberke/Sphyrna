@@ -43,12 +43,8 @@ public struct CatalogRecoveryPrompt: Equatable, Sendable {
                       .init(title: "Start Fresh", choice: .startFresh), .init(title: "Quit", choice: .quit)])
     }
 
-    /// `11 Oct 2026 at 09:14`, in English like the rest of the app's copy.
-    static func date(_ date: Date, _ zone: TimeZone) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = zone
-        formatter.dateFormat = "d MMM yyyy 'at' HH:mm"
-        return formatter.string(from: date)
+    /// The backup's date and time in the system locale ("Oct 11, 2026 at 9:14 AM").
+    static func date(_ date: Date, _ zone: TimeZone, locale: Locale = .current) -> String {
+        LoomDateFormat.dateTime(date, zone: zone, locale: locale)
     }
 }

@@ -33,6 +33,9 @@ struct TabStripLayout: Equatable {
         overflows ? inner - LoomTheme.TabStrip.gap - LoomTheme.TabStrip.overflowWidth : inner
     }
 
+    /// Whether a tab is cut at the leading edge: the list is scrolled, so a fade there says there is more.
+    func showsLeadingFade(scrollOffset: CGFloat) -> Bool { overflows && scrollOffset > 0.5 }
+
     /// Tabs whose status indicator (at the leading edge) is scrolled out of the list.
     func hiddenIndices(scrollOffset: CGFloat) -> [Int] {
         guard overflows else { return [] }
@@ -111,6 +114,12 @@ private struct TabList: View {
             .overlay(alignment: .trailing) {
                 if layout.overflows {
                     LinearGradient(colors: [.clear, LoomTheme.Surface.panel], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: LoomTheme.TabStrip.fadeWidth).allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .leading) {
+                if layout.showsLeadingFade(scrollOffset: scrollOffset) {
+                    LinearGradient(colors: [LoomTheme.Surface.panel, .clear], startPoint: .leading, endPoint: .trailing)
                         .frame(width: LoomTheme.TabStrip.fadeWidth).allowsHitTesting(false)
                 }
             }

@@ -131,7 +131,7 @@ struct CleanupReviewView: View {
         var parts: [String] = []
         if let project = catalog.projectName(for: row.record) { parts.append(project) }
         let since = row.record.staleSince ?? row.eligibleSince
-        parts.append("Stale since \(since.formatted(date: .abbreviated, time: .omitted))")
+        parts.append("Stale since \(LoomDateFormat.date(since))")
         if let size = CleanupText.size(row) { parts.append(size) }
         return parts.joined(separator: " · ")
     }
@@ -192,7 +192,7 @@ struct CleanupReviewView: View {
             let deleted = review.results.values.filter { $0 == .deleted }.count
             return "\(deleted) deleted, \(review.results.count - deleted) not deleted"
         }
-        return review.review.map { "Reviewed \($0.generatedAt.formatted(date: .omitted, time: .shortened))" } ?? ""
+        return review.review.map { "Reviewed \(LoomDateFormat.time($0.generatedAt))" } ?? ""
     }
 }
 

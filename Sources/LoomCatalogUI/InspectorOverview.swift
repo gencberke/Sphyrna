@@ -83,7 +83,7 @@ struct InspectorOverview: View {
                         if let branch = content.branch { InspectorFact("Branch", branch, mono: true) }
                         InspectorFact("Folder", content.folder, mono: true)
                         InspectorFact("Last activity",
-                                      content.lastActivity.formatted(date: .abbreviated, time: .shortened))
+                                      LoomDateFormat.dateTime(content.lastActivity))
                     }
                 }
                 InspectorSection(title: "Context") { context }
@@ -110,7 +110,7 @@ struct InspectorOverview: View {
         } else if let id = row.record.session.providerConversationID, let usage = model.usage?.contexts[id] {
             VStack(alignment: .leading, spacing: LoomTheme.Inspector.factRowGap) {
                 ContextRing(usage: usage, showsLabel: true)
-                Text(ContextRingText.detail(usage)).font(LoomTheme.Typography.caption)
+                Text(ContextRingText.caption(usage)).font(LoomTheme.Typography.caption)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle).textSelection(.enabled)
             }
         } else {

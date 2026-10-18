@@ -184,6 +184,9 @@ struct ContextPaceTests {
         #expect(ContextRingText.detail(known) == "Context: 84,200 of 200,000 tokens (42%)")
         #expect(ContextRingText.detail(unknown) == "Context: 84,200 tokens")
         #expect(!ContextRingText.spoken(unknown).contains("percent"))
+        // The inspector's line under the ring adds to the label instead of repeating it.
+        #expect(ContextRingText.caption(known) == "84,200 of 200,000 tokens")
+        #expect(ContextRingText.caption(unknown) == "Window unknown")
         #expect(ContextRingText.spoken(known).hasSuffix("42 percent"))
     }
 
@@ -193,22 +196,24 @@ struct ContextPaceTests {
 
     @Test func thePaceSentenceNamesTheResetAndWhetherTheLimitLasts() {
         let lasts = pace(.fiveHour, used: 38, resetsIn: 4_800)   // 12:00 + 1 h 20 = 13:20
-        #expect(PlanPaceText.sentence(lasts, now: Self.now, timeZone: Self.zone) == "Resets 13:20 · at this pace it lasts")
+        func at(_ seconds: TimeInterval) -> String { UsageText.time(Self.now.addingTimeInterval(seconds), Self.zone) }
+        func day(_ seconds: TimeInterval) -> String { UsageText.weekday(Self.now.addingTimeInterval(seconds), Self.zone) }
+        #expect(PlanPaceText.sentence(lasts, now: Self.now, timeZone: Self.zone) == "Resets \(at(4_800)) · at this pace it lasts")
         #expect(PlanPaceText.remaining(lasts) == "62% left")
         #expect(PlanPaceText.title(.fiveHour) == "5-hour window")
 
         let over = pace(.fiveHour, used: 60, resetsIn: 3 * 3_600)  // 2 h gone, 60 %: runs out 1 h 20 from now
-        #expect(PlanPaceText.sentence(over, now: Self.now, timeZone: Self.zone) == "Resets 15:00 · at this pace it runs out 13:20")
+        #expect(PlanPaceText.sentence(over, now: Self.now, timeZone: Self.zone) == "Resets \(at(3 * 3_600)) · at this pace it runs out \(at(4_800))")
 
         // Early in the week there is no verdict, only the reset time.
         let early = pace(.weekly, used: 40, resetsIn: 7 * 86_400 - 6 * 3_600)  // 6 h of 168 h gone
         #expect(early.status == .tooEarly)
         #expect(PlanPaceText.verdict(early, now: Self.now, timeZone: Self.zone) == nil)
-        #expect(PlanPaceText.sentence(early, now: Self.now, timeZone: Self.zone) == "Resets Wed 06:00")
+        #expect(PlanPaceText.sentence(early, now: Self.now, timeZone: Self.zone) == "Resets \(day(86_400 * 7 - 6 * 3_600)) \(at(86_400 * 7 - 6 * 3_600))")
         #expect(PlanPaceText.remaining(early) == "60% left")
 
         let usedUp = pace(.weekly, used: 100, resetsIn: 2 * 86_400)
-        #expect(PlanPaceText.sentence(usedUp, now: Self.now, timeZone: Self.zone) == "Resets Fri 12:00 · limit reached")
+        #expect(PlanPaceText.sentence(usedUp, now: Self.now, timeZone: Self.zone) == "Resets \(day(2 * 86_400)) \(at(2 * 86_400)) · limit reached")
         #expect(PlanPaceText.title(.weekly) == "Weekly")
     }
 

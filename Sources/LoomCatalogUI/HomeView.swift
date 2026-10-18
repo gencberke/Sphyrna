@@ -74,7 +74,7 @@ private struct HomeHeader: View {
         HStack(alignment: .firstTextBaseline, spacing: LoomTheme.Space.detailTitleSpacing) {
             Text("Home").font(LoomTheme.TypeScale.display).foregroundStyle(LoomTheme.Text.primary)
                 .accessibilityAddTraits(.isHeader)
-            Text(model.today.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "en_US"))))
+            Text(LoomDateFormat.fullDate(model.today))
                 .font(LoomTheme.Typography.body).foregroundStyle(LoomTheme.Text.secondaryStyle)
             Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             Button { model.openPalette() } label: {

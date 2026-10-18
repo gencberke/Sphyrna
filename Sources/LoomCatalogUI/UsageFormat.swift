@@ -59,10 +59,16 @@ enum UsageFormat {
         "$" + dollars(usd, cents: true)
     }
 
-    /// The share of `part` in `whole` as `61 %`, or nil when there is no whole.
+    /// The one percent format of every surface: the figure and the sign with no space, `61%`.
+    static func percent(_ value: Int) -> String { "\(value)%" }
+
+    /// A fraction (0 to 1) as `61%`.
+    static func percent(fraction: Double) -> String { percent(Int((fraction * 100).rounded())) }
+
+    /// The share of `part` in `whole` as `61%`, or nil when there is no whole.
     static func percent(_ part: Int64, of whole: Int64) -> String? {
         guard whole > 0 else { return nil }
-        return "\(Int((Double(part) / Double(whole) * 100).rounded())) %"
+        return percent(fraction: Double(part) / Double(whole))
     }
 
     // MARK: Pieces

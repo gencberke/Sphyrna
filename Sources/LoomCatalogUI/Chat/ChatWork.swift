@@ -116,10 +116,21 @@ enum ChatWork {
 
     // MARK: Paths
 
+    /// `/private/tmp`, `/private/var` and `/private/etc` are the same places as `/tmp`, `/var` and `/etc`: a session's
+    /// folder and a tool's path may spell one of them either way. Pure text, no file access.
+    static func withoutPrivatePrefix(_ path: String) -> String {
+        for root in ["/private/tmp", "/private/var", "/private/etc"] where path == root || path.hasPrefix(root + "/") {
+            return String(path.dropFirst("/private".count))
+        }
+        return path
+    }
+
     static func shorten(_ path: String, workingDirectory: String?) -> String {
         if let cwd = workingDirectory, !cwd.isEmpty {
-            let prefix = cwd.hasSuffix("/") ? cwd : cwd + "/"
-            if path.hasPrefix(prefix) { return String(path.dropFirst(prefix.count)) }
+            for (path, cwd) in [(path, cwd), (withoutPrivatePrefix(path), withoutPrivatePrefix(cwd))] {
+                let prefix = cwd.hasSuffix("/") ? cwd : cwd + "/"
+                if path.hasPrefix(prefix) { return String(path.dropFirst(prefix.count)) }
+            }
         }
         let home = NSHomeDirectory()
         if path == home { return "~" }
@@ -211,7 +222,9 @@ enum ChatWork {
         let root = Node()
         for file in files {
             var node = root
-            let parts = file.path.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+            var parts = file.path.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+            // A path outside the working folder keeps its root: "/tmp/orbit/", not a folder named "tmp/orbit/".
+            if file.path.hasPrefix("/"), !parts.isEmpty { parts[0] = "/" + parts[0] }
             for (position, part) in parts.enumerated() {
                 let child: Node
                 if let existing = node.children[part] {

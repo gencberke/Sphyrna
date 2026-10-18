@@ -100,7 +100,7 @@ struct UsageChipLabel: View {
             HStack(spacing: LoomTheme.Space.chipLimitGap) {
                 Text(limit.name).foregroundStyle(tone)
                 if showMeter { UsageChipMeter(remainingPercent: limit.remainingPercent, isLow: limit.isLow) }
-                Text("\(limit.remainingPercent)%").fontWeight(.semibold)
+                Text(UsageFormat.percent(limit.remainingPercent)).fontWeight(.semibold)
                     .foregroundStyle(limit.isLow ? LoomTheme.Status.attention : LoomTheme.Text.primary)
             }
             .fixedSize(horizontal: true, vertical: false)

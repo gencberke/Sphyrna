@@ -206,7 +206,7 @@ struct HomeTodayFigures: Equatable {
 
     /// "82%": cache reads over everything sent as prompt, when anything was.
     var cacheShare: String? {
-        kinds?.cacheShare.map { "\(Int(($0 * 100).rounded()))%" }
+        kinds?.cacheShare.map(UsageFormat.percent(fraction:))
     }
 }
 

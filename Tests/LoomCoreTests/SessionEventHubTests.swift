@@ -266,6 +266,24 @@ struct ActivePhaseTests {
         #expect(await hub.snapshot().sequence == before + 1)
     }
 
+    @Test func aFailureWithNoTurnSeenBeforeItIsUnreadUntilViewedAndARepeatDoesNotComeBack() async {
+        let hub = SessionEventHub(), id = UUID()
+        _ = await start(hub, id)
+        let failed = SessionEventChange.status(ProviderWorkState(activity: .failed("fixture failure")))
+        await hub.publish(sessionID: id, change: failed)
+        #expect(await phase(hub, id) == .endedUnread, "a failure at the start of a run is news")
+        await hub.setViewed(sessionID: id)
+        #expect(await phase(hub, id) == .inactive)
+        await hub.publish(sessionID: id, change: failed)
+        #expect(await phase(hub, id) == .inactive, "the same failure again is not new")
+        // Seen while it happens: never unread.
+        let other = UUID()
+        _ = await start(hub, other)
+        await hub.setViewed(sessionID: other)
+        await hub.publish(sessionID: other, change: failed)
+        #expect(await phase(hub, other) == .inactive)
+    }
+
     @Test func aQuestionDuringTheTurnStaysInAndMarkReadAcknowledgesIt() async {
         let hub = SessionEventHub(), id = UUID()
         _ = await start(hub, id)

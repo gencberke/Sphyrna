@@ -148,32 +148,17 @@ final class LivePaletteSources: PaletteSources {
     }
 }
 
-/// The one line that says why a session needs the user, from the reason its status carries.
+/// The one line that says why a session needs the user. The words are the sidebar's and Home's (`SessionReasonLine`,
+/// built from the same `StatusReason`), so a session reads the same on every surface; with no reason the state's own
+/// label stands in, as on Home.
 enum PaletteReasonText {
     static func line(reason: StatusReason?, indicator: SessionIndicator, awaitingOpenApproval: Bool) -> String? {
-        if awaitingOpenApproval { return "wants to open a session" }
-        if let reason {
-            switch reason.kind {
-            case .approval(let tool):
-                if tool == "Bash" { return "allow " + (reason.detail ?? "a command") }
-                return "allow " + [tool, reason.detail].compactMap { $0 }.joined(separator: " ")
-            case .question: return reason.detail.map { "asks: " + $0 } ?? "has a question"
-            case .planReady: return "plan ready for review"
-            case .input: return "waiting for your input"
-            case .turnDone: if let detail = reason.detail { return detail }
-            case .failure(let category): return reason.detail ?? category ?? "failed"
-            case .automaticTurn: break
-            }
-        }
+        if awaitingOpenApproval { return "Wants to open a session" }
+        if let text = SessionReasonLine(reason)?.text { return text }
         switch indicator {
-        case .waitingForApproval: return "needs approval"
-        case .waitingForInput: return "waiting for you"
-        case .failed(let message): return message ?? "failed"
-        case .stopUnverified: return "stop not verified"
         case .problem(let message): return message
-        case .identityUnclear: return "identity unclear"
-        case .unviewedCompletion: return "finished"
-        default: return nil
+        case .failed(let message): return message.map { "Failed: \($0)" } ?? indicator.label
+        default: return indicator.needsAttention ? indicator.label : nil
         }
     }
 }

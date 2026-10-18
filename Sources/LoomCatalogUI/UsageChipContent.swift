@@ -29,7 +29,7 @@ public struct UsageChipContent: Equatable, Sendable {
         public var remainingPercent: Int
         public var isLow: Bool { remainingPercent < Self.lowBelowPercent }
         /// `5h 62%`.
-        public var text: String { "\(name) \(remainingPercent)%" }
+        public var text: String { "\(name) \(UsageFormat.percent(remainingPercent))" }
 
         public init(name: String, remainingPercent: Int) {
             self.name = name
@@ -75,7 +75,7 @@ public struct UsageChipContent: Equatable, Sendable {
                 label += ", \(bottleneck.kind.spokenName) limit \(bottleneck.window.remainingPercent) percent remaining"
                 tooltip += "\nPlan limits, updated \(UsageText.time(limits.fetchedAt, timeZone)):"
                 for (kind, window) in limits.current(at: now) {
-                    tooltip += "\n\(kind.title): \(window.remainingPercent)% left"
+                    tooltip += "\n\(kind.title): \(UsageFormat.percent(window.remainingPercent)) left"
                         + (resetPhrase(window, now: now, timeZone: timeZone).map { ", " + $0 } ?? "")
                 }
             }

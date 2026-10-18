@@ -42,6 +42,9 @@ extension LoomTheme {
         static let planPreviewLines = 10
         static let markerHeight: CGFloat = 28
         static let jumpPillHeight: CGFloat = 28
+        /// Below this stream width the view chip shrinks to its glyph and key: the full chip would sit over the
+        /// text, which fills the pane once it is narrower than the reading column.
+        static let chipCompactBelow: CGFloat = 700
 
         // MARK: Scroll latch
 

@@ -195,6 +195,7 @@ struct NewSessionTests {
         let none = resolve()
         #expect(none.mode == ResolvedChoice(value: nil, source: .cliDefault) && none.model == ResolvedChoice(value: nil, source: .cliDefault))
         #expect(none.choices.isEmpty && none.modeTitle == "Claude's default")
+        #expect(none.modelTitle == "Default model", "the two chips never both read Claude's default")
         // 3: Loom's settings.
         #expect(resolve(settings: settings).mode == ResolvedChoice(value: "plan", source: .settings))
         #expect(resolve(settings: settings).model == ResolvedChoice(value: "haiku", source: .settings))

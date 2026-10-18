@@ -154,7 +154,7 @@ public final class SessionRowModel: Identifiable {
         let zone = TimeZone.current
         if let cached = tooltipCache, cached.date == date, cached.zone == zone { return cached.text }
         tooltipFormats += 1
-        let text = "Last activity " + date.formatted(date: .abbreviated, time: .shortened)
+        let text = "Last activity " + LoomDateFormat.dateTime(date)
         tooltipCache = (date, zone, text)
         return text
     }

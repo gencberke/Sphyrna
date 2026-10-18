@@ -10,14 +10,17 @@ extension CatalogModel {
     /// Every live session whose record is known, as the attention order reads it. A row that is only
     /// loaded (no live state) is History and never needs the user, so the live states are the whole set;
     /// the awaiting rule is the one `SessionRowModel.indicator` and the project dots apply.
+    ///
+    /// A failed turn is read once the user has looked at it, the way a finished turn is: the card keeps its red
+    /// dot, but it leaves this set (the Dock badge, Home's lists, the jump shortcut), as it leaves the sidebar's
+    /// Active section. One rule for "not read" on every surface (UI-MAP, Active).
     func attentionCandidates() -> [AttentionCandidate] {
         liveStates.compactMap { id, state in
             guard let record = rowModels[id]?.record ?? liveRecords[id] else { return nil }
-            return AttentionCandidate(
-                id: id,
-                indicator: SessionIndicator(record: record, live: state,
-                                            awaitingOpenApproval: awaitingOpenApproval.contains(id)),
-                lastActivityAt: record.lastActivityAt)
+            let indicator = SessionIndicator(record: record, live: state,
+                                             awaitingOpenApproval: awaitingOpenApproval.contains(id))
+            if case .failed = indicator, state.activePhase != .endedUnread { return nil }
+            return AttentionCandidate(id: id, indicator: indicator, lastActivityAt: record.lastActivityAt)
         }
     }
 

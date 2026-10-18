@@ -86,7 +86,8 @@ private struct ProjectPageHeader: View {
     }
 }
 
-/// "3 active · 18 sessions · 4.8M tokens · main": the numbers the page already holds.
+/// "3 running · 18 sessions · 4.8M tokens, past 7 days · main": the numbers the page already holds. The
+/// figures wrap as whole items when the page is narrow; an item is never split across two lines.
 private struct ProjectStatsLine: View {
     let model: CatalogModel
     let project: CatalogProject
@@ -94,25 +95,29 @@ private struct ProjectStatsLine: View {
     var body: some View {
         let page = model.projectPage
         _ = model.liveRevision
-        let active = page.records.filter { model.liveStates[$0.session.id]?.runID != nil }.count
+        // Sessions with a run under way (a live run, whether or not its turn is working): "running", never
+        // "active", which is the sidebar's Active section and counts a different set.
+        let running = page.records.filter { model.liveStates[$0.session.id]?.runID != nil }.count
         let total = model.sessionCounts[project.id] ?? page.records.count
         let branch = model.branches[project.path] ?? page.branches.map(\.current)
-        return HStack(spacing: LoomTheme.ProjectPage.statsGap) {
-            if active > 0 { figure(active, "active") }
+        return FlowLayout(spacing: LoomTheme.ProjectPage.statsGap, lineSpacing: LoomTheme.ProjectPage.statsLineGap,
+                          centered: false) {
+            if running > 0 { figure(running, "running") }
             figure(total, total == 1 ? "session" : "sessions")
             if let usage = page.usage, usage.tokens.total > 0 {
                 HStack(spacing: LoomTheme.ProjectPage.figureGap) {
                     Text(UsageFormat.tokens(usage.tokens.total)).fontWeight(.semibold).foregroundStyle(LoomTheme.Text.primary)
                     Text("tokens, past 7 days")
                 }
+                .lineLimit(1).fixedSize()
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(UsageFormat.spokenTokens(usage.tokens.total)) tokens in the past 7 days")
             }
             if let branch, branch != .unavailable {
-                Text(branch.label).lineLimit(1).accessibilityLabel("Branch \(branch.label)")
+                Text(branch.label).lineLimit(1).fixedSize().accessibilityLabel("Branch \(branch.label)")
             }
-            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
         .padding(.top, LoomTheme.ProjectPage.statsTop).padding(.bottom, LoomTheme.ProjectPage.statsBottom)
         .accessibilityIdentifier("project-stats")
@@ -123,6 +128,7 @@ private struct ProjectStatsLine: View {
             Text("\(count)").fontWeight(.semibold).foregroundStyle(LoomTheme.Text.primary)
             Text(noun)
         }
+        .lineLimit(1).fixedSize()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(count) \(noun)")
     }

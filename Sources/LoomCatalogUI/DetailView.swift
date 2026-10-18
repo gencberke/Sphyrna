@@ -34,8 +34,9 @@ public struct DetailView: View {
     }
 }
 
-/// The header and, when two or more tabs are open, the tab strip directly under it. Banners come
-/// below both, so nothing sits between a title and its tabs.
+/// The header and, when two or more tabs are open and the page shows a session, the tab strip directly
+/// under it. Home, a draft and a project page are not a session: no strip there. Banners come below both,
+/// so nothing sits between a title and its tabs.
 struct DetailTop: View {
     let model: CatalogModel
     /// False on Home, a draft and a project page: the header then carries no session.
@@ -44,7 +45,9 @@ struct DetailTop: View {
     var body: some View {
         VStack(spacing: 0) {
             DetailHeader(model: model, showsSessionHeader: showsSessionHeader)
-            if model.tabStripIsVisible { ConversationTabStrip(model: model) }
+            if DetailHeader.drawsStrip(model: model, showsSessionHeader: showsSessionHeader) {
+                ConversationTabStrip(model: model)
+            }
         }
     }
 }
@@ -58,6 +61,12 @@ struct DetailHeader: View {
     /// takes that place (header row 36 pt + strip 32 pt, as in the approved preview).
     static func bottomSpacing(stripVisible: Bool) -> CGFloat {
         stripVisible ? 0 : LoomTheme.Layout.headerHeight - rowHeight
+    }
+
+    /// The strip belongs to the page that shows a session (the route with the session header); the model's
+    /// `tabStripIsVisible` only says there are enough tabs.
+    static func drawsStrip(model: CatalogModel, showsSessionHeader: Bool) -> Bool {
+        showsSessionHeader && model.tabStripIsVisible
     }
 
     /// The native buttons sit over this header's leading edge only while the
@@ -97,7 +106,7 @@ struct DetailHeader: View {
         // The window buttons are centered natively 26 pt below the window top
         // (8 pt panel inset + 18 pt); the row's center line is the same.
         .frame(height: Self.rowHeight)
-        .padding(.bottom, Self.bottomSpacing(stripVisible: model.tabStripIsVisible))
+        .padding(.bottom, Self.bottomSpacing(stripVisible: Self.drawsStrip(model: model, showsSessionHeader: showsSessionHeader)))
     }
 }
 
@@ -313,6 +322,11 @@ struct ConversationDetail: View {
     var inChat = false
 
     nonisolated static func showsRequests(inChat: Bool) -> Bool { !inChat }
+
+    /// What Resume does, in the provider's own name.
+    nonisolated static func resumeExplanation(provider: String) -> String {
+        "Resume continues this \(provider) session in its folder. If \(provider) no longer has it, Loom says so."
+    }
     nonisolated static func showsResume(inChat: Bool, hasTerminal: Bool) -> Bool { !inChat || hasTerminal }
 
     /// The state line above the actions. It states what Loom knows: a pending
@@ -330,6 +344,7 @@ struct ConversationDetail: View {
     var body: some View {
         let record = row.record
         let indicator = row.indicator
+        let provider = ProviderName.title(record.session.provider)
         ScrollView {
             VStack(alignment: .leading, spacing: LoomTheme.Space.detailSectionSpacing) {
                 HStack(spacing: LoomTheme.Space.detailTitleSpacing) {
@@ -351,23 +366,23 @@ struct ConversationDetail: View {
                 } else if indicator == .identityUnclear {
                     Notice(symbol: "questionmark.diamond", color: LoomTheme.Status.attention,
                            title: "Session identity is not certain",
-                           text: "Loom could not tell which provider session this is, so it changed nothing.")
+                           text: "Loom could not tell which \(provider) session this is, so it changed nothing.")
                 } else if case let .failed(message) = indicator {
                     Notice(symbol: "exclamationmark.triangle.fill", color: LoomTheme.Status.failure,
-                           title: "The provider reported a failure", text: message ?? "No details were provided.")
+                           title: "\(provider) reported a failure", text: message ?? "No details were provided.")
                 } else if indicator == .unviewedCompletion {
                     Notice(symbol: "checkmark.circle", color: LoomTheme.Status.unviewed,
-                           title: "Finished while you were away", text: "The provider reported a completed turn.")
+                           title: "Finished while you were away", text: "\(provider) reported a completed turn.")
                 }
                 Grid(alignment: .leading, horizontalSpacing: LoomTheme.Space.factColumnSpacing, verticalSpacing: LoomTheme.Space.factRowSpacing) {
                     Fact("Status", indicator.label ?? (record.lifecycle == .active ? "Not running" : "—"))
                     Fact("Project", model.projectName(for: record) ?? "No project")
                     if let origin = model.origin(of: row) { Fact("Opened by", origin.factValue) }
                     Fact("Working directory", record.session.workingDirectory)
-                    Fact("Provider session", record.session.providerConversationID ?? "Not assigned yet")
-                    Fact("Created", record.createdAt.formatted(date: .abbreviated, time: .shortened))
-                    Fact("Last activity", record.lastActivityAt.formatted(date: .abbreviated, time: .shortened))
-                    Fact("Last used", record.lastUsedAt.formatted(date: .abbreviated, time: .shortened))
+                    Fact("\(provider) session ID", record.session.providerConversationID ?? "Not assigned yet")
+                    Fact("Created", LoomDateFormat.dateTime(record.createdAt))
+                    Fact("Last activity", LoomDateFormat.dateTime(record.lastActivityAt))
+                    Fact("Last used", LoomDateFormat.dateTime(record.lastUsedAt))
                 }
                 Divider().overlay(LoomTheme.Surface.hairline)
                 VStack(alignment: .leading, spacing: LoomTheme.Space.actionsSpacing) {
@@ -378,7 +393,7 @@ struct ConversationDetail: View {
                         Text(reason)
                             .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     } else {
-                        Text("Opening this record launches nothing. Resume continues the same provider session in its own folder; if the provider no longer has it, you will see that instead of a new session.")
+                        Text(Self.resumeExplanation(provider: provider))
                             .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     }
                     HStack {
@@ -391,8 +406,11 @@ struct ConversationDetail: View {
                             .onAppear { SidebarRenderProbe.appeared("resume") }
                             .onDisappear { SidebarRenderProbe.disappeared("resume") }
                         }
-                        Button("Stop") { model.stopConversation(row.id) }
-                            .disabled(!model.canStop(row))
+                        // Stop only where a run can be stopped; a session that is not running has nothing to stop.
+                        if model.canStop(row) {
+                            Button("Stop") { model.stopConversation(row.id) }
+                                .accessibilityIdentifier("record-stop")
+                        }
                         Button("Rename…") { model.beginRename(row.id) }
                     }
                 }
@@ -445,7 +463,7 @@ struct RequestList: View {
                     .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.callout).fill(LoomTheme.Status.attention.opacity(LoomTheme.Status.tintOpacity)))
                     .fadesIn()
                     .accessibilityElement(children: .contain)
-                    .accessibilityLabel("Provider request: \(request.summary)")
+                    .accessibilityLabel("\(ProviderName.title(row.record.session.provider)) request: \(request.summary)")
                 }
                 // An agent's request to open a session (D-40) follows the provider's own requests.
                 OpenRequestBoxes(model: model, requests: openRequests)

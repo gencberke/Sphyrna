@@ -40,7 +40,7 @@ struct DraftSessionView: View {
 }
 
 /// "What should we work on in [project ▾]?" The project name is a picker; its tone is the stripe of the chip.
-private struct Headline: View {
+struct Headline: View {
     let model: CatalogModel
     let projectID: UUID?
 
@@ -49,8 +49,12 @@ private struct Headline: View {
     var body: some View {
         VStack(spacing: LoomTheme.Space.headerSpacing * 2) {
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: LoomTheme.Space.hintSpacing) { sentence }
-                VStack(spacing: LoomTheme.Space.hintSpacing) { sentence }
+                HStack(spacing: LoomTheme.Space.hintSpacing) { lead; picker; questionMark }
+                // Too narrow for one line: the question mark stays with the picker, never alone on a line.
+                VStack(spacing: LoomTheme.Space.hintSpacing) {
+                    lead
+                    HStack(spacing: LoomTheme.Space.hintSpacing) { picker; questionMark }
+                }
             }
             Text(folderLine).font(LoomTheme.Typography.body).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
@@ -59,10 +63,12 @@ private struct Headline: View {
         .accessibilityElement(children: .contain)
     }
 
-    @ViewBuilder private var sentence: some View {
+    private var lead: some View {
         Text("What should we work on in").font(LoomTheme.TypeScale.display).foregroundStyle(LoomTheme.Text.primary)
             .fixedSize()
-        picker
+    }
+
+    private var questionMark: some View {
         Text("?").font(LoomTheme.TypeScale.display).foregroundStyle(LoomTheme.Text.primary)
     }
 
@@ -132,7 +138,8 @@ private struct BranchStrip: View {
             Button { showsChoices.toggle() } label: {
                 HStack(spacing: NewSessionLayout.chipSpacing) {
                     Image(systemName: "arrow.triangle.branch").font(LoomTheme.Typography.small)
-                    Text(chipText).font(LoomTheme.Typography.smallMedium).lineLimit(1).truncationMode(.middle)
+                    // Cut at the end: the start of a worktree or branch name (its ticket key) is what identifies it.
+                    Text(chipText).font(LoomTheme.Typography.smallMedium).lineLimit(1).truncationMode(.tail)
                     Image(systemName: "chevron.down").font(LoomTheme.Typography.chevron)
                         .foregroundStyle(LoomTheme.Text.secondaryStyle)
                 }
@@ -142,7 +149,8 @@ private struct BranchStrip: View {
             .popover(isPresented: $showsChoices, arrowEdge: .bottom) {
                 BranchChoices(model: model, projectID: projectID, canBranch: canBranch, ticket: ticket)
             }
-            .help("Where the session starts: this branch, a new branch or a new worktree")
+            .help(draft.branchKind == .stay ? "Where the session starts: this branch, a new branch or a new worktree"
+                  : chipText)
             .accessibilityLabel("Branch, \(chipText)")
             .accessibilityIdentifier("draft-branch")
             Spacer(minLength: LoomTheme.Space.detailMinSpacer)
@@ -275,45 +283,5 @@ private struct PresetRow: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Presets")
         }
-    }
-}
-
-/// Chips that wrap onto the next line, centred.
-private struct FlowLayout: Layout {
-    var spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
-        let height = rows.reduce(0) { $0 + $1.height } + spacing * CGFloat(max(rows.count - 1, 0))
-        return CGSize(width: proposal.width ?? rows.map(\.width).max() ?? 0, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var y = bounds.minY
-        for row in arrange(width: bounds.width, subviews: subviews) {
-            var x = bounds.minX + (bounds.width - row.width) / 2
-            for index in row.indices {
-                let size = subviews[index].sizeThatFits(.unspecified)
-                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-                x += size.width + spacing
-            }
-            y += row.height + spacing
-        }
-    }
-
-    private struct Row { var indices: [Int] = []; var width: CGFloat = 0; var height: CGFloat = 0 }
-
-    private func arrange(width: CGFloat, subviews: Subviews) -> [Row] {
-        var rows: [Row] = [Row()]
-        for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            let needed = (rows[rows.count - 1].indices.isEmpty ? 0 : spacing) + size.width
-            if rows[rows.count - 1].width + needed > width, !rows[rows.count - 1].indices.isEmpty { rows.append(Row()) }
-            let last = rows.count - 1
-            rows[last].width += (rows[last].indices.isEmpty ? 0 : spacing) + size.width
-            rows[last].height = max(rows[last].height, size.height)
-            rows[last].indices.append(index)
-        }
-        return rows
     }
 }

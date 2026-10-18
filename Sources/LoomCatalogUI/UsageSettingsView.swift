@@ -125,18 +125,9 @@ private struct UsageFooter: View {
     }
 }
 
-/// English date text in the usage model's time zone (the app's copy is English).
+/// Date and time text in the usage model's time zone, in the system locale (`LoomDateFormat`).
 enum UsageText {
-    private static let formatters = FormatterCache()
-    static var formattersCreated: Int { formatters.created }
-
-    private static func format(_ pattern: String, _ date: Date, _ zone: TimeZone) -> String {
-        formatters.string(from: date, key: "\(pattern)|\(zone.identifier)") {
-            $0.locale = Locale(identifier: "en_US_POSIX")
-            $0.timeZone = zone
-            $0.dateFormat = pattern
-        }
-    }
+    static var formattersCreated: Int { LoomDateFormat.formattersCreated }
 
     /// The one line under the page when scans met records they could not understand; nil for none.
     static func skippedLines(_ count: Int) -> String? {
@@ -144,13 +135,21 @@ enum UsageText {
         return "\(UsageFormat.grouped(Int64(count))) usage \(count == 1 ? "record" : "records") could not be understood, so totals may be low."
     }
 
-    static func weekday(_ date: Date, _ zone: TimeZone) -> String { format("EEE", date, zone) }
-    static func date(_ date: Date, _ zone: TimeZone) -> String { format("EEE d MMM", date, zone) }
-    static func time(_ date: Date, _ zone: TimeZone) -> String { format("HH:mm", date, zone) }
+    static func weekday(_ date: Date, _ zone: TimeZone, locale: Locale = .current) -> String {
+        LoomDateFormat.weekday(date, zone: zone, locale: locale)
+    }
 
-    /// `9 AM`, or `9:30 AM` when the zone's hour boundary is not on the hour.
-    static func hour(_ date: Date, _ zone: TimeZone) -> String {
-        format(zone.secondsFromGMT(for: date) % 3_600 == 0 ? "h a" : "h:mm a", date, zone)
+    static func date(_ date: Date, _ zone: TimeZone, locale: Locale = .current) -> String {
+        LoomDateFormat.weekdayDayMonth(date, zone: zone, locale: locale)
+    }
+
+    static func time(_ date: Date, _ zone: TimeZone, locale: Locale = .current) -> String {
+        LoomDateFormat.time(date, zone: zone, locale: locale)
+    }
+
+    /// `9 AM`, or `9:30 AM` when the zone's hour boundary is not on the hour (the locale's own clock).
+    static func hour(_ date: Date, _ zone: TimeZone, locale: Locale = .current) -> String {
+        LoomDateFormat.hour(date, zone: zone, locale: locale)
     }
 
     /// The 24-hour chart labels every sixth hour.
@@ -172,9 +171,9 @@ enum UsageText {
         return parser
     }()
 
-    /// `2026-10-07` as `7 Oct 2026`.
-    static func priceDate(_ text: String) -> String {
+    /// `2026-10-07` as the locale's date (`Oct 7, 2026`).
+    static func priceDate(_ text: String, locale: Locale = .current) -> String {
         guard let date = priceParser.date(from: text) else { return text }
-        return format("d MMM yyyy", date, TimeZone(identifier: "UTC")!)
+        return LoomDateFormat.date(date, zone: TimeZone(identifier: "UTC")!, locale: locale)
     }
 }

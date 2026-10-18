@@ -2,28 +2,45 @@ import Foundation
 import LoomCore
 import SwiftUI
 
+/// What the Sessions tab draws and where (pure, so a test reads it): the cards of the side column. Wide:
+/// Presets and the past week beside the list. Narrow: the list, then the cards under it, and no Presets card
+/// while there is no preset to show.
+enum ProjectSessionsLayout {
+    enum Card: Hashable { case presets, usage }
+
+    static func sideCards(wide: Bool, hasPresets: Bool) -> [Card] {
+        wide || hasPresets ? [.presets, .usage] : [.usage]
+    }
+}
+
 /// The Sessions tab: the project's sessions with their last line, and beside them (or, in a narrow pane,
-/// above and below) the presets and the past week's usage.
+/// under them) the presets and the past week's usage.
 struct ProjectSessionsTab: View {
     let model: CatalogModel
     let project: CatalogProject
     let wide: Bool
 
     var body: some View {
+        let cards = ProjectSessionsLayout.sideCards(wide: wide, hasPresets: !model.presets(for: project.id).isEmpty)
         if wide {
             HStack(alignment: .top, spacing: LoomTheme.ProjectPage.columnGap) {
                 ProjectSessionList(model: model, project: project)
-                VStack(spacing: LoomTheme.ProjectPage.cardGap) {
-                    ProjectPresetsCard(model: model, project: project)
-                    ProjectUsageCard(model: model)
-                }
-                .frame(width: LoomTheme.ProjectPage.sideColumn)
+                VStack(spacing: LoomTheme.ProjectPage.cardGap) { sideCards(cards) }
+                    .frame(width: LoomTheme.ProjectPage.sideColumn)
             }
         } else {
             VStack(alignment: .leading, spacing: LoomTheme.ProjectPage.cardGap) {
-                ProjectPresetsCard(model: model, project: project)
                 ProjectSessionList(model: model, project: project)
-                ProjectUsageCard(model: model)
+                sideCards(cards)
+            }
+        }
+    }
+
+    @ViewBuilder private func sideCards(_ cards: [ProjectSessionsLayout.Card]) -> some View {
+        ForEach(cards, id: \.self) { card in
+            switch card {
+            case .presets: ProjectPresetsCard(model: model, project: project)
+            case .usage: ProjectUsageCard(model: model)
             }
         }
     }
@@ -238,8 +255,9 @@ private struct ProjectUsageCard: View {
             if let usage = page.usage, usage.messageCount > 0 {
                 HStack(alignment: .top, spacing: LoomTheme.ProjectPage.statGap) {
                     stat(UsageFormat.tokens(usage.tokens.total), "tokens", spoken: "\(UsageFormat.spokenTokens(usage.tokens.total)) tokens")
-                    stat("\(usage.sessionCount)", usage.sessionCount == 1 ? "session" : "sessions",
-                         spoken: "\(usage.sessionCount) \(usage.sessionCount == 1 ? "session" : "sessions")")
+                    // Only the sessions with usage records in the week, not the page's count of the project's sessions.
+                    stat("\(usage.sessionCount)", usage.sessionCount == 1 ? "session with usage" : "sessions with usage",
+                         spoken: "\(usage.sessionCount) \(usage.sessionCount == 1 ? "session" : "sessions") with usage")
                     stat(usage.estimatedCostUSD.map(UsageFormat.cost) ?? "\u{2013}", "estimate",
                          spoken: usage.estimatedCostUSD.map { "estimated cost \(UsageFormat.fullCost($0))" } ?? "estimated cost unknown")
                 }

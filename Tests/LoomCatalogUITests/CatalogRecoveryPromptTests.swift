@@ -18,14 +18,16 @@ struct CatalogRecoveryPromptTests {
         let prompt = CatalogRecoveryPrompt.make(backups: [newest, older], timeZone: utc)
         #expect(prompt.buttons.map(\.title) == ["Restore Backup", "Start Fresh", "Quit"])
         #expect(prompt.buttons.map(\.choice) == [.restore(newest), .startFresh, .quit])
-        #expect(prompt.text.contains("7 Oct 2026 at 12:00"))
+        #expect(prompt.text.contains(CatalogRecoveryPrompt.date(newest.createdAt, utc)), "the newest backup's date, in the system locale")
         #expect(!prompt.text.contains(CatalogRecoveryPrompt.date(older.createdAt, utc)))
     }
 
     @Test func theDateIsWrittenInTheGivenZone() {
         let date = Date(timeIntervalSince1970: 1_791_374_400) // 2026-10-07 12:00:00 UTC
-        #expect(CatalogRecoveryPrompt.date(date, utc) == "7 Oct 2026 at 12:00")
-        #expect(CatalogRecoveryPrompt.date(date, TimeZone(secondsFromGMT: 3 * 3_600)!) == "7 Oct 2026 at 15:00")
+        let gb = Locale(identifier: "en_GB")
+        #expect(CatalogRecoveryPrompt.date(date, utc, locale: gb).contains("12:00"))
+        #expect(CatalogRecoveryPrompt.date(date, TimeZone(secondsFromGMT: 3 * 3_600)!, locale: gb).contains("15:00"))
+        #expect(CatalogRecoveryPrompt.date(date, utc, locale: gb).contains("2026"))
     }
 
     @Test func withoutABackupThereIsNoRestoreButStartFreshAndQuit() {

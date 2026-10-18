@@ -283,12 +283,15 @@ struct OptimizerUITests {
             lines.insert(UsageText.time(moment, zone))
         }
         #expect(UsageText.formattersCreated - before <= 4, "one formatter per pattern and zone")
-        #expect(UsageText.date(date, zone) == "Wed 7 Oct")
-        #expect(UsageText.hour(date, zone) == "12 PM")
-        #expect(UsageText.time(date, zone) == "12:00")
-        #expect(UsageText.priceDate("2026-10-07") == "7 Oct 2026")
-        #expect(UsageText.hour(date, TimeZone(secondsFromGMT: 19_800)!) == "5:30 PM")
-        #expect(UsageText.date(date, TimeZone(secondsFromGMT: 12 * 3_600 + 3_600 * 3)!) == "Thu 8 Oct")
+        // Pinned to one locale here; the locale tests are in `UIFixRoundTests`.
+        let us = Locale(identifier: "en_US")
+        func plain(_ text: String) -> String { text.replacingOccurrences(of: "\u{202F}", with: " ") }
+        #expect(UsageText.date(date, zone, locale: us) == "Wed, Oct 7")
+        #expect(plain(UsageText.hour(date, zone, locale: us)) == "12 PM")
+        #expect(plain(UsageText.time(date, zone, locale: us)) == "12:00 PM")
+        #expect(UsageText.priceDate("2026-10-07", locale: us) == "Oct 7, 2026")
+        #expect(plain(UsageText.hour(date, TimeZone(secondsFromGMT: 19_800)!, locale: us)) == "5:30 PM")
+        #expect(UsageText.date(date, TimeZone(secondsFromGMT: 12 * 3_600 + 3_600 * 3)!, locale: us) == "Thu, Oct 8")
     }
 
     @Test func dayHeadingsReuseTheirFormatters() {
@@ -299,14 +302,14 @@ struct OptimizerUITests {
         var titles: [String] = []
         for days in 2..<40 {
             let day = calendar.startOfDay(for: now.addingTimeInterval(-Double(days) * 86_400))
-            titles.append(DayGrouping.title(for: day, now: now, calendar: calendar))
+            titles.append(DayGrouping.title(for: day, now: now, calendar: calendar, locale: Locale(identifier: "en_US")))
         }
         #expect(DayGrouping.formattersCreated - before <= 3, "one formatter per heading pattern")
         #expect(titles.first == "Monday")
-        #expect(DayGrouping.title(for: calendar.startOfDay(for: now), now: now, calendar: calendar) == "Today")
+        #expect(DayGrouping.title(for: calendar.startOfDay(for: now), now: now, calendar: calendar, locale: Locale(identifier: "en_US")) == "Today")
         #expect(titles.contains("Sep 20"))
         let lastYear = calendar.startOfDay(for: now.addingTimeInterval(-400 * 86_400))
-        #expect(DayGrouping.title(for: lastYear, now: now, calendar: calendar) == "Sep 2, 2025")
+        #expect(DayGrouping.title(for: lastYear, now: now, calendar: calendar, locale: Locale(identifier: "en_US")) == "Sep 2, 2025")
     }
 
     @Test func keyboardNavigationWritesOnlyOnAChange() {

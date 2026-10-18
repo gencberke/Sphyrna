@@ -212,7 +212,8 @@ public actor SessionEventHub {
                 state.waitingAcknowledged = false
             }
             let phase = Self.activePhase(after: value, from: state.activePhase,
-                                         viewed: viewedSessionID == sessionID)
+                                         viewed: viewedSessionID == sessionID,
+                                         newFailure: value?.isFailure == true && previous?.status?.isFailure != true)
             // Background work that ends while nobody looks is the task's real end, even when the turn itself
             // was seen or still had work pending: it shows as finished, like a turn that ends unseen.
             if phase == .endedUnread, state.activePhase == .underWay, value?.activity == .turnComplete {
@@ -353,15 +354,20 @@ public actor SessionEventHub {
     }
 
     /// The Active-section phase after a status. Work, an approval and background work after a turn put the run
-    /// under way; a finished or failed turn ends it as unread unless the user is looking. A question during the
+    /// under way; a finished or failed turn ends it as unread unless the user is looking (a new failure is
+    /// unread even with no turn seen under way before it). A question during the
     /// turn and an unknown state change nothing, so Claude's idle notice about a minute after a turn the user
     /// read cannot bring the run back; a prompt or the end of the session takes it out.
     private static func activePhase(after status: ProviderWorkState?, from phase: ActivePhase,
-                                    viewed: Bool) -> ActivePhase {
+                                    viewed: Bool, newFailure: Bool = false) -> ActivePhase {
         guard let status else { return .inactive }
         switch status.activity {
         case .working, .waitingForApproval: return .underWay
         case .turnComplete where status.pendingProviderWorkCount > 0: return .underWay
+        case .failed where newFailure:
+            // A failure is news whether or not a turn was seen under way before it (a failure at the start of
+            // a run has no "working" before it): unread until the user looks.
+            return viewed ? .inactive : .endedUnread
         case .turnComplete, .failed:
             guard phase == .underWay else { return phase }
             return viewed ? .inactive : .endedUnread
@@ -389,5 +395,11 @@ public actor SessionEventHub {
 
     private func removeSubscriber(_ id: UUID) {
         subscribers[id] = nil
+    }
+}
+
+private extension ProviderWorkState {
+    var isFailure: Bool {
+        if case .failed = activity { true } else { false }
     }
 }

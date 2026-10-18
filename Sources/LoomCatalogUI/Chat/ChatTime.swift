@@ -23,17 +23,14 @@ enum ChatTime {
     }
 
     static func label(for date: Date, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> String {
-        let time = date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: locale, calendar: calendar,
-                                                   timeZone: calendar.timeZone))
+        let time = LoomDateFormat.time(date, locale: locale, calendar: calendar)
         if calendar.isDate(date, inSameDayAs: now) { return time }
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
             return "yesterday at \(time)"
         }
         let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
-        var style = Date.FormatStyle(date: .omitted, time: .omitted, locale: locale, calendar: calendar, timeZone: calendar.timeZone)
-            .month(.abbreviated).day()
-        if !sameYear { style = style.year() }
-        return date.formatted(style) + ", " + time
+        return (sameYear ? LoomDateFormat.dayMonth(date, locale: locale, calendar: calendar)
+                : LoomDateFormat.date(date, locale: locale, calendar: calendar)) + ", " + time
     }
 
     /// "Resumed after 4 days".

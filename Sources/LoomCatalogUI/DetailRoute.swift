@@ -23,8 +23,6 @@ enum DetailRoute: Equatable {
     case draft(projectID: UUID?)
     /// A project's page (V08).
     case projectPage(projectID: UUID)
-    /// A catalog with nothing in it.
-    case addProject
     /// Nothing selected.
     case noSelection
 
@@ -32,7 +30,7 @@ enum DetailRoute: Equatable {
     /// a route with its own surface (the chat canvas) changes it here.
     var surface: Color {
         switch self {
-        case .startupError, .devTerminal, .terminal, .endedScreen, .record, .addProject, .noSelection,
+        case .startupError, .devTerminal, .terminal, .endedScreen, .record, .noSelection,
              .chat, .home, .draft, .projectPage:
             LoomTheme.Surface.panel
         }
@@ -42,14 +40,15 @@ enum DetailRoute: Equatable {
     var showsSessionHeader: Bool {
         switch self {
         case .terminal, .endedScreen, .record, .chat: true
-        case .startupError, .devTerminal, .addProject, .noSelection, .home, .draft, .projectPage: false
+        case .startupError, .devTerminal, .noSelection, .home, .draft, .projectPage: false
         }
     }
 }
 
 extension CatalogModel {
     /// The first matching state wins, in this order: startup error, development terminal, Home, a draft or a
-    /// project page, the selected session (see `sessionRoute`), the empty catalog, no selection.
+    /// project page, the selected session (see `sessionRoute`), the empty catalog (Home, which carries the
+    /// first-run states itself), no selection.
     /// Reads only what the model holds in memory.
     var detailRoute: DetailRoute {
         if let error = startupError { return .startupError(error) }
@@ -61,7 +60,7 @@ extension CatalogModel {
         case .session, nil: break
         }
         if let row = selectedRow { return sessionRoute(for: row) }
-        if isReady && projects.isEmpty && list(for: .activity).rows.isEmpty && !isSearching { return .addProject }
+        if homeCatalogIsEmpty { return .home }
         return .noSelection
     }
 
@@ -151,22 +150,6 @@ struct DetailContent: View {
                 DraftSessionView(model: model, projectID: projectID)
             case .projectPage(let projectID):
                 ProjectPageView(model: model, projectID: projectID)
-            case .addProject:
-                VStack(spacing: LoomTheme.Space.emptyStateSpacing) {
-                    Message(symbol: "folder.badge.plus", title: "Add a project to begin",
-                            text: "Your projects and sessions appear in the sidebar.")
-                    HStack {
-                        Button("Add Project…") { model.presentAddProject() }
-                            .keyboardShortcut("o", modifiers: .command)
-                            .buttonStyle(AccentButtonStyle(kind: .filled))
-                        Button("New Claude Session") { model.beginNewSession(projectID: nil) }
-                            .disabled(!model.canStart(.claude, projectID: nil))
-                        if model.startableProviders.contains(.codex) {
-                            Button("New Codex Session") { model.startConversation(.codex, projectID: nil) }
-                                .disabled(!model.canStart(.codex, projectID: nil))
-                        }
-                    }
-                }
             case .noSelection:
                 Message(symbol: "text.bubble", title: "No session selected",
                         text: "Choose a session in the sidebar to see its details.")

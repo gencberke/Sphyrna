@@ -300,18 +300,37 @@ enum PaletteTranscriptScanner {
                 .joined(separator: "\n")
         default: return nil
         }
-        guard let range = text.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) else { return nil }
-        let from = text.index(range.lowerBound, offsetBy: -snippetBefore, limitedBy: text.startIndex) ?? text.startIndex
-        let to = text.index(range.upperBound, offsetBy: snippetAfter, limitedBy: text.endIndex) ?? text.endIndex
+        // The snippet quotes the words, not the Markdown around them. A query that only the raw text holds (a
+        // link's address) still finds its hit, quoted from the raw text.
+        let plain = MarkdownPlainText.stripped(text)
+        let quoted = plain.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) != nil ? plain : text
+        guard let range = quoted.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) else { return nil }
+        let from = quoted.index(range.lowerBound, offsetBy: -snippetBefore, limitedBy: quoted.startIndex) ?? quoted.startIndex
+        let to = quoted.index(range.upperBound, offsetBy: snippetAfter, limitedBy: quoted.endIndex) ?? quoted.endIndex
         // The space between the match and its neighbours is kept (`oneLine` trims the edges of what it is given).
-        let head = text[from..<range.lowerBound], tail = text[range.upperBound..<to]
-        let before = (from > text.startIndex ? "…" : "") + oneLine(head) + (head.last?.isWhitespace == true ? " " : "")
-        let after = (tail.first?.isWhitespace == true ? " " : "") + oneLine(tail) + (to < text.endIndex ? "…" : "")
+        let head = quoted[from..<range.lowerBound], tail = quoted[range.upperBound..<to]
+        let before = edge(oneLine(head), cut: from > quoted.startIndex, leading: true)
+            + (head.last?.isWhitespace == true ? " " : "")
+        let after = (tail.first?.isWhitespace == true ? " " : "")
+            + edge(oneLine(tail), cut: to < quoted.endIndex, leading: false)
         let snippet = PaletteSnippet(role: type == "user" ? .you : .claude, before: before,
-                                     match: oneLine(text[range]), after: after)
+                                     match: oneLine(quoted[range]), after: after)
         return PaletteTranscriptHit(
             sessionID: file.sessionID, title: file.title, project: file.project, snippet: snippet,
             timestamp: (object["timestamp"] as? String).flatMap(parseTimestamp), offset: offset)
+    }
+
+    /// A cut end of a snippet: one ellipsis, with the dots and spaces the cut left beside it dropped, so it
+    /// never reads "…." or "……".
+    static func edge(_ piece: String, cut: Bool, leading: Bool) -> String {
+        guard cut else { return piece }
+        let marks: Set<Character> = [".", "…", " "]
+        if leading {
+            return "…" + String(piece.drop { marks.contains($0) })
+        }
+        var trimmed = Substring(piece)
+        while let last = trimmed.last, marks.contains(last) { trimmed.removeLast() }
+        return String(trimmed) + "…"
     }
 
     /// A piece of the text on one line, cleaned the way every line of agent and user text is (`StatusReason.oneLine`:

@@ -132,6 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.makeKeyAndOrderFront(nil)
         if let openingFrame { window.setFrame(openingFrame, display: true) }
         NSApp.activate()
+        releaseLaunchFocus(window)
         traceWindowCall("launch-after-show")
         LoomSignposts.end(.windowShown)
         updateWindowActivity()
@@ -357,6 +358,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             .appendingPathComponent("Contents/MacOS/\(RunScopeLauncher.hostExecutableName)")
         guard !FileManager.default.isExecutableFile(atPath: executable.path) else { return }
         model?.ownershipNotice = "New sessions are turned off because Loom's process helper is missing. Without it Loom cannot make sure Stop and Quit end all of a session's background work. Reinstall Loom to fix this."
+    }
+
+    /// AppKit gives the first text field of a freshly shown window the key focus, which put the caret in the
+    /// sidebar's search field at launch. 0.4.4 never did that on purpose (the terminal took the focus when a
+    /// session was selected; the search field takes it only on Find, ⌘F). The window's first responder is
+    /// let go of now and once more after the window's first layout; a field the user focuses meanwhile is not
+    /// taken back (only a field editor that nobody typed into is released).
+    private func releaseLaunchFocus(_ window: NSWindow) {
+        func release() {
+            guard model?.showsDevTerminal != true, let editor = window.firstResponder as? NSTextView,
+                  editor.isFieldEditor, editor.string.isEmpty else { return }
+            window.makeFirstResponder(nil)
+        }
+        release()
+        DispatchQueue.main.async { release() }
     }
 
     @objc func showMainWindow() { presentMainWindow(reason: "window-menu") }

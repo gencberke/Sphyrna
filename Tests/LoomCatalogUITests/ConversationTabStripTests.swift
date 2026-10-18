@@ -62,6 +62,13 @@ struct ConversationTabStripTests {
         #expect(TabStripLayout(count: 3, width: 904).hiddenIndices(scrollOffset: 0).isEmpty)
     }
 
+    @Test func aLeadingFadeShowsOnlyWhenAnOverflowingListIsScrolled() {
+        let layout = TabStripLayout(count: 8, width: 464)
+        #expect(!layout.showsLeadingFade(scrollOffset: 0), "at the start nothing is cut on the left")
+        #expect(layout.showsLeadingFade(scrollOffset: layout.tabWidth / 2), "a half-hidden first tab")
+        #expect(!TabStripLayout(count: 3, width: 904).showsLeadingFade(scrollOffset: 40), "no overflow, no fade")
+    }
+
     @Test func aSelectedTabIsRevealedByTheSmallestScroll() {
         let layout = TabStripLayout(count: 8, width: 464)
         let step = layout.tabWidth + LoomTheme.TabStrip.gap
@@ -90,8 +97,8 @@ struct ConversationTabStripTests {
     // MARK: Vertical rhythm (FB-C): no gap between the title row and its tabs
 
     /// The real header-and-strip composition (`DetailTop`) laid out by AppKit, no window needed.
-    private func topBlockHeight(_ model: CatalogModel) -> CGFloat {
-        let hosting = NSHostingView(rootView: DetailTop(model: model).frame(width: 800))
+    private func topBlockHeight(_ model: CatalogModel, showsSessionHeader: Bool = true) -> CGFloat {
+        let hosting = NSHostingView(rootView: DetailTop(model: model, showsSessionHeader: showsSessionHeader).frame(width: 800))
         hosting.layoutSubtreeIfNeeded()
         return hosting.fittingSize.height
     }
@@ -109,6 +116,28 @@ struct ConversationTabStripTests {
         #expect(fixture.model.tabStripIsVisible)
         // Two tabs: row and strip touch (36 + 32 pt), as in the approved preview.
         #expect(topBlockHeight(fixture.model) == LoomTheme.Layout.detailRowHeight + LoomTheme.TabStrip.height)
+    }
+
+    @Test func thePagesThatShowNoSessionDrawNoStripEvenWithTwoTabsOpen() async throws {
+        let fixture = try await makeFixture(rows: 2)
+        defer { cleanup(fixture) }
+        await fixture.model.start()
+        fixture.model.openTab(fixture.ids[0])
+        fixture.model.openTab(fixture.ids[1])
+        #expect(fixture.model.tabStripIsVisible && fixture.model.detailRoute.showsSessionHeader)
+        #expect(topBlockHeight(fixture.model) == LoomTheme.Layout.detailRowHeight + LoomTheme.TabStrip.height)
+        // Home, a draft and a project page: the plain 52 pt block, with the strip's 32 pt left out.
+        fixture.model.showHome()
+        #expect(fixture.model.tabStripIsVisible, "the tabs stay open behind Home")
+        #expect(!fixture.model.detailRoute.showsSessionHeader)
+        #expect(topBlockHeight(fixture.model, showsSessionHeader: fixture.model.detailRoute.showsSessionHeader)
+                == LoomTheme.Layout.headerHeight)
+        fixture.model.showDraft(projectID: nil)
+        #expect(topBlockHeight(fixture.model, showsSessionHeader: fixture.model.detailRoute.showsSessionHeader)
+                == LoomTheme.Layout.headerHeight)
+        fixture.model.select(fixture.ids[0])
+        #expect(topBlockHeight(fixture.model, showsSessionHeader: fixture.model.detailRoute.showsSessionHeader)
+                == LoomTheme.Layout.detailRowHeight + LoomTheme.TabStrip.height, "the strip is back with the session")
     }
 
     // MARK: Fixture

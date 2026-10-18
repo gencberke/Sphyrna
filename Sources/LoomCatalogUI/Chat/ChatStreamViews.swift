@@ -44,6 +44,14 @@ final class ChatScrollView: NSScrollView {
         controller?.noteWheel(event)
         super.scrollWheel(with: event)
     }
+
+    /// Every layout pass of the scroll view ends with the table's one column as wide as the visible area. The table
+    /// keeps its column widths when its container shrinks after having been wider (a window that grew, an inspector
+    /// that opened over it), so a row would stay as wide as it was and be cut at the right edge.
+    override func tile() {
+        super.tile()
+        controller?.fitColumnToView()
+    }
 }
 
 /// The scroller: dragging it leaves Following at once.

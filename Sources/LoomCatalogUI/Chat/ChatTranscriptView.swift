@@ -71,6 +71,7 @@ struct ChatTranscriptContent<Fallback: View>: View {
     let onOpenSubagent: ((String?, String) -> Void)?
     let fallback: () -> Fallback
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var width = LoomTheme.Chat.chipCompactBelow
 
     var body: some View {
         ZStack {
@@ -110,9 +111,10 @@ struct ChatTranscriptContent<Fallback: View>: View {
             .animation(reduceMotion ? nil : .easeOut(duration: LoomTheme.Chat.fadeDuration), value: model.showsJump)
         }
         .overlay(alignment: .topTrailing) {
-            ChatViewChip(mode: model.viewMode) { model.cycleViewMode() }
+            ChatViewChip(mode: model.viewMode, compact: ChatViewChip.isCompact(width: width)) { model.cycleViewMode() }
                 .padding(.top, 10).padding(.trailing, 14)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 }
 
@@ -122,14 +124,19 @@ struct ChatTranscriptContent<Fallback: View>: View {
 /// it never takes the key from a terminal beside the chat.
 struct ChatViewChip: View {
     let mode: ChatViewMode
+    /// The glyph and the key only (a narrow stream); the tooltip and the accessibility value still name the view.
+    var compact = false
     let cycle: () -> Void
     @State private var hovering = false
+
+    /// Whether a stream this wide gets the compact chip.
+    static func isCompact(width: CGFloat) -> Bool { width < LoomTheme.Chat.chipCompactBelow }
 
     var body: some View {
         Button(action: cycle) {
             HStack(spacing: 5) {
                 Image(systemName: "eye").font(LoomTheme.Chat.chevron)
-                Text(mode.title)
+                if !compact { Text(mode.title) }
                 Text("\u{2303}O").foregroundStyle(LoomTheme.Text.secondaryStyle)
             }
             .font(LoomTheme.Chat.viewChip)

@@ -66,7 +66,7 @@ enum UsageCardText {
                              timeZone: TimeZone) -> UsagePlanLimitRowText {
         let reset = UsageChipContent.resetPhrase(window, now: now, timeZone: timeZone)
         return UsagePlanLimitRowText(
-            title: kind.title, used: "\(window.usedPercent)% used", left: "\(window.remainingPercent)% left",
+            title: kind.title, used: "\(UsageFormat.percent(window.usedPercent)) used", left: "\(UsageFormat.percent(window.remainingPercent)) left",
             reset: reset?.capitalizedFirst,
             accessibilityLabel: "\(kind.title) limit, \(window.usedPercent) percent used, "
                 + "\(window.remainingPercent) percent remaining" + (reset.map { ", " + $0 } ?? ""))
@@ -75,7 +75,9 @@ enum UsageCardText {
     /// "Last 7 days": the period's headline wording, capitalised.
     static func periodTitle(_ period: UsagePeriod) -> String { period.phrase.capitalizedFirst }
 
-    static func sessions(_ count: Int) -> String { "\(count) session\(count == 1 ? "" : "s")" }
+    /// The usage index counts only the sessions that have usage records in the period, which is not the
+    /// catalog's number of sessions (Home's Today, the project page): the label says what it counts.
+    static func sessions(_ count: Int) -> String { "\(count) session\(count == 1 ? "" : "s") with usage" }
 
     static func models(_ count: Int) -> String { "\(count) model\(count == 1 ? "" : "s")" }
 
@@ -106,7 +108,7 @@ enum UsageCardText {
 
     /// `95 %`, or a dash when nothing was read on the prompt side.
     static func servedFromCache(_ tokens: UsageTokens) -> String {
-        tokens.cacheShare.map { "\(Int(($0 * 100).rounded())) %" } ?? "—"
+        tokens.cacheShare.map(UsageFormat.percent(fraction:)) ?? "—"
     }
 
     static let servedFromCacheTooltip = "Share of input-side tokens served from the cache."
@@ -463,7 +465,7 @@ struct UsageReportView: View {
                             ShareBar(fraction: whole > 0 ? Double(model.tokens.total) / Double(whole) : 0)
                             // As wide as the widest share, so the bars line up from row to row.
                             ZStack(alignment: .trailing) {
-                                Text("100 %").hidden().accessibilityHidden(true)
+                                Text(UsageFormat.percent(100)).hidden().accessibilityHidden(true)
                                 Text(UsageFormat.percent(model.tokens.total, of: whole) ?? "—")
                             }
                         }

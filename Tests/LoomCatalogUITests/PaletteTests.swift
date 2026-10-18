@@ -176,15 +176,22 @@ struct PaletteTests {
         func text(_ reason: StatusReason?, _ indicator: SessionIndicator, open: Bool = false) -> String? {
             PaletteReasonText.line(reason: reason, indicator: indicator, awaitingOpenApproval: open)
         }
-        #expect(text(StatusReason(.approval(tool: "Bash"), detail: "git push"), .waitingForApproval) == "allow git push")
-        #expect(text(StatusReason(.approval(tool: "Edit"), detail: "src/a.swift"), .waitingForApproval) == "allow Edit src/a.swift")
-        #expect(text(StatusReason(.question, detail: "PDF library"), .waitingForApproval) == "asks: PDF library")
-        #expect(text(StatusReason(.planReady), .waitingForApproval) == "plan ready for review")
+        // The sidebar's and Home's words (`SessionReasonLine`), not a second wording of the same reason.
+        #expect(text(StatusReason(.approval(tool: "Bash"), detail: "git push"), .waitingForApproval) == "Allow: git push")
+        #expect(text(StatusReason(.approval(tool: "Bash")), .waitingForApproval) == "Asks to run a command")
+        #expect(text(StatusReason(.approval(tool: "Edit"), detail: "src/a.swift"), .waitingForApproval) == "Allow Edit: src/a.swift")
+        #expect(text(StatusReason(.question, detail: "PDF library"), .waitingForApproval) == "Asks: PDF library")
+        #expect(text(StatusReason(.planReady), .waitingForApproval) == "Plan ready for review")
         #expect(text(StatusReason(.turnDone, detail: "Added 12 tests"), .unviewedCompletion) == "Added 12 tests")
-        #expect(text(nil, .waitingForApproval) == "needs approval")
-        #expect(text(nil, .failed(nil)) == "failed")
+        #expect(text(StatusReason(.failure(category: "fixture_failure")), .failed(nil)) == "Failed: fixture failure")
+        #expect(text(nil, .waitingForApproval) == SessionIndicator.waitingForApproval.label)
+        #expect(text(nil, .failed(nil)) == SessionIndicator.failed(nil).label)
         #expect(text(nil, .working) == nil)
-        #expect(text(nil, .waitingForApproval, open: true) == "wants to open a session")
+        #expect(text(nil, .waitingForApproval, open: true) == "Wants to open a session")
+        for (reason, indicator) in [(StatusReason(.approval(tool: "Bash"), detail: "ls"), SessionIndicator.waitingForApproval),
+                                    (StatusReason(.failure(category: "x")), .failed(nil))] {
+            #expect(text(reason, indicator) == SessionReasonLine(reason)?.text, "palette and sidebar read the same")
+        }
     }
 
     // MARK: The model
@@ -203,7 +210,7 @@ struct PaletteTests {
         #expect(groups.map(\.section) == [.needsYou, .sessions, .actions])
         #expect(titles(of: groups[0]) == ["Invoice export", "Webhook signature check"], "same class, so the more recent first")
         let webhook = try #require(groups[0].items.first { $0.title == "Webhook signature check" })
-        #expect(webhook.detail == "· allow git push origin fix" && webhook.indicator == .waitingForApproval)
+        #expect(webhook.detail == "· Allow: git push origin fix" && webhook.indicator == .waitingForApproval)
         #expect(webhook.trailing?.hasPrefix("api-gateway · ") == true)
         // The rest is recent, most recent first, without the two above.
         #expect(titles(of: groups[1]) == ["Nightly import", "Rate limiter tests", "Token rotation"])

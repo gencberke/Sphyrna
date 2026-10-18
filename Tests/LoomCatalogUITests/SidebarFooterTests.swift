@@ -67,9 +67,12 @@ struct SidebarFooterTests {
         #expect(chip.limit == UsageChipContent.Limit(name: "5h", remainingPercent: 62))
         #expect(chip.limit?.text == "5h 62%" && chip.limit?.isLow == false)
         #expect(chip.accessibilityLabel == "Claude usage today, 1.2 million tokens, five-hour limit 62 percent remaining")
-        #expect(chip.tooltip.contains("Plan limits, updated 11:59"))
-        #expect(chip.tooltip.contains("5-hour: 62% left, resets 15:30"))
-        #expect(chip.tooltip.contains("Weekly: 80% left, resets Mon 12:00"))
+        // The times are the system locale's (`UsageText`): 11:59, 15:30 and Monday 12:00 in a 24 hour locale.
+        func at(_ seconds: TimeInterval) -> String { UsageText.time(Self.now.addingTimeInterval(seconds), Self.utc) }
+        let monday = UsageText.weekday(Self.now.addingTimeInterval(5 * 86_400), Self.utc)
+        #expect(chip.tooltip.contains("Plan limits, updated \(at(-60))"))
+        #expect(chip.tooltip.contains("5-hour: 62% left, resets \(at(3.5 * 3_600))"))
+        #expect(chip.tooltip.contains("Weekly: 80% left, resets \(monday) \(at(5 * 86_400))"))
         #expect(chip.tooltip.contains("1,204,310 tokens: input 0, output 1,204,310"))
         for text in [chip.full, chip.tooltip, chip.accessibilityLabel] {
             #expect(!text.contains("$") && !text.contains("~"))

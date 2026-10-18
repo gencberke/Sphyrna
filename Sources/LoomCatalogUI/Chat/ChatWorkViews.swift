@@ -127,18 +127,27 @@ struct ChatToolIcon: View {
     }
 }
 
-/// "+31 −6" in the content colours of added and removed lines.
+/// "+31 −6" in the content colours of added and removed lines. A count of zero is left out (an edit record that
+/// carries no line counts gives zeros, and "+0" would say the file did not change), so with nothing known it
+/// draws nothing.
 struct ChatChangeCounts: View {
     let added: Int
     let removed: Int
 
+    /// The parts that are drawn, in order: "+A" when lines were added, "−R" when lines were removed.
+    static func parts(added: Int, removed: Int) -> [String] {
+        (added > 0 ? ["+\(added)"] : []) + (removed > 0 ? ["\u{2212}\(removed)"] : [])
+    }
+
     var body: some View {
-        HStack(spacing: 5) {
-            if added > 0 || removed == 0 { Text("+\(added)").foregroundStyle(LoomTheme.Success.light) }
-            if removed > 0 { Text("\u{2212}\(removed)").foregroundStyle(LoomTheme.Status.failureLight) }
+        if added > 0 || removed > 0 {
+            HStack(spacing: 5) {
+                if added > 0 { Text("+\(added)").foregroundStyle(LoomTheme.Success.light) }
+                if removed > 0 { Text("\u{2212}\(removed)").foregroundStyle(LoomTheme.Status.failureLight) }
+            }
+            .font(LoomTheme.Chat.metaMono)
+            .accessibilityLabel("\(added) lines added, \(removed) removed")
         }
-        .font(LoomTheme.Chat.metaMono)
-        .accessibilityLabel("\(added) lines added, \(removed) removed")
     }
 }
 

@@ -193,7 +193,7 @@ struct SidebarRenderTests {
         #expect(SidebarRenderProbe.timeLabelBodies[row.id] == 1)
 
         // The tooltip is the formatted activity time, kept with the row until the time moves.
-        let expected = "Last activity " + row.record.lastActivityAt.formatted(date: .abbreviated, time: .shortened)
+        let expected = "Last activity " + LoomDateFormat.dateTime(row.record.lastActivityAt)
         #expect(row.activityTooltip == expected)
         let formats = row.tooltipFormats
         #expect(row.activityTooltip == expected)
@@ -202,7 +202,7 @@ struct SidebarRenderTests {
         try await model.catalog?.markActivity(sessionID: row.id, at: stamp)
         await model.refreshRow(row.id)
         #expect(row.record.lastActivityAt == stamp)
-        #expect(row.activityTooltip == "Last activity " + stamp.formatted(date: .abbreviated, time: .shortened))
+        #expect(row.activityTooltip == "Last activity " + LoomDateFormat.dateTime(stamp))
     }
 
     /// The day headings are grouped once per list change and calendar day, not on every body pass.
