@@ -109,10 +109,12 @@ evaluates only those), and the activity view's day sections are memoised per lis
 section (FB4-2) takes its membership from `SessionViewState.activePhase`, which `SessionEventHub.publish` derives beside
 `unviewedCompletion`; `CatalogModel.updateActive` (`CatalogModel+Active.swift`) keeps the displayed set (`activeIDs`, not
 observed) with one O(1) check per live frame and bumps the observed `activeRevision` only when the set changes, so a flip
-regroups once and moves one card. The counters are
+regroups once and moves one card. "Not read" is one rule on every surface: `activePhase` makes a new failure `endedUnread` (also when no turn was seen under way before it) unless the user is looking, and `CatalogModel.attentionCandidates` (`CatalogModel+Navigation.swift`) drops a failed session that is not `endedUnread`, so a viewed failure leaves Active, Home's lists, the Dock badge and the jump set together while its card keeps the red dot. The counters are
 `CatalogModelStatistics` (`pageQueries`, `listReloads`, `rowPatches`, `searchQueries`) and `SidebarRenderProbe` (card and time
 label body evaluations, off unless a test switches it on); tests: `CatalogHotPathTests`, `SidebarRenderTests`,
 `SessionCatalogSearchTests`.
+
+**Detail pane layout** `detailInspector(model:)` (`InspectorContainer.swift`) reads the pane's width once and asks the pure `InspectorPlacement.of(open:detailWidth:)` for closed, column or overlay (overlay below `LoomTheme.Inspector.minimumContent`, 480 pt, beside the 328 pt inspector). The content is one view in every placement, given its width explicitly in the same pass, so crossing the threshold changes that width once and an overlay resizes nothing. The chat's `ChatScrollView.tile()` refits the table's one column to the stream's visible width on every layout pass (`ChatStreamController.fitColumnToView`); the table otherwise keeps a wider column after the pane shrinks and cuts rows at the right edge. Dates and times become text only through `LoomDateFormat` (system locale, one cached formatter per kind, locale, calendar and zone); the pure helpers that format them (`DayGrouping.title`, `CatalogRecoveryPrompt.date`, `UsageText`, `ChatTime`) take a locale so tests pin one.
 
 **Start a Claude conversation to indicator**
 ```
