@@ -17,32 +17,30 @@ extension LoomTheme {
         static let tabGap: CGFloat = 2
         static let tabHeight: CGFloat = 26
         static let tabInset: CGFloat = 8
-        static let tabInsetCompact: CGFloat = 7
-        static let tabContentGap: CGFloat = 5
+        static let tabInsetCompact: CGFloat = 8
+        static let tabContentGap: CGFloat = 4
         static let tabGlyph = Font.system(size: 12)
 
         // Body and sections.
-        static let bodyInset: CGFloat = 14
-        static let sectionGap: CGFloat = 18
-        static let sectionTitleGap: CGFloat = 9
+        static let bodyInset: CGFloat = 16
+        static let sectionGap: CGFloat = 20
+        static let sectionTitleGap: CGFloat = 8
         static let factLabelWidth: CGFloat = 92
-        static let factRowGap: CGFloat = 7
+        static let factRowGap: CGFloat = 8
         static let factColumnGap: CGFloat = 8
         static let rowGap: CGFloat = 8
 
         // An agent row: a card with a 22 pt mark, the type and description, and the time.
         static let agentPaddingH: CGFloat = 12
-        static let agentPaddingV: CGFloat = 10
+        static let agentPaddingV: CGFloat = 8
         static let agentMark: CGFloat = 22
         static let agentMarkRadius: CGFloat = 6
         static let agentMarkGlyph = Font.system(size: 12)
-        static let agentColumnGap: CGFloat = 10
-        static let agentLineGap: CGFloat = 3
-        static let agentIndent: CGFloat = 10
+        static let agentColumnGap: CGFloat = 8
+        static let agentLineGap: CGFloat = 4
+        static let agentIndent: CGFloat = 8
         static let agentMaxIndent = 2
         static let agentMarkWash = Opacity.accentTint
-        /// A panel level follows the tone, so it is computed, never stored.
-        static var agentHover: Color { Surface.raised }
 
         // The drill-down header over a transcript.
         static let detailHeaderGap: CGFloat = 8

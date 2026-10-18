@@ -378,7 +378,7 @@ struct SessionHeaderTests {
         #expect(full > compact + 40)
 
         var seen: [CGFloat: Frames] = [:]
-        for width in [900, 700, 600, 520, 480] as [CGFloat] {
+        for width in [900, 700, 620, 520, 480] as [CGFloat] {
             let frames = try await headerFrames(rig, width: width)
             seen[width] = frames
             #expect(frames.pill != nil && frames.chip != nil && frames.stop != nil && frames.menu != nil && frames.title != nil,
@@ -398,8 +398,9 @@ struct SessionHeaderTests {
         #expect(try #require(wide.chip).width > (full + compact) / 2, "900: the branch shows")
         #expect(try #require(narrow.chip).width < (full + compact) / 2 + 0.5, "480: the branch is gone")
         #expect(try #require(narrow.title).width < (try #require(wide.title).width) - 40, "the title gives way")
-        // The title shortens first: at 600 the branch is still there with the title above 100 pt.
-        let mid = try #require(seen[600])
+        // The title shortens first: at 620 the branch is still there with the title above 100 pt. (600 before V25 moved the
+        // row's paddings onto the 4 pt grid, which asks the row for about 6 pt more.)
+        let mid = try #require(seen[620])
         let midChip = try #require(mid.chip), midTitle = try #require(mid.title)
         #expect(midChip.width > (full + compact) / 2 && midTitle.width >= 99)
         // The pill sits at the same place relative to the chip whatever the width.

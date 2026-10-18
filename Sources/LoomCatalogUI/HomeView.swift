@@ -125,8 +125,7 @@ private struct HomeSide: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LoomTheme.Home.blockGap) {
             if continueFirst { HomeContinue(model: model) }
-            HomePlanLimits(model: model)
-            HomeToday(model: model)
+            HomeUsage(model: model)
             if !continueFirst { HomeContinue(model: model) }
         }
     }

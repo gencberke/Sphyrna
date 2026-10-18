@@ -604,6 +604,18 @@ struct HomeTests {
         #expect(model.homeTodayFigures()?.kinds?.total == 70 && model.homeTodayFigures()?.cacheShare == nil)
     }
 
+    @Test func todayIsOneCompactLineOfTokensSessionsAndTheCacheShareWithTheKindsAsATooltip() {
+        let figures = HomeTodayFigures(tokens: "1.2M", sessions: 6, note: nil,
+                                       kinds: UsageToday(UsageTokens(input: 90_000, output: 50_000, cacheWrite5m: 10_000, cacheRead: 400_000)))
+        #expect(figures.stats.map { "\($0.figure) \($0.label)" } == ["1.2M tokens", "6 sessions", "80% from cache"])
+        #expect(figures.spoken == "Today, 1.2M tokens, 6 sessions, 80% from cache")
+        #expect(figures.kindsTooltip == "Today by kind: input 90K, output 50K, cache read 400K, cache write 10K.")
+        // Nothing but the catalog's count (no usage index yet), and one session in the singular.
+        let alone = HomeTodayFigures(tokens: nil, sessions: 1, note: nil)
+        #expect(alone.stats.map { "\($0.figure) \($0.label)" } == ["1 session"] && alone.kindsTooltip == nil)
+        #expect(HomeTodayFigures(tokens: nil, sessions: nil, note: "Reading").stats.isEmpty)
+    }
+
     // MARK: The pace line and the tick
 
     @Test func thePlanPaceFollowsTheModelsTickAndDropsAWindowThatEnded() async throws {

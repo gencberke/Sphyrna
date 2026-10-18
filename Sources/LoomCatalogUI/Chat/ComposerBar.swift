@@ -40,7 +40,7 @@ struct ComposerChipLabel: View {
             Image(systemName: "chevron.down").font(LoomTheme.Composer.chevron).foregroundStyle(LoomTheme.Text.tertiary)
         }
         .foregroundStyle(titleColor)
-        .padding(.horizontal, LoomTheme.Space.cardH - 1)
+        .padding(.horizontal, LoomTheme.Space.cardH)
         .frame(minHeight: LoomTheme.Composer.controlSide)
         .contentShape(Rectangle())
     }

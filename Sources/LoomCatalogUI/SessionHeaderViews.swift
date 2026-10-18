@@ -227,8 +227,9 @@ struct HeaderSegmentStyle: ButtonStyle {
 
         var body: some View {
             let active = hovering || configuration.isPressed
-            let fill: Color = configuration.isPressed ? LoomTheme.Surface.controlPressed
-                : (hovering ? LoomTheme.Surface.controlHover : .clear)
+            // A segment sits on the group's own 7 % fill, so its hover takes the selected step to show over it.
+            let fill: Color = !enabled ? .clear : (configuration.isPressed ? LoomTheme.Highlight.pressed
+                : (hovering ? LoomTheme.Highlight.selected : .clear))
             configuration.label
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(secondaryUntilHovered && !active ? LoomTheme.Text.secondary : LoomTheme.Text.primary)

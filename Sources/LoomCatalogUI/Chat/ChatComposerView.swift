@@ -87,7 +87,7 @@ struct ChatComposerDock: View {
 
     var body: some View {
         let compact = model.cardShown
-        VStack(spacing: LoomTheme.Space.headerSpacing + 2) {
+        VStack(spacing: LoomTheme.Space.headerSpacing * 2) {
             ChatComposerView(model: model)
             // The keys are on the card then (its own hint line), so the dock's line goes with the room it takes.
             if !compact { ComposerHints(model: model) }
@@ -114,7 +114,7 @@ struct ComposerHints: View {
     }
 
     private func line(_ hints: [String]) -> some View {
-        HStack(spacing: LoomTheme.Space.requestPadding + 2) {
+        HStack(spacing: LoomTheme.Space.requestPadding) {
             ForEach(hints, id: \.self) { Text($0) }
             Spacer(minLength: 0)
         }
@@ -155,7 +155,7 @@ struct ComposerAttachmentsRow: View {
                                                               height: LoomTheme.Composer.attachmentHeight)
                 }
             }
-            .padding(.horizontal, LoomTheme.Space.requestPadding + 2).padding(.top, LoomTheme.Space.requestPadding)
+            .padding(.horizontal, LoomTheme.Space.requestPadding).padding(.top, LoomTheme.Space.requestPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("composer-attachments")

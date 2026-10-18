@@ -302,9 +302,9 @@ enum LoomTheme {
         // failure and the unviewed finish take a low wash of their own colour and a lighter label of
         // it (the plain status colours are 4.3 to 4.4:1 on their wash for failure and unviewed).
         static let pillHeight: CGFloat = 22
-        static let pillLeading: CGFloat = 7
-        static let pillTrailing: CGFloat = 9
-        static let pillGap: CGFloat = 6
+        static let pillLeading: CGFloat = 8
+        static let pillTrailing: CGFloat = 8
+        static let pillGap: CGFloat = 8
         static let pillWorkingWash = 0.07
         static let pillNeutralWash = 0.05
         static let pillStatusWash = 0.15
@@ -318,10 +318,10 @@ enum LoomTheme {
         // Project chip: the tone stripe (full height), the project name, a hairline, the branch.
         static let chipHeight: CGFloat = 22
         /// Space after the stripe; a chip without a stripe insets its text `chipInset` instead.
-        static let chipStripeGap: CGFloat = 7
+        static let chipStripeGap: CGFloat = 8
         static let chipInset: CGFloat = 8
         static let chipRuleGap: CGFloat = 8
-        static let chipRuleAfter: CGFloat = 7
+        static let chipRuleAfter: CGFloat = 8
         static let chipRuleHeight: CGFloat = 14
         static let chipBranchGap: CGFloat = 4
         /// The glyph before the branch name.
@@ -345,16 +345,16 @@ enum LoomTheme {
         static let pillNeutralLightWash = 0.05
         static let stopGlyph: CGFloat = 8
         static let stopGlyphRadius: CGFloat = 1.5
-        static let stopPadding: CGFloat = 10
-        static let stopGap: CGFloat = 6
+        static let stopPadding: CGFloat = 8
+        static let stopGap: CGFloat = 8
         static let menuSegmentWidth: CGFloat = 28
 
         // The subagent panel's header (FB4-5): the crumb, and the Session control with its Esc key cap.
-        static let crumbGap: CGFloat = 6
+        static let crumbGap: CGFloat = 8
         static let crumbGlyph = Font.system(size: 12)
-        static let backGap: CGFloat = 6
+        static let backGap: CGFloat = 8
         static let backLeading: CGFloat = 8
-        static let backTrailing: CGFloat = 10
+        static let backTrailing: CGFloat = 8
         static let keyCapPadding: CGFloat = 4
 
         // Narrow rows: the title gives way down to this width, then the branch goes, then the project
@@ -438,85 +438,85 @@ enum LoomTheme {
     enum Space {
         // Sidebar header, search, footer.
         static let headerSpacing: CGFloat = 4
-        static let headerInset: CGFloat = 10
-        static let searchInset: CGFloat = 12
+        static let headerInset: CGFloat = 8
+        static let searchInset: CGFloat = 8
         static let searchBottom: CGFloat = 8
-        static let searchSpacing: CGFloat = 6
-        static let searchPadding: CGFloat = 10
-        static let footerInset: CGFloat = 10
+        static let searchSpacing: CGFloat = 8
+        static let searchPadding: CGFloat = 8
+        static let footerInset: CGFloat = 8
         static let footerSpacing: CGFloat = 8
         static let chipInset: CGFloat = 8
         /// The usage chip: the least space between tokens and limit, and between limit name, meter and percent.
-        static let chipSplitGap: CGFloat = 6
-        static let chipLimitGap: CGFloat = 5
+        static let chipSplitGap: CGFloat = 8
+        static let chipLimitGap: CGFloat = 4
         // List.
-        static let listInset: CGFloat = 6
+        static let listInset: CGFloat = 8
         static let listBottom: CGFloat = 8
-        static let sectionInset: CGFloat = 12
-        static let sectionTop: CGFloat = 14
+        static let sectionInset: CGFloat = 8
+        static let sectionTop: CGFloat = 16
         static let sectionBottom: CGFloat = 4
         static let sectionSpacing: CGFloat = 8
         /// How far a focused row's ring sits outside its content.
-        static let rowFocusOutset: CGFloat = 3
-        static let emptyNoteInset: CGFloat = 14
-        static let emptyNoteVertical: CGFloat = 6
+        static let rowFocusOutset: CGFloat = 4
+        static let emptyNoteInset: CGFloat = 16
+        static let emptyNoteVertical: CGFloat = 8
         static let loadingPadding: CGFloat = 8
-        static let hintSpacing: CGFloat = 6
+        static let hintSpacing: CGFloat = 8
         static let hintTop: CGFloat = 40
         // Cards.
         static let cardGap: CGFloat = 2
-        static let cardH: CGFloat = 10
+        static let cardH: CGFloat = 8
         static let cardV: CGFloat = 8
         static let cardSpacing: CGFloat = 8
-        static let cardLineSpacing: CGFloat = 3
-        static let cardRowSpacing: CGFloat = 6
+        static let cardLineSpacing: CGFloat = 4
+        static let cardRowSpacing: CGFloat = 8
         static let cardIndicatorTop: CGFloat = 1
         // Subagents under a card (D-39): a hairline guide under the card's indicator column.
         /// The guide's distance from the list edge (the center of the card's indicator slot).
-        static let subagentGuideInset: CGFloat = 15
+        static let subagentGuideInset: CGFloat = 13
         /// Space between the guide and the rows, and a row's own leading and trailing padding.
-        static let subagentGuidePad: CGFloat = 9
+        static let subagentGuidePad: CGFloat = 8
         static let subagentRowLeading: CGFloat = 4
-        static let subagentRowTrailing: CGFloat = 10
-        static let subagentColumnGap: CGFloat = 6
-        static let subagentTextGap: CGFloat = 5
+        static let subagentRowTrailing: CGFloat = 8
+        static let subagentColumnGap: CGFloat = 8
+        static let subagentTextGap: CGFloat = 4
         /// One step of nesting for a subagent a subagent started.
-        static let subagentIndent: CGFloat = 10
+        static let subagentIndent: CGFloat = 8
         static let subagentTreeBottom: CGFloat = 2
         // The subagent panel's transcript (FB4-5).
-        static let transcriptInset: CGFloat = 14
+        static let transcriptInset: CGFloat = 16
         static let transcriptRowGap: CGFloat = 8
         /// The text after the glyph column (⏺, ⎿ and ✻ take this width).
         static let transcriptGlyphColumn: CGFloat = 18
         // Detail panel.
         static let panelInset: CGFloat = 8
-        static let detailInset: CGFloat = 14
+        static let detailInset: CGFloat = 16
         static let detailSpacing: CGFloat = 8
         static let detailMinSpacer: CGFloat = 8
-        static let bannerSpacing: CGFloat = 6
+        static let bannerSpacing: CGFloat = 8
         static let bannerBottom: CGFloat = 8
         static let bannerRowSpacing: CGFloat = 8
         static let emptyStateSpacing: CGFloat = 12
         static let messageSpacing: CGFloat = 8
         static let messagePadding: CGFloat = 24
         static let detailPadding: CGFloat = 24
-        static let detailSectionSpacing: CGFloat = 18
+        static let detailSectionSpacing: CGFloat = 16
         static let detailTitleSpacing: CGFloat = 12
-        static let detailLineSpacing: CGFloat = 3
+        static let detailLineSpacing: CGFloat = 4
         static let factColumnSpacing: CGFloat = 16
         static let factRowSpacing: CGFloat = 8
-        static let actionsSpacing: CGFloat = 10
+        static let actionsSpacing: CGFloat = 8
         // Requests and notices.
-        static let requestListSpacing: CGFloat = 6
-        static let requestSpacing: CGFloat = 10
-        static let requestLineSpacing: CGFloat = 3
-        static let requestPadding: CGFloat = 10
-        static let noticeSpacing: CGFloat = 10
-        static let noticeLineSpacing: CGFloat = 3
+        static let requestListSpacing: CGFloat = 8
+        static let requestSpacing: CGFloat = 8
+        static let requestLineSpacing: CGFloat = 4
+        static let requestPadding: CGFloat = 12
+        static let noticeSpacing: CGFloat = 8
+        static let noticeLineSpacing: CGFloat = 4
         static let noticePadding: CGFloat = 12
         // Accent buttons.
         static let buttonH: CGFloat = 12
-        static let buttonV: CGFloat = 3
+        static let buttonV: CGFloat = 4
         // Sheet.
         static let sheetSpacing: CGFloat = 12
         static let sheetPadding: CGFloat = 20
@@ -527,7 +527,7 @@ enum LoomTheme {
         static let settingsFooterInset: CGFloat = 24
         static let settingsSectionGap: CGFloat = 20
         static let settingsRowInset: CGFloat = 16
-        static let settingsRowV: CGFloat = 10
+        static let settingsRowV: CGFloat = 12
         static let settingsSegmentH: CGFloat = 12
         static let settingsTrack: CGFloat = 2
         static let usageTotalsGap: CGFloat = 16
@@ -539,18 +539,18 @@ enum LoomTheme {
         /// The Usage page's cards: the gap between them, the padding inside, and the header's gap to the body.
         static let usageCardGap: CGFloat = 12
         static let usageCardTop: CGFloat = 12
-        static let usageCardBottom: CGFloat = 14
-        static let usageCardHeaderBottom: CGFloat = 10
+        static let usageCardBottom: CGFloat = 16
+        static let usageCardHeaderBottom: CGFloat = 12
         /// The period card's two columns, and the local-hours row (rule above and below, gap between its parts).
         static let usageCardColumnGap: CGFloat = 24
         static let usageRuleTop: CGFloat = 12
-        static let usageRuleBottom: CGFloat = 10
-        static let usageLocalGap: CGFloat = 10
+        static let usageRuleBottom: CGFloat = 12
+        static let usageLocalGap: CGFloat = 8
         static let aboutHeadTop: CGFloat = 28
         static let aboutHeadBottom: CGFloat = 24
         static let aboutHeadSpacing: CGFloat = 4
         /// Settings → Theme: the gap between the main pane row's parts.
-        static let toneRowGap: CGFloat = 10
+        static let toneRowGap: CGFloat = 8
     }
 
     // MARK: Layout

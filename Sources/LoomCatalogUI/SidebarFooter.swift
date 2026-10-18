@@ -143,7 +143,7 @@ extension EnvironmentValues {
     }
 }
 
-/// One 24 pt button: white 9 % fill on hover and 14 % pressed, like the chrome buttons.
+/// One 24 pt button with the shared pill on hover and press, like the chrome buttons.
 private struct UsageChipButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         Chip(configuration: configuration)
@@ -155,14 +155,13 @@ private struct UsageChipButtonStyle: ButtonStyle {
         @Environment(\.isFocused) private var focused
 
         var body: some View {
-            let background: Color = configuration.isPressed ? LoomTheme.Surface.controlPressed
-                : (hovering ? LoomTheme.Surface.controlHover : .clear)
+            let state = HighlightState.resolve(selected: false, hovering: hovering, pressed: configuration.isPressed)
             configuration.label
                 .environment(\.usageChipHovered, hovering || configuration.isPressed)
                 .padding(.horizontal, LoomTheme.Space.chipInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: LoomTheme.Layout.footerChipHeight)
-                .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.control).fill(background))
+                .background(RowHighlight(state: state, radius: LoomTheme.Highlight.radiusControl))
                 .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
                     .strokeBorder(ChromeButtonStyle.showsFocusRing(
                         focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)

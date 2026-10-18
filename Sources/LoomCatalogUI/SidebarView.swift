@@ -113,10 +113,10 @@ struct HomeRow: View {
             }
             .padding(.horizontal, LoomTheme.Sidebar.homeRowInset)
             .frame(height: LoomTheme.Sidebar.homeRowHeight)
-            .background(SelectedRowBackground(selected: selected, radius: LoomTheme.Radius.search))
-            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.search))
+            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusCompact))
         }
-        .buttonStyle(RowButtonStyle()).focusEffectDisabled()
+        .buttonStyle(RowButtonStyle(selected: selected, radius: LoomTheme.Highlight.radiusCompact, key: "sidebar-home"))
+        .focusEffectDisabled()
         .padding(.horizontal, LoomTheme.Space.listInset)
         .padding(.bottom, LoomTheme.Sidebar.homeRowBottom)
         .accessibilityElement(children: .combine)
@@ -147,9 +147,10 @@ struct NewSessionRow: View {
             }
             .padding(.horizontal, LoomTheme.Sidebar.homeRowInset)
             .frame(height: LoomTheme.Sidebar.homeRowHeight)
-            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.search))
+            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusCompact))
         }
-        .buttonStyle(RowButtonStyle()).focusEffectDisabled()
+        .buttonStyle(RowButtonStyle(radius: LoomTheme.Highlight.radiusCompact, key: "sidebar-new-session"))
+        .focusEffectDisabled()
         .disabled(!enabled)
         .padding(.horizontal, LoomTheme.Space.listInset)
         .padding(.bottom, LoomTheme.Sidebar.homeRowBottom)
@@ -171,22 +172,6 @@ struct HomeCountBadge: View {
             .frame(minWidth: LoomTheme.Sidebar.badgeMinWidth, minHeight: LoomTheme.Sidebar.badgeHeight)
             .background(Capsule().fill(LoomTheme.Status.attention.opacity(LoomTheme.Sidebar.badgeWash)))
             .accessibilityHidden(true)
-    }
-}
-
-/// The fill and hairline of a selected row, the same on a card, a one-line row and the Home row.
-struct SelectedRowBackground: View {
-    let selected: Bool
-    let radius: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: radius)
-            .fill(selected ? LoomTheme.Surface.selected : .clear)
-            .overlay(RoundedRectangle(cornerRadius: radius)
-                .stroke(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline)
-                .opacity(selected ? 1 : 0))
-            .animation(LoomTheme.Motion.animation(.selection, reduceMotion: reduceMotion), value: selected)
     }
 }
 
@@ -483,7 +468,7 @@ struct ProjectHeader: View {
         }
         // The open page's fill reaches the row's own padding, so the content keeps its place inside it.
         .padding(.horizontal, LoomTheme.Sidebar.headerFillInset)
-        .background(SelectedRowBackground(selected: selected, radius: LoomTheme.Radius.search))
+        .rowPill(selected: selected, radius: LoomTheme.Highlight.radiusCompact, key: "sidebar-project:\(project.id)")
         // The menu button's 24 pt hit area is taller than its 20 pt drawing; the row keeps its height.
         .padding(.horizontal, LoomTheme.Space.sectionInset - LoomTheme.Sidebar.headerFillInset)
         .padding(.top, LoomTheme.Space.sectionTop - projectMenuExtra)
@@ -616,7 +601,10 @@ struct SessionCardView: View {
                           projectName: projectName, origin: origin, reasonLine: reasonLine)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RowButtonStyle(
+            selected: selected, radius: oneLine ? LoomTheme.Highlight.radiusCompact : LoomTheme.Highlight.radius,
+            key: "sidebar-card:\(row.id)"))
+        .focusEffectDisabled()
         .projectStripe(model.projectTone(forProject: row.record.projectID))
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.openTab(row.id, revealInList: false) })
         .contextMenu {
@@ -690,8 +678,7 @@ struct SessionCardView: View {
             }
         }
         .padding(.horizontal, LoomTheme.Space.cardH).padding(.vertical, LoomTheme.Space.cardV)
-        .background(SelectedRowBackground(selected: selected, radius: LoomTheme.Radius.card))
-        .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.card))
+        .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radius))
     }
 
     // MARK: Project view: the one-line row
@@ -721,8 +708,7 @@ struct SessionCardView: View {
         }
         .padding(.horizontal, LoomTheme.Space.cardH)
         .frame(height: LoomTheme.Sidebar.lineRowHeight)
-        .background(SelectedRowBackground(selected: selected, radius: LoomTheme.Radius.search))
-        .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.search))
+        .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusCompact))
     }
 }
 

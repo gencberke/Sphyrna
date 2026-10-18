@@ -142,7 +142,6 @@ struct InspectorAgents: View {
 struct InspectorAgentRow: View {
     let agent: InspectorAgentsContent.Row
     let open: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         Button(action: open) {
@@ -170,14 +169,13 @@ struct InspectorAgentRow: View {
             }
             .padding(.horizontal, LoomTheme.Inspector.agentPaddingH).padding(.vertical, LoomTheme.Inspector.agentPaddingV)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.card)
-                .fill(hovering ? LoomTheme.Inspector.agentHover : LoomTheme.Surface.card))
+            .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.card).fill(LoomTheme.Surface.card))
             .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.card)
                 .strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
             .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.card))
         }
-        .buttonStyle(.plain).focusEffectDisabled()
-        .onHover { hovering = $0 }
+        // The card keeps its own fill; the shared pill's hover and press tones lie over it.
+        .buttonStyle(RowButtonStyle(radius: LoomTheme.Radius.card, key: "agent-row:\(agent.id)")).focusEffectDisabled()
         .accessibilityLabel(agent.accessibilityLabel)
         .accessibilityHint("Shows the transcript")
     }

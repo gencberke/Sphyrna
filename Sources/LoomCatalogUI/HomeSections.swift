@@ -154,48 +154,148 @@ struct HomeEntryRow: View {
                     .padding(.top, LoomTheme.Space.headerSpacing)
                 }
             }
-            .padding(LoomTheme.Home.itemPadding)
+            // The text keeps `itemPadding` and `itemPaddingV` from the card's edge and the hairline; the pill sits `Highlight.inset` inside the card and a little
+            // inside the hairlines. A click on the row opens the session, as Open Session does.
+            .padding(.horizontal, LoomTheme.Home.itemPadding - LoomTheme.Highlight.inset)
+            .padding(.vertical, LoomTheme.Home.itemPaddingV - LoomTheme.Home.rowPillGap)
+            .rowPill(radius: LoomTheme.Highlight.radius, key: "home-entry:\(entry.id)")
+            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radius))
+            .onTapGesture { model.select(entry.id) }
+            .padding(.horizontal, LoomTheme.Highlight.inset)
+            .padding(.vertical, LoomTheme.Home.rowPillGap)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home-entry")
     }
 }
 
-// MARK: Plan limits
+// MARK: Usage
 
-/// Both plan windows with their pace line. The pace is arithmetic over the last answer at `model.now`, which
-/// the model's minute tick moves while the window is visible; nothing here asks the CLI.
-struct HomePlanLimits: View {
+/// Home's usage in one compact card (V25): the plan limits as one line, with the meters and the pace one click away, and
+/// today's tokens, sessions and cache share under it. A part with nothing to say is left out, and so is the card.
+struct HomeUsage: View {
     let model: CatalogModel
 
     var body: some View {
-        if let usage = model.usage {
-            let now = model.now
-            let paces = model.homePaces()
-            if !paces.isEmpty {
-                HomeSideCard(title: "Plan limits", meta: usage.limits.map { "updated " + UsageText.time($0.fetchedAt, usage.timeZone) },
-                             identifier: "home-limits") {
-                    VStack(alignment: .leading, spacing: LoomTheme.Home.limitGap) {
-                        ForEach(Array(paces.enumerated()), id: \.offset) { _, pace in
-                            PlanPaceLine(pace: pace, now: now, timeZone: usage.timeZone)
-                        }
+        let usage = model.usage
+        let now = model.now
+        let paces = usage == nil ? [] : model.homePaces()
+        let limitsFailure = paces.isEmpty ? usage?.limitsFailure.flatMap { $0.category == .noToolchain ? nil : $0 } : nil
+        let figures = model.homeTodayFigures()
+        if !paces.isEmpty || limitsFailure != nil || figures != nil {
+            HomeSideCard(title: "Usage", identifier: "home-usage") {
+                VStack(alignment: .leading, spacing: LoomTheme.Home.usageRowGap) {
+                    if let usage, !paces.isEmpty {
+                        HomePlanLimitsLine(line: PlanLimitsLine(paces: paces, now: now, timeZone: usage.timeZone),
+                                           paces: paces, now: now, timeZone: usage.timeZone,
+                                           updated: usage.limits.map { UsageText.time($0.fetchedAt, usage.timeZone) })
+                    } else if limitsFailure != nil {
+                        Text("Claude did not report plan limits, so Loom shows none.")
+                            .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("home-limits")
                     }
-                }
-            } else if let failure = usage.limitsFailure, failure.category != .noToolchain {
-                HomeSideCard(title: "Plan limits", identifier: "home-limits") {
-                    Text("Claude did not report them, so Loom shows none.")
-                        .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if let figures { HomeTodayLine(figures: figures) }
                 }
             }
         }
     }
 }
 
+/// "5h 62% left · Wk 74% left · on pace" on one line. A click shows the meters and the pace of each window in a popover;
+/// the tooltip says it in words.
+private struct HomePlanLimitsLine: View {
+    let line: PlanLimitsLine
+    let paces: [PlanPace]
+    let now: Date
+    let timeZone: TimeZone
+    let updated: String?
+    @State private var open = false
+
+    var body: some View {
+        Button { open.toggle() } label: {
+            HStack(spacing: LoomTheme.Space.chipInset) {
+                Image(systemName: "gauge.with.dots.needle.33percent").font(LoomTheme.Typography.small)
+                    .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                    .frame(width: LoomTheme.Layout.indicatorSlot.width)
+                    .accessibilityHidden(true)
+                text.font(LoomTheme.Typography.small).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: LoomTheme.Space.headerSpacing)
+                Image(systemName: "chevron.right").font(LoomTheme.Typography.chevron)
+                    .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle).accessibilityHidden(true)
+            }
+            .padding(.horizontal, LoomTheme.Highlight.inset)
+            .frame(minHeight: LoomTheme.Home.usageRowHeight)
+            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusCompact))
+        }
+        .buttonStyle(RowButtonStyle(radius: LoomTheme.Highlight.radiusCompact, key: "home-limits"))
+        .focusEffectDisabled()
+        // The pill reaches the card's padding, so the text keeps its place.
+        .padding(.horizontal, -LoomTheme.Highlight.inset)
+        .help(line.tooltip(paces: paces, now: now, timeZone: timeZone))
+        .popover(isPresented: $open, arrowEdge: .bottom) {
+            HomePlanLimitsDetail(paces: paces, now: now, timeZone: timeZone, updated: updated)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(line.spoken)
+        .accessibilityHint("Shows the meters")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("home-limits")
+    }
+
+    /// Names in secondary, the figure in primary (attention when it is low), the verdict in secondary or attention.
+    private var text: Text {
+        let dim = AnyShapeStyle(LoomTheme.Text.secondaryOnCardStyle)
+        func joined(_ left: Text, _ right: Text) -> Text { Text("\(left)\(right)") }
+        let dot = Text(" \u{00B7} ").foregroundStyle(dim)
+        var result = Text("")
+        for (index, window) in line.windows.enumerated() {
+            let figure = Text(window.left).fontWeight(.semibold)
+                .foregroundStyle(window.isLow ? AnyShapeStyle(LoomTheme.Status.attentionLight) : AnyShapeStyle(LoomTheme.Text.primary))
+            let part = joined(Text(window.name + " ").foregroundStyle(dim), figure)
+            result = index == 0 ? part : joined(joined(result, dot), part)
+        }
+        if let verdict = line.verdict {
+            let words = Text(verdict.text).foregroundStyle(
+                verdict.isWarning ? AnyShapeStyle(LoomTheme.Status.attentionLight) : dim)
+            result = joined(joined(result, dot), words)
+        }
+        return result
+    }
+}
+
+/// The popover: both windows as meters with their pace line, as the Home card showed them before V25.
+private struct HomePlanLimitsDetail: View {
+    let paces: [PlanPace]
+    let now: Date
+    let timeZone: TimeZone
+    let updated: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: LoomTheme.Home.limitGap) {
+            HStack {
+                Text("Plan limits").font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: LoomTheme.Space.chipSplitGap)
+                if let updated {
+                    Text("updated " + updated).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.OnPopover.placeholder)
+                }
+            }
+            ForEach(Array(paces.enumerated()), id: \.offset) { _, pace in
+                PlanPaceLine(pace: pace, now: now, timeZone: timeZone)
+            }
+        }
+        .padding(LoomTheme.Home.sideCardPadding)
+        .frame(width: LoomTheme.Home.limitsPopoverWidth, alignment: .leading)
+        .background(LoomTheme.Surface.popover)
+        .accessibilityIdentifier("home-limits-detail")
+    }
+}
+
 // MARK: Today
 
 /// Today's figures: Claude's tokens since midnight (the footer chip's own number), how many sessions were used
-/// and, under them, how much of what was sent came from the cache and how the tokens split by kind.
+/// and how much of what was sent came from the cache. The split by kind is the tooltip's.
 struct HomeTodayFigures: Equatable {
     var tokens: String?
     var sessions: Int?
@@ -208,10 +308,30 @@ struct HomeTodayFigures: Equatable {
     var cacheShare: String? {
         kinds?.cacheShare.map(UsageFormat.percent(fraction:))
     }
+
+    /// The parts of the line, figure and label: ("1.2M", "tokens"), ("6", "sessions"), ("82%", "from cache").
+    var stats: [(figure: String, label: String)] {
+        var result: [(String, String)] = []
+        if let tokens { result.append((tokens, "tokens")) }
+        if let sessions { result.append(("\(sessions)", sessions == 1 ? "session" : "sessions")) }
+        if let share = cacheShare { result.append((share, "from cache")) }
+        return result
+    }
+
+    /// The tooltip: today's tokens by kind, when the read has found any.
+    var kindsTooltip: String? {
+        guard let kinds else { return nil }
+        return "Today by kind: input \(UsageFormat.tokens(kinds.input)), output \(UsageFormat.tokens(kinds.output)), "
+            + "cache read \(UsageFormat.tokens(kinds.cacheRead)), cache write \(UsageFormat.tokens(kinds.cacheWrite))."
+    }
+
+    var spoken: String {
+        "Today, " + stats.map { "\($0.figure) \($0.label)" }.joined(separator: ", ")
+    }
 }
 
 extension CatalogModel {
-    /// The figures of the Today block, from the usage chip and the catalog read; nil when neither has anything.
+    /// The figures of the Today line, from the usage chip and the catalog read; nil when neither has anything.
     func homeTodayFigures() -> HomeTodayFigures? {
         var figures = HomeTodayFigures(sessions: home.sessionsToday)
         switch usage?.chip?.kind {
@@ -226,67 +346,41 @@ extension CatalogModel {
     }
 }
 
-struct HomeToday: View {
-    let model: CatalogModel
+/// "16.1K tokens · 2 sessions · 40% from cache": figures in primary, labels in secondary, on one line while it fits and as
+/// a column when the card is narrower.
+private struct HomeTodayLine: View {
+    let figures: HomeTodayFigures
 
     var body: some View {
-        if let figures = model.homeTodayFigures() {
-            HomeSideCard(title: "Today", identifier: "home-today") {
-                VStack(alignment: .leading, spacing: LoomTheme.Space.chipInset) {
-                    HStack(alignment: .firstTextBaseline, spacing: LoomTheme.Space.usageTotalsGap) {
-                        if let tokens = figures.tokens { stat(tokens, "tokens") }
-                        if let sessions = figures.sessions { stat("\(sessions)", sessions == 1 ? "session" : "sessions") }
-                        if let share = figures.cacheShare { stat(share, "from cache") }
-                    }
-                    if let kinds = figures.kinds { HomeTodayBars(kinds: kinds) }
-                    if let note = figures.note {
-                        Text(note).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                    }
+        VStack(alignment: .leading, spacing: LoomTheme.Space.headerSpacing) {
+            let stats = figures.stats
+            if !stats.isEmpty {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: LoomTheme.Space.chipInset) { statViews(stats) }.fixedSize()
+                    VStack(alignment: .leading, spacing: LoomTheme.Space.cardGap) { statViews(stats) }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .help(figures.kindsTooltip ?? "")
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(figures.spoken)
+                .accessibilityIdentifier("home-today")
+            }
+            if let note = figures.note {
+                Text(note).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                    .accessibilityIdentifier("home-today")
             }
         }
     }
 
-    private func stat(_ figure: String, _ label: String) -> some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Space.cardGap) {
-            Text(figure).font(LoomTheme.TypeScale.title).monospacedDigit().foregroundStyle(LoomTheme.Text.primary)
-            Text(label).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(figure) \(label) today")
-    }
-}
-
-/// Today's tokens by kind as four bars, the largest kind filling the track; the cache reads are the one drawn in
-/// the text colour, as the preview's latest bar is.
-struct HomeTodayBars: View {
-    let kinds: UsageToday
-
-    private var parts: [(label: String, tokens: Int64)] {
-        [("Input", kinds.input), ("Output", kinds.output), ("Cache read", kinds.cacheRead), ("Cache write", kinds.cacheWrite)]
-    }
-
-    var body: some View {
-        let parts = parts
-        let peak = CGFloat(max(parts.map(\.tokens).max() ?? 1, 1))
-        HStack(alignment: .bottom, spacing: LoomTheme.Home.todayBarGap) {
-            ForEach(parts, id: \.label) { part in
-                VStack(spacing: LoomTheme.Home.todayBarGap) {
-                    Spacer(minLength: 0)
-                    UnevenRoundedRectangle(topLeadingRadius: LoomTheme.Home.todayBarRadius, topTrailingRadius: LoomTheme.Home.todayBarRadius)
-                        .fill(part.label == "Cache read" ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Surface.controlPressed))
-                        .frame(height: max(LoomTheme.Home.todayBarMinHeight, CGFloat(part.tokens) / peak * LoomTheme.Home.todayBarsHeight))
-                    Text(part.label).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                        .lineLimit(1).minimumScaleFactor(0.8)
-                }
-                .frame(maxWidth: .infinity)
+    @ViewBuilder private func statViews(_ stats: [(figure: String, label: String)]) -> some View {
+        ForEach(Array(stats.enumerated()), id: \.offset) { index, stat in
+            if index > 0 {
+                Text("\u{00B7}").foregroundStyle(LoomTheme.Text.secondaryOnCardStyle).accessibilityHidden(true)
             }
+            let figure = Text(stat.figure).fontWeight(.semibold).monospacedDigit().foregroundStyle(LoomTheme.Text.primary)
+            let label = Text(" " + stat.label).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+            Text("\(figure)\(label)").font(LoomTheme.Typography.small).lineLimit(1)
         }
-        .frame(height: LoomTheme.Home.todayBarsHeight + LoomTheme.Home.todayBarsLabel)
-        .padding(.top, LoomTheme.Home.todayBarsTop)
-        .accessibilityElement(children: .ignore)
-        .accessibilityIdentifier("home-today-bars")
-        .accessibilityLabel("Today by kind: " + parts.map { "\($0.label) \(UsageFormat.spokenTokens($0.tokens))" }.joined(separator: ", "))
     }
 }
 

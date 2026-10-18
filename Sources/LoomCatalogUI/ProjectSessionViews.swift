@@ -96,7 +96,6 @@ private struct ProjectSessionList: View {
 private struct ProjectSessionRow: View {
     let model: CatalogModel
     let record: CatalogSession
-    @State private var hovering = false
     @State private var rowWidth = LoomTheme.ProjectPage.rowBranchBreakpoint
 
     var body: some View {
@@ -140,12 +139,12 @@ private struct ProjectSessionRow: View {
                     .frame(width: LoomTheme.ProjectPage.rowTimeWidth, alignment: .trailing)
             }
             .padding(.horizontal, LoomTheme.ProjectPage.rowPaddingH).padding(.vertical, LoomTheme.ProjectPage.rowPaddingV)
-            .background(RoundedRectangle(cornerRadius: LoomTheme.ProjectPage.rowRadius)
-                .fill(hovering ? LoomTheme.Surface.control : Color.clear))
             .contentShape(RoundedRectangle(cornerRadius: LoomTheme.ProjectPage.rowRadius))
         }
-        .buttonStyle(RowButtonStyle())
-        .onHover { hovering = $0 }
+        .buttonStyle(RowButtonStyle(radius: LoomTheme.ProjectPage.rowRadius, key: "project-row:\(id)"))
+        .focusEffectDisabled()
+        // The pill sits a little inside the hairlines between rows.
+        .padding(.vertical, LoomTheme.ProjectPage.rowPillGap)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = $0 }
         // A last line from the transcript is read only for a row that is drawn and holds no line of its own.
         .task(id: ProjectSessionLine.holdsLine(reason)) {
@@ -214,7 +213,6 @@ private struct ProjectPresetRow: View {
     let model: CatalogModel
     let preset: NewSessionPreset
     let projectID: UUID
-    @State private var hovering = false
 
     var body: some View {
         let mode = preset.permissionMode.flatMap { ClaudePermissionMode(rawValue: $0)?.title }
@@ -230,13 +228,14 @@ private struct ProjectPresetRow: View {
                     Text(mode).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)
                 }
             }
+            .padding(.horizontal, LoomTheme.Space.chipInset)
             .frame(minHeight: LoomTheme.ProjectPage.cardRowHeight)
-            .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.sm)
-                .fill(hovering ? LoomTheme.Surface.control : Color.clear))
             .contentShape(Rectangle())
         }
-        .buttonStyle(RowButtonStyle())
-        .onHover { hovering = $0 }
+        .buttonStyle(RowButtonStyle(radius: LoomTheme.Highlight.radiusCompact, key: "project-preset:\(preset.id)"))
+        .focusEffectDisabled()
+        // The pill reaches the card's padding, so the row's text keeps its place.
+        .padding(.horizontal, -LoomTheme.Space.chipInset)
         .contextMenu { Button("Remove Preset") { model.removePreset(preset) } }
         .help(preset.message)
         .accessibilityLabel([preset.name, mode].compactMap { $0 }.joined(separator: ", "))

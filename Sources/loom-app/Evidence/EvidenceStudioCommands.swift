@@ -11,6 +11,8 @@ import LoomCatalogUI
 /// - `draft-branch:<project id|none>:<stay|newBranch|newWorktree>[:name]` and `draft-send:<project id|none>`: the strip and Send.
 /// - `render-probe:<start|reset>`: counts body evaluations (the snapshot's `renderProbe`).
 /// - `search-session-text:<on|off>`: Settings → General → Search session text.
+/// - `hover:<key|none>`: holds the pill of the row named `key` at its hover fill (V25; keys are `sidebar-card:<id>`, `sidebar-home`,
+///   `home-entry:<id>`, `project-row:<id>`, `palette-row:<id>`, `pick:<row id>`, `segment:<title>`, …).
 /// The snapshot's `catalog` gains `route`, `readOnlyChat`, `faceChoices`, `searchesSessionText` and `drafts`.
 @MainActor
 extension DevelopmentEvidence {
@@ -59,6 +61,9 @@ extension DevelopmentEvidence {
             }
         case "search-session-text":
             model.setSearchesSessionText(argument == "on")
+        case "hover":
+            // V25: holds one row's hover on, as the pointer would, for a screenshot. `none` lets go.
+            LookEvidence.setHover(argument == "none" ? nil : argument)
         default: return false
         }
         return true

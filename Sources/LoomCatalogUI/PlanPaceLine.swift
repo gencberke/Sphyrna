@@ -44,8 +44,8 @@ enum PlanPaceText {
     }
 }
 
-/// One plan window's pace: its name and what is left, a meter of what is used with a tick where an
-/// even pace would stand, and whether the limit lasts. The caller passes the time it draws at (the
+/// One plan window's pace: its name and what is left, a meter of what is left with a tick where an
+/// even pace would leave it, and whether the limit lasts. The caller passes the time it draws at (the
 /// model's minute tick), so the view itself never wakes.
 struct PlanPaceLine: View {
     let pace: PlanPace
@@ -72,14 +72,20 @@ struct PlanPaceLine: View {
         .accessibilityValue(PlanPaceText.sentence(pace, now: now, timeZone: timeZone))
     }
 
-    /// Green for a limit that lasts, orange for one that runs out, the quiet tone while there is no verdict.
+    /// Neutral for a limit that lasts, orange for one that runs out, the quiet tone while there is no verdict.
     private var sentenceStyle: Color {
         switch pace.status {
-        case .tooEarly: LoomTheme.Text.secondary
-        case .underPace, .onPace: LoomTheme.PlanPaceLine.lasts
+        case .tooEarly, .underPace, .onPace: LoomTheme.PlanPaceLine.lasts
         case .overPace: LoomTheme.PlanPaceLine.runsOut
         }
     }
+
+    /// What is left: a fill from the leading edge, as the footer chip draws it, in the neutral tone; orange when the window runs
+    /// out or little is left. The tick is where an even pace would leave the remainder now: a fill beyond it is a limit that
+    /// lasts.
+    static func remainingFraction(_ pace: PlanPace) -> Double { min(max(1 - pace.usedFraction, 0), 1) }
+    static func tickFraction(_ pace: PlanPace) -> Double { min(max(1 - pace.elapsedFraction, 0), 1) }
+    static func isLow(_ pace: PlanPace) -> Bool { pace.status == .overPace || remainingFraction(pace) < LoomTheme.PlanPaceLine.lowBelow }
 
     private var meter: some View {
         GeometryReader { proxy in
@@ -87,19 +93,87 @@ struct PlanPaceLine: View {
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: LoomTheme.PlanPaceLine.meterRadius).fill(LoomTheme.PlanPaceLine.track)
                 RoundedRectangle(cornerRadius: LoomTheme.PlanPaceLine.meterRadius)
-                    .fill(pace.status == .overPace ? LoomTheme.PlanPaceLine.fillOver : LoomTheme.PlanPaceLine.fill)
-                    .frame(width: width * pace.usedFraction)
-                // Where an even pace would stand now; the fill left of it means the limit lasts.
+                    .fill(Self.isLow(pace) ? LoomTheme.PlanPaceLine.fillOver : LoomTheme.PlanPaceLine.fill)
+                    .frame(width: width * Self.remainingFraction(pace))
                 Rectangle().fill(LoomTheme.PlanPaceLine.tick)
                     .frame(width: LoomTheme.PlanPaceLine.tickWidth,
                            height: LoomTheme.PlanPaceLine.meterHeight + 2 * LoomTheme.PlanPaceLine.tickOverhang)
-                    .offset(x: min(max(width * pace.elapsedFraction - LoomTheme.PlanPaceLine.tickWidth / 2, 0),
+                    .offset(x: min(max(width * Self.tickFraction(pace) - LoomTheme.PlanPaceLine.tickWidth / 2, 0),
                                    width - LoomTheme.PlanPaceLine.tickWidth))
             }
             .frame(height: LoomTheme.PlanPaceLine.meterHeight)
             .frame(maxHeight: .infinity, alignment: .center)
         }
         .frame(height: LoomTheme.PlanPaceLine.meterHeight + 2 * LoomTheme.PlanPaceLine.tickOverhang)
+    }
+}
+
+/// The plan limits as one line (V25): "5h 62% left · Wk 74% left · on pace". Plain data, so a test can state it from
+/// fixture numbers; `HomeUsage` draws it.
+struct PlanLimitsLine: Equatable {
+    struct Window: Equatable {
+        /// `5-hour window` or `Weekly`, for VoiceOver.
+        let title: String
+        /// `5h` or `Wk`.
+        let name: String
+        /// `62% left`.
+        let left: String
+        /// Under 20 % left (the footer chip's rule).
+        let isLow: Bool
+    }
+
+    enum Verdict: Equatable {
+        case onPace
+        case runsOut(name: String, at: String)
+        case reached(name: String)
+
+        var text: String {
+            switch self {
+            case .onPace: "on pace"
+            case let .runsOut(name, at): "\(name) runs out \(at)"
+            case let .reached(name): "\(name) limit reached"
+            }
+        }
+
+        var isWarning: Bool { self != .onPace }
+    }
+
+    let windows: [Window]
+    /// nil early in a window, when no rate says anything.
+    let verdict: Verdict?
+
+    init(paces: [PlanPace], now: Date, timeZone: TimeZone) {
+        windows = paces.map {
+            Window(title: PlanPaceText.title($0.kind), name: $0.kind.chipName, left: PlanPaceText.remaining($0), isLow: PlanPaceLine.isLow($0))
+        }
+        if let over = paces.first(where: { $0.status == .overPace }) {
+            if over.usedFraction < 1, let runsOutAt = over.runsOutAt {
+                verdict = .runsOut(name: over.kind.chipName, at: PlanPaceText.moment(runsOutAt, now: now, timeZone: timeZone))
+            } else {
+                verdict = .reached(name: over.kind.chipName)
+            }
+        } else if paces.contains(where: { $0.status == .onPace || $0.status == .underPace }) {
+            verdict = .onPace
+        } else {
+            verdict = nil
+        }
+    }
+
+    /// The line as the Home card shows it.
+    var text: String {
+        (windows.map { "\($0.name) \($0.left)" } + [verdict?.text].compactMap { $0 }).joined(separator: " \u{00B7} ")
+    }
+
+    /// For VoiceOver: "Plan limits, 5-hour window 62% left, weekly 74% left, on pace".
+    var spoken: String {
+        "Plan limits, " + (windows.map { "\($0.title) \($0.left)" } + [verdict?.text].compactMap { $0 }).joined(separator: ", ")
+    }
+
+    /// The tooltip: each window's whole pace sentence.
+    func tooltip(paces: [PlanPace], now: Date, timeZone: TimeZone) -> String {
+        paces.map {
+            "\(PlanPaceText.title($0.kind)), \(PlanPaceText.remaining($0)). \(PlanPaceText.sentence($0, now: now, timeZone: timeZone))"
+        }.joined(separator: "\n") + "\nClick for the meters."
     }
 }
 

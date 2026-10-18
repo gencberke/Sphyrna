@@ -120,7 +120,7 @@ struct ChatMarkerLine: View {
     let text: String
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             line
             Text(text).font(LoomTheme.Chat.markerText).foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)
                 .layoutPriority(1)
@@ -173,7 +173,7 @@ struct ChatUserMessageView: View {
         let collapsed = Self.isLong(prompt.text) && !open
         return VStack(alignment: .leading, spacing: 8) {
             if !prompt.images.isEmpty {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     ForEach(Array(prompt.images.enumerated()), id: \.offset) { _, image in
                         ChatThumbnail(image: image, context: context)
                     }
@@ -193,8 +193,8 @@ struct ChatUserMessageView: View {
                     .buttonStyle(.plain).font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Accent.high)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .background(userShape.fill(LoomTheme.Chat.userFill))
         .overlay(userShape.strokeBorder(LoomTheme.Chat.userStroke, lineWidth: LoomTheme.Line.hairline))
         // Dimmed until the CLI has it (`queued`); after that it looks normal and only the mark says it waits (spec).

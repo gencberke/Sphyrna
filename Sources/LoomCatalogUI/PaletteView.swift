@@ -10,12 +10,12 @@ enum PaletteMetrics {
     static let hitRowHeight: CGFloat = 54
     static let headerHeight: CGFloat = 28
     static let footerHeight: CGFloat = 34
-    static let listPadding: CGFloat = 6
+    static let listPadding: CGFloat = LoomTheme.Highlight.inset
     static let maximumListHeight: CGFloat = 420
     static let minimumListHeight: CGFloat = 120
     static let bottomMargin: CGFloat = 24
     static let rowInset: CGFloat = 12
-    static let rowRadius = LoomTheme.Radius.md
+    static let rowRadius = LoomTheme.Highlight.radius
     static let emptyHeight: CGFloat = 64
 
     /// The list's height: its rows and headers, up to the cap and up to what a window of `windowHeight` leaves
@@ -194,6 +194,9 @@ struct PaletteRow: View {
     let activate: () -> Void
     @State private var hovering = false
 
+    /// The evidence run's name for this row: `palette-row:<item id>`.
+    private var highlightKey: String { "palette-row:\(item.id)" }
+
     var body: some View {
         Button(action: activate) {
             if let snippet = item.snippet { hit(snippet) } else { line }
@@ -201,8 +204,11 @@ struct PaletteRow: View {
         .buttonStyle(.plain)
         .padding(.horizontal, PaletteMetrics.rowInset)
         .frame(height: item.snippet == nil ? PaletteMetrics.rowHeight : PaletteMetrics.hitRowHeight)
-        .background(RoundedRectangle(cornerRadius: PaletteMetrics.rowRadius)
-            .fill(selected ? LoomTheme.Surface.controlHover : (hovering ? LoomTheme.Surface.control : Color.clear)))
+        .background(RowHighlight(
+            // The cursor row and the row under the pointer take the same fill: the palette is a popover surface, where only the
+            // hover fill keeps the secondary text above 4:1 (`HighlightTests`).
+            state: .resolve(selected: false, hovering: selected || hovering || LookEvidence.forcesHover(highlightKey)),
+            radius: PaletteMetrics.rowRadius))
         .onHover { hovering = $0 }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? .isSelected : [])

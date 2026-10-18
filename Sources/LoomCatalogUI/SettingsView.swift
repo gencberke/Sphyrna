@@ -332,7 +332,8 @@ struct SegmentedControl<Value: Hashable>: View {
         HStack(spacing: LoomTheme.Space.settingsTrack) {
             ForEach(values, id: \.self) { value in
                 Button(title(value)) { onSelect(value) }
-                    .buttonStyle(SegmentButtonStyle(selected: value == selection, compact: compact))
+                    .buttonStyle(SegmentButtonStyle(selected: value == selection, compact: compact,
+                                                    key: "segment:\(title(value))"))
                     .accessibilityAddTraits(value == selection ? .isSelected : [])
             }
         }
@@ -346,45 +347,65 @@ struct SegmentedControl<Value: Hashable>: View {
 struct SegmentButtonStyle: ButtonStyle {
     let selected: Bool
     var compact = false
+    var key: String?
 
     func makeBody(configuration: Configuration) -> some View {
-        Segment(configuration: configuration, selected: selected, compact: compact)
+        Segment(configuration: configuration, selected: selected, compact: compact, key: key)
     }
 
     private struct Segment: View {
         let configuration: ButtonStyle.Configuration
         let selected: Bool
         let compact: Bool
+        let key: String?
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var enabled
         @Environment(\.isFocused) private var focused
+        @Environment(\.colorSchemeContrast) private var contrast
 
         var body: some View {
+            let state = HighlightState.resolve(
+                selected: selected, hovering: hovering || LookEvidence.forcesHover(key),
+                pressed: configuration.isPressed, enabled: enabled)
             configuration.label
                 .font(compact ? LoomTheme.Typography.statusLabel : LoomTheme.Typography.smallMedium)
-                .foregroundStyle(selected || configuration.isPressed ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
-                .padding(.horizontal, compact ? LoomTheme.Space.settingsSegmentH - 2 : LoomTheme.Space.settingsSegmentH)
+                .foregroundStyle(state == .none ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
+                .padding(.horizontal, compact ? LoomTheme.Space.settingsSegmentH - 4 : LoomTheme.Space.settingsSegmentH)
                 .frame(height: LoomTheme.Layout.settingsSegmentHeight)
-                .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
-                    .fill(selected ? LoomTheme.Surface.selected : .clear))
-                .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
+                .background(RowHighlight(state: state, radius: LoomTheme.Highlight.radiusControl))
+                .overlay(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusControl)
                     .strokeBorder(ChromeButtonStyle.showsFocusRing(
                         focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)
-                        ? LoomTheme.Surface.focusRing : (selected ? LoomTheme.Surface.hairline : .clear),
-                        lineWidth: LoomTheme.Line.focusRing))
-                .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
+                        ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast)))
+                .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusControl))
+                .onHover { hovering = $0 }
         }
     }
 }
 
-/// A quiet text button for Settings rows (hover tone, no accent).
+/// A quiet text button for Settings rows: the control fill, a step up under the pointer, another while pressed.
 struct SettingsButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(LoomTheme.Typography.small)
-            .foregroundStyle(LoomTheme.Text.primary)
-            .padding(.horizontal, LoomTheme.Space.settingsSegmentH - 2)
-            .frame(height: LoomTheme.Layout.settingsSegmentHeight)
-            .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
-                .fill(configuration.isPressed ? LoomTheme.Surface.controlPressed : LoomTheme.Surface.controlHover))
-            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
+        Styled(configuration: configuration)
+    }
+
+    private struct Styled: View {
+        let configuration: ButtonStyle.Configuration
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var enabled
+
+        var body: some View {
+            configuration.label
+                .font(LoomTheme.Typography.small)
+                .foregroundStyle(LoomTheme.Text.primary)
+                .padding(.horizontal, LoomTheme.Space.settingsSegmentH - 4)
+                .frame(height: LoomTheme.Layout.settingsSegmentHeight)
+                .background(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusControl).fill(
+                    configuration.isPressed ? LoomTheme.Surface.controlPressed
+                        : (hovering && enabled ? LoomTheme.Surface.controlHover : LoomTheme.Surface.control)))
+                .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusControl))
+                .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
+                .onHover { hovering = $0 }
+        }
     }
 }

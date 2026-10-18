@@ -45,6 +45,8 @@ final class DevelopmentEvidence {
             }
         }
         TerminalPresentationLog.install()
+        // Rows read the forced hover (`hover:<key>`) only when the run armed it before they first drew.
+        LookEvidence.arm()
         write("launched", app.evidenceState)
     }
 

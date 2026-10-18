@@ -11,14 +11,14 @@ extension LoomTheme {
         /// The card's width: the reading column less the dock's side space (the prototype's `--col - 20`).
         static let column: CGFloat = Rhythm.readingColumn - 20
         static let dockSideInset: CGFloat = 24
-        static let dockBottomInset: CGFloat = 14
-        static let dockTopInset: CGFloat = 6
+        static let dockBottomInset: CGFloat = 16
+        static let dockTopInset: CGFloat = 8
         static let radius: CGFloat = Radius.xxl
         /// The card's fill is a panel level, so it follows the tone: computed, never stored.
         static var fill: Color { Surface.card }
         static let stroke = Surface.strongHairline
-        static let textInsetH: CGFloat = 18
-        static let textTop: CGFloat = 10
+        static let textInsetH: CGFloat = 16
+        static let textTop: CGFloat = 12
         static let minimumTextHeight: CGFloat = 46
         static let maximumTextHeight: CGFloat = 220
 
@@ -31,7 +31,7 @@ extension LoomTheme {
         static let sendSide: CGFloat = 30
         static let barSpacing: CGFloat = 2
         static let sendGap: CGFloat = 4
-        static let chipGap: CGFloat = 6
+        static let chipGap: CGFloat = 8
         static let barFont = Font.system(size: 12.5, weight: .medium)
         static let barIcon = Font.system(size: 13)
         static let plusIcon = Font.system(size: 17)
@@ -50,7 +50,7 @@ extension LoomTheme {
         static let queueRadius: CGFloat = Radius.lg + 2
         static let queueFill = overlay(dark: 0.05, light: 0.045).color
         static let queueEditFill = Accent.base.opacity(0.16)
-        static let queueMargin: CGFloat = 10
+        static let queueMargin: CGFloat = 12
         static let queueRowSpacing: CGFloat = 2
         static let queueMaxVisible = 4
         static let queueFont = Font.system(size: 12)
@@ -62,7 +62,7 @@ extension LoomTheme {
         static let attachmentRadius: CGFloat = Radius.sm + 1
         static let attachmentFill = overlay(dark: 0.07, light: 0.06).color
         static let thumbnail = CGSize(width: 30, height: 22)
-        static let attachmentSpacing: CGFloat = 6
+        static let attachmentSpacing: CGFloat = 8
         static let attachmentFont = Font.system(size: 11.5, weight: .medium)
         static let attachmentMaxLabelWidth: CGFloat = 180
 
@@ -71,9 +71,8 @@ extension LoomTheme {
         static let menuRowHeight: CGFloat = 30
         static let menuMaxRows = 8
         static let menuRadius: CGFloat = Radius.xl - 2
-        static let menuInset: CGFloat = 6
+        static let menuInset: CGFloat = Highlight.inset
         static let menuGap: CGFloat = 8
-        static let menuSelectedFill = Accent.base.opacity(0.16)
         static let menuCommandFont = Font.system(size: 12.5, weight: .medium, design: .monospaced)
         static let menuTitleFont = Font.system(size: 12.5, weight: .medium)
         static let menuDetailFont = Font.system(size: 12)
@@ -134,10 +133,10 @@ extension LoomTheme {
         // MARK: Pickers (the mode list, the model list and the effort slider; D-63, after Codex's)
 
         static let pickWidth: CGFloat = 272
-        static let pickInset: CGFloat = 6
-        static let pickRowRadius: CGFloat = Radius.lg
-        static let pickRowPaddingH: CGFloat = 10
-        static let pickRowPaddingV: CGFloat = 7
+        static let pickInset: CGFloat = Highlight.inset
+        static let pickRowRadius: CGFloat = Highlight.radius
+        static let pickRowPaddingH: CGFloat = 12
+        static let pickRowPaddingV: CGFloat = 8
         static let pickRowSpacing: CGFloat = 1
         static let pickIconSide: CGFloat = 18
         static let pickHeaderHeight: CGFloat = 30
@@ -147,14 +146,12 @@ extension LoomTheme {
         static let pickSubtitleFont = Font.system(size: 11.5)
         static let pickCheck = Font.system(size: 11.5, weight: .semibold)
         static let pickIcon = Font.system(size: 13)
-        static let pickHoverFill = Surface.controlHover
         static let pickDivider = Surface.hairline
         /// The chip's two parts take a rounded fill under the pointer.
         static let chipRadius: CGFloat = Radius.md
-        static let chipHoverFill = Surface.control
 
         static let effortWidth: CGFloat = 296
-        static let effortPadding: CGFloat = 14
+        static let effortPadding: CGFloat = 16
         static let effortSpacing: CGFloat = 8
         static let effortTrackHeight: CGFloat = 30
         static let effortThumb: CGFloat = 26
@@ -184,7 +181,7 @@ extension LoomTheme {
         /// window (the V18 checkpoint's 780x500 finding).
         static let compactTextHeight: CGFloat = 28
         static let compactMaximumTextHeight: CGFloat = 84
-        static let compactTextTop: CGFloat = 6
+        static let compactTextTop: CGFloat = 8
         static let compactDockBottomInset: CGFloat = 8
         static let compactDockTopInset: CGFloat = 0
         static let compactBarHeight: CGFloat = 34
@@ -196,8 +193,8 @@ extension LoomTheme {
         static let cardNoteFont = Font.system(size: 11.5, weight: .medium)
         static let cardNoteIcon = Font.system(size: 10.5, weight: .semibold)
         static let cardNoteColor = Status.attention
-        static let cardNoteTop: CGFloat = 10
-        static let noticeInset: CGFloat = 18
+        static let cardNoteTop: CGFloat = 12
+        static let noticeInset: CGFloat = 16
         static let hintFont = Font.system(size: 10.5)
     }
 }

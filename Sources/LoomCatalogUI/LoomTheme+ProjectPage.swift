@@ -5,7 +5,7 @@ import SwiftUI
 extension LoomTheme {
     enum ProjectPage {
         // The page: a column with the preview's 30 pt side inset (20 pt below `wideBreakpoint`).
-        static let sideInset: CGFloat = 30
+        static let sideInset: CGFloat = 32
         static let sideInsetNarrow: CGFloat = 20
         static let top: CGFloat = 24
         static let bottom: CGFloat = 32
@@ -19,7 +19,7 @@ extension LoomTheme {
         // Header.
         static let stripe = CGSize(width: 4, height: 30)
         static let headerGap: CGFloat = 12
-        static let statsGap: CGFloat = 18
+        static let statsGap: CGFloat = 16
         /// Between a figure and its noun in the stats line ("18" "sessions").
         static let figureGap: CGFloat = 4
         /// Between lines of the stats line when its items wrap.
@@ -39,9 +39,11 @@ extension LoomTheme {
 
         // A session row: indicator, title with the last line, branch, time.
         static let rowPaddingH: CGFloat = 12
-        static let rowPaddingV: CGFloat = 10
+        static let rowPaddingV: CGFloat = 8
         static let rowColumnGap: CGFloat = 12
-        static let rowRadius: CGFloat = 9
+        static let rowRadius: CGFloat = Highlight.radius
+        /// The pill sits this far inside the hairline above and below a row.
+        static let rowPillGap: CGFloat = 2
         static let rowLineGap: CGFloat = 2
         static let rowBranchWidth: CGFloat = 170
         static let rowTimeWidth: CGFloat = 44
@@ -54,13 +56,13 @@ extension LoomTheme {
         static let rowBranchBreakpoint: CGFloat = 460
 
         // A side card: presets, this week.
-        static let cardPadding: CGFloat = 14
+        static let cardPadding: CGFloat = 16
         static let cardGap: CGFloat = 12
         static let cardTitle = Font.system(size: 12.5, weight: .semibold)
         static let cardRowHeight: CGFloat = 28
         static let cardRowGlyph = Font.system(size: 12)
         static let statFigure = Font.system(size: 18, weight: .semibold)
-        static let statGap: CGFloat = 14
+        static let statGap: CGFloat = 16
         /// Between a usage figure and its label.
         static let statLabelGap: CGFloat = 4
 
@@ -68,6 +70,6 @@ extension LoomTheme {
         static let branchRowHeight: CGFloat = 34
         static let branchNameFont = Font.system(size: 12.5, design: .monospaced)
         static let noticePadding: CGFloat = 12
-        static let instructionsPadding: CGFloat = 18
+        static let instructionsPadding: CGFloat = 16
     }
 }

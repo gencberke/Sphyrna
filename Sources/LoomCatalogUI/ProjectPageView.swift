@@ -153,7 +153,8 @@ private struct ProjectTabs: View {
                         }
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RowButtonStyle(radius: LoomTheme.Highlight.radiusCompact, key: "project-tab:\(tab.rawValue)"))
+                .focusEffectDisabled()
                 .accessibilityAddTraits(page.tab == tab ? .isSelected : [])
                 .accessibilityIdentifier("project-tab-\(tab.rawValue.lowercased())")
             }

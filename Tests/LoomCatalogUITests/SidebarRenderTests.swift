@@ -135,6 +135,35 @@ struct SidebarRenderTests {
         #expect(rows.allSatisfy { !$0.isSelected })
     }
 
+    /// V25: a hover lives in the row's own pill. Before it was a state of the card (or of the list), so a pointer crossing the
+    /// sidebar redrew cards. The evidence run's `hover:` command holds a pill's hover through the same leaf state the pointer
+    /// sets, so the counts here are the pointer's.
+    @Test func aHoverEvaluatesOnlyThePillsOfItsRowsAndNoCardOrList() async throws {
+        LookEvidence.arm()
+        let hosted = try await host(cards: 30)
+        defer { LookEvidence.setHover(nil); finish(hosted) }
+        let first = "sidebar-card:\(hosted.ids[5])"
+        let second = "sidebar-card:\(hosted.ids[11])"
+        // Other views alive in the same test process draw pills of their own; only this sidebar's keys count.
+        let mine = Set(hosted.ids.map { "sidebar-card:\($0)" })
+        func evaluated() -> Set<String> { Set(SidebarRenderProbe.pillBodies.keys).intersection(mine) }
+        #expect(SidebarRenderProbe.pillBodies[first] != nil, "the card's pill is drawn")
+
+        SidebarRenderProbe.reset()
+        LookEvidence.setHover(first)
+        try await settle(hosted, until: { (SidebarRenderProbe.pillBodies[first] ?? 0) > 0 })
+        #expect(evaluated() == [first], "pills evaluated by a hover: \(evaluated())")
+        #expect(SidebarRenderProbe.cardTotal == 0, "card bodies evaluated by a hover: \(SidebarRenderProbe.cardTotal)")
+        #expect(SidebarRenderProbe.timeLabelTotal == 0 && SidebarRenderProbe.projectListBodies == 0)
+
+        // The pointer moving on to another card: the two pills, still no card.
+        SidebarRenderProbe.reset()
+        LookEvidence.setHover(second)
+        try await settle(hosted, until: { evaluated().count == 2 })
+        #expect(evaluated() == [first, second])
+        #expect(SidebarRenderProbe.cardTotal == 0, "card bodies evaluated by a hover moving on: \(SidebarRenderProbe.cardTotal)")
+    }
+
     /// Before: the project list read the drafts in its own body, so every keystroke in a draft redrew the list.
     @Test func typingInADraftEvaluatesTheDraftsRowAndNeitherTheProjectListNorACard() async throws {
         let hosted = try await host(cards: 8, mode: .projects)

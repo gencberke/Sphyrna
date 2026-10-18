@@ -108,7 +108,7 @@ struct Headline: View {
                     .foregroundStyle(LoomTheme.Text.secondaryStyle)
             }
             .foregroundStyle(LoomTheme.Text.primary)
-            .padding(.horizontal, LoomTheme.Space.cardH + 1).frame(minHeight: NewSessionLayout.headlinePickHeight)
+            .padding(.horizontal, LoomTheme.Space.requestPadding).frame(minHeight: NewSessionLayout.headlinePickHeight)
             .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.lg).fill(LoomTheme.Surface.control))
             .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.lg)
                 .strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))

@@ -89,11 +89,10 @@ struct InspectorTabBar: View {
                     .padding(.horizontal, selected ? LoomTheme.Inspector.tabInset : LoomTheme.Inspector.tabInsetCompact)
                     .frame(height: LoomTheme.Inspector.tabHeight)
                     .foregroundStyle(selected ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
-                    .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
-                        .fill(selected ? LoomTheme.Surface.controlHover : .clear))
-                    .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
+                    .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusControl))
                 }
-                .buttonStyle(.plain).focusEffectDisabled()
+                .buttonStyle(RowButtonStyle(selected: selected, radius: LoomTheme.Highlight.radiusControl, key: "inspector-tab:\(tab)"))
+                .focusEffectDisabled()
                 .accessibilityLabel(count(tab).map { "\(Self.title(tab)), \($0)" } ?? Self.title(tab))
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }

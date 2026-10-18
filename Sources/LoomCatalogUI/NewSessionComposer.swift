@@ -253,7 +253,7 @@ struct ChipButtonStyle: ButtonStyle {
             configuration.label
                 .font(LoomTheme.Typography.small)
                 .foregroundStyle(hovering || emphasized ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
-                .padding(.horizontal, LoomTheme.Space.cardV + 1).frame(minHeight: NewSessionLayout.chipHeight)
+                .padding(.horizontal, LoomTheme.Space.cardV).frame(minHeight: NewSessionLayout.chipHeight)
                 .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.sm).fill(
                     configuration.isPressed ? LoomTheme.Surface.controlPressed
                         : (hovering ? LoomTheme.Surface.controlHover : LoomTheme.Surface.control)))

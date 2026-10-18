@@ -11,19 +11,19 @@ extension LoomTheme {
 
         /// The reading column (700) with its side padding; rows centre in the panel.
         static let column = Rhythm.readingColumn
-        static let columnPadding: CGFloat = 28
+        static let columnPadding: CGFloat = 32
         static let streamTopInset: CGFloat = 12
         static let streamBottomInset: CGFloat = 20
 
         /// A one-line work row: icon, label, time on hover, chevron (spec: about 24 pt; the prototype draws 30).
         static let workRowHeight: CGFloat = 26
         static let workRowRadius: CGFloat = Radius.md
-        static let workRowPaddingH: CGFloat = 10
+        static let workRowPaddingH: CGFloat = 12
         static let iconSlot: CGFloat = 16
         /// One step of nesting (the tools of an open group).
         static let indentStep: CGFloat = 16
-        static let rowSpacing: CGFloat = 6
-        static let blockSpacing: CGFloat = 10
+        static let rowSpacing: CGFloat = 8
+        static let blockSpacing: CGFloat = 12
         static let cardPadding: CGFloat = 12
         static let cardRadius: CGFloat = Radius.lg
         static let codeRadius: CGFloat = Radius.md

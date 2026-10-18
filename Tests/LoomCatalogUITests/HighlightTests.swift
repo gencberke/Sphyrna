@@ -1,0 +1,218 @@
+import SwiftUI
+import Testing
+@testable import LoomCatalogUI
+
+/// V25: the one hover and selection treatment (`LoomTheme.Highlight`, `RowHighlight`), its contrast in both appearances, and
+/// the 4 pt grid of the gaps and paddings the spacing pass moved.
+struct HighlightTests {
+    typealias RGB = LoomTheme.RGB
+    typealias Appearance = LoomTheme.Appearance
+
+    private static let white = RGB(red: 1, green: 1, blue: 1)
+    private static let black = RGB(red: 0, green: 0, blue: 0)
+
+    // MARK: State
+
+    @Test func aPressedRowBeatsASelectedOneAndASelectedRowKeepsItsFillUnderThePointer() {
+        typealias S = HighlightState
+        #expect(S.resolve(selected: false, hovering: false) == .none)
+        #expect(S.resolve(selected: false, hovering: true) == .hover)
+        #expect(S.resolve(selected: true, hovering: false) == .selected)
+        #expect(S.resolve(selected: true, hovering: true) == .selected, "selection stays the stronger fill under the pointer")
+        #expect(S.resolve(selected: true, hovering: true, pressed: true) == .pressed)
+        #expect(S.resolve(selected: false, hovering: true, pressed: true) == .pressed)
+    }
+
+    @Test func aDisabledRowShowsNeitherHoverNorPress() {
+        typealias S = HighlightState
+        #expect(S.resolve(selected: false, hovering: true, pressed: true, enabled: false) == .none)
+        #expect(S.resolve(selected: true, hovering: true, pressed: true, enabled: false) == .selected)
+    }
+
+    @Test func selectionAlwaysCarriesTheHairlineAndIncreaseContrastAddsItToHoverAndPress() {
+        typealias S = HighlightState
+        for contrast in [ColorSchemeContrast.standard, .increased] {
+            #expect(S.selected.drawsStroke(for: contrast))
+            #expect(!S.none.drawsStroke(for: contrast))
+        }
+        #expect(!S.hover.drawsStroke(for: .standard) && S.hover.drawsStroke(for: .increased))
+        #expect(!S.pressed.drawsStroke(for: .standard) && S.pressed.drawsStroke(for: .increased))
+    }
+
+    // MARK: Tokens
+
+    @Test func theTokensHoldTheirValuesAndSelectionIsStrongerThanHover() {
+        #expect(LoomTheme.Highlight.radius == 10 && LoomTheme.Highlight.radiusCompact == 8 && LoomTheme.Highlight.radiusControl == 6)
+        #expect(LoomTheme.Highlight.inset == 8)
+        #expect(LoomTheme.Highlight.fadeDuration == 0.12 && LoomTheme.Highlight.fadeDuration == LoomTheme.Motion.selectionDuration)
+        for appearance in Appearance.allCases {
+            let hover = HighlightState.hover.tone![appearance].opacity
+            let selected = HighlightState.selected.tone![appearance].opacity
+            let pressed = HighlightState.pressed.tone![appearance].opacity
+            #expect(hover < selected && selected < pressed, "\(appearance): hover \(hover), selected \(selected), pressed \(pressed)")
+        }
+        // The pill is white over Dark and the warm ink over Light, like every other overlay.
+        #expect(HighlightState.hover.tone![.dark].rgb == Self.white && HighlightState.hover.tone![.light].rgb == LoomTheme.inkRGB)
+        #expect(HighlightState.none.tone == nil)
+    }
+
+    @Test func reduceMotionMakesTheFadeInstantAndOtherwiseItIsTheSelectionFade() {
+        #expect(LoomTheme.Motion.animation(.selection, reduceMotion: true) == nil)
+        #expect(LoomTheme.Motion.animation(.selection, reduceMotion: false) != nil)
+    }
+
+    @Test func theMenusPopoversAndThePaletteShareThePillsRadiusAndInset() {
+        #expect(LoomTheme.Composer.pickRowRadius == LoomTheme.Highlight.radius)
+        #expect(LoomTheme.Composer.pickInset == LoomTheme.Highlight.inset)
+        #expect(LoomTheme.Composer.menuInset == LoomTheme.Highlight.inset)
+        #expect(PaletteMetrics.rowRadius == LoomTheme.Highlight.radius)
+        #expect(PaletteMetrics.listPadding == LoomTheme.Highlight.inset)
+        #expect(LoomTheme.ProjectPage.rowRadius == LoomTheme.Highlight.radius)
+        #expect(LoomTheme.Layout.minimumHitTarget == CGSize(width: 24, height: 24))
+        #expect(ChromeButtonStyle.hitSize(for: LoomTheme.Layout.projectMenuButton).height >= 24, "a pill never shrinks a hit area")
+    }
+
+    // MARK: Contrast
+
+    /// Every opaque surface a row sits on: the panel family of each tone, and the sidebar opaque and over the glass's lighter
+    /// extreme in Dark (the darker extreme in Light). The worst glass case keeps its own floor, as in `ThemeAppearanceTests`.
+    private static func surfaces(_ appearance: Appearance) -> [(name: String, rgb: RGB, level: String)] {
+        var result: [(String, RGB, String)] = []
+        for tone in PaneTone.allCases {
+            let levels = LoomTheme.Surface.levels(appearance, tone: tone)
+            let named: [(String, RGB)] = [("inspector", levels.inspector), ("canvas", levels.canvas), ("panel", levels.panel),
+                                          ("card", levels.card), ("raised", levels.raised), ("popover", levels.popover)]
+            for (name, rgb) in named { result.append(("\(tone) \(name)", rgb, name)) }
+        }
+        let sidebar = LoomTheme.Surface.sidebarPair[appearance]
+        result.append(("sidebar opaque", sidebar, "sidebar"))
+        return result
+    }
+
+    /// The pill over a surface; `increasedContrast` draws the fill at `Highlight.increasedFillScale` (the stroke carries it then).
+    private static func under(_ state: HighlightState, _ surface: RGB, _ appearance: Appearance, increasedContrast: Bool = false) -> RGB {
+        guard let tone = state.tone?[appearance] else { return surface }
+        let opacity = tone.opacity * (increasedContrast ? LoomTheme.Highlight.increasedFillScale : 1)
+        return tone.rgb.composited(over: surface, opacity: opacity)
+    }
+
+    @Test func primaryTextHoldsItsTierUnderEveryStateOnEverySurface() {
+        for appearance in Appearance.allCases {
+            for (name, surface, _) in Self.surfaces(appearance) {
+                for state in [HighlightState.hover, .selected, .pressed] {
+                    let pill = Self.under(state, surface, appearance)
+                    #expect(LoomTheme.Text.primaryPair[appearance].contrast(with: pill) >= 7, "primary under \(state) on \(appearance) \(name)")
+                }
+            }
+        }
+    }
+
+    @Test func secondaryTextKeepsItsTierUnderTheSelectedFillWhereRowsAreSelected() {
+        // Rows are selected on the sidebar, the panel, the canvas, the inspector and a card (never on a raised level or a popover).
+        for appearance in Appearance.allCases {
+            for (name, surface, level) in Self.surfaces(appearance) where !["raised", "popover"].contains(level) {
+                let pill = Self.under(.selected, surface, appearance)
+                #expect(LoomTheme.Text.secondaryPair[appearance].contrast(with: pill) >= 4.5, "secondary under selected on \(appearance) \(name)")
+            }
+        }
+    }
+
+    @Test func secondaryTextKeepsItsTierUnderTheHoverFillExceptOnAPopoverWhichKeepsFourToOne() {
+        for appearance in Appearance.allCases {
+            // A raised level is a card's own hover fill, never a row's surface.
+            for (name, surface, level) in Self.surfaces(appearance) where level != "raised" {
+                let pill = Self.under(.hover, surface, appearance)
+                let floor = level == "popover" ? 4.0 : 4.5
+                #expect(LoomTheme.Text.secondaryPair[appearance].contrast(with: pill) >= floor,
+                        "secondary under hover on \(appearance) \(name): \(LoomTheme.Text.secondaryPair[appearance].contrast(with: pill))")
+            }
+        }
+    }
+
+    @Test func increaseContrastSecondaryStaysAtSevenUnderTheSelectedAndHoverFills() {
+        for appearance in Appearance.allCases {
+            for (name, surface, level) in Self.surfaces(appearance) where level != "popover" && level != "raised" {
+                for state in [HighlightState.hover, .selected] {
+                    let pill = Self.under(state, surface, appearance, increasedContrast: true)
+                    #expect(LoomTheme.Text.secondaryIncreasedPair[appearance].contrast(with: pill) >= 7,
+                            "secondary, Increase Contrast, under \(state) on \(appearance) \(name)")
+                }
+            }
+        }
+    }
+
+    @Test func theSelectedPillIsVisiblyStrongerThanTheHoverPill() {
+        // A luminance step of the pill over the surface: the selected one is the larger in both appearances and on a card.
+        for appearance in Appearance.allCases {
+            let card = LoomTheme.Surface.levels(appearance, tone: .nightFleece).card
+            let hover = Self.under(.hover, card, appearance), selected = Self.under(.selected, card, appearance)
+            #expect(abs(selected.luminance - card.luminance) > abs(hover.luminance - card.luminance), "\(appearance)")
+        }
+    }
+
+    // MARK: The 4 pt grid
+
+    /// The gaps and paddings the spacing pass moved, as they are now. A gap or padding is a multiple of 4, or 2 between a glyph
+    /// and its text. What stays off the grid is optical or a size: the project stripe's top (11) and bottom (1) that line it up
+    /// with the name, the subagent guide's 13 (the centre of the indicator slot), a hairline, and the 6 pt terminal inset, which DESIGN §6 fixes.
+    @Test func theSpacingPassLeavesEveryMovedGapAndPaddingOnTheFourPointGrid() {
+        typealias S = LoomTheme.Space
+        let moved: [(String, CGFloat)] = [
+            ("headerInset", S.headerInset), ("searchInset", S.searchInset), ("searchPadding", S.searchPadding),
+            ("footerInset", S.footerInset), ("searchSpacing", S.searchSpacing), ("chipSplitGap", S.chipSplitGap),
+            ("chipLimitGap", S.chipLimitGap), ("listInset", S.listInset), ("sectionInset", S.sectionInset),
+            ("sectionTop", S.sectionTop), ("sectionBottom", S.sectionBottom), ("rowFocusOutset", S.rowFocusOutset),
+            ("emptyNoteInset", S.emptyNoteInset), ("emptyNoteVertical", S.emptyNoteVertical), ("hintSpacing", S.hintSpacing),
+            ("cardH", S.cardH), ("cardV", S.cardV), ("cardLineSpacing", S.cardLineSpacing), ("cardRowSpacing", S.cardRowSpacing),
+            ("subagentGuidePad", S.subagentGuidePad), ("subagentRowTrailing", S.subagentRowTrailing),
+            ("subagentColumnGap", S.subagentColumnGap), ("subagentTextGap", S.subagentTextGap), ("subagentIndent", S.subagentIndent),
+            ("transcriptInset", S.transcriptInset), ("detailInset", S.detailInset), ("bannerSpacing", S.bannerSpacing),
+            ("detailSectionSpacing", S.detailSectionSpacing), ("detailLineSpacing", S.detailLineSpacing),
+            ("actionsSpacing", S.actionsSpacing), ("requestListSpacing", S.requestListSpacing),
+            ("requestSpacing", S.requestSpacing), ("requestLineSpacing", S.requestLineSpacing),
+            ("requestPadding", S.requestPadding), ("noticeSpacing", S.noticeSpacing), ("noticeLineSpacing", S.noticeLineSpacing),
+            ("noticePadding", S.noticePadding), ("buttonV", S.buttonV), ("settingsRowV", S.settingsRowV),
+            ("usageCardBottom", S.usageCardBottom), ("usageCardHeaderBottom", S.usageCardHeaderBottom),
+            ("usageRuleBottom", S.usageRuleBottom), ("usageLocalGap", S.usageLocalGap), ("toneRowGap", S.toneRowGap),
+            ("pillLeading", LoomTheme.Header.pillLeading), ("pillTrailing", LoomTheme.Header.pillTrailing),
+            ("pillGap", LoomTheme.Header.pillGap), ("chipStripeGap", LoomTheme.Header.chipStripeGap),
+            ("chipRuleAfter", LoomTheme.Header.chipRuleAfter), ("stopPadding", LoomTheme.Header.stopPadding),
+            ("stopGap", LoomTheme.Header.stopGap), ("crumbGap", LoomTheme.Header.crumbGap),
+            ("backGap", LoomTheme.Header.backGap), ("backTrailing", LoomTheme.Header.backTrailing),
+            ("Home.sideInset", LoomTheme.Home.sideInset), ("Home.blockGap", LoomTheme.Home.blockGap),
+            ("Home.sideCardPadding", LoomTheme.Home.sideCardPadding), ("Home.itemPadding", LoomTheme.Home.itemPadding),
+            ("Home.itemPaddingV", LoomTheme.Home.itemPaddingV), ("Home.itemGap", LoomTheme.Home.itemGap),
+            ("Home.limitGap", LoomTheme.Home.limitGap), ("Home.usageRowGap", LoomTheme.Home.usageRowGap),
+            ("Page.sideInset", LoomTheme.ProjectPage.sideInset), ("Page.statsGap", LoomTheme.ProjectPage.statsGap),
+            ("Page.rowPaddingV", LoomTheme.ProjectPage.rowPaddingV), ("Page.cardPadding", LoomTheme.ProjectPage.cardPadding),
+            ("Page.statGap", LoomTheme.ProjectPage.statGap), ("Page.instructionsPadding", LoomTheme.ProjectPage.instructionsPadding),
+            ("Inspector.tabInsetCompact", LoomTheme.Inspector.tabInsetCompact),
+            ("Inspector.tabContentGap", LoomTheme.Inspector.tabContentGap), ("Inspector.bodyInset", LoomTheme.Inspector.bodyInset),
+            ("Inspector.sectionGap", LoomTheme.Inspector.sectionGap), ("Inspector.sectionTitleGap", LoomTheme.Inspector.sectionTitleGap),
+            ("Inspector.factRowGap", LoomTheme.Inspector.factRowGap), ("Inspector.agentPaddingV", LoomTheme.Inspector.agentPaddingV),
+            ("Inspector.agentColumnGap", LoomTheme.Inspector.agentColumnGap), ("Inspector.agentLineGap", LoomTheme.Inspector.agentLineGap),
+            ("Inspector.agentIndent", LoomTheme.Inspector.agentIndent),
+            ("Sidebar.homeRowInset", LoomTheme.Sidebar.homeRowInset), ("Sidebar.homeRowSpacing", LoomTheme.Sidebar.homeRowSpacing),
+            ("Sidebar.badgePadding", LoomTheme.Sidebar.badgePadding), ("Sidebar.headerFillInset", LoomTheme.Sidebar.headerFillInset),
+            ("Chat.columnPadding", LoomTheme.Chat.columnPadding), ("Chat.workRowPaddingH", LoomTheme.Chat.workRowPaddingH),
+            ("Chat.rowSpacing", LoomTheme.Chat.rowSpacing), ("Chat.blockSpacing", LoomTheme.Chat.blockSpacing),
+            ("Composer.dockBottomInset", LoomTheme.Composer.dockBottomInset), ("Composer.dockTopInset", LoomTheme.Composer.dockTopInset),
+            ("Composer.textInsetH", LoomTheme.Composer.textInsetH), ("Composer.textTop", LoomTheme.Composer.textTop),
+            ("Composer.chipGap", LoomTheme.Composer.chipGap), ("Composer.queueMargin", LoomTheme.Composer.queueMargin),
+            ("Composer.attachmentSpacing", LoomTheme.Composer.attachmentSpacing),
+            ("Composer.pickRowPaddingH", LoomTheme.Composer.pickRowPaddingH), ("Composer.pickRowPaddingV", LoomTheme.Composer.pickRowPaddingV),
+            ("Composer.effortPadding", LoomTheme.Composer.effortPadding), ("Composer.compactTextTop", LoomTheme.Composer.compactTextTop),
+            ("Composer.cardNoteTop", LoomTheme.Composer.cardNoteTop), ("Composer.noticeInset", LoomTheme.Composer.noticeInset),
+            ("Pinned.cardPadding", LoomTheme.Pinned.cardPadding), ("Pinned.sectionSpacing", LoomTheme.Pinned.sectionSpacing),
+            ("Pinned.buttonSpacing", LoomTheme.Pinned.buttonSpacing), ("Pinned.optionPadding", LoomTheme.Pinned.optionPadding),
+        ]
+        for (name, value) in moved {
+            #expect(value.truncatingRemainder(dividingBy: 4) == 0 || value == 2, "\(name) is \(value)")
+        }
+    }
+
+    @Test func theGeometryTheSpacingPassMustNotChangeIsUnchanged() {
+        #expect(LoomTheme.Layout.headerHeight == 52 && LoomTheme.Layout.detailRowHeight == 36)
+        #expect(LoomTheme.Space.terminalInset == 6 && LoomTheme.Space.panelInset == 8)
+    }
+}

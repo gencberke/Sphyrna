@@ -52,10 +52,10 @@ enum ChatRowEstimate {
             return LoomTheme.Chat.markerHeight
         case let .user(entry):
             guard case let .user(prompt) = entry.body else { return 60 }
-            let bubble = content * LoomTheme.Chat.userMaxWidthFraction - 28
+            let bubble = content * LoomTheme.Chat.userMaxWidthFraction - 32
             let count = lines(prompt.text, charsPerLine: bubble / 7.4)
             let shown = row.open ? count : min(count, LoomTheme.Chat.userCollapsedLines)
-            return CGFloat(shown) * 22 + 18 + 26 + (prompt.images.isEmpty ? 0 : 80)
+            return CGFloat(shown) * 22 + 16 + 26 + (prompt.images.isEmpty ? 0 : 80)
         case let .prose(entry, settled):
             guard case let .assistantText(text) = entry.body else { return 40 }
             return proseHeight(text.text, width: content) + (settled ? 28 : 8)

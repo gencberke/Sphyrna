@@ -27,18 +27,9 @@ enum ComposerModeLook {
 // MARK: Chip parts
 
 extension View {
-    /// A rounded fill under the pointer, for the bar's chips (the popovers' own hover is `ComposerPickList`'s).
-    func composerChipHover() -> some View { modifier(ComposerChipHover()) }
-}
-
-private struct ComposerChipHover: ViewModifier {
-    @State private var hovering = false
-
-    func body(content: Content) -> some View {
-        content
-            .background(RoundedRectangle(cornerRadius: LoomTheme.Composer.chipRadius)
-                .fill(hovering ? LoomTheme.Composer.chipHoverFill : Color.clear))
-            .onHover { hovering = $0 }
+    /// The shared pill under the pointer, for the bar's chips (the popovers' own rows draw it through `ComposerPickList`).
+    func composerChipHover(key: String? = nil) -> some View {
+        rowPill(radius: LoomTheme.Composer.chipRadius, key: key)
     }
 }
 
@@ -135,8 +126,10 @@ struct ComposerPickList: View {
             }
             .padding(.horizontal, LoomTheme.Composer.pickRowPaddingH).padding(.vertical, LoomTheme.Composer.pickRowPaddingV)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: LoomTheme.Composer.pickRowRadius)
-                .fill(highlighted == index ? LoomTheme.Composer.pickHoverFill : Color.clear))
+            .background(RowHighlight(
+                state: .resolve(selected: false, hovering: highlighted == index || LookEvidence.forcesHover("pick:\(row.id)"),
+                                enabled: row.isEnabled),
+                radius: LoomTheme.Composer.pickRowRadius))
             .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Composer.pickRowRadius))
         }
         .buttonStyle(.plain)
@@ -191,7 +184,7 @@ struct ComposerModeChip: View {
                     .buttonStyle(.plain).font(LoomTheme.Composer.pickSubtitleFont).foregroundStyle(LoomTheme.OnPopover.accent)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, LoomTheme.Composer.pickInset + LoomTheme.Composer.pickRowPaddingH)
-                    .padding(.vertical, LoomTheme.Composer.pickRowPaddingV + 1)
+                    .padding(.vertical, LoomTheme.Composer.pickRowPaddingV)
                     .accessibilityIdentifier("\(identifier)-reset")
                 }
             }
@@ -247,7 +240,7 @@ struct ComposerModelChip: View {
             Button { modelOpen.toggle() } label: {
                 Text(picker.modelTitle).font(LoomTheme.Composer.barFont).foregroundStyle(LoomTheme.Composer.modelColor)
                     .lineLimit(1).truncationMode(.tail)
-                    .padding(.leading, LoomTheme.Space.cardH - 1).padding(.trailing, LoomTheme.Composer.chipGap - 2)
+                    .padding(.leading, LoomTheme.Space.cardH).padding(.trailing, LoomTheme.Space.headerSpacing)
                     .frame(minHeight: LoomTheme.Composer.controlSide)
                     .contentShape(Rectangle())
             }
@@ -257,12 +250,12 @@ struct ComposerModelChip: View {
             .accessibilityIdentifier(identifier)
             .popover(isPresented: $modelOpen, arrowEdge: .top) { modelList }
             Button { effortOpen.toggle() } label: {
-                HStack(spacing: LoomTheme.Composer.chipGap - 2) {
+                HStack(spacing: LoomTheme.Space.headerSpacing) {
                     Text(picker.effortTitle ?? "Effort").font(LoomTheme.Composer.barFont)
                         .foregroundStyle(LoomTheme.Composer.effortColor).lineLimit(1)
                     Image(systemName: "chevron.down").font(LoomTheme.Composer.chevron).foregroundStyle(LoomTheme.Text.tertiary)
                 }
-                .padding(.leading, LoomTheme.Composer.chipGap - 2).padding(.trailing, LoomTheme.Space.cardH - 1)
+                .padding(.leading, LoomTheme.Space.headerSpacing).padding(.trailing, LoomTheme.Space.cardH)
                 .frame(minHeight: LoomTheme.Composer.controlSide)
                 .contentShape(Rectangle())
             }

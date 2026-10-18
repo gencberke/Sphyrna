@@ -26,11 +26,16 @@ extension LoomTheme {
         static let tickWidth: CGFloat = 2
         static let tickOverhang: CGFloat = 2
         static let titleGap: CGFloat = 6
-        static let track = Surface.hairline
-        static let fill = Text.primary
+        /// Every plan meter fills what is left, from the leading edge (the footer chip's direction, and the word "left"),
+        /// in the neutral tone; the attention colour marks a window that runs out or has under `lowBelow` left. Success
+        /// is a content colour and stays out of it (V25).
+        static let track = Surface.chipMeterTrack
+        static let fill = Text.secondary
         static let fillOver = Status.attention
-        static let tick = Text.secondary
-        static let lasts = Success.light
+        static let tick = Text.primary
+        static let lasts = Text.secondary
         static let runsOut = Status.attentionLight
+        /// Under this share left (as the footer chip's `lowBelowPercent`) a meter takes the attention colour.
+        static let lowBelow = 0.20
     }
 }

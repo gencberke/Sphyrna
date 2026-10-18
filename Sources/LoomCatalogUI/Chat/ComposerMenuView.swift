@@ -23,7 +23,7 @@ struct ComposerMenuPanel: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, LoomTheme.Space.requestPadding + 2).frame(height: LoomTheme.Composer.menuFooterHeight + 6)
+            .padding(.horizontal, LoomTheme.Space.requestPadding).frame(height: LoomTheme.Composer.menuFooterHeight + 6)
             Divider().overlay(LoomTheme.Surface.hairline)
             ScrollViewReader { proxy in
                 ScrollView {
@@ -42,14 +42,14 @@ struct ComposerMenuPanel: View {
                 }
             }
             Divider().overlay(LoomTheme.Surface.hairline)
-            HStack(spacing: LoomTheme.Space.requestPadding + 2) {
+            HStack(spacing: LoomTheme.Space.requestPadding) {
                 Text("\u{2191}\u{2193} move")
                 Text("\u{21B5} insert")
                 Text("esc close")
                 Spacer(minLength: 0)
             }
             .font(LoomTheme.Composer.menuHintFont).foregroundStyle(LoomTheme.OnPopover.placeholder)
-            .padding(.horizontal, LoomTheme.Space.requestPadding + 2).frame(height: LoomTheme.Composer.menuFooterHeight)
+            .padding(.horizontal, LoomTheme.Space.requestPadding).frame(height: LoomTheme.Composer.menuFooterHeight)
         }
         .background(RoundedRectangle(cornerRadius: LoomTheme.Composer.menuRadius).fill(LoomTheme.Surface.popover))
         .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Composer.menuRadius))
@@ -66,7 +66,7 @@ struct ComposerMenuPanel: View {
         let selected = index == menu.selection
         let dimmed = item.isTerminalOnly || item.isUnavailable
         return Button { model.choose(item) } label: {
-            HStack(spacing: LoomTheme.Space.chipInset + 2) {
+            HStack(spacing: LoomTheme.Space.chipInset) {
                 icon(for: item)
                 switch item.kind {
                 case .command, .skill, .terminalOnly:
@@ -93,8 +93,9 @@ struct ComposerMenuPanel: View {
             }
             .padding(.horizontal, LoomTheme.Space.chipInset)
             .frame(height: LoomTheme.Composer.menuRowHeight)
-            .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.sm + 1)
-                .fill(selected ? LoomTheme.Composer.menuSelectedFill : Color.clear))
+            .background(RowHighlight(
+                state: .resolve(selected: false, hovering: selected || LookEvidence.forcesHover("menu:\(item.id)")),
+                radius: LoomTheme.Highlight.radiusCompact))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

@@ -15,6 +15,8 @@ enum SidebarRenderProbe {
     private(set) static var onScreen: [String: Int] = [:]
     private(set) static var projectListBodies = 0
     private(set) static var draftRowBodies: [String: Int] = [:]
+    /// How often a row's pill (its hover state) evaluated, by the pill's key (`sidebar-card:<id>`).
+    private(set) static var pillBodies: [String: Int] = [:]
 
     static var cardTotal: Int { cardBodies.values.reduce(0, +) }
     static var timeLabelTotal: Int { timeLabelBodies.values.reduce(0, +) }
@@ -51,6 +53,11 @@ enum SidebarRenderProbe {
         onScreen[control, default: 0] -= 1
     }
 
+    static func pill(_ key: String?) {
+        guard !watched.isEmpty, let key else { return }
+        pillBodies[key, default: 0] += 1
+    }
+
     static func draftRow(_ id: String) {
         guard !watched.isEmpty else { return }
         draftRowBodies[id, default: 0] += 1
@@ -67,6 +74,7 @@ enum SidebarRenderProbe {
         groupings = 0
         projectListBodies = 0
         draftRowBodies = [:]
+        pillBodies = [:]
         onScreen = [:]
     }
 }

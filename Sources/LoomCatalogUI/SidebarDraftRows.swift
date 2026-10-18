@@ -62,8 +62,8 @@ struct DraftRow: View {
         }
         .padding(.horizontal, LoomTheme.Space.cardH)
         .frame(height: LoomTheme.Sidebar.lineRowHeight)
-        .background(SelectedRowBackground(selected: selected, radius: LoomTheme.Radius.search))
-        .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.search))
+        .rowPill(selected: selected, radius: LoomTheme.Highlight.radiusCompact, key: "sidebar-draft:\(draft.id)")
+        .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusCompact))
         // The button is what the keyboard operates; a click anywhere on the row does the same.
         .onTapGesture { model.showDraft(projectID: draft.projectID) }
         .onHover { hovering = $0 }

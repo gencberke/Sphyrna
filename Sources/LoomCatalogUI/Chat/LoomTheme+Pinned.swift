@@ -7,8 +7,8 @@ extension LoomTheme {
         // MARK: Geometry
 
         static let cardRadius: CGFloat = Radius.block
-        static let cardPadding: CGFloat = 14
-        static let sectionSpacing: CGFloat = 10
+        static let cardPadding: CGFloat = 16
+        static let sectionSpacing: CGFloat = 12
         static let stackSpacing: CGFloat = 8
         static let stackPaddingH: CGFloat = 20
         static let stackPaddingBottom: CGFloat = 8
@@ -22,13 +22,13 @@ extension LoomTheme {
         static let buttonHeight: CGFloat = 28
         static let buttonRadius: CGFloat = Radius.md
         static let buttonPaddingH: CGFloat = 12
-        static let buttonSpacing: CGFloat = 6
+        static let buttonSpacing: CGFloat = 8
         static let foldedHeight: CGFloat = 30
         static let heldHeight: CGFloat = 34
         static let noteMinHeight: CGFloat = 30
         static let noteRadius: CGFloat = Radius.md
         static let optionRadius: CGFloat = Radius.lg
-        static let optionPadding: CGFloat = 10
+        static let optionPadding: CGFloat = 12
         static let optionMark: CGFloat = 14
         static let codeRadius: CGFloat = Radius.md
         static let codePadding: CGFloat = 8
