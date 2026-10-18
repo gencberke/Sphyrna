@@ -84,6 +84,11 @@ extension CatalogModel {
         return .record(sessionID: id)
     }
 
+    /// The case of `detailRoute` without its identities ("chat", "terminal", "draft"): what acceptance runs read.
+    public var detailRouteKind: String {
+        String(String(describing: detailRoute).prefix { $0 != "(" })
+    }
+
     /// The flag behind the read-only Chat view; see `SessionFaces`.
     public var readOnlyChatEnabled: Bool {
         get { faces.readOnlyChatEnabled }
@@ -139,9 +144,7 @@ struct DetailContent: View {
             case .record:
                 if let row = model.selectedRow { ConversationDetail(model: model, row: row) }
             case .chat:
-                // V13's view replaces this placeholder.
-                Message(symbol: "text.bubble", title: "Chat view",
-                        text: "The read-only chat of this session arrives with the stream view.")
+                if let row = model.selectedRow { SessionChatView(model: model, row: row).id(row.id) }
             case .home:
                 HomeView(model: model)
             case .draft(let projectID):
@@ -156,7 +159,7 @@ struct DetailContent: View {
                         Button("Add Project…") { model.presentAddProject() }
                             .keyboardShortcut("o", modifiers: .command)
                             .buttonStyle(AccentButtonStyle(kind: .filled))
-                        Button("New Claude Session") { model.startConversation(.claude, projectID: nil) }
+                        Button("New Claude Session") { model.beginNewSession(projectID: nil) }
                             .disabled(!model.canStart(.claude, projectID: nil))
                         if model.startableProviders.contains(.codex) {
                             Button("New Codex Session") { model.startConversation(.codex, projectID: nil) }

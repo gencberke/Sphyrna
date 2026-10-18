@@ -74,8 +74,9 @@ public enum SessionFace: String, Equatable, Sendable {
 /// on. Not persisted: a relaunch starts from the defaults (stopped: chat, running: terminal).
 @MainActor @Observable
 public final class SessionFaces {
-    /// Off until V13's view exists: with it off, no route is `.chat` and nothing changes on screen.
-    public var readOnlyChatEnabled = false
+    /// On since the stream view (V13) is routed. A kill switch: with it off no route is `.chat`, and a Claude
+    /// session shows its terminal, kept screen or record as in 0.4.4.
+    public var readOnlyChatEnabled = true
     public private(set) var choices: [UUID: SessionFace] = [:]
 
     public init() {}

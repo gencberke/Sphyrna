@@ -187,6 +187,10 @@ struct ShellSeamsTests {
 
         model.select(session.id)
         #expect(await waitUntil { model.selectedRow != nil })
+        #expect(model.detailRoute == .chat(sessionID: session.id), "a stopped Claude session opens as Chat")
+        // The routes below are the Terminal face's: what a Claude session showed in 0.4.4, and still shows when the
+        // read-only Chat is switched off.
+        model.readOnlyChatEnabled = false
         #expect(model.detailRoute == .record(sessionID: session.id))
 
         let surface = TerminalSurface()

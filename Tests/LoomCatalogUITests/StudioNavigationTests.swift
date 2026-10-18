@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import LoomCore
 import LoomTerminal
+import ObjectiveC
 import Testing
 @testable import LoomCatalogUI
 
@@ -116,7 +117,11 @@ struct StudioNavigationTests {
 
         await select(rig.claude, in: model)
         #expect(model.destination == .session(rig.claude) && model.selectedSessionID == rig.claude)
-        #expect(model.detailRoute == .record(sessionID: rig.claude) && model.detailRoute.showsSessionHeader)
+        // A stopped Claude session opens as Chat by default; the flag is the kill switch.
+        #expect(model.detailRoute == .chat(sessionID: rig.claude) && model.detailRoute.showsSessionHeader)
+        model.readOnlyChatEnabled = false
+        #expect(model.detailRoute == .record(sessionID: rig.claude))
+        model.readOnlyChatEnabled = true
 
         // Leaving a session for another place deselects its row, and the context project follows the place.
         model.showHome()
@@ -147,7 +152,8 @@ struct StudioNavigationTests {
         let rig = try await rig(root: root)
         let model = rig.model
         defer { model.stop() }
-        #expect(!model.readOnlyChatEnabled, "off by default")
+        #expect(model.readOnlyChatEnabled, "on by default")
+        model.readOnlyChatEnabled = false // the kill switch
         await select(rig.claude, in: model)
         #expect(model.detailRoute == .record(sessionID: rig.claude))
 
@@ -523,7 +529,8 @@ struct StudioNavigationTests {
         run(.toggleInspector)
         #expect(!model.inspector.isOpen(for: rig.claude))
 
-        // The faces wait for the flag.
+        // The faces wait for the flag, which is on by default; off, they are disabled and do nothing.
+        model.readOnlyChatEnabled = false
         #expect(!enabled(.showChat) && !enabled(.showTerminal))
         run(.showChat)
         #expect(model.faces.choice(for: rig.claude) == nil)
@@ -547,5 +554,123 @@ struct StudioNavigationTests {
         rig.model.showHome()
         rig.model.toggleInspector()
         #expect(rig.model.inspector.openSessions.isEmpty)
+    }
+    // MARK: The real menu items
+
+    /// Counts how often the menu asked for the window.
+    @MainActor private final class Counter { var value = 0 }
+
+    /// V02b's `ShellMenuTarget.perform(_:)` shared its selector with `NSObject.perform(_:)`, so AppKit never reached it
+    /// and every Studio item did nothing (V06 renamed it). This builds the items the app builds and sends each action
+    /// the way a click or a key equivalent does (`NSApp.sendAction` to the item's target), then checks that the model
+    /// reacted. With the method named `perform` again it fails.
+    @Test func everyShellMenuItemReachesItsCommandThroughAppKit() async throws {
+        _ = NSApplication.shared
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        let brought = Counter()
+        let target = ShellMenuTarget(model: { [weak model] in model }, bringForward: { brought.value += 1 })
+        let menu = NSMenu(title: "View")
+        menu.autoenablesItems = true
+        var items: [ShellCommand: NSMenuItem] = [:]
+        for command in ShellCommand.allCases { items[command] = target.addItem(command, to: menu) }
+        func item(_ command: ShellCommand) throws -> NSMenuItem { try #require(items[command]) }
+        /// Sends the item's action as AppKit does. An action whose selector is NSObject's own (`perform:`) is
+        /// reported, not sent: AppKit would raise an exception for it and take the whole test run down.
+        func send(_ command: ShellCommand) throws -> Bool {
+            let item = try item(command)
+            let action = try #require(item.action)
+            let own = class_getInstanceMethod(ShellMenuTarget.self, action)
+            guard own != nil, own != class_getInstanceMethod(NSObject.self, action) else {
+                Issue.record("\(command.title): \(action) is not a method of the shell target of its own")
+                return false
+            }
+            return NSApp.sendAction(action, to: item.target, from: item)
+        }
+        for command in ShellCommand.allCases {
+            let entry = try item(command)
+            #expect(entry.title == command.title && entry.tag == command.rawValue && entry.target === target)
+            #expect(entry.keyEquivalent == command.keyEquivalent && entry.keyEquivalentModifierMask == command.modifiers)
+        }
+
+        // Nothing selected: the window commands are enabled, the ones about a session are not.
+        menu.update()
+        for command in [ShellCommand.home, .commandPalette, .newSession] { #expect(try item(command).isEnabled, "\(command.title)") }
+        for command in [ShellCommand.showChat, .showTerminal, .toggleInspector] { #expect(try !item(command).isEnabled, "\(command.title)") }
+
+        #expect(try send(.home), "AppKit finds Home's action on its target")
+        #expect(model.destination == .home && brought.value == 1, "Home shows the window")
+        #expect(try send(.commandPalette))
+        #expect(model.palette.isOpen && brought.value == 2)
+        model.palette.close()
+        #expect(try send(.newSession))
+        #expect(model.destination == .draft(projectID: nil) && brought.value == 3)
+        #expect(rig.intents.starts.isEmpty, "a draft starts nothing")
+
+        // A selected Claude session turns on the rest.
+        await select(rig.claude, in: model)
+        menu.update()
+        for command in ShellCommand.allCases { #expect(try item(command).isEnabled, "\(command.title)") }
+        #expect(try send(.toggleInspector))
+        #expect(model.inspector.isOpen(for: rig.claude) && brought.value == 3, "the inspector needs no window")
+        #expect(try send(.showTerminal))
+        #expect(model.faces.choice(for: rig.claude) == .terminal)
+        #expect(try send(.showChat))
+        #expect(model.faces.choice(for: rig.claude) == .chat && model.detailRoute == .chat(sessionID: rig.claude))
+        #expect(try send(.toggleInspector))
+        #expect(!model.inspector.isOpen(for: rig.claude))
+        // ⌘N from a session opens the draft of its project.
+        #expect(try send(.newSession))
+        #expect(model.destination == .draft(projectID: rig.projectID))
+
+        // The target validates through the same table (the draft is no session: the faces are off), and a dead
+        // model leaves every item disabled.
+        let homeItem = try item(.home), chatItem = try item(.showChat)
+        #expect(target.validateMenuItem(homeItem) && !target.validateMenuItem(chatItem))
+        let orphan = ShellMenuTarget(model: { nil }, bringForward: {})
+        #expect(!orphan.validateMenuItem(homeItem))
+    }
+
+    // MARK: From the chat to the inspector
+
+    @Test func aSubagentCardInTheChatOpensTheInspectorOnAgents() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        await select(rig.claude, in: model)
+        let record = SubagentRecord(id: "a1", agentType: "implementer", description: "map",
+                                    startedAt: Date(timeIntervalSince1970: 1_000_000))
+        await rig.hub.publish(sessionID: rig.claude, change: .runStarted(UUID()))
+        await rig.hub.publish(sessionID: rig.claude, change: .subagents([record]))
+        #expect(await waitUntil { model.liveStates[rig.claude]?.subagents == [record] })
+
+        // An agent the live ledger lists opens on it.
+        model.openAgents(for: "a1", in: rig.claude)
+        #expect(model.inspector.isOpen(for: rig.claude) && model.inspector.tab == .agents)
+        #expect(model.viewedSubagent == ViewedSubagent(sessionID: rig.claude, agentID: "a1"))
+
+        // The card of an agent the ledger does not list (a stopped session, or the id is not known yet) still
+        // opens the inspector on Agents, on the list.
+        model.setInspector(open: false, for: rig.claude)
+        _ = model.inspector.select(.overview)
+        model.openAgents(for: nil, in: rig.claude)
+        #expect(model.inspector.isOpen(for: rig.claude) && model.inspector.tab == .agents && model.viewedSubagent == nil)
+    }
+
+    @Test func theConfigDirectoryIsOneValueForTheChatViewAndThePaletteAndAbsentWithoutIt() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        defer { rig.model.stop() }
+        #expect(rig.model.claudeConfigDirectory == nil && rig.model.palette.transcriptsDirectory == nil)
+        let config = root.appendingPathComponent("claude-config", isDirectory: true)
+        rig.model.setClaudeConfigDirectory(config)
+        #expect(rig.model.claudeConfigDirectory == config)
+        #expect(rig.model.palette.transcriptsDirectory == config.appendingPathComponent("projects", isDirectory: true))
     }
 }

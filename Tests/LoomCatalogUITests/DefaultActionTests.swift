@@ -61,10 +61,10 @@ struct DefaultActionTests {
     }
 
     /// A window with the real detail view: an approval card above `terminal`, which has the focus.
-    private func hostApprovalCard(terminal: NSView?, root: URL) async throws
+    private func hostApprovalCard(terminal: NSView?, root: URL, provider: ManagedSession.Provider = .claude) async throws
         -> (window: NSWindow, intents: AnswerRecordingIntents) {
         let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
-        let session = ManagedSession(provider: .claude, workingDirectory: root.path)
+        let session = ManagedSession(provider: provider, workingDirectory: root.path)
         try await catalog.insertSession(session, title: "Needs approval", lifecycle: .idle)
         let hub = SessionEventHub()
         let model = CatalogModel(catalog: catalog, events: hub,
@@ -125,7 +125,9 @@ struct DefaultActionTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-ui-\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let (window, intents) = try await hostApprovalCard(terminal: nil, root: root)
+        // A Codex record: the detail view's own card. A Claude session without a terminal shows the Chat, where
+        // Return never approves (SessionChatView), so it is not this screen.
+        let (window, intents) = try await hostApprovalCard(terminal: nil, root: root, provider: .codex)
         defer { window.orderOut(nil) }
         #expect(window.makeFirstResponder(nil))
         NSApp.sendEvent(try returnKey(in: window))

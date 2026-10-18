@@ -126,6 +126,12 @@ struct SessionHeaderRow: View {
                         Button("Rename…") { model.beginRename(row.id) }
                         Button("Open in Tab") { model.openTab(row.id) }
                             .disabled(model.tabs.isPinned(row.id))
+                        if model.canChooseFace {
+                            // Both faces stay one click away (D-57: the header carries no switch of its own).
+                            Divider()
+                            Button(ShellCommand.showChat.title) { model.showFace(.chat) }
+                            Button(ShellCommand.showTerminal.title) { model.showFace(.terminal) }
+                        }
                         Divider()
                         Button("Resume") { model.resumeConversation(row.id) }
                             .disabled(!model.canResume(row))
@@ -237,6 +243,8 @@ struct BannerRow: View {
 struct EndedScreenNotice: View {
     let model: CatalogModel
     let row: SessionRowModel
+    /// The kept screen offers "Show Details"; the chat view above the same notice has no screen to let go of.
+    var showsDetails = true
 
     /// The notice text; a resume under way says so.
     static func text(busy: ConversationBusy?) -> String {
@@ -254,8 +262,12 @@ struct EndedScreenNotice: View {
             }
             .disabled(!model.canResume(row))
             .buttonStyle(AccentButtonStyle(kind: .filled))
-            Button("Show Details") { model.closeEndedScreen(row.id) }
-                .help("Closes this screen and shows the session's details")
+            .onAppear { SidebarRenderProbe.appeared("resume") }
+            .onDisappear { SidebarRenderProbe.disappeared("resume") }
+            if showsDetails {
+                Button("Show Details") { model.closeEndedScreen(row.id) }
+                    .help("Closes this screen and shows the session's details")
+            }
         }
         .padding(.horizontal, LoomTheme.Space.detailInset).padding(.bottom, LoomTheme.Space.bannerBottom)
         .fadesIn()
@@ -295,6 +307,13 @@ struct TerminalHost: NSViewRepresentable {
 struct ConversationDetail: View {
     let model: CatalogModel
     let row: SessionRowModel
+    /// Shown as the Chat's fallback: the chat view already draws the requests above and, for a session without a
+    /// terminal, the notice with Resume, so this screen leaves both out rather than draw them twice (a second
+    /// request list would be a second Approve on the same question).
+    var inChat = false
+
+    nonisolated static func showsRequests(inChat: Bool) -> Bool { !inChat }
+    nonisolated static func showsResume(inChat: Bool, hasTerminal: Bool) -> Bool { !inChat || hasTerminal }
 
     /// The state line above the actions. It states what Loom knows: a pending
     /// start, resume or stop; no run; a run without a terminal here; or that
@@ -322,7 +341,7 @@ struct ConversationDetail: View {
                             .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     }
                 }
-                RequestList(model: model, row: row)
+                if Self.showsRequests(inChat: inChat) { RequestList(model: model, row: row) }
                 if case let .stopUnverified(message) = indicator {
                     Notice(symbol: "exclamationmark.triangle.fill", color: LoomTheme.Status.failure,
                            title: "Stop could not be verified", text: message)
@@ -363,11 +382,15 @@ struct ConversationDetail: View {
                             .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                     }
                     HStack {
-                        Button(record.lifecycle == .stale ? "Reactivate and Resume" : "Resume") {
-                            model.resumeConversation(row.id)
+                        if Self.showsResume(inChat: inChat, hasTerminal: model.terminalView(for: row.id) != nil) {
+                            Button(record.lifecycle == .stale ? "Reactivate and Resume" : "Resume") {
+                                model.resumeConversation(row.id)
+                            }
+                            .disabled(!model.canResume(row))
+                            .buttonStyle(AccentButtonStyle(kind: .filled))
+                            .onAppear { SidebarRenderProbe.appeared("resume") }
+                            .onDisappear { SidebarRenderProbe.disappeared("resume") }
                         }
-                        .disabled(!model.canResume(row))
-                        .buttonStyle(AccentButtonStyle(kind: .filled))
                         Button("Stop") { model.stopConversation(row.id) }
                             .disabled(!model.canStop(row))
                         Button("Rename…") { model.beginRename(row.id) }
