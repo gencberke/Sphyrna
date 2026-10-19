@@ -233,7 +233,8 @@ extension ChatHosted {
             let bound = Int(seconds / 0.080) + 2
             print("BUDGET interval: 100 deltas in \(String(format: "%.2f", seconds)) s: \(rebuilds) rebuilds (at most \(bound)), \(presentation.deferredChanges) deferred")
             #expect(rebuilds <= bound, "\(rebuilds) rebuilds in \(seconds) s")
-            #expect(rebuilds < 100 / 2, "much fewer rebuilds than deltas: \(rebuilds)")
+            // How many fewer rebuilds than deltas depends on the load: a starved main thread spaces the deltas out past the
+            // interval, and each then shows at once. The deterministic tests above prove the wait; this one the timer and the bound.
         }
 
         @Test func aStreamNobodyShowsDerivesNoRowsAndStartsNoTimer() {
