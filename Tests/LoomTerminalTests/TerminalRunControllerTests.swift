@@ -46,7 +46,8 @@ struct TerminalRunControllerTests {
             accepted += 1
         }
         #expect(accepted == 1)
-        try await until(5, "state=\(controller.state)") {
+        // A launch under a full run's load can take more than 5 s (it did, now and then): the deadline bounds only a failure.
+        try await until(30, "state=\(controller.state)") {
             if case .live = controller.state { true } else { false }
         }
         // Requests while live are refused as well.

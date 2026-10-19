@@ -37,7 +37,9 @@ struct ChatFirstTests {
         return Fixture(rig: rig, model: model, controller: controller)
     }
 
-    private func waitUntil(_ seconds: Double = 15, _ condition: () async -> Bool) async -> Bool {
+    /// A start in a fresh rig captures the environment and opens a run scope first; under a full run's load that took more
+    /// than 15 s once. The deadline only bounds a failure, so it is one that load does not cross.
+    private func waitUntil(_ seconds: Double = 60, _ condition: () async -> Bool) async -> Bool {
         let deadline = ProcessInfo.processInfo.systemUptime + seconds
         repeat {
             if await condition() { return true }
@@ -569,7 +571,7 @@ struct ChatFirstTests {
         #expect(await waitUntil { await hub(fixture, id)?.status?.activity == .working })
         let before = fixture.controller.standingReads
         model.continueIn(.chat, sessionID: id)
-        #expect(await waitUntil(30) { await endpoint(fixture, id) == .pipe && model.handovers[id] == nil })
+        #expect(await waitUntil { await endpoint(fixture, id) == .pipe && model.handovers[id] == nil })
         let reads = fixture.controller.standingReads - before
         print("BUDGET handover standing reads over a 3 s terminal turn: \(reads)")
         #expect(reads < 25, "\(reads) looks over a 3 s turn: a 50 ms timer makes about 70")

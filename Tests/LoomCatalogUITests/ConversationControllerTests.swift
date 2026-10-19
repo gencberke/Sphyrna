@@ -206,7 +206,10 @@ struct ConversationControllerTests {
             try await fixture.catalog.insertSession(codex, title: "Old Codex", lifecycle: .idle)
             fixture.controller.resume(sessionID: codex.id)
             fixture.model.resumeConversation(codex.id)
-            try await Task.sleep(for: .milliseconds(400))
+            // The controller reads the record's provider from the catalog before it refuses, so the attempt ends a moment
+            // later, and later still on a loaded Mac: wait for it to end (it clears `busy` on every path), not for the clock.
+            // A resume that went ahead would have its terminal by then.
+            #expect(await waitUntil(30) { fixture.model.busy[codex.id] == nil })
             #expect(fixture.controller.terminalCount == 0)
             #expect(fixture.model.busy[codex.id] == nil)
             #expect(fixture.model.errorMessage == nil)
