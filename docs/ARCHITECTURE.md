@@ -132,6 +132,12 @@ CatalogModel.startConversation -> ConversationController.start (creates Terminal
     SessionStart = at prompt ("Ready"); a late SessionStart of the run's own conversation keeps the turn; informational
     Notification types keep the state; dropped events are logged under subsystem local.loom.desktop, category ClaudeHooks)
     Resume passes the transcript's last recorded effort back as --effort (ClaudeTranscriptEffort; Claude keeps /effort per process)
+    and the transcript's last model as --model (ClaudeTranscriptModel), unless the configured default is that model (ClaudeDefaultModel:
+    the profile's settings.json model, else ANTHROPIC_MODEL; an alias matches by family, a full id by id, [1m] ignored), so a
+    default's [1m] window holds: the transcript's id has no [1m]. A model the session's record names wins.
+    Titles: the user's rename (custom) wins; a terminal run is named by the TUI's title event (recordTerminalTitle); stream-json
+    mode names no session by itself, so the Chat driver asks once, on the first message that is not a slash command, with
+    generate_session_title (persisted as the transcript's ai-title) and records the answer through the same non-custom path.
     Subagents (D-39): SubagentStart/SubagentStop of the run's own conversation feed the tracker's `SubagentLedger` (never the
     status; a subagent's own PermissionRequest (its Notification carries no agent_id) shows Needs approval until
     the registry's next "idle" or "busy" sample returns the state from before it (FB2-6); other events with an agent_id stay
