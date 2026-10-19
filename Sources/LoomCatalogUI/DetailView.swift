@@ -169,23 +169,12 @@ struct SessionHeaderRow: View {
         }
     }
 
-    /// "Continue in Terminal" / "Continue in Chat" (V19), or the way to end a wait that has begun.
+    /// The way to end a wait that has begun (the policy banner's move, D-69). The menu offers no move of its own: the
+    /// face is the app-wide switch in Settings.
     @ViewBuilder private var continueItems: some View {
-        if let handover = model.handover(of: row.id) {
+        if let title = CatalogModel.cancelMoveTitle(for: model.handover(of: row.id)) {
             Divider()
-            if handover.phase == .waiting {
-                Button("Cancel " + CatalogModel.continueTitle(handover.target)) { model.cancelHandover(sessionID: row.id) }
-            }
-        } else if model.canContinue(in: .terminal, row: row) || model.canContinue(in: .chat, row: row) {
-            Divider()
-            if model.canContinue(in: .terminal, row: row) {
-                Button(CatalogModel.continueTitle(.terminal)) { model.continueIn(.terminal, sessionID: row.id) }
-                    .help(CatalogModel.continueHelp(.terminal))
-            }
-            if model.canContinue(in: .chat, row: row) {
-                Button(CatalogModel.continueTitle(.chat)) { model.continueIn(.chat, sessionID: row.id) }
-                    .help(CatalogModel.continueHelp(.chat))
-            }
+            Button(title) { model.cancelHandover(sessionID: row.id) }
         }
     }
 

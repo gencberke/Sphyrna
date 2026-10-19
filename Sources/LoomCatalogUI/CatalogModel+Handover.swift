@@ -2,7 +2,9 @@ import Foundation
 import LoomCore
 import Observation
 
-/// The handover between the faces (V19): "Continue in Terminal" and "Continue in Chat" in a session's ⋯ menu.
+/// The handover between the faces (V19). Since D-69 the face is one app-wide switch (Settings → General → "Sessions run
+/// in") and no menu moves a session: the machinery stays for the policy banner's "Switch to Terminal"
+/// (`switchToTerminal`) and the evidence command `continue-in` (`continueIn`).
 ///
 /// A handover never runs two owners and never loses a turn:
 /// - it **waits** for a turn that runs (the old owner keeps its run until the turn ends; the Chat face holds its queue and
@@ -98,18 +100,15 @@ public protocol HandoverIntents: ConversationIntents {
 }
 
 extension CatalogModel {
-    /// The title of the menu item that moves the session to `target`.
+    /// The name of the move to `target` (the "Cancel …" item of a move that waits, the evidence).
     public static func continueTitle(_ target: SessionFace) -> String {
         target == .terminal ? "Continue in Terminal" : "Continue in Chat"
     }
 
-    /// The tooltip of the menu item that moves the session to `target`. Leaving the terminal loses a prompt that is typed
-    /// there and not sent: the Chat face cannot read the TUI's input line.
-    public static func continueHelp(_ target: SessionFace) -> String {
-        switch target {
-        case .terminal: "Moves the session to the terminal when its turn ends. Queued messages and the draft are kept."
-        case .chat: "Moves the session to Chat once it rests. A prompt typed but not sent in the terminal is lost."
-        }
+    /// The only move item the session's ⋯ menu may hold (D-69): the way to end a move that waits. Nil when nothing waits.
+    public static func cancelMoveTitle(for handover: Handover?) -> String? {
+        guard let handover, handover.phase == .waiting else { return nil }
+        return "Cancel " + continueTitle(handover.target)
     }
 
     /// The handover in progress for the session, if any.
@@ -137,21 +136,6 @@ extension CatalogModel {
         return owner != target
     }
 
-    /// Why the session cannot be moved to the other face right now, in the words the `/` menu shows; nil when it can. A
-    /// request that waits and background work refuse (from the hub, whichever face runs the session); so do a start, a
-    /// stop, a resume or a handover that is under way.
-    public func continueUnavailableReason(sessionID: UUID) -> String? {
-        if !actionsAvailable { return "Loom is not ready to move sessions." }
-        if handovers[sessionID] != nil { return "This session is already moving." }
-        if busy[sessionID] != nil { return HandoverRefusal.busy.description }
-        if isDeleting(sessionID) { return "This session is being deleted." }
-        switch HandoverStanding(terminal: liveStates[sessionID]) {
-        case .requestWaiting: return HandoverRefusal.requestWaiting.description
-        case .backgroundWork: return HandoverRefusal.backgroundWork.description
-        case .stopped, .idle, .working: return nil
-        }
-    }
-
     /// What the composer says while the session is being moved: sending waits. Nil without a handover.
     public func composerHandoverNotice(of sessionID: UUID) -> String? {
         guard let handover = handovers[sessionID] else { return nil }
@@ -165,10 +149,12 @@ extension CatalogModel {
         intents.handOver(sessionID: sessionID, to: target)
     }
 
-    /// "Continue in …" for the selected session (the ⋯ menu, the composer's `/` menu, the policy banner).
-    public func continueSelected(in target: SessionFace) {
-        guard let id = selectedSessionID else { return }
-        continueIn(target, sessionID: id)
+    /// The policy banner's "Switch to Terminal": the account's policy refuses the Chat face, so Chat cannot go on. The
+    /// switch in Settings goes to Terminal (new starts and resumes follow it) and this session moves with the handover.
+    public func switchToTerminal(sessionID: UUID) {
+        guard let row = rowModels[sessionID], canContinue(in: .terminal, row: row) else { return }
+        setNewSessionFace(.terminal)
+        continueIn(.terminal, sessionID: sessionID)
     }
 
     /// Ends the wait of a handover; the session goes on in the face it was in.

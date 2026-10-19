@@ -63,7 +63,6 @@ struct ComposerMenuItem: Identifiable, Equatable {
         case skill
         /// Runs only in the terminal.
         case terminalOnly
-        case action
         case file
         case folder
         case session
@@ -78,11 +77,8 @@ struct ComposerMenuItem: Identifiable, Equatable {
     var trailing: String?
     /// The text that replaces the trigger when the row is chosen.
     var insertion: String
-    /// An action row that cannot run now says why (its detail); choosing it explains and does nothing.
-    var unavailableReason: String?
 
     var isTerminalOnly: Bool { kind == .terminalOnly }
-    var isUnavailable: Bool { unavailableReason != nil }
 }
 
 /// The ranking of a menu's flat list [T3]: exact, prefix, word start, contains, fuzzy, each with a length penalty. The
@@ -127,7 +123,7 @@ enum ComposerRanking {
 /// `system/init`, then Loom's own actions. Skills that are not user-invocable are not in `initialize`'s command list, so
 /// a name only `system/init`'s skill list knows is left out.
 enum ComposerCommandItems {
-    static func items(from state: ChatComposerState, actions: [ComposerMenuItem] = []) -> [ComposerMenuItem] {
+    static func items(from state: ChatComposerState) -> [ComposerMenuItem] {
         let terminalOnly = Set(state.terminalOnlyCommands)
         let skills = Set(state.skills)
         var seen = Set<String>()
@@ -148,6 +144,6 @@ enum ComposerCommandItems {
             add(name: name, description: nil, hint: nil)
         }
         for name in terminalOnly { add(name: name, description: nil, hint: nil) }
-        return result + actions
+        return result
     }
 }

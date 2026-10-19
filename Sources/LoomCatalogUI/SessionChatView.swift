@@ -95,7 +95,7 @@ struct SessionChatView: View {
                          onOpenSubagent: { [model, sessionID = row.id] agentID, _ in
                 model.openAgents(for: agentID, in: sessionID)
             }, onContinueInTerminal: model.canContinue(in: .terminal, row: row)
-                ? { [model, sessionID = row.id] in model.continueIn(.terminal, sessionID: sessionID) } : nil,
+                ? { [model, sessionID = row.id] in model.switchToTerminal(sessionID: sessionID) } : nil,
                pinned: { maxHeight in PinnedCardsView(cards: feed.cards, maxHeight: maxHeight) })
             .id(ObjectIdentifier(feed))
             .onChange(of: row.record.session.workingDirectory) { _, value in feed.setWorkingDirectory(value) }

@@ -2,10 +2,10 @@ import Foundation
 import LoomChat
 import LoomCore
 
-/// Which face owns a session (V19). The owner is the runtime's persisted fact, never a view flag: while a run lives it
-/// is the run's endpoint, afterwards it is the endpoint of the session's latest run, kept in the catalog
-/// (`CatalogSession.runEndpoint`). A stopped session resumes in the face that owned it; only a handover (or Settings →
-/// "New sessions start in", for a session that does not exist yet) changes it.
+/// Which face runs a session (V19, D-69). A live run is driven by its endpoint and keeps it until it stops. The face
+/// of a start or a resume is the app-wide switch (Settings → General → "Sessions run in", `newSessionFace`); the
+/// persisted endpoint of the latest run (`CatalogSession.runEndpoint`) only says how that run was driven. A handover
+/// (the policy banner) moves a running session.
 extension CatalogModel {
     /// The face that owns the session now. Nil for a session that has not run since faces were recorded (V16): it
     /// resumes in the terminal, as before.
@@ -20,11 +20,12 @@ extension CatalogModel {
         return owningFace(of: row)
     }
 
-    /// A stopped Claude session that the Chat face owns shows its live chat, composer included: typing and sending
-    /// resumes it in that face. Needs the Chat host, no run of any kind, and an identity to resume by.
+    /// A stopped Claude session shows its live chat, composer included, while the switch says Chat: typing and sending
+    /// resumes it in that face. With the switch on Terminal it shows the terminal face's stopped screen. Needs the Chat
+    /// host, no run of any kind, and an identity to resume by.
     func showsStoppedLiveChat(_ row: SessionRowModel) -> Bool {
         guard chatSessions != nil, row.record.session.provider == .claude, !isRunning(row),
-              owningFace(of: row) == .chat else { return false }
+              newSessionFace == .chat else { return false }
         let identity = row.live?.conversationID ?? row.record.session.providerConversationID
         return identity?.isEmpty == false
     }

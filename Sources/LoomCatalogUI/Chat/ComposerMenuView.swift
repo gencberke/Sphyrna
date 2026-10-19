@@ -64,7 +64,7 @@ struct ComposerMenuPanel: View {
 
     private func row(_ item: ComposerMenuItem, index: Int) -> some View {
         let selected = index == menu.selection
-        let dimmed = item.isTerminalOnly || item.isUnavailable
+        let dimmed = item.isTerminalOnly
         // The row draws the hover fill: its secondary text takes the lifted tone that holds 4.5:1 on it (`OnPopover`).
         let lit = selected || LookEvidence.forcesHover("menu:\(item.id)")
         let secondary = LoomTheme.OnPopover.secondary(lit: lit)
@@ -115,7 +115,6 @@ struct ComposerMenuPanel: View {
         case .file: "doc"
         case .folder: "folder"
         case .session: "bubble.left"
-        case .action: "terminal"
         case .command, .skill, .terminalOnly: nil
         }
         if let symbol {

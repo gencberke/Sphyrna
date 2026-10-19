@@ -89,7 +89,7 @@ struct LiveChatView<Pinned: View>: View {
     let feed: LiveChatFeed
     let composer: ChatComposerModel?
     let onOpenSubagent: ((String?, String) -> Void)?
-    /// "Continue in Terminal" on the policy banner; nil where the session cannot be moved.
+    /// "Switch to Terminal" on the policy banner (the switch in Settings goes to Terminal and this session moves); nil where the session cannot be moved.
     var onContinueInTerminal: (() -> Void)?
     @ViewBuilder let pinned: (_ maxHeight: CGFloat?) -> Pinned
     @State private var model: LiveChatViewModel?
@@ -147,7 +147,7 @@ struct LiveChatContent<Pinned: View>: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
     }
 
-    /// The one banner above the composer (CHAT-SPEC → Markers and banners): the policy signal with Continue in Terminal,
+    /// The one banner above the composer (CHAT-SPEC → Markers and banners): the policy signal with Switch to Terminal,
     /// then wire drift and unknown records behind a "+N".
     private var banner: some View {
         let presentation = feed.presentation

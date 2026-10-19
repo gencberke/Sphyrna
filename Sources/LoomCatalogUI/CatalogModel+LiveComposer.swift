@@ -13,7 +13,7 @@ extension CatalogModel {
             ChatComposerModel(driver: driver, card: id, drafts: drafts, environment: composerEnvironment(feed: feed))
         }
         // The composer outlives a feed the host let go of, and its environment holds the feed it was made with weakly: every
-        // view binds it to the feed it shows now (else the folder, history, "Continue in Terminal" and the handover notice
+        // view binds it to the feed it shows now (else the folder, history and the handover notice
         // would answer nothing after the feed was released), and the feed's pinned cards take the composer's text and keys.
         composer.environment = composerEnvironment(feed: feed)
         composer.attach(cards: feed.cards)
@@ -40,15 +40,6 @@ extension CatalogModel {
         }
         environment.sessionMention = { [weak self] id in self?.sessionMentionText(for: id) }
         environment.cycleView = { [weak feed] in feed?.presentation.cycleViewMode() }
-        // "Continue in Terminal" in the `/` menu is the ⋯ menu's handover (V19).
-        environment.continueInTerminal = { [weak self, weak feed] in
-            guard let self, let feed else { return }
-            continueIn(.terminal, sessionID: feed.card)
-        }
-        environment.continueInTerminalRefusal = { [weak self, weak feed] in
-            guard let self, let feed else { return nil }
-            return continueUnavailableReason(sessionID: feed.card)
-        }
         environment.handoverNotice = { [weak self, weak feed] in
             guard let self, let feed else { return nil }
             return composerHandoverNotice(of: feed.card)

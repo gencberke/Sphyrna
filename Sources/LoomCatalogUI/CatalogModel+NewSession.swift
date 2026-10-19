@@ -372,13 +372,26 @@ extension CatalogModel {
     public func draftStartChoices(projectID: UUID?) -> ClaudeLaunchChoices { resolvedStart(for: projectID).choices }
 
     /// Whether a new session starts in the face that has Ask: Ask is a Chat mode (D-63), and the terminal never runs it. The
-    /// one place that says which face a new session starts in for the mode menu: Settings → "New sessions start in" (V19).
+    /// one place that says which face a new session starts in for the mode menu: Settings → "Sessions run in" (V19, D-69).
     var newSessionStartsInChat: Bool { newSessionFace == .chat }
 
     var newSessionAllowsAsk: Bool { newSessionStartsInChat }
 
-    /// Loom's own start defaults, the third level of the order (no Settings screen writes them yet). Nil clears
-    /// one. A mode that could pass for an option is not stored.
+    /// Settings → General → Mode of new sessions (D-69): nil is "Last used in the project", else the one fixed mode.
+    public var defaultStartMode: String? { newSession.settings.permissionMode }
+
+    /// Sets the mode new sessions start in (nil: the project's last used mode). Full access is allowed because the user
+    /// picks it here, but it asks first: switching to it without `confirmedFullAccess` changes nothing and returns
+    /// false. Choosing it again while it is the default asks nothing. A mode the menus do not offer is refused.
+    @discardableResult
+    public func setDefaultStartMode(_ raw: String?, confirmedFullAccess: Bool = false) -> Bool {
+        if let raw, !ClaudePermissionMode.isOffered(raw) { return false }
+        if raw == ClaudePermissionMode.fullAccess.rawValue, defaultStartMode != raw, !confirmedFullAccess { return false }
+        setNewSessionDefaults(permissionMode: raw, model: newSession.settings.model)
+        return true
+    }
+
+    /// Loom's own start defaults. Nil clears one. A mode that could pass for an option is not stored.
     public func setNewSessionDefaults(permissionMode: String?, model: String?) {
         prepareNewSession()
         newSession.setSettings(NewSessionSettings(

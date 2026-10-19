@@ -434,6 +434,81 @@ struct ChatFirstTests {
         await fixture.cleanup()
     }
 
+    /// D-69: the face of a resume is the app-wide switch, not the endpoint of the session's last run.
+    @Test func aResumeTakesItsFaceFromTheSwitchNotFromTheLastRun() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let (id, driver) = try await chatSession(fixture)
+        _ = try await driver.stop()
+        #expect(await waitUntil { await driver.currentPhase == .stopped && model.busy[id] == nil })
+        #expect(await endpoint(fixture, id) == .pipe, "the last run was a Chat run")
+
+        model.setNewSessionFace(.terminal)
+        fixture.controller.resume(sessionID: id)
+        #expect(await waitUntil { await endpoint(fixture, id) == .terminal })
+        #expect(await waitUntil { model.terminalView(for: id) != nil })
+
+        model.stopConversation(id)
+        #expect(await waitUntil { await hub(fixture, id)?.runID == nil && model.busy[id] == nil && model.terminalView(for: id) == nil })
+        model.setNewSessionFace(.chat)
+        fixture.controller.resume(sessionID: id)
+        #expect(await waitUntil { await endpoint(fixture, id) == .pipe })
+        #expect(model.terminalView(for: id) == nil)
+        await fixture.cleanup()
+    }
+
+    /// D-69: a running session keeps its face when the switch changes; a stopped one follows the switch, whichever face ran
+    /// it last. On Chat it shows its live chat with the composer; on Terminal the stopped screen of the terminal face.
+    @Test func aRunningSessionKeepsItsFaceAndAStoppedOneFollowsTheSwitch() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let (id, driver) = try await chatSession(fixture)
+        model.setNewSessionFace(.terminal)
+        let running = try #require(model.selectedRow)
+        #expect(model.runEndpoint(of: running) == .pipe && model.detailRoute == .chat(sessionID: id), "a running session keeps its face")
+
+        _ = try await driver.stop()
+        #expect(await waitUntil { await driver.currentPhase == .stopped && model.busy[id] == nil })
+        model.select(id)
+        #expect(await waitUntil { model.selectedRow?.live?.runID == nil })
+        var row = try #require(model.selectedRow)
+        #expect(!model.showsStoppedLiveChat(row) && model.canChooseFace, "Terminal: no live chat, the terminal face's stopped screen")
+        model.setNewSessionFace(.chat)
+        row = try #require(model.selectedRow)
+        #expect(model.showsStoppedLiveChat(row) && !model.canChooseFace, "Chat: the live chat with its composer")
+
+        // A session whose last run was the terminal's follows the switch as well (it is moved there by a handover).
+        let terminal = try await terminalSession(fixture)
+        model.stopConversation(terminal)
+        #expect(await waitUntil { await hub(fixture, terminal)?.runID == nil && model.busy[terminal] == nil && model.terminalView(for: terminal) == nil })
+        model.select(terminal)
+        #expect(await endpoint(fixture, terminal) == .terminal)
+        model.setNewSessionFace(.chat)
+        #expect(await waitUntil { model.selectedRow.map { model.showsStoppedLiveChat($0) } == true })
+        model.setNewSessionFace(.terminal)
+        #expect(model.selectedRow.map { model.showsStoppedLiveChat($0) } == false)
+        await fixture.cleanup()
+    }
+
+    /// D-69: the policy banner keeps a way out. Its action sets the switch to Terminal and moves this session with the handover.
+    @Test func thePolicyBannersActionSetsTheSwitchToTerminalAndMovesTheSession() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let terminal = try await terminalSession(fixture)
+        // A session the terminal already runs cannot be moved there: the switch stays.
+        model.switchToTerminal(sessionID: terminal)
+        #expect(model.newSessionFace == .chat && model.handovers[terminal] == nil)
+
+        let (id, _) = try await chatSession(fixture)
+        model.switchToTerminal(sessionID: id)
+        #expect(model.newSessionFace == .terminal)
+        #expect(await waitUntil { await endpoint(fixture, id) == .terminal && model.handovers[id] == nil })
+        model.flushPreferences()
+        let kept = UIPreferencesStore(url: fixture.rig.root.appendingPathComponent("ui-preferences.json")).current
+        #expect(kept.newSessionFace == .terminal, "the switch is kept")
+        await fixture.cleanup()
+    }
+
     /// S5 / M4: a Chat start whose child dies before Ready tells the draft page it failed, and nothing else: the text stays
     /// on the draft page, no card is created and the first message is not kept twice.
     @Test func aChatStartThatFailsBeforeReadyKeepsTheTextOnTheDraftPage() async throws {
@@ -451,9 +526,8 @@ struct ChatFirstTests {
         await fixture.cleanup()
     }
 
-    /// M1 / M8: while a session moves, the composer says so, keeps the text and its send is off; the `/` menu's row is
-    /// disabled with the reason.
-    @Test func theComposerSaysWhyWhileTheSessionMovesAndTheMenuRowIsDisabled() async throws {
+    /// M1 / M8: while a session moves, the composer says so, keeps the text and its send is off; the `/` menu offers no move.
+    @Test func theComposerSaysWhyWhileTheSessionMovesAndTheMenuOffersNoMove() async throws {
         let fixture = try await makeFixture()
         let model = fixture.model
         let (id, driver) = try await chatSession(fixture)
@@ -477,12 +551,11 @@ struct ChatFirstTests {
         composer.submit(secondary: false)
         #expect(composer.notice?.text.contains("Moving to the terminal") == true, "a refused send says why")
         #expect(composer.text == "typed meanwhile" && editor.text == "typed meanwhile", "the text stays")
-        // The `/` menu offers Continue in Terminal, disabled, with the reason as its detail.
+        // The `/` menu offers no move to the terminal any more (D-69): not enabled, not disabled.
         editor.replaceAll(with: "")
         composer.textChanged("")
         editor.type("/")
-        let item = try #require(composer.menu?.items.first { $0.id == "action:terminal" })
-        #expect(item.isUnavailable && item.detail == "This session is already moving.")
+        #expect(composer.menu?.items.contains { $0.title == "Continue in Terminal" || $0.id.hasPrefix("action:") } != true)
         await fixture.cleanup()
     }
 

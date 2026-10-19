@@ -51,7 +51,7 @@ struct ChatFirstPureTests {
         let both = items(policy: true, drift: 2, records: 1)
         // The blocker comes first, then the notices; the view shows the first and "+2" for the others.
         #expect(both.map(\.kind) == [.policy, .wireDrift, .unknownRecords])
-        #expect(both[0].actionTitle == "Continue in Terminal")
+        #expect(both[0].actionTitle == "Switch to Terminal")
         #expect(both[1].actionTitle == nil)
         // Without the way to move the session the policy banner only informs.
         let stuck = ChatBanners.items(policySignal: true, policyDismissed: false, canContinueInTerminal: false, owner: .terminal,
@@ -96,10 +96,12 @@ struct ChatFirstPureTests {
         #expect(HandoverStanding(terminal: nil) == .stopped)
     }
 
-    /// S4: the item that leaves the terminal says what is lost.
-    @Test func continueInChatSaysThatAnUnsentPromptIsLost() {
-        #expect(CatalogModel.continueHelp(.chat).contains("typed but not sent in the terminal is lost"))
-        #expect(!CatalogModel.continueHelp(.terminal).contains("lost"))
+    /// D-69: the session's ⋯ menu holds no move to a face; the one item left ends a move that waits (the policy banner's).
+    @Test func theHeaderMenuOffersNoMoveOnlyTheWayToCancelOneThatWaits() {
+        #expect(CatalogModel.cancelMoveTitle(for: nil) == nil)
+        #expect(CatalogModel.cancelMoveTitle(for: Handover(target: .terminal)) == "Cancel Continue in Terminal")
+        #expect(CatalogModel.cancelMoveTitle(for: Handover(target: .chat)) == "Cancel Continue in Chat")
+        #expect(CatalogModel.cancelMoveTitle(for: Handover(target: .terminal, phase: .switching)) == nil, "no Cancel after the point of no return")
     }
 
     // MARK: Face-aware keys

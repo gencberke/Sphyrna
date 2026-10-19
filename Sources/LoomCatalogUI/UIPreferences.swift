@@ -152,8 +152,9 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// Settings → General → Search session text. Off, the command palette never reads a transcript. A file written
     /// before the setting existed reads as on.
     public var searchSessionText: Bool
-    /// Settings → General → New sessions start in (V19). A new Claude session opens in this face; sessions that
-    /// already ran keep the face that owns them. A file written before the setting existed reads as Chat.
+    /// Settings → General → Sessions run in (V19, D-69). The face of every Claude session as it starts or resumes; a
+    /// running session keeps its face until it stops. The key keeps its old name. A file written before the setting
+    /// existed reads as Chat.
     public var newSessionFace: SessionFace
     /// Settings → Theme → Appearance (D-63). A file written before the setting existed reads as Dark.
     public var appearance: AppearanceSetting

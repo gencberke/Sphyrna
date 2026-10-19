@@ -262,7 +262,8 @@ public final class CatalogModel {
     public private(set) var searchesSessionText: Bool
     /// Settings → Theme → Sidebar: Glass or Solid (D-57).
     public private(set) var sidebarStyle: SidebarStyle
-    /// Settings → General → New sessions start in (V19): the face a new Claude session opens in. Chat by default.
+    /// Settings → General → Sessions run in (V19, D-69): the app-wide face of a Claude session as it starts or resumes. Chat by
+    /// default. The stored key keeps its old name, so an older file reads the same.
     public private(set) var newSessionFace: SessionFace
     /// Settings → Theme → Appearance and Main pane (D-63). The app applies them through `onThemeChange`.
     public private(set) var appearance: AppearanceSetting
@@ -1297,8 +1298,8 @@ public final class CatalogModel {
         persist { $0.sidebarStyle = style }
     }
 
-    /// Settings → General → New sessions start in (V19). Only sessions started after this change: one that already
-    /// ran stays in the face that owns it, and the handover moves it.
+    /// Settings → General → Sessions run in (V19, D-69): the face of every Claude session as it starts or resumes. A
+    /// running session keeps its face until it stops; a stopped one follows the switch. The stored key keeps its old name.
     public func setNewSessionFace(_ face: SessionFace) {
         guard face != newSessionFace else { return }
         newSessionFace = face

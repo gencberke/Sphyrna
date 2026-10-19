@@ -71,7 +71,7 @@ public enum SessionFace: String, Codable, CaseIterable, Equatable, Sendable {
     case chat
     case terminal
 
-    /// The label in Settings ("New sessions start in").
+    /// The label in Settings ("Sessions run in").
     public var title: String {
         switch self {
         case .chat: "Chat"

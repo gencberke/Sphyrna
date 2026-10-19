@@ -76,8 +76,8 @@ extension CatalogModel {
         return .noSelection
     }
 
-    /// A session's route: the live Chat when a pipe run drives it, or when it is stopped and the Chat face owns it
-    /// (V19: its composer resumes it); then (with `readOnlyChatEnabled`, Claude sessions only) the read-only chat when
+    /// A session's route: the live Chat when a pipe run drives it, or when it is stopped and the switch in Settings
+    /// says Chat (V19, D-69: its composer resumes it); then (with `readOnlyChatEnabled`, Claude sessions only) the read-only chat when
     /// the user picked it, or by default when the session is stopped, then the live terminal, the
     /// kept screen and the record. A start, resume or stop under way is not "stopped": the record stays until
     /// the terminal arrives. Codex and synthetic sessions keep the old routes.
@@ -124,8 +124,8 @@ extension CatalogModel {
     }
 
     /// Whether the selected session has a Chat and a Terminal face to look at: a Claude session, with the Chat view
-    /// switched on, that the Chat face does not own. A Chat-face run has no terminal to show, and a stopped session
-    /// the Chat face owns shows its live chat; moving either to the terminal is a handover (`continueIn`).
+    /// switched on, that the Chat face does not run. A Chat-face run has no terminal to show, and a stopped session
+    /// shows its live chat while the switch in Settings says Chat (D-69).
     public var canChooseFace: Bool {
         guard readOnlyChatEnabled, let row = selectedRow, row.record.session.provider == .claude else { return false }
         return runEndpoint(of: row) != .pipe && !showsStoppedLiveChat(row)

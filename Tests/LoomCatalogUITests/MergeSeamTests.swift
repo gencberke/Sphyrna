@@ -190,7 +190,7 @@ struct MergeSeamTests {
     // MARK: The composer outlives its feed
 
     /// V24 lets the host release a feed nobody shows while the composer stays. The composer is bound to the feed of the view
-    /// that shows it now, so "Continue in Terminal", the handover notice and the folder keep answering after the swap.
+    /// that shows it now, so the handover notice and the folder keep answering after the swap.
     @Test func aComposerThatOutlivesItsFeedIsBoundToTheNewOneAndStillSaysTheSessionMoves() async throws {
         let fixture = try await makeFixture()
         let model = fixture.model
@@ -215,7 +215,6 @@ struct MergeSeamTests {
         model.continueIn(.terminal, sessionID: id)
         #expect(await waitUntil { model.handovers[id]?.phase == .waiting })
         #expect(composer.handoverPending == "Moving to the terminal\u{2026}")
-        #expect(composer.environment.continueInTerminalRefusal() == "This session is already moving.")
         await fixture.cleanup()
     }
 

@@ -67,17 +67,9 @@ extension ChatComposerModel {
 
     // MARK: Commands
 
-    private var actionItems: [ComposerMenuItem] {
-        guard environment.continueInTerminal != nil else { return [] }
-        let refusal = environment.continueInTerminalRefusal()
-        return [ComposerMenuItem(id: "action:terminal", kind: .action, title: "Continue in Terminal",
-                                 detail: refusal ?? "Run this session in the terminal", trailing: nil, insertion: "",
-                                 unavailableReason: refusal)]
-    }
-
     private func showCommands(_ trigger: ComposerTrigger) {
         mentionTask?.cancel()
-        let all = ComposerCommandItems.items(from: state, actions: actionItems)
+        let all = ComposerCommandItems.items(from: state)
         let ranked = ComposerRanking.rank(all, query: trigger.query, limit: Self.menuLimit)
         var next = ComposerMenuState(kind: .commands, trigger: trigger, items: ranked)
         if let current = menu, current.kind == .commands, current.trigger.query == trigger.query {
@@ -188,22 +180,11 @@ extension ChatComposerModel {
         let range = current.trigger.range
         switch item.kind {
         case .terminalOnly:
-            // It runs only in the terminal: the menu says so, and the terminal opens when it can.
+            // It runs only in the terminal: the menu says so. A session does not move between the faces from here; the
+            // switch in Settings decides the face of the next start or resume.
             closeMenuState()
             dismissedTrigger = (current.kind, range.location)
-            if let open = environment.continueInTerminal { open() } else {
-                show("\(item.title) only runs in the terminal.")
-            }
-        case .action:
-            // Not allowed now: the row said why; choosing it keeps the text and says it again.
-            if let reason = item.unavailableReason {
-                closeMenuState()
-                dismissedTrigger = (current.kind, range.location)
-                show(reason)
-                return
-            }
-            editor.replace(range, with: "")
-            environment.continueInTerminal?()
+            show("\(item.title) only runs in the terminal. Settings → General → Sessions run in sets the face.")
         case .session:
             guard let id = UUID(uuidString: String(item.id.dropFirst("session:".count))) else { return }
             editor.replace(range, with: (environment.sessionMention(id) ?? "[session \(item.title)]") + " ")

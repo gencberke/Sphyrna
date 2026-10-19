@@ -235,7 +235,7 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
 
     public func startSession(projectID: UUID?, launch: NewSessionLaunch, focus: NewSessionFocus,
                              outcome: @escaping @MainActor (NewSessionOutcome) -> Void) {
-        // Settings → "New sessions start in" (V19): Chat by default. Without the app's Chat host (a test, a runtime-less
+        // Settings → "Sessions run in" (V19, D-69): Chat by default. Without the app's Chat host (a test, a runtime-less
         // window) there is no Chat face to start in, and the terminal start stands.
         if model?.newSessionFace == .chat, model?.chatSessions != nil {
             startInChat(projectID: projectID, launch: launch, focus: focus, outcome: outcome)
@@ -350,16 +350,15 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
         Task {
             defer { model.setBusy(sessionID, nil) }
             do {
-                // A stopped session resumes in the face that owns it (V19): the persisted endpoint of its latest run,
-                // read from the catalog, never from a row (Home's Continue card and other paths have none).
+                // A session resumes in the face the app-wide switch names (D-69), not in the endpoint of its last run:
+                // that only says how the run was driven. Codex stays in the terminal.
                 var provider = known
                 if provider == nil, let catalog = model.catalog {
                     provider = try await catalog.session(id: sessionID)?.session.provider
                     // The model has no row for this id (a direct call): the catalog decides, same rule.
                     if let provider, !model.startableProviders.contains(provider) { return }
                 }
-                let owner = try await model.catalog?.runEndpoint(sessionID: sessionID)
-                if owner == .pipe, provider == .claude, let host = model.chatSessions {
+                if model.newSessionFace == .chat, provider == .claude, let host = model.chatSessions {
                     try await host.driver(for: sessionID).resume()
                     model.showStarted(sessionID)
                 } else {

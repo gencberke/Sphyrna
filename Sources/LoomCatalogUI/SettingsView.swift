@@ -1,8 +1,9 @@
 import AppKit
+import LoomCore
 import SwiftUI
 
 public enum SettingsSection: CaseIterable, Identifiable, Hashable, Sendable {
-    case general, theme, usage, about, conversations
+    case general, theme, usage, conversations, about
 
     public var id: Self { self }
     public var title: String {
@@ -10,8 +11,8 @@ public enum SettingsSection: CaseIterable, Identifiable, Hashable, Sendable {
         case .general: "General"
         case .theme: "Theme"
         case .usage: "Usage"
-        case .about: "About"
         case .conversations: "Sessions"
+        case .about: "About"
         }
     }
 
@@ -101,15 +102,39 @@ public struct SettingsView: View {
 
 struct GeneralSettings: View {
     let model: CatalogModel
+    /// Full access was picked as the default and waits for the confirmation (D-69).
+    @State private var confirmsFullAccess = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: LoomTheme.Space.settingsSectionGap) {
             SettingsCard {
-                SettingsRow(title: "New sessions start in",
-                            detail: "A session keeps its face. Its menu moves it to the other.") {
+                SettingsRow(title: "Sessions run in",
+                            detail: "Applies when a session starts or resumes. A running session keeps its face until it stops.") {
                     SegmentedControl(values: SessionFace.allCases, title: \.title, selection: model.newSessionFace,
                                      compact: true, onSelect: { model.setNewSessionFace($0) })
-                        .accessibilityLabel("New sessions start in")
+                        .accessibilityLabel("Sessions run in")
+                }
+                SettingsRowDivider()
+                SettingsRow(title: "Mode of new sessions",
+                            detail: "Last used in the project, or one mode for every new session. Ask runs in Chat only; in the terminal it starts as Ask before edits.") {
+                    Picker("Mode of new sessions", selection: Binding(
+                        get: { model.defaultStartMode ?? Self.lastUsedTag },
+                        set: { chosen in
+                            if chosen == ClaudePermissionMode.fullAccess.rawValue, model.defaultStartMode != chosen {
+                                confirmsFullAccess = true
+                            } else {
+                                model.setDefaultStartMode(chosen == Self.lastUsedTag ? nil : chosen)
+                            }
+                        }
+                    )) {
+                        Text("Last used in the project").tag(Self.lastUsedTag)
+                        Divider()
+                        ForEach(ClaudePermissionMode.menuModes, id: \.rawValue) { mode in
+                            Text(mode.title).tag(mode.rawValue)
+                        }
+                    }
+                    .labelsHidden().pickerStyle(.menu).fixedSize()
+                    .accessibilityLabel("Mode of new sessions")
                 }
                 SettingsRowDivider()
                 SettingsRow(title: "Terminal font size", detail: "Applies to existing and new terminals.") {
@@ -140,7 +165,18 @@ struct GeneralSettings: View {
         .padding(.horizontal, LoomTheme.Space.settingsInset)
         .padding(.top, LoomTheme.Space.settingsSegmentH)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .alert("Start new sessions in Full access?", isPresented: $confirmsFullAccess) {
+            Button("Use Full access", role: .destructive) {
+                model.setDefaultStartMode(ClaudePermissionMode.fullAccess.rawValue, confirmedFullAccess: true)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Claude runs every tool without asking. Every new session starts in it until you change this. You can still pick another mode in a draft.")
+        }
     }
+
+    /// The picker's tag for "Last used in the project" (no mode is stored).
+    private static let lastUsedTag = "last-used"
 }
 
 /// How Loom reaches the user outside its window (D-49, D-52): the menu bar item, approval banners and

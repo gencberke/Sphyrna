@@ -6,9 +6,9 @@ import LoomCore
 /// Live Chat face commands (V16): the model's live-chat actions, for runs on the fake provider (or a real Claude
 /// under an isolated profile). Nothing written holds content: `chat-state` records phases, counts and kinds.
 ///
-/// - `live-chat:<on|off>`: Settings → "New sessions start in" (Chat on, Terminal off; Chat is the default since V19).
-/// - `continue-in:<session id>:<chat|terminal>` and `cancel-handover:<session id>`: the ⋯ menu's Continue in Chat / Terminal
-///   (V19) and the way to end its wait.
+/// - `live-chat:<on|off>`: Settings → "Sessions run in" (Chat on, Terminal off; Chat is the default since V19).
+/// - `continue-in:<session id>:<chat|terminal>` and `cancel-handover:<session id>`: the move the policy banner makes (no menu offers
+///   it since D-69) and the way to end its wait.
 /// - `chat-start:<project id|none>[:<first message>]`: a new Claude session in the Chat face, selected, with the choices the draft resolves for the project.
 /// - `chat-send:<session id>:<text>` and `chat-send-after:<session id>:<text>`: ↵ and ⌘↵.
 /// - `chat-interrupt:<session id>`, `chat-stop:<session id>`, `chat-resume:<session id>`.

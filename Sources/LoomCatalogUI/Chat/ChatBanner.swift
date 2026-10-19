@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// What the live chat's banner can say (CHAT-SPEC → Markers and banners, V19). One banner shows above the composer; the
-/// others wait behind a "+N" peek. The order is the spec's: a blocker first (a policy signal, with Continue in Terminal),
+/// others wait behind a "+N" peek. The order is the spec's: a blocker first (a policy signal, with Switch to Terminal),
 /// then notices (drift Loom does not understand). A dismissed banner stays dismissed for the session.
 struct ChatBannerItem: Equatable, Identifiable {
     enum Kind: Equatable {
@@ -35,7 +35,7 @@ enum ChatBanners {
                 message: canContinueInTerminal || owner == .chat
                     ? "Claude says this account's plan may not allow the Chat face."
                     : "Claude says this account's plan may not allow the Chat face. The terminal still runs this session.",
-                actionTitle: canContinueInTerminal ? "Continue in Terminal" : nil))
+                actionTitle: canContinueInTerminal ? "Switch to Terminal" : nil))
         }
         if wireDrift > 0, !wireDriftDismissed {
             items.append(ChatBannerItem(

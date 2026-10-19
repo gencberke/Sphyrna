@@ -16,12 +16,8 @@ struct ComposerEnvironment {
     var sessionCandidates: () -> [ComposerSessionCandidate] = { [] }
     /// The text that mentions a session: its transcript and last answer.
     var sessionMention: (UUID) -> String? = { _ in nil }
-    /// Runs the terminal face (V19 provides it); nil until then, and "Continue in Terminal" is not offered.
-    var continueInTerminal: (() -> Void)?
     /// ⌃O in the field: cycles the stream's view (V19).
     var cycleView: (() -> Void)?
-    /// Why "Continue in Terminal" cannot run now (nil when it can): the `/` menu shows it and disables the row.
-    var continueInTerminalRefusal: () -> String? = { nil }
     /// What the composer says while the session is being moved to the other face; nil when it is not. Sending waits.
     var handoverNotice: () -> String? = { nil }
     /// The file scan for `@` (a test replaces it).

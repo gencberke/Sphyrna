@@ -184,7 +184,7 @@ struct NewSessionTests {
 
     // MARK: Defaults
 
-    @Test func theDefaultsFollowThePickThenLastUsedThenSettingsThenTheCli() {
+    @Test func theDefaultsFollowThePickThenTheFixedModeThenLastUsedThenTheCli() {
         let last = ClaudeLaunchChoices(permissionMode: "acceptEdits", model: "sonnet")
         let settings = NewSessionSettings(permissionMode: "auto", model: "haiku")
         func resolve(_ mode: DraftPick = .inherit, _ model: DraftPick = .inherit, last: ClaudeLaunchChoices? = nil,
@@ -197,20 +197,22 @@ struct NewSessionTests {
         #expect(none.model == ResolvedChoice(value: nil, source: .cliDefault) && none.effort == ResolvedChoice(value: nil, source: .cliDefault))
         #expect(none.choices == ClaudeLaunchChoices(permissionMode: "default") && none.modeTitle == "Ask before edits")
         #expect(none.modelTitle == "Default model" && none.effortTitle == nil)
-        // 3: Loom's settings.
-        #expect(resolve(settings: settings).mode == ResolvedChoice(value: "auto", source: .settings))
-        #expect(resolve(settings: settings).model == ResolvedChoice(value: "haiku", source: .settings))
-        // 2: what was last used in the project beats the settings.
-        let remembered = resolve(last: last, settings: settings)
+        // 3: what was last used in the project, which is what "Last used in the project" in Settings means (no mode stored).
+        let remembered = resolve(last: last, settings: NewSessionSettings(model: "haiku"))
         #expect(remembered.mode == ResolvedChoice(value: "acceptEdits", source: .lastUsed))
-        #expect(remembered.model == ResolvedChoice(value: "sonnet", source: .lastUsed))
+        #expect(remembered.model == ResolvedChoice(value: "sonnet", source: .lastUsed), "the model's last used beats its setting")
         #expect(remembered.modeTitle == "Accept edits" && remembered.modelTitle == "Sonnet")
+        #expect(resolve(settings: settings).model == ResolvedChoice(value: "haiku", source: .settings))
+        // 2: the one mode the user fixed in Settings beats the project's last used mode (D-69).
+        let fixed = resolve(last: last, settings: settings)
+        #expect(fixed.mode == ResolvedChoice(value: "auto", source: .settings))
+        #expect(resolve(settings: settings).mode == ResolvedChoice(value: "auto", source: .settings))
         // 1: a pick beats everything, and choosing the model's own default on purpose is a pick too.
         let picked = resolve(.value("ask"), .value("opus"), last: last, settings: settings)
         #expect(picked.mode == ResolvedChoice(value: "ask", source: .pick) && picked.model == ResolvedChoice(value: "opus", source: .pick))
         let explicit = resolve(.claudeDefault, .claudeDefault, last: last, settings: settings)
         #expect(explicit.model == ResolvedChoice(value: nil, source: .pick), "the model's default is a pick")
-        #expect(explicit.mode == ResolvedChoice(value: "acceptEdits", source: .lastUsed), "the mode has no such pick: an old one reads as nothing")
+        #expect(explicit.mode == ResolvedChoice(value: "auto", source: .settings), "the mode has no such pick: an old one reads as nothing")
         // Each chip follows its own levels.
         let mixed = resolve(.value("ask"), last: last)
         #expect(mixed.mode.source == .pick && mixed.model == ResolvedChoice(value: "sonnet", source: .lastUsed))
@@ -219,13 +221,17 @@ struct NewSessionTests {
     @Test func loomNeverPicksFullAccessByItself() {
         let full = ClaudePermissionMode.fullAccess.rawValue
         let last = ClaudeLaunchChoices(permissionMode: full)
-        // A remembered or configured Full access is skipped: the next level answers.
+        // A remembered Full access is skipped: the next level answers.
         #expect(NewSessionDefaults.resolve(modePick: .inherit, modelPick: .inherit, lastUsed: last,
                                            settings: NewSessionSettings(permissionMode: "auto")).mode
             == ResolvedChoice(value: "auto", source: .settings))
         #expect(NewSessionDefaults.resolve(modePick: .inherit, modelPick: .inherit, lastUsed: last,
-                                           settings: NewSessionSettings(permissionMode: full)).mode
+                                           settings: NewSessionSettings()).mode
             == ResolvedChoice(value: "default", source: .loomDefault))
+        // The mode the user fixed in Settings may be Full access (D-69): the user picked it there.
+        #expect(NewSessionDefaults.resolve(modePick: .inherit, modelPick: .inherit, lastUsed: nil,
+                                           settings: NewSessionSettings(permissionMode: full)).mode
+            == ResolvedChoice(value: full, source: .settings))
         // Only a pick in this draft carries it, and it looks like every other mode.
         let picked = NewSessionDefaults.resolve(modePick: .value(full), modelPick: .inherit, lastUsed: nil, settings: NewSessionSettings())
         #expect(picked.mode == ResolvedChoice(value: full, source: .pick) && picked.modeTitle == "Full access")
@@ -253,7 +259,7 @@ struct NewSessionTests {
         #expect(resolve(last: remembered, askAllowed: false).choices.permissionMode == "default")
     }
 
-    /// The start face for the mode menu is one question (`newSessionStartsInChat`), Settings → "New sessions start in".
+    /// The start face for the mode menu is one question (`newSessionStartsInChat`), Settings → "Sessions run in".
     @Test func theDraftsModeListFollowsTheFaceTheSessionStartsIn() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -398,7 +404,7 @@ struct NewSessionTests {
         #expect(resolved.mode == ResolvedChoice(value: "default", source: .loomDefault))
     }
 
-    @Test func loomsOwnDefaultsAreTheThirdLevelAndSurviveARelaunch() async throws {
+    @Test func loomsOwnDefaultsSurviveARelaunch() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let rig = try await rig(root: root)
@@ -418,6 +424,81 @@ struct NewSessionTests {
         #expect(again.settings == NewSessionSettings(permissionMode: "acceptEdits", model: "haiku"))
         model.setNewSessionDefaults(permissionMode: "--bad", model: nil)
         #expect(model.newSession.settings == NewSessionSettings())
+    }
+
+    /// D-69 point 6: Settings → General → Mode of new sessions. Unset, a project's last used mode answers (today's rule); a
+    /// fixed mode answers instead; Full access is allowed because the user picks it there, but it asks first.
+    @Test func theDefaultModeInSettingsIsLastUsedOrOneFixedModeAndFullAccessAsksFirst() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        let full = ClaudePermissionMode.fullAccess.rawValue
+        model.beginNewSession(projectID: rig.projectID)
+        // Last used in the project (the setting's default): a project that ran in Accept edits starts there again.
+        #expect(model.defaultStartMode == nil)
+        #expect(model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "default", source: .loomDefault))
+        model.setDraftMode(.value("acceptEdits"), projectID: rig.projectID)
+        model.setDraftText("go", projectID: rig.projectID)
+        model.sendDraft(projectID: rig.projectID)
+        #expect(await waitUntil { rig.intents.sends.count == 1 })
+        rig.intents.sends[0].outcome(.started(UUID()))
+        #expect(await waitUntil { !model.newSession.isSending(rig.projectID) })
+        model.showHome()
+        model.beginNewSession(projectID: rig.projectID)
+        #expect(await waitUntil { model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "acceptEdits", source: .lastUsed) })
+
+        // One fixed mode beats the last used one.
+        #expect(model.setDefaultStartMode("auto"))
+        #expect(model.defaultStartMode == "auto")
+        #expect(model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "auto", source: .settings))
+        // A mode the menus do not offer, or one that could pass for an option, is refused.
+        #expect(!model.setDefaultStartMode("plan") && !model.setDefaultStartMode("--bad"))
+        #expect(model.defaultStartMode == "auto")
+
+        // Full access asks first: without the confirmation nothing changes.
+        #expect(!model.setDefaultStartMode(full))
+        #expect(model.defaultStartMode == "auto")
+        #expect(model.setDefaultStartMode(full, confirmedFullAccess: true))
+        // Drafts then start in it without the per-draft confirmation, and it is not a pick kept from earlier.
+        let resolved = model.resolvedStart(for: rig.projectID).mode
+        #expect(resolved == ResolvedChoice(value: full, source: .settings))
+        #expect(!model.draftKeepsFullAccess(projectID: rig.projectID))
+        // Asking once: choosing it again while it is the default asks nothing.
+        #expect(model.setDefaultStartMode(full))
+        model.newSession.flush()
+        let again = NewSessionState()
+        again.attach(store: NewSessionStore(url: rig.storeURL))
+        #expect(again.settings.permissionMode == full, "the choice survives a relaunch")
+
+        // A first send starts in it, and the project still does not remember Full access.
+        model.setDraftText("again", projectID: rig.projectID)
+        model.sendDraft(projectID: rig.projectID)
+        #expect(await waitUntil { rig.intents.sends.count == 2 })
+        #expect(rig.intents.sends[1].launch.choices.permissionMode == full)
+        rig.intents.sends[1].outcome(.started(UUID()))
+        #expect(await waitUntil { !model.newSession.isSending(rig.projectID) })
+        #expect(await waitUntil { model.newSession.lastUsed(for: rig.projectID)?.permissionMode == "acceptEdits" })
+
+        // Back to the project's last used mode.
+        #expect(model.setDefaultStartMode(nil))
+        #expect(model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "acceptEdits", source: .lastUsed))
+    }
+
+    /// Ask is a Chat mode: where the switch says Terminal, an Ask default starts as Ask before edits.
+    @Test func anAskDefaultInSettingsStartsAsAskBeforeEditsWhereTheSwitchSaysTerminal() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        model.beginNewSession(projectID: rig.projectID)
+        #expect(model.setDefaultStartMode("ask"))
+        model.setNewSessionFace(.chat)
+        #expect(model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "ask", source: .settings))
+        model.setNewSessionFace(.terminal)
+        #expect(model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "default", source: .settings))
     }
 
     // MARK: Ticket detection and the duplicate check

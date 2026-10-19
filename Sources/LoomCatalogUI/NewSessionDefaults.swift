@@ -43,8 +43,9 @@ enum DefaultSource: Equatable, Sendable {
     case loomDefault
 }
 
-/// Loom's own start defaults (the third level). Nil: nothing chosen. Settings has no screen for them yet;
-/// the store carries them so that one can write them later.
+/// Loom's own start defaults. Nil: nothing chosen. The mode is Settings → General → "Mode of new sessions" (D-69): nil is
+/// "Last used in the project", a value is one fixed mode, Full access included because the user picked it there. The
+/// model has no screen yet; the store carries it so that one can write it later.
 struct NewSessionSettings: Equatable, Sendable, Codable {
     var permissionMode: String?
     var model: String?
@@ -98,13 +99,13 @@ struct ResolvedStart: Equatable, Sendable {
     var effortTitle: String? { effort.value.map(ComposerBarText.effortLabel) }
 }
 
-/// The order of the defaults of a new session (CHAT-SPEC → Draft session, D-59, D-63): what the user picks in the
-/// draft, then what was last used in that project, then Loom's settings, then the fallback. The mode's fallback is Ask
-/// before edits (the CLI's `default`), passed explicitly, so Loom never depends on the CLI's own setting; the model's and
-/// the effort's is nothing, and the CLI decides. One rule for every entry point, so the result no longer depends on
-/// where the draft was opened (T3 #6508). Loom never picks Full access: only a pick made in this draft can carry it, a
-/// remembered or configured one is skipped and the next level answers. A remembered mode the menus do not offer (plan)
-/// is skipped too.
+/// The order of the defaults of a new session (CHAT-SPEC → Draft session, D-59, D-63, D-69). The mode: what the user picks
+/// in the draft, then the fixed mode of Settings (when the user set one), then what was last used in that project, then
+/// Ask before edits (the CLI's `default`), passed explicitly, so Loom never depends on the CLI's own setting. The model
+/// and the effort: the pick, then what was last used, then Loom's settings; with none the CLI decides. One rule for
+/// every entry point, so the result no longer depends on where the draft was opened (T3 #6508). Loom never picks Full
+/// access by itself: it carries only a pick made in this draft or the mode the user fixed in Settings, and a
+/// remembered one is skipped (the project keeps its earlier mode). A mode the menus do not offer (plan) is skipped.
 enum NewSessionDefaults {
     static let defaultModelTitle = "Default model"
     static let fallbackMode = ClaudePermissionMode.askBeforeEdits.rawValue
@@ -118,9 +119,11 @@ enum NewSessionDefaults {
         }
         var pick = modePick == .claudeDefault ? .inherit : modePick
         if case let .value(value) = pick { pick = .value(startable(value) ?? value) }
-        let mode = resolve(pick: pick, remembered: startable(lastUsed?.permissionMode),
-                           configured: startable(settings.permissionMode),
-                           allowed: { $0 != ClaudePermissionMode.fullAccess.rawValue && ClaudePermissionMode.isOffered($0) })
+        let mode = resolve(pick: pick, levels: [
+            (startable(settings.permissionMode), .settings, { ClaudePermissionMode.isOffered($0) }),
+            (startable(lastUsed?.permissionMode), .lastUsed,
+             { $0 != ClaudePermissionMode.fullAccess.rawValue && ClaudePermissionMode.isOffered($0) }),
+        ])
         return ResolvedStart(
             mode: mode.value == nil ? ResolvedChoice(value: fallbackMode, source: .loomDefault) : mode,
             model: resolve(pick: modelPick, remembered: lastUsed?.model, configured: settings.model, allowed: { _ in true }),
@@ -129,17 +132,22 @@ enum NewSessionDefaults {
     }
 
     private static func resolve(pick: DraftPick, remembered: String?, configured: String?,
-                                allowed: (String) -> Bool) -> ResolvedChoice {
+                                allowed: @escaping (String) -> Bool) -> ResolvedChoice {
+        resolve(pick: pick, levels: [(remembered, .lastUsed, allowed), (configured, .settings, allowed)])
+    }
+
+    /// The pick, else the first level (in the order given) whose value is safe and allowed.
+    private static func resolve(pick: DraftPick, levels: [(value: String?, source: DefaultSource, allowed: (String) -> Bool)])
+        -> ResolvedChoice {
         switch pick {
         case .value(let value) where ClaudeLaunchChoices.isSafeToken(value): return ResolvedChoice(value: value, source: .pick)
         case .claudeDefault: return ResolvedChoice(value: nil, source: .pick)
         case .value, .inherit: break
         }
-        if let remembered, ClaudeLaunchChoices.isSafeToken(remembered), allowed(remembered) {
-            return ResolvedChoice(value: remembered, source: .lastUsed)
-        }
-        if let configured, ClaudeLaunchChoices.isSafeToken(configured), allowed(configured) {
-            return ResolvedChoice(value: configured, source: .settings)
+        for level in levels {
+            if let value = level.value, ClaudeLaunchChoices.isSafeToken(value), level.allowed(value) {
+                return ResolvedChoice(value: value, source: level.source)
+            }
         }
         return ResolvedChoice(value: nil, source: .cliDefault)
     }
