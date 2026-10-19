@@ -9,7 +9,7 @@ import LoomCore
 /// window that is never ordered front (nothing appears on screen), 30 cards are laid out, and
 /// `SidebarRenderProbe` counts the body evaluations of each card and of its time label.
 @MainActor
-@Suite(.serialized, .timeLimit(.minutes(2)))
+@Suite(.serialized, .timeLimit(.minutes(2)), .renderProbe)
 struct SidebarRenderTests {
     typealias Clock = DailyUsePolishTests.ClockBox
     typealias Gate = DailyUsePolishTests.TickGate
@@ -58,6 +58,7 @@ struct SidebarRenderTests {
         await model.stopAndWait()
         await model.settle()
 
+        #expect(RenderProbeExclusive.isHeld, "a test that watches the probe holds the probe lock (.renderProbe)")
         SidebarRenderProbe.watch(ids)
         let hosting = NSHostingController(rootView: SidebarView(model: model))
         hosting.sizingOptions = []

@@ -521,8 +521,51 @@ struct ChatFirstTests {
         #expect(await waitUntil { !model.newSession.isSending(nil) })
         #expect(model.destination == .draft(projectID: nil), "no session was shown")
         #expect(model.newSession.draft(for: nil)?.text == "do the thing")
+        // The failed start's card stays in the catalog (as after a terminal start that failed) and the sidebar shows it once
+        // the lists are read again; how soon that happens is timing. Read its row first, so the check below sees the same
+        // state on every run: no session of the window keeps a Chat driver for a start that never answered.
+        let cards = try await fixture.rig.runtime.catalog.sessions().map(\.session.id)
+        for card in cards { #expect(await waitUntil { model.rowModels[card] != nil }) }
         let ids = model.chatSessions.map { host in model.rowModels.keys.filter { host.existingDriver(for: $0) != nil } } ?? []
         #expect(ids.isEmpty)
+        for card in cards { #expect(model.chatSessions?.existingDriver(for: card) == nil) }
+        await fixture.cleanup()
+    }
+
+    /// Holds a Chat start right after Ready, before its first message goes out, until the test lets it go.
+    @MainActor private final class StartGate {
+        private var continuation: CheckedContinuation<Void, Never>?
+        private(set) var reached = false
+
+        func hold() async {
+            reached = true
+            await withCheckedContinuation { continuation = $0 }
+        }
+
+        func release() {
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
+    /// A start is over once the draft was told (Ready), not when its first message has gone out: the next draft of the
+    /// project can start while the first message is still on its way. Before, the project stayed "starting" until the
+    /// first message was sent, and a send in that moment was dropped without a word.
+    @Test func aProjectCanStartAgainOnceTheLastStartWasToldEvenWhileItsFirstMessageIsOnItsWay() async throws {
+        let fixture = try await makeFixture()
+        let model = fixture.model
+        let gate = StartGate()
+        fixture.model.chatSessions?.afterReadyForTesting = { await gate.hold() }
+        model.showDraft(projectID: nil)
+        model.setDraftText("first", projectID: nil)
+        model.sendDraft(projectID: nil)
+        #expect(await waitUntil { gate.reached })
+        #expect(await waitUntil { model.destination?.sessionID != nil }, "the session is shown at Ready")
+        #expect(!model.isStarting(.claude, projectID: nil))
+        model.showDraft(projectID: nil)
+        model.setDraftText("second", projectID: nil)
+        #expect(model.canSendDraft(projectID: nil), "the next draft may start")
+        gate.release()
         await fixture.cleanup()
     }
 

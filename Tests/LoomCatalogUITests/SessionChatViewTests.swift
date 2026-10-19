@@ -171,13 +171,14 @@ extension ChatHosted {
             #expect(rig.model.palette.transcriptsDirectory == nil, "the palette follows the same value")
         }
 
-        @Test func theFallbackDrawsOneResumeNotTwo() async throws {
+        @Test(.renderProbe) func theFallbackDrawsOneResumeNotTwo() async throws {
             ChatSessionMemoryStore.removeAll()
             let rig = try await rig()
             defer { rig.model.stop(); try? FileManager.default.removeItem(at: rig.root) }
             // No transcript and no kept screen: the record is the fallback, below the chat's own notice.
             let (window, hosting) = try hosted(rig)
             defer { window.contentView = nil }
+            #expect(RenderProbeExclusive.isHeld, "a test that watches the probe holds the probe lock (.renderProbe)")
             SidebarRenderProbe.watch([rig.sessionID])
             defer { SidebarRenderProbe.watch([]) }
             _ = await waitUntil { hosting.layoutSubtreeIfNeeded(); return (SidebarRenderProbe.onScreen["resume"] ?? 0) > 0 }

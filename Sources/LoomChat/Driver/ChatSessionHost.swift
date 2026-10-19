@@ -151,16 +151,24 @@ public final class ChatSessionHost {
 
     /// Starts a new Claude session in the Chat face from a draft (workspace, choices, first message).
     /// `onReady` runs once Claude answered `initialize` (Ready), before the first message goes out: the caller tells the
-    /// draft and shows the session then. A start that fails before that throws and keeps nothing; a first message that
-    /// fails afterwards goes to the session's own draft.
+    /// draft and shows the session then. A start that fails before that throws; its caller then lets the host `forget`
+    /// the driver (the card stays in the catalog, as after a terminal start that failed). A first message that fails
+    /// afterwards goes to the session's own draft.
     @discardableResult
     public func startNewSession(projectID: UUID?, sessionID: UUID = UUID(), draft: NewSessionLaunch? = nil,
                                 onReady: (@Sendable () async -> Void)? = nil)
         async throws -> ChatSessionDriver {
         let driver = driver(for: sessionID)
-        try await driver.startNew(projectID: projectID, draft: draft, onReady: onReady)
+        let hold = afterReadyForTesting
+        try await driver.startNew(projectID: projectID, draft: draft, onReady: {
+            await onReady?()
+            await hold?()
+        })
         return driver
     }
+
+    /// Test seam: runs right after `onReady` and before the draft's first message goes out.
+    var afterReadyForTesting: (@Sendable () async -> Void)?
 
     /// Terminal → Chat: stops the terminal run if one lives (the runtime's verified stop), then resumes the session in
     /// the Chat face. `beforeResume` runs after the stop, right before the Chat run starts: false ends the move there
@@ -179,8 +187,8 @@ public final class ChatSessionHost {
         return driver
     }
 
-    /// The session was deleted through Loom: its driver goes, and its queue and draft files with it (they are what the
-    /// user wrote).
+    /// The session was deleted through Loom, or its start failed before Ready: its driver goes, and its queue and draft
+    /// files with it (they are what the user wrote).
     public func forget(sessionID: UUID) {
         if let driver = drivers[sessionID] {
             let id = ObjectIdentifier(driver)

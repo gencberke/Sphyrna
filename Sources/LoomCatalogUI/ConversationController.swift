@@ -262,21 +262,29 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
             return
         }
         let sessionID = UUID()
+        // The project's start is over once the draft was told, or when the start failed: whatever the first message
+        // does after Ready belongs to the session's own draft, and the next draft of the project may start meanwhile.
+        let release = OneShot { [weak model] in model?.endStart(key) }
         let shot = OneShot { [weak model] in
             guard let model else { return }
             model.cardCreated(for: key)
             outcome(.started(sessionID))
             if focus == .session { model.showStarted(sessionID) }
+            release.fire()
         }
         Task {
-            defer { model.endStart(key) }
+            defer { release.fire() }
             do {
                 try await host.startNewSession(projectID: projectID, sessionID: sessionID, draft: launch,
                                                onReady: { await MainActor.run { shot.fire() } })
                 shot.fire()
             } catch {
                 // Cancelled by a Stop while starting: not a failure to report.
-                if (error as? ChatDriverError) != .stopping { report(error, "Claude could not be started") }
+                let stopped = (error as? ChatDriverError) == .stopping
+                // A start that failed before Ready keeps no driver (its card stays, as after a terminal start that
+                // failed): nothing shows a live Chat for a session that never answered.
+                if !shot.fired, !stopped { host.forget(sessionID: sessionID) }
+                if !stopped { report(error, "Claude could not be started") }
                 if !shot.fired { outcome(.failed) }
             }
         }
