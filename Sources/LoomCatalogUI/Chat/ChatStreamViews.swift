@@ -10,6 +10,14 @@ final class ChatTableView: NSTableView {
     override var acceptsFirstResponder: Bool { true }
     override var needsPanelToBecomeKey: Bool { false }
 
+    /// Rows reloaded through the table since it was made (the budget tests): a row that is on screen is updated in place.
+    private(set) var rowReloads = 0
+
+    override func reloadData(forRowIndexes rowIndexes: IndexSet, columnIndexes: IndexSet) {
+        rowReloads += 1
+        super.reloadData(forRowIndexes: rowIndexes, columnIndexes: columnIndexes)
+    }
+
     /// The text a key press types, when it is printable: no control character, no function or arrow key (those carry
     /// private-use characters), not a space (Space scrolls a table) and nothing while an input method composes.
     static func printableText(of event: NSEvent) -> String? {

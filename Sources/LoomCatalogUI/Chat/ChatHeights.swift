@@ -128,8 +128,10 @@ final class ChatRowMeasurer {
     func height(of row: ChatRow, width: CGFloat) -> CGFloat {
         measurements += 1
         ChatRenderProbe.measured(row.id)
+        let began = ChatRenderProbe.watching ? ContinuousClock.now : nil
         host.rootView = ChatRowView(row: row, context: context, measuring: true)
         let size = host.sizeThatFits(in: CGSize(width: width, height: 100_000))
+        if let began { ChatRenderProbe.measuredFor(row.id, ContinuousClock.now - began) }
         return max(1, ceil(size.height))
     }
 }
@@ -143,6 +145,12 @@ enum ChatRenderProbe {
     private(set) static var measuredRows: [String: Int] = [:]
     /// Stream controllers made since `watch()`: a screen that builds one per render shows here.
     private(set) static var controllersCreated = 0
+    /// Evaluations of the prose row's body, markdown parses (`ChatContent.blocks`: calls and characters handed to the parser)
+    /// and inline parses (cache misses of `ChatContent.inline`) since `watch()`: what a streaming answer costs per delta.
+    private(set) static var proseBodies = 0
+    private(set) static var markdownParses = 0
+    private(set) static var markdownCharacters = 0
+    private(set) static var inlineParses = 0
 
     static func watch() {
         watching = true
@@ -158,6 +166,33 @@ enum ChatRenderProbe {
         configured = [:]
         measuredRows = [:]
         controllersCreated = 0
+        proseBodies = 0
+        markdownParses = 0
+        markdownCharacters = 0
+        inlineParses = 0
+        measureTime = [:]
+    }
+
+    private(set) static var measureTime: [String: Double] = [:]
+
+    static func measuredFor(_ id: String, _ duration: Duration) {
+        measureTime[id, default: 0] += Double(duration.components.seconds) * 1000 + Double(duration.components.attoseconds) / 1e15
+    }
+
+    static func proseBody() {
+        guard watching else { return }
+        proseBodies += 1
+    }
+
+    static func markdownParsed(characters: Int) {
+        guard watching else { return }
+        markdownParses += 1
+        markdownCharacters += characters
+    }
+
+    static func inlineParsed() {
+        guard watching else { return }
+        inlineParses += 1
     }
 
     static func controllerCreated() {

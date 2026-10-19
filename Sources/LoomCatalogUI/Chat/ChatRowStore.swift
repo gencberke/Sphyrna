@@ -87,6 +87,8 @@ struct ChatRowStore {
     private var inputs: Inputs?
     private var firstEntryID: String?
     private var entryCount = 0
+    /// Turns whose rows were derived from their entries since the store was made: what a change cost, as a count (tests).
+    private(set) var turnsDerived = 0
 
     /// Every row, in order (tests; the stream keeps its own list).
     var rows: [ChatRow] { head + segments.flatMap(\.rows) }
@@ -150,6 +152,7 @@ struct ChatRowStore {
 
         let newest = now.newest.id
         func build(_ turnID: String, _ range: Range<Int>) -> [ChatRow] {
+            turnsDerived += 1
             let turn = turnID.isEmpty ? nil : input.model.turns.last { $0.id == turnID }
             return ChatRowBuilder.rows(for: entries[range], turn: turn, isNewest: turnID == newest, input: input)
         }
@@ -230,6 +233,7 @@ struct ChatRowStore {
                 rows = segments[index].rows
                 source = index
             } else {
+                turnsDerived += 1
                 rows = ChatRowBuilder.rows(for: entries[run.range], turn: turns[run.turnID], isNewest: run.turnID == newest, input: input)
             }
             made.append(Segment(turnID: run.turnID, entryStart: run.range.lowerBound, entryCount: run.range.count, rowStart: next, rows: rows))

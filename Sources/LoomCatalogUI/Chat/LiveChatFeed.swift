@@ -113,6 +113,8 @@ final class LiveChatFeed: ChatDriverAttachment {
     }
 
     private func wire(_ presentation: ChatPresentation) {
+        // Streaming text is drawn at most once per interval: a delta every 20 ms must not cost a layout every 20 ms.
+        presentation.rowsInterval = ChatPresentation.streamingRowsInterval
         // A presentation that missed a change rebuilds from the joined model (never re-entered from inside its `apply`).
         presentation.onGap = { [weak self, weak presentation] in
             Task { @MainActor in

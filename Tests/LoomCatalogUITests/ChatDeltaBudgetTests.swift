@@ -13,20 +13,18 @@ extension ChatHosted {
     @MainActor
     @Suite
     struct ChatDeltaBudgetTests {
-        /// Ceilings for one delta on a stream of about 21,000 rows, in milliseconds, for a debug build. A delta arrives every
-        /// 50 ms while a terminal session's transcript grows (`TranscriptGrowthFeed`), and every 50 ms from the chat driver, so
-        /// a delta may use a fraction of that frame. Measured on an M2 in debug: a typical delta 3 to 6 ms (the rows are
-        /// derived in 0.2 ms; the rest is AppKit updating the table), the delta that starts a turn about 20 ms; the full rebuild
-        /// this replaced took 241 ms. The ceilings are about three times those numbers, because other builds run on the same
-        /// Mac, and well under the 241 ms. A release build is several times faster and prints its own numbers.
-        static let typicalDeltaCeilingMs = 15.0
-        /// The 90th percentile of the deltas, and the slowest one (the delta that starts a turn, and anything the Mac did meanwhile).
+        /// What a delta costs on a stream of about 21,000 rows is stated in counts, which are the same in every build and on
+        /// every Mac: the turns whose rows were derived, the entries a change carried and the rows drawn again. A clock cannot
+        /// state it (a loaded Mac crosses any ceiling, and this test failed in a full run that way), so the times below are
+        /// printed as `BUDGET` lines for the record and nothing asserts them. Measured on an M2 in debug: a typical delta 3 to 6 ms
+        /// (the rows are derived in 0.2 ms; the rest is AppKit updating the table), the delta that starts a turn about 20 ms; the
+        /// full rebuild this replaced took 241 ms. A release build is several times faster.
+        /// A delta touches the newest turn, the one before it, and a turn that starts: derivation may not go past this.
+        static let turnsDerivedPerDeltaCeiling = 3
+        /// The one time ceiling left, for `ChatBudgetTests` (a delta on a stream with a clock: a loaded Mac may cross it).
         static let worstDeltaCeilingMs = 60.0
-        static let slowestDeltaCeilingMs = 250.0
-        /// The cost per delta may not grow with the transcript: at 10 times the rows, at most this many times the cost (plus
-        /// `ratioFloorMs` for timer noise). A rebuild of every row grows 10 times, which this catches in any build.
-        static let ratioCeiling = 3.0
-        static let ratioFloorMs = 2.0
+        /// The entries one change of this test's script carries (a prompt and a tool, a result, a few words).
+        static let entriesPerChangeCeiling = 4
 
         struct DeltaRun {
             var rows: Int
@@ -39,6 +37,9 @@ extension ChatHosted {
             var lensTimes: [Double]
             /// Per delta: applying the change to the model, deriving the rows, updating the stream.
             var parts: [ChatPresentation.Timings]
+            /// Per delta: turns whose rows were derived, and entries the change carried (appended and updated).
+            var derived: [Int]
+            var carried: [Int]
         }
 
         private static func milliseconds(_ since: ContinuousClock.Instant) -> Double {
@@ -88,6 +89,8 @@ extension ChatHosted {
             var times: [Double] = []
             var lensTimes: [Double] = []
             var parts: [ChatPresentation.Timings] = []
+            var derived: [Int] = []
+            var carried: [Int] = []
             var tool = 0
             for delta in 0..<deltas {
                 var lines: [String] = []
@@ -110,8 +113,11 @@ extension ChatHosted {
                 let growth = await lens.readGrowthChange()
                 lensTimes.append(milliseconds(read))
                 let start = ContinuousClock.now
+                let derivedBefore = model.presentation.rowTurnsDerived
                 model.presentation.apply(growth)
                 times.append(milliseconds(start))
+                derived.append(model.presentation.rowTurnsDerived - derivedBefore)
+                carried.append(growth.appended.count + growth.updated.count)
                 parts.append(model.presentation.lastTimings)
                 for _ in 0..<3 { model.controller.scrollView.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(10)) }
             }
@@ -124,7 +130,7 @@ extension ChatHosted {
             let sorted = times.sorted()
             // The first delta starts a turn (the one before it settles); the rest are the typical ones.
             let steady = Array(times.dropFirst()).sorted()
-            return DeltaRun(rows: rows, typical: steady[steady.count / 2], worst: sorted.last ?? 0, times: times, redrawn: redrawn, oldRowsKept: oldRowsKept, lensTimes: lensTimes, parts: parts)
+            return DeltaRun(rows: rows, typical: steady[steady.count / 2], worst: sorted.last ?? 0, times: times, redrawn: redrawn, oldRowsKept: oldRowsKept, lensTimes: lensTimes, parts: parts, derived: derived, carried: carried)
         }
 
         @Test func aDeltaCostsTheNewestTurnNotTheTranscript() async throws {
@@ -141,20 +147,18 @@ extension ChatHosted {
             func median(_ values: [Double]) -> Double { values.sorted()[values.count / 2] }
             print(String(format: "BUDGET delta parts at %d rows (median over deltas): model apply=%.3f ms, derive rows=%.3f ms, update stream=%.3f ms",
                          large.rows, median(large.parts.map(\.model)), median(large.parts.map(\.derive)), median(large.parts.map(\.stream))))
-            #expect(median(large.parts.map(\.derive)) < Self.storeDeltaCeilingMs, "deriving the rows of a delta")
-            #expect(median(large.parts.map(\.model)) < Self.storeDeltaCeilingMs, "applying a change to the model")
             print(String(format: "BUDGET delta lens read (off the main thread): %d rows median=%.2f ms; %d rows median=%.2f ms",
                          small.rows, small.lensTimes.sorted()[small.lensTimes.count / 2], large.rows, large.lensTimes.sorted()[large.lensTimes.count / 2]))
+            print("BUDGET delta counts: turns derived per delta \(small.derived.max() ?? 0) at \(small.rows) rows, \(large.derived.max() ?? 0) at \(large.rows) rows; entries carried per change at most \(large.carried.max() ?? 0)")
             #expect(large.rows >= 21_000, "rows loaded: \(large.rows)")
             #expect(large.oldRowsKept, "the rows of the turns a delta did not touch are the rows they were")
-            #expect(large.typical < Self.typicalDeltaCeilingMs, "typical delta on \(large.rows) rows: \(large.typical) ms")
-            let p90 = large.times.sorted()[Int(Double(large.times.count) * 0.9)]
-            #expect(p90 < Self.worstDeltaCeilingMs, "90th percentile of the deltas on \(large.rows) rows: \(p90) ms")
-            #expect(large.worst < Self.slowestDeltaCeilingMs, "slowest delta on \(large.rows) rows: \(large.worst) ms")
-            #expect(large.typical < small.typical * Self.ratioCeiling + Self.ratioFloorMs,
-                    "\(small.rows) rows: \(small.typical) ms, \(large.rows) rows: \(large.typical) ms")
+            // The turns a delta derives do not depend on the transcript: the same at 700 turns and at 7,000.
+            #expect((large.derived.max() ?? 0) <= Self.turnsDerivedPerDeltaCeiling, "turns derived per delta: \(large.derived)")
+            #expect(large.derived == small.derived, "turns derived per delta, \(small.rows) rows: \(small.derived), \(large.rows) rows: \(large.derived)")
+            #expect((large.carried.max() ?? 0) <= Self.entriesPerChangeCeiling, "entries carried per change: \(large.carried)")
             // Only rows of the newest turn are drawn again: a few per delta, never the transcript.
             #expect(large.redrawn <= 30 * 8, "rows drawn again: \(large.redrawn)")
+            #expect(large.redrawn <= small.redrawn + 8, "rows drawn again, \(small.rows) rows: \(small.redrawn), \(large.rows) rows: \(large.redrawn)")
         }
 
         // MARK: A slow main thread, a covered window
@@ -279,11 +283,8 @@ extension ChatHosted {
 
         /// The rows' share of a delta, without the table: `ChatRowStore.update` after one growth of the newest turn.
         /// Deriving 21,000 rows from scratch takes 70 to 150 ms in a debug build (it grows with the rows); a delta takes
-        /// about 0.1 ms at any size. The ceiling leaves room for a busy Mac and is still far under the full derivation.
-        static let storeDeltaCeilingMs = 2.0
-        static let storeRatioFloorMs = 0.5
-
-        private static func storeDeltas(turns: Int, deltas: Int) -> (rows: Int, full: Double, times: [Double]) {
+        /// about 0.1 ms at any size. The test states it as the turns derived per delta (a count), not as a time.
+        private static func storeDeltas(turns: Int, deltas: Int) -> (rows: Int, full: Double, times: [Double], derived: [Int]) {
             var lines: [String] = []
             for index in 0..<turns {
                 lines += ChatFixture.turn(index, tools: [ChatFixture.bash("make \(index)")], answer: "Answer \(index).", start: index % 3000)
@@ -298,6 +299,7 @@ extension ChatHosted {
             _ = store.update(input(0), cause: .replaced)
             let full = milliseconds(begin)
             var times: [Double] = []
+            var derived: [Int] = []
             var tool = 0
             for delta in 0..<deltas {
                 var added: [String] = []
@@ -322,10 +324,12 @@ extension ChatHosted {
                 }
                 let snapshot = input(delta + 1)
                 let start = ContinuousClock.now
+                let derivedBefore = store.turnsDerived
                 _ = store.update(snapshot, cause: .growth(change))
                 times.append(milliseconds(start))
+                derived.append(store.turnsDerived - derivedBefore)
             }
-            return (store.rows.count, full, times)
+            return (store.rows.count, full, times, derived)
         }
 
         @Test func derivingTheRowsOfADeltaCostsTheNewestTurnNotTheTranscript() {
@@ -335,13 +339,10 @@ extension ChatHosted {
             print(String(format: "BUDGET derive %d rows: full=%.1f ms, delta median=%.3f ms max=%.3f ms | %d rows: full=%.1f ms, delta median=%.3f ms max=%.3f ms",
                          small.rows, small.full, median(small.times), small.times.max() ?? 0,
                          large.rows, large.full, median(large.times), large.times.max() ?? 0))
+            print("BUDGET derive counts: turns derived per delta \(small.derived.max() ?? 0) at \(small.rows) rows, \(large.derived.max() ?? 0) at \(large.rows) rows")
             #expect(large.rows >= 21_000)
-            #expect(median(large.times) < Self.storeDeltaCeilingMs)
-            let p90 = large.times.sorted()[Int(Double(large.times.count) * 0.9)]
-            #expect(p90 < Self.storeDeltaCeilingMs * 3, "90th percentile: \(p90) ms")
-            #expect((large.times.max() ?? 0) < Self.storeDeltaCeilingMs * 25, "slowest: \(large.times.max() ?? 0) ms")
-            #expect(median(large.times) < median(small.times) * Self.ratioCeiling + Self.storeRatioFloorMs,
-                    "\(small.rows) rows: \(median(small.times)) ms, \(large.rows) rows: \(median(large.times)) ms")
+            #expect((large.derived.max() ?? 0) <= Self.turnsDerivedPerDeltaCeiling, "turns derived per delta: \(large.derived)")
+            #expect(large.derived == small.derived, "\(small.rows) rows: \(small.derived), \(large.rows) rows: \(large.derived)")
         }
 
         // MARK: Cold open

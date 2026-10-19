@@ -11,6 +11,7 @@ enum ChatContent {
     static func inline(_ source: String) -> AttributedString {
         let key = source as NSString
         if let cached = inlineCache.object(forKey: key) { return cached.value }
+        ChatRenderProbe.inlineParsed()
         var options = AttributedString.MarkdownParsingOptions()
         options.interpretedSyntax = .inlineOnlyPreservingWhitespace
         options.failurePolicy = .returnPartiallyParsedIfPossible
@@ -71,7 +72,7 @@ enum ChatContent {
         if !isStreaming {
             let key = "\(id)#\(text.hashValue)#\(text.utf8.count)" as NSString
             if let cached = blockCache.object(forKey: key) { return cached.value }
-            let parsed = ChatMarkdown.parse(text)
+            let parsed = parse(text)
             blockCache.setObject(Blocks(parsed), forKey: key, cost: text.utf8.count * 4)
             return parsed
         }
@@ -84,11 +85,16 @@ enum ChatContent {
             if let cached = blockCache.object(forKey: key) {
                 blocks = cached.value
             } else {
-                blocks = ChatMarkdown.parse(head)
+                blocks = parse(head)
                 blockCache.setObject(Blocks(blocks), forKey: key, cost: head.utf8.count * 4)
             }
         }
-        return blocks + ChatMarkdown.parse(tail)
+        return blocks + parse(tail)
+    }
+
+    private static func parse(_ text: String) -> [MarkdownBlock] {
+        ChatRenderProbe.markdownParsed(characters: text.utf8.count)
+        return ChatMarkdown.parse(text)
     }
 
     /// The index after the last paragraph break that is outside a code fence: everything before it is complete.

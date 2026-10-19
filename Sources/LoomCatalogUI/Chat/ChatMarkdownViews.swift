@@ -11,6 +11,7 @@ struct ChatProseView: View {
     @State private var hovering = false
 
     var body: some View {
+        let _ = ChatRenderProbe.proseBody()
         if case let .assistantText(text) = entry.body {
             VStack(alignment: .leading, spacing: 4) {
                 ChatMarkdownView(blocks: ChatContent.blocks(id: entry.id, text: text.text, isStreaming: text.isStreaming),

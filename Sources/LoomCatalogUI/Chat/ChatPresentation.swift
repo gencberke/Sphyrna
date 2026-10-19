@@ -47,6 +47,22 @@ final class ChatPresentation {
     @ObservationIgnored private(set) var lastTimings = Timings()
     /// The attached stream has not been given rows yet: the first rows open where the reader was.
     @ObservationIgnored private var needsInitial = false
+    /// Streaming text is shown at most once per this interval (nil: every change at once, as the tests and a transcript
+    /// follower want it). A change that only grew the text of a block that is still streaming derives its rows at the first
+    /// change after a quiet interval, and then once per interval with everything that came meanwhile; any other change
+    /// (a new row, a tool, the end of the block, the reader's state) derives the rows at once and takes the text with it.
+    @ObservationIgnored var rowsInterval: Duration?
+    /// The interval a live chat shows streaming text at: well inside the 100 ms a reader takes for "now".
+    static let streamingRowsInterval = Duration.milliseconds(80)
+    /// The model grew by streaming text that the stream does not show yet, and what grew (for `ChatRowStore`).
+    @ObservationIgnored private var pendingDelta: ModelDelta?
+    @ObservationIgnored private var lastRowsAt: ContinuousClock.Instant?
+    @ObservationIgnored private var flushTask: Task<Void, Never>?
+    /// Changes whose rows waited for the interval so far (tests and evidence).
+    @ObservationIgnored private(set) var deferredChanges = 0
+
+    /// Turns whose rows `ChatRowStore` derived since the presentation was made (tests: a change costs the turns it touched).
+    var rowTurnsDerived: Int { store.turnsDerived }
 
     struct Timings: Equatable {
         var model = 0.0
@@ -100,6 +116,7 @@ final class ChatPresentation {
             // one: a later number means growth that never reached us is in it, and the turns it touched have to be built again.
             let reusesRows = change.kind == .older && isLoaded && change.sequence == lastSequence + 1
             let first = !isLoaded
+            dropPendingRows()
             model = whole
             isLoaded = true
             lastSequence = change.sequence
@@ -116,9 +133,66 @@ final class ChatPresentation {
             hasOlder = change.hasOlder
             if !activityFromSource { lastActivity = Date() }
             pendingModelMs = Self.milliseconds(since: began)
+            if defers(change) { return true }
             rebuild(cause: .growth(change.delta), fresh: Set(change.delta.inserted))
         }
         return true
+    }
+
+    /// Whether the rows of `change` wait for the interval: the stream is attached and shows rows, the change only grew the
+    /// text of blocks that are still streaming, and the last rows were derived less than an interval ago. The wait is
+    /// recorded (`pendingDelta`) and ends in `flushRows`.
+    private func defers(_ change: ModelChange) -> Bool {
+        guard let interval = rowsInterval, controller != nil, let last = lastRowsAt, Self.isStreamingTextOnly(change) else { return false }
+        let due = last + interval
+        guard ContinuousClock.now < due else { return false }
+        pendingDelta = Self.merged(pendingDelta ?? ModelDelta(), change.delta)
+        deferredChanges += 1
+        if flushTask == nil {
+            flushTask = Task { [weak self] in
+                try? await Task.sleep(until: due, clock: .continuous)
+                guard let self, !Task.isCancelled else { return }
+                flushTask = nil
+                flushRows()
+            }
+        }
+        return true
+    }
+
+    private static func merged(_ first: ModelDelta, _ second: ModelDelta) -> ModelDelta {
+        var out = first
+        out.inserted += second.inserted
+        for id in second.updated where !out.inserted.contains(id) && !out.updated.contains(id) { out.updated.append(id) }
+        out.turnsChanged = out.turnsChanged || second.turnsChanged
+        return out
+    }
+
+    /// The change grew the text of streaming blocks and nothing else.
+    private static func isStreamingTextOnly(_ change: ModelChange) -> Bool {
+        guard change.kind == .growth, change.appended.isEmpty, change.delta.inserted.isEmpty, !change.delta.turnsChanged,
+              !change.activityChanged, !change.updated.isEmpty else { return false }
+        return change.updated.allSatisfy { entry in
+            switch entry.body {
+            case let .assistantText(text): text.isStreaming
+            case let .thinking(thinking): thinking.isStreaming
+            default: false
+            }
+        }
+    }
+
+    /// The rows of the text that grew while the interval ran (the timer calls it; tests call it in place of the clock).
+    func flushRows() {
+        guard pendingDelta != nil else { return }
+        rebuild()
+    }
+
+    /// Text grew that the stream does not show yet.
+    var hasPendingRows: Bool { pendingDelta != nil }
+
+    private func dropPendingRows() {
+        pendingDelta = nil
+        flushTask?.cancel()
+        flushTask = nil
     }
 
     // MARK: Stream
@@ -134,6 +208,9 @@ final class ChatPresentation {
     func detach() {
         saveMemory()
         controller = nil
+        // The next attach derives every row from the model, with the text that grew meanwhile.
+        dropPendingRows()
+        lastRowsAt = nil
     }
 
     // MARK: Reader and session state
@@ -220,10 +297,24 @@ final class ChatPresentation {
     /// only the reader's state did. Nothing is derived while no stream is attached.
     private func rebuild(cause: ChatRowStore.Cause = .state, fresh: Set<String> = []) {
         let began = ContinuousClock.now
+        var cause = cause
+        // Text that grew while the interval ran is part of this rebuild, whatever asked for it.
+        if let pending = pendingDelta {
+            switch cause {
+            case .state:
+                cause = .growth(pending)
+            case let .growth(delta):
+                cause = .growth(Self.merged(delta, pending))
+            case .older, .replaced:
+                break
+            }
+        }
+        dropPendingRows()
         let input = buildInput()
         unknownRecordCount = model.unknownRecordCount
         guard let controller else { return }
         rebuilds += 1
+        lastRowsAt = began
         let change = store.update(input, cause: cause)
         let derived = ContinuousClock.now
         switch change {

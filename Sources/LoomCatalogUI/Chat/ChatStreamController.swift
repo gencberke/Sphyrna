@@ -242,10 +242,7 @@ final class ChatStreamController: NSObject {
                 table.removeRows(at: plan.removed, withAnimation: [])
                 table.insertRows(at: plan.inserted, withAnimation: [])
                 table.endUpdates()
-                if !plan.updated.isEmpty {
-                    table.reloadData(forRowIndexes: plan.updated, columnIndexes: IndexSet(integer: 0))
-                    table.noteHeightOfRows(withIndexesChanged: plan.updated)
-                }
+                if !plan.updated.isEmpty { refresh(plan.updated) }
             }
         }
 
@@ -258,6 +255,31 @@ final class ChatStreamController: NSObject {
         syncClock()
         refreshVisibleHeights()
         checkOlder()
+    }
+
+    /// Brings the rows that stayed and changed up to date. A row whose cell is on screen is configured where it stands and
+    /// measured again; the table hears of its height only when that changed. Reloading it instead makes the table walk the
+    /// whole view tree of the cell to rebuild its key view loop, which cost more than the row's own layout while a message
+    /// streamed (measured with `sample`: 57 % of a delta). A row without a cell has nothing to configure and is reloaded.
+    private func refresh(_ indexes: IndexSet) {
+        var reload = IndexSet()
+        var taller = IndexSet()
+        for index in indexes where rows.indices.contains(index) {
+            let row = rows[index]
+            guard let cell = table.view(atColumn: 0, row: index, makeIfNecessary: false) as? ChatRowCell else {
+                reload.insert(index)
+                continue
+            }
+            cell.configure(row, context: context, fadeIn: false)
+            let height = measurer.height(of: row, width: width)
+            heights.store(row.id, width: width, height: height)
+            if abs(height - table.rect(ofRow: index).height) > 0.5 { taller.insert(index) }
+        }
+        if !reload.isEmpty {
+            table.reloadData(forRowIndexes: reload, columnIndexes: IndexSet(integer: 0))
+            taller.formUnion(reload)
+        }
+        if !taller.isEmpty { table.noteHeightOfRows(withIndexesChanged: taller) }
     }
 
     struct Plan {
