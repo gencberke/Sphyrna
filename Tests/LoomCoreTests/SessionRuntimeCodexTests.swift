@@ -45,7 +45,7 @@ private final class RuntimeCodexLateTurnGate: @unchecked Sendable {
 
 /// CP5 C for Codex: the production runtime, the per-conversation app-server managers, the
 /// coordinator and adapters, against a fixture app-server and TUI.
-@Suite(.serialized, .timeLimit(.minutes(2)))
+@Suite(.serialized, .processHeavy, .timeLimit(.minutes(2)))
 struct SessionRuntimeCodexTests {
     typealias Screen = SessionRuntimeTests.Screen
 
@@ -122,18 +122,35 @@ struct SessionRuntimeCodexTests {
         defer { context.cleanup() }
         let (launch, screen) = try await Self.launchCodex(context)
         #expect(await SessionRuntimeTests.waitUntil { joinLog(context).filter { $0.hasPrefix("join ") }.count == 1 })
-        try await screen.send("approve first")
+        // A retry needs a thread status that changed to active after the last attempt. How many of one turn's
+        // statuses fall into an attempt that is still under way depends on timing, so "blank-always" is fed turns
+        // (each one idle, then active) until the bound is reached, and not one prompt that must give exactly three.
+        let workDone = "CODEX-TURN-DONE completed echo work 5"
+        func turnsDone() -> Int { screen.snapshot.components(separatedBy: workDone).count - 1 }
+        func joins() -> Int { joinLog(context).filter { $0.hasPrefix("join ") }.count }
+        try await screen.send(mode == "blank-always" ? "work 5" : "approve first")
         if mode == "blank" {
             #expect(await SessionRuntimeTests.waitUntil {
                 await context.events.snapshot().sessions[launch.sessionID]?.userRequests.count == 1
             })
         } else if mode == "blank-always" {
-            #expect(await SessionRuntimeTests.waitUntil {
+            var turns = 1
+            while turns < 8 {
+                #expect(await SessionRuntimeTests.waitUntil(20) { turnsDone() >= turns })
+                if joins() >= 3 { break }
+                try await screen.send("work 5")
+                turns += 1
+            }
+            #expect(await SessionRuntimeTests.waitUntil(20) {
                 await context.events.snapshot().sessions[launch.sessionID]?.issue?.contains("subscription failed (rpc, RPC -32600)") == true
             })
-            #expect(joinLog(context).filter { $0.hasPrefix("join ") }.count == 3)
+            #expect(joins() == 3)
+            // At the bound: another turn does not join again.
+            try await screen.send("work 5")
+            #expect(await SessionRuntimeTests.waitUntil(20) { turnsDone() >= turns + 1 })
+            #expect(joins() == 3)
         } else {
-            #expect(await SessionRuntimeTests.waitUntil { joinLog(context).filter { $0.hasPrefix("join ") }.count >= 2 })
+            #expect(await SessionRuntimeTests.waitUntil { joins() >= 2 })
             #expect(await context.runtime.codexCoordinator?.pendingRequestIDs().isEmpty == true)
         }
         #expect(joinLog(context).filter { $0.hasPrefix("join ") }.count <= 3)

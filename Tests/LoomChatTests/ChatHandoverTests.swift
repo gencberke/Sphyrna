@@ -16,6 +16,21 @@ private final class HandoverScreen: TerminalOutputSink, @unchecked Sendable {
     var text: String { lock.withLock { buffer } }
 }
 
+/// A latch a test opens to let a parked task go on.
+private actor Gate {
+    private var opened = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    func wait() async {
+        if opened { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+    func open() {
+        opened = true
+        for waiter in waiters { waiter.resume() }
+        waiters.removeAll()
+    }
+}
+
 @Suite(.serialized, .processHeavy, .timeLimit(.minutes(3)))
 struct ChatHandoverTests {
     @Test func anIdleSessionHandsOverToTheTerminalAndBackWithItsQueueAndDraft() async throws {
@@ -27,10 +42,17 @@ struct ChatHandoverTests {
         try await driver.startNew(projectID: nil)
         try await driver.send("hello")
         #expect(await idle(driver))
+        // The turn's own end (its queue release) can still be on its way when the phase reads Ready, and it would send an
+        // item queued meanwhile. The handover's hold stops it, so the item is queued under the hold: the handover is parked
+        // right before its stop, which is where the queue is paused for it.
+        let parked = Gate()
+        await driver.setHandoverParked { await parked.wait() }
+        let handover = Task { try await driver.handOverToTerminal() }
+        #expect(await waitUntil { await driver.isHandingOver })
         _ = try await driver.enqueue("for later")
         try drafts.prepend(texts: ["an unsent thought"], attachments: [], sessionID: id)
-
-        try await driver.handOverToTerminal()
+        await parked.open()
+        try await handover.value
         #expect(await driver.currentPhase == .stopped)
         let left = await driver.snapshot()
         // The marker is the caller's, once the terminal really has the session (fix round: a resume that fails leaves none).

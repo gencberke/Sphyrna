@@ -19,6 +19,21 @@ private let aSuggestion: JSONValue = [
     "type": "addRules", "rules": [["toolName": "Bash", "ruleContent": "make:*"]], "behavior": "allow", "destination": "localSettings",
 ]
 
+/// A latch a test opens to let a parked task go on.
+private actor StopGate {
+    private var opened = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    func wait() async {
+        if opened { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+    func open() {
+        opened = true
+        for waiter in waiters { waiter.resume() }
+        waiters.removeAll()
+    }
+}
+
 private func waiting(_ driver: ChatSessionDriver, _ count: Int = 1) async -> Bool {
     await waitUntil {
         let snapshot = await driver.snapshot()
@@ -107,7 +122,9 @@ struct ChatFixRoundDriverTests {
         await rig.finish()
     }
 
-    /// Fix 2 (V18): no answers while the session stops.
+    /// Fix 2 (V18): no answers while the session stops. The Stop's `leave` hook is held open, so the session stays in
+    /// `stopping` for as long as the test needs: the interrupt, the CLI's withdrawal of the request and the process exit
+    /// are real, but nothing here races the length of the grace or a poll.
     @Test func nothingIsAnsweredWhileTheSessionStops() async throws {
         let rig = try await Rig.make()
         let id = UUID()
@@ -116,14 +133,26 @@ struct ChatFixRoundDriverTests {
         try await driver.send("/scenario approval")
         #expect(await waiting(driver))
         let request = try #require(await driver.snapshot().requests.first)
+        let held = StopGate()
+        let runID = try #require(await rig.supervisor.session(id: id)?.currentRun?.id)
+        try await rig.supervisor.registerStopHooks(runID: runID, hooks: ManagedRunStopHooks(
+            prepare: {}, completed: {},
+            leave: { leaving in
+                await driver.leave(leaving)
+                await held.wait()
+            },
+            moved: { card in await driver.followMove(to: card) }
+        ))
         let stopping = Task { try await driver.stop() }
-        // The phase is `stopping` from the moment the Stop begins; the CLI withdraws the request a round trip later.
+        // The phase is `stopping` from the moment the Stop begins and stays so until the gate opens.
         #expect(await waitUntil { await driver.currentPhase == .stopping })
         var refused = 0
         for answer in [ChatRequestAnswer.allowOnce, .allowForSession, .deny(note: nil)] {
             do { try await driver.answer(requestID: request.requestID, answer) } catch ChatDriverError.stopping { refused += 1 } catch {}
         }
-        #expect(refused >= 1, "a request answered during the Stop must be refused with `stopping`")
+        #expect(refused == 3, "a request answered during the Stop must be refused with `stopping`")
+        #expect(await driver.currentPhase == .stopping)
+        await held.open()
         _ = try await stopping.value
         #expect(await waitUntil { await driver.currentPhase == .stopped })
         let snapshot = await driver.snapshot()

@@ -262,7 +262,8 @@ struct ChatComposerBehaviorTests {
         type("q1 changed", into: fixture)
         composer.updateQueuedMessage()
         #expect(await waitUntil { composer.editing == nil })
-        #expect(composer.state.queue.items.map(\.text) == ["q1 changed", "q2"])
+        // The edit ends before the composer reads the queue back: wait for the state, do not read it at once.
+        #expect(await waitUntil { await composer.refresh(); return composer.state.queue.items.map(\.text) == ["q1 changed", "q2"] })
         #expect(composer.text == "my own draft")
         // Cancel: the draft comes back and the item is as it was.
         composer.beginEdit(ids[1])

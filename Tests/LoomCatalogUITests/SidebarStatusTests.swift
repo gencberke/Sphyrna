@@ -229,8 +229,25 @@ struct SidebarStatusTests {
             window.contentView = hosting
             window.orderFrontRegardless()
             defer { window.orderOut(nil) }
-            try await Task.sleep(for: .milliseconds(300))
-            return try #require(chaseViews(in: hosting).first).isRunning
+            // The chase view exists, in the window, once SwiftUI has laid the hosting view out; how long that takes
+            // depends on the load, so wait for it. Its animation is installed in the same pass that puts it there.
+            var chase: ChaseDots.LayerView?
+            for _ in 0..<500 where chase?.window == nil {
+                try await Task.sleep(for: .milliseconds(20))
+                chase = chaseViews(in: hosting).first
+            }
+            let dots = try #require(chase)
+            #expect(dots.window != nil, "the chase view never reached the window")
+            if animate {
+                for _ in 0..<500 where !dots.isRunning { try await Task.sleep(for: .milliseconds(20)) }
+                return dots.isRunning
+            }
+            // Not running must hold, not only at the first look.
+            for _ in 0..<10 {
+                try await Task.sleep(for: .milliseconds(20))
+                if dots.isRunning { return true }
+            }
+            return false
         }
         #expect(try await running(animate: true))
         #expect(!(try await running(animate: false)))

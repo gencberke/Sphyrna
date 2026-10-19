@@ -791,10 +791,12 @@ extension ChatDriverTests {
         await #expect(throws: ChatDriverError.couldNotStart("no answer to initialize")) {
             try await driver.startNew(projectID: nil)
         }
-        #expect(await driver.currentPhase == .failed(.notReady))
         #expect(await rig.issue(id) == "Claude did not answer in the Chat face.")
         #expect(await waitUntil { await rig.supervisor.session(id: id)?.currentRun == nil })
-        #expect(await driver.currentPhase == .failed(.notReady))
+        // The Stop that follows the failure moves the phase through stopping and stopped (its own steps) and puts it back
+        // to failed, a moment after the run is gone: the phase is read when it has settled, not at the throw or at the run's end.
+        #expect(await waitUntil { await driver.currentPhase == .failed(.notReady) })
+        #expect(await rig.supervisor.session(id: id)?.currentRun == nil)
         await rig.finish()
     }
 

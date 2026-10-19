@@ -40,7 +40,7 @@ private final class ScopeScratch: Sendable {
 }
 
 /// Real LaunchServices run hosts: each run gets a fresh resource coalition.
-@Suite(.serialized, .timeLimit(.minutes(2)))
+@Suite(.serialized, .processHeavy, .timeLimit(.minutes(2)))
 struct RunScopeTests {
     private let scratch = ScopeScratch()
 
@@ -354,6 +354,20 @@ struct RunScopeTests {
         #expect(await supervisor.ledgerSnapshot().scopes?.map(\.coalitionID) == first)
         let shutdown = await supervisor.shutdown()
         #expect(shutdown.succeeded, "\(shutdown.errors)")
+    }
+
+    /// In a run scope the host reaps the environment shell as soon as it exits, so a shell that is done before the job
+    /// registers it is gone from the process table: the capture is finished, not failed ("Environment shell identity
+    /// unavailable"). Without a scope the shell stays a zombie until it is collected, so a missing record is an error there.
+    @Test func aShellThatEndedBeforeItWasRegisteredIsNoErrorInAScopeAndIsOneWithout() throws {
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try child.run()
+        child.waitUntilExit()
+        let gone = child.processIdentifier
+        #expect(ProcessTable.record(pid: gone) == nil)
+        try EnvironmentResolutionJob(runID: UUID(), observes: false).register(pid: gone)
+        #expect(throws: LoomError.self) { try EnvironmentResolutionJob(runID: UUID(), observes: true).register(pid: gone) }
     }
 
     @Test func oneShotHelperLeavesNothingBehind() async throws {

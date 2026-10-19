@@ -25,6 +25,10 @@ final class EnvironmentResolutionJob: @unchecked Sendable {
 
     func register(pid: Int32) throws {
         try checkCancellation()
+        // In run-scope mode the host is the shell's parent and reaps it the moment it exits, so a shell that finished
+        // before this runs is already gone from the process table. Nothing is observed in this mode, and what the shell
+        // left running is the scope's: its early end is a finished capture, not a missing identity.
+        guard observes else { return }
         guard let record = ProcessTable.record(pid: pid) else {
             throw LoomError.message("Environment shell identity unavailable")
         }

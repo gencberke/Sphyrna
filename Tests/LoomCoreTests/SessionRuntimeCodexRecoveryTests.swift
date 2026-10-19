@@ -6,7 +6,7 @@ import Testing
 /// CP5 holistic review SR2: each Codex run owns its server; a stale or moved
 /// run never touches another run's server; a dead server never traps a
 /// conversation; automatic idle sees the whole run scope.
-@Suite(.serialized, .timeLimit(.minutes(2)))
+@Suite(.serialized, .processHeavy, .timeLimit(.minutes(2)))
 struct SessionRuntimeCodexRecoveryTests {
     typealias Screen = SessionRuntimeTests.Screen
 
@@ -160,9 +160,12 @@ struct SessionRuntimeCodexRecoveryTests {
             _ = await context.runtime.shutdown()
             return
         }
-        // Idle is published only after the server teardown succeeded.
+        // Idle is published only after the server teardown succeeded: the server's session is gone.
         #expect(await context.supervisor.session(id: serverSession) == nil)
-        #expect(await context.runtime.codexServerState().servers == 0)
+        // The runtime drops its entry for the server in the continuation of the call that began the teardown. The idle
+        // stop can be a second caller on the same teardown (the run-end observer begins it too) and return before that
+        // continuation has run, as calls waiting on one task resume in no fixed order, so the entry is waited for.
+        #expect(await SessionRuntimeTests.waitUntil { await context.runtime.codexServerState().servers == 0 })
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
