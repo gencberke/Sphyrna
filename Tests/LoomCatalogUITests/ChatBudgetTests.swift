@@ -77,7 +77,7 @@ extension ChatHosted {
             model.close()
         }
 
-        @Test func rowsAreVirtualizedAndScrollingALongSessionIsCheap() async throws {
+        @Test(.renderProbe) func rowsAreVirtualizedAndScrollingALongSessionIsCheap() async throws {
             // 2,400 turns are 7,000+ rows; only the ones near the viewport get a view.
             var lines: [String] = []
             for index in 0..<2_400 {
@@ -94,8 +94,9 @@ extension ChatHosted {
             print(String(format: "BUDGET rows model(%d entries)=%.0f ms derive(%d rows)=%.0f ms (debug build)", model.entries.count, modelMs, rows.count, rowsMs))
             #expect(rows.count > 6_000)
 
-            let stream = ChatHostedStream(width: 900, height: 700)
-            ChatRenderProbe.watch()
+            let scope = UUID().uuidString
+            let stream = ChatHostedStream(width: 900, height: 700, context: ChatRowContext(probeScope: scope))
+            RenderProbeExclusive.watchChat(scope: scope)
             defer { ChatRenderProbe.stop() }
             let applyStart = ContinuousClock.now
             stream.controller.apply(rows, hasOlder: false)
@@ -140,7 +141,7 @@ extension ChatHosted {
             stream.controller.stop()
         }
 
-        @Test func aDeltaOnALongStreamTouchesOnlyWhatChanged() async throws {
+        @Test(.renderProbe) func aDeltaOnALongStreamTouchesOnlyWhatChanged() async throws {
             var lines: [String] = []
             for index in 0..<1_500 {
                 lines += ChatFixture.turn(index, tools: [ChatFixture.bash("make \(index)")], answer: "Answer \(index).", start: index % 3000)
@@ -149,10 +150,11 @@ extension ChatHosted {
             lines += ChatFixture.turn(1_500, tools: [ChatFixture.bash("make last")], answer: "The newest answer.", start: 10)
             let after = ChatRowBuilder.rows(ChatBuildInput(model: ChatFixture.model(lines)))
 
-            let stream = ChatHostedStream()
+            let scope = UUID().uuidString
+            let stream = ChatHostedStream(context: ChatRowContext(probeScope: scope))
             stream.controller.apply(before, hasOlder: false)
             await stream.settle()
-            ChatRenderProbe.watch()
+            RenderProbeExclusive.watchChat(scope: scope)
             defer { ChatRenderProbe.stop() }
             let start = ContinuousClock.now
             stream.controller.apply(after, fresh: ["u1500"], hasOlder: false)
@@ -196,7 +198,7 @@ extension ChatHosted.ChatBudgetTests {
     /// The whole path of one growth delta on a long loaded session: `ChatTranscriptModel.apply(update)` derives the rows,
     /// diffs them against the stream's, updates the table and the clock. About 20,000 rows are loaded (every older page
     /// read), the way a reader who scrolled to the top has them.
-    @Test func aGrowthDeltaOnAboutTwentyThousandRowsStaysInsideAFrame() async throws {
+    @Test(.renderProbe) func aGrowthDeltaOnAboutTwentyThousandRowsStaysInsideAFrame() async throws {
         ChatSessionMemoryStore.removeAll()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-chat-delta-\(UUID().uuidString)", isDirectory: true)
         let folder = root.appendingPathComponent("projects/-tmp-delta", isDirectory: true)
@@ -240,7 +242,7 @@ extension ChatHosted.ChatBudgetTests {
         try handle.close()
         let growth = await lens.readGrowth()
         #expect(!growth.delta.isEmpty)
-        ChatRenderProbe.watch()
+        RenderProbeExclusive.watchChat(scope: id)
         defer { ChatRenderProbe.stop() }
         var times: [Double] = []
         let start = ContinuousClock.now

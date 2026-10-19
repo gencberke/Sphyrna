@@ -64,7 +64,7 @@ final class ChatStreamController: NSObject {
     private var clip: NSClipView { scrollView.contentView }
 
     init(context: ChatRowContext, bottomInset: CGFloat = LoomTheme.Chat.streamBottomInset) {
-        ChatRenderProbe.controllerCreated()
+        ChatRenderProbe.controllerCreated(context)
         self.context = context
         measurer = ChatRowMeasurer(context: context)
         super.init()

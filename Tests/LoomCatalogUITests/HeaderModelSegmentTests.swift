@@ -366,7 +366,7 @@ struct HeaderModelSegmentTests {
 
     // MARK: Cost
 
-    @Test func aReadingRedrawsTheSegmentAndNotTheRow() async throws {
+    @Test(.renderProbe) func aReadingRedrawsTheSegmentAndNotTheRow() async throws {
         let rig = try await rig()
         defer { cleanup(rig) }
         rig.intents.terminals[rig.main] = TerminalSurface().view
@@ -378,7 +378,7 @@ struct HeaderModelSegmentTests {
         await rig.usage.settle()
 
         enableAccessibilityTree()
-        HeaderRenderProbe.watch([rig.main])
+        RenderProbeExclusive.watchHeader([rig.main])
         defer { HeaderRenderProbe.watch([]) }
         let (window, _) = host(DetailHeader(model: rig.model), width: 900)
         defer { window.close() }

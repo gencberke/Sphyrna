@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@testable import LoomCatalogUI
 
 /// `SidebarRenderProbe` is one global: `watch` replaces what is watched and `reset` clears every count. Swift Testing runs
 /// different suites side by side, so a test that watches the probe (`SidebarRenderTests`, the Resume test of
@@ -25,8 +26,25 @@ struct RenderProbeExclusive: TestTrait, SuiteTrait, TestScoping {
     }
 }
 
+extension RenderProbeExclusive {
+    /// Starts counting the views of one scope on `ChatRenderProbe`, after checking that this test holds the probe lock.
+    /// The scope is the `probeScope` of the context the test hosts (a session id of its own, or a fresh uuid): the probe
+    /// counts nothing of another suite's chat.
+    @MainActor static func watchChat(scope: String, sourceLocation: SourceLocation = #_sourceLocation) {
+        #expect(isHeld, "a test that watches the probe holds the probe lock (.renderProbe)", sourceLocation: sourceLocation)
+        ChatRenderProbe.watch(scope: scope)
+    }
+
+    /// The same for `HeaderRenderProbe`.
+    @MainActor static func watchHeader(_ ids: Set<UUID>, sourceLocation: SourceLocation = #_sourceLocation) {
+        #expect(isHeld, "a test that watches the probe holds the probe lock (.renderProbe)", sourceLocation: sourceLocation)
+        HeaderRenderProbe.watch(ids)
+    }
+}
+
 extension Trait where Self == RenderProbeExclusive {
-    /// Runs the test alone among the tests that watch or reset `SidebarRenderProbe`.
+    /// Runs the test alone among the tests that watch or reset a render probe (`SidebarRenderProbe`, `ChatRenderProbe`,
+    /// `HeaderRenderProbe`).
     static var renderProbe: Self { RenderProbeExclusive() }
 }
 

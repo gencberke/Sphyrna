@@ -114,7 +114,7 @@ final class ChatRowCell: NSTableCellView {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ row: ChatRow, context: ChatRowContext, fadeIn: Bool) {
-        ChatRenderProbe.configure(row.id)
+        ChatRenderProbe.configure(row.id, in: context)
         hosting.rootView = ChatRowView(row: row, context: context)
         if fadeIn, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             alphaValue = 0

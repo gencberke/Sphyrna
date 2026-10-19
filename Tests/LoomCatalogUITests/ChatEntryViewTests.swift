@@ -42,14 +42,14 @@ extension ChatHosted {
             ChatTranscriptView(sessionID: id, configDirectory: root, workingDirectory: nil) { Color.red }
         }
 
-        @Test func aParentRenderKeepsTheModelAndANewSessionIdShowsTheNewSession() async throws {
+        @Test(.renderProbe) func aParentRenderKeepsTheModelAndANewSessionIdShowsTheNewSession() async throws {
             ChatSessionMemoryStore.removeAll()
             let alpha = UUID().uuidString.lowercased(), beta = UUID().uuidString.lowercased()
             let profile = try ChatTranscriptModelTests.Profile(id: alpha, lines: lines("alpha question", uuid: "ua"))
             defer { profile.remove() }
             try profile.addSession(id: beta, lines: lines("beta question", uuid: "ub"))
 
-            ChatRenderProbe.watch()
+            RenderProbeExclusive.watchChat(scope: alpha)
             defer { ChatRenderProbe.stop() }
             let hosting = NSHostingView(rootView: entry(alpha, profile.root))
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 600), styleMask: [.borderless], backing: .buffered, defer: false)

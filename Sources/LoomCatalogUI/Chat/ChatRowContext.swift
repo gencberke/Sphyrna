@@ -38,9 +38,13 @@ final class ChatLiveClock {
 @MainActor
 final class ChatRowContext {
     let clock = ChatLiveClock()
+    /// The owner a render probe counts this context's views for (`ChatRenderProbe`): the session id of a transcript, nil
+    /// where nothing is probed. Nothing the screen draws depends on it.
+    let probeScope: String?
     var workingDirectory: String?
     /// The persistent animations (the working chase) run only while the stream can be seen.
     var animates = false
+    init(probeScope: String? = nil) { self.probeScope = probeScope }
     var toggle: (_ rowID: String) -> Void = { _ in }
     var toggleFlag: (_ rowID: String, _ flag: String) -> Void = { _, _ in }
     var showAll: (_ entry: ChatEntry) -> Void = { _ in }

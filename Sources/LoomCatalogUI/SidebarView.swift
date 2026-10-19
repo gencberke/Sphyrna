@@ -318,7 +318,7 @@ struct ProjectList: View {
     let model: CatalogModel
 
     var body: some View {
-        let _ = SidebarRenderProbe.projectList()
+        let _ = SidebarRenderProbe.projectList(of: model)
         let unassigned = model.list(for: .unassigned)
         let visibleProjects = model.projects.filter {
             !model.isSearching || !model.list(for: .project($0.id)).rows.isEmpty

@@ -622,7 +622,7 @@ struct ChatPlanCardView: View {
                     Text(Self.statusText(plan.status)).font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.secondaryStyle)
                     ChatCopyButton(text: plan.markdown, context: context)
                 }
-                ChatMarkdownView(blocks: ChatContent.blocks(id: entry.id, text: Self.visibleText(plan.markdown, expanded: open || !long), isStreaming: false),
+                ChatMarkdownView(blocks: ChatContent.blocks(id: entry.id, text: Self.visibleText(plan.markdown, expanded: open || !long), isStreaming: false, in: context),
                                  flags: flags, rowID: rowID, context: context)
                 if long {
                     Button(open ? "Show less" : "Show full plan") { context.toggle(rowID) }

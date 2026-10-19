@@ -38,11 +38,12 @@ extension ChatHosted {
             stream.controller.stop()
         }
 
-        @Test func growthRedrawsOnlyTheRowsThatChanged() async {
-            let stream = ChatHostedStream()
+        @Test(.renderProbe) func growthRedrawsOnlyTheRowsThatChanged() async {
+            let scope = UUID().uuidString
+            let stream = ChatHostedStream(context: ChatRowContext(probeScope: scope))
             stream.controller.apply(Self.rows(0..<80), hasOlder: false)
             await stream.settle()
-            ChatRenderProbe.watch()
+            RenderProbeExclusive.watchChat(scope: scope)
             defer { ChatRenderProbe.stop() }
             let before = Self.rows(0..<80)
             let after = Self.rows(0..<81)
@@ -55,13 +56,14 @@ extension ChatHosted {
             stream.controller.stop()
         }
 
-        @Test func openingAFoldRedrawsThatFoldAndInsertsItsRows() async {
-            let stream = ChatHostedStream()
+        @Test(.renderProbe) func openingAFoldRedrawsThatFoldAndInsertsItsRows() async {
+            let scope = UUID().uuidString
+            let stream = ChatHostedStream(context: ChatRowContext(probeScope: scope))
             let lines = Self.lines(0..<30)
             let closed = ChatFixture.rows(lines)
             stream.controller.apply(closed, hasOlder: false)
             await stream.settle()
-            ChatRenderProbe.watch()
+            RenderProbeExclusive.watchChat(scope: scope)
             defer { ChatRenderProbe.stop() }
             let foldID = ChatRowBuilder.foldID("turn:u29")
             let open = ChatFixture.rows(lines, toggled: [foldID])

@@ -8,10 +8,10 @@ enum ChatContent {
     // MARK: Inline
 
     /// Inline markdown (emphasis, code, links) as attributed text. Links open only when they are web or mail links.
-    static func inline(_ source: String) -> AttributedString {
+    static func inline(_ source: String, in context: ChatRowContext? = nil) -> AttributedString {
         let key = source as NSString
         if let cached = inlineCache.object(forKey: key) { return cached.value }
-        ChatRenderProbe.inlineParsed()
+        ChatRenderProbe.inlineParsed(in: context)
         var options = AttributedString.MarkdownParsingOptions()
         options.interpretedSyntax = .inlineOnlyPreservingWhitespace
         options.failurePolicy = .returnPartiallyParsedIfPossible
@@ -68,11 +68,11 @@ enum ChatContent {
 
     /// The parsed blocks of a message. While it streams, everything up to the last blank line outside a fence is parsed
     /// once and kept, and only the tail is parsed again.
-    static func blocks(id: String, text: String, isStreaming: Bool) -> [MarkdownBlock] {
+    static func blocks(id: String, text: String, isStreaming: Bool, in context: ChatRowContext? = nil) -> [MarkdownBlock] {
         if !isStreaming {
             let key = "\(id)#\(text.hashValue)#\(text.utf8.count)" as NSString
             if let cached = blockCache.object(forKey: key) { return cached.value }
-            let parsed = parse(text)
+            let parsed = parse(text, in: context)
             blockCache.setObject(Blocks(parsed), forKey: key, cost: text.utf8.count * 4)
             return parsed
         }
@@ -85,15 +85,15 @@ enum ChatContent {
             if let cached = blockCache.object(forKey: key) {
                 blocks = cached.value
             } else {
-                blocks = parse(head)
+                blocks = parse(head, in: context)
                 blockCache.setObject(Blocks(blocks), forKey: key, cost: head.utf8.count * 4)
             }
         }
-        return blocks + parse(tail)
+        return blocks + parse(tail, in: context)
     }
 
-    private static func parse(_ text: String) -> [MarkdownBlock] {
-        ChatRenderProbe.markdownParsed(characters: text.utf8.count)
+    private static func parse(_ text: String, in context: ChatRowContext?) -> [MarkdownBlock] {
+        ChatRenderProbe.markdownParsed(characters: text.utf8.count, in: context)
         return ChatMarkdown.parse(text)
     }
 

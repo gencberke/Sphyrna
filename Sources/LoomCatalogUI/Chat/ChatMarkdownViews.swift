@@ -11,10 +11,10 @@ struct ChatProseView: View {
     @State private var hovering = false
 
     var body: some View {
-        let _ = ChatRenderProbe.proseBody()
+        let _ = ChatRenderProbe.proseBody(in: context)
         if case let .assistantText(text) = entry.body {
             VStack(alignment: .leading, spacing: 4) {
-                ChatMarkdownView(blocks: ChatContent.blocks(id: entry.id, text: text.text, isStreaming: text.isStreaming),
+                ChatMarkdownView(blocks: ChatContent.blocks(id: entry.id, text: text.text, isStreaming: text.isStreaming, in: context),
                                  flags: flags, rowID: entry.id, isStreaming: text.isStreaming, context: context)
                 if settled {
                     HStack(spacing: 10) {
@@ -60,7 +60,7 @@ struct ChatMarkdownView: View {
         case let .paragraph(source):
             inline(source)
         case let .heading(level, text):
-            Text(ChatContent.inline(text))
+            Text(ChatContent.inline(text, in: context))
                 .font(level <= 1 ? LoomTheme.Chat.heading1 : level == 2 ? LoomTheme.Chat.heading2 : LoomTheme.Chat.heading3)
                 .foregroundStyle(LoomTheme.Text.primary)
                 .padding(.top, 4)
@@ -90,14 +90,14 @@ struct ChatMarkdownView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
         case let .table(table):
-            ChatMarkdownTableView(table: table)
+            ChatMarkdownTableView(table: table, context: context)
         case .rule:
             Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline).padding(.vertical, 4)
         }
     }
 
     private func inline(_ source: String) -> some View {
-        Text(ChatContent.inline(source))
+        Text(ChatContent.inline(source, in: context))
             .font(LoomTheme.Chat.reading)
             .lineSpacing(LoomTheme.Chat.readingLineSpacing)
             .foregroundStyle(LoomTheme.Text.primary)
@@ -124,6 +124,7 @@ struct ChatMarkdownView: View {
 /// A table: it scrolls sideways when it is wider than the column.
 struct ChatMarkdownTableView: View {
     let table: MarkdownTable
+    let context: ChatRowContext
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -154,7 +155,7 @@ struct ChatMarkdownTableView: View {
         case .center: .center
         case .trailing: .trailing
         }
-        return Text(ChatContent.inline(source))
+        return Text(ChatContent.inline(source, in: context))
             .font(header ? LoomTheme.Chat.toolLabelStrong : LoomTheme.Chat.toolLabel)
             .foregroundStyle(LoomTheme.Text.primary)
             .textSelection(.enabled)

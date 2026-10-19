@@ -20,9 +20,10 @@ import Foundation
 //                                     this; a host must keep a card until its own id is answered or withdrawn, or
 //                                     its own tool_use_id finishes: `resolve` finishes the first one's)
 //   approvals [n]                     n Bash requests at once (default 3), one assistant message: the cards' counter
-//   work [ms]                         three Bash steps over `ms` (default 600): room to interrupt, or to send
+//   work [ms] [hold <path>]           three Bash steps over `ms` (default 600): room to interrupt, or to send
 //                                     `next`/`later`/`now` messages (a step of a second or more announces itself
-//                                     with task_started, so `now` + human origin can move it to the background)
+//                                     with task_started, so `now` + human origin can move it to the background);
+//                                     with `hold`, a step does not end while the file at <path> exists
 //   result <subtype> [terminal]       ends with that result subtype (success, error_during_execution,
 //                                     error_max_turns, error_max_budget_usd, error_max_structured_output_retries)
 //   result api_error [status] [category]   an API error as the CLI reports it: assistant.error, then a `result`
@@ -104,7 +105,8 @@ extension ChatEngine {
         case "plan":
             try plan()
         case "work":
-            try work(milliseconds: args.first.flatMap(Int.init) ?? 600)
+            let hold = args.firstIndex(of: "hold").map { args.index(after: $0) }.flatMap { args.indices.contains($0) ? args[$0] : nil }
+            try work(milliseconds: args.first.flatMap(Int.init) ?? 600, hold: hold)
         case "result":
             if args.first == "api_error" {
                 try apiError(status: args.dropFirst().first.flatMap(Int.init) ?? 404, category: args.dropFirst(2).first ?? "model_not_found")
@@ -489,13 +491,13 @@ extension ChatEngine {
         }
     }
 
-    func work(milliseconds: Int) throws {
+    func work(milliseconds: Int, hold: String? = nil) throws {
         try assistantMessage([.text("Starting the work.")])
         for step in 1...3 {
             try toolStep(
                 id: nextToolID(), name: "Bash", input: ["command": "make step\(step)", "description": "Step \(step)"],
                 milliseconds: max(1, milliseconds / 3), content: "step \(step) done",
-                structured: Self.bash(stdout: "step \(step) done"))
+                structured: Self.bash(stdout: "step \(step) done"), hold: hold)
         }
         try assistantMessage([.text("All three steps finished.")])
     }

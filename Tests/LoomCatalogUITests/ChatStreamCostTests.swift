@@ -62,11 +62,12 @@ extension ChatHosted {
         static func stream(characters: Int, piece: Int = 12, interval: Duration? = nil, wait: Duration = .zero,
                            settle: (ChatHostedStream) async -> Void) async -> Run {
             ChatSessionMemoryStore.removeAll()
-            let presentation = ChatPresentation(sessionID: "cost-\(UUID().uuidString)", workingDirectory: nil, isWorking: true)
+            let scope = "cost-\(UUID().uuidString)"
+            let presentation = ChatPresentation(sessionID: scope, workingDirectory: nil, isWorking: true)
             // As in a live chat: the live row follows the driver's clock, not every change.
             presentation.activityFromSource = true
             if let interval { presentation.rowsInterval = interval }
-            let stream = ChatHostedStream(width: 900, height: 700)
+            let stream = ChatHostedStream(width: 900, height: 700, context: ChatRowContext(probeScope: scope))
             presentation.attach(stream.controller)
             var source = SyntheticSource()
             _ = presentation.apply(source.snapshot())
@@ -76,7 +77,7 @@ extension ChatHosted {
             await stream.settle(4)
 
             let text = Array(answer(characters: characters))
-            ChatRenderProbe.watch()
+            RenderProbeExclusive.watchChat(scope: scope)
             defer { ChatRenderProbe.stop() }
             let rebuildsBefore = presentation.rebuilds
             let reloadsBefore = stream.controller.table.rowReloads
@@ -270,7 +271,7 @@ extension ChatHosted {
 
         /// The record of the stream's cost off screen (3,000 characters, 250 deltas): a rebuild per delta, and once per interval.
         /// The stream update is the controller's time per rebuild in this debug build, forced through layout; nothing asserts it.
-        @Test func streamCostRecord() async {
+        @Test(.renderProbe) func streamCostRecord() async {
             let immediate = await Self.stream(characters: 3_000, settle: Self.frame)
             Self.report("immediate", immediate)
             let throttled = await Self.stream(characters: 3_000, interval: ChatPresentation.streamingRowsInterval, wait: .milliseconds(200),
@@ -279,7 +280,7 @@ extension ChatHosted {
             #expect(throttled.rebuilds <= throttled.deltas && immediate.rebuilds == immediate.deltas)
         }
 
-        @Test func aDeltaConfiguresAndMeasuresTheGrowingRowOnce() async {
+        @Test(.renderProbe) func aDeltaConfiguresAndMeasuresTheGrowingRowOnce() async {
             let run = await Self.stream(characters: 1_800) { stream in
                 stream.controller.scrollView.layoutSubtreeIfNeeded()
                 stream.controller.table.layoutSubtreeIfNeeded()

@@ -93,7 +93,7 @@ final class ChatTranscriptModel {
         self.locate = locate
         self.limits = limits
         presentation = ChatPresentation(sessionID: sessionID, workingDirectory: workingDirectory, isWorking: isWorking)
-        let context = ChatRowContext()
+        let context = ChatRowContext(probeScope: sessionID)
         context.workingDirectory = workingDirectory
         controller = ChatStreamController(context: context)
         wireController()

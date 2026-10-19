@@ -1,12 +1,15 @@
 import Foundation
 
 /// Counts how often a card's views evaluate their `body`, so a test can state which cards a change redraws.
-/// Counts only the sessions a test asked to watch: with none (every normal run) each evaluation costs one
-/// emptiness check and nothing is kept, and a test's counts are not disturbed by other sidebars alive at the
-/// same time.
+/// Counts only what a test asked to watch: the sessions it names, and for the totals that are not per session (the
+/// project list, the draft rows) the one model it names. With nothing watched (every normal run) each evaluation costs
+/// one emptiness check and nothing is kept, and a test's counts are not disturbed by other sidebars or detail views
+/// alive at the same time.
 @MainActor
 enum SidebarRenderProbe {
     static var watched: Set<UUID> = []
+    /// The model whose project list and draft rows are counted; none counts neither.
+    private(set) static weak var watchedModel: CatalogModel?
     private(set) static var cardBodies: [UUID: Int] = [:]
     private(set) static var timeLabelBodies: [UUID: Int] = [:]
     private(set) static var groupings = 0
@@ -37,19 +40,20 @@ enum SidebarRenderProbe {
         groupings += 1
     }
 
-    /// The project view's list evaluated (counted while a test watches anything).
-    static func projectList() {
-        guard !watched.isEmpty else { return }
+    /// The project view's list evaluated (counted for the watched model).
+    static func projectList(of model: CatalogModel) {
+        guard !watched.isEmpty, watchedModel === model else { return }
         projectListBodies += 1
     }
 
-    static func appeared(_ control: String) {
-        guard !watched.isEmpty else { return }
+    /// A control of the watched session's screen appeared.
+    static func appeared(_ control: String, session: UUID) {
+        guard !watched.isEmpty, watched.contains(session) else { return }
         onScreen[control, default: 0] += 1
     }
 
-    static func disappeared(_ control: String) {
-        guard !watched.isEmpty else { return }
+    static func disappeared(_ control: String, session: UUID) {
+        guard !watched.isEmpty, watched.contains(session) else { return }
         onScreen[control, default: 0] -= 1
     }
 
@@ -58,13 +62,15 @@ enum SidebarRenderProbe {
         pillBodies[key, default: 0] += 1
     }
 
-    static func draftRow(_ id: String) {
-        guard !watched.isEmpty else { return }
+    static func draftRow(_ id: String, of model: CatalogModel) {
+        guard !watched.isEmpty, watchedModel === model else { return }
         draftRowBodies[id, default: 0] += 1
     }
 
-    static func watch(_ ids: [UUID]) {
+    /// `model` is the one whose project list and draft rows count; without it they count nothing.
+    static func watch(_ ids: [UUID], model: CatalogModel? = nil) {
         watched = Set(ids)
+        watchedModel = model
         reset()
     }
 
@@ -90,7 +96,7 @@ public enum RenderEvidence {
         for key in [CatalogListKey.activity, .unassigned] + model.projects.map({ CatalogListKey.project($0.id) }) {
             for row in model.list(for: key).rows { ids.insert(row.id) }
         }
-        SidebarRenderProbe.watch(Array(ids))
+        SidebarRenderProbe.watch(Array(ids), model: model)
     }
 
     public static func reset() { SidebarRenderProbe.reset() }

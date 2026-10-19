@@ -82,7 +82,7 @@ extension ChatHosted {
             let rows = model.controller.rows.count
             let before = model.controller.rows
 
-            ChatRenderProbe.watch()
+            RenderProbeExclusive.watchChat(scope: id)
             defer { ChatRenderProbe.stop() }
             let handle = try FileHandle(forWritingTo: url)
             try handle.seekToEnd()
@@ -133,7 +133,7 @@ extension ChatHosted {
             return DeltaRun(rows: rows, typical: steady[steady.count / 2], worst: sorted.last ?? 0, times: times, redrawn: redrawn, oldRowsKept: oldRowsKept, lensTimes: lensTimes, parts: parts, derived: derived, carried: carried)
         }
 
-        @Test func aDeltaCostsTheNewestTurnNotTheTranscript() async throws {
+        @Test(.renderProbe) func aDeltaCostsTheNewestTurnNotTheTranscript() async throws {
             let small = try await Self.run(turns: 700, deltas: 30)
             let large = try await Self.run(turns: 7_000, deltas: 30)
             #if DEBUG

@@ -59,7 +59,7 @@ struct SidebarRenderTests {
         await model.settle()
 
         #expect(RenderProbeExclusive.isHeld, "a test that watches the probe holds the probe lock (.renderProbe)")
-        SidebarRenderProbe.watch(ids)
+        SidebarRenderProbe.watch(ids, model: model)
         let hosting = NSHostingController(rootView: SidebarView(model: model))
         hosting.sizingOptions = []
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 3_200),

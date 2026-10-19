@@ -1055,7 +1055,8 @@ final class ChatEngine {
     /// (`task_started`). Returns the tool; `moved` says it went to the background instead of finishing.
     @discardableResult
     func runTool(
-        _ id: String, name: String = "Bash", description: String = "", milliseconds: Int, parent: String? = nil
+        _ id: String, name: String = "Bash", description: String = "", milliseconds: Int, parent: String? = nil,
+        hold: String? = nil
     ) throws -> RunningTool {
         let tool = RunningTool(
             id: id, movable: name == "Bash" && parent == nil, description: description,
@@ -1065,8 +1066,9 @@ final class ChatEngine {
         if tool.movable, milliseconds >= 1_000 { announce(tool) }
         do {
             repeat {
-                try serviceOnce(maxWait: max(0, tool.due.timeIntervalSinceNow))
-            } while !tool.moved && tool.due > Date()
+                // A held tool (`hold`: a test keeps it open while the file exists) looks again every 20 ms once its time is up.
+                try serviceOnce(maxWait: Self.isHeld(hold) && tool.due <= Date() ? 0.02 : max(0, tool.due.timeIntervalSinceNow))
+            } while !tool.moved && (tool.due > Date() || Self.isHeld(hold))
         } catch {
             abortTool(id, parent: parent, tool: tool)
             throw error
@@ -1078,10 +1080,14 @@ final class ChatEngine {
         return tool
     }
 
+    private static func isHeld(_ hold: String?) -> Bool {
+        hold.map { FileManager.default.fileExists(atPath: $0) } ?? false
+    }
+
     /// A tool_use (after optional leading blocks of the same message), its run, its result and the boundary.
     func toolStep(
         id: String, name: String, input: ChatObject, milliseconds: Int = 15, leading: [Block] = [],
-        content: Any, error: Bool = false, structured: Any? = nil
+        content: Any, error: Bool = false, structured: Any? = nil, hold: String? = nil
     ) throws {
         try assistantMessage(leading + [.tool(id: id, name: name, input: input)])
         // The rules refuse what they refuse in every scenario (`dontAsk` with no request to the host, a deny rule), as the CLI
@@ -1091,7 +1097,8 @@ final class ChatEngine {
             try toolBoundary()
             return
         }
-        let tool = try runTool(id, name: name, description: input["description"] as? String ?? name, milliseconds: milliseconds)
+        let tool = try runTool(id, name: name, description: input["description"] as? String ?? name, milliseconds: milliseconds,
+                               hold: hold)
         if tool.moved, let taskID = tool.taskID {
             var moved = Self.bash(stdout: "")
             moved["backgroundTaskId"] = taskID

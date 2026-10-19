@@ -127,8 +127,8 @@ final class ChatRowMeasurer {
 
     func height(of row: ChatRow, width: CGFloat) -> CGFloat {
         measurements += 1
-        ChatRenderProbe.measured(row.id)
-        let began = ChatRenderProbe.watching ? ContinuousClock.now : nil
+        ChatRenderProbe.measured(row.id, in: context)
+        let began = ChatRenderProbe.owns(context) ? ContinuousClock.now : nil
         host.rootView = ChatRowView(row: row, context: context, measuring: true)
         let size = host.sizeThatFits(in: CGSize(width: width, height: 100_000))
         if let began { ChatRenderProbe.measuredFor(row.id, ContinuousClock.now - began) }
@@ -137,28 +137,33 @@ final class ChatRowMeasurer {
 }
 
 /// Counts how often a row is configured or measured, so a test can state which rows a change redraws. It counts only
-/// the rows a test asked to watch; with none (every normal run) a call costs one emptiness check.
+/// what one owner hosts: a test watches a scope (`watch(scope:)`) and counts the views whose `ChatRowContext.probeScope`
+/// is that scope, so another suite's chat in the same process adds nothing. With nothing watched (every normal run) a
+/// call costs one emptiness check; a context without a scope is never counted.
 @MainActor
 enum ChatRenderProbe {
-    static var watching = false
+    /// The scope being counted; nil while no test watches.
+    private(set) static var watchedScope: String?
     private(set) static var configured: [String: Int] = [:]
     private(set) static var measuredRows: [String: Int] = [:]
-    /// Stream controllers made since `watch()`: a screen that builds one per render shows here.
+    /// Stream controllers made since `watch(scope:)`: a screen that builds one per render shows here.
     private(set) static var controllersCreated = 0
     /// Evaluations of the prose row's body, markdown parses (`ChatContent.blocks`: calls and characters handed to the parser)
-    /// and inline parses (cache misses of `ChatContent.inline`) since `watch()`: what a streaming answer costs per delta.
+    /// and inline parses (cache misses of `ChatContent.inline`) since `watch(scope:)`: what a streaming answer costs per delta.
     private(set) static var proseBodies = 0
     private(set) static var markdownParses = 0
     private(set) static var markdownCharacters = 0
     private(set) static var inlineParses = 0
 
-    static func watch() {
-        watching = true
+    /// Starts counting the views of `scope` (the `probeScope` of their context) from zero. Replaces what was watched; two
+    /// tests never watch together (`.renderProbe` in the tests).
+    static func watch(scope: String) {
+        watchedScope = scope
         reset()
     }
 
     static func stop() {
-        watching = false
+        watchedScope = nil
         reset()
     }
 
@@ -175,38 +180,44 @@ enum ChatRenderProbe {
 
     private(set) static var measureTime: [String: Double] = [:]
 
+    /// Whether a view of `context` is being counted.
+    static func owns(_ context: ChatRowContext?) -> Bool {
+        guard let watchedScope else { return false }
+        return context?.probeScope == watchedScope
+    }
+
     static func measuredFor(_ id: String, _ duration: Duration) {
         measureTime[id, default: 0] += Double(duration.components.seconds) * 1000 + Double(duration.components.attoseconds) / 1e15
     }
 
-    static func proseBody() {
-        guard watching else { return }
+    static func proseBody(in context: ChatRowContext?) {
+        guard owns(context) else { return }
         proseBodies += 1
     }
 
-    static func markdownParsed(characters: Int) {
-        guard watching else { return }
+    static func markdownParsed(characters: Int, in context: ChatRowContext?) {
+        guard owns(context) else { return }
         markdownParses += 1
         markdownCharacters += characters
     }
 
-    static func inlineParsed() {
-        guard watching else { return }
+    static func inlineParsed(in context: ChatRowContext?) {
+        guard owns(context) else { return }
         inlineParses += 1
     }
 
-    static func controllerCreated() {
-        guard watching else { return }
+    static func controllerCreated(_ context: ChatRowContext) {
+        guard owns(context) else { return }
         controllersCreated += 1
     }
 
-    static func configure(_ id: String) {
-        guard watching else { return }
+    static func configure(_ id: String, in context: ChatRowContext) {
+        guard owns(context) else { return }
         configured[id, default: 0] += 1
     }
 
-    static func measured(_ id: String) {
-        guard watching else { return }
+    static func measured(_ id: String, in context: ChatRowContext) {
+        guard owns(context) else { return }
         measuredRows[id, default: 0] += 1
     }
 }

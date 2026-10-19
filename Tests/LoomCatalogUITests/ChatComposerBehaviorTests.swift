@@ -133,8 +133,12 @@ struct ChatComposerBehaviorTests {
         let fixture = try await make()
         let composer = fixture.composer
         // Only a Bash call runs. ↵ is `next` all the same: it cancels nothing and never moves the command to the background,
-        // so the CLI holds the message until the step ends, and Claude reads it after the Bash call.
-        try await fixture.driver.send("/scenario work 4000")
+        // so the CLI holds the message until the step ends, and Claude reads it after the Bash call. The steps stay open until
+        // the test lets them go (`hold`): a step of a fixed length could end before the check when the main actor is slow.
+        let hold = fixture.rig.root.appendingPathComponent("hold-steps")
+        #expect(FileManager.default.createFile(atPath: hold.path, contents: nil))
+        defer { try? FileManager.default.removeItem(at: hold) }
+        try await fixture.driver.send("/scenario work 4000 hold \(hold.path)")
         #expect(await working(fixture))
         type("wait for the step", into: fixture)
         composer.submit(secondary: false)
@@ -142,6 +146,7 @@ struct ChatComposerBehaviorTests {
         #expect(await waitUntil { await prompt("wait for the step", fixture)?.delivery == .queued })
         try await Task.sleep(for: .milliseconds(600))
         #expect(await prompt("wait for the step", fixture)?.delivery == .queued, "not read while the Bash call runs")
+        try FileManager.default.removeItem(at: hold)
         #expect(await waitUntil(20) { await prompt("wait for the step", fixture)?.delivery == .read })
         #expect(await idle(fixture))
         // A subagent runs: ↵ is `next`, the CLI holds the message until the step ends, and its row offers Read now.

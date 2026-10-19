@@ -302,8 +302,8 @@ struct EndedScreenNotice: View {
             }
             .disabled(!model.canResume(row))
             .buttonStyle(AccentButtonStyle(kind: .filled))
-            .onAppear { SidebarRenderProbe.appeared("resume") }
-            .onDisappear { SidebarRenderProbe.disappeared("resume") }
+            .onAppear { SidebarRenderProbe.appeared("resume", session: row.id) }
+            .onDisappear { SidebarRenderProbe.disappeared("resume", session: row.id) }
             if showsDetails {
                 Button("Show Details") { model.closeEndedScreen(row.id) }
                     .help("Closes this screen and shows the session's details")
@@ -443,8 +443,8 @@ struct ConversationDetail: View {
                             }
                             .disabled(!model.canResume(row))
                             .buttonStyle(AccentButtonStyle(kind: .filled))
-                            .onAppear { SidebarRenderProbe.appeared("resume") }
-                            .onDisappear { SidebarRenderProbe.disappeared("resume") }
+                            .onAppear { SidebarRenderProbe.appeared("resume", session: row.id) }
+                            .onDisappear { SidebarRenderProbe.disappeared("resume", session: row.id) }
                         }
                         // Stop only where a run can be stopped; a session that is not running has nothing to stop.
                         if model.canStop(row) {
