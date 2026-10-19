@@ -108,15 +108,13 @@ struct GeneralSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LoomTheme.Space.settingsSectionGap) {
             SettingsCard {
-                SettingsRow(title: "Sessions run in",
-                            detail: "Applies when a session starts or resumes. A running session keeps its face until it stops.") {
+                SettingsRow(title: "Sessions run in", detail: Self.sessionFaceDetail) {
                     SegmentedControl(values: SessionFace.allCases, title: \.title, selection: model.newSessionFace,
                                      compact: true, onSelect: { model.setNewSessionFace($0) })
                         .accessibilityLabel("Sessions run in")
                 }
                 SettingsRowDivider()
-                SettingsRow(title: "Mode of new sessions",
-                            detail: "Last used in the project, or one mode for every new session. Ask runs in Chat only; in the terminal it starts as Ask before edits.") {
+                SettingsRow(title: "Mode of new sessions", detail: Self.startModeDetail) {
                     Picker("Mode of new sessions", selection: Binding(
                         get: { model.defaultStartMode ?? Self.lastUsedTag },
                         set: { chosen in
@@ -174,6 +172,9 @@ struct GeneralSettings: View {
             Text("Claude runs every tool without asking. Every new session starts in it until you change this. You can still pick another mode in a draft.")
         }
     }
+
+    static let sessionFaceDetail = "Applies when a session starts or resumes. A running session keeps its face until it stops."
+    static let startModeDetail = "Last used in the project, or one mode for every new session. Ask runs in Chat only; in the terminal it starts as Ask before edits."
 
     /// The picker's tag for "Last used in the project" (no mode is stored).
     private static let lastUsedTag = "last-used"
@@ -332,6 +333,9 @@ struct SettingsRow<Trailing: View>: View {
                     Text(notice).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Status.attention)
                 }
             }
+            // The text takes the lines it needs: beside a segmented control or a menu the row was sized from the control, and
+            // the description was cut to one line with an ellipsis.
+            .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: LoomTheme.Space.settingsRowInset)
             trailing
         }

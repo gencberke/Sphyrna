@@ -65,7 +65,10 @@ struct PlanPaceLine: View {
             Text(PlanPaceText.sentence(pace, now: now, timeZone: timeZone))
                 .font(LoomTheme.Typography.caption)
                 .foregroundStyle(sentenceStyle)
-                .lineLimit(1)
+                // A long sentence ("Resets Monday 09:00 · at this pace it runs out Thursday 18:30") wraps in a narrow card
+                // rather than losing the time the limit runs out.
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(PlanPaceText.title(pace.kind)), \(PlanPaceText.remaining(pace))")
@@ -93,18 +96,20 @@ struct PlanPaceLine: View {
     private var meter: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
+            // The tick is taller than the meter, and a ZStack hands every child its own full size: the track and the fill keep
+            // `meterHeight` themselves, or the whole meter would be as tall as the tick (10 pt instead of 6).
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: LoomTheme.PlanPaceLine.meterRadius).fill(LoomTheme.PlanPaceLine.track)
+                    .frame(height: LoomTheme.PlanPaceLine.meterHeight)
                 RoundedRectangle(cornerRadius: LoomTheme.PlanPaceLine.meterRadius)
                     .fill(Self.isLow(pace) ? LoomTheme.PlanPaceLine.fillOver : LoomTheme.PlanPaceLine.fill)
-                    .frame(width: width * Self.remainingFraction(pace))
+                    .frame(width: width * Self.remainingFraction(pace), height: LoomTheme.PlanPaceLine.meterHeight)
                 Rectangle().fill(LoomTheme.PlanPaceLine.tick)
                     .frame(width: LoomTheme.PlanPaceLine.tickWidth,
                            height: LoomTheme.PlanPaceLine.meterHeight + 2 * LoomTheme.PlanPaceLine.tickOverhang)
                     .offset(x: min(max(width * Self.tickFraction(pace) - LoomTheme.PlanPaceLine.tickWidth / 2, 0),
                                    width - LoomTheme.PlanPaceLine.tickWidth))
             }
-            .frame(height: LoomTheme.PlanPaceLine.meterHeight)
             .frame(maxHeight: .infinity, alignment: .center)
         }
         .frame(height: LoomTheme.PlanPaceLine.meterHeight + 2 * LoomTheme.PlanPaceLine.tickOverhang)
@@ -112,7 +117,7 @@ struct PlanPaceLine: View {
 }
 
 /// The plan limits as one line (V25): "5h 62% left · Wk 74% left · on pace". Plain data, so a test can state it from
-/// fixture numbers; `HomeUsage` draws it.
+/// fixture numbers; `HomePlanLimits` takes its spoken summary and tooltip from it.
 struct PlanLimitsLine: Equatable {
     struct Window: Equatable {
         /// `5-hour window` or `Weekly`, for VoiceOver.
@@ -176,7 +181,7 @@ struct PlanLimitsLine: Equatable {
     func tooltip(paces: [PlanPace], now: Date, timeZone: TimeZone) -> String {
         paces.map {
             "\(PlanPaceText.title($0.kind)), \(PlanPaceText.remaining($0)). \(PlanPaceText.sentence($0, now: now, timeZone: timeZone))"
-        }.joined(separator: "\n") + "\nClick for the meters."
+        }.joined(separator: "\n")
     }
 }
 

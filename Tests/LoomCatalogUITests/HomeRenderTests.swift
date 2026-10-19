@@ -100,7 +100,8 @@ struct HomeRenderTests {
         #expect(!found.contains("home-nothing-waiting") && !found.contains("home-no-claude") && !found.contains("home-empty-catalog"))
         let said = labels(in: hosting.view)
         #expect(said.contains("Needs you, 1") && said.contains("Finished, not read, 1"))
-        #expect(said.contains { $0.hasPrefix("Plan limits, 5-hour window") && $0.contains("Weekly") }, "the plan limits are one line")
+        #expect(said.contains { $0.hasPrefix("Plan limits, 5-hour window") && $0.contains("Weekly") }, "the plan limits card is one element")
+        #expect(!said.contains { $0.hasPrefix("5-hour window") }, "its meters are not read one by one")
         #expect(said.contains { $0.hasPrefix("Today, ") }, "today's figures are one line")
         #expect(said.contains("Resume Backfill script"))
     }

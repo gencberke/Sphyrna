@@ -28,12 +28,5 @@ extension LoomTheme {
         static let limitGap: CGFloat = 12
         /// The sessions Continue lists before "Show more".
         static let continueShown = 5
-
-        // Usage: one card, a row of plan limits (a button) and a row of today's figures.
-        static let usageRowGap: CGFloat = 8
-        static let usageRowHeight: CGFloat = 32
-        /// The plan-limits line on two lines (the verdict under the windows): the gap between them and above and below.
-        static let limitsWrapSpacing: CGFloat = 4
-        static let limitsPopoverWidth: CGFloat = 296
     }
 }

@@ -51,12 +51,14 @@ struct HomeSectionCard<Content: View>: View {
 struct HomeSideCard<Content: View>: View {
     let title: String
     var meta: String?
+    /// When set, VoiceOver reads the whole block (heading and content) as one element saying this.
+    var summary: String?
     let identifier: String
     @ViewBuilder let content: Content
 
     var body: some View {
         HomeCard(identifier: identifier) {
-            VStack(alignment: .leading, spacing: LoomTheme.Home.limitGap) {
+            let block = VStack(alignment: .leading, spacing: LoomTheme.Home.limitGap) {
                 HStack {
                     Text(title).font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
                         .accessibilityAddTraits(.isHeader)
@@ -69,6 +71,11 @@ struct HomeSideCard<Content: View>: View {
             }
             .padding(LoomTheme.Home.sideCardPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
+            if let summary {
+                block.accessibilityElement(children: .ignore).accessibilityLabel(summary)
+            } else {
+                block
+            }
         }
     }
 }
@@ -171,149 +178,55 @@ struct HomeEntryRow: View {
 
 // MARK: Usage
 
-/// Home's usage in one compact card (V25): the plan limits as one line, with the meters and the pace one click away, and
-/// today's tokens, sessions and cache share under it. A part with nothing to say is left out, and so is the card.
+/// Home's usage as the previews draw it: a "Plan limits" card (both windows as meters, each with its reset and pace line)
+/// and a "Today" card under it (tokens, sessions and cache share). A card with nothing to say is left out.
 struct HomeUsage: View {
     let model: CatalogModel
 
     var body: some View {
         let usage = model.usage
-        let now = model.now
         let paces = usage == nil ? [] : model.homePaces()
         let limitsFailure = paces.isEmpty ? usage?.limitsFailure.flatMap { $0.category == .noToolchain ? nil : $0 } : nil
         let figures = model.homeTodayFigures()
+        // Nothing at all when no card has something to say: an empty stack would still take a gap in the side column.
         if !paces.isEmpty || limitsFailure != nil || figures != nil {
-            HomeSideCard(title: "Usage", identifier: "home-usage") {
-                VStack(alignment: .leading, spacing: LoomTheme.Home.usageRowGap) {
-                    if let usage, !paces.isEmpty {
-                        HomePlanLimitsLine(line: PlanLimitsLine(paces: paces, now: now, timeZone: usage.timeZone),
-                                           paces: paces, now: now, timeZone: usage.timeZone,
-                                           updated: usage.limits.map { UsageText.time($0.fetchedAt, usage.timeZone) })
-                    } else if limitsFailure != nil {
+            VStack(alignment: .leading, spacing: LoomTheme.Home.blockGap) {
+                if let usage, !paces.isEmpty {
+                    HomePlanLimits(paces: paces, now: model.now, timeZone: usage.timeZone,
+                                   updated: usage.limits.map { UsageText.time($0.fetchedAt, usage.timeZone) })
+                } else if limitsFailure != nil {
+                    HomeSideCard(title: "Plan limits", identifier: "home-limits") {
                         Text("Claude did not report plan limits, so Loom shows none.")
                             .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
                             .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("home-limits")
                     }
-                    if let figures { HomeTodayLine(figures: figures) }
+                }
+                if let figures {
+                    HomeSideCard(title: "Today", identifier: "home-usage") { HomeTodayLine(figures: figures) }
                 }
             }
         }
     }
 }
 
-/// "5h 62% left · Wk 74% left · on pace" on one line when it fits. When it does not (a narrow card, a limit that runs out on
-/// another day), the windows stay on the first line and the verdict takes the second, so the time a limit runs out is never
-/// cut. A click shows the meters and the pace of each window in a popover; the tooltip says it in words.
-struct HomePlanLimitsLine: View {
-    let line: PlanLimitsLine
-    let paces: [PlanPace]
-    let now: Date
-    let timeZone: TimeZone
-    let updated: String?
-    @State private var open = false
-
-    init(line: PlanLimitsLine, paces: [PlanPace], now: Date, timeZone: TimeZone, updated: String?) {
-        self.line = line
-        self.paces = paces
-        self.now = now
-        self.timeZone = timeZone
-        self.updated = updated
-    }
-
-    var body: some View {
-        Button { open.toggle() } label: {
-            HStack(spacing: LoomTheme.Space.chipInset) {
-                Image(systemName: "gauge.with.dots.needle.33percent").font(LoomTheme.Typography.small)
-                    .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                    .frame(width: LoomTheme.Layout.indicatorSlot.width)
-                    .accessibilityHidden(true)
-                ViewThatFits(in: .horizontal) {
-                    text.lineLimit(1)
-                    VStack(alignment: .leading, spacing: LoomTheme.Home.limitsWrapSpacing) {
-                        windowsText.lineLimit(1).truncationMode(.tail)
-                        if let verdictText { verdictText.lineLimit(1).truncationMode(.tail) }
-                    }
-                    .padding(.vertical, LoomTheme.Home.limitsWrapSpacing)
-                }
-                .font(LoomTheme.Typography.small)
-                Spacer(minLength: LoomTheme.Space.headerSpacing)
-                Image(systemName: "chevron.right").font(LoomTheme.Typography.chevron)
-                    .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle).accessibilityHidden(true)
-            }
-            .padding(.horizontal, LoomTheme.Highlight.inset)
-            .frame(minHeight: LoomTheme.Home.usageRowHeight)
-            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusCompact))
-        }
-        .buttonStyle(RowButtonStyle(radius: LoomTheme.Highlight.radiusCompact, key: "home-limits"))
-        .focusEffectDisabled()
-        // The pill reaches the card's padding, so the text keeps its place.
-        .padding(.horizontal, -LoomTheme.Highlight.inset)
-        .help(line.tooltip(paces: paces, now: now, timeZone: timeZone))
-        .popover(isPresented: $open, arrowEdge: .bottom) {
-            HomePlanLimitsDetail(paces: paces, now: now, timeZone: timeZone, updated: updated)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(line.spoken)
-        .accessibilityHint("Shows the meters")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityIdentifier("home-limits")
-    }
-
-    private var dim: AnyShapeStyle { AnyShapeStyle(LoomTheme.Text.secondaryOnCardStyle) }
-    private var dot: Text { Text(" \u{00B7} ").foregroundStyle(dim) }
-
-    /// Names in secondary, the figure in primary (attention when it is low).
-    private var windowsText: Text {
-        var result = Text("")
-        for (index, window) in line.windows.enumerated() {
-            let figure = Text(window.left).fontWeight(.semibold)
-                .foregroundStyle(window.isLow ? AnyShapeStyle(LoomTheme.Status.attentionLight) : AnyShapeStyle(LoomTheme.Text.primary))
-            let part = Text("\(Text(window.name + " ").foregroundStyle(dim))\(figure)")
-            result = index == 0 ? part : Text("\(result)\(dot)\(part)")
-        }
-        return result
-    }
-
-    /// The verdict in secondary, or attention when a limit runs out; nil early in a window.
-    private var verdictText: Text? {
-        line.verdict.map { verdict in
-            Text(verdict.text).foregroundStyle(verdict.isWarning ? AnyShapeStyle(LoomTheme.Status.attentionLight) : dim)
-        }
-    }
-
-    /// The whole line: the windows, then the verdict.
-    private var text: Text {
-        guard let verdictText else { return windowsText }
-        return Text("\(windowsText)\(dot)\(verdictText)")
-    }
-}
-
-/// The popover: both windows as meters with their pace line, as the Home card showed them before V25.
-private struct HomePlanLimitsDetail: View {
+/// The "Plan limits" card: "updated 14:52" at the heading's right, then one `PlanPaceLine` per window (name and what is
+/// left, the meter, the reset and pace line). VoiceOver reads the card as one element with `PlanLimitsLine.spoken`; the
+/// tooltip carries each window's sentence. The windows' reset lines wrap, so a time a limit runs out is never cut.
+struct HomePlanLimits: View {
     let paces: [PlanPace]
     let now: Date
     let timeZone: TimeZone
     let updated: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Home.limitGap) {
-            HStack {
-                Text("Plan limits").font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: LoomTheme.Space.chipSplitGap)
-                if let updated {
-                    Text("updated " + updated).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.OnPopover.placeholder)
-                }
-            }
+        let line = PlanLimitsLine(paces: paces, now: now, timeZone: timeZone)
+        HomeSideCard(title: "Plan limits", meta: updated.map { "updated " + $0 }, summary: line.spoken,
+                     identifier: "home-limits") {
             ForEach(Array(paces.enumerated()), id: \.offset) { _, pace in
                 PlanPaceLine(pace: pace, now: now, timeZone: timeZone)
             }
         }
-        .padding(LoomTheme.Home.sideCardPadding)
-        .frame(width: LoomTheme.Home.limitsPopoverWidth, alignment: .leading)
-        .background(LoomTheme.Surface.popover)
-        .accessibilityIdentifier("home-limits-detail")
+        .help(line.tooltip(paces: paces, now: now, timeZone: timeZone))
     }
 }
 

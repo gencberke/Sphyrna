@@ -204,7 +204,7 @@ struct HighlightTests {
             ("Home.sideInset", LoomTheme.Home.sideInset), ("Home.blockGap", LoomTheme.Home.blockGap),
             ("Home.sideCardPadding", LoomTheme.Home.sideCardPadding), ("Home.itemPadding", LoomTheme.Home.itemPadding),
             ("Home.itemPaddingV", LoomTheme.Home.itemPaddingV), ("Home.itemGap", LoomTheme.Home.itemGap),
-            ("Home.limitGap", LoomTheme.Home.limitGap), ("Home.usageRowGap", LoomTheme.Home.usageRowGap),
+            ("Home.limitGap", LoomTheme.Home.limitGap),
             ("Page.sideInset", LoomTheme.ProjectPage.sideInset), ("Page.statsGap", LoomTheme.ProjectPage.statsGap),
             ("Page.rowPaddingV", LoomTheme.ProjectPage.rowPaddingV), ("Page.cardPadding", LoomTheme.ProjectPage.cardPadding),
             ("Page.statGap", LoomTheme.ProjectPage.statGap), ("Page.instructionsPadding", LoomTheme.ProjectPage.instructionsPadding),

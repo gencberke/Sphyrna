@@ -6,8 +6,7 @@ import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
 
-/// Release B's UI review: the fixes its screenshots called for. Nothing here opens a window; the Home line is drawn
-/// offscreen, to PNGs when `LOOM_REVIEW_RENDER_DIR` is set.
+/// Release B's UI review: the fixes its screenshots called for. Nothing here opens a window.
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(2)))
 struct ReleaseBReviewTests {
@@ -29,46 +28,28 @@ struct ReleaseBReviewTests {
         #expect(ChatComposerModel.cardNoteHint(for: nil) == nil)
     }
 
-    // MARK: Home's plan-limits line
+    // MARK: Home's plan-limits card
 
     private func pace(_ kind: PlanLimitKind, used: Int, resetsIn: TimeInterval) -> PlanPace {
         PlanPace(kind: kind, window: PlanLimitWindow(usedPercent: used, resetsAt: Self.now.addingTimeInterval(resetsIn)), at: Self.now)!
     }
 
-    /// The line's height at `width`, drawn as Home's card draws it.
-    private func height(_ paces: [PlanPace], width: CGFloat, name: String) throws -> CGFloat {
-        let line = PlanLimitsLine(paces: paces, now: Self.now, timeZone: Self.zone)
-        let page = HomePlanLimitsLine(line: line, paces: paces, now: Self.now, timeZone: Self.zone, updated: nil)
-            .frame(width: width, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .background(LoomTheme.Surface.card)
-            .environment(\.colorScheme, .dark)
-        let renderer = ImageRenderer(content: page)
-        renderer.scale = 2
-        let image = try #require(renderer.cgImage)
-        if let directory = ProcessInfo.processInfo.environment["LOOM_REVIEW_RENDER_DIR"], !directory.isEmpty {
-            try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-            let data = try #require(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
-            try data.write(to: URL(fileURLWithPath: directory).appendingPathComponent("home-limits-\(name).png"))
-        }
-        return CGFloat(image.height) / renderer.scale
+    /// The pace line's height at `width`, drawn as Home's card draws it.
+    private func height(_ pace: PlanPace, width: CGFloat) -> CGFloat {
+        NSHostingController(rootView: PlanPaceLine(pace: pace, now: Self.now, timeZone: Self.zone))
+            .sizeThatFits(in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)).height
     }
 
-    /// At 1220×780 Home's side card leaves the line 308 pt, and a week that runs out on another day was cut before its
-    /// time ("Wk runs out Tu…"). The verdict now takes a second line under the windows; a line that fits stays one row.
-    @Test func aVerdictThatDoesNotFitTakesASecondLineAndALineThatFitsStaysOneRow() throws {
-        let sideCard = LoomTheme.Home.sideColumn - 2 * LoomTheme.Home.sideCardPadding
-        let five = pace(.fiveHour, used: 38, resetsIn: 4_800)
+    /// At 1220×780 the side card leaves a pace line 308 pt, and a week that runs out on another day was cut before its
+    /// time. The sentence wraps instead, so the time a limit runs out is never lost; a sentence that fits stays one line.
+    @Test func aPaceSentenceThatDoesNotFitWrapsAndOneThatFitsStaysOneLine() throws {
         let tight = pace(.weekly, used: 80, resetsIn: 4 * 86_400) // 80 % gone in 3 of 7 days: runs out Thursday
-        let runsOut = [five, tight]
-        let verdict = try #require(PlanLimitsLine(paces: runsOut, now: Self.now, timeZone: Self.zone).verdict)
-        #expect(verdict.text.hasPrefix("Wk runs out Thu"))
-
-        let row = LoomTheme.Home.usageRowHeight
-        let wrapped = try height(runsOut, width: sideCard, name: "runs-out-side-card")
-        #expect(wrapped > row + 4, "the verdict is on its own line: \(wrapped) pt")
-        #expect(try height(runsOut, width: 600, name: "runs-out-wide") == row, "a wide card keeps one row")
-        let onPace = [five, pace(.weekly, used: 26, resetsIn: 4 * 86_400)]
-        #expect(try height(onPace, width: sideCard, name: "on-pace-side-card") == row, "\"on pace\" fits the side card")
+        let sentence = PlanPaceText.sentence(tight, now: Self.now, timeZone: Self.zone)
+        #expect(sentence.contains("runs out Thu"))
+        let wide = height(tight, width: 600)
+        #expect(height(tight, width: 150) > wide, "the sentence takes a second line in a narrow card")
+        #expect(height(tight, width: 308) >= wide)
+        let lasts = pace(.fiveHour, used: 38, resetsIn: 4_800)
+        #expect(height(lasts, width: 308) == height(lasts, width: 600), "\"at this pace it lasts\" fits the side card")
     }
 }

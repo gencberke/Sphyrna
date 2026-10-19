@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import SwiftUI
 import Synchronization
 import Testing
 @testable import LoomCore
@@ -657,5 +658,85 @@ struct HomeTests {
         #expect(model.homePaces().isEmpty, "no usage model")
         model.usage = usageModel(FakeLimits(), clock: TestClock())
         #expect(model.homePaces().isEmpty, "no answer yet")
+    }
+
+    // MARK: The plan-limits card
+
+    /// Rows of the picture (top to bottom, in pixels) where a run of at least `minRun` opaque pixels of one colour, other than
+    /// the card's own fill, crosses `columns`: the track or the fill of a meter. Text, the hairline and the tick are not.
+    private func meterBands(_ bitmap: NSBitmapImageRep, columns: Range<Int>, minRun: Int, minRows: Int) -> [Range<Int>] {
+        guard let data = bitmap.bitmapData, bitmap.samplesPerPixel == 4, bitmap.bitsPerSample == 8 else { return [] }
+        func pixel(_ x: Int, _ y: Int) -> [Int] {
+            let offset = y * bitmap.bytesPerRow + x * 4
+            return (0..<4).map { Int(data[offset + $0]) }
+        }
+        var counts: [[Int]: Int] = [:]
+        for y in stride(from: 0, to: bitmap.pixelsHigh, by: 3) {
+            for x in stride(from: columns.lowerBound, to: columns.upperBound, by: 3) {
+                let color = pixel(x, y)
+                if color[3] == 255 { counts[color, default: 0] += 1 }
+            }
+        }
+        guard let card = counts.max(by: { $0.value < $1.value })?.key else { return [] }
+        func near(_ a: [Int], _ b: [Int]) -> Bool { (0..<3).allSatisfy { abs(a[$0] - b[$0]) <= 3 } }
+        var inked: [Bool] = []
+        for y in 0..<bitmap.pixelsHigh {
+            var run = 0, best = 0
+            var previous: [Int]?
+            for x in columns {
+                let color = pixel(x, y)
+                if color[3] == 255, !near(color, card), let before = previous, near(color, before) { run += 1 } else { run = 0 }
+                previous = color
+                best = max(best, run)
+            }
+            inked.append(best >= minRun)
+        }
+        var bands: [Range<Int>] = []
+        var start: Int?
+        for (y, on) in Array(inked.enumerated()) + [(inked.count, false)] {
+            if on { start = start ?? y } else if let from = start {
+                if y - from >= minRows { bands.append(from..<y) }
+                start = nil
+            }
+        }
+        return bands
+    }
+
+    /// V25 swapped the preview's plan-limits card for a one-line button with a popover; the previews (and D-65's Home) show the
+    /// meters on Home itself. The card draws both windows' meters inline: a 6 pt track and fill for each, nothing to click.
+    @Test func homeDrawsBothPlanLimitWindowsAsMetersInTheCardItself() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = CatalogModel(catalog: nil, events: SessionEventHub(),
+                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
+        let now = Date()
+        let limits = FakeLimits()
+        limits.setAnswer(PlanLimits(
+            fiveHour: PlanLimitWindow(usedPercent: 38, resetsAt: now.addingTimeInterval(3 * 3_600)),
+            weekly: PlanLimitWindow(usedPercent: 59, resetsAt: now.addingTimeInterval(4 * 86_400)), fetchedAt: now))
+        let usage = UsageModel(index: FakeUsageIndex(), limits: limits, timeZone: TimeZone(identifier: "UTC")!,
+                               debounce: .milliseconds(40), activationCooldown: .zero)
+        model.usage = usage
+        usage.refresh(reason: .launch)
+        await usage.settle()
+        #expect(model.homePaces().count == 2)
+
+        let width: CGFloat = 340 // the side column
+        let renderer = ImageRenderer(content: HomeUsage(model: model)
+            .frame(width: width, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+            .environment(\.colorScheme, .dark))
+        renderer.scale = 2
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        if let directory = ProcessInfo.processInfo.environment["LOOM_REVIEW_RENDER_DIR"], !directory.isEmpty {
+            try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+            let data = try #require(bitmap.representation(using: .png, properties: [:]))
+            try data.write(to: URL(fileURLWithPath: directory).appendingPathComponent("home-plan-limits-card.png"))
+        }
+        let inset = Int(LoomTheme.Home.sideCardPadding * 2)
+        let bands = meterBands(bitmap, columns: inset..<(Int(width * 2) - inset), minRun: 120, minRows: 8)
+        #expect(bands.count == 2, "one meter per window in the card, found \(bands.count)")
+        #expect(bands.allSatisfy { $0.count <= Int(LoomTheme.PlanPaceLine.meterHeight * 2) + 4 }, // pixels at 2x, with the antialiased edge rows
+                "each meter is \(LoomTheme.PlanPaceLine.meterHeight) pt tall (the tick is taller, and made the meter 10 pt): \(bands)")
     }
 }
