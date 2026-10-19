@@ -33,7 +33,7 @@ struct CodexAppServerManagerTests {
     func earlyExit(_ fixture: (String, String, String)) async throws {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }
-        let server = try manager(context, body: fixture.0)
+        let server = try manager(context, body: fixture.0, timeout: 30)
         let start = ProcessInfo.processInfo.systemUptime
         do {
             _ = try await server.start()
@@ -46,7 +46,9 @@ struct CodexAppServerManagerTests {
             #expect(!message.contains("secret-token"))
             #expect(!message.contains("/private/value"))
         }
-        #expect(ProcessInfo.processInfo.systemUptime - start < 2)
+        // The exit surfaces long before the startup timeout, which is 30 s so that load cannot reach it (it took 3.2 s once
+        // under a combined run's load); the reasons above show it was the exit and not the timeout.
+        #expect(ProcessInfo.processInfo.systemUptime - start < 15)
         #expect(await server.internalSessionID() == nil)
         #expect(await context.supervisor.runningSessionIDs().isEmpty)
         #expect((await context.runtime.shutdown()).succeeded)
