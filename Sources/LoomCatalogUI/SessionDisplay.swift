@@ -128,6 +128,13 @@ public enum ProjectAttention: Int, Comparable, Sendable {
         }
     }
 
+    /// The one rule for the failure mark: a diamond while macOS "Differentiate without color" is on, so failure is
+    /// told from attention and an unviewed finish by shape and not by colour alone (D-69). A card's indicator and a
+    /// project row's dot both ask here; attention and unviewed stay dots.
+    static func drawsDiamond(_ attention: ProjectAttention?, differentiateWithoutColor: Bool) -> Bool {
+        differentiateWithoutColor && attention == .failure
+    }
+
     public static func strongest(of indicators: [SessionIndicator]) -> ProjectAttention? {
         indicators.compactMap(ProjectAttention.init).max()
     }

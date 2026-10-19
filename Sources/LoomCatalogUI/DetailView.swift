@@ -324,11 +324,20 @@ struct Message: View {
     let symbol: String
     let title: String
     let text: String
+    /// Draws the Loom mark in place of the symbol (the first-run Home).
+    var showsMark = false
 
     var body: some View {
         VStack(spacing: LoomTheme.Space.messageSpacing) {
-            Image(systemName: symbol).font(LoomTheme.Typography.heroSymbol).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                .accessibilityHidden(true)
+            if showsMark {
+                LoomMarkShape().fill(LoomTheme.Text.secondaryStyle)
+                    .frame(width: LoomTheme.Layout.heroMarkWidth, height: LoomTheme.Layout.heroMarkWidth / LoomMarkShape.aspect)
+                    .accessibilityHidden(true)
+                    .accessibilityIdentifier("home-loom-mark")
+            } else {
+                Image(systemName: symbol).font(LoomTheme.Typography.heroSymbol).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .accessibilityHidden(true)
+            }
             Text(title).font(LoomTheme.Typography.heading).foregroundStyle(LoomTheme.Text.primary)
             Text(text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .multilineTextAlignment(.center).textSelection(.enabled)

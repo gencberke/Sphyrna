@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 
 /// A minimal SVG path reader for the menu bar mark: absolute and relative M, L, C and Z (and the
 /// implicit repeats of M and L), nothing else. The mark ships as path data in the source, not as an
@@ -93,6 +94,21 @@ public enum MenuBarMark {
         var transform = CGAffineTransform(translationX: origin.x, y: origin.y)
             .scaledBy(x: scale, y: scale).translatedBy(x: -box.minX, y: -box.minY)
         return path.copy(using: &transform) ?? path
+    }
+}
+
+/// The Loom mark as a SwiftUI shape: the menu bar mark's own path data (no second asset), fitted to the
+/// frame it is given and filled with the winding rule.
+struct LoomMarkShape: Shape {
+    /// The width-to-height ratio of the mark's box.
+    static var aspect: CGFloat { LoomTheme.MenuBar.markBox.width / LoomTheme.MenuBar.markBox.height }
+
+    func path(in rect: CGRect) -> Path {
+        let box = LoomTheme.MenuBar.markBox
+        let scale = min(rect.width / box.width, rect.height / box.height)
+        var transform = CGAffineTransform(translationX: rect.minX, y: rect.minY)
+            .scaledBy(x: scale, y: scale).translatedBy(x: -box.minX, y: -box.minY)
+        return Path(MenuBarMark.path.copy(using: &transform) ?? MenuBarMark.path)
     }
 }
 

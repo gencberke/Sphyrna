@@ -402,6 +402,7 @@ struct SectionTitle: View {
 struct ProjectHeader: View {
     let model: CatalogModel
     let project: CatalogProject
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     /// A search shows every matching project open, whatever its collapsed flag says.
     static func isExpanded(collapsed: Bool, searching: Bool) -> Bool { searching || !collapsed }
@@ -427,7 +428,7 @@ struct ProjectHeader: View {
                         .foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
                     Spacer(minLength: LoomTheme.Space.headerSpacing)
                     if let attention {
-                        Circle().fill(attention.color).frame(width: LoomTheme.Layout.projectDot, height: LoomTheme.Layout.projectDot)
+                        ProjectAttentionMark(attention: attention, differentiateWithoutColor: differentiateWithoutColor)
                     }
                 }
                 .contentShape(Rectangle())
@@ -486,6 +487,23 @@ struct ProjectHeader: View {
         }
         .accessibilityElement(children: .contain)
         .help(project.path)
+    }
+}
+
+/// A project row's attention mark: a dot, or the failure diamond under "Differentiate without color"
+/// (the rule is `ProjectAttention.drawsDiamond`, the same one the card's indicator asks).
+struct ProjectAttentionMark: View {
+    let attention: ProjectAttention
+    let differentiateWithoutColor: Bool
+
+    var body: some View {
+        if ProjectAttention.drawsDiamond(attention, differentiateWithoutColor: differentiateWithoutColor) {
+            Diamond().fill(attention.color)
+                .frame(width: LoomTheme.Layout.failureDiamond, height: LoomTheme.Layout.failureDiamond)
+                .frame(width: LoomTheme.Layout.projectDot, height: LoomTheme.Layout.projectDot)
+        } else {
+            Circle().fill(attention.color).frame(width: LoomTheme.Layout.projectDot, height: LoomTheme.Layout.projectDot)
+        }
     }
 }
 
@@ -643,14 +661,16 @@ struct SessionCardView: View {
                     Spacer(minLength: LoomTheme.Space.headerSpacing)
                     CardTimeLabel(row: row, model: model)
                 }
+                if let reasonLine {
+                    // What the session waits for or did last: its own line between the title and the fixed bottom row
+                    // (D-69), so the card is one line taller while it needs the user.
+                    Text(reasonLine.text)
+                        .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(reasonLine.help)
+                }
                 HStack(spacing: LoomTheme.Space.cardRowSpacing) {
-                    if let reasonLine {
-                        // What the session waits for or did last, in place of the branch (the branch is in the header).
-                        Text(reasonLine.text)
-                            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
-                            .truncationMode(.tail)
-                            .help(reasonLine.help)
-                    } else if let origin, origin.replacesBranch {
+                    if let origin, origin.replacesBranch {
                         // Same branch as the session that opened this one: the origin says more than the branch.
                         Label(origin.cardLabel, systemImage: "arrow.turn.down.right")
                             .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
@@ -669,11 +689,9 @@ struct SessionCardView: View {
                     Spacer(minLength: LoomTheme.Space.headerSpacing)
                     if let projectName = SessionCardView.projectLabel(mode: mode, name: projectName) {
                         Text(projectName).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
-                            .lineLimit(1).layoutPriority(reasonLine == nil ? 0 : 1)
+                            .lineLimit(1)
                     }
-                    // The reason is the line that gives way: the project and the provider keep their room.
                     ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.providerIconCard)
-                        .layoutPriority(reasonLine == nil ? 0 : 1)
                 }
             }
         }
@@ -713,16 +731,18 @@ struct SessionCardView: View {
 }
 
 /// The "new conversation" entries of the footer menu, a project's actions menu
-/// and a project row's context menu; all go through the model's one start path.
+/// and a project row's context menu; all go through the model's one start path. Codex is listed in every
+/// build (D-69); where the build cannot start it the entry is disabled and followed by the reason.
 struct NewConversationButtons: View {
     let model: CatalogModel
     let projectID: UUID?
     var suffix = ""
 
     var body: some View {
-        ForEach(NewConversationAction.startable(on: model), id: \.provider) { action in
+        ForEach(NewConversationAction.listed(on: model), id: \.provider) { action in
             Button(action.title + suffix) { action.perform(on: model, projectID: projectID) }
                 .disabled(!action.isEnabled(on: model, projectID: projectID))
+            if let reason = action.unavailableReason(on: model) { Text(reason) }
         }
     }
 }
@@ -800,6 +820,17 @@ struct NewConversationAction {
     /// The actions the model may start (production: Claude only).
     @MainActor static func startable(on model: CatalogModel) -> [NewConversationAction] {
         all.filter { model.startableProviders.contains($0.provider) }
+    }
+
+    /// The entries a menu lists: the startable ones, and Codex even where this build cannot start it (shown,
+    /// disabled, with `unavailableReason`).
+    @MainActor static func listed(on model: CatalogModel) -> [NewConversationAction] {
+        all.filter { model.startableProviders.contains($0.provider) || model.newSessionUnavailableReason($0.provider) != nil }
+    }
+
+    /// Why this entry is disabled for good in this build; nil when the build can start the provider.
+    @MainActor func unavailableReason(on model: CatalogModel) -> String? {
+        model.newSessionUnavailableReason(provider)
     }
 
     @MainActor func perform(on model: CatalogModel, projectID: UUID?) {

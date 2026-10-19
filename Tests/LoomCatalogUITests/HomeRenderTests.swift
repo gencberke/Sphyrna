@@ -140,6 +140,43 @@ struct HomeRenderTests {
         #expect(!found.contains("home-start") && !found.contains("home-no-claude") && !found.contains("home-check-again"))
     }
 
+    /// D-69: the first-run Home lists Codex in every build. Where the build cannot start it the button is disabled and
+    /// the reason is on screen; where it can, the button works as before and no reason is drawn.
+    @Test func theEmptyHomeShowsCodexDisabledWithItsReasonInABuildThatCannotStartIt() async throws {
+        enableAccessibilityTree()
+        let intents = HomeIntents()
+        defer { withExtendedLifetime(intents) {} }
+        func state(_ providers: Set<ManagedSession.Provider>) async throws -> (enabled: Bool?, reason: Bool, mark: Bool) {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-home-codex-\(UUID())", isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let model = CatalogModel(catalog: try SessionCatalog(url: root.appendingPathComponent("c.sqlite3")),
+                                     events: SessionEventHub(),
+                                     preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")),
+                                     startableProviders: providers)
+            model.intents = intents // weak: the test holds it
+            await model.start()
+            await model.stopAndWait()
+            await model.settle()
+            model.showHome()
+            let (window, hosting) = hostHome(model, width: 940, height: 740)
+            defer { window.close(); model.stop() }
+            try await settle(window) { self.identifiers(in: hosting.view).contains("home-new-codex-session") }
+            let codex = accessibilityElements(in: hosting.view).first { $0.accessibilityIdentifier?() == "home-new-codex-session" }
+            let reason = accessibilityElements(in: hosting.view).first { $0.accessibilityIdentifier?() == "home-new-codex-reason" }
+            return (codex.flatMap { $0.isAccessibilityEnabled?() }, reason != nil, // the words are `CatalogModel.codexLaterReason`, checked in SidebarStatusTests
+                    HomeEmptyCatalog.showsMark(claudeMissing: model.homeClaudeCLIMissing))
+        }
+        let production = try await state([.claude])
+        #expect(production.enabled == false, "listed, disabled")
+        #expect(production.reason, "with the reason")
+        #expect(production.mark, "the first run carries the Loom mark")
+        let dev = try await state([.claude, .codex])
+        #expect(dev.enabled == true && !dev.reason)
+        // The warning state keeps its symbol.
+        #expect(!HomeEmptyCatalog.showsMark(claudeMissing: true))
+    }
+
     @Test func theFirstRunPanelIsHomeWithItsEmptyStateNotTheOldStartScreen() async throws {
         enableAccessibilityTree()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-home-firstrun-\(UUID())", isDirectory: true)

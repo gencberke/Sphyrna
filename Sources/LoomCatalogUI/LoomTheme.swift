@@ -622,6 +622,10 @@ enum LoomTheme {
         static let chaseInset: CGFloat = 1.6
         static let chaseDotRadius: CGFloat = 1.45
         static let pip: CGFloat = 8
+        /// The Loom mark over the first-run Home (D-69): its width; the height follows the mark's box.
+        static let heroMarkWidth: CGFloat = 36
+        /// The failure mark under "Differentiate without color" (the identity proposal's diamond, corner to corner).
+        static let failureDiamond: CGFloat = 7
         static let projectDot: CGFloat = 8
         /// A subagent row: its height, and the scale of the working chase in its 12 pt slot.
         static let subagentRowHeight: CGFloat = 22

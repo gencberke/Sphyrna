@@ -1654,6 +1654,21 @@ public final class CatalogModel {
         actionsAvailable && row.live?.runID != nil && busy[row.id] != .stopping && !isDeleting(row.id)
     }
 
+    /// What a disabled "New Codex Session" entry says in a build that cannot start Codex (D-28, D-69).
+    public static let codexLaterReason = "Codex comes in a later version"
+
+    /// Why a provider's new-session entry is shown disabled for good: only Codex, only in a build that cannot
+    /// start it. Claude is hidden where it cannot start, as before.
+    public func newSessionUnavailableReason(_ provider: ManagedSession.Provider) -> String? {
+        Self.newSessionUnavailableReason(provider, startable: startableProviders)
+    }
+
+    /// The same decision for the main menu, which is built before a model exists.
+    public static func newSessionUnavailableReason(_ provider: ManagedSession.Provider,
+                                                   startable: Set<ManagedSession.Provider>) -> String? {
+        provider == .codex && !startable.contains(.codex) ? codexLaterReason : nil
+    }
+
     /// The conversation's live terminal, if it owns a run right now.
     public func terminalView(for id: UUID) -> NSView? {
         _ = terminalRevision

@@ -14,6 +14,13 @@ extension EnvironmentValues {
 struct IndicatorView: View {
     let indicator: SessionIndicator
     @Environment(\.indicatorsAnimate) private var indicatorsAnimate
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+
+    /// Failure is a diamond while macOS "Differentiate without color" is on, so it is told from attention and an
+    /// unviewed finish by its shape and not by its colour alone; the dot otherwise (D-69, O-12).
+    static func drawsDiamond(_ indicator: SessionIndicator, differentiateWithoutColor: Bool) -> Bool {
+        ProjectAttention.drawsDiamond(ProjectAttention(indicator), differentiateWithoutColor: differentiateWithoutColor)
+    }
 
     /// Stepped, low-rate animation (not display-rate).
     static let framesPerSecond = LoomTheme.Motion.chaseFramesPerSecond
@@ -37,7 +44,12 @@ struct IndicatorView: View {
             case .unviewedCompletion:
                 dot(LoomTheme.Status.unviewed)
             case .failed, .stopUnverified, .problem:
-                dot(LoomTheme.Status.failure)
+                if Self.drawsDiamond(indicator, differentiateWithoutColor: differentiateWithoutColor) {
+                    Diamond().fill(LoomTheme.Status.failure)
+                        .frame(width: LoomTheme.Layout.failureDiamond, height: LoomTheme.Layout.failureDiamond)
+                } else {
+                    dot(LoomTheme.Status.failure)
+                }
             case .identityUnclear:
                 ring(LoomTheme.Status.attention)
             case .unknown:
@@ -57,6 +69,19 @@ struct IndicatorView: View {
     private func ring(_ color: Color) -> some View {
         Circle().strokeBorder(color, lineWidth: LoomTheme.Line.indicatorRing)
             .frame(width: LoomTheme.Layout.pip, height: LoomTheme.Layout.pip)
+    }
+}
+
+/// A square standing on its corner, filling its frame.
+struct Diamond: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.closeSubpath()
+        return path
     }
 }
 

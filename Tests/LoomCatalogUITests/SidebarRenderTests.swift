@@ -372,6 +372,13 @@ struct SidebarRenderTests {
         let day = try #require(label(hosted, hasPrefix: "Card 11, "))
         #expect(day.label == "Card 11, Claude, Idle")
 
+        // D-69: the reason line sits between the title and the fixed bottom row, so the Active card is one caption
+        // line (and its gap) taller than a card without one; before, it took the branch's place and the heights matched.
+        let activeHeight = try #require(active.element.accessibilityFrame?()).height
+        let dayHeight = try #require(day.element.accessibilityFrame?()).height
+        #expect(activeHeight - dayHeight >= 14, "Active card \(activeHeight) pt, day card \(dayHeight) pt")
+        #expect(activeHeight - dayHeight <= 24, "Active card \(activeHeight) pt, day card \(dayHeight) pt")
+
         // The Home row counts it and opens Home.
         let home = try #require(label(hosted, hasPrefix: "Home"))
         #expect(home.label == "Home, 1 session needs you")

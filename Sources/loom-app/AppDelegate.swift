@@ -17,6 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     let options: LaunchOptions
     /// Production or development, read once; the only source of identity-derived names.
     let identity = BuildIdentity(bundleIdentifier: Bundle.main.bundleIdentifier)
+    /// The providers this build can start (the model gets the same set).
+    var startableProviders: Set<ManagedSession.Provider> {
+        Set(identity.startableProviders.compactMap(ManagedSession.Provider.init(rawValue:)))
+    }
     private(set) var window: NSWindow?
     /// The frame `makeWindow` chose (saved, or the centered default). AppKit re-places a window
     /// that is shown for the first time (narrower, recentered), so it is applied again after the show.
@@ -126,7 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let model = CatalogModel(
             catalog: catalog, startupError: catalogFailure, events: hub,
             preferences: UIPreferencesStore(url: root.appendingPathComponent("ui-preferences.json")),
-            startableProviders: Set(identity.startableProviders.compactMap(ManagedSession.Provider.init(rawValue:)))
+            startableProviders: startableProviders
         )
         configureEvidenceAtLaunch(model: model)
         self.model = model
@@ -571,6 +575,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     /// Menu commands follow the same rules as the buttons.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(newCodexFromMenu(_:)),
+           CatalogModel.newSessionUnavailableReason(.codex, startable: startableProviders) != nil {
+            return false // listed in every build, startable only where the build includes Codex (D-69)
+        }
         guard let model else { return true }
         switch item.action {
         case #selector(newClaudeFromMenu(_:)):

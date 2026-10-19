@@ -91,6 +91,45 @@ struct SidebarStatusTests {
         #expect(intents.starts.map(\.0) == [.claude])
     }
 
+    /// D-69: 1.5.0 behaves as if Loom supports Codex. A build that cannot start it still lists the entry, disabled and
+    /// with the reason; a build that can lists it as it always did, and nothing starts Codex in the first.
+    @Test func aBuildWithoutCodexListsItDisabledWithTheReasonAndStartsNothing() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-ui-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        func make(_ providers: Set<ManagedSession.Provider>) -> CatalogModel {
+            CatalogModel(catalog: nil, events: SessionEventHub(),
+                         preferences: UIPreferencesStore(url: root.appendingPathComponent("p-\(UUID()).json")),
+                         startableProviders: providers)
+        }
+        let production = make([.claude])
+        let intents = RecordingIntents()
+        production.intents = intents
+        let listed = NewConversationAction.listed(on: production)
+        #expect(listed.map(\.title) == ["New Claude Session", "New Codex Session"])
+        let codex = try #require(listed.last)
+        #expect(codex.unavailableReason(on: production) == "Codex comes in a later version")
+        #expect(!codex.isEnabled(on: production, projectID: nil))
+        codex.perform(on: production, projectID: nil)
+        #expect(intents.starts.isEmpty, "nothing starts Codex in a build that cannot")
+        #expect(listed.first?.unavailableReason(on: production) == nil)
+
+        // A build that starts Codex lists the same two entries, both enabled and without a reason.
+        let dev = make([.claude, .codex])
+        let devIntents = RecordingIntents()
+        dev.intents = devIntents
+        let devListed = NewConversationAction.listed(on: dev)
+        #expect(devListed.map(\.title) == ["New Claude Session", "New Codex Session"])
+        #expect(devListed.allSatisfy { $0.unavailableReason(on: dev) == nil && $0.isEnabled(on: dev, projectID: nil) })
+
+        // The main menu is built before a model exists and asks the same question of the build's provider set.
+        #expect(CatalogModel.newSessionUnavailableReason(.codex, startable: [.claude]) == CatalogModel.codexLaterReason)
+        #expect(CatalogModel.newSessionUnavailableReason(.codex, startable: [.claude, .codex]) == nil)
+        #expect(CatalogModel.newSessionUnavailableReason(.claude, startable: [.claude]) == nil)
+        // Claude stays hidden where it cannot start (unchanged).
+        #expect(NewConversationAction.listed(on: make([])).map(\.title) == ["New Codex Session"])
+    }
+
     @Test(.timeLimit(.minutes(1)))
     func collapsedProjectShowsADotForAnUnviewedLiveSession() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-ui-\(UUID())")

@@ -1,5 +1,6 @@
 import AppKit
 import LoomCatalogUI
+import LoomCore
 
 /// The main menu. Every item targets this delegate or the shell target; later slices add their items here.
 extension AppDelegate {
@@ -24,11 +25,15 @@ extension AppDelegate {
                          keyEquivalent: "o").target = self
         // New conversations start in the selected conversation's project (or none), through the new-session holder.
         addShellItem(.newSession, to: fileMenu)
-        if !identity.isProduction {
-            let codex = fileMenu.addItem(withTitle: "New Codex Session", action: #selector(newCodexFromMenu(_:)),
-                                         keyEquivalent: "n")
-            codex.keyEquivalentModifierMask = [.command, .shift]
-            codex.target = self
+        // Codex is listed in every build (D-69). A build that cannot start it shows the item disabled
+        // (`validateMenuItem` asks the model) with the reason under it.
+        let codex = fileMenu.addItem(withTitle: "New Codex Session", action: #selector(newCodexFromMenu(_:)),
+                                     keyEquivalent: "n")
+        codex.keyEquivalentModifierMask = [.command, .shift]
+        codex.target = self
+        if let reason = CatalogModel.newSessionUnavailableReason(.codex, startable: startableProviders) {
+            codex.subtitle = reason
+            codex.toolTip = reason
         }
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Resume Session", action: #selector(resumeFromMenu(_:)),

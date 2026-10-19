@@ -29,12 +29,16 @@ struct HomeEmptyCopy: Equatable {
 struct HomeEmptyCatalog: View {
     let model: CatalogModel
 
+    /// The first run carries the Loom mark; the missing-Claude state keeps its warning symbol.
+    static func showsMark(claudeMissing: Bool) -> Bool { !claudeMissing }
+
     var body: some View {
         let missing = model.homeClaudeCLIMissing
         let copy = missing ? HomeEmptyCopy.noClaude : HomeEmptyCopy.noProjects
         VStack(spacing: LoomTheme.Space.emptyStateSpacing) {
-            Message(symbol: copy.symbol, title: copy.title, text: copy.text)
-            HStack {
+            // The first run carries the Loom mark; a missing Claude keeps its warning symbol (D-69, O-12).
+            Message(symbol: copy.symbol, title: copy.title, text: copy.text, showsMark: Self.showsMark(claudeMissing: missing))
+            HStack(alignment: .top) {
                 Button("Add Project…") { model.presentAddProject() }
                     .keyboardShortcut("o", modifiers: .command)
                     .buttonStyle(AccentButtonStyle(kind: .filled))
@@ -47,11 +51,16 @@ struct HomeEmptyCatalog: View {
                         .disabled(!model.canStart(.claude, projectID: nil))
                         .accessibilityIdentifier("home-new-session")
                 }
-                // Only a build that includes Codex offers it (`startableProviders` is the build's decision).
-                if model.startableProviders.contains(.codex) {
+                // Codex is listed in every build (D-69); a build that cannot start it shows the entry disabled, with
+                // the reason (`startableProviders` is the build's decision).
+                VStack(spacing: LoomTheme.Space.noticeLineSpacing) {
                     Button("New Codex Session") { model.startConversation(.codex, projectID: nil) }
                         .disabled(!model.canStart(.codex, projectID: nil))
                         .accessibilityIdentifier("home-new-codex-session")
+                    if let reason = model.newSessionUnavailableReason(.codex) {
+                        Text(reason).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+                            .accessibilityIdentifier("home-new-codex-reason")
+                    }
                 }
             }
         }

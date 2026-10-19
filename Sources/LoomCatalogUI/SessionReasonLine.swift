@@ -1,8 +1,8 @@
 import Foundation
 import LoomCore
 
-/// The line an Active card shows in place of the branch (concept decision 8): what the session waits for
-/// or did last. It is worded from a `StatusReason`, which the hub changes only at hook boundaries, so the
+/// The line an Active card shows between its title and its fixed bottom row (concept decision 8, D-69): what the
+/// session waits for or did last. It is worded from a `StatusReason`, which the hub changes only at hook boundaries, so the
 /// text never changes per frame. The text comes from commands, paths and Claude's replies: it is shown
 /// as one bounded line, never logged, and never part of the evidence snapshot.
 struct SessionReasonLine: Equatable {
