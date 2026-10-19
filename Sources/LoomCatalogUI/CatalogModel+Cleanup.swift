@@ -2,7 +2,7 @@ import Foundation
 import LoomCore
 import Observation
 
-// CP4-G: pin (a retention exception, not a pinned tab) and the Conversations review state.
+// CP4-G: pin (a retention exception, not a pinned tab) and the Settings → Sessions review state.
 
 extension CatalogModel {
     /// Writes `sessions.pinned` and refreshes the card. A pinned conversation is never listed
@@ -18,14 +18,14 @@ extension CatalogModel {
         await refreshRow(id)
     }
 
-    /// Offers the cleanup review in Settings. The app calls this only where the identity enables
-    /// it (`BuildIdentity.cleanupReviewEnabled`); manual deletion does not depend on it.
+    /// Offers the cleanup review in Settings (every build, D-69). It deletes only what the user
+    /// checks and confirms there.
     public func installCleanupReview(_ reviewing: any CleanupReviewing) {
         cleanupReview = CleanupReviewModel(reviewing: reviewing)
     }
 }
 
-/// State of Settings → Conversations. Every list is a snapshot from the coordinator; deleting
+/// State of Settings → Sessions. Every list is a snapshot from the coordinator; deleting
 /// re-plans in the coordinator and only rows that are checked and still eligible are removed.
 @MainActor @Observable
 public final class CleanupReviewModel {
@@ -44,6 +44,12 @@ public final class CleanupReviewModel {
     public private(set) var results: [UUID: CleanupRowResult] = [:]
     /// A dismissed due review stops showing the info line until the next one is due.
     public private(set) var dismissed = false
+    /// The four cleanup numbers in force (the Cleanup part of the page).
+    public private(set) var settings: CleanupSettings = .standard
+    /// The numbers changed after the list on screen was made; the next review uses them.
+    public private(set) var settingsChangedSinceReview = false
+    public private(set) var settingsError: String?
+    @ObservationIgnored private var settingsSave: Task<Void, Never>?
 
     @ObservationIgnored private let reviewing: any CleanupReviewing
     @ObservationIgnored var currentDate: @Sendable () -> Date = { Date() }
@@ -62,7 +68,9 @@ public final class CleanupReviewModel {
         guard !isBusy else { return }
         phase = .loading
         do {
+            if let stored = try? await reviewing.settings() { settings = stored }
             review = try await reviewing.review(now: currentDate())
+            settingsChangedSinceReview = false
             selection = []
             results = [:]
             dismissed = false
@@ -105,6 +113,45 @@ public final class CleanupReviewModel {
         }
     }
 
+    /// Changes the cleanup numbers (held inside their ranges) and keeps them. They apply from the next
+    /// review on; a list already on screen is not re-planned by a change.
+    public func updateSettings(_ change: (inout CleanupSettings) -> Void) {
+        var edited = settings
+        change(&edited)
+        let updated = CleanupSettings(
+            reviewIntervalDays: edited.reviewIntervalDays, deletionWaitDays: edited.deletionWaitDays)
+        guard updated != settings else { return }
+        settings = updated
+        settingsChangedSinceReview = true
+        persistSettings { [reviewing] in try await reviewing.setSettings(updated) }
+    }
+
+    /// Back to the defaults ("Reset to defaults").
+    public func resetSettings() {
+        guard !settings.isStandard else { return }
+        settings = .standard
+        settingsChangedSinceReview = true
+        persistSettings { [reviewing] in _ = try await reviewing.resetSettings() }
+    }
+
+    /// Waits for the numbers to be kept (tests).
+    public func settingsSaved() async { await settingsSave?.value }
+
+    /// Saves one after another, so the last change is the one that stays.
+    private func persistSettings(_ save: @escaping @Sendable () async throws -> Void) {
+        let previous = settingsSave
+        settingsSave = Task { [weak self] in
+            await previous?.value
+            do {
+                try await save()
+                self?.settingsError = nil
+            } catch {
+                self?.settingsError = "The cleanup numbers could not be kept: \(error)"
+                if let stored = try? await self?.reviewing.settings() { self?.settings = stored }
+            }
+        }
+    }
+
     /// Leaves a due review without deleting; it still counts as the cleanup run.
     public func dismissDueReview() async {
         guard showsDueNotice else { return }
@@ -119,8 +166,14 @@ public final class CleanupReviewModel {
     private func record(_ id: UUID, _ result: CleanupRowResult) { results[id] = result }
 }
 
-/// The words Settings uses for the planner's reasons.
+/// The words Settings uses for the planner's reasons and the Cleanup part's two numbers.
 enum CleanupText {
+    static let reviewIntervalTitle = "Review again after"
+    static let reviewIntervalDetail = "A new review is due this long after the last one."
+    static let deletionWaitTitle = "Wait before deleting"
+    static let deletionWaitDetail = "A stale session can be deleted this long after it went stale or after you last opened it."
+
+
     static func reason(_ reason: CleanupExclusionReason) -> String {
         switch reason {
         case .pinned: "Pinned"

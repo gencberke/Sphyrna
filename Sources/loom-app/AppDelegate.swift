@@ -477,11 +477,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 let conversations = ConversationController(runtime: created, model: model)
                 model.installChatSessions(runtime: created, dataRoot: root)
                 await conversations.begin()
-                // The launch is recorded in both flavors; the cleanup review (which deletes in bulk)
-                // is offered only where the identity enables it (CP4-G, DP-CP4-2).
+                // The cleanup review (Settings → Sessions) is in every build (D-69); it deletes only what
+                // the user confirms there.
                 let cleanup = CleanupCoordinator(runtime: created)
                 await cleanup.recordLaunch()
-                if identity.cleanupReviewEnabled { model.installCleanupReview(cleanup) }
+                model.installCleanupReview(cleanup)
                 self.runtime = created
                 self.conversations = conversations
                 diagnostics?.isAvailable = true
@@ -517,9 +517,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             bundleIdentifier: Bundle.main.bundleIdentifier, parentPID: getppid()
         )
         let system = SystemProviderToolchains(supervisor: supervisor, origin: origin)
-        let toolchains: ProviderToolchainResolver = evidenceToolchains(root: root, supervisor: supervisor, origin: origin)
-            ?? { provider in try await system.toolchain(for: provider) }
+        let evidence = evidenceToolchains(root: root, supervisor: supervisor, origin: origin)
+        let toolchains: ProviderToolchainResolver = evidence ?? { provider in try await system.toolchain(for: provider) }
         claudeToolchain.provide(toolchains)
+        // A delete targets the folder the login shell names (DP-CP4-8); an acceptance run has fixture providers.
+        var loginEnvironment: (@Sendable () async throws -> [String: String])?
+        if evidence == nil {
+            loginEnvironment = { try await supervisor.terminalEnvironment(origin: origin).environment }
+        }
         // The commit names the build for Codex; CFBundleVersion is only a growing number.
         let info = Bundle.main.infoDictionary
         let build = info?["LoomRevision"] as? String ?? info?["CFBundleVersion"] as? String ?? "dev"
@@ -530,6 +535,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // A running session is never stopped for inactivity (user decision, 8 Oct 2026).
             idlePolicy: SessionIdlePolicy(stopsIdleRuns: false),
             claudeProfileDirectory: evidenceClaudeProfile(root: root),
+            claudeLoginEnvironment: loginEnvironment,
             claudePluginDirectory: root.appendingPathComponent("claude-plugin", isDirectory: true),
             // A failed start makes the next one read the CLI again instead of reusing the cache.
             toolchainInvalidator: { provider in await system.invalidate(provider) },

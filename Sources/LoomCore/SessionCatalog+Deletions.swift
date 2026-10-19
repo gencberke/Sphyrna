@@ -300,6 +300,13 @@ extension SessionCatalog {
         }
     }
 
+    public func removeAppState(_ key: String) throws {
+        try database.withStatement("DELETE FROM app_state WHERE key = ?") { statement in
+            try database.bind(key, at: 1, to: statement)
+            try database.stepDone(statement, operation: "remove app state")
+        }
+    }
+
     // MARK: Internals
 
     static let deletionColumns = """

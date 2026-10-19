@@ -29,9 +29,4 @@ public struct BuildIdentity: Equatable, Sendable {
     /// (D-14, D-28): absent from the production app, present in development.
     /// Raw strings keep this target free of dependencies.
     public var startableProviders: [String] { isProduction ? ["claude"] : ["claude", "codex"] }
-
-    /// Whether the app offers the stale-session cleanup review (Settings). Manual
-    /// "Delete Permanently…" of one session is offered in every build; only the
-    /// automatic review waits for the user's decision on DP-CP4-2.
-    public var cleanupReviewEnabled: Bool { !isProduction }
 }

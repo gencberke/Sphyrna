@@ -32,6 +32,10 @@ public struct SessionRuntimeConfiguration: Sendable {
     /// `CLAUDE_CONFIG_DIR` is read from here when no toolchain has been resolved yet: Loom's own
     /// environment, the same rule the usage index follows.
     public var claudeEnvironment: [String: String]
+    /// The user's login-shell environment (the launch-environment capture), asked once in the
+    /// background when the runtime starts, so a deletion finds `CLAUDE_CONFIG_DIR` even when only the
+    /// shell sets it and no session was started yet (DP-CP4-8). Nil asks nothing.
+    public var claudeLoginEnvironment: (@Sendable () async throws -> [String: String])?
     /// Where Loom writes the plugin it gives its Claude sessions (`ClaudeLoomPlugin`); nil gives none.
     public var claudePluginDirectory: URL?
     /// How long Claude may report a running turn with no hook event reaching Loom before the
@@ -60,6 +64,7 @@ public struct SessionRuntimeConfiguration: Sendable {
         forgetters: ConversationForgetters = .shared,
         claudeProfileDirectory: URL? = nil,
         claudeEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+        claudeLoginEnvironment: (@Sendable () async throws -> [String: String])? = nil,
         claudePluginDirectory: URL? = nil,
         hookSilenceGrace: TimeInterval = 3,
         catalogBackupDelay: TimeInterval? = 10,
@@ -80,6 +85,7 @@ public struct SessionRuntimeConfiguration: Sendable {
         self.forgetters = forgetters
         self.claudeProfileDirectory = claudeProfileDirectory
         self.claudeEnvironment = claudeEnvironment
+        self.claudeLoginEnvironment = claudeLoginEnvironment
         self.claudePluginDirectory = claudePluginDirectory
         self.hookSilenceGrace = hookSilenceGrace
         self.catalogBackupDelay = catalogBackupDelay
@@ -287,6 +293,9 @@ public actor SessionRuntime {
     /// Conversations whose deletion is executing in this process (one runner each).
     var deletionsInFlight: Set<UUID> = []
     var deletionRecovery: Task<Void, Never>?
+    /// The login shell's environment once the background capture finished (`claudeConfigDirectory`).
+    var loginEnvironment: [String: String]?
+    var loginEnvironmentCapture: Task<Void, Never>?
     /// Set when a deletion record could not be read at launch; recovery stopped loudly.
     var deletionRecoveryIssue: String?
     /// Test seam: called before and after each deletion step; a throw is that step's failure.
@@ -363,7 +372,24 @@ public actor SessionRuntime {
         // Interrupted deletions finish now: no run of this process exists yet, so a deletion
         // that was stopping resolves. Failures stay on the records for a manual retry.
         deletionRecovery = Task { [weak self] in await self?.recoverDeletions() }
+        // The login shell's environment, once and off the main path: a deletion needs only its
+        // `CLAUDE_CONFIG_DIR`. A failure leaves the rule as it was (Loom's own environment).
+        if let source = configuration.claudeLoginEnvironment {
+            loginEnvironmentCapture = Task { [weak self] in
+                let captured = try? await source()
+                guard !Task.isCancelled else { return }
+                await self?.adoptLoginEnvironment(captured)
+            }
+        }
     }
+
+    private func adoptLoginEnvironment(_ environment: [String: String]?) {
+        guard !shuttingDown else { return }
+        loginEnvironment = environment
+    }
+
+    /// Waits for the capture `start()` began (tests and evidence).
+    public func finishLoginEnvironmentCapture() async { await loginEnvironmentCapture?.value }
 
     public func environmentWarnings() -> [String] { toolchainWarnings }
 
@@ -678,6 +704,7 @@ public actor SessionRuntime {
             await coordinator.cancelNewLaunch(reservation)
         }
         await lifecycle.stopAutomaticEvaluation()
+        loginEnvironmentCapture?.cancel()
         // Waiting clients hear that Loom is going; pending requests are lost (memory only).
         await openRequests.shutdown()
         controlServer?.stop()
@@ -741,13 +768,13 @@ public actor SessionRuntime {
 
     /// Where Claude keeps this profile's files, found without running the CLI (a deletion must
     /// work with Claude removed from PATH): the explicit profile folder, else the resolved
-    /// toolchain's when one exists already, else `CLAUDE_CONFIG_DIR` from its captured environment
-    /// or from Loom's own, else `~/.claude`; the same rule as the usage index.
+    /// toolchain's when one exists already, else `CLAUDE_CONFIG_DIR` from the login shell's environment
+    /// (captured once at launch, DP-CP4-8) or from Loom's own, else `~/.claude`.
     func claudeConfigDirectory() -> URL {
         let resolved = toolchains[.claude]
         return ClaudeProfileLayout(
             profileDirectory: configuration.claudeProfileDirectory ?? resolved?.profileDirectory,
-            environment: resolved?.environment ?? configuration.claudeEnvironment,
+            environment: resolved?.environment ?? loginEnvironment ?? configuration.claudeEnvironment,
             home: URL(fileURLWithPath: configuration.homeDirectory, isDirectory: true)
         ).configDirectory
     }

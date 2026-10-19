@@ -343,6 +343,51 @@ struct ClaudeDataInventoryTests {
         #expect(try plan(fixture).unreachable == ["debug", "projects/s"])
     }
 
+    @Test func onlyTheWorkingDirectorysProjectFolderOrADataFolderBlocks() throws {
+        let fixture = try Fixture()
+        try fixture.populate()
+        func planned(_ directory: String?) throws -> DeletionPlan {
+            try ClaudeDataInventory.plan(sessionIDs: [Self.a], configDirectory: fixture.config,
+                                         temporaryRoot: nil, workingDirectory: directory)
+        }
+        // Without a working directory every unreachable project folder blocks (the plan for a record that names none).
+        #expect(try planned(nil).unreachable == ["projects/s"])
+        // Another project's linked folder cannot hold this session's transcript: it is reported, not blocking.
+        let other = try planned("/work/app")
+        #expect(other.unreachable.isEmpty)
+        #expect(other.unrelatedUnreachable == ["projects/s"])
+        // The folder Claude names after the working directory does block, however it is spelled.
+        try fixture.link("projects/-work-app", to: fixture.outside.appendingPathComponent("dir"))
+        let own = try planned("/work/app")
+        #expect(own.unreachable == ["projects/-work-app"])
+        #expect(own.unrelatedUnreachable == ["projects/s"])
+        try FileManager.default.removeItem(at: fixture.path("projects/-work-app"))
+        try fixture.link("projects/-Work-App", to: fixture.outside.appendingPathComponent("dir"))
+        #expect(try planned("/work/app").unreachable == ["projects/-Work-App"])
+        // A top-level data folder moved away blocks whatever the working directory is.
+        try FileManager.default.removeItem(at: fixture.path("debug"))
+        try fixture.link("debug", to: fixture.outside.appendingPathComponent("dir"))
+        #expect(try planned("/work/app").unreachable == ["debug", "projects/-Work-App"])
+        // So does the projects folder itself.
+        try FileManager.default.removeItem(at: fixture.path("projects"))
+        try fixture.link("projects", to: fixture.outside)
+        #expect(try planned("/work/app").unreachable == ["debug", "projects"])
+    }
+
+    @Test func aLongWorkingDirectorysProjectFolderIsMatchedByItsPrefix() throws {
+        let fixture = try Fixture()
+        let directory = "/" + String(repeating: "deep/", count: 60) + "app"
+        let expected = ClaudeTranscriptLocator.folderName(forWorkingDirectory: directory)
+        #expect(expected.count > 200)
+        // Claude cuts a long name and appends a hash.
+        try fixture.link("projects/\(expected.prefix(200))-1a2b3c", to: fixture.outside)
+        try fixture.link("projects/-elsewhere", to: fixture.outside)
+        let planned = try ClaudeDataInventory.plan(sessionIDs: [Self.a], configDirectory: fixture.config,
+                                                   temporaryRoot: nil, workingDirectory: directory)
+        #expect(planned.unreachable == ["projects/\(expected.prefix(200))-1a2b3c"])
+        #expect(planned.unrelatedUnreachable == ["projects/-elsewhere"])
+    }
+
     @Test func staleSessionFilesDoNotBlock() throws {
         let fixture = try Fixture()
         try fixture.populate()

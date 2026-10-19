@@ -27,9 +27,16 @@ public final class DeletionConfirmation: Identifiable {
         self.title = title
     }
 
-    /// A folder Loom cannot look inside blocks the delete: it would end half done and could never finish.
+    /// A folder Loom cannot look inside, and that can hold this session's files, blocks the delete: it
+    /// would end half done and could never finish.
     public var canConfirm: Bool {
         if case let .ready(preview) = phase { return preview.unreachable.isEmpty }
+        return false
+    }
+
+    /// The delete is blocked by such a folder: removing the session from Loom alone is offered instead.
+    public var offersRemoveFromLoomOnly: Bool {
+        if case let .ready(preview) = phase { return !preview.unreachable.isEmpty }
         return false
     }
 }
@@ -38,6 +45,8 @@ public final class DeletionConfirmation: Identifiable {
 @MainActor @Observable
 public final class DeletionState {
     public var confirmation: DeletionConfirmation?
+    /// The session whose "Remove from Loom Only" waits for the alert's Remove (sheet and banner alike).
+    public internal(set) var removalRequest: UUID?
     /// Deletions the runtime has not finished: the failure to show, or one running right now.
     public internal(set) var pending: [UUID: PendingConversationDeletion] = [:]
     /// Conversations whose delete or retry call is in flight in this window.
@@ -98,6 +107,9 @@ extension ConversationIntents {
         throw SessionRuntimeError.deletionRefused("Deleting is not available here")
     }
     public func pendingDeletions() async throws -> [PendingConversationDeletion] { [] }
+    public func removeFromLoomOnly(sessionID: UUID) async throws {
+        throw SessionRuntimeError.deletionRefused("Removing is not available here")
+    }
     public func deletionRecoveryFailure() async -> String? { nil }
 }
 
@@ -174,6 +186,58 @@ extension CatalogModel {
         await performDeletion(id: id, title: deletions.titles[id] ?? "", retry: true)
     }
 
+    /// A deletion failed and the user has seen why (the banner's failure): the session may be removed
+    /// from Loom alone. Not while something is working on it.
+    public func canRemoveFromLoomOnly(_ id: UUID) -> Bool {
+        guard actionsAvailable, !deletions.inProgress.contains(id), let record = deletions.pending[id] else { return false }
+        return !record.isRunning && record.lastFailure != nil
+    }
+
+    /// "Remove from Loom Only" on the blocked confirm sheet or the failed deletion's banner: asks for
+    /// the alert (`DeletionCopy.removeTitle`). Nothing is removed until `removeFromLoomOnly`.
+    public func requestRemoveFromLoomOnly(_ id: UUID) {
+        if let confirmation = deletions.confirmation, confirmation.id == id {
+            guard confirmation.offersRemoveFromLoomOnly else { return }
+        } else {
+            guard canRemoveFromLoomOnly(id) else { return }
+        }
+        deletions.removalRequest = id
+    }
+
+    public func cancelRemoveFromLoomOnly() { deletions.removalRequest = nil }
+
+    /// The alert's Remove. It removes the session and Loom's own data for it and never a file of
+    /// Claude's; without the alert's request it does nothing. The request is taken at once (the alert
+    /// closes right after its button runs), the removal runs in the returned task.
+    @discardableResult
+    public func removeFromLoomOnly(_ id: UUID) -> Task<Void, Never>? {
+        guard deletions.removalRequest == id else { return nil }
+        deletions.removalRequest = nil
+        let title: String
+        if let confirmation = deletions.confirmation, confirmation.id == id {
+            guard confirmation.offersRemoveFromLoomOnly else { return nil }
+            title = confirmation.title
+            deletions.confirmation = nil
+        } else {
+            guard canRemoveFromLoomOnly(id) else { return nil }
+            title = deletions.titles[id] ?? ""
+        }
+        guard intents != nil, deletions.begin(id, title: title) else { return nil }
+        return Task { await performRemoval(id) }
+    }
+
+    private func performRemoval(_ id: UUID) async {
+        defer { deletions.end(id) }
+        if selectedSessionID == id { select(nil) }
+        do {
+            try await intents?.removeFromLoomOnly(sessionID: id)
+            deletionFinished(id)
+        } catch {
+            reportFailure(Self.userMessage(for: error, context: "The session could not be removed from Loom"))
+            await refreshPendingDeletions()
+        }
+    }
+
     // MARK: Running
 
     private func performDeletion(id: UUID, title: String, retry: Bool) async {
@@ -246,9 +310,15 @@ public enum DeletionCopy {
             + "and anything already sent to Anthropic."
     }
 
+    /// The alert both "Remove from Loom Only" buttons ask for.
+    public static let removeTitle = "Remove this session from Loom?"
+    public static let removeMessage = "Loom forgets the session and its own data for it. Claude's files stay where they are, and Loom can't bring the session back."
+    public static let removeButton = "Remove"
+
     public static func unreachableNote(_ folders: [String]) -> String {
         "Deleting cannot finish: Loom cannot look inside \(folders.joined(separator: ", ")) (it is a link or on another disk), "
-            + "so it cannot tell whether Claude keeps files for this session there. Nothing was removed."
+            + "so it cannot tell whether Claude keeps files for this session there. Nothing was removed. "
+            + "You can remove the session from Loom only; Claude's files stay where they are."
     }
 
     /// What failed, in a sentence without a final period. `lastFailure` is the runtime's

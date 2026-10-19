@@ -45,8 +45,12 @@ public struct DeletionPlan: Sendable, Equatable {
     /// Folders that may hold data of these sessions but cannot be entered: a symbolic
     /// link or a mount point on another device, relative to the config directory.
     /// Nothing inside them is planned, removed or verified, so a deletion that finds
-    /// one is not complete.
+    /// one is not complete. When the plan was made for a working directory (DP-CP4-7), a
+    /// project folder that is not that directory's does not count: it is in `unrelatedUnreachable`.
     public let unreachable: [String]
+    /// Project folders that cannot be entered and cannot hold these sessions' files (the plan
+    /// named their working directory and the folder is another project's). Never blocks.
+    public var unrelatedUnreachable: [String] = []
     public var totalBytes: Int64 { (items + temporaryItems).reduce(0) { $0 + $1.byteSize } }
 }
 
@@ -79,19 +83,23 @@ public enum ClaudeDataInventory {
     /// Throws for a non-UUID id, an unsafe config directory or a live session holding an id.
     /// `temporaryRoot` nil skips tier 2. `ignoringLiveSessions` makes a dry run possible while the
     /// conversation is still running (the confirm dialog); `ClaudeDataDeleter.execute` still refuses.
+    /// `workingDirectory` (DP-CP4-7) narrows what an unreachable project folder blocks to the
+    /// folder Claude names after that directory; without it every unreachable folder blocks.
     public static func plan(sessionIDs: [String], configDirectory: URL,
                             temporaryRoot: URL? = defaultTemporaryRoot,
-                            ignoringLiveSessions: Bool = false) throws -> DeletionPlan {
+                            ignoringLiveSessions: Bool = false,
+                            workingDirectory: String? = nil) throws -> DeletionPlan {
         let ids = try ClaudeDataFiles.normalize(sessionIDs)
         let root = try ClaudeDataFiles.openRoot(configDirectory.path)
         defer { close(root.fd) }
         if !ignoringLiveSessions, let live = try ClaudeDataFiles.liveSession(root: root.fd, ids: Set(ids)) {
             throw ClaudeDataError.liveSession(live)
         }
-        let scan = ClaudeDataFiles.scan(ids: Set(ids), config: root, temporaryRoot: temporaryRoot?.path)
+        let scan = ClaudeDataFiles.scan(ids: Set(ids), config: root, temporaryRoot: temporaryRoot?.path,
+                                        workingDirectory: workingDirectory)
         return DeletionPlan(sessionIDs: ids, configDirectory: root.path, temporaryRoot: scan.temporaryRoot,
                             items: scan.items, temporaryItems: scan.temporaryItems, residual: scan.residual,
-                            unreachable: scan.unreachable)
+                            unreachable: scan.unreachable, unrelatedUnreachable: scan.unrelatedUnreachable)
     }
 }
 
@@ -296,7 +304,20 @@ enum ClaudeDataFiles {
         var temporaryItems: [DeletionPlan.Item] = []
         var residual: [String] = []
         var unreachable: [String] = []
+        var unrelatedUnreachable: [String] = []
         var temporaryRoot: String?
+    }
+
+    /// Whether the project folder `name` is the one Claude names after `workingDirectory` (or, for
+    /// a path that is a link, after the place it leads to). Claude cuts a very long folder name and
+    /// appends a hash, so a long name matches by its first 200 characters.
+    static func projectFolder(_ name: String, canHoldWorkingDirectory workingDirectory: String) -> Bool {
+        let actual = name.lowercased()
+        let paths = [workingDirectory, URL(fileURLWithPath: workingDirectory).resolvingSymlinksInPath().path]
+        return paths.contains { path in
+            let expected = ClaudeTranscriptLocator.folderName(forWorkingDirectory: path).lowercased()
+            return actual == expected || (expected.count > 200 && actual.hasPrefix(String(expected.prefix(200))))
+        }
     }
 
     /// A scanned folder: opened, absent (or not a folder), or present but impossible to enter
@@ -314,7 +335,7 @@ enum ClaudeDataFiles {
         }
     }
 
-    static func scan(ids: Set<String>, config: Root, temporaryRoot: String?) -> Scan {
+    static func scan(ids: Set<String>, config: Root, temporaryRoot: String?, workingDirectory: String? = nil) -> Scan {
         var scan = Scan()
         func claim(_ parent: Int32, _ directory: [String], device: dev_t, temporary: Bool) -> [DeletionPlan.Item] {
             var found: [DeletionPlan.Item] = []
@@ -336,7 +357,13 @@ enum ClaudeDataFiles {
                     scan.items += claim(folder, ["projects", project], device: config.device, temporary: false)
                     if entryInfo(folder, "memory") != nil { scan.residual.append("projects/\(project)/memory") }
                     close(folder)
-                case .unreachable: scan.unreachable.append("projects/\(project)")
+                case .unreachable:
+                    // Only the working directory's own project folder can hold the transcript.
+                    if let workingDirectory, !projectFolder(project, canHoldWorkingDirectory: workingDirectory) {
+                        scan.unrelatedUnreachable.append("projects/\(project)")
+                    } else {
+                        scan.unreachable.append("projects/\(project)")
+                    }
                 case .absent: break
                 }
             }
@@ -357,6 +384,7 @@ enum ClaudeDataFiles {
         scan.items.sort { $0.relativePath < $1.relativePath }
         scan.residual.sort()
         scan.unreachable.sort()
+        scan.unrelatedUnreachable.sort()
         if let temporaryRoot, let root = try? openRoot(temporaryRoot) {
             scan.temporaryRoot = root.path
             for middle in list(dup(root.fd)) {

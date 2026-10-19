@@ -20,6 +20,7 @@ final class DeletionIntents: ConversationIntents {
     var retryOutcome: ConversationDeletionOutcome = .deleted
     var pending: [PendingConversationDeletion] = []
     var recoveryFailure: String?
+    var removeError: Error?
 
     func start(provider: ManagedSession.Provider, projectID: UUID?) {}
     func resume(sessionID: UUID) {}
@@ -46,6 +47,10 @@ final class DeletionIntents: ConversationIntents {
         return retryOutcome
     }
     func pendingDeletions() async throws -> [PendingConversationDeletion] { pending }
+    func removeFromLoomOnly(sessionID: UUID) async throws {
+        calls.append("remove:\(sessionID)")
+        if let removeError { throw removeError }
+    }
     func deletionRecoveryFailure() async -> String? { recoveryFailure }
 }
 
@@ -237,7 +242,7 @@ struct DeletionModelTests {
         #expect(DeletionCopy.bannerText(lastFailure: "live_session").contains("Claude process"))
     }
 
-    // MARK: Production offers manual delete (the cleanup review stays development-only)
+    // MARK: Production offers manual delete (the cleanup review is installed by the app, in every build)
 
     @Test func theProductionConfiguredModelCanRequestConfirmAndRunAManualDelete() async throws {
         // The production app starts Claude only and passes nothing else to the model: no gate remains.
@@ -252,7 +257,7 @@ struct DeletionModelTests {
         #expect(await waitUntil { confirmation.canConfirm })
         await production.model.confirmDeletion()
         #expect(production.intents.calls.contains("delete:\(id)"))
-        // The cleanup review is a separate, opt-in feature: nothing installs it by itself.
+        // The cleanup review is the app's to install (every build, D-69): the model never installs it by itself.
         #expect(production.model.cleanupReview == nil)
         // Codex stays refused for its own reason, not for a build gate.
         #expect(production.model.deletionDisabledReason(for: try row(production, production.codex))?.contains("Codex") == true)
@@ -277,6 +282,81 @@ struct DeletionModelTests {
             #expect(fixture.intents.calls.contains("retry:\(id)"))
             #expect(fixture.model.deletions.pending[id] == nil)
         }
+    }
+
+    @Test func aBlockedConfirmSheetOffersRemovingFromLoomOnlyAndNeverDeletes() async throws {
+        let fixture = try await makeFixture()
+        defer { Task { await fixture.cleanup() } }
+        let id = fixture.claude.id
+        // A clear preview offers only the delete.
+        fixture.model.requestDeletion(id)
+        #expect(await waitUntil { fixture.model.deletions.confirmation?.canConfirm == true })
+        #expect(fixture.model.deletions.confirmation?.offersRemoveFromLoomOnly == false)
+        fixture.model.requestRemoveFromLoomOnly(id)
+        #expect(fixture.model.deletions.removalRequest == nil, "not offered, so no alert")
+        await fixture.model.removeFromLoomOnly(id)?.value
+        #expect(!fixture.intents.calls.contains("remove:\(id)"), "not offered, so not done")
+        fixture.model.cancelDeletion()
+
+        fixture.intents.preview = ConversationDeletionPreview(
+            sessionID: UUID(), fileCount: 1, byteCount: 10, configDirectory: "/tmp/claude-config",
+            isRunning: false, notRemoved: [], unreachable: ["projects/-work-app"])
+        fixture.model.requestDeletion(id)
+        #expect(await waitUntil { fixture.model.deletions.confirmation.map { $0.phase != .loading } == true })
+        #expect(fixture.model.deletions.confirmation?.offersRemoveFromLoomOnly == true)
+        #expect(DeletionCopy.unreachableNote(["projects/-work-app"]).contains("remove the session from Loom only"))
+        // The button asks for the alert; only the alert's Remove removes.
+        fixture.model.requestRemoveFromLoomOnly(id)
+        #expect(fixture.model.deletions.removalRequest == id)
+        #expect(!fixture.intents.calls.contains("remove:\(id)"))
+        #expect(fixture.model.deletions.confirmation != nil, "the sheet stays under the alert")
+        fixture.model.cancelRemoveFromLoomOnly()
+        #expect(fixture.model.removeFromLoomOnly(id) == nil, "Cancel took the request away")
+        #expect(!fixture.intents.calls.contains("remove:\(id)"))
+        fixture.model.requestRemoveFromLoomOnly(id)
+        await fixture.model.removeFromLoomOnly(id)?.value
+        #expect(fixture.intents.calls.last == "remove:\(id)")
+        #expect(!fixture.intents.calls.contains { $0.hasPrefix("delete:") })
+        #expect(fixture.model.deletions.confirmation == nil)
+        #expect(fixture.model.deletions.removalRequest == nil)
+        #expect(fixture.model.deletions.inProgress.isEmpty)
+    }
+
+    @Test func bothRemoveFromLoomOnlyPathsAskTheSameQuestion() {
+        #expect(DeletionCopy.removeTitle == "Remove this session from Loom?")
+        #expect(DeletionCopy.removeButton == "Remove")
+        #expect(DeletionCopy.removeMessage.contains("Claude's files stay where they are"))
+    }
+
+    @Test func aFailedDeletionOffersRemovingFromLoomOnlyOnceTheFailureIsKnown() async throws {
+        let fixture = try await makeFixture()
+        defer { Task { await fixture.cleanup() } }
+        let id = fixture.claude.id
+        // Nothing failed yet, or something is still working on it: not offered.
+        #expect(!fixture.model.canRemoveFromLoomOnly(id))
+        fixture.intents.pending = [pendingRecord(id, failure: nil, running: true)]
+        await fixture.model.refreshPendingDeletions()
+        #expect(!fixture.model.canRemoveFromLoomOnly(id))
+        fixture.intents.pending = [pendingRecord(id, failure: "unreachable_folder: projects")]
+        await fixture.model.refreshPendingDeletions()
+        #expect(fixture.model.canRemoveFromLoomOnly(id))
+        // Same alert as the sheet's: without its Remove nothing is removed.
+        #expect(fixture.model.removeFromLoomOnly(id) == nil)
+        #expect(!fixture.intents.calls.contains("remove:\(id)"))
+        fixture.model.requestRemoveFromLoomOnly(id)
+        #expect(fixture.model.deletions.removalRequest == id)
+        await fixture.model.removeFromLoomOnly(id)?.value
+        #expect(fixture.intents.calls.contains("remove:\(id)"))
+        #expect(fixture.model.deletions.pending[id] == nil)
+        // A refusal is reported and the session stays as it was.
+        let other = fixture.other.id
+        fixture.intents.pending = [pendingRecord(other, failure: "unreachable_folder: projects")]
+        fixture.intents.removeError = SessionRuntimeError.deletionRefused("The running session could not be stopped")
+        await fixture.model.refreshPendingDeletions()
+        fixture.model.requestRemoveFromLoomOnly(other)
+        await fixture.model.removeFromLoomOnly(other)?.value
+        #expect(fixture.model.errorMessage != nil)
+        #expect(fixture.model.deletions.inProgress.isEmpty)
     }
 
     @Test func aDeletionStillRunningIsNotOfferedARetry() async throws {

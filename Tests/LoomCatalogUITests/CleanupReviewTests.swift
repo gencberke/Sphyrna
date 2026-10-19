@@ -36,6 +36,8 @@ struct CleanupReviewTests {
         private(set) var confirmed: [[UUID]] = []
         private(set) var dismissals = 0
         private(set) var reviews = 0
+        private(set) var storedSettings = CleanupSettings.standard
+        var settingsFailure: Error?
 
         init(snapshot: CleanupReview) { self.snapshot = snapshot }
 
@@ -54,6 +56,17 @@ struct CleanupReviewTests {
         }
 
         func dismiss(now: Date) async throws { lock.withLock { dismissals += 1 } }
+
+        func settings() async throws -> CleanupSettings { lock.withLock { storedSettings } }
+        func setSettings(_ settings: CleanupSettings) async throws {
+            try lock.withLock {
+                if let settingsFailure { throw settingsFailure }
+                storedSettings = settings
+            }
+        }
+        func resetSettings() async throws -> CleanupSettings {
+            lock.withLock { storedSettings = .standard; return storedSettings }
+        }
     }
 
     @Test func nothingIsCheckedByDefaultAndOnlyCheckedRowsAreConfirmed() async throws {
@@ -113,6 +126,59 @@ struct CleanupReviewTests {
         await quiet.open()
         #expect(!quiet.showsDueNotice)
         await quiet.dismissDueReview()
+    }
+
+    @Test func theCleanupPartHasTwoNumbersWithTheirWords() {
+        #expect(CleanupText.reviewIntervalTitle == "Review again after")
+        #expect(CleanupText.deletionWaitTitle == "Wait before deleting")
+        #expect(CleanupText.deletionWaitDetail
+            == "A stale session can be deleted this long after it went stale or after you last opened it.")
+        #expect(CleanupSettings.standard.deletionWaitDays == 15)
+    }
+
+    @Test func theCleanupNumbersAreShownChangedWithinTheirRangesAndReset() async throws {
+        let backend = FakeBackend(snapshot: review(eligible: [record("a")]))
+        let model = CleanupReviewModel(reviewing: backend)
+        #expect(model.settings == .standard)
+        try await backend.setSettings(CleanupSettings(reviewIntervalDays: 60, deletionWaitDays: 15))
+        await model.open()
+        #expect(model.settings.reviewIntervalDays == 60, "the page shows the numbers in force")
+        #expect(!model.settingsChangedSinceReview)
+
+        model.updateSettings { $0.reviewIntervalDays = 1; $0.deletionWaitDays = 0 }
+        #expect(model.settings.reviewIntervalDays == CleanupSettings.reviewIntervalDaysRange.lowerBound)
+        #expect(model.settings.deletionWaitDays == CleanupSettings.deletionWaitDaysRange.lowerBound)
+        model.updateSettings { $0.deletionWaitDays = 90 }
+        await model.settingsSaved()
+        #expect(backend.storedSettings == model.settings)
+        #expect(backend.storedSettings.deletionWaitDays == 90)
+        #expect(model.settingsChangedSinceReview, "a change waits for the next review")
+        #expect(backend.reviews == 1, "a change does not re-plan the list on screen")
+        await model.open()
+        #expect(!model.settingsChangedSinceReview)
+
+        // Reset puts both numbers back.
+        model.resetSettings()
+        await model.settingsSaved()
+        #expect(model.settings == .standard)
+        #expect(backend.storedSettings == .standard)
+        #expect(model.settings.isStandard)
+    }
+
+    @Test func numbersThatCouldNotBeKeptAreReportedAndTheStoredOnesComeBack() async throws {
+        let backend = FakeBackend(snapshot: review(eligible: []))
+        let model = CleanupReviewModel(reviewing: backend)
+        await model.open()
+        backend.settingsFailure = SessionRuntimeError.catalogUnavailable
+        model.updateSettings { $0.deletionWaitDays = 30 }
+        await model.settingsSaved()
+        #expect(model.settingsError != nil)
+        #expect(model.settings == .standard)
+        backend.settingsFailure = nil
+        model.updateSettings { $0.deletionWaitDays = 30 }
+        await model.settingsSaved()
+        #expect(model.settingsError == nil)
+        #expect(backend.storedSettings.deletionWaitDays == 30)
     }
 
     @Test func theReviewIsOfferedOnlyWhereTheAppInstallsIt() async throws {

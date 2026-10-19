@@ -33,6 +33,10 @@ struct DeleteConversationSheet: View {
                     .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             }
             HStack {
+                if confirmation.offersRemoveFromLoomOnly {
+                    Button("Remove from Loom Only") { model.requestRemoveFromLoomOnly(confirmation.id) }
+                        .help("Removes the session from Loom. Claude's files are not touched.")
+                }
                 Spacer()
                 Button("Cancel") { model.cancelDeletion() }.keyboardShortcut(.cancelAction)
                 Button("Delete Permanently") { Task { await model.confirmDeletion() } }
@@ -40,6 +44,7 @@ struct DeleteConversationSheet: View {
                     .disabled(!confirmation.canConfirm)
             }
         }
+        .removeFromLoomAlert(model: model, id: confirmation.id)
         .padding(LoomTheme.Space.sheetPadding)
         .frame(width: LoomTheme.Layout.sheetWidth)
         .tint(LoomTheme.Accent.base)
@@ -97,10 +102,30 @@ struct DeletionBannerRow: View {
                 Button("Try Again") { Task { await model.retryDeletion(record.id) } }
                     .buttonStyle(AccentButtonStyle(kind: .tinted))
                     .disabled(!model.canRetryDeletion(record.id))
+                if model.canRemoveFromLoomOnly(record.id) {
+                    Button("Remove from Loom Only") { model.requestRemoveFromLoomOnly(record.id) }
+                        .buttonStyle(AccentButtonStyle(kind: .tinted))
+                        .help("Removes the session from Loom. Claude's files are not touched.")
+                }
             }
         }
+        .removeFromLoomAlert(model: model, id: record.id)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("deletion-banner-\(record.id.uuidString.lowercased())")
+    }
+}
+
+extension View {
+    /// The one alert "Remove from Loom Only" goes through, on the confirm sheet and on the banner.
+    func removeFromLoomAlert(model: CatalogModel, id: UUID) -> some View {
+        alert(DeletionCopy.removeTitle, isPresented: Binding(
+            get: { model.deletions.removalRequest == id }, set: { if !$0 { model.cancelRemoveFromLoomOnly() } }
+        )) {
+            Button(DeletionCopy.removeButton, role: .destructive) { model.removeFromLoomOnly(id) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(DeletionCopy.removeMessage)
+        }
     }
 }
 

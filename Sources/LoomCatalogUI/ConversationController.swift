@@ -527,6 +527,10 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
         try await runtime.pendingDeletions()
     }
 
+    public func removeFromLoomOnly(sessionID: UUID) async throws {
+        try await runtime.removeFromLoomOnly(id: sessionID)
+    }
+
     public func deletionRecoveryFailure() async -> String? {
         await runtime.deletionRecoveryFailure()
     }

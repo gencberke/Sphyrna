@@ -55,7 +55,8 @@ public struct ConversationDeletionPreview: Sendable, Equatable {
     public let isRunning: Bool
     /// Entries that exist and are not removed (shared history, other conversations' memory).
     public let notRemoved: [String]
-    /// Folders the scan cannot enter (links, other devices); deleting is not complete while any exists.
+    /// Folders the scan cannot enter (links, other devices) that can hold this session's files: its
+    /// project folder or a top-level data folder. Deleting is not complete while any exists (DP-CP4-7).
     public let unreachable: [String]
 }
 
@@ -139,6 +140,53 @@ extension SessionRuntime {
         return try await runDeletion(id)
     }
 
+    /// "Remove from Loom only" (DP-CP4-7): after a deletion could not finish (or a folder Loom cannot
+    /// look inside may hold the session's files), removes the session from Loom and keeps Claude's files
+    /// where they are. It stops the run, removes the catalog rows and the unfinished deletion record, and
+    /// has every component that keeps data for the session drop it. It never touches a file of Claude's.
+    public func removeFromLoomOnly(id: UUID) async throws {
+        guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
+        guard !startingSessions.contains(id) else { throw SessionRuntimeError.alreadyStarting(id) }
+        guard deletionsInFlight.insert(id).inserted else { throw SessionRuntimeError.deletionInProgress(id) }
+        defer { deletionsInFlight.remove(id) }
+        let providerIDs: [String]
+        if let record = try await catalog.deletion(for: id) {
+            providerIDs = record.plan.providerIDs
+        } else {
+            guard let record = try await catalog.session(id: id) else { throw SessionRuntimeError.sessionNotFound(id) }
+            guard record.session.provider == .claude else {
+                throw SessionRuntimeError.deletionRefused("Only Claude sessions can be removed this way")
+            }
+            providerIDs = try await catalog.providerIDs(of: id)
+            for providerID in providerIDs {
+                if try await catalog.isProviderIDShared(providerID, excluding: id) {
+                    throw SessionRuntimeError.deletionRefused("Another session uses the same Claude session data")
+                }
+            }
+            // From here every start, resume, view and input for the id is refused, as in a deletion.
+            // The record names no Claude folder: should Loom stop before the end, a launch shows the
+            // session as an unfinished deletion and offers this again.
+            try await catalog.beginDeletion(
+                sessionID: id,
+                plan: CatalogDeletionPlan(
+                    provider: .claude, providerIDs: providerIDs, configDirectory: nil,
+                    workingDirectory: record.session.workingDirectory
+                )
+            )
+        }
+        do {
+            try await stopRun(of: id)
+            try await catalog.deleteSessionRows(sessionID: id)
+            try await dropRuntimeState(of: id, providerIDs: providerIDs)
+            try await finishLoomSide(of: id, providerIDs: providerIDs)
+        } catch let failure as DeletionStepFailure {
+            throw SessionRuntimeError.deletionRefused(
+                "The session could not be removed from Loom (\(failure.failure.stored.replacingOccurrences(of: "_", with: " ")))"
+            )
+        }
+        await supervisor.events.publishDeletion(sessionID: id, change: .conversationDeleted)
+    }
+
     /// Every unfinished deletion with its step and last failure, oldest first.
     public func pendingDeletions() async throws -> [PendingConversationDeletion] {
         try await catalog.pendingDeletions().map { pending($0) }
@@ -205,12 +253,14 @@ extension SessionRuntime {
         }
         let temporaryRoot = configuration.claudeTemporaryRoot
         let ids = Self.fileIDs(providerIDs)
+        let workingDirectory = record.session.workingDirectory
         let plan: DeletionPlan
         do {
             plan = try await Task.detached {
                 try ClaudeDataInventory.plan(
                     sessionIDs: ids, configDirectory: configDirectory,
-                    temporaryRoot: temporaryRoot, ignoringLiveSessions: true
+                    temporaryRoot: temporaryRoot, ignoringLiveSessions: true,
+                    workingDirectory: workingDirectory
                 )
             }.value
         } catch {
@@ -338,10 +388,12 @@ extension SessionRuntime {
         let ids = Self.fileIDs(record.plan.providerIDs)
         let configDirectory = URL(fileURLWithPath: directory, isDirectory: true)
         let temporaryRoot = configuration.claudeTemporaryRoot
+        let workingDirectory = record.plan.workingDirectory
         let outcome: Result<(DeletionResult, [String]), Error> = await Task.detached {
             Result {
                 let plan = try ClaudeDataInventory.plan(
-                    sessionIDs: ids, configDirectory: configDirectory, temporaryRoot: temporaryRoot
+                    sessionIDs: ids, configDirectory: configDirectory, temporaryRoot: temporaryRoot,
+                    workingDirectory: workingDirectory
                 )
                 return (ClaudeDataDeleter.execute(plan), plan.unreachable)
             }
@@ -379,9 +431,7 @@ extension SessionRuntime {
                 throw DeletionStepFailure("provider_id_reappeared")
             }
         }
-        do { try await supervisor.discardSession(id, providerIDs: providerIDs) }
-        catch { throw DeletionStepFailure("still_running") }
-        await claudeAdapter.forget(sessionID: id)
+        try await dropRuntimeState(of: id, providerIDs: providerIDs)
         if let directory = record.plan.configDirectory {
             switch Self.configFolderState(directory) {
             case .absent: break
@@ -399,6 +449,18 @@ extension SessionRuntime {
                 if let first = leftovers.first { throw DeletionStepFailure("leftover_files", file: first.relativePath) }
             }
         }
+        try await finishLoomSide(of: id, providerIDs: providerIDs)
+    }
+
+    /// What the supervisor and the Claude adapter keep for the conversation.
+    private func dropRuntimeState(of id: UUID, providerIDs: [String]) async throws {
+        do { try await supervisor.discardSession(id, providerIDs: providerIDs) }
+        catch { throw DeletionStepFailure("still_running") }
+        await claudeAdapter.forget(sessionID: id)
+    }
+
+    /// Every registered component drops its copy, then the deletion record (when there is one) goes.
+    private func finishLoomSide(of id: UUID, providerIDs: [String]) async throws {
         for forgetter in configuration.forgetters.registered {
             do { try await forgetter.forget(sessionID: id, providerIDs: providerIDs) }
             catch { throw DeletionStepFailure("forget_hook_failed") }

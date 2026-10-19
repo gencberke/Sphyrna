@@ -380,4 +380,100 @@ struct CleanupCoordinatorTests {
         _ = try await fixture.coordinator.review(now: now)
         #expect(fixture.recorder.worktreeCalls == 1)
     }
+
+    // MARK: The user's numbers (D-69)
+
+    @Test func theDefaultsAreThePlansNumbersAndEveryValueStaysInsideItsRange() async throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        #expect(try await fixture.coordinator.settings() == .standard)
+        #expect(CleanupSettings.standard == CleanupSettings(reviewIntervalDays: 30, deletionWaitDays: 15))
+        #expect(CleanupSettings(policy: CleanupPolicy()) == .standard)
+        // Two numbers, stored under these two keys, and no more: the absence and bulk thresholds are not settings.
+        #expect(CleanupSettings.Key.all == ["cleanup_review_interval_days", "cleanup_deletion_wait_days"])
+        #expect(CleanupSettings.reviewIntervalDaysRange == 7...365)
+        #expect(CleanupSettings.deletionWaitDaysRange == 1...180)
+        try await fixture.coordinator.setSettings(CleanupSettings(reviewIntervalDays: 0, deletionWaitDays: 9_999))
+        let kept = try await fixture.coordinator.settings()
+        #expect(kept.reviewIntervalDays == CleanupSettings.reviewIntervalDaysRange.lowerBound)
+        #expect(kept.deletionWaitDays == CleanupSettings.deletionWaitDaysRange.upperBound)
+        for key in CleanupSettings.Key.all { #expect(try await fixture.catalog.appState(key) != nil) }
+        #expect(try await fixture.catalog.appState("cleanup_absence_days") == nil)
+        #expect(try await fixture.catalog.appState("cleanup_bulk_limit") == nil)
+        // A value written by hand that is not a number, or is out of range, is not trusted.
+        try await fixture.catalog.setAppState(CleanupSettings.Key.reviewIntervalDays, to: "often")
+        try await fixture.catalog.setAppState(CleanupSettings.Key.deletionWaitDays, to: "100000")
+        let read = try await fixture.coordinator.settings()
+        #expect(read.reviewIntervalDays == CleanupSettings.standard.reviewIntervalDays)
+        #expect(read.deletionWaitDays == CleanupSettings.deletionWaitDaysRange.upperBound)
+    }
+
+    @Test func theReviewIntervalComesFromTheUsersNumberAndSurvivesARestart() async throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let id = try await insertStale(fixture.catalog, title: "a")
+        _ = try await fixture.coordinator.confirm(ids: [id], now: now) { _, _ in }
+        let eightDaysOn = now.addingTimeInterval(8 * 86_400)
+        // 30 days by default: eight days after a cleanup nothing is due.
+        #expect(try await fixture.coordinator.review(now: eightDaysOn).due == .notDue(until: now.addingTimeInterval(30 * 86_400)))
+        try await fixture.coordinator.setSettings(CleanupSettings(reviewIntervalDays: 7, deletionWaitDays: 15))
+        #expect(try await fixture.coordinator.review(now: eightDaysOn).due == .due)
+        // A new coordinator over the reopened catalog reads the same number.
+        let reopened = try SessionCatalog(url: fixture.root.appendingPathComponent("catalog.sqlite3"))
+        let again = CleanupCoordinator(catalog: reopened, host: CleanupCoordinator.Host(
+            isRunning: { _ in false }, worktree: { _ in .clear },
+            preview: { id in throw SessionRuntimeError.sessionNotFound(id) },
+            delete: { id in throw SessionRuntimeError.sessionNotFound(id) }))
+        #expect(try await again.settings().reviewIntervalDays == 7)
+        #expect(try await again.review(now: eightDaysOn).due == .due)
+        // Back to the defaults.
+        #expect(try await fixture.coordinator.resetSettings() == .standard)
+        #expect(try await fixture.coordinator.review(now: eightDaysOn).due == .notDue(until: now.addingTimeInterval(30 * 86_400)))
+    }
+
+    @Test func theDeletionWaitComesFromTheUsersNumberForEveryStaleSession() async throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        // Stale for 20 days and not opened since it went stale: with the default 15-day wait it is eligible.
+        let id = try await insertStale(fixture.catalog, title: "a", staleDaysAgo: 20)
+        #expect(try await fixture.coordinator.review(now: now).eligible.map(\.id) == [id])
+        try await fixture.coordinator.setSettings(CleanupSettings(reviewIntervalDays: 30, deletionWaitDays: 30))
+        let waiting = try await fixture.coordinator.review(now: now)
+        #expect(waiting.eligible.isEmpty)
+        #expect(waiting.excluded.first?.reason == .waitUntil(ago(20).addingTimeInterval(30 * 86_400)))
+        // Opened five days ago: the wait counts from then.
+        let opened = ManagedSession(provider: .claude, workingDirectory: "/tmp")
+        try await fixture.catalog.insertSession(
+            opened, title: "opened", createdAt: ago(90), lastUsedAt: ago(5),
+            lifecycle: .stale, pinned: false, staleSince: ago(20))
+        try await fixture.coordinator.setSettings(CleanupSettings(reviewIntervalDays: 30, deletionWaitDays: 10))
+        let review = try await fixture.coordinator.review(now: now)
+        #expect(review.eligible.map(\.id) == [id])
+        #expect(review.excluded.first { $0.id == opened.id }?.reason == .waitUntil(ago(5).addingTimeInterval(10 * 86_400)))
+    }
+
+    @Test func theAbsenceAndBulkThresholdsStayThePolicysWhateverTheUserSets() async throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        for index in 0..<12 { try await insertStale(fixture.catalog, title: "s\(index)") }
+        try await fixture.catalog.setAppState(CleanupCoordinator.lastLaunchKey, to: String(ago(60).timeIntervalSince1970))
+        await fixture.coordinator.recordLaunch(now: now)
+        try await fixture.coordinator.setSettings(CleanupSettings(reviewIntervalDays: 365, deletionWaitDays: 1))
+        // 60 days away is past 45, whatever was set.
+        #expect(try await fixture.coordinator.review(now: now).mode == .reviewRequired(.longAbsence))
+        try await fixture.catalog.setAppState(CleanupCoordinator.lastLaunchKey, to: String(ago(1).timeIntervalSince1970))
+        await fixture.coordinator.recordLaunch(now: now)
+        #expect(try await fixture.coordinator.review(now: now).mode == .reviewRequired(.bulk))
+    }
+
+    @Test func theUsersNumbersNeverSwitchOnAutomaticDeletion() async throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let id = try await insertStale(fixture.catalog, title: "a")
+        try await fixture.coordinator.setSettings(CleanupSettings(reviewIntervalDays: 7, deletionWaitDays: 1))
+        let review = try await fixture.coordinator.review(now: now)
+        #expect(review.mode == .reviewRequired(.automaticDisabled))
+        #expect(review.eligible.map(\.id) == [id])
+        #expect(fixture.recorder.deletedIDs.isEmpty)
+    }
 }

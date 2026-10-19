@@ -129,6 +129,12 @@ public protocol CleanupReviewing: Sendable {
                  progress: @escaping @Sendable (UUID, CleanupRowResult) async -> Void) async throws -> CleanupConfirmation
     /// The user dismissed a due review without deleting: it still counts as a run.
     func dismiss(now: Date) async throws
+    /// The four numbers in force (D-69): the user's, else the defaults.
+    func settings() async throws -> CleanupSettings
+    /// Keeps new numbers; they apply from the next review on.
+    func setSettings(_ settings: CleanupSettings) async throws
+    /// Forgets the user's numbers and returns the defaults now in force.
+    func resetSettings() async throws -> CleanupSettings
 }
 
 // MARK: Coordinator
@@ -159,6 +165,7 @@ public actor CleanupCoordinator: CleanupReviewing {
 
     private let catalog: SessionCatalog
     private let host: Host
+    /// The rules the user's four numbers (`CleanupSettings`) are applied to.
     private let policy: CleanupPolicy
     /// `last_launch_at` as it was before this launch overwrote it (long-absence input).
     private var previousLaunchAt: Date?
@@ -235,6 +242,21 @@ public actor CleanupCoordinator: CleanupReviewing {
         if try await makeReview(now: now, withSizes: false).isDue { try await recordRun(now: now) }
     }
 
+    // MARK: Settings
+
+    public func settings() async throws -> CleanupSettings {
+        try await catalog.cleanupSettings(base: policy)
+    }
+
+    public func setSettings(_ settings: CleanupSettings) async throws {
+        try await catalog.setCleanupSettings(settings)
+    }
+
+    public func resetSettings() async throws -> CleanupSettings {
+        try await catalog.resetCleanupSettings()
+        return try await settings()
+    }
+
     // MARK: Internals
 
     private func makeReview(now: Date, withSizes: Bool) async throws -> CleanupReview {
@@ -254,10 +276,11 @@ public actor CleanupCoordinator: CleanupReviewing {
                 isDeleting: false, worktree: verdict
             ))
         }
+        // The user's numbers are read for every plan, so a change applies to the next one.
         let plan = CleanupPlanner.plan(
             candidates: candidates, now: now,
             lastRunAt: try await readDate(Self.lastCleanupKey), lastLaunchAt: previousLaunchAt,
-            policy: policy
+            policy: try await catalog.cleanupPolicy(base: policy)
         )
         let records = Dictionary(uniqueKeysWithValues: stale.map { ($0.session.id, $0) })
         var eligible: [CleanupEligibleRow] = []

@@ -47,6 +47,8 @@ public protocol ConversationIntents: AnyObject {
     func deleteConversation(sessionID: UUID) async throws -> ConversationDeletionOutcome
     func retryDeletion(sessionID: UUID) async throws -> ConversationDeletionOutcome
     func pendingDeletions() async throws -> [PendingConversationDeletion]
+    /// "Remove from Loom Only" (DP-CP4-7): the session and Loom's own data for it go; Claude's files stay.
+    func removeFromLoomOnly(sessionID: UUID) async throws
     func deletionRecoveryFailure() async -> String?
     /// The last screen of a session whose run ended, as a static snapshot (FB4-3). Defaults: none.
     func endedScreen(sessionID: UUID) -> TerminalScreenSnapshot?

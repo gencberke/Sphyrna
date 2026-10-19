@@ -1,8 +1,9 @@
 import LoomCore
 import SwiftUI
 
-/// Settings → Conversations (CP4-G): stale conversations the cleanup rules allow deleting, with
-/// the kept ones and why. Nothing is checked by default and nothing is deleted without the button.
+/// Settings → Sessions (CP4-G): stale sessions the cleanup rules allow deleting, with the kept ones
+/// and why, and the Cleanup part with the rules' four numbers (D-69). Nothing is checked by default
+/// and nothing is deleted without the button.
 struct CleanupReviewView: View {
     let review: CleanupReviewModel
     let catalog: CatalogModel
@@ -45,6 +46,7 @@ struct CleanupReviewView: View {
                 }
                 if !snapshot.eligible.isEmpty { eligibleSection(snapshot) }
                 if !snapshot.excluded.isEmpty { keptSection(snapshot) }
+                CleanupSettingsSection(review: review)
                 if case .failed(let message) = review.phase {
                     Text(message).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.failure)
                         .textSelection(.enabled)
@@ -241,4 +243,61 @@ private struct CleanupNotice: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
     }
+}
+
+/// The Cleanup part: the four numbers of the rules, each with its range and default, and a reset.
+private struct CleanupSettingsSection: View {
+    let review: CleanupReviewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: LoomTheme.Space.headerSpacing) {
+            HStack {
+                SectionHeading("Cleanup")
+                Spacer(minLength: 0)
+                Button("Reset to Defaults") { review.resetSettings() }
+                    .buttonStyle(SettingsButtonStyle())
+                    .disabled(review.settings.isStandard || review.isBusy)
+            }
+            SettingsCard {
+                numberRow(CleanupText.reviewIntervalTitle, detail: CleanupText.reviewIntervalDetail,
+                          range: CleanupSettings.reviewIntervalDaysRange,
+                          standard: CleanupSettings.standard.reviewIntervalDays, value: \.reviewIntervalDays)
+                SettingsRowDivider()
+                numberRow(CleanupText.deletionWaitTitle, detail: CleanupText.deletionWaitDetail,
+                          range: CleanupSettings.deletionWaitDaysRange,
+                          standard: CleanupSettings.standard.deletionWaitDays, value: \.deletionWaitDays)
+            }
+            if let error = review.settingsError {
+                Text(error).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.failure)
+                    .textSelection(.enabled)
+            } else if review.settingsChangedSinceReview {
+                Text("A change applies from the next review. Review again to see it.")
+                    .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+            }
+        }
+    }
+
+    private func numberRow(
+        _ title: String, detail: String, range: ClosedRange<Int>, standard: Int,
+        value: WritableKeyPath<CleanupSettings, Int>
+    ) -> some View {
+        let current = review.settings[keyPath: value]
+        return SettingsRow(title: title, detail: "\(detail) Default \(CleanupNumberUnit.days(standard)).") {
+            HStack(spacing: LoomTheme.Space.settingsRowInset) {
+                Text(CleanupNumberUnit.days(current)).font(LoomTheme.Typography.small).monospacedDigit()
+                    .foregroundStyle(LoomTheme.Text.secondary)
+                Stepper(title, value: Binding(
+                    get: { current }, set: { number in review.updateSettings { $0[keyPath: value] = number } }
+                ), in: range)
+                .labelsHidden()
+                .accessibilityLabel(title)
+                .accessibilityValue(CleanupNumberUnit.days(current))
+            }
+        }
+    }
+}
+
+/// How a cleanup number reads next to its row.
+enum CleanupNumberUnit {
+    static func days(_ number: Int) -> String { number == 1 ? "1 day" : "\(number) days" }
 }

@@ -889,4 +889,176 @@ struct ConversationDeletionTests {
         #expect(world.toolchainSwitch.calls == 0)
         #expect((await world.runtime.shutdown()).succeeded)
     }
+
+    // MARK: DP-CP4-8 - the login shell's CLAUDE_CONFIG_DIR, resolved once at launch
+
+    private static func runtimeWithoutProfile(
+        _ env: Env, claudeEnvironment: [String: String],
+        login: (@Sendable () async throws -> [String: String])?
+    ) async throws -> (SessionRuntime, ManagedSession, ProcessSupervisor) {
+        let catalog = try SessionCatalog(url: env.catalogURL)
+        let supervisor = try await ProcessSupervisor.restoring(ledger: OwnershipLedger(), catalog: catalog)
+        let runtime = SessionRuntime(
+            supervisor: supervisor, catalog: catalog,
+            configuration: SessionRuntimeConfiguration(
+                toolchains: { _ in throw LoomError.message("claude is not installed") },
+                hookHelperPath: "/usr/bin/true", socketDirectory: env.socketDirectory,
+                homeDirectory: env.home.path, claudeTemporaryRoot: env.temporary,
+                forgetters: ConversationForgetters(),
+                claudeEnvironment: claudeEnvironment, claudeLoginEnvironment: login
+            )
+        )
+        let session = ManagedSession(provider: .claude, providerConversationID: UUID().uuidString.lowercased(),
+                                     workingDirectory: env.home.path)
+        try await supervisor.createSession(session, projectID: nil)
+        try env.seed(Self.ids(session))
+        return (runtime, session, supervisor)
+    }
+
+    @Test func aDeleteUsesTheFolderOnlyTheLoginShellNames() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let profile = env.profile.path
+        // Loom's own environment names no folder (and `~/.claude` under the test's home does not exist).
+        let (runtime, session, _) = try await Self.runtimeWithoutProfile(
+            env, claudeEnvironment: [:], login: { ["CLAUDE_CONFIG_DIR": profile, "PATH": "/usr/bin"] })
+        try await runtime.start()
+        await runtime.finishLoginEnvironmentCapture()
+        #expect(try await runtime.deletionPreview(id: session.id).configDirectory == realPath(env.profile))
+        #expect(try await runtime.deleteConversation(id: session.id) == .deleted)
+        #expect(try env.snapshot(of: Self.ids(session)).isEmpty)
+        #expect((await runtime.shutdown()).succeeded)
+    }
+
+    @Test func aLoginShellThatCannotBeCapturedLeavesLoomsOwnEnvironmentInForce() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let (runtime, session, _) = try await Self.runtimeWithoutProfile(
+            env, claudeEnvironment: ["CLAUDE_CONFIG_DIR": env.profile.path],
+            login: { throw LoomError.message("shell timed out") })
+        try await runtime.start()
+        await runtime.finishLoginEnvironmentCapture()
+        #expect(try await runtime.deletionPreview(id: session.id).configDirectory == realPath(env.profile))
+        #expect((await runtime.shutdown()).succeeded)
+    }
+
+    // MARK: DP-CP4-7 - a link that cannot hold this session's files does not stop its deletion
+
+    private static func link(_ env: Env, _ relative: String, to target: URL) throws {
+        let url = env.profile.appendingPathComponent(relative)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: url, withDestinationURL: target)
+    }
+
+    @Test func aLinkedFolderOfAnotherProjectDoesNotStopTheDeletion() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        let victim = try await Self.addConversation(world)
+        let elsewhere = env.root.appendingPathComponent("elsewhere", isDirectory: true)
+        try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        try Data("kept".utf8).write(to: elsewhere.appendingPathComponent("notes.txt"))
+        try Self.link(env, "projects/-some-other-project", to: elsewhere)
+
+        let preview = try await world.runtime.deletionPreview(id: victim.id)
+        #expect(preview.unreachable.isEmpty)
+        #expect(try await world.runtime.deleteConversation(id: victim.id) == .deleted)
+        #expect(try env.snapshot(of: Self.ids(victim)).isEmpty)
+        #expect(FileManager.default.fileExists(atPath: elsewhere.appendingPathComponent("notes.txt").path))
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    @Test func theSessionsOwnProjectFolderAsALinkStillStopsTheDeletion() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        let victim = try await Self.addConversation(world)
+        let own = ClaudeTranscriptLocator.folderName(forWorkingDirectory: env.home.path)
+        let moved = env.root.appendingPathComponent("moved-project", isDirectory: true)
+        try FileManager.default.createDirectory(at: moved, withIntermediateDirectories: true)
+        try Data("kept".utf8).write(to: moved.appendingPathComponent("\(Self.ids(victim)[1]).jsonl"))
+        try Self.link(env, "projects/\(own)", to: moved)
+
+        #expect(try await world.runtime.deletionPreview(id: victim.id).unreachable == ["projects/\(own)"])
+        guard case let .incomplete(pending) = try await world.runtime.deleteConversation(id: victim.id) else {
+            Issue.record("expected incomplete"); return
+        }
+        #expect(pending.lastFailure == "unreachable_folder: \(own)")
+        #expect(FileManager.default.fileExists(atPath: moved.appendingPathComponent("\(Self.ids(victim)[1]).jsonl").path))
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    // MARK: DP-CP4-7 - "Remove from Loom only"
+
+    @Test func removingFromLoomOnlyKeepsEveryFileOfClaudesAndForgetsTheSession() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let calls = Calls()
+        let forgetters = ConversationForgetters()
+        forgetters.register { id, ids in try calls.record(id, ids) }
+        let world = try await Self.makeWorld(env, forgetters: forgetters)
+        let frames = await Frames(world.events)
+        let victim = try await Self.addConversation(world)
+        let neighbour = try await Self.addConversation(world)
+        let before = try env.snapshot(of: Self.ids(victim) + Self.ids(neighbour))
+        #expect(!before.isEmpty)
+
+        // No deletion was tried first: the sheet offers this when a folder blocks it.
+        try await world.runtime.removeFromLoomOnly(id: victim.id)
+        #expect(try await world.catalog.session(id: victim.id) == nil)
+        #expect(try await world.catalog.session(id: neighbour.id) != nil)
+        #expect(try await world.catalog.pendingDeletions().isEmpty)
+        #expect(try env.snapshot(of: Self.ids(victim) + Self.ids(neighbour)) == before)
+        #expect(env.tierTwoExists(Self.ids(victim)[0]))
+        #expect(calls.all.map(\.0) == [victim.id])
+        #expect(await frames.has(.conversationDeleted, for: victim.id))
+        // The session is gone for good: nothing to remove a second time.
+        await #expect(throws: SessionRuntimeError.sessionNotFound(victim.id)) {
+            try await world.runtime.removeFromLoomOnly(id: victim.id)
+        }
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    @Test func removingFromLoomOnlyFinishesADeletionThatCouldNotFinish() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        let victim = try await Self.addConversation(world)
+        let own = ClaudeTranscriptLocator.folderName(forWorkingDirectory: env.home.path)
+        let moved = env.root.appendingPathComponent("moved-project", isDirectory: true)
+        try FileManager.default.createDirectory(at: moved, withIntermediateDirectories: true)
+        try Data("kept".utf8).write(to: moved.appendingPathComponent("\(Self.ids(victim)[1]).jsonl"))
+        try Self.link(env, "projects/\(own)", to: moved)
+        guard case .incomplete = try await world.runtime.deleteConversation(id: victim.id) else {
+            Issue.record("expected incomplete"); return
+        }
+        #expect(try await world.runtime.pendingDeletions().map(\.id) == [victim.id])
+        // What the failed deletion left in Claude's folders (other than what it already removed) stays.
+        let keptByClaude = try env.snapshot(of: Self.ids(victim))
+
+        try await world.runtime.removeFromLoomOnly(id: victim.id)
+        #expect(try await world.catalog.session(id: victim.id) == nil)
+        #expect(try await world.runtime.pendingDeletions().isEmpty)
+        #expect(try await world.catalog.pendingDeletions().isEmpty)
+        #expect(try env.snapshot(of: Self.ids(victim)) == keptByClaude)
+        #expect(FileManager.default.fileExists(atPath: moved.appendingPathComponent("\(Self.ids(victim)[1]).jsonl").path))
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    @Test func removingFromLoomOnlyStopsARunningSessionFirst() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        let (launch, screen) = try await Self.launch(world)
+        try await screen.send("hello")
+        #expect(await screen.contains("echo: hello"))
+        let providerID = try await Self.providerID(world, launch.sessionID)
+        try env.write("projects/p/\(providerID).jsonl", "transcript")
+
+        try await world.runtime.removeFromLoomOnly(id: launch.sessionID)
+        #expect(try await world.catalog.session(id: launch.sessionID) == nil)
+        #expect(await world.supervisor.session(id: launch.sessionID)?.currentRun == nil)
+        #expect(env.exists("projects/p/\(providerID).jsonl"))
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
 }
