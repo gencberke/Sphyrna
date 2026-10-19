@@ -188,6 +188,7 @@ public struct ProviderLaunchProfile: Sendable {
         environment: [String: String],
         hooks: ClaudeHookLaunchConfiguration? = nil,
         effort: String? = nil,
+        model: String? = nil,
         choices: ClaudeLaunchChoices = ClaudeLaunchChoices(),
         opening: ClaudeOpening? = nil,
         face: ClaudeFace = .terminal
@@ -223,6 +224,11 @@ public struct ProviderLaunchProfile: Sendable {
             // The CLI's word for the mode. Ask is Loom's own mode of the Chat face: there it runs on `dontAsk` (with rules and a
             // style set by control requests), and a terminal launch starts it in Ask before edits instead (D-63).
             choiceArguments += ["--permission-mode", ClaudePermissionMode(rawValue: mode)?.launchValue(chat: face == .chat) ?? mode]
+        }
+        // The model the session's record names, else the one its transcript last recorded (a resume only; the caller has
+        // checked the option and the token, a transcript value is never a refusal).
+        if choices.model == nil, let model, capabilities.claudeAcceptsModel, ClaudeLaunchChoices.isSafeToken(model) {
+            choiceArguments += ["--model", model]
         }
         if let model = choices.model {
             guard capabilities.claudeAcceptsModel else {

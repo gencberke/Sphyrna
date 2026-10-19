@@ -104,6 +104,8 @@ try:
                     '--claude-config', str(PROBE / 'claude-config'), '--evidence-tokens', ','.join(TOKENS)], check=True)
     app_pid = measure.wait_json(evidence / 'launched.json', 30)['pid']
     until('ready', lambda s: s['catalog']['ready'] and s['catalog']['actionsAvailable'], 30)
+    measure.send('live-chat:off', evidence)  # a start follows Settings 'Sessions run in' (Chat by default); this script drives the TUI
+    time.sleep(1)
     measure.send('view-mode:projects', evidence)
     measure.send('add-project:' + str(workspace), evidence)
     project = until('project', lambda s: len(s['catalog']['projects']) == 1, 30)['catalog']['projects'][0]['id']

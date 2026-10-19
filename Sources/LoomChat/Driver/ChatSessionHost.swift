@@ -23,6 +23,7 @@ public final class ChatSessionHost {
     private let choicesChanged: @MainActor (UUID, ClaudeLaunchChoices) -> Void
     private let contextWindow: @MainActor (String, Int) -> Void
     private let driversChanged: @MainActor () -> Void
+    private let titleGenerated: @MainActor (UUID, String) -> Void
     /// By the card each driver's run is on. Re-keyed synchronously from the driver when its run moves (a driver must
     /// not wait for the main actor), so it is behind a lock rather than main-actor state.
     private let drivers = ChatDriverRegistry()
@@ -45,10 +46,12 @@ public final class ChatSessionHost {
     ///   - choicesChanged: a live change of mode, model or effort (the runtime already stored it in the catalog).
     ///   - contextWindow: feeds the context ring (`UsageModel.setContextWindow`).
     ///   - driversChanged: a driver moved to another card (`/clear`): views that look drivers up read again.
+    ///   - titleGenerated: Claude named an untitled session (the owner records it as a title that is not custom).
     public init(runtime: SessionRuntime, dataRoot: URL, journal: DiagnosticJournal? = nil,
                 choicesChanged: @escaping @MainActor (UUID, ClaudeLaunchChoices) -> Void = { _, _ in },
                 contextWindow: @escaping @MainActor (String, Int) -> Void = { _, _ in },
-                driversChanged: @escaping @MainActor () -> Void = {}) {
+                driversChanged: @escaping @MainActor () -> Void = {},
+                titleGenerated: @escaping @MainActor (UUID, String) -> Void = { _, _ in }) {
         self.runtime = runtime
         queueStore = ChatQueueStore(directory: dataRoot.appendingPathComponent("chat-queues", isDirectory: true))
         draftStore = ChatDraftStore(directory: dataRoot.appendingPathComponent("chat-drafts", isDirectory: true))
@@ -56,6 +59,7 @@ public final class ChatSessionHost {
         self.choicesChanged = choicesChanged
         self.contextWindow = contextWindow
         self.driversChanged = driversChanged
+        self.titleGenerated = titleGenerated
         // A deletion the runtime finishes by itself (launch recovery has no UI model) removes the host's files too.
         runtime.conversationForgetters.register { [weak self] id, _ in
             await MainActor.run { self?.forget(sessionID: id) }
@@ -68,6 +72,7 @@ public final class ChatSessionHost {
         let record = choicesChanged
         let window = contextWindow
         let changed = driversChanged
+        let titled = titleGenerated
         let registry = drivers
         let driver = ChatSessionDriver(
             sessionID: sessionID, runtime: runtime, queueStore: queueStore, draftStore: draftStore, journal: journal,
@@ -76,7 +81,8 @@ public final class ChatSessionHost {
             onMoved: { from, to in
                 registry.move(from: from, to: to)
                 Task { @MainActor in changed() }
-            }
+            },
+            onTitle: { card, title in Task { @MainActor in titled(card, title) } }
         )
         drivers[sessionID] = driver
         return driver

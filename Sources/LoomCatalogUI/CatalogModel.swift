@@ -1458,8 +1458,8 @@ public final class CatalogModel {
         await refreshRow(sessionID)
     }
 
-    /// Path for titles announced by a terminal or provider: never replaces a
-    /// title the user set.
+    /// Path for titles announced by a terminal or provider (a Chat session's, which Claude generated on request, too): never
+    /// replaces a title the user set.
     public func terminalTitleChanged(sessionID: UUID, title: String) async {
         guard let catalog else { return }
         do {

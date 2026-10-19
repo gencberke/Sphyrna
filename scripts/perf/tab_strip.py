@@ -60,6 +60,7 @@ class Instance:
         for _ in range(150):
             state = self.snap('ready')
             if state['catalog']['ready'] and state['catalog']['actionsAvailable']:
+                self.cmd('live-chat:off', 1.0)  # a start follows Settings 'Sessions run in' (Chat by default); this script drives terminal sessions
                 return state
             time.sleep(0.2)
         raise SystemExit('app never became ready')

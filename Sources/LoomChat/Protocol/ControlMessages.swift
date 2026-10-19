@@ -209,6 +209,10 @@ public enum OutgoingControlRequest: Sendable, Equatable {
     case rewindConversation(targetMessageUUID: String)
     /// A question answered from the conversation without a turn: no transcript record, no `result`.
     case sideQuestion(String)
+    /// The title the terminal face gives a session by itself (a short model call on the first message), on demand: answers
+    /// `{title}` (null when none could be made) and, persisted, writes the transcript's `ai-title` record. The SDK mode of
+    /// the CLI never does this on its own.
+    case generateSessionTitle(description: String)
     /// Any other subtype (`initialize`, `rewind_files`, `mcp_status`, `stop_task`, …) with its fields.
     case other(subtype: String, fields: [String: JSONValue])
 
@@ -226,6 +230,7 @@ public enum OutgoingControlRequest: Sendable, Equatable {
         case .rewindFiles: "rewind_files"
         case .rewindConversation: "rewind_conversation"
         case .sideQuestion: "side_question"
+        case .generateSessionTitle: "generate_session_title"
         case let .other(subtype, _): subtype
         }
     }
@@ -251,6 +256,7 @@ public enum OutgoingControlRequest: Sendable, Equatable {
         case let .rewindFiles(id, dryRun): ["user_message_id": .string(id), "dry_run": .bool(dryRun)]
         case let .rewindConversation(id): ["target_message_uuid": .string(id)]
         case let .sideQuestion(question): ["question": .string(question)]
+        case let .generateSessionTitle(description): ["description": .string(description), "persist": true]
         case let .other(_, fields): fields
         }
     }

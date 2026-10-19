@@ -365,6 +365,19 @@ struct ComposerBarTextTests {
         #expect(ComposerBarText.modelTitle(state { $0.resolvedModel = "claude-opus-5-5"; $0.models = [option] }) == "Opus")
     }
 
+    @Test func aStoppedSessionsChipNamesTheModelItLastRanOn() {
+        // Nothing is resolved or chosen: the model the usage index saw is the one a resume passes back.
+        #expect(ComposerBarText.modelTitle(state(), observed: "claude-haiku-5-5") == "Haiku 5.5")
+        #expect(ComposerBarText.modelTitle(state(), observed: "") == "Default model")
+        #expect(ComposerBarText.modelTitle(state(), observed: nil) == "Default model")
+        // The model the CLI reported, and a model the user picked, win.
+        #expect(ComposerBarText.modelTitle(state { $0.resolvedModel = "claude-opus-5-5" }, observed: "claude-haiku-5-5") == "Opus 5.5")
+        #expect(ComposerBarText.modelTitle(state { $0.choices.model = "sonnet" }, observed: "claude-haiku-5-5") != "Haiku 5.5")
+        #expect(ComposerBarText.modelTitle(state { $0.choices.model = "default" }, observed: "claude-haiku-5-5") == "Default model")
+        #expect(ComposerBarText.modelPicker(state(), effortBaseline: nil, observedModel: "claude-haiku-5-5").modelTitle == "Haiku 5.5")
+        #expect(ComposerBarText.modelPicker(state(), effortBaseline: nil).modelTitle == "Default model")
+    }
+
     @Test func prettyModelNamesShapedIdsAndLeavesOthersAlone() {
         #expect(ComposerBarText.prettyModel("claude-sonnet-4-6") == "Sonnet 4.6")
         #expect(ComposerBarText.prettyModel("claude-3-5-sonnet-20241022") == "Sonnet 3.5")

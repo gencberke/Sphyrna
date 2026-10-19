@@ -152,3 +152,55 @@ struct ClaudeTranscriptEffortTests {
         #expect(ClaudeTranscriptEffort.last(conversationID: "../-tmp-project/\(id)", projectsDirectory: projects) == nil)
     }
 }
+
+struct ClaudeTranscriptModelTests {
+    private func write(_ records: [[String: Any]], id: String, to projects: URL) throws {
+        let folder = projects.appendingPathComponent("-tmp-project")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var text = String(repeating: "x", count: 64) + "\n"   // a line the tail may cut
+        for record in records { text += String(data: try JSONSerialization.data(withJSONObject: record), encoding: .utf8)! + "\n" }
+        try text.write(to: folder.appendingPathComponent("\(id).jsonl"), atomically: true, encoding: .utf8)
+    }
+
+    @Test func theLastRealAssistantModelWinsAndSyntheticOnesSayNothing() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("model-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let projects = root.appendingPathComponent("projects")
+        let id = "0b5f3c2a-2222-4c4c-9d9d-123456789abc"
+        try write([
+            ["type": "assistant", "message": ["model": "claude-opus-5-5"]],
+            ["type": "assistant", "message": ["model": "claude-haiku-5-5"]],
+            ["type": "user", "message": ["model": "claude-sonnet-5-5", "content": "model"]],
+            ["type": "assistant", "message": ["model": "<synthetic>"]],
+            ["type": "assistant"],
+        ], id: id, to: projects)
+        #expect(ClaudeTranscriptModel.last(conversationID: id, projectsDirectory: projects) == "claude-haiku-5-5")
+        #expect(ClaudeTranscriptModel.last(conversationID: "missing", projectsDirectory: projects) == nil)
+        #expect(ClaudeTranscriptModel.last(conversationID: "../-tmp-project/\(id)", projectsDirectory: projects) == nil)
+        try write([["type": "assistant", "message": ["model": "<synthetic>"]]], id: id, to: projects)
+        #expect(ClaudeTranscriptModel.last(conversationID: id, projectsDirectory: projects) == nil)
+    }
+}
+
+struct ClaudeDefaultModelTests {
+    @Test func theDefaultIsTheSettingsModelElseTheEnvironmentsAndAnAliasMatchesByFamily() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("default-model-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(ClaudeDefaultModel.configured(configDirectory: root, environment: [:]) == nil)
+        #expect(ClaudeDefaultModel.configured(configDirectory: root, environment: ["ANTHROPIC_MODEL": "sonnet"]) == "sonnet")
+        try Data(#"{"model": "opus[1m]"}"#.utf8).write(to: root.appendingPathComponent("settings.json"))
+        #expect(ClaudeDefaultModel.configured(configDirectory: root, environment: ["ANTHROPIC_MODEL": "sonnet"]) == "opus[1m]")
+        try Data("not json".utf8).write(to: root.appendingPathComponent("settings.json"))
+        #expect(ClaudeDefaultModel.configured(configDirectory: root, environment: [:]) == nil)
+
+        #expect(ClaudeDefaultModel.matches(default: "opus[1m]", transcriptModel: "claude-opus-5-5"))
+        #expect(ClaudeDefaultModel.matches(default: "opus", transcriptModel: "claude-opus-4-1-20250805"))
+        #expect(ClaudeDefaultModel.matches(default: "sonnet", transcriptModel: "claude-3-5-sonnet-20241022"))
+        #expect(!ClaudeDefaultModel.matches(default: "opus[1m]", transcriptModel: "claude-haiku-5-5"))
+        #expect(ClaudeDefaultModel.matches(default: "claude-opus-5-5[1m]", transcriptModel: "claude-opus-5-5"))
+        #expect(!ClaudeDefaultModel.matches(default: "claude-opus-5-5", transcriptModel: "claude-opus-4-1"))
+        #expect(!ClaudeDefaultModel.matches(default: "default", transcriptModel: "claude-opus-5-5"))
+        #expect(!ClaudeDefaultModel.matches(default: "opusplan", transcriptModel: "claude-opus-5-5"))
+    }
+}

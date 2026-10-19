@@ -187,8 +187,8 @@ public struct SessionViewState: Equatable, Sendable {
         pendingRequests + userRequests.filter(\.isAnswerable).map { request in
             let toolName: String
             switch request.kind {
-            // Named as Claude's tools are, so the reason line reads "Allow: <command>" and "Allow Edit: <file>" for either
-            // provider.
+            // Named as Claude's tools are, so `SessionReasonLine.approvalText` words them as it words Claude's own
+            // ("Asks to run: <command>", "Asks to edit: <file>") for either provider.
             case .command: toolName = "Bash"
             case .fileChange: toolName = "Edit"
             case let .unsupported(name): toolName = name

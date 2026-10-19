@@ -206,6 +206,79 @@ struct LaunchChoicesCatalogTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
+    /// A resume keeps the model the session ran on: neither face restores it from the transcript (spike S2), so the profile
+    /// passes the transcript's last real model; a model the user picked wins, and a new session passes none.
+    @Test func aResumePassesTheModelItsTranscriptLastRanOnUnlessOneWasPicked() async throws {
+        let context = try await SessionRuntimeTests.makeContext(
+            claudeVersion: "2.1.300 (Claude Code)", extraClaudeHelp: "--permission-mode <mode> --model <model>")
+        defer { context.cleanup() }
+        let conversation = "0b5f3c2a-3333-4c4c-9d9d-123456789abc"
+        let folder = context.profile.appendingPathComponent("projects/-tmp-project", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let records: [[String: Any]] = [
+            ["type": "assistant", "message": ["model": "claude-haiku-5-5"]],
+            ["type": "assistant", "message": ["model": "<synthetic>"]],
+        ]
+        let text = try records.map { String(data: try JSONSerialization.data(withJSONObject: $0), encoding: .utf8)! }
+            .joined(separator: "\n") + "\n"
+        try text.write(to: folder.appendingPathComponent("\(conversation).jsonl"), atomically: true, encoding: .utf8)
+        let toolchain = try await context.runtime.toolchain(for: .claude)
+        let hooks = try await context.runtime.ensureHooksForTesting()
+        func arguments(_ route: ProviderLaunchProfile.ClaudeRoute, _ choices: ClaudeLaunchChoices,
+                       face: ProviderLaunchProfile.ClaudeFace) async throws -> [String] {
+            try await context.runtime.claudeProfile(
+                route: route, toolchain: toolchain, sessionID: UUID(), hooks: hooks, choices: choices, face: face).launchArguments()
+        }
+        for face in [ProviderLaunchProfile.ClaudeFace.terminal, .chat] {
+            #expect(Self.value(after: "--model", in: try await arguments(.resume(conversation), ClaudeLaunchChoices(), face: face))
+                    == "claude-haiku-5-5", "\(face)")
+            #expect(Self.value(after: "--model", in: try await arguments(
+                .resume(conversation), ClaudeLaunchChoices(model: "opus"), face: face)) == "opus", "\(face)")
+            // A conversation without a transcript, and a new session, pass no model.
+            #expect(!(try await arguments(.resume("no-such-conversation"), ClaudeLaunchChoices(), face: face)).contains("--model"))
+            #expect(!(try await arguments(.new(UUID()), ClaudeLaunchChoices(), face: face)).contains("--model"))
+        }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    /// The transcript's id has no `[1m]`: a resume must not trade the user's `opus[1m]` default for a plain Opus id. When the
+    /// configured default is the model the session ran on, no `--model` is passed and the default applies as before.
+    @Test func aResumeLeavesTheConfiguredDefaultAloneWhenItIsTheModelTheSessionRanOn() async throws {
+        let context = try await SessionRuntimeTests.makeContext(
+            claudeVersion: "2.1.300 (Claude Code)", extraClaudeHelp: "--permission-mode <mode> --model <model>")
+        defer { context.cleanup() }
+        let folder = context.profile.appendingPathComponent("projects/-tmp-project", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let opus = "0b5f3c2a-4444-4c4c-9d9d-123456789abc", haiku = "0b5f3c2a-5555-4c4c-9d9d-123456789abc"
+        for (conversation, model) in [(opus, "claude-opus-5-5"), (haiku, "claude-haiku-5-5")] {
+            let record = try JSONSerialization.data(withJSONObject: ["type": "assistant", "message": ["model": model]])
+            try (String(data: record, encoding: .utf8)! + "\n")
+                .write(to: folder.appendingPathComponent("\(conversation).jsonl"), atomically: true, encoding: .utf8)
+        }
+        let settings = context.profile.appendingPathComponent("settings.json")
+        let toolchain = try await context.runtime.toolchain(for: .claude)
+        let hooks = try await context.runtime.ensureHooksForTesting()
+        func model(_ conversation: String) async throws -> String? {
+            Self.value(after: "--model", in: try await context.runtime.claudeProfile(
+                route: .resume(conversation), toolchain: toolchain, sessionID: UUID(), hooks: hooks,
+                choices: ClaudeLaunchChoices(), face: .chat).launchArguments())
+        }
+        try Data(#"{"model": "opus[1m]", "theme": "dark"}"#.utf8).write(to: settings)
+        #expect(try await model(opus) == nil)
+        #expect(try await model(haiku) == "claude-haiku-5-5")
+        // A full id is compared as an id, `[1m]` aside.
+        try Data(#"{"model": "claude-opus-5-5[1m]"}"#.utf8).write(to: settings)
+        #expect(try await model(opus) == nil)
+        #expect(try await model(haiku) == "claude-haiku-5-5")
+        // No settings file, a bad one, and a `model` that is not a word: no default is configured.
+        for content in [nil, "{ not json", #"{"model": 5}"#, #"{"model": ""}"#, #"["opus"]"#] {
+            if let content { try Data(content.utf8).write(to: settings) } else { try? FileManager.default.removeItem(at: settings) }
+            #expect(try await model(opus) == "claude-opus-5-5", "\(content ?? "no file")")
+            #expect(try await model(haiku) == "claude-haiku-5-5", "\(content ?? "no file")")
+        }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
     /// Seam 1, the Open Session request (D-40): it always starts in the terminal and carries no choices, so the TUI is told no
     /// mode at all; the session is not in Ask.
     @Test func anOpenSessionStartPassesNoModeAndRunsNoAsk() async throws {

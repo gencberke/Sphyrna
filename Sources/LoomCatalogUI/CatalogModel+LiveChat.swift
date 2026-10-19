@@ -14,7 +14,12 @@ extension CatalogModel {
             // A live change of mode, model or effort is what the project starts its next session with.
             choicesChanged: { [weak self] _, _ in self?.refreshLastUsedChoices() },
             contextWindow: { [weak self] model, window in self?.usage?.setContextWindow(Int64(window), forModel: model) },
-            driversChanged: { [weak self] in self?.chatDriversRevision += 1 }
+            driversChanged: { [weak self] in self?.chatDriversRevision += 1 },
+            // Claude names an untitled Chat session (the terminal face's own naming, on demand): a title that is not custom.
+            titleGenerated: { [weak self] id, title in
+                guard let self else { return }
+                Task { await self.terminalTitleChanged(sessionID: id, title: title) }
+            }
         )
         chatSessions = host
         // Queues of sessions deleted while no host ran (launch recovery) hold the user's text: they go.

@@ -116,18 +116,32 @@ extension SessionRuntime {
             base: toolchain.environment, runID: supervisor.ownershipRunID, sessionID: sessionID
         )
         var effort: String?
-        // The session's own record names the effort first (`ClaudeLaunchChoices`); the transcript is the fallback.
-        if choices.effort == nil, case let .resume(conversationID) = route, toolchain.capabilities.supportsEffort {
-            let profile = ClaudeProfileLayout(
+        var model: String?
+        // The session's own record names the effort and the model first (`ClaudeLaunchChoices`); the transcript is the
+        // fallback, since neither face restores them on `--resume` (spike S2).
+        if case let .resume(conversationID) = route {
+            let layout = ClaudeProfileLayout(
                 toolchain: toolchain, home: URL(fileURLWithPath: configuration.homeDirectory, isDirectory: true)
             )
-            effort = ClaudeTranscriptEffort.last(conversationID: conversationID, projectsDirectory: profile.projectsDirectory)
+            if choices.effort == nil, toolchain.capabilities.supportsEffort {
+                effort = ClaudeTranscriptEffort.last(conversationID: conversationID, projectsDirectory: layout.projectsDirectory)
+            }
+            if choices.model == nil, toolchain.capabilities.claudeAcceptsModel {
+                // The transcript's id has no `[1m]`: when the configured default is that very model, passing nothing keeps the
+                // default as it is, window included.
+                if let ran = ClaudeTranscriptModel.last(conversationID: conversationID, projectsDirectory: layout.projectsDirectory),
+                   ClaudeLaunchChoices.isSafeToken(ran) {
+                    let configured = ClaudeDefaultModel.configured(
+                        configDirectory: layout.configDirectory, environment: toolchain.environment)
+                    model = configured.map { ClaudeDefaultModel.matches(default: $0, transcriptModel: ran) } == true ? nil : ran
+                }
+            }
         }
         reportCompatibility(toolchain: toolchain, route: route, opening: opening)
         let built = try ProviderLaunchProfile.claude(
             route: route, capabilities: toolchain.capabilities,
             config: toolchain.profileDirectory ?? URL(fileURLWithPath: "/"),
-            environment: environment, hooks: hooks, effort: effort, choices: choices, opening: opening, face: face
+            environment: environment, hooks: hooks, effort: effort, model: model, choices: choices, opening: opening, face: face
         )
         var profileEnvironment = built.environment
         // The provider's own default profile: do not pin a config directory.

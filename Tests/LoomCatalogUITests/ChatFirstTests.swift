@@ -88,6 +88,80 @@ struct ChatFirstTests {
         await fixture.cleanup()
     }
 
+    // MARK: The session's title
+
+    /// The ai-title records of the session's transcript (the fake writes one when the driver asks Claude for a title and
+    /// asks to persist it).
+    private func aiTitleCount(_ fixture: Fixture, _ id: UUID) async -> Int {
+        guard let conversation = try? await fixture.rig.runtime.catalog.session(id: id)?.session.providerConversationID,
+              let file = ClaudeTranscriptEffort.transcript(
+                conversationID: conversation, projectsDirectory: fixture.rig.profile.appendingPathComponent("projects")),
+              let text = try? String(contentsOf: file, encoding: .utf8) else { return 0 }
+        return text.components(separatedBy: "\"ai-title\"").count - 1
+    }
+
+    private func title(_ fixture: Fixture, _ id: UUID) async -> String? {
+        try? await fixture.rig.runtime.catalog.session(id: id)?.title
+    }
+
+    @Test func aChatSessionIsNamedByClaudeFromItsFirstMessage() async throws {
+        let fixture = try await makeFixture()
+        let id = try await startFromDraft(fixture, text: "Explain binary search in one sentence")
+        #expect(await waitUntil { await title(fixture, id) == "Fake title: Explain binary search" })
+        let record = try #require(try await fixture.rig.runtime.catalog.session(id: id))
+        #expect(!record.titleIsCustom)
+        #expect(await aiTitleCount(fixture, id) == 1)
+        // The row shows it, and a second message asks for nothing more.
+        #expect(await waitUntil { fixture.model.rowModels[id]?.record.title == "Fake title: Explain binary search" })
+        let driver = try #require(fixture.model.chatSessions?.existingDriver(for: id))
+        try await driver.send("something else entirely")
+        #expect(await waitUntil { await driver.snapshot().model.assistantTexts.last == "Fake answer to: something else entirely" })
+        #expect(await aiTitleCount(fixture, id) == 1)
+        #expect(await title(fixture, id) == "Fake title: Explain binary search")
+        await fixture.cleanup()
+    }
+
+    @Test func aRenameMadeWhileTheTitleIsOnItsWayStays() async throws {
+        // The fake persists the title, then answers 800 ms later: the rename lands in between.
+        let fixture = try await makeFixture(environment: ["LOOM_FAKE_CHAT_CONTROL_DELAY_MS": "800"])
+        let id = try await startFromDraft(fixture, text: "Explain binary search in one sentence")
+        #expect(await waitUntil { await aiTitleCount(fixture, id) == 1 })
+        try await fixture.model.rename(sessionID: id, to: "My own name")
+        try await Task.sleep(for: .milliseconds(2000))
+        let record = try #require(try await fixture.rig.runtime.catalog.session(id: id))
+        #expect(record.title == "My own name" && record.titleIsCustom)
+        await fixture.cleanup()
+    }
+
+    @Test func aSlashCommandAsksForNoTitleAndTheNextMessageDoes() async throws {
+        let fixture = try await makeFixture()
+        let id = try await startFromDraft(fixture, text: "/scenario work 100")
+        let driver = try #require(fixture.model.chatSessions?.existingDriver(for: id))
+        #expect(await waitUntil { let s = await driver.snapshot(); return s.phase == .ready && !s.turnRunning })
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(await aiTitleCount(fixture, id) == 0)
+        #expect(await title(fixture, id) == nil)
+        try await driver.send("now a real message")
+        #expect(await waitUntil { await title(fixture, id) == "Fake title: now a real" })
+        #expect(await aiTitleCount(fixture, id) == 1)
+        await fixture.cleanup()
+    }
+
+    @Test func aTitleThatCannotBeMadeLeavesTheSessionUntitledAndSilent() async throws {
+        for failure in ["title", "titlenull"] {
+            let fixture = try await makeFixture(environment: ["LOOM_FAKE_CHAT_FAIL_PICKS": failure])
+            let id = try await startFromDraft(fixture, text: "Explain binary search in one sentence")
+            let driver = try #require(fixture.model.chatSessions?.existingDriver(for: id))
+            #expect(await waitUntil { await driver.snapshot().model.assistantTexts.last == "Fake answer to: Explain binary search in one sentence" })
+            try await Task.sleep(for: .milliseconds(500))
+            #expect(await title(fixture, id) == nil, "\(failure)")
+            let snapshot = await driver.snapshot()
+            #expect(snapshot.phase == .ready && snapshot.queueIssue == nil, "\(failure)")
+            #expect(fixture.model.errorMessage == nil && fixture.model.infoMessage == nil, "\(failure)")
+            await fixture.cleanup()
+        }
+    }
+
     @Test func theSettingIsKeptAndAnOlderFileReadsAsChat() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-face-pref-\(UUID())", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

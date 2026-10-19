@@ -79,7 +79,7 @@ struct ChatConfig {
     /// LOOM_FAKE_CHAT_RESET_FORGETS_SETTINGS=1: a `conversation_reset` drops the live settings (the unmeasured worst case).
     var resetForgetsSettings: Bool
     /// LOOM_FAKE_CHAT_FAIL_PICKS: a comma list of `model` and `effort`; a live change of one is refused (`set_model`, the
-    /// settings' `effortLevel`).
+    /// settings' `effortLevel`). `title` makes `generate_session_title` fail and `titlenull` answer with no title.
     var failPicks: Set<String>
     /// LOOM_FAKE_CHAT_RESET_ORDER=init-first: a reset writes `system/init` before the SessionStart hook runs (the real CLI
     /// writes the reset, then the hook, then `system/init`; the hook reaches Loom by another road, so either order can arrive).
@@ -657,6 +657,24 @@ final class ChatEngine {
             // No lifecycle, no turn, nothing in the transcript.
             send(wire.controlProgress(id))
             send(wire.controlSuccess(id, wire.sideQuestionResponse(body["question"] as? String ?? "")))
+        case "generate_session_title":
+            // The terminal face's own naming, on demand: "Fake title: <first three words>", and the transcript's `ai-title`
+            // when the host asks to persist it. `title` in LOOM_FAKE_CHAT_FAIL_PICKS refuses it; `titlenull` answers null.
+            if config.failPicks.contains("title") {
+                send(wire.controlError(id, "The title could not be made", code: "fail_title"))
+                return
+            }
+            if config.failPicks.contains("titlenull") {
+                send(wire.controlSuccess(id, ["title": NSNull()]))
+                return
+            }
+            let words = (body["description"] as? String ?? "").split(whereSeparator: \.isWhitespace).prefix(3)
+            let title = "Fake title: " + words.joined(separator: " ")
+            if body["persist"] as? Bool == true {
+                transcript.append(["type": "ai-title", "aiTitle": title, "sessionId": wire.session])
+            }
+            if config.controlDelayMs > 0 { usleep(UInt32(config.controlDelayMs) * 1_000) } // written, answered late
+            send(wire.controlSuccess(id, ["title": title]))
         case "rewind_files":
             send(wire.controlSuccess(id, wire.rewindFilesResponse(dryRun: body["dry_run"] as? Bool ?? false)))
         case "rewind_conversation":

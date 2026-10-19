@@ -38,8 +38,8 @@ struct InspectorOverviewContent: Equatable {
     }
 }
 
-/// The reason line in words (the concept's "Allow: git push origin fix/webhook-sig"). Built from content, so
-/// it is shown here and never logged.
+/// The reason line in words. An approval reads as on every surface (`SessionReasonLine.approvalText`, for example
+/// "Asks to run: git push origin fix/webhook-sig"). Built from content, so it is shown here and never logged.
 enum InspectorReasonText {
     static func line(_ reason: StatusReason) -> String? {
         switch reason.kind {

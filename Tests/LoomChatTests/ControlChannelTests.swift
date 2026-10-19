@@ -65,6 +65,21 @@ struct ControlChannelTests {
         #expect(try await reply.value.sideQuestionResponse == "because")
     }
 
+    @Test func aTitleRequestCarriesTheMessageAndPersistsAndTheAnswerIsTyped() async throws {
+        let channel = channel()
+        var lines = channel.outgoing.makeAsyncIterator()
+        let reply = Task { try await channel.request(.generateSessionTitle(description: "Explain binary search")) }
+        let sent = try json(await lines.next())
+        #expect(sent["request"]?["subtype"] == "generate_session_title" && sent["request"]?["description"] == "Explain binary search"
+                && sent["request"]?["persist"] == true)
+        await channel.receive(response("req-1", ["title": "Binary search explanation"]))
+        #expect(try await reply.value.generatedTitle == "Binary search explanation")
+        let none = Task { try await channel.request(.generateSessionTitle(description: "x")) }
+        _ = await lines.next()
+        await channel.receive(response("req-2", ["title": .null]))
+        #expect(try await none.value.generatedTitle == nil)
+    }
+
     @Test func aRequestGetsItsAnswerByIdAndAnInterruptReceiptIsTyped() async throws {
         let channel = channel()
         var lines = channel.outgoing.makeAsyncIterator()

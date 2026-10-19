@@ -208,6 +208,7 @@ def launch(directory):
                     '--evidence-tokens', TOKENS], check=True)
     pid = measure.wait_json(directory / 'launched.json', 30)['pid']
     until(directory, 'ready', lambda s: s['catalog']['ready'] and s['catalog']['actionsAvailable'], 30)
+    measure.send('live-chat:off', directory); time.sleep(1)  # a start follows Settings 'Sessions run in' (Chat by default); this script drives terminal sessions
     return pid
 
 def quit_app(directory, pid):

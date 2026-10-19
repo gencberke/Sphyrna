@@ -327,7 +327,7 @@ extension ChatComposerModel {
     /// CLI's own) when it had none.
     @discardableResult func resetEffort() -> Task<Void, Never> {
         effortChanged = true
-        guard let target = ComposerBarText.resetTarget(state, effortBaseline: effortBaseline) else {
+        guard let target = ComposerBarText.resetTarget(state, effortBaseline: effortBaseline, observed: environment.contextFallback()?.model) else {
             return Task { [driver, weak self] in
                 do { try await driver.clearEffort() } catch { self?.show("The effort was not changed.") }
                 await self?.refresh()
@@ -338,7 +338,7 @@ extension ChatComposerModel {
 
     /// What the model chip and its two popovers show now.
     var modelPicker: ComposerModelPicker {
-        ComposerBarText.modelPicker(state, effortBaseline: effortBaseline)
+        ComposerBarText.modelPicker(state, effortBaseline: effortBaseline, observedModel: environment.contextFallback()?.model)
     }
 
     /// Resolves once the sends made so far have reached the driver (tests).

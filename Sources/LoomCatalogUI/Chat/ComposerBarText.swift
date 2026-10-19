@@ -39,10 +39,19 @@ enum ComposerBarText {
 
     // MARK: Model and effort
 
-    /// The model chip's name: the model the CLI reported, else the one chosen, else "Default model" (the Release A review
-    /// found two pickers reading "Claude's default").
-    static func modelTitle(_ state: ChatComposerState) -> String {
-        if let resolved = state.resolvedModel, !resolved.isEmpty {
+    /// The model the chip stands for when the CLI has named none: the one the usage index saw the session run on last
+    /// (`observed`), used only while no model is chosen either. A stopped session has neither, and a resume passes this same
+    /// model back (`ClaudeTranscriptModel`), so the chip and the next run agree.
+    private static func runningModel(_ state: ChatComposerState, observed: String?) -> String? {
+        if let resolved = state.resolvedModel, !resolved.isEmpty { return resolved }
+        guard (state.choices.model ?? "").isEmpty, let observed, !observed.isEmpty else { return nil }
+        return observed
+    }
+
+    /// The model chip's name: the model the CLI reported, else the one chosen, else the one the session last ran on, else
+    /// "Default model" (the Release A review found two pickers reading "Claude's default").
+    static func modelTitle(_ state: ChatComposerState, observed: String? = nil) -> String {
+        if let resolved = runningModel(state, observed: observed) {
             if let option = state.models.first(where: { $0.resolvedModel == resolved }), let name = option.displayName,
                !name.isEmpty, !option.value.isEmpty, option.value != "default" {
                 return name
@@ -90,9 +99,9 @@ enum ComposerBarText {
     }
 
     /// The model option the bar's model chip stands for: the one chosen (`default` when none), else the one that runs.
-    private static func currentOption(_ state: ChatComposerState) -> ModelOption? {
+    private static func currentOption(_ state: ChatComposerState, observed: String? = nil) -> ModelOption? {
         if let chosen = state.choices.model, let option = state.models.first(where: { $0.value == chosen }) { return option }
-        if let resolved = state.resolvedModel, let option = state.models.first(where: { $0.value != "default" && $0.resolvedModel == resolved })
+        if let resolved = runningModel(state, observed: observed), let option = state.models.first(where: { $0.value != "default" && $0.resolvedModel == resolved })
             ?? state.models.first(where: { $0.resolvedModel == resolved }) { return option }
         return state.models.first { $0.value == "default" }
     }
@@ -100,10 +109,10 @@ enum ComposerBarText {
     /// The effort levels to offer: the model's own list when the CLI sent them (`supportedEffortLevels`, and none for a model
     /// without effort: Haiku 4.5 on 2.1.300), else the five the CLI takes. A CLI that sends no list for any model has not
     /// told us about this one either.
-    static func effortLevels(_ state: ChatComposerState) -> [String] {
+    static func effortLevels(_ state: ChatComposerState, observed: String? = nil) -> [String] {
         let standard = NewSessionModels.effortLevels
         guard state.models.contains(where: { !$0.supportedEffortLevels.isEmpty }) else { return standard }
-        guard let option = currentOption(state) else { return standard }
+        guard let option = currentOption(state, observed: observed) else { return standard }
         return option.supportedEffortLevels
     }
 
@@ -126,17 +135,17 @@ enum ComposerBarText {
 
     /// Where the slider's reset goes: the effort the session had when it was opened, as the model now chosen takes it; nil is
     /// the CLI's own (Default) when it had none, or the model offers none.
-    static func resetTarget(_ state: ChatComposerState, effortBaseline: String?) -> String? {
-        effortBaseline.flatMap { ChatEffort.clamped($0, to: effortLevels(state)) }
+    static func resetTarget(_ state: ChatComposerState, effortBaseline: String?, observed: String? = nil) -> String? {
+        effortBaseline.flatMap { ChatEffort.clamped($0, to: effortLevels(state, observed: observed)) }
     }
 
     /// What the model chip and its popovers show for a session.
-    static func modelPicker(_ state: ChatComposerState, effortBaseline: String?) -> ComposerModelPicker {
+    static func modelPicker(_ state: ChatComposerState, effortBaseline: String?, observedModel: String? = nil) -> ComposerModelPicker {
         let level = state.choices.effort ?? state.reportedEffort
         return ComposerModelPicker(
-            modelTitle: modelTitle(state), effortTitle: effortTitle(state), rows: modelRows(state),
-            chosenModel: state.choices.model, levels: effortLevels(state), chosenLevel: level,
-            canResetEffort: level != nil && level != resetTarget(state, effortBaseline: effortBaseline))
+            modelTitle: modelTitle(state, observed: observedModel), effortTitle: effortTitle(state), rows: modelRows(state),
+            chosenModel: state.choices.model, levels: effortLevels(state, observed: observedModel), chosenLevel: level,
+            canResetEffort: level != nil && level != resetTarget(state, effortBaseline: effortBaseline, observed: observedModel))
     }
 
     /// Whether the Default row is the chosen one: no choice, or the choice named `default`.

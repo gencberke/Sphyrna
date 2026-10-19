@@ -85,6 +85,7 @@ public actor ChatSessionDriver {
     private let onChoicesChanged: @Sendable (ClaudeLaunchChoices) -> Void
     private let onContextWindow: @Sendable (_ model: String, _ window: Int) -> Void
     private let onMoved: @Sendable (_ from: UUID, _ to: UUID) -> Void
+    private let onTitle: @Sendable (_ card: UUID, _ title: String) -> Void
 
     private struct Run {
         let runID: UUID
@@ -213,6 +214,8 @@ public actor ChatSessionDriver {
     ///   - onContextWindow: each `result`'s `modelUsage.<model>.contextWindow` (the model name as the context ring keys
     ///     it, `[1m]` included for the extended variant).
     ///   - onMoved: the run moved to another card (`/clear`) and the driver with it: its owner re-keys it.
+    ///   - onTitle: Claude named the untitled session (`generate_session_title`); the owner records it as a title that is
+    ///     not custom, so a rename always wins.
     ///
     /// The callbacks are synchronous and must not wait for the main actor: a `result` read during Quit (the stop
     /// hook) calls them while the main thread may wait in a nested run loop. Hop with a task of your own.
@@ -222,7 +225,8 @@ public actor ChatSessionDriver {
                 clock: @escaping @Sendable () -> Date = { Date() },
                 onChoicesChanged: @escaping @Sendable (ClaudeLaunchChoices) -> Void = { _ in },
                 onContextWindow: @escaping @Sendable (_ model: String, _ window: Int) -> Void = { _, _ in },
-                onMoved: @escaping @Sendable (_ from: UUID, _ to: UUID) -> Void = { _, _ in }) {
+                onMoved: @escaping @Sendable (_ from: UUID, _ to: UUID) -> Void = { _, _ in },
+                onTitle: @escaping @Sendable (_ card: UUID, _ title: String) -> Void = { _, _ in }) {
         self.sessionID = sessionID
         self.runtime = runtime
         self.queueStore = queueStore
@@ -233,6 +237,7 @@ public actor ChatSessionDriver {
         self.onChoicesChanged = onChoicesChanged
         self.onContextWindow = onContextWindow
         self.onMoved = onMoved
+        self.onTitle = onTitle
         var queue = ChatQueue()
         do {
             queue = try queueStore?.load(sessionID: sessionID) ?? ChatQueue()
@@ -956,7 +961,43 @@ public actor ChatSessionDriver {
             throw error
         }
         await beginTurn()
+        requestTitleIfNeeded(for: message)
         return uuid
+    }
+
+    // MARK: The session's title
+
+    /// A Chat run has no terminal title, and the CLI's SDK mode does not name a session by itself as the terminal face does
+    /// (a short model call on the first message). So the first message that is sent to an untitled session asks for it
+    /// (`generate_session_title`, persisted as the transcript's `ai-title`): a slash command is no title, an answer that
+    /// fails or holds none is not shown, and the next message tries again while the session is still untitled.
+    private enum TitleState { case needed, requesting, done }
+    private var titleState = TitleState.needed
+
+    private func requestTitleIfNeeded(for message: ChatSentMessage) {
+        guard titleState == .needed, let current = run else { return }
+        let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !text.hasPrefix("/") else { return }
+        titleState = .requesting
+        let card = sessionID
+        Task { await generateTitle(from: text, card: card, on: current.channel) }
+    }
+
+    private func generateTitle(from text: String, card: UUID, on channel: ControlChannel) async {
+        // Only an untitled session is named (a resumed one may carry the terminal's title or the user's own).
+        guard let record = try? await runtime.catalog.session(id: card) else { titleState = .needed; return }
+        guard (record.title ?? "").isEmpty, !record.titleIsCustom else { titleState = .done; return }
+        do {
+            let reply = try await channel.request(.generateSessionTitle(description: text), timeout: .seconds(60))
+            guard let title = reply.generatedTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
+                titleState = .needed
+                return
+            }
+            titleState = .done
+            onTitle(sessionID, title)
+        } catch {
+            titleState = .needed
+        }
     }
 
     /// Waits until no mode transition runs and Ask's layer is not being put back (a send right after a mode pick, or a
@@ -1775,6 +1816,8 @@ public actor ChatSessionDriver {
         }
         let old = sessionID
         sessionID = card
+        // The new card has no title yet.
+        titleState = .needed
         if let queueStore {
             do {
                 try queueStore.save(queue, sessionID: card)

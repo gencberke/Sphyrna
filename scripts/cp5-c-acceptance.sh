@@ -137,6 +137,7 @@ launch() { # name datadir [args...]
     [[ $(jq_ "$dir/state-ready.json" "d['catalog']['ready'] and d['catalog']['actionsAvailable']") == True ]] && break
     sleep 0.2
   done
+  send_command live-chat:off; sleep 1  # a start follows Settings 'Sessions run in' (Chat by default); this script drives terminal sessions
   pgrep -f "$app/Contents/MacOS/Loom Dev" | head -1 > "$dir/app-pid.txt"
 }
 finish() { # dir

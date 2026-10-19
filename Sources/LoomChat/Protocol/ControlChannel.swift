@@ -43,6 +43,9 @@ public struct ControlReply: Sendable, Equatable {
         }
     }
 
+    /// For a `generate_session_title` reply: nil when the CLI made none.
+    public var generatedTitle: String? { payload["title"]?.string }
+
     /// For a `side_question` reply.
     public var sideQuestionResponse: String? { payload["response"]?.string }
 }
