@@ -1,7 +1,7 @@
 # Loom — product contract and development decisions
 
-**Updated:** 6 October 2026\
-**Status:** CP1, CP2 and CP5 (terminal engine and first window) closed; CP5 closed on 6 Oct 2026 by user decision on package I — see `STATUS.md` and `ROADMAP.md`.
+**Updated:** 19 October 2026\
+**Status:** CP1, CP2 and CP5 (terminal engine and first window) closed; CP5 closed on 6 Oct 2026 by user decision on package I. Loom v2 is being built and ships once as 1.5.0 ([D-68](DECISIONS.md)) — see `STATUS.md` and `ROADMAP.md`.
 
 This file is the current starting document for Loom. It combines the user's expectations, the decisions taken in the conversation with Claude, and the subsequent technical evaluation. A behavior being targeted here does not mean that it has been implemented or tested.
 
@@ -49,15 +49,15 @@ This document distinguishes **accepted behaviors**, **technical candidates** and
 
 | Topic | Decision |
 | --- | --- |
-| Core experience | The real CLI/terminal experience of Claude Code and Codex will be preserved. |
+| Core experience | The live session is always the user's own unmodified Claude Code CLI in a process Loom owns, in its terminal or in its structured mode, with one owner at a time. One app-wide switch in Settings chooses which; the terminal is always one of the choices. Codex runs in its terminal. (19 October 2026 user decision, [D-69](DECISIONS.md), adopting the v2 concept's wording with the app-wide switch. Before: “The real CLI/terminal experience of Claude Code and Codex will be preserved.”) |
 | Visual target | The existing design and icons will be preserved. |
 | Minimum macOS | macOS 27 and later (28 September 2026 user decision). |
-| First window scope | Claude and Codex; project/projectless chat, activity/project list, search, rename, status indicators, resume/stop and basic terminal operations. Other providers, child task view, Dock/menu bar notifications and deletion are deferred to later (28 September 2026 user decision). (6 Oct 2026) Codex is not part of the first production release; Codex code may remain in development builds, paused since 4 Oct 2026. |
+| First window scope | Claude and Codex; project/projectless chat, activity/project list, search, rename, status indicators, resume/stop and basic terminal operations. Other providers, child task view, Dock/menu bar notifications and deletion are deferred to later (28 September 2026 user decision). (6 Oct 2026) Codex is not part of the first production release; Codex code may remain in development builds, paused since 4 Oct 2026. (19 Oct 2026) 1.5.0 shows Codex's entries but cannot start Codex ([D-69](DECISIONS.md)). |
 | Window closing | The red close button and Cmd+W close the window; the app and jobs keep running. Cmd+Q quits the app, stopping owned jobs (28 September 2026 user decision). |
 | Full app quit | Jobs belonging to Loom may be stopped. When a normal quit completes, no running process belonging to Loom must remain. |
 | Claude Agent View | May be disabled in Claude sessions started by Loom to preserve process ownership. This is an accepted CLI feature exception. |
 | Provider versions | Claude or Codex versions will not be pinned. |
-| Core language | Swift; the core is written in this repo and checkpoint code becomes the application's core. The terminal engine and UI technology will be selected separately. |
+| Core language | Swift; the core is written in this repo and checkpoint code becomes the application's core. The terminal engine is a vendored SwiftTerm with Loom's patches, and the UI is SwiftUI and AppKit; both are in use since CP5, which the user closed on 6 October 2026. |
 | Experiment isolation | Checkpoint experiments are run in isolated CLI profiles (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`). The user's real profiles and sessions are read only to verify that they are not affected. |
 | Process ownership guarantee | Each managed run starts in a new resource coalition of a small run helper opened via LaunchServices, and the ownership boundary is this run scope (§6). Loom's own application coalition is not the ownership seed. If the scope cannot be set up, the session is not started normally and a visible error is shown. Coalition and lineage information is read with undocumented `proc_pidinfo` flavors; if it cannot be read or its format has changed, the result is not counted as success (2 October 2026 user decision). |
 | Codex server and scope | Each live Codex session runs its own app-server in the same run scope as its TUI; a single session's Stop covers all of that session's work (2 October 2026 user decision). |
@@ -65,14 +65,14 @@ This document distinguishes **accepted behaviors**, **technical candidates** and
 | Managed CLI environment | The CLIs opened by Loom receive the environment of the user's terminal. Only variables that could leak from Loom's own parent session are left out, and Loom markers are added. It behaves like a terminal: errors and warnings in shell startup files do not stop the session from opening; they are shown as visible warnings. If the environment cannot be obtained at all, an explicit error is shown and it can be retried without restarting the app. |
 | Cross-session communication | Will take place within the user's assignment and the scope the user has authorized. |
 | Checkpoint order | Status and resume → first window (terminal engine and UI) → deletion and retention → authorized coordination. The window was moved forward so that Loom can be used early. Coordination was left to the end because it depends on status tracking and is the most uncertain work. |
-| Codex working path | Loom-owned app-server + remote TUI (path a). In the CP1 sample there is an extra fixed memory cost of about 110 MiB; it was accepted in exchange for seeing session state directly. If it does not provide the expected visibility in CP2, it is re-evaluated. |
+| Codex working path | Loom-owned app-server + remote TUI (path a), accepted in exchange for seeing session state directly. Its memory cost, with one server per live session (2 October 2026): an idle session measured 156 MiB in two processes, against 119 MiB for the plain TUI with `--no-daemon` and 395 MiB in three processes for Codex's default with its shared daemon and updater ([PERF-4](plans/cp5/PERF.md)). The CP1 sample's figure, about 110 MiB extra for one shared server, predates that decision. |
 | New chat commands | After Claude `/clear` or Codex `/new`, the new chat becomes a separate record; the old chat is not lost. |
-| Codex cache | The detached thread staying in memory for up to 30 minutes, as described in the conversation, was accepted. This is not permission to leave running work. |
+| Codex cache | The detached thread staying in memory for up to 30 minutes, as described in the conversation, was accepted. With one server per live session (2 October 2026), the server stops with its session, so nothing stays cached for a stopped session (§4.4). This is not permission to leave running work. |
 | Stale content preview | Not a requirement of the first release if it is difficult or costly to build. |
 | Monthly cleanup target | Eligible `stale` sessions, not `idle`. |
 | Usage time | The user viewing a chat refreshes its usage time. |
 | Stale viewing | Viewing a stale session does not change its state; the session stays stale. Leaving stale happens only through explicit reactivation. |
-| Deletion waiting period | For automatic deletion, the session must have been stale for at least 15 days. |
+| Deletion waiting period | For automatic deletion, the session must have been stale for at least 15 days. (19 Oct 2026: 15 days is the default wait of the cleanup review, which the user can change in Settings → Sessions; automatic deletion stays off, [D-69](DECISIONS.md).) |
 | Cleanup exceptions | Pinned chats, worktree states that must be preserved, and chats that are the source or target of an unfinished authorized task are excluded from automatic cleanup. |
 | Cleanup after a long break | If the app stayed closed for a long time, no surprise bulk deletion is done at launch; a list and confirmation are shown. |
 
@@ -133,7 +133,7 @@ Running a stale session requires explicit reactivation. Viewing a stale session 
 Accepted conditions of automatic cleanup:
 
 - Monthly cleanup targets only eligible stale sessions.
-- A session must stay stale for at least 15 days before it is deleted.
+- A session must stay stale for at least the deletion wait before it is deleted: 15 days by default, counted from the later of the stale start and the last view.
 - The user's viewing or reuse is taken into account; an old deletion plan is not applied blindly.
 - Pinned chats are not cleaned up automatically. Pinning does not mean keeping the live CLI open permanently.
 - If there is a worktree state that must be preserved, the related chat is not cleaned up automatically. Unpushed commits and local changes that could be lost are examples of this protection to be checked during implementation.
@@ -141,7 +141,7 @@ Accepted conditions of automatic cleanup:
 - Bulk deletion after the app has been closed for a long time is not done without showing the user a list and getting confirmation.
 - Cleanup also uses the same verification and error rules as manual deletion.
 
-**Policy details not yet finalized:** Whether the monthly run is tied to the calendar month or to the last run; whether viewing a stale session affects the automatic deletion waiting period; the “closed for a long time” threshold. Before automatic deletion is enabled, these rules must be settled as a single calculation. The condition “15 days of non-use + at least 15 days stale” does not mean that every chat will be deleted on exactly the 30th day.
+**Policy details in force** (DP-CP4-2's defaults, [D-69](DECISIONS.md)): a review is due 30 days after the last one, not by calendar month; viewing a stale session restarts its wait; 45 days closed counts as a long absence, and more than 10 eligible sessions force a review. The user can change the review interval and the deletion wait in Settings → Sessions, which is in every build and deletes only what the user confirms. Automatic deletion stays off; before it is ever enabled, these rules must be settled as a single calculation ([O-09](DECISIONS.md#open)). The condition “15 days of non-use + at least 15 days stale” does not mean that every chat will be deleted on exactly the 30th day.
 
 A continuously running Loom service for cleanup while the app is closed is not targeted. Infrequent checks at launch and while the app is open are the candidate implementation. A separate timer per record is not needed.
 
@@ -155,7 +155,7 @@ The shutdown sequence must cover blocking new work, stopping owned work, verifyi
 
 Claude Agent View may be disabled only in sessions started by Loom. This option is documented; the global settings of other terminal sessions are not changed. [Claude environment options](https://code.claude.com/docs/en/env-vars)
 
-For Codex, two paths will be compared by experiment (see DECISIONS.md — status to confirm):
+For Codex, two paths were compared by experiment:
 
 1. A Loom-owned app-server and the real Codex TUI connecting to it.
 2. The direct Codex TUI with shared daemon use turned off.
@@ -166,7 +166,7 @@ A shared Codex server of other applications or of the user's terminal is not con
 
 Process groups, PID + start time and environment markers are candidates for examination. **These alone do not prove that all processes will be found and shut down.** In the pre-check, the environment marker could be read with `KERN_PROCARGS2` in a non-Apple binary belonging to the same user; it was not visible in Apple platform binaries such as `/bin/sleep`. Therefore marker scanning alone is not sufficient. The death of the parent process does not directly terminate its children; closing the terminal is not a guarantee for all grandchildren either. [POSIX process termination](https://pubs.opengroup.org/onlinepubs/9799919799/functions/_exit.html)
 
-Checkpoint 1 also reproduced the limit that blocks a general ownership guarantee: a `/bin/sleep` that escapes the session before the first snapshot cannot be found when the environment marker cannot be read and it has not entered the ledger. The real provider and combined experiments finishing without leftovers does not close this A5 gap; the checkpoint was not given full acceptance (see DECISIONS.md — status to confirm).
+Checkpoint 1 also reproduced the limit that blocks a general ownership guarantee: a `/bin/sleep` that escapes the session before the first snapshot cannot be found when the environment marker cannot be read and it has not entered the ledger. The real provider and combined experiments finishing without leftovers does not close this A5 gap; the checkpoint was not given full acceptance. The run scope below (2 October 2026) replaced marker scanning as the ownership boundary: a process that escapes the session's process group still belongs to the run helper's coalition (§3, “Process ownership guarantee”).
 
 **Run scope (2 October 2026).** The application coalition is not a clean boundary: Apple XPC service instances join every application's coalition later. Loom cannot create a coalition or put its child into another coalition; these operations are privileged in XNU. The AppKit-less run helper opened via LaunchServices, on the other hand, gets a new, single-member coalition at each launch. Coalition membership is inherited on fork and cannot be changed by an unprivileged process. Therefore `setsid`, double fork and reparenting to launchd do not take a process out of the scope.
 
@@ -239,7 +239,7 @@ The exact local data inventory and the deletion statement to be presented to the
 
 ## 9. Architecture direction and update strategy
 
-**Technical candidate:** A modular coordinator inside Loom; separate responsibilities for process ownership, catalog, lifecycle, provider adapters and terminal presentation. Swift was accepted as the core language (§3). SQLite for a small persistent catalog and SwiftUI/AppKit for the macOS UI are candidates. These are not yet technology decisions selected by measurement (see DECISIONS.md — status to confirm).
+**Direction:** A modular coordinator inside Loom; separate responsibilities for process ownership, catalog, lifecycle, provider adapters and terminal presentation. Swift is the core language (§3). The catalog is a small SQLite database and the UI is SwiftUI and AppKit; both are in use ([ARCHITECTURE](docs/ARCHITECTURE.md)).
 
 Passing every terminal character through a message queue or JSON layer is not mandatory. A continuously running separate Loom daemon was not accepted as an initial need. If an application-bound helper is proven necessary, it is evaluated with its own resource and shutdown cost.
 
@@ -315,11 +315,11 @@ Checkpoints are for testing high-risk claims with narrow experiments without bui
 
 The product purpose and core behaviors are largely clear. It is not necessary to choose all technical details before implementation; but the following outcomes must not be left open:
 
-1. **Quit boundary:** Apart from normal Quit, what guarantee can really be given for crash/Force Quit? Window close behavior has been decided (§3) (see DECISIONS.md — status to confirm).
+1. **Quit boundary:** Apart from normal Quit, what guarantee can really be given for crash/Force Quit? Window close behavior has been decided (§3), and so has the run helper's part when Loom crashes (§3, “Loom crash”). The rest is [O-09](DECISIONS.md#open), settled at 1.5.0's evaluation ([D-69](DECISIONS.md)).
 2. **Communication path:** Which Claude delivery mechanism meets the ownership and update requirements together? (The Codex working path has been decided, §3.)
 3. **Data contract:** The exact local scope of safe single-chat deletion, the management of shared files, and alignment with provider retention.
 4. **Cleanup calculation:** The monthly calendar, the effect of stale viewing on the counter, and the long-closed threshold.
-5. **Measurable budgets:** Accepted resource, scale and interaction limits (see DECISIONS.md — status to confirm).
+5. **Measurable budgets:** Accepted resource, scale and interaction limits. The heavy terminal CPU ceiling of 40 % is accepted (§10); the rest is [O-01](DECISIONS.md#open), decided at 1.5.0's evaluation ([D-69](DECISIONS.md)).
 
 These items are not gaps awaiting new product ideas; they are the decision and evidence gates needed to actually deliver the accepted experience.
 
@@ -327,9 +327,9 @@ These items are not gaps awaiting new product ideas; they are the decision and e
 
 Ideas the user has expressed before. They do not automatically enter the first release or the implementation order:
 
-- A side chat and right panel opened from the main context, whose exchange is not added to the main chat.
-- More comprehensive tracking of subtasks in the right panel.
+- A side chat and right panel opened from the main context, whose exchange is not added to the main chat. (17 Oct 2026: in v2's scope as the inspector and its Side tab, [D-57](DECISIONS.md).)
+- More comprehensive tracking of subtasks in the right panel. (17 Oct 2026: in v2's scope as the inspector's Tasks and Agents tabs, [D-57](DECISIONS.md).)
 - Showing ChatGPT/Claude usage allowance and remaining limits. (7 Oct 2026: moved into scope as a lightweight usage and cost view, [D-32](DECISIONS.md).)
-- Chats within a project keeping a fixed order by creation time, newest first (D-39, 12 Oct 2026); plus a separate view sorted by latest activity.
+- Chats within a project keeping a fixed order by creation time, newest first; plus a separate view sorted by latest activity. (12 Oct 2026: moved into scope, [D-39](DECISIONS.md); the activity view sorts by latest activity.)
 - Importing pre-existing provider history, and full transcript search.
 - Harnesses other than Claude and Codex (OpenCode, Antigravity, etc.).
