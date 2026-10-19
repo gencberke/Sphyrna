@@ -750,6 +750,67 @@ struct ConversationControllerTests {
         }
     }
 
+    /// Holds a verified Stop after the runtime returned and before its tab decision (`ConversationController.stopGate`).
+    @MainActor private final class StopGate {
+        private var continuation: CheckedContinuation<Void, Never>?
+        private(set) var reached: [UUID] = []
+
+        func hold(_ id: UUID) async {
+            reached.append(id)
+            await withCheckedContinuation { continuation = $0 }
+        }
+
+        func release() {
+            continuation?.resume()
+            continuation = nil
+        }
+    }
+
+    /// The user stops a session and, while the Stop verifies, opens it again: the verified Stop unpins the tab and
+    /// leaves the window where the user came back to (it used to select the neighbour).
+    @Test func aVerifiedStopAfterTheUserOpenedTheSessionAgainOnlyUnpinsItsTab() async throws {
+        try await withFixture { fixture in
+            let other = try await insertIdle(fixture, 1)[0]
+            let id = try await startRunning(fixture)
+            fixture.model.openTab(other)
+            fixture.model.select(id)
+            #expect(fixture.model.tabs.pinned == [id, other] && fixture.model.selectedSessionID == id)
+            let gate = StopGate()
+            fixture.controller.stopGate = { await gate.hold($0) }
+
+            fixture.model.stopConversation(id)
+            #expect(await waitUntil { gate.reached == [id] })
+            // The Stop has returned; the user leaves and comes back to the session.
+            fixture.model.showHome()
+            fixture.model.select(id)
+            gate.release()
+            #expect(await waitUntil { fixture.controller.terminalCount == 0 && fixture.model.busy[id] == nil })
+            #expect(fixture.model.selectedSessionID == id, "the window stays on the session the user came back to")
+            #expect(fixture.model.selectedRow != nil)
+            #expect(fixture.model.tabs.pinned == [other], "the tab is unpinned")
+            #expect(fixture.model.isTransientTab(id))
+        }
+    }
+
+    /// The same Stop without any navigation meanwhile closes the tab as before.
+    @Test func aVerifiedStopWithoutNavigationClosesItsTabThroughTheGateToo() async throws {
+        try await withFixture { fixture in
+            let other = try await insertIdle(fixture, 1)[0]
+            let id = try await startRunning(fixture)
+            fixture.model.openTab(other)
+            fixture.model.select(id)
+            let gate = StopGate()
+            fixture.controller.stopGate = { await gate.hold($0) }
+
+            fixture.model.stopConversation(id)
+            #expect(await waitUntil { gate.reached == [id] })
+            gate.release()
+            #expect(await waitUntil { fixture.controller.terminalCount == 0 && fixture.model.busy[id] == nil })
+            #expect(fixture.model.tabs.pinned == [other])
+            #expect(fixture.model.selectedSessionID == other, "the right neighbour is shown")
+        }
+    }
+
     /// A stop that could not be verified leaves everything as it was, tab included, and says so.
     @Test func aStopThatIsNotVerifiedKeepsTheTab() async throws {
         let fixture = try await makeFixture(extraEnvironment: ["LOOM_FAKE_CODEX_STOP_FAILURE": "prepare"])

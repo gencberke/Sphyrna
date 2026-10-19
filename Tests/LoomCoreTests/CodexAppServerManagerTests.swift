@@ -74,7 +74,7 @@ struct CodexAppServerManagerTests {
         defer { context.cleanup() }
         try FileManager.default.createDirectory(at: context.socketDirectory, withIntermediateDirectories: true)
         let executable = RuntimeFixture.binaries.appendingPathComponent("loom-fake-provider").path
-        let server = try manager(context, body: "sleep 0.15\nexec '\(executable)' \"$@\"")
+        let server = try manager(context, body: "sleep 0.15\nexec '\(executable)' \"$@\"", timeout: 30)
         _ = try await server.start()
         #expect(await server.internalSessionID() != nil)
         #expect(await server.stop()?.succeeded == true)

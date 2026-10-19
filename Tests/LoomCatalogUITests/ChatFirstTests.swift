@@ -140,7 +140,10 @@ struct ChatFirstTests {
         composer.submit(secondary: false)
         #expect(await waitUntil { await driver.snapshot().model.assistantTexts.last == "Fake answer to: and now a new message" })
         // It resumed in the Chat face: a pipe run, the same owner.
-        #expect(model.runEndpoint(of: try #require(model.selectedRow)) == .pipe)
+        // The row gets it from two hub frames (`.runStarted` resets the endpoint, `.runEndpoint` sets it), and the
+        // answer can arrive before both: wait for the state, and say which one it was.
+        let resumedEndpoint = await waitUntil { model.selectedRow.map { model.runEndpoint(of: $0) } == .pipe }
+        #expect(resumedEndpoint, "the resumed run's row should show a pipe run; selected: \(model.selectedSessionID == id), live run: \(String(describing: model.selectedRow?.live?.runID)), endpoint: \(String(describing: model.selectedRow.map { model.runEndpoint(of: $0) }))")
         #expect(await endpoint(fixture, id) == .pipe)
         await fixture.cleanup()
     }

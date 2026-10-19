@@ -84,6 +84,8 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
     var handoverSettle: Duration = .milliseconds(1500)
     /// Held at a handover's point of no return, with its target (tests act at that phase; nil in the app).
     var handoverGate: (@MainActor (UUID, SessionFace) async -> Void)?
+    /// Held after a Stop returned from the runtime, before the tab decision (tests navigate at that phase; nil in the app).
+    var stopGate: (@MainActor (UUID) async -> Void)?
     /// How often a handover looked at the terminal session's standing in the hub (tests: a wait is on events, not on a timer).
     var standingReads = 0
 
@@ -405,6 +407,7 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
         model.setBusy(sessionID, .stopping)
         let stopped = entries.values.first { $0.owner == sessionID }
         let stoppedRun = stopped?.runID ?? model.liveStates[sessionID]?.runID
+        let navigationAtStop = model.navigationCount
         // What the user sees now is what stays: taken before any signal, so whatever the program draws
         // while it exits cannot replace it.
         if let stopped, let seen = stopped.surface.captureVisibleScreen() { stopCaptures[stopped.runID] = seen }
@@ -417,9 +420,14 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
                     if report.succeeded { await reconcile() }
                     stopCaptures[stoppedRun] = nil
                 }
+                await stopGate?(sessionID)
                 // A verified stop closes the session's tab like its close button. A stop that is not
-                // verified keeps it, and so does a session that has a new run meanwhile.
-                if report.succeeded, !hasNewRun(sessionID, since: stoppedRun) { model.closeTab(sessionID) }
+                // verified keeps it, and so does a session that has a new run meanwhile. If the user moved the
+                // window while the stop verified (opened the session again), the tab is only unpinned: closing
+                // it would take them away from where they came back to.
+                if report.succeeded, !hasNewRun(sessionID, since: stoppedRun) {
+                    if model.navigationCount == navigationAtStop { model.closeTab(sessionID) } else { model.unpinTab(sessionID) }
+                }
                 if !report.succeeded {
                     // The card also carries the unverified stop; this makes it hard to miss.
                     let providerFailure = report.providerStages?.first { $0.outcome == "failed" }?.failureDescription

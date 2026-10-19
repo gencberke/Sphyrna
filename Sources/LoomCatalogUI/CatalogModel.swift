@@ -280,6 +280,9 @@ public final class CatalogModel {
     /// Where the user is: a session, Home, a project's draft or a project page; nil is nothing selected.
     /// `DetailRoute` is computed from it.
     public private(set) var destination: Destination?
+    /// How many times the window has moved (a changed `destination`). A verified Stop compares it with the count
+    /// when the Stop began: if the user navigated meanwhile, the Stop must not move them again.
+    @ObservationIgnored private(set) var navigationCount = 0
     /// The selected session, derived from `destination`; nil on every other destination.
     public var selectedSessionID: UUID? { destination?.sessionID }
     public private(set) var selectedRow: SessionRowModel?
@@ -951,6 +954,7 @@ public final class CatalogModel {
         if target != destination {
             let previous = selectedSessionID
             destination = target
+            navigationCount += 1
             let id = target?.sessionID
             // Only a conversation that owns a run has a terminal to wait for.
             if let id, liveStates[id]?.runID != nil { LoomSignposts.begin(interval) }
