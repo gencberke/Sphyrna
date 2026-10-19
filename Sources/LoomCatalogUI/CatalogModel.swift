@@ -311,7 +311,7 @@ public final class CatalogModel {
     public var devTerminal: DevTerminal?
     public private(set) var terminalFontSize: Double
     public private(set) var branches: [String: GitBranch] = [:]
-    /// The requests of agents to open a session, and the notices that a ticket already has one (D-40).
+    /// The requests of agents to open a session (D-40).
     /// The runtime owns them; the controller mirrors its list here.
     public private(set) var openRequests: [OpenSessionRequest] = []
     /// Sessions whose agent waits for the user's answer (their indicator reads "Needs approval").

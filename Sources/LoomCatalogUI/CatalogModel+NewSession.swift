@@ -41,7 +41,6 @@ public final class NewSessionState {
     /// The drafts whose Full access was picked in this window run, by `SessionDraft.id`: a pick that came from
     /// the file (a draft saved before a relaunch) or from a preset was not made on this screen.
     private(set) var fullAccessConfirmed: Set<String> = []
-    private(set) var ticketStatuses: [String: TicketStatus] = [:]
     /// The Git branch of each project's folder, read when its draft opens.
     private(set) var branches: [String: GitBranch] = [:]
     private(set) var settings = NewSessionSettings()
@@ -52,14 +51,9 @@ public final class NewSessionState {
     /// still here, but may not survive a restart), or an unreadable file that was moved aside. Nil when all is well.
     public private(set) var storeNotice: String?
     @ObservationIgnored var store: NewSessionStore?
-    /// How often the ticket key was looked for in a draft's text (tests): once per settled edit, never per keystroke.
-    @ObservationIgnored private(set) var ticketScans = 0
-    @ObservationIgnored var ticketTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored var clock: () -> Date = { Date() }
 
     public init() {}
-
-    deinit { for task in ticketTasks.values { task.cancel() } }
 
     // MARK: Storage
 
@@ -90,8 +84,6 @@ public final class NewSessionState {
         storeNotice = "This draft could not be saved (\(error.localizedDescription)). "
             + "What you typed is still here, but it may be gone after a restart."
     }
-
-    func countTicketScan() { ticketScans += 1 }
 
     func setSettings(_ value: NewSessionSettings) {
         guard value != settings else { return }
@@ -145,7 +137,6 @@ public final class NewSessionState {
     public func discard(projectID: UUID?) {
         drafts[projectID] = SessionDraft(projectID: projectID, updatedAt: clock())
         fullAccessConfirmed.remove(SessionDraft.id(for: projectID))
-        ticketStatuses[SessionDraft.id(for: projectID)] = nil
         persistDrafts()
     }
 
@@ -178,7 +169,6 @@ public final class NewSessionState {
     func handOver(_ projectID: UUID?) -> SessionDraft? {
         guard let draft = drafts[projectID] else { return nil }
         drafts[projectID] = SessionDraft(projectID: projectID, updatedAt: clock())
-        ticketStatuses[draft.id] = nil
         persistDrafts()
         return draft
     }
@@ -225,14 +215,7 @@ public final class NewSessionState {
         return (choices, store?.file.lastUsed ?? [:])
     }
 
-    // MARK: Ticket and branch facts
-
-    func setTicketStatus(_ status: TicketStatus, for projectID: UUID?) {
-        let id = SessionDraft.id(for: projectID)
-        if ticketStatuses[id] != status { ticketStatuses[id] = status }
-    }
-
-    func ticketStatus(for projectID: UUID?) -> TicketStatus { ticketStatuses[SessionDraft.id(for: projectID)] ?? .none }
+    // MARK: Branch facts
 
     func setBranch(_ branch: GitBranch, for projectID: UUID) {
         if branches[projectID.uuidString] != branch { branches[projectID.uuidString] = branch }
@@ -268,7 +251,6 @@ extension CatalogModel {
         newSession.open(projectID: projectID)
         navigate(to: .draft(projectID: projectID))
         loadDraftBranch(projectID: projectID)
-        refreshTicket(projectID: projectID)
     }
 
     /// "New Session" (⌘N, the menu bar item): the draft of the project the window is in. Nothing starts
@@ -303,12 +285,11 @@ extension CatalogModel {
 
     // MARK: Editing
 
-    /// A keystroke: stores the text and nothing more. The ticket key is looked for, and the file written, after a
-    /// pause (`refreshTicket`, `NewSessionStore`), so the cost of a keystroke does not grow with the text.
+    /// A keystroke: stores the text and nothing more. The file is written after a pause (`NewSessionStore`), so the
+    /// cost of a keystroke does not grow with the text.
     public func setDraftText(_ text: String, projectID: UUID?) {
         guard newSession.draft(for: projectID)?.text != text else { return }
         newSession.setText(text, for: projectID)
-        refreshTicket(projectID: projectID)
     }
 
     func setDraftMode(_ pick: DraftPick, projectID: UUID?) {
@@ -341,8 +322,6 @@ extension CatalogModel {
         }
     }
 
-    func allowDuplicateTicket(projectID: UUID?) { newSession.update(projectID) { $0.allowDuplicateTicket = true } }
-
     public func discardDraft(projectID: UUID?) { newSession.discard(projectID: projectID) }
 
     /// Another project in the question: the draft follows when the other project's draft is empty.
@@ -350,7 +329,6 @@ extension CatalogModel {
         guard new != old else { return }
         newSession.move(from: old, to: new)
         showDraft(projectID: new)
-        refreshTicket(projectID: new)
     }
 
     // MARK: Defaults
@@ -399,55 +377,6 @@ extension CatalogModel {
             model: model.flatMap { ClaudeLaunchChoices.isSafeToken($0) ? $0 : nil }))
     }
 
-    // MARK: Ticket check (D-40)
-
-    /// Reads the ticket key in the draft's text and asks the catalog whether the project has a session for it.
-    /// Debounced: typing costs one look at the text, off the main thread, and one read after 300 ms of quiet,
-    /// and none of either before. A second session for the ticket is a decision about the ticket in the text, so
-    /// it is taken back here when the key in the text is not the one the user decided on.
-    func refreshTicket(projectID: UUID?) {
-        let id = SessionDraft.id(for: projectID)
-        newSession.ticketTasks[id]?.cancel()
-        newSession.ticketTasks[id] = nil
-        guard newSession.draft(for: projectID) != nil else { return }
-        newSession.ticketTasks[id] = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled, let self else { return }
-            let key = await self.ticketKey(in: self.newSession.draft(for: projectID)?.text ?? "")
-            guard !Task.isCancelled else { return }
-            if newSession.draft(for: projectID)?.allowDuplicateTicket == true, key != newSession.ticketStatus(for: projectID).key {
-                newSession.update(projectID, touching: false) { $0.allowDuplicateTicket = false }
-            }
-            let status = await self.ticketStatus(forKey: key, projectID: projectID)
-            guard !Task.isCancelled else { return }
-            self.newSession.setTicketStatus(status, for: projectID)
-        }
-    }
-
-    /// The first ticket key in `text`, looked for off the main actor (a draft can be 128 KiB).
-    func ticketKey(in text: String) async -> String? {
-        newSession.countTicketScan()
-        return await Task.detached(priority: .userInitiated) { TicketPattern.generic.firstKey(in: text) }.value
-    }
-
-    /// The ticket of `text` and whether its project already has a session for it. No project, no lookup.
-    func ticketStatus(of text: String, projectID: UUID?) async -> TicketStatus {
-        await ticketStatus(forKey: ticketKey(in: text), projectID: projectID)
-    }
-
-    func ticketStatus(forKey key: String?, projectID: UUID?) async -> TicketStatus {
-        guard let key else { return .none }
-        guard let projectID, let catalog else { return .free(key: key) }
-        guard let existing = try? await catalog.session(projectID: projectID, ticket: key) else { return .free(key: key) }
-        return .exists(key: key, sessionID: existing.session.id, title: existing.title)
-    }
-
-    /// "Open" on the ticket line: shows the session the ticket already has instead of starting a copy.
-    func openExistingTicketSession(projectID: UUID?) {
-        guard case .exists(_, let sessionID, _) = newSession.ticketStatus(for: projectID) else { return }
-        select(sessionID)
-    }
-
     // MARK: Branch
 
     /// Reads the project folder's branch for the strip (`.git/HEAD`, a few small file reads, no process).
@@ -460,9 +389,9 @@ extension CatalogModel {
         }
     }
 
-    /// The branch the strip would create: the typed name, else one made from the ticket or the first words.
-    func draftBranchName(_ draft: SessionDraft, ticket: String?) -> String {
-        draft.branchName ?? NewSessionBranchNames.suggest(ticket: ticket, text: draft.text)
+    /// The branch the strip would create: the typed name, else one made from the first words.
+    func draftBranchName(_ draft: SessionDraft) -> String {
+        draft.branchName ?? NewSessionBranchNames.suggest(text: draft.text)
     }
 
     // MARK: Send
@@ -484,10 +413,9 @@ extension CatalogModel {
         guard draftSendBlock(projectID: projectID) == nil, actionsAvailable, startableProviders.contains(.claude), !isStarting(.claude, projectID: projectID),
               let draft = newSession.draft(for: projectID), draft.isVisible, !newSession.isSending(projectID),
               intents is any NewSessionIntents else { return false }
-        if case .exists = newSession.ticketStatus(for: projectID), !draft.allowDuplicateTicket { return false }
         if draft.branchKind != .stay {
             guard draftProject(projectID) != nil, newSession.branch(for: projectID).map({ $0 != .unavailable }) ?? true,
-                  NewSessionBranchNames.isPlausible(draftBranchName(draft, ticket: newSession.ticketStatus(for: projectID).key))
+                  NewSessionBranchNames.isPlausible(draftBranchName(draft))
             else { return false }
         }
         return true
@@ -500,68 +428,44 @@ extension CatalogModel {
         guard canSendDraft(projectID: projectID), let intents = intents as? any NewSessionIntents,
               let snapshot = newSession.draft(for: projectID) else { return }
         newSession.beginSending(projectID)
-        Task { [weak self] in
+        let launch = self.launch(for: snapshot)
+        let draft: SessionDraft
+        if startsFreshDraft {
+            guard let handed = newSession.handOver(projectID) else { newSession.endSending(projectID); return }
+            draft = handed
+            newSession.endSending(projectID)
+        } else {
+            draft = snapshot
+        }
+        intents.startSession(
+            projectID: projectID, launch: launch, focus: startsFreshDraft ? .freshDraft : .session
+        ) { [weak self] outcome in
             guard let self else { return }
-            // The key may have been typed a moment ago: ask again before anything starts. A second session was
-            // allowed for the key the line showed; another key in the text has not been allowed by anyone.
-            let shown = self.newSession.ticketStatus(for: projectID).key
-            let status = await self.ticketStatus(of: snapshot.text, projectID: projectID)
-            self.newSession.setTicketStatus(status, for: projectID)
-            let allowed = snapshot.allowDuplicateTicket && status.key == shown
-            if snapshot.allowDuplicateTicket, !allowed {
-                self.newSession.update(projectID, touching: false) { $0.allowDuplicateTicket = false }
-            }
-            if case .exists = status, !allowed {
-                self.newSession.endSending(projectID)
-                return
-            }
-            let launch = self.launch(for: snapshot, ticket: status.key)
-            let draft: SessionDraft
-            if startsFreshDraft {
-                guard let handed = self.newSession.handOver(projectID) else { self.newSession.endSending(projectID); return }
-                draft = handed
-                self.newSession.endSending(projectID)
-            } else {
-                draft = snapshot
-            }
-            intents.startSession(
-                projectID: projectID, launch: launch, focus: startsFreshDraft ? .freshDraft : .session
-            ) { [weak self] outcome in
-                guard let self else { return }
-                switch outcome {
-                case .started:
-                    self.newSession.started(draft, choices: launch.choices, clearsSlot: !startsFreshDraft)
-                    self.refreshLastUsedChoices()
-                    if let projectID, self.projects.first(where: { $0.id == projectID })?.collapsed == true {
-                        Task { [weak self] in await self?.expandProject(projectID) }
-                    }
-                case .failed:
-                    if startsFreshDraft { self.newSession.restore(draft) } else { self.newSession.endSending(projectID) }
+            switch outcome {
+            case .started:
+                self.newSession.started(draft, choices: launch.choices, clearsSlot: !startsFreshDraft)
+                self.refreshLastUsedChoices()
+                if let projectID, self.projects.first(where: { $0.id == projectID })?.collapsed == true {
+                    Task { [weak self] in await self?.expandProject(projectID) }
                 }
+            case .failed:
+                if startsFreshDraft { self.newSession.restore(draft) } else { self.newSession.endSending(projectID) }
             }
         }
     }
 
-    /// The first send as the runtime takes it: the message, a title for a ticket, the resolved mode and model
-    /// and the strip's branch choice.
-    func launch(for draft: SessionDraft, ticket: String?) -> NewSessionLaunch {
+    /// The first send as the runtime takes it: the message, the resolved mode and model and the strip's branch
+    /// choice. A draft is never titled by Loom: Claude names the session.
+    func launch(for draft: SessionDraft) -> NewSessionLaunch {
         let workspace: SessionWorkspace
         switch draft.branchKind {
         case .stay: workspace = .projectFolder
-        case .newBranch: workspace = .newBranch(draftBranchName(draft, ticket: ticket))
-        case .newWorktree: workspace = .newWorktree(draftBranchName(draft, ticket: ticket))
+        case .newBranch: workspace = .newBranch(draftBranchName(draft))
+        case .newWorktree: workspace = .newWorktree(draftBranchName(draft))
         }
         return NewSessionLaunch(
-            firstMessage: draft.trimmedText, title: ticket.map { Self.ticketTitle(key: $0, text: draft.trimmedText) },
-            ticketKey: ticket, choices: resolvedStart(draft: draft, projectID: draft.projectID).choices, workspace: workspace)
-    }
-
-    /// The session's name for a ticket: the first line, starting with the key.
-    static func ticketTitle(key: String, text: String) -> String {
-        let line = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
-        let collapsed = line.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        let named = collapsed.contains(key) ? collapsed : key + " " + collapsed
-        return named.count > 80 ? String(named.prefix(79)) + "…" : named
+            firstMessage: draft.trimmedText,
+            choices: resolvedStart(draft: draft, projectID: draft.projectID).choices, workspace: workspace)
     }
 
     // MARK: Presets
@@ -591,7 +495,6 @@ extension CatalogModel {
         }
         // A preset's mode is a pick kept from earlier, even when it was just clicked.
         newSession.setFullAccessConfirmed(false, for: projectID)
-        refreshTicket(projectID: projectID)
     }
 
     func removePreset(_ preset: NewSessionPreset) { newSession.removePreset(preset.id) }

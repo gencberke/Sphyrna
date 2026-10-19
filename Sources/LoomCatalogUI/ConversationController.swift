@@ -456,13 +456,9 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
         Task {
             defer { approvingOpen.remove(requestID) }
             do {
-                guard let launch = try await runtime.approveOpenRequest(
+                let launch = try await runtime.approveOpenRequest(
                     requestID, rows: size.rows, columns: size.columns, outputSink: surface.outputSink
-                ) else {
-                    // The ticket got a session meanwhile: the request is a notice now, nothing started.
-                    surface.runEnded()
-                    return
-                }
+                )
                 adopt(launch, surface: surface)
             } catch {
                 surface.runEnded()

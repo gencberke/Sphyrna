@@ -93,23 +93,44 @@ struct OpenSessionCatalogTests {
         #expect(read.title == "by 0.3.0" && read.ticketKey == nil && read.openedBy == nil)
     }
 
-    @Test func aNewSessionKeepsItsTicketItsRequesterAndAnAutomaticTitle() async throws {
+    @Test func aNewSessionWritesNoKeyKeepsItsRequesterAndAnAutomaticTitle() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loom-origin-\(UUID())", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
+        let url = root.appendingPathComponent("catalog.sqlite3")
+        let catalog = try SessionCatalog(url: url)
         let asker = UUID()
         let session = ManagedSession(provider: .claude, workingDirectory: "/tmp")
-        try await catalog.insertSession(session, title: "EDDP-1 First", ticketKey: "EDDP-1", openedBy: asker)
+        try await catalog.insertSession(session, title: "EDDP-1 First", openedBy: asker)
         let row = try #require(try await catalog.session(id: session.id))
-        #expect(row.ticketKey == "EDDP-1" && row.openedBy == asker)
+        #expect(row.ticketKey == nil && row.openedBy == asker, "D-69: nothing writes a tracker key")
+        #expect(try sql("SELECT ticket_key IS NULL, opened_by FROM sessions", at: url) == ["1|\(asker.uuidString)"])
         #expect(row.title == "EDDP-1 First" && row.titleIsCustom == false)
         // An automatic title: a rename wins, and an empty rename returns to automatic.
         try await catalog.renameSession(sessionID: session.id, to: "Mine")
         #expect(try await catalog.recordTerminalTitle(sessionID: session.id, title: "Claude's own") == false)
-        #expect(try await catalog.sessions(ids: [session.id]).first?.ticketKey == "EDDP-1")
         let page = try await catalog.sessionPage(CatalogQuery())
         #expect(page.sessions.first?.openedBy == asker)
+    }
+
+    @Test func aRowThatHoldsAKeyFromAnOlderLoomStillDecodesWithItsOtherColumnsInPlace() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("loom-origin-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("catalog.sqlite3")
+        let asker = UUID()
+        let session = ManagedSession(provider: .claude, workingDirectory: "/tmp")
+        do {
+            let catalog = try SessionCatalog(url: url)
+            try await catalog.insertSession(session, title: "EDDP-412 Fix login", openedBy: asker)
+        }
+        _ = try sql("UPDATE sessions SET ticket_key = 'EDDP-412', run_endpoint = 'pipe'", at: url)
+        let catalog = try SessionCatalog(url: url)
+        let row = try #require(try await catalog.session(id: session.id))
+        #expect(row.ticketKey == "EDDP-412", "kept readable; nothing reads it (D-69)")
+        #expect(row.openedBy == asker && row.runEndpoint == .pipe && row.title == "EDDP-412 Fix login")
+        #expect(try await catalog.sessions().first?.ticketKey == "EDDP-412")
+        #expect(try await catalog.sessionPage(CatalogQuery()).sessions.first?.openedBy == asker)
     }
 }
 
@@ -206,11 +227,17 @@ struct OpenSessionLaunchProfileTests {
         #expect(manifest["name"] as? String == "loom")
         #expect(skill.hasPrefix("---\nname: open-session\ndescription: "))
         // Every option and result line the skill names is one the command has.
-        for word in ["\"$LOOM_CLI\" open", "--title", "--ticket", "--project", "--message-file", "--message -",
-                     "started <", "exists <", "pending: ...", "denied", "error: "] {
+        for word in ["\"$LOOM_CLI\" open", "--title", "--project", "--message-file", "--message -",
+                     "started <", "pending: ...", "denied", "error: "] {
             #expect(OpenSessionCommand.usage.contains(word), "usage lacks \(word)")
             #expect(skill.contains(word), "skill lacks \(word)")
         }
+        // D-69: no tracker key, no `exists` line in the skill or the result lines; the command still takes an old
+        // agent's --ticket and says so. The skill tells an agent that reuses sessions to ask the user.
+        #expect(!skill.contains("--ticket") && !skill.contains("exists <") && !skill.contains("<KEY>"))
+        #expect(!OpenSessionCommand.usage.contains("exists <"))
+        #expect(OpenSessionCommand.usage.contains("--ticket <key>") && OpenSessionCommand.usage.contains("ignored"))
+        #expect(skill.contains("Loom does not look up existing sessions") && skill.contains("ask the user"))
         #expect(skill.contains("\(Int(OpenSessionLimits.serverReplyDelay)) seconds"))
         // An unchanged file is left alone; a changed one is put back.
         let written = try FileManager.default.attributesOfItem(atPath: skillFile.path)[.modificationDate] as? Date
@@ -293,7 +320,6 @@ struct OpenSessionCommandTests {
             ("missing value", ["open", "--title"]),
             ("duplicate", ["open", "--title", "A", "--title", "B", "--message", "-"]),
             ("empty title", ["open", "--title", "  ", "--message", "-"]),
-            ("bad ticket", ["open", "--title", "T", "--ticket", "no spaces", "--message", "-"]),
             ("missing file", ["open", "--title", "T", "--message-file", "/nonexistent/message.txt"]),
             ("oversize file", ["open", "--title", "T", "--message-file", big]),
             ("not UTF-8", ["open", "--title", "T", "--message-file", binary.path]),
@@ -343,7 +369,7 @@ struct OpenSessionCommandTests {
         #expect(await rig.coordinator.snapshot().isEmpty)
     }
 
-    @Test func startedExistsDeniedAndInvalidMapToTheirLinesAndExitCodes() async throws {
+    @Test func startedDeniedAndInvalidMapToTheirLinesAndExitCodes() async throws {
         let rig = try await OpenRig.make()
         defer { rig.cleanup() }
         let env = environment(rig)
@@ -351,14 +377,12 @@ struct OpenSessionCommandTests {
         let file = try messageFile(rig, "First line\nSecond line — çalışın")
 
         // started: arguments reach the request as given, from a file.
-        let started = Task { await run(["open", "--title=Fix login", "--ticket", "EDDP-412", "--project", "beta",
+        let started = Task { await run(["open", "--title=Fix login", "--project", "beta",
                                         "--message-file", file], environment: env) }
         let entry = try #require(await rig.waitForEntries(1).first)
-        #expect(entry.title == "Fix login" && entry.ticketKey == "EDDP-412" && entry.projectID == rig.projectB.id)
+        #expect(entry.title == "Fix login" && entry.projectID == rig.projectB.id)
         #expect(entry.message == "First line\nSecond line — çalışın")
-        guard case let .started(newID) = try await rig.coordinator.approve(entry.id, start: recorder.start) else {
-            Issue.record("not started"); return
-        }
+        let newID = try await rig.coordinator.approve(entry.id, start: recorder.start)
         let first = await started.value
         #expect(first.code == 0)
         #expect(first.out.stdout == ["started \(newID.uuidString.lowercased()) \"Fix login\""])
@@ -376,18 +400,42 @@ struct OpenSessionCommandTests {
         let denied = await refused.value
         #expect(denied.code == 1 && denied.out.stdout == ["denied"])
 
-        // exists: exit 0 at once, nothing waits.
-        let existing = try await rig.addSession(title: "ENMUSAIT-7 Raporlar", running: true)
-        let exists = await run(["open", "--title", "Raporlar", "--ticket", "enmusait-7", "--message", "-"],
-                               environment: env, stdin: Data("again".utf8))
-        #expect(exists.code == 0)
-        #expect(exists.out.stdout == ["exists \(existing.id.uuidString.lowercased()) \"ENMUSAIT-7 Raporlar\" running"])
         #expect(recorder.recorded.count == 1)
 
         // invalid in Loom (unknown project): exit 2 with the reason.
         let unknown = await run(["open", "--title", "T", "--project", "nope", "--message", "-"], environment: env,
                                 stdin: Data("x".utf8))
         #expect(unknown.code == 2 && unknown.out.stdout.first?.hasPrefix("error: no Loom project") == true)
+    }
+
+    @Test func anOldAgentsTicketFlagStillExitsZeroAndChangesNothing() async throws {
+        // Agent rules written for 0.4.x pass `--ticket <key>`. It is accepted and ignored (D-69): no validation of
+        // the key, no lookup, no `exists` line, and the request is an ordinary one.
+        let rig = try await OpenRig.make()
+        defer { rig.cleanup() }
+        let env = environment(rig)
+        let recorder = StartRecorder()
+        // A session whose title starts with the key exists: it must not turn the request into anything else.
+        let held = ManagedSession(provider: .claude, workingDirectory: rig.projectA.path)
+        try await rig.catalog.insertSession(held, title: "EDDP-412 Fix login", projectID: rig.projectA.id)
+
+        for (index, ticket) in [["--ticket", "EDDP-412"], ["--ticket=eddp-412"], ["--ticket", "not even a valid key / at all"]].enumerated() {
+            let command = Task { await run(["open", "--title", "EDDP-412 Fix login"] + ticket + ["--message", "-"],
+                                           environment: env, stdin: Data("go \(index)".utf8)) }
+            let entry = try #require(await rig.waitForEntries(1).first)
+            #expect(entry.title == "EDDP-412 Fix login" && entry.phase == .waiting && entry.message == "go \(index)")
+            let newID = try await rig.coordinator.approve(entry.id, start: recorder.start)
+            let result = await command.value
+            #expect(result.code == 0, "\(ticket)")
+            #expect(result.out.stdout == ["started \(newID.uuidString.lowercased()) \"EDDP-412 Fix login\""])
+            #expect(result.out.stderr.isEmpty)
+        }
+        #expect(recorder.recorded.count == 3)
+        // Giving it twice is still a usage error, like any option.
+        let twice = await run(["open", "--title", "T", "--ticket", "A-1", "--ticket", "B-2", "--message", "-"],
+                              environment: env, stdin: Data("x".utf8))
+        #expect(twice.code == 2)
+        #expect(OpenSessionCommand.usage.contains("accepted and ignored"))
     }
 
     @Test func anUndecidedRequestExitsZeroWithAPendingLine() async throws {
@@ -453,14 +501,12 @@ struct OpenSessionCommandTests {
         #expect(hook.code == 1 && hook.out.isEmpty && hook.err.isEmpty)
 
         let asked = Task { try await runHelper(
-            ["open", "--title", "From the binary", "--ticket", "BIN-1", "--message", "-"],
+            ["open", "--title", "From the binary", "--ticket", "BIN-1", "--message", "-"], // an old agent's flag
             environment: environment(rig), stdin: Data("Do the thing".utf8)
         ) }
         let entry = try #require(await rig.waitForEntries(1).first)
-        #expect(entry.message == "Do the thing" && entry.ticketKey == "BIN-1")
-        guard case let .started(newID) = try await rig.coordinator.approve(entry.id, start: recorder.start) else {
-            Issue.record("not started"); return
-        }
+        #expect(entry.message == "Do the thing" && entry.title == "From the binary")
+        let newID = try await rig.coordinator.approve(entry.id, start: recorder.start)
         let result = try await asked.value
         #expect(result.code == 0)
         #expect(result.out == "started \(newID.uuidString.lowercased()) \"From the binary\"\n")
@@ -527,23 +573,23 @@ struct OpenSessionRuntimeTests {
         let control = try #require(hooks.controlSocketPath)
         #expect(control.hasSuffix(".sock") && control.contains("/c-"))
 
-        func ask(_ title: String, ticket: String?, message: String, token: String? = nil,
+        func ask(_ title: String, message: String, token: String? = nil,
                  from asker: RuntimeLaunch? = nil, session: UUID? = nil, run: UUID? = nil) -> Task<OpenSessionReply, any Error> {
             let asker = asker ?? requester
             let request = OpenSessionWireRequest(
                 authenticationToken: token ?? hooks.authenticationToken, sessionID: session ?? asker.sessionID,
-                managedRunID: run ?? asker.runID, title: title, ticketKey: ticket, project: nil, message: message
+                managedRunID: run ?? asker.runID, title: title, project: nil, message: message
             )
             return Task.detached { try OpenSessionClient.exchange(request, socketPath: control) }
         }
 
         // Only the live run, for the card it was launched on, with the run's token.
-        #expect(try await ask("Nope", ticket: nil, message: "x", token: "wrong").value.status == .unavailable)
-        #expect(try await ask("Nope", ticket: nil, message: "x", session: UUID()).value.status == .unavailable)
-        #expect(try await ask("Nope", ticket: nil, message: "x", run: UUID()).value.status == .unavailable)
+        #expect(try await ask("Nope", message: "x", token: "wrong").value.status == .unavailable)
+        #expect(try await ask("Nope", message: "x", session: UUID()).value.status == .unavailable)
+        #expect(try await ask("Nope", message: "x", run: UUID()).value.status == .unavailable)
         #expect(await context.runtime.openRequestSnapshot().isEmpty)
         let message = "--starts with a dash\nand has a second line"
-        let reply = ask("EDDP-412 Fix login", ticket: "EDDP-412", message: message)
+        let reply = ask("EDDP-412 Fix login", message: message)
         #expect(await SessionRuntimeTests.waitUntil { await context.runtime.openRequestSnapshot().count == 1 })
         let pending = try #require(await context.runtime.openRequestSnapshot().first)
         #expect(pending.requesterTitle == "Planner" && pending.projectID == project.id)
@@ -569,24 +615,25 @@ struct OpenSessionRuntimeTests {
         let env = try String(contentsOf: envFile, encoding: .utf8).split(separator: "\n").map(String.init)
         #expect(env == [hooks.helperPath, control])
 
-        // A normal Loom session: a card with the requested title (automatic), ticket, origin, a run.
+        // A normal Loom session: a card with the requested title (automatic), its origin and a run, and no tracker key.
         let row = try #require(try await context.catalog.session(id: launch.sessionID))
         #expect(row.title == "EDDP-412 Fix login" && row.titleIsCustom == false)
-        #expect(row.ticketKey == "EDDP-412" && row.openedBy == requester.sessionID)
+        #expect(row.ticketKey == nil && row.openedBy == requester.sessionID)
         #expect(row.projectID == project.id && row.session.workingDirectory == project.path)
         #expect(await context.supervisor.session(id: launch.sessionID)?.currentRun != nil)
         #expect(try await context.catalog.runs().contains { $0.id == launch.runID })
 
-        // The ticket now has a session: a second ask is answered at once and starts nothing.
-        let again = try await ask("Same ticket", ticket: "eddp-412", message: "again").value
-        #expect(again.status == .exists && again.sessionID == launch.sessionID && again.running == true)
-        let notice = try #require(await context.runtime.openRequestSnapshot().first)
-        #expect(notice.kind == .exists && notice.existingSessionID == launch.sessionID)
-        try await context.runtime.dismissOpenRequest(notice.id)
+        // Loom does not look up existing sessions: asking again under the same title waits like any request.
+        let same = ask("EDDP-412 Fix login", message: "again")
+        #expect(await SessionRuntimeTests.waitUntil { await context.runtime.openRequestSnapshot().count == 1 })
+        let waiting = try #require(await context.runtime.openRequestSnapshot().first)
+        #expect(waiting.phase == .waiting && waiting.title == "EDDP-412 Fix login")
+        try await context.runtime.denyOpenRequest(waiting.id)
+        #expect(try await same.value.status == .denied)
         #expect(try await context.catalog.sessions().count == 2)
 
         // Deny starts nothing; a later approve of a denied request is refused.
-        let no = ask("Denied", ticket: nil, message: "no")
+        let no = ask("Denied", message: "no")
         #expect(await SessionRuntimeTests.waitUntil { await context.runtime.openRequestSnapshot().count == 1 })
         let denied = try #require(await context.runtime.openRequestSnapshot().first)
         try await context.runtime.denyOpenRequest(denied.id)
@@ -596,11 +643,11 @@ struct OpenSessionRuntimeTests {
 
         // A run that has ended is no longer a live run: its token and ids ask nothing of Loom.
         _ = try await context.runtime.stopConversation(sessionID: requester.sessionID)
-        #expect(try await ask("Too late", ticket: nil, message: "late").value.status == .unavailable)
+        #expect(try await ask("Too late", message: "late").value.status == .unavailable)
         #expect(await context.runtime.openRequestSnapshot().isEmpty)
 
         // Quit answers anyone still waiting and removes the control socket.
-        let last = ask("At quit", ticket: nil, message: "bye", from: launch)
+        let last = ask("At quit", message: "bye", from: launch)
         #expect(await SessionRuntimeTests.waitUntil { await context.runtime.openRequestSnapshot().count == 1 })
         #expect((await context.runtime.shutdown()).succeeded)
         #expect(try await last.value.status == .unavailable)

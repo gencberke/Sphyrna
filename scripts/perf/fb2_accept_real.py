@@ -4,13 +4,14 @@ REAL MODEL TURNS: about 4 short turns through the isolated probe profile (<probe
 first session (switched to haiku with the local /model command) and 1 in the session it opens. The window is shown
 (visual acceptance); run only when the user says the Mac is idle, inside the build slot.
 1) a turn that runs an Explore subagent: the card shows the subagent tree (window captures);
-2) a turn that runs `"$LOOM_CLI" open --title ... --ticket TEST-7 --message-file ...`: the request box and Needs
+2) a turn that runs `"$LOOM_CLI" open --title ... --message-file ...`: the request box and Needs
    approval show, `open-approve` starts a new session with the title, the first message reaches Claude, the CLI
-   reports `started`; a second run of the same command reports `exists` without opening a copy;
+   reports `started`. (Tracker keys left the product in D-69: there is no `--ticket` and no `exists` reply any
+   more, so the old second run of the same command is retired.)
 3) project view: the new session is above the older one, no project label; activity view: the label shows;
 4) Mark as Read: a finished or waiting card returns to Ready and stays Ready across later idle samples.
 --only-skill (D-42, 1-2 turns, window in the background): the workspace's CLAUDE.md asks for a separate session per
-ticket and the prompt only says to start a ticket; Claude must find Loom's open-session skill on its own and run
+task and the prompt only says to start a task; Claude must find Loom's open-session skill on its own and run
 `"$LOOM_CLI" open` for it. The request is denied in Loom, so no second session spends a turn.
 Window captures (`screencapture -l`) go to the run dir only, never to the repository; the prompts are synthetic.
 Usage: scripts/perf/fb2_accept_real.py --app <package>/'Loom Dev.app' [--run-dir DIR] [--probe-root DIR]"""
@@ -35,13 +36,13 @@ evidence.mkdir(parents=True); data.mkdir(); shots.mkdir()
 workspace = perf_paths.real_work_dir(PROBE / 'claude-config', f'fb2-{time.strftime("%Y%m%dT%H%M%S")}')
 for name in ('alpha.txt', 'beta.txt', 'gamma.txt'): (workspace / name).write_text(name + '\n')
 subprocess.run(['git', 'init', '-q', '-b', 'main', str(workspace)], check=True)
-(workspace / 'TEST-7-msg.txt').write_text('Reply with exactly LOOM_CHILD_OK and nothing else.\n')
+(workspace / 'fb2-msg.txt').write_text('Reply with exactly LOOM_CHILD_OK and nothing else.\n')
 if args.only_skill:
     (workspace / 'CLAUDE.md').write_text(
-        '# Project rules\n\nWork on a ticket (keys like TEST-123) always happens in its own separate top-level session '
-        'opened for that ticket, never in this session and never in a subagent.\n')
-TOKENS = ['Try', 'shortcuts', 'trust this folder', 'external imports', 'ZQX17', 'LOOM_CHILD_OK', 'LOOM_OPEN_ONE', 'LOOM_OPEN_TWO', 'started', 'exists']
-COMMAND = '"$LOOM_CLI" open --title "TEST-7 - fb2 probe" --ticket TEST-7 --message-file TEST-7-msg.txt'
+        '# Project rules\n\nWork on a task (named like TEST-123) always happens in its own separate top-level session '
+        'opened for that task, never in this session and never in a subagent.\n')
+TOKENS = ['Try', 'shortcuts', 'trust this folder', 'external imports', 'ZQX17', 'LOOM_CHILD_OK', 'LOOM_OPEN_ONE', 'started']
+COMMAND = '"$LOOM_CLI" open --title "fb2 probe" --message-file fb2-msg.txt'
 report = {'checks': {}, 'modelTurns': 0, 'details': {}}
 def check(name, ok, detail=None):
     report['checks'][name] = bool(ok)
@@ -145,7 +146,7 @@ try:
 
     if args.only_skill:
         # Nothing in the prompt names the command or the skill.
-        prompt(parent, 'Start working on ticket TEST-9: create a file named hello.txt that contains the word hi.', 'skill')
+        prompt(parent, 'Start working on task TEST-9: create a file named hello.txt that contains the word hi.', 'skill')
         report['modelTurns'] += 1
         accepted, end = 0, time.monotonic() + 240
         while time.monotonic() < end:
@@ -156,8 +157,8 @@ try:
             time.sleep(.5)
         report['details']['permissionsAccepted'] = accepted
         requests = snap('skill-request').get('openRequests', [])
-        check('openRequestInLoom', [r.get('kind') for r in requests] == ['open'], [r.get('kind') for r in requests])
-        for r in requests: measure.send(f'open-{"deny" if r.get("kind") == "open" else "dismiss"}:{r["id"]}', evidence)
+        check('openRequestInLoom', [r.get('phase') for r in requests] == ['waiting'], [r.get('phase') for r in requests])
+        for r in requests: measure.send(f'open-deny:{r["id"]}', evidence)
         if requests:
             until('skill-settled', lambda s: ((row(s, parent) or {}).get('indicator') or s['catalog'].get('selectedIndicator'))
                   in ('Finished', 'Ready', 'Waiting for you'), 120, every=1)
@@ -166,12 +167,12 @@ try:
                  for x in (r.get('message', {}).get('content') or []) if isinstance(x, dict) and x.get('type') == 'tool_use']
         report['details']['toolCalls'] = [x.get('name') for x in calls]
         check('skillUsed', any(x.get('name') == 'Skill' and 'open-session' in json.dumps(x.get('input')) for x in calls))
-        check('openCommandForTheTicket', any(x.get('name') == 'Bash' and ' open ' in str(x.get('input', {}).get('command'))
-                                             and 'TEST-9' in str(x.get('input', {}).get('command')) for x in calls))
+        check('openCommandForTheTask', any(x.get('name') == 'Bash' and ' open ' in str(x.get('input', {}).get('command'))
+                                           for x in calls))
         results = [str(x.get('content')) for r in records(parent) if r.get('type') == 'user'
                    for x in (r.get('message', {}).get('content') or []) if isinstance(x, dict) and x.get('type') == 'tool_result']
         check('agentGotTheDenial', any('denied' in c for c in results))
-        check('noTicketWorkHere', not (workspace / 'hello.txt').exists())
+        check('noTaskWorkHere', not (workspace / 'hello.txt').exists())
         plugin = data / 'claude-plugin' / 'skills/open-session/SKILL.md'
         check('pluginWritten', plugin.exists())
         raise SystemExit(0)
@@ -198,8 +199,8 @@ try:
     report['details']['bashPermissionAsked'] = bash_answered
     s = until('open-request', lambda s: bool(s.get('openRequests')), 120)
     request = s['openRequests'][0]
-    report['details']['openRequest'] = {k: request.get(k) for k in ('kind', 'phase', 'title', 'ticket')}
-    check('requestBoxForTheRequester', request.get('kind') == 'open' and (request.get('requester') or request.get('requesterID')) == parent,
+    report['details']['openRequest'] = {k: request.get(k) for k in ('phase', 'title')}
+    check('requestBoxForTheRequester', request.get('phase') == 'waiting' and (request.get('requester') or request.get('requesterID')) == parent,
           request)
     check('requesterNeedsApproval', ((row(s, parent) or {}).get('indicator') or s['catalog'].get('selectedIndicator')) == 'Needs approval')
     shot('2-request-box')
@@ -219,19 +220,6 @@ try:
     check('childReplied', transcript_has(child, 'LOOM_CHILD_OK', 'assistant'))
     s = snap('child-row')
     report['details']['childRow'] = row(s, child)
-
-    # Same ticket again: exists, no copy.
-    prompt(parent, f'Run the same command again with the Bash tool: {COMMAND} -- then reply with LOOM_OPEN_TWO followed by '
-                   'the command output, nothing else.', 'open2')
-    report['modelTurns'] += 1
-    answer_bash(parent, 'open2-bash')
-    s = until('exists', lambda s: any(r.get('kind') == 'exists' for r in s.get('openRequests', [])), 120)
-    check('existsNotice', True, [r.get('kind') for r in s['openRequests']])
-    shot('2-exists-notice')
-    until('open2-done', token(parent, 'LOOM_OPEN_TWO'), 120)
-    check('cliReportedExists', transcript_has(parent, 'exists', 'assistant') or transcript_has(parent, 'exists', 'user'))
-    check('noCopyOpened', len(snap('after-exists').get('conversationTerminals', [])) == 2)
-    for r in snap('dismiss').get('openRequests', []): measure.send(f'open-dismiss:{r["id"]}', evidence)
 
     # 3) Views: activity (label shown), project (newest on top, no label, origin line).
     shot('3-activity-view')

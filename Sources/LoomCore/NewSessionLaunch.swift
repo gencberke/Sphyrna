@@ -122,24 +122,19 @@ public enum SessionWorkspace: Equatable, Sendable {
 }
 
 /// The first send of a draft (V07): the message becomes Claude's first prompt through the normal start
-/// path. `title` is only set for a ticket (it names the session like an agent's request does, D-40); without
-/// it Claude names the session itself. Nothing here starts anything.
+/// path. A draft carries no title: Claude names the session itself. Nothing here starts anything.
 public struct NewSessionLaunch: Equatable, Sendable {
     /// The most a first message may hold (UTF-8 bytes): it is one argument of the process, and the system's
     /// limit for all arguments and the environment together is 1 MiB.
     public static let maxFirstMessageBytes = 128 * 1024
 
     public let firstMessage: String
-    public let title: String?
-    public let ticketKey: String?
     public let choices: ClaudeLaunchChoices
     public let workspace: SessionWorkspace
 
-    public init(firstMessage: String, title: String? = nil, ticketKey: String? = nil,
+    public init(firstMessage: String,
                 choices: ClaudeLaunchChoices = ClaudeLaunchChoices(), workspace: SessionWorkspace = .projectFolder) {
         self.firstMessage = firstMessage
-        self.title = title
-        self.ticketKey = ticketKey
         self.choices = choices
         self.workspace = workspace
     }

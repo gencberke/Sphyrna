@@ -352,7 +352,7 @@ struct NewSessionRuntimeTests {
         return ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
     }
 
-    @Test func theFirstSendStartsClaudeWithTheMessageModeModelAndTicket() async throws {
+    @Test func theFirstSendStartsClaudeWithTheMessageModeAndModelAndNoNameOrKey() async throws {
         let holder = FileManager.default.temporaryDirectory.appendingPathComponent("loom-nsrec-script-\(UUID())", isDirectory: true)
         try FileManager.default.createDirectory(at: holder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: holder) }
@@ -367,8 +367,8 @@ struct NewSessionRuntimeTests {
         let launch = try await context.runtime.startConversation(
             provider: .claude, projectID: project.id, outputSink: screen,
             draft: NewSessionLaunch(
-                firstMessage: "Add the reverse-charge note", title: "PAY-418 Add the reverse-charge note",
-                ticketKey: "PAY-418", choices: ClaudeLaunchChoices(permissionMode: "plan", model: "haiku")))
+                firstMessage: "Add the reverse-charge note",
+                choices: ClaudeLaunchChoices(permissionMode: "plan", model: "haiku")))
         screen.attach(launch.terminal)
         #expect(await screen.contains("FAKE-CLAUDE READY"))
 
@@ -378,16 +378,13 @@ struct NewSessionRuntimeTests {
         let model = try #require(args.firstIndex(of: "--model"))
         #expect(args[model + 1] == "haiku")
         #expect(args.suffix(2) == ["--", "Add the reverse-charge note"])
-        let name = try #require(args.firstIndex(of: "-n"))
-        #expect(args[name + 1] == "PAY-418 Add the reverse-charge note")
+        #expect(!args.contains("-n"), "a draft is never titled by Loom: Claude names the session")
         #expect(try #require(args.firstIndex(of: "--settings")) > model, "choices come before the settings")
 
         let record = try #require(try await context.catalog.session(id: launch.sessionID))
-        #expect(record.ticketKey == "PAY-418" && record.title == "PAY-418 Add the reverse-charge note")
+        #expect(record.ticketKey == nil && record.title == nil, "no tracker key is written (D-69), no title is made up")
         #expect(record.projectID == project.id && record.session.workingDirectory == folder.path)
         #expect(record.openedBy == nil, "a draft is the user's own start, not an agent's request")
-        // The duplicate check of D-40 finds it.
-        #expect(try await context.catalog.session(projectID: project.id, ticket: "pay-418")?.session.id == launch.sessionID)
         #expect((await context.runtime.shutdown()).succeeded)
     }
 

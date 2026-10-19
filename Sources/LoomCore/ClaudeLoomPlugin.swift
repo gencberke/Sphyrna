@@ -18,7 +18,7 @@ public enum ClaudeLoomPlugin {
     static let skill = """
         ---
         name: open-session
-        description: Open another top-level Claude session in Loom with a first message; the user approves it in Loom first. Use when work should continue in its own separate session, for example a ticket session that the project's rules ask for, rather than in a subagent. Only inside Loom, where $LOOM_CLI is set.
+        description: Open another top-level Claude session in Loom with a first message; the user approves it in Loom first. Use when work should continue in its own separate session, for example a session that the project's rules ask for, rather than in a subagent. Only inside Loom, where $LOOM_CLI is set.
         ---
 
         # Open another session in Loom
@@ -32,22 +32,21 @@ public enum ClaudeLoomPlugin {
         2. Run it (the command waits up to 85 seconds for the user's answer):
 
            ```bash
-           "$LOOM_CLI" open --title "<KEY> - <short topic>" --ticket <KEY> --message-file <file>
+           "$LOOM_CLI" open --title "<short topic>" --message-file <file>
            ```
 
-           - `--ticket <key>` is optional (letters, digits, `-`, `_`, `.`). With it, Loom reports a session the
-             project already has for that ticket instead of opening another.
            - `--project <name|path>` opens it in another Loom project; the default is this session's project.
            - `--message -` reads the message from standard input instead of a file.
         3. Act on the result line:
            - `started <id> "<title>"`: the new session runs with the message. Tell the user; do not also do that
              work here.
-           - `exists <id> "<title>" running|stopped`: the ticket already has a session. Tell the user to continue
-             there; nothing new was opened.
            - `pending: ...`: the user has not answered yet and the request stays in Loom. Tell the user; do not ask
              again.
            - `denied`: the user said no. Do not retry.
            - `error: ...`: report it. Exit code 3 means Loom cannot be reached from this session.
+
+        Loom does not look up existing sessions. If your own rules say to reuse an existing session, ask the user
+        which one before you request a new session.
 
         `"$LOOM_CLI" open --help` prints the full usage.
 

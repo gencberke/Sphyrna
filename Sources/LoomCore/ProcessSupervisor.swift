@@ -120,10 +120,10 @@ public actor ProcessSupervisor {
         return supervisor
     }
 
-    /// `title` is an automatic title (a later rename wins); `ticketKey` and `openedBy` are set for a
-    /// session an agent asked Loom to open (D-40).
+    /// `title` is an automatic title (a later rename wins); `openedBy` is set for a session an agent
+    /// asked Loom to open (D-40).
     public func createSession(_ session: ManagedSession, projectID: UUID? = nil, title: String? = nil,
-                              ticketKey: String? = nil, openedBy: UUID? = nil) async throws {
+                              openedBy: UUID? = nil) async throws {
         guard !stopping else { throw SessionManagementError.shutdownStarted }
         guard sessions[session.id] == nil, !reservedSessions.contains(session.id) else {
             throw SessionManagementError.sessionAlreadyExists(session.id)
@@ -133,7 +133,7 @@ public actor ProcessSupervisor {
         if let catalog {
             try await catalog.insertSession(
                 session, title: title.flatMap { SessionCatalog.normalizedTitle($0) },
-                projectID: projectID, ticketKey: ticketKey, openedBy: openedBy
+                projectID: projectID, openedBy: openedBy
             )
         }
         guard !stopping else { throw SessionManagementError.shutdownStarted }

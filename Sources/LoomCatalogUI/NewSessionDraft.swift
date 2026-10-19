@@ -23,8 +23,6 @@ public struct SessionDraft: Equatable, Identifiable, Sendable {
     var branchKind: BranchKind = .stay
     /// A branch name the user typed; nil follows the suggestion made from the text.
     var branchName: String?
-    /// "Start anyway": the user saw that the ticket has a session and wants a second one.
-    var allowDuplicateTicket = false
     public var updatedAt: Date
 
     public var id: String { Self.id(for: projectID) }
@@ -69,15 +67,12 @@ public struct NewSessionPreset: Equatable, Identifiable, Sendable, Codable {
     }
 }
 
-/// Names for the branch a draft may create: from the ticket, else from the first words of the message.
+/// Names for the branch a draft may create: from the first words of the message.
 enum NewSessionBranchNames {
-    /// `feat/PAY-418-reverse-charge-note` with a ticket, `loom/fix-the-flaky-test` without; never empty.
-    static func suggest(ticket: String?, text: String, now: Date = Date()) -> String {
+    /// `loom/fix-the-flaky-test`; never empty.
+    static func suggest(text: String, now: Date = Date()) -> String {
         // Only the first line is ever used, so only it is read: this runs on every redraw of a draft with a branch choice.
-        var rest = firstLine(of: text)
-        if let ticket { rest = rest.replacingOccurrences(of: ticket, with: " ") }
-        let words = slug(rest, words: 4, limit: 32)
-        if let ticket { return words.isEmpty ? "feat/\(ticket)" : "feat/\(ticket)-\(words)" }
+        let words = slug(firstLine(of: text), words: 4, limit: 32)
         if !words.isEmpty { return "loom/\(words)" }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

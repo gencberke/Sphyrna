@@ -7,10 +7,10 @@ import LoomCore
 ///
 /// - `open-approve:<request id>`: "Open Session".
 /// - `open-deny:<request id>`: "Deny".
-/// - `open-dismiss:<request id>`: "Dismiss" on a failed request or an "already has a session" notice.
+/// - `open-dismiss:<request id>`: "Dismiss" on a failed request.
 ///
-/// The snapshot gains `openRequests[{id, requester, kind, phase, title, ticket, project, existingSession,
-/// failure}]` (title, ticket and failure text are empty for real-provider runs) and
+/// The snapshot gains `openRequests[{id, requester, phase, title, project, failure}]` (title and failure text are
+/// empty for real-provider runs) and
 /// `catalog.awaitingOpenApproval` (the requesting sessions whose card reads "Needs approval").
 @MainActor
 extension DevelopmentEvidence {

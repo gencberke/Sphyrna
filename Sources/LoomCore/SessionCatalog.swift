@@ -33,7 +33,8 @@ public struct CatalogSession: Equatable, Sendable {
     /// a run that moved to it). Unlike `lastUsedAt`, a view, a Stop and a resume
     /// never move it; the card time and the activity order read this one.
     public let lastActivityAt: Date
-    /// The ticket an agent named when it asked for this session to be opened (D-40); nil otherwise.
+    /// A tracker key an older Loom stored when an agent named one (D-40). Nothing reads it any more (D-69) and
+    /// nothing writes it: it stays so old rows decode as they did and the column and its migration stay as they were.
     public let ticketKey: String?
     /// The session whose agent asked for this one to be opened (D-40); nil for a session the user started.
     public let openedBy: UUID?
@@ -365,7 +366,7 @@ public actor SessionCatalog {
         _ session: ManagedSession, title: String?, createdAt: Date,
         lastUsedAt: Date, lifecycle: SessionLifecycle, pinned: Bool,
         projectID: UUID? = nil, staleSince: Date? = nil, lastActivityAt: Date? = nil,
-        titleIsCustom: Bool = false, ticketKey: String? = nil, openedBy: UUID? = nil
+        titleIsCustom: Bool = false, openedBy: UUID? = nil
     ) throws {
         try database.withStatement("""
             INSERT INTO sessions (
@@ -388,7 +389,7 @@ public actor SessionCatalog {
             else { sqlite3_bind_null(statement, 11) }
             sqlite3_bind_double(statement, 12, (lastActivityAt ?? lastUsedAt).timeIntervalSince1970)
             sqlite3_bind_int(statement, 13, titleIsCustom ? 1 : 0)
-            try database.bind(ticketKey, at: 14, to: statement)
+            sqlite3_bind_null(statement, 14) // ticket_key: no longer written (D-69)
             try database.bind(openedBy?.uuidString, at: 15, to: statement)
             try database.stepDone(statement, operation: "insert session")
         }

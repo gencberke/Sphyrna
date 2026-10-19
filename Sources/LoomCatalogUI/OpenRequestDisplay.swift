@@ -34,7 +34,7 @@ public struct SessionOrigin: Equatable, Sendable {
 /// What the request box shows for one request, as plain values (the view only draws them). Kept
 /// apart from the view so each kind and phase can be checked without a window.
 struct OpenRequestBoxContent: Equatable {
-    enum Action: Equatable { case deny, openSession, dismiss, showSession }
+    enum Action: Equatable { case deny, openSession, dismiss }
 
     /// A "preview" of the first message: this many lines, shown before "Show full message".
     static let previewLineLimit = 4
@@ -47,9 +47,9 @@ struct OpenRequestBoxContent: Equatable {
     }
 
     let heading: String
-    /// Project, title and ticket of an open request; empty for a notice.
+    /// Project and title of the request.
     let lines: [Line]
-    /// The first lines of the message; empty for a notice.
+    /// The first lines of the message.
     let preview: String
     /// More message than the preview shows: "Show full message" is offered.
     let hasMore: Bool
@@ -60,51 +60,30 @@ struct OpenRequestBoxContent: Equatable {
     let actions: [Action]
     /// The buttons are shown but cannot be pressed (the session is starting).
     let actionsDisabled: Bool
-    /// An orange callout needing a decision; the "already has a session" notice is neutral.
-    let needsDecision: Bool
 
     init(_ request: OpenSessionRequest) {
-        switch request.kind {
-        case .exists:
-            let ticket = request.ticketKey ?? "This ticket"
-            let existing = request.existingTitle.flatMap { $0.isEmpty ? nil : $0 }
-            heading = existing.map { "\(ticket) already has a session: \($0)" } ?? "\(ticket) already has a session"
-            lines = []
-            preview = ""
-            hasMore = false
-            message = ""
+        heading = "Open a new session?"
+        lines = [Line(label: "Project", value: request.projectName), Line(label: "Title", value: request.title)]
+        let split = Self.preview(of: request.message)
+        preview = split.text
+        hasMore = split.truncated
+        message = request.message
+        switch request.phase {
+        case .waiting:
             status = nil
             failure = nil
-            actions = request.existingSessionID == nil ? [.dismiss] : [.showSession, .dismiss]
+            actions = [.deny, .openSession]
             actionsDisabled = false
-            needsDecision = false
-        case .open:
-            heading = "Open a new session?"
-            var rows = [Line(label: "Project", value: request.projectName), Line(label: "Title", value: request.title)]
-            if let ticket = request.ticketKey { rows.append(Line(label: "Ticket", value: ticket)) }
-            lines = rows
-            let split = Self.preview(of: request.message)
-            preview = split.text
-            hasMore = split.truncated
-            message = request.message
-            needsDecision = true
-            switch request.phase {
-            case .waiting:
-                status = nil
-                failure = nil
-                actions = [.deny, .openSession]
-                actionsDisabled = false
-            case .starting:
-                status = "Opening…"
-                failure = nil
-                actions = [.deny, .openSession]
-                actionsDisabled = true
-            case let .failed(text):
-                status = nil
-                failure = text
-                actions = [.dismiss]
-                actionsDisabled = false
-            }
+        case .starting:
+            status = "Opening…"
+            failure = nil
+            actions = [.deny, .openSession]
+            actionsDisabled = true
+        case let .failed(text):
+            status = nil
+            failure = text
+            actions = [.dismiss]
+            actionsDisabled = false
         }
     }
 
@@ -123,10 +102,9 @@ struct OpenRequestBoxContent: Equatable {
 }
 
 extension OpenSessionRequest {
-    /// The requester's card needs the user: an open request nobody answered, or one that failed to
-    /// start (its box stays until dismissed). A request that is starting, and a notice, do not.
+    /// The requester's card needs the user: a request nobody answered, or one that failed to
+    /// start (its box stays until dismissed). A request that is starting does not.
     var needsUser: Bool {
-        guard kind == .open else { return false }
         switch phase {
         case .waiting, .failed: return true
         case .starting: return false
@@ -135,7 +113,7 @@ extension OpenSessionRequest {
 }
 
 /// What acceptance evidence records about the requests of agents to open a session (`--evidence`
-/// snapshot, `openRequests`). A library seam like `IndicatorEvidence`: it only reads. Title, ticket and
+/// snapshot, `openRequests`). A library seam like `IndicatorEvidence`: it only reads. Title and
 /// failure text are empty when the evidence is redacted (real providers).
 public enum OpenRequestEvidence {
     public static func rows(_ requests: [OpenSessionRequest], redacted: Bool) -> [[String: Any]] {
@@ -151,10 +129,8 @@ public enum OpenRequestEvidence {
             }
             return [
                 "id": request.id.uuidString, "requester": request.requesterID.uuidString,
-                "kind": request.kind == .open ? "open" : "exists", "phase": phase,
-                "title": redacted ? "" : request.title, "ticket": redacted ? "" : (request.ticketKey ?? ""),
+                "phase": phase, "title": redacted ? "" : request.title,
                 "project": request.projectID.uuidString, "failure": failure,
-                "existingSession": request.existingSessionID?.uuidString ?? "",
             ] as [String: Any]
         }
     }

@@ -5,8 +5,7 @@ import SwiftUI
 import Testing
 @testable import LoomCatalogUI
 
-/// V07: the draft session. Drafts are stored and reused, the defaults follow one order, a ticket key finds the
-/// session the project already has, and the first send hands the runtime what the draft shows. Everything
+/// V07: the draft session. Drafts are stored and reused, the defaults follow one order, and the first send hands the runtime what the draft shows. Everything
 /// lives in temporary folders that each test removes; no process starts.
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(2)))
@@ -501,106 +500,45 @@ struct NewSessionTests {
         #expect(model.resolvedStart(for: rig.projectID).mode == ResolvedChoice(value: "default", source: .settings))
     }
 
-    // MARK: Ticket detection and the duplicate check
+    // MARK: A tracker key in the text means nothing to Loom (D-69)
 
-    @Test func aTicketKeyIsFoundByAGenericPatternAndLookAlikesAreLeftOut() {
-        let pattern = TicketPattern.generic
-        #expect(pattern.firstKey(in: "Add the note PAY-418 to invoices") == "PAY-418")
-        #expect(pattern.firstKey(in: "PAY-418") == "PAY-418")
-        #expect(pattern.firstKey(in: "see (EDDP-19964), then ABC-1") == "EDDP-19964", "the first key wins")
-        #expect(pattern.firstKey(in: "branch feat/PAY-418-note") == "PAY-418")
-        for none in ["", "fix the bug", "pay-418", "utf-8 handling", "UTF-8 handling", "SHA-256 of the file", "ISO-8601 dates",
-                     "A-1", "ABCDEFGHIJK-12", "PAY-1234567", "XPAY-418x", "a_PAY-418", "PAY418"] {
-            #expect(pattern.firstKey(in: none) == nil, "\(none)")
-        }
-        // The prefixes become configurable later: a list narrows it to the tracker's own.
-        let tracker = TicketPattern(allowedPrefixes: ["PAY"])
-        #expect(tracker.firstKey(in: "OPS-9 and PAY-418") == "PAY-418" && tracker.firstKey(in: "OPS-9") == nil)
-    }
-
-    @Test func aTicketThatAlreadyHasASessionIsFoundByKeyOrByTitleInTheSameProjectOnly() async throws {
+    @Test func aTrackerKeyInADraftChangesNothingItStartsAtOnceUntitledWithALoomBranch() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let rig = try await rig(root: root)
         let model = rig.model
         defer { model.stop() }
+        // A session of this project whose title starts with the same key: nothing looks it up any more.
         let folder = root.appendingPathComponent("api").path
-        let byKey = ManagedSession(provider: .claude, workingDirectory: folder)
-        try await rig.catalog.insertSession(byKey, title: "Reverse-charge note", projectID: rig.projectID, ticketKey: "PAY-418")
-        let byTitle = ManagedSession(provider: .claude, workingDirectory: folder)
-        try await rig.catalog.insertSession(byTitle, title: "pay-7 Fix the totals", projectID: rig.projectID)
-        let elsewhere = ManagedSession(provider: .claude, workingDirectory: folder)
-        try await rig.catalog.insertSession(elsewhere, title: "OPS-3", projectID: rig.otherProjectID, ticketKey: "OPS-3")
+        try await rig.catalog.insertSession(
+            ManagedSession(provider: .claude, workingDirectory: folder), title: "PAY-418 Reverse-charge note", projectID: rig.projectID)
 
-        let found = await model.ticketStatus(of: "Please do PAY-418 now", projectID: rig.projectID)
-        #expect(found == .exists(key: "PAY-418", sessionID: byKey.id, title: "Reverse-charge note"))
-        #expect(await model.ticketStatus(of: "PAY-7: again", projectID: rig.projectID)
-            == .exists(key: "PAY-7", sessionID: byTitle.id, title: "pay-7 Fix the totals"))
-        #expect(await model.ticketStatus(of: "PAY-99", projectID: rig.projectID) == .free(key: "PAY-99"))
-        #expect(await model.ticketStatus(of: "OPS-3", projectID: rig.projectID) == .free(key: "OPS-3"), "another project's session does not count")
-        #expect(await model.ticketStatus(of: "no key here", projectID: rig.projectID) == .none)
-        #expect(await model.ticketStatus(of: "PAY-418", projectID: nil) == .free(key: "PAY-418"), "no project, no lookup")
+        await openDraft(model, rig.projectID)
+        model.setDraftText("PAY-418 add the note", projectID: rig.projectID)
+        model.setDraftBranch(.newBranch, projectID: rig.projectID)
+        #expect(model.canSendDraft(projectID: rig.projectID), "nothing is checked, so nothing can block the send")
+        model.sendDraft(projectID: rig.projectID)
+        // At once: no look-up runs first, so the runtime has been asked by the time the call returns.
+        let sent = try #require(rig.intents.sends.first, "the send did not wait for a check")
+        #expect(rig.intents.sends.count == 1)
+        #expect(sent.launch.firstMessage == "PAY-418 add the note")
+        #expect(sent.launch.workspace == .newBranch("loom/pay-418-add-the"), "the only suggestion is loom/<words>")
+        sent.outcome(.started(UUID()))
+        #expect(model.newSession.draft(for: rig.projectID)?.isVisible == false)
     }
 
-    @Test func aTicketWithASessionOffersOpenInsteadOfACopyAndStartAnywayIsTheUsersCall() async throws {
+    @Test func aFreshDraftSendWithKeysInTheTextHandsTheDraftOverInTheSameTurn() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let rig = try await rig(root: root)
         let model = rig.model
         defer { model.stop() }
-        let existing = ManagedSession(provider: .claude, workingDirectory: root.appendingPathComponent("api").path)
-        try await rig.catalog.insertSession(existing, title: "Reverse-charge note", projectID: rig.projectID, ticketKey: "PAY-418")
-
-        model.showDraft(projectID: rig.projectID)
-        model.setDraftText("PAY-418 add the note", projectID: rig.projectID)
-        #expect(await waitUntil { model.newSession.ticketStatus(for: rig.projectID).key == "PAY-418" })
-        #expect(await waitUntil { if case .exists = model.newSession.ticketStatus(for: rig.projectID) { true } else { false } })
-        #expect(!model.canSendDraft(projectID: rig.projectID), "the line offers Open instead of a copy")
-        model.sendDraft(projectID: rig.projectID)
-        try await Task.sleep(for: .milliseconds(150))
-        #expect(rig.intents.sends.isEmpty && !model.newSession.isSending(rig.projectID), "nothing started, nothing stuck")
-
-        model.allowDuplicateTicket(projectID: rig.projectID)
-        #expect(model.canSendDraft(projectID: rig.projectID))
-        // Changing the ticket in the text takes the permission back (once the typing pauses: the key is looked
-        // for in the debounced task, not on the keystroke).
-        model.setDraftText("PAY-419 add the note", projectID: rig.projectID)
-        #expect(await waitUntil { model.newSession.draft(for: rig.projectID)?.allowDuplicateTicket == false })
-        model.setDraftText("PAY-418 add the note", projectID: rig.projectID)
-        #expect(await waitUntil { if case .exists = model.newSession.ticketStatus(for: rig.projectID) { true } else { false } })
-        model.allowDuplicateTicket(projectID: rig.projectID)
-        model.sendDraft(projectID: rig.projectID)
-        #expect(await waitUntil { !rig.intents.sends.isEmpty })
-        #expect(rig.intents.sends[0].launch.ticketKey == "PAY-418")
-
-        // Open: shows the session the ticket has.
-        model.openExistingTicketSession(projectID: rig.projectID)
-        #expect(model.destination == .session(existing.id))
-    }
-
-    @Test func aSecondSessionAllowedForOneTicketIsNotAllowedForAnotherTypedJustBeforeTheSend() async throws {
-        let root = try temporaryRoot()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let rig = try await rig(root: root)
-        let model = rig.model
-        defer { model.stop() }
-        let folder = root.appendingPathComponent("api").path
-        for key in ["PAY-418", "PAY-500"] {
-            try await rig.catalog.insertSession(
-                ManagedSession(provider: .claude, workingDirectory: folder), title: "Done \(key)", projectID: rig.projectID, ticketKey: key)
-        }
-        model.showDraft(projectID: rig.projectID)
-        model.setDraftText("PAY-418 add the note", projectID: rig.projectID)
-        #expect(await waitUntil { model.newSession.ticketStatus(for: rig.projectID).key == "PAY-418" })
-        #expect(await waitUntil { if case .exists = model.newSession.ticketStatus(for: rig.projectID) { true } else { false } })
-        model.allowDuplicateTicket(projectID: rig.projectID)
-
-        // The text now names another ticket that has a session; the line has not caught up, and ↵ is pressed.
-        model.setDraftText("PAY-500 add the note", projectID: rig.projectID)
-        model.sendDraft(projectID: rig.projectID)
-        try await Task.sleep(for: .milliseconds(150))
-        #expect(rig.intents.sends.isEmpty, "the permission was for PAY-418, not for PAY-500")
-        #expect(await waitUntil { model.newSession.draft(for: rig.projectID)?.allowDuplicateTicket == false })
+        await openDraft(model, rig.projectID)
+        model.setDraftText("EDDP-19964 and PAY-418: do both", projectID: rig.projectID)
+        model.sendDraft(projectID: rig.projectID, startsFreshDraft: true)
+        let sent = try #require(rig.intents.sends.first)
+        #expect(sent.focus == .freshDraft && sent.launch.workspace == .projectFolder)
+        #expect(model.newSession.draft(for: rig.projectID)?.isVisible == false, "handed over in the same turn")
     }
 
     // MARK: Typing in a long draft
@@ -620,12 +558,9 @@ struct NewSessionTests {
         var text = ""
         // From a few words to the cap of one message (128 KiB), each size typed into for fifty keystrokes.
         for size in [40, 4_000, 32_000, NewSessionLaunch.maxFirstMessageBytes - 100] {
-            let firstScan = model.newSession.ticketScans
             text = String(repeating: "word ", count: size / 5)
             model.setDraftText(text, projectID: id)
-            #expect(await waitUntil { model.newSession.ticketScans == firstScan + 1 })
             model.newSession.flush()
-            let scans = model.newSession.ticketScans
             let snapshots = store.snapshotsBuilt
             let writes = store.writeCount
 
@@ -635,14 +570,12 @@ struct NewSessionTests {
                 model.setDraftText(text, projectID: id)
             }
             let spent = ContinuousClock.now - began
-            #expect(model.newSession.ticketScans == scans, "no keystroke looks for a ticket key (\(size) bytes)")
             #expect(store.snapshotsBuilt == snapshots, "no keystroke builds the saved form of the drafts (\(size) bytes)")
             #expect(store.writeCount == writes, "and none writes (\(size) bytes)")
             // Loose guard against a pass over the text that grows with it, not a measurement.
             #expect(spent < .seconds(2), "50 keystrokes took \(spent) at \(size) bytes")
 
-            // The pause does the work once: one look at the text, one saved form, one write.
-            #expect(await waitUntil { model.newSession.ticketScans == scans + 1 })
+            // The save does the work once: one saved form, one write.
             model.newSession.flush()
             #expect(store.snapshotsBuilt == snapshots + 1 && store.writeCount == writes + 1)
         }
@@ -664,8 +597,8 @@ struct NewSessionTests {
         #expect(DraftRow.title(of: draft).count == DraftRow.maximumTitleLength)
         draft.text = "PAY-418 add the note\r\nmore"
         #expect(DraftRow.title(of: draft) == "PAY-418 add the note")
-        #expect(NewSessionBranchNames.suggest(ticket: "PAY-418", text: "\nPAY-418 add the note\nsecond line about other things")
-            == "feat/PAY-418-add-the-note")
+        #expect(NewSessionBranchNames.suggest(text: "\nPAY-418 add the note\nsecond line about other things")
+            == "loom/pay-418-add-the")
     }
 
     // MARK: A save that goes wrong
@@ -696,18 +629,17 @@ struct NewSessionTests {
 
     // MARK: The first send
 
-    @Test func theFirstSendHandsTheRuntimeTheMessageTheResolvedChoicesTheTitleAndTheStripsBranch() async throws {
+    @Test func theFirstSendHandsTheRuntimeTheMessageTheResolvedChoicesAndTheStripsBranchAndNoTitle() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let rig = try await rig(root: root)
         let model = rig.model
         defer { model.stop() }
         await openDraft(model, rig.projectID)
-        model.setDraftText("  PAY-418 Add the reverse-charge note\nThe wording is in the ticket.  ", projectID: rig.projectID)
+        model.setDraftText("  PAY-418 Add the reverse-charge note\nThe wording is in the doc.  ", projectID: rig.projectID)
         model.setDraftMode(.value("plan"), projectID: rig.projectID)
         model.setDraftModel(.value("haiku"), projectID: rig.projectID)
         model.setDraftBranch(.newBranch, projectID: rig.projectID)
-        #expect(await waitUntil { model.newSession.ticketStatus(for: rig.projectID).key == "PAY-418" })
         #expect(model.canSendDraft(projectID: rig.projectID))
 
         model.sendDraft(projectID: rig.projectID)
@@ -717,10 +649,9 @@ struct NewSessionTests {
         let sent = try #require(rig.intents.sends.first)
         #expect(rig.intents.sends.count == 1 && rig.intents.plainStarts == 0)
         #expect(sent.projectID == rig.projectID && sent.focus == .session)
-        #expect(sent.launch.firstMessage == "PAY-418 Add the reverse-charge note\nThe wording is in the ticket.")
-        #expect(sent.launch.ticketKey == "PAY-418" && sent.launch.title == "PAY-418 Add the reverse-charge note")
+        #expect(sent.launch.firstMessage == "PAY-418 Add the reverse-charge note\nThe wording is in the doc.")
         #expect(sent.launch.choices == ClaudeLaunchChoices(permissionMode: "plan", model: "haiku"))
-        #expect(sent.launch.workspace == .newBranch("feat/PAY-418-add-the-reverse-charge"))
+        #expect(sent.launch.workspace == .newBranch("loom/pay-418-add-the"))
         // The draft keeps its words until the session exists.
         #expect(model.newSession.draft(for: rig.projectID)?.isVisible == true)
         sent.outcome(.started(UUID()))
@@ -739,7 +670,7 @@ struct NewSessionTests {
         model.sendDraft(projectID: rig.projectID)
         #expect(await waitUntil { rig.intents.sends.count == 1 })
         let plain = rig.intents.sends[0].launch
-        #expect(plain.workspace == .projectFolder && plain.title == nil && plain.ticketKey == nil
+        #expect(plain.workspace == .projectFolder
             && plain.choices == ClaudeLaunchChoices(permissionMode: "default"))
         rig.intents.sends[0].outcome(.failed)
 
@@ -747,10 +678,10 @@ struct NewSessionTests {
         model.sendDraft(projectID: rig.projectID)
         #expect(await waitUntil { rig.intents.sends.count == 2 })
         #expect(rig.intents.sends[1].launch.workspace == .newWorktree("feat/mine"))
-        // Without a ticket the suggestion is made from the first words.
-        #expect(NewSessionBranchNames.suggest(ticket: nil, text: "Fix the flaky test in billing, please") == "loom/fix-the-flaky-test")
-        #expect(NewSessionBranchNames.suggest(ticket: "PAY-418", text: "PAY-418 İşlem düzeltme") == "feat/PAY-418-islem-duzeltme")
-        #expect(NewSessionBranchNames.suggest(ticket: nil, text: "???", now: Date(timeIntervalSince1970: 0)).hasPrefix("loom/session-"))
+        // The suggestion is made from the first words.
+        #expect(NewSessionBranchNames.suggest(text: "Fix the flaky test in billing, please") == "loom/fix-the-flaky-test")
+        #expect(NewSessionBranchNames.suggest(text: "PAY-418 İşlem düzeltme") == "loom/pay-418-islem-duzeltme")
+        #expect(NewSessionBranchNames.suggest(text: "???", now: Date(timeIntervalSince1970: 0)).hasPrefix("loom/session-"))
     }
 
     @Test func aBadBranchNameOrAFolderWithoutGitStopsTheSendBeforeAnythingStarts() async throws {

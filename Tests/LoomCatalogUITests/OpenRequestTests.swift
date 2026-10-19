@@ -25,14 +25,11 @@ private final class AnswerRecorder: ConversationIntents {
 }
 
 private func openRequest(
-    requester: UUID = UUID(), kind: OpenSessionRequest.Kind = .open, phase: OpenSessionRequest.Phase = .waiting,
-    ticket: String? = "EDDP-412", message: String = "Fix the login flow.", existing: UUID? = nil,
-    existingTitle: String? = nil
+    requester: UUID = UUID(), phase: OpenSessionRequest.Phase = .waiting, message: String = "Fix the login flow."
 ) -> OpenSessionRequest {
     OpenSessionRequest(
         requesterID: requester, requesterTitle: "Planner", projectID: UUID(), projectName: "edd-backend",
-        title: "EDDP-412 Fix login", ticketKey: ticket, message: message, kind: kind, phase: phase,
-        existingSessionID: existing, existingTitle: existingTitle)
+        title: "EDDP-412 Fix login", message: message, phase: phase)
 }
 
 /// A session opens a session (D-40) at the presentation boundary: what the request box says, how the
@@ -47,14 +44,10 @@ struct OpenRequestTests {
         let waiting = OpenRequestBoxContent(openRequest(message: "line 1\nline 2"))
         #expect(waiting.heading == "Open a new session?")
         #expect(waiting.lines == [.init(label: "Project", value: "edd-backend"),
-                                  .init(label: "Title", value: "EDDP-412 Fix login"),
-                                  .init(label: "Ticket", value: "EDDP-412")])
+                                  .init(label: "Title", value: "EDDP-412 Fix login")])
         #expect(waiting.preview == "line 1\nline 2" && !waiting.hasMore)
         #expect(waiting.actions == [.deny, .openSession] && !waiting.actionsDisabled)
-        #expect(waiting.status == nil && waiting.failure == nil && waiting.needsDecision)
-
-        // No ticket, no ticket line.
-        #expect(OpenRequestBoxContent(openRequest(ticket: nil)).lines.map(\.label) == ["Project", "Title"])
+        #expect(waiting.status == nil && waiting.failure == nil)
 
         let starting = OpenRequestBoxContent(openRequest(phase: .starting))
         #expect(starting.status == "Opening…" && starting.actionsDisabled)
@@ -63,7 +56,6 @@ struct OpenRequestTests {
         let failed = OpenRequestBoxContent(openRequest(phase: .failed("Claude could not be started")))
         #expect(failed.failure == "Claude could not be started")
         #expect(failed.actions == [.dismiss] && !failed.actionsDisabled)
-        #expect(failed.needsDecision, "a failed request stays an orange box until it is dismissed")
     }
 
     @Test func theMessagePreviewIsTheFirstFourLinesWithTheRestOneClickAway() {
@@ -79,17 +71,6 @@ struct OpenRequestTests {
         #expect(oneLong.preview.count == OpenRequestBoxContent.previewCharacterLimit && oneLong.hasMore)
     }
 
-    @Test func anExistingTicketGetsANeutralNoticeWithShowSessionAndDismiss() {
-        let existing = UUID()
-        let notice = OpenRequestBoxContent(openRequest(kind: .exists, existing: existing, existingTitle: "EDDP-412 Login"))
-        #expect(notice.heading == "EDDP-412 already has a session: EDDP-412 Login")
-        #expect(notice.actions == [.showSession, .dismiss])
-        #expect(!notice.needsDecision && notice.lines.isEmpty && notice.preview.isEmpty)
-        // No session id to show: only Dismiss.
-        #expect(OpenRequestBoxContent(openRequest(kind: .exists)).actions == [.dismiss])
-        #expect(OpenRequestBoxContent(openRequest(kind: .exists)).heading == "EDDP-412 already has a session")
-    }
-
     // MARK: Model
 
     private func model(catalog: SessionCatalog?, events: SessionEventHub = SessionEventHub(), root: URL) -> CatalogModel {
@@ -103,23 +84,19 @@ struct OpenRequestTests {
         return root
     }
 
-    @Test func theBoxButtonsReachTheRuntimeAndShowSessionIsTheOnlyThingThatSelects() throws {
+    @Test func theBoxButtonsReachTheRuntimeAndAnsweringNeverSelects() throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let model = model(catalog: nil, root: root)
         let intents = AnswerRecorder()
         model.intents = intents
-        let existing = UUID()
         let asked = openRequest()
-        let notice = openRequest(kind: .exists, existing: existing, existingTitle: "EDDP-412 Login")
+        let failed = openRequest(phase: .failed("Claude could not be started"))
         model.approveOpenRequest(asked.id)
         model.denyOpenRequest(asked.id)
-        model.dismissOpenRequest(notice.id)
-        #expect(intents.approved == [asked.id] && intents.denied == [asked.id] && intents.dismissed == [notice.id])
+        model.dismissOpenRequest(failed.id)
+        #expect(intents.approved == [asked.id] && intents.denied == [asked.id] && intents.dismissed == [failed.id])
         #expect(model.selectedSessionID == nil, "answering never selects anything")
-
-        model.showExistingSession(of: notice)
-        #expect(model.selectedSessionID == existing)
 
         // Quit started: no new work.
         model.quitting = true
@@ -153,7 +130,7 @@ struct OpenRequestTests {
         let child = ManagedSession(provider: .claude, workingDirectory: "/tmp/loom-origin-b")
         try await catalog.insertSession(child, title: "EDDP-412 Fix login", createdAt: Date(timeIntervalSince1970: 200),
                                         lastUsedAt: Date(timeIntervalSince1970: 200), lifecycle: .idle,
-                                        projectID: project.id, ticketKey: "EDDP-412",
+                                        projectID: project.id,
                                         openedBy: requesterExists ? requester.id : UUID())
         let hub = SessionEventHub()
         return Rig(root: root, catalog: catalog, hub: hub, model: model(catalog: catalog, events: hub, root: root),
@@ -204,10 +181,6 @@ struct OpenRequestTests {
         rig.model.setOpenRequests([])
         #expect(row.indicator == .working)
         #expect(rig.model.attention(forProject: rig.project.id) == nil)
-
-        // The "already has a session" notice asks for nothing.
-        rig.model.setOpenRequests([openRequest(requester: rig.requester, kind: .exists, existing: rig.child)])
-        #expect(row.indicator == .working)
     }
 
     @Test func aRowReadLaterStartsWithTheCurrentApprovalState() async throws {
@@ -325,12 +298,12 @@ struct OpenRequestTests {
         }
 
         /// What `loom-hook open` sends over the control socket.
-        func ask(title: String, ticket: String?, message: String) async throws -> Task<OpenSessionReply, any Error> {
+        func ask(title: String, message: String) async throws -> Task<OpenSessionReply, any Error> {
             let hooks = try #require(await runtime.hookConfiguration)
             let control = try #require(hooks.controlSocketPath)
             let request = OpenSessionWireRequest(
                 authenticationToken: hooks.authenticationToken, sessionID: requester.sessionID,
-                managedRunID: requester.runID, title: title, ticketKey: ticket, project: nil, message: message)
+                managedRunID: requester.runID, title: title, project: nil, message: message)
             return Task.detached { try OpenSessionClient.exchange(request, socketPath: control) }
         }
     }
@@ -383,7 +356,7 @@ struct OpenRequestTests {
     @Test func approvingStartsTheSessionAdoptsItsTerminalAndLeavesTheSelectionAlone() async throws {
         let live = try await live()
         do {
-            let reply = try await live.ask(title: "EDDP-412 Fix login", ticket: "EDDP-412", message: "Fix it.\nSecond line.")
+            let reply = try await live.ask(title: "EDDP-412 Fix login", message: "Fix it.\nSecond line.")
             // The runtime's list reaches the model through the controller's stream.
             #expect(await waitUntil { live.model.openRequests.count == 1 })
             let request = try #require(live.model.openRequests.first)
@@ -402,7 +375,7 @@ struct OpenRequestTests {
             // Opening does not move the user.
             #expect(live.model.selectedSessionID == nil)
             let row = try #require(try await live.catalog.session(id: newID))
-            #expect(row.openedBy == live.requester.sessionID && row.ticketKey == "EDDP-412")
+            #expect(row.openedBy == live.requester.sessionID && row.ticketKey == nil)
             #expect(row.title == "EDDP-412 Fix login")
         } catch {
             await live.cleanup()
@@ -414,7 +387,7 @@ struct OpenRequestTests {
     @Test func denyStartsNothingAndTheAgentIsToldSo() async throws {
         let live = try await live()
         do {
-            let reply = try await live.ask(title: "Nope", ticket: nil, message: "no")
+            let reply = try await live.ask(title: "Nope", message: "no")
             #expect(await waitUntil { live.model.openRequests.count == 1 })
             live.model.denyOpenRequest(try #require(live.model.openRequests.first).id)
             #expect(try await reply.value.status == .denied)
@@ -430,7 +403,7 @@ struct OpenRequestTests {
     @Test func aFailedStartIsShownOnTheRequestAndNeverTriedAgain() async throws {
         let live = try await live()
         do {
-            let reply = try await live.ask(title: "Fails", ticket: "EDDP-9", message: "x")
+            let reply = try await live.ask(title: "Fails", message: "x")
             #expect(await waitUntil { live.model.openRequests.count == 1 })
             let request = try #require(live.model.openRequests.first)
             // The project's folder is gone by the time the user approves: the provider cannot start there.
@@ -465,22 +438,20 @@ struct OpenRequestTests {
 
 @MainActor
 struct OpenRequestEvidenceTests {
-    @Test func theSnapshotListsEachRequestWithItsKindPhaseAndTicketAndRedactsTheTextForRealProviders() throws {
+    @Test func theSnapshotListsEachRequestWithItsPhaseAndRedactsTheTextForRealProviders() throws {
         let requester = UUID()
-        let existing = UUID()
         let waiting = openRequest(requester: requester)
         let failed = openRequest(requester: requester, phase: .failed("Claude could not be started"))
-        let notice = openRequest(requester: requester, kind: .exists, existing: existing)
-        let rows = OpenRequestEvidence.rows([waiting, failed, notice], redacted: false)
-        #expect(rows.map { $0["kind"] as? String } == ["open", "open", "exists"])
-        #expect(rows.map { $0["phase"] as? String } == ["waiting", "failed", "waiting"])
+        let rows = OpenRequestEvidence.rows([waiting, failed], redacted: false)
+        #expect(rows.map { $0["phase"] as? String } == ["waiting", "failed"])
         #expect(rows[0]["id"] as? String == waiting.id.uuidString && rows[0]["requester"] as? String == requester.uuidString)
-        #expect(rows[0]["title"] as? String == "EDDP-412 Fix login" && rows[0]["ticket"] as? String == "EDDP-412")
+        #expect(rows[0]["title"] as? String == "EDDP-412 Fix login")
         #expect(rows[1]["failure"] as? String == "Claude could not be started")
-        #expect(rows[2]["existingSession"] as? String == existing.uuidString)
+        // D-69: no tracker key, no kind, no existing session in the snapshot.
+        #expect(rows.allSatisfy { $0["ticket"] == nil && $0["kind"] == nil && $0["existingSession"] == nil })
 
         let redacted = OpenRequestEvidence.rows([waiting, failed], redacted: true)
-        #expect(redacted.allSatisfy { $0["title"] as? String == "" && $0["ticket"] as? String == "" && $0["failure"] as? String == "" })
+        #expect(redacted.allSatisfy { $0["title"] as? String == "" && $0["failure"] as? String == "" })
         #expect(redacted.map { $0["phase"] as? String } == ["waiting", "failed"], "state stays visible")
         #expect(OpenRequestEvidence.rows([], redacted: false).isEmpty)
     }

@@ -149,7 +149,7 @@ public final class ChatSessionHost {
 
     private static func isInUse(_ value: AnyObject) -> Bool { (value as? ChatDriverAttachment)?.isInUse ?? false }
 
-    /// Starts a new Claude session in the Chat face from a draft (title, ticket, workspace, choices, first message).
+    /// Starts a new Claude session in the Chat face from a draft (workspace, choices, first message).
     /// `onReady` runs once Claude answered `initialize` (Ready), before the first message goes out: the caller tells the
     /// draft and shows the session then. A start that fails before that throws and keeps nothing; a first message that
     /// fails afterwards goes to the session's own draft.

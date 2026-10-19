@@ -9,7 +9,6 @@ import Foundation
 enum OpenSessionLimits {
     static let messageByteLimit = 64 * 1024
     static let titleLimit = 160
-    static let ticketLimit = 40
     static let projectLimit = 4_096
     /// The JSON of a request: the message may grow when its characters are escaped.
     static let wireByteLimit = 512 * 1024
@@ -29,12 +28,11 @@ public struct OpenSessionRejection: Error, CustomStringConvertible, Equatable, S
 /// connects) and in Loom (which trusts nothing it receives).
 public struct OpenSessionInput: Equatable, Sendable {
     public let title: String
-    public let ticketKey: String?
     public let project: String?
     public let message: String
 
     public static func validated(
-        title: String, ticketKey: String?, project: String?, message: String
+        title: String, project: String?, message: String
     ) throws -> OpenSessionInput {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { throw OpenSessionRejection("the title is empty") }
@@ -44,18 +42,6 @@ public struct OpenSessionInput: Equatable, Sendable {
         guard !trimmedTitle.unicodeScalars.contains(where: {
             CharacterSet.controlCharacters.contains($0) || CharacterSet.newlines.contains($0)
         }) else { throw OpenSessionRejection("the title must be a single line") }
-
-        var ticket: String?
-        if let raw = ticketKey {
-            let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !key.isEmpty, key.count <= OpenSessionLimits.ticketLimit,
-                  key.unicodeScalars.allSatisfy({ isTicketCharacter($0) }) else {
-                throw OpenSessionRejection(
-                    "the ticket key must be 1-\(OpenSessionLimits.ticketLimit) letters, digits, '-', '_' or '.'"
-                )
-            }
-            ticket = key
-        }
 
         var projectName: String?
         if let raw = project {
@@ -76,14 +62,7 @@ public struct OpenSessionInput: Equatable, Sendable {
         guard message.utf8.count <= OpenSessionLimits.messageByteLimit else {
             throw OpenSessionRejection("the message is larger than 64 KiB")
         }
-        return OpenSessionInput(title: trimmedTitle, ticketKey: ticket, project: projectName, message: message)
-    }
-
-    private static func isTicketCharacter(_ scalar: Unicode.Scalar) -> Bool {
-        switch scalar.value {
-        case 0x30...0x39, 0x41...0x5A, 0x61...0x7A, 0x2D, 0x5F, 0x2E: true
-        default: false
-        }
+        return OpenSessionInput(title: trimmedTitle, project: projectName, message: message)
     }
 }
 
@@ -92,8 +71,6 @@ public struct OpenSessionReply: Codable, Equatable, Sendable {
     public enum Status: String, Codable, Sendable {
         /// The process was launched with the first message.
         case started
-        /// A session for this ticket already exists in the project; nothing was started.
-        case exists
         /// Not decided yet; the request stays in Loom and a later approval still opens it.
         case pending
         case denied
@@ -108,21 +85,19 @@ public struct OpenSessionReply: Codable, Equatable, Sendable {
     public let status: Status
     public let sessionID: UUID?
     public let title: String?
-    public let running: Bool?
     public let detail: String?
 
     public init(status: Status, sessionID: UUID? = nil, title: String? = nil,
-                running: Bool? = nil, detail: String? = nil) {
+                detail: String? = nil) {
         self.status = status
         self.sessionID = sessionID
         self.title = title
-        self.running = running
         self.detail = detail
     }
 
     public var exitCode: Int32 {
         switch status {
-        case .started, .exists, .pending: 0
+        case .started, .pending: 0
         case .denied, .failed: 1
         case .invalid: 2
         case .unavailable: 3
@@ -135,7 +110,6 @@ public struct OpenSessionReply: Codable, Equatable, Sendable {
         let id = sessionID?.uuidString.lowercased() ?? "unknown"
         switch status {
         case .started: return "started \(id) \(quoted)"
-        case .exists: return "exists \(id) \(quoted) \(running == true ? "running" : "stopped")"
         case .pending:
             return "pending: approve or deny it in Loom. Nothing has started yet, and the request is kept in memory only: it is lost if Loom quits."
         case .denied: return "denied"
@@ -152,7 +126,6 @@ struct OpenSessionWireRequest: Codable, Sendable {
     var sessionID: UUID
     var managedRunID: UUID
     var title: String
-    var ticketKey: String?
     var project: String?
     var message: String
 }
@@ -162,7 +135,6 @@ struct OpenSessionCall: Sendable {
     let sessionID: UUID
     let managedRunID: UUID
     let title: String
-    let ticketKey: String?
     let project: String?
     let message: String
 }
@@ -317,7 +289,7 @@ final class OpenSessionControlServer: @unchecked Sendable {
         }
         let call = OpenSessionCall(
             sessionID: wire.sessionID, managedRunID: wire.managedRunID, title: wire.title,
-            ticketKey: wire.ticketKey, project: wire.project, message: wire.message
+            project: wire.project, message: wire.message
         )
         let handler = self.handler
         Task.detached(priority: .userInitiated) { [self] in

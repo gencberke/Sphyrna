@@ -173,7 +173,7 @@ struct ChatDriverTests {
         let rig = try await Rig.make()
         let id = UUID()
         let driver = rig.driver(id)
-        let starting = Task { try await driver.startNew(projectID: nil, draft: NewSessionLaunch(firstMessage: "", title: "Chat test")) }
+        let starting = Task { try await driver.startNew(projectID: nil, draft: NewSessionLaunch(firstMessage: "")) }
         #expect(await waitUntil { await driver.currentPhase != .stopped })
         try await starting.value
         var snapshot = await driver.snapshot()

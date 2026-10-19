@@ -4,24 +4,22 @@ import Foundation
 /// It lives here, not in the helper's `main.swift`, so the argument rules and exit codes are tested
 /// against a real server without starting a process.
 ///
-/// Exit codes: 0 started, exists or pending; 1 denied (or approved but not started); 2 usage or
+/// Exit codes: 0 started or pending; 1 denied (or approved but not started); 2 usage or
 /// validation error; 3 Loom unreachable or not inside a Loom session.
 public enum OpenSessionCommand {
     public static let usage = """
-        usage: "$LOOM_CLI" open --title <title> [--ticket <key>] [--project <name|path>] \
+        usage: "$LOOM_CLI" open --title <title> [--project <name|path>] \
         (--message-file <path> | --message -)
 
           --title <title>         session title, 1-160 characters
-          --ticket <key>          ticket key (letters, digits, - _ .), up to 40 characters; if the
-                                  project already has a session for it, Loom reports that session
-                                  instead of opening another
+          --ticket <key>          accepted and ignored, so older agent rules keep running; Loom keeps no
+                                  tracker keys and does not look up existing sessions
           --project <name|path>   a Loom project by exact name or path (default: this session's project)
           --message-file <path>   file with the first message (UTF-8, at most 64 KiB)
           --message -             read the first message from standard input
 
         Loom asks the user before anything starts. Result line (one of):
           started <session-id> "<title>"            exit 0
-          exists <session-id> "<title>" running|stopped   exit 0 (nothing was started)
           pending: ...                              exit 0 (not decided within 85 s; the request stays in Loom)
           denied                                    exit 1
           error: <reason>                           exit 1 (approved, not started), 2 (bad request), 3 (Loom unreachable)
@@ -76,7 +74,7 @@ public enum OpenSessionCommand {
         let input: OpenSessionInput
         do {
             input = try OpenSessionInput.validated(
-                title: parsed.title ?? "", ticketKey: parsed.ticket, project: parsed.project, message: message
+                title: parsed.title ?? "", project: parsed.project, message: message
             )
         } catch {
             output.standardError("error: \(error)")
@@ -95,8 +93,7 @@ public enum OpenSessionCommand {
             reply = try OpenSessionClient.exchange(
                 OpenSessionWireRequest(
                     authenticationToken: token, sessionID: sessionID, managedRunID: runID,
-                    title: input.title, ticketKey: input.ticketKey, project: input.project,
-                    message: input.message
+                    title: input.title, project: input.project, message: input.message
                 ),
                 socketPath: socket, replyTimeout: replyTimeout
             )
@@ -112,7 +109,6 @@ public enum OpenSessionCommand {
 
     struct ParsedArguments {
         var title: String?
-        var ticket: String?
         var project: String?
         var messageFile: String?
         var messageFromStandardInput = false
@@ -167,7 +163,7 @@ public enum OpenSessionCommand {
             else { throw OpenSessionRejection("\(name) needs a value") }
             switch name {
             case "--title": result.title = value
-            case "--ticket": result.ticket = value
+            case "--ticket": break // accepted and ignored (D-69)
             case "--project": result.project = value
             case "--message-file": result.messageFile = value
             default:

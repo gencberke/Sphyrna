@@ -76,8 +76,7 @@ struct SessionNavigationModelTests {
     private func openRequest(requester: UUID, phase: OpenSessionRequest.Phase = .waiting) -> OpenSessionRequest {
         OpenSessionRequest(
             requesterID: requester, requesterTitle: "Planner", projectID: UUID(), projectName: "p",
-            title: "Fix", ticketKey: "T-1", message: "Do it.", kind: .open, phase: phase,
-            existingSessionID: nil, existingTitle: nil)
+            title: "Fix", message: "Do it.", phase: phase)
     }
 
     // MARK: Attention order, jumps and the Dock badge

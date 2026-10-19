@@ -2,13 +2,13 @@ import AppKit
 import LoomCore
 import SwiftUI
 
-/// The draft's composer in the look of D-58 (design/v2-new-session-preview.html, N1): a card with the ticket
-/// line when the text holds a key, the text, and a bar with the permission mode as plain text with a shield, the
+/// The draft's composer in the look of D-58 (design/v2-new-session-preview.html, N1): a card with the text
+/// and a bar with the permission mode as plain text with a shield, the
 /// model, and a round Send. Mode and model come from `NewSessionDefaults` and a pick overrides them.
 ///
 /// It is the session's own composer at draft time (D-59): the text field, the keys and the bar's pieces are the
 /// ones the live composer uses (`ComposerTextEditor`, `ComposerKeys`, `ComposerBar`); what differs is what the keys
-/// do (↵ starts the session) and what the draft keeps (ticket line, presets, branch strip, its save).
+/// do (↵ starts the session) and what the draft keeps (presets, branch strip, its save).
 struct NewSessionComposer: View {
     let model: CatalogModel
     let projectID: UUID?
@@ -25,12 +25,10 @@ struct NewSessionComposer: View {
     private var sending: Bool { model.newSession.isSending(projectID) }
 
     var body: some View {
-        let status = model.newSession.ticketStatus(for: projectID)
         VStack(alignment: .leading, spacing: 0) {
-            if status != .none { TicketLine(model: model, projectID: projectID, status: status, draft: draft) }
             ZStack(alignment: .topLeading) {
                 if draft.text.isEmpty {
-                    Text("Describe the work, paste a ticket key, or add a skill with /")
+                    Text("Describe the work, or add a skill with /")
                         .font(LoomTheme.TypeScale.reading).foregroundStyle(LoomTheme.Text.tertiary)
                         .padding(.top, ComposerTextEditor.inset.height).allowsHitTesting(false)
                         .accessibilityHidden(true)
@@ -83,49 +81,6 @@ enum NewSessionLayout {
     static let headlinePickHeight: CGFloat = 36
     static let toneStripe = CGSize(width: 4, height: 17)
     static let glyph: CGFloat = 12
-}
-
-/// The line inside the composer for a ticket key (CHAT-SPEC, D-40): the key and whether the project already
-/// has a session for it. A ticket that has one offers Open instead of a copy, and Start anyway for a second.
-private struct TicketLine: View {
-    let model: CatalogModel
-    let projectID: UUID?
-    let status: TicketStatus
-    let draft: SessionDraft
-
-    var body: some View {
-        HStack(spacing: LoomTheme.Space.bannerRowSpacing) {
-            Image(systemName: "ticket").font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                .accessibilityHidden(true)
-            switch status {
-            case .none:
-                EmptyView()
-            case .free(let key):
-                Text(key).font(LoomTheme.Typography.smallMedium).foregroundStyle(LoomTheme.Text.primary)
-                if projectID != nil {
-                    Text("· no session for it yet").font(LoomTheme.Typography.small)
-                        .foregroundStyle(LoomTheme.Text.secondaryStyle)
-                }
-                Spacer(minLength: 0)
-            case .exists(let key, _, let title):
-                Text(key).font(LoomTheme.Typography.smallMedium).foregroundStyle(LoomTheme.Text.primary)
-                Text(draft.allowDuplicateTicket ? "already has a session; this will be a second one"
-                     : "already has a session\(title.map { ": \($0)" } ?? "")")
-                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                    .lineLimit(1).truncationMode(.tail)
-                Spacer(minLength: LoomTheme.Space.detailMinSpacer)
-                Button("Open") { model.openExistingTicketSession(projectID: projectID) }
-                    .buttonStyle(AccentButtonStyle(kind: .tinted)).accessibilityIdentifier("draft-ticket-open")
-                if !draft.allowDuplicateTicket {
-                    Button("Start anyway") { model.allowDuplicateTicket(projectID: projectID) }
-                        .buttonStyle(ChipButtonStyle()).accessibilityIdentifier("draft-ticket-anyway")
-                }
-            }
-        }
-        .padding(.horizontal, NewSessionLayout.textInset).padding(.top, LoomTheme.Space.requestPadding)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("draft-ticket-line")
-    }
 }
 
 /// Mode and model chips and Send: the bar of D-58 without a ring (no session yet) and without +, whose menus need a

@@ -1,15 +1,8 @@
 import Foundation
 
 /// One entry of the list the UI shows (D-40): a request waiting for the user, one the user
-/// approved that is starting or failed to start, or a notice that the ticket already has a session.
+/// approved that is starting or failed to start.
 public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
-    public enum Kind: Equatable, Sendable {
-        /// Waits for Open Session / Deny.
-        case open
-        /// "<ticket> already has a session": Show Session / Dismiss. Nothing was or will be started.
-        case exists
-    }
-
     public enum Phase: Equatable, Sendable {
         case waiting
         /// Approved; the session is being started.
@@ -25,20 +18,14 @@ public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
     public let projectID: UUID
     public let projectName: String
     public let title: String
-    public let ticketKey: String?
     public let message: String
     public let receivedAt: Date
-    public internal(set) var kind: Kind
     public internal(set) var phase: Phase
-    /// `.exists` only: the session that already belongs to the ticket.
-    public internal(set) var existingSessionID: UUID?
-    public internal(set) var existingTitle: String?
 
     public init(
         id: UUID = UUID(), requesterID: UUID, requesterTitle: String? = nil, projectID: UUID,
-        projectName: String, title: String, ticketKey: String? = nil, message: String,
-        receivedAt: Date = Date(), kind: Kind = .open, phase: Phase = .waiting,
-        existingSessionID: UUID? = nil, existingTitle: String? = nil
+        projectName: String, title: String, message: String,
+        receivedAt: Date = Date(), phase: Phase = .waiting
     ) {
         self.id = id
         self.requesterID = requesterID
@@ -46,41 +33,29 @@ public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
         self.projectID = projectID
         self.projectName = projectName
         self.title = title
-        self.ticketKey = ticketKey
         self.message = message
         self.receivedAt = receivedAt
-        self.kind = kind
         self.phase = phase
-        self.existingSessionID = existingSessionID
-        self.existingTitle = existingTitle
     }
 
     /// An open request the user has not decided on yet, or has approved and is starting.
     var isUndecided: Bool {
-        guard kind == .open else { return false }
         switch phase {
         case .waiting, .starting: return true
         case .failed: return false
         }
     }
 
-    /// A notice or a failed request: nothing waits on it any more.
+    /// A failed request: nothing waits on it any more.
     var isSpent: Bool {
-        if kind == .exists { return true }
         if case .failed = phase { return true }
         return false
     }
 }
 
-public enum OpenSessionApproval: Equatable, Sendable {
-    case started(UUID)
-    /// The ticket got a session between the request and the approval; nothing was started.
-    case exists(UUID)
-}
-
 public enum OpenSessionError: Error, CustomStringConvertible, Equatable, Sendable {
     case unknownRequest(UUID)
-    /// The request is not waiting (already starting, failed, or a notice).
+    /// The request is not waiting (already starting or failed).
     case notWaiting(UUID)
     case shuttingDown
 
@@ -98,7 +73,6 @@ struct OpenSessionSpec: Sendable {
     let requesterID: UUID
     let projectID: UUID
     let title: String
-    let ticketKey: String?
     let message: String
 }
 
@@ -108,7 +82,6 @@ struct OpenSessionSpec: Sendable {
 /// approval still opens the session.
 actor OpenSessionCoordinator {
     typealias Authorize = @Sendable (_ sessionID: UUID, _ runID: UUID) async -> UUID?
-    typealias IsRunning = @Sendable (_ sessionID: UUID) async -> Bool
 
     private struct Entry {
         var request: OpenSessionRequest
@@ -121,17 +94,15 @@ actor OpenSessionCoordinator {
 
     private let catalog: SessionCatalog
     private let authorize: Authorize
-    private let isRunning: IsRunning
     private let replyDelay: TimeInterval
     private var entries: [Entry] = []
     private var subscribers: [UUID: AsyncStream<[OpenSessionRequest]>.Continuation] = [:]
     private var shutDown = false
 
-    init(catalog: SessionCatalog, authorize: @escaping Authorize, isRunning: @escaping IsRunning,
+    init(catalog: SessionCatalog, authorize: @escaping Authorize,
          replyDelay: TimeInterval = OpenSessionLimits.serverReplyDelay) {
         self.catalog = catalog
         self.authorize = authorize
-        self.isRunning = isRunning
         self.replyDelay = replyDelay
     }
 
@@ -170,7 +141,7 @@ actor OpenSessionCoordinator {
         let input: OpenSessionInput
         do {
             input = try OpenSessionInput.validated(
-                title: call.title, ticketKey: call.ticketKey, project: call.project, message: call.message
+                title: call.title, project: call.project, message: call.message
             )
         } catch {
             return OpenSessionReply(status: .invalid, detail: String(describing: error))
@@ -185,15 +156,6 @@ actor OpenSessionCoordinator {
             case let .success(found): project = found
             case let .failure(rejection):
                 return OpenSessionReply(status: .invalid, detail: rejection.reason)
-            }
-            // Nothing is started for a ticket that has a session, so no approval is needed: say so
-            // at once, and show the user why nothing is opening.
-            if let ticket = input.ticketKey,
-               let existing = try await catalog.session(projectID: project.id, ticket: ticket, excluding: requesterID) {
-                let running = await isRunning(existing.session.id)
-                noteExisting(existing, input: input, requesterID: requesterID,
-                             requesterTitle: requesterTitle, project: project)
-                return Self.existsReply(existing, ticket: ticket, running: running)
             }
         } catch {
             return OpenSessionReply(status: .invalid, detail: "Loom could not read its catalog: \(error)")
@@ -212,8 +174,8 @@ actor OpenSessionCoordinator {
         let id = UUID()
         let request = OpenSessionRequest(
             id: id, requesterID: requesterID, requesterTitle: requesterTitle, projectID: project.id,
-            projectName: project.name, title: input.title, ticketKey: input.ticketKey,
-            message: input.message, receivedAt: Date(), kind: .open, phase: .waiting
+            projectName: project.name, title: input.title,
+            message: input.message, receivedAt: Date(), phase: .waiting
         )
         return await withCheckedContinuation { continuation in
             let timeout = Task { [replyDelay] in
@@ -264,36 +226,7 @@ actor OpenSessionCoordinator {
         OpenSessionReply(status: .unavailable, detail: detail)
     }
 
-    private static func existsReply(_ existing: CatalogSession, ticket: String, running: Bool) -> OpenSessionReply {
-        OpenSessionReply(
-            status: .exists, sessionID: existing.session.id,
-            title: existing.title ?? ticket, running: running
-        )
-    }
-
-    /// One notice per asking session and existing session, replaced by a newer one.
-    private func noteExisting(
-        _ existing: CatalogSession, input: OpenSessionInput, requesterID: UUID,
-        requesterTitle: String?, project: CatalogProject
-    ) {
-        guard !shutDown else { return }
-        entries.removeAll {
-            $0.request.kind == .exists && $0.request.requesterID == requesterID
-                && $0.request.existingSessionID == existing.session.id
-        }
-        var notice = OpenSessionRequest(
-            id: UUID(), requesterID: requesterID, requesterTitle: requesterTitle, projectID: project.id,
-            projectName: project.name, title: input.title, ticketKey: input.ticketKey,
-            message: input.message, receivedAt: Date(), kind: .exists, phase: .waiting
-        )
-        notice.existingSessionID = existing.session.id
-        notice.existingTitle = existing.title
-        entries.append(Entry(request: notice))
-        trimEntries()
-        publish()
-    }
-
-    /// A bounded list: the oldest notice or failed request goes first, then the oldest request.
+    /// A bounded list: the oldest failed request goes first, then the oldest request.
     private func trimEntries() {
         while entries.count > Self.maximumEntries {
             let index = entries.firstIndex { $0.request.isSpent } ?? 0
@@ -318,38 +251,23 @@ actor OpenSessionCoordinator {
     /// waiting client (if its wait has not run out) is answered with what happened.
     func approve(
         _ id: UUID, start: @Sendable (OpenSessionSpec) async throws -> UUID
-    ) async throws -> OpenSessionApproval {
+    ) async throws -> UUID {
         guard !shutDown else { throw OpenSessionError.shuttingDown }
         guard let index = entries.firstIndex(where: { $0.request.id == id }) else {
             throw OpenSessionError.unknownRequest(id)
         }
         let request = entries[index].request
-        guard request.kind == .open, request.phase == .waiting else { throw OpenSessionError.notWaiting(id) }
+        guard request.phase == .waiting else { throw OpenSessionError.notWaiting(id) }
         setPhase(.starting, of: id)
-
-        // The ticket may have got a session since the request arrived (another request, the user).
-        if let ticket = request.ticketKey,
-           let existing = try? await catalog.session(projectID: request.projectID, ticket: ticket, excluding: request.requesterID) {
-            let running = await isRunning(existing.session.id)
-            resolveWaiter(id, Self.existsReply(existing, ticket: ticket, running: running))
-            if let at = entries.firstIndex(where: { $0.request.id == id }) {
-                entries[at].request.kind = .exists
-                entries[at].request.phase = .waiting
-                entries[at].request.existingSessionID = existing.session.id
-                entries[at].request.existingTitle = existing.title
-            }
-            publish()
-            return .exists(existing.session.id)
-        }
 
         do {
             let sessionID = try await start(OpenSessionSpec(
                 requesterID: request.requesterID, projectID: request.projectID, title: request.title,
-                ticketKey: request.ticketKey, message: request.message
+                message: request.message
             ))
             resolveWaiter(id, OpenSessionReply(status: .started, sessionID: sessionID, title: request.title))
             remove(id)
-            return .started(sessionID)
+            return sessionID
         } catch let error as SessionRuntimeError {
             if case .alreadyStarting = error {
                 // Another start of this project was in flight: nothing was created, ask again.
@@ -389,12 +307,12 @@ actor OpenSessionCoordinator {
             throw OpenSessionError.unknownRequest(id)
         }
         let request = entries[index].request
-        guard request.kind == .open, request.phase == .waiting else { throw OpenSessionError.notWaiting(id) }
+        guard request.phase == .waiting else { throw OpenSessionError.notWaiting(id) }
         resolveWaiter(id, OpenSessionReply(status: .denied))
         remove(id)
     }
 
-    /// Removes a notice or a failed request; a request still waiting counts as denied.
+    /// Removes a failed request; a request still waiting counts as denied.
     func dismiss(_ id: UUID) throws {
         guard let index = entries.firstIndex(where: { $0.request.id == id }) else {
             throw OpenSessionError.unknownRequest(id)

@@ -220,7 +220,7 @@ struct LaunchChoicesCatalogTests {
         let screen = SessionRuntimeTests.Screen()
         let launch = try await context.runtime.startConversation(
             provider: .claude, projectID: nil, outputSink: screen,
-            opening: SessionOpening(title: "Opened", firstMessage: "do it", ticketKey: nil, openedBy: UUID()))
+            opening: SessionOpening(title: "Opened", firstMessage: "do it", openedBy: UUID()))
         screen.attach(launch.terminal)
         #expect(await screen.contains("FAKE-CLAUDE READY"))
         _ = await SessionRuntimeTests.waitUntil { FileManager.default.fileExists(atPath: argv.path) }

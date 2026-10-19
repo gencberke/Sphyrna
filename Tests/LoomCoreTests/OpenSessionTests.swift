@@ -46,12 +46,9 @@ final class OpenRig: @unchecked Sendable {
         self.requester = requester
         socketPath = root.appendingPathComponent("c.sock").path
         let runID = self.runID, cardID = requester.id
-        let box = RunningBox()
-        runningBox = box
         let coordinator = OpenSessionCoordinator(
             catalog: catalog,
             authorize: { session, run in session == cardID && run == runID ? cardID : nil },
-            isRunning: { box.contains($0) },
             replyDelay: replyDelay
         )
         self.coordinator = coordinator
@@ -60,27 +57,19 @@ final class OpenRig: @unchecked Sendable {
         ) { call in await coordinator.submit(call) }
     }
 
-    final class RunningBox: @unchecked Sendable {
-        private let lock = NSLock()
-        private var ids: Set<UUID> = []
-        func contains(_ id: UUID) -> Bool { lock.withLock { ids.contains(id) } }
-        func insert(_ id: UUID) { lock.withLock { _ = ids.insert(id) } }
-    }
-    let runningBox: RunningBox
-
     func cleanup() {
         server.stop()
         try? FileManager.default.removeItem(at: root)
     }
 
     func wire(
-        title: String = "Fix the login", ticket: String? = nil, project: String? = nil,
+        title: String = "Fix the login", project: String? = nil,
         message: String = "Please look at login.", token: String? = nil,
         session: UUID? = nil, run: UUID? = nil
     ) -> OpenSessionWireRequest {
         OpenSessionWireRequest(
             authenticationToken: token ?? self.token, sessionID: session ?? requester.id,
-            managedRunID: run ?? runID, title: title, ticketKey: ticket, project: project, message: message
+            managedRunID: run ?? runID, title: title, project: project, message: message
         )
     }
 
@@ -107,20 +96,6 @@ final class OpenRig: @unchecked Sendable {
         }
         return await coordinator.snapshot()
     }
-
-    /// An existing session of a project, created the way a user's session would be.
-    @discardableResult
-    func addSession(title: String?, ticket: String? = nil, project: CatalogProject? = nil,
-                    running: Bool = false) async throws -> ManagedSession {
-        let project = project ?? projectA
-        let session = ManagedSession(provider: .claude, workingDirectory: project.path)
-        try await catalog.insertSession(
-            session, title: title, createdAt: Date(timeIntervalSince1970: Double(Int.random(in: 1_000...9_000))),
-            projectID: project.id, ticketKey: ticket
-        )
-        if running { runningBox.insert(session.id) }
-        return session
-    }
 }
 
 /// Records the specs `approve` handed to the start path and answers with a new id.
@@ -143,10 +118,9 @@ final class StartRecorder: @unchecked Sendable {
 struct OpenSessionTests {
     // MARK: Validation
 
-    @Test func inputRulesCoverTitleTicketMessageAndProject() throws {
-        func check(_ title: String = "ok", _ ticket: String? = nil, _ project: String? = nil,
-                   _ message: String = "go") throws -> OpenSessionInput {
-            try OpenSessionInput.validated(title: title, ticketKey: ticket, project: project, message: message)
+    @Test func inputRulesCoverTitleMessageAndProject() throws {
+        func check(_ title: String = "ok", _ project: String? = nil, _ message: String = "go") throws -> OpenSessionInput {
+            try OpenSessionInput.validated(title: title, project: project, message: message)
         }
         #expect(try check("  Fix login  ").title == "Fix login")
         #expect(throws: OpenSessionRejection.self) { try check("   ") }
@@ -154,22 +128,13 @@ struct OpenSessionTests {
         #expect(try check(String(repeating: "t", count: 160)).title.count == 160)
         #expect(throws: OpenSessionRejection.self) { try check("two\nlines") }
 
-        #expect(try check("ok", "EDDP-412").ticketKey == "EDDP-412")
-        #expect(try check("ok", "a_b.c-9").ticketKey == "a_b.c-9")
-        #expect(throws: OpenSessionRejection.self) { try check("ok", "") }
-        #expect(throws: OpenSessionRejection.self) { try check("ok", "EDDP 412") }
-        #expect(throws: OpenSessionRejection.self) { try check("ok", "EDDP/412") }
-        #expect(throws: OpenSessionRejection.self) { try check("ok", "İŞ-1") }
-        #expect(throws: OpenSessionRejection.self) { try check("ok", String(repeating: "k", count: 41)) }
-        #expect(try check("ok", String(repeating: "k", count: 40)).ticketKey?.count == 40)
-
-        #expect(throws: OpenSessionRejection.self) { try check("ok", nil, nil, "  \n ") }
-        #expect(throws: OpenSessionRejection.self) { try check("ok", nil, nil, "a\u{0}b") }
-        #expect(try check("ok", nil, nil, String(repeating: "m", count: 65_536)).message.utf8.count == 65_536)
-        #expect(throws: OpenSessionRejection.self) { try check("ok", nil, nil, String(repeating: "m", count: 65_537)) }
+        #expect(throws: OpenSessionRejection.self) { try check("ok", nil, "  \n ") }
+        #expect(throws: OpenSessionRejection.self) { try check("ok", nil, "a\u{0}b") }
+        #expect(try check("ok", nil, String(repeating: "m", count: 65_536)).message.utf8.count == 65_536)
+        #expect(throws: OpenSessionRejection.self) { try check("ok", nil, String(repeating: "m", count: 65_537)) }
         // The cap counts UTF-8 bytes, not characters.
-        #expect(throws: OpenSessionRejection.self) { try check("ok", nil, nil, String(repeating: "ş", count: 32_769)) }
-        #expect(throws: OpenSessionRejection.self) { try check("ok", nil, "  ") }
+        #expect(throws: OpenSessionRejection.self) { try check("ok", nil, String(repeating: "ş", count: 32_769)) }
+        #expect(throws: OpenSessionRejection.self) { try check("ok", "  ") }
     }
 
     // MARK: Authentication
@@ -223,7 +188,7 @@ struct OpenSessionTests {
         defer { rig.cleanup() }
         for request in [
             rig.wire(title: "  "), rig.wire(title: String(repeating: "x", count: 161)),
-            rig.wire(ticket: "bad key"), rig.wire(message: "   "),
+            rig.wire(message: "   "),
         ] {
             let reply = try await rig.send(request)
             #expect(reply.status == .invalid)
@@ -290,10 +255,9 @@ struct OpenSessionTests {
         let runID = UUID()
         let coordinator = OpenSessionCoordinator(
             catalog: rig.catalog, authorize: { $0 == loose.id && $1 == runID ? loose.id : nil },
-            isRunning: { _ in true }
         )
         func call(project: String?) -> OpenSessionCall {
-            OpenSessionCall(sessionID: loose.id, managedRunID: runID, title: "T", ticketKey: nil,
+            OpenSessionCall(sessionID: loose.id, managedRunID: runID, title: "T",
                             project: project, message: "m")
         }
         let refused = await coordinator.submit(call(project: nil))
@@ -307,83 +271,28 @@ struct OpenSessionTests {
         #expect(await named.value.status == .denied)
     }
 
-    // MARK: Ticket lookup
+    // MARK: Tracker keys are not Loom's (D-69)
 
-    @Test func aTicketMatchesByKeyOrByTitlePrefixInTheSameProjectOnly() async throws {
-        let rig = try await OpenRig.make()
-        defer { rig.cleanup() }
-        let byKey = try await rig.addSession(title: "Anything", ticket: "eddp-412")
-        let byTitle = try await rig.addSession(title: "ENMUSAIT-7 - Raporlar", ticket: nil)
-        let atEnd = try await rig.addSession(title: "ENMUSAIT-8", ticket: nil)
-        let turkish = try await rig.addSession(title: "iş-9 İstanbul düzeltmesi", ticket: nil)
-        try await rig.addSession(title: "EDDP-4123 something else")
-        try await rig.addSession(title: "Fix EDDP-55 login")
-        try await rig.addSession(title: "EDDP-1: colon is not a boundary")
-        let other = try await rig.addSession(title: "OTHER-1 first", project: rig.projectB)
-        let catalog = rig.catalog
-        let projectA = rig.projectA.id, projectB = rig.projectB.id
-
-        #expect(try await catalog.session(projectID: projectA, ticket: "EDDP-412")?.session.id == byKey.id)
-        #expect(try await catalog.session(projectID: projectA, ticket: "eDdP-412")?.session.id == byKey.id)
-        #expect(try await catalog.session(projectID: projectA, ticket: "enmusait-7")?.session.id == byTitle.id)
-        #expect(try await catalog.session(projectID: projectA, ticket: "ENMUSAIT-8")?.session.id == atEnd.id)
-        #expect(try await catalog.session(projectID: projectA, ticket: "İş-9") == nil, "İ is not ASCII i")
-        #expect(try await catalog.session(projectID: projectA, ticket: "iş-9")?.session.id == turkish.id)
-        #expect(try await catalog.session(projectID: projectA, ticket: "EDDP-41") == nil)
-        #expect(try await catalog.session(projectID: projectA, ticket: "EDDP-4123")?.title == "EDDP-4123 something else")
-        #expect(try await catalog.session(projectID: projectA, ticket: "EDDP-55") == nil, "not at the start")
-        #expect(try await catalog.session(projectID: projectA, ticket: "EDDP-1") == nil, "a colon is no boundary")
-        #expect(try await catalog.session(projectID: projectA, ticket: "OTHER-1") == nil, "another project's ticket")
-        #expect(try await catalog.session(projectID: projectB, ticket: "OTHER-1")?.session.id == other.id)
-        // LIKE wildcards in a key are not wildcards.
-        #expect(try await catalog.session(projectID: projectA, ticket: "ENMUSAIT_%") == nil)
-    }
-
-    @Test func theAskingSessionIsNeverItsOwnTicketSessionByTitle() async throws {
-        // Real Claude, 12 Oct: asked to start TEST-9, Claude titled the asking session after that prompt, and the
-        // lookup answered `exists` with the asking session itself, so nothing could ever open.
+    @Test func anExistingSessionOfTheSameNameNeverAnswersARequestAndAKeyFromAnOlderAgentIsIgnored() async throws {
+        // Loom does not look up existing sessions: the asking session's own title starts with the same key (real
+        // Claude names a session after its first prompt) and a stored session carries it too. The request waits for
+        // the user like any other, and an older command that still sends `ticketKey` is not refused for it.
         let rig = try await OpenRig.make()
         defer { rig.cleanup() }
         #expect(try await rig.catalog.recordTerminalTitle(sessionID: rig.requester.id, title: "TEST-9 hello.txt file"))
-        let asked = rig.sendInBackground(rig.wire(title: "TEST-9 - create hello.txt", ticket: "TEST-9"))
-        for _ in 0..<500 where await rig.coordinator.snapshot().isEmpty { try await Task.sleep(for: .milliseconds(10)) }
-        let entry = try #require(await rig.coordinator.snapshot().first)
-        #expect(entry.kind == .open && entry.phase == .waiting)
+        let other = ManagedSession(provider: .claude, workingDirectory: rig.projectA.path)
+        try await rig.catalog.insertSession(other, title: "TEST-9 - create hello.txt", projectID: rig.projectA.id)
+
+        let wire = rig.wire(title: "TEST-9 - create hello.txt")
+        var object = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(wire)) as? [String: Any])
+        object["ticketKey"] = "TEST-9"
+        let data = try JSONSerialization.data(withJSONObject: object)
+        let path = rig.socketPath
+        let asked = Task.detached { try OpenSessionClient.exchange(raw: data, socketPath: path, replyTimeout: 10) }
+        let entry = try #require(await rig.waitForEntries(1).first)
+        #expect(entry.phase == .waiting && entry.title == "TEST-9 - create hello.txt")
         try await rig.coordinator.deny(entry.id)
         #expect(try await asked.value.status == .denied)
-    }
-
-    @Test func aTicketThatHasASessionIsReportedAtOnceWithoutApprovalAndNothingStarts() async throws {
-        let rig = try await OpenRig.make()
-        defer { rig.cleanup() }
-        let live = try await rig.addSession(title: "EDDP-412 Fix login", ticket: "EDDP-412", running: true)
-        let stopped = try await rig.addSession(title: "ENMUSAIT-7 Raporlar")
-
-        let first = try await rig.send(rig.wire(title: "Another go", ticket: "eddp-412"))
-        #expect(first.status == .exists)
-        #expect(first.exitCode == 0)
-        #expect(first.line == "exists \(live.id.uuidString.lowercased()) \"EDDP-412 Fix login\" running")
-        let second = try await rig.send(rig.wire(title: "Again", ticket: "ENMUSAIT-7"))
-        #expect(second.line == "exists \(stopped.id.uuidString.lowercased()) \"ENMUSAIT-7 Raporlar\" stopped")
-
-        // The UI is told: one notice per existing session, nothing waits for approval.
-        let notices = await rig.coordinator.snapshot()
-        #expect(notices.count == 2)
-        #expect(notices.allSatisfy { $0.kind == .exists && $0.phase == .waiting })
-        #expect(Set(notices.compactMap(\.existingSessionID)) == [live.id, stopped.id])
-        #expect(notices.first { $0.existingSessionID == live.id }?.ticketKey == "eddp-412")
-        #expect(notices.allSatisfy { $0.requesterID == rig.requester.id && $0.projectID == rig.projectA.id })
-
-        // Asking again replaces the notice instead of stacking it.
-        _ = try await rig.send(rig.wire(title: "Once more", ticket: "EDDP-412"))
-        #expect(await rig.coordinator.snapshot().count == 2)
-        let recorder = StartRecorder()
-        await #expect(throws: OpenSessionError.self) {
-            _ = try await rig.coordinator.approve(notices[0].id, start: recorder.start)
-        }
-        #expect(recorder.recorded.isEmpty)
-        for notice in await rig.coordinator.snapshot() { try await rig.coordinator.dismiss(notice.id) }
-        #expect(await rig.coordinator.snapshot().isEmpty)
     }
 
     // MARK: Approve, deny and the pending wait
@@ -392,19 +301,18 @@ struct OpenSessionTests {
         let rig = try await OpenRig.make()
         defer { rig.cleanup() }
         let recorder = StartRecorder()
-        let reply = rig.sendInBackground(rig.wire(title: "  Fix login  ", ticket: "EDDP-412", message: "Line one\nLine two"))
+        let reply = rig.sendInBackground(rig.wire(title: "  Fix login  ", message: "Line one\nLine two"))
         let entry = try #require(await rig.waitForEntries(1).first)
-        #expect(entry.kind == .open && entry.phase == .waiting)
+        #expect(entry.phase == .waiting)
         #expect(entry.requesterID == rig.requester.id && entry.requesterTitle == "Planner")
         #expect(entry.projectID == rig.projectA.id && entry.projectName == "alpha")
-        #expect(entry.title == "Fix login" && entry.ticketKey == "EDDP-412" && entry.message == "Line one\nLine two")
+        #expect(entry.title == "Fix login" && entry.message == "Line one\nLine two")
         #expect(recorder.recorded.isEmpty, "nothing starts without an approval call")
 
-        let approval = try await rig.coordinator.approve(entry.id, start: recorder.start)
-        guard case let .started(newID) = approval else { Issue.record("not started"); return }
+        let newID = try await rig.coordinator.approve(entry.id, start: recorder.start)
         let spec = try #require(recorder.recorded.first)
         #expect(spec.requesterID == rig.requester.id && spec.projectID == rig.projectA.id)
-        #expect(spec.title == "Fix login" && spec.ticketKey == "EDDP-412" && spec.message == "Line one\nLine two")
+        #expect(spec.title == "Fix login" && spec.message == "Line one\nLine two")
         let answer = try await reply.value
         #expect(answer.status == .started && answer.sessionID == newID)
         #expect(answer.line == "started \(newID.uuidString.lowercased()) \"Fix login\"")
@@ -432,7 +340,7 @@ struct OpenSessionTests {
         let rig = try await OpenRig.make(replyDelay: 0.3)
         defer { rig.cleanup() }
         let recorder = StartRecorder()
-        let answer = try await rig.send(rig.wire(title: "Slow decision", ticket: "SLOW-1"))
+        let answer = try await rig.send(rig.wire(title: "Slow decision"))
         #expect(answer.status == .pending)
         #expect(answer.exitCode == 0)
         #expect(answer.line.hasPrefix("pending: approve or deny it in Loom"))
@@ -444,8 +352,7 @@ struct OpenSessionTests {
         #expect(try await rig.send(rig.wire(title: "Second")).status == .invalid)
         #expect(recorder.recorded.isEmpty)
 
-        let approval = try await rig.coordinator.approve(kept.id, start: recorder.start)
-        guard case .started = approval else { Issue.record("not started"); return }
+        _ = try await rig.coordinator.approve(kept.id, start: recorder.start)
         #expect(recorder.recorded.map(\.title) == ["Slow decision"])
         #expect(await rig.coordinator.snapshot().isEmpty)
     }
@@ -477,23 +384,6 @@ struct OpenSessionTests {
         recorder.failure = nil
         _ = try await rig.coordinator.approve(retry.id, start: recorder.start)
         #expect(try await next.value.status == .started)
-    }
-
-    @Test func approveRechecksTheTicketAndReportsExistsInsteadOfOpeningACopy() async throws {
-        let rig = try await OpenRig.make()
-        defer { rig.cleanup() }
-        let recorder = StartRecorder()
-        let reply = rig.sendInBackground(rig.wire(title: "Fix login", ticket: "EDDP-9"))
-        let entry = try #require(await rig.waitForEntries(1).first)
-        // Meanwhile the user (or another request) opens a session for the ticket.
-        let appeared = try await rig.addSession(title: "EDDP-9 Fix login", ticket: "EDDP-9")
-        let approval = try await rig.coordinator.approve(entry.id, start: recorder.start)
-        #expect(approval == .exists(appeared.id))
-        #expect(recorder.recorded.isEmpty)
-        let answer = try await reply.value
-        #expect(answer.status == .exists && answer.sessionID == appeared.id)
-        let notice = try #require(await rig.coordinator.snapshot().first)
-        #expect(notice.kind == .exists && notice.existingSessionID == appeared.id)
     }
 
     @Test func quittingAnswersEveryWaitingAgentAndDropsTheList() async throws {

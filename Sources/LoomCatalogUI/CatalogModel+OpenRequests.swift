@@ -11,7 +11,7 @@ extension ConversationIntents {
 /// answer; the runtime starts the session, and the controller adopts its terminal. Nothing here
 /// selects a session by itself.
 extension CatalogModel {
-    /// The requests and notices of one session's agent, in arrival order: the box above its terminal.
+    /// The requests of one session's agent, in arrival order: the box above its terminal.
     public func openRequests(for sessionID: UUID) -> [OpenSessionRequest] {
         openRequests.filter { $0.requesterID == sessionID }
     }
@@ -32,16 +32,9 @@ extension CatalogModel {
         intents?.denyOpen(requestID: id)
     }
 
-    /// "Dismiss" on a failed request or an "already has a session" notice.
+    /// "Dismiss" on a failed request.
     public func dismissOpenRequest(_ id: UUID) {
         guard actionsAvailable else { return }
         intents?.dismissOpen(requestID: id)
-    }
-
-    /// "Show Session" on an "already has a session" notice: the one place a request changes the selection,
-    /// and only because the user asked.
-    public func showExistingSession(of request: OpenSessionRequest) {
-        guard let id = request.existingSessionID else { return }
-        select(id)
     }
 }

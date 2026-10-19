@@ -414,7 +414,7 @@ public actor ChatSessionDriver {
 
     // MARK: Start, resume, stop
 
-    /// Starts this (new) session in the Chat face with the draft's title, ticket, workspace and choices. Ready when
+    /// Starts this (new) session in the Chat face with the draft's workspace and choices. Ready when
     /// it returns: the CLI answered `initialize`; the draft's first message (if any) was then sent over stdin.
     /// `onReady` runs once `initialize` succeeded, before the first message goes out (V19: "started" is told then,
     /// not when the child is spawned). A start that fails before that throws with nothing kept: the caller still has

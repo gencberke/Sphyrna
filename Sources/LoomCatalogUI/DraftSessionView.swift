@@ -34,7 +34,6 @@ struct DraftSessionView: View {
             model.prepareNewSession()
             model.newSession.open(projectID: projectID)
             model.loadDraftBranch(projectID: projectID)
-            model.refreshTicket(projectID: projectID)
         }
     }
 }
@@ -129,7 +128,6 @@ private struct BranchStrip: View {
 
     private var draft: SessionDraft { model.newSession.draft(for: projectID) ?? SessionDraft(projectID: projectID) }
     private var branch: GitBranch? { model.newSession.branch(for: projectID) }
-    private var ticket: String? { model.newSession.ticketStatus(for: projectID).key }
     /// A folder with no Git branch has nothing to branch from.
     private var canBranch: Bool { projectID != nil && (branch.map { $0 != .unavailable } ?? false) }
 
@@ -138,7 +136,7 @@ private struct BranchStrip: View {
             Button { showsChoices.toggle() } label: {
                 HStack(spacing: NewSessionLayout.chipSpacing) {
                     Image(systemName: "arrow.triangle.branch").font(LoomTheme.Typography.small)
-                    // Cut at the end: the start of a worktree or branch name (its ticket key) is what identifies it.
+                    // Cut at the end: the start of a worktree or branch name is what identifies it.
                     Text(chipText).font(LoomTheme.Typography.smallMedium).lineLimit(1).truncationMode(.tail)
                     Image(systemName: "chevron.down").font(LoomTheme.Typography.chevron)
                         .foregroundStyle(LoomTheme.Text.secondaryStyle)
@@ -147,7 +145,7 @@ private struct BranchStrip: View {
             .buttonStyle(ChipButtonStyle(emphasized: showsChoices || draft.branchKind != .stay))
             .disabled(projectID == nil)
             .popover(isPresented: $showsChoices, arrowEdge: .bottom) {
-                BranchChoices(model: model, projectID: projectID, canBranch: canBranch, ticket: ticket)
+                BranchChoices(model: model, projectID: projectID, canBranch: canBranch)
             }
             .help(draft.branchKind == .stay ? "Where the session starts: this branch, a new branch or a new worktree"
                   : chipText)
@@ -176,8 +174,8 @@ private struct BranchStrip: View {
             case .unavailable?: projectID == nil ? "No project folder" : "Not a Git folder"
             case nil: "Branch"
             }
-        case .newBranch: "New branch " + model.draftBranchName(draft, ticket: ticket)
-        case .newWorktree: "New worktree " + model.draftBranchName(draft, ticket: ticket)
+        case .newBranch: "New branch " + model.draftBranchName(draft)
+        case .newWorktree: "New worktree " + model.draftBranchName(draft)
         }
     }
 
@@ -198,7 +196,6 @@ private struct BranchChoices: View {
     let model: CatalogModel
     let projectID: UUID?
     let canBranch: Bool
-    let ticket: String?
     @State private var name = ""
 
     private var draft: SessionDraft { model.newSession.draft(for: projectID) ?? SessionDraft(projectID: projectID) }
@@ -208,7 +205,7 @@ private struct BranchChoices: View {
         default: "the current branch"
         }
     }
-    private var suggestion: String { NewSessionBranchNames.suggest(ticket: ticket, text: draft.text) }
+    private var suggestion: String { NewSessionBranchNames.suggest(text: draft.text) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: LoomTheme.Space.headerSpacing) {
@@ -221,7 +218,7 @@ private struct BranchChoices: View {
                     .onSubmit(commitName)
                     .onChange(of: name) { _, value in model.setDraftBranch(draft.branchKind, name: value, projectID: projectID) }
                     .accessibilityIdentifier("draft-branch-name")
-                if !NewSessionBranchNames.isPlausible(model.draftBranchName(draft, ticket: ticket)) {
+                if !NewSessionBranchNames.isPlausible(model.draftBranchName(draft)) {
                     Text("That is not a valid branch name.").font(LoomTheme.Typography.caption)
                         .foregroundStyle(LoomTheme.OnPopover.failure)
                 }

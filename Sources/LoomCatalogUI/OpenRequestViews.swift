@@ -22,8 +22,7 @@ struct OpenRequestBox: View {
         let content = OpenRequestBoxContent(request)
         VStack(alignment: .leading, spacing: LoomTheme.Space.requestLineSpacing * 2) {
             HStack(alignment: .top, spacing: LoomTheme.Space.requestSpacing) {
-                Image(systemName: content.needsDecision ? "plus.square.on.square" : "info.circle")
-                    .foregroundStyle(content.needsDecision ? LoomTheme.Status.attention : LoomTheme.Text.secondary)
+                Image(systemName: "plus.square.on.square").foregroundStyle(LoomTheme.Status.attention)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: LoomTheme.Space.requestLineSpacing) {
                     Text(content.heading).font(LoomTheme.Typography.smallMedium)
@@ -54,14 +53,11 @@ struct OpenRequestBox: View {
             }
         }
         .padding(LoomTheme.Space.requestPadding)
-        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.callout).fill(background(content)))
+        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.callout)
+            .fill(LoomTheme.Status.attention.opacity(LoomTheme.Status.tintOpacity)))
         .fadesIn()
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(content.needsDecision ? "Request to open a session: \(request.title)" : content.heading)
-    }
-
-    private func background(_ content: OpenRequestBoxContent) -> Color {
-        content.needsDecision ? LoomTheme.Status.attention.opacity(LoomTheme.Status.tintOpacity) : LoomTheme.Surface.control
+        .accessibilityLabel("Request to open a session: \(request.title)")
     }
 
     /// The first lines of the message; the rest in a bounded scroll area on request.
@@ -94,8 +90,6 @@ struct OpenRequestBox: View {
             // Neither button is the default action: Return belongs to the terminal below.
             Button("Open Session") { model.approveOpenRequest(request.id) }
                 .buttonStyle(AccentButtonStyle(kind: .filled)).disabled(content.actionsDisabled)
-        case .showSession:
-            Button("Show Session") { model.showExistingSession(of: request) }
         case .dismiss:
             Button("Dismiss") { model.dismissOpenRequest(request.id) }
         }

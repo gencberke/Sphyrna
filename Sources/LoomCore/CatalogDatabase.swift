@@ -245,8 +245,9 @@ final class CatalogDatabase: @unchecked Sendable {
         }
     }
 
-    /// `sessions.ticket_key` and `sessions.opened_by` (D-40): the ticket an agent named when it
-    /// asked for the session, and the session that asked. Added to schema 3 on open exactly like
+    /// `sessions.ticket_key` and `sessions.opened_by` (D-40): the tracker key an agent named when it
+    /// asked for the session (nothing reads or writes it since D-69; the column stays so old rows and
+    /// older builds keep working), and the session that asked. Added to schema 3 on open exactly like
     /// `last_activity_at`: two nullable columns, no `user_version` bump, so a 0.3.0 build (which
     /// names its own columns in every statement) still opens and writes the catalog; rows it
     /// writes meanwhile read as NULL here.

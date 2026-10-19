@@ -173,14 +173,12 @@ public struct RuntimeLaunch: Sendable {
 public struct SessionOpening: Equatable, Sendable {
     public let title: String
     public let firstMessage: String
-    public let ticketKey: String?
     /// The session whose agent asked.
     public let openedBy: UUID
 
-    public init(title: String, firstMessage: String, ticketKey: String?, openedBy: UUID) {
+    public init(title: String, firstMessage: String, openedBy: UUID) {
         self.title = title
         self.firstMessage = firstMessage
-        self.ticketKey = ticketKey
         self.openedBy = openedBy
     }
 }
@@ -343,8 +341,7 @@ public actor SessionRuntime {
                       let run = context.session.currentRun, run.id == runID, run.state == .running
                 else { return nil }
                 return context.activeSessionID
-            },
-            isRunning: { await supervisor.session(id: $0)?.currentRun != nil }
+            }
         )
         relay.runtime = self
     }
@@ -546,7 +543,7 @@ public actor SessionRuntime {
             opening: opening.map {
                 ProviderLaunchProfile.ClaudeOpening(title: $0.title, firstMessage: $0.firstMessage)
             } ?? draft.map {
-                ProviderLaunchProfile.ClaudeOpening(title: $0.title ?? "", firstMessage: $0.firstMessage)
+                ProviderLaunchProfile.ClaudeOpening(title: "", firstMessage: $0.firstMessage)
             },
             face: face
         )
@@ -556,8 +553,7 @@ public actor SessionRuntime {
         do {
             try await supervisor.createSession(
                 ManagedSession(id: sessionID, provider: .claude, workingDirectory: prepared.folder),
-                projectID: projectID, title: opening?.title ?? draft?.title,
-                ticketKey: opening?.ticketKey ?? draft?.ticketKey, openedBy: opening?.openedBy
+                projectID: projectID, title: opening?.title, openedBy: opening?.openedBy
             )
             await recordLaunchChoices(choices, sessionID: sessionID)
             startingSessions.insert(sessionID)
