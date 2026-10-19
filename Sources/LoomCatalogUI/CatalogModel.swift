@@ -369,6 +369,8 @@ public final class CatalogModel {
     @ObservationIgnored private let nowResolution: TimeInterval = 10
 
     @ObservationIgnored let catalog: SessionCatalog?
+    /// The launch model of the sessions the header and the inspector show (`SessionLaunchModels`).
+    @ObservationIgnored let launchModels = SessionLaunchModels()
     @ObservationIgnored private let events: SessionEventHub
     @ObservationIgnored private let preferences: UIPreferencesStore
     @ObservationIgnored var lists: [CatalogListKey: SessionListModel] = [:]

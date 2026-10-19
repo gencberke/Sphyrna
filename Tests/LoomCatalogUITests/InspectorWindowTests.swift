@@ -153,7 +153,7 @@ struct InspectorWindowTests {
         #expect(labels.contains("Agents, 2") || labels.contains("Agents"), "labels \(labels)")
     }
 
-    @Test func theOverviewDrawsTheContextRingAndNamesOnlyTheVisibleSession() async throws {
+    @Test func theOverviewDrawsTheContextRingAndNamesOnlyTheSelectedSession() async throws {
         enableAccessibilityTree()
         let rig = try await InspectorRig.make(hosted: true)
         defer { rig.cleanup() }
@@ -167,7 +167,9 @@ struct InspectorWindowTests {
         rig.model.usage = usage
         rig.model.select(a)
         await rig.settle()
-        #expect(index.lookups.isEmpty, "a closed inspector reads nothing")
+        await usage.settle()
+        // The header's model segment shows the context of the selected terminal session, inspector or not (fix round 3 F).
+        #expect(index.lookups.last == ["conv-0"] && usage.contexts["conv-0"]?.tokens == 84_200)
 
         rig.model.toggleInspector()
         await rig.settle()
@@ -179,20 +181,22 @@ struct InspectorWindowTests {
         #expect(labels.contains("Overview"), "labels \(labels)")
         #expect(labels.contains { $0.hasPrefix("Context, 84") }, "labels \(labels)")
 
-        // Another session without an open inspector, and a tab without the ring, name nobody.
+        // Only the selected session is named: another one has no reading in the index, and the first loses its entry.
         rig.model.select(b)
         await rig.settle()
         await usage.settle()
         #expect(usage.contexts.isEmpty)
+        #expect(index.lookups.last == ["conv-1"])
+        // A tab without the ring still names the selected session: the header's segment shows it.
         rig.model.select(a)
         rig.model.selectInspectorTab(.agents)
         await rig.settle()
         await usage.settle()
-        #expect(usage.contexts.isEmpty)
+        #expect(usage.contexts["conv-0"]?.tokens == 84_200)
         rig.model.selectInspectorTab(.overview)
         rig.model.toggleInspector()
         await rig.settle()
-        #expect(rig.model.inspectorContextSessions.isEmpty)
+        #expect(rig.model.inspectorContextSessions == ["conv-0"])
     }
 }
 }

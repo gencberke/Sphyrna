@@ -62,14 +62,15 @@ extension CatalogModel {
         if tab != .agents { closeSubagent() }
     }
 
-    /// The sessions whose context the inspector shows right now: the selected Claude session while its
-    /// inspector is open on Overview. These are the "visible sessions" of `UsageModel.trackContext`.
+    /// The sessions whose context is shown right now: the selected Claude session while its inspector is open on
+    /// Overview, while the ring of its live Chat composer is on screen (V17), and while the header's model segment is
+    /// (every face without the bar, fix round 3 F). These are the "visible sessions" of `UsageModel.trackContext`.
     var inspectorContextSessions: [String] {
         guard let row = selectedRow, row.record.session.provider == .claude,
               let conversationID = row.record.session.providerConversationID else { return [] }
-        // The inspector's Overview shows the context; so does the ring of a live Chat session's composer (V17).
         let inspectorShows = inspector.isOpen(for: row.id) && inspector.tab == .overview
-        return inspectorShows || runEndpoint(of: row) == .pipe ? [conversationID] : []
+        let headerShows = detailRoute.showsSessionHeader && headerShowsModelSegment(row)
+        return inspectorShows || runEndpoint(of: row) == .pipe || headerShows ? [conversationID] : []
     }
 
     /// Hands `inspectorContextSessions` to the usage model: one indexed lookup per named session, and none

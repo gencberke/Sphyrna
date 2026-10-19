@@ -123,12 +123,14 @@ struct DetailHeader: View {
 
 /// A selected session in the header row (D-53, "A with the branch"): the provider mark, then the title,
 /// which gives way first; at fixed places on the right the state pill (or a transient text in its place),
-/// the project chip ending with the branch, a hairline and the control group (`HeaderFlow`).
+/// the project chip ending with the branch, the model segment where the face has no composer bar, a hairline and the
+/// control group (`HeaderFlow`).
 struct SessionHeaderRow: View {
     let model: CatalogModel
     let row: SessionRowModel
 
     var body: some View {
+        let _ = HeaderRenderProbe.row(row.id)
         HStack(spacing: LoomTheme.Space.detailSpacing) {
             ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.providerIconHeader)
             HeaderFlow {
@@ -137,6 +139,11 @@ struct SessionHeaderRow: View {
                 status
                 if let chip = model.headerChip(of: row.record) {
                     ProjectBranchChip(chip: chip).headerSlot(.chip, dropsBranch: chip.dropsBranch)
+                }
+                // The model and the context fill, on every face without the composer bar (fix round 3 F). It reads the
+                // usage entry in its own body: a reading redraws this segment, not the row.
+                if model.headerShowsModelSegment(row) {
+                    HeaderModelSegment(model: model, row: row).headerSlot(.model)
                 }
                 HeaderRule().headerSlot(.rule)
                 // The inspector toggle sits beside the control group and shares its place in the row.

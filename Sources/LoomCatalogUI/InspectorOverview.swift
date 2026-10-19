@@ -10,17 +10,20 @@ struct InspectorOverviewContent: Equatable {
     let reason: String?
     let project: String?
     let branch: String?
+    /// The model's short name (the header segment's source); nil for a session with no reading and no model picked.
+    let model: String?
     let folder: String
     let lastActivity: Date
     /// "2 running · 1 finished"; nil without subagents.
     let agents: String?
 
-    @MainActor init(row: SessionRowModel, project: String?, branch: String?) {
+    @MainActor init(row: SessionRowModel, project: String?, branch: String?, model: String? = nil) {
         let record = row.record
         status = row.indicator.label ?? (record.lifecycle == .active ? "Not running" : "—")
         reason = row.live?.displayReason.flatMap(InspectorReasonText.line)
         self.project = project
         self.branch = branch
+        self.model = model
         folder = (record.session.workingDirectory as NSString).abbreviatingWithTildeInPath
         lastActivity = record.lastActivityAt
         agents = Self.agents(row.live?.subagents ?? [])
@@ -71,7 +74,8 @@ struct InspectorOverview: View {
     var body: some View {
         let chip = model.headerChip(of: row.record)
         let content = InspectorOverviewContent(
-            row: row, project: model.projectName(for: row.record), branch: chip?.branch)
+            row: row, project: model.projectName(for: row.record), branch: chip?.branch,
+            model: model.modelContent(of: row.record)?.name)
         ScrollView {
             VStack(alignment: .leading, spacing: LoomTheme.Inspector.sectionGap) {
                 InspectorSection(title: "Session") {
@@ -80,6 +84,7 @@ struct InspectorOverview: View {
                         if let reason = content.reason { InspectorFact("Why", reason) }
                         InspectorFact("Project", content.project ?? "No project")
                         if let branch = content.branch { InspectorFact("Branch", branch, mono: true) }
+                        if let name = content.model { InspectorFact("Model", name) }
                         InspectorFact("Folder", content.folder, mono: true)
                         InspectorFact("Last activity",
                                       LoomDateFormat.dateTime(content.lastActivity))
@@ -100,6 +105,7 @@ struct InspectorOverview: View {
             .padding(LoomTheme.Inspector.bodyInset)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .loadsLaunchModel(model, row: row)
         .accessibilityIdentifier("inspector-overview")
     }
 

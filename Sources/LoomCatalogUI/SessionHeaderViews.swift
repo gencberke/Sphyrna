@@ -287,8 +287,8 @@ struct HeaderControlGroup<MenuItems: View>: View {
 // MARK: Layout
 
 /// The places of the header row's flexible part, from the left: the title, then at the trailing edge the
-/// status (pill or plain text), the project chip, the hairline and the control group.
-enum HeaderSlot: Hashable { case title, status, chip, rule, group }
+/// status (pill or plain text), the project chip, the model segment, the hairline and the control group.
+enum HeaderSlot: Hashable { case title, status, chip, model, rule, group }
 
 struct HeaderSlotKey: LayoutValueKey { static let defaultValue = HeaderSlot.title }
 /// Whether the status may shorten when the row is too narrow for everything (a transient text, not the pill).
@@ -305,9 +305,9 @@ extension View {
 }
 
 /// The widths of the header row's parts for a given width, by the rules of the design: the title gives way
-/// first, down to `titleMinWidth`; then the chip gives up its branch; then the project name shortens, down
-/// to `chipFloorWidth`. The pill and the control group never shorten. Only when even that is not enough does
-/// the title shrink further, and last a status that may (a transient text).
+/// first, down to `titleMinWidth`; then the model segment goes, before the branch does; then the chip gives up its
+/// branch; then the project name shortens, down to `chipFloorWidth`. The pill and the control group never shorten.
+/// Only when even that is not enough does the title shrink further, and last a status that may (a transient text).
 struct HeaderFlowPlan: Equatable {
     struct Status: Equatable {
         var ideal: CGFloat
@@ -323,26 +323,42 @@ struct HeaderFlowPlan: Equatable {
     var status: CGFloat?
     var chip: CGFloat?
     var showsBranch: Bool
+    /// The model segment's width; nil when it is dropped (or there is none).
+    var model: CGFloat?
 
-    static func make(width: CGFloat, title: CGFloat, status: Status?, chip: Chip?, rule: CGFloat, group: CGFloat,
-                     spacing: CGFloat) -> HeaderFlowPlan {
+    /// `model` is the segment's full width, nil or 0 for none. It is drawn only with the title at its floor or more and
+    /// the chip whole; otherwise it goes before the chip gives up anything.
+    static func make(width: CGFloat, title: CGFloat, status: Status?, chip: Chip?, model: CGFloat? = nil, rule: CGFloat,
+                     group: CGFloat, spacing: CGFloat) -> HeaderFlowPlan {
         let titleFloor = min(title, LoomTheme.Header.titleMinWidth)
         var statusWidth = status?.ideal
+        let modelWidth = model.flatMap { $0 > 0 ? $0 : nil }
         /// What the items right of the title take, each with the gap before it.
-        func rest(chip chipWidth: CGFloat?) -> CGFloat {
-            [statusWidth, chipWidth, rule > 0 ? rule : nil, group > 0 ? group : nil].compactMap { $0 }
+        func rest(chip chipWidth: CGFloat?, model shown: CGFloat? = nil) -> CGFloat {
+            [statusWidth, chipWidth, shown, rule > 0 ? rule : nil, group > 0 ? group : nil].compactMap { $0 }
                 .reduce(0) { $0 + spacing + $1 }
         }
-        func room(_ chipWidth: CGFloat?) -> CGFloat { width - rest(chip: chipWidth) }
-        func result(title room: CGFloat, chip chipWidth: CGFloat?, showsBranch: Bool) -> HeaderFlowPlan {
+        func room(_ chipWidth: CGFloat?, model shown: CGFloat? = nil) -> CGFloat { width - rest(chip: chipWidth, model: shown) }
+        func result(title room: CGFloat, chip chipWidth: CGFloat?, showsBranch: Bool, model shown: CGFloat? = nil) -> HeaderFlowPlan {
             var titleWidth = max(0, min(title, room))
             if room < 0, let status, status.shrinks {
                 statusWidth = max(0, status.ideal + room)
                 titleWidth = 0
             }
-            return HeaderFlowPlan(title: titleWidth, status: statusWidth, chip: chipWidth, showsBranch: showsBranch)
+            return HeaderFlowPlan(title: titleWidth, status: statusWidth, chip: chipWidth, showsBranch: showsBranch, model: shown)
         }
 
+        // The model segment comes first in the order of giving way: with the chip whole it needs the title at its floor.
+        if let modelWidth {
+            if let chip {
+                if room(chip.full, model: modelWidth) >= titleFloor {
+                    return result(title: room(chip.full, model: modelWidth), chip: chip.full,
+                                  showsBranch: chip.full > chip.compact, model: modelWidth)
+                }
+            } else if room(nil, model: modelWidth) >= titleFloor {
+                return result(title: room(nil, model: modelWidth), chip: nil, showsBranch: false, model: modelWidth)
+            }
+        }
         guard let chip else { return result(title: room(nil), chip: nil, showsBranch: false) }
         if room(chip.full) >= titleFloor {
             return result(title: room(chip.full), chip: chip.full, showsBranch: chip.full > chip.compact)
@@ -378,6 +394,7 @@ struct HeaderFlow: Layout {
                 HeaderFlowPlan.Status(ideal: $0.sizeThatFits(.unspecified).width, shrinks: $0[HeaderShrinksKey.self])
             },
             chip: chip,
+            model: map[.model]?.sizeThatFits(.unspecified).width,
             rule: map[.rule]?.sizeThatFits(.unspecified).width ?? 0,
             group: map[.group]?.sizeThatFits(.unspecified).width ?? 0,
             spacing: LoomTheme.Space.detailSpacing)
@@ -389,7 +406,7 @@ struct HeaderFlow: Layout {
         if let width = proposal.width, width.isFinite { return CGSize(width: width, height: height) }
         // Unconstrained: everything at its ideal width.
         let ideal = plan(width: .greatestFiniteMagnitude / 4, map)
-        let width = ideal.title + [ideal.status, ideal.chip,
+        let width = ideal.title + [ideal.status, ideal.chip, ideal.model,
                                    map[.rule]?.sizeThatFits(.unspecified).width,
                                    map[.group]?.sizeThatFits(.unspecified).width].compactMap { $0 }
             .reduce(0) { $0 + LoomTheme.Space.detailSpacing + $1 }
@@ -411,6 +428,12 @@ struct HeaderFlow: Layout {
         }
         put(.group, width: map[.group]?.sizeThatFits(.unspecified).width)
         put(.rule, width: map[.rule]?.sizeThatFits(.unspecified).width)
+        // The model segment draws in its full form only when it is proposed its width and a hair more; otherwise it draws
+        // nothing (it is placed all the same, at no width).
+        if let model = map[.model], plan.model == nil {
+            model.place(at: CGPoint(x: edge, y: bounds.midY), anchor: .trailing, proposal: ProposedViewSize(width: 0, height: nil))
+        }
+        put(.model, width: plan.model, extra: 0.25)
         // The chip is proposed its planned width; a hair more keeps the full form when the plan chose it.
         put(.chip, width: plan.chip, extra: plan.showsBranch ? 0.25 : 0)
         put(.status, width: plan.status)

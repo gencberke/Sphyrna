@@ -333,6 +333,9 @@ enum LoomTheme {
         static let chipNeutralTone = overlay(dark: chipNeutralWash, light: 0.06)
         static let chipNeutral = chipNeutralTone.color
 
+        // The model segment after the chip: the ring (or a token count) and the model's name, plain text.
+        static let modelGap: CGFloat = 6
+
         // The hairline before the control group, and the group.
         static let ruleHeight: CGFloat = 16
         static let ruleMargin: CGFloat = 2
