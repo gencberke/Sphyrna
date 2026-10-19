@@ -330,7 +330,9 @@ directory when every scope is shown empty; leftovers surface as `CatalogModel.ow
   spawner is a fourth path: `HelperSpawner.scoped` puts an environment shell or a `--version`/`--help` probe in a scope
   when a `scopeLauncher` is configured (the app always has one), while `HelperSpawner.local`, the default, starts it as
   Loom's own child in its own process group, used when no scope launcher exists (tests and the probe) and killed by group on
-  abort. Every long-lived provider process still starts in a scope.
+  abort. In a scope the environment job observes nothing, since the scope owns what the shell starts: a shell that the host
+  reaped before the job registered it is a finished capture, not a missing identity (`RunScopeTests`). Every long-lived
+  provider process still starts in a scope.
 - **Pipe children.** A run's child is either a PTY child (`SPAWN_PTY`: `launch`, `TerminalEndpoint`) or a pipe child
   (`SPAWN_STDIO`: `launchPipes`, `PipeEndpoint`). For a pipe child the host receives three descriptors (stdin, stdout, stderr)
   instead of a PTY master, and the child is otherwise the same: same scope, ledger, markers and same-session guard. The run
