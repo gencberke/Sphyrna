@@ -202,15 +202,24 @@ struct HomeUsage: View {
     }
 }
 
-/// "5h 62% left · Wk 74% left · on pace" on one line. A click shows the meters and the pace of each window in a popover;
-/// the tooltip says it in words.
-private struct HomePlanLimitsLine: View {
+/// "5h 62% left · Wk 74% left · on pace" on one line when it fits. When it does not (a narrow card, a limit that runs out on
+/// another day), the windows stay on the first line and the verdict takes the second, so the time a limit runs out is never
+/// cut. A click shows the meters and the pace of each window in a popover; the tooltip says it in words.
+struct HomePlanLimitsLine: View {
     let line: PlanLimitsLine
     let paces: [PlanPace]
     let now: Date
     let timeZone: TimeZone
     let updated: String?
     @State private var open = false
+
+    init(line: PlanLimitsLine, paces: [PlanPace], now: Date, timeZone: TimeZone, updated: String?) {
+        self.line = line
+        self.paces = paces
+        self.now = now
+        self.timeZone = timeZone
+        self.updated = updated
+    }
 
     var body: some View {
         Button { open.toggle() } label: {
@@ -219,7 +228,15 @@ private struct HomePlanLimitsLine: View {
                     .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
                     .frame(width: LoomTheme.Layout.indicatorSlot.width)
                     .accessibilityHidden(true)
-                text.font(LoomTheme.Typography.small).lineLimit(1).truncationMode(.tail)
+                ViewThatFits(in: .horizontal) {
+                    text.lineLimit(1)
+                    VStack(alignment: .leading, spacing: LoomTheme.Home.limitsWrapSpacing) {
+                        windowsText.lineLimit(1).truncationMode(.tail)
+                        if let verdictText { verdictText.lineLimit(1).truncationMode(.tail) }
+                    }
+                    .padding(.vertical, LoomTheme.Home.limitsWrapSpacing)
+                }
+                .font(LoomTheme.Typography.small)
                 Spacer(minLength: LoomTheme.Space.headerSpacing)
                 Image(systemName: "chevron.right").font(LoomTheme.Typography.chevron)
                     .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle).accessibilityHidden(true)
@@ -243,24 +260,32 @@ private struct HomePlanLimitsLine: View {
         .accessibilityIdentifier("home-limits")
     }
 
-    /// Names in secondary, the figure in primary (attention when it is low), the verdict in secondary or attention.
-    private var text: Text {
-        let dim = AnyShapeStyle(LoomTheme.Text.secondaryOnCardStyle)
-        func joined(_ left: Text, _ right: Text) -> Text { Text("\(left)\(right)") }
-        let dot = Text(" \u{00B7} ").foregroundStyle(dim)
+    private var dim: AnyShapeStyle { AnyShapeStyle(LoomTheme.Text.secondaryOnCardStyle) }
+    private var dot: Text { Text(" \u{00B7} ").foregroundStyle(dim) }
+
+    /// Names in secondary, the figure in primary (attention when it is low).
+    private var windowsText: Text {
         var result = Text("")
         for (index, window) in line.windows.enumerated() {
             let figure = Text(window.left).fontWeight(.semibold)
                 .foregroundStyle(window.isLow ? AnyShapeStyle(LoomTheme.Status.attentionLight) : AnyShapeStyle(LoomTheme.Text.primary))
-            let part = joined(Text(window.name + " ").foregroundStyle(dim), figure)
-            result = index == 0 ? part : joined(joined(result, dot), part)
-        }
-        if let verdict = line.verdict {
-            let words = Text(verdict.text).foregroundStyle(
-                verdict.isWarning ? AnyShapeStyle(LoomTheme.Status.attentionLight) : dim)
-            result = joined(joined(result, dot), words)
+            let part = Text("\(Text(window.name + " ").foregroundStyle(dim))\(figure)")
+            result = index == 0 ? part : Text("\(result)\(dot)\(part)")
         }
         return result
+    }
+
+    /// The verdict in secondary, or attention when a limit runs out; nil early in a window.
+    private var verdictText: Text? {
+        line.verdict.map { verdict in
+            Text(verdict.text).foregroundStyle(verdict.isWarning ? AnyShapeStyle(LoomTheme.Status.attentionLight) : dim)
+        }
+    }
+
+    /// The whole line: the windows, then the verdict.
+    private var text: Text {
+        guard let verdictText else { return windowsText }
+        return Text("\(windowsText)\(dot)\(verdictText)")
     }
 }
 

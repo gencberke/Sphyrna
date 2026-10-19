@@ -190,7 +190,8 @@ extension LoomTheme {
 
         static let noticeFont = Font.system(size: 11.5)
         /// The line above the field that says its text goes with the card above (V18).
-        static let cardNoteFont = Font.system(size: 11.5, weight: .medium)
+        static let cardNoteSize: CGFloat = 11.5
+        static let cardNoteFont = Font.system(size: cardNoteSize, weight: .medium)
         static let cardNoteIcon = Font.system(size: 10.5, weight: .semibold)
         static let cardNoteColor = Status.attention
         static let cardNoteTop: CGFloat = 12

@@ -309,11 +309,15 @@ final class ChatComposerModel {
     }
 
     /// What the text does to the card shown, in the composer's own words (CHAT-SPEC → Send button): shown above the field.
-    var cardNoteHint: String? {
-        switch cards?.shownKind {
-        case .approval?: "Your text goes with the request above. If you deny, Claude gets it as your note."
-        case .question?: "Your text goes with the question above. It is your own answer."
-        case .plan?: "Your text goes with the plan above. If you keep planning, Claude gets it as feedback."
+    var cardNoteHint: String? { Self.cardNoteHint(for: cards?.shownKind) }
+
+    /// The hint for a card of `kind`. The composer is one line and a bar while a card waits, so each hint fits one line of
+    /// the narrowest composer (a 780 pt window with the sidebar open) and is never cut (`ReleaseBReviewTests`).
+    static func cardNoteHint(for kind: ChatPendingRequest.Kind?) -> String? {
+        switch kind {
+        case .approval?: "If you deny, Claude gets this as your note."
+        case .question?: "Claude gets this as your own answer."
+        case .plan?: "If you keep planning, Claude gets this as feedback."
         case nil: nil
         }
     }
