@@ -520,10 +520,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let evidence = evidenceToolchains(root: root, supervisor: supervisor, origin: origin)
         let toolchains: ProviderToolchainResolver = evidence ?? { provider in try await system.toolchain(for: provider) }
         claudeToolchain.provide(toolchains)
-        // A delete targets the folder the login shell names (DP-CP4-8); an acceptance run has fixture providers.
+        // A delete targets the folder the login shell names (DP-CP4-8); an acceptance run has fixture providers. It shares
+        // the toolchains' capture, so a launch runs the login shell once.
         var loginEnvironment: (@Sendable () async throws -> [String: String])?
         if evidence == nil {
-            loginEnvironment = { try await supervisor.terminalEnvironment(origin: origin).environment }
+            loginEnvironment = { try await system.terminalEnvironment().environment }
         }
         // The commit names the build for Codex; CFBundleVersion is only a growing number.
         let info = Bundle.main.infoDictionary

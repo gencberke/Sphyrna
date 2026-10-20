@@ -44,7 +44,7 @@ public final class CleanupReviewModel {
     public private(set) var results: [UUID: CleanupRowResult] = [:]
     /// A dismissed due review stops showing the info line until the next one is due.
     public private(set) var dismissed = false
-    /// The four cleanup numbers in force (the Cleanup part of the page).
+    /// The two cleanup numbers in force (the Cleanup part of the page).
     public private(set) var settings: CleanupSettings = .standard
     /// The numbers changed after the list on screen was made; the next review uses them.
     public private(set) var settingsChangedSinceReview = false

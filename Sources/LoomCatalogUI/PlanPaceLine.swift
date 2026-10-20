@@ -122,12 +122,8 @@ struct PlanLimitsLine: Equatable {
     struct Window: Equatable {
         /// `5-hour window` or `Weekly`, for VoiceOver.
         let title: String
-        /// `5h` or `Wk`.
-        let name: String
         /// `62% left`.
         let left: String
-        /// Under 20 % left (the footer chip's rule).
-        let isLow: Bool
     }
 
     enum Verdict: Equatable {
@@ -142,8 +138,6 @@ struct PlanLimitsLine: Equatable {
             case let .reached(name): "\(name) limit reached"
             }
         }
-
-        var isWarning: Bool { self != .onPace }
     }
 
     let windows: [Window]
@@ -152,7 +146,7 @@ struct PlanLimitsLine: Equatable {
 
     init(paces: [PlanPace], now: Date, timeZone: TimeZone) {
         windows = paces.map {
-            Window(title: PlanPaceText.title($0.kind), name: $0.kind.chipName, left: PlanPaceText.remaining($0), isLow: PlanPaceLine.isLow($0))
+            Window(title: PlanPaceText.title($0.kind), left: PlanPaceText.remaining($0))
         }
         if let over = paces.first(where: { $0.status == .overPace }) {
             if over.usedFraction < 1, let runsOutAt = over.runsOutAt {
@@ -165,11 +159,6 @@ struct PlanLimitsLine: Equatable {
         } else {
             verdict = nil
         }
-    }
-
-    /// The line as the Home card shows it.
-    var text: String {
-        (windows.map { "\($0.name) \($0.left)" } + [verdict?.text].compactMap { $0 }).joined(separator: " \u{00B7} ")
     }
 
     /// For VoiceOver: "Plan limits, 5-hour window 62% left, weekly 74% left, on pace".

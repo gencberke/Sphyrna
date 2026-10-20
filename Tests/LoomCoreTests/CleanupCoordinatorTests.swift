@@ -181,10 +181,14 @@ struct CleanupCoordinatorTests {
         var failing: Set<UUID> = []
         var beforeDelete: (@Sendable (UUID) async -> Void)?
         var worktreeCalls = 0
+        /// The ids of each `previews` call (one entry per scan).
+        var previewBatches: [[UUID]] = []
 
         var deletedIDs: [UUID] { lock.withLock { deleted } }
         func record(_ id: UUID) { lock.withLock { deleted.append(id) } }
         func countWorktreeCall() { lock.withLock { worktreeCalls += 1 } }
+        func countPreviews(_ ids: [UUID]) { lock.withLock { previewBatches.append(ids) } }
+        var previewScans: Int { lock.withLock { previewBatches.count } }
     }
 
     private struct Fixture {
@@ -207,10 +211,13 @@ struct CleanupCoordinatorTests {
                 recorder.countWorktreeCall()
                 return await worktree(directory)
             },
-            preview: { id in
-                ConversationDeletionPreview(
-                    sessionID: id, fileCount: 3, byteCount: 4_096, configDirectory: "/unused",
-                    isRunning: false, notRemoved: [], unreachable: [])
+            previews: { ids in
+                recorder.countPreviews(ids)
+                return Dictionary(uniqueKeysWithValues: ids.map { id in
+                    (id, ConversationDeletionPreview(
+                        sessionID: id, fileCount: 3, byteCount: 4_096, configDirectory: "/unused",
+                        isRunning: false, notRemoved: [], unreachable: []))
+                })
             },
             delete: { id in
                 await recorder.beforeDelete?(id)
@@ -276,6 +283,36 @@ struct CleanupCoordinatorTests {
         #expect(reasons[protected] == .worktree("The worktree has uncommitted changes."))
         if case .waitUntil = reasons[waiting] {} else { Issue.record("A recent stale row was not told to wait") }
         #expect(reasons.count == 2)
+    }
+
+    // RS-1: a review scans the Claude profile once and asks git once per working directory.
+    @Test func aReviewScansOnceAndAsksGitOncePerWorkingDirectory() async throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        var ids: [UUID] = []
+        for index in 0..<3 { ids.append(try await insertStale(fixture.catalog, title: "shared \(index)", directory: "/work/shared")) }
+        ids.append(try await insertStale(fixture.catalog, title: "other", directory: "/work/other"))
+        let review = try await fixture.coordinator.review(now: now)
+        #expect(Set(review.eligible.map(\.id)) == Set(ids))
+        #expect(review.eligible.allSatisfy { $0.byteCount == 4_096 && $0.fileCount == 3 })
+        #expect(fixture.recorder.previewScans == 1, "one scan for all four rows")
+        #expect(Set(fixture.recorder.previewBatches[0]) == Set(ids))
+        #expect(fixture.recorder.worktreeCalls == 2, "one verdict per working directory")
+    }
+
+    // RS-1: dismissing a due review reads the timestamps and the policy only.
+    @Test func dismissingNeitherScansNorRunsGitAndStillCountsAsARun() async throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        for index in 0..<3 { try await insertStale(fixture.catalog, title: "row \(index)", directory: "/work/shared") }
+        try await fixture.coordinator.dismiss(now: now)
+        #expect(fixture.recorder.worktreeCalls == 0 && fixture.recorder.previewScans == 0)
+        // It counted as a run: a week later nothing is due; a dismissal that was not due changes nothing.
+        let week = now.addingTimeInterval(7 * 86_400)
+        #expect(try await fixture.coordinator.review(now: week).due == .notDue(until: now.addingTimeInterval(30 * 86_400)))
+        try await fixture.coordinator.dismiss(now: week)
+        #expect(try await fixture.coordinator.review(now: week).due == .notDue(until: now.addingTimeInterval(30 * 86_400)))
+        #expect(try await fixture.catalog.appState(CleanupCoordinator.lastCleanupKey) == String(now.timeIntervalSince1970))
     }
 
     @Test func confirmReplansAndNeverDeletesWhatIsNoLongerEligible() async throws {
@@ -422,7 +459,7 @@ struct CleanupCoordinatorTests {
         let reopened = try SessionCatalog(url: fixture.root.appendingPathComponent("catalog.sqlite3"))
         let again = CleanupCoordinator(catalog: reopened, host: CleanupCoordinator.Host(
             isRunning: { _ in false }, worktree: { _ in .clear },
-            preview: { id in throw SessionRuntimeError.sessionNotFound(id) },
+            previews: { _ in [:] },
             delete: { id in throw SessionRuntimeError.sessionNotFound(id) }))
         #expect(try await again.settings().reviewIntervalDays == 7)
         #expect(try await again.review(now: eightDaysOn).due == .due)

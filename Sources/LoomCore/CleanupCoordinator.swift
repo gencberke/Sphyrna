@@ -129,7 +129,7 @@ public protocol CleanupReviewing: Sendable {
                  progress: @escaping @Sendable (UUID, CleanupRowResult) async -> Void) async throws -> CleanupConfirmation
     /// The user dismissed a due review without deleting: it still counts as a run.
     func dismiss(now: Date) async throws
-    /// The four numbers in force (D-69): the user's, else the defaults.
+    /// The two numbers in force (D-69): the user's, else the defaults.
     func settings() async throws -> CleanupSettings
     /// Keeps new numbers; they apply from the next review on.
     func setSettings(_ settings: CleanupSettings) async throws
@@ -147,25 +147,27 @@ public actor CleanupCoordinator: CleanupReviewing {
     public struct Host: Sendable {
         public var isRunning: @Sendable (UUID) async -> Bool
         public var worktree: @Sendable (_ workingDirectory: String) async -> CleanupWorktreeVerdict
-        public var preview: @Sendable (UUID) async throws -> ConversationDeletionPreview
+        /// What deleting each of these conversations would remove, from one scan of the Claude profile; a conversation
+        /// that cannot be previewed has no entry.
+        public var previews: @Sendable ([UUID]) async -> [UUID: ConversationDeletionPreview]
         public var delete: @Sendable (UUID) async throws -> ConversationDeletionOutcome
 
         public init(
             isRunning: @escaping @Sendable (UUID) async -> Bool,
             worktree: @escaping @Sendable (String) async -> CleanupWorktreeVerdict,
-            preview: @escaping @Sendable (UUID) async throws -> ConversationDeletionPreview,
+            previews: @escaping @Sendable ([UUID]) async -> [UUID: ConversationDeletionPreview],
             delete: @escaping @Sendable (UUID) async throws -> ConversationDeletionOutcome
         ) {
             self.isRunning = isRunning
             self.worktree = worktree
-            self.preview = preview
+            self.previews = previews
             self.delete = delete
         }
     }
 
     private let catalog: SessionCatalog
     private let host: Host
-    /// The rules the user's four numbers (`CleanupSettings`) are applied to.
+    /// The rules the user's two numbers (`CleanupSettings`) are applied to.
     private let policy: CleanupPolicy
     /// `last_launch_at` as it was before this launch overwrote it (long-absence input).
     private var previousLaunchAt: Date?
@@ -185,7 +187,7 @@ public actor CleanupCoordinator: CleanupReviewing {
                     await supervisor.session(id: id)?.currentRun != nil
                 },
                 worktree: { await protection.verdict(workingDirectory: $0) },
-                preview: { try await runtime.deletionPreview(id: $0) },
+                previews: { await runtime.deletionPreviews(ids: $0) },
                 delete: { try await runtime.deleteConversation(id: $0) }
             ),
             policy: policy
@@ -239,7 +241,11 @@ public actor CleanupCoordinator: CleanupReviewing {
     }
 
     public func dismiss(now: Date) async throws {
-        if try await makeReview(now: now, withSizes: false).isDue { try await recordRun(now: now) }
+        // Whether a review is due depends on the last run and the cadence alone: no rows, no git, no scan.
+        let policy = try await catalog.cleanupPolicy(base: policy)
+        if CleanupPlanner.due(now: now, lastRunAt: try await readDate(Self.lastCleanupKey), policy: policy) == .due {
+            try await recordRun(now: now)
+        }
     }
 
     // MARK: Settings
@@ -264,12 +270,22 @@ public actor CleanupCoordinator: CleanupReviewing {
         // only they are offered; listing a row that can only fail would mislead.
         let stale = try await catalog.sessions().filter { $0.lifecycle == .stale && $0.session.provider == .claude }
         var candidates: [CleanupCandidate] = []
+        // Sessions of a project share a working directory, so one verdict serves them all in this review.
+        var verdicts: [String: CleanupWorktreeVerdict] = [:]
         for record in stale {
             let id = record.session.id
             let running = await host.isRunning(id)
             // Git only runs for rows the other rules have not already excluded.
-            let verdict: CleanupWorktreeVerdict = record.pinned || running
-                ? .clear : await host.worktree(record.session.workingDirectory)
+            var verdict: CleanupWorktreeVerdict = .clear
+            if !record.pinned, !running {
+                let directory = record.session.workingDirectory
+                if let known = verdicts[directory] {
+                    verdict = known
+                } else {
+                    verdict = await host.worktree(directory)
+                    verdicts[directory] = verdict
+                }
+            }
             candidates.append(CleanupCandidate(
                 id: id, lifecycle: record.lifecycle, lastUsedAt: record.lastUsedAt,
                 staleSince: record.staleSince, pinned: record.pinned, isRunning: running,
@@ -284,9 +300,11 @@ public actor CleanupCoordinator: CleanupReviewing {
         )
         let records = Dictionary(uniqueKeysWithValues: stale.map { ($0.session.id, $0) })
         var eligible: [CleanupEligibleRow] = []
+        // One scan of the Claude profile for every row, not one per row.
+        let previews = withSizes && !plan.eligible.isEmpty ? await host.previews(plan.eligible.map(\.id)) : [:]
         for entry in plan.eligible {
             guard let record = records[entry.id] else { continue }
-            let preview = withSizes ? try? await host.preview(entry.id) : nil
+            let preview = previews[entry.id]
             eligible.append(CleanupEligibleRow(
                 record: record, eligibleSince: entry.eligibleSince,
                 byteCount: preview?.byteCount, fileCount: preview?.fileCount

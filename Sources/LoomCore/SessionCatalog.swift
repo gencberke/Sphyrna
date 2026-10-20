@@ -33,9 +33,6 @@ public struct CatalogSession: Equatable, Sendable {
     /// a run that moved to it). Unlike `lastUsedAt`, a view, a Stop and a resume
     /// never move it; the card time and the activity order read this one.
     public let lastActivityAt: Date
-    /// A tracker key an older Loom stored when an agent named one (D-40). Nothing reads it any more (D-69) and
-    /// nothing writes it: it stays so old rows decode as they did and the column and its migration stay as they were.
-    public let ticketKey: String?
     /// The session whose agent asked for this one to be opened (D-40); nil for a session the user started.
     public let openedBy: UUID?
     /// How the session's latest run was driven: the face that owns the session (V19). `.pipe` is the Chat face,
@@ -47,10 +44,9 @@ public struct CatalogSession: Equatable, Sendable {
         session: ManagedSession, title: String?, createdAt: Date, lastUsedAt: Date,
         lifecycle: SessionLifecycle, pinned: Bool, projectID: UUID? = nil,
         titleIsCustom: Bool = false, staleSince: Date? = nil, lastActivityAt: Date? = nil,
-        ticketKey: String? = nil, openedBy: UUID? = nil, runEndpoint: RunEndpointKind? = nil
+        openedBy: UUID? = nil, runEndpoint: RunEndpointKind? = nil
     ) {
         self.runEndpoint = runEndpoint
-        self.ticketKey = ticketKey
         self.openedBy = openedBy
         self.lastActivityAt = lastActivityAt ?? lastUsedAt
         self.session = session
@@ -355,7 +351,7 @@ public actor SessionCatalog {
             titleIsCustom: sqlite3_column_int(statement, 10) != 0,
             staleSince: database.optionalDouble(statement, column: 11).map(Date.init(timeIntervalSince1970:)),
             lastActivityAt: database.optionalDouble(statement, column: 12).map(Date.init(timeIntervalSince1970:)),
-            ticketKey: database.optionalText(statement, column: 13),
+            // Column 13 is `ticket_key`: older builds wrote it and read it; nothing here does.
             // A requester id that does not parse is dropped, never a reason to skip the row.
             openedBy: database.optionalText(statement, column: 14).flatMap(UUID.init(uuidString:)),
             runEndpoint: database.optionalText(statement, column: 15).flatMap(RunEndpointKind.init(rawValue:))

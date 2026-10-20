@@ -103,6 +103,50 @@ public enum ClaudeDataInventory {
     }
 }
 
+extension ClaudeDataInventory {
+    /// One conversation of a batched dry run: its file ids and its working directory (DP-CP4-7).
+    public struct DryRunRequest: Sendable {
+        public let sessionIDs: [String]
+        public let workingDirectory: String?
+
+        public init(sessionIDs: [String], workingDirectory: String?) {
+            self.sessionIDs = sessionIDs
+            self.workingDirectory = workingDirectory
+        }
+    }
+
+    /// The dry-run plans of many conversations from ONE scan of the profile (the cleanup review). Each plan equals
+    /// `plan(sessionIDs:…ignoringLiveSessions: true, workingDirectory:)` for its request: the scan runs for every id and
+    /// no working directory, then each request takes the items of its own ids and the unreachable project folders its
+    /// working directory can hold. Throws what `plan` throws, for an invalid id or an unsafe config directory.
+    public static func dryRunPlans(_ requests: [DryRunRequest], configDirectory: URL,
+                                   temporaryRoot: URL? = defaultTemporaryRoot) throws -> [DeletionPlan] {
+        let normalized = try requests.map { try ClaudeDataFiles.normalize($0.sessionIDs) }
+        let root = try ClaudeDataFiles.openRoot(configDirectory.path)
+        defer { close(root.fd) }
+        let scan = ClaudeDataFiles.scan(ids: Set(normalized.flatMap { $0 }), config: root,
+                                        temporaryRoot: temporaryRoot?.path, workingDirectory: nil)
+        return zip(requests, normalized).map { request, ids in
+            let own = Set(ids)
+            var unreachable: [String] = []
+            var unrelated: [String] = []
+            for entry in scan.unreachable {
+                let project = entry.hasPrefix("projects/") ? String(entry.dropFirst("projects/".count)) : nil
+                if let project, let workingDirectory = request.workingDirectory,
+                   !ClaudeDataFiles.projectFolder(project, canHoldWorkingDirectory: workingDirectory) {
+                    unrelated.append(entry)
+                } else {
+                    unreachable.append(entry)
+                }
+            }
+            return DeletionPlan(sessionIDs: ids, configDirectory: root.path, temporaryRoot: scan.temporaryRoot,
+                                items: scan.items.filter { own.contains($0.sessionID) },
+                                temporaryItems: scan.temporaryItems.filter { own.contains($0.sessionID) },
+                                residual: scan.residual, unreachable: unreachable, unrelatedUnreachable: unrelated)
+        }
+    }
+}
+
 public enum ClaudeDataDeleter {
     /// Removes the planned items, re-validating every one; never throws. Absent items count as
     /// done, one failing item does not stop the others, and a re-run finishes what is left.

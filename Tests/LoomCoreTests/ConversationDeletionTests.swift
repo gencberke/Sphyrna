@@ -942,6 +942,54 @@ struct ConversationDeletionTests {
         #expect((await runtime.shutdown()).succeeded)
     }
 
+    final class ShellReads: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = 0
+        func bump() { lock.withLock { value += 1 } }
+        var count: Int { lock.withLock { value } }
+    }
+
+    /// RS-2: the delete target's environment and the toolchain's come from one login shell, also when the toolchain is asked
+    /// while the launch capture is still running.
+    @Test func theLoginShellIsReadOnceForTheDeleteTargetAndTheToolchain() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let bin = env.root.appendingPathComponent("bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        let claude = bin.appendingPathComponent("claude")
+        try Data("#!/bin/sh\ncase \"$1\" in\n  --version) echo 2.1.0 ;;\n  --help) echo '--settings <file> --session-id <uuid>' ;;\nesac\n".utf8).write(to: claude)
+        chmod(claude.path, 0o755)
+        let reads = ShellReads()
+        let profile = env.profile.path
+        let catalog = try SessionCatalog(url: env.catalogURL)
+        let supervisor = try await ProcessSupervisor.restoring(ledger: OwnershipLedger(), catalog: catalog)
+        let system = SystemProviderToolchains(
+            supervisor: supervisor, origin: .development,
+            environmentSource: {
+                reads.bump()
+                try await Task.sleep(for: .milliseconds(150))
+                return LaunchEnvironment.Resolution(environment: ["PATH": "\(bin.path):/usr/bin:/bin", "CLAUDE_CONFIG_DIR": profile])
+            }
+        )
+        let runtime = SessionRuntime(
+            supervisor: supervisor, catalog: catalog,
+            configuration: SessionRuntimeConfiguration(
+                toolchains: { try await system.toolchain(for: $0) },
+                hookHelperPath: "/usr/bin/true", socketDirectory: env.socketDirectory,
+                homeDirectory: env.home.path, claudeTemporaryRoot: env.temporary,
+                forgetters: ConversationForgetters(), claudeEnvironment: [:],
+                claudeLoginEnvironment: { try await system.terminalEnvironment().environment }
+            )
+        )
+        try await runtime.start()
+        // The launch capture is still running: the toolchain joins it instead of starting a second shell.
+        _ = try await system.toolchain(for: .claude)
+        await runtime.finishLoginEnvironmentCapture()
+        _ = try await system.toolchain(for: .claude)
+        #expect(reads.count == 1)
+        #expect((await runtime.shutdown()).succeeded)
+    }
+
     // MARK: DP-CP4-7 - a link that cannot hold this session's files does not stop its deletion
 
     private static func link(_ env: Env, _ relative: String, to target: URL) throws {
@@ -985,6 +1033,52 @@ struct ConversationDeletionTests {
         }
         #expect(pending.lastFailure == "unreachable_folder: \(own)")
         #expect(FileManager.default.fileExists(atPath: moved.appendingPathComponent("\(Self.ids(victim)[1]).jsonl").path))
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    // MARK: RS-1 - one scan gives every row of the cleanup review what its own preview gives
+
+    @Test func theBatchedPreviewsEqualTheSinglePreviewsOfAProfileWithLinksAndSeveralFolders() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        let otherFolder = env.root.appendingPathComponent("other-work", isDirectory: true)
+        try FileManager.default.createDirectory(at: otherFolder, withIntermediateDirectories: true)
+        let first = try await Self.addConversation(world)
+        let second = try await Self.addConversation(world)
+        // A conversation of another working directory, with files in its own project folder and a link-free profile part.
+        let elsewhere = ManagedSession(provider: .claude, providerConversationID: UUID().uuidString.lowercased(),
+                                       workingDirectory: otherFolder.path)
+        try await world.supervisor.createSession(elsewhere, projectID: nil)
+        try env.seed(Self.ids(elsewhere), project: ClaudeTranscriptLocator.folderName(forWorkingDirectory: otherFolder.path))
+        let empty = try await Self.addConversation(world, seed: false)
+        let codex = try await Self.addConversation(world, provider: .codex, providerID: nil, seed: false)
+        // The home folder's own project folder is a link (it blocks the home conversations only), another project's is one too
+        // (it blocks nobody), and a tier-2 and a residual entry exist.
+        let own = ClaudeTranscriptLocator.folderName(forWorkingDirectory: env.home.path)
+        let moved = env.root.appendingPathComponent("moved-project", isDirectory: true)
+        let away = env.root.appendingPathComponent("elsewhere", isDirectory: true)
+        for folder in [moved, away] { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
+        try Self.link(env, "projects/\(own)", to: moved)
+        try Self.link(env, "projects/-some-other-project", to: away)
+        try env.write("projects/p/memory/note.md", "kept")
+
+        let ids = [first.id, second.id, elsewhere.id, empty.id, codex.id]
+        let batch = await world.runtime.deletionPreviews(ids: ids)
+        for session in [first, second, elsewhere, empty] {
+            let single = try await world.runtime.deletionPreview(id: session.id)
+            #expect(batch[session.id] == single, "\(session.id)")
+        }
+        #expect(batch[codex.id] == nil, "a conversation its own preview refuses has no entry")
+        await #expect(throws: SessionRuntimeError.self) { _ = try await world.runtime.deletionPreview(id: codex.id) }
+        // The numbers are not trivial: files and bytes counted, the own-folder link blocks, the other project's does not.
+        let firstPreview = try #require(batch[first.id])
+        #expect(firstPreview.fileCount > 0 && firstPreview.byteCount > 0)
+        #expect(firstPreview.unreachable == ["projects/\(own)"])
+        #expect(try #require(batch[elsewhere.id]).unreachable.isEmpty)
+        #expect(try #require(batch[elsewhere.id]).fileCount > 0)
+        #expect(try #require(batch[empty.id]).fileCount == 0)
+        #expect(!firstPreview.notRemoved.isEmpty)
         #expect((await world.runtime.shutdown()).succeeded)
     }
 

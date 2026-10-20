@@ -94,14 +94,40 @@ extension SessionRuntime {
     /// refusals as `deleteConversation` (Codex, shared provider data, unusable config directory).
     public func deletionPreview(id: UUID) async throws -> ConversationDeletionPreview {
         let candidate = try await deletionCandidate(id)
-        return ConversationDeletionPreview(
+        return await preview(id, plan: candidate.plan)
+    }
+
+    /// The previews of many conversations from ONE scan of the Claude profile (the cleanup review). A conversation
+    /// `deletionPreview` would refuse, or whose plan cannot be made, has no entry; every other one equals what
+    /// `deletionPreview(id:)` gives for it.
+    public func deletionPreviews(ids: [UUID]) async -> [UUID: ConversationDeletionPreview] {
+        var requests: [(id: UUID, request: DeletionRequest)] = []
+        for id in ids {
+            guard let request = try? await deletionRequest(id) else { continue }
+            requests.append((id, request))
+        }
+        guard let first = requests.first?.request else { return [:] }
+        let configDirectory = first.configDirectory, temporaryRoot = first.temporaryRoot
+        let dryRuns = requests.map {
+            ClaudeDataInventory.DryRunRequest(sessionIDs: $0.request.fileIDs, workingDirectory: $0.request.workingDirectory)
+        }
+        guard let plans = try? await Task.detached(operation: {
+            try ClaudeDataInventory.dryRunPlans(dryRuns, configDirectory: configDirectory, temporaryRoot: temporaryRoot)
+        }).value else { return [:] }
+        var previews: [UUID: ConversationDeletionPreview] = [:]
+        for (entry, plan) in zip(requests, plans) { previews[entry.id] = await preview(entry.id, plan: plan) }
+        return previews
+    }
+
+    private func preview(_ id: UUID, plan: DeletionPlan) async -> ConversationDeletionPreview {
+        ConversationDeletionPreview(
             sessionID: id,
-            fileCount: candidate.plan.items.count + candidate.plan.temporaryItems.count,
-            byteCount: candidate.plan.totalBytes,
-            configDirectory: candidate.plan.configDirectory,
+            fileCount: plan.items.count + plan.temporaryItems.count,
+            byteCount: plan.totalBytes,
+            configDirectory: plan.configDirectory,
             isRunning: await supervisor.session(id: id)?.currentRun != nil,
-            notRemoved: candidate.plan.residual,
-            unreachable: candidate.plan.unreachable
+            notRemoved: plan.residual,
+            unreachable: plan.unreachable
         )
     }
 
@@ -225,9 +251,18 @@ extension SessionRuntime {
         let workingDirectory: String
     }
 
-    /// Refusals and the dry-run plan. The plan ignores a live process: a running conversation is
-    /// stopped by the deletion itself, and the files are planned again when they are removed.
-    private func deletionCandidate(_ id: UUID) async throws -> DeletionCandidate {
+    /// What a deletion's request is made of, after the refusals and before any scan.
+    private struct DeletionRequest {
+        let providerIDs: [String]
+        /// The provider ids that name files.
+        let fileIDs: [String]
+        let workingDirectory: String
+        let configDirectory: URL
+        let temporaryRoot: URL?
+    }
+
+    /// The refusals, and what the dry-run plan is made for.
+    private func deletionRequest(_ id: UUID) async throws -> DeletionRequest {
         guard let record = try await catalog.session(id: id) else { throw SessionRuntimeError.sessionNotFound(id) }
         switch record.session.provider {
         case .claude: break
@@ -251,9 +286,19 @@ extension SessionRuntime {
         case .unavailable:
             throw SessionRuntimeError.deletionRefused("The Claude data folder is not available (is its volume mounted?)")
         }
-        let temporaryRoot = configuration.claudeTemporaryRoot
-        let ids = Self.fileIDs(providerIDs)
-        let workingDirectory = record.session.workingDirectory
+        return DeletionRequest(
+            providerIDs: providerIDs, fileIDs: Self.fileIDs(providerIDs),
+            workingDirectory: record.session.workingDirectory,
+            configDirectory: configDirectory, temporaryRoot: configuration.claudeTemporaryRoot
+        )
+    }
+
+    /// Refusals and the dry-run plan. The plan ignores a live process: a running conversation is
+    /// stopped by the deletion itself, and the files are planned again when they are removed.
+    private func deletionCandidate(_ id: UUID) async throws -> DeletionCandidate {
+        let request = try await deletionRequest(id)
+        let ids = request.fileIDs, configDirectory = request.configDirectory
+        let temporaryRoot = request.temporaryRoot, workingDirectory = request.workingDirectory
         let plan: DeletionPlan
         do {
             plan = try await Task.detached {
@@ -266,7 +311,7 @@ extension SessionRuntime {
         } catch {
             throw SessionRuntimeError.deletionRefused(Self.reason(for: error))
         }
-        return DeletionCandidate(plan: plan, providerIDs: providerIDs, workingDirectory: record.session.workingDirectory)
+        return DeletionCandidate(plan: plan, providerIDs: request.providerIDs, workingDirectory: workingDirectory)
     }
 
     /// Provider ids that name files: only a UUID can; anything else has nothing to claim.

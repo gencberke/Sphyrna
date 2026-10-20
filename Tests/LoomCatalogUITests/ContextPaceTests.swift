@@ -226,23 +226,22 @@ struct ContextPaceTests {
         let five = pace(.fiveHour, used: 38, resetsIn: 4_800)
         let week = pace(.weekly, used: 26, resetsIn: 4 * 86_400)
         let line = PlanLimitsLine(paces: [five, week], now: Self.now, timeZone: Self.zone)
-        #expect(line.text == "5h 62% left \u{00B7} Wk 74% left \u{00B7} on pace")
-        #expect(line.verdict == .onPace && !(line.verdict?.isWarning ?? true))
-        #expect(line.windows.map(\.isLow) == [false, false])
+        #expect(line.verdict == .onPace)
         #expect(line.spoken == "Plan limits, 5-hour window 62% left, Weekly 74% left, on pace")
         // One window alone, and none early in a window (no verdict at all).
-        #expect(PlanLimitsLine(paces: [week], now: Self.now, timeZone: Self.zone).text == "Wk 74% left \u{00B7} on pace")
+        #expect(PlanLimitsLine(paces: [week], now: Self.now, timeZone: Self.zone).spoken == "Plan limits, Weekly 74% left, on pace")
         let early = pace(.weekly, used: 40, resetsIn: 7 * 86_400 - 6 * 3_600)
-        #expect(PlanLimitsLine(paces: [early], now: Self.now, timeZone: Self.zone).text == "Wk 60% left")
+        #expect(PlanLimitsLine(paces: [early], now: Self.now, timeZone: Self.zone).spoken == "Plan limits, Weekly 60% left")
         // A window that runs out names itself and when; a used-up one says so; under 20 % left is marked low.
         let over = pace(.fiveHour, used: 60, resetsIn: 3 * 3_600)
         let runsOut = PlanLimitsLine(paces: [over, week], now: Self.now, timeZone: Self.zone)
-        #expect(runsOut.text == "5h 40% left \u{00B7} Wk 74% left \u{00B7} 5h runs out \(at(4_800))")
-        #expect(runsOut.verdict?.isWarning == true)
+        #expect(runsOut.spoken == "Plan limits, 5-hour window 40% left, Weekly 74% left, 5h runs out \(at(4_800))")
+        #expect(runsOut.verdict == .runsOut(name: "5h", at: at(4_800)))
         let usedUp = pace(.weekly, used: 100, resetsIn: 2 * 86_400)
         let reached = PlanLimitsLine(paces: [five, usedUp], now: Self.now, timeZone: Self.zone)
-        #expect(reached.text == "5h 62% left \u{00B7} Wk 0% left \u{00B7} Wk limit reached" && reached.windows.map(\.isLow) == [false, true])
-        #expect(PlanLimitsLine(paces: [], now: Self.now, timeZone: Self.zone).text == "")
+        #expect(reached.spoken == "Plan limits, 5-hour window 62% left, Weekly 0% left, Wk limit reached")
+        let none = PlanLimitsLine(paces: [], now: Self.now, timeZone: Self.zone)
+        #expect(none.windows.isEmpty && none.verdict == nil)
     }
 
     @Test func everyPlanMeterFillsWhatIsLeftAndTheTickIsWhereAnEvenPaceLeavesIt() {

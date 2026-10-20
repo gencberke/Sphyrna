@@ -129,6 +129,7 @@ public actor SystemProviderToolchains {
     private let codexHome: URL?
     private let environmentSource: (@Sendable () async throws -> LaunchEnvironment.Resolution)?
     private var environment: LaunchEnvironment.Resolution?
+    private var environmentTask: Task<LaunchEnvironment.Resolution, any Error>?
     private var resolved: [ManagedSession.Provider: ProviderToolchain] = [:]
     /// Resolutions since this object was created, per provider (tests and the diagnostics read it).
     public private(set) var resolutionCount = 0
@@ -159,15 +160,9 @@ public actor SystemProviderToolchains {
             if let current, current == cached.executableStamp { return cached }
             LoomLog.notice(.toolchain, "\(provider.rawValue) executable \(current == nil ? "is gone" : "changed"); resolving again")
             resolved[provider] = nil
-            if current == nil { environment = nil }
+            if current == nil { dropTerminalEnvironment() }
         }
-        let resolution: LaunchEnvironment.Resolution
-        if let environment { resolution = environment }
-        else {
-            if let environmentSource { resolution = try await environmentSource() }
-            else { resolution = try await supervisor.terminalEnvironment(origin: origin) }
-            environment = resolution
-        }
+        let resolution = try await terminalEnvironment()
         let value: ProviderToolchain
         switch provider {
         case .claude: value = try await claude(resolution)
@@ -178,6 +173,36 @@ public actor SystemProviderToolchains {
         resolved[provider] = value
         resolutionCount += 1
         return value
+    }
+
+    /// The user's terminal environment: read once (one login shell), kept after it succeeded and shared by everything that
+    /// asks, a toolchain and the delete target's `CLAUDE_CONFIG_DIR` (DP-CP4-8) alike. An ask that comes while the shell is
+    /// still running waits for that one; a failure is not kept, so the next ask reads again.
+    public func terminalEnvironment() async throws -> LaunchEnvironment.Resolution {
+        if let environment { return environment }
+        let task: Task<LaunchEnvironment.Resolution, any Error>
+        if let environmentTask { task = environmentTask } else {
+            let supervisor = supervisor, origin = origin, source = environmentSource
+            task = Task {
+                if let source { return try await source() }
+                return try await supervisor.terminalEnvironment(origin: origin)
+            }
+            environmentTask = task
+        }
+        do {
+            let resolution = try await task.value
+            // Dropped meanwhile (the executable vanished): this answer is not kept.
+            if environmentTask == task { environment = resolution; environmentTask = nil }
+            return resolution
+        } catch {
+            if environmentTask == task { environmentTask = nil }
+            throw error
+        }
+    }
+
+    private func dropTerminalEnvironment() {
+        environment = nil
+        environmentTask = nil
     }
 
     /// Forgets what was resolved for a provider (a launch failed): the next ask resolves again.

@@ -65,7 +65,7 @@ struct OpenSessionCatalogTests {
         for _ in 0..<2 { // the second open is idempotent
             let catalog = try SessionCatalog(url: url)
             let row = try #require(try await catalog.session(id: old.id))
-            #expect(row.title == "kept" && row.ticketKey == nil && row.openedBy == nil)
+            #expect(row.title == "kept" && row.openedBy == nil)
             #expect(try sql(named, at: url) == ["2"])
             #expect(try sql("PRAGMA user_version", at: url) == ["3"], "no version bump: 0.3.0 must still open the catalog")
         }
@@ -90,7 +90,7 @@ struct OpenSessionCatalogTests {
             """, at: url)
         let catalog = try SessionCatalog(url: url)
         let read = try #require(try await catalog.session(id: written.id))
-        #expect(read.title == "by 0.3.0" && read.ticketKey == nil && read.openedBy == nil)
+        #expect(read.title == "by 0.3.0" && read.openedBy == nil)
     }
 
     @Test func aNewSessionWritesNoKeyKeepsItsRequesterAndAnAutomaticTitle() async throws {
@@ -103,7 +103,7 @@ struct OpenSessionCatalogTests {
         let session = ManagedSession(provider: .claude, workingDirectory: "/tmp")
         try await catalog.insertSession(session, title: "EDDP-1 First", openedBy: asker)
         let row = try #require(try await catalog.session(id: session.id))
-        #expect(row.ticketKey == nil && row.openedBy == asker, "D-69: nothing writes a tracker key")
+        #expect(row.openedBy == asker)
         #expect(try sql("SELECT ticket_key IS NULL, opened_by FROM sessions", at: url) == ["1|\(asker.uuidString)"])
         #expect(row.title == "EDDP-1 First" && row.titleIsCustom == false)
         // An automatic title: a rename wins, and an empty rename returns to automatic.
@@ -127,9 +127,9 @@ struct OpenSessionCatalogTests {
         _ = try sql("UPDATE sessions SET ticket_key = 'EDDP-412', run_endpoint = 'pipe'", at: url)
         let catalog = try SessionCatalog(url: url)
         let row = try #require(try await catalog.session(id: session.id))
-        #expect(row.ticketKey == "EDDP-412", "kept readable; nothing reads it (D-69)")
+        // The column older builds read stays in the table; a row that has a value in it still loads.
         #expect(row.openedBy == asker && row.runEndpoint == .pipe && row.title == "EDDP-412 Fix login")
-        #expect(try await catalog.sessions().first?.ticketKey == "EDDP-412")
+        #expect(try await catalog.sessions().first?.title == "EDDP-412 Fix login")
         #expect(try await catalog.sessionPage(CatalogQuery()).sessions.first?.openedBy == asker)
     }
 }
@@ -618,7 +618,7 @@ struct OpenSessionRuntimeTests {
         // A normal Loom session: a card with the requested title (automatic), its origin and a run, and no tracker key.
         let row = try #require(try await context.catalog.session(id: launch.sessionID))
         #expect(row.title == "EDDP-412 Fix login" && row.titleIsCustom == false)
-        #expect(row.ticketKey == nil && row.openedBy == requester.sessionID)
+        #expect(row.openedBy == requester.sessionID)
         #expect(row.projectID == project.id && row.session.workingDirectory == project.path)
         #expect(await context.supervisor.session(id: launch.sessionID)?.currentRun != nil)
         #expect(try await context.catalog.runs().contains { $0.id == launch.runID })

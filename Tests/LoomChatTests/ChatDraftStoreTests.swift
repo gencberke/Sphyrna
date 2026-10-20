@@ -44,6 +44,9 @@ struct ChatDraftStoreTests {
         let id = UUID()
         try store.writeAttachment(Data([9]), id: "a", sessionID: id)
         try store.writeAttachment(Data([8]), id: "b", sessionID: id)
+        try store.save(ChatDraft(text: "x", attachments: [ChatDraft.Attachment(id: "a", kind: .image, mediaType: "image/png"),
+                                                          ChatDraft.Attachment(id: "b", kind: .image, mediaType: "image/png")]),
+                       sessionID: id)
         try store.save(ChatDraft(text: "x", attachments: [ChatDraft.Attachment(id: "a", kind: .image, mediaType: "image/png")]),
                        sessionID: id)
         #expect(store.attachmentData(id: "a", sessionID: id) != nil)
@@ -220,5 +223,60 @@ extension ChatDraftStoreTests {
         let moved = try #require(try store.load(sessionID: new))
         #expect(moved.text == "composer text" && Set(moved.held.map(\.id)) == ["a", "b"])
         #expect(try store.load(sessionID: old) == nil)
+    }
+}
+
+// MARK: Release B close, ST-1: a driver write never deletes a file the composer has not listed yet
+
+extension ChatDraftStoreTests {
+    /// The composer writes an attachment's file first and lists it at its next save (up to 300 ms later). A `hold` and a
+    /// `release` of the driver in between must not delete it.
+    @Test func anAttachmentNotListedYetSurvivesAHoldAndARelease() throws {
+        let (store, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let id = UUID()
+        try store.save(ChatDraft(text: "typed"), sessionID: id)
+        try store.writeAttachment(Data([4, 2]), id: "pasted", sessionID: id)
+        try store.hold(id: "m", text: "sent", attachments: [], sessionID: id)
+        try store.release(ids: ["m"], sessionID: id)
+        #expect(store.attachmentData(id: "pasted", sessionID: id) == Data([4, 2]))
+        // The composer lists it at its next save.
+        try store.save(ChatDraft(text: "typed", attachments: [ChatDraft.Attachment(id: "pasted", kind: .image, mediaType: "image/png")]),
+                       sessionID: id)
+        #expect(store.attachmentData(id: "pasted", sessionID: id) == Data([4, 2]))
+    }
+
+    /// The same when the draft has nothing else: the last release empties the draft, and the unlisted file stays.
+    @Test func anAttachmentNotListedYetSurvivesTheDraftGoingEmpty() throws {
+        let (store, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let id = UUID()
+        try store.writeAttachment(Data([7]), id: "pasted", sessionID: id)
+        try store.hold(id: "m", text: "sent", attachments: [.pastedText("held paste")], sessionID: id)
+        let held = try #require(try store.load(sessionID: id)?.held.first?.attachments.first)
+        try store.release(ids: ["m"], sessionID: id)
+        #expect(try store.load(sessionID: id) == nil)
+        #expect(store.attachmentData(id: "pasted", sessionID: id) == Data([7]))
+        #expect(store.attachmentData(id: held.id, sessionID: id) == nil, "what the released message listed goes")
+    }
+
+    /// A driver made after a crash sweeps the files nobody lists and keeps the listed ones; with no draft file, the whole
+    /// folder goes.
+    @Test func theSweepAtADriversInitRemovesAnOrphanAndKeepsAListedFile() throws {
+        let (store, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let id = UUID()
+        try store.writeAttachment(Data([1]), id: "listed", sessionID: id)
+        try store.writeAttachment(Data([2]), id: "orphan", sessionID: id)
+        try store.save(ChatDraft(text: "x", attachments: [ChatDraft.Attachment(id: "listed", kind: .image, mediaType: "image/png")]),
+                       sessionID: id)
+        #expect(try store.recoverHeld(sessionID: id) == false)
+        #expect(store.attachmentData(id: "listed", sessionID: id) == Data([1]))
+        #expect(store.attachmentData(id: "orphan", sessionID: id) == nil)
+        // No draft file at all: the folder is all orphans.
+        let other = UUID()
+        try store.writeAttachment(Data([3]), id: "orphan", sessionID: other)
+        #expect(try store.recoverHeld(sessionID: other) == false)
+        #expect(!FileManager.default.fileExists(atPath: store.folder(for: other).path))
     }
 }

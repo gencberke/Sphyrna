@@ -382,7 +382,7 @@ struct NewSessionRuntimeTests {
         #expect(try #require(args.firstIndex(of: "--settings")) > model, "choices come before the settings")
 
         let record = try #require(try await context.catalog.session(id: launch.sessionID))
-        #expect(record.ticketKey == nil && record.title == nil, "no tracker key is written (D-69), no title is made up")
+        #expect(record.title == nil, "no title is made up")
         #expect(record.projectID == project.id && record.session.workingDirectory == folder.path)
         #expect(record.openedBy == nil, "a draft is the user's own start, not an agent's request")
         #expect((await context.runtime.shutdown()).succeeded)
@@ -404,7 +404,7 @@ struct NewSessionRuntimeTests {
         #expect(!args.contains("--permission-mode") && !args.contains("--model") && !args.contains("-n"))
         #expect(args.suffix(2) == ["--", "fix the flaky test"])
         let record = try #require(try await context.catalog.session(id: launch.sessionID))
-        #expect(record.ticketKey == nil && record.session.workingDirectory == context.home.path)
+        #expect(record.session.workingDirectory == context.home.path)
         #expect((await context.runtime.shutdown()).succeeded)
     }
 

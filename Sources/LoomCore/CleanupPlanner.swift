@@ -158,13 +158,6 @@ public enum CleanupPlanner {
                 : $0.id.uuidString < $1.id.uuidString
         }
 
-        let due: CleanupDue
-        if let lastRunAt, now < lastRunAt.addingTimeInterval(policy.cadence) {
-            due = .notDue(until: lastRunAt.addingTimeInterval(policy.cadence))
-        } else {
-            due = .due
-        }
-
         let mode: CleanupMode
         if let lastLaunchAt, now.timeIntervalSince(lastLaunchAt) >= policy.longAbsenceThreshold {
             mode = .reviewRequired(.longAbsence)
@@ -175,7 +168,15 @@ public enum CleanupPlanner {
         } else {
             mode = .automaticAllowed
         }
-        return CleanupPlan(due: due, mode: mode, eligible: eligible, excluded: excluded)
+        return CleanupPlan(due: due(now: now, lastRunAt: lastRunAt, policy: policy), mode: mode, eligible: eligible, excluded: excluded)
+    }
+
+    /// Whether a review is due: it depends only on the last run and the cadence, never on the catalog's rows.
+    public static func due(now: Date, lastRunAt: Date?, policy: CleanupPolicy = CleanupPolicy()) -> CleanupDue {
+        if let lastRunAt, now < lastRunAt.addingTimeInterval(policy.cadence) {
+            return .notDue(until: lastRunAt.addingTimeInterval(policy.cadence))
+        }
+        return .due
     }
 
     private enum Classification {

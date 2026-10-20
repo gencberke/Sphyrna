@@ -187,10 +187,17 @@ public struct ChatDraftStore: Sendable {
         }
     }
 
-    /// Writes `draft` whole (the caller holds the lock and has set `held`). An empty draft removes its file and attachments.
+    /// Writes `draft` whole (the caller holds the lock and has set `held`). It removes only the attachment files the file
+    /// on disk listed and `draft` no longer does. A file nobody listed yet is the composer's (it writes the bytes first and
+    /// lists them at its next save, up to 300 ms later), so it stays; `recoverHeld` sweeps such files once, when a driver is
+    /// made and no composer exists. An empty draft removes its file and what that file listed, and the folder once it is empty.
     private func write(_ draft: ChatDraft, sessionID: UUID) throws {
+        let previous = listedAttachmentIDsOnDisk(sessionID: sessionID)
         guard !draft.isEmpty else {
-            try forget(sessionID: sessionID, keepingUnreadable: true)
+            let url = url(for: sessionID)
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            try removeAttachments(previous, sessionID: sessionID)
+            removeFolderIfEmpty(sessionID: sessionID)
             return
         }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
@@ -198,7 +205,18 @@ public struct ChatDraftStore: Sendable {
         let url = url(for: sessionID)
         try JSONEncoder.chatDraft.encode(draft).write(to: url, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-        try removeAttachments(except: draft.listedAttachmentIDs, sessionID: sessionID)
+        try removeAttachments(previous.subtracting(draft.listedAttachmentIDs), sessionID: sessionID)
+    }
+
+    /// The attachment ids the draft file on disk lists; empty when there is no file or it cannot be read (this never sets
+    /// a file aside: `load` does that).
+    private func listedAttachmentIDsOnDisk(sessionID: UUID) -> Set<String> {
+        let url = url(for: sessionID)
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int,
+              size <= Self.maximumDraftBytes,
+              let data = try? Data(contentsOf: url),
+              let draft = try? JSONDecoder.chatDraft.decode(ChatDraft.self, from: data) else { return [] }
+        return draft.listedAttachmentIDs
     }
 
     /// Writes an outgoing attachment's bytes as a file of the draft and lists it.
@@ -262,10 +280,13 @@ public struct ChatDraftStore: Sendable {
 
     /// A driver made after the run that wrote these is gone (a crash, a force quit): the messages it held unread were never
     /// confirmed read, so they come back to the user as text in front of what was typed. Returns whether there were any.
+    /// It also sweeps the attachment files the draft file does not list (a crash between a file write and its listing).
     @discardableResult
     public func recoverHeld(sessionID: UUID) throws -> Bool {
         try locked {
-            guard var existing = try load(sessionID: sessionID), !existing.held.isEmpty else { return false }
+            let loaded = try load(sessionID: sessionID)
+            sweepUnlistedAttachments(listed: loaded?.listedAttachmentIDs, sessionID: sessionID)
+            guard var existing = loaded, !existing.held.isEmpty else { return false }
             let front = existing.held.map(\.text).filter { !$0.isEmpty }.joined(separator: "\n\n")
             existing.text = front.isEmpty ? existing.text : existing.text.isEmpty ? front : front + "\n\n" + existing.text
             existing.attachments = existing.held.flatMap(\.attachments) + existing.attachments
@@ -322,16 +343,34 @@ public struct ChatDraftStore: Sendable {
         }
     }
 
-    /// Removes the attachment files the draft no longer lists.
-    func removeAttachments(except keep: Set<String>, sessionID: UUID) throws {
-        try locked {
-            let folder = folder(for: sessionID)
-            guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return }
-            for name in names where !keep.contains(name) {
-                try FileManager.default.removeItem(at: folder.appendingPathComponent(name))
-            }
-            if keep.isEmpty { try? FileManager.default.removeItem(at: folder) }
+    /// Removes these attachment files.
+    private func removeAttachments(_ ids: Set<String>, sessionID: UUID) throws {
+        let folder = folder(for: sessionID)
+        for id in ids where Self.isSafeName(id) {
+            let file = folder.appendingPathComponent(id)
+            if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
         }
+    }
+
+    private func removeFolderIfEmpty(sessionID: UUID) {
+        let folder = folder(for: sessionID)
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path), names.isEmpty else { return }
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    /// Removes the attachment files no draft file lists: orphans of a crash between a file write and its listing. Run once
+    /// by `recoverHeld`, when no composer exists yet. A draft file that was set aside may still list files here, so then
+    /// nothing goes.
+    private func sweepUnlistedAttachments(listed: Set<String>?, sessionID: UUID) {
+        let fileManager = FileManager.default
+        let prefix = sessionID.uuidString.lowercased() + ".unreadable-"
+        let names = (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
+        guard !names.contains(where: { $0.hasPrefix(prefix) }) else { return }
+        let folder = folder(for: sessionID)
+        for name in (try? fileManager.contentsOfDirectory(atPath: folder.path)) ?? [] where !(listed?.contains(name) ?? false) {
+            try? fileManager.removeItem(at: folder.appendingPathComponent(name))
+        }
+        removeFolderIfEmpty(sessionID: sessionID)
     }
 
     /// The draft moves with its run to another card (`/clear`). The driver does it when the run moves; a composer that

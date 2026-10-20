@@ -2,7 +2,7 @@ import LoomCore
 import SwiftUI
 
 /// Settings → Sessions (CP4-G): stale sessions the cleanup rules allow deleting, with the kept ones
-/// and why, and the Cleanup part with the rules' four numbers (D-69). Nothing is checked by default
+/// and why, and the Cleanup part with the rules' two numbers (D-69). Nothing is checked by default
 /// and nothing is deleted without the button.
 struct CleanupReviewView: View {
     let review: CleanupReviewModel
@@ -245,7 +245,7 @@ private struct CleanupNotice: View {
     }
 }
 
-/// The Cleanup part: the four numbers of the rules, each with its range and default, and a reset.
+/// The Cleanup part: the two numbers of the rules, each with its range and default, and a reset.
 private struct CleanupSettingsSection: View {
     let review: CleanupReviewModel
 

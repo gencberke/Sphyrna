@@ -375,7 +375,7 @@ struct OpenRequestTests {
             // Opening does not move the user.
             #expect(live.model.selectedSessionID == nil)
             let row = try #require(try await live.catalog.session(id: newID))
-            #expect(row.openedBy == live.requester.sessionID && row.ticketKey == nil)
+            #expect(row.openedBy == live.requester.sessionID)
             #expect(row.title == "EDDP-412 Fix login")
         } catch {
             await live.cleanup()
