@@ -1,0 +1,163 @@
+/* ============================================================
+   Preview 05: the review surfaces. The Changes tab at 556, the
+   Agents tab's transcript, and the sheet family.
+   ============================================================ */
+.phases{flex-wrap:wrap;row-gap:8px}
+.pbar{display:flex;align-items:center;gap:18px;margin:0 0 14px;flex-wrap:wrap}
+.pbar .grp{display:inline-flex;align-items:center;gap:8px}
+.pbar .hint{font-size:12px;color:var(--fg-3)}
+.seg.static{pointer-events:none}
+.aside{margin-top:22px;font-size:12px;color:var(--fg-3)}
+.ipc{background:var(--canvas);border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);padding:14px 16px}
+.ipc+.ipc{margin-top:10px}
+.ipc .empty canvas{height:70px}
+.ipc .diff{margin-top:0}
+.ipc .diff+.diff{margin-top:10px}
+.ipc .chfoot{margin:0}
+.ipc .agh{padding:0;border:0}
+.offline{font-size:12px;color:var(--fg-2);margin:12px 0 2px}
+
+/* ---------- the inspector, drawn by the script ---------- */
+.dbody{position:relative}
+.insp{transition:none}
+.insp.over{position:absolute;right:0;top:0;bottom:0;z-index:30;background:var(--popover);border-left:0;box-shadow:var(--sh-pop)}
+.insp .ipanel[hidden]{display:none}
+.insp .ipanel.flush{padding:0}
+.itab{cursor:default}
+
+/* ---------- the Changes tab ---------- */
+.chs{flex:1;min-height:0;overflow-y:auto;padding:16px 16px 20px;scrollbar-width:thin;scrollbar-color:var(--line-3) transparent}
+.chtop{display:flex;align-items:center;gap:10px}
+.chnote{font-size:11.5px;line-height:1.45;color:var(--fg-2);margin:10px 0 12px}
+.chs .files{max-height:168px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--line-3) transparent}
+.files .fdir{height:28px}
+.files .fdir svg{color:var(--fg-3)}
+.files .frow{height:28px;padding:0 4px 0 calc(12px + var(--d,1) * 16px);gap:8px;font:12px var(--mono);color:var(--fg-1)}
+.files .frow .st{width:10px;color:var(--fg-3)}
+.files .frow .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.files .frow .old{color:var(--fg-3)}
+.files .frow .pm{margin-left:auto;font-size:11px}
+.files .frow .cm{font:11.5px var(--ui);color:var(--fg-2);white-space:nowrap}
+.files .frow .op{width:22px;height:22px;display:grid;place-items:center;border-radius:5px;color:var(--fg-2);opacity:0;flex:none}
+.files .frow .op svg{width:13px;height:13px}
+.files .frow .op:hover{background:var(--hover);color:var(--fg-1)}
+.files .frow:hover .op,.files .frow.on .op{opacity:1}
+.files .frow.on{background:var(--selected)}
+.diff{border-radius:8px}
+.diff-h{gap:7px;color:var(--fg-1)}
+.diff-h>[data-i]{display:grid;color:var(--fg-3)}
+.diff-h>[data-i] svg{width:13px;height:13px}
+.diff-h .p{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.diff-h .grow{flex:1}
+.dlist{padding:4px 0}
+.dlist .dl{grid-template-columns:34px 34px 14px minmax(0,1fr);position:relative;cursor:default}
+.dlist .dl>span:nth-child(-n+2){color:var(--fg-3);padding-right:6px}
+.dlist .dl .tx{padding-right:10px}
+.dlist .dl.h{padding:6px 0 4px}
+.dlist .dl.h .tx{padding-left:82px}
+.dlist .dl.h+.dl{margin-top:0}
+.dlist .dl.gap{margin-top:6px}
+.dl .plus{position:absolute;left:6px;top:2px;width:16px;height:16px;border-radius:4px;background:var(--accent);color:var(--on-accent);display:none;place-items:center;font:600 13px/1 var(--ui);box-shadow:0 0 0 2px var(--raise-1)}
+.dlist .dl:not(.h):hover .plus,.dlist .dl.hov .plus{display:grid}
+.dlist .dl:not(.h):hover{box-shadow:inset 0 0 0 999px var(--hover)}
+.dlist .dl.a:hover,.dlist .dl.r:hover{box-shadow:inset 0 0 0 999px color-mix(in srgb,var(--hover) 60%,transparent)}
+.dnote{display:flex;align-items:center;gap:10px;padding:11px 12px;font-size:12px;color:var(--fg-2)}
+.cbox{margin:4px 10px 8px 82px;padding:8px 10px 9px;border-radius:8px;background:var(--accent-wash);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 34%,transparent)}
+.cbox .ch{display:flex;align-items:center;gap:6px;font:11.5px var(--ui);color:var(--fg-2);white-space:nowrap}
+.cbox .ch>[data-i]{display:grid}
+.cbox .ch svg{width:13px;height:13px}
+.cbox .ch .grow{flex:1}
+.cbox .ch button{font:11.5px var(--ui);color:var(--fg-2);padding:1px 5px;border-radius:4px}
+.cbox .ch button:hover{background:var(--hover);color:var(--fg-1)}
+.cbox .ct{margin-top:4px;font:12.5px/1.5 var(--ui);color:var(--fg-1);white-space:pre-wrap}
+.cbox textarea{display:block;width:100%;min-height:40px;margin-top:5px;resize:none;background:transparent;border:0;outline:0;padding:0;font:12.5px/1.5 var(--ui);color:var(--fg-1)}
+.cbox textarea::placeholder{color:var(--faint)}
+.cbox .ca{display:flex;justify-content:flex-end;gap:6px;margin-top:6px}
+.chfoot{margin:0 16px 16px;padding:10px 10px 10px 12px;border-radius:10px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line),var(--sh-card);display:flex;flex-wrap:wrap;align-items:center;gap:8px;flex:none}
+.chfoot .fi{display:grid;color:var(--accent-hi)}
+.chfoot .fi svg{width:14px;height:14px}
+.chfoot .sum{font-size:12px;color:var(--fg-1)}
+.chfoot .grow{flex:1}
+.chfoot .fn{flex-basis:100%;font-size:11.5px;color:var(--fg-2);margin:0}
+.chfoot .fn.bad{color:var(--fail-text)}
+.chfoot[hidden]{display:none}
+.chwait{padding:26px 0 8px}
+.wnow{display:flex;align-items:center;gap:8px;height:28px;margin:12px 0 4px;font:12.5px var(--ui);color:var(--fg-2)}
+.acard .nw.attn{color:var(--attn-text)}
+.pcard.flash{animation:reqFlash 1.1s ease-out}
+@keyframes reqFlash{0%{box-shadow:inset 0 0 0 1px var(--attn),0 0 0 4px var(--attn-wash),var(--sh-card2)}100%{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--attn) 34%,transparent),0 0 0 0 transparent,var(--sh-card2)}}
+.chwait canvas{height:84px}
+
+/* ---------- the Agents tab ---------- */
+.isech{display:flex;align-items:baseline;gap:8px;margin:0 0 10px}
+.isech .n{font:10.5px var(--mono);color:var(--fg-3)}
+.agsec+.agsec{margin-top:22px}
+.arow2{width:100%;display:grid;grid-template-columns:14px minmax(0,1fr) auto;column-gap:8px;row-gap:2px;align-items:center;padding:9px 12px 10px;border-radius:10px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line);margin-bottom:6px;cursor:default;text-align:left;transition:box-shadow .12s}
+.arow2:hover{box-shadow:inset 0 0 0 1px var(--line-2),inset 0 0 0 999px var(--hover)}
+.arow2 .ind{display:grid;place-items:center;height:16px}
+.arow2 .ind .spin{font-size:12.5px;color:var(--fg-2)}
+.arow2 .ty{font:500 12.5px var(--ui);color:var(--fg-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arow2 .el{font:11px var(--mono);color:var(--fg-3)}
+.arow2 .de{grid-column:2/4;font-size:12px;line-height:1.4;color:var(--fg-2)}
+.arow2 .nt{grid-column:2/4;font-size:11.5px;color:var(--fg-2)}
+.arow2 .nt.attn{color:var(--attn-text)}
+.ag328{max-width:328px}
+.agp{display:flex;flex-direction:column;min-height:0;flex:1}
+.agh{padding:14px 16px 12px;border-bottom:1px solid var(--line);flex:none}
+.agh-r{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.back{height:24px;display:inline-flex;align-items:center;gap:2px;padding:0 9px 0 5px;border-radius:6px;background:var(--hover);font:500 12px var(--ui);color:var(--fg-1)}
+.back:hover{background:var(--selected)}
+.back>[data-i]{display:grid}
+.back svg{width:13px;height:13px}
+.agh h4{margin-top:10px;font:600 13px/1.4 var(--ui);color:var(--fg-1)}
+.agnote{margin-top:8px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--attn-text)}
+.agnote .lk2{margin-left:auto}
+.tr{flex:1;min-height:0;overflow-y:auto;padding:14px 16px 22px;scrollbar-width:thin;scrollbar-color:var(--line-3) transparent}
+.te{display:grid;grid-template-columns:16px minmax(0,1fr);align-items:baseline}
+.te .g{font:12px var(--mono);color:var(--fg-3)}
+.te .x{min-width:0;overflow-wrap:anywhere}
+.te .more{color:var(--fg-3);white-space:pre}
+.te .label{letter-spacing:.09em}
+.te.res .label{display:block;margin:1px 0 5px}
+.te.fresh{animation:teIn .22s ease-out}
+@keyframes teIn{from{opacity:0}to{opacity:1}}
+/* two voices: what the agent says in the chat's type, its tools in quieter mono */
+.tr.two .te{margin-top:2px}
+.tr.two .te.t,.tr.two .te.c,.tr.two .te.k,.tr.two .te.tail{margin-top:11px}
+.tr.two .te.brief+.te,.tr.two .te.om+.te{margin-top:12px}
+.tr.two .te.t .g{color:var(--fg-1)}
+.tr.two .te.t .x{font:12.5px/1.55 var(--ui);color:var(--fg-1)}
+.tr.two .te.c .x{font:11.5px/1.5 var(--mono);color:var(--fg-2)}
+.tr.two .te.c .x b{font-weight:600;color:var(--fg-1)}
+.tr.two .te.r .x{font:11px/1.5 var(--mono);color:var(--fg-3);white-space:pre-wrap}
+.tr.two .te.k .x{font:12px/1.5 var(--ui);color:var(--fg-3)}
+.tr.two .te.brief{display:block;padding:0 0 12px;border-bottom:1px solid var(--line)}
+.tr.two .te.brief .g{display:none}
+.tr.two .te.brief .label{display:block;margin-bottom:6px}
+.tr.two .te.brief .bt{font:12px/1.5 var(--ui);color:var(--fg-2);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.tr.two .te.om .x{font:11.5px var(--ui);color:var(--fg-3)}
+.tr.two .te.tail .x{font:12px var(--ui);color:var(--fg-2)}
+/* all mono, as built */
+.tr.mono .te{margin-top:6px}
+.tr.mono .te .x{font:12px/1.5 var(--mono);color:var(--fg-1)}
+.tr.mono .te .g{color:var(--fg-1)}
+.tr.mono .te.c .x b{font-weight:600}
+.tr.mono .te.c .a,.tr.mono .te.r .x,.tr.mono .te.r .g,.tr.mono .te.k .x,.tr.mono .te.k .g,.tr.mono .te.brief .x,.tr.mono .te.om .x,.tr.mono .te.tail .x,.tr.mono .te.tail .g{color:var(--fg-2)}
+.tr.mono .te.brief .label{font:12px var(--mono);letter-spacing:0;text-transform:none;color:var(--fg-2);margin-right:2ch}
+.tr.mono .te.brief .x{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.tr.mono .te.res .label{display:none}
+.te.r.bad .x,.te.r.bad .g{color:var(--fail-text)!important}
+.te.tail .spin{font-size:12.5px;color:var(--fg-2)}
+.te.tail.wait .x{color:var(--attn-text)!important}
+.te.tail.wait .g{display:grid;place-items:center;height:1em}
+.tnote{padding:22px 0;text-align:center;font-size:12px;color:var(--fg-2)}
+
+/* ---------- the sheets ---------- */
+.scrim{position:absolute;inset:0;z-index:40;background:rgba(0,0,0,.4);opacity:1;pointer-events:auto;transition:none}
+[data-theme=light] .scrim{background:rgba(30,28,26,.22)}
+.scrim[hidden]{display:none}
+#sheets .parts{align-items:start}
+.keylog{margin-top:12px;font:11.5px var(--mono);color:var(--fg-3);min-height:1.5em}
+.keylog b{color:var(--fg-1);font-weight:500}
+.keylog.flash{color:var(--fg-2)}
+@media (max-width:980px){.legend{grid-template-columns:repeat(2,1fr)}}

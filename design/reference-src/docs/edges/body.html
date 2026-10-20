@@ -1,0 +1,314 @@
+<body>
+
+<!--TOPBAR-->
+
+<div class="wrap">
+  <section class="sec principles" id="rules">
+  <div class="rules">
+    <div class="rule"><div class="n">01</div><h3>Say what happened</h3><p>An edge says what is true, what Sphyrna did or did not do, and what you can do, in a sentence or two. No metaphor, no exclamation marks, and nothing cheerful at your expense.</p></div>
+    <div class="rule"><div class="n">02</div><h3>One way on</h3><p>Each edge offers the one action that moves you on: Add Project…, Check Again, Resume. It is filled only where it is the page's main action; everything else is a secondary button.</p></div>
+    <div class="rule"><div class="n">03</div><h3>Ended is not failed</h3><p>A session that ended has no pill and no mark, and what it left stays readable. Only a failure, a stop Sphyrna could not verify, or a problem takes the failure colour.</p></div>
+    <div class="rule"><div class="n">04</div><h3>Banners stack above</h3><p>A banner sits under the header, one at a time, with the rest behind a "+N" peek. It never covers the terminal or the chat, and it comes in over 200 ms by opacity only.</p></div>
+    <div class="rule"><div class="n">05</div><h3>Outside, the same marks</h3><p>The menu bar, its menu and the Dock read the sidebar's status column: the spinner, the attention dot, the unviewed dot and the failure dot. A notification names the session and says why.</p></div>
+    <div class="rule"><div class="n">06</div><h3>Art only where nothing is read</h3><p>The school roams behind the first launch, one hammerhead circles Home's band, and a small one swims where Sphyrna waits, also under Reduce Motion. None swims behind a problem, an ended screen, a banner or a menu.</p></div>
+  </div>
+  </section>
+
+  <!-- ================= 01 FIRST LAUNCH AND HOME ================= -->
+  <section class="sec" id="first">
+    <div class="sechead"><span class="num">01</span><h2>First launch and Home</h2>
+      <p>Home is where Sphyrna opens, so its edges are the first thing you see: the first launch, a Mac without Claude, a day with nothing waiting, and the morning after a quit with sessions running. Switch the states. On the first launch the school roams behind the message, and Replay brings the hammerhead in again; on Home one hammerhead circles the band on its loop. Check Again finds Claude.</p></div>
+    <div class="pbar">
+      <div class="seg" id="homeSeg"><button class="on" data-h="first">First launch</button><button data-h="noclaude">No Claude</button><button data-h="quiet">Nothing needs you</button><button data-h="noclaude2">No Claude, with sessions</button><button data-h="quit">After a quit</button></div>
+      <button class="btn sec sm" id="homeReplay">Replay</button>
+      <span class="grp"><span class="hint">Small ones</span><span class="seg" id="smallSeg"><button class="on" data-k="remora">Remoras</button><button data-k="thresher">Threshers</button></span></span>
+    </div>
+    <div class="stage"><div class="win" id="winH" data-w="1280" data-h="760">
+      <aside class="side" data-role="side"></aside>
+      <main class="detail">
+        <div class="artbg" data-art="first"></div>
+        <canvas class="ocean calm" id="ocean-first" data-art="first"></canvas>
+        <div class="artbg" data-art="band" style="height:300px;-webkit-mask-image:linear-gradient(#000 30%,transparent);mask-image:linear-gradient(#000 30%,transparent)" hidden></div>
+        <canvas class="ocean band" id="ocean-band" data-art="band" style="height:300px" hidden></canvas>
+        <div class="hbody" data-role="home"></div>
+      </main>
+      <span class="pin" id="pinH1">H1</span><span class="pin" id="pinH2">H2</span><span class="pin" id="pinH3">H3</span><span class="pin" id="pinH4">H4</span>
+      <span class="pin" id="pinH5">H5</span><span class="pin" id="pinH6">H6</span><span class="pin" id="pinH7">H7</span><span class="pin" id="pinH8">H8</span><span class="pin" id="pinH9">H9</span><span class="pin" id="pinH10">H10</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>H1</b>First launch: the app icon at 84 heads the message (D-77, DESIGN §9). The words are the app's as built; the code still draws the menu bar mark there.</li>
+      <li><b>H2</b>The school roams behind the message: the hammerhead comes in from the right, as the icon faces, the whale shark keeps to the deep, and a few small ones swim with them. Remoras keep to the big two, so none swims alone; threshers roam on their own. The message's middle stays faint.</li>
+      <li><b>H3</b>The sidebar says only "No projects yet.": Home holds the explanation and the button. Today it says "No sessions yet. Add a project folder to begin." in both views, also when projects exist.</li>
+      <li><b>H4</b>New Codex Session is off, with "Codex comes in a later version" under it (D-69).</li>
+      <li><b>H5</b>Without Claude, the attention triangle takes the icon's place, the title says what is missing, and Check Again takes New Claude Session's place. Add Project… stays the main action. No shark: the art waits with you, never with a problem.</li>
+      <li><b>H6</b>With nothing waiting, the band's sentence says so: "One session is working. Nothing needs you." With nothing working either, it is the menu bar's line: "Nothing is working or waiting."</li>
+      <li><b>H7</b>The Needs you card stays, empty, and says what will appear there. It replaces the built "Nothing needs you" card, whose title the band now says.</li>
+      <li><b>H8</b>Over a catalog with sessions, the no-Claude notice is a card under the band, with Check Again. Plan limits is left out, since the notice already says why, and the sidebar's New session row is off.</li>
+      <li><b>H9</b>After a quit that cut sessions short, Continue comes first: its lead line, then each session with "Last active … ago" and Resume on hover. "Show 3 More" follows the fifth row.</li>
+      <li><b>H10</b>Home's band: one hammerhead, always there, slow and faint, on one fixed loop of 180 seconds. It turns out of sight past the band's edges, so you see it swim and never turn. The thresher is gone from Home.</li>
+    </ol>
+    <div class="parts" style="margin-top:34px">
+      <div class="spec"><span class="label">The sidebar's empty lines</span>
+        <div class="pcanvas sidebits">
+          <div class="sbit"><div class="side-sec"><span class="label">Projects</span></div><div class="none">No projects yet.</div></div>
+          <div class="sbit"><div class="pgroup" style="--tone:var(--rose)"><div class="proj-head"><span class="pmark">T</span><span class="pn">thesis</span><span class="chev" data-i="chev-d"></span></div><div class="none in">No sessions</div></div></div>
+          <div class="sbit"><button class="search on"><span data-i="search"></span><span class="q">webhook retry</span><kbd>⌘K</kbd></button><div class="none">No matching sessions</div><div class="none sub2">Search covers title, provider and project.</div></div>
+        </div>
+        <p class="note">Three lines, in tertiary, at the row's inset. A project without sessions says "No sessions" under its head; a search with no result says so and what it searches. None has a button: the button lives on Home.</p></div>
+      <div class="spec"><span class="label">Home's sentence, by what is true</span>
+        <div class="pcanvas sentences">
+          <p><b>Two sessions are working. <em>One needs you.</em></b><span>working and waiting</span></p>
+          <p><b><em>One session needs you.</em></b><span>only waiting</span></p>
+          <p><b>One session is working. Nothing needs you.</b><span>only working</span></p>
+          <p><b>Nothing is working or waiting.</b><span>neither</span></p>
+        </div>
+        <p class="note">Until Remora's brief takes the band (§20), the band says the state in one sentence. Only "needs you" takes a colour, and only as text. The last one is the menu bar menu's own line, so both say the same.</p></div>
+      <div class="spec"><span class="label">Check Again</span>
+        <div class="pcanvas checks">
+          <div class="ckrow"><button class="btn sec">Check Again</button><span>asks Claude for the plan limits again</span></div>
+          <div class="ckrow"><button class="btn sec" disabled><span class="spin">⠋</span>Checking…</button><span>the button holds the spinner while it asks</span></div>
+          <div class="ckrow"><span class="muted">Found: the message goes, and Home is itself.</span></div>
+        </div>
+        <p class="note">Check Again asks what Home already asks at launch: the plan limits, which find the claude command. "Checking…" is new; the code's button gives no sign that it asked. Still missing, nothing else moves.</p></div>
+      <div class="spec w6"><span class="label">Home's hammerhead, on one loop</span>
+        <div class="pcanvas loopfig">
+          <svg viewBox="0 0 560 176" aria-hidden="true">
+            <defs><clipPath id="bandclip"><rect x="70" y="14" width="420" height="124" rx="10"/></clipPath></defs>
+            <rect class="band" x="70" y="14" width="420" height="124" rx="10"/>
+            <text class="lb" x="84" y="32">Home's band</text>
+            <rect class="sent" x="110" y="62" width="230" height="12" rx="3"/><rect class="sent" x="110" y="80" width="140" height="6" rx="3"/>
+            <ellipse class="path out" cx="280" cy="70" rx="269" ry="30"/>
+            <ellipse class="path" cx="280" cy="70" rx="269" ry="30" clip-path="url(#bandclip)"/>
+            <path class="arw" d="M214 40 l-9 0 m0 0 l5 -4 m-5 4 l5 4"/><path class="arw" d="M384 40 l-9 0 m0 0 l5 -4 m-5 4 l5 4"/>
+            <path class="arw" d="M176 100 l9 0 m0 0 l-5 -4 m5 4 l-5 4"/><path class="arw" d="M346 100 l9 0 m0 0 l-5 -4 m5 4 l-5 4"/>
+            <text class="lb mid" x="280" y="160">one loop · 180 s · 12 frames a second</text>
+            <text class="lb" x="8" y="104">turn</text><text class="lb end" x="552" y="104">turn</text>
+          </svg>
+        </div>
+        <p class="note">The hammerhead never leaves the band. It swims left along the top and back along the bottom, and turns out of sight past the edges: as its tail leaves on one side, its head comes back on the other. The loop repeats, so the app can work out its frames once and then only draw them, with nothing simulated while Home is open; the art's spike (§5) measures which way is cheaper. It draws only while Home is on screen in an active window.</p></div>
+      <div class="spec w6"><span class="label">The art under Reduce Motion</span>
+        <div class="pcanvas setrow">
+          <div class="srow2"><div class="tx"><b>Animated art</b><span>The drawings on Home, empty pages and waiting panes move, also when Reduce Motion is on. Off, each stands still on one frame.</span></div><div class="ctl"><span class="sw on" data-role="artsw" title="The same as the top bar's Sharks switch"></span></div></div>
+        </div>
+        <p class="note">Settings → Theme, under Appearance, on by default. The art moves under Reduce Motion, as the working spinner does (D-12): it is slow and faint, and never behind what you read. This switch stops it; then Remora's arrival is its fade. Reduce Motion still makes the transitions instant. The page plays the art the same way, whatever macOS says, and the top bar's Sharks switch is this switch.</p></div>
+    </div>
+  </section>
+
+  <!-- ================= 02 THE ENDED SESSION ================= -->
+  <section class="sec" id="ended">
+    <div class="sechead"><span class="num">02</span><h2>A session that has ended</h2>
+      <p>What a session leaves when its run is over: the terminal's last screen with one line above it, the record when Sphyrna has no screen to show, and the chat, which keeps its composer. Resume plays the way back in. The record's states are the ones it explains in words.</p></div>
+    <div class="pbar">
+      <div class="seg" id="endSeg"><button class="on" data-e="term">Terminal</button><button data-e="record">The record</button><button data-e="chat">Chat</button></div>
+      <div class="seg" id="recSeg" hidden><button class="on" data-r="ended">Not running</button><button data-r="away">Finished while away</button><button data-r="failed">Failed</button><button data-r="stopunv">Stop not verified</button><button data-r="problem">Problem</button><button data-r="unclear">Identity unclear</button><button data-r="unknown">State unknown</button></div>
+      <button class="btn sec sm" id="endReset">Reset</button>
+    </div>
+    <div class="stage"><div class="win" id="winE" data-w="1280" data-h="800">
+      <aside class="side" data-role="side"></aside>
+      <main class="detail" data-role="pane">
+        <header class="dhead">
+          <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
+          <span data-role="pill"></span>
+          <div class="end">
+            <span class="chip proj" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom<span class="sep"></span><span class="br"><span data-i="branch"></span>ui/ink-sidebar</span></span>
+            <span class="vline"></span>
+            <button class="ib" title="Inspector" data-i="side-r"></button>
+            <div class="cgroup" data-role="cgroup"></div>
+          </div>
+        </header>
+        <div class="dbody"><div class="main">
+          <div class="tabbar">
+            <div class="tab on" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind" data-role="tabmark"></span><span class="t">Port the sidebar to Ink tokens</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
+            <div class="tab" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind" data-mark="attn"></span><span class="t">Review the gate failure</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
+            <div class="tab" style="--tone:var(--aqua)"><span class="pmark sm">S</span><span class="ind"></span><span class="t">Weekly vault maintenance</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
+            <button class="ib" data-i="plus" title="New tab"></button>
+          </div>
+          <div class="ebody" data-role="body"></div>
+        </div></div>
+      </main>
+      <span class="pin" id="pinE1">E1</span><span class="pin" id="pinE2">E2</span><span class="pin" id="pinE3">E3</span><span class="pin" id="pinE4">E4</span>
+      <span class="pin" id="pinE5">E5</span><span class="pin" id="pinE6">E6</span><span class="pin" id="pinE7">E7</span><span class="pin" id="pinE8">E8</span><span class="pin" id="pinE9">E9</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>E1</b>One line above the last screen, flush on the canvas: "This session is not running.", then Show Details and Resume at the trailing edge, Resume last. The code puts Resume first. While it resumes, the line says "Resuming…" with the spinner.</li>
+      <li><b>E2</b>Resume is filled because it is the pane's one action, but Return does nothing here: the screen below has the focus, as the code has it. A stale session's button reads "Reactivate and Resume".</li>
+      <li><b>E3</b>The last screen as it was: a copy, selectable, scrolled to the bottom, dark in both appearances like any terminal. It has no cursor, and nothing swims behind it.</li>
+      <li><b>E4</b>Ended has no pill and no mark, in the header, the tab and the sidebar. The control group keeps only ⋯: there is nothing to stop.</li>
+      <li><b>E5</b>With no screen to show, after a relaunch, after a stop or from Show Details, the record shows, in the appearance. What it says comes first: a notice when the state has one, then "Not running", what Resume does, and the buttons. The facts follow in a card. The code puts the facts first.</li>
+      <li><b>E6</b>The record's notice: the state's wash at 10 % and its edge, its symbol, a title and one sentence. It is the state pill's long form, so the two always agree.</li>
+      <li><b>E7</b>The chat keeps its composer when sessions run in Chat. Sending resumes the session, so there is no notice; the missing pill says it is not running.</li>
+      <li><b>E8</b>A request Claude asked before it stopped stays pinned, quiet: "Claude stopped before you answered", its subject, and Resume (the chat's card).</li>
+      <li><b>E9</b>A message that never went says so above the composer, with Copy: "Not delivered: 1 message. It comes back in the composer when the session runs again."</li>
+    </ol>
+    <div class="parts" style="margin-top:34px">
+      <div class="spec w6"><span class="label">The record's notices</span>
+        <div class="pcanvas notes" data-role="allnotes"></div>
+        <p class="note">One shape for five states, each in its own hue. The failure states take the triangle; identity unclear takes the question diamond, and a finished turn the check. The text is the code's, in the app's name.</p></div>
+      <div class="spec w6"><span class="label">The read-only chat, and a stale session</span>
+        <div class="pcanvas pad0 rochat">
+          <div class="endnote"><span class="tx">This session is not running.</span><span class="grow"></span><button class="btn pri">Resume</button></div>
+          <div class="ro-col"><div class="marker">Session started · Opus 5.5 · high · Ask before edits · ui/ink-sidebar</div><div class="you"><div class="bubble">Port the sidebar rows to the Ink tokens…</div></div></div>
+        </div>
+        <div class="pcanvas pad0 rochat" style="margin-top:10px">
+          <div class="endnote"><span class="tx">This session is not running.</span><span class="grow"></span><button class="btn sec">Show Details</button><button class="btn pri">Reactivate and Resume</button></div>
+        </div>
+        <p class="note">When sessions run in Terminal, or Sphyrna has no Claude session ID, the chat is read only and the same line sits above it, without Show Details: there is no screen to let go of. A stale session's line offers Reactivate and Resume.</p></div>
+    </div>
+  </section>
+
+  <!-- ================= 03 BANNERS ================= -->
+  <section class="sec" id="banners">
+    <div class="sechead"><span class="num">03</span><h2>Banners</h2>
+      <p>A banner says what happened outside the content: something did not happen, Sphyrna is limited, or a note for you. In Ink they are the chat's banner everywhere, under the header as above the composer: one at a time, by weight, with the rest behind "+N". Open the stack, close the top one.</p></div>
+    <div class="pbar">
+      <button class="btn sec sm" id="banReset">Reset</button>
+      <span class="hint">Click "+2" to open the stack. × closes a banner at once, and the next comes in over 200 ms.</span>
+    </div>
+    <div class="stage"><div class="win" id="winB" data-w="1280" data-h="620">
+      <aside class="side" data-role="side"></aside>
+      <main class="detail" data-theme="dark">
+        <header class="dhead">
+          <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
+          <div class="end">
+            <span class="chip proj" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom<span class="sep"></span><span class="br"><span data-i="branch"></span>ui/ink-sidebar</span></span>
+            <span class="vline"></span>
+            <button class="ib" title="Inspector" data-i="side-r"></button>
+            <div class="cgroup"><button class="more" data-i="more" title="More"></button></div>
+          </div>
+        </header>
+        <div class="dbody"><div class="main">
+          <div class="tabbar">
+            <div class="tab on" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind"></span><span class="t">Port the sidebar to Ink tokens</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
+            <div class="tab" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind" data-mark="attn"></span><span class="t">Review the gate failure</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
+            <button class="ib" data-i="plus" title="New tab"></button>
+          </div>
+          <div class="tstack" data-role="stack"></div>
+          <div class="endnote"><span class="tx">This session is not running.</span><span class="grow"></span><button class="btn sec">Show Details</button><button class="btn pri">Resume</button></div>
+          <div class="term kept" data-role="kept"></div>
+        </div></div>
+      </main>
+      <span class="pin" id="pinB1">B1</span><span class="pin" id="pinB2">B2</span><span class="pin" id="pinB3">B3</span><span class="pin" id="pinB4">B4</span><span class="pin" id="pinB5">B5</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>B1</b>The top stack sits under the tab row and above the pane's own line, 12 from the edges. One banner shows. The rest wait behind a peek, "+2", which opens them in place and closes them again.</li>
+      <li><b>B2</b>By weight: what did not happen first, in the failure tone with the triangle; then what limits Sphyrna, in the attention tone; then notes, quiet. Newest first within a tone. Colour is never alone: each tone has its own symbol.</li>
+      <li><b>B3</b>The words are the code's: what happened, then the detail. The text is primary; only the edge and the symbol take the tone, never a filled box.</li>
+      <li><b>B4</b>× closes it at once, and a closed banner stays closed for the session. A notice that holds while its cause holds, such as the missing helper, has no ×.</li>
+      <li><b>B5</b>The stack pushes the screen down once. It comes in by opacity only, because a height animation above a terminal would resize it every frame.</li>
+    </ol>
+    <div class="parts" style="margin-top:34px">
+      <div class="spec w6"><span class="label">Failure · something did not happen</span>
+        <div class="pcanvas bans">
+          <div class="banner fail"><span data-i="warn"></span><span class="bt">Claude could not be started. claude was not found on the PATH of your terminal environment (14 folders searched).</span><button class="ib sm" data-i="x" title="Dismiss message"></button></div>
+          <div class="banner fail"><span data-i="warn"></span><span class="bt">Process cleanup was not verified. Last process check: 1 remaining. Stop it again to retry.</span><button class="ib sm" data-i="x" title="Dismiss message"></button></div>
+          <div class="banner fail"><span data-i="warn"></span><span class="bt">Sphyrna is not receiving events from Claude, so this session's status may be wrong. The session itself is not affected.</span></div>
+        </div>
+        <p class="note">An action that failed says its context sentence and the detail, and can be dismissed. A live session's issue stays while it holds. Both are red rows in the code; here they are the banner with the failure edge.</p></div>
+      <div class="spec w6"><span class="label">Attention · Sphyrna is limited</span>
+        <div class="pcanvas bans">
+          <div class="banner attn"><span data-i="excl"></span><span class="bt">New sessions are turned off because Sphyrna's process helper is missing. Without it Sphyrna cannot make sure Stop and Quit end all of a session's background work. Reinstall Sphyrna to fix this.</span></div>
+          <div class="banner attn"><span data-i="excl"></span><span class="bt">Work left by a previous Sphyrna could not be fully stopped: Previous run scope 4127: 1 process did not stop</span></div>
+        </div>
+        <p class="note">The ownership notices, shown above every pane until their cause is gone. They have no ×: nothing you do here changes them, and the sentence says what will.</p></div>
+      <div class="spec w6"><span class="label">Quiet · a note for you</span>
+        <div class="pcanvas bans">
+          <div class="banner"><span data-i="info"></span><span class="bt">“loom” is already in Sphyrna.</span><button class="ib sm" data-i="x" title="Dismiss message"></button></div>
+          <div class="banner"><span data-i="info"></span><span class="bt">A request is waiting for your answer. Answer it first, then continue.</span><button class="ib sm" data-i="x" title="Dismiss message"></button></div>
+          <div class="banner"><span class="spin">⠋</span><span class="bt">Stopping sessions before quitting…</span></div>
+        </div>
+        <p class="note">Info notes and the refusals of a move to Terminal or Chat. The quit's progress takes the spinner in the symbol's place and goes when the quit does.</p></div>
+      <div class="spec w6"><span class="label">Deleting</span>
+        <div class="pcanvas bans">
+          <div class="banner"><span class="spin">⠋</span><span class="bt">Deleting “Release C health check”…</span></div>
+          <div class="banner fail tall"><span data-i="warn"></span><span class="bt">Deleting this session isn't finished. A process of this session is still running. Nothing else was touched.<small>Release C health check</small></span><span class="bact"><button class="btn sm atint">Try Again</button><button class="btn sm dtint">Remove from Sphyrna Only</button></span></div>
+        </div>
+        <p class="note">The deletion banner keeps its two ways on, tinted as the sheets' are (D-78): Try Again in the accent, Remove from Sphyrna Only in the failure tone, which asks through the one alert.</p></div>
+      <div class="spec w6"><span class="label">Above the composer · the chat's</span>
+        <div class="pcanvas bans">
+          <div class="banner attn stack"><span data-i="excl"></span><span class="bt">Claude says this account's plan may not allow the Chat face.</span><button class="btn sec sm">Switch to Terminal</button><span class="peek">+2</span><button class="ib sm" data-i="x" title="Dismiss"></button></div>
+          <div class="banner"><span data-i="info"></span><span class="bt">Claude sent something this version of Sphyrna does not expect. The session goes on; some of it may not show.</span><button class="ib sm" data-i="x" title="Dismiss"></button></div>
+          <div class="banner"><span data-i="info"></span><span class="bt">3 records in this session have a shape Sphyrna does not know. They show as raw rows.</span><button class="ib sm" data-i="x" title="Dismiss"></button></div>
+        </div>
+        <p class="note">The chat's banners: the same box, one at a time, with "+N". A dismissed one stays dismissed for the session.</p></div>
+      <div class="spec w6"><span class="label">On the new-session page</span>
+        <div class="pcanvas bans">
+          <div class="banner"><span data-i="info"></span><span class="bt">This message is too long to start a session with (the limit is 128 KB). Shorten it, or keep the long part in a file and name it here.</span></div>
+          <div class="banner attn"><span data-i="excl"></span><span class="bt">This draft could not be saved (the disk is full). What you typed is still here, but it may be gone after a restart.</span></div>
+        </div>
+        <p class="note">The draft's notes sit above its composer and go when their cause does. A draft that cannot be kept is the attention tone: it is your text at risk.</p></div>
+    </div>
+  </section>
+
+  <!-- ================= 04 OUTSIDE THE WINDOW ================= -->
+  <section class="sec" id="outside">
+    <div class="sechead"><span class="num">04</span><h2>Outside the window</h2>
+      <p>Where Sphyrna speaks while you work elsewhere: the menu bar's mark and its menu, the banner macOS shows when a session needs your approval, and the Dock's count. Switch what the sessions are doing; the mark, the menu and the Dock follow together.</p></div>
+    <div class="pbar">
+      <div class="seg" id="mbSeg"><button data-m="idle">Idle</button><button data-m="work">Working</button><button class="on" data-m="attn">Needs you</button><button data-m="unv">Finished</button><button data-m="fail">Failed</button></div>
+      <button class="btn sec sm" id="mbMenu">Open the Menu</button>
+      <button class="btn sec sm" id="mbBanner">Show the Banner Again</button>
+      <span class="hint mono" data-role="ax"></span>
+    </div>
+    <div class="stage"><div class="win desk" id="winD" data-w="1280" data-h="600">
+      <div class="wall"></div>
+      <div class="mbar">
+        <span class="mbt app">Finder</span><span class="mbt">File</span><span class="mbt">Edit</span><span class="mbt">View</span><span class="mbt">Go</span><span class="mbt">Window</span><span class="mbt">Help</span>
+        <span class="stat">
+          <span class="si" data-role="mbitem" data-mb="front" data-badge="attn" title="Sphyrna"></span>
+          <span class="si" data-i="wifi"></span><span class="si" data-i="battery"></span><span class="si" data-i="toggles"></span><span class="clock">Tue 20 Oct  14:06</span>
+        </span>
+      </div>
+      <div class="smenu glassm" data-role="smenu" hidden></div>
+      <div class="nban glassm" data-role="nban"><span class="aic"><img class="appicon" alt=""></span><b>Review the gate failure</b><time>now</time><p>loom · Claude is waiting for your approval.</p></div>
+      <div class="mdock">
+        <div class="dt"><span class="gt g1" data-i="folder"></span><i class="run"></i></div>
+        <div class="dt"><span class="gt g2" data-i="mail"></span></div>
+        <div class="dt"><span class="gt g3" data-i="cal"></span></div>
+        <div class="dt"><span class="gt g4">&gt;_</span><i class="run"></i></div>
+        <div class="dt" data-role="dockicon"><span class="aic"><img class="appicon" alt=""></span><i class="run"></i><span class="badge2" data-role="badge">1</span><span class="tip glassm">Sphyrna</span></div>
+        <div class="dt"><span class="gt g5" data-i="doc"></span></div>
+        <i class="sepv"></i>
+        <div class="dt"><span class="gt g5" data-i="trash"></span></div>
+      </div>
+      <span class="pin" id="pinD1">D1</span><span class="pin" id="pinD2">D2</span><span class="pin" id="pinD3">D3</span><span class="pin" id="pinD4">D4</span>
+      <span class="pin" id="pinD5">D5</span><span class="pin" id="pinD6">D6</span><span class="pin" id="pinD7">D7</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>D1</b>The Front mark (D-77). Idle, it is a template image. Otherwise its corner carries the strongest state: the failure dot over the attention dot over the unviewed dot, and any dot over the working spinner, which moves.</li>
+      <li><b>D2</b>The menu starts with what needs you: a header in 11 semibold tertiary, then up to five rows of the status dot, the title and the project in secondary, failures first, then "and N more…".</li>
+      <li><b>D3</b>Working: the braille spinner standing on its first frame, since a menu is not redrawn while open. A click on a row brings Sphyrna forward on that session.</li>
+      <li><b>D4</b>The commands: New Claude Session with Claude's mark (off while Claude cannot start), Open Sphyrna, Settings…, Quit Sphyrna. Quit asks first, as ⌘Q does.</li>
+      <li><b>D5</b>With nothing working or waiting, one line that cannot be clicked: "Nothing is working or waiting.", the band's words on Home.</li>
+      <li><b>D6</b>The banner comes only when a session starts to wait for your approval, a question or a plan, and Sphyrna is not the active app. The title is the session's; the line says the project and why. It goes when the session stops waiting.</li>
+      <li><b>D7</b>The Dock counts the sessions that need you: failed, waiting and finished unread, the Home row's count. The menu lists the same set; the built menu can still list a failure you already read, which the count leaves out.</li>
+    </ol>
+    <div class="parts" style="margin-top:34px">
+      <div class="spec w6"><span class="label">What a banner says</span>
+        <div class="pcanvas nbans">
+          <div class="nban glassm static"><span class="aic"><img class="appicon" alt=""></span><b>Review the gate failure</b><time>now</time><p>loom · Claude is waiting for your approval.</p></div>
+          <div class="nban glassm static"><span class="aic"><img class="appicon" alt=""></span><b>Fix the side chat race</b><time>2m ago</time><p>loom · Claude has a question for you.</p></div>
+          <div class="nban glassm static"><span class="aic"><img class="appicon" alt=""></span><b>Migrate auth to JWT</b><time>14:02</time><p>backend-api · Claude has a plan ready for your review.</p></div>
+          <div class="nban glassm static"><span class="aic"><img class="appicon" alt=""></span><b>Summarise the release notes</b><time>now</time><p>Claude is waiting for your approval.</p></div>
+        </div>
+        <p class="note">Approval, question and plan, each with the project first; without a project, only the sentence. No sound and no buttons: a click brings Sphyrna forward on the session. Finished, failed and working send nothing, so a banner always means a session waits for you.</p></div>
+      <div class="spec w6"><span class="label">When macOS says no</span>
+        <div class="pcanvas setrow">
+          <div class="srow2"><div class="tx"><b>Notify when a session needs approval</b><span>A banner when Claude waits for your approval and Sphyrna is not the active app. macOS asks for permission once.</span><span class="warnl"><span data-i="excl"></span>Notifications for Sphyrna are off in System Settings, so no banner will appear.</span></div><div class="ctl"><button class="btn sec sm">Open System Settings</button><span class="sw on"></span></div></div>
+        </div>
+        <p class="note">The switch stays on: it is your wish, and macOS decides. The line under it says why nothing comes, in the attention text, with the way to change it. macOS asks once, at launch or when the switch is turned on.</p>
+        <div class="pcanvas setrow" style="margin-top:12px">
+          <div class="srow2"><div class="tx"><b>Show in menu bar</b><span>Show Sphyrna's mark in the menu bar, with the sessions that need you or are working.</span></div><div class="ctl"><span class="sw on"></span></div></div>
+        </div>
+        <p class="note">The mark and its menu exist only while this is on (Settings → General).</p></div>
+      <div class="spec"><span class="label">Quit, with sessions working</span>
+        <div class="salert static"><div class="abox"><span class="ai aic"><img class="appicon" alt=""></span><h4>Quit Sphyrna and stop 2 working sessions?</h4><p>Sphyrna stops every session it started. You can resume each one later.</p><div class="abtn"><button class="btn pri">Cancel</button><button class="btn sec">Quit</button></div></div></div>
+        <p class="note">D-45's question. Cancel is the default, as the code has it, so it is the filled one and takes Return; Quit is a click. The identity page drew Quit filled.</p></div>
+      <div class="spec"><span class="label">Quit, when a stop is not verified</span>
+        <div class="salert static"><div class="abox"><span class="ai aic"><img class="appicon" alt=""></span><h4>Sphyrna could not verify that its processes stopped.</h4><p>Remaining: 1. Errors: Process cleanup was not verified</p><p>Quit Anyway ends Sphyrna without confirming that every session process stopped. Processes Sphyrna could not stop may keep running.</p><div class="abtn col"><button class="btn pri">Try Again</button><button class="btn sec">Keep Sphyrna Open</button><button class="btn sec dest">Quit Anyway</button></div></div></div>
+        <p class="note">Three ways on, stacked as macOS stacks three. Try Again is the default. Quit Anyway is the destructive one, in the failure text, and never reads as a success.</p></div>
+      <div class="spec"><span class="label">The session list is damaged</span>
+        <div class="salert static"><div class="abox"><span class="ai aic"><img class="appicon" alt=""></span><h4>Sphyrna could not open the session list</h4><p>The file that holds the session list is damaged. Sphyrna keeps the damaged file next to it until a session is permanently deleted. Restore Backup brings back the list as of 20 Oct 2026 at 09:12; sessions added after that are missing from it. Start Fresh begins with an empty list instead. Your Claude transcripts are not touched.</p><div class="abtn col"><button class="btn pri">Restore Backup</button><button class="btn sec">Start Fresh</button><button class="btn sec">Quit</button></div></div></div>
+        <p class="note">At launch, before any window. Without a backup the alert says so and offers Start Fresh and Quit. A catalog newer than this build stops at Home's own message instead: "Sphyrna could not open its catalog", the error, and "The catalog file was left untouched. Nothing was created or overwritten."</p></div>
+    </div>
+  </section>
+</div>

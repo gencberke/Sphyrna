@@ -1,0 +1,121 @@
+/* ============================================================
+   Preview 03: the project page, and the new-session page on the
+   one model chip. Phase 1's tokens and parts and Phase 2's marks,
+   chips and pick lists; below are only the page's own parts.
+   ============================================================ */
+.proj-head.sel{background:var(--selected);box-shadow:inset 0 0 0 1px var(--line)}
+.srow.stale .t{color:var(--fg-2)}
+.side .nosess{height:28px;display:flex;align-items:center;padding:0 8px 0 38px;font-size:12px;color:var(--fg-3)}
+
+/* the page: one column on the canvas, its head on the window's header line */
+.ppage{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--line-3) transparent}
+.pcol{max-width:1000px;margin:0 auto;padding:0 32px 32px}
+.narrow .pcol{padding:0 20px 24px}
+.phead{height:52px;display:flex;align-items:center;gap:10px;min-width:0}
+.pname{font:600 20px/1 var(--ui);letter-spacing:-.012em;white-space:nowrap}
+.ppath{font:12px var(--mono);color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;margin:3px 0 0 2px;user-select:text;cursor:text}
+.phead .end{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+.phead .btn.pri svg{width:15px;height:15px}
+.pstats{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:2px;font-size:12px;color:var(--fg-2)}
+.pstats>span{white-space:nowrap}
+.pstats b{font-weight:600;color:var(--fg-1)}
+.pstats .pbr{display:inline-flex;align-items:center;gap:4px;font:11.5px var(--mono)}
+.pstats .pbr svg{width:12px;height:12px}
+.ptabs{height:36px;display:flex;align-items:stretch;gap:18px;margin-top:14px;border-bottom:1px solid var(--line)}
+.ptabs .itab{cursor:pointer}
+.ppanel{padding-top:10px}
+
+/* the Sessions tab: the list on the canvas, two cards beside it (above and below it when narrow) */
+.pgrid{display:grid;grid-template-columns:minmax(0,1fr) 300px;grid-template-areas:"list presets" "list week" "list .";grid-template-rows:auto auto 1fr;gap:14px 20px;align-items:start}
+.pgrid>.slist,.pgrid>.pempty{grid-area:list}
+.pgrid>.c-presets{grid-area:presets}
+.pgrid>.c-week{grid-area:week}
+.narrow .pgrid{grid-template-columns:minmax(0,1fr);grid-template-areas:"presets" "list" "week";grid-template-rows:auto}
+.slist{min-width:0;container-type:inline-size}
+.sr{padding:2px 0;border-top:1px solid var(--line)}
+.sr:first-child{border-top:0;padding-top:0}
+.sr-in{display:grid;grid-template-columns:12px 12px minmax(0,1fr) 170px 44px;column-gap:10px;align-items:start;padding:8px 12px 9px;border-radius:8px;cursor:default;transition:background .12s}
+.sr-in:hover,.sr.hov .sr-in{background:var(--hover)}
+.sr .ind{width:12px;height:12px;display:grid;place-items:center;margin-top:3px}
+.sr .hm{margin-top:3px}
+.sr .tt{min-width:0}
+.sr .t{display:block;font:500 13px/18px var(--ui);color:var(--fg-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sr.stale .t{color:var(--fg-2)}
+.sr .sl{display:block;margin-top:1px;font-size:12px;line-height:17px;color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sr .sl .mono{font:11.5px var(--mono);color:var(--fg-1)}
+.sr .bc{display:flex;align-items:center;gap:5px;min-width:0;font:11.5px/18px var(--mono);color:var(--fg-2)}
+.sr .bc svg{width:12px;height:12px;flex:none}
+.sr .bc span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sr .ts{font:11.5px/18px var(--mono);color:var(--fg-3);text-align:right;white-space:nowrap}
+.sr.nobr .sr-in{grid-template-columns:12px 12px minmax(0,1fr) 44px}
+@container (max-width:459px){.sr-in{grid-template-columns:12px 12px minmax(0,1fr) 44px}.sr .bc{display:none}}
+
+/* the side cards */
+.sc-h .nt{font:11px var(--mono);color:var(--fg-3)}
+.psets{margin-top:10px}
+.pset{width:calc(100% + 16px);height:28px;display:flex;align-items:center;gap:9px;margin:0 -8px;padding:0 8px;border-radius:8px;font-size:13px;color:var(--fg-1);cursor:default;transition:background .12s}
+.pset:hover{background:var(--hover)}
+.pset .mo{display:grid;place-items:center;width:14px;flex:none;color:var(--mt)}
+.pset .mo svg{width:14px;height:14px}
+.pset .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pset .md{display:inline-flex;align-items:center;gap:5px;flex:none;font:11px var(--mono);color:var(--fg-3)}
+.pset .all{font:10px var(--mono);color:var(--fg-3);padding:0 4px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line-2);flex:none}
+.cardnote{margin-top:8px;font-size:12px;line-height:1.5;color:var(--fg-2)}
+.wk{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.wk b{display:block;font:600 18px/1.25 var(--ui);font-variant-numeric:tabular-nums;color:var(--fg-1)}
+.wk span{display:block;margin-top:1px;font-size:11.5px;line-height:1.35;color:var(--fg-2)}
+
+/* an empty project: a small hammerhead swims in place over one plain line */
+.pempty{text-align:center;padding:18px 0 8px}
+.pempty canvas{width:100%;height:110px;display:block}
+.pempty p{margin-top:6px;font-size:12.5px;color:var(--fg-2)}
+
+/* Branches and Instructions read in a column of at most 700 */
+.p700{max-width:700px}
+.brw{height:34px;display:flex;align-items:center;gap:10px;padding:0 12px;border-top:1px solid var(--line)}
+.brw:first-child{border-top:0}
+.brw .g{display:grid;place-items:center;width:12px;flex:none;color:var(--fg-3)}
+.brw .g svg{width:12px;height:12px}
+.brw .bn2{font:12.5px var(--mono);color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:none;max-width:46%}
+.brw.cur .bn2{color:var(--fg-1)}
+.brw .cur2{font:500 11px var(--ui);color:var(--accent-hi);flex:none}
+.brw .wt{font-size:11.5px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.brw .wt b{font:11px var(--mono);font-weight:400}
+.brw .ns{margin-left:auto;font-size:11.5px;color:var(--fg-2);white-space:nowrap;flex:none}
+.brw .ts{width:44px;font:11.5px var(--mono);color:var(--fg-3);text-align:right;flex:none}
+.pnote{padding:10px 12px;font-size:12.5px;line-height:1.5;color:var(--fg-2)}
+.ihd{display:flex;align-items:center;gap:8px;height:30px;font-size:11.5px;color:var(--fg-3)}
+.ihd>[data-i] svg{width:14px;height:14px}
+.ihd .fn{font:12.5px var(--mono);color:var(--fg-1)}
+.ihd .lk2{margin-left:auto}
+.mdc{margin-top:6px;border-radius:12px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line),var(--sh-card);padding:18px 22px 20px}
+.mdc .prose{margin:0}
+.mdc h3{font:600 17px/1.3 var(--ui)}
+.cutnote{margin-top:10px;font-size:12px;color:var(--fg-3)}
+
+/* the project menu: the sidebar's, also at the page's trailing edge */
+.pmenu{width:276px}
+.mi .cvn{margin-left:auto;font-size:12px;color:var(--fg-3)}
+.swrow{display:flex;align-items:center;gap:7px;padding:3px 8px 7px 34px}
+.swt{width:18px;height:18px;border-radius:5px;flex:none;cursor:pointer;background:color-mix(in srgb,var(--tone) 24%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--tone) 46%,transparent);position:relative}
+[data-theme=light] .swt{background:color-mix(in srgb,var(--tone) 15%,transparent)}
+.swt.on{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--tone) 46%,transparent),0 0 0 1.5px var(--popover),0 0 0 3px var(--tone)}
+.swt.none{background:none;box-shadow:inset 0 0 0 1px var(--line-3)}
+.swt.none::after{content:"";position:absolute;left:3px;right:3px;top:8.5px;height:1px;background:var(--line-3);transform:rotate(-45deg)}
+
+/* the new-session page: the chip's popover opens under the chip */
+.draftpage .cchip.mdl{margin-left:auto}
+.draftpage .send{margin-left:4px}
+.win .pop[data-place^=below]{transform:translateY(-3px)}
+.win .pop[data-place^=below].open{transform:none}
+.mpick .hnote:empty{display:none}
+.hgrp.later .hhead b{color:var(--fg-2);font-weight:500}
+.mfoot{padding:6px 10px 2px;font-size:11.5px;color:var(--fg-3)}
+
+/* the sheet's small canvases */
+.pc2{background:var(--canvas);border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);padding:14px 16px}
+.pc2+.pc2{margin-top:10px}
+.pc2 .card{box-shadow:inset 0 0 0 1px var(--line)}
+.stlab{font:11px var(--mono);color:var(--fg-3);margin:0 0 6px 12px}
+.chiprow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.chiprow .cchip{box-shadow:inset 0 0 0 1px var(--line)}

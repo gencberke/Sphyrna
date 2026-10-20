@@ -1,0 +1,31 @@
+/* ---------- the landing page: the band, the name, then one window for each thing Sphyrna does ---------- */
+.brand{align-items:center}
+.brand .appicon{width:20px;height:20px;border-radius:5px;box-shadow:0 0 0 1px var(--line-2)}
+/* the band holds the art, so it never swims behind text */
+.lhero .band{position:relative;height:220px;overflow:hidden;background:var(--canvas);border-bottom:1px solid var(--line)}
+.lhero .band .artbg{-webkit-mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent);mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent)}
+.lcopy{padding-top:64px;padding-bottom:40px}
+.licon{display:block;width:88px;height:88px;border-radius:22.4%;box-shadow:0 12px 30px rgba(0,0,0,.42),0 0 0 1px var(--line-2)}
+.lcopy h1{font:200 96px/1 var(--display);letter-spacing:-.05em;margin:30px 0 22px}
+.llead{font:300 28px/1.28 var(--display);letter-spacing:-.018em;color:var(--fg-1);max-width:760px}
+.lsub{margin-top:18px;max-width:640px;font-size:15px;line-height:1.6;color:var(--fg-2)}
+.lfacts{display:flex;flex-wrap:wrap;gap:8px;margin-top:30px}
+.lfacts span{font:11.5px var(--mono);color:var(--fg-2);padding:4px 9px;border-radius:7px;box-shadow:inset 0 0 0 1px var(--line-2)}
+.feat{padding-top:96px;scroll-margin-top:48px}
+.fhead{display:grid;grid-template-columns:56px 1fr;align-items:baseline;border-top:1px solid var(--line);padding-top:26px}
+.fhead .num{font:11px var(--mono);color:var(--fg-3)}
+.fhead .kicker{font:11px var(--mono);color:var(--fg-3);letter-spacing:.06em;text-transform:uppercase}
+.fhead h2{grid-column:2;font:200 46px/1.08 var(--display);letter-spacing:-.034em;margin-top:12px}
+.fhead p{grid-column:2;margin-top:16px;max-width:660px;font-size:15px;line-height:1.6;color:var(--fg-2)}
+.fhead p.fine{margin-top:10px;font-size:12.5px;line-height:1.55;color:var(--fg-3)}
+/* a frame inherits the page's colour scheme, so its clear ground shows the page behind it */
+.frame{display:block;width:100%;border:0;background:transparent;margin:8px 0 0}
+.frame.wait{background:radial-gradient(60% 50% at 50% 40%,var(--raise-1),transparent)}
+.lclose{padding-top:120px}
+.lclose h2{font:200 52px/1.06 var(--display);letter-spacing:-.04em;border-top:1px solid var(--line);padding-top:40px}
+.lclose p{margin-top:18px;max-width:640px;font-size:15px;line-height:1.6;color:var(--fg-2)}
+.lclose .lk{display:inline-block;margin-top:22px;font-size:13px;color:var(--accent-hi);text-decoration:none}
+.lclose .lk::after{content:" →"}
+.lclose .lk:hover{text-decoration:underline}
+footer.wrap{display:flex;justify-content:space-between;gap:20px;border-top:1px solid var(--line);margin-top:96px;padding-top:22px}
+@media (max-width:760px){.lcopy h1{font-size:64px}.llead{font-size:22px}.fhead h2{font-size:34px}.fhead{grid-template-columns:1fr}.fhead .num{display:none}.fhead h2,.fhead p{grid-column:1}}

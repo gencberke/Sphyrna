@@ -1,0 +1,16 @@
+/* ---------- the reference page: its bar, its chapters and their frames ---------- */
+.brand{align-items:center}
+.brand .appicon{width:20px;height:20px;border-radius:5px;box-shadow:0 0 0 1px var(--line-2)}
+.top nav{overflow-x:auto;scrollbar-width:none;min-width:0}
+.top nav a.on{color:var(--fg-1);background:var(--selected)}
+.chapter{padding:110px 0 0;scroll-margin-top:48px}
+.chead{display:grid;grid-template-columns:56px 1fr auto;align-items:baseline;border-top:1px solid var(--line);padding-top:26px}
+.chead .num{font:11px var(--mono);color:var(--fg-3)}
+.chead h2{font:200 56px/1.05 var(--display);letter-spacing:-.035em}
+.chead p{grid-column:2;margin-top:14px;max-width:720px;color:var(--fg-2);font-size:14.5px;line-height:1.6}
+.chead .refs{grid-column:2;display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.chead .refs span{font:11px var(--mono);color:var(--fg-3);padding:3px 7px;border-radius:6px;box-shadow:inset 0 0 0 1px var(--line)}
+.frame{display:block;width:100%;border:0;background:transparent;margin:0;color-scheme:normal}
+.frame.wait{background:repeating-linear-gradient(90deg,transparent 0 40px,var(--grid) 40px 41px)}
+footer.wrap{border-top:1px solid var(--line);margin-top:80px}
+@media (max-width:1180px){.top nav{display:none}}

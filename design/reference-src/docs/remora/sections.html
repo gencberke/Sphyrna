@@ -1,0 +1,410 @@
+  <!-- ================= 01 THE BRIEF ================= -->
+  <section class="sec" id="brief">
+    <div class="sechead"><span class="num">01</span><h2>The brief</h2>
+      <p>Home in the morning, where D-65 placed Remora and the identity page drew it: where you left off, Remora's sentence, a tile per project that moved, and the field. When Home opens with a new brief, the band's hammerhead brings the remora in on its flank, lets it go at the brief's start and swims on into its loop (D-79). Replay plays it again. The states show the call when it cannot answer, Home later in the day, with the brief set to When I ask, with Remora off, and before any session. Try Put in Draft, Save, Sources and ⋯.</p></div>
+    <div class="pbar">
+      <button class="btn sec sm" id="replay">Replay</button>
+      <span class="grp"><span class="hint">Home</span><span class="seg" id="homeSeg"><button class="on" data-h="morning">Morning</button><button data-h="later">Later</button><button data-h="ask">When I ask</button><button data-h="off">Remora off</button><button data-h="none">No sessions yet</button></span></span>
+      <span class="grp" id="callGrp"><span class="hint">The call</span><span class="seg" id="callSeg"><button class="on" data-c="ok">Answered</button><button data-c="login">Not logged in</button><button data-c="limit">Limit reached</button><button data-c="fail">Could not answer</button></span></span>
+    </div>
+    <div class="playbar" style="margin-top:0">
+      <div class="tline" id="tline"></div>
+      <span class="tclock" id="tclock">0.0 s</span>
+    </div>
+    <div class="stage"><div class="win" id="winR" data-w="1280" data-h="800">
+      <aside class="side" data-side="home"></aside>
+      <main class="detail">
+        <div class="artbg" style="height:300px;-webkit-mask-image:linear-gradient(#000 30%,transparent);mask-image:linear-gradient(#000 30%,transparent)"></div>
+        <canvas class="ocean band" id="ocean-band" style="height:300px"></canvas>
+        <canvas class="ocean" id="ocean-arrive" style="height:320px"></canvas>
+        <div class="home">
+          <div class="brief" data-role="brief">
+            <div class="bhead"><h1 data-role="bh1">Where you left off</h1><span class="when" data-role="when">tuesday 20 october · since yesterday 23:10</span><button class="ib" data-i="more" data-open="bmenu" title="Catch Me Up, Memory…, Settings…"></button></div>
+            <div class="bline"><span class="rspot" aria-hidden="true"></span>
+              <div class="btext"><p class="rline"><span class="spin">⠋</span><span>Reading 6 sessions and 3 project notes…</span></p>
+                <p class="bsent">Three projects moved since yesterday. The Ink sidebar is one step from done; the only failure is in backend-api, where three token tests fail.</p>
+                <p class="rstate" data-role="rstate" hidden></p></div></div>
+            <div class="tiles">
+              <div class="tile wait" style="--tone:var(--orchid)" data-tile="loom"><div class="th"><span class="pmark sm">L</span>loom<span class="tm" data-tm="09:12" data-last="now">09:12</span></div>
+                <h5><span class="hm claude"></span>Port the sidebar to Ink tokens</h5><div class="st"><span class="spin">⠋</span>Working · step 5 of 6</div>
+                <div class="nx"><b>Next:</b> the footer tokens, then the contrast tests.</div>
+                <div class="ta"><button class="btn sec sm" data-act="draft" data-draft="When the footer tokens are in, run the contrast tests and fix what fails.">Put in Draft</button><button class="btn gh sm" data-act="open">Open</button></div>
+                <div class="placed" hidden><b>In its composer, not sent</b><u data-act="open">Open</u></div></div>
+              <div class="tile wait" style="--tone:var(--aqua)" data-tile="sb"><div class="th"><span class="pmark sm">S</span>second-brain<span class="tm" data-tm="09:12" data-last="25m">09:12</span></div>
+                <h5><span class="hm claude"></span>Thesis outline</h5><div class="st"><i class="dot unv"></i>Finished 25m ago, not read</div>
+                <div class="nx"><b>Next:</b> the reading list for chapter three.</div>
+                <div class="ta"><button class="btn sec sm" data-act="draft" data-has="1" data-draft="Continue from the reading list for chapter three: start with the two retrieval papers.">Put in Draft</button><button class="btn gh sm" data-act="open">Open</button></div>
+                <div class="placed" hidden><b>Copied: it already has a draft</b><u data-act="open">Open</u></div></div>
+              <div class="tile wait" style="--tone:var(--mint)" data-tile="api"><div class="th"><span class="pmark sm">B</span>backend-api<span class="tm" data-tm="09:12" data-last="9h">09:12</span></div>
+                <h5><span class="hm claude"></span>Migrate auth to JWT</h5><div class="st"><i class="dot fail"></i>Failed · 3 token tests</div>
+                <div class="nx"><b>Next:</b> update the token fixtures for the new claims.</div>
+                <div class="ta"><button class="btn sec sm" data-act="draft" data-draft="Update the token fixtures for the new claims, then rerun the three failing tests in test_tokens.py.">Put in Draft</button><button class="btn gh sm" data-act="open">Open</button></div>
+                <div class="placed" hidden><b>In its composer, not sent</b><u data-act="open">Open</u></div></div>
+            </div>
+            <div class="rquiet wait" data-role="quiet"><span class="cv" data-i="chev-r"></span><span class="pmark sm" style="--tone:var(--sage)">W</span>website<span class="m">quiet since Wednesday</span></div>
+            <div class="rprop wait" data-role="prop"><span>Remember this?</span><b>backend-api ships on Friday 24 October.</b><span class="acts"><button class="btn sec sm" data-act="save">Save</button><button class="btn gh sm" data-act="notnow">Not Now</button></span></div>
+            <div class="askr" data-role="askR"><input placeholder="Ask Remora about your sessions" aria-label="Ask Remora"><span class="chip" data-open="scopeR"><span data-role="scopename">All projects</span><span data-i="chev-d"></span></span><span class="send" data-i="up"></span></div>
+            <div class="bfoot wait" data-role="foot"><span data-role="footx">Remora read 6 sessions and 3 project notes · 4.6 s</span><u data-open="srcR">Sources</u><u data-act="memory">Memory…</u></div>
+          </div>
+          <div class="rfold" data-role="fold" hidden>
+            <div class="fh"><canvas id="mini-remora" aria-hidden="true"></canvas><span><b>Remora</b> · morning brief 09:12 · 2 of 3 picked up</span><u data-act="show">Show Brief</u></div>
+            <div class="flines">
+              <div class="fl"><span class="tk" data-i="check"></span><span class="pj"><span class="pmark sm" style="--tone:var(--orchid)">L</span>loom</span><span class="what"><span class="t">Port the sidebar to Ink tokens</span><span class="s"><span class="spin">⠋</span>Working · step 6 of 6</span></span><span class="end">11:02</span></div>
+              <div class="fl"><span class="tk" data-i="check"></span><span class="pj"><span class="pmark sm" style="--tone:var(--mint)">B</span>backend-api</span><span class="what"><span class="t">Migrate auth to JWT</span><span class="s"><i class="dot attn"></i>Waits for you: npm test</span></span><span class="end">10:40</span></div>
+              <div class="fl"><span class="tk"><span class="ring"></span></span><span class="pj"><span class="pmark sm" style="--tone:var(--aqua)">S</span>second-brain</span><span class="what"><span class="t">Thesis outline</span><span class="s">Next: the reading list for chapter three</span></span><span class="end"><button class="btn sec sm" data-act="draft" data-has="1" data-draft="Continue from the reading list for chapter three: start with the two retrieval papers.">Put in Draft</button></span></div>
+            </div>
+            <div class="askr"><input placeholder="Ask Remora about your sessions" aria-label="Ask Remora"><span class="chip">All projects<span data-i="chev-d"></span></span><span class="send" data-i="up"></span></div>
+          </div>
+          <div class="hero" data-role="hband" hidden><div class="eyebrow">tuesday 20 october · 09:12</div><h1 data-role="stmt">One session is working. <em>One needs you.</em></h1><p data-role="counts"><b>1</b> working · <b>1</b> needs you · <b>5</b> sessions today</p>
+            <p class="rnone" data-role="rnone" hidden>Remora reads your sessions and tells you where you left off. It answers once you have a session.</p></div>
+          <div class="hcols" data-role="hcols">
+            <div>
+              <article class="card lc" data-role="needs">
+                <div class="lc-h"><span class="dot attn"></span>Needs you<span class="n">3</span></div>
+                <div class="hrow" style="--tone:var(--mint)"><span class="ind" data-mark="fail"></span><span class="t">Migrate auth to JWT<span class="pj"><span class="pmark sm">B</span>backend-api</span></span><span class="age">9h</span>
+                  <span class="why">Failed: three token tests fail after the claims change.</span></div>
+                <div class="hrow" style="--tone:var(--orchid)"><span class="ind" data-mark="attn"></span><span class="t">Review the gate failure<span class="pj"><span class="pmark sm">L</span>loom</span></span><span class="age">3m</span>
+                  <span class="why">Claude asks to run <span class="mono" style="font-size:11.5px">swift test -c release --filter SideChatFlowTests</span>.</span></div>
+                <div class="hrow" style="--tone:var(--aqua)"><span class="ind" data-mark="unv"></span><span class="t">Thesis outline<span class="pj"><span class="pmark sm">S</span>second-brain</span></span><span class="age">25m</span>
+                  <span class="why">Finished: the outline has five chapters; chapter three needs its reading list.</span></div>
+              </article>
+            </div>
+            <div>
+              <article class="card sc" data-role="plan">
+                <div class="sc-h"><b>Plan limits</b><span>updated 09:12</span></div>
+                <div class="pace"><div class="l"><b>5-hour</b><span>94% left</span></div><div class="ptrack"><i style="width:94%"></i><em style="left:8%"></em></div><small>Resets 13:40 · at this pace it lasts</small></div>
+              </article>
+            </div>
+          </div>
+        </div>
+        <div class="pop" data-pop="bmenu" style="right:30px;top:96px;min-width:200px">
+          <button class="mi" data-act="catchup"><span class="ic" data-i="refresh"></span>Catch Me Up</button>
+          <button class="mi" data-act="memory"><span class="ic" data-i="book"></span>Memory…</button>
+          <div class="msep"></div>
+          <button class="mi" data-act="settings"><span class="ic" data-i="gear"></span>Settings…</button>
+        </div>
+        <div class="pop" data-pop="scopeR" style="min-width:210px">
+          <button class="mi" data-scope="All projects">All projects<span class="ck2" data-i="check"></span></button>
+          <div class="msep"></div>
+          <button class="mi" data-scope="loom"><span class="ic"><span class="pmark sm" style="--tone:var(--orchid)">L</span></span>loom<span class="ck2"></span></button>
+          <button class="mi" data-scope="second-brain"><span class="ic"><span class="pmark sm" style="--tone:var(--aqua)">S</span></span>second-brain<span class="ck2"></span></button>
+          <button class="mi" data-scope="backend-api"><span class="ic"><span class="pmark sm" style="--tone:var(--mint)">B</span></span>backend-api<span class="ck2"></span></button>
+          <button class="mi" data-scope="website"><span class="ic"><span class="pmark sm" style="--tone:var(--sage)">W</span></span>website<span class="ck2"></span></button>
+        </div>
+        <div class="pop rpop" data-pop="srcR">
+          <span class="label">Read for this brief</span>
+          <div class="src"><span class="ic"><span class="pmark sm" style="--tone:var(--orchid)">L</span></span><span class="t">Port the sidebar to Ink tokens</span><span class="m">now</span></div>
+          <div class="src"><span class="ic"><span class="pmark sm" style="--tone:var(--orchid)">L</span></span><span class="t">Review the gate failure</span><span class="m">3m</span></div>
+          <div class="src"><span class="ic"><span class="pmark sm" style="--tone:var(--aqua)">S</span></span><span class="t">Thesis outline</span><span class="m">25m</span></div>
+          <div class="src"><span class="ic"><span class="pmark sm" style="--tone:var(--aqua)">S</span></span><span class="t">Weekly vault maintenance</span><span class="m">1h</span></div>
+          <div class="src"><span class="ic"><span class="pmark sm" style="--tone:var(--mint)">B</span></span><span class="t">Migrate auth to JWT</span><span class="m">9h</span></div>
+          <div class="src"><span class="ic"><span class="pmark sm" style="--tone:var(--mint)">B</span></span><span class="t">Rate limiter tests</span><span class="m">2d</span></div>
+          <span class="label">Memory</span>
+          <div class="src"><span class="ic" data-i="doc"></span><span class="t">loom's note</span><span class="m">09:12</span></div>
+          <div class="src"><span class="ic" data-i="doc"></span><span class="t">second-brain's note</span><span class="m">09:12</span></div>
+          <div class="src"><span class="ic" data-i="doc"></span><span class="t">backend-api's note</span><span class="m">09:12</span></div>
+          <div class="pfoot">6 sessions · 3 notes · 28K tokens · 4.6 s</div>
+        </div>
+        <div class="dpop" data-role="dpop"><b data-role="dwhere">Put in its composer, not sent</b><q data-role="dtext"></q><div class="k">The composer's own ↵ sends it. Sphyrna never does.</div></div>
+      </main>
+      <span class="pin" id="pinR1">R1</span><span class="pin" id="pinR2">R2</span><span class="pin" id="pinR3">R3</span><span class="pin" id="pinR4">R4</span><span class="pin" id="pinR5">R5</span>
+      <span class="pin" id="pinR6">R6</span><span class="pin" id="pinR7">R7</span><span class="pin" id="pinR8">R8</span><span class="pin" id="pinR9">R9</span>
+    </div></div>
+    <div class="board" id="board"></div>
+    <ol class="legend">
+      <li><b>R1</b>"Where you left off", the date and the span the brief covers. Once the brief folds, it goes. ⋯ holds Catch Me Up, which writes a new brief, Memory… and Settings….</li>
+      <li><b>R2</b>The remora's place, then Remora's sentence: one or two sentences in first person, written word by word once it has read. The sentence keeps two lines' room, so nothing moves (D-77).</li>
+      <li><b>R3</b>A tile per project that moved, at most three, ranked by Remora: closest to done, a failure, then work cut short. The time is when its project note was rewritten; how the session ended is the catalog's, in Sphyrna's words; Next is the note's.</li>
+      <li><b>R4</b>Put in Draft leaves the line, shown whole on hover, in that session's composer, unsent. A composer that has text keeps it, and the line is copied instead; a terminal session only gets it copied. Open opens the session.</li>
+      <li><b>R5</b>A fourth project that moved would follow as a line; quiet projects fold into one line each. A project you excluded is never named.</li>
+      <li><b>R6</b>A fact Remora proposes to remember, with Save and Not Now. Save writes it to <span class="mono">Remora.md</span>, with Undo; Not Now drops it.</li>
+      <li><b>R7</b>The field: "Ask Remora about your sessions" and its scope, All projects or one project. Return asks, Esc stops, and ↑ in the empty field brings back the last question (Asking, below).</li>
+      <li><b>R8</b>What the brief read and what it took. Sources lists the sessions and the notes, each a link; Memory… opens the memory sheet (Memory, below).</li>
+      <li><b>R9</b>The band's one hammerhead brings the remora: in from the right on the arrival's lane, it lets go at the brief's start, leaves at the left, and comes back along the bottom of its loop a few seconds later. With Animated art off, the remora fades in at its place.</li>
+      <li><b>Later</b>Once one entry is picked up (its session ran since the brief), the brief folds: the remora's line, one line per entry with a tick or a ring, and the field. Show Brief brings the tiles back.</li>
+      <li><b>When I ask</b>No call and no arrival: the heading, Sphyrna's line "Your latest sessions, newest first." with Catch Me Up, and catalog tiles with Open only. The remora rests at its place.</li>
+      <li><b>The call</b>When Remora cannot answer, its sentence says why in Sphyrna's voice, the tiles fall back to the catalog's, and the remora rests. Remora off, Home is the one above: the band's sentence, then Needs you.</li>
+    </ol>
+    <div class="pcgrid" style="margin-top:30px">
+      <div class="spec" style="grid-column:span 12"><span class="label">The remora at its three places</span>
+        <div class="discs">
+          <span class="dh">The folded brief's line</span><span class="dh">Beside the brief</span><span class="dh">On the hammerhead's flank</span>
+          <canvas data-disc="fold"></canvas><canvas data-disc="rest"></canvas><canvas data-disc="ride"></canvas>
+        </div>
+        <p class="note">A remora is the fish with a sucker on its head: a flat, oval disc of plates that it holds on with. The art draws the disc, a bar across the head for each plate, on a broader and flatter head, as it draws the whale shark by its spots; a large remora also shows the ridge between the plates. The folded line's remora is a little larger and lies level, in semibold glyphs, so its disc has room. Everything else about it is as D-77 drew it (D-80).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 02 ASKING ================= -->
+  <section class="sec" id="asking">
+    <div class="sechead"><span class="num">02</span><h2>Asking</h2>
+      <p>Later in the day: the brief has folded, and the field asks. One answer opens under it at a time, with the sessions it names as chips; the question before folds into one Earlier line. Pick a question and Ask, or type one and press Return; Stop and Esc end an answer.</p></div>
+    <div class="pbar">
+      <span class="grp"><span class="hint">Question</span><span class="seg" id="qSeg"><button class="on" data-q="touch">Which session touched…</button><button data-q="yday">What finished yesterday…</button><button data-q="where">Where did we leave off…</button><button data-q="remember">Remember…</button></span></span>
+      <button class="btn sec sm" id="askBtn">Ask</button>
+    </div>
+    <div class="stage"><div class="win" id="winA" data-w="1280" data-h="800">
+      <aside class="side" data-side="home"></aside>
+      <main class="detail">
+        <div class="artbg" style="height:300px;-webkit-mask-image:linear-gradient(#000 30%,transparent);mask-image:linear-gradient(#000 30%,transparent)"></div>
+        <canvas class="ocean band" id="ocean-band2" style="height:300px"></canvas>
+        <div class="home" style="overflow-y:auto">
+          <div class="rfold">
+            <div class="fh"><canvas id="mini-remora2" aria-hidden="true"></canvas><span><b>Remora</b> · morning brief 09:12 · 2 of 3 picked up</span><u>Show Brief</u></div>
+            <div class="flines">
+              <div class="fl"><span class="tk" data-i="check"></span><span class="pj"><span class="pmark sm" style="--tone:var(--orchid)">L</span>loom</span><span class="what"><span class="t">Port the sidebar to Ink tokens</span><span class="s"><span class="spin">⠋</span>Working · step 6 of 6</span></span><span class="end">11:02</span></div>
+              <div class="fl"><span class="tk" data-i="check"></span><span class="pj"><span class="pmark sm" style="--tone:var(--mint)">B</span>backend-api</span><span class="what"><span class="t">Migrate auth to JWT</span><span class="s"><i class="dot attn"></i>Waits for you: npm test</span></span><span class="end">10:40</span></div>
+              <div class="fl"><span class="tk"><span class="ring"></span></span><span class="pj"><span class="pmark sm" style="--tone:var(--aqua)">S</span>second-brain</span><span class="what"><span class="t">Thesis outline</span><span class="s">Next: the reading list for chapter three</span></span><span class="end"><button class="btn sec sm">Put in Draft</button></span></div>
+            </div>
+            <div class="askr" data-role="askA"><input placeholder="Ask Remora about your sessions" aria-label="Ask Remora" data-role="qin"><span class="chip" data-open="scopeA"><span data-role="scopename">All projects</span><span data-i="chev-d"></span></span><button class="stopb" data-act="stop" title="Stop · esc"><span class="stopsq"></span>Stop</button><span class="send" data-i="up" data-act="ask"></span></div>
+            <div class="rans" data-role="ans">
+              <div class="q"><span data-role="qtm">You asked at 11:20</span><b data-role="qtx"></b><button class="ib" data-i="x" title="Close" data-act="closeans"></button></div>
+              <div class="working" data-role="work" hidden><span class="spin">⠋</span><span data-role="worktx">Reading…</span></div>
+              <div class="a" data-role="atx"></div>
+              <div class="chips wait" data-role="achips"></div>
+              <div class="foot wait" data-role="afoot"></div>
+            </div>
+            <div class="rearly" data-role="early" hidden><span data-i="chev-r" style="display:grid;place-items:center;width:12px;height:12px"></span><span>Earlier:</span><b data-role="eq"></b><span class="tm" data-role="etm"></span></div>
+          </div>
+          <div class="hcols">
+            <div>
+              <article class="card lc" data-role="needs">
+                <div class="lc-h"><span class="dot attn"></span>Needs you<span class="n">1</span></div>
+                <div class="hrow" style="--tone:var(--mint)"><span class="ind" data-mark="attn"></span><span class="t">Migrate auth to JWT<span class="pj"><span class="pmark sm">B</span>backend-api</span></span><span class="age">40m</span>
+                  <span class="why">Claude asks to run <span class="mono" style="font-size:11.5px">npm test -- tokens</span>.</span></div>
+              </article>
+            </div>
+            <div>
+              <article class="card sc" data-role="plan">
+                <div class="sc-h"><b>Plan limits</b><span>updated 11:20</span></div>
+                <div class="pace"><div class="l"><b>5-hour</b><span>61% left</span></div><div class="ptrack"><i style="width:61%"></i><em style="left:52%"></em></div><small>Resets 13:40 · at this pace it lasts</small></div>
+              </article>
+            </div>
+          </div>
+        </div>
+        <div class="pop" data-pop="scopeA" style="min-width:210px">
+          <button class="mi" data-scope="All projects">All projects<span class="ck2" data-i="check"></span></button>
+          <div class="msep"></div>
+          <button class="mi" data-scope="loom"><span class="ic"><span class="pmark sm" style="--tone:var(--orchid)">L</span></span>loom<span class="ck2"></span></button>
+          <button class="mi" data-scope="second-brain"><span class="ic"><span class="pmark sm" style="--tone:var(--aqua)">S</span></span>second-brain<span class="ck2"></span></button>
+          <button class="mi" data-scope="backend-api"><span class="ic"><span class="pmark sm" style="--tone:var(--mint)">B</span></span>backend-api<span class="ck2"></span></button>
+          <button class="mi" data-scope="website"><span class="ic"><span class="pmark sm" style="--tone:var(--sage)">W</span></span>website<span class="ck2"></span></button>
+        </div>
+        <div class="pop rpop" data-pop="srcA">
+          <span class="label">Read for this answer</span>
+          <div data-role="srclist"></div>
+          <div class="pfoot" data-role="srcfoot"></div>
+        </div>
+        <div class="dpop" data-role="dpop"><b data-role="dwhere">Put in its composer, not sent</b><q data-role="dtext"></q><div class="k">The composer's own ↵ sends it. Sphyrna never does.</div></div>
+      </main>
+      <span class="pin" id="pinA1">A1</span><span class="pin" id="pinA2">A2</span><span class="pin" id="pinA3">A3</span><span class="pin" id="pinA4">A4</span><span class="pin" id="pinA5">A5</span><span class="pin" id="pinA6">A6</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>A1</b>One answer at a time, under the field: the question with its time and ×, then the answer, the model's words in first person and in the question's language.</li>
+      <li><b>A2</b>Each session it names is a chip: the project's mark, the title and when. A click opens the session, as the sidebar does; nothing resumes or sends.</li>
+      <li><b>A3</b>An answer about where to go on carries Put in Draft beside its chip, shown whole on hover, with D-64's rules: an empty Chat composer gets it, anything else gets a copy.</li>
+      <li><b>A4</b>What it read and what it took; Sources lists the sessions and notes. A session it could not read is named as unread in the answer.</li>
+      <li><b>A5</b>The question before folds into one Earlier line, the only history Home keeps; a click brings it back. The journal keeps the rest (Memory, below).</li>
+      <li><b>A6</b>While it answers, Stop takes the send button's place, and Esc does the same. "Remember …" saves at once, with no call, and offers Undo.</li>
+    </ol>
+  </section>
+
+  <!-- ================= 03 MEMORY ================= -->
+  <section class="sec" id="memory">
+    <div class="sechead"><span class="num">03</span><h2>Memory</h2>
+      <p>What Remora keeps between answers, in one sheet from ⋯ → Memory…, the footer's Memory… or Settings. The journal and the project notes are its working memory, in Sphyrna's data folder; <span class="mono">Remora.md</span> in your vault is what lasts (D-64). Remove a line, edit a note, and switch the tabs.</p></div>
+    <div class="stage"><div class="win" id="winM" data-w="1280" data-h="760">
+      <aside class="side" data-side="home"></aside>
+      <main class="detail">
+        <div class="home">
+          <div class="rfold" style="padding-top:34px">
+            <div class="fh"><canvas id="mini-remora3" aria-hidden="true"></canvas><span><b>Remora</b> · morning brief 09:12 · 2 of 3 picked up</span><u>Show Brief</u></div>
+          </div>
+        </div>
+        <div class="scrim shown"></div>
+        <div class="sheet w560 at msheet" role="dialog" aria-label="Remora's memory">
+          <h4>Remora's memory</h4>
+          <div class="sn" style="font-weight:400;color:var(--fg-2);font-size:12.5px">What Remora keeps between answers. Every change is written at once.</div>
+          <div class="seg" id="memSeg"><button class="on" data-m="journal">Journal</button><button data-m="notes">Project notes</button><button data-m="vault">Remora.md</button></div>
+          <div class="mpane" data-m="journal">
+            <div class="jday"><span class="label">Today</span>
+              <div class="jl"><span class="tm">11:20</span><span>Asked which session touched the auth middleware; I named Migrate auth to JWT and Rate limiter tests.</span><button class="x" data-i="x" title="Remove"></button></div>
+              <div class="jl"><span class="tm">09:12</span><span>Morning brief: the Ink sidebar at step 5 of 6, Thesis outline finished and not read, backend-api failing on three token tests.</span><button class="x" data-i="x" title="Remove"></button></div>
+              <div class="jl"><span class="tm">09:12</span><span>Proposed to remember that backend-api ships on Friday 24 October; you saved it.</span><button class="x" data-i="x" title="Remove"></button></div>
+            </div>
+            <div class="jday"><span class="label">Yesterday</span>
+              <div class="jl"><span class="tm">18:40</span><span>Asked what is half done in loom; I named Port the sidebar to Ink tokens, stopped at step 4.</span><button class="x" data-i="x" title="Remove"></button></div>
+              <div class="jl"><span class="tm">08:55</span><span>Morning brief: the gate failure reproduced, the vault maintenance due, nothing failing.</span><button class="x" data-i="x" title="Remove"></button></div>
+            </div>
+            <div class="jday"><span class="label">Week of 12 October</span>
+              <div class="jl"><span class="tm">week</span><span>Mostly loom's Release C and the Ink previews; backend-api's JWT work began on Friday.</span><button class="x" data-i="x" title="Remove"></button></div>
+            </div>
+          </div>
+          <div class="mpane" data-m="notes" hidden>
+            <div class="memnote"><div class="ph2"><span class="pmark sm" style="--tone:var(--orchid)">L</span>loom<span class="m">rewritten 09:12 · 1.4 of 2 KB</span></div>
+              <div class="body" data-role="note">The Ink sidebar port is at step 5 of 6 on ui/ink-sidebar: rows, heads and search use Ink's tokens.
+Next: the footer tokens, then the contrast tests.
+Open: the gate failure in SideChatFlowTests waits for an approval.</div>
+              <div class="pa"><button class="btn sec sm" data-act="edit">Edit</button><button class="btn gh sm" data-act="rmnote">Remove</button></div></div>
+            <div class="memnote"><div class="ph2"><span class="pmark sm" style="--tone:var(--aqua)">S</span>second-brain<span class="m">rewritten 09:12 · 0.8 of 2 KB</span></div>
+              <div class="body">Thesis outline finished with five chapters. Next: the reading list for chapter three.</div>
+              <div class="pa"><button class="btn sec sm" data-act="edit">Edit</button><button class="btn gh sm" data-act="rmnote">Remove</button></div></div>
+            <div class="memnote"><div class="ph2"><span class="pmark sm" style="--tone:var(--mint)">B</span>backend-api<span class="m">rewritten 09:12 · 1.1 of 2 KB</span></div>
+              <div class="body">Migrate auth to JWT stopped with three token tests failing in test_tokens.py. Next: update the token fixtures for the new claims. Ships on Friday 24 October (remembered).</div>
+              <div class="pa"><button class="btn sec sm" data-act="edit">Edit</button><button class="btn gh sm" data-act="rmnote">Remove</button></div></div>
+          </div>
+          <div class="mpane" data-m="vault" hidden>
+            <div class="rmd"><span class="h"># Remora</span><span class="h">## Who I am</span><span class="li">Remora, Sphyrna's assistant. I read your sessions and answer about them; I never act on them.</span>
+              <span class="h">## How you want answers</span><span class="li">Short, in the question's language.</span><span class="li">Name the session; say when you could not read one.</span>
+              <span class="h">## Remembered</span><span class="li">backend-api ships on Friday 24 October. (saved 20 Oct)</span><span class="li">The thesis is due on 15 December. (saved 6 Oct)</span></div>
+            <div class="rmdpath"><span>~/Documents/second-brain/Remora.md</span><button class="btn sec sm">Open in Obsidian</button></div>
+            <p class="hon" style="margin-top:10px;font-size:12px;color:var(--fg-2)">Remora writes here only when you ask it to remember, or confirm a proposal, and only under its own headings. Edit the note itself in your vault.</p>
+          </div>
+          <div class="sbtn"><button class="btn sec" data-act="clearmem">Clear Working Memory…</button><span class="grow"></span><button class="btn sec" data-act="done">Done</button></div>
+        </div>
+      </main>
+      <span class="pin" id="pinM1">M1</span><span class="pin" id="pinM2">M2</span><span class="pin" id="pinM3">M3</span><span class="pin" id="pinM4">M4</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>M1</b>The journal: what Remora was asked and said, by day, for 14 days; then one line a week for 12 weeks. × removes a line, and Remora's next calls no longer see it.</li>
+      <li><b>M2</b>One note per project, rewritten each morning from its sessions, at most 2 KB. Edit changes it in place; Remove forgets the project until its next session.</li>
+      <li><b>M3</b><span class="mono">Remora.md</span>: who Remora is, how you want answers, and what you asked it to remember, with dates. Remora writes only under its own headings.</li>
+      <li><b>M4</b>Every change is written at once, so nothing waits for a Save: Done closes the sheet, as Esc does, and nothing is filled (D-78). Clear Working Memory… asks first and keeps <span class="mono">Remora.md</span>.</li>
+    </ol>
+  </section>
+
+  <!-- ================= 04 BEYOND HOME ================= -->
+  <section class="sec" id="beyond">
+    <div class="sechead"><span class="num">04</span><h2>Beyond Home</h2>
+      <p>Remora lives on Home. We looked for places outside it where Remora would really help, without making the app lean on it, and kept two: asking from ⌘K, and a brief for a new session. Both are doors, not new surfaces: nothing else in the app waits for Remora, and with Remora off both are gone. Everywhere else we looked, and why it stays out, is at the end.</p></div>
+
+    <h3 class="subh">⌘K: ask from anywhere</h3>
+    <div class="pbar">
+      <span class="grp"><span class="hint">The palette</span><span class="seg" id="kSeg"><button class="on" data-k="typing">Typing</button><button data-k="answer">The answer</button></span></span>
+      <span class="grp"><span class="hint">Scope (⇥)</span><span class="seg" id="kScope"><button class="on" data-s="all">All projects</button><button data-s="proj">This project</button><button data-s="sess">This session</button></span></span>
+    </div>
+    <div class="stage"><div class="win" id="winK" data-w="1280" data-h="760">
+      <aside class="side" data-side="sess"></aside>
+      <main class="detail">
+        <header class="dhead">
+          <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
+          <span class="state"><span data-mark="work"></span>Working</span>
+          <div class="end">
+            <span class="chip proj" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom<span class="sep"></span><span class="br"><span data-i="branch"></span>ui/ink-sidebar</span></span>
+            <span class="vline"></span>
+            <button class="ib" title="Inspector" data-i="side-r"></button>
+            <div class="cgroup"><button><span class="stopsq"></span>Stop</button><span class="div"></span><button class="more" data-i="more" title="More"></button></div>
+          </div>
+        </header>
+        <div class="dbody">
+          <div class="main">
+            <div class="tabbar">
+              <div class="tab on" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind" data-mark="work"></span><span class="t">Port the sidebar to Ink tokens</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
+              <div class="tab" style="--tone:var(--mint)"><span class="pmark sm">B</span><span class="ind" data-mark="attn"></span><span class="t">Migrate auth to JWT</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
+              <button class="ib" data-i="plus" title="New tab"></button>
+            </div>
+            <div class="chat" data-view="normal" data-run="working">
+              <div class="scroller"><div class="col">
+                <div class="you"><div class="bubble">Now the footer: move it to the Ink tokens and keep the usage chip's meter as it is.</div></div>
+                <div class="tfold"><div class="foldrow" role="button"><span class="cv" data-i="chev-r"></span>Worked for <span class="mono">2m 40s</span> · changed 2 files and ran 1 command</div></div>
+                <div class="reply"><div class="prose"><p>The footer reads the Ink tokens now: the + button and the gear are icon buttons, and the usage chip keeps its meter with the new hairline. Next I'll run the contrast tests for the footer's pairs.</p></div></div>
+              </div></div>
+            </div>
+          </div>
+        </div>
+        <div class="scrim shown"></div>
+        <div class="palette shown" style="top:76px">
+          <div class="pal-in"><span data-i="search"></span><span class="q" data-role="kq">which session touched the auth middleware?</span><span class="caret" data-role="kcaret"></span><kbd>esc</kbd></div>
+          <div class="pal-list" data-role="klist">
+            <div class="pal-h label">Remora</div>
+            <div class="prow cur"><span class="ic2" data-i="ask"></span>Ask Remora<span class="sc"><span data-role="kscope">All projects</span><kbd>⇥</kbd><kbd>↵</kbd></span></div>
+            <div class="pal-h label">In transcripts</div>
+            <div class="prow"><span class="ind" data-mark="fail"></span>Migrate auth to JWT<span class="ksnip">… moved the token check into <em>middleware/auth</em>.py …</span><span class="m" style="--tone:var(--mint)"><span class="pmark sm">B</span>backend-api · yesterday</span></div>
+            <div class="prow"><span class="ind"></span>Rate limiter tests<span class="ksnip">… reads <em>middleware/auth</em>.py before the limiter …</span><span class="m" style="--tone:var(--mint)"><span class="pmark sm">B</span>backend-api · 2d</span></div>
+          </div>
+          <div class="palans" data-role="kans" hidden>
+            <div class="q"><span data-i="ask" style="display:grid;place-items:center;width:14px;height:14px;color:var(--fg-2)"></span><span>Remora</span><span class="chip" data-role="kchip">All projects</span></div>
+            <div class="working" data-role="kwork" hidden><span class="spin">⠋</span><span>Reading 4 sessions…</span></div>
+            <div class="a" data-role="katx"></div>
+            <div class="chips wait" data-role="kchips"></div>
+          </div>
+          <div class="pal-foot" data-role="kfoot"><span><b>↑↓</b> move</span><span><b>↵</b> ask</span><span><b>⇥</b> scope</span><span><b>esc</b> close</span></div>
+        </div>
+      </main>
+      <span class="pin" id="pinK1">K1</span><span class="pin" id="pinK2">K2</span><span class="pin" id="pinK3">K3</span><span class="pin" id="pinK4">K4</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>K1</b>⌘K anywhere. When what you type reads as a question, Ask Remora heads the list; the palette's own results follow, sessions and then lines in transcripts, as they come without Remora.</li>
+      <li><b>K2</b>The scope is All projects; ⇥ narrows it to this project or this session. In a session that runs in Chat, the quick question (⌘;) asks Claude itself with the whole session in view, so This session is for ended and terminal sessions.</li>
+      <li><b>K3</b>↵ asks, and the answer opens in the palette with its chips. A chip opens the session and closes the palette; Open on Home keeps the answer as the field's Earlier line.</li>
+      <li><b>K4</b>Its call runs beside the session, so the session's own context stays as it was. With Remora off, the row is not there and the palette is as it was.</li>
+    </ol>
+
+    <h3 class="subh">A brief for a new session</h3>
+    <div class="pbar">
+      <span class="grp"><span class="hint">The page</span><span class="seg" id="nSeg"><button class="on" data-n="empty">Empty</button><button data-n="reading">Reading</button><button data-n="drafted">Drafted</button></span></span>
+    </div>
+    <div class="stage"><div class="win" id="winN" data-w="1280" data-h="860">
+      <aside class="side" data-side="draft"></aside>
+      <main class="detail">
+        <div class="artbg"></div>
+        <canvas class="ocean calm" id="ocean-draft"></canvas>
+        <header class="dhead bare"><span class="crumb"><b>loom</b> / new session</span>
+          <div class="end"><button class="btn gh sm" title="Opens the project's page"><span data-i="clock"></span>9 sessions in loom</button></div></header>
+        <div class="draftpage" style="--tone:var(--orchid)">
+          <h1 class="ask">What should we work on in <button class="pick">loom<span data-i="chev-d"></span></button>?</h1>
+          <div class="folder"><span>~/Documents/github/loom</span><span>·</span><span>ui/ink-sidebar</span><span>·</span><span>clean</span></div>
+          <div class="ndraft" data-role="ndraft" hidden><b>Remora's draft</b><span>from 3 sessions in loom · not sent</span><u data-open="srcN">Sources</u><u data-act="nclear">Clear</u></div>
+          <div class="composer">
+            <textarea id="nText" placeholder="Describe the task. @ mentions a file, / runs a command."></textarea>
+            <div class="cbar">
+              <button class="cchip" title="Attach, mention or run a command" data-i="plus"></button>
+              <button class="cchip mode" style="--mt:var(--m-abe)"><span data-i="shield"></span>Ask before edits</button>
+              <button class="cchip mdl" title="Model and effort"><span class="hm claude"></span><span>Opus 5.5</span><span class="eff">High</span><span class="cv" data-i="chev-d"></span></button>
+              <button class="send" data-i="up" title="Start a Claude Code session"></button>
+            </div>
+          </div>
+          <div class="keys"><span><b>↵</b> start</span><span><b>⌘↵</b> start in the background</span><span><b>⇧↵</b> new line</span></div>
+          <div class="under"><div class="seg"><button class="on"><span data-i="branch"></span>Stay on ui/ink-sidebar</button><button>New branch</button><button>New worktree</button></div></div>
+          <div class="presets"><span class="label" style="margin-right:4px">Presets</span><button class="pchip">Run tests, fix failures</button><button class="pchip">Plan the next slice</button><button class="pchip">Second opinion</button></div>
+          <div class="nrow" data-role="nrow"><span data-role="nrowtx">Remora can write this session's brief from loom's recent work.</span><button class="btn sec sm" data-act="ndraft">Draft Brief</button></div>
+        </div>
+        <div class="pop rpop" data-pop="srcN">
+          <span class="label">Read for this brief</span>
+          <div class="src"><span class="ic"><span class="pmark sm" style="--tone:var(--orchid)">L</span></span><span class="t">Port the sidebar to Ink tokens</span><span class="m">now</span></div>
+          <div class="src"><span class="ic"><span class="pmark sm" style="--tone:var(--orchid)">L</span></span><span class="t">Review the gate failure</span><span class="m">3m</span></div>
+          <div class="src"><span class="ic"><span class="pmark sm" style="--tone:var(--orchid)">L</span></span><span class="t">Remora spike S10</span><span class="m">2h</span></div>
+          <span class="label">Memory</span>
+          <div class="src"><span class="ic" data-i="doc"></span><span class="t">loom's note</span><span class="m">09:12</span></div>
+          <div class="pfoot">3 sessions · 1 note · 19K tokens · 6.2 s</div>
+        </div>
+      </main>
+      <span class="pin" id="pinN1">N1</span><span class="pin" id="pinN2">N2</span><span class="pin" id="pinN3">N3</span><span class="pin" id="pinN4">N4</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>N1</b>One quiet row under the presets. A fresh session knows nothing of the last ones; Remora can write it the brief it needs from the project's recent work.</li>
+      <li><b>N2</b>Draft Brief reads the project's last sessions and its note, then writes what a fresh session can start from: the goal, where it stands, the next step, the files, and what to watch for.</li>
+      <li><b>N3</b>The brief lands in the composer, unsent, under a line that says where it came from, with Sources and Clear. Edit it and press ↵ yourself. A composer with text keeps it, and the brief is copied.</li>
+      <li><b>N4</b>The row shows only with Remora on, and once the project has a session. It is one call, on your click, like a question.</li>
+    </ol>
+
+    <div class="pcgrid" style="margin-top:34px">
+      <div class="spec" style="grid-column:span 12"><span class="label">Where else we looked</span>
+        <table class="outtab" style="margin-top:14px">
+          <tr><th>Place</th><th>What Remora could do</th><th>Verdict</th><th>Why</th></tr>
+          <tr><td>⌘K</td><td>Answer a question from anywhere</td><td class="v yes">kept</td><td>Questions come up while you work in a session, not on Home. Its call runs beside the session, so the session's own context stays clean.</td></tr>
+          <tr><td>A new session</td><td>Draft its brief</td><td class="v yes">kept</td><td>A fresh session needs the goal, the state and the next step, which is what Remora already reads. You see every word before anything is sent.</td></tr>
+          <tr><td>The project page</td><td>Show the project's next step</td><td class="v no">left out</td><td>Home's tile already says it, and once you have worked on the project a stored next step is stale.</td></tr>
+          <tr><td>Inside a session</td><td>Answer about the session</td><td class="v no">left out</td><td>The quick question and the side chat ask Claude in place, with the whole session in view; Remora would see an excerpt. ⌘K covers ended sessions.</td></tr>
+          <tr><td>A request card</td><td>Explain an approval</td><td class="v no">left out</td><td>Anything beside Approve could read as an answer, and Remora never answers a request (D-64).</td></tr>
+          <tr><td>The Changes tab</td><td>Explain a diff</td><td class="v no">left out</td><td>Remora does not read git (D-64), and the session's Claude explains its own change better.</td></tr>
+          <tr><td>A failure</td><td>Say why it failed</td><td class="v no">left out</td><td>The failure's words come from the code and from Claude. A summary would add a guess.</td></tr>
+          <tr><td>Notifications, the menu bar</td><td>A daily digest</td><td class="v no">left out</td><td>A notification means a session waits for you (§19), and the menu bar is for state.</td></tr>
+          <tr><td>Session cleanup</td><td>Say what each old session was</td><td class="v no">left out</td><td>Deleting on a model's summary is a risk; the title and the last line are enough.</td></tr>
+        </table>
+        <p class="note">The test for each place: does Remora save you a step you take often, without a new surface, and without a second opinion beside what Claude or the code already says? Two places pass. Remora's cost stays as D-64 set it: a call only on a question, a click, or the first Home of the day.</p>
+      </div>
+    </div>
+  </section>
+</div>

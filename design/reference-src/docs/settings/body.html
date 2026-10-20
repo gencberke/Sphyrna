@@ -1,0 +1,351 @@
+<body data-cast="neutral" data-side="solid">
+
+<!--TOPBAR-->
+
+<div class="wrap">
+  <section class="sec principles" id="rules">
+  <div class="rules">
+    <div class="rule"><div class="n">01</div><h3>One window, six tabs</h3><p>Settings is a 680×520 window that follows the appearance and the tone. Its sections are view tabs in the title band, where the window's title would be: General, Theme, Usage, Sessions, Remora and About.</p></div>
+    <div class="rule"><div class="n">02</div><h3>Groups are cards</h3><p>A group is a card on raised 1 under a section label. A row holds its label, one line of help and its control at the trailing edge, and rows divide by hairlines.</p></div>
+    <div class="rule"><div class="n">03</div><h3>One control family</h3><p>Switches, segments, menu pickers, steppers and buttons are the main window's: 26 high, the same radii, hover and focus ring. A risky choice asks first.</p></div>
+    <div class="rule"><div class="n">04</div><h3>A tone is a cast</h3><p>Neutral, Warm and Cool shift every grey level of the window a few degrees, the sidebar and Settings included. Status, accent, project and mode colours stay as they are.</p></div>
+    <div class="rule"><div class="n">05</div><h3>Glass is the sidebar's</h3><p>Glass draws the sidebar's canvas at 0.8 over the desktop's material. Solid is the default; nothing else is glass, and Reduce Transparency draws Solid.</p></div>
+    <div class="rule"><div class="n">06</div><h3>About is quiet</h3><p>The app icon, the name and the version, then the facts in mono. A hammerhead crosses once behind the icon when About opens, then rests.</p></div>
+  </div>
+  </section>
+
+  <!-- ================= 01 SETTINGS ================= -->
+  <section class="sec" id="settings">
+    <div class="sechead"><span class="num">01</span><h2>Settings</h2>
+      <p>The window at its real size. Switch the tabs and try the controls: the mode menu asks before Full access, the steppers and the checkboxes work, Remora's switch dims what depends on it, and About's hammerhead crosses once each time About opens.</p></div>
+    <div class="stage"><div class="win" id="winB" data-w="680" data-h="520">
+      <div class="swin">
+        <div class="stitle"><div class="lights"><i></i><i></i><i></i></div>
+          <nav class="stabs"><button class="itab on" data-stab="general">General</button><button class="itab" data-stab="theme">Theme</button><button class="itab" data-stab="usage">Usage</button><button class="itab" data-stab="sessions">Sessions</button><button class="itab" data-stab="remora">Remora</button><button class="itab" data-stab="about">About</button></nav>
+        </div>
+
+        <!-- General -->
+        <div class="spane" data-stab="general">
+          <div class="sbody">
+            <div class="sgrp"><div class="slab"><span class="label">Sessions</span></div>
+              <div class="scard">
+                <div class="srw"><div class="tx"><b>Sessions run in</b><span class="hp">Applies when a session starts or resumes. A running session keeps its face until it stops.</span></div><div class="ctl"><div class="seg" data-set="face"><button class="on" data-v="chat">Chat</button><button data-v="terminal">Terminal</button></div></div></div>
+                <div class="srw"><div class="tx"><b>Mode of new sessions</b><span class="hp">Last used in the project, or one mode for every new session. Ask runs in Chat only; in the terminal it starts as Ask before edits.</span></div><div class="ctl"><button class="popup" data-open="modeMenu"><span class="mo" data-role="modeicon"></span><span data-role="modename">Last used in the project</span><span class="ud" data-i="updown"></span></button></div></div>
+                <div class="srw"><div class="tx"><b>Terminal font size</b><span class="hp">Applies to existing and new terminals.</span></div><div class="ctl"><button class="popup" data-open="fontMenu"><span data-role="fontsize">14 pt</span><span class="ud" data-i="updown"></span></button></div></div>
+                <div class="srw"><div class="tx"><b>Search session text</b><span class="hp">Let the command palette look inside your sessions. It reads Claude's transcript files only while you type, and keeps nothing. Off, it searches titles, projects and actions.</span></div><div class="ctl"><span class="sw on" data-set="search"></span></div></div>
+              </div>
+            </div>
+            <div class="sgrp"><div class="slab"><span class="label">System</span></div>
+              <div class="scard">
+                <div class="srw"><div class="tx"><b>Show in menu bar</b><span class="hp">Show Sphyrna's mark in the menu bar, with the sessions that need you or are working.</span></div><div class="ctl"><span class="sw on" data-set="menubar"></span></div></div>
+                <div class="srw"><div class="tx"><b>Notify when a session needs approval</b><span class="hp">A banner when Claude waits for your approval and Sphyrna is not the active app. macOS asks for permission once.</span></div><div class="ctl"><span class="sw on" data-set="notify"></span></div></div>
+                <div class="srw"><div class="tx"><b>Open at login</b><span class="hp">Start Sphyrna when you log in.</span></div><div class="ctl"><span class="sw" data-set="login"></span></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Theme -->
+        <div class="spane" data-stab="theme" hidden>
+          <div class="sbody">
+            <div class="sgrp"><div class="scard">
+              <div class="srw"><div class="tx"><b>Appearance</b><span class="hp">Ink is dark and Paper is light; Match system follows macOS. Terminal sessions stay dark in all three.</span></div><div class="ctl"><div class="seg" data-set="appearance"><button class="on" data-v="ink">Ink</button><button data-v="paper">Paper</button><button data-v="system">Match system</button></div></div></div>
+              <div class="srw"><div class="tx"><b>Animated art</b><span class="hp">The drawings on Home, empty pages and waiting panes move, also when Reduce Motion is on. Off, each stands still on one frame.</span></div><div class="ctl"><span class="sw on" data-set="art"></span></div></div>
+              <div class="srw stack"><div class="tx"><b>Tone</b><span class="hp">A cast over the window's greys, the sidebar and Settings included. Status, accent and project colors stay as they are.</span></div>
+                <div class="ttiles" data-set="cast">
+                  <button class="ttile on" data-v="neutral"><span class="mini"><i class="l1"></i><i class="l2"></i><i class="cd"></i><i class="cp"></i><i class="ac"></i></span><span class="nm">Neutral</span><span class="dt">Ink's own greys.</span></button>
+                  <button class="ttile" data-v="warm"><span class="mini"><i class="l1"></i><i class="l2"></i><i class="cd"></i><i class="cp"></i><i class="ac"></i></span><span class="nm">Warm</span><span class="dt">A slight brown cast.</span></button>
+                  <button class="ttile" data-v="cool"><span class="mini"><i class="l1"></i><i class="l2"></i><i class="cd"></i><i class="cp"></i><i class="ac"></i></span><span class="nm">Cool</span><span class="dt">A slight blue cast.</span></button>
+                </div>
+              </div>
+              <div class="srw"><div class="tx"><b>Sidebar</b><span class="hp">Glass lets the desktop show through softly. Solid is opaque. Reduce Transparency in System Settings always shows Solid.</span></div><div class="ctl"><div class="seg" data-set="sidebar"><button class="on" data-v="solid">Solid</button><button data-v="glass">Glass</button></div></div></div>
+              <div class="srw"><div class="tx"><b>Project colors</b><span class="hp">Give each project a color: its mark, its tabs and its selected session. Off keeps them grey and remembers the colors.</span></div><div class="ctl"><span class="sw on" data-set="pcolors"></span></div></div>
+            </div></div>
+          </div>
+        </div>
+
+        <!-- Usage -->
+        <div class="spane" data-stab="usage" hidden>
+          <div class="sbody">
+            <div class="utop"><span>This Claude profile, all projects</span><div class="seg" data-role="period"><button data-p="24h">24 h</button><button class="on" data-p="7d">7 d</button><button data-p="30d">30 d</button><button data-p="90d">90 d</button></div></div>
+            <article class="scard ucard">
+              <div class="uhead"><b>Plan limits</b><span>Updated 17:20</span></div>
+              <div class="prow2" title="38% used"><span class="k">5-hour</span><span class="pmeter"><i style="width:62%"></i></span><span class="pc">62% left</span><span class="rs">Resets 19:40</span></div>
+              <div class="prow2" title="26% used"><span class="k">Weekly</span><span class="pmeter"><i style="width:74%"></i></span><span class="pc">74% left</span><span class="rs">Resets Mon 10:00</span></div>
+            </article>
+            <article class="scard ucard">
+              <div class="uhead"><b data-role="ptitle">Last 7 days</b><span data-role="psess">7 sessions with usage</span></div>
+              <div class="ufig">
+                <div><div class="big" data-role="ptotal">3.1M</div><span class="cap">tokens</span><div class="cost" data-role="pcost">~$31.20</div><span class="cap">estimated</span><p class="fine">API-equivalent estimate — subscriptions are not billed per token.</p></div>
+                <div class="kinds" data-role="kinds"></div>
+              </div>
+            </article>
+            <article class="scard ucard">
+              <div class="uhead"><b data-role="atitle">Tokens per day</b><span data-role="apeak">Peak 812K, Sunday</span></div>
+              <div class="ubars" data-role="bars"></div>
+              <div class="uaxis" data-role="axis"></div>
+              <div class="heatrow"><span>Last 5 hours, local</span><span class="heat" title="340K tokens, approximate. Local activity, not your plan limit."><i style="--h:.12"></i><i style="--h:.3"></i><i style="--h:.18"></i><i style="--h:.62"></i><i style="--h:.86"></i></span><b>340K</b></div>
+              <div class="heatlbl"><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span></div>
+            </article>
+            <article class="scard ucard">
+              <div class="uhead"><b>By model</b><span>3 models</span></div>
+              <div class="ugrid" data-role="models"></div>
+            </article>
+          </div>
+          <div class="sfoot"><span data-role="ufoot">Updated 17:20 · Prices as of Oct 7, 2026</span><span class="sp"></span><button class="ib" data-i="refresh" title="Update usage now" data-act="urefresh"></button></div>
+        </div>
+
+        <!-- Sessions -->
+        <div class="spane" data-stab="sessions" hidden>
+          <div class="sbody" data-role="cbody">
+            <div class="dueline"><span data-i="info"></span>A review is due. Nothing is deleted unless you confirm it here.<button class="btn gh sm" data-act="dismiss">Dismiss</button></div>
+            <div class="sgrp"><div class="slab"><span class="label" data-role="canlab">Can be deleted (3)</span><button class="lk2" data-act="selall">Select All</button></div>
+              <div class="scard" data-role="can">
+                <div class="crow" data-files="162" data-mb="14"><span class="cbx" data-i="check"></span><span class="tx"><b>Try the old sidebar spacing</b><span>loom · Stale since 2 Oct · 14 MB</span></span><span class="res"></span></div>
+                <div class="crow" data-files="41" data-mb="3.2"><span class="cbx" data-i="check"></span><span class="tx"><b>Rename the usage chip</b><span>loom · Stale since 29 Sep · 3.2 MB</span></span><span class="res"></span></div>
+                <div class="crow" data-files="12" data-mb="0.86"><span class="cbx" data-i="check"></span><span class="tx"><b>zsh prompt with the branch</b><span>dotfiles · Stale since 24 Sep · 860 KB</span></span><span class="res"></span></div>
+              </div>
+            </div>
+            <div class="sgrp"><div class="slab"><span class="label">Kept (4)</span></div>
+              <div class="scard">
+                <div class="crow"><span class="tx"><b>Release C health check</b><span>loom</span></span><span class="why">Pinned</span></div>
+                <div class="crow"><span class="tx"><b>Port the sidebar to Ink tokens</b><span>loom</span></span><span class="why">Running</span></div>
+                <div class="crow"><span class="tx"><b>Migrate auth to JWT</b><span>backend-api</span></span><span class="why">Waits until 25 Oct</span></div>
+                <div class="crow"><span class="tx"><b>Tidy the inbox notes</b><span>second-brain</span></span><span class="why">Linked to an unfinished task</span></div>
+              </div>
+            </div>
+            <div class="sgrp"><div class="slab"><span class="label">Cleanup</span><button class="lk2 dis" data-act="cdefaults">Reset to Defaults</button></div>
+              <div class="scard">
+                <div class="srw"><div class="tx"><b>Review again after</b><span class="hp">A new review is due this long after the last one. Default 30 days.</span></div><div class="ctl"><span class="stepper" data-min="7" data-max="365" data-def="30" data-val="30"><button data-d="-1" data-i="minus" title="Fewer days"></button><span class="v">30 days</span><button data-d="1" data-i="plus" title="More days"></button></span></div></div>
+                <div class="srw"><div class="tx"><b>Wait before deleting</b><span class="hp">A stale session can be deleted this long after it went stale or after you last opened it. Default 15 days.</span></div><div class="ctl"><span class="stepper" data-min="1" data-max="180" data-def="15" data-val="15"><button data-d="-1" data-i="minus" title="Fewer days"></button><span class="v">15 days</span><button data-d="1" data-i="plus" title="More days"></button></span></div></div>
+              </div>
+              <p class="chg" data-role="chg" hidden>A change applies from the next review. Review again to see it.</p>
+            </div>
+          </div>
+          <div class="sfoot"><span data-role="cfoot">Reviewed 17:20</span><span class="sp"></span><button class="ib" data-i="refresh" title="Review again" data-act="creview"></button><button class="btn dan sm" data-act="cdelete" disabled>Delete Sessions</button></div>
+        </div>
+
+        <!-- Remora -->
+        <div class="spane" data-stab="remora" hidden>
+          <div class="sbody">
+            <div class="sgrp"><div class="scard">
+              <div class="srw"><div class="tx"><b>Remora</b><span class="hp">Answers questions about your sessions on Home and from ⌘K, and drafts a new session's brief. It only reads.</span></div><div class="ctl"><span class="sw on" data-set="remora"></span></div></div>
+              <div class="srw" data-dim><div class="tx"><b>Model</b><span class="hp">Haiku 5.5 answers faster and uses much less of your plan.</span></div><div class="ctl"><button class="popup"><span>Sonnet 5.5</span><span class="ud" data-i="updown"></span></button></div></div>
+              <div class="srw" data-dim><div class="tx"><b>Effort</b></div><div class="ctl"><button class="popup"><span>Low</span><span class="ud" data-i="updown"></span></button></div></div>
+              <div class="srw" data-dim><div class="tx"><b>Morning brief</b><span class="hp">One brief on the first Home of the day, when a session moved since the last one.</span></div><div class="ctl"><div class="seg" data-set="brief"><button class="on" data-v="auto">Automatic</button><button data-v="ask">When I ask</button></div></div></div>
+              <div class="srw" data-dim><div class="tx"><b>Brief language</b></div><div class="ctl"><button class="popup"><span>Same as my last question</span><span class="ud" data-i="updown"></span></button></div></div>
+            </div></div>
+            <div class="sgrp" data-dim><div class="slab"><span class="label">What it reads</span></div><div class="scard">
+              <div class="srw stack"><div class="tx"><b>Projects it reads</b><span class="hp">An excluded project is never sent, never noted and never named.</span></div>
+                <div class="pchks"><span class="pchk"><span class="cbx on" data-i="check"></span><span class="pmark sm" style="--tone:var(--orchid)">L</span>loom</span><span class="pchk"><span class="cbx on" data-i="check"></span><span class="pmark sm" style="--tone:var(--aqua)">S</span>second-brain</span><span class="pchk"><span class="cbx on" data-i="check"></span><span class="pmark sm" style="--tone:var(--mint)">B</span>backend-api</span><span class="pchk"><span class="cbx on" data-i="check"></span><span class="pmark sm" style="--tone:var(--sage)">W</span>website</span></div></div>
+            </div></div>
+            <div class="sgrp" data-dim><div class="slab"><span class="label">Memory</span></div><div class="scard">
+              <div class="srw"><div class="tx"><b>Working memory</b><span class="hp" style="font:11.5px var(--mono)">14 days · 4 project notes · updated today 09:12</span></div><div class="ctl"><button class="btn sec sm">Show…</button><button class="btn sec sm">Clear…</button></div></div>
+              <div class="srw"><div class="tx"><b>Memory note</b><span class="path" style="display:block;margin-top:2px">~/Documents/second-brain/Remora.md</span></div><div class="ctl"><button class="btn sec sm">Choose…</button><button class="btn sec sm">Open</button></div></div>
+              <div class="srw"><div class="tx"><b>Propose things to remember</b><span class="hp">A line under the brief asks before anything is saved.</span></div><div class="ctl"><span class="sw on" data-set="propose"></span></div></div>
+            </div></div>
+            <div class="sgrp" data-dim><div class="slab"><span class="label">Use</span></div><div class="scard">
+              <div class="srw"><div class="tx"><b>Today</b><span class="hp" style="font:11.5px var(--mono)">6 questions · 1 brief · 81K tokens of your plan</span></div></div>
+              <div class="srw"><div class="tx"><b>Wait while the 5-hour limit is under</b><span class="hp">The morning brief waits; questions still run, with a warning line.</span></div><div class="ctl"><span class="stepper"><button data-i="minus" title="Lower"></button><span class="v">10%</span><button data-i="plus" title="Higher"></button></span></div></div>
+            </div></div>
+            <p class="snote" data-role="remnote">Remora reads Claude's transcript files on this Mac only while it answers, and sends short excerpts to Claude through your Claude Code login. Claude Code's telemetry and update checks are off for Remora's calls. Its memory stays on this Mac.</p>
+          </div>
+        </div>
+
+        <!-- About -->
+        <div class="spane" data-stab="about" hidden>
+          <div class="about">
+            <canvas class="aart"></canvas>
+            <div class="ahead"><span class="icon"><img src="<!--ICON-->" alt=""></span><h2>Sphyrna</h2><span class="ver">Version 1.5.0 (build 214, 371aaf6)</span></div>
+            <div class="scard">
+              <div class="srw"><div class="tx"><b>Data folder</b><span class="hp">Catalog, usage index and logs.</span></div><div class="ctl"><span class="path" title="~/Library/Application Support/Loom">~/Library/Application Support/Loom</span><button class="btn sec sm">Reveal</button></div></div>
+              <div class="srw"><div class="tx"><b>Claude profile</b><span class="hp">Where usage is read from. Read only.</span></div><div class="ctl"><span class="path">~/.claude</span></div></div>
+              <div class="srw"><div class="tx"><b>Diagnostics</b><span class="hp">A folder with versions, counts and Sphyrna's log. No session content.</span></div><div class="ctl"><button class="btn sec sm" data-act="diag">Collect Diagnostics…</button></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- the menus and the sheets of this window -->
+        <div class="pop smenu" data-pop="modeMenu" data-place="below-right">
+          <button class="mi" data-mode="last"><span class="ic"></span>Last used in the project<span class="ck2"></span></button>
+          <div class="msep"></div>
+          <button class="mi" data-mode="ask" style="--mt:var(--m-ask)"><span class="ic mt" data-i="bubble"></span>Ask<span class="ck2"></span></button>
+          <button class="mi" data-mode="abe" style="--mt:var(--m-abe)"><span class="ic mt" data-i="shield"></span>Ask before edits<span class="ck2"></span></button>
+          <button class="mi" data-mode="acc" style="--mt:var(--m-acc)"><span class="ic mt" data-i="penline"></span>Accept edits<span class="ck2"></span></button>
+          <button class="mi" data-mode="auto" style="--mt:var(--m-auto)"><span class="ic mt" data-i="bolt"></span>Auto<span class="ck2"></span></button>
+          <button class="mi" data-mode="full" style="--mt:var(--m-full)"><span class="ic mt" data-i="excl"></span>Full access<span class="ck2"></span></button>
+        </div>
+        <div class="pop smenu" data-pop="fontMenu" data-place="below-right" style="width:130px">
+          <button class="mi" data-font="11">11 pt<span class="ck2"></span></button><button class="mi" data-font="12">12 pt<span class="ck2"></span></button><button class="mi" data-font="13">13 pt<span class="ck2"></span></button><button class="mi" data-font="14">14 pt<span class="ck2"></span></button><button class="mi" data-font="15">15 pt<span class="ck2"></span></button><button class="mi" data-font="16">16 pt<span class="ck2"></span></button><button class="mi" data-font="17">17 pt<span class="ck2"></span></button><button class="mi" data-font="18">18 pt<span class="ck2"></span></button><button class="mi" data-font="19">19 pt<span class="ck2"></span></button><button class="mi" data-font="20">20 pt<span class="ck2"></span></button>
+        </div>
+        <div class="salert" data-alert="full"><div class="sheet"><h4>Start new sessions in Full access?</h4><p>Claude runs every tool without asking. Every new session starts in it until you change this. You can still pick another mode in a draft.</p><div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-act="acancel">Cancel</button><button class="btn mtint" style="--mt:var(--m-full)" data-act="fconfirm">Use Full Access</button></div></div></div>
+        <div class="salert" data-alert="delete"><div class="sheet"><h4 data-role="dtitle">Delete 2 sessions?</h4><div class="sn" data-role="dnames">Try the old sidebar spacing, Rename the usage chip</div><p data-role="dlead">Sphyrna removes them from Sphyrna, and deletes Claude's local files for them. This can't be undone.</p><div class="sl"><span class="label">Removed</span><ul><li>The transcripts and the subagent transcripts</li><li>File snapshots and session folders</li></ul><p class="m" style="margin:5px 0 0 13px" data-role="dsize">203 files · 17.2 MB · in ~/.claude</p></div><div class="sl"><span class="label">Kept</span><ul><li>Your prompts in Claude's shared prompt history</li><li>Project files and worktrees</li><li>Anything already sent to Anthropic</li></ul></div><div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-act="acancel">Cancel</button><button class="btn dtint" data-act="dconfirm">Delete Permanently</button></div></div></div>
+      </div>
+      <span class="pin" data-for=".stitle .lights" data-dx="22" data-dy="-15">A1</span>
+      <span class="pin" data-for=".stabs .itab.on" data-at="r" data-dx="2" data-dy="-6">A2</span>
+      <span class="pin" data-for=".spane:not([hidden]) .slab .label" data-dx="-30" data-dy="-4">A3</span>
+      <span class="pin" data-for=".spane[data-stab=general]:not([hidden]) .srw" data-dx="-30" data-dy="14">A4</span>
+      <span class="pin" data-for=".spane[data-stab=general]:not([hidden]) [data-open=modeMenu]" data-at="r" data-dx="-14" data-dy="-20">A5</span>
+      <span class="pin" data-for=".spane[data-stab=theme]:not([hidden]) .ttiles" data-at="r" data-dx="-26" data-dy="-12">A6</span>
+      <span class="pin" data-for=".spane[data-stab=usage]:not([hidden]) .pmeter" data-dx="-6" data-dy="-22">A7</span>
+      <span class="pin" data-for=".spane[data-stab=sessions]:not([hidden]) .sfoot .btn.dan" data-dx="-30" data-dy="2">A8</span>
+      <span class="pin" data-for=".spane[data-stab=remora]:not([hidden]) [data-set=remora]" data-at="r" data-dx="6" data-dy="-9">A9</span>
+      <span class="pin" data-for=".spane[data-stab=about]:not([hidden]) .icon" data-at="r" data-dx="8" data-dy="-4">A10</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>A1</b>The window is 680×520 on the canvas, and it follows the appearance and the tone. Only the close button shows; ⌘, opens it on the section last shown, the usage chip on Usage.</li>
+      <li><b>A2</b>The sections are view tabs, underlined, in the 52 pt title band where the window's title would be: General, Theme, Usage, Sessions, Remora and About.</li>
+      <li><b>A3</b>A group is a card on raised 1 under a section label, 20 apart; the content has a 32 inset and scrolls under the band.</li>
+      <li><b>A4</b>A row: the label in 13, one line of help in 12 secondary, and the control at the trailing edge, at least 48 high. A notice from macOS adds an attention line and its button.</li>
+      <li><b>A5</b>A menu picker is a secondary button with the value and two chevrons. Its menu is the popover, with each mode's icon in its tone; Full access asks first.</li>
+      <li><b>A6</b>Theme: the appearance, Animated art, the tone as three tiles, the sidebar's material and Project colors. Every choice applies at once, and the next section shows them on the app. Animated art is this page's art switch too.</li>
+      <li><b>A7</b>Usage: the period, then four cards, plan limits first. The meters are §3's: 6 pt, what is left in secondary, attention orange when low.</li>
+      <li><b>A8</b>Sessions: the cleanup review. Nothing is checked by default, Delete asks first in §6's sheet, and each row then says what happened to it.</li>
+      <li><b>A9</b>Remora (§20): its switch first. Off, Home starts with its band and Needs you, ⌘K has no Ask row and the new-session page has no brief row; the memory stays until it is cleared. Then Sonnet 5.5 at low effort (D-64), the morning brief, the projects it reads, its memory, and what it used today with the guard that keeps the morning brief out of the 5-hour limit's last tenth.</li>
+      <li><b>A10</b>About: the app icon, Rising (D-77), the name in title type, the version in mono, and the facts with their one action each. The data folder keeps its path until O-14 settles the rename's.</li>
+    </ol>
+  </section>
+
+  <!-- ================= 02 TONE AND GLASS ================= -->
+  <section class="sec" id="tone">
+    <div class="sechead"><span class="num">02</span><h2>Tone and Glass</h2>
+      <p>The app over a desktop, with Settings at Theme. A tone tile recolours both windows; Glass lets the wallpaper through the sidebar. The switch above the frame is the page's own: a bright or a dark wallpaper.</p></div>
+    <div class="ln" style="margin:0 0 18px 56px;display:flex;gap:10px;flex-wrap:wrap">
+      <div class="seg" id="wallSeg"><button class="on" data-wall="bright">Bright wallpaper</button><button data-wall="dark">Dark wallpaper</button></div>
+    </div>
+    <div class="stage"><div class="win desk" id="winA" data-w="1412" data-h="1020" data-wall="bright">
+      <div class="wall"></div>
+      <div class="appwin" style="left:32px;top:36px;width:1080px;height:760px">
+        <aside class="side" data-sel="none"></aside>
+        <main class="detail">
+          <div class="artbg"></div>
+          <canvas class="ocean calm" id="ocean-draft"></canvas>
+          <header class="dhead bare"><span class="crumb"><b>loom</b> / new session</span>
+            <div class="end"><button class="btn gh sm"><span data-i="clock"></span>9 sessions in loom</button></div></header>
+          <div class="draftpage" style="--tone:var(--orchid)">
+            <h1 class="ask">What should we work on in <button class="pick">loom<span data-i="chev-d"></span></button>?</h1>
+            <div class="folder"><span>~/Documents/github/loom</span><span>·</span><span>swarm/1</span><span>·</span><span>clean</span></div>
+            <div class="composer">
+              <textarea placeholder="Describe the task. @ mentions a file, / runs a command."></textarea>
+              <div class="cbar">
+                <button class="cchip" title="Attach, mention or run a command" data-i="plus"></button>
+                <button class="cchip mode" style="--mt:var(--m-abe)"><span data-i="shield"></span>Ask before edits</button>
+                <button class="cchip mdl" title="Model and effort"><span class="hm claude"></span><span>Opus 5.5</span><span class="eff">High</span><span class="cv" data-i="chev-d"></span></button>
+                <button class="send" data-i="up" title="Start a Claude Code session"></button>
+              </div>
+            </div>
+            <div class="keys"><span><b>↵</b> start</span><span><b>⌘↵</b> start in the background</span><span><b>⇧↵</b> new line</span></div>
+            <div class="under"><div class="seg"><button class="on"><span data-i="branch"></span>Stay on swarm/1</button><button>New branch</button><button>New worktree</button></div></div>
+            <div class="presets"><span class="label" style="margin-right:4px">Presets</span><button class="pchip">Run tests, fix failures</button><button class="pchip">Plan the next slice</button><button class="pchip">Second opinion</button></div>
+          </div>
+        </main>
+        <div class="pop" data-pop="plus" style="left:10px;bottom:52px">
+          <span class="label mlabel">New</span>
+          <button class="mi"><span class="ic"><span class="hm claude md"></span></span>New Claude Session<kbd>⌘N</kbd></button>
+          <button class="mi"><span class="ic"><span class="hm codex md"></span></span>New Codex Session</button>
+          <div class="msep"></div>
+          <button class="mi"><span class="ic" data-i="folder"></span>Add Project…</button>
+        </div>
+        <div class="scrim" data-close></div>
+        <div class="palette" data-pop="palette">
+          <div class="pal-in"><span data-i="search"></span><input placeholder="Search sessions, projects and commands" autocomplete="off"><kbd>esc</kbd></div>
+          <div class="pal-list">
+            <div class="pal-h label">Sessions</div>
+            <div class="prow cur"><span class="ind" data-mark="work"></span>Port the sidebar to Ink tokens<span class="m" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom · now</span></div>
+            <div class="prow"><span class="ind" data-mark="attn"></span>Review the gate failure<span class="m" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom · needs you</span></div>
+            <div class="pal-h label">Commands</div>
+            <div class="prow"><span class="ind" data-i="claude"></span>New Claude Session<span class="m"><kbd>⌘N</kbd></span></div>
+            <div class="prow"><span class="ind" data-i="gear"></span>Settings<span class="m"><kbd>⌘,</kbd></span></div>
+          </div>
+          <div class="pal-foot"><span><b>↑↓</b> move</span><span><b>↵</b> open</span><span><b>esc</b> close</span></div>
+        </div>
+      </div>
+      <div class="setwin" style="left:700px;top:470px;width:680px;height:520px" data-settings-clone></div>
+      <span class="pin" data-for=".setwin .ttiles" data-at="r" data-dx="-26" data-dy="-12">B1</span>
+      <span class="pin" data-for=".appwin .side .plist" data-at="r" data-dx="-36" data-dy="2">B2</span>
+      <span class="pin" data-for=".setwin [data-set=appearance]" data-dx="-30" data-dy="4">B3</span>
+      <span class="pin" data-for=".setwin .stitle" data-dx="96" data-dy="16">B4</span>
+      <span class="pin" data-for=".setwin [data-set=pcolors]" data-dx="-30" data-dy="-1">B5</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>B1</b>A tone casts every grey level of the window: the canvas, both raised levels, the popover, the chosen segment and the tree. The text tiers, the accent, the status hues and the project and mode tones stay. The terminal takes the cast's Ink canvas, so it stays flush.</li>
+      <li><b>B2</b>Glass is the sidebar only: its canvas at 0.8 over the behind-window material, so the desktop shows through dimmed. The main pane, the cards and the popovers stay opaque, and Reduce Transparency draws Solid. Solid is the default.</li>
+      <li><b>B3</b>Ink, Paper or Match system, applied at once; the top bar's switch is the same setting. Terminal sessions stay dark in all three.</li>
+      <li><b>B4</b>Settings is its own window over the app. It follows the appearance and the tone, and its Theme tab is the one drawn above.</li>
+      <li><b>B5</b>Project colors off: the marks turn neutral squares, the tabs and the selection go grey, and the stored colours are kept.</li>
+    </ol>
+  </section>
+
+  <!-- ================= 03 PARTS ================= -->
+  <section class="sec" id="parts">
+    <div class="sechead"><span class="num">03</span><h2>Parts</h2>
+      <p>Settings' controls and states, each in its one look. The menu is the window's own.</p></div>
+    <div class="parts">
+      <div class="spec w12"><span class="label">Controls</span>
+        <div class="pc2"><div class="ctlgrid">
+          <span>Switch</span><div><span class="sw on"></span><span class="sw"></span><span class="sw on dis"></span></div>
+          <span>Segment</span><div><div class="seg"><button class="on">Ink</button><button>Paper</button><button>Match system</button></div><div class="seg"><button class="on">Solid</button><button>Glass</button></div></div>
+          <span>Menu picker</span><div><button class="popup"><span>Last used in the project</span><span class="ud" data-i="updown"></span></button><button class="popup" style="--mt:var(--m-full)"><span class="mo" data-i="excl"></span><span>Full access</span><span class="ud" data-i="updown"></span></button><button class="popup"><span>14 pt</span><span class="ud" data-i="updown"></span></button></div>
+          <span>Stepper</span><div><span class="stepper"><button data-i="minus"></button><span class="v">30 days</span><button data-i="plus"></button></span><span class="stepper"><button class="dis" data-i="minus"></button><span class="v">1 day</span><button data-i="plus"></button></span></div>
+          <span>Checkbox</span><div><span class="cbx on" data-i="check"></span><span class="cbx" data-i="check"></span></div>
+          <span>Buttons</span><div><button class="btn pri">Try Again</button><button class="btn sec">Reveal</button><button class="btn gh sm">Dismiss</button><button class="btn dan sm">Delete 2 Sessions</button><button class="btn sec" disabled>Collecting…</button><button class="lk2">Reset to Defaults</button></div>
+        </div></div>
+        <div class="pc2" style="display:flex;gap:28px;align-items:flex-start"><div data-clone="#winB [data-pop=modeMenu]"></div><p class="note" style="margin:0;max-width:420px">The menu picker's menu is the popover (§6 Menus): rows 28 with the pill, each mode with its icon in its tone, the chosen one checked. "Last used in the project" has no icon and sits above a separator. Full access asks first (below).</p></div>
+        <p class="note">Every control is the main window's (DESIGN §6 Controls): switches 28×16 in the accent when on; segments 26 with the chosen one raised; menu pickers and steppers with a strong hairline; buttons 26, radius 6, 12.5 medium; disabled at 38 %. A row's control sits at its trailing edge, centred on the row.</p>
+      </div>
+      <div class="spec w6"><span class="label">A row with a notice</span>
+        <div class="pc2"><div class="scard">
+          <div class="srw"><div class="tx"><b>Notify when a session needs approval</b><span class="hp">A banner when Claude waits for your approval and Sphyrna is not the active app. macOS asks for permission once.</span><span class="nt">Notifications for Sphyrna are off in System Settings, so no banner will appear.</span></div><div class="ctl"><button class="btn sec sm">Open System Settings</button><span class="sw on"></span></div></div>
+          <div class="srw"><div class="tx"><b>Open at login</b><span class="hp">Start Sphyrna when you log in.</span><span class="nt">Allow Sphyrna in System Settings → General → Login Items.</span></div><div class="ctl"><button class="btn sec sm">Open Login Items</button><span class="sw on"></span></div></div>
+        </div></div>
+        <p class="note">Only where macOS says something is wrong: one line in the attention text under the help, and the button that opens the right place, before the switch.</p>
+      </div>
+      <div class="spec w6"><span class="label">Asking first</span>
+        <div class="sbox"><div class="sheet"><h4>Start new sessions in Full access?</h4><p>Claude runs every tool without asking. Every new session starts in it until you change this. You can still pick another mode in a draft.</p><div class="sbtn"><span class="grow"></span><button class="btn sec focus">Cancel</button><button class="btn mtint" style="--mt:var(--m-full)">Use Full Access</button></div></div></div>
+        <p class="note">A risky choice asks in a sheet of §6's family: the question, what it means, then Cancel, which has the focus, and Use Full Access in the mode's own tone. Nothing is filled, so Return does nothing and Esc cancels. Picking Full access again while it is the default asks nothing.</p>
+      </div>
+      <div class="spec w6"><span class="label">The tones</span>
+        <div class="pc2"><div class="ttiles" style="margin-top:0">
+          <div class="ttile on" data-v="neutral"><span class="mini"><i class="l1"></i><i class="l2"></i><i class="cd"></i><i class="cp"></i><i class="ac"></i></span><span class="nm">Neutral</span><span class="dt">Ink's own greys.</span></div>
+          <div class="ttile" data-v="warm"><span class="mini"><i class="l1"></i><i class="l2"></i><i class="cd"></i><i class="cp"></i><i class="ac"></i></span><span class="nm">Warm</span><span class="dt">A slight brown cast.</span></div>
+          <div class="ttile" data-v="cool"><span class="mini"><i class="l1"></i><i class="l2"></i><i class="cd"></i><i class="cp"></i><i class="ac"></i></span><span class="nm">Cool</span><span class="dt">A slight blue cast.</span></div>
+        </div>
+        <table class="ctab">
+          <tr><th></th><th>Canvas</th><th>Raised 1</th><th>Raised 2</th><th>Popover</th></tr>
+          <tr><td>Neutral</td><td>#0C0C0E · #F7F6F3</td><td>#121215 · #FBFAF8</td><td>#17171B · #FEFDFC</td><td>#1C1C21 · #FFFFFF</td></tr>
+          <tr><td>Warm</td><td>#0E0C0A · #F8F2E8</td><td>#15120F · #FCF8F1</td><td>#1A1714 · #FEFCF8</td><td>#201C18 · #FFFDF9</td></tr>
+          <tr><td>Cool</td><td>#0A0C10 · #F1F3F6</td><td>#0F1217 · #F8F9FB</td><td>#14171D · #FCFDFE</td><td>#191D24 · #FFFFFF</td></tr>
+        </table></div>
+        <p class="note">Ink, then Paper. A cast keeps each level's lightness, so every contrast floor of §3 still holds; only the hue moves. A tile draws the pane in miniature in its own cast, in the appearance that is on.</p>
+      </div>
+      <div class="spec w6"><span class="label">Glass</span>
+        <div class="pc2" style="padding:0;overflow:hidden">
+          <div class="gdemo"><div class="wall"></div><div class="gside" style="--gl:80%"><span class="label">Glass</span><i></i><i></i><i class="s"></i><i></i></div><div class="gside solid"><span class="label">Solid</span><i></i><i></i><i class="s"></i><i></i></div></div>
+        </div>
+        <p class="note">The sidebar over a bright desktop in Glass, its canvas at 0.8, and in Solid, the default. Glass keeps a hint of the wallpaper's colour; Solid is opaque, and Reduce Transparency always draws it.</p>
+      </div>
+      <div class="spec w12"><span class="label">Usage, when it cannot show the numbers</span>
+        <div class="ustates">
+          <div class="pc2"><div class="unote"><h4>Reading Claude's usage</h4><p>Sphyrna is reading the transcripts Claude keeps on this Mac. This happens once; after that only new lines are read.</p></div></div>
+          <div class="pc2"><div class="unote"><h4>Usage could not be read</h4><p>The usage index could not be opened.</p><button class="btn pri">Try Again</button></div></div>
+          <div class="pc2"><div class="unote"><h4>No Claude usage yet</h4><p>Sphyrna found no transcripts in this Claude profile. Usage appears after a session finishes its first turn.</p><span class="mono">~/.claude/projects</span></div></div>
+        </div>
+        <div class="pc2"><article class="scard ucard"><div class="uhead"><b>Plan limits</b><span>Updated 16:05 · could not refresh</span></div><div class="unav">Plan limits unavailable<span>Claude did not answer in time.</span></div></article></div>
+        <p class="note">The page's states are centred notes in title type over one line in secondary. A card with nothing to say is left out; a plan-limits card whose ask failed keeps its title and says why.</p>
+      </div>
+      <div class="spec w6"><span class="label">After a cleanup</span>
+        <div class="pc2"><div class="scard">
+          <div class="crow gone"><span class="tx"><b>Try the old sidebar spacing</b><span>loom · Stale since 2 Oct · 14 MB</span></span><span class="res ok">Deleted</span></div>
+          <div class="crow"><span class="tx"><b>Rename the usage chip</b><span>loom · Stale since 29 Sep · 3.2 MB</span></span><span class="res">Not finished: the worktree has changes</span></div>
+          <div class="crow"><span class="tx"><b>zsh prompt with the branch</b><span>dotfiles · Stale since 24 Sep · 860 KB</span></span><span class="res bad">Failed: Claude's files could not be moved</span></div>
+        </div></div>
+        <div class="pc2"><p class="pnote" style="padding:0">No stale sessions. Sessions unused for 15 days become stale.</p></div>
+        <p class="note">Each row says what happened to it, and the heading becomes "Deletion results (3)". A row that failed stays, in the failure text.</p>
+      </div>
+      <div class="spec w6"><span class="label">Deleting</span>
+        <div class="sbox"><div class="sheet"><h4>Delete 2 sessions?</h4><div class="sn">Try the old sidebar spacing, Rename the usage chip</div><p>Sphyrna removes them from Sphyrna, and deletes Claude's local files for them. This can't be undone.</p><div class="sl"><span class="label">Removed</span><ul><li>The transcripts and the subagent transcripts</li><li>File snapshots and session folders</li></ul><p class="m" style="margin:5px 0 0 13px">203 files · 17.2 MB · in ~/.claude</p></div><div class="sl"><span class="label">Kept</span><ul><li>Your prompts in Claude's shared prompt history</li><li>Project files and worktrees</li><li>Anything already sent to Anthropic</li></ul></div><div class="sbtn"><span class="grow"></span><button class="btn sec focus">Cancel</button><button class="btn dtint">Delete Permanently</button></div></div></div>
+        <p class="note">Delete N Sessions is the destructive button in the footer, off until a row is checked. It asks with §6's Delete, for every checked session at once. Only Claude sessions are offered, and only rows that are still eligible are deleted, one by one.</p>
+      </div>
+    </div>
+  </section>
+</div>

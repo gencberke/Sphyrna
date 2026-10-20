@@ -1,0 +1,202 @@
+/* ============================================================
+   Preview 07: Remora, Home's assistant. The brief and its
+   arrival are the identity page's (D-77); the rest is new here.
+   ============================================================ */
+.pbar{display:flex;align-items:center;gap:18px;margin:0 0 14px;flex-wrap:wrap}
+.pbar .grp{display:inline-flex;align-items:center;gap:8px}
+.pbar .hint{font-size:12px;color:var(--fg-3)}
+.pbar .seg[hidden]{display:none}
+[data-art][hidden]{display:none!important}
+
+/* ---------- the brief's own parts beyond the identity page ---------- */
+#ocean-band{transition:opacity .45s var(--ease)}
+#ocean-band.away{opacity:0;transition:opacity .4s var(--ease)}
+.bhead .ib.on{background:var(--selected)}
+.rstate{font-size:14.5px;line-height:1.55;color:var(--fg-2)}
+.rstate .mono{font:13px var(--mono);color:var(--fg-1)}
+.rstate .lk2{margin-left:8px;vertical-align:baseline}
+.btext .rstate{position:absolute;left:0;top:0;right:0}
+#winR .btext .rstate[hidden]{display:none}
+.tile .tlast{margin-top:8px;font-size:12px;color:var(--fg-3)}
+.tile .placed{display:flex;align-items:center;gap:8px;margin-top:12px;height:22px;font-size:12px;color:var(--fg-2)}
+.tile .placed b{font-weight:500;color:var(--fg-1)}
+.tile .placed u{margin-left:auto;color:var(--fg-2);text-decoration-color:var(--line-3);text-underline-offset:3px;cursor:pointer}
+.tile.catalog .nx,.tile.catalog [data-act=draft]{display:none}
+.rquiet{margin-top:12px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--fg-2)}
+.rquiet .cv{display:grid;place-items:center;color:var(--fg-3)}
+.rquiet .cv svg{width:12px;height:12px}
+.rquiet .m{font:11px var(--mono);color:var(--fg-3)}
+.rprop{margin-top:10px;display:flex;align-items:center;gap:10px;min-height:28px;font-size:12.5px;color:var(--fg-2)}
+.rprop b{font-weight:500;color:var(--fg-1)}
+.rprop .acts{display:flex;gap:6px;margin-left:6px}
+.rprop u{color:var(--fg-2);text-decoration-color:var(--line-3);text-underline-offset:3px;cursor:pointer}
+#winR .rquiet,#winR .rprop{transition:opacity .3s}
+#winR .rquiet.wait,#winR .rprop.wait{opacity:0}
+.askr input{flex:1;min-width:0;background:transparent;border:0;outline:0;font:14px var(--ui);color:var(--fg-1)}
+.askr input::placeholder{color:var(--faint)}
+.askr .chip{cursor:pointer}
+.askr .chip svg{width:11px;height:11px;color:var(--fg-3)}
+.askr .stopb{height:26px;padding:0 10px;border-radius:7px;display:none;align-items:center;gap:7px;font:500 12px var(--ui);color:var(--fg-1);box-shadow:inset 0 0 0 1px var(--line-2)}
+.askr .stopb .stopsq{width:8px;height:8px;border-radius:1.5px;background:currentColor}
+.askr.busy .stopb{display:inline-flex}
+.askr.busy .send{display:none}
+.bfoot u,.rans .foot u{cursor:pointer}
+
+/* the fold, later in the day: the head line, one line per entry, then the field (D-65's M under D-77's line) */
+.rfold{position:relative;z-index:2;max-width:1000px;margin:0 auto;padding:34px 0 18px}
+.rfold .fh{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--fg-2)}
+.rfold .fh b{color:var(--fg-1);font-weight:500}
+.rfold .fh u{margin-left:auto;font-size:12.5px;color:var(--fg-2);text-decoration-color:var(--line-3);text-underline-offset:3px;cursor:pointer}
+.rfold .fh canvas{width:84px;height:30px;display:block;flex:none}
+.flines{margin-top:12px;border-radius:12px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line),var(--sh-card);padding:4px 0}
+.fl{display:grid;grid-template-columns:18px 132px minmax(0,1fr) auto;align-items:center;gap:10px;height:34px;padding:0 14px 0 16px;font-size:12.5px;color:var(--fg-1)}
+.fl+.fl{box-shadow:inset 0 1px 0 var(--line)}
+.fl .tk{display:grid;place-items:center;color:var(--fg-2)}
+.fl .tk svg{width:12px;height:12px}
+.fl .tk .ring{width:9px;height:9px;border-radius:50%;box-shadow:inset 0 0 0 1.3px var(--fg-3)}
+.fl .pj{display:flex;align-items:center;gap:7px;font:11px var(--mono);color:var(--fg-3);min-width:0}
+.fl .what{min-width:0;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden}
+.fl .what .t{overflow:hidden;text-overflow:ellipsis}
+.fl .what .s{color:var(--fg-2);display:inline-flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis}
+.fl .end{display:flex;align-items:center;gap:8px;font:11px var(--mono);color:var(--fg-3)}
+.rfold .askr{margin-top:14px}
+
+/* ---------- an answer under the field ---------- */
+.rans{margin-top:12px;border-radius:12px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line),var(--sh-card);padding:12px 16px 12px}
+.rans[hidden]{display:none}
+.rans .q{display:flex;align-items:baseline;gap:10px;font-size:12px;color:var(--fg-3)}
+.rans .q b{font-weight:500;color:var(--fg-1);font-size:12.5px}
+.rans .q .ib{margin-left:auto;width:22px;height:22px;align-self:center}
+.rans .q .ib svg{width:12px;height:12px}
+.rans .a{margin-top:8px;max-width:820px;font-size:13.5px;line-height:1.6;color:var(--fg-1)}
+.rans .a p+p{margin-top:6px}
+.rans .a ul{margin:6px 0 0;padding-left:18px}
+.rans .a li{margin-top:2px}
+.rans .a .mono{font:12px var(--mono)}
+.rans .a .w{opacity:0;transition:opacity .14s}
+.rans .a .w.in{opacity:1}
+.rans .a .unread{color:var(--fg-2)}
+.rans .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;transition:opacity .25s}
+.rans .chips.wait,.rans .foot.wait{opacity:0}
+.rans .foot{margin-top:10px;display:flex;gap:16px;font:11px var(--mono);color:var(--fg-3);transition:opacity .25s}
+.rans .foot u{color:var(--fg-2);text-decoration-color:var(--line-3);text-underline-offset:3px}
+.rans .working{display:flex;align-items:center;gap:8px;margin-top:8px;font:12px var(--mono);color:var(--fg-3)}
+.rans .working[hidden]{display:none}
+.rans .working .spin{color:var(--fg-2)}
+.rearly{margin-top:10px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg-3);cursor:default}
+.rearly b{font-weight:500;color:var(--fg-2)}
+.rearly .tm{font:11px var(--mono)}
+/* a session chip: the project's mark, the title and an arrow; a click opens the session, as the sidebar does */
+.rchip{height:26px;display:inline-flex;align-items:center;gap:7px;padding:0 6px 0 7px;border-radius:7px;background:color-mix(in srgb,var(--tone) 8%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--tone) 26%,transparent);font:12.5px var(--ui);color:var(--fg-1);white-space:nowrap;cursor:pointer}
+.rchip:hover{background:color-mix(in srgb,var(--tone) 14%,transparent)}
+.rchip .ar{display:grid;place-items:center;color:var(--fg-3)}
+.rchip .ar svg{width:12px;height:12px}
+.rchip .when{font:11px var(--mono);color:var(--fg-3)}
+.rchip+.btn{margin-left:-2px}
+.dpop{position:absolute;z-index:44;width:330px;padding:12px 14px 12px;border-radius:12px;background:var(--popover);box-shadow:var(--sh-pop);font-size:12px;line-height:1.5;color:var(--fg-2);opacity:0;pointer-events:none;transform:translateY(3px);transition:opacity .16s var(--ease),transform .16s var(--ease)}
+.dpop.open{opacity:1;transform:none}
+.dpop b{display:block;margin-bottom:6px;font:500 11px var(--mono);color:var(--fg-3);letter-spacing:.02em}
+.dpop q{display:block;font-size:12.5px;color:var(--fg-1);quotes:none;padding:8px 10px;border-radius:8px;background:var(--raise-2);box-shadow:inset 0 0 0 1px var(--line)}
+.dpop .k{margin-top:8px;font:11px var(--mono);color:var(--fg-3)}
+
+/* the Sources popover and the scope and ⋯ menus */
+.rpop{position:absolute;z-index:44;width:340px}
+.rpop .label{display:block;padding:8px 8px 6px}
+.rpop .src{display:flex;align-items:center;gap:9px;height:28px;padding:0 8px;border-radius:7px;font-size:12.5px;color:var(--fg-1)}
+.rpop .src:hover{background:var(--hover)}
+.rpop .src .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rpop .src .m{font:11px var(--mono);color:var(--fg-3)}
+.rpop .src .ic{display:grid;place-items:center;width:16px;color:var(--fg-3)}
+.rpop .src .ic svg{width:13px;height:13px}
+.rpop .pfoot{margin:6px -6px -6px;padding:8px 14px;border-top:1px solid var(--line);font:11px var(--mono);color:var(--fg-3)}
+.mi .ck2{margin-left:auto;display:grid;place-items:center;color:var(--fg-1)}
+.mi .ck2 svg{width:13px;height:13px}
+.mi kbd{margin-left:auto}
+
+/* ---------- the memory sheet ---------- */
+.sheet.w560{width:560px}
+.msheet .seg{margin-top:14px}
+.mpane{margin-top:12px;max-height:404px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--line-3) transparent}
+.mpane[hidden]{display:none}
+.jday{margin-top:12px}
+.jday:first-child{margin-top:2px}
+.jday .label{display:block;margin-bottom:4px}
+.jl{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) 22px;gap:8px;align-items:start;padding:5px 6px 5px 8px;border-radius:7px;font-size:12.5px;line-height:1.5;color:var(--fg-1)}
+.jl:hover{background:var(--hover)}
+.jl .tm{font:11px/19px var(--mono);color:var(--fg-3)}
+.jl .x{width:20px;height:20px;border-radius:5px;display:grid;place-items:center;color:var(--fg-3);opacity:0}
+.jl .x svg{width:11px;height:11px}
+.jl:hover .x{opacity:1}
+.jl .x:hover{background:var(--hover);color:var(--fg-1)}
+.jl.gone{display:none}
+.memnote{margin-top:12px;border-radius:10px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line);padding:10px 12px 12px}
+.memnote:first-child{margin-top:2px}
+.memnote .ph2{display:flex;align-items:center;gap:8px;font:500 12.5px var(--ui);color:var(--fg-1)}
+.memnote .ph2 .m{margin-left:auto;font:11px var(--mono);color:var(--fg-3)}
+.memnote .body{margin-top:8px;font-size:12.5px;line-height:1.55;color:var(--fg-2);white-space:pre-line;border-radius:7px;padding:6px 8px;margin-left:-8px;margin-right:-8px;outline:0}
+.memnote .body[contenteditable=true]{background:var(--canvas);box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px var(--accent-wash);color:var(--fg-1)}
+.memnote .pa{display:flex;gap:6px;margin-top:8px}
+.rmd{margin-top:2px;border-radius:10px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line);padding:10px 14px 12px;font:12px/1.55 var(--mono);color:var(--fg-2)}
+.rmd .h{display:block;margin-top:10px;color:var(--fg-1);font-weight:600}
+.rmd .h:first-child{margin-top:0}
+.rmd .li{display:block;padding-left:12px;position:relative}
+.rmd .li::before{content:"-";position:absolute;left:0;color:var(--fg-3)}
+.rmdpath{display:flex;align-items:center;gap:8px;margin-top:10px;font:11.5px var(--mono);color:var(--fg-3)}
+.rmdpath .btn{margin-left:auto}
+
+/* ---------- Settings → Remora ---------- */
+
+/* ---------- beyond Home: ⌘K and the new session's brief ---------- */
+.palette .pal-in .q{flex:1;color:var(--fg-1);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.palette .pal-in .caret{margin-left:-8px}
+.palette .prow .sc{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font:11px var(--mono);color:var(--fg-3)}
+.palette .prow .ksnip{color:var(--fg-2);font-size:12px;margin-left:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+.palette .prow .ksnip em{font-style:normal;color:var(--fg-1);background:color-mix(in srgb,var(--accent) 24%,transparent);border-radius:3px;padding:0 2px}
+.palette .prow .ic2{width:16px;height:16px;display:grid;place-items:center;color:var(--fg-2);flex:none}
+.palette .prow .ic2 svg{width:14px;height:14px}
+.palans{padding:12px 18px 14px}
+.palans[hidden]{display:none}
+.palans .q{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg-3)}
+.palans .q .chip{margin-left:auto}
+.palans .a{margin-top:8px;font-size:13.5px;line-height:1.6;color:var(--fg-1)}
+.palans .a .w{opacity:0;transition:opacity .14s}
+.palans .a .w.in{opacity:1}
+.palans .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;transition:opacity .25s}
+.palans .chips.wait{opacity:0}
+.palans .working{display:flex;align-items:center;gap:8px;margin-top:8px;font:12px var(--mono);color:var(--fg-3)}
+.palans .working[hidden]{display:none}
+.win .palette.shown{opacity:1;transform:none;pointer-events:auto}
+.win .scrim.shown{opacity:1;pointer-events:auto}
+/* the new-session page: Remora's one quiet row under the presets, and the line over a drafted composer */
+.nrow{margin-top:18px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:12.5px;color:var(--fg-2)}
+.nrow .spin{color:var(--fg-2)}
+.nrow .m{font:11px var(--mono);color:var(--fg-3)}
+.ndraft{display:flex;align-items:center;gap:10px;width:680px;margin:22px auto 0;padding:0 18px;font:11px var(--mono);color:var(--fg-3);text-align:left}
+.ndraft:not([hidden])+.composer{margin-top:8px}
+.ndraft[hidden]{display:none}
+.ndraft b{font:500 11.5px var(--ui);color:var(--fg-2)}
+.ndraft u{color:var(--fg-2);text-decoration-color:var(--line-3);text-underline-offset:3px;cursor:pointer}
+.draftpage .composer textarea.brief7{height:220px;font-size:13px;line-height:1.55}
+/* the places left out */
+.outtab{width:100%;border-collapse:collapse;font-size:12.5px;line-height:1.5}
+.outtab th{text-align:left;padding:0 12px 8px 0;font:500 10.5px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--fg-3)}
+.outtab td{padding:9px 12px 9px 0;vertical-align:top;color:var(--fg-2);border-top:1px solid var(--line)}
+.outtab td:first-child{color:var(--fg-1);font-weight:500;white-space:nowrap}
+.outtab td.v{white-space:nowrap;font:11px var(--mono)}
+.outtab td.v.yes{color:var(--ok)}
+.outtab td.v.no{color:var(--fg-3)}
+.cmp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:980px){.cmp{grid-template-columns:1fr}}
+.subh{font:600 15px var(--ui);color:var(--fg-1);margin:34px 0 12px}
+.hero .rnone{margin-top:10px;font-size:13px;color:var(--fg-2)}
+
+/* the sidebar and Needs you with nothing in them, as 06 drew them */
+.side .none{padding:4px 20px;font-size:12px;color:var(--fg-3)}
+.side .none.in{padding-left:38px}
+.hrow.blank{display:block;padding:12px 16px 14px;font-size:12.5px;color:var(--fg-2);cursor:default}
+.hrow.blank:hover{background:none}
+.win .palette .pal-foot span{white-space:nowrap}
+/* the remora's disc, before and now */
+.discs{display:grid;grid-template-columns:160px 200px 1fr;align-items:center;gap:14px 24px;margin:14px 0 6px}
+.discs .dh{font:11px var(--mono);color:var(--fg-3)}
+.discs canvas{display:block}

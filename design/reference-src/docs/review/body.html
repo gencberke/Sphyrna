@@ -1,0 +1,325 @@
+<body>
+
+<!--TOPBAR-->
+
+<div class="wrap">
+  <section class="sec principles" id="rules">
+  <div class="rules">
+    <div class="rule"><div class="n">01</div><h3>Review is wide</h3><p>Changes opens the inspector at 556, so a diff reads at its length, and a subagent's transcript opens there too. Overview and the Agents list keep 328, and Side keeps 392. The width follows your click and never animates.</p></div>
+    <div class="rule"><div class="n">02</div><h3>A diff is content</h3><p>Old and new line numbers, a sign, and a band of the success or failure hue on each changed line. There is no syntax colour, so the bands are the diff's only colour, and the text holds 7:1 on them.</p></div>
+    <div class="rule"><div class="n">03</div><h3>Comments go back as one message</h3><p>The "+" in the gutter, or a click on a line, opens a comment under it. Send to Claude puts every comment of the scope in one plain message and sends it the way Return does.</p></div>
+    <div class="rule"><div class="n">04</div><h3>A transcript in two voices</h3><p>What the agent says reads in the chat's type. Its tools and their results stay in mono, and quieter. Claude's own marks stay: ⏺ when it says or does something, ⎿ for the answer, ✻ while it thinks.</p></div>
+    <div class="rule"><div class="n">05</div><h3>Filled means Return</h3><p>A sheet's filled button is its default, and only a sheet that saves has one. Delete, Remove, Discard and Rewind draw theirs tinted: Return does nothing there, Esc cancels, and the focus starts on Cancel.</p></div>
+    <div class="rule"><div class="n">06</div><h3>One sheet shape</h3><p>420 wide, or 480 when it lists files. The question is the title, the session's name sits under it, then come the facts, and the buttons sit at the trailing edge with Cancel first. A way out, such as Remove from Sphyrna Only, sits at the leading edge.</p></div>
+  </div>
+  </section>
+
+  <!-- ================= 01 THE CHANGES TAB ================= -->
+  <section class="sec" id="changes">
+    <div class="sechead"><span class="num">01</span><h2>The Changes tab</h2>
+      <p>The session's own terms come first: what Claude edited in the last turn or in the whole session. Then comes the branch against main, which git reads. Switch the scope, open a file, and comment: hover a line for the "+", or click the line. Send to Claude sends the comments as your next message, and the chat shows it. The window is 1440 wide, so the chat keeps 624 beside the inspector. At 1280, the inspector draws over the chat.</p></div>
+    <div class="pbar">
+      <button class="btn sec sm" id="chReset">Reset</button>
+      <span class="grp"><span class="label">Window</span><span class="seg" id="chWidth"><button class="on" data-w="1440">1440</button><button data-w="1280">1280</button></span></span>
+      <span class="hint">Try a comment, then Send to Claude. Branch reads git first, with the small hammerhead.</span>
+    </div>
+    <div class="stage"><div class="win" id="winC" data-w="1440" data-h="960">
+      <aside class="side" data-sel="ink" data-v="ready"></aside>
+      <main class="detail">
+        <header class="dhead">
+          <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
+          <span class="state idle" data-role="state">Ready</span>
+          <div class="end">
+            <span class="chip proj" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom<span class="sep"></span><span class="br"><span data-i="branch"></span>ui/ink-sidebar</span></span>
+            <span class="vline"></span>
+            <button class="ib on" title="Inspector" data-i="side-r"></button>
+            <div class="cgroup"><button><span class="stopsq"></span>Stop</button><span class="div"></span><button class="more" data-i="more" title="More"></button></div>
+          </div>
+        </header>
+        <div class="dbody">
+          <div class="main">
+            <div class="tabbar">
+              <div class="tab on" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind"></span><span class="t">Port the sidebar to Ink tokens</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
+              <div class="tab" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind" data-mark="attn"></span><span class="t">Review the gate failure</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
+              <button class="ib" data-i="plus" title="New tab"></button>
+            </div>
+            <div class="chat" data-view="normal">
+              <div class="scroller"><div class="col" data-role="col">
+                <div class="marker">Session started · Opus 5.5 · high · Ask before edits · ui/ink-sidebar</div>
+                <div class="you">
+                  <div class="bubble">Port the sidebar rows to the Ink tokens: one status column, 28 pt rows, the project as its mark. Keep the pill. Run the sidebar tests after.</div>
+                  <div class="you-foot"><span class="tm">14:02</span><button class="ib sm" title="Copy" data-i="copy"></button><button class="lk2" data-act="rewind" data-i="rewind">Rewind Files to Before This Message</button></div>
+                </div>
+                <div class="tfold">
+                  <div class="foldrow" role="button"><span class="cv" data-i="chev-r"></span>Worked for <span class="mono">4m 12s</span> · changed 4 files and ran 2 commands</div>
+                </div>
+                <div class="reply">
+                  <div class="prose">
+                    <p>The sidebar now reads the Ink tokens. Every row is 28 pt with one status column, the project shows as its mark, and the selected session takes its project's tint instead of grey.</p>
+                    <ul>
+                      <li><code>LoomTheme+Sidebar.swift</code> holds the new sizes. The two-row card's sizes and its 3 pt stripe are gone.</li>
+                      <li><code>SidebarRow</code> draws the status column, the mark and the tint.</li>
+                      <li><code>SidebarInkTests</code> covers the row height and the tint. Both pass.</li>
+                    </ul>
+                    <p>The subagent rows still draw the old guide. That's the next step, if you want it.</p>
+                  </div>
+                  <div class="reply-foot"><button class="lk2" data-i="copy">Copy</button><button class="lk2" data-i="term">Open in Terminal</button></div>
+                </div>
+                <div class="ccard" data-role="ccard"></div>
+              </div></div>
+              <div class="dock"><div class="dock-in">
+                <div class="composer">
+                  <textarea placeholder="Message Claude" aria-label="Message"></textarea>
+                  <div class="cbar">
+                    <button class="cchip" title="Attach, mention or run a command" data-i="plus"></button>
+                    <button class="cchip mode" style="--mt:var(--m-abe)"><span data-i="shield"></span><span>Ask before edits</span></button>
+                    <span class="grow"></span>
+                    <button class="cchip mdl" title="Model and effort"><span class="hm claude"></span><span>Opus 5.5</span><span class="eff">High</span><span class="cv" data-i="chev-d"></span></button>
+                    <button class="send" title="Send · return"><span data-i="up"></span></button>
+                  </div>
+                </div>
+              </div></div>
+            </div>
+          </div>
+          <aside class="insp" data-insp="C" data-tab="ch"></aside>
+        </div>
+      </main>
+      <span class="pin" id="pinC1">C1</span><span class="pin" id="pinC2">C2</span><span class="pin" id="pinC3">C3</span><span class="pin" id="pinC4">C4</span>
+      <span class="pin" id="pinC5">C5</span><span class="pin" id="pinC6">C6</span><span class="pin" id="pinC7">C7</span><span class="pin" id="pinC8">C8</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>C1</b>The tab. "Changes 4" counts the scope's files once they are read, in mono tertiary. Opening it widens the inspector from 328 to 556 at once, without animating. The other tabs keep their widths.</li>
+      <li><b>C2</b>The scopes. Last turn and Whole session are Claude's own file edits, read from the transcript. Branch is git: the working tree against the merge base with main. One quiet line says what the scope leaves out.</li>
+      <li><b>C3</b>The files. Folders come first, and a folder with one child merges into its path, as in the chat's card. Each row has the card's status letter: M, A, D, or R with the old path for a rename. The code draws a page glyph and no old path. After six rows, the list scrolls. "Open in Editor" shows on hover.</li>
+      <li><b>C4</b>The diff card is raised 1, with radius 8: the path and Open in Editor, then each hunk after its @@ line. The numbers are tertiary (4.5:1) and the text is primary (7:1), on bands of 9 % in Ink and 8 % in Paper.</li>
+      <li><b>C5</b>The "+" shows in the gutter of the line under the pointer. It, or a click anywhere on the line, opens the box. A comment on a removed line takes the old line's number.</li>
+      <li><b>C6</b>Writing. The box says "Your comment · line 18" on the accent wash. Return adds the comment, Shift-Return makes a new line, and Esc cancels. Add Comment stays off while the box is empty.</li>
+      <li><b>C7</b>A saved comment shows under its line, with Edit and Remove. The file's row counts it: "· 1 comment".</li>
+      <li><b>C8</b>The footer shows while the scope has comments: "N comments in M files", Discard, and Send to Claude. The comments clear once Claude takes the message, and a send that was refused keeps them.</li>
+      <li><b>Width</b>At 1280 with the sidebar open, the chat would keep 464 beside 556, which is under 480. So the inspector draws over the chat on the popover surface, no wider than the pane (DESIGN §13). Try the Window switch above.</li>
+      <li><b>Reads</b>The tab reads only while it is open: when it opens, when a turn ends, and when the scope changes. It never reads on a timer. Comment drafts are kept per session and per scope until Sphyrna quits.</li>
+    </ol>
+  </section>
+
+  <!-- ================= 02 EVERY STATE OF THE TAB ================= -->
+  <section class="sec" id="states">
+    <div class="sechead"><span class="num">02</span><h2>Every state of the tab</h2>
+      <p>What the tab says while it reads, when a scope is empty or off, when a diff cannot be drawn, and what happens to a comment or a send that cannot land. The words are the code's (V20), and DESIGN §13 carries them.</p></div>
+    <div class="parts">
+      <div class="spec w4"><span class="label">Reading the branch</span>
+        <div class="ipc"><div class="empty"><canvas id="st-wait"></canvas><h6>Reading the branch…</h6><p class="mono" style="font-size:11px">git diff --numstat -M 3f2a9c1 · <span data-role="waitclock">1</span> s</p></div></div>
+        <p class="note">While git reads, a small hammerhead swims in place over the words, with the command and its time in mono (DESIGN §13). The code shows a spinner and "Reading the changes". The turn scopes read Claude's transcript, usually in a blink, so they show the line alone.</p>
+      </div>
+      <div class="spec w4"><span class="label">An empty scope</span>
+        <div class="ipc"><p class="chnote">Claude's file edits. Shell commands and subagents show under Branch.</p><div class="empty"><canvas id="st-empty"></canvas><h6>Claude has not edited files in the last turn.</h6></div></div>
+        <p class="note">One sentence per scope, as the code says it: "…in this session." for Whole session, and for Branch "No changes against main.", or "No uncommitted changes." on main. The quiet line above says what was read. DESIGN §13 carries these four sentences.</p>
+      </div>
+      <div class="spec w4"><span class="label">A scope that is off</span>
+        <div class="ipc"><div class="seg static"><button>Last turn</button><button>Whole session</button><button class="on">Branch</button></div><p class="offline">Not a Git repository</p></div>
+        <div class="ipc"><div class="seg static"><button class="on">Last turn</button><button>Whole session</button><button>Branch</button></div><p class="offline">Claude's file edits are read from Claude sessions</p></div>
+        <p class="note">The reason, plainly, and no shark: nothing is empty and nothing is waiting. Branch also says "No base branch found". The second line is a Codex session's, whose edits Sphyrna cannot read yet.</p>
+      </div>
+      <div class="spec w6"><span class="label">A diff that cannot be drawn</span>
+        <div class="ipc">
+          <div class="diff"><div class="diff-h"><span data-i="doc"></span>Resources/Assets.xcassets/AppIcon.png<span class="grow"></span><button class="lk2">Open in Editor</button></div><p class="dnote">Binary file</p></div>
+          <div class="diff"><div class="diff-h"><span data-i="doc"></span>Tests/Fixtures/transcript-large.jsonl<span class="grow"></span><button class="lk2">Open in Editor</button></div><p class="dnote">Too large to show here<button class="lk2">Open in Editor</button></p></div>
+          <div class="diff"><div class="diff-h"><span data-i="doc"></span>Sources/LoomCore/GitChanges.swift<span class="grow"></span><button class="lk2">Open in Editor</button></div><p class="dnote">Git did not answer<button class="lk2 acc">Try Again</button></p></div>
+        </div>
+        <p class="note">One quiet line in the card, with the action that fits it. A diff over 1 MiB or 2,000 lines is too large. Git has 15 seconds for one file's diff, and an error says "The diff could not be read." with git's own words.</p>
+      </div>
+      <div class="spec w6"><span class="label">A long session</span>
+        <div class="ipc">
+          <p class="chnote">Claude's file edits. Shell commands and subagents show under Branch. Older edits were not read.</p>
+          <div class="files"><div class="fdir"><span data-i="chev-d"></span>Sources/LoomCatalogUI</div>
+            <div class="frow"><span class="st">M</span><span class="nm">CatalogModel.swift</span><span class="pm"><span class="add">+212</span><span class="del">−88</span></span></div>
+            <div class="frow"><span class="st">M</span><span class="nm">ChangesTab.swift</span><span class="pm"><span class="add">+64</span><span class="del">−20</span></span></div>
+            <div class="frow"><span class="st">A</span><span class="nm">ChangesDiffViews.swift</span><span class="pm"><span class="add">+301</span></span></div></div>
+          <p class="chnote" style="margin:8px 0 0">14 more files are not listed.</p>
+        </div>
+        <p class="note">The turn scopes read the transcript backward from its end, at most 64 MiB. Beyond that, the quiet line says so, and the tab shows what it has. A list over its bound says how many files it leaves out.</p>
+      </div>
+      <div class="spec w6"><span class="label">A comment whose line changed</span>
+        <div class="ipc"><div class="diff">
+          <div class="diff-h"><span data-i="doc"></span>Sources/LoomCatalogUI/SidebarRow.swift<span class="grow"></span><button class="lk2">Open in Editor</button></div>
+          <div class="dlist">
+            <div class="dl"><span>22</span><span>23</span><span class="sg"></span><span class="tx">        .background(tint)</span></div>
+            <div class="dl"><span>23</span><span>24</span><span class="sg"></span><span class="tx">    }</span></div>
+            <div class="cbox saved"><div class="ch"><span data-i="bubble"></span>Line changed since<span class="grow"></span><button>Edit</button><button>Remove</button></div><div class="ct">Keep a minimum of 28 here, so a larger text size can still grow the row.</div></div>
+          </div>
+        </div></div>
+        <p class="note">When a re-read no longer has the comment's line, the comment stays in the draft and is drawn after the lines, under "Line changed since". It still goes with the others.</p>
+      </div>
+      <div class="spec w6"><span class="label">When Send cannot go</span>
+        <div class="ipc"><div class="chfoot"><span class="fi" data-i="bubble"></span><span class="sum">2 comments in 1 file</span><span class="grow"></span><button class="btn sec sm">Discard</button><button class="btn pri sm" disabled>Send to Claude</button>
+          <p class="fn">Comments go to Claude in a Chat session</p></div></div>
+        <div class="ipc"><div class="chfoot"><span class="fi" data-i="bubble"></span><span class="sum">2 comments in 1 file</span><span class="grow"></span><button class="btn sec sm">Discard</button><button class="btn pri sm">Send to Claude</button>
+          <p class="fn bad">The comments could not be sent: the session is stopping.</p></div></div>
+        <p class="note">A terminal-face session shows the diffs, but Send is off, and the line says why. A refused send keeps the comments and says why in the failure text. A stopped Chat session resumes to take them.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 03 THE AGENTS TAB ================= -->
+  <section class="sec" id="agents">
+    <div class="sechead"><span class="num">03</span><h2>The Agents tab</h2>
+      <p>A session's subagents, running first, and one subagent's transcript, read in place. Click a row to read it. "‹ Agents" goes back, and so does Esc. The rows are the sidebar tree's and the chat card's, set in a card. The open explorer is live: it reads, thinks and runs, then finishes with its result. Compare the two questions above the window: the width, and the voice.</p></div>
+    <div class="pbar">
+      <button class="btn sec sm" id="agReplay">Replay</button>
+      <span class="grp"><span class="label">Transcript</span><span class="seg" id="agWidth"><button class="on" data-aw="556">at 556</button><button data-aw="328">at 328, as built</button></span></span>
+      <span class="grp"><span class="label">Voice</span><span class="seg" id="agVoice"><button class="on" data-voice="two">Two voices</button><button data-voice="mono">All mono, as built</button></span></span>
+    </div>
+    <div class="stage"><div class="win" id="winG" data-w="1440" data-h="960">
+      <aside class="side" data-sel="ink" data-v="work"></aside>
+      <main class="detail">
+        <header class="dhead">
+          <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
+          <span class="state attn"><i class="dot attn"></i>Needs approval</span>
+          <div class="end">
+            <span class="chip proj" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom<span class="sep"></span><span class="br"><span data-i="branch"></span>ui/ink-sidebar</span></span>
+            <span class="vline"></span>
+            <button class="ib on" title="Inspector" data-i="side-r"></button>
+            <div class="cgroup"><button><span class="stopsq"></span>Stop</button><span class="div"></span><button class="more" data-i="more" title="More"></button></div>
+          </div>
+        </header>
+        <div class="dbody">
+          <div class="main">
+            <div class="tabbar">
+              <div class="tab on" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind" data-mark="attn"></span><span class="t">Port the sidebar to Ink tokens</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
+              <div class="tab" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind" data-mark="attn"></span><span class="t">Review the gate failure</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
+              <button class="ib" data-i="plus" title="New tab"></button>
+            </div>
+            <div class="chat" data-view="normal">
+              <div class="scroller"><div class="col">
+                <div class="you">
+                  <div class="bubble">Now the subagent rows: one branch per row, and the last one curves. A subagent's own subagents branch one step further.</div>
+                  <div class="you-foot"><span class="tm">14:31</span><button class="ib sm" title="Copy" data-i="copy"></button></div>
+                </div>
+                <div class="witem think open"><div class="wrow"><span class="wi"><span class="ast">✻</span></span>Thought for <span class="ar">6s</span><span class="tm">14:31</span><span class="cv" data-i="chev-r"></span></div>
+                  <div class="wbody tb">The guide has to run on for every ancestor that still has a sibling below, so it belongs to each row and not to the list.</div></div>
+                <div class="prose"><p>I'll have one explorer check the tree colour's contrast while an implementer draws the branch shape. Two smaller ones map the offsets and the tests first.</p></div>
+                <div class="agents" data-role="agcard"></div>
+              </div></div>
+              <div class="dock"><div class="dock-in">
+                <div class="pinned" data-role="pinned">
+                  <div class="pcard" data-card="approval">
+                    <div class="pc-h"><span class="dot attn"></span>Allow this edit?<span class="pc-kind">implementer · Edit</span></div>
+                    <div class="pc-cmd">Sources/LoomCatalogUI/SubagentRow.swift  <span class="add">+24</span> <span class="del">−9</span></div>
+                    <div class="pc-says"><b>implementer:</b> Draw each branch inside its row, so it scrolls with it</div>
+                    <div class="pc-why">Edits ask first in Ask before edits</div>
+                    <div class="pc-acts"><span class="grow"></span><button class="btn sec">Deny</button><button class="btn sec">Allow Once</button><button class="btn sec">Allow for This Session</button></div>
+                  </div>
+                </div>
+                <div class="composer">
+                  <textarea placeholder="Message Claude; it reads it after the current step" aria-label="Message"></textarea>
+                  <div class="cbar">
+                    <button class="cchip" title="Attach, mention or run a command" data-i="plus"></button>
+                    <button class="cchip mode" style="--mt:var(--m-abe)"><span data-i="shield"></span><span>Ask before edits</span></button>
+                    <span class="grow"></span>
+                    <button class="cchip mdl" title="Model and effort"><span class="hm claude"></span><span>Opus 5.5</span><span class="eff">High</span><span class="cv" data-i="chev-d"></span></button>
+                    <button class="send stop" title="Interrupt · esc"><span class="sq"></span></button>
+                  </div>
+                </div>
+              </div></div>
+            </div>
+          </div>
+          <aside class="insp" data-insp="G" data-tab="ag"></aside>
+        </div>
+      </main>
+      <span class="pin" id="pinA1">A1</span><span class="pin" id="pinA2">A2</span><span class="pin" id="pinA3">A3</span><span class="pin" id="pinA4">A4</span>
+      <span class="pin" id="pinA5">A5</span><span class="pin" id="pinA6">A6</span><span class="pin" id="pinA7">A7</span><span class="pin" id="pinA8">A8</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>A1</b>The header: "‹ Agents" goes back to the list, as Esc does. The state pill uses the session pill's look: "Running 1m", then "Finished 1m 34s", or "Interrupted". The name is "type · description", in body semibold.</li>
+      <li><b>A2</b>The brief opens the transcript under the "Brief" label, in secondary, cut at four lines.</li>
+      <li><b>A3</b>The agent's words, in the chat's type (12.5, primary), with ⏺ in the glyph column. In "All mono", everything is SF Mono 12, as built.</li>
+      <li><b>A4</b>A tool call, with its name in mono semibold and its argument after it. Its answer, ⎿, is one line in tertiary, with how many more lines there were. An error is in the failure text.</li>
+      <li><b>A5</b>"✻ Thought for 4s": Claude keeps only the length of a thought, never its text.</li>
+      <li><b>A6</b>The live tail: the working spinner and "Running…". It follows the newest entry only while you are at the bottom. When the agent is done, its last words are labelled "Result", since they are what goes back to the session.</li>
+      <li><b>A7</b>The list: "Running 2" and "Finished 2". A row is the tree's: the status column, the type in 12.5 medium primary, the description, and the time in mono. The code's accent person badge and accent type go.</li>
+      <li><b>A8</b>A subagent whose request waits takes the attention dot and "Waiting for you". Open it, and its notice says where to answer, with Show the Request.</li>
+    </ol>
+    <div class="parts" style="margin-top:34px">
+      <div class="spec w4"><span class="label">No subagents</span>
+        <div class="ipc"><div class="empty"><canvas id="st-agents"></canvas><h6>No subagents in this session.</h6></div></div>
+        <p class="note">A stopped session's empty folder. While a session runs, it says "No subagents. They appear here while the session runs them." Where Sphyrna cannot read a past run, it says "Agents show while the session runs."</p>
+      </div>
+      <div class="spec w4"><span class="label">A stopped session's list</span>
+        <div class="ipc ag328"><div class="isech"><span class="label">Finished</span><span class="n">3</span></div>
+          <div class="arow2"><span class="ind"></span><span class="ty">explorer</span><span class="el">1m 40s</span><span class="de">Find every tree offset</span></div>
+          <div class="arow2"><span class="ind"></span><span class="ty">implementer</span><span class="el">3m 02s</span><span class="de">Draw the branch shape</span><span class="nt">Interrupted</span></div>
+          <div class="arow2"><span class="ind"></span><span class="ty">general-purpose</span><span class="el">18s</span><span class="de">List the sidebar tests</span></div></div>
+        <p class="note">The list comes from the session's own folder, newest 500. An entry whose Agent call has no result reads "Interrupted", under its description and in its pill.</p>
+      </div>
+      <div class="spec w4"><span class="label">Reading, or not there</span>
+        <div class="ipc"><p class="tnote">Reading the transcript…</p></div>
+        <div class="ipc"><p class="tnote">The transcript is not available.</p></div>
+        <div class="ipc"><div class="tr two" style="padding:0"><div class="te om"><span class="g"></span><div class="x">Earlier entries are not shown</div></div><div class="te t"><span class="g">⏺</span><div class="x">The fixtures now carry the new claims.</div></div></div></div>
+        <p class="note">The panel keeps the newest 400 entries. Above them, one line says the earlier ones are not shown.</p>
+      </div>
+      <div class="spec w6"><span class="label">Waiting for you, in each face</span>
+        <div class="ipc"><div class="agh"><div class="agh-r"><button class="back"><span data-i="chev-l"></span>Agents</button><span class="state"><span class="spin">⠋</span>Running 1m</span></div><h4>implementer · Draw the branch shape</h4>
+          <div class="agnote"><span class="dot attn"></span><span>Waiting for you: answer it in the chat</span><button class="lk2 acc">Show the Request</button></div></div></div>
+        <div class="ipc"><div class="agh"><div class="agh-r"><button class="back"><span data-i="chev-l"></span>Agents</button><span class="state"><span class="spin">⠋</span>Running 1m</span></div><h4>implementer · Draw the branch shape</h4>
+          <div class="agnote"><span class="dot attn"></span><span>Waiting for approval: answer it in the session's terminal</span></div></div></div>
+        <p class="note">In the Chat face, Show the Request makes that request the pinned card and scrolls the pinned stack to it, without moving the stream. In the terminal face, the request is the terminal's own.</p>
+      </div>
+      <div class="spec w6"><span class="label">An error, in both voices</span>
+        <div class="ipc"><div class="tr two" style="padding:0">
+          <div class="te c"><span class="g">⏺</span><div class="x"><b>Bash</b><span class="a">(swift test --filter SidebarInkTests)</span></div></div>
+          <div class="te r bad"><span class="g">⎿</span><div class="x">error: no such module 'LoomCatalogUI'<span class="more">  (+12 lines)</span></div></div>
+          <div class="te t"><span class="g">⏺</span><div class="x">The test target lost its dependency in the last edit. I'll add it back to Package.swift.</div></div></div></div>
+        <div class="ipc"><div class="tr mono" style="padding:0">
+          <div class="te c"><span class="g">⏺</span><div class="x"><b>Bash</b><span class="a">(swift test --filter SidebarInkTests)</span></div></div>
+          <div class="te r bad"><span class="g">⎿</span><div class="x">error: no such module 'LoomCatalogUI'<span class="more">  (+12 lines)</span></div></div>
+          <div class="te t"><span class="g">⏺</span><div class="x">The test target lost its dependency in the last edit. I'll add it back to Package.swift.</div></div></div></div>
+        <p class="note">The same three entries in two voices, then all in mono, as built. Text is plain in both: nothing is drawn as Markdown, and no link opens.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 04 THE SHEETS ================= -->
+  <section class="sec" id="sheets">
+    <div class="sechead"><span class="num">04</span><h2>The sheets</h2>
+      <p>Every question Sphyrna asks before it changes something, drawn as one family. The window shows Delete over its scrim. Below it, each sheet is live: click into one and press Return, Esc or Tab, and the line under it says what the keys did. Filled means Return: only Rename, which saves, has a filled default. Delete, Remove, Discard and Rewind tint their button, and the focus starts on Cancel.</p></div>
+    <div class="stage"><div class="win" id="winS" data-w="1280" data-h="680">
+      <aside class="side" data-sel="ink" data-v="ready"></aside>
+      <main class="detail">
+        <header class="dhead">
+          <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
+          <span class="state idle">Ready</span>
+          <div class="end">
+            <span class="chip proj" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom<span class="sep"></span><span class="br"><span data-i="branch"></span>ui/ink-sidebar</span></span>
+            <span class="vline"></span>
+            <button class="ib" title="Inspector" data-i="side-r"></button>
+            <div class="cgroup"><button><span class="stopsq"></span>Stop</button><span class="div"></span><button class="more" data-i="more" title="More"></button></div>
+          </div>
+        </header>
+        <div class="dbody"><div class="main">
+          <div class="chat"><div class="scroller"><div class="col">
+            <div class="you"><div class="bubble">Port the sidebar rows to the Ink tokens: one status column, 28 pt rows, the project as its mark. Keep the pill. Run the sidebar tests after.</div></div>
+            <div class="tfold"><div class="foldrow"><span class="cv" data-i="chev-r"></span>Worked for <span class="mono">4m 12s</span> · changed 4 files and ran 2 commands</div></div>
+            <div class="reply"><div class="prose"><p>The sidebar now reads the Ink tokens. Every row is 28 pt with one status column, the project shows as its mark, and the selected session takes its project's tint instead of grey.</p></div></div>
+          </div></div></div>
+        </div></div>
+      </main>
+      <div class="scrim"></div>
+      <div class="sheet at" data-sheet="delete-ready" data-place="win"></div>
+      <span class="pin" id="pinS1">S1</span><span class="pin" id="pinS2">S2</span><span class="pin" id="pinS3">S3</span><span class="pin" id="pinS4">S4</span><span class="pin" id="pinS5">S5</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>S1</b>A sheet comes down under the window's header, centred and 420 wide, on the popover surface, with its ring and shadow. Behind it, the window takes the scrim: black at 40 % in Ink, ink at 22 % in Paper.</li>
+      <li><b>S2</b>The question is the title, in 14 semibold. The session's name sits under it in 13 medium, cut at two lines. Rewind puts the message there, in quotes.</li>
+      <li><b>S3</b>Delete's facts in two short lists: what goes, under "Removed", and what stays, under "Kept". Today they are one paragraph that ends "This can't be undone.", then "Not removed: …". The words stay; only the shape changes.</li>
+      <li><b>S4</b>The focus starts on Cancel, so a stray Space does not delete either. Esc cancels, and Return does nothing.</li>
+      <li><b>S5</b>Delete Permanently is tinted in the failure tone, not filled: no filled button, no Return. The code still fills it red.</li>
+    </ol>
+    <div class="parts" style="margin-top:34px">
+      <div class="spec w6"><span class="label">Rename · a sheet that saves</span><div class="sbox"><div class="sheet" data-sheet="rename"></div></div><p class="keylog" data-log="rename">Return saves. Esc cancels.</p></div>
+      <div class="spec w6"><span class="label">Delete · checking, then blocked</span><div class="sbox"><div class="sheet" data-sheet="delete-check"></div></div><div class="sbox"><div class="sheet" data-sheet="delete-blocked"></div></div><p class="keylog" data-log="delete-blocked">Return does nothing. Esc cancels.</p></div>
+      <div class="spec w6"><span class="label">Rewind Files · it lists files, so 480</span><div class="sbox"><div class="sheet" data-sheet="rewind"></div></div><p class="keylog" data-log="rewind">Return does nothing. Esc cancels.</p></div>
+      <div class="spec w6"><span class="label">Rewind Files · when it cannot</span><div class="sbox"><div class="sheet" data-sheet="rewind-cannot"></div></div><div class="sbox"><div class="sheet" data-sheet="rewind-copy"></div></div><p class="note">A refusal from the dry run is in the failure text, with Cancel only. When Sphyrna cannot keep its copy for Undo, Rewind Files is off: Sphyrna never rewinds without its copy.</p></div>
+      <div class="spec w6"><span class="label">Discard side chat</span><div class="sbox"><div class="sheet" data-sheet="discard"></div></div><p class="keylog" data-log="discard">Return does nothing. Esc cancels.</p><p class="note">Cancel is a plain button with the focus, and Discard is tinted, like Delete's button. The code still fills Cancel, so Return cancels there.</p></div>
+      <div class="spec w6"><span class="label">Remove from Sphyrna · the one alert</span><div class="sbox"><div class="sheet alert" data-sheet="remove"></div></div><p class="keylog" data-log="remove">Return does nothing. Esc cancels.</p><p class="note">Remove from Sphyrna Only asks through one system alert, from the blocked sheet and from the deletion banner. It keeps the alert's compact shape, with the app icon, which is now Rising (D-77), and it follows the same keys.</p></div>
+    </div>
+  </section>
+</div>

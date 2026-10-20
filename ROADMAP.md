@@ -41,7 +41,7 @@ Done when: behavior is unchanged (full release suite plus a real-Claude check), 
 
 ### I: Identity and UI system
 
-- Direction A from [the identity proposal](design/IDENTITY-PROPOSAL.md) is chosen; its open sub-decisions are settled, tokens move into one Swift source and the rules into [design/DESIGN.md](design/DESIGN.md).
+- Direction A from the identity proposal (`design/IDENTITY-PROPOSAL.md`, in git) is chosen; its open sub-decisions are settled, tokens move into one Swift source and the rules into [design/DESIGN.md](design/DESIGN.md).
 - Measure the indicator's WindowServer cost (CP5 optimizer R-A) and apply the 10 fps frame-rate hint if it matters.
 - The theme rewrite removes the dead `CatalogTheme` constants (CP5 optimizer S-B).
 - Navbar layout is decided (O-03) and built.
@@ -52,9 +52,9 @@ Done when: the user accepts the result on a package, evidence screenshots match 
 ### U: Daily-use UI features
 
 - Sidebar footer bar: the bottom `+` and settings icons become one compact footer inside the sidebar, also showing compact Claude usage.
-- Settings page: a real Settings window (existing preferences plus usage and cost), lightweight and usage-first ([reference](design/references/t3-code-usage-reference.png)).
+- Settings page: a real Settings window (existing preferences plus usage and cost), lightweight and usage-first, after T3 Code's usage page.
 - Usage data without load: read what Claude Code already records locally, incrementally and bounded; no extra CLI processes, no provider polling; cost as a clearly labelled estimate. Codex rows wait for Codex (D-28).
-- Conversation tabs above the terminal for quick switching between a few threads ([layout reference](design/references/layout-guidance.jpg)).
+- Conversation tabs above the terminal for quick switching between a few threads.
 - All in identity A; previews before building; no left rail, no right sidebar ([D-34](DECISIONS.md)).
 
 Done when: the user accepts the surfaces on a package, the usage numbers match Claude's own records on test data, and idle and render costs stay at baseline.
