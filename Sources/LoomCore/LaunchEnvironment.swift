@@ -3,6 +3,9 @@ import Darwin
 import Foundation
 
 public enum LaunchEnvironment {
+    /// The most one stream of a captured shell or helper may write: 4 MiB.
+    public static let defaultOutputLimit = 4 * 1024 * 1024
+
     public enum LaunchOrigin: Sendable { case launchServices, development }
 
     /// LaunchServices identity alone does not prove a clean environment: `open` can
@@ -232,11 +235,11 @@ public enum LaunchEnvironment {
     /// hooks so the supervisor can track and cancel it. Whatever the leader
     /// left behind in its group is killed before returning.
     static func runHelper(_ executable: String, _ arguments: [String], environment: [String: String],
-                          timeout: TimeInterval, spawner: HelperSpawner = .local,
+                          timeout: TimeInterval, outputLimit: Int = defaultOutputLimit, spawner: HelperSpawner = .local,
                           onSpawn: @escaping (pid_t) throws -> Void,
                           onPoll: @escaping () throws -> Void) throws -> String {
         let output = try capture(executable, arguments, environment: environment, timeout: timeout,
-                                 spawner: spawner, onSpawn: onSpawn, onPoll: onPoll)
+                                 outputLimit: outputLimit, spawner: spawner, onSpawn: onSpawn, onPoll: onPoll)
         defer { spawner.abort(output.pid) }
         guard output.status == 0 else {
             let detail = String(decoding: (output.stderr.isEmpty ? output.stdout : output.stderr).prefix(300), as: UTF8.self)
@@ -253,7 +256,7 @@ public enum LaunchEnvironment {
     // Successful capture transfers an exited, unreaped child to the caller. Keeping
     // its PID reserved lets validation clean up its process group without PID reuse.
     static func capture(_ executable: String, _ arguments: [String], environment: [String: String],
-                                directory: String? = nil, timeout: TimeInterval,
+                                directory: String? = nil, timeout: TimeInterval, outputLimit: Int = defaultOutputLimit,
                                 spawner: HelperSpawner = .local,
                                 onSpawn: ((pid_t) throws -> Void)? = nil,
                                 onPoll: (() throws -> Void)? = nil) throws -> (stdout: Data, stderr: Data, status: Int32, pid: pid_t) {
@@ -285,9 +288,7 @@ public enum LaunchEnvironment {
                 let count = Darwin.read(fd, &bytes, bytes.count)
                 if count > 0 {
                     destination.append(contentsOf: bytes.prefix(count))
-                    guard destination.count <= 4 * 1024 * 1024 else {
-                        throw LoomError.message("Terminal startup output exceeded 4 MiB")
-                    }
+                    guard destination.count <= outputLimit else { throw LoomError.outputTooLarge(limit: outputLimit) }
                 } else if count == 0 || errno == EAGAIN || errno == EWOULDBLOCK { break }
                 else if errno != EINTR { throw LoomError.system("Terminal startup read", errno) }
             }
@@ -444,6 +445,8 @@ public enum LoomError: Error, CustomStringConvertible {
     case system(String, Int32)
     case message(String)
     case environmentTimeout
+    /// A helper wrote more than the caller's output limit to one stream; it was stopped.
+    case outputTooLarge(limit: Int)
     /// A helper (a capability probe, `--version`) exited with a status other than 0; `detail` is the head of its output.
     case helperExit(status: Int32, detail: String)
     case unsupportedShell(String)
@@ -455,6 +458,8 @@ public enum LoomError: Error, CustomStringConvertible {
         case let .message(message): message
         case .environmentTimeout:
             "Terminal shell startup timed out; check startup files for hangs or input prompts"
+        case let .outputTooLarge(limit):
+            limit % (1024 * 1024) == 0 ? "The output exceeded \(limit / (1024 * 1024)) MiB" : "The output exceeded \(limit) bytes"
         case let .helperExit(status, detail): "exit status \(status)" + (detail.isEmpty ? "" : ": \(detail)")
         case let .unsupportedShell(shell):
             "Terminal environment resolution currently supports macOS /bin/zsh; unsupported shell: \(shell)"

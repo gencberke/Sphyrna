@@ -443,6 +443,8 @@ public final class CatalogModel {
     public let deletions = DeletionState()
     /// The per-session inspector (V2); the surfaces for the features below fill their holders in their own slices.
     public let inspector: InspectorState
+    /// The Changes tab's holder (V20): what each session's tab read, and its comment drafts (`CatalogModel+Changes`).
+    let changes = ChangesState()
     public let home = HomeState()
     public let palette = PaletteState()
     public let newSession = NewSessionState()

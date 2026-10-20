@@ -16,6 +16,7 @@ import SwiftUI
 ///     session's status by the owner; false for a stopped session.
 ///   - onOpenSubagent: a subagent card was clicked (the inspector's Agents tab opens it): its agent id, when known, and the
 ///     id of the Agent call.
+///   - onOpenChanges: a changed-files card's "Open in Changes" was clicked; `true` when the card is the newest turn's.
 ///   - fallback: drawn when no transcript resolves (the kept last screen, D-54).
 public struct ChatTranscriptView<Fallback: View>: View {
     private let sessionID: String
@@ -23,25 +24,29 @@ public struct ChatTranscriptView<Fallback: View>: View {
     private let workingDirectory: String?
     private let isWorking: Bool
     private let onOpenSubagent: ((String?, String) -> Void)?
+    private let onOpenChanges: ((Bool) -> Void)?
     private let fallback: () -> Fallback
     /// Made when the view first shows a session and again when the session changes, never on a parent's re-render: a model
     /// owns a scroll view, a table, a measurer and observers.
     @State private var model: ChatTranscriptModel?
 
     public init(sessionID: String, configDirectory: URL, workingDirectory: String?, isWorking: Bool = false,
-                onOpenSubagent: ((String?, String) -> Void)? = nil, @ViewBuilder fallback: @escaping () -> Fallback) {
+                onOpenSubagent: ((String?, String) -> Void)? = nil, onOpenChanges: ((Bool) -> Void)? = nil,
+                @ViewBuilder fallback: @escaping () -> Fallback) {
         self.sessionID = sessionID
         self.configDirectory = configDirectory
         self.workingDirectory = workingDirectory
         self.isWorking = isWorking
         self.onOpenSubagent = onOpenSubagent
+        self.onOpenChanges = onOpenChanges
         self.fallback = fallback
     }
 
     public var body: some View {
         ZStack {
             if let model {
-                ChatTranscriptContent(model: model, isWorking: isWorking, onOpenSubagent: onOpenSubagent, fallback: fallback)
+                ChatTranscriptContent(model: model, isWorking: isWorking, onOpenSubagent: onOpenSubagent,
+                                      onOpenChanges: onOpenChanges, fallback: fallback)
                     .id(ObjectIdentifier(model))
             } else {
                 LoomTheme.Surface.canvas
@@ -69,6 +74,7 @@ struct ChatTranscriptContent<Fallback: View>: View {
     let model: ChatTranscriptModel
     let isWorking: Bool
     let onOpenSubagent: ((String?, String) -> Void)?
+    var onOpenChanges: ((Bool) -> Void)?
     let fallback: () -> Fallback
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var width = LoomTheme.Chat.chipCompactBelow
@@ -88,6 +94,7 @@ struct ChatTranscriptContent<Fallback: View>: View {
         }
         .onAppear {
             model.onOpenSubagent = onOpenSubagent
+            model.onOpenChanges = onOpenChanges
             model.setWorking(isWorking)
             model.setOnScreen(true)
         }

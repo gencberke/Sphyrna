@@ -8,7 +8,7 @@ import LoomCatalogUI
 /// - `open-subagent:<session id>:<agent id>`: selects the session, opens its inspector on the Agents tab and
 ///   reads the subagent's transcript there; nothing when the session's live state does not list that subagent.
 /// - `close-subagent`: back to the list of agents.
-/// - `inspector:<open|close|overview|agents>`: the selected session's inspector: the header toggle (open, close)
+/// - `inspector:<open|close|overview|changes|agents>`: the selected session's inspector: the header toggle (open, close)
 ///   and the tabs (a tab also opens the inspector).
 ///
 /// The snapshot gains `subagentPanel{viewed, sessionID, agentID, entryCount, isRunning, isFeeding, phase,
@@ -31,6 +31,7 @@ extension DevelopmentEvidence {
             case "open": model.setInspector(open: true, for: id)
             case "close": model.setInspector(open: false, for: id)
             case "overview": model.setInspector(open: true, for: id); model.selectInspectorTab(.overview)
+            case "changes": model.setInspector(open: true, for: id); model.selectInspectorTab(.changes)
             case "agents": model.setInspector(open: true, for: id); model.selectInspectorTab(.agents)
             default: return false
             }

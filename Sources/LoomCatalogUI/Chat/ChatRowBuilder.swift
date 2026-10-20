@@ -152,7 +152,7 @@ enum ChatRowBuilder {
         // The card also shows for a turn that was interrupted or failed after editing files.
         if !live {
             let calls = visible.compactMap { entry -> ToolCall? in if case let .tool(call) = entry.body { call } else { nil } }
-            let files = ChatWork.changedFiles(in: calls, workingDirectory: input.workingDirectory)
+            let files = EditScan.changedFiles(in: calls, workingDirectory: input.workingDirectory)
             if !files.isEmpty {
                 out.append(ChatRow(id: changesID(turn.id), kind: .changedFiles(
                     ChangedFiles(turnID: turn.id, files: files, lines: ChatWork.tree(of: files)))))

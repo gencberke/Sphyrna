@@ -82,6 +82,8 @@ final class ChatTranscriptModel {
     @ObservationIgnored private var windowVisible = false
     @ObservationIgnored private var closed = false
     @ObservationIgnored var onOpenSubagent: ((_ agentID: String?, _ toolUseID: String) -> Void)?
+    /// "Open in Changes" on a changed-files card; `true` when the card is the newest turn's.
+    @ObservationIgnored var onOpenChanges: ((_ newestTurn: Bool) -> Void)?
 
     init(sessionID: String, configDirectory: URL, workingDirectory: String?, isWorking: Bool = false,
          limits: TranscriptLens.Limits = TranscriptLens.Limits(),
@@ -117,6 +119,10 @@ final class ChatTranscriptModel {
         context.toggleFlag = { [weak self] id, flag in self?.presentation.toggleFlag(id, flag) }
         context.showAll = { [weak self] entry in self?.showAll(entry) }
         context.openSubagent = { [weak self] run in self?.onOpenSubagent?(run.agentID, run.toolUseID) }
+        context.openChanges = { [weak self] turnID in
+            guard let self else { return }
+            onOpenChanges?(turnID == presentation.model.turns.last?.id)
+        }
         context.openImage = { image in ChatQuickLook.show(image) }
         controller.onNeedOlder = { [weak self] in self?.loadOlder() }
         controller.onCycleView = { [weak self] in self?.cycleViewMode() }

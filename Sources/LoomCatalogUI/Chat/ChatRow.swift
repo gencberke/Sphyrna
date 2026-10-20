@@ -93,12 +93,6 @@ struct TurnFold: Equatable {
     var failedCount: Int
 }
 
-struct ChangedFile: Equatable {
-    var path: String
-    var added: Int
-    var removed: Int
-}
-
 /// The card under the final answer of a turn that edited files.
 struct ChangedFiles: Equatable {
     var turnID: String
@@ -116,6 +110,8 @@ struct ChangedFileLine: Equatable {
     var isFolder: Bool
     var added: Int
     var removed: Int
+    /// The file's path, for a file line (the Changes tab finds its file by it).
+    var path: String?
 }
 
 /// The one row at the end of a running turn.

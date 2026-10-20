@@ -16,6 +16,8 @@ final class LiveChatViewModel {
     @ObservationIgnored let feed: LiveChatFeed
     @ObservationIgnored let controller: ChatStreamController
     @ObservationIgnored var onOpenSubagent: ((_ agentID: String?, _ toolUseID: String) -> Void)?
+    /// "Open in Changes" on a changed-files card; `true` when the card is the newest turn's.
+    @ObservationIgnored var onOpenChanges: ((_ newestTurn: Bool) -> Void)?
     @ObservationIgnored private var onScreen = false
     @ObservationIgnored private var windowVisible = false
     @ObservationIgnored private var closed = false
@@ -31,6 +33,9 @@ final class LiveChatViewModel {
         // A live row has no line of its own: the feed finds its result in the transcript, when it knows the folder.
         context.canShowAll = { [weak feed] entry in feed?.canShowAll(entry) ?? false }
         context.openSubagent = { [weak self] run in self?.onOpenSubagent?(run.agentID, run.toolUseID) }
+        context.openChanges = { [weak self, weak feed] turnID in
+            self?.onOpenChanges?(turnID == feed?.presentation.model.turns.last?.id)
+        }
         context.openImage = { image in ChatQuickLook.show(image) }
         // Delivery actions on the user's own rows (V17): Read now on a message Claude has not read, Retry on one that was not
         // delivered.
@@ -89,6 +94,7 @@ struct LiveChatView<Pinned: View>: View {
     let feed: LiveChatFeed
     let composer: ChatComposerModel?
     let onOpenSubagent: ((String?, String) -> Void)?
+    var onOpenChanges: ((Bool) -> Void)?
     /// "Switch to Terminal" on the policy banner (the switch in Settings goes to Terminal and this session moves); nil where the session cannot be moved.
     var onContinueInTerminal: (() -> Void)?
     @ViewBuilder let pinned: (_ maxHeight: CGFloat?) -> Pinned
@@ -98,7 +104,7 @@ struct LiveChatView<Pinned: View>: View {
         ZStack {
             if let model {
                 LiveChatContent(model: model, feed: feed, composer: composer, onOpenSubagent: onOpenSubagent,
-                                onContinueInTerminal: onContinueInTerminal, pinned: pinned)
+                                onOpenChanges: onOpenChanges, onContinueInTerminal: onContinueInTerminal, pinned: pinned)
             } else {
                 LoomTheme.Surface.canvas
             }
@@ -123,6 +129,7 @@ struct LiveChatContent<Pinned: View>: View {
     let feed: LiveChatFeed
     let composer: ChatComposerModel?
     let onOpenSubagent: ((String?, String) -> Void)?
+    var onOpenChanges: ((Bool) -> Void)?
     var onContinueInTerminal: (() -> Void)?
     /// The cards that wait for the user, between the stream and the composer. They get the most they may take.
     @ViewBuilder let pinned: (_ maxHeight: CGFloat?) -> Pinned
@@ -198,6 +205,7 @@ struct LiveChatContent<Pinned: View>: View {
         }
         .onAppear {
             model.onOpenSubagent = onOpenSubagent
+            model.onOpenChanges = onOpenChanges
             model.setOnScreen(true)
         }
         .onDisappear { model.setOnScreen(false) }

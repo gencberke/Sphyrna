@@ -22,6 +22,11 @@ extension CatalogModel {
             }
         )
         chatSessions = host
+        // The Changes tab's Branch scope reads git through the runtime's supervisor, so the helper is owned and stopped by Quit.
+        Task { [weak self] in
+            let supervisor = await runtime.supervisor
+            self?.changes.reader = ChangesReader.live(git: GitChanges.live(supervisor: supervisor))
+        }
         // Queues of sessions deleted while no host ran (launch recovery) hold the user's text: they go.
         Task { await host.removeQueuesOfDeletedSessions() }
     }

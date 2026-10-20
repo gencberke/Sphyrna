@@ -51,6 +51,8 @@ final class ChatRowContext {
     /// Whether "Show all" can read a clipped result: from a transcript, the entry's own line; a live chat scans the file.
     var canShowAll: (_ entry: ChatEntry) -> Bool = { $0.sourceOffset != nil }
     var openSubagent: ((SubagentRun) -> Void)?
+    /// The changed-files card's "Open in Changes", with the id of the card's turn.
+    var openChanges: ((_ turnID: String) -> Void)?
     var openImage: (_ image: ImageRef) -> Void = { _ in }
     /// Delivery actions of a live chat's own rows (V17): "Read now" on a message the CLI holds unread, "Retry" on one that
     /// was not delivered. A transcript's stream has no composer behind it, and its rows offer neither.

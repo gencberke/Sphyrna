@@ -659,9 +659,11 @@ struct ChatPlanCardView: View {
 // MARK: Changed files
 
 /// Under the final answer of a turn that edited files: "3 files changed +120 −34" and the file tree. The counts come from
-/// the edit records. ("Open in Changes" waits for the Changes tab.)
+/// the edit records. "Open in Changes" opens the inspector's Changes tab on this turn (the newest turn's card) or on the
+/// whole session.
 struct ChatChangedFilesCard: View {
     let card: ChangedFiles
+    let context: ChatRowContext
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -671,6 +673,12 @@ struct ChatChangedFilesCard: View {
                     .font(LoomTheme.Chat.toolLabelStrong).foregroundStyle(LoomTheme.Text.primary)
                 ChatChangeCounts(added: card.added, removed: card.removed)
                 Spacer(minLength: 0)
+                if let open = context.openChanges {
+                    Button("Open in Changes") { open(card.turnID) }
+                        .buttonStyle(.plain)
+                        .font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                        .accessibilityHint("Shows the changes in the inspector")
+                }
             }
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(card.lines.enumerated()), id: \.offset) { _, line in

@@ -2,11 +2,16 @@ import Foundation
 import LoomCore
 import Observation
 
-/// The inspector's tabs (V09). The rest of the concept's tabs (Changes, Tasks, Side) come with the slices
-/// that fill them.
+/// The inspector's tabs (V09, V20). The rest of the concept's tabs (Tasks, Side) come with the slices that fill them.
 public enum InspectorTab: String, CaseIterable, Sendable {
     case overview
+    case changes
     case agents
+
+    /// The column's width while this tab is open: review needs the wide column, the others keep the narrow one.
+    var width: CGFloat {
+        self == .changes ? LoomTheme.Rhythm.inspectorWidthReview : LoomTheme.Rhythm.inspectorWidth
+    }
 }
 
 /// Which sessions have their inspector open, and which tab it shows. Closed by default; the open choice is

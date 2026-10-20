@@ -53,7 +53,7 @@ struct ChatRowView: View {
         case let .turnFold(fold):
             ChatTurnFoldView(fold: fold, open: row.open, rowID: row.id, context: context)
         case let .changedFiles(card):
-            ChatChangedFilesCard(card: card)
+            ChatChangedFilesCard(card: card, context: context)
         case let .thought(text):
             ChatThoughtLineView(text: text)
         case let .live(live):

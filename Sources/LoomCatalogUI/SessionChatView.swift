@@ -94,6 +94,8 @@ struct SessionChatView: View {
             LiveChatView(feed: feed, composer: model.liveChatComposer(for: driver, row: row, feed: feed),
                          onOpenSubagent: { [model, sessionID = row.id] agentID, _ in
                 model.openAgents(for: agentID, in: sessionID)
+            }, onOpenChanges: { [model, sessionID = row.id] newest in
+                model.openChanges(newest ? .lastTurn : .wholeSession, for: sessionID)
             }, onContinueInTerminal: model.canContinue(in: .terminal, row: row)
                 ? { [model, sessionID = row.id] in model.switchToTerminal(sessionID: sessionID) } : nil,
                pinned: { maxHeight in PinnedCardsView(cards: feed.cards, maxHeight: maxHeight) })
@@ -117,6 +119,9 @@ struct SessionChatView: View {
                 sessionID: id, configDirectory: directory, workingDirectory: row.record.session.workingDirectory,
                 isWorking: indicator == .working,
                 onOpenSubagent: { [model, sessionID = row.id] agentID, _ in model.openAgents(for: agentID, in: sessionID) },
+                onOpenChanges: { [model, sessionID = row.id] newest in
+                    model.openChanges(newest ? .lastTurn : .wholeSession, for: sessionID)
+                },
                 fallback: { fallback })
                 .id(ChatViewIdentity(session: row.id, claudeID: id, epoch: key.epoch, directory: directory))
         } else {

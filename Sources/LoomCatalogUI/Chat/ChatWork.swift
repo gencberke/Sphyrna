@@ -37,8 +37,6 @@ enum ChatWork {
     /// Hidden from the stream: TodoWrite is the Tasks line's data, never a row.
     static func isHidden(_ call: ToolCall) -> Bool { call.name == "TodoWrite" }
 
-    static func isEditTool(_ name: String) -> Bool { ["Edit", "MultiEdit", "Write", "NotebookEdit"].contains(name) }
-
     static func kind(of call: ToolCall) -> Kind { label(for: call, workingDirectory: nil).kind }
 
     static func label(for call: ToolCall, workingDirectory: String?) -> Label {
@@ -116,26 +114,9 @@ enum ChatWork {
 
     // MARK: Paths
 
-    /// `/private/tmp`, `/private/var` and `/private/etc` are the same places as `/tmp`, `/var` and `/etc`: a session's
-    /// folder and a tool's path may spell one of them either way. Pure text, no file access.
-    static func withoutPrivatePrefix(_ path: String) -> String {
-        for root in ["/private/tmp", "/private/var", "/private/etc"] where path == root || path.hasPrefix(root + "/") {
-            return String(path.dropFirst("/private".count))
-        }
-        return path
-    }
-
+    /// A path as the user reads it (`EditScan.shorten`).
     static func shorten(_ path: String, workingDirectory: String?) -> String {
-        if let cwd = workingDirectory, !cwd.isEmpty {
-            for (path, cwd) in [(path, cwd), (withoutPrivatePrefix(path), withoutPrivatePrefix(cwd))] {
-                let prefix = cwd.hasSuffix("/") ? cwd : cwd + "/"
-                if path.hasPrefix(prefix) { return String(path.dropFirst(prefix.count)) }
-            }
-        }
-        let home = NSHomeDirectory()
-        if path == home { return "~" }
-        if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }
-        return path
+        EditScan.shorten(path, workingDirectory: workingDirectory)
     }
 
     static func host(of urlString: String) -> String {
@@ -206,20 +187,6 @@ enum ChatWork {
 
     // MARK: Changed files
 
-    /// The files the tools changed, with counts from the edit records, in first-edit order.
-    static func changedFiles(in calls: [ToolCall], workingDirectory: String?) -> [ChangedFile] {
-        var order: [String] = []
-        var totals: [String: (Int, Int)] = [:]
-        for call in calls where isEditTool(call.name) && call.status == .succeeded {
-            guard let raw = call.input["file_path"]?.string ?? call.input["notebook_path"]?.string else { continue }
-            let path = shorten(raw, workingDirectory: workingDirectory)
-            if totals[path] == nil { order.append(path) }
-            let current = totals[path] ?? (0, 0)
-            totals[path] = (current.0 + (call.changes?.added ?? 0), current.1 + (call.changes?.removed ?? 0))
-        }
-        return order.map { ChangedFile(path: $0, added: totals[$0]?.0 ?? 0, removed: totals[$0]?.1 ?? 0) }
-    }
-
     /// The file tree of the card: folders first, single-child folders merged into one line ("src/auth/").
     static func tree(of files: [ChangedFile]) -> [ChangedFileLine] {
         final class Node {
@@ -273,7 +240,7 @@ enum ChatWork {
             }
             for name in leaves {
                 if let file = node.children[name]?.file {
-                    lines.append(ChangedFileLine(depth: depth, name: name, isFolder: false, added: file.added, removed: file.removed))
+                    lines.append(ChangedFileLine(depth: depth, name: name, isFolder: false, added: file.added, removed: file.removed, path: file.path))
                 }
             }
         }

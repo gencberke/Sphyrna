@@ -35,15 +35,17 @@ extension ProcessSupervisor {
 
     /// Runs a short helper command (a provider's `--version`/`--help`) under
     /// the same ownership as the environment shell: registered in the ledger,
-    /// cancelled and awaited by `shutdown`, one deadline, bounded output. After
-    /// a successful Quit no helper of this kind is left running.
+    /// cancelled and awaited by `shutdown`, one deadline, bounded output (4 MiB
+    /// per stream unless the caller sets `outputLimit`; more throws
+    /// `LoomError.outputTooLarge`). After a successful Quit no helper of this
+    /// kind is left running.
     public func captureHelper(
         _ executable: String, _ arguments: [String], environment: [String: String],
-        timeout: TimeInterval = 15
+        timeout: TimeInterval = 15, outputLimit: Int = LaunchEnvironment.defaultOutputLimit
     ) async throws -> String {
         try await runOwnedJob(scope: .perCall) { _, job, spawner in
             try LaunchEnvironment.runHelper(
-                executable, arguments, environment: environment, timeout: timeout,
+                executable, arguments, environment: environment, timeout: timeout, outputLimit: outputLimit,
                 spawner: spawner, onSpawn: job.register, onPoll: job.sample
             )
         }

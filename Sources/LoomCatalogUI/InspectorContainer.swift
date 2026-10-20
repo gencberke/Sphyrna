@@ -1,9 +1,11 @@
 import SwiftUI
 
 /// The inspector column on the right of the detail panel: closed by default, open per session
-/// (`CatalogModel.inspector`). A tab bar, then the open tab: Overview or Agents (V09).
+/// (`CatalogModel.inspector`). A tab bar, then the open tab: Overview, Changes or Agents (V09, V20).
 struct InspectorContainer: View {
     let model: CatalogModel
+    /// The column's width: the open tab's (`InspectorTab.width`), and no wider than the pane when it is drawn over it.
+    var width = LoomTheme.Rhythm.inspectorWidth
     /// Drawn over the content (a narrow pane): the popover surface and shadow, so it reads as above the content
     /// and not as part of it.
     var overlays = false
@@ -14,6 +16,7 @@ struct InspectorContainer: View {
             if let row = model.selectedRow {
                 switch model.inspector.tab {
                 case .overview: InspectorOverview(model: model, row: row)
+                case .changes: ChangesTab(model: model, row: row)
                 case .agents: InspectorAgents(model: model, row: row)
                 }
             } else {
@@ -26,7 +29,7 @@ struct InspectorContainer: View {
             Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(width: LoomTheme.Line.hairline)
                 .accessibilityHidden(true)
         }
-        .frame(width: LoomTheme.Rhythm.inspectorWidth)
+        .frame(width: width)
         .modifier(OverlayShadow(overlays: overlays))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inspector")
@@ -51,9 +54,10 @@ private struct OverlayShadow: ViewModifier {
 struct InspectorTabBar: View {
     let model: CatalogModel
 
-    private static func symbol(_ tab: InspectorTab) -> String {
+    static func symbol(_ tab: InspectorTab) -> String {
         switch tab {
         case .overview: "info.circle"
+        case .changes: "plus.forwardslash.minus"
         case .agents: "person.crop.circle"
         }
     }
@@ -61,6 +65,7 @@ struct InspectorTabBar: View {
     static func title(_ tab: InspectorTab) -> String {
         switch tab {
         case .overview: "Overview"
+        case .changes: "Changes"
         case .agents: "Agents"
         }
     }
@@ -68,6 +73,7 @@ struct InspectorTabBar: View {
     private func count(_ tab: InspectorTab) -> Int? {
         switch tab {
         case .overview: nil
+        case .changes: model.changesFileCount(for: model.selectedSessionID)
         case .agents: model.selectedRow?.live?.subagents.count.nonZero
         }
     }
@@ -143,15 +149,22 @@ enum InspectorPlacement: Equatable {
     case overlay
 
     /// The column is only used while the content keeps at least `minimumContent` beside it; below that the
-    /// inspector covers the content's trailing edge instead of squeezing it.
-    static func of(open: Bool, detailWidth: CGFloat) -> InspectorPlacement {
+    /// inspector covers the content's trailing edge instead of squeezing it. `inspectorWidth` is the open tab's
+    /// (`InspectorTab.width`): the Changes tab's column is wider, so it needs a wider pane to stay a column.
+    static func of(open: Bool, detailWidth: CGFloat,
+                   inspectorWidth: CGFloat = LoomTheme.Rhythm.inspectorWidth) -> InspectorPlacement {
         guard open else { return .closed }
-        return detailWidth - LoomTheme.Rhythm.inspectorWidth < LoomTheme.Inspector.minimumContent ? .overlay : .column
+        return detailWidth - inspectorWidth < LoomTheme.Inspector.minimumContent ? .overlay : .column
     }
 
     /// The width the content gets.
-    func contentWidth(detailWidth: CGFloat) -> CGFloat {
-        self == .column ? detailWidth - LoomTheme.Rhythm.inspectorWidth : detailWidth
+    func contentWidth(detailWidth: CGFloat, inspectorWidth: CGFloat = LoomTheme.Rhythm.inspectorWidth) -> CGFloat {
+        self == .column ? detailWidth - inspectorWidth : detailWidth
+    }
+
+    /// The width the inspector is drawn at: the open tab's, but never wider than the pane it covers.
+    func inspectorWidth(detailWidth: CGFloat, tabWidth: CGFloat) -> CGFloat {
+        self == .overlay ? min(tabWidth, detailWidth) : tabWidth
     }
 }
 
@@ -166,23 +179,34 @@ extension View {
     /// pass; crossing the threshold changes that width once.
     func detailInspector(model: CatalogModel) -> some View {
         let open = model.inspector.isOpen(for: model.selectedSessionID)
+        let tabWidth = model.inspector.tab.width
         return GeometryReader { proxy in
-            let placement = InspectorPlacement.of(open: open, detailWidth: proxy.size.width)
+            let placement = InspectorPlacement.of(open: open, detailWidth: proxy.size.width, inspectorWidth: tabWidth)
+            let width = placement.inspectorWidth(detailWidth: proxy.size.width, tabWidth: tabWidth)
             HStack(spacing: 0) {
-                self.frame(width: placement.contentWidth(detailWidth: proxy.size.width))
+                self.frame(width: placement.contentWidth(detailWidth: proxy.size.width, inspectorWidth: tabWidth))
                 if placement == .column {
-                    InspectorContainer(model: model).transition(.identity)
+                    InspectorContainer(model: model, width: width).transition(.identity)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
             .overlay(alignment: .trailing) {
                 if placement == .overlay {
-                    InspectorContainer(model: model, overlays: true).transition(.identity)
+                    InspectorContainer(model: model, width: width, overlays: true).transition(.identity)
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .transaction(value: open) { $0.animation = nil; $0.disablesAnimations = true }
+        // The tab's width is part of the layout: switching to or from Changes resizes the pane once, like a toggle.
+        .transaction(value: InspectorWidthKey(open: open, tab: model.inspector.tab)) { $0.animation = nil; $0.disablesAnimations = true }
         .task(id: model.inspectorContextSessions) { model.trackInspectorContext() }
+        // Changes reads only while its tab is open on this session: the key is nil otherwise (`CatalogModel+Changes`).
+        .task(id: model.changesTrigger) { await model.runChangesRead() }
     }
+}
+
+/// What changes the inspector's width or presence: neither may animate (a width change is a PTY resize).
+private struct InspectorWidthKey: Equatable {
+    let open: Bool
+    let tab: InspectorTab
 }

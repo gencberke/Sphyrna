@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import SwiftUI
 import Testing
+import LoomChat
 @testable import LoomCore
 @testable import LoomCatalogUI
 
