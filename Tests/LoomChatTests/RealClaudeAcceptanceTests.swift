@@ -449,6 +449,97 @@ struct RealClaudeAcceptanceTests {
         }
     }
 
+    /// Release C's real-Claude check, V21 after a resume (two Haiku turns, every card answered by the test): a Write makes
+    /// `notes.txt` with ONE and an Edit makes it TWO; the session stops and resumes, so the second prompt is a row of the
+    /// transcript's history (named by its record's uuid, read from the file) in a process that never saw it. "Rewind files to
+    /// before this message" on that row: when the dry run lists `notes.txt` the rewind leaves ONE and Undo gives TWO back; when
+    /// it lists nothing (or the CLI has no checkpoint for the message) the sheet says so and no file changes. The log records
+    /// which of the three it was (`V21-RESUME OUTCOME`). Output: counts, booleans and hashes, no content.
+    @Test func v21RewindFilesOfAHistoryRowAfterAResumeListsOrRefusesAndNeverTouchesAFileUnlessItRewindsIt() async throws {
+        try await AccRig.run("v21-resume") { rig in
+            let store = ChatRewindStore(directory: rig.root.appendingPathComponent("chat-rewinds", isDirectory: true), trash: { url in
+                try FileManager.default.removeItem(at: url)
+            })
+            let driver = rig.driver(rewinds: store)
+            try await driver.startNew(projectID: nil, draft: rig.draft(mode: "default"))
+
+            rig.turn("V21 resume turn 1: Write creates notes.txt with ONE")
+            try await driver.send("Use the Write tool to create the file notes.txt in the current folder with exactly one line: ONE. "
+                                  + "Then reply with the single word: done")
+            let first = await rig.waitIdleAnswering(driver, 120) { tool, _ in tool == "Write" }
+            rig.log("turn 1 finished \(first.idle), approvals answered \(first.answered.sorted()), refused by the harness \(first.refused.sorted())")
+            try #require(first.idle, "turn 1 did not end: the check stops here, with no further turn")
+            let afterOne = try #require(rig.read("notes.txt"), "the Write made no notes.txt")
+            #expect(afterOne.trimmingCharacters(in: .whitespacesAndNewlines) == "ONE")
+
+            rig.turn("V21 resume turn 2: Edit changes notes.txt to TWO")
+            let second = try await driver.send("Use the Edit tool to change the line in notes.txt from ONE to TWO (read the file first if the "
+                                               + "tool needs that). Then reply with the single word: done")
+            let next = await rig.waitIdleAnswering(driver, 120) { tool, _ in tool == "Edit" }
+            rig.log("turn 2 finished \(next.idle), approvals answered \(next.answered.sorted()), refused by the harness \(next.refused.sorted())")
+            try #require(next.idle, "turn 2 did not end: the check stops here, with no further turn")
+            let afterTwo = try #require(rig.read("notes.txt"))
+            #expect(afterTwo.trimmingCharacters(in: .whitespacesAndNewlines) == "TWO")
+            let conversation = try #require(await driver.liveState().conversationID)
+
+            // The session stops and resumes: a new process that never saw the prompt; the prompt is a row of the history.
+            let report = try await driver.stop()
+            rig.log("session stopped, succeeded \(report.succeeded), phase \(await driver.currentPhase)")
+            try #require(report.succeeded)
+            try await driver.resume()
+            #expect(await rig.waitIdle(driver, 60))
+            rig.log("session resumed, phase \(await driver.currentPhase), availability \(await driver.rewindAvailability())")
+            let userRecords = rig.transcript(conversation).filter { record in
+                guard (record["type"] as? String) == "user", (record["isMeta"] as? Bool) != true,
+                      let message = record["message"], let data = try? JSONSerialization.data(withJSONObject: message) else { return false }
+                return String(decoding: data, as: UTF8.self).contains("from ONE to TWO")
+            }
+            let historyUUID = try #require(userRecords.first?["uuid"] as? String, "the second prompt is not in the transcript")
+            rig.log("the second prompt's record in the transcript: \(userRecords.count) (want 1); its uuid is the id Loom sent \(historyUUID.lowercased() == second.id.lowercased())")
+            #expect(userRecords.count == 1)
+            let uuid = await driver.messageUUID(ofRow: historyUUID)
+
+            // The dry run of "Rewind files to before this message" on that row.
+            var outcome = "lists"
+            var listed: [String] = []
+            do {
+                let preview = try await driver.rewindPreview(userMessageID: uuid)
+                listed = preview.files.map { URL(fileURLWithPath: $0).lastPathComponent }
+                outcome = listed.isEmpty ? "empty" : "lists"
+                rig.log("dry run: \(preview.files.count) file(s) \(listed), +\(preview.insertions) -\(preview.deletions), copy \(preview.copy)")
+            } catch let error as ChatRewindError {
+                outcome = "cannot"
+                rig.log("dry run refused: \(error) (the sheet would say it, no file is asked about)")
+            }
+            rig.log("V21-RESUME OUTCOME: \(outcome)")
+            #expect(rig.read("notes.txt") == afterTwo, "the dry run changed a file")
+
+            switch outcome {
+            case "lists":
+                #expect(listed == ["notes.txt"])
+                let result = try await driver.rewindFiles(userMessageID: uuid, messageTitle: "Use the Edit tool")
+                let rewound = rig.read("notes.txt")
+                rig.log("rewound: \(result.files.count) file(s); notes.txt is back to the first version \(rewound == afterOne)")
+                #expect(rewound == afterOne)
+                #expect(await driver.openUndoRewindID() == result.rewindID)
+                let undone = try await driver.undoRewind(rewindID: result.rewindID)
+                rig.log("undo restored \(undone.restored.count) file(s), trashed \(undone.trashed.count); notes.txt is the second version again \(rig.read("notes.txt") == afterTwo)")
+                #expect(rig.read("notes.txt") == afterTwo)
+            default:
+                // The sheet cannot confirm: "No files would change." for an empty list, the CLI's own text for a refusal. A real
+                // rewind attempt is refused too, and still no file changes.
+                do {
+                    _ = try await driver.rewindFiles(userMessageID: uuid, messageTitle: "Use the Edit tool")
+                    Issue.record("a rewind went through where the dry run listed nothing")
+                } catch let error as ChatRewindError {
+                    rig.log("a rewind attempt is refused: \(error)")
+                }
+                rig.log("notes.txt unchanged \(rig.read("notes.txt") == afterTwo)")
+                #expect(rig.read("notes.txt") == afterTwo)
+            }
+        }
+    }
+
     // MARK: V22 part 1. The quick question
 
     /// Release C, V22 part 1, against the real CLI (two Haiku turns and two side questions): a quick question while the session
@@ -486,27 +577,42 @@ struct RealClaudeAcceptanceTests {
             #expect(!rig.transcriptContains(conversation, "code word you read"))
 
             // While a Bash tool runs. The default mode asks before the command (in the first run the second question met that
-            // waiting card, not a running tool): this one command is allowed once, so the tool really runs.
-            rig.turn("V22a turn 2: Bash sleeps 60 s")
-            try await driver.send("Use the Bash tool to run exactly: sleep 60. Then reply with the single word: done")
-            if let card = await rig.waitRequest(driver, 12) {
-                rig.log("the profile asked before the Bash command; allowed once")
-                try await driver.answer(requestID: card.requestID, .allowOnce)
-            }
+            // waiting card, not a running tool): this one command is allowed once, so the tool really runs, and the question
+            // is asked only when no card waits, the phase is working and the tool is running. Not `sleep`: Claude Code 2.1.300
+            // blocks a standalone `sleep 60` before it runs ("Blocked: standalone sleep"), so a ping holds the tool ~44 s. By its
+            // full path: the rig's PATH has no /sbin, so a plain `ping` failed at once and the model asked for another command.
+            rig.turn("V22a turn 2: Bash pings for 44 s")
+            try await driver.send("Use the Bash tool to run exactly: /sbin/ping -c 45 127.0.0.1 > /dev/null. Then reply with the single word: done")
+            let card = await rig.waitRequest(driver, 45)
+            rig.log("the profile asked before the Bash command: \(card != nil)")
+            if let card { try await driver.answer(requestID: card.requestID, .allowOnce) }
             let running = await rig.wait(60) {
                 let state = await driver.snapshot()
-                return state.phase == .working && state.model.tools.contains { $0.status == .running }
+                return state.phase == .working && state.requests.isEmpty && state.model.tools.contains { $0.status == .running }
             }
             rig.log("a tool is running and no card waits: \(running)")
             #expect(running)
-            // The transcript settles (the tool call's records land) before it is hashed.
+            // The transcript settles before it is hashed: first the Bash call's own record is in the file (it is written when the
+            // call is made, before the tool runs), then the file stays the same for a second.
+            func bashCallRecorded() -> Bool {
+                rig.transcript(conversation).contains { record in
+                    let content = (record["message"] as? [String: Any])?["content"] as? [[String: Any]] ?? []
+                    return content.contains { ($0["type"] as? String) == "tool_use" && ($0["name"] as? String) == "Bash" }
+                }
+            }
+            let recorded = await rig.wait(30) { bashCallRecorded() }
+            rig.log("the Bash call's record is in the transcript: \(recorded)")
+            #expect(recorded)
             var busyBefore = transcriptHash()
+            var steady = false
             for _ in 0..<10 {
                 try await Task.sleep(for: .seconds(1))
                 let now = transcriptHash()
-                if now == busyBefore { break }
+                if now == busyBefore { steady = true; break }
                 busyBefore = now
             }
+            rig.log("the transcript is steady before the question: \(steady)")
+            #expect(steady)
             rig.log("side question 2 of 2, while the tool runs; availability \(await driver.sideQuestionAvailability())")
             clock = ContinuousClock.now
             let second = try await driver.sideQuestion("What is the code word you read in note.txt? Answer in one short sentence.")
@@ -514,7 +620,14 @@ struct RealClaudeAcceptanceTests {
             #expect(second.contains("PERSIMMON"))
             #expect(transcriptHash() == busyBefore)
             #expect(await driver.currentPhase == .working, "the question changed no phase")
-            #expect(await rig.waitIdle(driver, 120))
+            let stillRunning = await driver.snapshot().model.tools.contains { $0.status == .running }
+            rig.log("the Bash tool still runs after the answer: \(stillRunning)")
+            #expect(stillRunning, "the answer came after the tool, not while it ran")
+            // Another card (the model trying a different command) is refused, so the turn ends instead of waiting on it.
+            let end = await rig.waitIdleAnswering(driver, 120) { _, _ in false }
+            rig.log("the turn ended \(end.idle); tools refused after the allowed command: \(end.refused.sorted())")
+            #expect(end.idle)
+            #expect(end.refused.isEmpty, "the model asked again after the allowed command")
             #expect(!rig.transcriptContains(conversation, "code word you read"))
             rig.log("transcript unchanged by both questions (hashes compared above); question text in the transcript: \(rig.transcriptContains(conversation, "code word you read"))")
         }

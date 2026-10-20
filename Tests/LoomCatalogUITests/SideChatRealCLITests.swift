@@ -8,7 +8,9 @@ private final class SideRealAnchor: NSObject {}
 
 /// V22 part 3, against the user's real `claude` (Haiku) under the isolated profile, through the model's own paths
 /// (`submitSideQuestion`, `sendSideNote`). Runs only when `LOOM_V22C_REAL=1`, and only by the exact name of its test.
-/// Three model turns: the parent's long turn, the side question, and the parent's reply to the note. Environment:
+/// Three model turns: the parent's turn, which waits on a `touch` card (the profile asks before it) for as long as the test
+/// wants, the side question, asked while that card waits, and the parent's reply to the note. The test answers the card
+/// itself, once the side answer is in. Environment:
 ///
 /// - `LOOM_V22C_CLAUDE_CONFIG`: the isolated, logged-in profile (`Loom-Dev/probe/claude-config`);
 /// - `LOOM_V22C_WORK`: a new, empty work folder under `/private/tmp/loom-real/` (the parent's working folder);
@@ -120,29 +122,33 @@ struct SideChatRealCLITests {
             try? FileManager.default.removeItem(at: root)
         }
 
-        // Model turn 1 of 3: the parent's own long turn, on Haiku, in the Chat face.
+        // Model turn 1 of 3: the parent's turn, in the Chat face, held open by a card: the profile asks before `touch`, and a
+        // turn stays open while its card waits (a long text answer does not: Haiku finishes it before a side answer returns).
+        let question = "In one short sentence, without using any tools: what is the main session in the middle of doing?"
         let parent = UUID()
         let draft = NewSessionLaunch(firstMessage: "", choices: ClaudeLaunchChoices(permissionMode: "default", model: "haiku"))
         let parentDriver = try await host.startNewSession(projectID: nil, sessionID: parent, draft: draft)
-        Self.log("model turn 1 of 3: the parent's long turn")
-        try await parentDriver.send("Write the numbers from 1 to 300, one per line, each line like `17 apple`. No other text and no tools.")
-        let started = await wait(60) {
-            let snapshot = await parentDriver.snapshot()
-            return snapshot.turnRunning && Self.answerCount(snapshot.model) > 0
+        Self.log("model turn 1 of 3: the parent's turn, which waits on a touch card")
+        try await parentDriver.send("Use the Bash tool to run exactly: touch r3-parent.txt . Then reply with the single word: done")
+        var card: ChatPendingRequest?
+        let waiting = await wait(90) {
+            card = await parentDriver.liveState().requests.first
+            return card != nil
         }
         let conversation = await parentDriver.liveState().conversationID
-        Self.log("parent turn running with text streaming \(started), conversation known \(conversation != nil)")
-        #expect(started)
+        let parentAsked = await parentDriver.snapshot()
+        Self.log("parent card waiting \(waiting), tool \(card?.request.toolName ?? "-"), phase \(parentAsked.phase), turn running \(parentAsked.turnRunning), "
+            + "conversation known \(conversation != nil)")
+        #expect(waiting && card?.request.toolName == "Bash")
+        #expect(!FileManager.default.fileExists(atPath: work.appendingPathComponent("r3-parent.txt").path))
         let seen = await wait(20) { model.rowModels[parent] != nil }
         #expect(seen)
         model.select(parent)
 
-        // Model turn 2 of 3: the side question, asked through the tab's own path while the parent still writes.
+        // Model turn 2 of 3: the side question, asked through the tab's own path while the parent's turn waits on its card.
         let session = model.side.session(for: parent)
-        let beforeFork = await parentDriver.snapshot()
-        Self.log("model turn 2 of 3: the side question; parent turn running \(beforeFork.turnRunning), "
-            + "parent answer blocks so far \(Self.answerCount(beforeFork.model))")
-        session.composerText = "In one short sentence: what is the main session in the middle of writing?"
+        Self.log("model turn 2 of 3: the side question; parent phase \(parentAsked.phase), cards waiting \(parentAsked.requests.count)")
+        session.composerText = question
         await model.submitSideQuestion(in: parent)
         Self.log("question accepted, notice \(session.notice != nil), side chats \(session.items.count)")
         let sideID = try #require(session.openID)
@@ -153,19 +159,26 @@ struct SideChatRealCLITests {
             return snapshot.phase == .ready && !snapshot.turnRunning && Self.answerCount(snapshot.model) > 0
         }
         let parentWhenAnswered = await parentDriver.snapshot()
-        Self.log("side answer arrived \(answered); parent turn still running at that moment \(parentWhenAnswered.turnRunning); "
-            + "parent never saw the question \(!Self.prompts(parentWhenAnswered.model).contains { $0.contains("middle of writing") })")
+        Self.log("side answer arrived \(answered); parent phase at that moment \(parentWhenAnswered.phase), turn still running "
+            + "\(parentWhenAnswered.turnRunning), card still waiting \(parentWhenAnswered.requests.first?.requestID == card?.requestID); "
+            + "parent never saw the question \(!Self.prompts(parentWhenAnswered.model).contains { $0.contains("in the middle of doing") })")
         #expect(answered)
         #expect(!session.isWaiting, "a card reached the side chat")
+        #expect(parentWhenAnswered.turnRunning && parentWhenAnswered.phase == .needsYou, "the parent's turn did not wait on its card")
+        #expect(parentWhenAnswered.requests.first?.requestID == card?.requestID)
+        #expect(!FileManager.default.fileExists(atPath: work.appendingPathComponent("r3-parent.txt").path), "the side chat ran the command")
 
-        // The parent finishes its own turn, untouched by the side chat.
+        // The card is allowed, and the parent ends its turn, untouched by the side chat.
+        try await parentDriver.answer(requestID: try #require(card).requestID, .allowOnce)
         let finished = await wait(150) {
             let state = await parentDriver.liveState()
             return state.phase == .ready && !state.turnRunning
         }
         let afterParent = await parentDriver.snapshot()
-        Self.log("parent finished its turn \(finished); parent prompts \(Self.prompts(afterParent.model).count) (want 1)")
+        Self.log("parent finished its turn \(finished); touch ran \(FileManager.default.fileExists(atPath: work.appendingPathComponent("r3-parent.txt").path)); "
+            + "parent prompts \(Self.prompts(afterParent.model).count) (want 1)")
         #expect(finished)
+        #expect(FileManager.default.fileExists(atPath: work.appendingPathComponent("r3-parent.txt").path))
         #expect(Self.prompts(afterParent.model).count == 1)
 
         // The thread the tab shows: the side question and its answer, none of the parent's copy.
@@ -175,13 +188,12 @@ struct SideChatRealCLITests {
         let shown = await wait(30) { feed.phase == .ready && Self.answerCount(feed.joinedModelForTesting) > 0 }
         let thread = feed.joinedModelForTesting
         Self.log("thread shown \(shown); thread prompts \(Self.prompts(thread).count) (want 1); thread answers \(Self.answerCount(thread))")
-        #expect(Self.prompts(thread) == ["In one short sentence: what is the main session in the middle of writing?"])
+        #expect(Self.prompts(thread) == [question])
         let answerEntry = try #require(thread.entries.last { if case .assistantText = $0.body { true } else { false } })
         guard case let .assistantText(answer) = answerEntry.body else { return }
 
         // Model turn 3 of 3: "Send to main as a note" reaches the parent as one message, which the parent answers.
-        let expected = SideText.note(question: "In one short sentence: what is the main session in the middle of writing?",
-                                     answer: answer.text)
+        let expected = SideText.note(question: question, answer: answer.text)
         Self.log("model turn 3 of 3: the note to the parent")
         await model.sendSideNote(answerID: answerEntry.id, chat: sideID, in: parent)
         Self.log("note status sent \(session.noteModel(for: sideID).status(for: answerEntry.id) == .sent)")
