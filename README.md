@@ -1,17 +1,17 @@
 # Loom
 
-Loom is a native macOS 27 app for running real Claude Code sessions side by side in one window: a sidebar of projects and sessions with live status, and the selected session either in its terminal, exactly as Claude Code draws it, or in a native chat over the same CLI. Loom launches and owns each CLI session in its own process scope, tracks its state (working, waiting for you, finished), resumes past sessions, and stops everything it started on Quit. From 1.5.0 the app is named Sphyrna ([D-77](DECISIONS.md)); the code keeps the name Loom.
+Loom is a native macOS 27 app for running real Claude Code sessions side by side in one window: a sidebar of projects and sessions with live status, and the selected session either in its terminal, exactly as Claude Code draws it, or in a native chat over the same CLI. Loom launches and owns each CLI session in its own process scope, tracks its state (working, waiting for you, finished), resumes past sessions, and stops everything it started on Quit. From 1.6.0 the app is named Sphyrna ([D-77](DECISIONS.md), [D-83](DECISIONS.md)); the code keeps the name Loom.
 
-For one power user on macOS 27. Out of scope for 1.5.0: Codex, other providers, and coordination between sessions beyond a session asking Loom, with the user's approval, to open a new one ([ROADMAP](ROADMAP.md#release-target)).
+For one power user on macOS 27. Out of scope for 1.6.0: Codex, other providers, and coordination between sessions beyond a session finding the sessions it needs and asking Loom, with the user's approval, to open a new one ([ROADMAP](ROADMAP.md#release-target)).
 
-Status: 0.4.4 is in daily use on the user's Mac and public on GitHub. This tree builds Loom v2, which ships once, as 1.5.0 ([D-68](DECISIONS.md)). The current position is in [STATUS.md](STATUS.md) and the path to 1.5.0 in [ROADMAP.md](ROADMAP.md). Codex support exists in development builds but is not part of 1.5.0.
+Status: 0.4.4 is in daily use on the user's Mac and public on GitHub. This tree builds Loom v2, which ships once, as 1.6.0, the first stable release ([D-68](DECISIONS.md), [D-83](DECISIONS.md)). The current position is in [STATUS.md](STATUS.md) and the path to 1.6.0 in [ROADMAP.md](ROADMAP.md). Codex support exists in development builds but is not part of 1.6.0.
 
 ## Docs
 
 | Doc | What it holds |
 | --- | --- |
 | [STATUS.md](STATUS.md) | Where the work stands now |
-| [ROADMAP.md](ROADMAP.md) | Stages toward 1.5.0 |
+| [ROADMAP.md](ROADMAP.md) | Stages toward 1.6.0 |
 | [DECISIONS.md](DECISIONS.md) | Dated user decisions and open decisions |
 | [LOOM-PRODUCT-CONTRACT.md](LOOM-PRODUCT-CONTRACT.md) | Product behavior and technical limits |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Code map: targets, flows, process ownership |

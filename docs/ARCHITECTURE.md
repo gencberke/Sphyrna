@@ -2,13 +2,13 @@
 
 Loom is a native macOS 27 app (Swift 6.2 tools, SwiftPM, SwiftUI + AppKit, vendored SwiftTerm) that hosts Claude Code
 sessions in one window, each in its terminal or in a native chat over the same CLI, and tracks them in a local
-catalog. From 1.5.0 the app is named Sphyrna (D-77); the code keeps the name Loom. Every provider process is started inside a
+catalog. From 1.6.0 the app is named Sphyrna (D-77, D-83); the code keeps the name Loom. Every provider process is started inside a
 Loom-owned run scope, so Loom can stop exactly what it started, and nothing else, on stop, quit, or after a crash.
 The exceptions are a few short-lived helpers that run outside a scope; Section 4 lists them.
 Read this before touching code; verify against the source when in doubt (the code wins).
 
-- **Scope of 1.5.0 (D-68, D-69 (5)):** Claude only. Codex code stays in the tree and its entries are shown, but it is **paused
-  and cannot start in 1.5.0** (see Section 8). The product renderer is Core Graphics; Metal is development-only (`--metal` with `--evidence`).
+- **Scope of 1.6.0 (D-68, D-69 (5), D-83):** Claude only. Codex code stays in the tree and its entries are shown, but it is **paused
+  and cannot start in 1.6.0** (see Section 8). The product renderer is Core Graphics; Metal is development-only (`--metal` with `--evidence`).
 - Product decisions: `LOOM-PRODUCT-CONTRACT.md`. Visual contract: `design/DESIGN.md`, `design/UI-MAP.md`. Build, test, evidence method:
   `DEVELOPMENT.md`. Decision log: `DECISIONS.md`. Plan: `ROADMAP.md`. Current position: `STATUS.md`. Agent workflow: `AGENTS.md`.
 

@@ -1,8 +1,8 @@
 /* ---------- the reference: its chapters, each a set of frames, and the state they share ---------- */
 // Each chapter shows sections of the documents, in frames; a section is numbered by its chapter, and a document's rules lead its part unnumbered.
 const CHAPTERS = [
-  { id: 'identity', title: 'Identity', text: 'The name, the app icon and the menu bar mark, and where they appear. From 1.5.0 the app is Sphyrna, the hammerhead\'s genus, and Home\'s assistant is Remora.',
-    refs: ['DESIGN §6 Name and marks', 'D-77', 'O-14'], frames: [['identity', ['rules', 'icon', 'inplace', 'menubar']]] },
+  { id: 'identity', title: 'Identity', text: 'The name, the app icon and the menu bar mark, and where they appear. From 1.6.0 the app is Sphyrna, the hammerhead\'s genus, and Home\'s assistant is Remora.',
+    refs: ['DESIGN §6 Name and marks', 'D-77', 'D-83'], frames: [['identity', ['rules', 'icon', 'inplace', 'menubar']]] },
   { id: 'language', title: 'The language', text: 'The tokens of Ink and Paper, the type, the colours and the parts every surface is made of.',
     refs: ['DESIGN §2–§4, §6', 'D-74', 'D-75', 'D-78', 'D-81'], frames: [['foundations', ['tokens', 'parts']]] },
   { id: 'school', title: 'The school', text: 'The sharks, drawn in ASCII by one engine: who they are, where they swim and how they move.',

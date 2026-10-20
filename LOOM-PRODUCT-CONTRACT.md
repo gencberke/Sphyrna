@@ -1,7 +1,7 @@
 # Loom — product contract and development decisions
 
 **Updated:** 21 October 2026\
-**Status:** CP1, CP2 and CP5 (terminal engine and first window) closed; CP5 closed on 6 Oct 2026 by user decision on package I. Loom v2 is being built and ships once as 1.5.0 ([D-68](DECISIONS.md)) — see `STATUS.md` and `ROADMAP.md`.
+**Status:** CP1, CP2 and CP5 (terminal engine and first window) closed; CP5 closed on 6 Oct 2026 by user decision on package I. Loom v2 is being built and ships once as 1.6.0, the first stable release ([D-68](DECISIONS.md), [D-83](DECISIONS.md)) — see `STATUS.md` and `ROADMAP.md`.
 
 This file is the current starting document for Loom. It combines the user's expectations, the decisions taken in the conversation with Claude, and the subsequent technical evaluation. A behavior being targeted here does not mean that it has been implemented or tested.
 
@@ -49,9 +49,9 @@ This document distinguishes **accepted behaviors**, **technical candidates** and
 | Topic | Decision |
 | --- | --- |
 | Core experience | The live session is always the user's own unmodified Claude Code CLI in a process Loom owns, in its terminal or in its structured mode, with one owner at a time. One app-wide switch in Settings chooses which; the terminal is always one of the choices. Codex runs in its terminal. (19 October 2026 user decision, [D-69](DECISIONS.md), adopting the v2 concept's wording with the app-wide switch. Before: “The real CLI/terminal experience of Claude Code and Codex will be preserved.”) |
-| Visual target | Ink (v3), the design language since 20 Oct 2026 ([D-74](DECISIONS.md) to [D-82](DECISIONS.md)): the rules in [design/DESIGN.md](design/DESIGN.md), every surface drawn in [design/reference.html](design/reference.html). It replaces the Night Fleece design. From 1.5.0 the app is Sphyrna, with the Rising icon and the Front menu bar mark ([D-77](DECISIONS.md)); the rename's macOS identity is O-14. |
+| Visual target | Ink (v3), the design language since 20 Oct 2026 ([D-74](DECISIONS.md) to [D-82](DECISIONS.md)): the rules in [design/DESIGN.md](design/DESIGN.md), every surface drawn in [design/reference.html](design/reference.html). It replaces the Night Fleece design. From 1.6.0 the app is Sphyrna, with the Rising icon and the Front menu bar mark ([D-77](DECISIONS.md)); its bundle id, data folder and repository keep Loom's names, and the wordmark is SF Pro ([D-83](DECISIONS.md)). |
 | Minimum macOS | macOS 27 and later (28 September 2026 user decision). |
-| First window scope | Claude and Codex; project/projectless chat, activity/project list, search, rename, status indicators, resume/stop and basic terminal operations. Other providers, child task view, Dock/menu bar notifications and deletion are deferred to later (28 September 2026 user decision). (6 Oct 2026) Codex is not part of the first production release; Codex code may remain in development builds, paused since 4 Oct 2026. (19 Oct 2026) 1.5.0 shows Codex's entries but cannot start Codex ([D-69](DECISIONS.md)). |
+| First window scope | Claude and Codex; project/projectless chat, activity/project list, search, rename, status indicators, resume/stop and basic terminal operations. Other providers, child task view, Dock/menu bar notifications and deletion are deferred to later (28 September 2026 user decision). (6 Oct 2026) Codex is not part of the first production release; Codex code may remain in development builds, paused since 4 Oct 2026. (19 Oct 2026) The release (1.6.0 since [D-83](DECISIONS.md)) shows Codex's entries but cannot start Codex ([D-69](DECISIONS.md)). |
 | Window closing | The red close button and Cmd+W close the window; the app and jobs keep running. Cmd+Q quits the app, stopping owned jobs (28 September 2026 user decision). |
 | Full app quit | Jobs belonging to Loom may be stopped. When a normal quit completes, no running process belonging to Loom must remain. |
 | Claude Agent View | May be disabled in Claude sessions started by Loom to preserve process ownership. This is an accepted CLI feature exception. |
@@ -314,11 +314,11 @@ Checkpoints are for testing high-risk claims with narrow experiments without bui
 
 The product purpose and core behaviors are largely clear. It is not necessary to choose all technical details before implementation; but the following outcomes must not be left open:
 
-1. **Quit boundary:** Apart from normal Quit, what guarantee can really be given for crash/Force Quit? Window close behavior has been decided (§3), and so has the run helper's part when Loom crashes (§3, “Loom crash”). The rest is [O-09](DECISIONS.md#open), settled at 1.5.0's evaluation ([D-69](DECISIONS.md)).
+1. **Quit boundary:** Apart from normal Quit, what guarantee can really be given for crash/Force Quit? Window close behavior has been decided (§3), and so has the run helper's part when Loom crashes (§3, “Loom crash”). The rest is [O-09](DECISIONS.md#open), settled at 1.6.0's evaluation ([D-69](DECISIONS.md), [D-83](DECISIONS.md)).
 2. **Communication path:** Which Claude delivery mechanism meets the ownership and update requirements together? (The Codex working path has been decided, §3.)
 3. **Data contract:** The exact local scope of safe single-chat deletion, the management of shared files, and alignment with provider retention.
 4. **Cleanup calculation:** The monthly calendar, the effect of stale viewing on the counter, and the long-closed threshold.
-5. **Measurable budgets:** Accepted resource, scale and interaction limits. The heavy terminal CPU ceiling of 40 % is accepted (§10); the rest is [O-01](DECISIONS.md#open), decided at 1.5.0's evaluation ([D-69](DECISIONS.md)).
+5. **Measurable budgets:** Accepted resource, scale and interaction limits. The heavy terminal CPU ceiling of 40 % is accepted (§10); the rest is [O-01](DECISIONS.md#open), decided at 1.6.0's evaluation ([D-69](DECISIONS.md), [D-83](DECISIONS.md)).
 
 These items are not gaps awaiting new product ideas; they are the decision and evidence gates needed to actually deliver the accepted experience.
 
