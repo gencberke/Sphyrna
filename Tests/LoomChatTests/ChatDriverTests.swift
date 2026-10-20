@@ -581,10 +581,10 @@ struct ChatDriverTests {
         #expect(try await rig.catalog.launchChoices(sessionID: id).permissionMode == "acceptEdits")
         _ = try await rig.runtime.resumeConversation(sessionID: id, outputSink: screen)
         #expect(await waitUntil { screen.text.lowercased().contains("resumed \(id.uuidString.lowercased())") }, "\(screen.text)")
-        // Terminal → Chat: the terminal run is stopped, the session resumes in the Chat face.
-        _ = try await host.enterChat(sessionID: id)
+        // The terminal run is stopped, the session resumes in the Chat face.
+        _ = try await rig.runtime.stopConversation(sessionID: id)
+        try await driver.resume()
         #expect(await driver.currentPhase == .ready)
-        #expect(await driver.snapshot().markers.contains(.face(.backInChat)))
 
         // With a card waiting.
         try await driver.send("/scenario approval")
@@ -599,23 +599,6 @@ struct ChatDriverTests {
         await rig.finish()
     }
 
-    @Test func terminalToChatWithAnApprovalWaitingInTheTerminal() async throws {
-        let rig = try await Rig.make()
-        let screen = TestScreen()
-        let launch = try await rig.runtime.startConversation(provider: .claude, projectID: nil, outputSink: screen)
-        let id = launch.sessionID
-        #expect(await waitUntil { screen.text.contains("FAKE-CLAUDE READY") })
-        #expect(await waitUntil { await rig.supervisor.session(id: id)?.providerConversationID != nil })
-        _ = try await launch.terminal.write(Data("/approve\r".utf8))
-        #expect(await waitUntil { screen.text.contains("NEEDS-APPROVAL") })
-        let host = await MainActor.run { ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root) }
-        let driver = try await host.enterChat(sessionID: id)
-        #expect(await driver.currentPhase == .ready)
-        try await driver.send("hello from chat")
-        #expect(await idle(driver))
-        #expect(await driver.snapshot().texts.last == "Fake answer to: hello from chat")
-        await rig.finish()
-    }
 }
 
 /// A terminal sink for the terminal side of a face switch.

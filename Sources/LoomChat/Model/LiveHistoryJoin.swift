@@ -209,7 +209,7 @@ public struct LiveHistoryJoin: Sendable {
     }
 
     /// A row of an earlier run that only Loom has: no transcript writes it. Markers Loom placed (made-up ids: "Session
-    /// started", "Resumed", mode and model changes, "Continued in Terminal", "Back in Chat"), failure notices and answered
+    /// started", "Resumed", mode and model changes, "Continued in Terminal"), failure notices and answered
     /// cards. Rows the transcript has too ("You stopped", compaction, retries, notices of local commands) stay out.
     static func isLoomOnly(_ entry: ChatEntry) -> Bool {
         guard let colon = entry.id.firstIndex(of: ":"), isMadeUp(entry.id) else { return false }

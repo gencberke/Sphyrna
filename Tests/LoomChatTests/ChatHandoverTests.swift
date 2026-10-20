@@ -4,8 +4,8 @@ import Testing
 @testable import LoomCore
 
 // The handover between the faces (V19), on the driver and the runtime with the fake provider: Chat → Terminal waits for a
-// running turn and refuses a waiting request, never runs two owners and never loses a message; Terminal → Chat resumes
-// the session with its queue and draft where they were.
+// running turn and refuses a waiting request, never runs two owners and never loses a message; a resume in Chat after
+// the terminal run ended finds the session with its queue and draft where they were.
 
 private final class HandoverScreen: TerminalOutputSink, @unchecked Sendable {
     private let lock = NSLock()
@@ -72,7 +72,9 @@ struct ChatHandoverTests {
 
         // And back: the Chat face resumes it with the queue still paused and the draft in place.
         let host = await MainActor.run { ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root) }
-        let again = try await host.enterChat(sessionID: id)
+        _ = try await rig.runtime.stopConversation(sessionID: id)
+        let again = await host.driver(for: id)
+        try await again.resume()
         #expect(await again.currentPhase == .ready)
         #expect(try await rig.catalog.session(id: id)?.runEndpoint == .pipe)
         #expect(await host.driver(for: id).snapshot().phase == .ready)

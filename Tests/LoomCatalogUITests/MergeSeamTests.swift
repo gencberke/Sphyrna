@@ -38,7 +38,6 @@ struct MergeSeamTests {
             catalog: await rig.runtime.catalog, events: await rig.runtime.supervisor.events,
             preferences: UIPreferencesStore(url: rig.root.appendingPathComponent("ui-preferences.json")))
         let controller = ConversationController(runtime: rig.runtime, model: model)
-        controller.handoverSettle = .milliseconds(300)
         await controller.begin()
         await model.start()
         model.installChatSessions(runtime: rig.runtime, dataRoot: rig.root)
@@ -129,9 +128,12 @@ struct MergeSeamTests {
         #expect(await catalogMode(fixture, chat) == "default")
         #expect(await waitUntil { await notice(fixture, chat) == askNotice })
 
-        // And back: Chat comes back in Ask before edits. Ask returns only when the user picks it again.
-        model.continueIn(.chat, sessionID: chat)
-        #expect(await waitUntil { await endpoint(fixture, chat) == .pipe && model.handovers[chat] == nil })
+        // And back (the terminal is stopped, then the session resumes in Chat as the switch says): Chat comes back in Ask
+        // before edits. Ask returns only when the user picks it again.
+        model.stopConversation(chat)
+        #expect(await waitUntil { model.busy[chat] == nil && model.terminalView(for: chat) == nil })
+        fixture.controller.resume(sessionID: chat)
+        #expect(await waitUntil { await endpoint(fixture, chat) == .pipe })
         let again = try await chatDriver(fixture, chat)
         let back = await again.snapshot()
         #expect(back.choices.permissionMode == "default" && back.permissionMode == "default")

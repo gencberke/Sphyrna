@@ -66,41 +66,10 @@ struct ChatFirstPureTests {
         #expect(dismissed.map(\.kind) == [.wireDrift])
     }
 
-    // MARK: Where a terminal session stands for a handover
-
-    /// B1: a terminal session resting at its prompt is idle, not "a request waiting". The `idle_prompt` reminder (S0, 60 s
-    /// after a Stop) moves its activity to `.waitingForInput` and keeps the last message as the reason; the registry's
-    /// `idle` does the same with no reason. Only an input request (the reason `.input`) refuses.
-    @Test func aTerminalSessionAtItsPromptIsIdleNotARequest() {
-        let run = UUID()
-        func state(_ activity: AgentActivity, reason: StatusReason? = nil, pending: Int = 0) -> SessionViewState {
-            SessionViewState(status: ProviderWorkState(activity: activity, pendingProviderWorkCount: pending), runID: run,
-                             reason: reason)
-        }
-        // After the `idle_prompt` of the S0 fixture: waiting for input, the last answer kept as the reason.
-        #expect(HandoverStanding(terminal: state(.waitingForInput, reason: StatusReason(.turnDone, detail: "done"))) == .idle)
-        // The registry's idle after an interrupt: waiting for input with no reason.
-        #expect(HandoverStanding(terminal: state(.waitingForInput)) == .idle)
-        #expect(HandoverStanding(terminal: state(.atPrompt)) == .idle)
-        #expect(HandoverStanding(terminal: state(.turnComplete)) == .idle)
-        // A real input request (an MCP elicitation, `agent_needs_input`) refuses.
-        #expect(HandoverStanding(terminal: state(.waitingForInput, reason: StatusReason(.input))) == .requestWaiting)
-        #expect(HandoverStanding(terminal: state(.waitingForApproval)) == .requestWaiting)
-        // Work.
-        #expect(HandoverStanding(terminal: state(.working)) == .working)
-        // S3: work the provider still has pending under a finished turn is background work.
-        #expect(HandoverStanding(terminal: state(.turnComplete, pending: 1)) == .backgroundWork)
-        #expect(HandoverStanding(terminal: state(.waitingForInput, pending: 2)) == .backgroundWork)
-        // No run, no state: stopped.
-        #expect(HandoverStanding(terminal: SessionViewState(status: ProviderWorkState(activity: .atPrompt))) == .stopped)
-        #expect(HandoverStanding(terminal: nil) == .stopped)
-    }
-
     /// D-69: the session's ⋯ menu holds no move to a face; the one item left ends a move that waits (the policy banner's).
     @Test func theHeaderMenuOffersNoMoveOnlyTheWayToCancelOneThatWaits() {
         #expect(CatalogModel.cancelMoveTitle(for: nil) == nil)
         #expect(CatalogModel.cancelMoveTitle(for: Handover(target: .terminal)) == "Cancel Continue in Terminal")
-        #expect(CatalogModel.cancelMoveTitle(for: Handover(target: .chat)) == "Cancel Continue in Chat")
         #expect(CatalogModel.cancelMoveTitle(for: Handover(target: .terminal, phase: .switching)) == nil, "no Cancel after the point of no return")
     }
 

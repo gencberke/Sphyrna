@@ -140,7 +140,7 @@ struct LiveHistoryJoinTests {
         live.appendMarker(.face(.continuedInTerminal), at: Self.time("10:00:30"))
         let start = LiveHistoryJoin.RunStart(entries: live.entries.count, turns: live.turns.count,
                                              unknownRecords: live.unknownRecordCount, generation: 2)
-        live.appendMarker(.face(.backInChat))
+        live.appendMarker(.resumed(secondsSinceLastActivity: nil))
         Self.liveTurn(&live, uuid: "u3", text: "three", messageID: "m3", answer: "answer three")
         var transcript = Transcript()
         transcript.add(Fixture.transcriptUser("one", uuid: "u1"),
@@ -157,7 +157,7 @@ struct LiveHistoryJoinTests {
         let model = join.model
         #expect(model.prompts.map(\.text) == ["one", "two in the terminal", "three"])
         // The earlier run's face marker is carried into the history at its time: before the terminal's turn.
-        #expect(model.markers == [.face(.continuedInTerminal), .face(.backInChat)])
+        #expect(model.markers == [.face(.continuedInTerminal), .resumed(secondsSinceLastActivity: nil)])
         let terminalAt = model.entries.firstIndex { if case let .user(prompt) = $0.body { prompt.text == "two in the terminal" } else { false } }
         let carriedAt = model.entries.firstIndex { $0.body == .marker(.face(.continuedInTerminal)) }
         #expect(carriedAt != nil && terminalAt != nil && carriedAt! < terminalAt!)
@@ -285,14 +285,14 @@ struct LiveHistoryJoinTests {
         var history = TurnModel(source: .sessionTranscript)
         history.appendMarker(.face(.continuedInTerminal), at: Date())
         var live = TurnModel(source: .live)
-        live.appendMarker(.face(.backInChat), at: Date())
+        live.appendMarker(.resumed(secondsSinceLastActivity: nil), at: Date())
         #expect(history.entries.first?.id == live.entries.first?.id)
 
         var join = LiveHistoryJoin(live: live)
         join.setHistory(history, hasOlder: false)
         let model = join.model
-        #expect(model.markers == [.face(.continuedInTerminal), .face(.backInChat)])
+        #expect(model.markers == [.face(.continuedInTerminal), .resumed(secondsSinceLastActivity: nil)])
         #expect(Set(Self.ids(model)).count == 2)
-        #expect(model.entry(id: live.entries[0].id)?.body == .marker(.face(.backInChat)))
+        #expect(model.entry(id: live.entries[0].id)?.body == .marker(.resumed(secondsSinceLastActivity: nil)))
     }
 }

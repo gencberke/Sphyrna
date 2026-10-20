@@ -233,23 +233,6 @@ public final class ChatSessionHost {
         return outcome
     }
 
-    /// Terminal → Chat: stops the terminal run if one lives (the runtime's verified stop), then resumes the session in
-    /// the Chat face. `beforeResume` runs after the stop, right before the Chat run starts: false ends the move there
-    /// (a Stop or a cancel came in meanwhile) with a `CancellationError`.
-    public func enterChat(sessionID: UUID, beforeResume: (@MainActor () -> Bool)? = nil) async throws -> ChatSessionDriver {
-        let driver = driver(for: sessionID)
-        let terminalLives = await runtime.supervisor.session(id: sessionID)?.currentRun != nil
-        let chatLives = await driver.currentPhase.isLive
-        if terminalLives, !chatLives {
-            let report = try await runtime.stopConversation(sessionID: sessionID)
-            guard report.succeeded else { throw SessionRuntimeError.unverifiedStop(sessionID) }
-        }
-        if let beforeResume, !beforeResume() { throw CancellationError() }
-        try await driver.resume()
-        await driver.returnedToChat()
-        return driver
-    }
-
     /// The session was deleted through Loom, or its start failed before Ready: its driver goes, and its queue and draft
     /// files with it (they are what the user wrote), and the copies of its files rewinds.
     public func forget(sessionID: UUID) {

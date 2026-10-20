@@ -42,7 +42,12 @@ extension DevelopmentEvidence {
         case "live-chat": model.setNewSessionFace(argument == "on" ? .chat : .terminal)
         case "continue-in":
             guard let session = id(argument), let target = SessionFace(rawValue: rest(argument)) else { return true }
-            model.continueIn(target, sessionID: session)
+            // Only the move to the terminal is left (the Chat side of the handover); to Chat is refused.
+            guard target == .terminal else {
+                write("chat-error-\(name)", ["error": "unsupported"])
+                return true
+            }
+            model.continueIn(.terminal, sessionID: session)
         case "cancel-handover": if let session = id(argument) { model.cancelHandover(sessionID: session) }
         case "chat-start":
             let parts = argument.split(separator: ":", maxSplits: 1).map(String.init)

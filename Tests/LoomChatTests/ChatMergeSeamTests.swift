@@ -173,7 +173,7 @@ struct ChatMergeSeamDriverTests {
     // MARK: Seam 1, Ask and the terminal
 
     /// Continue in Terminal from an Ask session: the terminal runs Ask before edits (the catalog records what ran, the session says
-    /// so), and Continue in Chat after it comes back in that mode; Ask returns only when the user picks it again.
+    /// so), and the session resumed in Chat after it comes back in that mode; Ask returns only when the user picks it again.
     @Test func continuingAnAskSessionInTheTerminalRunsAskBeforeEditsAndChatComesBackInThatMode() async throws {
         let rig = try await Rig.make()
         let id = UUID()
@@ -194,7 +194,7 @@ struct ChatMergeSeamDriverTests {
         })
 
         _ = try await rig.runtime.stopConversation(sessionID: id)
-        // The same driver resumes (as the host's `enterChat` does for the driver it keeps).
+        // The same driver resumes.
         try await driver.resume()
         let again = driver
         #expect(await again.currentPhase == .ready)

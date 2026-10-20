@@ -205,7 +205,6 @@ public struct RequestRecord: Equatable, Sendable {
 public enum Marker: Equatable, Sendable {
     public enum Face: Equatable, Sendable {
         case continuedInTerminal
-        case backInChat
     }
 
     case sessionStart(model: String?, permissionMode: String?)

@@ -79,15 +79,10 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
     private var approvingOpen: Set<UUID> = []
     /// Handovers between the faces that wait or run (V19), by session.
     var handoverTasks: [UUID: Task<Void, Never>] = [:]
-    /// How long a terminal session must rest at its prompt before it moves to Chat (the first idle frame between two
-    /// hooks is not the end of a turn). Tests make it short.
-    var handoverSettle: Duration = .milliseconds(1500)
     /// Held at a handover's point of no return, with its target (tests act at that phase; nil in the app).
     var handoverGate: (@MainActor (UUID, SessionFace) async -> Void)?
     /// Held after a Stop returned from the runtime, before the tab decision (tests navigate at that phase; nil in the app).
     var stopGate: (@MainActor (UUID) async -> Void)?
-    /// How often a handover looked at the terminal session's standing in the hub (tests: a wait is on events, not on a timer).
-    var standingReads = 0
 
     public init(runtime: SessionRuntime, model: CatalogModel) {
         self.runtime = runtime

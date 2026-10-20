@@ -101,8 +101,8 @@ enum ChatMarkerText {
             return "Mode changed to \(modeName(mode))"
         case let .modelChanged(model):
             return "Model changed to \(model)"
-        case let .face(face):
-            return face == .continuedInTerminal ? "Continued in Terminal" : "Back in Chat"
+        case .face:
+            return "Continued in Terminal"
         case let .notice(text):
             return text
         case let .rewound(rewound):

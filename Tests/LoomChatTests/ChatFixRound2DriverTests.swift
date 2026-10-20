@@ -99,9 +99,10 @@ struct ChatFixRound2DriverTests {
         await rig.finish()
     }
 
-    /// D14, the planner's call: "Back in Chat" keeps the queue paused for the move. What was queued before the session went
-    /// to the terminal may not fit what was done there, so nothing goes out until the user resumes the queue.
-    @Test func backInChatKeepsTheQueuePausedUntilTheUserResumesIt() async throws {
+    /// D14, the planner's call: coming back to Chat (a resume once the terminal run ended) keeps the queue paused for the
+    /// move. What was queued before the session went to the terminal may not fit what was done there, so nothing goes out
+    /// until the user resumes the queue.
+    @Test func aResumeAfterTheTerminalKeepsTheQueuePausedUntilTheUserResumesIt() async throws {
         let rig = try await Rig.make()
         let id = UUID()
         let host = await MainActor.run { ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root) }
@@ -115,7 +116,8 @@ struct ChatFixRound2DriverTests {
         await driver.finishHandover()
         #expect(await waitUntil { screen.text.lowercased().contains("resumed \(id.uuidString.lowercased())") })
 
-        _ = try await host.enterChat(sessionID: id)
+        _ = try await rig.runtime.stopConversation(sessionID: id)
+        try await driver.resume()
         #expect(await idle(driver))
         try await Task.sleep(for: .milliseconds(500))
         let back = await driver.snapshot()

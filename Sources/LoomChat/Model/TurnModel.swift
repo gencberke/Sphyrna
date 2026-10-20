@@ -253,7 +253,7 @@ public struct TurnModel: Sendable {
         interruptSent = false
     }
 
-    /// Adds a marker the driver knows about (resumed after days, continued in Terminal, back in Chat).
+    /// Adds a marker the driver knows about (resumed after days, continued in Terminal).
     @discardableResult
     public mutating func appendMarker(_ marker: Marker, at now: Date = Date()) -> ModelDelta {
         var delta = ModelDelta()

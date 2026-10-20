@@ -6,7 +6,7 @@ idle reminder. Run it inside the build slot and only when the Mac may show the L
 Checks (one app instance each; the instance is quit however the script ends, and its folder is deleted by nobody):
   b9b10  chat start from the draft, one turn, Stop, a send resumes in Chat (9); Continue in Terminal, the transcript
          holds the whole turn, the terminal remembers it (10).                          3 turns
-  b11    a terminal turn, wait for the idle reminder, Continue in Chat; the stream shows the turn once (11).  1 turn
+  b11    a terminal turn, wait for the idle reminder, Stop, Resume in Chat; the stream shows the turn once (11).  1 turn
   b12    Chat, /clear, a send on the new card, Quit: the app exits and leaves no owned process (12).   1 turn
   b13    window-only shots: Ask with a refusal, and a real approval card (13).                          2 turns
 Only counts, kinds, booleans and file shapes are recorded: no prompt text, answer text or account data. Window shots are
@@ -461,15 +461,18 @@ def check_b11():
         time.sleep(2)
     step(f'indicator over the idle wait (seconds after the reply, label): {indicators}')
     shot('b11-terminal-idle', terminal=True)
-    cmd(f'continue-in:{session}:chat')
+    # The terminal-to-Chat move is gone (D-3): the session stops in the terminal and resumes in Chat, as the switch says.
+    cmd(f'stop:{session}')
+    until(lambda: None if term(snap('stopping')) else True, 60, 'terminal run stopped')
+    cmd(f'resume:{session}')
     try:
-        until(lambda: (lambda c, st: c if c.get('route') == 'chat' and not c.get('handovers') and st.get('driver') and st.get('sessionID') == session else None)(catalog('tochat'), chat_state('tochat')), 120, 'chat owns the session')
-        allowed = True
+        until(lambda: (lambda c, st: c if c.get('route') == 'chat' and st.get('driver') and st.get('sessionID') == session else None)(catalog('tochat'), chat_state('tochat')), 120, 'chat owns the session')
+        resumed = True
     except RuntimeError:
-        allowed = False
+        resumed = False
     c = catalog('tochat-final')
-    verdict('b11.continueInChatAllowed', allowed, {'route': c.get('route'), 'handovers': c.get('handovers'), 'owningFaces': c.get('owningFaces'), 'errorMessage': c.get('errorMessage'), 'infoMessage': c.get('infoMessage')})
-    if not allowed:
+    verdict('b11.resumedInChat', resumed, {'route': c.get('route'), 'owningFaces': c.get('owningFaces'), 'errorMessage': c.get('errorMessage'), 'infoMessage': c.get('infoMessage')})
+    if not resumed:
         return
     until(lambda: chat_state('c1').get('driver') and chat_state('c1').get('phase') == 'ready' or None, 120, 'chat ready')
     view = until(lambda: (lambda v: v if v.get('attached') and v.get('phase') == 'ready' else None)(chat_view(session, 'join')), 60, 'chat view attached')

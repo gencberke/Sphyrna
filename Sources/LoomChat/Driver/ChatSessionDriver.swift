@@ -436,16 +436,9 @@ public actor ChatSessionDriver {
         for continuation in modelSubscribers.values { continuation.yield(change) }
     }
 
-    /// Marks a face switch in the stream ("Continued in Terminal", "Back in Chat").
+    /// Marks a face switch in the stream ("Continued in Terminal").
     public func noteFace(_ face: Marker.Face) {
         note(model.appendMarker(.face(face), at: clock()))
-    }
-
-    /// The session is back in Chat after a stay in the terminal: the marker. A queue paused for the move stays paused: what
-    /// was queued before the session left may not fit what was done in the terminal, so nothing goes out until the user
-    /// resumes it (Resume), as after an interrupt or a relaunch.
-    public func returnedToChat() async {
-        noteFace(.backInChat)
     }
 
     /// Drafts an interrupt gave back, handed over once: the composer takes them.
