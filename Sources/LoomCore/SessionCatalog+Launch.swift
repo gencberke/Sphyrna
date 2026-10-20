@@ -117,15 +117,6 @@ extension SessionCatalog {
         }
     }
 
-    /// The endpoint of the session's latest run: the face that owns it. Nil for a session that never ran since V16.
-    public func runEndpoint(sessionID: UUID) throws -> RunEndpointKind? {
-        try database.withStatement("SELECT run_endpoint FROM sessions WHERE id = ?") { statement in
-            try database.bind(sessionID.uuidString, at: 1, to: statement)
-            guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
-            return database.optionalText(statement, column: 0).flatMap(RunEndpointKind.init(rawValue:))
-        }
-    }
-
     /// A run moved from one card to another (`/clear`, a fork): the destination takes the source's choices where it
     /// has none of its own, and the run's endpoint.
     public func carryLaunchState(from source: UUID, to destination: UUID, endpoint: RunEndpointKind) throws {

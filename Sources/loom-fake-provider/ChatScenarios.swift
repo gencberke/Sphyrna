@@ -543,6 +543,7 @@ extension ChatEngine {
     func reset(trigger: String) {
         let newID = UUID().uuidString.lowercased()
         send(wire.conversationReset(newID: UUID().uuidString.lowercased(), trigger: trigger))
+        resetCount += 1
         wire.session = newID
         transcript.switchSession(newID)
         lastUUID = nil

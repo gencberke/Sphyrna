@@ -109,7 +109,7 @@ extension CatalogModel {
     /// "Read now" on the newest message the CLI holds unread: it is taken back and sent again to be read at once.
     public func readNowChat(_ sessionID: UUID) async throws {
         let driver = try chatDriver(for: sessionID)
-        guard let messageID = await driver.snapshot().model.pendingUserMessageIDs.last else { return }
+        guard let messageID = await driver.composerState().unreadMessageIDs.last else { return }
         _ = try await driver.readNow(messageID: messageID)
     }
 

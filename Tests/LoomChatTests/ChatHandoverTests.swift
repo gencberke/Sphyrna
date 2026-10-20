@@ -62,19 +62,19 @@ struct ChatHandoverTests {
         #expect(try drafts.load(sessionID: id)?.text == "an unsent thought")
         #expect(try queues.load(sessionID: id).items.count == 1)
         // The persisted owner is the Chat endpoint until the terminal run starts.
-        #expect(try await rig.catalog.runEndpoint(sessionID: id) == .pipe)
+        #expect(try await rig.catalog.session(id: id)?.runEndpoint == .pipe)
 
         // The terminal takes the session; the endpoint follows the run.
         let screen = HandoverScreen()
         _ = try await rig.runtime.resumeConversation(sessionID: id, outputSink: screen)
         #expect(await waitUntil { screen.text.lowercased().contains("resumed \(id.uuidString.lowercased())") })
-        #expect(try await rig.catalog.runEndpoint(sessionID: id) == .terminal)
+        #expect(try await rig.catalog.session(id: id)?.runEndpoint == .terminal)
 
         // And back: the Chat face resumes it with the queue still paused and the draft in place.
         let host = await MainActor.run { ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root) }
         let again = try await host.enterChat(sessionID: id)
         #expect(await again.currentPhase == .ready)
-        #expect(try await rig.catalog.runEndpoint(sessionID: id) == .pipe)
+        #expect(try await rig.catalog.session(id: id)?.runEndpoint == .pipe)
         #expect(await host.driver(for: id).snapshot().phase == .ready)
         await rig.finish()
     }
@@ -332,7 +332,7 @@ struct ChatHandoverTests {
             card = frame.sessions.first { $0.key != id && $0.value.runID != nil }?.key
         }
         let moved = try #require(card, "no frame told the run started on the new card")
-        #expect(try await rig.catalog.runEndpoint(sessionID: moved) == .pipe,
+        #expect(try await rig.catalog.session(id: moved)?.runEndpoint == .pipe,
                 "the frame that names the new card's run is read after the endpoint is written")
         await rig.finish()
     }

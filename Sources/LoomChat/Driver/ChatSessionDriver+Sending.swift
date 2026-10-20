@@ -154,8 +154,14 @@ extension ChatSessionDriver {
     /// A Chat run has no terminal title, and the CLI's SDK mode does not name a session by itself as the terminal face does
     /// (a short model call on the first message). So the first message that is sent to an untitled session asks for it
     /// (`generate_session_title`, persisted as the transcript's `ai-title`): a slash command is no title, an answer that
-    /// fails or holds none is not shown, and the next message tries again while the session is still untitled.
+    /// fails or holds none is not shown, and the next message tries again while the session is still untitled, up to
+    /// `titleAttemptLimit` times for a card (each try is a model call). An answer belongs to the card it was asked for: one
+    /// that comes back after the run moved to another card (`/clear`) names the card it was asked for, and leaves the new
+    /// card's own title alone.
     enum TitleState { case needed, requesting, done }
+    /// How many title requests that fail or hold no title a card gets before it stays untitled until Loom starts again (the
+    /// driver lives as long as the app).
+    static let titleAttemptLimit = 3
 
     private func requestTitleIfNeeded(for message: ChatSentMessage) {
         guard titleState == .needed, let current = run else { return }
@@ -168,19 +174,32 @@ extension ChatSessionDriver {
 
     private func generateTitle(from text: String, card: UUID, on channel: ControlChannel) async {
         // Only an untitled session is named (a resumed one may carry the terminal's title or the user's own).
-        guard let record = try? await runtime.catalog.session(id: card) else { titleState = .needed; return }
-        guard (record.title ?? "").isEmpty, !record.titleIsCustom else { titleState = .done; return }
+        guard let record = try? await runtime.catalog.session(id: card) else { titleFailed(for: card); return }
+        guard (record.title ?? "").isEmpty, !record.titleIsCustom else { titleSettled(for: card); return }
         do {
             let reply = try await channel.request(.generateSessionTitle(description: text), timeout: .seconds(60))
             guard let title = reply.generatedTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
-                titleState = .needed
+                titleFailed(for: card)
                 return
             }
-            titleState = .done
-            onTitle(sessionID, title)
+            titleSettled(for: card)
+            onTitle(card, title)
         } catch {
-            titleState = .needed
+            titleFailed(for: card)
         }
+    }
+
+    /// The card has a title: nothing more is asked for it. A card the run has left keeps the state of the card it is on.
+    private func titleSettled(for card: UUID) {
+        guard card == sessionID else { return }
+        titleState = .done
+    }
+
+    /// The request failed or held no title: the next message asks again, until the card has had its tries.
+    private func titleFailed(for card: UUID) {
+        guard card == sessionID else { return }
+        titleFailures += 1
+        titleState = titleFailures >= Self.titleAttemptLimit ? .done : .needed
     }
 
     // MARK: Unread messages in the draft file

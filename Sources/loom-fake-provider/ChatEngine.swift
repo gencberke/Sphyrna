@@ -88,6 +88,11 @@ struct ChatConfig {
     var initDelayMs: Int
     /// LOOM_FAKE_CHAT_CONTROL_DELAY_MS: the mode, settings and rule requests are answered after this long (a window for races).
     var controlDelayMs: Int
+    /// LOOM_FAKE_CHAT_TITLE_DEFER=reset: the first `generate_session_title` is answered only once a `/clear` reset has
+    /// happened, right before the next user message is taken (an answer that comes back after the run moved to a new card).
+    var titleDeferredPastReset: Bool
+    /// LOOM_FAKE_CHAT_TITLE_LOG: a file that gets one line per `generate_session_title` request (tests count the tries).
+    var titleLog: String?
 
     init(arguments: [String], environment: [String: String]) {
         func value(_ flag: String) -> String? {
@@ -134,6 +139,8 @@ struct ChatConfig {
         resetInitFirst = environment["LOOM_FAKE_CHAT_RESET_ORDER"] == "init-first"
         initDelayMs = environment["LOOM_FAKE_CHAT_INIT_DELAY_MS"].flatMap(Int.init) ?? 0
         controlDelayMs = environment["LOOM_FAKE_CHAT_CONTROL_DELAY_MS"].flatMap(Int.init) ?? 0
+        titleDeferredPastReset = environment["LOOM_FAKE_CHAT_TITLE_DEFER"] == "reset"
+        titleLog = environment["LOOM_FAKE_CHAT_TITLE_LOG"]
         userRules = (environment["LOOM_FAKE_CHAT_USER_RULES"]
             .flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) } as? [ChatObject] ?? []).compactMap { row in
             guard let behavior = row["behavior"] as? String, let source = row["source"] as? String,
@@ -443,6 +450,10 @@ final class ChatEngine {
     /// When each send arrived (the `queued_command` attachment carries it).
     var arrivals: [String: Date] = [:]
 
+    /// `/clear` resets so far, and a title answer held back until one happened (LOOM_FAKE_CHAT_TITLE_DEFER).
+    var resetCount = 0
+    var deferredTitle: (requestID: String, title: String)?
+
     /// The transcript's queue bookkeeping (S1 t07): `enqueue` when a send arrives, `dequeue` when it starts a turn,
     /// `remove` when a running turn absorbed it.
     func recordQueueOperation(_ operation: String, _ fields: ChatObject = [:]) {
@@ -566,6 +577,10 @@ final class ChatEngine {
         case .ignored:
             break
         case .user(let message):
+            if let deferred = deferredTitle, resetCount > 0 {
+                deferredTitle = nil
+                send(wire.controlSuccess(deferred.requestID, ["title": deferred.title]))
+            }
             sentTexts[message.uuid] = message.text
             arrivals[message.uuid] = Date()
             recordQueueOperation("enqueue", ["content": message.text])
@@ -660,6 +675,14 @@ final class ChatEngine {
         case "generate_session_title":
             // The terminal face's own naming, on demand: "Fake title: <first three words>", and the transcript's `ai-title`
             // when the host asks to persist it. `title` in LOOM_FAKE_CHAT_FAIL_PICKS refuses it; `titlenull` answers null.
+            if let log = config.titleLog {
+                if !FileManager.default.fileExists(atPath: log) { FileManager.default.createFile(atPath: log, contents: nil) }
+                if let handle = FileHandle(forWritingAtPath: log) {
+                    handle.seekToEndOfFile()
+                    handle.write(Data("generate_session_title\n".utf8))
+                    try? handle.close()
+                }
+            }
             if config.failPicks.contains("title") {
                 send(wire.controlError(id, "The title could not be made", code: "fail_title"))
                 return
@@ -672,6 +695,10 @@ final class ChatEngine {
             let title = "Fake title: " + words.joined(separator: " ")
             if body["persist"] as? Bool == true {
                 transcript.append(["type": "ai-title", "aiTitle": title, "sessionId": wire.session])
+            }
+            if config.titleDeferredPastReset, resetCount == 0, deferredTitle == nil {
+                deferredTitle = (id, title)
+                return
             }
             if config.controlDelayMs > 0 { usleep(UInt32(config.controlDelayMs) * 1_000) } // written, answered late
             send(wire.controlSuccess(id, ["title": title]))

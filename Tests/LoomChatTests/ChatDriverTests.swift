@@ -721,7 +721,7 @@ extension ChatDriverTests {
         #expect(await rig.events.snapshot().sessions[card]?.runEndpoint == .pipe)
         // Choices and face follow the run.
         #expect(try await rig.catalog.launchChoices(sessionID: card) == choices)
-        #expect(try await rig.catalog.runEndpoint(sessionID: card) == .pipe)
+        #expect(try await rig.catalog.session(id: card)?.runEndpoint == .pipe)
         // The stream starts over with the marker; the queue moved with the driver.
         let cleared = await driver.snapshot()
         #expect(cleared.sessionID == card)

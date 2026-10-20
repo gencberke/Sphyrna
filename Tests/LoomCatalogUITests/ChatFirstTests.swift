@@ -59,7 +59,7 @@ struct ChatFirstTests {
     }
 
     private func endpoint(_ fixture: Fixture, _ id: UUID) async -> RunEndpointKind? {
-        try? await fixture.rig.runtime.catalog.runEndpoint(sessionID: id)
+        try? await fixture.rig.runtime.catalog.session(id: id)?.runEndpoint
     }
 
     // MARK: The default face and the setting
@@ -160,6 +160,45 @@ struct ChatFirstTests {
             #expect(fixture.model.errorMessage == nil && fixture.model.infoMessage == nil, "\(failure)")
             await fixture.cleanup()
         }
+    }
+
+    /// X-1: a title that comes back after a `/clear` moved the run names the card it was asked for, and the new card asks for
+    /// its own. The fake answers the first title only after the reset, right before it takes the next message.
+    @Test func aTitleAnsweredAfterAClearNamesTheCardItWasAskedFor() async throws {
+        let fixture = try await makeFixture(environment: ["LOOM_FAKE_CHAT_TITLE_DEFER": "reset"])
+        let id = try await startFromDraft(fixture, text: "Explain binary search in one sentence")
+        let driver = try #require(fixture.model.chatSessions?.existingDriver(for: id))
+        #expect(await waitUntil { await aiTitleCount(fixture, id) == 1 }, "the title request reached the CLI")
+        #expect(await waitUntil { let s = await driver.snapshot(); return s.phase == .ready && !s.turnRunning })
+        try await driver.send("/clear")
+        #expect(await waitUntil { await driver.sessionID != id })
+        let card = await driver.sessionID
+        #expect(await waitUntil { let s = await driver.snapshot(); return s.phase == .ready && !s.turnRunning })
+        try await driver.send("Tell me about heaps")
+        #expect(await waitUntil { await title(fixture, id) == "Fake title: Explain binary search" })
+        #expect(await waitUntil { await title(fixture, card) == "Fake title: Tell me about" })
+        await fixture.cleanup()
+    }
+
+    /// RS-6: a card whose title cannot be made is asked for it three times at most, not on every message.
+    @Test func aTitleThatKeepsFailingIsAskedForThreeTimesAtMost() async throws {
+        let log = FileManager.default.temporaryDirectory.appendingPathComponent("loom-title-log-\(UUID()).txt")
+        defer { try? FileManager.default.removeItem(at: log) }
+        let fixture = try await makeFixture(environment: [
+            "LOOM_FAKE_CHAT_FAIL_PICKS": "title", "LOOM_FAKE_CHAT_TITLE_LOG": log.path,
+        ])
+        let id = try await startFromDraft(fixture, text: "the first message")
+        let driver = try #require(fixture.model.chatSessions?.existingDriver(for: id))
+        for text in ["the second message", "the third message", "the fourth message", "the fifth message"] {
+            #expect(await waitUntil { let s = await driver.snapshot(); return s.phase == .ready && !s.turnRunning })
+            try await driver.send(text)
+            #expect(await waitUntil { await driver.snapshot().model.assistantTexts.last == "Fake answer to: \(text)" })
+        }
+        try await Task.sleep(for: .milliseconds(500))
+        let requests = (try? String(contentsOf: log, encoding: .utf8))?.split(separator: "\n").count ?? 0
+        #expect(requests == 3, "\(requests) title requests for five messages")
+        #expect(await title(fixture, id) == nil)
+        await fixture.cleanup()
     }
 
     @Test func theSettingIsKeptAndAnOlderFileReadsAsChat() throws {

@@ -90,7 +90,7 @@ struct LaunchChoicesCatalogTests {
         })
         #expect(try await context.catalog.launchChoices(sessionID: id)
             == ClaudeLaunchChoices(permissionMode: "plan", model: "haiku", effort: "high"))
-        #expect(try await context.catalog.runEndpoint(sessionID: id) == .terminal)
+        #expect(try await context.catalog.session(id: id)?.runEndpoint == .terminal)
         #expect(try await context.runtime.stopConversation(sessionID: id).succeeded)
         try FileManager.default.removeItem(at: argv)
 
@@ -403,12 +403,12 @@ struct LaunchChoicesCatalogTests {
         try await catalog.carryLaunchState(from: source.id, to: destination.id, endpoint: .pipe)
         #expect(try await catalog.launchChoices(sessionID: destination.id)
             == ClaudeLaunchChoices(permissionMode: "acceptEdits", model: "m1", effort: "high"))
-        #expect(try await catalog.runEndpoint(sessionID: destination.id) == .pipe)
+        #expect(try await catalog.session(id: destination.id)?.runEndpoint == .pipe)
         try await catalog.recordLaunchChoices(ClaudeLaunchChoices(model: "m2"), sessionID: other.id)
         try await catalog.carryLaunchState(from: source.id, to: other.id, endpoint: .terminal)
         #expect(try await catalog.launchChoices(sessionID: other.id)
             == ClaudeLaunchChoices(permissionMode: "acceptEdits", model: "m2", effort: "high"))
-        #expect(try await catalog.runEndpoint(sessionID: other.id) == .terminal)
+        #expect(try await catalog.session(id: other.id)?.runEndpoint == .terminal)
     }
 
     /// V19: the owning face is on the session's record in every list read, so a stopped session resumes in it.

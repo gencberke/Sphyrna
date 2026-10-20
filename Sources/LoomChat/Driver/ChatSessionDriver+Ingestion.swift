@@ -177,8 +177,9 @@ extension ChatSessionDriver {
         }
         let old = sessionID
         sessionID = card
-        // The new card has no title yet.
+        // The new card has no title yet, and its own tries.
         titleState = .needed
+        titleFailures = 0
         if let queueStore {
             do {
                 try queueStore.save(queue, sessionID: card)

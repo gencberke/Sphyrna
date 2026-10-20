@@ -204,6 +204,8 @@ public actor ChatSessionDriver {
     /// Loom's own sends of this session, by row id: what went out (a returned draft, "Read now", "Retry").
     var sent: [String: ChatSentMessage] = [:]
     var titleState = TitleState.needed
+    /// Title requests for the card the run is on that failed or held no title (`titleAttemptLimit`).
+    var titleFailures = 0
 
     // The handover to the terminal (ChatSessionDriver+Handover.swift)
 

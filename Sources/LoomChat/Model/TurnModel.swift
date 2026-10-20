@@ -253,13 +253,6 @@ public struct TurnModel: Sendable {
         interruptSent = false
     }
 
-    /// Every message that has not been read (nor cancelled) yet.
-    public var pendingUserMessageIDs: [String] {
-        entries.compactMap { entry in
-            if case let .user(prompt) = entry.body, prompt.delivery == .pending || prompt.delivery == .queued { entry.id } else { nil }
-        }
-    }
-
     /// Adds a marker the driver knows about (resumed after days, continued in Terminal, back in Chat).
     @discardableResult
     public mutating func appendMarker(_ marker: Marker, at now: Date = Date()) -> ModelDelta {

@@ -77,7 +77,7 @@ struct MergeSeamTests {
     }
 
     private func endpoint(_ fixture: Fixture, _ id: UUID) async -> RunEndpointKind? {
-        try? await fixture.rig.runtime.catalog.runEndpoint(sessionID: id)
+        try? await fixture.rig.runtime.catalog.session(id: id)?.runEndpoint
     }
 
     private func notice(_ fixture: Fixture, _ id: UUID) async -> String? {
