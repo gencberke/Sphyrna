@@ -18,7 +18,10 @@ struct ChatProseView: View {
                                  flags: flags, rowID: entry.id, isStreaming: text.isStreaming, context: context)
                 if settled {
                     HStack(spacing: 10) {
-                        if hovering {
+                        if let notes = context.sideNotes {
+                            // A side chat's answer: the two actions stay in view (V22 part 3).
+                            SideAnswerActions(entryID: entry.id, text: text.text, notes: notes, context: context)
+                        } else if hovering {
                             ChatCopyButton(text: text.text, context: context)
                             if let time = entry.timestamp {
                                 Text(ChatTime.label(for: time)).font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.secondaryStyle)

@@ -8,7 +8,7 @@ struct ChangesInspectorTests {
     private typealias RGB = LoomTheme.RGB
 
     @Test func theChangesTabIsTheWideColumnAndTheOthersKeepTheNarrowOne() {
-        #expect(InspectorTab.allCases == [.overview, .changes, .agents])
+        #expect(InspectorTab.allCases == [.overview, .changes, .agents, .side])
         #expect(InspectorTab.changes.width == LoomTheme.Rhythm.inspectorWidthReview && InspectorTab.changes.width == 556)
         #expect(InspectorTab.overview.width == LoomTheme.Rhythm.inspectorWidth && InspectorTab.agents.width == 328)
     }

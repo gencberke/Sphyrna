@@ -64,6 +64,10 @@ final class LiveChatFeed: ChatDriverAttachment {
     @ObservationIgnored private var driverLive = false
     /// The feed is no longer needed: its owner (the app's host) lets it go.
     @ObservationIgnored var onUnused: (() -> Void)?
+    /// A side chat's feed (V22 part 3) shows the fork's own turns only: this gives the uuid of its first question, asked at
+    /// every history read (the card writes it when the question is sent). What the transcript holds before it is the parent's
+    /// copy and the CLI's repair records, and is never shown (`TurnModel.sideThread`). Nil: a main session's feed.
+    @ObservationIgnored var sideFirstUUID: (() -> String?)?
     @ObservationIgnored private var started = false
     /// The two tasks that follow the driver for as long as the feed lives.
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
@@ -184,14 +188,24 @@ final class LiveChatFeed: ChatDriverAttachment {
         guard let lens = await openLens() else { return }
         let first = await lens.coldOpenChange()
         guard card == opened, let model = first.model else { return }
-        join.setHistory(model, hasOlder: first.hasOlder)
+        setHistory(model, hasOlder: first.hasOlder)
         // A cold open that lies inside the live run keeps nothing: read on until something before the run shows.
         var rounds = 0
         while join.needsOlder, rounds < Self.olderRoundsAtOpen, let older = await lens.loadOlderChange(), card == opened,
               let model = older.model {
-            join.setHistory(model, hasOlder: older.hasOlder)
+            setHistory(model, hasOlder: older.hasOlder)
             rounds += 1
         }
+    }
+
+    /// The transcript as read so far becomes the history; a side chat's feed keeps its own part of it.
+    private func setHistory(_ model: TurnModel, hasOlder: Bool) {
+        guard let firstUUID = sideFirstUUID else {
+            join.setHistory(model, hasOlder: hasOlder)
+            return
+        }
+        let thread = model.sideThread(startingAt: firstUUID(), hasOlder: hasOlder)
+        join.setHistory(thread.model, hasOlder: thread.hasOlder)
     }
 
     /// The lens on the transcript of the conversation the run is in: opened once, when first needed.
@@ -402,7 +416,7 @@ final class LiveChatFeed: ChatDriverAttachment {
             loadingOlder = false
             // A read again (a new run) or a move replaced the lens meanwhile: this read is of the old one.
             if card == opened, self.lens === lens, let change, let model = change.model {
-                join.setHistory(model, hasOlder: change.hasOlder)
+                setHistory(model, hasOlder: change.hasOlder)
                 if canPresent {
                     sequence += 1
                     presentation.apply(join.model.snapshot(sequence: sequence, kind: .older, hasOlder: join.hasOlder))
@@ -463,6 +477,9 @@ final class LiveChatFeed: ChatDriverAttachment {
 
     /// The joined model the presentation should hold.
     var joinedModelForTesting: TurnModel { join.model }
+
+    /// The joined model, history then live: what "Send to main as a note" reads a side answer's question from.
+    var joinedModel: TurnModel { join.model }
 
     /// Where the feed stands, as numbers (evidence).
     var progress: [String: Any] {

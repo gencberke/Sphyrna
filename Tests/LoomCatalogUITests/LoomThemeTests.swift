@@ -214,7 +214,8 @@ struct LoomThemeTests {
         #expect(LoomTheme.TypeScale.readingSize == 14 && LoomTheme.TypeScale.readingLineHeight == 22)
         #expect(LoomTheme.TypeScale.terminalSize == 14)
         #expect(LoomTheme.Rhythm.grid == 4 && LoomTheme.Rhythm.readingColumn == 700 && LoomTheme.Rhythm.sessionCardRow == 46)
-        #expect(LoomTheme.Rhythm.inspectorWidth == 328 && LoomTheme.Rhythm.inspectorWidthReview == 556)
+        #expect(LoomTheme.Rhythm.inspectorWidth == 328 && LoomTheme.Rhythm.inspectorWidthReview == 556
+                && LoomTheme.Rhythm.inspectorWidthSide == 392)
         #expect(LoomTheme.Depth.card.shadow.blur == 2)
         #expect(LoomTheme.Depth.raised.shadow.blur == 28)
         #expect(LoomTheme.Depth.popover.shadow.blur == 64 && LoomTheme.Depth.popover.ring == 0.08)

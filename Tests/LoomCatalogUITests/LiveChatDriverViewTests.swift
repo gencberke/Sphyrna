@@ -17,7 +17,8 @@ struct LiveRig {
     let socketDirectory: URL
     let runtime: SessionRuntime
 
-    static func make(environment: [String: String] = [:]) async throws -> LiveRig {
+    /// `forkable`: the fake CLI's help lists `--fork-session`, as a CLI that can fork a session does (the Side tab's fork).
+    static func make(environment: [String: String] = [:], forkable: Bool = false) async throws -> LiveRig {
         let binaries = Bundle(for: LiveViewBundleAnchor.self).bundleURL.deletingLastPathComponent()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-live-view-\(UUID())", isDirectory: true)
         let home = root.appendingPathComponent("home", isDirectory: true)
@@ -43,7 +44,7 @@ struct LiveRig {
                 capabilities: ProviderCapabilities(
                     version: "fake 1",
                     help: "--settings <settings> --session-id <id> --effort <level> -n, --name <name> --plugin-dir <path> "
-                        + "--permission-mode <mode> --model <model>",
+                        + "--permission-mode <mode> --model <model>" + (forkable ? " --fork-session" : ""),
                     serverHelp: "--listen <URL>"
                 ),
                 environment: ["PATH": "/usr/bin:/bin", "HOME": home.path].merging(environment) { _, new in new },

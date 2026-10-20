@@ -74,6 +74,8 @@ extension ChatSessionDriver {
             return
         }
         guard !phase.isLive else { return }
+        // A side chat's "Allow edits" was given to the process that ran: every start, however the last run ended, has it off.
+        (requestPolicy as? SideChatPolicy)?.allowsEdits = false
         runStart = LiveHistoryJoin.RunStart(entries: model.entries.count, turns: model.turns.count,
                                             unknownRecords: model.unknownRecordCount, time: clock(),
                                             generation: runStart.generation + 1)

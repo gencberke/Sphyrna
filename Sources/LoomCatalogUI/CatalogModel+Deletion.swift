@@ -302,9 +302,12 @@ public enum DeletionCopy {
     public static func confirmBody(_ preview: ConversationDeletionPreview) -> String {
         let files = preview.fileCount == 1 ? "1 file" : "\(preview.fileCount) files"
         let size = preview.byteCount == 0 ? "0 bytes" : ByteCountFormatter.string(fromByteCount: preview.byteCount, countStyle: .file)
+        // A session with side chats (V22) takes them along: each is deleted first, through the same path.
+        let sideChats = preview.sideChatCount
+        let who = sideChats > 0 ? "it and its \(sideChats) side chat\(sideChats == 1 ? "" : "s")" : "it"
         let lead = preview.isRunning
-            ? "It is running now, so Loom stops it first, then removes it from Loom and deletes Claude's local files for it"
-            : "Loom removes it from Loom and deletes Claude's local files for it"
+            ? "It is running now, so Loom stops it first, then removes \(who) from Loom and deletes Claude's local files for \(sideChats > 0 ? "them" : "it")"
+            : "Loom removes \(who) from Loom and deletes Claude's local files for \(sideChats > 0 ? "them" : "it")"
         return "\(lead): the transcript, subagent transcripts, file snapshots and session folders "
             + "(\(files), \(size), in \(preview.configDirectory)). This can't be undone.\n\n"
             + "Not removed: your prompts in Claude's shared prompt history, project files and worktrees, "

@@ -452,6 +452,8 @@ public final class CatalogModel {
     let rewinds = RewindState()
     /// The quick question's panels, one per session (V22; `CatalogModel+QuickQuestion`).
     let quick = QuickQuestionState()
+    /// The Side tab's holders, one per session (V22 part 3; `CatalogModel+Side`).
+    let side = SideState()
     public let home = HomeState()
     public let palette = PaletteState()
     public let newSession = NewSessionState()

@@ -184,6 +184,10 @@ final class PinnedCardsModel {
     /// Ask is the session's mode: a plan is approved in Ask, so its card offers no other mode (the driver sees to it too).
     private(set) var askIsOn = false
 
+    /// The approval card offers "Allow for this session". A side chat's cards never do (V22 part 3): its driver refuses the
+    /// answer, because a rule that outlives one request would let the fork write for good.
+    @ObservationIgnored var offersSessionGrants = true
+
     func planMode(for request: ChatPendingRequest) -> String { planModes[request.requestID] ?? "default" }
 
     /// The modes a plan can continue in, in the order the card offers them (CHAT-SPEC → Plans).

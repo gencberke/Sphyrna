@@ -15,7 +15,7 @@ struct ChatRowView: View {
         content
             .environment(\.chatMeasuring, measuring)
             .padding(.leading, CGFloat(row.indent) * LoomTheme.Chat.indentStep)
-            .padding(.horizontal, LoomTheme.Chat.columnPadding)
+            .padding(.horizontal, context.columnPadding)
             .frame(maxWidth: LoomTheme.Chat.column)
             .frame(maxWidth: .infinity)
     }

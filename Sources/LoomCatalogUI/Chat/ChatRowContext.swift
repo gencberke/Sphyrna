@@ -64,6 +64,10 @@ final class ChatRowContext {
     let rewind = ChatRewindAccess()
     var rewindFiles: (_ rowID: String) -> Void = { _ in }
     var undoRewind: (_ rewindID: String) -> Void = { _ in }
+    /// A side chat's stream (V22 part 3): "Send to main as a note" under each finished answer, and the rows' side padding (the
+    /// inspector's column is narrower than the reading column). The main chat and a transcript set neither.
+    var sideNotes: SideAnswerNotes?
+    var columnPadding = LoomTheme.Chat.columnPadding
     var copy: (_ text: String) -> Void = { text in
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)

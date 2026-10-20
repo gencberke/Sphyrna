@@ -166,6 +166,28 @@ struct ChatSideChatTests {
         await rig.finish()
     }
 
+    @Test func everyRunOfASideChatStartsWithEditsOffHoweverTheLastOneEnded() async throws {
+        let rig = try await Rig.make()
+        let (host, parentID, _, _) = try await parent(rig)
+        let side = try await host.startSideChat(parentSessionID: parentID)
+        let sideID = await side.sessionID
+        try await side.send("hello")
+        #expect(await idle(side))
+        await side.setAllowsEdits(true)
+        #expect(await side.sideChatState()?.allowsEdits == true)
+        // The run ends by the driver's own stop, not the tab's Close (which turns the toggle off itself), then resumes.
+        _ = try await side.stop()
+        #expect(await waitUntil { await side.currentPhase == .stopped })
+        try await side.resume()
+        #expect(await side.sideChatState()?.allowsEdits == false, "the permission was the last process's")
+        try await side.send("~scenario approval write")
+        #expect(await idle(side))
+        #expect(await side.snapshot().requests.isEmpty, "refused, not asked")
+        #expect(await side.sideChatState()?.refusedCount == 1)
+        #expect(try await host.discardSideChat(id: sideID) == .deleted)
+        await rig.finish()
+    }
+
     @Test func aSideChatRefusesWhatOnlyAMainSessionDoes() async throws {
         let rig = try await Rig.make()
         let (host, parentID, _, _) = try await parent(rig)

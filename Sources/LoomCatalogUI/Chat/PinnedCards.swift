@@ -186,7 +186,7 @@ struct PinnedApprovalCard: View {
             PinnedAction(id: "deny", title: "Deny", isEnabled: !busy) { Task { await cards.deny(request) } },
             PinnedAction(id: "once", title: "Allow once", isEnabled: !busy) { Task { await cards.allowOnce(request) } },
         ]
-        if request.canAllowForSession {
+        if cards.offersSessionGrants, request.canAllowForSession {
             list.append(PinnedAction(id: "session", title: request.sessionButtonTitle, isEnabled: !busy) {
                 Task { await cards.allowForSession(request) }
             })

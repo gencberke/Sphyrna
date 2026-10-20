@@ -39,6 +39,8 @@ extension LoomTheme {
         static let sessionCardRow: CGFloat = 46
         static let inspectorWidth: CGFloat = 328
         static let inspectorWidthReview: CGFloat = 556
+        /// The Side tab (V22): the preview's 392 pt, wide enough for a chat column and its composer.
+        static let inspectorWidthSide: CGFloat = 392
     }
 
     /// One layer of a shadow: black at `opacity`, `blur` points soft, `y` points down.

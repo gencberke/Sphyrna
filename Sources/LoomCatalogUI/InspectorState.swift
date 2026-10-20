@@ -2,15 +2,22 @@ import Foundation
 import LoomCore
 import Observation
 
-/// The inspector's tabs (V09, V20). The rest of the concept's tabs (Tasks, Side) come with the slices that fill them.
+/// The inspector's tabs (V09, V20, V22). The concept's Tasks tab comes with its own slice.
 public enum InspectorTab: String, CaseIterable, Sendable {
     case overview
     case changes
     case agents
+    /// A session's side chats (V22). Only on a Claude session that has a provider conversation id (`CatalogModel.inspectorTabs`).
+    case side
 
-    /// The column's width while this tab is open: review needs the wide column, the others keep the narrow one.
+    /// The column's width while this tab is open: review needs the wide column, a side chat a medium one, the others keep
+    /// the narrow one.
     var width: CGFloat {
-        self == .changes ? LoomTheme.Rhythm.inspectorWidthReview : LoomTheme.Rhythm.inspectorWidth
+        switch self {
+        case .changes: LoomTheme.Rhythm.inspectorWidthReview
+        case .side: LoomTheme.Rhythm.inspectorWidthSide
+        case .overview, .agents: LoomTheme.Rhythm.inspectorWidth
+        }
     }
 }
 
@@ -67,13 +74,25 @@ extension CatalogModel {
         if tab != .agents { closeSubagent() }
     }
 
+    /// The tabs the selected session's inspector offers: Side only for a Claude session that has a provider conversation id
+    /// (a fork needs one), on either face. A side chat is never selected, so it never gets the tab; Codex never does.
+    var inspectorTabs: [InspectorTab] {
+        InspectorTab.allCases.filter { $0 != .side || sideTabIsOffered(for: selectedRow) }
+    }
+
+    /// The tab the open inspector shows: the chosen one, or Overview where the chosen one is not offered (Side was open, and
+    /// the selection moved to a Codex session). Its width is this tab's.
+    var shownInspectorTab: InspectorTab {
+        inspectorTabs.contains(inspector.tab) ? inspector.tab : .overview
+    }
+
     /// The sessions whose context is shown right now: the selected Claude session while its inspector is open on
     /// Overview, while the ring of its live Chat composer is on screen (V17), and while the header's model segment is
     /// (every face without the bar, fix round 3 F). These are the "visible sessions" of `UsageModel.trackContext`.
     var inspectorContextSessions: [String] {
         guard let row = selectedRow, row.record.session.provider == .claude,
               let conversationID = row.record.session.providerConversationID else { return [] }
-        let inspectorShows = inspector.isOpen(for: row.id) && inspector.tab == .overview
+        let inspectorShows = inspector.isOpen(for: row.id) && shownInspectorTab == .overview
         let headerShows = detailRoute.showsSessionHeader && headerShowsModelSegment(row)
         return inspectorShows || runEndpoint(of: row) == .pipe || headerShows ? [conversationID] : []
     }

@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The inspector column on the right of the detail panel: closed by default, open per session
-/// (`CatalogModel.inspector`). A tab bar, then the open tab: Overview, Changes or Agents (V09, V20).
+/// (`CatalogModel.inspector`). A tab bar, then the open tab: Overview, Changes, Agents or Side (V09, V20, V22).
 struct InspectorContainer: View {
     let model: CatalogModel
     /// The column's width: the open tab's (`InspectorTab.width`), and no wider than the pane when it is drawn over it.
@@ -14,10 +14,11 @@ struct InspectorContainer: View {
         VStack(spacing: 0) {
             InspectorTabBar(model: model)
             if let row = model.selectedRow {
-                switch model.inspector.tab {
+                switch model.shownInspectorTab {
                 case .overview: InspectorOverview(model: model, row: row)
                 case .changes: ChangesTab(model: model, row: row)
                 case .agents: InspectorAgents(model: model, row: row)
+                case .side: SideTab(model: model, row: row)
                 }
             } else {
                 Spacer(minLength: 0)
@@ -59,6 +60,7 @@ struct InspectorTabBar: View {
         case .overview: "info.circle"
         case .changes: "plus.forwardslash.minus"
         case .agents: "person.crop.circle"
+        case .side: "arrow.triangle.branch"
         }
     }
 
@@ -67,6 +69,7 @@ struct InspectorTabBar: View {
         case .overview: "Overview"
         case .changes: "Changes"
         case .agents: "Agents"
+        case .side: "Side"
         }
     }
 
@@ -75,13 +78,24 @@ struct InspectorTabBar: View {
         case .overview: nil
         case .changes: model.changesFileCount(for: model.selectedSessionID)
         case .agents: model.selectedRow?.live?.subagents.count.nonZero
+        case .side: nil
         }
+    }
+
+    /// The Side tab's slot holds a dot, and only while one of the session's side chats waits for the user.
+    private func showsDot(_ tab: InspectorTab) -> Bool {
+        tab == .side && model.sideChatIsWaiting(for: model.selectedSessionID)
+    }
+
+    private func accessibilityLabel(_ tab: InspectorTab) -> String {
+        if showsDot(tab) { return "\(Self.title(tab)), a side chat is waiting for you" }
+        return count(tab).map { "\(Self.title(tab)), \($0)" } ?? Self.title(tab)
     }
 
     var body: some View {
         HStack(spacing: LoomTheme.Inspector.tabGap) {
-            ForEach(InspectorTab.allCases, id: \.self) { tab in
-                let selected = model.inspector.tab == tab
+            ForEach(model.inspectorTabs, id: \.self) { tab in
+                let selected = model.shownInspectorTab == tab
                 Button { model.selectInspectorTab(tab) } label: {
                     HStack(spacing: LoomTheme.Inspector.tabContentGap) {
                         Image(systemName: Self.symbol(tab)).font(LoomTheme.Inspector.tabGlyph)
@@ -90,6 +104,9 @@ struct InspectorTabBar: View {
                         if let count = count(tab) {
                             Text("\(count)").font(LoomTheme.Typography.caption).monospacedDigit()
                                 .foregroundStyle(LoomTheme.Text.secondaryStyle)
+                        } else if showsDot(tab) {
+                            Circle().fill(LoomTheme.Side.dot).frame(width: LoomTheme.Side.dotSize, height: LoomTheme.Side.dotSize)
+                                .accessibilityHidden(true).accessibilityIdentifier("inspector-side-dot")
                         }
                     }
                     .padding(.horizontal, selected ? LoomTheme.Inspector.tabInset : LoomTheme.Inspector.tabInsetCompact)
@@ -99,7 +116,7 @@ struct InspectorTabBar: View {
                 }
                 .buttonStyle(RowButtonStyle(selected: selected, radius: LoomTheme.Highlight.radiusControl, key: "inspector-tab:\(tab)"))
                 .focusEffectDisabled()
-                .accessibilityLabel(count(tab).map { "\(Self.title(tab)), \($0)" } ?? Self.title(tab))
+                .accessibilityLabel(accessibilityLabel(tab))
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
             Spacer(minLength: 0)
@@ -179,7 +196,7 @@ extension View {
     /// pass; crossing the threshold changes that width once.
     func detailInspector(model: CatalogModel) -> some View {
         let open = model.inspector.isOpen(for: model.selectedSessionID)
-        let tabWidth = model.inspector.tab.width
+        let tabWidth = model.shownInspectorTab.width
         return GeometryReader { proxy in
             let placement = InspectorPlacement.of(open: open, detailWidth: proxy.size.width, inspectorWidth: tabWidth)
             let width = placement.inspectorWidth(detailWidth: proxy.size.width, tabWidth: tabWidth)
@@ -198,10 +215,13 @@ extension View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // The tab's width is part of the layout: switching to or from Changes resizes the pane once, like a toggle.
-        .transaction(value: InspectorWidthKey(open: open, tab: model.inspector.tab)) { $0.animation = nil; $0.disablesAnimations = true }
+        .transaction(value: InspectorWidthKey(open: open, tab: model.shownInspectorTab)) { $0.animation = nil; $0.disablesAnimations = true }
         .task(id: model.inspectorContextSessions) { model.trackInspectorContext() }
         // Changes reads only while its tab is open on this session: the key is nil otherwise (`CatalogModel+Changes`).
         .task(id: model.changesTrigger) { await model.runChangesRead() }
+        // The Side tab's list of side chats is read while the inspector is open on an eligible session, so the tab bar's dot
+        // and the tab itself have it when they are looked at (`CatalogModel+Side`).
+        .task(id: model.sideTrigger) { await model.runSideRead() }
     }
 }
 
