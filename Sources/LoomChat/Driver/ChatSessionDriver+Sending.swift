@@ -140,6 +140,8 @@ extension ChatSessionDriver {
         holdInDraft(uuid, message)
         note(model.appendPendingUser(uuid: uuid, text: message.rowText, images: message.images, at: clock(),
                                      whileWorking: turnRunning, typedText: message.text))
+        let endedBefore = turnsEnded
+        await sendParked?(false)
         do {
             try await deliver(OutgoingUserMessage(uuid: uuid, content: message.blocks, priority: priority), row: uuid,
                               on: current.channel)
@@ -154,10 +156,16 @@ extension ChatSessionDriver {
         // The files are no longer as the newest rewind left them: its Undo goes.
         closeRewindUndo(to: .expired)
         await recordSideChatFirstSend(uuid: uuid, text: message.text)
-        await beginTurn()
+        await sendParked?(true)
+        // The CLI may have run the turn to its end while this waited (a side chat's catalog write): its `system/init` began the
+        // turn, and one begun now would never end. A turn the CLI has yet to start begins with its own `system/init`.
+        if turnsEnded == endedBefore { await beginTurn() }
         requestTitleIfNeeded(for: message)
         return uuid
     }
+
+    /// Tests park a send here (`sendParked`, in the core).
+    func setSendParked(_ pause: (@Sendable (_ delivered: Bool) async -> Void)?) { sendParked = pause }
 
     // MARK: The session's title
 

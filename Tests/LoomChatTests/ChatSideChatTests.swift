@@ -30,6 +30,21 @@ private final class MoveCount: Sendable {
     let count = Mutex(0)
 }
 
+/// A latch a test opens to let a parked task go on.
+private actor Gate {
+    private var opened = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    func wait() async {
+        if opened { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+    func open() {
+        opened = true
+        for waiter in waiters { waiter.resume() }
+        waiters.removeAll()
+    }
+}
+
 @Suite(.serialized, .processHeavy, .timeLimit(.minutes(5)))
 struct ChatSideChatTests {
     /// A parent that has answered once, and the host that forks it.
@@ -185,6 +200,59 @@ struct ChatSideChatTests {
         #expect(await idle(side))
         #expect(await side.snapshot().requests.isEmpty, "refused, not asked")
         #expect(await side.sideChatState()?.refusedCount == 1)
+        #expect(try await host.discardSideChat(id: sideID) == .deleted)
+        await rig.finish()
+    }
+
+    /// The fork can run its first turn to the end while the first send still waits (on the card's write of the first question,
+    /// `recordSideChatFirstSend`): that send then begins no turn of its own, and the side chat is idle with its answer. Before,
+    /// it began a turn that never ended, and the side chat stayed Working.
+    @Test func aTurnThatEndsWhileItsSendStillWaitsLeavesTheSideChatIdle() async throws {
+        let rig = try await Rig.make()
+        let (host, parentID, _, _) = try await parent(rig)
+        let side = try await host.startSideChat(parentSessionID: parentID)
+        let sideID = await side.sessionID
+        // The send waits, its message gone to the CLI, until the fork has answered and its turn has ended.
+        await side.setSendParked { delivered in
+            guard delivered else { return }
+            _ = await waitUntil { let snapshot = await side.snapshot(); return !snapshot.texts.isEmpty && snapshot.isIdle }
+        }
+        try await side.send("What is this?")
+        let snapshot = await side.snapshot()
+        #expect(snapshot.texts == ["Fake answer to: What is this?"])
+        #expect(snapshot.phase == .ready && !snapshot.turnRunning, "\(snapshot.phase), turn running: \(snapshot.turnRunning)")
+        // The next question is an ordinary turn.
+        await side.setSendParked(nil)
+        try await side.send("And this?")
+        #expect(await idle(side))
+        #expect(await side.snapshot().texts.last == "Fake answer to: And this?")
+        #expect(try await host.discardSideChat(id: sideID) == .deleted)
+        await rig.finish()
+    }
+
+    /// A side chat with a message on its way is not settled: the message's row is in the model before its turn begins, and a
+    /// side chat retired in that moment (`CatalogModel.retireSideChat`) was stopped under its question instead of once its turn
+    /// ended.
+    @Test func aSideChatWithAMessageOnItsWayIsNotSettled() async throws {
+        let rig = try await Rig.make()
+        let (host, parentID, _, _) = try await parent(rig)
+        let side = try await host.startSideChat(parentSessionID: parentID)
+        let sideID = await side.sessionID
+        #expect(await side.isLiveAndSettled)
+        let reached = Gate(), parked = Gate()
+        await side.setSendParked { delivered in
+            guard !delivered else { return }
+            await reached.open()
+            await parked.wait()
+        }
+        let send = Task { try await side.send("What is this?") }
+        await reached.wait()
+        #expect(await side.snapshot().isIdle, "ready, and no turn runs yet")
+        #expect(await side.isLiveAndSettled == false)
+        await parked.open()
+        try await send.value
+        #expect(await idle(side))
+        #expect(await side.isLiveAndSettled)
         #expect(try await host.discardSideChat(id: sideID) == .deleted)
         await rig.finish()
     }

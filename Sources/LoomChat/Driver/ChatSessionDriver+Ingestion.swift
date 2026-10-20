@@ -141,6 +141,7 @@ extension ChatSessionDriver {
         )
         guard !continues else { return }
         turnRunning = false
+        turnsEnded += 1
         wakeTurnEndWaiters()
         if phase == .working || phase == .needsYou { setPhase(requests.isEmpty ? .ready : .needsYou) }
         if failed, !queue.isEmpty { pauseQueue(.failedTurn) }

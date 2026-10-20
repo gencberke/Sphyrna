@@ -135,6 +135,8 @@ public actor ChatSessionDriver {
 
     var model = TurnModel(source: .live)
     var turnRunning = false
+    /// Turns that ended (a `result`, or the run's end): a send that waited across one begins no turn of its own (`write`).
+    var turnsEnded = 0
     private var drift: [ChatDrift] = []
     private var driftKeys: Set<String> = []
     var policySignal: ChatPolicySignal?
@@ -221,6 +223,9 @@ public actor ChatSessionDriver {
     var titleState = TitleState.needed
     /// Title requests for the card the run is on that failed or held no title (`titleAttemptLimit`).
     var titleFailures = 0
+    /// Tests park a send here, its row in the model: before it goes to the CLI (`false`) and once it went (`true`), each time
+    /// before the turn begins here.
+    var sendParked: (@Sendable (_ delivered: Bool) async -> Void)?
 
     // The handover to the terminal (ChatSessionDriver+Handover.swift)
 

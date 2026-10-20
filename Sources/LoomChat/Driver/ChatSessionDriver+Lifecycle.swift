@@ -245,6 +245,7 @@ extension ChatSessionDriver {
         keepForUser(unreadMessages.map { ChatReturnedDraft(messageID: $0.0, text: $0.1.text, attachments: $0.1.attachments) })
         if turnRunning { note(model.endRunningTurn(at: clock())) }
         turnRunning = false
+        turnsEnded += 1
         wakeTurnEndWaiters()
         finishStartWaiters(false)
         // Whatever the scope does next, the hub must not stay at Working or Needs you.

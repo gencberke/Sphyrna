@@ -72,9 +72,12 @@ struct SideChatFlowTests {
         }
     }
 
+    /// The parent's CLI took its first message and answered it. A turn in the model is no proof: the message's own row makes one
+    /// while the message is still on its way (ready, no turn running), and a fork made then copies a transcript that does not
+    /// hold it yet. The fake writes the message to the transcript before it streams the answer.
     private static func hasAnswered(_ driver: ChatSessionDriver) async -> Bool {
         let snapshot = await driver.snapshot()
-        return snapshot.phase == .ready && !snapshot.turnRunning && !snapshot.model.turns.isEmpty
+        return snapshot.phase == .ready && !snapshot.turnRunning && !answers(snapshot).isEmpty
     }
 
     private static func prompts(_ snapshot: ChatDriverSnapshot) -> [String] {
