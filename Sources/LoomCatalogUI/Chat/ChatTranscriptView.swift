@@ -149,7 +149,7 @@ struct ChatViewChip: View {
             .font(LoomTheme.Chat.viewChip)
             .foregroundStyle(LoomTheme.Text.primary)
             .padding(.horizontal, 9).frame(height: 22)
-            .background(Capsule().fill(hovering ? LoomTheme.Surface.raised : LoomTheme.Surface.card))
+            .background(Capsule().fill(LoomTheme.Surface.card).overlay(Capsule().fill(hovering ? LoomTheme.Highlight.hover : Color.clear)))
             .overlay(Capsule().strokeBorder(LoomTheme.Surface.hairlineStyle))
             .contentShape(Capsule())
         }

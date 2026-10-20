@@ -292,7 +292,7 @@ struct ContextPaceTests {
     /// How far the picture is from bare card colour, summed over its pixels: a ring or a meter that drew
     /// nothing leaves none, and a longer arc leaves more than a shorter one.
     private func inked(_ bitmap: NSBitmapImageRep) -> Double {
-        let card = LoomTheme.Surface.cardRGB
+        let card = LoomTheme.Surface.greys(.dark, tone: .neutral).raised1
         var total = 0.0
         for y in 0..<bitmap.pixelsHigh {
             for x in 0..<bitmap.pixelsWide {

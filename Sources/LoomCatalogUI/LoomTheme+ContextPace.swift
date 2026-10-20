@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Night Fleece 2 values of the context ring and the plan pace line (design preview `v2-studio-preview`:
+/// Values of the context ring and the plan pace line (design preview `v2-studio-preview`:
 /// the composer's `.ring`, the Home plan card's `.lim` and `.meter`). Built from the existing surface,
 /// text and status tokens; only sizes are new.
 extension LoomTheme {

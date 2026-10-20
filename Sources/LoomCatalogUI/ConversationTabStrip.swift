@@ -167,7 +167,7 @@ struct ConversationTabItem: View {
             ZStack {
                 RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
                     .fill(selected ? LoomTheme.Surface.selected
-                          : (hovering && tint.wash == nil ? LoomTheme.Surface.controlHover : .clear))
+                          : (hovering && tint.wash == nil ? LoomTheme.Highlight.hover : .clear))
                 if let wash = tint.washColor {
                     RoundedRectangle(cornerRadius: LoomTheme.Radius.control).fill(wash)
                 }

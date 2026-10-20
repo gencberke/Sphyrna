@@ -196,7 +196,7 @@ private struct ChangesDiffRowView: View {
 
     private func gutter(_ number: Int?) -> some View {
         Text(verbatim: number.map(String.init) ?? "").font(LoomTheme.Changes.gutterFont)
-            .foregroundStyle(LoomTheme.Text.secondaryStyle).monospacedDigit()
+            .foregroundStyle(LoomTheme.Text.tertiaryStyle).monospacedDigit()
             .frame(width: LoomTheme.Changes.numberWidth, alignment: .trailing)
             .padding(.trailing, LoomTheme.Changes.textInset)
             .accessibilityHidden(true)

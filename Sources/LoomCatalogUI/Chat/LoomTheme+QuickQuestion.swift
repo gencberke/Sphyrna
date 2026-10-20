@@ -7,9 +7,9 @@ extension LoomTheme {
     enum QuickQuestion {
         // MARK: Card
 
-        /// The panel floats above the stream: a popover level, which follows the tone (computed, never stored).
+        /// The panel floats above the stream: the popover level, which follows the tone (computed, never stored).
         static var fill: Color { Surface.popover }
-        static func fillRGB(_ appearance: Appearance, tone: PaneTone) -> RGB { Surface.levels(appearance, tone: tone).popover }
+        static func fillRGB(_ appearance: Appearance, tone: PaneTone) -> RGB { Surface.greys(appearance, tone: tone).popover }
         static let stroke = Surface.strongHairline
         static let radius: CGFloat = Radius.xxl
         /// The card is as wide as the composer under it, and sits this far above it.

@@ -209,15 +209,15 @@ struct SideTabTests {
         // the composer's card level: primary text 7:1, secondary 4.5:1, and the dot, a shape, 3:1.
         for appearance in LoomTheme.Appearance.allCases {
             for tone in PaneTone.allCases {
-                let levels = LoomTheme.Surface.levels(appearance, tone: tone)
-                for (name, level) in [("inspector", levels.inspector), ("popover", levels.popover), ("composer", levels.card)] {
+                let levels = LoomTheme.Surface.greys(appearance, tone: tone)
+                for (name, level) in [("inspector", levels.canvas), ("popover", levels.popover), ("composer", levels.raised2)] {
                     let place = "\(name), \(appearance), \(tone)"
                     #expect(LoomTheme.Text.primaryPair[appearance].contrast(with: level) >= 7, "primary on \(place)")
                     #expect(LoomTheme.Text.secondaryPair[appearance].contrast(with: level) >= 4.5, "secondary on \(place)")
                     #expect(LoomTheme.Text.secondaryIncreasedPair[appearance].contrast(with: level)
                             >= LoomTheme.Text.secondaryPair[appearance].contrast(with: level), "increased on \(place)")
                 }
-                for (name, level) in [("inspector", levels.inspector), ("popover", levels.popover)] {
+                for (name, level) in [("inspector", levels.canvas), ("popover", levels.popover)] {
                     #expect(LoomTheme.Status.attentionPair[appearance].contrast(with: level) >= 3, "dot on \(name), \(appearance), \(tone)")
                 }
             }

@@ -3,12 +3,12 @@ import LoomCore
 import LoomTerminal
 import SwiftUI
 
-/// The one source of visual values for `LoomCatalogUI` (design/DESIGN.md §3). Night Fleece 2: today's
-/// tokens are here, the tokens added for v2 are in `LoomTheme+Surfaces`, `+Palette` and `+Shape`.
+/// The one source of visual values for `LoomCatalogUI` (design/DESIGN.md §3). Ink: the colour roles are here and in
+/// `LoomTheme+Surfaces` (the greys by tone), `+Palette`, `+Depth`, `+Scale` (Ink's type, radii and heights) and `+Shape`.
 /// Views use these tokens and no color literal, `.system(size:)` or literal
 /// corner radius of their own; `scripts/check-theme-literals.sh` enforces it for every file but `LoomTheme*.swift`.
 /// Terminal colors stay in `LoomTerminal.TerminalTheme` (that target sits
-/// below this one); the terminal face's background is the dark tone's panel (`Surface.levels`).
+/// below this one); the terminal face's background is the tone's Ink canvas (`Surface.greys`).
 /// Colour tokens are appearance-aware (D-63): see `LoomTheme+Appearance.swift`.
 enum LoomTheme {
     /// A color kept as data so tests can compute contrast ratios; `color` is the
@@ -45,56 +45,74 @@ enum LoomTheme {
     // MARK: Color
 
     enum Surface {
-        /// The sidebar tone (a dark navy; in Light a warm sand), the colour behind the detail panel, and the tint over
-        /// the sidebar material.
-        static let sidebarPair = Adaptive(dark: RGB(red: 0.043, green: 0.055, blue: 0.086), light: RGB(hex: 0xEFE9DF))
-        static let sidebarRGB = sidebarPair.dark
-        static let sidebarLightRGB = sidebarPair.light
-        static let sidebar = sidebarPair.color
-        /// The opaque color behind the detail panel (the sidebar tone).
-        static let backdrop = sidebar
-        /// The dark tone over the sidebar material: low enough that the glass reads (the user's
-        /// choice after the Liquid Glass trial, 12 Oct 2026; 0.86 before looked matte).
+        /// The tint over the sidebar material in Glass (the sidebar slice moves it); Solid is opaque
+        /// (`sidebarTintOpacity(for:)`). The tint's colour is the tone's canvas (`LoomTheme+Surfaces`).
         static let sidebarTintOpacity = 0.6
-        /// The panel of the current tone: the terminal's background in Dark, its light counterpart in Light
-        /// (the Chat face, Home, a project page, Settings). Reading it in a view body subscribes the view to the tone.
-        static var panelNS: NSColor { current.panelNS }
-        static var panel: Color { current.panel }
-        /// Today's panel (Night fleece, Dark), the default tone's terminal background.
-        static var panelRGB: RGB { terminalRGB }
 
-        // Overlays on the sidebar and the panel: white in Dark, the warm ink in Light.
-        static let hairlineOpacity = 0.08
-        static let selectedOpacity = 0.07
-        static let controlOpacity = 0.06
-        static let controlHoverOpacity = 0.09
-        static let controlPressedOpacity = 0.14
-        /// The same fills in Light, where an ink overlay of the dark theme's opacity would read heavier.
-        static let hairlineLightOpacity = 0.10
-        static let selectedLightOpacity = 0.07
-        static let controlLightOpacity = 0.05
-        static let controlHoverLightOpacity = 0.08
-        static let controlPressedLightOpacity = 0.12
+        // Lines, white in Ink and the ink `#1E1C1A` in Paper (DESIGN §3 Surfaces, lines and fills).
+        static let hairlineOpacity = 0.075
+        static let hairlineLightOpacity = 0.085
+        /// The edges of controls, fields and chips.
+        static let strongHairlineOpacity = 0.115
+        static let strongHairlineLightOpacity = 0.13
+        /// A hovered edge.
+        static let strongerHairlineOpacity = 0.20
+        static let strongerHairlineLightOpacity = 0.24
+        /// Increase Contrast raises the hairline to 30 % (ink 45 % in Paper).
+        static let hairlineIncreasedOpacity = 0.30
+        static let hairlineIncreasedLightOpacity = 0.45
         static let hairlineTone = overlay(dark: hairlineOpacity, light: hairlineLightOpacity)
-        static let selectedTone = overlay(dark: selectedOpacity, light: selectedLightOpacity)
-        static let controlTone = overlay(dark: controlOpacity, light: controlLightOpacity)
-        static let controlHoverTone = overlay(dark: controlHoverOpacity, light: controlHoverLightOpacity)
-        static let controlPressedTone = overlay(dark: controlPressedOpacity, light: controlPressedLightOpacity)
+        static let strongHairlineTone = overlay(dark: strongHairlineOpacity, light: strongHairlineLightOpacity)
+        static let strongerHairlineTone = overlay(dark: strongerHairlineOpacity, light: strongerHairlineLightOpacity)
         static let hairline = hairlineTone.color
+        static let strongHairline = strongHairlineTone.color
+        static let strongerHairline = strongerHairlineTone.color
+
+        // The pill's fills: hover, selected, pressed (DESIGN §3 The pill).
+        static let hoverOpacity = 0.05
+        static let selectedOpacity = 0.08
+        static let pressedOpacity = 0.12
+        static let hoverLightOpacity = 0.045
+        static let selectedLightOpacity = 0.07
+        static let pressedLightOpacity = 0.10
+        static let hoverTone = overlay(dark: hoverOpacity, light: hoverLightOpacity)
+        static let selectedTone = overlay(dark: selectedOpacity, light: selectedLightOpacity)
+        static let pressedTone = overlay(dark: pressedOpacity, light: pressedLightOpacity)
+        static let hover = hoverTone.color
         static let selected = selectedTone.color
+        static let pressed = pressedTone.color
+
+        // The Night Fleece control names, kept as aliases by role: a control's resting fill is the hover fill (Ink's segmented
+        // control and chips rest on it), a control under the pointer is the selected fill, a pressed one the pressed fill.
+        static let controlOpacity = hoverOpacity
+        static let controlLightOpacity = hoverLightOpacity
+        static let controlHoverOpacity = selectedOpacity
+        static let controlHoverLightOpacity = selectedLightOpacity
+        static let controlPressedOpacity = pressedOpacity
+        static let controlPressedLightOpacity = pressedLightOpacity
+        static let controlTone = hoverTone
+        static let controlHoverTone = selectedTone
+        static let controlPressedTone = pressedTone
         static let control = controlTone.color
         static let controlSelected = selected
         static let controlHover = controlHoverTone.color
         static let controlPressed = controlPressedTone.color
-        /// The footer usage chip's meter track: white at 10 % (ink at 10 % in Light).
-        static let chipMeterTrackOpacity = 0.10
-        static let chipMeterTrackTone = overlay(dark: chipMeterTrackOpacity, light: 0.10)
+
+        /// The grid of an empty canvas: white 3.4 %, ink 6 %.
+        static let gridTone = overlay(dark: 0.034, light: 0.06)
+        static let grid = gridTone.color
+        /// The sharks' colour, drawn at the art's alpha.
+        static let artPair = Adaptive(dark: RGB(hex: 0xECECF0), light: RGB(hex: 0x161518))
+        static let art = artPair.color
+        /// Behind the palette and sheets: black 40 % in Ink, the ink at 22 % in Paper.
+        static let scrimTone = AdaptiveTone(dark: Tone(rgb: RGB(red: 0, green: 0, blue: 0), opacity: 0.40),
+                                            light: Tone(rgb: inkRGB, opacity: 0.22))
+        static let scrim = scrimTone.color
+        /// The footer usage chip's meter track and the plan meters' track: the strong hairline.
+        static let chipMeterTrackTone = strongHairlineTone
         static let chipMeterTrack = chipMeterTrackTone.color
         static let focusRing = Accent.base
 
-        /// Hairlines and the selected stroke are white at 8 %; Increase Contrast raises them to 30 % (ink at 45 % in Light).
-        static let hairlineIncreasedOpacity = 0.30
-        static let hairlineIncreasedLightOpacity = 0.45
         static func hairlineOpacity(for contrast: ColorSchemeContrast) -> Double {
             contrast == .increased ? hairlineIncreasedOpacity : hairlineOpacity
         }
@@ -114,21 +132,29 @@ enum LoomTheme {
         }
     }
 
+    /// The four text tiers (DESIGN §3 Text). Primary 7:1; secondary and tertiary 4.5:1 on the canvas and both raised levels;
+    /// faint is for what you never need to read (2.5:1).
     enum Text {
-        static let primaryPair = Adaptive(dark: RGB(hex: 0xECE8F4), light: inkRGB)
-        static let secondaryPair = Adaptive(dark: RGB(hex: 0x9A9EB0), light: RGB(hex: 0x5E5853))
+        static let primaryPair = Adaptive(dark: RGB(hex: 0xECECEF), light: RGB(hex: 0x19181B))
+        static let secondaryPair = Adaptive(dark: RGB(hex: 0x9E9EA8), light: RGB(hex: 0x5F5D63))
         static let primaryRGB = primaryPair.dark
         static let secondaryRGB = secondaryPair.dark
         static let primary = primaryPair.color
         static let secondary = secondaryPair.color
-        /// Placeholders, disabled items and decoration only (2.4 to 3.4:1, below AA); not on a popover (`OnPopover`).
-        static let tertiaryPair = Adaptive(dark: RGB(hex: 0x636779), light: RGB(hex: 0x8C857E))
+        /// The quiet voice: labels, meta, key hints, counts and line numbers. On a popover quiet text is secondary.
+        static let tertiaryPair = Adaptive(dark: RGB(hex: 0x868690), light: RGB(hex: 0x69676D))
         static let tertiaryRGB = tertiaryPair.dark
         static let tertiary = tertiaryPair.color
-        /// Increase Contrast lifts secondary text toward primary (at least 7:1 on every surface).
-        static let secondaryIncreasedPair = Adaptive(dark: RGB(hex: 0xBCC0D0), light: RGB(hex: 0x47423E))
+        /// Placeholders, disabled items and decorative marks, never text you need.
+        static let faintPair = Adaptive(dark: RGB(hex: 0x6B6B75), light: RGB(hex: 0x8E8B91))
+        static let faintRGB = faintPair.dark
+        static let faint = faintPair.color
+        /// Increase Contrast lifts secondary text toward primary (at least 7:1 on every level).
+        static let secondaryIncreasedPair = Adaptive(dark: RGB(hex: 0xBDBDC6), light: RGB(hex: 0x47454B))
         static let secondaryIncreasedRGB = secondaryIncreasedPair.dark
         static let secondaryIncreased = secondaryIncreasedPair.color
+        /// Under Increase Contrast tertiary takes secondary's normal value.
+        static let tertiaryIncreasedPair = secondaryPair
         static func secondaryRGB(for contrast: ColorSchemeContrast) -> RGB {
             contrast == .increased ? secondaryIncreasedRGB : secondaryRGB
         }
@@ -137,51 +163,68 @@ enum LoomTheme {
             standard: Tone(rgb: secondaryRGB, opacity: 1), increased: Tone(rgb: secondaryIncreasedRGB, opacity: 1),
             lightStandard: Tone(rgb: secondaryPair.light, opacity: 1),
             lightIncreased: Tone(rgb: secondaryIncreasedPair.light, opacity: 1))
+        /// Tertiary text as a style: Increase Contrast gives it secondary's normal value.
+        static let tertiaryStyle = ContrastStyle(
+            standard: Tone(rgb: tertiaryRGB, opacity: 1), increased: Tone(rgb: tertiaryIncreasedPair.dark, opacity: 1),
+            lightStandard: Tone(rgb: tertiaryPair.light, opacity: 1),
+            lightIncreased: Tone(rgb: tertiaryIncreasedPair.light, opacity: 1))
         /// Secondary text and the close glyph on a tab washed with a project tone (at least 4.5:1 on a
-        /// resting tab, 3:1 for the glyph on the open tab). Before Night Fleece 2 plain secondary fell
-        /// short there and this was a lifted tone; the lifted secondary of Night Fleece 2 holds it, so the
-        /// name stays for the call sites and the value is secondary.
+        /// resting tab, 3:1 for the glyph on the open tab). The name stays for the call sites; the value is secondary.
         static let secondaryOnTintPair = secondaryPair
         static let secondaryOnTintRGB = secondaryOnTintPair.dark
         static let secondaryOnTint = secondaryOnTintPair.color
         /// `secondaryOnTint` as a style: Increase Contrast takes the lifted secondary of that tier.
         static let secondaryOnTintStyle = secondaryStyle
-        /// Secondary text on a Usage card (the 6 % control tone over the panel): 5.4:1 in secondary.
+        /// Secondary text on a Usage card.
         static let secondaryOnCardRGB = secondaryOnTintRGB
         static let secondaryOnCardStyle = secondaryOnTintStyle
     }
 
-    /// The one brand color (the fleece of the mark). Fills carry dark text, never light text.
+    /// The one brand color (periwinkle). Fills carry the on-accent text, never light text in Ink.
     enum Accent {
-        /// In Light the accent is a deeper step of the same hue: the dark theme's periwinkle is 2.9:1 on a light panel.
+        /// In Paper the accent is a deeper step of the same hue.
         static let basePair = Adaptive(dark: RGB(hex: 0x8791CF), light: RGB(hex: 0x4B56A8))
         static let baseRGB = basePair.dark
         static let base = basePair.color
-        /// Text and symbols on an accent fill (6.4:1; light text there is 2.2 to 3.0:1). In Light the fill is deep
-        /// and the text a warm paper white.
-        static let onAccentPair = Adaptive(dark: Surface.sidebarRGB, light: RGB(hex: 0xFBF8F2))
+        /// Text and symbols on an accent fill: `#0B0E16` on the Ink fill (light text there is 3.0:1), a warm paper white
+        /// on the Paper fill.
+        static let onAccentPair = Adaptive(dark: RGB(hex: 0x0B0E16), light: RGB(hex: 0xFBF8F2))
         static let onAccentRGB = onAccentPair.dark
         static let onAccent = onAccentPair.color
+        /// A field's focus halo and a comment box: the base at 16 % in Ink, 11 % in Paper.
+        static let washTone = AdaptiveTone(dark: Tone(rgb: basePair.dark, opacity: 0.16),
+                                           light: Tone(rgb: basePair.light, opacity: 0.11))
+        static let wash = washTone.color
     }
 
     enum Status {
-        /// The three status hues, deeper in Light (the dark theme's are 2.2 to 3.0:1 on a light panel).
-        static let attentionPair = Adaptive(dark: RGB(hex: 0xFF9E0A), light: RGB(hex: 0x974700))
+        /// The three status dots; Paper's attention and failure dots are the lighter `#C46A00` and `#C8322C`.
+        static let attentionPair = Adaptive(dark: RGB(hex: 0xFF9E0A), light: RGB(hex: 0xC46A00))
         static let unviewedPair = Adaptive(dark: RGB(hex: 0x5C8CFF), light: RGB(hex: 0x2557CC))
-        static let failurePair = Adaptive(dark: RGB(hex: 0xF2615C), light: RGB(hex: 0xB22722))
+        static let failurePair = Adaptive(dark: RGB(hex: 0xF2615C), light: RGB(hex: 0xC8322C))
         static let attentionRGB = attentionPair.dark
         static let unviewedRGB = unviewedPair.dark
         static let failureRGB = failurePair.dark
         static let attention = attentionPair.color
         static let unviewed = unviewedPair.color
         static let failure = failurePair.color
+        /// The wash behind a status: 13 % in Ink; 11 % (attention) and 10 % (unviewed, failure) in Paper.
+        static let attentionWashTone = AdaptiveTone(dark: Tone(rgb: attentionPair.dark, opacity: 0.13),
+                                                    light: Tone(rgb: attentionPair.light, opacity: 0.11))
+        static let unviewedWashTone = AdaptiveTone(dark: Tone(rgb: unviewedPair.dark, opacity: 0.13),
+                                                   light: Tone(rgb: unviewedPair.light, opacity: 0.10))
+        static let failureWashTone = AdaptiveTone(dark: Tone(rgb: failurePair.dark, opacity: 0.13),
+                                                  light: Tone(rgb: failurePair.light, opacity: 0.10))
+        static let attentionWash = attentionWashTone.color
+        static let unviewedWash = unviewedWashTone.color
+        static let failureWash = failureWashTone.color
         /// The working chase is drawn in the primary text color.
         static let working = Text.primary
         /// The chase's colour for layers, which cannot see the SwiftUI environment: a dynamic colour the layer's
         /// owner resolves again in `viewDidChangeEffectiveAppearance`.
         static let workingNS = Text.primaryPair.nsColor
-        /// Fill opacity of a callout tinted with a status color.
-        static let tintOpacity = 0.10
+        /// Fill opacity of a callout tinted with a status color (the Ink wash, Ink's value).
+        static let tintOpacity = 0.13
     }
 
     /// The project colour class (D-48): six soft tones besides the accent and the three status hues. Used
@@ -305,9 +348,9 @@ enum LoomTheme {
         static let pillLeading: CGFloat = 8
         static let pillTrailing: CGFloat = 8
         static let pillGap: CGFloat = 8
-        static let pillWorkingWash = 0.07
-        static let pillNeutralWash = 0.05
-        static let pillStatusWash = 0.15
+        static let pillWorkingWash = Surface.selectedOpacity
+        static let pillNeutralWash = Surface.hoverOpacity
+        static let pillStatusWash = 0.13
         static let attentionLabelRGB = Status.attentionLightRGB
         static let failureLabelRGB = Status.failureLightRGB
         static let unviewedLabelRGB = Status.unviewedLightRGB
@@ -328,9 +371,9 @@ enum LoomTheme {
         static let chipGlyph = Font.system(size: 11)
         /// A longer branch name ends in an ellipsis; 320 pt holds names like "release/2026-10/hotfix-PAY-142".
         static let branchMaxWidth: CGFloat = 320
-        /// The neutral chip (no project, None, colours off): a white wash.
-        static let chipNeutralWash = 0.07
-        static let chipNeutralTone = overlay(dark: chipNeutralWash, light: 0.06)
+        /// The neutral chip (no project, None, colours off): the selected fill.
+        static let chipNeutralWash = Surface.selectedOpacity
+        static let chipNeutralTone = Surface.selectedTone
         static let chipNeutral = chipNeutralTone.color
 
         // The model segment after the chip: the ring (or a token count) and the model's name, plain text.
@@ -340,12 +383,12 @@ enum LoomTheme {
         static let ruleHeight: CGFloat = 16
         static let ruleMargin: CGFloat = 2
         static let groupHeight: CGFloat = 24
-        static let groupWash = 0.07
-        static let groupTone = overlay(dark: groupWash, light: 0.06)
+        static let groupWash = Surface.selectedOpacity
+        static let groupTone = Surface.selectedTone
         static let group = groupTone.color
-        /// The state pill's washes in Light: working and neutral are ink overlays, a status wash is its own hue.
-        static let pillWorkingLightWash = 0.07
-        static let pillNeutralLightWash = 0.05
+        /// The state pill's washes in Paper: working and neutral are ink overlays, a status wash is its own hue.
+        static let pillWorkingLightWash = Surface.selectedLightOpacity
+        static let pillNeutralLightWash = Surface.hoverLightOpacity
         static let stopGlyph: CGFloat = 8
         static let stopGlyphRadius: CGFloat = 1.5
         static let stopPadding: CGFloat = 8

@@ -2,7 +2,8 @@ import SwiftUI
 import Testing
 @testable import LoomCatalogUI
 
-/// V25: the one hover and selection treatment (`LoomTheme.Highlight`, `RowHighlight`), its contrast in both appearances, and
+/// V25: the one hover and selection treatment (`LoomTheme.Highlight`, `RowHighlight`), its contrast in both appearances (Ink,
+/// Paper) on every tone, and
 /// the 4 pt grid of the gaps and paddings the spacing pass moved.
 struct HighlightTests {
     typealias RGB = LoomTheme.RGB
@@ -74,18 +75,15 @@ struct HighlightTests {
 
     // MARK: Contrast
 
-    /// Every opaque surface a row sits on: the panel family of each tone, and the sidebar opaque and over the glass's lighter
-    /// extreme in Dark (the darker extreme in Light). The worst glass case keeps its own floor, as in `ThemeAppearanceTests`.
+    /// Every level a row sits on, in each tone: the canvas, both raised levels and the popover (DESIGN §3 Contrast).
     private static func surfaces(_ appearance: Appearance) -> [(name: String, rgb: RGB, level: String)] {
         var result: [(String, RGB, String)] = []
         for tone in PaneTone.allCases {
-            let levels = LoomTheme.Surface.levels(appearance, tone: tone)
-            let named: [(String, RGB)] = [("inspector", levels.inspector), ("canvas", levels.canvas), ("panel", levels.panel),
-                                          ("card", levels.card), ("raised", levels.raised), ("popover", levels.popover)]
+            let greys = LoomTheme.Surface.greys(appearance, tone: tone)
+            let named: [(String, RGB)] = [("canvas", greys.canvas), ("raised 1", greys.raised1), ("raised 2", greys.raised2),
+                                          ("popover", greys.popover)]
             for (name, rgb) in named { result.append(("\(tone) \(name)", rgb, name)) }
         }
-        let sidebar = LoomTheme.Surface.sidebarPair[appearance]
-        result.append(("sidebar opaque", sidebar, "sidebar"))
         return result
     }
 
@@ -96,9 +94,9 @@ struct HighlightTests {
         return tone.rgb.composited(over: surface, opacity: opacity)
     }
 
-    @Test func primaryTextHoldsItsTierUnderEveryStateOnEverySurface() {
+    @Test func primaryTextHoldsItsTierUnderEveryStateOnEveryLevel() {
         for appearance in Appearance.allCases {
-            for (name, surface, _) in Self.surfaces(appearance) {
+            for (name, surface, level) in Self.surfaces(appearance) where level != "popover" {
                 for state in [HighlightState.hover, .selected, .pressed] {
                     let pill = Self.under(state, surface, appearance)
                     #expect(LoomTheme.Text.primaryPair[appearance].contrast(with: pill) >= 7, "primary under \(state) on \(appearance) \(name)")
@@ -107,53 +105,35 @@ struct HighlightTests {
         }
     }
 
-    @Test func secondaryTextKeepsItsTierUnderTheSelectedFillWhereRowsAreSelected() {
-        // Rows are selected on the sidebar, the panel, the canvas, the inspector and a card (never on a raised level or a popover).
+    @Test func secondaryTextKeepsItsTierUnderEveryFillOnTheCanvasAndBothRaisedLevels() {
         for appearance in Appearance.allCases {
-            for (name, surface, level) in Self.surfaces(appearance) where !["raised", "popover"].contains(level) {
-                let pill = Self.under(.selected, surface, appearance)
-                #expect(LoomTheme.Text.secondaryPair[appearance].contrast(with: pill) >= 4.5, "secondary under selected on \(appearance) \(name)")
+            for (name, surface, level) in Self.surfaces(appearance) where level != "popover" {
+                for state in [HighlightState.hover, .selected, .pressed] {
+                    let pill = Self.under(state, surface, appearance)
+                    #expect(LoomTheme.Text.secondaryPair[appearance].contrast(with: pill) >= 4.5,
+                            "secondary under \(state) on \(appearance) \(name)")
+                }
             }
         }
     }
 
-    /// Item 1 of Release B's fix round 2: a popover row under the pointer or the cursor reads its secondary text at 4.5:1 too,
-    /// in both appearances and all three tones. The plain secondary does not there (4.1:1 in Dark, Night fleece and Workshop);
-    /// the row lifts it (`OnPopover.hoveredSecondaryPair`) instead of using a hover fill too faint to see. The floor was 4.0.
-    @Test func secondaryTextKeepsItsTierUnderTheHoverFillOnEverySurfaceIncludingAPopoverRow() {
+    /// A popover row under the pointer or the cursor reads its secondary text at 4.5:1, in both appearances and all three
+    /// tones, with the plain secondary: Ink's 5 % hover fill needs no lift (the pressed fill over a popover reads 4.43 to 4.45
+    /// in Ink, which a row held down does not need to carry).
+    @Test func secondaryTextKeepsItsTierUnderTheHoverFillOnAPopoverRow() {
         for appearance in Appearance.allCases {
-            // A raised level is a card's own hover fill, never a row's surface.
-            for (name, surface, level) in Self.surfaces(appearance) where level != "raised" {
+            for (name, surface, level) in Self.surfaces(appearance) where level == "popover" {
                 let pill = Self.under(.hover, surface, appearance)
-                // The text a row draws on that surface: a popover's rows lift theirs while they are lit.
-                let text = level == "popover" ? LoomTheme.OnPopover.hoveredSecondaryPair : LoomTheme.Text.secondaryPair
+                let text = LoomTheme.OnPopover.hoveredSecondaryPair
                 #expect(text[appearance].contrast(with: pill) >= 4.5,
                         "secondary under hover on \(appearance) \(name): \(text[appearance].contrast(with: pill))")
             }
         }
     }
 
-    /// The lift is a lift, not a second palette: it stays below primary and above the plain secondary, and the hover fill it
-    /// sits on is the same one every other surface draws (the popover has no fill of its own).
-    @Test func theLiftedPopoverTextStaysBetweenSecondaryAndPrimaryAndTheHoverFillIsTheSameEverywhere() {
-        let lifted = LoomTheme.OnPopover.hoveredSecondaryPair
-        let popover = LoomTheme.Surface.levels(.dark, tone: .nightFleece).popover
-        let hovered = Self.under(.hover, popover, .dark)
-        #expect(lifted.dark.contrast(with: hovered) > LoomTheme.Text.secondaryPair.dark.contrast(with: hovered))
-        #expect(lifted.dark.contrast(with: hovered) < LoomTheme.Text.primaryPair.dark.contrast(with: hovered))
-        #expect(lifted.light == LoomTheme.Text.secondaryPair.light, "Light already clears 4.5:1 and takes no lift")
-        // The hover stays visible: the fill is the shared token, 0.06 over the popover in Dark.
-        #expect(HighlightState.hover.tone![.dark].opacity == 0.06)
-        #expect(abs(hovered.luminance - popover.luminance) > 0.004, "the hover fill is a visible step on a popover")
-        // Lit and unlit take the lifted and the plain style; Increase Contrast lifts both to the same tone.
-        #expect(LoomTheme.OnPopover.secondary(lit: true) == LoomTheme.OnPopover.hoveredSecondaryStyle)
-        #expect(LoomTheme.OnPopover.secondary(lit: false) == LoomTheme.Text.secondaryStyle)
-        #expect(LoomTheme.OnPopover.hoveredSecondaryStyle.increased == LoomTheme.Text.secondaryStyle.increased)
-    }
-
     @Test func increaseContrastSecondaryStaysAtSevenUnderTheSelectedAndHoverFills() {
         for appearance in Appearance.allCases {
-            for (name, surface, level) in Self.surfaces(appearance) where level != "popover" && level != "raised" {
+            for (name, surface, level) in Self.surfaces(appearance) where level != "popover" {
                 for state in [HighlightState.hover, .selected] {
                     let pill = Self.under(state, surface, appearance, increasedContrast: true)
                     #expect(LoomTheme.Text.secondaryIncreasedPair[appearance].contrast(with: pill) >= 7,
@@ -166,10 +146,14 @@ struct HighlightTests {
     @Test func theSelectedPillIsVisiblyStrongerThanTheHoverPill() {
         // A luminance step of the pill over the surface: the selected one is the larger in both appearances and on a card.
         for appearance in Appearance.allCases {
-            let card = LoomTheme.Surface.levels(appearance, tone: .nightFleece).card
+            let card = LoomTheme.Surface.greys(appearance, tone: .neutral).raised1
             let hover = Self.under(.hover, card, appearance), selected = Self.under(.selected, card, appearance)
             #expect(abs(selected.luminance - card.luminance) > abs(hover.luminance - card.luminance), "\(appearance)")
         }
+        #expect(HighlightState.hover.tone![.dark].opacity == 0.05 && HighlightState.selected.tone![.dark].opacity == 0.08
+                && HighlightState.pressed.tone![.dark].opacity == 0.12)
+        #expect(HighlightState.hover.tone![.light].opacity == 0.045 && HighlightState.selected.tone![.light].opacity == 0.07
+                && HighlightState.pressed.tone![.light].opacity == 0.10)
     }
 
     // MARK: The 4 pt grid

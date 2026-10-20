@@ -534,7 +534,8 @@ struct ChatSubagentCardView: View {
                     footer(run)
                 }
                 .padding(LoomTheme.Chat.cardPadding)
-                .background(RoundedRectangle(cornerRadius: LoomTheme.Chat.cardRadius).fill(hovering ? LoomTheme.Surface.raised : LoomTheme.Surface.card))
+                .background(RoundedRectangle(cornerRadius: LoomTheme.Chat.cardRadius).fill(LoomTheme.Surface.card)
+                    .overlay(RoundedRectangle(cornerRadius: LoomTheme.Chat.cardRadius).fill(hovering ? LoomTheme.Highlight.hover : Color.clear)))
                 .overlay(RoundedRectangle(cornerRadius: LoomTheme.Chat.cardRadius).strokeBorder(LoomTheme.Surface.hairlineStyle))
                 .contentShape(Rectangle())
             }

@@ -209,7 +209,7 @@ private struct SubagentRowView: View {
                 .frame(width: LoomTheme.Layout.chaseSide, height: LoomTheme.Layout.chaseSide)
         case .finished, .finishedFold:
             Image(systemName: "checkmark").font(LoomTheme.Typography.subagentGlyph)
-                .foregroundStyle(LoomTheme.Text.tertiary)
+                .foregroundStyle(LoomTheme.Text.faint)
         case .more:
             Color.clear
         }

@@ -255,7 +255,7 @@ struct ComposerModelChip: View {
                 HStack(spacing: LoomTheme.Space.headerSpacing) {
                     Text(picker.effortTitle ?? "Effort").font(LoomTheme.Composer.barFont)
                         .foregroundStyle(LoomTheme.Composer.effortColor).lineLimit(1)
-                    Image(systemName: "chevron.down").font(LoomTheme.Composer.chevron).foregroundStyle(LoomTheme.Text.tertiary)
+                    Image(systemName: "chevron.down").font(LoomTheme.Composer.chevron).foregroundStyle(LoomTheme.Text.faint)
                 }
                 .padding(.leading, LoomTheme.Space.headerSpacing).padding(.trailing, LoomTheme.Space.cardH)
                 .frame(minHeight: LoomTheme.Composer.controlSide)

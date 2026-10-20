@@ -86,7 +86,7 @@ struct SideComposerView: View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
                 if session.composerText.isEmpty {
-                    Text(SideText.placeholder).font(LoomTheme.TypeScale.reading).foregroundStyle(LoomTheme.Text.tertiary)
+                    Text(SideText.placeholder).font(LoomTheme.TypeScale.reading).foregroundStyle(LoomTheme.Text.faint)
                         .padding(.top, ComposerTextEditor.inset.height).allowsHitTesting(false).accessibilityHidden(true)
                 }
                 ComposerTextEditor(host: host, height: $height, isEditable: off == nil && !isDiscarding,

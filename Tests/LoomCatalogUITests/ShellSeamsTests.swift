@@ -217,7 +217,7 @@ struct ShellSeamsTests {
         #expect(model.detailRoute == .devTerminal)
     }
 
-    @Test func everyRouteIsDrawnOnThePanelColourToday() {
+    @Test func everyRouteIsDrawnOnTheCanvasToday() {
         for route in [DetailRoute.startupError("x"), .devTerminal,
                       .terminal(sessionID: UUID()), .endedScreen(sessionID: UUID()), .record(sessionID: UUID()),
                       .noSelection, .chat(sessionID: UUID()), .home, .draft(projectID: nil),
@@ -228,8 +228,10 @@ struct ShellSeamsTests {
 
     // MARK: Inspector container
 
-    /// The colour of the detail panel at a point a little inside its right edge, drawn offscreen.
-    private func rightEdgeColor(of model: CatalogModel) throws -> NSColor {
+    /// The brightest red along the inspector column's leading edge (the column is 328 pt wide, inside the 8 pt panel inset), low in the
+    /// pane where no content is drawn, drawn offscreen. The inspector is the canvas like the pane, so an open column shows as
+    /// its leading hairline, brighter than the flat canvas.
+    private func inspectorEdgeBrightness(of model: CatalogModel) throws -> Double {
         let host = NSHostingView(rootView: DetailView(model: model))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 600), styleMask: [.titled],
                               backing: .buffered, defer: false)
@@ -241,7 +243,12 @@ struct ShellSeamsTests {
         host.layoutSubtreeIfNeeded()
         let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: bitmap)
-        return try #require(bitmap.colorAt(x: bitmap.pixelsWide - 60, y: bitmap.pixelsHigh / 2)).usingColorSpace(.sRGB) ?? .clear
+        let scale = Double(bitmap.pixelsWide) / 1000
+        let edge = bitmap.pixelsWide - Int(((LoomTheme.Rhythm.inspectorWidth + LoomTheme.Space.panelInset) * scale).rounded())
+        let rows = Int(Double(bitmap.pixelsHigh) * 0.8)..<Int(Double(bitmap.pixelsHigh) * 0.95)
+        return rows.flatMap { y in (edge - 3...edge + 3).compactMap { x in
+            bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB)?.redComponent
+        } }.map(Double.init).max() ?? 0
     }
 
     @Test func theInspectorColumnAppearsOnlyForASessionWhoseInspectorIsOpen() async throws {
@@ -259,13 +266,10 @@ struct ShellSeamsTests {
         model.select(session.id)
         #expect(await waitUntil { model.selectedRow != nil })
 
-        // An offscreen draw is colour-managed, so compare the two draws with each other: the inspector
-        // surface is darker than the panel by the same ratio as the tokens.
-        func red(_ color: NSColor) -> Double { Double(color.redComponent) }
-        let closed = try rightEdgeColor(of: model)
+        // An offscreen draw is colour-managed, so compare the two draws with each other.
+        let closed = try inspectorEdgeBrightness(of: model)
         model.setInspectorOpen(true, for: session.id)
-        let open = try rightEdgeColor(of: model)
-        let expected = LoomTheme.Surface.inspectorRGB.red / LoomTheme.Surface.terminalRGB.red
-        #expect(abs(red(open) / red(closed) - expected) < 0.05, "closed \(closed), open \(open)")
+        let open = try inspectorEdgeBrightness(of: model)
+        #expect(open - closed > 0.03, "the hairline of the column; closed \(closed), open \(open)")
     }
 }

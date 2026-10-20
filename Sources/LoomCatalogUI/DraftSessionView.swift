@@ -153,7 +153,7 @@ private struct BranchStrip: View {
             .accessibilityIdentifier("draft-branch")
             Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             if let note = sourceNote {
-                Text(note).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.tertiary).lineLimit(1)
+                Text(note).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
             }
             if draft.isVisible {
                 Button { model.savePreset(projectID: projectID) } label: {

@@ -41,8 +41,8 @@ struct ThemeSettings: View {
     }
 }
 
-/// The main pane's three tones, each as a small picture of the pane in the look that is on now (the dark panel in
-/// Dark, its light counterpart in Light).
+/// The three tones, each as a small picture of the pane in the look that is on now (the Ink canvas in Ink, the Paper
+/// canvas in Paper).
 struct ToneRow: View {
     let selection: PaneTone
     let onSelect: (PaneTone) -> Void
@@ -78,11 +78,11 @@ struct ToneTile: View {
             VStack(alignment: .leading, spacing: LoomTheme.ThemeTile.captionGap) {
                 // The pane in miniature: a line of text, a card with a button.
                 ZStack(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: LoomTheme.Radius.md).fill(colors.panel)
+                    RoundedRectangle(cornerRadius: LoomTheme.Radius.md).fill(colors.canvas)
                     VStack(alignment: .leading, spacing: LoomTheme.ThemeTile.previewGap) {
                         Capsule().fill(LoomTheme.Text.secondary)
                             .frame(width: LoomTheme.ThemeTile.previewLine, height: LoomTheme.ThemeTile.previewLineHeight)
-                        RoundedRectangle(cornerRadius: LoomTheme.Radius.sm).fill(colors.card)
+                        RoundedRectangle(cornerRadius: LoomTheme.Radius.sm).fill(colors.raised1)
                             .overlay(alignment: .leading) {
                                 Capsule().fill(LoomTheme.Accent.base)
                                     .frame(width: LoomTheme.ThemeTile.previewButton, height: LoomTheme.ThemeTile.previewLineHeight)

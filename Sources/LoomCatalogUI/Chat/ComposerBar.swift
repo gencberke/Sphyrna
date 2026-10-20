@@ -37,7 +37,7 @@ struct ComposerChipLabel: View {
             if let lighter {
                 Text(lighter).font(LoomTheme.Composer.barFont).foregroundStyle(LoomTheme.Composer.effortColor).lineLimit(1)
             }
-            Image(systemName: "chevron.down").font(LoomTheme.Composer.chevron).foregroundStyle(LoomTheme.Text.tertiary)
+            Image(systemName: "chevron.down").font(LoomTheme.Composer.chevron).foregroundStyle(LoomTheme.Text.faint)
         }
         .foregroundStyle(titleColor)
         .padding(.horizontal, LoomTheme.Space.cardH)
@@ -89,7 +89,7 @@ struct ComposerSendButton: View {
     }
 
     @ViewBuilder private func glyph(enabled: Bool) -> some View {
-        let color = enabled ? LoomTheme.Accent.onAccent : LoomTheme.Text.tertiary
+        let color = enabled ? LoomTheme.Accent.onAccent : LoomTheme.Text.faint
         switch look {
         case .stop:
             RoundedRectangle(cornerRadius: LoomTheme.Composer.stopRadius).fill(color)

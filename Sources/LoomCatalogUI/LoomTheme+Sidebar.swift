@@ -17,7 +17,7 @@ extension LoomTheme {
         static let badgeMinWidth: CGFloat = 18
         static let badgeHeight: CGFloat = 17
         static let badgePadding: CGFloat = 4
-        static let badgeWash = 0.15
+        static let badgeWash = 0.13
         static let badgeFont = Font.system(size: 10.5, weight: .semibold).monospacedDigit()
 
         /// A project row whose page is open is filled like a selected card; the fill starts this far inside

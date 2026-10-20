@@ -12,7 +12,7 @@ import LoomCore
 @Suite(.serialized, .timeLimit(.minutes(3)))
 struct SessionHeaderTests {
     typealias RGB = LoomTheme.RGB
-    private static let panel = LoomTheme.Surface.panelRGB
+    private static let panel = LoomTheme.Surface.greys(.dark, tone: .neutral).canvas
     private static let white = RGB(red: 1, green: 1, blue: 1)
 
     // MARK: Contrast
@@ -40,10 +40,7 @@ struct SessionHeaderTests {
                 #expect(label.contrast(with: wash) >= floor, "\(style.label) (\(contrast)): \(label.contrast(with: wash))")
             }
         }
-        // The plain status colours would not do: that is why the pill has lighter ones. (Plain secondary holds
-        // on the neutral wash since Night Fleece 2.)
-        let failureWash = over(LoomTheme.Tone(rgb: LoomTheme.Status.failureRGB, opacity: LoomTheme.Header.pillStatusWash))
-        #expect(LoomTheme.Status.failureRGB.contrast(with: failureWash) < 4.5)
+        // Plain secondary holds on the neutral wash.
         let neutralWash = over(LoomTheme.Tone(rgb: Self.white, opacity: LoomTheme.Header.pillNeutralWash))
         #expect(LoomTheme.Text.secondaryRGB.contrast(with: neutralWash) >= 4.5)
     }
@@ -55,10 +52,10 @@ struct SessionHeaderTests {
             #expect(StatePillStyle(state)?.showsIndicator == ![.ready, .idle, .stale].contains(state), "\(state)")
         }
         let working = try #require(StatePillStyle(.working))
-        #expect(working.wash.opacity == 0.07 && working.text.standard.rgb == LoomTheme.Text.primaryRGB)
+        #expect(working.wash.opacity == LoomTheme.Surface.selectedOpacity && working.text.standard.rgb == LoomTheme.Text.primaryRGB)
         for state in [SessionIndicator.ready, .idle, .stale, .unknown] {
             let style = try #require(StatePillStyle(state))
-            #expect(style.wash.opacity == 0.05 && style.wash.rgb == Self.white, "\(state)")
+            #expect(style.wash.opacity == LoomTheme.Surface.hoverOpacity && style.wash.rgb == Self.white, "\(state)")
             #expect(style.text.standard.rgb == LoomTheme.Text.secondaryOnTintRGB)
             #expect(style.text.increased.rgb == LoomTheme.Text.secondaryIncreasedRGB)
         }
@@ -69,7 +66,7 @@ struct SessionHeaderTests {
                                 (.problem("x"), LoomTheme.Status.failureRGB),
                                 (.unviewedCompletion, LoomTheme.Status.unviewedRGB)] {
             let style = try #require(StatePillStyle(state))
-            #expect(style.wash == LoomTheme.Tone(rgb: status, opacity: 0.15), "\(state): a low wash of its own colour")
+            #expect(style.wash == LoomTheme.Tone(rgb: status, opacity: 0.13), "\(state): a low wash of its own colour")
             #expect(style.label == state.label)
         }
     }

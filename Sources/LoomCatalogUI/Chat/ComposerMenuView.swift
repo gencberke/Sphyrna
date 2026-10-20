@@ -55,8 +55,7 @@ struct ComposerMenuPanel: View {
         .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Composer.menuRadius))
         .overlay(RoundedRectangle(cornerRadius: LoomTheme.Composer.menuRadius)
             .strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
-        .shadow(color: LoomTheme.Depth.shadowColor(LoomTheme.Depth.popover.shadow.opacity),
-                radius: LoomTheme.Depth.popover.shadow.blur / 2, y: LoomTheme.Depth.popover.shadow.y / 2)
+        .depth(LoomTheme.Elevation.popover)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
         .accessibilityIdentifier("composer-menu")

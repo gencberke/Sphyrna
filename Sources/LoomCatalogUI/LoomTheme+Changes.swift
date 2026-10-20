@@ -34,10 +34,8 @@ extension LoomTheme {
         // MARK: The diff card
 
         static let cardRadius: CGFloat = Radius.md
-        /// The code card's dim backing (the chat's command output has the same): black at 12 % in Dark, ink at 5 % in Light.
-        static let cardFillTone = AdaptiveTone(dark: Tone(rgb: RGB(red: 0, green: 0, blue: 0), opacity: 0.12),
-                                               light: Tone(rgb: inkRGB, opacity: 0.05))
-        static let cardFill = cardFillTone.color
+        /// The code card is raised 1 (it follows the tone, so computed, never stored).
+        static var cardFill: Color { Surface.raised1 }
         static let cardHeaderHeight: CGFloat = 30
         static let cardHeaderInset: CGFloat = 10
         static let hunkHeaderHeight: CGFloat = 22
@@ -57,13 +55,15 @@ extension LoomTheme {
 
         // MARK: Bands
 
-        /// A changed line is a band of the success or failure hue at low opacity (a diff is content, DESIGN §3). The
-        /// text on it is primary, and the line numbers secondary; `ChangesInspectorTests` holds both contrasts in both
-        /// looks. 8 % is the most the secondary text allows (4.5:1) on the Light inspector and on a popover in Dark.
-        static let addedBandOpacity = 0.08
-        static let removedBandOpacity = 0.08
-        static let addedBand = Success.base.opacity(addedBandOpacity)
-        static let removedBand = Status.failure.opacity(removedBandOpacity)
+        /// A changed line is a band of the success or failure hue at low opacity (a diff is content, DESIGN §3): 9 % in Ink,
+        /// 8 % in Paper. The text on it is primary, and the line numbers tertiary; `ChangesInspectorTests` holds both
+        /// contrasts in both appearances.
+        static let addedBandTone = AdaptiveTone(dark: Tone(rgb: Success.basePair.dark, opacity: 0.09),
+                                                light: Tone(rgb: Success.basePair.light, opacity: 0.08))
+        static let removedBandTone = AdaptiveTone(dark: Tone(rgb: Status.failurePair.dark, opacity: 0.09),
+                                                  light: Tone(rgb: Status.failurePair.light, opacity: 0.08))
+        static let addedBand = addedBandTone.color
+        static let removedBand = removedBandTone.color
         /// The sign of a changed line, in the light step of its hue.
         static let addedSign = Success.light
         static let removedSign = Status.failureLight
@@ -72,7 +72,9 @@ extension LoomTheme {
             added ? Success.basePair[appearance] : Status.failurePair[appearance]
         }
 
-        static func bandOpacity(added: Bool) -> Double { added ? addedBandOpacity : removedBandOpacity }
+        static func bandOpacity(added: Bool, _ appearance: Appearance) -> Double {
+            (added ? addedBandTone : removedBandTone)[appearance].opacity
+        }
 
         // MARK: Comments
 
@@ -80,7 +82,7 @@ extension LoomTheme {
         static let commentInset: CGFloat = 10
         static let commentGap: CGFloat = 6
         static let commentOuterV: CGFloat = 6
-        static let commentFill = Accent.base.opacity(0.08)
+        static let commentFill = Accent.wash
         static let commentStroke = Accent.base.opacity(0.4)
         static let commentGlyph = Font.system(size: 11)
         static let commentLines = 6

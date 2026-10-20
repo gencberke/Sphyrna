@@ -78,7 +78,7 @@ enum ProjectSwatch {
         let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
             // The handler runs for each draw, under the menu's appearance: a swatch in a light menu takes the Light tone.
             let appearance = LoomTheme.Appearance(NSAppearance.currentDrawing())
-            let rgb = tone.map { LoomTheme.ProjectColor.baseRGB($0, appearance) } ?? LoomTheme.Text.tertiaryPair[appearance]
+            let rgb = tone.map { LoomTheme.ProjectColor.baseRGB($0, appearance) } ?? LoomTheme.Text.faintPair[appearance]
             let color = NSColor(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
             if filled {
                 color.setFill()

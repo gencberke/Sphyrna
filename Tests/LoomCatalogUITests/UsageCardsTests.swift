@@ -171,10 +171,10 @@ struct UsageCardsTests {
 
     @Test func secondaryTextOnTheCardSurfaceKeepsAA() {
         let card = LoomTheme.RGB(red: 1, green: 1, blue: 1)
-            .composited(over: LoomTheme.Surface.panelRGB, opacity: LoomTheme.Surface.controlOpacity)
+            .composited(over: LoomTheme.Surface.greys(.dark, tone: .neutral).canvas, opacity: LoomTheme.Surface.controlOpacity)
         #expect(LoomTheme.Text.secondaryOnCardRGB.contrast(with: card) >= 4.5)
         #expect(LoomTheme.Text.secondaryIncreasedRGB.contrast(with: card) >= 4.5)
-        // Night Fleece 2: plain secondary holds AA on the 6 % tone too, so the card tone is secondary.
+        // Plain secondary holds AA on the control fill too, so the card tone is secondary.
         #expect(LoomTheme.Text.secondaryRGB.contrast(with: card) >= 4.5)
     }
 

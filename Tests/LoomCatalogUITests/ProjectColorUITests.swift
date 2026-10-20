@@ -147,13 +147,14 @@ struct ProjectColorUITests {
 
     // MARK: Contrast and hue
 
-    private static let sidebarOpaque = LoomTheme.Surface.sidebarRGB
-    private static let sidebarOverBlack = LoomTheme.Surface.sidebarRGB
-        .composited(over: RGB(red: 0, green: 0, blue: 0), opacity: LoomTheme.Surface.sidebarTintOpacity)
-    /// The sidebar's worst case, as in LoomThemeTests (`sidebarOverWhite`).
-    private static let sidebarOverWhite = LoomTheme.Surface.sidebarRGB
-        .composited(over: RGB(red: 0.5, green: 0.5, blue: 0.5), opacity: LoomTheme.Surface.sidebarTintOpacity)
-    private static let panel = LoomTheme.Surface.panelRGB
+    /// The sidebar is the tone's Ink canvas: opaque (Solid), over black, and over the glass's lightest extreme (the worst case,
+    /// as in LoomThemeTests). The surfaces a stripe sits on, for each tone.
+    private static func sidebarBackdrops(_ tone: PaneTone) -> [RGB] {
+        let canvas = LoomTheme.Surface.greys(.dark, tone: tone).canvas
+        return [canvas, canvas.composited(over: RGB(red: 0, green: 0, blue: 0), opacity: LoomTheme.Surface.sidebarTintOpacity),
+                canvas.composited(over: RGB(red: 0.5, green: 0.5, blue: 0.5), opacity: LoomTheme.Surface.sidebarTintOpacity)]
+    }
+    private static func panel(_ tone: PaneTone) -> RGB { LoomTheme.Surface.greys(.dark, tone: tone).canvas }
     private static let white = RGB(red: 1, green: 1, blue: 1)
 
     private func hue(_ c: RGB) -> Double {
@@ -173,7 +174,7 @@ struct ProjectColorUITests {
 
     @Test func everyStripeIsThreeToOneOnTheSidebarsWorstCaseAndOnItsOtherBackdrops() {
         for tone in ProjectTone.allCases {
-            for surface in [Self.sidebarOpaque, Self.sidebarOverBlack, Self.sidebarOverWhite] {
+            for surface in PaneTone.allCases.flatMap(Self.sidebarBackdrops) {
                 #expect(LoomTheme.ProjectColor.baseRGB(tone).contrast(with: surface) >= 3)
                 #expect(LoomTheme.ProjectColor.increasedRGB(tone).contrast(with: surface) >= 3)
             }
@@ -192,29 +193,31 @@ struct ProjectColorUITests {
         }
     }
 
-    /// The tab's fills as drawn: the panel, the selection fill under the open tab, then the wash on top.
-    private func tabFill(_ tone: ProjectTone, selected: Bool, wash: Double) -> RGB {
-        let base = selected
-            ? Self.white.composited(over: Self.panel, opacity: LoomTheme.Surface.selectedOpacity) : Self.panel
+    /// The tab's fills as drawn: the canvas, the selection fill under the open tab, then the wash on top.
+    private func tabFill(_ tone: ProjectTone, on pane: PaneTone, selected: Bool, wash: Double) -> RGB {
+        let panel = Self.panel(pane)
+        let base = selected ? Self.white.composited(over: panel, opacity: LoomTheme.Surface.selectedOpacity) : panel
         return LoomTheme.ProjectColor.baseRGB(tone).composited(over: base, opacity: wash)
     }
 
-    /// The theme's tiers hold on the washed tabs (measured 12 Oct 2026, panel 29/28/34): primary at 7:1 on
-    /// every tab (the open tab's 15 % wash is the strongest that keeps Lemon there; the preview's 18 % gave
-    /// 6.5), and a washed tab's secondary text in `secondaryOnTint`, which plain secondary cannot reach on
-    /// any wash (3.7 to 4.0 at 10 %): 4.6 or more on a resting tab and 3:1 for the close glyph on the open one.
+    /// The theme's tiers hold on the washed tabs in Ink, on every tone: primary at 7:1 on every tab (the open tab's 15 % wash
+    /// is the strongest that keeps Lemon there), and a washed tab's secondary text in `secondaryOnTint`: 4.5 or more on a
+    /// resting tab and 3:1 for the close glyph on the open one. (Paper is in `ThemeAppearanceTests`.)
     @Test func textOnTheTintedTabsKeepsTheThemeTiers() {
-        for tone in ProjectTone.allCases {
-            let open = tabFill(tone, selected: true, wash: LoomTheme.ProjectColor.tabWashOpen)
-            let hover = tabFill(tone, selected: false, wash: LoomTheme.ProjectColor.tabWashHover)
-            let rest = tabFill(tone, selected: false, wash: LoomTheme.ProjectColor.tabWash)
-            #expect(LoomTheme.Text.primaryRGB.contrast(with: open) >= 7, "\(tone) open")
-            #expect(LoomTheme.Text.primaryRGB.contrast(with: hover) >= 7, "\(tone) hover")
-            #expect(LoomTheme.Text.primaryRGB.contrast(with: rest) >= 7, "\(tone) rest")
-            #expect(LoomTheme.Text.secondaryOnTintRGB.contrast(with: rest) >= 4.5, "\(tone) rest secondary")
-            #expect(LoomTheme.Text.secondaryOnTintRGB.contrast(with: open) >= 3, "\(tone) open glyph")
-            #expect(LoomTheme.Text.secondaryIncreasedRGB.contrast(with: rest) >= 4.5, "\(tone) rest, Increase Contrast")
-            #expect(LoomTheme.Text.secondaryIncreasedRGB.contrast(with: open) >= 4, "\(tone) open glyph, Increase Contrast")
+        for pane in PaneTone.allCases {
+            for tone in ProjectTone.allCases {
+                let id = "\(pane) \(tone)"
+                let open = tabFill(tone, on: pane, selected: true, wash: LoomTheme.ProjectColor.tabWashOpen)
+                let hover = tabFill(tone, on: pane, selected: false, wash: LoomTheme.ProjectColor.tabWashHover)
+                let rest = tabFill(tone, on: pane, selected: false, wash: LoomTheme.ProjectColor.tabWash)
+                #expect(LoomTheme.Text.primaryRGB.contrast(with: open) >= 7, "\(id) open")
+                #expect(LoomTheme.Text.primaryRGB.contrast(with: hover) >= 7, "\(id) hover")
+                #expect(LoomTheme.Text.primaryRGB.contrast(with: rest) >= 7, "\(id) rest")
+                #expect(LoomTheme.Text.secondaryOnTintRGB.contrast(with: rest) >= 4.5, "\(id) rest secondary")
+                #expect(LoomTheme.Text.secondaryOnTintRGB.contrast(with: open) >= 3, "\(id) open glyph")
+                #expect(LoomTheme.Text.secondaryIncreasedRGB.contrast(with: rest) >= 4.5, "\(id) rest, Increase Contrast")
+                #expect(LoomTheme.Text.secondaryIncreasedRGB.contrast(with: open) >= 4, "\(id) open glyph, Increase Contrast")
+            }
         }
     }
 }

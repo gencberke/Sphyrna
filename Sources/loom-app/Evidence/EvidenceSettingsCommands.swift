@@ -12,7 +12,7 @@ import LoomCore
 ///   same model calls the section's buttons make; no-ops where the review is not installed).
 /// - `pin:<id>`, `unpin:<id>`: the card menu's Pin / Unpin.
 /// - `mark-read:<id>`: the card menu's Mark as Read.
-/// - `appearance:<dark|light|system>`, `tone:<nightFleece|workshop|instrument>`: Settings → Theme (D-63), the same calls
+/// - `appearance:<dark|light|system>`, `tone:<neutral|warm|cool>`: Settings → Theme (D-63), the same calls
 ///   the segmented control and the tone tiles make; the snapshot reports `appearance`, `effectiveAppearance`, `paneTone`.
 /// - `usage-select:<24h|7d|30d|90d>`: the period control.
 /// - `usage-refresh[:<label>]`: refreshes now and writes `ack-usage-refresh-<label>.json` when done.

@@ -307,7 +307,7 @@ struct PinnedQuestionCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if number <= 9 {
-                    Text("\(number)").font(LoomTheme.Pinned.stepper).foregroundStyle(LoomTheme.Text.tertiary)
+                    Text("\(number)").font(LoomTheme.Pinned.stepper).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 }
             }
             .padding(LoomTheme.Pinned.optionPadding)

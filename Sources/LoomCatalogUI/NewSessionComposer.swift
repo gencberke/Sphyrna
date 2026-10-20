@@ -29,7 +29,7 @@ struct NewSessionComposer: View {
             ZStack(alignment: .topLeading) {
                 if draft.text.isEmpty {
                     Text("Describe the work, or add a skill with /")
-                        .font(LoomTheme.TypeScale.reading).foregroundStyle(LoomTheme.Text.tertiary)
+                        .font(LoomTheme.TypeScale.reading).foregroundStyle(LoomTheme.Text.faint)
                         .padding(.top, ComposerTextEditor.inset.height).allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }

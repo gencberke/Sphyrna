@@ -39,27 +39,23 @@ struct ChangesInspectorTests {
         #expect(InspectorTabBar.symbol(.changes) == "plus.forwardslash.minus")
     }
 
-    @Test func aChangedLineHoldsItsTextContrastInBothLooksOnEveryToneAndLevelItCanSitOn() {
-        // The code card is a dim backing over the inspector (or the popover, when the inspector is drawn over the pane);
-        // a changed line is a band of the success or failure hue over that. Primary text is 7:1, secondary (the numbers)
-        // 4.5:1, and the Increase Contrast secondary at least as much.
+    @Test func aChangedLineHoldsItsTextContrastInBothAppearancesOnEveryTone() {
+        // The code card is raised 1; a changed line is a band of the success or failure hue over that (9 % in Ink, 8 % in
+        // Paper). Primary text is 7:1 and the line numbers, tertiary, 4.5:1; Increase Contrast gives tertiary secondary's
+        // value, which holds at least as much.
         for appearance in LoomTheme.Appearance.allCases {
             for tone in PaneTone.allCases {
-                let levels = LoomTheme.Surface.levels(appearance, tone: tone)
-                for (name, level) in [("inspector", levels.inspector), ("popover", levels.popover)] {
-                    let fill = LoomTheme.Changes.cardFillTone[appearance]
-                    let card = fill.rgb.composited(over: level, opacity: fill.opacity)
-                    for (label, backdrop) in [("context", card),
-                                              ("added", LoomTheme.Changes.bandRGB(added: true, appearance)
-                                                .composited(over: card, opacity: LoomTheme.Changes.bandOpacity(added: true))),
-                                              ("removed", LoomTheme.Changes.bandRGB(added: false, appearance)
-                                                .composited(over: card, opacity: LoomTheme.Changes.bandOpacity(added: false)))] {
-                        let place = "\(label) on \(name), \(appearance), \(tone)"
-                        #expect(LoomTheme.Text.primaryPair[appearance].contrast(with: backdrop) >= 7, "primary, \(place)")
-                        #expect(LoomTheme.Text.secondaryPair[appearance].contrast(with: backdrop) >= 4.5, "secondary, \(place)")
-                        #expect(LoomTheme.Text.secondaryIncreasedPair[appearance].contrast(with: backdrop)
-                                >= LoomTheme.Text.secondaryPair[appearance].contrast(with: backdrop), "increased, \(place)")
-                    }
+                let card = LoomTheme.Surface.greys(appearance, tone: tone).raised1
+                for (label, backdrop) in [("context", card),
+                                          ("added", LoomTheme.Changes.bandRGB(added: true, appearance)
+                                            .composited(over: card, opacity: LoomTheme.Changes.bandOpacity(added: true, appearance))),
+                                          ("removed", LoomTheme.Changes.bandRGB(added: false, appearance)
+                                            .composited(over: card, opacity: LoomTheme.Changes.bandOpacity(added: false, appearance)))] {
+                    let place = "\(label), \(appearance), \(tone)"
+                    #expect(LoomTheme.Text.primaryPair[appearance].contrast(with: backdrop) >= 7, "primary, \(place)")
+                    #expect(LoomTheme.Text.tertiaryPair[appearance].contrast(with: backdrop) >= 4.5, "line numbers, \(place)")
+                    #expect(LoomTheme.Text.tertiaryIncreasedPair[appearance].contrast(with: backdrop)
+                            >= LoomTheme.Text.tertiaryPair[appearance].contrast(with: backdrop), "increased, \(place)")
                 }
             }
         }

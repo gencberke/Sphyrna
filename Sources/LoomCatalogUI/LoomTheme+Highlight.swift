@@ -5,12 +5,11 @@ import SwiftUI
 /// row and chrome button draws it from these tokens (`RowHighlight`, `RowButtonStyle`, `ChromeButtonStyle`); only the
 /// conversation tab strip keeps its own tinted tabs (D-50).
 ///
-/// Selection reads stronger than hover: a stronger fill and a hairline. The fills are white overlays in Dark and ink
-/// overlays in Light, like every other fill, and are chosen so the text tiers hold on the pill (`ThemeAppearanceTests`):
-/// primary at least 7:1 on every surface under every state, secondary at least 4.5:1 under the selected fill on the
-/// sidebar, panel, canvas, inspector and card, and at least 4.5:1 under the hover fill on those and on a popover. On a
-/// popover the plain secondary reads 4.1:1 there (Dark, Night fleece and Workshop), so a row under the pointer or the cursor
-/// lifts its secondary text (`OnPopover.hoveredSecondaryPair`) and the fill stays as visible as everywhere else.
+/// Selection reads stronger than hover: a stronger fill and a hairline. The fills are white overlays in Ink and ink
+/// overlays in Paper, like every other fill, and are chosen so the text tiers hold on the pill (`ThemeAppearanceTests`,
+/// `HighlightTests`): primary at least 7:1 under every state on the canvas and both raised levels, secondary and tertiary
+/// at least 4.5:1 under the hover and selected fills on the canvas, and secondary at least 4.5:1 under the hover fill on a
+/// popover.
 extension LoomTheme {
     enum Highlight {
         /// A row or card of 34 pt and more; a row under 32 pt (a sidebar line, a Home row) takes the compact radius, a chrome
@@ -21,15 +20,16 @@ extension LoomTheme {
         /// How far the pill sits inside the edge of the list, card or popover that holds the rows.
         static let inset: CGFloat = 8
 
-        static let hoverOpacity = 0.06
-        static let selectedOpacity = 0.09
-        static let pressedOpacity = 0.12
-        static let hoverLightOpacity = 0.05
-        static let selectedLightOpacity = 0.07
-        static let pressedLightOpacity = 0.10
-        static let hoverTone = overlay(dark: hoverOpacity, light: hoverLightOpacity)
-        static let selectedTone = overlay(dark: selectedOpacity, light: selectedLightOpacity)
-        static let pressedTone = overlay(dark: pressedOpacity, light: pressedLightOpacity)
+        /// Ink's fills (DESIGN §3 The pill): hover 5 %, selected 8 %, pressed 12 %; Paper 4.5 %, 7 %, 10 % of the ink.
+        static let hoverOpacity = Surface.hoverOpacity
+        static let selectedOpacity = Surface.selectedOpacity
+        static let pressedOpacity = Surface.pressedOpacity
+        static let hoverLightOpacity = Surface.hoverLightOpacity
+        static let selectedLightOpacity = Surface.selectedLightOpacity
+        static let pressedLightOpacity = Surface.pressedLightOpacity
+        static let hoverTone = Surface.hoverTone
+        static let selectedTone = Surface.selectedTone
+        static let pressedTone = Surface.pressedTone
         static let hover = hoverTone.color
         static let selected = selectedTone.color
         static let pressed = pressedTone.color

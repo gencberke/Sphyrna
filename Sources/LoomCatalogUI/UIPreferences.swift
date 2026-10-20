@@ -58,8 +58,9 @@ public enum SidebarStyle: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// Settings → Theme → Appearance (D-63). Dark is the default, so a file written before the setting existed
-/// looks as it did; Match system follows macOS live. The terminal face stays dark whatever this says.
+/// Settings → Theme → Appearance (D-63). Ink (dark) is the default, so a file written before the setting existed
+/// looks as it did; Match system follows macOS live. The terminal face stays dark whatever this says. The raw values
+/// are the stored ones and stay `dark`, `light` and `system`.
 public enum AppearanceSetting: String, Codable, Sendable, CaseIterable {
     case dark
     case light
@@ -68,39 +69,46 @@ public enum AppearanceSetting: String, Codable, Sendable, CaseIterable {
     /// The label in Settings.
     public var title: String {
         switch self {
-        case .dark: "Dark"
-        case .light: "Light"
+        case .dark: "Ink"
+        case .light: "Paper"
         case .system: "Match system"
         }
     }
 }
 
-/// Settings → Theme → Main pane (D-63): the tone of the session's main pane, where the terminal and the
-/// Chat face are drawn. The three panel colours of the identity directions A, B and C (design/identity-preview.html).
+/// Settings → Theme → Tone (D-63, D-81): the cast over Ink's six greys (DESIGN §3 Tones). Neutral is Ink's own greys, Warm
+/// and Cool cast them; every other token stays as it is. The terminal face takes the tone's canvas.
 public enum PaneTone: String, Codable, Sendable, CaseIterable {
-    /// Direction A, today's panel `#1D1C22`.
-    case nightFleece
-    /// Direction B, a warmer panel `#1E1C1A`.
-    case workshop
-    /// Direction C, a deeper panel `#16171B`.
-    case instrument
+    case neutral
+    case warm
+    case cool
 
     /// The label in Settings.
     public var title: String {
         switch self {
-        case .nightFleece: "Night fleece"
-        case .workshop: "Workshop"
-        case .instrument: "Instrument"
+        case .neutral: "Neutral"
+        case .warm: "Warm"
+        case .cool: "Cool"
         }
     }
 
     /// The line under the label.
     public var detail: String {
         switch self {
-        case .nightFleece: "Violet grey, as Loom has always looked."
-        case .workshop: "Warmer, with a brown cast."
-        case .instrument: "Deeper, with a blue cast."
+        case .neutral: "Ink's own greys."
+        case .warm: "A slight brown cast."
+        case .cool: "A slight blue cast."
         }
+    }
+
+    /// The tones Night Fleece 2 stored, and the cast each became.
+    private static let legacy: [String: PaneTone] = ["nightFleece": .neutral, "workshop": .warm, "instrument": .cool]
+
+    /// A stored `nightFleece`, `workshop` or `instrument` decodes as `neutral`, `warm` or `cool`; an unknown string as
+    /// `neutral`. A value that is not a string fails, and `UIPreferences` falls back to `neutral` for it.
+    public init(from decoder: any Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = PaneTone(rawValue: raw) ?? Self.legacy[raw] ?? .neutral
     }
 }
 
@@ -158,7 +166,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     public var newSessionFace: SessionFace
     /// Settings → Theme → Appearance (D-63). A file written before the setting existed reads as Dark.
     public var appearance: AppearanceSetting
-    /// Settings → Theme → Main pane (D-63). A file written before the setting existed reads as Night fleece.
+    /// Settings → Theme → Tone (D-63, D-81). A file written before the setting existed reads as Neutral.
     public var paneTone: PaneTone
 
     /// The selected session, as every caller before destinations knew it; setting it sets the destination.
@@ -178,7 +186,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
                 showInMenuBar: Bool = true, notifyApprovals: Bool = true, sidebarStyle: SidebarStyle = .glass,
                 launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = [],
                 searchSessionText: Bool = true, newSessionFace: SessionFace = .chat,
-                appearance: AppearanceSetting = .dark, paneTone: PaneTone = .nightFleece) {
+                appearance: AppearanceSetting = .dark, paneTone: PaneTone = .neutral) {
         self.viewMode = viewMode
         self.destination = destination ?? selectedSessionID.map(Destination.session)
         self.sidebarWidth = Self.clamped(sidebarWidth)
@@ -225,7 +233,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             searchSessionText: (try? container.decodeIfPresent(Bool.self, forKey: .searchSessionText)) ?? true,
             newSessionFace: (try? container.decodeIfPresent(SessionFace.self, forKey: .newSessionFace)) ?? .chat,
             appearance: (try? container.decodeIfPresent(AppearanceSetting.self, forKey: .appearance)) ?? .dark,
-            paneTone: (try? container.decodeIfPresent(PaneTone.self, forKey: .paneTone)) ?? .nightFleece
+            paneTone: (try? container.decodeIfPresent(PaneTone.self, forKey: .paneTone)) ?? .neutral
         )
     }
 

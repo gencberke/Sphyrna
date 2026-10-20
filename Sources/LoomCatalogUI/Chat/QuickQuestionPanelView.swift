@@ -91,8 +91,7 @@ struct QuickQuestionPanelView: View {
         .background(RoundedRectangle(cornerRadius: LoomTheme.QuickQuestion.radius).fill(LoomTheme.QuickQuestion.fill))
         .overlay(RoundedRectangle(cornerRadius: LoomTheme.QuickQuestion.radius)
             .strokeBorder(LoomTheme.QuickQuestion.stroke, lineWidth: LoomTheme.Line.hairline))
-        .shadow(color: LoomTheme.Depth.shadowColor(LoomTheme.Depth.raised.shadow.opacity),
-                radius: LoomTheme.Depth.raised.shadow.blur / 2, y: LoomTheme.Depth.raised.shadow.y / 2)
+        .depth(LoomTheme.Elevation.popover)
         .overlay(alignment: .topTrailing) { closeButton }
         .frame(maxWidth: LoomTheme.QuickQuestion.column)
         .padding(.horizontal, LoomTheme.QuickQuestion.sideInset)

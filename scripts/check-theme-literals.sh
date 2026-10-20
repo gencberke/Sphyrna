@@ -17,9 +17,9 @@ if [[ -n $hits ]]; then
   exit 1
 fi
 
-# The panel family follows the main pane's tone (Settings → Theme, D-63): a `static let` initialised from one would
-# freeze the tone it was first read with. Inside LoomTheme*.swift such a token is a `static var`.
-frozen=$(grep -rnE 'static let [A-Za-z0-9_]+(: *[A-Za-z]+)? *= *.*Surface\.(panel|panelNS|canvas|inspector|card|raised|popover)\b' \
+# Ink's greys and the Night Fleece names that alias them follow the tone (Settings → Theme → Tone, D-63, D-81): a
+# `static let` initialised from one would freeze the tone it was first read with. Inside LoomTheme*.swift such a token is a `static var`.
+frozen=$(grep -rnE 'static let [A-Za-z0-9_]+(: *[A-Za-z]+)? *= *.*Surface\.(sidebar|backdrop|panel|panelNS|canvas|canvasNS|inspector|card|raised1|raised2|popover|segmentOn|tree)\b' \
   "$dir" --include='LoomTheme*.swift' || true)
 if [[ -n $frozen ]]; then
   echo "Tone-dependent surface stored in a static let (make it a static var):" >&2

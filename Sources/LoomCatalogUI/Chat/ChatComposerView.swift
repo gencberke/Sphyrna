@@ -32,7 +32,7 @@ struct ChatComposerView: View {
             ZStack(alignment: .topLeading) {
                 if model.textIsEmpty {
                     Text(Self.placeholder(model))
-                        .font(LoomTheme.TypeScale.reading).foregroundStyle(LoomTheme.Text.tertiary)
+                        .font(LoomTheme.TypeScale.reading).foregroundStyle(LoomTheme.Text.faint)
                         .padding(.top, ComposerTextEditor.inset.height).allowsHitTesting(false).accessibilityHidden(true)
                 }
                 ComposerTextEditor(host: model, height: $height,
@@ -118,7 +118,7 @@ struct ComposerHints: View {
             ForEach(hints, id: \.self) { Text($0) }
             Spacer(minLength: 0)
         }
-        .font(LoomTheme.Composer.hintFont).foregroundStyle(LoomTheme.Text.tertiary).lineLimit(1).fixedSize()
+        .font(LoomTheme.Composer.hintFont).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1).fixedSize()
         .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, LoomTheme.Space.headerSpacing)
     }
 }

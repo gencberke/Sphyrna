@@ -1349,8 +1349,8 @@ public final class CatalogModel {
         onThemeChange?()
     }
 
-    /// Settings → Theme → Main pane (D-63). Applies at once and is kept: the tone is the terminal's background (the
-    /// dark tone's panel) and the panel family every view draws.
+    /// Settings → Theme → Tone (D-63, D-81). Applies at once and is kept: the tone is the terminal's background (the
+    /// tone's Ink canvas) and the greys every view draws.
     public func setPaneTone(_ tone: PaneTone) {
         guard tone != paneTone else { return }
         paneTone = tone
@@ -1362,12 +1362,12 @@ public final class CatalogModel {
     /// app calls it once at launch (a model made by a test touches no global), and it follows every change of tone.
     public func installTheme() {
         LoomTheme.ThemeState.shared.tone = paneTone
-        let panel = LoomTheme.Surface.levels(.dark, tone: paneTone).panel.bytes
+        let panel = LoomTheme.Surface.terminalBackground(tone: paneTone).bytes
         TerminalTheme.setBackground(TerminalRGB(red: UInt8(panel.0), green: UInt8(panel.1), blue: UInt8(panel.2)))
         onThemeChange?()
     }
 
-    /// The main pane's panel as a dynamic colour (the Settings window's background).
+    /// The canvas as a dynamic colour (the Settings window's background).
     public var themePanelBackground: NSColor { LoomTheme.Surface.panelNS }
 
     /// Opens or closes the inspector of a session (remembered per session).

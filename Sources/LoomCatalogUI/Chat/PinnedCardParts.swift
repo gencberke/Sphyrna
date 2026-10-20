@@ -219,7 +219,7 @@ struct PinnedCodeBlock: View {
                 ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         if let prompt {
-                            Text(verbatim: index == 0 ? prompt : " ").foregroundStyle(LoomTheme.Text.tertiary)
+                            Text(verbatim: index == 0 ? prompt : " ").foregroundStyle(LoomTheme.Text.faint)
                         }
                         Text(verbatim: line.text.isEmpty ? " " : line.text).foregroundStyle(color(line.tone))
                             .frame(maxWidth: .infinity, alignment: .leading)

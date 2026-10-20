@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Pinned cards (V18, CHAT-SPEC → Requests): approvals, questions and plans above the composer. Geometry, type and the
-/// timings the spec names. Colours come from Night Fleece 2 (`Surface`, `Text`, `Accent`, `Status`).
+/// timings the spec names. Colours come from the Ink roles (`Surface`, `Text`, `Accent`, `Status`).
 extension LoomTheme {
     enum Pinned {
         // MARK: Geometry
@@ -59,14 +59,14 @@ extension LoomTheme {
         static let strokeOpacity = 0.35
         static let planStrokeOpacity = 0.38
         static let iconFillOpacity = 0.16
-        /// The card's fill is a panel level, so it follows the tone: computed, never stored.
-        static var cardFill: Color { Surface.card }
-        static let codeFill = AdaptiveTone(dark: Tone(rgb: RGB(red: 0, green: 0, blue: 0), opacity: 0.25),
-                                           light: Tone(rgb: inkRGB, opacity: 0.06)).color
-        static let optionFill = overlay(dark: 0.02, light: 0.025).color
-        static let optionSelectedFill = Accent.base.opacity(0.08)
+        /// The card is raised 2 and the command inside it raised 1 (DESIGN §12, E2); both follow the tone, so computed,
+        /// never stored.
+        static var cardFill: Color { Surface.raised2 }
+        static var codeFill: Color { Surface.raised1 }
+        static let optionFill = Surface.hoverTone.color
+        static let optionSelectedFill = Accent.wash
         static let optionSelectedStroke = Accent.base.opacity(0.55)
-        static let focusFill = Surface.controlHover
+        static let focusFill = Highlight.hover
 
         // MARK: Type
 

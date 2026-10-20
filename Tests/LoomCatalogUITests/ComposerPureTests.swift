@@ -441,14 +441,14 @@ struct ComposerBarTextTests {
         #expect(ComposerBarText.modeTitle(permissionMode: "acceptEdits", choices: ask) == "Accept edits")
     }
 
-    @Test func eachModeHasItsOwnIconAndToneAndTheToneIsReadableOnAPopoverAndACard() {
+    @Test func eachModeHasItsOwnIconAndToneAndTheToneIsReadableOnAPopoverAndTheComposer() {
         var symbols = Set<String>()
         var tones: [LoomTheme.RGB] = []
         for mode in ClaudePermissionMode.menuModes {
             symbols.insert(ComposerModeLook.symbol(forRaw: mode.rawValue))
             let tone = LoomTheme.Composer.ModeTone.rgb(forRaw: mode.rawValue)
             tones.append(tone)
-            for surface in [LoomTheme.Surface.popoverRGB, LoomTheme.Surface.cardRGB] {
+            for surface in [LoomTheme.Surface.greys(.dark, tone: .neutral).popover, LoomTheme.Surface.greys(.dark, tone: .neutral).raised2] {
                 #expect(tone.contrast(with: surface) >= 4.5, "\(mode.title) on \(surface)")
             }
         }

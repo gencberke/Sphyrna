@@ -69,8 +69,7 @@ struct PalettePanel: View {
         .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.floating).fill(LoomTheme.Surface.popover))
         .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.floating)
             .strokeBorder(LoomTheme.Surface.hairline, lineWidth: LoomTheme.Line.hairline))
-        .shadow(color: LoomTheme.Depth.shadowColor(LoomTheme.Depth.popover.shadow.opacity),
-                radius: LoomTheme.Depth.popover.shadow.blur / 2, y: LoomTheme.Depth.popover.shadow.y)
+        .depth(LoomTheme.Elevation.popover)
         .tint(LoomTheme.Accent.base)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Command palette")

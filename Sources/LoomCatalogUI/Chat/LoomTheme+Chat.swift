@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Chat stream tokens (CHAT-SPEC → Stream, concept §6.1/§6.2): geometry, type and the syntax palette of code
-/// blocks. Values that exist in Night Fleece 2 are used from there (`Surface`, `Text`, `Accent`, `Status`,
+/// blocks. Values that exist in the Ink roles are used from there (`Surface`, `Text`, `Accent`, `Status`,
 /// `Success`, `Radius`, `TypeScale`, `Rhythm`); only what the chat adds lives here. This file is exempt from the theme
 /// guard like every `LoomTheme*.swift`.
 extension LoomTheme {
@@ -100,27 +100,26 @@ extension LoomTheme {
         static let userStroke = Accent.base.opacity(0.20)
         static let userRadius: CGFloat = 16
         static let userTailRadius: CGFloat = 5
-        static let hoverFill = Surface.controlHover
-        static let inlineCodeFill = overlay(dark: 0.07, light: 0.06).color
+        static let hoverFill = Highlight.hover
+        static let inlineCodeFill = Surface.selectedTone.color
         static let inlineCodePair = Adaptive(dark: RGB(hex: 0xE3DFF0), light: RGB(hex: 0x3B3550))
         static let inlineCodeRGB = inlineCodePair.dark
         static let inlineCode = inlineCodePair.color
-        /// The dim backing of a command's output: black at 12 % in Dark, ink at 5 % in Light.
-        static let outputFill = AdaptiveTone(dark: Tone(rgb: RGB(red: 0, green: 0, blue: 0), opacity: 0.12),
-                                             light: Tone(rgb: inkRGB, opacity: 0.05)).color
+        /// A command's output is a code card: raised 1 (follows the tone, so computed, never stored).
+        static var outputFill: Color { Surface.raised1 }
         static let outputPair = Adaptive(dark: RGB(hex: 0xB9B5C6), light: RGB(hex: 0x5A5568))
         static let outputRGB = outputPair.dark
         static let output = outputPair.color
-        static let diffAddFill = Success.base.opacity(0.11)
-        static let diffRemoveFill = Status.failure.opacity(0.11)
+        static let diffAddFill = Changes.addedBand
+        static let diffRemoveFill = Changes.removedBand
         static let diffAdd = Success.light
         static let diffRemove = Status.failureLight
-        static let quoteBar = overlay(dark: 0.18, light: 0.20).color
+        static let quoteBar = Surface.strongerHairline
         static let tableHeaderFill = Surface.control
         /// The jump pill and other fills that are a panel level follow the tone, so they are computed.
-        static var jumpFill: Color { Surface.raised }
-        static let foldFill = overlay(dark: 0.02, light: 0.025).color
-        static let agentBadgeFill = Accent.base.opacity(0.16)
+        static var jumpFill: Color { Surface.popover }
+        static let foldFill = Surface.hoverTone.color
+        static let agentBadgeFill = Accent.wash
 
         // MARK: Syntax (VS Code Dark+, the terminal's palette; Light+ for the light theme, a step deeper where
         // a Light+ colour fell under 4.5:1 on a card)

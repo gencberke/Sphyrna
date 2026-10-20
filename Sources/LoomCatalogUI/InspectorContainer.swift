@@ -43,8 +43,7 @@ private struct OverlayShadow: ViewModifier {
 
     @ViewBuilder func body(content: Content) -> some View {
         if overlays {
-            content.shadow(color: LoomTheme.Depth.shadowColor(LoomTheme.Depth.popover.shadow.opacity),
-                           radius: LoomTheme.Depth.popover.shadow.blur / 2, x: LoomTheme.Inspector.overlayShadowX)
+            content.depth(LoomTheme.Elevation.popover, x: LoomTheme.Inspector.overlayShadowX)
         } else {
             content
         }

@@ -14,21 +14,21 @@ struct MotionAccessibilityTests {
     // MARK: Increase Contrast tokens
 
     private static let surfaces: [RGB] = [
-        LoomTheme.Surface.sidebarRGB, LoomTheme.Surface.panelRGB,
-        RGB(red: 1, green: 1, blue: 1).composited(over: LoomTheme.Surface.sidebarRGB, opacity: LoomTheme.Surface.selectedOpacity),
+        LoomTheme.Surface.greys(.dark, tone: .neutral).canvas, LoomTheme.Surface.greys(.dark, tone: .neutral).raised1,
+        RGB(red: 1, green: 1, blue: 1).composited(over: LoomTheme.Surface.greys(.dark, tone: .neutral).canvas, opacity: LoomTheme.Surface.selectedOpacity),
     ]
 
     @Test func increaseContrastRaisesTheHairlineToThirtyPercent() {
-        #expect(LoomTheme.Surface.hairlineOpacity(for: .standard) == 0.08)
+        #expect(LoomTheme.Surface.hairlineOpacity(for: .standard) == 0.075)
         #expect(LoomTheme.Surface.hairlineOpacity(for: .increased) == 0.30)
-        #expect(LoomTheme.Surface.hairlineStyle.tone(for: .standard).opacity == 0.08)
+        #expect(LoomTheme.Surface.hairlineStyle.tone(for: .standard).opacity == 0.075)
         #expect(LoomTheme.Surface.hairlineStyle.tone(for: .increased).opacity == 0.30)
     }
 
     @Test func increaseContrastLiftsSecondaryTextToAAAOnEverySurface() {
         #expect(LoomTheme.Text.secondaryRGB(for: .standard) == LoomTheme.Text.secondaryRGB)
         let lifted = LoomTheme.Text.secondaryRGB(for: .increased)
-        for surface in Self.surfaces + LoomTheme.Surface.panelLevelsRGB {
+        for surface in Self.surfaces + LoomTheme.Surface.greys(.dark, tone: .neutral).levels {
             #expect(lifted.contrast(with: surface) >= 7)
             #expect(lifted.contrast(with: surface) > LoomTheme.Text.secondaryRGB.contrast(with: surface))
         }
@@ -54,7 +54,7 @@ struct MotionAccessibilityTests {
         var environment = EnvironmentValues()
         environment.colorScheme = .dark
         #expect(resolved(LoomTheme.Text.secondaryStyle, environment) == expected(LoomTheme.Text.secondaryRGB, 1, environment))
-        #expect(resolved(LoomTheme.Surface.hairlineStyle, environment) == expected(RGB(red: 1, green: 1, blue: 1), 0.08, environment))
+        #expect(resolved(LoomTheme.Surface.hairlineStyle, environment) == expected(RGB(red: 1, green: 1, blue: 1), 0.075, environment))
         environment._colorSchemeContrast = .increased
         #expect(resolved(LoomTheme.Text.secondaryStyle, environment)
                 == expected(LoomTheme.Text.secondaryIncreasedRGB, 1, environment))

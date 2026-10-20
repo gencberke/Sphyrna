@@ -2,7 +2,7 @@ import LoomCore
 import SwiftUI
 
 /// The composer's tokens (CHAT-SPEC → Composer, D-58; design/v2-studio-preview.html `.comp`, `.bar`, `.menu`). Values that
-/// exist in Night Fleece 2 are used from there; only what the composer adds lives here. Exempt from the theme guard like
+/// exist in the Ink roles are used from there; only what the composer adds lives here. Exempt from the theme guard like
 /// every `LoomTheme*.swift`.
 extension LoomTheme {
     enum Composer {
@@ -14,8 +14,8 @@ extension LoomTheme {
         static let dockBottomInset: CGFloat = 16
         static let dockTopInset: CGFloat = 8
         static let radius: CGFloat = Radius.xxl
-        /// The card's fill is a panel level, so it follows the tone: computed, never stored.
-        static var fill: Color { Surface.card }
+        /// The card is raised 2; it follows the tone, so computed, never stored.
+        static var fill: Color { Surface.raised2 }
         static let stroke = Surface.strongHairline
         static let textInsetH: CGFloat = 16
         static let textTop: CGFloat = 12
@@ -48,8 +48,8 @@ extension LoomTheme {
 
         static let queueRowHeight: CGFloat = 30
         static let queueRadius: CGFloat = Radius.lg + 2
-        static let queueFill = overlay(dark: 0.05, light: 0.045).color
-        static let queueEditFill = Accent.base.opacity(0.16)
+        static let queueFill = Surface.hoverTone.color
+        static let queueEditFill = Accent.wash
         static let queueMargin: CGFloat = 12
         static let queueRowSpacing: CGFloat = 2
         static let queueMaxVisible = 4
@@ -60,7 +60,7 @@ extension LoomTheme {
 
         static let attachmentHeight: CGFloat = 30
         static let attachmentRadius: CGFloat = Radius.sm + 1
-        static let attachmentFill = overlay(dark: 0.07, light: 0.06).color
+        static let attachmentFill = Surface.selectedTone.color
         static let thumbnail = CGSize(width: 30, height: 22)
         static let attachmentSpacing: CGFloat = 8
         static let attachmentFont = Font.system(size: 11.5, weight: .medium)
@@ -92,8 +92,9 @@ extension LoomTheme {
         // MARK: Modes (D-63)
 
         /// The colour of a permission mode: soft tones that rise from cool to warm as the mode lets Claude do more, so the
-        /// bar says how much a session may do without being loud. Each is at least 4.5:1 on a popover and on the card
-        /// (`LoomThemeTests`). A mode of the CLI that Loom does not offer, and a mode not known yet, take the neutral tone.
+        /// bar says how much a session may do without being loud. Each is at least 4.5:1 on raised 2, the popover and the
+        /// canvas, also under the hover fill (`ThemeAppearanceTests`). A mode of the CLI that Loom does not offer, and a mode
+        /// not known yet, take the neutral tone.
         enum ModeTone {
             static let askPair = Adaptive(dark: RGB(hex: 0x7FC8D8), light: RGB(hex: 0x0E6B7A))
             static let askBeforeEditsPair = Accent.highPair
@@ -157,7 +158,7 @@ extension LoomTheme {
         static let effortThumb: CGFloat = 26
         static let effortDot: CGFloat = 4
         static let effortTrackInset: CGFloat = 3
-        static let effortTrackTone = overlay(dark: Surface.controlOpacity + 0.02, light: Surface.controlLightOpacity + 0.02)
+        static let effortTrackTone = Surface.strongHairlineTone
         static let effortTrack = effortTrackTone.color
         static let effortFill = Accent.base
         static let effortThumbPair = Adaptive(dark: whiteRGB, light: Accent.onAccentPair.light)
