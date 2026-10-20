@@ -97,8 +97,12 @@ struct ChatConfig {
     /// LOOM_FAKE_CHAT_TITLE_DEFER=reset: the first `generate_session_title` is answered only once a `/clear` reset has
     /// happened, right before the next user message is taken (an answer that comes back after the run moved to a new card).
     var titleDeferredPastReset: Bool
-    /// LOOM_FAKE_CHAT_TITLE_LOG: a file that gets one line per `generate_session_title` request (tests count the tries).
+    /// LOOM_FAKE_CHAT_TITLE_LOG: a file that gets one line per `generate_session_title` request (tests count the tries): the
+    /// subtype, then a JSON object with the description's `length` and the `description` itself.
     var titleLog: String?
+    /// LOOM_FAKE_CHAT_REQUEST_LOG: a file that gets one line per `control_request` received, its subtype (tests pin which
+    /// requests a session's life makes, and that only the known ones call a model).
+    var requestLog: String?
     /// The `side_question` answer (V22): LOOM_FAKE_CHAT_SIDE_ANSWER is its text (default "Fake side answer to: <question>"),
     /// LOOM_FAKE_CHAT_SIDE_DELAY_MS holds it back this long, and LOOM_FAKE_CHAT_SIDE sets how it goes: `error` answers an error
     /// frame, `unsupported` the error of a CLI that predates the request, `silent` never answers (the host's timeout).
@@ -157,6 +161,7 @@ struct ChatConfig {
         controlDelayMs = environment["LOOM_FAKE_CHAT_CONTROL_DELAY_MS"].flatMap(Int.init) ?? 0
         titleDeferredPastReset = environment["LOOM_FAKE_CHAT_TITLE_DEFER"] == "reset"
         titleLog = environment["LOOM_FAKE_CHAT_TITLE_LOG"]
+        requestLog = environment["LOOM_FAKE_CHAT_REQUEST_LOG"]
         sideAnswer = environment["LOOM_FAKE_CHAT_SIDE_ANSWER"]
         sideDelayMs = environment["LOOM_FAKE_CHAT_SIDE_DELAY_MS"].flatMap(Int.init) ?? 0
         sideMode = environment["LOOM_FAKE_CHAT_SIDE"]
@@ -658,7 +663,18 @@ final class ChatEngine {
         }
     }
 
+    /// Appends one line to a log file the host asked for.
+    func appendLine(_ line: String, to log: String) {
+        if !FileManager.default.fileExists(atPath: log) { FileManager.default.createFile(atPath: log, contents: nil) }
+        if let handle = FileHandle(forWritingAtPath: log) {
+            handle.seekToEndOfFile()
+            handle.write(Data((line + "\n").utf8))
+            try? handle.close()
+        }
+    }
+
     func handleControl(id: String, subtype: String, body: ChatObject) throws {
+        if let log = config.requestLog { appendLine(subtype, to: log) }
         switch subtype {
         case "initialize":
             if config.initBehavior == "silent" { return }
@@ -732,12 +748,11 @@ final class ChatEngine {
             // The terminal face's own naming, on demand: "Fake title: <first three words>", and the transcript's `ai-title`
             // when the host asks to persist it. `title` in LOOM_FAKE_CHAT_FAIL_PICKS refuses it; `titlenull` answers null.
             if let log = config.titleLog {
-                if !FileManager.default.fileExists(atPath: log) { FileManager.default.createFile(atPath: log, contents: nil) }
-                if let handle = FileHandle(forWritingAtPath: log) {
-                    handle.seekToEndOfFile()
-                    handle.write(Data("generate_session_title\n".utf8))
-                    try? handle.close()
-                }
+                let description = body["description"] as? String ?? ""
+                let detail = (try? JSONSerialization.data(
+                    withJSONObject: ["length": description.count, "description": description], options: [.sortedKeys]))
+                    .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+                appendLine("generate_session_title \(detail)", to: log)
             }
             if config.failPicks.contains("title") {
                 send(wire.controlError(id, "The title could not be made", code: "fail_title"))

@@ -139,7 +139,8 @@ CatalogModel.startConversation -> ConversationController.start (creates Terminal
     default's [1m] window holds: the transcript's id has no [1m]. A model the session's record names wins.
     Titles: the user's rename (custom) wins; a terminal run is named by the TUI's title event (recordTerminalTitle); stream-json
     mode names no session by itself, so the Chat driver asks once, on the first message that is not a slash command, with
-    generate_session_title (persisted as the transcript's ai-title) and records the answer through the same non-custom path;
+    generate_session_title (persisted as the transcript's ai-title, on at most 2,000 characters of the message: longer text is cut in the CLI's own
+    shape, the first 1,500, a marker, the tail; ChatTitleDescription) and records the answer through the same non-custom path;
     a failed or empty answer is asked again on the next message, three times at most per card (titleAttemptLimit), and an
     answer that comes back after a /clear moved the run names the card it was asked for.
     Subagents (D-39): SubagentStart/SubagentStop of the run's own conversation feed the tracker's `SubagentLedger` (never the

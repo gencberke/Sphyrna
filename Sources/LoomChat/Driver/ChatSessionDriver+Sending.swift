@@ -196,7 +196,7 @@ extension ChatSessionDriver {
         guard let record = try? await runtime.catalog.session(id: card) else { titleFailed(for: card); return }
         guard (record.title ?? "").isEmpty, !record.titleIsCustom else { titleSettled(for: card); return }
         do {
-            let reply = try await channel.request(.generateSessionTitle(description: text), timeout: .seconds(60))
+            let reply = try await channel.request(.generateSessionTitle(description: ChatTitleDescription.capped(text)), timeout: .seconds(60))
             guard let title = reply.generatedTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
                 titleFailed(for: card)
                 return
@@ -296,5 +296,30 @@ extension ChatSessionDriver {
             }
         }
         returnedDrafts += kept
+    }
+}
+
+/// What a session's title is asked for from (`generate_session_title`): the first message, at most 2,000 characters. A longer
+/// message is cut as the CLI cuts the text its own terminal title reads: the first 1,500 characters, then
+/// ` [… N characters omitted …] `, then the tail, 2,000 characters in all. The title names what a message is about from its
+/// opening; sending a pasted log or a spec whole would spend its tokens a second time on a call whose answer is a few words.
+enum ChatTitleDescription {
+    static let limit = 2_000
+    static let headLength = 1_500
+
+    static func capped(_ text: String) -> String {
+        let characters = Array(text)
+        guard characters.count > limit else { return text }
+        let before = " [… ", after = " characters omitted …] "
+        // The marker names how many characters it hides, and that count changes the marker's length: take the digit count that
+        // agrees with itself.
+        for digits in 1...9 {
+            let markerLength = before.count + digits + after.count
+            let tailLength = limit - headLength - markerLength
+            let omitted = characters.count - headLength - tailLength
+            guard tailLength > 0, String(omitted).count == digits else { continue }
+            return String(characters[..<headLength]) + before + String(omitted) + after + String(characters[(characters.count - tailLength)...])
+        }
+        return String(characters[..<limit])
     }
 }

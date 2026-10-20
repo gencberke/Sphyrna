@@ -262,6 +262,15 @@ public enum OutgoingControlRequest: Sendable, Equatable {
     }
 }
 
+extension OutgoingControlRequest {
+    /// The control requests that cost a model call on the user's subscription (the cost rule, C3): a short title for a session
+    /// that has none, and the quick question the user asks. Every other request is local to the CLI. A new request that
+    /// calls a model is added here on purpose, and `ChatModelCallTests` pins the set.
+    public static let modelCallSubtypes: Set<String> = ["generate_session_title", "side_question"]
+
+    public var costsAModelCall: Bool { Self.modelCallSubtypes.contains(subtype) }
+}
+
 /// The reply to an interrupt: `{still_queued:[uuid], cancelled?:[uuid]}`, which arrives before the interrupted turn's
 /// `result`.
 public struct InterruptReceipt: Sendable, Equatable {
