@@ -149,7 +149,7 @@ The exact values are the reference's `--sh-card`, `--sh-pop`, `--sh-composer` an
 | --- | --- | --- | --- | --- |
 | Primary | `#ECECEF` | `#19181B` | Titles, body text and values | 7:1; about 16:1 on the canvas |
 | Secondary | `#9E9EA8` | `#5F5D63` | Supporting text, descriptions, inactive tabs | 4.5:1; 7.4 and 6.0 on the canvas |
-| Tertiary | `#868690` | `#69676D` | The quiet voice: labels, meta, key hints, counts, line numbers | 4.5:1 on the canvas, both raised levels and the hover and selected fills; 5.4 and 5.2 on the canvas |
+| Tertiary | `#868690` | `#67656B` | The quiet voice: labels, meta, key hints, counts, line numbers | 4.5:1 on the canvas, both raised levels and the hover and selected fills; 5.4 and 5.2 on the canvas |
 | Faint | `#6B6B75` | `#8E8B91` | Placeholders, disabled items and decorative marks, never text you need | 2.5:1 |
 
 A first draft drew tertiary one step dimmer (`#6B6B75`, 3.7:1). Ink keeps the app's contrast floors, so quiet text is a step brighter, and the dimmer value became the faint tier. On a popover, quiet text uses secondary.
@@ -250,9 +250,9 @@ View tabs, segments and session tabs are not the pill (§6 Tabs).
 
 Each pair is checked in both appearances when its token lands, by `ThemeAppearanceTests`, `LoomThemeTests`, `HighlightTests` and `ProjectColorUITests`. The floors:
 - **Primary:** at least 7:1.
-- **Secondary and tertiary:** at least 4.5:1 on the canvas, both raised levels and the pill's fills.
+- **Secondary and tertiary:** at least 4.5:1 on the canvas, both raised levels and the pill's hover and selected fills. A press is momentary, so the pressed fill sets no floor (V2-PLAN §14, under D-83).
 - **Status and accent as text:** in their text variants and the accent's high step, at least 4.5:1.
-- **Marks, the tree's turns and the focus ring:** at least 3:1.
+- **Marks and the focus ring:** at least 3:1. The tree's turns are structure, like the hairlines: they carry no state (the row's mark does), so they keep the tree's colour with no floor (V2-PLAN §14, under D-83).
 
 The figures above are estimates from the reference's values; the tests give the real ones.
 
