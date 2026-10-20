@@ -262,7 +262,8 @@ enum ChatWork {
         // A background agent's immediate result only says it was launched.
         if source?.hasPrefix("Async agent launched") == true { source = run.status == .running ? run.latestProgress : nil }
         guard let source, !source.isEmpty else { return nil }
-        let key = "\(run.toolUseID)#\(source.utf8.count)#\(source.prefix(24))" as NSString
+        // The newest words replace the old as each block arrives, so the key holds a hash of the text that is cut.
+        let key = "\(run.toolUseID)#\(source.utf8.count)#\(source.prefix(2_000).hashValue)" as NSString
         if let cached = detailCache.object(forKey: key) { return cached.value }
         let plain = stripMarkdown(String(source.prefix(2_000)))
         let detail: String? = plain.isEmpty ? nil : (plain.count > 280 ? String(plain.prefix(279)) + "\u{2026}" : plain)

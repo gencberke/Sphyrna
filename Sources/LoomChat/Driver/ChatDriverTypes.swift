@@ -158,7 +158,8 @@ public struct ChatPendingRequest: Sendable, Equatable, Identifiable {
             text = "Plan ready"
         }
         return ProviderPendingRequest(requestID: requestID, toolUseID: request.toolUseID, kind: kind,
-                                      toolName: request.toolName, summary: text, note: note, arrivedAt: arrivedAt)
+                                      toolName: request.toolName, summary: text, note: note, arrivedAt: arrivedAt,
+                                      agent: agent.map { ProviderRequestAgent(id: $0.id, name: $0.name, description: $0.description) })
     }
 }
 

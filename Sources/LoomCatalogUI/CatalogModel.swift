@@ -448,6 +448,8 @@ public final class CatalogModel {
     public let inspector: InspectorState
     /// The Changes tab's holder (V20): what each session's tab read, and its comment drafts (`CatalogModel+Changes`).
     let changes = ChangesState()
+    /// The Agents tab's list for a session with no live run (V23; `StoppedAgents`).
+    let stoppedAgents = StoppedAgentsState()
     /// Rewind files (V21): the open sheet and the Undo prompt (`CatalogModel+Rewind`).
     let rewinds = RewindState()
     /// The quick question's panels, one per session (V22; `CatalogModel+QuickQuestion`).

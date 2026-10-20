@@ -110,6 +110,10 @@ final class PinnedCardsModel {
     private(set) var expandedPlans: Set<String> = []
     /// Moves the keyboard focus to the card (the composer's Tab calls `focus()`).
     private(set) var focusRequest = 0
+    /// "Show the request" (the Agents tab's notice, V23): the request whose card was brought into view, and how many times
+    /// a card was. The stack scrolls to `revealedRequestID` when the count moves; a test reads both.
+    private(set) var revealedRequestID: String?
+    private(set) var revealCount = 0
     /// The button the ring is on while the card has the keyboard (← and → choose it). Kept here, not in a view, so a card
     /// the stack draws again (its failure line appeared, the window changed size) keeps its ring.
     var focusedIndex: Int?
@@ -258,6 +262,22 @@ final class PinnedCardsModel {
         let next = (index + delta + requests.count) % requests.count
         currentID = requests[next].requestID
         focusedIndex = nil
+    }
+
+    /// Brings the card of the request a subagent asked into view (V23): it becomes the card shown, a stack the typing guard
+    /// holds opens, and the stack scrolls to it. Nothing is answered and nothing in the stream scrolls. False when no waiting
+    /// request names the subagent (a main-thread request names none).
+    @discardableResult
+    func reveal(agentID: String) -> Bool {
+        guard let request = requests.first(where: { $0.agent?.id == agentID }) else { return false }
+        if currentID != request.requestID {
+            currentID = request.requestID
+            focusedIndex = nil
+        }
+        setHeld(false)
+        revealedRequestID = request.requestID
+        revealCount += 1
+        return true
     }
 
     /// The keyboard goes to the card (the composer's Tab). Nothing is answered.

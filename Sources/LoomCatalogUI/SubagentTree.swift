@@ -9,6 +9,8 @@ import SwiftUI
 /// - finished subagents of the current turn fold into one "N finished" row that expands to their rows;
 ///   with only finished ones, only that row shows;
 /// - a subagent a subagent started (`depth` > 1) is indented one step per level on the same guide.
+/// - a running subagent whose request waits for the user (V23) takes the attention mark in place of the chase, and is
+///   always among the shown rows, even past the cap: the order of the rows does not change.
 /// Elapsed and duration text is derived from `now`, the sidebar's minute tick: no timer of its own.
 struct SubagentTreeContent: Equatable {
     static let maximumRunningRows = 3
@@ -25,6 +27,8 @@ struct SubagentTreeContent: Equatable {
 
         let id: String
         let kind: Kind
+        /// Its request waits for the user: the attention mark and "waiting for you" in the row's label.
+        var isWaiting = false
         /// 1 for a direct subagent of the session; the row is indented `depth - 1` steps.
         let depth: Int
         /// The agent type, or the text of a fold row.
@@ -56,13 +60,19 @@ struct SubagentTreeContent: Equatable {
 
     var isEmpty: Bool { rows.isEmpty }
 
-    init(records: [SubagentRecord], now: Date, finishedExpanded: Bool, runningExpanded: Bool) {
+    init(records: [SubagentRecord], now: Date, finishedExpanded: Bool, runningExpanded: Bool, waiting: Set<String> = []) {
         let running = records.filter { $0.isRunning }
         let finished = records.filter { !$0.isRunning }
         finishedCount = finished.count
         var rows: [Row] = []
-        let shown = runningExpanded ? running : Array(running.prefix(Self.maximumRunningRows))
-        rows += shown.map { Self.row($0, now: now) }
+        var shown = running
+        if !runningExpanded, running.count > Self.maximumRunningRows {
+            // The first rows, except that the ones that wait for the user take their places before the others.
+            var keep = Set(running.filter { waiting.contains($0.id) }.prefix(Self.maximumRunningRows).map(\.id))
+            for record in running where keep.count < Self.maximumRunningRows { keep.insert(record.id) }
+            shown = running.filter { keep.contains($0.id) }
+        }
+        rows += shown.map { Self.row($0, now: now, isWaiting: waiting.contains($0.id)) }
         let hidden = running.count - Self.maximumRunningRows
         if hidden > 0 {
             rows.append(Row(
@@ -78,16 +88,16 @@ struct SubagentTreeContent: Equatable {
                 title: "\(finished.count) finished", detail: nil, trailing: "",
                 accessibilityLabel: "\(finished.count) \(noun) finished",
                 accessibilityValue: finishedExpanded ? "expanded" : "collapsed"))
-            if finishedExpanded { rows += finished.map { Self.row($0, now: now) } }
+            if finishedExpanded { rows += finished.map { Self.row($0, now: now, isWaiting: false) } }
         }
         self.rows = rows
     }
 
-    private static func row(_ record: SubagentRecord, now: Date) -> Row {
-        let state = record.isRunning ? "running" : "finished"
+    private static func row(_ record: SubagentRecord, now: Date, isWaiting: Bool) -> Row {
+        let state = isWaiting ? "running, waiting for you" : record.isRunning ? "running" : "finished"
         let end = record.endedAt
         return Row(
-            id: record.id, kind: record.isRunning ? .running : .finished, depth: max(1, record.depth),
+            id: record.id, kind: record.isRunning ? .running : .finished, isWaiting: isWaiting, depth: max(1, record.depth),
             title: record.agentType, detail: record.description,
             trailing: end.map { duration(from: record.startedAt, to: $0) } ?? RelativeTime.string(from: record.startedAt, to: now),
             accessibilityLabel: "Subagent \(record.agentType)"
@@ -109,13 +119,16 @@ struct SubagentTreeView: View {
     let sessionID: UUID
     let records: [SubagentRecord]
     let model: CatalogModel
+    /// The subagents whose request waits for the user (`SubagentWaiting.ids`).
+    var waiting: Set<String> = []
     @State private var finishedExpanded = false
     @State private var runningExpanded = false
     @Environment(\.indicatorsAnimate) private var indicatorsAnimate
 
     var body: some View {
         let content = SubagentTreeContent(
-            records: records, now: model.now, finishedExpanded: finishedExpanded, runningExpanded: runningExpanded)
+            records: records, now: model.now, finishedExpanded: finishedExpanded, runningExpanded: runningExpanded,
+            waiting: waiting)
         if !content.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(content.rows) { row in
@@ -189,6 +202,8 @@ private struct SubagentRowView: View {
 
     @ViewBuilder private var leading: some View {
         switch row.kind {
+        case .running where row.isWaiting:
+            IndicatorView(indicator: .waitingForApproval)
         case .running:
             ChaseDots(animating: animates, scale: LoomTheme.Layout.subagentChaseScale)
                 .frame(width: LoomTheme.Layout.chaseSide, height: LoomTheme.Layout.chaseSide)
@@ -213,6 +228,7 @@ private struct SubagentRowView: View {
 
     private var helpText: String {
         guard row.opensSubagent else { return "" }
-        return [row.title, row.detail].compactMap { $0 }.joined(separator: ": ")
+        let name = [row.title, row.detail].compactMap { $0 }.joined(separator: ": ")
+        return row.isWaiting ? name + " (waiting for you)" : name
     }
 }

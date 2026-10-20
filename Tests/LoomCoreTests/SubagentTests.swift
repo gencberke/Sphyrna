@@ -138,6 +138,43 @@ struct SubagentTests {
         #expect(await tracker.status().reason == nil)
     }
 
+    /// V23, decision 3: the real CLI's `PermissionRequest` hook carries the asking subagent's `agent_id` (checked 20 Oct 2026 with
+    /// Claude Code 2.1.300, a Chat parent), so the terminal face marks that subagent. A main-thread prompt marks none, and the
+    /// mark ends with the prompt.
+    @Test func theSubagentWhosePermissionPromptIsUpIsMarkedAndAMainThreadPromptMarksNone() async throws {
+        let t0 = Date()
+        let (tracker, session, run) = try await tracker([("SessionStart", ["source": "startup"]), ("UserPromptSubmit", ["prompt": "go"])])
+        _ = try await tracker.receive(envelope(session, run, "SubagentStart", fields: start("a1", "general-purpose"), sentAt: t0))
+        _ = try await tracker.receive(envelope(session, run, "SubagentStart", fields: start("a2", "Explore"), sentAt: t0))
+        #expect(await tracker.subagentRecords().map(\.awaitsApproval) == [false, false])
+
+        _ = try await tracker.receive(envelope(
+            session, run, "PermissionRequest", fields: start("a1", "general-purpose").merging(["tool_name": "Bash"]) { _, n in n },
+            sentAt: t0.addingTimeInterval(1)))
+        #expect(await tracker.status().activity == .waitingForApproval)
+        #expect(await tracker.subagentRecords().map(\.awaitsApproval) == [true, false], "the one that asked, and no other")
+
+        // The registry says the prompt was answered: the mark goes with the waiting state.
+        let ms = t0.timeIntervalSince1970 * 1_000
+        _ = await tracker.receiveRegistry(
+            sample("busy", at: ms + 1_500), generation: await tracker.registryGeneration(), now: t0.addingTimeInterval(3))
+        #expect(await tracker.status().activity == .working)
+        #expect(await tracker.subagentRecords().map(\.awaitsApproval) == [false, false])
+
+        // A main-thread prompt names no agent: it marks nobody, not even the subagent that asked before.
+        _ = try await tracker.receive(envelope(
+            session, run, "PermissionRequest", fields: ["tool_name": "Bash"], sentAt: t0.addingTimeInterval(4)))
+        #expect(await tracker.status().activity == .waitingForApproval)
+        #expect(await tracker.subagentRecords().map(\.awaitsApproval) == [false, false])
+
+        // A finished subagent is never marked.
+        _ = try await tracker.receive(envelope(session, run, "SubagentStop", fields: stop("a2"), sentAt: t0.addingTimeInterval(5)))
+        _ = try await tracker.receive(envelope(
+            session, run, "PermissionRequest", fields: start("a2", "Explore").merging(["tool_name": "Bash"]) { _, n in n },
+            sentAt: t0.addingTimeInterval(6)))
+        #expect(await tracker.subagentRecords().allSatisfy { !$0.awaitsApproval })
+    }
+
     @Test func aSubagentEventBeforeTheConversationIsKnownDoesNotSpoilTheFirstStart() async throws {
         let session = UUID(), run = UUID()
         let tracker = ClaudeHookStateTracker(sessionID: session, managedRunID: run)

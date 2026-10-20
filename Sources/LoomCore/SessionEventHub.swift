@@ -37,6 +37,20 @@ public enum RunEndpointKind: String, Equatable, Sendable, Codable {
     case pipe
 }
 
+/// The subagent that asked a request (V23): its `agent_id`, which is the stream's `task_id` and the ledger's record id, and
+/// the name and description its card shows ("From <name> · <description>"). Memory only, like the rest of the request.
+public struct ProviderRequestAgent: Equatable, Sendable {
+    public let id: String
+    public let name: String
+    public let description: String?
+
+    public init(id: String, name: String, description: String? = nil) {
+        self.id = id
+        self.name = name
+        self.description = description
+    }
+}
+
 /// A request of a live run that waits for the user, whatever the provider: an approval, a question or a plan.
 /// Keyed by the provider's request id and the tool call it is about. Home, the sidebar and the Dock read these;
 /// the Chat face's cards (V18) are built on them. The summary is display text (a tool name, a question's
@@ -59,9 +73,12 @@ public struct ProviderPendingRequest: Equatable, Sendable, Identifiable {
     public let note: String?
     /// When Loom learned of it; nil when the provider's request does not say (Codex).
     public let arrivedAt: Date?
+    /// The subagent that asked, when `agent_id` named one (the Chat face only); nil for a main-thread request, a
+    /// terminal request and Codex's.
+    public let agent: ProviderRequestAgent?
 
     public init(requestID: String, toolUseID: String?, kind: Kind, toolName: String, summary: String,
-                note: String? = nil, arrivedAt: Date?) {
+                note: String? = nil, arrivedAt: Date?, agent: ProviderRequestAgent? = nil) {
         self.requestID = requestID
         self.toolUseID = toolUseID
         self.kind = kind
@@ -69,6 +86,7 @@ public struct ProviderPendingRequest: Equatable, Sendable, Identifiable {
         self.summary = summary
         self.note = note
         self.arrivedAt = arrivedAt
+        self.agent = agent
     }
 }
 

@@ -25,7 +25,13 @@ struct PinnedCardsView: View {
         if !cards.isEmpty {
             ViewThatFits(in: .vertical) {
                 PinnedStack(cards: cards)
-                ScrollView(.vertical) { PinnedStack(cards: cards) }.scrollBounceBehavior(.basedOnSize)
+                // "Show the request" scrolls this stack to the card, with no animation (the chat's own scroll is untouched).
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical) { PinnedStack(cards: cards) }.scrollBounceBehavior(.basedOnSize)
+                        .onChange(of: cards.revealCount) {
+                            if let id = cards.revealedRequestID { proxy.scrollTo(id, anchor: .top) }
+                        }
+                }
             }
             .frame(maxHeight: maxHeight)
             .environment(\.pinnedStackMaxHeight, maxHeight)

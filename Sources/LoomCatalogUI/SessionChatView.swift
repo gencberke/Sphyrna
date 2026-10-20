@@ -35,10 +35,11 @@ extension CatalogModel {
         palette.transcriptsDirectory = directory?.appendingPathComponent("projects", isDirectory: true)
     }
 
-    /// A subagent card in the chat was clicked: the inspector opens on Agents, on that subagent when the session's
-    /// live state lists it (the card knows only the id of its Agent call until the ledger has the agent).
+    /// A subagent card in the chat was clicked: the inspector opens on Agents, on that subagent when the tab's list has it:
+    /// the live state's, or a stopped session's folder list once it was read (the card knows only the id of its Agent call
+    /// until the stream's `task_started` names the agent, and `agent_id` = `task_id` is the join).
     func openAgents(for agentID: String?, in sessionID: UUID) {
-        if let agentID, liveStates[sessionID]?.subagents.contains(where: { $0.id == agentID }) == true {
+        if let agentID, listedSubagent(agentID, in: sessionID) != nil {
             openSubagent(agentID, in: sessionID)
             return
         }

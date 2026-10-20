@@ -157,6 +157,18 @@ CatalogModel.startConversation -> ConversationController.start (creates Terminal
     (a `memmem` gate drops attachment lines, a narrow Decodable never decodes `toolUseResult` and the other bulky duplicates, strings clip at 4 KiB)
     on a utility queue, coalesces writes to at most 5 reads a second and delivers `SubagentTranscriptBatch`es on an AsyncStream; the model keeps the
     last 400 entries and applies one batch as one update. The panel closes with the inspector closing, a tab other than Agents, any selection, the subagent's record dropping out and the run's end
+    Agents live (V23). One authority for the list: `SubagentLedger`, fed by the hooks in both faces (S6b: SubagentStart/SubagentStop fire under `-p`, with
+    `session_id` = the main session's, `agent_id`, `agent_type`). The stream's task records (`task_started` and the rest) stay what they were, the main chat's subagent
+    cards, and meet the ledger only on the join `agent_id` = `task_id` = the id in `subagents/agent-<id>.jsonl` (checked with real Claude 2.1.300: the hook, the
+    stream and the file name agree); never by description or time. The hub's `ProviderPendingRequest.agent` (`ProviderRequestAgent`: `agent_id`, name,
+    description) is filled by the driver's request intake (`receiveToolRequest`, from the request's `agent_id` and the stream's `task_started`); a main-thread,
+    terminal or Codex request has none. The Agents tab and the sidebar tree mark a waiting subagent from it on the Chat face; on the terminal face the
+    `PermissionRequest` hook carries `agent_id` (real Claude 2.1.300), so the tracker marks that record (`SubagentRecord.awaitsApproval`, only while the session
+    waits for approval; the adapter publishes the list when the prompt arrives and when the registry sample that ends it does), and a Chat-face run ignores the mark. A session with no run lists its subagents
+    from its folder: `SubagentFolderReader` (LoomCore; `agent-*.meta.json` and the transcript file beside it, at most 500, the newest kept, an unreadable meta file
+    skipped) and `AgentCallScan` (LoomChat; a backward read of the main transcript within the lens's `olderBytes` that finds the Agent/Task calls by the folder's
+    `toolUseId` and their results; a call with no result is "Interrupted"), joined in `StoppedAgentsReader.live` (LoomCatalogUI), read only while the Agents tab is open on the
+    session (`CatalogModel.agentsTrigger`, the inspector's `.task(id:)`), from the config directory the session itself uses, off the main actor.
     Reason and status truth (V03, S0 recordings, Claude 2.1.300): the tracker also keeps a `StatusReason` (`StatusReason.swift`;
     memory only, never logged, redacted when interpolated): the tool and command or path of an approval (`PermissionRequest`),
     a question's header, "plan ready" (`ExitPlanMode`), the first line of `Stop.last_assistant_message` with what still runs

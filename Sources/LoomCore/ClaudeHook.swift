@@ -582,6 +582,8 @@ public actor ClaudeHookStateTracker {
     /// While a subagent's permission prompt is shown: the conversation's state before it, which the
     /// registry's first later sample that no longer says "waiting" returns to.
     private var subagentApprovalReturn: SubagentApprovalReturn?
+    /// The `agent_id` of the last subagent permission prompt (V23); it counts only while the session waits for approval.
+    private var waitingSubagentID: String?
     private struct SubagentApprovalReturn {
         let activity: AgentActivity
         let generation: UUID?
@@ -642,6 +644,7 @@ public actor ClaudeHookStateTracker {
             // The subagent's prompt was answered. A conversation that was at rest still is (Claude reports
             // "busy" while a background subagent runs); one that was working follows the sample.
             subagentApprovalReturn = nil
+            waitingSubagentID = nil
             inputGeneration = previous.generation; inputWatermark = previous.watermark
             inputAwaitsApproval = previous.awaitsApproval
             currentStatus.reason = previous.reason
@@ -684,11 +687,22 @@ public actor ClaudeHookStateTracker {
         permissionRequestSeen = false
         subagents = SubagentLedger()
         subagentApprovalReturn = nil
+        waitingSubagentID = nil
     }
 
     public func status() -> ClaudeSessionStatus { currentStatus }
 
-    public func subagentRecords() -> [SubagentRecord] { subagents.records }
+    /// The run's subagents, the ledger's order. The one whose permission prompt is up (the `PermissionRequest` hook named it) is
+    /// marked while the session still waits for approval; the registry's later sample, or the next event of the conversation,
+    /// moves the activity on and takes the mark with it.
+    public func subagentRecords() -> [SubagentRecord] {
+        guard let waiting = waitingSubagentID, currentStatus.activity == .waitingForApproval else { return subagents.records }
+        return subagents.records.map { record in
+            var marked = record
+            marked.awaitsApproval = record.id == waiting && record.isRunning
+            return marked
+        }
+    }
 
     /// Details read later from the subagent's `meta.json`; true when the list changed.
     func applySubagentMeta(id: String, _ meta: SubagentMeta) -> Bool { subagents.apply(meta, to: id) }
@@ -731,6 +745,7 @@ public actor ClaudeHookStateTracker {
             return disposition
         }
         if event.isSubagentPermissionPrompt {
+            waitingSubagentID = event.agentID
             if subagentApprovalReturn == nil, currentStatus.activity != .waitingForApproval {
                 subagentApprovalReturn = SubagentApprovalReturn(
                     activity: currentStatus.activity, generation: inputGeneration,
@@ -780,6 +795,7 @@ public actor ClaudeHookStateTracker {
         inputAwaitsApproval = false
         registryTimestamp = nil
         subagentApprovalReturn = nil
+        waitingSubagentID = nil
         if case .sessionStart = event.kind { registryStartedAt = nil }
         switch event.kind {
         case .permissionRequest:

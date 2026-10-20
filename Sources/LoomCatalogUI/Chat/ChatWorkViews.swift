@@ -504,8 +504,10 @@ struct ChatThinkingView: View {
 
 // MARK: Subagent
 
-/// A subagent: a status mark, its task, one detail line and the elapsed time. A click opens it in the inspector's
-/// Agents tab (the closure the host passes). A running card never folds.
+/// A subagent: a status mark, its task, one detail line and the elapsed time. While it runs the detail line is its newest
+/// words (one line, cut at the end), updated as each block arrives; when it is done, its result. "Open in Agents" (the
+/// card as a whole is that button) opens it in the inspector's Agents tab (the closure the host passes). A running card
+/// never folds.
 struct ChatSubagentCardView: View {
     let entry: ChatEntry
     let context: ChatRowContext
@@ -529,10 +531,7 @@ struct ChatSubagentCardView: View {
                         Spacer(minLength: 8)
                         ChatSubagentStatus(run: run, context: context)
                     }
-                    if let detail = ChatWork.subagentDetail(run) {
-                        Text(verbatim: detail).font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                            .lineLimit(3).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 32)
-                    }
+                    footer(run)
                 }
                 .padding(LoomTheme.Chat.cardPadding)
                 .background(RoundedRectangle(cornerRadius: LoomTheme.Chat.cardRadius).fill(hovering ? LoomTheme.Surface.raised : LoomTheme.Surface.card))
@@ -544,6 +543,35 @@ struct ChatSubagentCardView: View {
             .onHover { hovering = $0 }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Subagent \(run.subagentType ?? ""), \(run.description), \(Self.statusWord(run.status))")
+            .accessibilityHint(context.openSubagent != nil ? Self.openLabel : "")
+        }
+    }
+
+    static let openLabel = "Open in Agents"
+
+    /// The detail line and "Open in Agents" under the header; nothing when neither is there.
+    @ViewBuilder private func footer(_ run: SubagentRun) -> some View {
+        let detail = ChatWork.subagentDetail(run)
+        if detail != nil || context.openSubagent != nil {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if let detail {
+                    Text(verbatim: detail).font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                        .lineLimit(run.status == .running ? 1 : 3).truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("subagent-card-line")
+                } else {
+                    Spacer(minLength: 0)
+                }
+                if context.openSubagent != nil {
+                    HStack(spacing: 2) {
+                        Text(Self.openLabel)
+                        Image(systemName: "chevron.right").font(LoomTheme.Chat.chevron).accessibilityHidden(true)
+                    }
+                    .font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .fixedSize().layoutPriority(1)
+                }
+            }
+            .padding(.leading, 32)
         }
     }
 

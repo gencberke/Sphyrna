@@ -219,6 +219,9 @@ extension View {
         .task(id: model.inspectorContextSessions) { model.trackInspectorContext() }
         // Changes reads only while its tab is open on this session: the key is nil otherwise (`CatalogModel+Changes`).
         .task(id: model.changesTrigger) { await model.runChangesRead() }
+        // A stopped session's subagents are read from its folder only while the Agents tab is open on it: the key is nil
+        // otherwise, and a new key (another session, the tab opened again) reads once (`StoppedAgents`).
+        .task(id: model.agentsTrigger) { await model.runAgentsRead() }
         // The Side tab's list of side chats is read while the inspector is open on an eligible session, so the tab bar's dot
         // and the tab itself have it when they are looked at (`CatalogModel+Side`).
         .task(id: model.sideTrigger) { await model.runSideRead() }

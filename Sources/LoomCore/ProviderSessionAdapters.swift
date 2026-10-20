@@ -110,6 +110,8 @@ public actor ClaudeSessionAdapter {
         // An approval cancelled in the terminal fires no hook: the registry's sample is what moves the
         // activity on, and the reason that described the approval goes with it.
         await supervisor.events.publish(sessionID: latest.activeSessionID, change: .reason(status.reason))
+        // The sample that ends an approval takes the mark of the subagent that asked with it (V23); an unchanged list is ignored.
+        await publishSubagents(runID: runID, tracker: tracker, fallback: latest.activeSessionID)
         try? await supervisor.updateProviderWorkState(runID: runID, state: ProviderWorkState(
             activity: status.activity, pendingProviderWorkCount: status.backgroundTaskCount + status.scheduledTaskCount))
         if let issue {
@@ -357,6 +359,9 @@ public actor ClaudeSessionAdapter {
         switch event.kind {
         case .sessionStart, .userPromptSubmit, .stop:
             // A new conversation, the next real prompt and the end of a turn change the list.
+            await publishSubagents(runID: envelope.managedRunID, tracker: tracker, fallback: context.activeSessionID)
+        case .permissionRequest where event.isSubagentPermissionPrompt:
+            // The subagent that asked is marked in the list (V23).
             await publishSubagents(runID: envelope.managedRunID, tracker: tracker, fallback: context.activeSessionID)
         default: break
         }

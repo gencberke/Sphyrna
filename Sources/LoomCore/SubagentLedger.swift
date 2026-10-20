@@ -18,11 +18,20 @@ public struct SubagentRecord: Equatable, Sendable, Identifiable {
     /// Where Claude keeps the subagent's transcript, once its `meta.json` was found (its sibling). Not yet
     /// checked: `SubagentTranscriptLocation` decides before anything is opened.
     public var transcriptPath: String?
+    /// A stopped session's entry (`SubagentFolderReader`) whose Agent call has no result in the main transcript: the run ended
+    /// with it. Never set on a live record; the hooks say nothing of how a subagent ended.
+    public var wasInterrupted: Bool
+    /// A permission prompt of this subagent is up in the session's terminal and the session still waits on it: the
+    /// `PermissionRequest` hook named the subagent by its `agent_id`. Set by the tracker when it hands the list out
+    /// (`ClaudeHookStateTracker.subagentRecords`), never stored in the ledger; the Chat face's waiting subagent comes from
+    /// the hub's pending requests instead.
+    public var awaitsApproval: Bool
 
     public var isRunning: Bool { endedAt == nil }
 
     public init(id: String, agentType: String, description: String? = nil, isBackground: Bool = false,
-                depth: Int = 1, startedAt: Date, endedAt: Date? = nil, transcriptPath: String? = nil) {
+                depth: Int = 1, startedAt: Date, endedAt: Date? = nil, transcriptPath: String? = nil,
+                wasInterrupted: Bool = false, awaitsApproval: Bool = false) {
         self.id = id
         self.agentType = agentType
         self.description = description
@@ -31,6 +40,8 @@ public struct SubagentRecord: Equatable, Sendable, Identifiable {
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.transcriptPath = transcriptPath
+        self.wasInterrupted = wasInterrupted
+        self.awaitsApproval = awaitsApproval
     }
 }
 

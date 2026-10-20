@@ -538,7 +538,7 @@ struct SessionListEntry: View {
         VStack(alignment: .leading, spacing: 0) {
             SessionCardView(row: row, model: model)
             if let subagents = row.live?.subagents, !subagents.isEmpty {
-                SubagentTreeView(sessionID: row.id, records: subagents, model: model)
+                SubagentTreeView(sessionID: row.id, records: subagents, model: model, waiting: SubagentWaiting.ids(in: row.live))
             }
         }
     }
