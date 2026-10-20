@@ -72,22 +72,30 @@ public actor ChatSessionDriver {
     /// Capabilities the driver relies on (`system/init`); one that is missing is a drift notice.
     public static let requiredCapabilities = ["msg_lifecycle_v1"]
 
+    // MARK: State
+    //
+    // Swift keeps stored properties out of extensions, so all of them live here, grouped by the file that works on them.
+
+    // Identity and collaborators (set once by `init`)
+
     /// The card the run is on: the session Loom started or resumed, and after a `/clear` the card the run moved to.
-    public private(set) var sessionID: UUID
+    public internal(set) var sessionID: UUID
 
-    private let runtime: SessionRuntime
-    private let queueStore: ChatQueueStore?
+    let runtime: SessionRuntime
+    let queueStore: ChatQueueStore?
     /// Where the composer's drafts are kept: messages Claude never read are written here when a run ends.
-    private let draftStore: ChatDraftStore?
-    private let journal: DiagnosticJournal?
-    private let clock: @Sendable () -> Date
-    private let readyTimeout: Duration
-    private let onChoicesChanged: @Sendable (ClaudeLaunchChoices) -> Void
-    private let onContextWindow: @Sendable (_ model: String, _ window: Int) -> Void
-    private let onMoved: @Sendable (_ from: UUID, _ to: UUID) -> Void
-    private let onTitle: @Sendable (_ card: UUID, _ title: String) -> Void
+    let draftStore: ChatDraftStore?
+    let journal: DiagnosticJournal?
+    let clock: @Sendable () -> Date
+    let readyTimeout: Duration
+    let onChoicesChanged: @Sendable (ClaudeLaunchChoices) -> Void
+    let onContextWindow: @Sendable (_ model: String, _ window: Int) -> Void
+    let onMoved: @Sendable (_ from: UUID, _ to: UUID) -> Void
+    let onTitle: @Sendable (_ card: UUID, _ title: String) -> Void
 
-    private struct Run {
+    // The run and its start and stop (ChatSessionDriver+Lifecycle.swift)
+
+    struct Run {
         let runID: UUID
         let pipe: PipeEndpoint
         let channel: ControlChannel
@@ -97,115 +105,118 @@ public actor ChatSessionDriver {
         var reader: Task<Void, Never>?
     }
 
-    private var run: Run?
-    private var phase: ChatDriverPhase = .stopped
-    private var model = TurnModel(source: .live)
-    /// The session's mode, model and effort as the catalog holds them (the runtime passes them on every spawn).
-    private var choices = ClaudeLaunchChoices()
-    private var permissionMode: String?
-    /// The mode (Loom's word) the session had when Ask was turned on in this process: Ask's way back. Not kept across a
-    /// relaunch; without it, leaving Ask goes to Ask before edits (Loom never picks Full access by itself).
-    private var modeBeforeAsk: String?
-    /// The chain every mode transition runs in (the picker, Ask's two directions, the launch's Ask layer, the mode a plan
-    /// approval sets): one at a time, in the order asked. The actor is reentrant at every `await` of a control request,
-    /// so without it two transitions interleave and the CLI ends in a mix of their states.
-    /// The effort was cleared (to the CLI's own) and no `system/init` has said what that is: nothing is reported meanwhile.
-    private var effortCleared = false
-    private var modeBusy = false
-    private var modeWaiters: [CheckedContinuation<Void, Never>] = []
-    private var requests: [ChatPendingRequest] = []
-    /// The newest requests that left the list, oldest first (`settledLimit`).
-    private var settled: [ChatSettledRequest] = []
-    private var queue: ChatQueue
-    private var queueIssue: ChatQueueIssue?
-    private var returnedDrafts: [ChatReturnedDraft] = []
-    /// Messages that came back as drafts and were then sent again (Retry): a composer that took them takes them out again.
-    private var withdrawnDrafts: [ChatReturnedDraft] = []
-    /// The texts of Loom's own messages that never reached the CLI in the newest run (the ended view offers them).
-    private var undelivered: [String] = []
-    /// Requests whose answer is on its way: one answer per request.
-    private var answering: Set<String> = []
-    /// Rows of Loom's own messages whose payload (images, pasted texts) the driver still holds: the unread ones, in the
-    /// order they were written (which is their order in the model's entries). A read message drops its payload. The unread
-    /// rows come from here, so reading them costs the unread messages, not the stream (`unreadRows`).
-    private(set) var heldPayloads: [String] = []
-    /// Whether the stored choices (the catalog's launch row) have been read into `choices`. A driver made for a session
-    /// that has some shows them before any launch (`loadStoredChoices`).
-    private var choicesLoaded = false
-    /// Ask's layer is being put on again after a reset and no transition holds the mode chain yet: a message waits for it.
-    private var askLayerPending = false
-    private var askLayerWaiters: [CheckedContinuation<Void, Never>] = []
-    /// The model the user chose live: the chip and the ring show it until a newer `system/init` names the model.
-    private var liveModel: String?
-    private var drift: [ChatDrift] = []
-    private var driftKeys: Set<String> = []
-    private var policySignal: ChatPolicySignal?
-    private var lastActivity: Date?
-    private var contextWindows: [String: Int] = [:]
-    /// Loom's own sends of this session, by row id: what went out (a returned draft, "Read now", "Retry").
-    private var sent: [String: ChatSentMessage] = [:]
-    private var turnRunning = false
+    var run: Run?
+    var phase: ChatDriverPhase = .stopped
     /// Loom asked this run to end (Stop, Quit, face switch, an idle stop): its exit is not a failure. Set by `stop()`
     /// and by the `leave` hook of a stop Loom made, never for an exit of the child's own.
-    private var stopRequested = false
+    var stopRequested = false
     /// A Stop came while the child was still spawning: the start ends as soon as the spawn returns.
-    private var startCancelled = false
-    /// A handover to the terminal is under way (V19): it waits for the running turn and ends the run. While it does,
-    /// nothing starts a turn here (no send, no queue release), so the run never gets a second turn it would have to
-    /// cut. `handoverCancelled` ends the wait.
-    private var handoverHold = false
-    private var handoverCancelled = false
-    /// The wait ended because a `/clear` moved the run (not because the user cancelled).
-    private var handoverCleared = false
-    /// The point of no return: the wait is over and the run is being ended for the other face. Cancel no longer works.
-    private var handoverCommitted = false
-    /// The handover's own `stop()` runs: only that stop pauses the queue with `.handover`.
-    private var handoverStopping = false
-    /// Mode, model and effort picked while a handover holds the session: the child is going away, so it is not told. They are
-    /// the session's choice (`choices`, the catalog), the target face's launch applies them, and a handover that ends with the
-    /// run still here (Cancel, `/clear`, a refusal) tells the child afterwards (`replayHeldPicks`).
-    private var heldPicks = HeldPicks()
+    var startCancelled = false
+    var startWaiters: [CheckedContinuation<Bool, Never>] = []
+    /// Waiting for `outputEnded` to finish with a run whose output already ended.
+    var runEndWaiters: [CheckedContinuation<Void, Never>] = []
 
-    private struct HeldPicks {
-        /// What the child matched before the first mode pick of the hold: `choices.permissionMode`, the CLI's mode and
-        /// `modeBeforeAsk`. The replay starts its transitions from there.
-        var childMode: (choice: String?, wire: String?, before: String?)?
-        var mode: String?
-        var model: String?
-        var effort: String?
-        var effortCleared = false
-        /// What the child matched before the first model pick of the hold: the chosen model and the chip's live name.
-        var childModel: (choice: String?, live: String?)?
-        /// What the child matched before the first effort pick of the hold.
-        var childEffort: (choice: String?, cleared: Bool)?
-    }
+    // The stream, the turn and what the run reports (the helpers below; ChatSessionDriver+Ingestion.swift)
+
+    var model = TurnModel(source: .live)
+    var turnRunning = false
+    private var drift: [ChatDrift] = []
+    private var driftKeys: Set<String> = []
+    var policySignal: ChatPolicySignal?
+    var lastActivity: Date?
+    var contextWindows: [String: Int] = [:]
     /// The newest `assistant.error` category of the running turn: the category of an `api_error` result.
-    private var lastErrorCategory: String?
-    private var conversationID: String?
+    var lastErrorCategory: String?
+    var conversationID: String?
     /// The trigger of the newest `conversation_reset`, for the marker of the card the run moves to.
-    private var resetTrigger: String?
-    private var background = ChatBackgroundTasks()
+    var resetTrigger: String?
+    var background = ChatBackgroundTasks()
     /// The work state last published, republished when the background count changes.
-    private var publishedActivity: AgentActivity?
+    var publishedActivity: AgentActivity?
     private var turnEndWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+    /// The model's counts when the newest run began (`ChatLiveState.runStart`).
+    var runStart = LiveHistoryJoin.RunStart()
+    /// Frames of one stdout read are being applied: the subscribers hear of them once, at the end.
+    var ingesting = false
+
+    // What the readers follow (Reading, below)
+
     private var modelSubscribers: [UUID: AsyncStream<ModelChange>.Continuation] = [:]
     private var updateSubscribers: [UUID: AsyncStream<Void>.Continuation] = [:]
     /// Rows changed since the last flush to `modelChanges` subscribers, and what else changed.
     private var streamDelta = ModelDelta()
-    private var streamActivityChanged = false
-    private var streamReplaced = false
+    var streamActivityChanged = false
+    var streamReplaced = false
     /// The number of the newest change handed to `modelChanges` readers, and the model's counts when it was made: the
     /// next growth is made against them.
     private var changeSequence = 0
     private var flushedEntries = 0
     private var flushedTurns = 0
-    /// The model's counts when the newest run began (`ChatLiveState.runStart`).
-    private var runStart = LiveHistoryJoin.RunStart()
-    /// Frames of one stdout read are being applied: the subscribers hear of them once, at the end.
-    private var ingesting = false
-    private var startWaiters: [CheckedContinuation<Bool, Never>] = []
-    /// Waiting for `outputEnded` to finish with a run whose output already ended.
-    private var runEndWaiters: [CheckedContinuation<Void, Never>] = []
+    /// Whether the stored choices (the catalog's launch row) have been read into `choices`. A driver made for a session
+    /// that has some shows them before any launch (`loadStoredChoices`).
+    var choicesLoaded = false
+
+    // Mode, model and effort (ChatSessionDriver+Mode.swift)
+
+    /// The session's mode, model and effort as the catalog holds them (the runtime passes them on every spawn).
+    var choices = ClaudeLaunchChoices()
+    var permissionMode: String?
+    /// The mode (Loom's word) the session had when Ask was turned on in this process: Ask's way back. Not kept across a
+    /// relaunch; without it, leaving Ask goes to Ask before edits (Loom never picks Full access by itself).
+    var modeBeforeAsk: String?
+    /// The effort was cleared (to the CLI's own) and no `system/init` has said what that is: nothing is reported meanwhile.
+    var effortCleared = false
+    /// The chain every mode transition runs in (the picker, Ask's two directions, the launch's Ask layer, the mode a plan
+    /// approval sets): one at a time, in the order asked. The actor is reentrant at every `await` of a control request,
+    /// so without it two transitions interleave and the CLI ends in a mix of their states.
+    var modeBusy = false
+    var modeWaiters: [CheckedContinuation<Void, Never>] = []
+    /// Ask's layer is being put on again after a reset and no transition holds the mode chain yet: a message waits for it.
+    var askLayerPending = false
+    var askLayerWaiters: [CheckedContinuation<Void, Never>] = []
+    /// The model the user chose live: the chip and the ring show it until a newer `system/init` names the model.
+    var liveModel: String?
+
+    // Requests (ChatSessionDriver+Requests.swift)
+
+    var requests: [ChatPendingRequest] = []
+    /// The newest requests that left the list, oldest first (`settledLimit`).
+    var settled: [ChatSettledRequest] = []
+    /// Requests whose answer is on its way: one answer per request.
+    var answering: Set<String> = []
+
+    // The queue (ChatSessionDriver+Queue.swift)
+
+    var queue: ChatQueue
+    var queueIssue: ChatQueueIssue?
+
+    // Sending, drafts and the title (ChatSessionDriver+Sending.swift)
+
+    var returnedDrafts: [ChatReturnedDraft] = []
+    /// Messages that came back as drafts and were then sent again (Retry): a composer that took them takes them out again.
+    var withdrawnDrafts: [ChatReturnedDraft] = []
+    /// The texts of Loom's own messages that never reached the CLI in the newest run (the ended view offers them).
+    var undelivered: [String] = []
+    /// Rows of Loom's own messages whose payload (images, pasted texts) the driver still holds: the unread ones, in the
+    /// order they were written (which is their order in the model's entries). A read message drops its payload. The unread
+    /// rows come from here, so reading them costs the unread messages, not the stream (`unreadRows`).
+    var heldPayloads: [String] = []
+    /// Loom's own sends of this session, by row id: what went out (a returned draft, "Read now", "Retry").
+    var sent: [String: ChatSentMessage] = [:]
+    var titleState = TitleState.needed
+
+    // The handover to the terminal (ChatSessionDriver+Handover.swift)
+
+    /// Where the handover is (V19). While it holds the session nothing starts a turn here (no send, no queue release), so
+    /// the run never gets a second turn it would have to cut.
+    var handover = HandoverState.none
+    /// Mode, model and effort picked while a handover holds the session: the child is going away, so it is not told. They are
+    /// the session's choice (`choices`, the catalog), the target face's launch applies them, and a handover that ends with the
+    /// run still here (Cancel, `/clear`, a refusal) tells the child afterwards (`replayHeldPicks`).
+    var heldPicks = HeldPicks()
+    /// Tests park a handover here, once its wait for the turn is over and before it decides (the turn's end and the queue's
+    /// release come while it stays parked: the order a slow mode change gives it).
+    var handoverParked: (@Sendable () async -> Void)?
 
     /// - Parameters:
     ///   - queueStore: where the "After this turn" queue is kept; nil keeps it in memory (tests).
@@ -353,14 +364,11 @@ public actor ChatSessionDriver {
                       requests: requests, settled: settled, undelivered: undelivered, isAsk: isAsk)
     }
 
-    /// Ask is the session's mode (its choice, as Loom keeps it).
-    private var isAsk: Bool { choices.permissionMode == ClaudePermissionMode.ask.rawValue }
-
     private func dropModelSubscriber(_ id: UUID) {
         modelSubscribers[id] = nil
     }
 
-    private func flushModelChanges() {
+    func flushModelChanges() {
         guard !streamDelta.isEmpty || streamActivityChanged || streamReplaced else { return }
         changeSequence += 1
         let change = streamReplaced
@@ -417,1446 +425,9 @@ public actor ChatSessionDriver {
         changed()
     }
 
-    // MARK: Start, resume, stop
-
-    /// Starts this (new) session in the Chat face with the draft's workspace and choices. Ready when
-    /// it returns: the CLI answered `initialize`; the draft's first message (if any) was then sent over stdin.
-    /// `onReady` runs once `initialize` succeeded, before the first message goes out (V19: "started" is told then,
-    /// not when the child is spawned). A start that fails before that throws with nothing kept: the caller still has
-    /// the text and gives it back to the draft. A first message that cannot go out afterwards goes to this session's
-    /// own draft, because the draft page is gone by then.
-    @discardableResult
-    public func startNew(projectID: UUID?, draft: NewSessionLaunch? = nil,
-                         onReady: (@Sendable () async -> Void)? = nil) async throws -> ChatSendReceipt? {
-        let id = sessionID
-        let message = (draft?.firstMessage).flatMap { $0.isEmpty ? nil : $0 }
-        try await launch(isResume: false) { sink in
-            try await self.runtime.startChatConversation(
-                projectID: projectID, sessionID: id, draft: draft, outputSink: sink
-            )
-        }
-        await onReady?()
-        guard let message else { return nil }
-        do {
-            return try await send(message)
-        } catch {
-            keepForUser([ChatReturnedDraft(messageID: "", text: message, attachments: [])])
-            throw error
-        }
-    }
-
-    /// Resumes the stopped session in the Chat face (`--resume`, with the mode, model and effort the catalog holds).
-    public func resume() async throws {
-        let id = sessionID
-        try await launch(isResume: true) { sink in
-            try await self.runtime.resumeChatConversation(sessionID: id, outputSink: sink)
-        }
-    }
-
-    /// Stops the run in the verified order (interrupt, `result`, stdin, exit). Returns the supervisor's report. A
-    /// Stop while the child starts cancels the start: the spawn is let finish, then the child is stopped in the same
-    /// order, and the start ends with `ChatDriverError.stopping` (never as a failure).
-    @discardableResult
-    public func stop() async throws -> SessionStopReport {
-        if phase == .starting {
-            startCancelled = true
-            setPhase(.stopping)
-            if run == nil { _ = await waitForStart() }
-        }
-        stopRequested = true
-        await followRun()
-        do {
-            return try await runtime.stopConversation(sessionID: sessionID)
-        } catch {
-            // Nothing of this run was stopped (it had ended, or nothing runs): no stop is under way.
-            if run == nil {
-                stopRequested = false
-                if phase == .stopping { setPhase(.stopped) }
-            } else if phase.isLive {
-                stopRequested = false
-            }
-            throw error
-        }
-    }
-
-    private func launch(
-        isResume: Bool,
-        _ start: @escaping @Sendable (ChatPipeSink) async throws -> RuntimePipeLaunch
-    ) async throws {
-        if phase == .stopping { throw ChatDriverError.stopping }
-        if phase == .starting {
-            guard await waitForStart() else { throw ChatDriverError.couldNotStart("the start failed") }
-            return
-        }
-        guard !phase.isLive else { return }
-        runStart = LiveHistoryJoin.RunStart(entries: model.entries.count, turns: model.turns.count,
-                                            unknownRecords: model.unknownRecordCount, time: clock(),
-                                            generation: runStart.generation + 1)
-        setPhase(.starting)
-        // The start holds the mode chain until the process is ready (and, for an Ask session, has Ask's layer on): a mode
-        // picked meanwhile runs after it.
-        await acquireMode()
-        defer { releaseMode() }
-        stopRequested = false
-        startCancelled = false
-        // A card the last run left unanswered was shown as cut off; this run starts clean.
-        settled.removeAll { $0.outcome == .processEnded }
-        undelivered = []
-        let sink = ChatPipeSink(clock: clock)
-        let launched: RuntimePipeLaunch
-        do {
-            launched = try await start(sink)
-        } catch {
-            finishStartWaiters(false)
-            if startCancelled {
-                startCancelled = false
-                setPhase(.stopped)
-                throw ChatDriverError.stopping
-            }
-            setPhase(.failed(.couldNotStart(LoomLog.category(of: error))))
-            throw error
-        }
-        let channel = ControlChannel()
-        var current = Run(runID: launched.runID, pipe: launched.pipe, channel: channel, sink: sink, isResume: isResume)
-        current.writer = Task {
-            for await line in channel.outgoing {
-                do { try await launched.pipe.write(line) } catch { break }
-            }
-        }
-        current.reader = Task { [weak self] in
-            for await input in sink.inputs {
-                guard let self else {
-                    sink.close()
-                    return
-                }
-                await self.receive(input, from: sink)
-            }
-        }
-        let drain = channel.events
-        Task { for await _ in drain {} }
-        run = current
-        let runID = launched.runID
-        if let stored = try? await runtime.catalog.launchChoices(sessionID: sessionID) {
-            choices = stored
-            choicesLoaded = true
-        }
-        try? await runtime.supervisor.registerStopHooks(runID: runID, hooks: ManagedRunStopHooks(
-            prepare: {}, completed: {},
-            leave: { [weak self] request in await self?.leave(request) },
-            moved: { [weak self] card in await self?.followMove(to: card) }
-        ))
-        if startCancelled {
-            // The waiting Stop goes on now and stops the child in the verified order.
-            finishStartWaiters(false)
-            throw ChatDriverError.stopping
-        }
-        var askFailed = false
-        do {
-            let reply = try await channel.request(.initialize, timeout: readyTimeout)
-            guard run?.runID == runID, phase == .starting else { throw ChatDriverError.stopping }
-            let response = reply.initializeResponse
-            permissionMode = response.currentPermissionMode ?? permissionMode
-            note(model.apply(ready: response, resumed: isResume, at: clock()))
-            // A session that is in Ask starts in it: the rules and the style are live settings, so neither the spawn nor
-            // `--resume` brings them back. Before anything else is sent, or the first message would run without them.
-            if isAsk {
-                do { try await applyAskLayer(on: channel) } catch {
-                    askFailed = true
-                    throw error
-                }
-            }
-            setPhase(.ready)
-            await publish(.atPrompt)
-            finishStartWaiters(true)
-        } catch {
-            finishStartWaiters(false)
-            // A Stop during Starting: the start is cancelled, not failed.
-            if stopRequested || startCancelled || phase == .stopping { throw ChatDriverError.stopping }
-            if askFailed, run?.runID == runID {
-                // Ask could not be turned on: the session does not run without it (a message would reach a Claude that may edit).
-                setPhase(.failed(.couldNotStart("ask")))
-                await runtime.supervisor.events.publish(sessionID: sessionID, change: .issue("Ask mode could not be turned on."))
-                Task { try? await self.stopAfterFailure() }
-                throw ChatDriverError.couldNotStart("ask")
-            }
-            guard run?.runID == runID else {
-                // The child ended before it was ready; `outputEnded` says why (it may still be reading stderr).
-                if phase == .starting { await waitForRunEnd() }
-                if case let .failed(.couldNotStart(reason)) = phase { throw ChatDriverError.couldNotStart(reason) }
-                throw ChatDriverError.couldNotStart(LoomLog.category(of: error))
-            }
-            // The child lives but never answered: stop it, and say so.
-            setPhase(.failed(.notReady))
-            await runtime.supervisor.events.publish(
-                sessionID: sessionID, change: .issue("Claude did not answer in the Chat face.")
-            )
-            journal?.record("chat.not_ready", ["error": .string(LoomLog.category(of: error))])
-            Task { try? await self.stopAfterFailure() }
-            throw ChatDriverError.couldNotStart("no answer to initialize")
-        }
-    }
-
-    // MARK: Handover (V19)
-
-    /// Chat → Terminal, up to the point where the terminal takes over: this face lets go of the session, and nothing is
-    /// cut. The caller then resumes the terminal face (`SessionRuntime.resumeConversation`).
-    ///
-    /// - A request that waits for the user, background tasks under the finished turn and a start or stop under way
-    ///   are refused (`requestWaiting`, `backgroundWork`, `busy`): nothing changes.
-    /// - A turn that runs is waited for, not interrupted; the session keeps its run until the turn's `result`. From
-    ///   the call on nothing starts another turn here (`handingOver`), and "After this turn" items stay queued. A
-    ///   `cancelHandover()` ends the wait with a `CancellationError`, and the session carries on as it was; so does a
-    ///   Stop. Requests and background work are checked again after the wait, right before the point of no return
-    ///   (a request or a task that began meanwhile refuses).
-    /// - `pointOfNoReturn` runs once, when the wait is over and the run is about to end: from then on a cancel does
-    ///   nothing, and the caller tells the user that the move is under way.
-    /// - Then the run ends in the verified order (`stop()`: stdin closes, the exit is awaited). Queued messages stay,
-    ///   paused with `PauseReason.handover` (only by this stop: a Stop or Quit of the user pauses with `interrupted`);
-    ///   unread messages and drafts are kept as for any run end. The marker "Continued in Terminal" is the caller's, once
-    ///   the terminal has the session (`noteFace`), and `handoverFailed()` when it does not.
-    ///
-    /// A session with no run here has nothing to let go of: it returns at once. A second call while one is under way
-    /// is refused (`busy`), so two handovers never race.
-    ///
-    /// **The hold outlives this call.** When it returns, the session is still the move's until the caller says the other
-    /// face has it or the move failed (`finishHandover()`): between the two, a send is refused (`handingOver`) and the
-    /// queue stays, so the driver never starts a run the terminal is about to take. A call that throws releases the hold
-    /// itself: the run stays here, so what was picked meanwhile reaches it and the queue goes on (a Cancel after the turn
-    /// ended would otherwise leave "After this turn" items with nothing to release them).
-    public func handOverToTerminal(pointOfNoReturn: (@Sendable () async -> Void)? = nil) async throws {
-        switch phase {
-        case .starting, .stopping: throw ChatDriverError.busy
-        case .stopped, .failed, .ready, .working, .needsYou: break
-        }
-        guard !handoverHold else { throw ChatDriverError.busy }
-        if !phase.isLive {
-            // Nothing runs here to let go of; the session is still the move's until it is finished.
-            handoverHold = true
-            handoverCommitted = true
-            return
-        }
-        guard requests.isEmpty else { throw ChatDriverError.requestWaiting }
-        guard background.count == 0 else { throw ChatDriverError.backgroundWork }
-        heldPicks = HeldPicks()
-        do { try await holdForTerminal(pointOfNoReturn: pointOfNoReturn) } catch {
-            // The run stays: what was picked meanwhile reaches it now, then the queue goes on.
-            await replayHeldPicks()
-            await releaseQueueReportingIssue()
-            throw error
-        }
-        heldPicks = HeldPicks()
-    }
-
-    /// The other face has the session, or the move failed or was stopped: the driver is its own again. A send that comes now
-    /// resumes the session (when the terminal has it, the runtime refuses a second run).
-    public func finishHandover() {
-        guard handoverHold else { return }
-        clearHandoverState()
-    }
-
-    private func clearHandoverState() {
-        handoverHold = false
-        handoverCancelled = false
-        handoverCleared = false
-        handoverCommitted = false
-        handoverStopping = false
-    }
-
-    private func holdForTerminal(pointOfNoReturn: (@Sendable () async -> Void)?) async throws {
-        handoverHold = true
-        handoverCancelled = false
-        handoverCleared = false
-        handoverCommitted = false
-        var moved = false
-        defer {
-            // A move that is under way keeps its hold (`finishHandover`); one that ended without a move releases it.
-            if !moved { clearHandoverState() } else { handoverStopping = false }
-        }
-        while turnRunning, !handoverCancelled, run != nil { await waitForTurnEnd(seconds: 1) }
-        if handoverCancelled { throw handoverCleared ? ChatDriverError.clearedDuringHandover : CancellationError() }
-        // The run ended on its own while the handover waited: there is nothing left to stop.
-        guard run != nil, phase.isLive else {
-            moved = true
-            handoverCommitted = true
-            return
-        }
-        // Checked again: a request or a task that began while the turn ran is not ended by a move.
-        // A mode change that was already on its way to the child is let finish (its answer or the timeout); anything picked
-        // from now on is held, not sent.
-        await handoverParked?()
-        await serialMode {}
-        if handoverCancelled { throw handoverCleared ? ChatDriverError.clearedDuringHandover : CancellationError() }
-        guard requests.isEmpty else { throw ChatDriverError.requestWaiting }
-        guard background.count == 0 else { throw ChatDriverError.backgroundWork }
-        handoverCommitted = true
-        await pointOfNoReturn?()
-        handoverStopping = true
-        try await stop()
-        // The run is gone: the session stays the move's until the caller finishes it. A stop that threw releases the hold.
-        moved = true
-    }
-
-    /// Ends the wait of a handover that has not reached its point of no return; the session goes on in the Chat face.
-    public func cancelHandover() {
-        guard handoverHold, !handoverCommitted else { return }
-        handoverCancelled = true
-        wakeTurnEndWaiters()
-    }
-
-    /// A handover to the terminal waits or is stopping the run.
-    public var isHandingOver: Bool { handoverHold }
-
-    /// Tests park a handover here, once its wait for the turn is over and before it decides (the turn's end and the queue's
-    /// release come while it stays parked: the order a slow mode change gives it).
-    var handoverParked: (@Sendable () async -> Void)?
-    func setHandoverParked(_ pause: (@Sendable () async -> Void)?) { handoverParked = pause }
-
-    /// The run a mode, model or effort pick may tell: none while a handover holds the session (the child is going away).
-    private var pickableRun: Run? { handoverHold || !phase.isLive ? nil : run }
-
-    /// A live run is held by a handover: a pick is kept for the target face and not sent.
-    private var holdsPicks: Bool { handoverHold && run != nil && phase.isLive }
-
-    /// Tells the run what was picked while the handover held it (a handover that ended without moving the session). The
-    /// transitions start from the state the child was in, so Ask's layer, the CLI's mode and the markers come out as for any
-    /// pick; a transition that fails leaves the child as it was and the choice back at what it matches.
-    private func replayHeldPicks() async {
-        let held = heldPicks
-        heldPicks = HeldPicks()
-        guard run != nil, phase.isLive else { return }
-        if let mode = held.mode, let child = held.childMode {
-            choices.permissionMode = child.choice
-            permissionMode = child.wire
-            modeBeforeAsk = child.before
-            do { try await setPermissionMode(mode) } catch {
-                journal?.record("chat.held_mode_failed", ["error": .string(LoomLog.category(of: error))])
-                if let choice = child.choice { await recordChoices(ClaudeLaunchChoices(permissionMode: choice)) }
-            }
-        }
-        if let name = held.model {
-            do { try await setModel(name) } catch {
-                journal?.record("chat.held_model_failed", ["error": .string(LoomLog.category(of: error))])
-                // The pick was recorded when it was made, and the child never took it: the choice, the chip and the catalog
-                // go back to what the child runs.
-                if let child = held.childModel {
-                    choices.model = child.choice
-                    liveModel = child.live
-                    await runtime.restoreLaunchModel(child.choice, sessionID: sessionID)
-                    await followRun()
-                    changed()
-                    onChoicesChanged(choices)
-                }
-            }
-        }
-        do {
-            if held.effortCleared { try await clearEffort() } else if let level = held.effort { try await setEffort(level) }
-        } catch {
-            journal?.record("chat.held_effort_failed", ["error": .string(LoomLog.category(of: error))])
-            if let child = held.childEffort {
-                choices.effort = child.choice
-                effortCleared = child.cleared
-                if let level = child.choice {
-                    await runtime.recordLaunchChoices(ClaudeLaunchChoices(effort: level), sessionID: sessionID)
-                } else {
-                    await runtime.clearLaunchEffort(sessionID: sessionID)
-                }
-                await followRun()
-                changed()
-                onChoicesChanged(choices)
-            }
-        }
-    }
-
-    /// The terminal did not take the session after the run ended (its resume failed, or a Stop ended the move): the
-    /// queue was paused for a move that did not happen, so it says it was interrupted.
-    public func handoverFailed() {
-        guard queue.paused == .handover else { return }
-        pauseQueue(.interrupted)
-    }
-
-    /// Ask's rules, style and mode again (after a reset). Best effort: the layer is already there if the CLI kept it.
-    /// `askLayerPending` was set when the reset was read, so a message sent between that and the moment this takes the
-    /// mode chain still waits (`write`); it clears when the layer is on, or could not be.
-    private func reapplyAskLayer() async {
-        defer { finishAskLayerPending() }
-        await serialMode {
-            guard isAsk, let current = run, phase.isLive else { return }
-            try? await applyAskLayer(on: current.channel)
-        }
-    }
-
-    private func stopAfterFailure() async throws {
-        stopRequested = true
-        _ = try await runtime.stopConversation(sessionID: sessionID)
-        // The phase stays failed: the run never became ready.
-        if phase == .stopped { setPhase(.failed(.notReady)) }
-    }
-
-    private func waitForStart() async -> Bool {
-        await withCheckedContinuation { startWaiters.append($0) }
-    }
-
-    private func finishStartWaiters(_ ready: Bool) {
-        let waiters = startWaiters
-        startWaiters.removeAll()
-        for waiter in waiters { waiter.resume(returning: ready) }
-    }
-
-    /// The supervisor's stop hook (Stop, an idle stop, Quit, a face switch), before stdin closes: interrupt a running
-    /// turn or a waiting request and wait for the turn's `result`, all within the grace. Only a stop Loom made comes
-    /// here (the supervisor does not call it when the leader already exited); its exit is then not a failure.
-    func leave(_ request: ManagedRunLeave) async {
-        guard let current = run, request.reason != .processExited else { return }
-        stopRequested = true
-        setPhase(.stopping)
-        // Nothing queued goes out during the Stop. A handover keeps the queue and says why it waits.
-        if !queue.isEmpty, queue.paused == nil { pauseQueue(handoverStopping ? .handover : .interrupted) }
-        guard turnRunning || !requests.isEmpty else { return }
-        let started = clock()
-        await sendInterrupt(on: current.channel, timeout: request.graceSeconds)
-        let left = request.graceSeconds - clock().timeIntervalSince(started)
-        if left > 0 { await waitForTurnEnd(seconds: left) }
-    }
-
-    // MARK: Sending
-
-    /// Sends a message. `.next` goes to the CLI now (read after the running tool); `.afterTurn` waits in Loom's queue
-    /// while a turn runs, a request waits, or the queue already holds (or pauses) items. ↵ is always `next` (CHAT-SPEC →
-    /// Keys); `now` is only "Read now". A stopped session is resumed first. A queued message
-    /// carries text only: one with attachments is refused (`queueTextOnly`) rather than losing them.
-    @discardableResult
-    public func send(_ text: String, attachments: [ChatOutgoingAttachment] = [],
-                     timing: ChatSendTiming = .next) async throws -> ChatSendReceipt {
-        let message = ChatSentMessage(text: text, attachments: attachments)
-        guard !message.blocks.isEmpty else { throw ChatDriverError.emptyMessage }
-        if timing == .afterTurn, turnRunning || !requests.isEmpty || !queue.isEmpty || queue.paused != nil {
-            guard attachments.isEmpty else { throw ChatDriverError.queueTextOnly }
-            return .queued(try enqueue(text))
-        }
-        guard !handoverHold else { throw ChatDriverError.handingOver }
-        try await ensureLive()
-        return .sent(try await write(message, priority: .next))
-    }
-
-    /// "Retry" on a message that was not delivered (the process ended before the CLI took it): the same message is sent
-    /// again, as a new row. Loom never does this by itself (concept §5.4). The old row stays as the record of the
-    /// first try.
-    @discardableResult
-    public func retry(messageID: String) async throws -> String {
-        guard model.entry(id: messageID).map({ entry in
-            if case let .user(prompt) = entry.body { prompt.delivery == .notDelivered } else { false }
-        }) == true, let message = sent[messageID] else { throw ChatDriverError.notPending(messageID) }
-        guard !handoverHold else { throw ChatDriverError.handingOver }
-        try await ensureLive()
-        let uuid = try await write(message, priority: .next)
-        sent[messageID] = nil
-        heldPayloads.removeAll { $0 == messageID }
-        note(model.noteFollowUp(.sentAgain, forRow: messageID))
-        changed()
-        if let at = undelivered.firstIndex(of: message.rowText) { undelivered.remove(at: at) }
-        withdrawFromDrafts(messageID: messageID, message: message)
-        return uuid
-    }
-
-    /// The message went out again, so the copy that came back as a draft goes: from the composers that have not taken it, from
-    /// the draft file, and (`withdrawnDrafts`) from a composer that has. Without it a successful Retry left the message twice.
-    private func withdrawFromDrafts(messageID: String, message: ChatSentMessage) {
-        returnedDrafts.removeAll { $0.messageID == messageID }
-        withdrawnDrafts.append(ChatReturnedDraft(messageID: messageID, text: message.text, attachments: message.attachments))
-        if let draftStore {
-            do { try draftStore.withdraw(text: message.text, attachments: message.attachments, sessionID: sessionID) } catch {
-                LoomLog.error(.lifecycle, "A message sent again could not be taken out of its draft (\(LoomLog.category(of: error)))")
-            }
-        }
-        changed()
-    }
-
-    /// "Read now": a sent message still waiting is taken back (`cancel_async_message`) and sent again with priority
-    /// `now`, which cuts the running step. Its row keeps its place and its id; the CLI knows it by a new uuid from now
-    /// on (`TurnModel.sentUUID(ofRow:)`). False when the CLI had already taken it into the turn.
-    @discardableResult
-    public func readNow(messageID: String) async throws -> Bool {
-        guard let current = run, let message = sent[messageID],
-              unreadRows.contains(messageID) else { throw ChatDriverError.notPending(messageID) }
-        let reply = try await current.channel.request(.cancelAsyncMessage(messageUUID: model.sentUUID(ofRow: messageID)))
-        guard reply.wasCancelled != false else { return false }
-        let uuid = UUID().uuidString.lowercased()
-        note(model.rekeyPendingUser(from: messageID, to: uuid))
-        sent[messageID] = message
-        try await deliver(OutgoingUserMessage(uuid: uuid, content: message.blocks, priority: .now), row: messageID,
-                          on: current.channel)
-        changed()
-        return true
-    }
-
-    /// Esc: stops the running turn. Messages the CLI held unread come back as drafts; the queue pauses.
-    public func interrupt() async {
-        guard let current = run, phase != .stopping, turnRunning || !requests.isEmpty else { return }
-        await sendInterrupt(on: current.channel, timeout: 10)
-    }
-
-    /// A message Claude read (or that was withdrawn) keeps no payload here: the images and pasted texts of a long session
-    /// would stay in memory for nothing. Only unread messages (Read now, Retry, a draft handed back) need theirs.
-    private func releasePayloads() {
-        guard !heldPayloads.isEmpty else { return }
-        var read: [String] = []
-        for row in heldPayloads {
-            // Cancelled ones wait for `keepForUser`, which hands them back to the user first.
-            if model.delivery(ofRow: row) == .read {
-                sent[row] = ChatSentMessage(text: sent[row]?.text ?? "", attachments: [])
-                read.append(row)
-            }
-        }
-        guard !read.isEmpty else { return }
-        heldPayloads.removeAll { read.contains($0) }
-        releaseFromDraft(read)
-    }
-
-    /// Loom's own messages the CLI holds unread, in the order they were written: the rows `Read now` offers. They come from
-    /// the payloads kept, not from a walk over the model's entries (that costs the whole stream on every read).
-    private var unreadRows: [String] {
-        heldPayloads.filter {
-            let delivery = model.delivery(ofRow: $0)
-            return delivery == .pending || delivery == .queued
-        }
-    }
-
-    /// Esc: an interrupt, except that it does nothing while a request waits (Esc never denies, and never ends a turn a card
-    /// holds). The Interrupt button and Stop call `interrupt()`; the card's own buttons answer.
-    public func interruptFromEscape() async {
-        guard requests.isEmpty else { return }
-        await interrupt()
-    }
-
-    private func ensureLive() async throws {
-        switch phase {
-        case .stopping: throw ChatDriverError.stopping
-        case .starting, .stopped, .failed: try await resume()
-        case .ready, .working, .needsYou: break
-        }
-    }
-
-    private func write(_ message: ChatSentMessage, priority: OutgoingUserMessage.Priority) async throws -> String {
-        // A message goes out after the mode transition that is under way, and after Ask's layer is back on following a reset:
-        // it is the first thing the CLI does with the new rules, never a turn that runs before them. (The transitions
-        // run in order; this joins the chain behind them.)
-        await settleModeTransitions()
-        guard let current = run else { throw ChatDriverError.stopping }
-        let uuid = UUID().uuidString.lowercased()
-        sent[uuid] = message
-        heldPayloads.append(uuid)
-        // On disk before it is written: a crash or a Quit while Claude has not read it leaves it in the draft.
-        holdInDraft(uuid, message)
-        note(model.appendPendingUser(uuid: uuid, text: message.rowText, images: message.images, at: clock(),
-                                     whileWorking: turnRunning, typedText: message.text))
-        do {
-            try await deliver(OutgoingUserMessage(uuid: uuid, content: message.blocks, priority: priority), row: uuid,
-                              on: current.channel)
-        } catch {
-            // The caller keeps the text (the composer puts it back, the queue keeps the item): the row offers no Retry.
-            heldPayloads.removeAll { $0 == uuid }
-            releaseFromDraft([uuid])
-            note(model.noteFollowUp(.handedBack, forRow: uuid))
-            changed()
-            throw error
-        }
-        await beginTurn()
-        requestTitleIfNeeded(for: message)
-        return uuid
-    }
-
-    // MARK: The session's title
-
-    /// A Chat run has no terminal title, and the CLI's SDK mode does not name a session by itself as the terminal face does
-    /// (a short model call on the first message). So the first message that is sent to an untitled session asks for it
-    /// (`generate_session_title`, persisted as the transcript's `ai-title`): a slash command is no title, an answer that
-    /// fails or holds none is not shown, and the next message tries again while the session is still untitled.
-    private enum TitleState { case needed, requesting, done }
-    private var titleState = TitleState.needed
-
-    private func requestTitleIfNeeded(for message: ChatSentMessage) {
-        guard titleState == .needed, let current = run else { return }
-        let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !text.hasPrefix("/") else { return }
-        titleState = .requesting
-        let card = sessionID
-        Task { await generateTitle(from: text, card: card, on: current.channel) }
-    }
-
-    private func generateTitle(from text: String, card: UUID, on channel: ControlChannel) async {
-        // Only an untitled session is named (a resumed one may carry the terminal's title or the user's own).
-        guard let record = try? await runtime.catalog.session(id: card) else { titleState = .needed; return }
-        guard (record.title ?? "").isEmpty, !record.titleIsCustom else { titleState = .done; return }
-        do {
-            let reply = try await channel.request(.generateSessionTitle(description: text), timeout: .seconds(60))
-            guard let title = reply.generatedTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
-                titleState = .needed
-                return
-            }
-            titleState = .done
-            onTitle(sessionID, title)
-        } catch {
-            titleState = .needed
-        }
-    }
-
-    /// Waits until no mode transition runs and Ask's layer is not being put back (a send right after a mode pick, or a
-    /// queued message released right after a reset). Joins the transitions' chain, so it comes after every one asked before.
-    private func settleModeTransitions() async {
-        while askLayerPending { await withCheckedContinuation { askLayerWaiters.append($0) } }
-        if modeBusy { await serialMode {} }
-    }
-
-    private func finishAskLayerPending() {
-        askLayerPending = false
-        let waiters = askLayerWaiters
-        askLayerWaiters.removeAll()
-        for waiter in waiters { waiter.resume() }
-    }
-
-    // MARK: Unread messages in the draft file
-
-    private func holdInDraft(_ row: String, _ message: ChatSentMessage) {
-        guard let draftStore else { return }
-        do { try draftStore.hold(id: row, text: message.text, attachments: message.attachments, sessionID: sessionID) } catch {
-            LoomLog.error(.lifecycle, "A message sent could not be kept in the draft until Claude reads it (\(LoomLog.category(of: error)))")
-        }
-    }
-
-    private func releaseFromDraft(_ rows: [String]) {
-        guard let draftStore, !rows.isEmpty else { return }
-        do { try draftStore.release(ids: rows, sessionID: sessionID) } catch {
-            LoomLog.error(.lifecycle, "A message Claude read could not be taken out of the draft (\(LoomLog.category(of: error)))")
-        }
-    }
-
-    /// Queues a message on the channel. One that cannot go out shows "Not delivered" and the error says why.
-    private func deliver(_ message: OutgoingUserMessage, row: String, on channel: ControlChannel) async throws {
-        do {
-            try await channel.write(message.line())
-        } catch {
-            note(model.markNotDelivered([row]))
-            throw (error as? ControlError) == .outputFull ? ChatDriverError.inputFull : ChatDriverError.stopping
-        }
-    }
-
-    private func sendInterrupt(on channel: ControlChannel, timeout seconds: Double) async {
-        model.noteInterruptSent()
-        // Paused before the reply is awaited: the interrupted turn's `result` can come first and must not release it.
-        if !queue.isEmpty, queue.paused == nil { pauseQueue(.interrupted) }
-        let receipt: InterruptReceipt?
-        do {
-            receipt = try await channel.request(.interrupt(cancelQueued: true), timeout: .seconds(seconds))
-                .interruptReceipt
-        } catch ControlError.unsupported {
-            receipt = try? await channel.request(.interrupt(cancelQueued: false), timeout: .seconds(seconds))
-                .interruptReceipt
-        } catch {
-            receipt = nil
-        }
-        var cancelledDrafts: [ChatReturnedDraft] = []
-        for id in receipt?.cancelled ?? [] {
-            let row = model.rowID(forSent: id)
-            guard let message = sent[row] else { continue }
-            cancelledDrafts.append(ChatReturnedDraft(messageID: row, text: message.text, attachments: message.attachments))
-            if let lifecycle = CommandLifecycle(json: ["command_uuid": .string(id), "state": "cancelled"]) {
-                note(model.apply(.commandLifecycle(lifecycle), at: clock()))
-            }
-        }
-        keepForUser(cancelledDrafts)
-        for draft in cancelledDrafts {
-            sent[draft.messageID] = ChatSentMessage(text: draft.text, attachments: [])
-            heldPayloads.removeAll { $0 == draft.messageID }
-        }
-        changed()
-    }
-
-    /// Messages Claude never read go back to the user: to a composer through `takeReturnedDrafts`, and into the session's
-    /// draft file at once, in front of what is typed, so they survive a crash or a Quit and a composer made later finds
-    /// them. Nothing the user sent is lost when a run ends.
-    private func keepForUser(_ drafts: [ChatReturnedDraft]) {
-        guard !drafts.isEmpty else { return }
-        var kept = drafts
-        if let draftStore {
-            do {
-                // They leave the draft's held list (written when they were sent) and come into its text, in front.
-                try draftStore.prepend(texts: drafts.map(\.text), attachments: drafts.flatMap(\.attachments), sessionID: sessionID,
-                                       settling: drafts.map(\.messageID))
-                let at = clock()
-                for index in kept.indices { kept[index].persistedAt = at }
-            } catch {
-                LoomLog.error(.lifecycle, "Messages Claude did not read could not be saved as a draft (\(LoomLog.category(of: error)))")
-            }
-        }
-        returnedDrafts += kept
-    }
-
-    // MARK: Requests (cards)
-
-    /// Answers a waiting request with a decision. A denial with `interrupt` stops the turn ("Deny and stop"). `record` is
-    /// the one line the stream keeps of the card.
-    public func respond(to requestID: String, with decision: PermissionDecision,
-                        record: RequestRecord? = nil) async throws {
-        // Nothing is answered while the session stops: the Stop's interrupt withdraws every request.
-        guard phase != .stopping else { throw ChatDriverError.stopping }
-        guard let current = run, let request = requests.first(where: { $0.requestID == requestID }) else {
-            throw ChatDriverError.noSuchRequest(requestID)
-        }
-        // One answer per request: a second call, while the first is on its way, is refused before it touches anything.
-        guard answering.insert(requestID).inserted else { throw ChatDriverError.answerInProgress }
-        defer { answering.remove(requestID) }
-        let stops: Bool
-        if case .deny(_, true) = decision { stops = true } else { stops = false }
-        if stops {
-            model.noteInterruptSent()
-            // Deny and stop ends the turn like an interrupt does: nothing queued goes out behind it.
-            if !queue.isEmpty, queue.paused == nil { pauseQueue(.interrupted) }
-        }
-        guard await current.channel.respond(to: requestID, with: decision) else {
-            if stops { model.clearInterruptSent() }
-            // Still waiting: the answer could not be queued (the input is full); the card stays answerable.
-            if await current.channel.pendingRequests.contains(where: { $0.requestID == requestID }) {
-                throw ChatDriverError.inputFull
-            }
-            await retire(requestID: requestID, as: .resolved, summary: "No longer waiting: \(request.subject)")
-            await afterRequestsChanged()
-            throw ChatDriverError.noSuchRequest(requestID)
-        }
-        // The CLI withdrew it while the answer was on its way: its "Cancelled" line stands, and no "Allowed once" joins it.
-        guard requests.contains(where: { $0.requestID == requestID }) else { return }
-        if let record { note(model.recordRequest(record, at: clock())) }
-        await retire(requestID: requestID, as: .answered, summary: record?.summary ?? "Answered: \(request.subject)")
-        await afterRequestsChanged()
-        // Messages the CLI holds unread come back as drafts, as on an interrupt.
-        if stops, !unreadRows.isEmpty, let again = run {
-            await sendInterrupt(on: again.channel, timeout: 10)
-        }
-    }
-
-    /// A card's answer, as the user gave it: builds the decision and the stream's line from the request and sends it. A
-    /// plan approval also records the mode as the session's choice (in the mode chain).
-    public func answer(requestID: String, _ answer: ChatRequestAnswer) async throws {
-        if case .approvePlan = answer {
-            try await serialMode { try await answerNow(requestID: requestID, answer) }
-        } else {
-            try await answerNow(requestID: requestID, answer)
-        }
-    }
-
-    private func answerNow(requestID: String, _ answer: ChatRequestAnswer) async throws {
-        guard phase != .stopping else { throw ChatDriverError.stopping }
-        guard let request = requests.first(where: { $0.requestID == requestID }) else {
-            throw ChatDriverError.noSuchRequest(requestID)
-        }
-        // Ask refuses every tool approval; none is allowed while it is on (a card that was waiting when Ask came on is
-        // refused when Ask is chosen, so this is the defence for the one that arrives some other way).
-        if isAsk {
-            switch answer {
-            case .allowOnce, .allowForSession: throw ChatDriverError.notOffered
-            default: break
-            }
-        }
-        let plan: ChatAnswerPlan
-        // While Ask is on a plan is approved in Ask: any other mode would lift `dontAsk` and leave the deny rules with Bash open.
-        var answer = answer
-        if isAsk, case .approvePlan = answer { answer = .approvePlan(mode: ClaudePermissionMode.ask.rawValue) }
-        do { plan = try request.answerPlan(for: answer) } catch let error as ChatAnswerError {
-            throw error == .incomplete ? ChatDriverError.incompleteAnswer : ChatDriverError.notOffered
-        }
-        try await respond(to: requestID, with: plan.decision, record: plan.record)
-        // A mode a plan approval, or an "Allow for this session" that carries `setMode`, sets is the session's choice.
-        if let mode = plan.mode {
-            let wire = ClaudePermissionMode(rawValue: mode)?.cliValue ?? mode
-            permissionMode = wire
-            model.noteMarkedMode(wire)
-            await recordChoices(ClaudeLaunchChoices(permissionMode: mode))
-        }
-    }
-
-    /// A request leaves the list: on its own id only (the user's answer, the CLI withdrawing it) or its own `tool_use_id`
-    /// finishing, never on a `result`. It is kept, settled, with the one line it leaves.
-    private func retire(requestID: String, as outcome: ChatSettledRequest.Outcome, summary: String) async {
-        if let request = requests.first(where: { $0.requestID == requestID }) { settle(request, as: outcome, summary: summary) }
-        requests.removeAll { $0.requestID == requestID }
-        changed()
-        await publishRequests()
-    }
-
-    private func settle(_ request: ChatPendingRequest, as outcome: ChatSettledRequest.Outcome, summary: String) {
-        settled.append(ChatSettledRequest(request: request, outcome: outcome, summary: summary, settledAt: clock()))
-        if settled.count > Self.settledLimit { settled.removeFirst(settled.count - Self.settledLimit) }
-    }
-
-    /// The run's pending requests, provider-independent, for Home, the sidebar and the Dock (and V18's cards).
-    private func publishRequests() async {
-        await followRun()
-        await runtime.supervisor.events.publish(
-            sessionID: sessionID, change: .pendingRequests(requests.map(\.summary))
-        )
-    }
-
-    private func afterRequestsChanged() async {
-        guard phase == .needsYou || phase == .working else { return }
-        if requests.isEmpty, turnRunning {
-            setPhase(.working)
-            await publish(.working)
-        } else if requests.isEmpty {
-            setPhase(.ready)
-        }
-    }
-
-    // MARK: Mode, model, effort
-
-    private func acquireMode() async {
-        if modeBusy {
-            await withCheckedContinuation { modeWaiters.append($0) }
-        } else {
-            modeBusy = true
-        }
-    }
-
-    private func releaseMode() {
-        if modeWaiters.isEmpty { modeBusy = false } else { modeWaiters.removeFirst().resume() }
-    }
-
-    /// Runs one mode transition in the chain: after every one asked before it, and before every one asked after it.
-    private func serialMode<T>(_ body: () async throws -> T) async rethrows -> T {
-        await acquireMode()
-        defer { releaseMode() }
-        return try await body()
-    }
-
-    /// Changes the mode now (and on every later spawn). `mode` is Loom's word (`ClaudePermissionMode`); the CLI is told its
-    /// own (`cliValue`), and the session keeps Loom's word for the next spawn. Ask is not a mode of the CLI alone: entering
-    /// it sets the mode, the deny rules and the style together, and any other choice while it is on clears all three.
-    /// Transitions run one at a time, in the order asked (`serialMode`); a pick made while the process starts waits for
-    /// the start, and for the Ask layer a resumed Ask session gets.
-    public func setPermissionMode(_ mode: String) async throws {
-        try await serialMode {
-            if holdsPicks {
-                if heldPicks.childMode == nil {
-                    heldPicks.childMode = (choices.permissionMode, permissionMode, modeBeforeAsk)
-                }
-                heldPicks.mode = mode
-            }
-            if mode == ClaudePermissionMode.ask.rawValue {
-                try await enterAsk()
-            } else if isAsk {
-                try await leaveAskNow(to: mode)
-            } else {
-                try await changeMode(to: mode)
-            }
-        }
-    }
-
-    /// The mode a stopped session shows is the one chosen: the last CLI mode of a run that ended is not.
-    private func noteModeWithoutProcess() { permissionMode = nil }
-
-    private func changeMode(to mode: String) async throws {
-        let wire = ClaudePermissionMode(rawValue: mode)?.cliValue ?? mode
-        if let current = pickableRun {
-            _ = try await current.channel.request(.setPermissionMode(PermissionMode(rawValue: wire)))
-            permissionMode = wire
-            note(model.markMode(wire, at: clock()))
-        } else {
-            noteModeWithoutProcess()
-        }
-        await recordChoices(ClaudeLaunchChoices(permissionMode: mode))
-    }
-
-    /// Turns Ask on: remembers the mode it replaces (Full access included: `bypassPermissions` leaves Bash open), then
-    /// sets `dontAsk`, the deny rules and the style. No relaunch, no turn needed (spike S9). Refused while a tool approval
-    /// waits (the driver never answers a request itself) and when the CLI has no `loom:Ask` style (the plugin is missing).
-    private func enterAsk() async throws {
-        let before = permissionMode ?? choices.permissionMode
-        guard let current = pickableRun else {
-            if !isAsk { modeBeforeAsk = Self.remembered(before) }
-            noteModeWithoutProcess()
-            await recordChoices(ClaudeLaunchChoices(permissionMode: ClaudePermissionMode.ask.rawValue))
-            return
-        }
-        if isAsk {
-            // Ask is the choice, but the CLI's mode left `dontAsk` (plan mode inside Ask): the rules and the style stay, the mode returns.
-            if permissionMode != ChatAskMode.mode.rawValue {
-                _ = try await current.channel.request(.setPermissionMode(ChatAskMode.mode))
-                permissionMode = ChatAskMode.mode.rawValue
-                note(model.markMode(ChatAskMode.mode.rawValue, at: clock()))
-            }
-            return
-        }
-        guard !requests.contains(where: { $0.kind == .approval }) else { throw ChatDriverError.requestWaiting }
-        if let styles = model.ready?.availableOutputStyles, !styles.contains(ClaudeLoomPlugin.askStyleName) {
-            throw ChatDriverError.askUnavailable
-        }
-        try await applyAskLayer(on: current.channel, restoring: before)
-        permissionMode = ChatAskMode.mode.rawValue
-        modeBeforeAsk = Self.remembered(before)
-        let text = background.count > 0 ? "Mode changed to Ask. Background work started earlier keeps running." : nil
-        note(model.markMode(ChatAskMode.mode.rawValue, text: text, at: clock()))
-        await recordChoices(ClaudeLaunchChoices(permissionMode: ClaudePermissionMode.ask.rawValue))
-    }
-
-    private static func remembered(_ mode: String?) -> String? {
-        mode.flatMap { ClaudePermissionMode(rawValue: $0) }.flatMap { $0 == .ask ? nil : $0.rawValue }
-    }
-
-    /// Turns Ask off for `mode` (nil: the mode it replaced, else Ask before edits).
-    public func leaveAsk(to mode: String? = nil) async throws {
-        try await serialMode { try await leaveAskNow(to: mode) }
-    }
-
-    /// The rules and the style go first, then the CLI's mode, so there is never a moment with the mode lifted and the rules
-    /// still on that leaves Bash open. When the second step fails the first is taken back (fresh mirror, best effort): the
-    /// session stays in Ask, as `choices` say.
-    private func leaveAskNow(to mode: String?) async throws {
-        guard isAsk else { return }
-        let target = mode ?? modeBeforeAsk ?? ClaudePermissionMode.askBeforeEdits.rawValue
-        let wire = ClaudePermissionMode(rawValue: target)?.cliValue ?? target
-        if let current = pickableRun {
-            do {
-                _ = try await current.channel.request(.applyFlagSettings(ChatAskMode.leaveSettings))
-                _ = try await current.channel.request(.setPermissionMode(PermissionMode(rawValue: wire)))
-            } catch {
-                await restoreAskRules(on: current.channel)
-                throw ChatDriverError.modeNotChanged(staysInAsk: true)
-            }
-            permissionMode = wire
-            note(model.markMode(wire, at: clock()))
-        } else {
-            noteModeWithoutProcess()
-        }
-        modeBeforeAsk = nil
-        await recordChoices(ClaudeLaunchChoices(permissionMode: target))
-    }
-
-    /// Ask's rules and style again, read fresh (best effort: a failure leaves the CLI as it is).
-    private func restoreAskRules(on channel: ControlChannel) async {
-        let rules = (try? await channel.request(.other(subtype: "list_permission_rules", fields: [:])))?.permissionRules ?? []
-        _ = try? await channel.request(.applyFlagSettings(ChatAskMode.enterSettings(mirroring: rules)))
-    }
-
-    /// The requests of Ask: the CLI's `dontAsk`, then the live rules and style. If the second fails, the rules are taken off
-    /// again and the mode goes back to what it was (`restoring`, the CLI's word), so a half-turned Ask is not left behind.
-    private func applyAskLayer(on channel: ControlChannel, restoring previous: String? = nil) async throws {
-        _ = try await channel.request(.setPermissionMode(ChatAskMode.mode))
-        do {
-            // The rules the user's own settings hold are read each time Ask is entered; a rule added while Ask is on is not
-            // mirrored until Ask is entered again.
-            let rules = try await channel.request(.other(subtype: "list_permission_rules", fields: [:])).permissionRules
-            _ = try await channel.request(.applyFlagSettings(ChatAskMode.enterSettings(mirroring: rules)))
-        } catch {
-            _ = try? await channel.request(.applyFlagSettings(ChatAskMode.leaveSettings))
-            if let previous {
-                _ = try? await channel.request(.setPermissionMode(
-                    PermissionMode(rawValue: ClaudePermissionMode(rawValue: previous)?.cliValue ?? previous)))
-            }
-            throw error
-        }
-    }
-
-    /// Changes the model. An effort the new model does not offer is not kept: it is clamped to the nearest level below (or
-    /// the lowest), and cleared for a model without effort, live and in the catalog, so no later spawn passes a `--effort`
-    /// the model lacks.
-    public func setModel(_ name: String) async throws {
-        if let current = pickableRun {
-            _ = try await current.channel.request(.setModel(name))
-            // The chip and the ring show the chosen model until a newer `system/init` names the one that runs.
-            liveModel = name
-        } else if holdsPicks {
-            if heldPicks.childModel == nil { heldPicks.childModel = (choices.model, liveModel) }
-            heldPicks.model = name
-            liveModel = name
-        }
-        await recordChoices(ClaudeLaunchChoices(model: name))
-        guard let option = model.ready?.models.first(where: { $0.value == name }),
-              model.ready?.models.contains(where: { !$0.supportedEffortLevels.isEmpty }) == true else { return }
-        let effort = effortCleared ? nil : (choices.effort ?? model.latestInit?.effort)
-        guard let effort else { return }
-        if let kept = ChatEffort.clamped(effort, to: option.supportedEffortLevels) {
-            if kept != effort { try await setEffort(kept) }
-        } else {
-            try await clearEffort()
-        }
-    }
-
-    public func setEffort(_ level: String) async throws {
-        if let current = pickableRun {
-            _ = try await current.channel.request(.applyFlagSettings(.effortLevel(level)))
-        } else if holdsPicks {
-            if heldPicks.childEffort == nil { heldPicks.childEffort = (choices.effort, effortCleared) }
-            heldPicks.effort = level
-            heldPicks.effortCleared = false
-        }
-        effortCleared = false
-        await recordChoices(ClaudeLaunchChoices(effort: level))
-    }
-
-    /// Back to the CLI's own effort (the slider's Default): the live setting and the catalog's record are cleared.
-    public func clearEffort() async throws {
-        if let current = pickableRun {
-            _ = try await current.channel.request(.applyFlagSettings(.effortLevel(nil)))
-        } else if holdsPicks {
-            if heldPicks.childEffort == nil { heldPicks.childEffort = (choices.effort, effortCleared) }
-            heldPicks.effort = nil
-            heldPicks.effortCleared = true
-        }
-        effortCleared = true
-        await loadStoredChoices()
-        choices.effort = nil
-        await runtime.clearLaunchEffort(sessionID: sessionID)
-        await followRun()
-        changed()
-        onChoicesChanged(choices)
-    }
-
-    private func recordChoices(_ newer: ClaudeLaunchChoices) async {
-        await loadStoredChoices()
-        choices = choices.merging(newer)
-        await followRun()
-        await runtime.recordLaunchChoices(newer, sessionID: sessionID)
-        changed()
-        onChoicesChanged(choices)
-    }
-
-    // MARK: Queue
-
-    /// Adds a message to the end of the queue. Refused (`queueFull`) past `ChatQueue.maximumItems` items or
-    /// `ChatQueue.maximumBytes` bytes.
-    @discardableResult
-    public func enqueue(_ text: String) throws -> String {
-        guard queue.admits(text) else { throw ChatDriverError.queueFull }
-        let item = ChatQueue.Item(text: text, queuedAt: clock())
-        queue.items.append(item)
-        saveQueue()
-        return item.id
-    }
-
-    public func editQueued(id: String, text: String) throws {
-        guard let i = queue.items.firstIndex(where: { $0.id == id }) else { throw ChatDriverError.noSuchQueueItem(id) }
-        guard queue.admits(text, replacing: id) else { throw ChatDriverError.queueFull }
-        queue.items[i].text = text
-        saveQueue()
-    }
-
-    public func moveQueued(id: String, to position: Int) throws {
-        guard let i = queue.items.firstIndex(where: { $0.id == id }) else { throw ChatDriverError.noSuchQueueItem(id) }
-        let item = queue.items.remove(at: i)
-        queue.items.insert(item, at: min(max(0, position), queue.items.count))
-        saveQueue()
-    }
-
-    @discardableResult
-    public func removeQueued(id: String) throws -> ChatQueue.Item {
-        guard let i = queue.items.firstIndex(where: { $0.id == id }) else { throw ChatDriverError.noSuchQueueItem(id) }
-        let item = queue.items.remove(at: i)
-        if queue.isEmpty { queue.paused = nil }
-        saveQueue()
-        return item
-    }
-
-    /// Sends a queued item at once: with priority `now` into a running turn, as a new turn otherwise. The item leaves
-    /// the queue only once it is written; if it cannot be (the resume failed, a Stop began, the input is full), it
-    /// stays where it was and the error says why.
-    @discardableResult
-    public func sendQueuedNow(id: String) async throws -> String {
-        guard queue.items.contains(where: { $0.id == id }) else { throw ChatDriverError.noSuchQueueItem(id) }
-        guard !handoverHold else { throw ChatDriverError.handingOver }
-        // `now` cancels the running step: into a waiting approval it would land on the request. The user answers it first.
-        guard requests.isEmpty else { throw ChatDriverError.requestWaiting }
-        try await ensureLive()
-        guard let i = queue.items.firstIndex(where: { $0.id == id }) else { throw ChatDriverError.noSuchQueueItem(id) }
-        guard requests.isEmpty else { throw ChatDriverError.requestWaiting }
-        let item = queue.items.remove(at: i)
-        do {
-            let uuid = try await write(ChatSentMessage(text: item.text, attachments: []),
-                                       priority: turnRunning && requests.isEmpty ? .now : .next)
-            if queue.isEmpty { queue.paused = nil }
-            saveQueue()
-            return uuid
-        } catch {
-            queue.items.insert(item, at: min(i, queue.items.count))
-            saveQueue()
-            throw error
-        }
-    }
-
-    /// Lifts a pause; the first item goes out when no turn runs and no request waits.
-    public func resumeQueue() async throws {
-        queue.paused = nil
-        saveQueue()
-        try await releaseQueue()
-    }
-
-    @discardableResult
-    public func clearQueue() -> [ChatQueue.Item] {
-        let items = queue.items
-        queue = ChatQueue()
-        saveQueue()
-        return items
-    }
-
-    private func pauseQueue(_ reason: ChatQueue.PauseReason) {
-        queue.paused = reason
-        saveQueue()
-    }
-
-    private func saveQueue() {
-        do {
-            try queueStore?.save(queue, sessionID: sessionID)
-            if case .notSaved = queueIssue { queueIssue = nil }
-        } catch {
-            queueIssue = .notSaved(LoomLog.category(of: error))
-            LoomLog.error(.lifecycle, "The Chat queue could not be saved (\(LoomLog.category(of: error)))")
-        }
-        changed()
-    }
-
-    /// Sends the first item when nothing runs, nothing waits and the queue is not paused. The item leaves the queue
-    /// only once it is written; one that cannot be goes back to the head and the error is thrown.
-    private func releaseQueue() async throws {
-        guard queue.paused == nil, !handoverHold, phase != .stopping, !turnRunning, requests.isEmpty,
-              let first = queue.items.first else { return }
-        try await ensureLive()
-        guard queue.paused == nil, !handoverHold, phase != .stopping, !turnRunning, requests.isEmpty,
-              queue.items.first?.id == first.id else { return }
-        queue.items.removeFirst()
-        do {
-            _ = try await write(ChatSentMessage(text: first.text, attachments: []), priority: .next)
-            if case .notSent = queueIssue { queueIssue = nil }
-            saveQueue()
-        } catch {
-            queue.items.insert(first, at: 0)
-            saveQueue()
-            throw error
-        }
-    }
-
-    // MARK: Ingestion
-
-    private func receive(_ input: ChatPipeSink.Input, from sink: ChatPipeSink) async {
-        switch input {
-        case let .frames(frames, at, bytes):
-            lastActivity = at
-            ingesting = true
-            let activityBefore = model.activity
-            for frame in frames {
-                guard case let .message(message) = frame else {
-                    note(model.apply(frame, at: at))
-                    continue
-                }
-                await ingest(message, at: at)
-            }
-            if model.activity != activityBefore { streamActivityChanged = true }
-            ingesting = false
-            flushModelChanges()
-            sink.taken(bytes)
-            changed()
-        case .ended:
-            await outputEnded()
-        }
-    }
-
-    private func ingest(_ message: StreamMessage, at now: Date) async {
-        guard let current = run else { return }
-        await current.channel.receive(message)
-        switch message {
-        case let .commandLifecycle(lifecycle):
-            // Only Loom's own sends: a task notification has a uuid of its own and lifecycle records too.
-            guard sent[model.rowID(forSent: lifecycle.commandUUID)] != nil else { return }
-            note(model.apply(message, at: now))
-            releasePayloads()
-        case let .result(result):
-            await ingestResult(result, at: now)
-        case let .controlRequest(request):
-            guard case let .canUseTool(tool) = request.kind else { return }
-            let agent = tool.agentID.map { id -> ChatRequestAgent in
-                let task = model.subagentTask(agentID: id)
-                return ChatRequestAgent(id: id, type: task?.subagentType, description: task?.description)
-            }
-            // A request that comes while Loom stops the run is withdrawn by the Stop's interrupt: it is never listed, so
-            // no card shows it and nothing can answer it.
-            guard phase != .stopping else { return }
-            requests.append(ChatPendingRequest(requestID: request.requestID, request: tool, arrivedAt: now, agent: agent))
-            if tool.toolName == "ExitPlanMode", let id = tool.toolUseID, let plan = tool.input["plan"]?.string {
-                note(model.updatePlan(toolUseID: id, markdown: plan, filePath: tool.input["planFilePath"]?.string))
-            }
-            await publishRequests()
-            await beginTurn()
-            setPhase(.needsYou)
-            await publish(.waitingForApproval)
-        case let .controlCancel(requestID):
-            guard let request = requests.first(where: { $0.requestID == requestID }) else { return }
-            // The CLI withdrew it (an interrupt, a Stop): the card folds as cancelled, and the stream keeps the line.
-            let summary = "Cancelled: \(request.subject)"
-            note(model.recordRequest(RequestRecord(kind: request.recordKind, summary: summary), at: clock()))
-            await retire(requestID: requestID, as: .cancelled, summary: summary)
-            await afterRequestsChanged()
-        case let .conversationReset(reset):
-            // The run goes to a new card, whose stream starts with the marker (`followMove`). The reset's own
-            // `new_conversation_id` is NOT adopted: the real CLI fills it with the record's uuid, and the transcript is written
-            // under the session id of the SessionStart hook and of the `system/init` that follow (measured, 2.1.300). Taking
-            // it made an empty card, and the real id a second move.
-            resetTrigger = reset.trigger
-            // What the CLI keeps of live settings across a reset (`/clear`, a compaction) is not measured: Ask's layer goes on
-            // again, in the chain. A task of its own: this loop is what delivers the answers to its requests.
-            if isAsk {
-                askLayerPending = true
-                Task { await self.reapplyAskLayer() }
-            }
-        default:
-            let unknownBefore = model.unknownRecordCount
-            note(model.apply(message, at: now))
-            releasePayloads()
-            await observe(message, unknownBefore: unknownBefore)
-        }
-    }
-
-    private func observe(_ message: StreamMessage, unknownBefore: Int) async {
-        if background.apply(message) {
-            if let activity = publishedActivity { await publish(activity) }
-            changed()
-        }
-        switch message {
-        case let .systemInit(info):
-            permissionMode = info.permissionMode ?? permissionMode
-            if info.effort != nil { effortCleared = false }
-            if info.model != nil { liveModel = nil }
-            let listed = Set(info.capabilities ?? [])
-            for capability in Self.requiredCapabilities where !listed.contains(capability) {
-                noteDrift(.missingCapability(capability))
-            }
-            if let id = info.sessionID { await adopt(id, transition: .automatic) }
-            if !turnRunning {
-                // A turn the CLI started itself (a finished background task, a queued turn).
-                await beginTurn()
-            }
-        case let .status(status):
-            permissionMode = status.permissionMode ?? permissionMode
-        case let .user(user):
-            let finished = Set(user.content.compactMap { block -> String? in
-                if case let .toolResult(result) = block { result.toolUseID } else { nil }
-            })
-            guard !finished.isEmpty else { return }
-            let done = requests.filter { $0.request.toolUseID.map(finished.contains) == true }
-            guard !done.isEmpty else { return }
-            // The tool call finished some other way: its card folds without a line (the tool's row says how it ended).
-            for request in done { settle(request, as: .resolved, summary: "Resolved: \(request.subject)") }
-            requests.removeAll { $0.request.toolUseID.map(finished.contains) == true }
-            changed()
-            await publishRequests()
-            await afterRequestsChanged()
-        case let .assistant(assistant):
-            guard let category = assistant.error else { return }
-            lastErrorCategory = category
-            if ChatPolicySignal.categories.contains(category) {
-                policySignal = ChatPolicySignal(category: category, source: .assistantError)
-            } else if assistant.stopReason != "refusal" {
-                noteDrift(.apiError(category: category, status: nil))
-            }
-        case let .apiRetry(retry):
-            if let category = retry.error, ChatPolicySignal.categories.contains(category) {
-                policySignal = ChatPolicySignal(category: category, source: .apiRetry)
-            }
-        case let .unknown(unknown):
-            if model.unknownRecordCount > unknownBefore {
-                noteDrift(.unknownRecord(type: unknown.type, subtype: unknown.subtype))
-            }
-        default:
-            break
-        }
-    }
-
-    private func ingestResult(_ result: TurnResult, at now: Date) async {
-        let stoppedByLoom = model.interruptSent
-        note(model.apply(.result(result), at: now))
-        for (name, window) in result.contextWindows {
-            let key = windowKey(name)
-            contextWindows[key] = window
-            onContextWindow(key, window)
-        }
-        // An interrupt's own result (`error_during_execution`, `is_error`, no text) is not a failed turn, nor is a
-        // turn a `now` send cut.
-        let failed = result.isError && !result.wasInterrupted
-        if result.terminalReason == "api_error" {
-            noteDrift(.apiError(category: lastErrorCategory, status: result.apiErrorStatus))
-        }
-        lastErrorCategory = nil
-        // A `now` send cut the turn, or the CLI holds more turns: the next turn follows at once.
-        let continues = !stoppedByLoom && (
-            (result.queuedTurnCount ?? 0) > 0
-                || !unreadRows.isEmpty
-        )
-        guard !continues else { return }
-        turnRunning = false
-        wakeTurnEndWaiters()
-        if phase == .working || phase == .needsYou { setPhase(requests.isEmpty ? .ready : .needsYou) }
-        if failed, !queue.isEmpty { pauseQueue(.failedTurn) }
-        guard phase != .stopping else { return }
-        let category = result.terminalReason ?? result.subtype.rawValue
-        await publish(failed ? .failed(category) : .turnComplete)
-        if let runID = run?.runID { try? await runtime.supervisor.markProviderActivity(runID: runID, at: now) }
-        if modeBusy || askLayerPending {
-            // A message waits for a mode transition (`write`), and this loop delivers the answers that transition waits for:
-            // the release goes on in a task of its own.
-            Task { await self.releaseQueueReportingIssue() }
-        } else {
-            await releaseQueueReportingIssue()
-        }
-    }
-
-    private func releaseQueueReportingIssue() async {
-        do {
-            try await releaseQueue()
-        } catch {
-            queueIssue = .notSent(LoomLog.category(of: error))
-            changed()
-        }
-    }
-
-    private func outputEnded() async {
-        guard let current = run else { return }
-        // The run is gone for every other call from here on, whatever the awaits below let in.
-        run = nil
-        // The last mode the CLI reported is not the session's mode any more: the bar shows the chosen one (`choices`).
-        permissionMode = nil
-        let endedStarting = phase == .starting
-        current.sink.close()
-        await current.channel.close()
-        current.writer?.cancel()
-        // A card still waiting when the process ends: cancelled when Loom stopped it, else Claude stopped before the user
-        // answered (the card stays, disabled, with Resume).
-        for request in requests {
-            let outcome: ChatSettledRequest.Outcome = stopRequested ? .cancelled : .processEnded
-            let summary = stopRequested ? "Cancelled: \(request.subject)" : "Not answered, Claude stopped: \(request.subject)"
-            note(model.recordRequest(RequestRecord(kind: request.recordKind, summary: summary), at: clock()))
-            settle(request, as: outcome, summary: summary)
-        }
-        requests.removeAll()
-        background.removeAll()
-        finishAskLayerPending()
-        let unread = unreadRows
-        note(model.markNotDelivered(unread))
-        // What the user sent and Claude never read is theirs still: on disk before anything else can fail.
-        let unreadMessages = unread.compactMap { id in sent[id].map { (id, $0) } }
-        undelivered = unreadMessages.map { $0.1.rowText }
-        keepForUser(unreadMessages.map { ChatReturnedDraft(messageID: $0.0, text: $0.1.text, attachments: $0.1.attachments) })
-        if turnRunning { note(model.endRunningTurn(at: clock())) }
-        turnRunning = false
-        wakeTurnEndWaiters()
-        finishStartWaiters(false)
-        // Whatever the scope does next, the hub must not stay at Working or Needs you.
-        publishedActivity = nil
-        try? await runtime.supervisor.updateProviderWorkState(runID: current.runID,
-                                                              state: ProviderWorkState(activity: .sessionEnded(nil)))
-        await runtime.supervisor.events.publish(sessionID: sessionID, change: .pendingRequests([]))
-        if stopRequested {
-            // A child that never answered stays "not ready" while Loom stops it (never flashes "stopped" in between).
-            if phase != .failed(.notReady) { setPhase(.stopped) }
-        } else if endedStarting {
-            // An exit at once (a bad flag, a resume of a conversation the CLI cannot find): its first stderr line.
-            let line = await firstErrorLine(of: current.sink)
-            setPhase(.failed(.couldNotStart(line ?? "ended before it was ready")))
-            journal?.record("chat.ended_at_start", ["resume": .bool(current.isResume)])
-            let issue = startFailureIssue(line: line, sink: current.sink, isResume: current.isResume)
-            await runtime.supervisor.events.publish(sessionID: sessionID, change: .issue(issue))
-        } else {
-            setPhase(.failed(.ended))
-            if !queue.isEmpty { pauseQueue(.processEnded) }
-            journal?.record("chat.ended", [:])
-            await runtime.supervisor.events.publish(
-                sessionID: sessionID, change: .issue("Claude ended unexpectedly. Send a message to resume the session.")
-            )
-        }
-        stopRequested = false
-        changed()
-        let waiters = runEndWaiters
-        runEndWaiters.removeAll()
-        for waiter in waiters { waiter.resume() }
-    }
-
-    private func waitForRunEnd() async {
-        await withCheckedContinuation { runEndWaiters.append($0) }
-    }
-
-    /// Stderr can trail stdout's end by a moment.
-    private func firstErrorLine(of sink: ChatPipeSink) async -> String? {
-        if let line = sink.standardErrorFirstLine { return line }
-        try? await Task.sleep(for: .milliseconds(100))
-        return sink.standardErrorFirstLine
-    }
-
-    private func startFailureIssue(line: String?, sink: ChatPipeSink, isResume: Bool) -> String {
-        if isResume, let error = ProviderResumeDiagnostics.error(
-            provider: .claude, conversationID: conversationID ?? sessionID.uuidString.lowercased(),
-            output: sink.standardErrorHead, exitStatus: 1
-        ), case LoomError.providerHistoryUnavailable = error {
-            return String(describing: error)
-        }
-        return "Claude ended before it was ready" + (line.map { ": \($0)" } ?? ".")
-    }
-
-    // MARK: Following the run's card
-
-    /// The card the run is on now, as the supervisor has it (a `/clear` the hooks reported first moved it).
-    private func followRun() async {
-        guard let runID = run?.runID, let card = await runtime.supervisor.activeSessionID(runID: runID) else { return }
-        await followMove(to: card)
-    }
-
-    /// The run moved to another card (`/clear`; the supervisor moved it, with its choices and face): the driver goes
-    /// with it. Its owner re-keys it, the queue goes to the new card, and the stream starts over with the marker
-    /// (the old card keeps the old conversation's transcript).
-    func followMove(to card: UUID) async {
-        guard card != sessionID, run != nil else { return }
-        // A handover that still waits ends: the session was cleared, it is not the one the user chose to move.
-        if handoverHold, !handoverCommitted {
-            handoverCleared = true
-            handoverCancelled = true
-            wakeTurnEndWaiters()
-        }
-        let old = sessionID
-        sessionID = card
-        // The new card has no title yet.
-        titleState = .needed
-        if let queueStore {
-            do {
-                try queueStore.save(queue, sessionID: card)
-                try queueStore.remove(sessionID: old)
-            } catch {
-                queueIssue = .notSaved(LoomLog.category(of: error))
-            }
-        }
-        // The draft file goes with the run, held messages included: the driver writes and releases them under the new card.
-        if let draftStore {
-            do { try draftStore.move(from: old, to: card) } catch {
-                LoomLog.error(.lifecycle, "A draft could not follow its run to the new card (\(LoomLog.category(of: error)))")
-            }
-        }
-        var fresh = TurnModel(source: .live)
-        fresh.ready = model.ready
-        fresh.latestInit = model.latestInit
-        fresh.rateLimit = model.rateLimit
-        fresh.startMarkerPlaced = true
-        fresh.markedMode = model.markedMode
-        model = fresh
-        // The new card's stream starts at the marker. The run goes on, so its generation stays.
-        runStart = LiveHistoryJoin.RunStart(time: clock(), generation: runStart.generation)
-        streamReplaced = true
-        note(model.appendMarker(.reset(trigger: resetTrigger ?? "clear"), at: clock()))
-        resetTrigger = nil
-        if !ingesting { flushModelChanges() }
-        onMoved(old, card)
-        journal?.record("chat.moved", [:])
-        conversationID = await runtime.supervisor.session(id: card)?.providerConversationID ?? conversationID
-        // The new card's hub entry: the run's requests and work state (the move's `runStarted` cleared them).
-        await runtime.supervisor.events.publish(sessionID: card, change: .pendingRequests(requests.map(\.summary)))
-        if let activity = publishedActivity { await publish(activity) }
-        changed()
-    }
-
     // MARK: Helpers
 
-    private func beginTurn() async {
+    func beginTurn() async {
         guard !turnRunning else { return }
         turnRunning = true
         guard phase == .ready || phase == .starting else { return }
@@ -1864,7 +435,7 @@ public actor ChatSessionDriver {
         await publish(.working)
     }
 
-    private func adopt(_ id: String, transition: ConversationTransition) async {
+    func adopt(_ id: String, transition: ConversationTransition) async {
         guard id != conversationID, let runID = run?.runID else { return }
         conversationID = id
         do {
@@ -1875,14 +446,14 @@ public actor ChatSessionDriver {
         }
     }
 
-    private func publish(_ activity: AgentActivity) async {
+    func publish(_ activity: AgentActivity) async {
         publishedActivity = activity
         guard let runID = run?.runID else { return }
         try? await runtime.supervisor.updateProviderWorkState(runID: runID, state: ProviderWorkState(
             activity: activity, pendingProviderWorkCount: background.count))
     }
 
-    private func noteDrift(_ signal: ChatDrift) {
+    func noteDrift(_ signal: ChatDrift) {
         let key: String
         let fields: [String: JournalValue]
         switch signal {
@@ -1905,14 +476,14 @@ public actor ChatSessionDriver {
 
     /// The context ring's key for a `modelUsage` name: the extended variant keeps `[1m]`, also when the CLI names the
     /// model without it but the session runs the extended one.
-    private func windowKey(_ name: String) -> String {
+    func windowKey(_ name: String) -> String {
         let suffix = "[1m]"
         guard !name.lowercased().contains(suffix), let chosen = choices.model?.lowercased(), chosen.contains(suffix),
               UsagePricing.canonicalModelID(chosen) == UsagePricing.canonicalModelID(name) else { return name }
         return name + suffix
     }
 
-    private func waitForTurnEnd(seconds: Double) async {
+    func waitForTurnEnd(seconds: Double) async {
         guard turnRunning else { return }
         let id = UUID()
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
@@ -1928,26 +499,26 @@ public actor ChatSessionDriver {
         turnEndWaiters.removeValue(forKey: id)?.resume()
     }
 
-    private func wakeTurnEndWaiters() {
+    func wakeTurnEndWaiters() {
         let waiters = turnEndWaiters.values
         turnEndWaiters.removeAll()
         for waiter in waiters { waiter.resume() }
     }
 
-    private func setPhase(_ next: ChatDriverPhase) {
+    func setPhase(_ next: ChatDriverPhase) {
         guard phase != next else { return }
         phase = next
         changed()
     }
 
-    private func note(_ delta: ModelDelta) {
+    func note(_ delta: ModelDelta) {
         guard !delta.isEmpty else { return }
         streamDelta.merge(delta)
         if !ingesting { flushModelChanges() }
         changed()
     }
 
-    private func changed() {
+    func changed() {
         for continuation in updateSubscribers.values { continuation.yield() }
     }
 }
