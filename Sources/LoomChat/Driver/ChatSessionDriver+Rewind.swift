@@ -109,7 +109,7 @@ public struct RewindUndoResult: Equatable, Sendable {
     public var trashed: [String]
 }
 
-/// The session's newest rewind, while it can still be undone.
+/// The session's newest rewind, while it can still be undone. Its copies exist while `undoOpen`.
 struct RewindRecord: Equatable, Sendable {
     var rewindID: String
     /// The card the copies are kept under (a `/clear` moves the driver to another one).
@@ -250,11 +250,13 @@ extension ChatSessionDriver {
         note(delta)
     }
 
-    /// The newest rewind's Undo is no longer offered: a message was sent, or a newer rewind came.
+    /// The newest rewind's Undo is no longer offered: a message was sent, a newer rewind came, or it was undone. Its copies go
+    /// with it (D-72): they exist only while Undo can be offered, and only this one rewind's are ever kept.
     func closeRewindUndo(to undo: RewindMarker.Undo) {
         guard var current = newestRewind, current.undoOpen else { return }
         current.undoOpen = false
         newestRewind = current
+        rewindStore?.discard(sessionID: current.card, rewindID: current.rewindID)
         var delta = ModelDelta()
         model.updateEntry(current.entryID, delta: &delta) { body in
             if case var .marker(.rewound(marker)) = body {

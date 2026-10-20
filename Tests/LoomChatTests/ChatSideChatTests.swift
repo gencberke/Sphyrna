@@ -160,8 +160,9 @@ struct ChatSideChatTests {
 
         // The listed sessions are still the parent's alone, and the summary shows the fork with its first question.
         #expect(try await rig.catalog.sessions().map(\.session.id) == [parentID])
-        let summaries = try await host.sideChats(of: parentID)
-        #expect(summaries.map(\.id) == [sideID] && summaries.first?.firstQuestion == "~scenario approval write")
+        let listed = try await rig.catalog.sideChats(of: parentID)
+        #expect(listed.map(\.session.id) == [sideID] && listed.first?.title == "~scenario approval write")
+        #expect(listed.first?.sideChat?.parentSessionID == parentID)
         #expect(try await host.discardSideChat(id: sideID) == .deleted)
         await rig.finish()
     }
@@ -206,7 +207,7 @@ struct ChatSideChatTests {
         await #expect(throws: ChatDriverError.notASideChat) { try await parentDriver.startFork() }
         // A fork of a side chat is refused by the runtime.
         await #expect(throws: (any Error).self) { _ = try await host.startSideChat(parentSessionID: sideID) }
-        #expect(try await host.sideChats(of: sideID).isEmpty)
+        #expect(try await rig.catalog.sideChats(of: sideID).isEmpty)
         #expect(try await host.discardSideChat(id: sideID) == .deleted)
         await rig.finish()
     }

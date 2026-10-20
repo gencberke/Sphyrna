@@ -501,6 +501,9 @@ public final class CatalogModel {
         tabs = ConversationTabs(pinned: preferences.current.openTabs)
         today = Calendar.current.startOfDay(for: now)
         palette.searchesConversations = searchesSessionText
+        side.onSettled = { [weak self] parent, id in
+            Task { [weak self] in await self?.retireSideChat(id, in: parent) }
+        }
     }
 
     deinit {
@@ -1051,12 +1054,22 @@ public final class CatalogModel {
     }
 
     /// A conversation was deleted (CP4): its tab goes away like a closed tab, and a card it opened no
-    /// longer names it.
+    /// longer names it. The holders that keep a session's state for the life of the app go with it (a session that is only
+    /// closed or stopped keeps them: its tab can come back).
     public func forget(sessionID id: UUID) {
         origins[id] = nil
         missingOrigins.insert(id)
         intents?.closeEndedScreen(sessionID: id)
+        dropHolders(of: id)
         closeTab(id)
+    }
+
+    /// The quick question's panel (it holds the driver through its `ask`), the Changes state and the side holder of a deleted
+    /// session, with every side chat follower the holder had (their tasks end only on `stop()`).
+    private func dropHolders(of id: UUID) {
+        quick.forget(id)
+        changes.forget(id)
+        side.forget(id)
     }
 
     /// A started or resumed conversation takes a tab (best effort: a full strip

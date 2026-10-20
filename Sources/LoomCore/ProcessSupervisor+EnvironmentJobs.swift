@@ -51,6 +51,80 @@ extension ProcessSupervisor {
         }
     }
 
+    /// One run scope for several helpers of one read (the Changes tab's git calls). `body` gets a `HelperScope`; each of its
+    /// `capture` calls is a job as `captureHelper`'s is (registered in the ledger, its own deadline and output bound, cancelled
+    /// and awaited by `shutdown`), but they share the scope this call opens, and the scope is released when `body` returns or
+    /// throws: opening one costs a LaunchServices launch, a socket handshake and a ledger write, which a read of eight git
+    /// calls would otherwise pay eight times. The whole read is itself a pending operation for `shutdown`, so the scope is
+    /// never released under a running helper.
+    public func withHelperScope<Result: Sendable>(
+        _ body: @Sendable (HelperScope) async throws -> Result
+    ) async throws -> Result {
+        guard !stopping else { throw SessionManagementError.shutdownStarted }
+        let holderID = UUID()
+        environmentJobs[holderID] = EnvironmentResolutionJob(runID: ownershipRunID, observes: false)
+        defer { environmentJobs[holderID] = nil }
+        var scope: RunScope?
+        if scopeLauncher != nil { scope = try await openScope() }
+        do {
+            let result = try await body(HelperScope(supervisor: self, scope: scope))
+            if let scope {
+                let errors = await releaseScope(scope)
+                guard errors.isEmpty else {
+                    throw LoomError.message("Helper cleanup could not be verified: " + errors.joined(separator: "; "))
+                }
+            }
+            guard !stopping else { throw SessionManagementError.shutdownStarted }
+            return result
+        } catch {
+            if let scope { _ = await releaseScope(scope) }
+            throw error
+        }
+    }
+
+    /// The helpers of one `withHelperScope`.
+    public struct HelperScope: Sendable {
+        fileprivate let supervisor: ProcessSupervisor
+        fileprivate let scope: RunScope?
+
+        /// `captureHelper` inside this scope: one more job, the scope stays open.
+        public func capture(
+            _ executable: String, _ arguments: [String], environment: [String: String],
+            timeout: TimeInterval = 15, outputLimit: Int = LaunchEnvironment.defaultOutputLimit
+        ) async throws -> String {
+            try await supervisor.runHelperJob(in: scope) { _, job, spawner in
+                try LaunchEnvironment.runHelper(
+                    executable, arguments, environment: environment, timeout: timeout, outputLimit: outputLimit,
+                    spawner: spawner, onSpawn: job.register, onPoll: job.sample
+                )
+            }
+        }
+    }
+
+    fileprivate func runHelperJob<Result: Sendable>(
+        in scope: RunScope?,
+        _ operation: @escaping @Sendable (UUID, EnvironmentResolutionJob, HelperSpawner) throws -> Result
+    ) async throws -> Result {
+        guard !stopping else { throw SessionManagementError.shutdownStarted }
+        let jobID = UUID()
+        let runID = ownershipRunID
+        let job = EnvironmentResolutionJob(runID: runID, observes: scopeLauncher == nil)
+        environmentJobs[jobID] = job
+        defer { environmentJobs[jobID] = nil }
+        let spawner = scope.map(HelperSpawner.scoped) ?? .local
+        do {
+            let result = try await Task.detached { try operation(runID, job, spawner) }.value
+            if scopeLauncher == nil { ledger.recordDescendants(Array(job.observedIdentities())) }
+            _ = try sampleOwnership()
+            guard !stopping else { throw SessionManagementError.shutdownStarted }
+            return result
+        } catch {
+            if scopeLauncher == nil { ledger.recordDescendants(Array(job.observedIdentities())) }
+            _ = try? sampleOwnership()
+            throw error
+        }
+    }
+
     private func resolveEnvironment(
         _ operation: @escaping @Sendable (
             UUID, EnvironmentResolutionJob, HelperSpawner

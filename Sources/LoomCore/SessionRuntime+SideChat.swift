@@ -1,18 +1,5 @@
 import Foundation
 
-/// One of a session's side chats, as the Side tab lists it (V22).
-public struct SideChatSummary: Equatable, Sendable, Identifiable {
-    /// The side chat's own card.
-    public let id: UUID
-    /// When Loom spawned the fork: what it can see of the parent ends at about this time.
-    public let forkedAt: Date
-    /// The first line of its first question; nil until one was sent.
-    public let firstQuestion: String?
-    public let lastActivityAt: Date
-    /// A Claude process of this side chat runs now.
-    public let isLive: Bool
-}
-
 /// The fork underneath the side chat (V22, spikes S6 and S6b). A side chat is a real session of its own: a fork of the parent
 /// (`--resume <parent> --fork-session --session-id <new>`) with a card Loom makes before the spawn, so the fork's id is known
 /// from the start and its `SessionStart` (source `fork`) has nothing to adopt. The card links to its parent (`SideChatLink`)
@@ -86,20 +73,6 @@ extension SessionRuntime {
         do { try await removeFromLoomOnly(id: id) } catch {
             LoomLog.error(.lifecycle, "A side chat that did not start could not be removed (\(LoomLog.category(of: error)))")
         }
-    }
-
-    /// The side chats of a session, oldest first: each one's card, when it was forked, its first question, its last activity and
-    /// whether it runs. A side chat whose deletion has begun is not listed.
-    public func sideChats(of parentSessionID: UUID) async throws -> [SideChatSummary] {
-        var summaries: [SideChatSummary] = []
-        for record in try await catalog.sideChats(of: parentSessionID) {
-            guard let link = record.sideChat else { continue }
-            summaries.append(SideChatSummary(
-                id: record.session.id, forkedAt: link.forkedAt, firstQuestion: record.title,
-                lastActivityAt: record.lastActivityAt,
-                isLive: await supervisor.session(id: record.session.id)?.currentRun != nil))
-        }
-        return summaries
     }
 
     /// The side chat's first message was sent: its uuid is kept (written once) and the first line of its text becomes the card's

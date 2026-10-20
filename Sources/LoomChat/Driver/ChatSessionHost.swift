@@ -58,6 +58,8 @@ public final class ChatSessionHost {
         queueStore = ChatQueueStore(directory: dataRoot.appendingPathComponent("chat-queues", isDirectory: true))
         draftStore = ChatDraftStore(directory: dataRoot.appendingPathComponent("chat-drafts", isDirectory: true))
         rewindStore = ChatRewindStore(directory: dataRoot.appendingPathComponent("chat-rewinds", isDirectory: true))
+        // An Undo lives only in memory and no driver exists yet: every copy an earlier run left is unreachable (D-72).
+        rewindStore.removeAll()
         self.journal = journal
         self.choicesChanged = choicesChanged
         self.contextWindow = contextWindow
@@ -209,16 +211,10 @@ public final class ChatSessionHost {
     }
 
     /// The driver of a side chat that already exists (Loom started again, or the tab shows an older one): made as a side chat's.
-    /// The card's parent is the caller's to give (`sideChats(of:)` lists them by parent).
+    /// The card's parent is the caller's to give (`SessionCatalog.sideChats(of:)` lists them by parent).
     public func sideChatDriver(for sideChatID: UUID, parentSessionID: UUID) -> ChatSessionDriver {
         if let driver = drivers[sideChatID] { return driver }
         return makeDriver(sessionID: sideChatID, sideChatParent: parentSessionID)
-    }
-
-    /// The session's side chats, oldest first: each one's card, when it was forked, its first question, last activity and whether it
-    /// runs.
-    public func sideChats(of parentSessionID: UUID) async throws -> [SideChatSummary] {
-        try await runtime.sideChats(of: parentSessionID)
     }
 
     /// Discards a side chat: its process is stopped in the driver's order (interrupt, `result`, stdin, exit) and awaited, then

@@ -404,7 +404,14 @@ struct SideChatFlowTests {
         try await model.stopChat(parent)
         #expect(await waitUntil { model.rowModels[parent].map { !model.isRunning($0) } == true })
         #expect(model.sideNoteAvailability(for: parent) == .ready)
-        await model.sendSideNote(answerID: answerEntry.id, chat: id, in: parent)
+        // The parent's stop retired the side chat (D-72), and a feed nobody shows is let go: the tab, which shows the thread, makes
+        // it again and reads the thread from the transcript.
+        #expect(await waitUntil { await driver.currentPhase == .stopped })
+        let shownFeed = try #require(model.sideFeed(for: item, in: parent))
+        shownFeed.start()
+        #expect(await waitUntil { shownFeed.joinedModelForTesting.entries.contains { if case .assistantText = $0.body { true } else { false } } })
+        let shown = try #require(shownFeed.joinedModelForTesting.entries.last { if case .assistantText = $0.body { true } else { false } })
+        await model.sendSideNote(answerID: shown.id, chat: id, in: parent)
         let expected = "A note from a side chat:\n\n> A question\n\n\(answer.text)"
         #expect(await waitUntil {
             Self.prompts(await parentDriver.snapshot()).contains(expected)
@@ -459,6 +466,179 @@ struct SideChatFlowTests {
         #expect(session.openID == nil && session.items.isEmpty && session.discard == nil)
         #expect(session.discarding.isEmpty && session.discardFailures.isEmpty)
         #expect(model.chatSessions?.existingDriver(for: id) == nil)
+        await fixture.cleanup()
+    }
+
+    // MARK: A side chat's process runs only while it is the open one (D-72)
+
+    private func driverOf(_ id: UUID, _ model: CatalogModel) throws -> ChatSessionDriver {
+        try #require(model.chatSessions?.existingDriver(for: id))
+    }
+
+    private func phase(_ driver: ChatSessionDriver) async -> ChatDriverPhase { await driver.currentPhase }
+
+    @Test func anIdleSideChatIsRetiredWhenAnotherIsOpenedOrANewOneStartsAndItsThreadAndResumeStay() async throws {
+        let fixture = try await make()
+        let model = fixture.model
+        let (parent, _) = try await parent(fixture)
+        let session = model.side.session(for: parent)
+
+        await ask(model, session, parent, "First?")
+        let first = try #require(session.openID)
+        let firstDriver = try driverOf(first, model)
+        #expect(await idle(firstDriver, prompts: 1))
+        await firstDriver.setAllowsEdits(true)
+        #expect(await firstDriver.snapshot().processID != nil)
+
+        // "New side chat": the one that was open is idle, so it stops at once, with "Allow edits" turned off.
+        model.startNewSideChat(in: parent)
+        #expect(await waitUntil { await phase(firstDriver) == .stopped })
+        #expect(await firstDriver.snapshot().processID == nil)
+        #expect(await waitUntil { await firstDriver.sideChatState()?.allowsEdits == false })
+        #expect(session.items.map(\.id) == [first] && session.openID == nil, "the thread is still listed")
+
+        await ask(model, session, parent, "Second?")
+        let second = try #require(session.openID)
+        let secondDriver = try driverOf(second, model)
+        #expect(await idle(secondDriver, prompts: 1))
+
+        // Opening another one retires the open one; opening a stopped one starts nothing.
+        model.openSideChat(first, in: parent)
+        #expect(await waitUntil { await phase(secondDriver) == .stopped })
+        #expect(await secondDriver.snapshot().processID == nil)
+        #expect(await phase(firstDriver) == .stopped)
+        #expect(session.items.count == 2 && session.openID == first)
+
+        // The next question to a stopped side chat resumes it, in its own thread.
+        await ask(model, session, parent, "Again?")
+        #expect(await idle(firstDriver, prompts: 2))
+        #expect(Self.prompts(await firstDriver.snapshot()) == ["First?", "Again?"])
+        #expect(await phase(secondDriver) == .stopped)
+        await fixture.cleanup()
+    }
+
+    @Test func aSideChatWithATurnOrACardIsRetiredOnlyWhenItSettlesAndNotIfItIsOpenAgainBefore() async throws {
+        let fixture = try await make()
+        let model = fixture.model
+        let (parent, _) = try await parent(fixture)
+        let session = model.side.session(for: parent)
+        let hold = fixture.rig.root.appendingPathComponent("hold-side")
+        try Data().write(to: hold)
+
+        // A turn that runs: "New side chat" does not stop it; the end of the turn does.
+        await ask(model, session, parent, "~scenario work 3000 hold \(hold.path)")
+        let first = try #require(session.openID)
+        let driver = try driverOf(first, model)
+        #expect(await waitUntil { await driver.snapshot().turnRunning })
+        model.startNewSideChat(in: parent)
+        try await Task.sleep(for: .milliseconds(900))
+        let stillRunning = await phase(driver).isLive
+        let stillWorking = await driver.snapshot().turnRunning
+        #expect(stillRunning && stillWorking, "a running turn is not cut")
+        try FileManager.default.removeItem(at: hold)
+        #expect(await waitUntil { await phase(driver) == .stopped }, "it stops when the turn ends")
+        // The stop is complete, supervisor included, before the next question resumes it.
+        let supervisor = await fixture.rig.runtime.supervisor
+        #expect(await waitUntil { await supervisor.session(id: first)?.currentRun == nil })
+
+        // Opened again before the turn ends: it stays.
+        try Data().write(to: hold)
+        model.openSideChat(first, in: parent)
+        await ask(model, session, parent, "~scenario work 3000 hold \(hold.path)")
+        let resumedTurn = await waitUntil(20) { await driver.snapshot().turnRunning }
+        let resumedPhase = await phase(driver)
+        #expect(resumedTurn, "notice: \(String(describing: session.notice)) phase: \(resumedPhase)")
+        model.startNewSideChat(in: parent)
+        try await Task.sleep(for: .milliseconds(300))
+        model.openSideChat(first, in: parent)
+        try FileManager.default.removeItem(at: hold)
+        #expect(await waitUntil { await driver.isLiveAndSettled })
+        try await Task.sleep(for: .milliseconds(900))
+        #expect(await phase(driver) == .ready, "it was the open one again when its turn ended")
+
+        // A card that waits is the same: not stopped while it waits, stopped once it is answered.
+        await driver.setAllowsEdits(true)
+        session.composerText = "~scenario approval write"
+        await model.submitSideQuestion(in: parent)
+        #expect(await waitUntil { await driver.snapshot().requests.count == 1 })
+        model.startNewSideChat(in: parent)
+        try await Task.sleep(for: .milliseconds(900))
+        let cardLive = await phase(driver).isLive
+        let cardWaits = await driver.snapshot().requests.count
+        #expect(cardLive && cardWaits == 1, "a waiting card is not cut")
+        #expect(session.live(for: first)?.isWaiting == true, "the tab bar's dot still shows it")
+        let request = try #require(await driver.snapshot().requests.first)
+        try await driver.answer(requestID: request.requestID, .allowOnce)
+        #expect(await waitUntil { await phase(driver) == .stopped })
+        await fixture.cleanup()
+    }
+
+    @Test func theParentsStopRetiresItsIdleSideChatsAndAFaceSwitchRetiresNone() async throws {
+        let fixture = try await make()
+        let model = fixture.model
+
+        // A face switch ends the Chat run, but the session goes on in the terminal: its side chat stays.
+        let (moved, movedDriver) = try await parent(fixture, text: "switching")
+        let movedSession = model.side.session(for: moved)
+        await ask(model, movedSession, moved, "Side of the switch?")
+        let movedSide = try driverOf(try #require(movedSession.openID), model)
+        #expect(await idle(movedSide, prompts: 1))
+        try await movedDriver.handOverToTerminal()
+        #expect(await waitUntil { await phase(movedDriver) == .stopped })
+        try await Task.sleep(for: .milliseconds(900))
+        #expect(await phase(movedSide) == .ready, "a face switch is not a stop")
+        await movedDriver.finishHandover()
+
+        // The user's Stop retires the side chat, open or not; the thread is still shown.
+        let (stopped, stoppedDriver) = try await parent(fixture, text: "stopping")
+        let stoppedSession = model.side.session(for: stopped)
+        await ask(model, stoppedSession, stopped, "Side of the stop?")
+        let stoppedSideID = try #require(stoppedSession.openID)
+        let stoppedSide = try driverOf(stoppedSideID, model)
+        #expect(await idle(stoppedSide, prompts: 1))
+        _ = try await stoppedDriver.stop()
+        #expect(await waitUntil { await phase(stoppedSide) == .stopped })
+        #expect(await stoppedSide.snapshot().processID == nil)
+        #expect(stoppedSession.items.map(\.id) == [stoppedSideID] && stoppedSession.openID == stoppedSideID)
+        await fixture.cleanup()
+    }
+
+    // MARK: A deleted session's holders
+
+    /// ST-7: the quick question's panel (its `ask` holds the driver), the Changes state and the side holder lived as long as the
+    /// app. A deletion drops all three and stops every side chat follower; closing the session's tab keeps them.
+    @Test func deletingASessionDropsItsQuickPanelItsChangesStateAndItsSideHolderAndStopsItsFollowers() async throws {
+        let fixture = try await make()
+        let model = fixture.model
+        let (parent, parentDriver) = try await parent(fixture)
+        let other = try await startFromDraft(model, text: "another")
+
+        weak var panel: QuickQuestionPanel? = model.quick.panel(for: parent, driver: parentDriver)
+        _ = model.quick.panel(for: other, driver: try #require(model.chatSessions?.existingDriver(for: other)))
+        let changes = model.changes.session(for: parent)
+        _ = model.changes.session(for: other)
+        let session = model.side.session(for: parent)
+        await ask(model, session, parent, "What does it do?")
+        let sideID = try #require(session.openID)
+        let live = try #require(session.live(for: sideID))
+        #expect(live.isFollowing)
+        let otherSide = model.side.session(for: other)
+
+        // Closing the tab keeps what the session holds: the tab can come back.
+        model.closeTab(parent)
+        #expect(model.quick.panel(for: parent) != nil && model.changes.existing(parent) === changes)
+        #expect(model.side.existing(for: parent) === session && live.isFollowing)
+
+        model.forget(sessionID: parent)
+        #expect(model.quick.panel(for: parent) == nil)
+        #expect(model.changes.existing(parent) == nil)
+        #expect(model.side.existing(for: parent) == nil)
+        #expect(!live.isFollowing, "the follower's task was cancelled")
+        #expect(session.lives.isEmpty)
+        #expect(panel == nil, "nothing keeps the panel, and so the driver it asks through, alive")
+        // Another session's holders are untouched.
+        #expect(model.quick.panel(for: other) != nil && model.changes.existing(other) != nil)
+        #expect(model.side.existing(for: other) === otherSide)
         await fixture.cleanup()
     }
 

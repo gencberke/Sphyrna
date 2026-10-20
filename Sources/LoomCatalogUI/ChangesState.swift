@@ -214,6 +214,9 @@ final class ChangesState {
     }
 
     func existing(_ id: UUID) -> SessionChanges? { sessions[id] }
+
+    /// The session was deleted: what it read, its open file and its comment drafts go.
+    func forget(_ id: UUID) { sessions[id] = nil }
 }
 
 /// What the tab's reads are made of, so a test counts them and the app wires the real ones.

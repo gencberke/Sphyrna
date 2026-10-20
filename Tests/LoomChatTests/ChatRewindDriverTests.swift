@@ -345,6 +345,40 @@ struct ChatRewindDriverTests {
         await bench.finish()
     }
 
+    /// D-72: a rewind's copies exist only while its Undo can be offered, whichever way the Undo closes.
+    @Test func aRewindsCopiesGoWhenItsUndoClosesBySendByANewerRewindOrByUndoItself() async throws {
+        let bench = try await Bench()
+        try await bench.write("a.txt", "one")
+        let second = try await bench.write("a.txt", "two")
+        let first = try await bench.driver.rewindFiles(userMessageID: second)
+        #expect(bench.store.rewindIDs(sessionID: bench.id) == [first.rewindID])
+
+        // A message after the rewind closes its Undo, and the copies go with it.
+        try await bench.driver.send("a plain question")
+        #expect(await idle(bench.driver))
+        #expect(await bench.driver.openUndoRewindID() == nil)
+        #expect(bench.store.rewindIDs(sessionID: bench.id).isEmpty)
+        #expect(bench.store.sessionIDs().isEmpty)
+
+        // Undo itself closes it.
+        let third = try await bench.write("a.txt", "three")
+        let undone = try await bench.driver.rewindFiles(userMessageID: third)
+        #expect(bench.store.rewindIDs(sessionID: bench.id) == [undone.rewindID])
+        try await bench.driver.undoRewind(rewindID: undone.rewindID)
+        #expect(bench.store.rewindIDs(sessionID: bench.id).isEmpty)
+
+        // A newer rewind replaces the older: only its own copies stay.
+        let fourth = try await bench.write("a.txt", "four")
+        let fifth = try await bench.write("a.txt", "five")
+        let older = try await bench.driver.rewindFiles(userMessageID: fifth)
+        #expect(bench.store.rewindIDs(sessionID: bench.id) == [older.rewindID])
+        let newer = try await bench.driver.rewindFiles(userMessageID: fourth)
+        #expect(bench.store.rewindIDs(sessionID: bench.id) == [newer.rewindID])
+        #expect(await bench.driver.openUndoRewindID() == newer.rewindID)
+        #expect(bench.store.sessionIDs() == [bench.id])
+        await bench.finish()
+    }
+
     @Test func twoRewindsAtOnceDoOneOnlyAndAnEmptyRewindIsRefused() async throws {
         let bench = try await Bench()
         try await bench.write("a.txt", "one")
@@ -366,6 +400,27 @@ struct ChatRewindDriverTests {
     }
 
     // MARK: The host
+
+    /// D-72: an Undo lives only in memory, so what an earlier run (or a driver that is gone) left is removed when the host starts.
+    @MainActor
+    @Test func copiesAnEarlierRunLeftAreRemovedWhenTheHostStarts() async throws {
+        let rig = try await Rig.make()
+        let root = rig.root.appendingPathComponent("data", isDirectory: true)
+        let earlier = ChatRewindStore(directory: root.appendingPathComponent("chat-rewinds", isDirectory: true))
+        let session = UUID()
+        let file = rig.root.appendingPathComponent("f.txt")
+        try "x".write(to: file, atomically: true, encoding: .utf8)
+        _ = try earlier.begin(sessionID: session, userMessageID: "m", paths: [file.path])
+        #expect(earlier.sessionIDs() == [session])
+
+        let host = ChatSessionHost(runtime: rig.runtime, dataRoot: root)
+        #expect(host.rewindStore.sessionIDs().isEmpty)
+        // A rewind made in this run is kept (the sweep runs once, before any driver).
+        _ = try host.rewindStore.begin(sessionID: session, userMessageID: "m", paths: [file.path])
+        #expect(host.driver(for: session) === host.driver(for: session))
+        #expect(host.rewindStore.sessionIDs() == [session])
+        await rig.finish()
+    }
 
     @MainActor
     @Test func theHostKeepsTheStoreInTheDataFolderAndDeletingTheSessionRemovesItsCopies() async throws {

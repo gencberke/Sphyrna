@@ -36,8 +36,9 @@ struct Rig {
     /// - Parameter plugin: Loom's Claude plugin is written and passed as `--plugin-dir` (the output style of Ask comes
     ///   from it); false is a Loom whose plugin folder cannot be written.
     /// - Parameter probeFailures: the first this many toolchain resolutions fail as a capability probe does (a timeout).
+    /// - Parameter listsForwardSubagentText: the fake CLI's help lists `--forward-subagent-text`, as Claude Code 2.1.300's does.
     static func make(environment: [String: String] = [:], version: String = "fake 1", plugin: Bool = true,
-                     probeFailures: Int = 0) async throws -> Rig {
+                     probeFailures: Int = 0, listsForwardSubagentText: Bool = true) async throws -> Rig {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-chat-\(UUID())", isDirectory: true)
         let home = root.appendingPathComponent("home", isDirectory: true)
         let profile = root.appendingPathComponent("claude-config", isDirectory: true)
@@ -74,7 +75,8 @@ struct Rig {
                 capabilities: ProviderCapabilities(
                     version: version,
                     help: "--settings <settings> --session-id <id> --effort <level> -n, --name <name> --plugin-dir <path> "
-                        + "--permission-mode <mode> --model <model> --fork-session",
+                        + "--permission-mode <mode> --model <model> --fork-session"
+                        + (listsForwardSubagentText ? " --forward-subagent-text" : ""),
                     serverHelp: "--listen <URL>"
                 ),
                 environment: ["PATH": "/usr/bin:/bin", "HOME": home.path].merging(environment) { _, new in new },

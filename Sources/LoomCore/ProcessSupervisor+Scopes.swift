@@ -52,6 +52,7 @@ extension ProcessSupervisor {
             throw error
         }
         LoomLog.debug(.scope, "Run scope \(scope.coalitionID) opened")
+        scopesOpened += 1
         liveScopes[scope.coalitionID] = scope
         ledger.register(scope: scope.record)
         do { try persistLedger() }

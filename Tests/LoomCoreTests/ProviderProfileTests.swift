@@ -255,4 +255,31 @@ struct ClaudeDefaultModelTests {
             .isEmpty)
         #expect(capabilities.detectedClaudeOptions.contains("--fork-session"))
     }
+
+    // MARK: A subagent's words on the Chat stream (R4)
+
+    @Test func aChatSpawnPassesForwardSubagentTextExactlyWhenTheHelpListsItOnEveryRouteAndTheTerminalNever() throws {
+        let base = "--session-id <id> --settings <settings> --fork-session --permission-mode <mode>"
+        let listing = ProviderCapabilities(version: "2.1.300 (Claude Code)", help: base + " --forward-subagent-text")
+        let plain = ProviderCapabilities(version: "2.1.300 (Claude Code)", help: base)
+        #expect(listing.supportsForwardSubagentText)
+        #expect(!plain.supportsForwardSubagentText)
+        let config = URL(fileURLWithPath: "/isolated")
+        let routes: [ProviderLaunchProfile.ClaudeRoute] = [
+            .new(UUID()), .resume("parent-conv"), .fork(parent: "parent-conv", newID: UUID().uuidString.lowercased()),
+        ]
+        for route in routes {
+            let chat = try ProviderLaunchProfile.claude(
+                route: route, capabilities: listing, config: config, environment: [:], face: .chat)
+            #expect(chat.launchArguments().filter { $0 == "--forward-subagent-text" }.count == 1, "\(route)")
+            // A CLI that does not list it starts as before, with no error.
+            let without = try ProviderLaunchProfile.claude(
+                route: route, capabilities: plain, config: config, environment: [:], face: .chat)
+            #expect(!without.launchArguments().contains("--forward-subagent-text"), "\(route)")
+            // The terminal face never carries it: the TUI shows a subagent's words itself.
+            let terminal = try ProviderLaunchProfile.claude(
+                route: route, capabilities: listing, config: config, environment: [:], face: .terminal)
+            #expect(!terminal.launchArguments().contains("--forward-subagent-text"), "\(route)")
+        }
+    }
 }

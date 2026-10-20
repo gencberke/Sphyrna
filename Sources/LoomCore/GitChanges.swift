@@ -82,8 +82,40 @@ public enum GitFileDiff: Equatable, Sendable {
     case failed(String)
 }
 
+/// What the git calls of one read share. A read (`GitChanges.list`, or one file's `diff`) makes all its calls inside one `run`,
+/// and whatever `run` opened (a run scope) is released when `body` returns or throws.
+public protocol GitReadScope: Sendable {
+    func run<Result: Sendable>(_ body: @Sendable (GitChanges.Capture) async throws -> Result) async throws -> Result
+}
+
+/// No shared scope: each call goes to the capture as it is.
+struct DirectGitScope: GitReadScope {
+    let capture: GitChanges.Capture
+
+    func run<Result: Sendable>(_ body: @Sendable (GitChanges.Capture) async throws -> Result) async throws -> Result {
+        try await body(capture)
+    }
+}
+
+/// The supervisor's owned helpers, the calls of one read in one run scope (`ProcessSupervisor.withHelperScope`).
+struct SupervisedGitScope: GitReadScope {
+    let supervisor: ProcessSupervisor
+    let executable: String
+    let environment: [String: String]
+
+    func run<Result: Sendable>(_ body: @Sendable (GitChanges.Capture) async throws -> Result) async throws -> Result {
+        let executable = executable, environment = environment
+        return try await supervisor.withHelperScope { helpers in
+            try await body { arguments, timeout, outputLimit in
+                try await helpers.capture(executable, arguments, environment: environment, timeout: timeout,
+                                          outputLimit: outputLimit)
+            }
+        }
+    }
+}
+
 /// Reads what changed in a Git folder, for the Changes tab's Branch scope. Read only, and never more than the list and
-/// one file's diff at a time. Git runs as an owned, bounded helper (`ProcessSupervisor.captureHelper`): a fixed
+/// one file's diff at a time. Git runs as an owned, bounded helper (`ProcessSupervisor.withHelperScope`: one run scope per read): a fixed
 /// environment, `--no-optional-locks`, a deadline per call and a byte limit on every answer.
 public struct GitChanges: Sendable {
     public struct Limits: Equatable, Sendable {
@@ -103,15 +135,22 @@ public struct GitChanges: Sendable {
     /// over `outputLimit` or any other failure.
     public typealias Capture = @Sendable (_ arguments: [String], _ timeout: TimeInterval, _ outputLimit: Int) async throws -> String
 
-    private let capture: Capture
+    private let scope: any GitReadScope
     private let limits: Limits
 
+    /// Every call goes straight to `capture`, with nothing shared (tests).
     public init(limits: Limits = Limits(), capture: @escaping Capture) {
         self.limits = limits
-        self.capture = capture
+        self.scope = DirectGitScope(capture: capture)
     }
 
-    /// Git through the supervisor's owned helper path, with the fixed environment of `CleanupWorktreeProtection.live`.
+    public init(limits: Limits = Limits(), scope: any GitReadScope) {
+        self.limits = limits
+        self.scope = scope
+    }
+
+    /// Git through the supervisor's owned helper path, with the fixed environment of `CleanupWorktreeProtection.live`. The git
+    /// calls of one read run in one run scope (`ProcessSupervisor.withHelperScope`), each as its own owned, bounded job.
     public static func live(supervisor: ProcessSupervisor, executable: String = "/usr/bin/git",
                             limits: Limits = Limits()) -> GitChanges {
         let environment = [
@@ -121,10 +160,8 @@ public struct GitChanges: Sendable {
             "GIT_OPTIONAL_LOCKS": "0",
             "GIT_TERMINAL_PROMPT": "0",
         ]
-        return GitChanges(limits: limits) { arguments, timeout, outputLimit in
-            try await supervisor.captureHelper(executable, arguments, environment: environment, timeout: timeout,
-                                               outputLimit: outputLimit)
-        }
+        return GitChanges(limits: limits, scope: SupervisedGitScope(
+            supervisor: supervisor, executable: executable, environment: environment))
     }
 
     // MARK: The list
@@ -132,6 +169,14 @@ public struct GitChanges: Sendable {
     /// The files of `directory`'s repository that differ from the merge base with the base branch: tracked changes
     /// (uncommitted ones included) and untracked files that are not ignored.
     public func list(directory: String) async -> GitChangesState {
+        do {
+            return try await scope.run { capture in try await self.list(directory: directory, capture: capture) }
+        } catch {
+            return Self.state(for: error)
+        }
+    }
+
+    private func list(directory: String, capture: Capture) async throws -> GitChangesState {
         let started = ProcessInfo.processInfo.systemUptime
         func budget() -> TimeInterval { max(0.5, limits.listTimeout - (ProcessInfo.processInfo.systemUptime - started)) }
         let outputLimit = 4 * 1024 * 1024
@@ -272,7 +317,7 @@ public struct GitChanges: Sendable {
                                        "diff", "--no-color", "--no-ext-diff", "--no-textconv", "-M", "-U3", list.compareTo, "--"]
             + [file.oldPath, file.path].compactMap { $0 }
         do {
-            let output = try await capture(arguments, limits.fileTimeout, limits.diffBytes)
+            let output = try await scope.run { capture in try await capture(arguments, self.limits.fileTimeout, self.limits.diffBytes) }
             let parsed = UnifiedDiff.parse(output)
             if parsed.isBinary { return .binary }
             return Self.bounded(parsed.hunks, lines: limits.diffLines)

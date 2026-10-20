@@ -36,6 +36,10 @@ extension ChatSessionDriver {
             refusedCount: policyRefusals, allowedCount: policyAllowed, hasSentFirstMessage: sideFirstSent)
     }
 
+    /// The process lives and nothing is going on in it: ready, no turn, no waiting card, nothing queued. A side chat that is no longer
+    /// the open one is stopped at this point (D-72), not before.
+    public var isLiveAndSettled: Bool { phase == .ready && !turnRunning && requests.isEmpty && queue.isEmpty }
+
     /// "Allow edits": the edit tools and the commands that may write become cards instead of refusals. Applies to the requests that
     /// arrive from now on; a refusal already given stays. A main session's driver has no such switch.
     public func setAllowsEdits(_ allowed: Bool) {

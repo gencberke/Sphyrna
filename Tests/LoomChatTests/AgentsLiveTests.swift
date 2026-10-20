@@ -113,6 +113,50 @@ struct HubAgentFieldTests {
         await rig.finish()
     }
 
+    /// The words of the running subagent's card, read from the driver's live model.
+    private func subagentWords(_ driver: ChatSessionDriver) async -> String? {
+        for entry in await driver.snapshot().model.entries {
+            if case let .subagent(run) = entry.body { return run.latestProgress }
+        }
+        return nil
+    }
+
+    /// R4: Claude Code forwards a subagent's text to the parent's stream only with `--forward-subagent-text`, and the fake
+    /// sends it only with the flag too. Loom's Chat spawn passes the flag where the help lists it, so the card of a subagent
+    /// whose request waits shows its last sentence; a CLI whose help does not list the flag gets none (and starts without error).
+    @Test func aWaitingSubagentsCardShowsItsWordsOnlyBecauseTheChatSpawnForwardsThem() async throws {
+        let rig = try await Rig.make()
+        let driver = rig.driver()
+        try await driver.startNew(projectID: nil)
+        try await driver.send("/scenario subagent 30 approval")
+        #expect(await waiting(driver))
+        let shown = await waitUntil { await subagentWords(driver) == "Looking at the module." }
+        let words = await subagentWords(driver)
+        #expect(shown, "the card shows: \(String(describing: words))")
+        let request = try #require(await driver.snapshot().requests.first)
+        try await driver.answer(requestID: request.requestID, .allowOnce)
+        #expect(await idle(driver, 20))
+        await rig.finish()
+
+        // The same fake behind a help text without the flag: no flag is passed, the fake keeps the words off the stream, and
+        // the card is empty while the request waits (what R4 found against the real CLI).
+        let plain = try await Rig.make(listsForwardSubagentText: false)
+        let plainDriver = plain.driver()
+        try await plainDriver.startNew(projectID: nil)
+        try await plainDriver.send("/scenario subagent 30 approval")
+        #expect(await waiting(plainDriver))
+        // The Agent entry exists and its Bash call arrived; only the words are missing.
+        #expect(await waitUntil {
+            await plainDriver.snapshot().model.entries.contains { if case .subagent = $0.body { true } else { false } }
+        })
+        try? await Task.sleep(for: .milliseconds(300))
+        #expect(await subagentWords(plainDriver) == nil)
+        let plainRequest = try #require(await plainDriver.snapshot().requests.first)
+        try await plainDriver.answer(requestID: plainRequest.requestID, .allowOnce)
+        #expect(await idle(plainDriver, 20))
+        await plain.finish()
+    }
+
     /// The card's line follows the newest block of the subagent's own words, live: a second block replaces the first.
     @Test func theSubagentCardsLineFollowsTheNewestTextBlockOfItsThread() throws {
         var model = TurnModel(source: .live)

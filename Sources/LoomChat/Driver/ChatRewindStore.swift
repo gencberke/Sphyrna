@@ -40,8 +40,11 @@ public enum ChatRewindStoreError: Error, Equatable, Sendable {
 
 /// The copies a files rewind keeps for Undo (V21): `<directory>/<session id>/<rewind id>/manifest.json` and
 /// `files/<n>` beside it, owner-only (folders 0700, files 0600). Loom copies every listed file that exists before the rewind
-/// is called, records each file's hash as the rewind left it, and restores the copies on Undo. A session keeps its newest
-/// `retainedRewinds`; deleting the session through Loom deletes the rest (`forget`).
+/// is called, records each file's hash as the rewind left it, and restores the copies on Undo. The copies live only while
+/// their Undo can be offered (D-72): the driver deletes a rewind's copies (`discard`) when its Undo closes (a message was sent,
+/// a newer rewind came, or it was undone), and the host removes every copy left by an earlier run when it starts (`removeAll`),
+/// since an Undo lives only in memory. A copy is an APFS clone of the file (nothing is read into memory) and a hash is
+/// computed by streaming.
 ///
 /// Nothing here talks to Claude: the driver decides when to copy, when to call and what to record.
 public struct ChatRewindStore: Sendable {
@@ -52,9 +55,6 @@ public struct ChatRewindStore: Sendable {
     /// A copy of one file is at most 64 MiB, and the copies of one rewind together 256 MiB.
     public static let maximumFileBytes = 64 << 20
     public static let maximumRewindBytes = 256 << 20
-    /// How many rewinds a session keeps.
-    public static let retainedRewinds = 3
-
     private static let lock = NSRecursiveLock()
 
     public init(directory: URL, trash: @escaping @Sendable (URL) throws -> Void = { url in
@@ -116,8 +116,8 @@ public struct ChatRewindStore: Sendable {
     }
 
     /// Copies every listed file that exists and writes the manifest. Throws, and leaves nothing behind, when the files are
-    /// over the bounds, cannot be copied or the folder cannot be written. Older rewinds of the session beyond the newest
-    /// `retainedRewinds` (this one included) go.
+    /// over the bounds, cannot be copied or the folder cannot be written. Older rewinds of the session are not touched: the
+    /// previous one's Undo is still offered until this one's marker replaces it, and its copies go then (`discard`).
     public func begin(sessionID: UUID, userMessageID: String, paths: [String], now: Date = Date()) throws -> ChatRewindManifest {
         try locked {
             switch verdict(for: paths) {
@@ -142,24 +142,26 @@ public struct ChatRewindStore: Sendable {
                         entries.append(.init(path: path, existed: false))
                         continue
                     }
-                    let data = try Data(contentsOf: URL(fileURLWithPath: path))
-                    total += data.count
-                    guard data.count <= Self.maximumFileBytes, total <= Self.maximumRewindBytes else {
+                    // The bounds are checked on sizes before anything is copied (stats only); the clone is the same size.
+                    let attributes = try FileManager.default.attributesOfItem(atPath: path)
+                    let size = (attributes[.size] as? NSNumber)?.intValue ?? 0
+                    total += size
+                    guard size <= Self.maximumFileBytes, total <= Self.maximumRewindBytes else {
                         throw ChatRewindStoreError.tooLarge
                     }
                     let name = String(index)
                     let url = files.appendingPathComponent(name)
-                    try data.write(to: url, options: .atomic)
+                    try FileManager.default.copyItem(at: URL(fileURLWithPath: path), to: url)
                     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-                    let mode = (try? FileManager.default.attributesOfItem(atPath: path))?[.posixPermissions] as? NSNumber
-                    entries.append(.init(path: path, existed: true, size: data.count, sha256: Self.hash(data), mode: mode?.intValue,
-                                         copy: name))
+                    guard let digest = Self.fileHash(url) else { throw ChatRewindStoreError.cannotCopy([path]) }
+                    let copySize = (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? size
+                    entries.append(.init(path: path, existed: true, size: copySize, sha256: digest,
+                                         mode: (attributes[.posixPermissions] as? NSNumber)?.intValue, copy: name))
                 }
                 let manifest = ChatRewindManifest(
                     rewindID: rewindID, sessionID: sessionID.uuidString.lowercased(), userMessageID: userMessageID, createdAt: now,
                     completed: false, undone: false, files: entries)
                 try write(manifest, sessionID: sessionID)
-                prune(sessionID: sessionID)
                 return manifest
             } catch {
                 try? FileManager.default.removeItem(at: root)
@@ -186,9 +188,26 @@ public struct ChatRewindStore: Sendable {
         }
     }
 
-    /// The rewind did not happen (the CLI refused it): its copies are of no use.
+    /// The rewind's copies are of no use: the CLI refused it, or its Undo is no longer offered (a message was sent, a newer rewind
+    /// came, or it was undone). The session's folder goes with its last rewind.
     public func discard(sessionID: UUID, rewindID: String) {
-        locked { try? FileManager.default.removeItem(at: folder(sessionID, rewindID)) }
+        locked {
+            try? FileManager.default.removeItem(at: folder(sessionID, rewindID))
+            let session = sessionFolder(sessionID)
+            if ((try? FileManager.default.contentsOfDirectory(atPath: session.path)) ?? ["-"]).isEmpty {
+                try? FileManager.default.removeItem(at: session)
+            }
+        }
+    }
+
+    /// Every copy goes. The host calls it once when it starts: an Undo lives only in memory, so what an earlier run left is
+    /// unreachable.
+    public func removeAll() {
+        locked {
+            for name in (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [] {
+                try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+            }
+        }
     }
 
     // MARK: Undo
@@ -210,20 +229,28 @@ public struct ChatRewindStore: Sendable {
         try locked {
             var manifest = try load(sessionID: sessionID, rewindID: rewindID)
             guard !manifest.undone else { throw ChatRewindStoreError.damaged("This rewind was undone already.") }
-            var copies: [(ChatRewindManifest.File, Data)] = []
+            var copies: [(ChatRewindManifest.File, URL)] = []
             for file in manifest.files where file.existed {
-                guard let name = file.copy, let data = try? Data(contentsOf: copyURL(sessionID, rewindID, name)),
-                      Self.hash(data) == file.sha256 else {
+                guard let name = file.copy, case let url = copyURL(sessionID, rewindID, name),
+                      Self.fileHash(url) == file.sha256 else {
                     throw ChatRewindStoreError.damaged("The copy of \(file.path) is missing or changed.")
                 }
-                copies.append((file, data))
+                copies.append((file, url))
             }
             var report = RestoreReport()
-            for (file, data) in copies {
+            for (file, copy) in copies {
                 let url = URL(fileURLWithPath: file.path)
                 try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try data.write(to: url, options: .atomic)
-                if let mode = file.mode { try? FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: file.path) }
+                // A clone of the copy beside the file, then an atomic rename over it: the file is whole or as it was.
+                let staged = url.deletingLastPathComponent().appendingPathComponent(".loom-undo-\(UUID().uuidString.prefix(8))")
+                do {
+                    try FileManager.default.copyItem(at: copy, to: staged)
+                    if let mode = file.mode { try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: staged.path) }
+                    guard rename(staged.path, url.path) == 0 else { throw CocoaError(.fileWriteUnknown) }
+                } catch {
+                    try? FileManager.default.removeItem(at: staged)
+                    throw error
+                }
                 report.restored.append(file.path)
             }
             for file in manifest.files where !file.existed && FileManager.default.fileExists(atPath: file.path) {
@@ -281,23 +308,28 @@ public struct ChatRewindStore: Sendable {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
-    /// Older rewinds beyond the newest `retainedRewinds` go (the names sort by time).
-    private func prune(sessionID: UUID) {
-        let ids = rewindIDs(sessionID: sessionID)
-        for id in ids.dropLast(Self.retainedRewinds) {
-            try? FileManager.default.removeItem(at: folder(sessionID, id))
-        }
-    }
-
     static func hash(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The hash of a file, read in chunks (a file of 64 MiB is never held in memory); nil when it cannot be read.
+    static func fileHash(_ url: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while true {
+            let chunk: Data?
+            do { chunk = try handle.read(upToCount: 1 << 20) } catch { return nil }
+            guard let chunk, !chunk.isEmpty else { break }
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     /// Whether the path holds a file, and its hash.
     static func state(of path: String) -> (exists: Bool, hash: String?) {
         guard FileManager.default.fileExists(atPath: path) else { return (false, nil) }
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return (true, nil) }
-        return (true, hash(data))
+        return (true, fileHash(URL(fileURLWithPath: path)))
     }
 }
 

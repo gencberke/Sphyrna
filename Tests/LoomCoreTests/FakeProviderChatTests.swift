@@ -309,7 +309,7 @@ struct FakeProviderChatTests {
     }
 
     @Test func aSubagentIsAnnouncedAndItsMessagesCarryItsIdentityAndTheTranscriptIsWritten() async throws {
-        let rig = try ChatRig()
+        let rig = try ChatRig(arguments: ["--forward-subagent-text"])
         defer { rig.stop() }
         rig.user("/scenario subagent 10 approval", uuid: "u1")
         let request = try await rig.waitRequest("Bash")
@@ -346,6 +346,36 @@ struct FakeProviderChatTests {
         let side = try String(contentsOf: subagents.appendingPathComponent(sidechain), encoding: .utf8)
         #expect(side.contains("\"isSidechain\":true") && side.contains("\"agentId\""))
         #expect(await rig.finish())
+    }
+
+    /// R4: without `--forward-subagent-text` the CLI keeps a subagent's text and thinking off the parent's stream; its tool
+    /// calls and results are sent either way, and its own transcript has the words either way.
+    @Test func aSubagentsTextReachesTheStreamOnlyWithTheForwardFlagAndItsTranscriptHasItEitherWay() async throws {
+        for forward in [false, true] {
+            let rig = try ChatRig(arguments: forward ? ["--forward-subagent-text"] : [])
+            defer { rig.stop() }
+            rig.user("/scenario subagent 10 approval", uuid: "u1")
+            let request = try await rig.waitRequest("Bash")
+            let body = try #require(request["request"] as? ChatRig.Record)
+            rig.answer(request["request_id"] as! String, ["behavior": "allow", "updatedInput": body["input"] as Any])
+            _ = try await rig.waitResult()
+            let records = rig.all()
+            let inner = records.filter { $0["type"] as? String == "assistant" || $0["type"] as? String == "user" }
+                .filter { $0["parent_tool_use_id"] is String }
+            let kinds = Set(inner.flatMap(ChatRig.blocks).compactMap { $0["type"] as? String })
+            #expect(kinds.contains("tool_use") && kinds.contains("tool_result"), "forward: \(forward) \(kinds)")
+            #expect(kinds.contains("text") == forward, "forward: \(forward) \(kinds)")
+            let text = inner.flatMap(ChatRig.blocks).compactMap { $0["text"] as? String }
+            #expect(text.contains("Looking at the module.") == forward && text.contains("The module has two services.") == forward)
+
+            let project = rig.configDirectory.appendingPathComponent("projects/" + String(realPath(rig.root).map { $0.isLetter || $0.isNumber ? $0 : "-" }))
+            let subagents = project.appendingPathComponent("\(rig.sessionID)/subagents")
+            let files = try FileManager.default.contentsOfDirectory(atPath: subagents.path)
+            let sidechain = try #require(files.first { $0.hasSuffix(".jsonl") })
+            let side = try String(contentsOf: subagents.appendingPathComponent(sidechain), encoding: .utf8)
+            #expect(side.contains("Looking at the module.") && side.contains("The module has two services."), "forward: \(forward)")
+            #expect(await rig.finish())
+        }
     }
 
     // MARK: Requests

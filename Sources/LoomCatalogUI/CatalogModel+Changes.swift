@@ -28,8 +28,14 @@ extension CatalogModel {
         return data.files.count
     }
 
-    /// A turn ended (or began) in a session whose Changes tab shows: the next read is due. Called with the session's
-    /// working state by the tab's view; a tab that is closed reads nothing now and reads again when it opens.
+    /// The session's indicator changed while its Changes tab is mounted (the tab's view calls this). A turn that waits on a
+    /// card is still the turn: only a change that leaves both working and waiting is its end.
+    func noteChangesIndicator(_ indicator: SessionIndicator, for sessionID: UUID) {
+        noteChangesWorking(indicator.keepsATurnGoing, for: sessionID)
+    }
+
+    /// A turn ended (or began) in a session whose Changes tab shows: the next read is due. Called with whether a turn is going;
+    /// a tab that is closed reads nothing now and reads again when it opens.
     func noteChangesWorking(_ working: Bool, for sessionID: UUID) {
         let session = changes.session(for: sessionID)
         defer { session.wasWorking = working }

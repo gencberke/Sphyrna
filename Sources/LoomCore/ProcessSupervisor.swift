@@ -37,6 +37,8 @@ public actor ProcessSupervisor {
     nonisolated let scopeLauncherConfigured: Bool
     var liveScopes: [UInt64: RunScope] = [:]
     var releasingScopes: Set<UInt64> = []
+    /// Run scopes opened since the supervisor was made: what a test counts to show a read costs one.
+    var scopesOpened = 0
     /// Scoped processes of another UID: Loom cannot stop them, so a stop or
     /// Quit that finds one is reported as unverified, never as success.
     var outsideScopes: [ProcessRecord] = []

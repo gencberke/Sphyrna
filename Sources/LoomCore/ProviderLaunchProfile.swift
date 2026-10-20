@@ -9,6 +9,10 @@ public struct ProviderCapabilities: Codable, Sendable {
     public let supportsSessionID: Bool
     /// Whether `--help` lists `--fork-session`: without it (and `--session-id`) the CLI cannot start a side chat (V22).
     public let supportsForkSession: Bool
+    /// Whether `--help` lists `--forward-subagent-text`: without it the CLI keeps a subagent's text and thinking out of the
+    /// parent's stream (they stay in the subagent's own transcript), and a card's latest words stay empty (R4). A CLI that
+    /// does not list it starts as before.
+    public let supportsForwardSubagentText: Bool
     public let supportsSettings: Bool
     public let supportsEffort: Bool
     public let supportsName: Bool
@@ -29,6 +33,7 @@ public struct ProviderCapabilities: Codable, Sendable {
         }
         supportsSessionID = help.contains("--session-id <")
         supportsForkSession = help.contains("--fork-session")
+        supportsForwardSubagentText = help.contains("--forward-subagent-text")
         supportsSettings = help.contains("--settings <")
         supportsEffort = help.contains("--effort <")
         supportsName = help.contains("--name <")
@@ -277,6 +282,9 @@ public struct ProviderLaunchProfile: Sendable {
             // Readable thinking (S1 §D14): the default `updates` display sends empty thinking text. A hidden option,
             // so it is passed only where it is known to exist.
             if capabilities.claudeAcceptsThinkingDisplay { faceArguments += ["--thinking-display", "summarized"] }
+            // A subagent's text and thinking on the parent's stream (R4), so a running subagent's card shows its words. Only
+            // the Chat face (`-p` stream-json) takes it, and only where `--help` lists it.
+            if capabilities.supportsForwardSubagentText { faceArguments += ["--forward-subagent-text"] }
             // `system/session_state_changed` (S1 §D8): idle, running, requires_action.
             env["CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS"] = "1"
             // File checkpoints from the session's first turn (S8): without them `rewind_files` answers "File rewinding

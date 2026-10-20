@@ -51,6 +51,8 @@ struct ChatConfig {
     var permissionMode: String
     var effort: String?
     var partial: Bool
+    /// `--forward-subagent-text`: a subagent's text and thinking reach the stream (the CLI sends none of them without it).
+    var forwardSubagentText: Bool
     var replay: Bool
     var permissionHost: Bool
     var allowBypass: Bool
@@ -117,6 +119,7 @@ struct ChatConfig {
         permissionMode = value("--permission-mode") ?? "default"
         effort = value("--effort")
         partial = arguments.contains("--include-partial-messages")
+        forwardSubagentText = arguments.contains("--forward-subagent-text")
         replay = arguments.contains("--replay-user-messages")
         permissionHost = value("--permission-prompt-tool") == "stdio"
         allowBypass = arguments.contains("--allow-dangerously-skip-permissions")
@@ -461,7 +464,7 @@ final class ChatEngine {
 
     /// Sends a `user` or `assistant` record and writes it to the transcript (a subagent's to its own file).
     func emitMessage(_ object: ChatObject, agent: String? = nil) {
-        send(object)
+        if config.forwardSubagentText || !Self.isSubagentWords(object) { send(object) }
         guard let type = object["type"] as? String, let message = object["message"] as? ChatObject,
               let uuid = object["uuid"] as? String else { return }
         var extra: ChatObject = [:]
@@ -472,6 +475,15 @@ final class ChatEngine {
             agentID: agent, extra: extra), agent: agent)
         if agent == nil { lastUUID = uuid }
         if type == "assistant", agent == nil { lastAssistantUUID = uuid }
+    }
+
+    /// A subagent's own text or thinking block (`parent_tool_use_id` set): the real CLI puts it on the parent's stream only
+    /// with `--forward-subagent-text`, and writes it to the subagent's transcript either way. Its tool calls and results always
+    /// reach the stream.
+    static func isSubagentWords(_ object: ChatObject) -> Bool {
+        guard object["type"] as? String == "assistant", object["parent_tool_use_id"] is String,
+              let content = (object["message"] as? ChatObject)?["content"] as? [ChatObject] else { return false }
+        return content.contains { ["text", "thinking"].contains($0["type"] as? String) }
     }
 
     func recordUser(_ message: ChatUser) {

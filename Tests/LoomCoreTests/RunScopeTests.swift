@@ -382,6 +382,109 @@ struct RunScopeTests {
         #expect((await supervisor.shutdown()).succeeded)
     }
 
+    // MARK: One run scope per Changes git read (RS-7)
+
+    /// A `git` that reads no user config, as a script the scoped helper can run: the live reader passes its own fixed environment.
+    private func isolatedGit(in folder: URL, then extra: String = "") throws -> String {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let script = folder.appendingPathComponent("git-isolated")
+        try "#!/bin/sh\nexport GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1\n\(extra)exec /usr/bin/git \"$@\"\n"
+            .write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+        return script.path
+    }
+
+    private func makeBranchRepository(in root: URL) throws -> URL {
+        let repo = root.appendingPathComponent("repo", isDirectory: true)
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        func git(_ arguments: String...) throws {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            process.arguments = ["-C", repo.path, "-c", "commit.gpgsign=false"] + arguments
+            process.environment = ["PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "GIT_CONFIG_GLOBAL": "/dev/null",
+                                   "GIT_CONFIG_NOSYSTEM": "1", "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                                   "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+            if process.terminationStatus != 0 { throw LoomError.message("git \(arguments) failed") }
+        }
+        try git("init", "-q", "-b", "main")
+        try "1\n2\n".write(to: repo.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try git("add", "-A")
+        try git("commit", "-q", "-m", "base")
+        try git("checkout", "-q", "-b", "feature")
+        try "1\ntwo\n".write(to: repo.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try "new\n".write(to: repo.appendingPathComponent("new.txt"), atomically: true, encoding: .utf8)
+        return repo
+    }
+
+    /// A Branch list makes seven or eight git calls; each used to open a run scope of its own (a LaunchServices launch, a
+    /// handshake and a ledger write apiece). The calls of one read share one scope, which is released when the read returns.
+    @Test func aBranchListAndAFilesDiffEachOpenExactlyOneRunScopeAndLeaveNoneOpen() async throws {
+        let root = scratch.folder("loom-git-scope")
+        let repo = try makeBranchRepository(in: root)
+        let supervisor = try ProcessSupervisor(scopeLauncher: try launcher())
+        let reader = GitChanges.live(supervisor: supervisor, executable: try isolatedGit(in: root.appendingPathComponent("bin")))
+
+        let opened = await supervisor.scopesOpened
+        let state = await reader.list(directory: repo.path)
+        guard case let .list(list) = state else { Issue.record("not a list: \(state)"); return }
+        #expect(list.files.map(\.path) == ["a.txt", "new.txt"])
+        let afterList = await supervisor.scopesOpened - opened
+        #expect(afterList == 1, "a list opened \(afterList) run scopes")
+        let leftAfterList = await supervisor.ledgerSnapshot().scopes?.isEmpty
+        #expect(leftAfterList == true, "the scope was released with the read")
+
+        let tracked = try #require(list.files.first { $0.path == "a.txt" })
+        let diff = await reader.diff(of: tracked, in: list)
+        guard case .hunks = diff else { Issue.record("not hunks: \(diff)"); return }
+        let afterDiff = await supervisor.scopesOpened - opened
+        #expect(afterDiff == 2, "a file's diff opened exactly one more")
+        let leftAfterDiff = await supervisor.ledgerSnapshot().scopes?.isEmpty
+        #expect(leftAfterDiff == true)
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    /// A Quit during a read: every helper of it is cancelled and awaited, and the scope is released with no helper left in it.
+    @Test func aShutdownDuringAReadLeavesNoHelperRunningAndTheScopeReleased() async throws {
+        let root = scratch.folder("loom-git-shutdown")
+        let pids = root.appendingPathComponent("pid")
+        // Every git call of the read writes its pid and then hangs.
+        let hung = try isolatedGit(in: root.appendingPathComponent("bin"), then: "echo $$ >> '\(pids.path)'\nsleep 60\n")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let supervisor = try ProcessSupervisor(scopeLauncher: try launcher())
+        var limits = GitChanges.Limits()
+        limits.listTimeout = 120
+        let reader = GitChanges.live(supervisor: supervisor, executable: hung, limits: limits)
+        let read = Task { await reader.list(directory: root.path) }
+
+        func started() -> [Int32] {
+            ((try? String(contentsOf: pids, encoding: .utf8)) ?? "").split(separator: "\n").compactMap { Int32($0) }
+        }
+        let deadline = ProcessInfo.processInfo.systemUptime + 30
+        while started().isEmpty, ProcessInfo.processInfo.systemUptime < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        let helper = try #require(started().first, "the helper never started")
+        let openedWhileReading = await supervisor.scopesOpened
+        let scopesWhileReading = await supervisor.ledgerSnapshot().scopes?.count
+        #expect(openedWhileReading == 1 && scopesWhileReading == 1)
+
+        let report = await supervisor.shutdown()
+        #expect(report.succeeded, "\(report.errors)")
+        let state = await read.value
+        #expect(state != .timedOut, "the read ended by the shutdown, not by its deadline: \(state)")
+        // The helper is gone (a zombie of the host is reaped by it) and its scope with it.
+        let gone = ProcessInfo.processInfo.systemUptime + 10
+        while let record = ProcessTable.record(pid: helper), !record.zombie, ProcessInfo.processInfo.systemUptime < gone {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(ProcessTable.record(pid: helper).map(\.zombie) ?? true, "the helper is still running")
+        let scopesLeft = await supervisor.ledgerSnapshot().scopes?.isEmpty
+        let jobsLeft = await supervisor.environmentJobs.isEmpty
+        #expect(scopesLeft == true && jobsLeft)
+    }
+
     /// SR1-F1: a run that traced an outside process (as a debugger does) must
     /// not take it over. Ancestry seen while attached is not ownership.
     @Test func debuggerTraceeOutsideTheScopeIsNeverSignaled() async throws {

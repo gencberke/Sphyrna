@@ -3,8 +3,8 @@ import Synchronization
 import Testing
 @testable import LoomChat
 
-// The copies a files rewind keeps for Undo (V21): the manifest and its hashes, the bounds, the newest three per session, the
-// session's copies gone with it, Undo from the copy, and the marks of "changed outside Claude". No process.
+// The copies a files rewind keeps for Undo (V21): the manifest and its hashes, the bounds, the copies that go with a discard, a
+// sweep or the session, Undo from the copy, and the marks of "changed outside Claude". No process.
 
 /// The paths the injected trash step was asked to take.
 private final class TrashLog: Sendable {
@@ -114,26 +114,43 @@ struct ChatRewindStoreTests {
         }
     }
 
-    @Test func aSessionKeepsItsNewestThreeRewindsAndDeletingTheSessionRemovesAll() throws {
+    @Test func aCopyIsABytesEqualCloneADiscardRemovesOneRewindAndTheSweepAndTheSessionRemoveTheRest() throws {
         let bench = try Bench()
         defer { bench.remove() }
         let session = UUID(), other = UUID()
-        let path = try bench.file("a.txt", "x")
+        let path = try bench.file("a.txt", String(repeating: "x", count: 100_000))
         var ids: [String] = []
-        for index in 0..<5 {
+        for index in 0..<3 {
             ids.append(try bench.store.begin(sessionID: session, userMessageID: "m\(index)", paths: [path],
                                              now: Date(timeIntervalSince1970: 1_000 + Double(index))).rewindID)
         }
         _ = try bench.store.begin(sessionID: other, userMessageID: "o", paths: [path])
-        #expect(bench.store.rewindIDs(sessionID: session) == Array(ids.suffix(3)))
-        #expect(bench.store.rewindIDs(sessionID: other).count == 1)
+        // The store keeps what it is given; the driver is what closes a rewind (D-72).
+        #expect(bench.store.rewindIDs(sessionID: session) == ids)
         #expect(bench.store.sessionIDs() == [session, other])
 
-        try bench.store.forget(sessionID: session)
-        #expect(bench.store.rewindIDs(sessionID: session).isEmpty)
+        // The copy is the file's bytes, owner-only, and its manifest hash is the hash of those bytes.
+        let manifest = try bench.store.load(sessionID: session, rewindID: ids[0])
+        let entry = try #require(manifest.files.first)
+        let copy = bench.store.folder(session, ids[0]).appendingPathComponent("files").appendingPathComponent(try #require(entry.copy))
+        #expect(try Data(contentsOf: copy) == Data(contentsOf: URL(fileURLWithPath: path)))
+        #expect(entry.sha256 == ChatRewindStore.fileHash(copy) && entry.size == 100_000)
+        #expect(try permissions(copy) == 0o600)
+
+        // A discard removes that rewind; the session's folder goes with its last one.
+        bench.store.discard(sessionID: session, rewindID: ids[0])
+        #expect(bench.store.rewindIDs(sessionID: session) == Array(ids.dropFirst()))
+        bench.store.discard(sessionID: session, rewindID: ids[1])
+        bench.store.discard(sessionID: session, rewindID: ids[2])
         #expect(!FileManager.default.fileExists(atPath: bench.store.sessionFolder(session).path))
         #expect(bench.store.sessionIDs() == [other])
-        // Forgetting a session with no copies is no error.
+
+        // The sweep takes everything; forgetting a session with no copies is no error.
+        _ = try bench.store.begin(sessionID: session, userMessageID: "again", paths: [path])
+        try bench.store.forget(sessionID: session)
+        #expect(bench.store.sessionIDs() == [other])
+        bench.store.removeAll()
+        #expect(bench.store.sessionIDs().isEmpty)
         try bench.store.forget(sessionID: session)
     }
 

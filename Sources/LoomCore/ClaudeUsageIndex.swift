@@ -44,13 +44,14 @@ public actor ClaudeUsageIndex {
     /// The provider ids of the side chats (V22), lower case: a fork copies the parent's messages under their own ids, so a record
     /// read from a side chat's file must never take a message another session holds (`insert`, `UsageDatabase.upsert`).
     private var sideChatSessions: Set<String> = []
-    private var sideChatSource: (@Sendable () async -> Set<String>)?
+    private let sideChatSource: (@Sendable () async -> Set<String>)?
 
     /// - Parameters:
     ///   - databaseURL: `usage-index.sqlite3` in the data root.
     ///   - profile: which Claude profile's `projects/` to read.
     ///   - coldStartWindow: files not indexed yet and older than this are skipped (default 90 days).
-    ///   - sideChats: the provider ids of the side chats (V22), asked before every refresh; see `setSideChatSource`.
+    ///   - sideChats: where the provider ids of the side chats (V22) come from (the catalog), asked once at the start of every
+    ///     refresh, so a side chat made since is known before its file is read.
     public init(
         databaseURL: URL, profile: ClaudeProfileLayout, coldStartWindow: TimeInterval = 90 * 86_400,
         clock: @escaping @Sendable () -> Date = { Date() }, sideChats: (@Sendable () async -> Set<String>)? = nil
@@ -76,15 +77,9 @@ public actor ClaudeUsageIndex {
 
     // MARK: side chats
 
-    /// The side chats' provider ids, lower case or not. Replaces the earlier set; read before every refresh when a source is set.
+    /// The side chats' provider ids, lower case or not. Replaces the earlier set; a refresh replaces it from `sideChats` when one was given.
     public func setSideChatSessions(_ ids: Set<String>) {
         sideChatSessions = Set(ids.map { $0.lowercased() })
-    }
-
-    /// Where the ids come from (the catalog): asked once at the start of every refresh, so a side chat made since is known
-    /// before its file is read.
-    public func setSideChatSource(_ source: @escaping @Sendable () async -> Set<String>) {
-        sideChatSource = source
     }
 
     // MARK: refresh

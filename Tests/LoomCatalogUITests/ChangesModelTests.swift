@@ -149,6 +149,56 @@ struct ChangesModelTests {
         #expect(model.changesTrigger == nil, "the second session's inspector is closed")
     }
 
+    /// RS-8: a card that waits moved the indicator off `.working`, so each approval card made a read and the allow made another.
+    /// The tab's view reports the indicator (`noteChangesIndicator`); a waiting card is the turn still going.
+    @Test func anApprovalCardInTheMiddleOfATurnMakesNoReadAndTheTurnsEndMakesExactlyOne() async throws {
+        for scope in [ChangesScope.lastTurn, .branch] {
+            let f = try await fixture()
+            defer { f.cleanup() }
+            let (model, id) = (f.model, f.id)
+            f.log.git = gitList(["a.swift"])
+            model.setInspector(open: true, for: id)
+            model.selectInspectorTab(.changes)
+            model.setChangesScope(scope, for: id)
+            // The tab mounts on a session at its prompt, and opening it is one read.
+            // The inspector's `.task(id: changesTrigger)` reads when the trigger changed, and only then.
+            var seen: ChangesTrigger?
+            func readLikeTheTask() async {
+                guard let trigger = model.changesTrigger, trigger != seen else { return }
+                seen = trigger
+                await model.runChangesRead()
+            }
+            func reads() -> Int { f.log.scans.count + f.log.lists }
+            model.noteChangesIndicator(.ready, for: id)
+            await readLikeTheTask()
+            #expect(reads() == 1, "\(scope)")
+
+            // The turn starts, a card appears and is allowed, a second one waits and is allowed: no read comes.
+            let revision = model.changesTrigger?.revision
+            for indicator in [SessionIndicator.working, .waitingForApproval, .working, .waitingForApproval, .working] {
+                model.noteChangesIndicator(indicator, for: id)
+                #expect(model.changesTrigger?.revision == revision, "\(scope) \(indicator)")
+                await readLikeTheTask()
+            }
+            #expect(reads() == 1, "\(scope): nothing reads while the turn goes on")
+
+            // The turn ends: exactly one read.
+            model.noteChangesIndicator(.ready, for: id)
+            #expect(model.changesTrigger?.revision == (revision ?? 0) + 1, "\(scope)")
+            await readLikeTheTask()
+            #expect(reads() == 2, "\(scope): one read when the turn ends")
+
+            // A turn that ends at a card nobody answered yet ends when the card is answered and the session rests.
+            model.noteChangesIndicator(.working, for: id)
+            model.noteChangesIndicator(.waitingForApproval, for: id)
+            await readLikeTheTask()
+            #expect(reads() == 2)
+            model.noteChangesIndicator(.unviewedCompletion, for: id)
+            await readLikeTheTask()
+            #expect(reads() == 3, "\(scope)")
+        }
+    }
+
     @Test func aReadNobodyWaitsForAnyMoreIsDropped() async throws {
         let f = try await fixture()
         defer { f.cleanup() }

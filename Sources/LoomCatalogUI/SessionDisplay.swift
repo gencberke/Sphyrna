@@ -99,6 +99,10 @@ public enum SessionIndicator: Equatable, Sendable {
         }
     }
 
+    /// A turn is still going: Claude works, or a card (an approval, a question) holds it. The Changes tab reads when this
+    /// ends, not when a card appears.
+    var keepsATurnGoing: Bool { self == .working || self == .waitingForApproval }
+
     /// Whether "Mark as Read" applies: the user is already done with a state that only waits for them.
     /// Not approval requests (the provider is blocked) and not failures.
     public var canMarkRead: Bool { self == .waitingForInput || self == .unviewedCompletion }

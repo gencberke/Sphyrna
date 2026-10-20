@@ -124,6 +124,10 @@ final class QuickQuestionState {
         return made
     }
 
+    /// The session was deleted: its panel is closed and dropped (the driver it asks through goes with it).
+    func forget(_ sessionID: UUID) {
+        panels.removeValue(forKey: sessionID)?.close()
+    }
 }
 
 extension ChatComposerModel {
@@ -157,7 +161,4 @@ extension CatalogModel {
               let driver = chatSessions?.existingDriver(for: id) else { return }
         quick.panel(for: id, driver: driver).open()
     }
-
-    /// The panel the session's live view draws; nil without a Chat driver.
-    func quickQuestionPanel(for sessionID: UUID) -> QuickQuestionPanel? { quick.panel(for: sessionID) }
 }

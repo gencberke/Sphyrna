@@ -22,9 +22,9 @@ struct ChangesTab: View {
             }
             ChangesFooter(model: model, sessionID: row.id, session: session)
         }
-        // A turn that ends while the tab shows reads again (`noteChangesWorking`).
-        .onChange(of: row.indicator == .working, initial: true) { _, working in
-            model.noteChangesWorking(working, for: row.id)
+        // A turn that ends while the tab shows reads again (`noteChangesIndicator`); a card that waits is not its end.
+        .onChange(of: row.indicator, initial: true) { _, indicator in
+            model.noteChangesIndicator(indicator, for: row.id)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inspector-changes")
