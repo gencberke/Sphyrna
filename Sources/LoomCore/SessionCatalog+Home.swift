@@ -47,7 +47,7 @@ extension SessionCatalog {
             JOIN run_sessions l ON l.run_id = r.id AND l.unlinked_at IS NULL
             JOIN sessions s ON s.id = l.session_id
             WHERE r.end_reason = ? AND r.ended_at IS NOT NULL AND \(Self.runLastActive) >= ?
-              AND \(Self.notDeleting)
+              AND \(Self.listed)
               AND NOT EXISTS (
                   SELECT 1 FROM run_sessions later_link
                   JOIN runs later ON later.id = later_link.run_id
@@ -87,7 +87,7 @@ extension SessionCatalog {
     /// How many sessions were really used since `date` (start, prompt, finished turn): Home's "Today".
     public func sessionCount(activeSince date: Date) throws -> Int {
         try database.withStatement("""
-            SELECT count(*) FROM sessions s WHERE \(Self.activityExpression) >= ? AND \(Self.notDeleting)
+            SELECT count(*) FROM sessions s WHERE \(Self.activityExpression) >= ? AND \(Self.listed)
             """) { statement in
             sqlite3_bind_double(statement, 1, date.timeIntervalSince1970)
             guard sqlite3_step(statement) == SQLITE_ROW else {
@@ -101,7 +101,7 @@ extension SessionCatalog {
     public func lastUsedProjectID() throws -> UUID? {
         try database.withStatement("""
             SELECT s.project_id FROM sessions s JOIN projects p ON p.id = s.project_id
-            WHERE \(Self.notDeleting)
+            WHERE \(Self.listed)
             ORDER BY \(Self.activityExpression) DESC, s.id DESC LIMIT 1
             """) { statement in
             guard sqlite3_step(statement) == SQLITE_ROW else { return nil }

@@ -59,6 +59,8 @@ extension ChatSessionDriver {
         guard let request = requests.first(where: { $0.requestID == requestID }) else {
             throw ChatDriverError.noSuchRequest(requestID)
         }
+        // "For this session" would let later edits through without a card (a rule, or a mode), whatever "Allow edits" says then.
+        if sideChatParent != nil, case .allowForSession = answer { throw ChatDriverError.notOffered }
         // Ask refuses every tool approval; none is allowed while it is on (a card that was waiting when Ask came on is
         // refused when Ask is chosen, so this is the defence for the one that arrives some other way).
         if isAsk {
@@ -132,7 +134,13 @@ extension ChatSessionDriver {
         // A request that comes while Loom stops the run is withdrawn by the Stop's interrupt: it is never listed, so
         // no card shows it and nothing can answer it.
         guard phase != .stopping else { return }
-        requests.append(ChatPendingRequest(requestID: request.requestID, request: tool, arrivedAt: now, agent: agent))
+        let pending = ChatPendingRequest(requestID: request.requestID, request: tool, arrivedAt: now, agent: agent)
+        // The injected policy (a side chat's) answers some requests at once, with no card; a main session has none.
+        if let policy = requestPolicy {
+            let decision = policy.decide(tool)
+            if decision != .ask, await answerByPolicy(pending, decision) { return }
+        }
+        requests.append(pending)
         if tool.toolName == "ExitPlanMode", let id = tool.toolUseID, let plan = tool.input["plan"]?.string {
             note(model.updatePlan(toolUseID: id, markdown: plan, filePath: tool.input["planFilePath"]?.string))
         }
@@ -140,6 +148,32 @@ extension ChatSessionDriver {
         await beginTurn()
         setPhase(.needsYou)
         await publish(.waitingForApproval)
+    }
+
+    /// The policy decided: the answer goes to the CLI at once, through the same channel call `respond(to:with:record:)` makes, and the
+    /// request never becomes a card (it is not listed, so nothing flashes and no Home, Dock or notification sees it). A refusal
+    /// leaves one Loom-only line in the stream ("Refused Write · src/app.py") and counts (`sideChatState()`); an allowed
+    /// read-only command only counts. False when the answer could not be sent (the input is full): the request is then a card.
+    private func answerByPolicy(_ pending: ChatPendingRequest, _ decision: ChatRequestDecision) async -> Bool {
+        guard let current = run else { return false }
+        let tool = pending.request
+        let wire: PermissionDecision
+        switch decision {
+        case .ask: return false
+        case .allow: wire = .allow(updatedInput: tool.input, toolUseID: tool.toolUseID)
+        case let .deny(message): wire = .deny(message: message, interrupt: false)
+        }
+        guard await current.channel.respond(to: pending.requestID, with: wire) else { return false }
+        if case .allow = decision {
+            policyAllowed += 1
+        } else {
+            policyRefusals += 1
+            let subject = pending.subject
+            let line = subject == tool.toolName ? "Refused \(tool.toolName)" : "Refused \(tool.toolName) · \(subject)"
+            note(model.recordRequest(RequestRecord(kind: .approval, summary: StatusReason.oneLine(line, limit: 240) ?? line), at: clock()))
+        }
+        changed()
+        return true
     }
 
     /// The CLI withdrew a request (an interrupt, a Stop): the card folds as cancelled, and the stream keeps the line.

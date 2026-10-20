@@ -138,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Settings → Theme (D-63): the appearance and the main pane's tone, applied here to what SwiftUI does not reach.
         model.onThemeChange = { [weak self] in self?.applyTheme() }
         model.installTheme()
-        installUsage(model: model, root: root, refused: refusal != nil)
+        installUsage(model: model, root: root, refused: refusal != nil, catalog: catalog)
         model.onTerminalFontSizeChange = { [weak self] size in
             self?.conversations?.setTerminalFontSize(size)
             self?.controller?.terminalFontSize = size

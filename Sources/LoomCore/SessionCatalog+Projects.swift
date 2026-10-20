@@ -59,11 +59,12 @@ extension SessionCatalog {
     }
 
     /// Only an empty project can be removed. Conversations stay untouched and
-    /// the folder on disk is never deleted.
+    /// the folder on disk is never deleted. A side chat is not a conversation of the project's (it is hidden from every
+    /// list): the runtime deletes the project's side chats first (`SessionRuntime.removeProject`).
     public func removeProject(id: UUID) throws {
         try database.transaction {
             let count = try database.withStatement(
-                "SELECT count(*) FROM sessions WHERE project_id = ?"
+                "SELECT count(*) FROM sessions s WHERE s.project_id = ? AND \(Self.notSideChat)"
             ) { statement in
                 try database.bind(id.uuidString, at: 1, to: statement)
                 guard sqlite3_step(statement) == SQLITE_ROW else { return Int64(0) }
@@ -142,7 +143,7 @@ extension SessionCatalog {
     /// Conversation count per project (nil key: no project), from one grouped scan.
     public func sessionCounts() throws -> [UUID?: Int] {
         try database.withStatement(
-            "SELECT s.project_id, count(*) FROM sessions s WHERE \(Self.notDeleting) GROUP BY s.project_id"
+            "SELECT s.project_id, count(*) FROM sessions s WHERE \(Self.listed) GROUP BY s.project_id"
         ) { statement in
             var result: [UUID?: Int] = [:]
             var stepResult = sqlite3_step(statement)

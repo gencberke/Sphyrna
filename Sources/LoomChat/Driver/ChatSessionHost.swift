@@ -69,17 +69,25 @@ public final class ChatSessionHost {
         }
     }
 
-    /// The session's driver, made when first asked for.
+    /// The session's driver, made when first asked for. A side chat's driver is made by `sideChatDriver(for:parentSessionID:)`
+    /// (its callers know what it is; the host reads nothing from the catalog here).
     public func driver(for sessionID: UUID) -> ChatSessionDriver {
         if let driver = drivers[sessionID] { return driver }
+        return makeDriver(sessionID: sessionID, sideChatParent: nil)
+    }
+
+    private func makeDriver(sessionID: UUID, sideChatParent: UUID?) -> ChatSessionDriver {
         let record = choicesChanged
         let window = contextWindow
         let changed = driversChanged
         let titled = titleGenerated
         let registry = drivers
         let driver = ChatSessionDriver(
-            sessionID: sessionID, runtime: runtime, queueStore: queueStore, draftStore: draftStore, rewindStore: rewindStore,
+            sessionID: sessionID, runtime: runtime, queueStore: queueStore, draftStore: draftStore,
+            // The fork shares the parent's working folder: a files rewind there would change files under the main session.
+            rewindStore: sideChatParent == nil ? rewindStore : nil,
             journal: journal,
+            requestPolicy: sideChatParent == nil ? nil : SideChatPolicy(), sideChatParent: sideChatParent,
             onChoicesChanged: { choices in Task { @MainActor in record(sessionID, choices) } },
             onContextWindow: { model, size in Task { @MainActor in window(model, size) } },
             onMoved: { from, to in
@@ -179,6 +187,55 @@ public final class ChatSessionHost {
 
     /// Test seam: runs right after `onReady` and before the draft's first message goes out.
     var afterReadyForTesting: (@Sendable () async -> Void)?
+
+    // MARK: Side chats (V22)
+
+    /// Forks `parentSessionID` into a new side chat and returns its driver, Ready (the fork answered `initialize`); the first
+    /// question goes through the driver's `send`. The parent's run, driver, queue and card are not touched, and a live parent never
+    /// blocks it. A start that fails leaves nothing behind: no card, no driver, and no file the fork may have written.
+    public func startSideChat(parentSessionID: UUID) async throws -> ChatSessionDriver {
+        let id = UUID()
+        let driver = makeDriver(sessionID: id, sideChatParent: parentSessionID)
+        do {
+            try await driver.startFork()
+        } catch {
+            // The runtime removed the card when the spawn failed; a fork that spawned and then did not become ready is stopped and
+            // deleted through the same verified path as a discard. Best effort: the original failure is what the caller gets.
+            _ = try? await discardSideChat(id: id)
+            forget(sessionID: id)
+            throw error
+        }
+        return driver
+    }
+
+    /// The driver of a side chat that already exists (Loom started again, or the tab shows an older one): made as a side chat's.
+    /// The card's parent is the caller's to give (`sideChats(of:)` lists them by parent).
+    public func sideChatDriver(for sideChatID: UUID, parentSessionID: UUID) -> ChatSessionDriver {
+        if let driver = drivers[sideChatID] { return driver }
+        return makeDriver(sessionID: sideChatID, sideChatParent: parentSessionID)
+    }
+
+    /// The session's side chats, oldest first: each one's card, when it was forked, its first question, last activity and whether it
+    /// runs.
+    public func sideChats(of parentSessionID: UUID) async throws -> [SideChatSummary] {
+        try await runtime.sideChats(of: parentSessionID)
+    }
+
+    /// Discards a side chat: its process is stopped in the driver's order (interrupt, `result`, stdin, exit) and awaited, then
+    /// the fork's files and card are deleted through the verified path. The parent is not touched. Returns the deletion's outcome;
+    /// the driver and the files the host keeps for it go with a finished deletion.
+    @discardableResult
+    public func discardSideChat(id: UUID) async throws -> ConversationDeletionOutcome {
+        if let driver = drivers[id], await driver.currentPhase.isLive {
+            do {
+                let report = try await driver.stop()
+                guard report.succeeded else { throw SessionRuntimeError.unverifiedStop(id) }
+            } catch SessionRuntimeError.notRunning {}
+        }
+        let outcome = try await runtime.discardSideChat(id: id)
+        if outcome == .deleted { forget(sessionID: id) }
+        return outcome
+    }
 
     /// Terminal → Chat: stops the terminal run if one lives (the runtime's verified stop), then resumes the session in
     /// the Chat face. `beforeResume` runs after the stop, right before the Chat run starts: false ends the move there

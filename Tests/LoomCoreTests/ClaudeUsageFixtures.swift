@@ -65,14 +65,15 @@ final class UsageFixture {
 
     func makeIndex(
         coldStartWindow: TimeInterval = 90 * 86_400, clock: @escaping @Sendable () -> Date = { Date() },
-        chunkBytes: Int? = nil, maximumLineBytes: Int? = nil
+        chunkBytes: Int? = nil, maximumLineBytes: Int? = nil, sideChats: (@Sendable () async -> Set<String>)? = nil
     ) -> ClaudeUsageIndex {
         let profile = ClaudeProfileLayout(profileDirectory: config, environment: [:], home: root)
         if let chunkBytes, let maximumLineBytes {
             return ClaudeUsageIndex(databaseURL: databaseURL, profile: profile, coldStartWindow: coldStartWindow,
                                     clock: clock, chunkBytes: chunkBytes, maximumLineBytes: maximumLineBytes)
         }
-        return ClaudeUsageIndex(databaseURL: databaseURL, profile: profile, coldStartWindow: coldStartWindow, clock: clock)
+        return ClaudeUsageIndex(databaseURL: databaseURL, profile: profile, coldStartWindow: coldStartWindow, clock: clock,
+                                sideChats: sideChats)
     }
 
     /// `projects/<project>/<session>.jsonl`

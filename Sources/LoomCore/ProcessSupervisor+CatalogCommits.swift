@@ -70,7 +70,8 @@ extension ProcessSupervisor {
 
     func restoreCatalogSessions() async throws {
         guard let catalog else { return }
-        let records = try await catalog.sessions()
+        // Side chats too (V22): no list shows them, but each is resumed through this map like any session.
+        let records = try await catalog.sessions(includingSideChats: true)
         for record in records {
             var session = record.session
             session.currentRun = nil

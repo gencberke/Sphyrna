@@ -13,6 +13,10 @@ extension ChatSessionDriver {
                      timing: ChatSendTiming = .next) async throws -> ChatSendReceipt {
         let message = ChatSentMessage(text: text, attachments: attachments)
         guard !message.blocks.isEmpty else { throw ChatDriverError.emptyMessage }
+        // A side chat never moves cards: `/clear` would make a visible one (and the other commands are the main session's).
+        if sideChatParent != nil, text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") {
+            throw ChatDriverError.commandsRefused
+        }
         if timing == .afterTurn, turnRunning || !requests.isEmpty || !queue.isEmpty || queue.paused != nil {
             guard attachments.isEmpty else { throw ChatDriverError.queueTextOnly }
             return .queued(try enqueue(text))
@@ -149,6 +153,7 @@ extension ChatSessionDriver {
         }
         // The files are no longer as the newest rewind left them: its Undo goes.
         closeRewindUndo(to: .expired)
+        await recordSideChatFirstSend(uuid: uuid, text: message.text)
         await beginTurn()
         requestTitleIfNeeded(for: message)
         return uuid
@@ -169,7 +174,8 @@ extension ChatSessionDriver {
     static let titleAttemptLimit = 3
 
     private func requestTitleIfNeeded(for message: ChatSentMessage) {
-        guard titleState == .needed, let current = run else { return }
+        // A side chat is titled by its first question (`recordSideChatFirstSend`) and never asks Claude to name it.
+        guard titleState == .needed, sideChatParent == nil, let current = run else { return }
         let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !text.hasPrefix("/") else { return }
         titleState = .requesting

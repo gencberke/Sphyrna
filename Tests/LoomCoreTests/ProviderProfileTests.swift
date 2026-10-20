@@ -203,4 +203,56 @@ struct ClaudeDefaultModelTests {
         #expect(!ClaudeDefaultModel.matches(default: "default", transcriptModel: "claude-opus-5-5"))
         #expect(!ClaudeDefaultModel.matches(default: "opusplan", transcriptModel: "claude-opus-5-5"))
     }
+
+    // MARK: Side chat fork (V22)
+
+    @Test func aForkRouteResumesTheParentIntoANewIdAndAnAskRuleIsALaunchSetting() throws {
+        let fork = UUID().uuidString.lowercased()
+        let capabilities = ProviderCapabilities(
+            version: "test", help: "--session-id <id> --settings <settings> --fork-session --permission-mode <mode>")
+        #expect(capabilities.supportsForkSession)
+        var choices = ClaudeLaunchChoices()
+        choices.permissionMode = ClaudePermissionMode.askBeforeEdits.rawValue
+        let profile = try ProviderLaunchProfile.claude(
+            route: .fork(parent: "parent-conv", newID: fork), capabilities: capabilities, config: URL(fileURLWithPath: "/isolated"),
+            environment: [:], choices: choices, face: .chat, askRules: ["Write", "Bash"])
+        let arguments = profile.arguments
+        let at = try #require(arguments.firstIndex(of: "--resume"))
+        #expect(Array(arguments[at...].prefix(5)) == ["--resume", "parent-conv", "--fork-session", "--session-id", fork])
+        #expect(arguments.contains("--permission-mode"))
+        let settings = try #require(arguments.drop(while: { $0 != "--settings" }).dropFirst().first)
+        let object = try #require(try JSONSerialization.jsonObject(with: Data(settings.utf8)) as? [String: Any])
+        #expect((object["permissions"] as? [String: Any])?["ask"] as? [String] == ["Write", "Bash"])
+        // No ask rules, no permissions entry: a main session's settings are what they were.
+        let plain = try ProviderLaunchProfile.claude(
+            route: .resume("conv"), capabilities: capabilities, config: URL(fileURLWithPath: "/isolated"), environment: [:])
+        let plainSettings = try #require(plain.arguments.drop(while: { $0 != "--settings" }).dropFirst().first)
+        #expect(!plainSettings.contains("permissions"))
+    }
+
+    @Test func aForkRouteRefusesWhatTheCLITakesNoCardFor() throws {
+        let capabilities = ProviderCapabilities(version: "test", help: "--session-id <id> --settings <settings> --fork-session")
+        let config = URL(fileURLWithPath: "/isolated")
+        // Not a UUID: the CLI exits before any output, so the start is refused before a card exists.
+        #expect(throws: (any Error).self) {
+            try ProviderLaunchProfile.claude(route: .fork(parent: "p", newID: "not-a-uuid"), capabilities: capabilities,
+                                             config: config, environment: [:])
+        }
+        #expect(throws: (any Error).self) {
+            try ProviderLaunchProfile.claude(route: .fork(parent: "", newID: UUID().uuidString), capabilities: capabilities,
+                                             config: config, environment: [:])
+        }
+        // A fork never carries a first message on the command line.
+        #expect(throws: (any Error).self) {
+            try ProviderLaunchProfile.claude(route: .fork(parent: "p", newID: UUID().uuidString), capabilities: capabilities,
+                                             config: config, environment: [:], opening: .init(title: "t", firstMessage: "m"))
+        }
+        let id = UUID()
+        let unknown = ProviderCapabilities(version: "unknown", help: "")
+        #expect(ProviderLaunchProfile.missingRequiredClaudeOptions(capabilities: unknown, route: .fork(parent: "p", newID: id.uuidString))
+            == ["--settings", "--session-id", "--fork-session"])
+        #expect(ProviderLaunchProfile.missingRequiredClaudeOptions(capabilities: capabilities, route: .fork(parent: "p", newID: id.uuidString))
+            .isEmpty)
+        #expect(capabilities.detectedClaudeOptions.contains("--fork-session"))
+    }
 }

@@ -58,6 +58,8 @@ public struct ConversationDeletionPreview: Sendable, Equatable {
     /// Folders the scan cannot enter (links, other devices) that can hold this session's files: its
     /// project folder or a top-level data folder. Deleting is not complete while any exists (DP-CP4-7).
     public let unreachable: [String]
+    /// How many side chats (V22) the session has: deleting it deletes them first, each through the same path.
+    public var sideChatCount: Int = 0
 }
 
 /// A deletion that has not finished, as the UI shows it.
@@ -127,7 +129,8 @@ extension SessionRuntime {
             configDirectory: plan.configDirectory,
             isRunning: await supervisor.session(id: id)?.currentRun != nil,
             notRemoved: plan.residual,
-            unreachable: plan.unreachable
+            unreachable: plan.unreachable,
+            sideChatCount: (try? await catalog.sideChatCount(of: id)) ?? 0
         )
     }
 
@@ -143,6 +146,8 @@ extension SessionRuntime {
         guard !startingSessions.contains(id) else { throw SessionRuntimeError.alreadyStarting(id) }
         guard deletionsInFlight.insert(id).inserted else { throw SessionRuntimeError.deletionInProgress(id) }
         defer { deletionsInFlight.remove(id) }
+        // The session's side chats go first, each through this same path (V22): none may outlive its parent.
+        try await deleteSideChats(of: id)
         let candidate = try await deletionCandidate(id)
         // From here every start, resume, view and input for the id is refused.
         try await catalog.beginDeletion(
@@ -175,6 +180,8 @@ extension SessionRuntime {
         guard !startingSessions.contains(id) else { throw SessionRuntimeError.alreadyStarting(id) }
         guard deletionsInFlight.insert(id).inserted else { throw SessionRuntimeError.deletionInProgress(id) }
         defer { deletionsInFlight.remove(id) }
+        // Its side chats are removed from Loom the same way, first (V22).
+        for child in try await catalog.sideChats(of: id, includingDeleting: true) { try await removeFromLoomOnly(id: child.session.id) }
         let providerIDs: [String]
         if let record = try await catalog.deletion(for: id) {
             providerIDs = record.plan.providerIDs

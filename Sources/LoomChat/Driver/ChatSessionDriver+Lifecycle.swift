@@ -64,7 +64,7 @@ extension ChatSessionDriver {
         }
     }
 
-    private func launch(
+    func launch(
         isResume: Bool,
         _ start: @escaping @Sendable (ChatPipeSink) async throws -> RuntimePipeLaunch
     ) async throws {

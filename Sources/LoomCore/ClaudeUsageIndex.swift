@@ -41,29 +41,50 @@ public actor ClaudeUsageIndex {
     private var malformedLinesTotal = 0
     private var symbols: [String: Int64] = [:]
     private var forgotten: ForgottenSessions?
+    /// The provider ids of the side chats (V22), lower case: a fork copies the parent's messages under their own ids, so a record
+    /// read from a side chat's file must never take a message another session holds (`insert`, `UsageDatabase.upsert`).
+    private var sideChatSessions: Set<String> = []
+    private var sideChatSource: (@Sendable () async -> Set<String>)?
 
     /// - Parameters:
     ///   - databaseURL: `usage-index.sqlite3` in the data root.
     ///   - profile: which Claude profile's `projects/` to read.
     ///   - coldStartWindow: files not indexed yet and older than this are skipped (default 90 days).
+    ///   - sideChats: the provider ids of the side chats (V22), asked before every refresh; see `setSideChatSource`.
     public init(
         databaseURL: URL, profile: ClaudeProfileLayout, coldStartWindow: TimeInterval = 90 * 86_400,
-        clock: @escaping @Sendable () -> Date = { Date() }
+        clock: @escaping @Sendable () -> Date = { Date() }, sideChats: (@Sendable () async -> Set<String>)? = nil
     ) {
         self.init(databaseURL: databaseURL, profile: profile, coldStartWindow: coldStartWindow, clock: clock,
-                  chunkBytes: 4 * 1024 * 1024, maximumLineBytes: ClaudeUsageParser.defaultMaximumLineBytes)
+                  chunkBytes: 4 * 1024 * 1024, maximumLineBytes: ClaudeUsageParser.defaultMaximumLineBytes,
+                  sideChats: sideChats)
     }
 
     init(
         databaseURL: URL, profile: ClaudeProfileLayout, coldStartWindow: TimeInterval = 90 * 86_400,
-        clock: @escaping @Sendable () -> Date = { Date() }, chunkBytes: Int, maximumLineBytes: Int
+        clock: @escaping @Sendable () -> Date = { Date() }, chunkBytes: Int, maximumLineBytes: Int,
+        sideChats: (@Sendable () async -> Set<String>)? = nil
     ) {
+        sideChatSource = sideChats
         self.databaseURL = databaseURL
         self.profile = profile
         self.coldStartWindow = coldStartWindow
         self.clock = clock
         self.chunkBytes = max(chunkBytes, 1_024)
         self.maximumLineBytes = max(maximumLineBytes, 1_024)
+    }
+
+    // MARK: side chats
+
+    /// The side chats' provider ids, lower case or not. Replaces the earlier set; read before every refresh when a source is set.
+    public func setSideChatSessions(_ ids: Set<String>) {
+        sideChatSessions = Set(ids.map { $0.lowercased() })
+    }
+
+    /// Where the ids come from (the catalog): asked once at the start of every refresh, so a side chat made since is known
+    /// before its file is read.
+    public func setSideChatSource(_ source: @escaping @Sendable () async -> Set<String>) {
+        sideChatSource = source
     }
 
     // MARK: refresh
@@ -104,6 +125,7 @@ public actor ClaudeUsageIndex {
     }
 
     private func refreshOnce(paths: [URL]?) async throws -> UsageScanReport {
+        if let sideChatSource { setSideChatSessions(await sideChatSource()) }
         let database = try openDatabase()
         var report = UsageScanReport()
         let parser = ClaudeUsageParser(maximumLineBytes: maximumLineBytes)
@@ -192,6 +214,7 @@ public actor ClaudeUsageIndex {
         var readPos = from
         var discarding = false // inside a line longer than the cap, looking for its newline
         let forgottenSessions = try forgottenSet(database)
+        let fromSideChat = sideChatSessions.contains(fallbackSession.lowercased())
 
         while readPos < end {
             try Task.checkCancellation()
@@ -237,7 +260,7 @@ public actor ClaudeUsageIndex {
                     case let .record(record):
                         report.recordsAccepted += 1
                         try insert(record, fileID: fileID, fallbackSession: fallbackSession,
-                                   forgotten: forgottenSessions, database: database)
+                                   forgotten: forgottenSessions, fromSideChat: fromSideChat, database: database)
                     case .ignored:
                         break
                     case .malformed:
@@ -260,7 +283,8 @@ public actor ClaudeUsageIndex {
     }
 
     private func insert(
-        _ record: ClaudeUsageRecord, fileID: Int64, fallbackSession: String, forgotten: ForgottenSessions, database: UsageDatabase
+        _ record: ClaudeUsageRecord, fileID: Int64, fallbackSession: String, forgotten: ForgottenSessions,
+        fromSideChat: Bool, database: UsageDatabase
     ) throws {
         let sessionText = record.sessionID ?? fallbackSession
         let session: Int64? = forgotten.contains(sessionText) ? nil : try symbol(sessionText, database)
@@ -269,6 +293,7 @@ public actor ClaudeUsageIndex {
         if let id = record.messageID { key = "m|" + id }
         else { key = "r|\(record.requestID ?? "")|\(sessionText)|\(record.timestampMs)" }
         let flags: Int64 = (record.sidechain ? 1 : 0) | (record.fast ? 2 : 0) | (record.usGeo ? 4 : 0)
+            | (fromSideChat ? UsageDatabase.sideChatFlag : 0)
         try database.upsert(UsageRow(
             key: Self.hash(Array(key.utf8)), fileID: fileID, timestampMs: record.timestampMs, session: session,
             model: model, tokens: record.tokens, flags: flags, total: record.tokens.total + record.tokens.webSearches,
@@ -1242,6 +1267,11 @@ final class UsageDatabase {
 
     /// Insert, or replace an existing row of the same message when the new one is a better copy:
     /// non-sidechain beats sidechain, then the larger total wins (streaming partials).
+    ///
+    /// A side chat's file (V22) holds copies of its parent's messages under the same ids (bit 4 of the stored flags marks a row
+    /// held by a side chat): a record from such a file never takes a message another session holds, and a record from any other
+    /// file takes the message back from a side chat, whatever the totals. So a copied message stays the parent's whichever file is
+    /// read first, and forgetting a side chat never unlinks it. The side chat's own messages are new ids and count as usual.
     func upsert(_ row: UsageRow) throws {
         try cached("""
             INSERT INTO msg(key, file_id, ts_ms, session, model, input, output, cw5, cw1, cr, web, flags, total, cost)
@@ -1250,8 +1280,10 @@ final class UsageDatabase {
                 file_id = excluded.file_id, ts_ms = excluded.ts_ms, session = excluded.session, model = excluded.model,
                 input = excluded.input, output = excluded.output, cw5 = excluded.cw5, cw1 = excluded.cw1,
                 cr = excluded.cr, web = excluded.web, flags = excluded.flags, total = excluded.total, cost = excluded.cost
-            WHERE (excluded.flags & 1) < (msg.flags & 1)
-               OR ((excluded.flags & 1) = (msg.flags & 1) AND excluded.total > msg.total)
+            WHERE ((excluded.flags & 16) = 0 OR (msg.flags & 16) != 0)
+              AND (((msg.flags & 16) != 0 AND (excluded.flags & 16) = 0)
+                   OR (excluded.flags & 1) < (msg.flags & 1)
+                   OR ((excluded.flags & 1) = (msg.flags & 1) AND excluded.total > msg.total))
             """) { statement in
             bind(row.key, 1, statement)
             bind(row.fileID, 2, statement)
@@ -1273,12 +1305,15 @@ final class UsageDatabase {
 
     // MARK: queries
 
+    /// Bit 4 of the stored flags: the row is held by a side chat's file (see `upsert`). Never returned by a query.
+    static let sideChatFlag: Int64 = 16
+
     /// The speed and geography bits of a row plus the long-prompt bit (`ClaudeUsageIndex.longPromptFlag`), for grouping.
     static let queryFlagsSQL =
         "(flags & 6) | (CASE WHEN input + cw5 + cw1 + cr > \(UsagePricing.longPromptThreshold) THEN 8 ELSE 0 END)"
     /// All stored bits of a row plus the long-prompt bit.
     static let messageFlagsSQL =
-        "(flags | (CASE WHEN input + cw5 + cw1 + cr > \(UsagePricing.longPromptThreshold) THEN 8 ELSE 0 END))"
+        "((flags & 7) | (CASE WHEN input + cw5 + cw1 + cr > \(UsagePricing.longPromptThreshold) THEN 8 ELSE 0 END))"
 
     /// Totals grouped by quarter-hour bucket, model, speed/geography flags and whether the rows
     /// carry a legacy cost.

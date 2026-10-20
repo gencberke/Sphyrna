@@ -546,6 +546,10 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
         await runtime.deletionRecoveryFailure()
     }
 
+    public func deleteSideChats(inProject projectID: UUID) async throws {
+        try await runtime.deleteSideChats(inProject: projectID)
+    }
+
     // MARK: Terminals
 
     private func adopt(_ launch: RuntimeLaunch, surface: TerminalSurface) {

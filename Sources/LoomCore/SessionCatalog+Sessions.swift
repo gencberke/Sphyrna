@@ -7,20 +7,21 @@ extension SessionCatalog {
                               lifecycle: SessionLifecycle = .active,
                               pinned: Bool = false, projectID: UUID? = nil,
                               staleSince: Date? = nil, lastActivityAt: Date? = nil,
-                              openedBy: UUID? = nil) throws {
+                              openedBy: UUID? = nil, sideChat: SideChatLink? = nil) throws {
         try insertSessionRow(
             session, title: title, createdAt: createdAt, lastUsedAt: lastUsedAt,
             lifecycle: lifecycle, pinned: pinned, projectID: projectID, staleSince: staleSince,
-            lastActivityAt: lastActivityAt, openedBy: openedBy
+            lastActivityAt: lastActivityAt, openedBy: openedBy, sideChat: sideChat
         )
     }
 
     /// Every conversation without a pending deletion. Undecodable rows are
-    /// skipped and counted (`skippedRowCount`).
-    public func sessions() throws -> [CatalogSession] {
+    /// skipped and counted (`skippedRowCount`). Side chats (V22) are left out, as from every list, unless
+    /// `includingSideChats`: the supervisor's restore takes them too, since a side chat is resumed like any session.
+    public func sessions(includingSideChats: Bool = false) throws -> [CatalogSession] {
         try database.withStatement("""
             SELECT \(Self.sessionColumns) FROM sessions s
-            WHERE \(Self.notDeleting) ORDER BY s.created_at, s.id
+            WHERE \(includingSideChats ? Self.notDeleting : Self.listed) ORDER BY s.created_at, s.id
             """) { statement in
             var result: [CatalogSession] = []
             var stepResult = sqlite3_step(statement)
@@ -145,7 +146,7 @@ extension SessionCatalog {
             SELECT s.id FROM sessions s
             WHERE s.lifecycle IN ('idle', 'active') AND s.last_used_at < ?
               AND s.id NOT IN (SELECT value FROM json_each(?))
-              AND \(Self.notDeleting)
+              AND \(Self.listed)
             ORDER BY s.id
             """) { statement in
             sqlite3_bind_double(statement, 1, cutoff.timeIntervalSince1970)
@@ -169,7 +170,7 @@ extension SessionCatalog {
                 stale_since = CASE WHEN ? IS NULL THEN NULL ELSE s.last_used_at + ? END
             WHERE s.lifecycle IN ('idle', 'active') AND s.last_used_at < ?
               AND s.id NOT IN (SELECT value FROM json_each(?))
-              AND \(Self.notDeleting)
+              AND \(Self.listed)
             """) { statement in
             if let staleAfter {
                 sqlite3_bind_double(statement, 1, staleAfter)
@@ -192,7 +193,7 @@ extension SessionCatalog {
             SELECT MIN(s.last_used_at) FROM sessions s
             WHERE s.lifecycle IN ('idle', 'active')
               AND s.id NOT IN (SELECT value FROM json_each(?))
-              AND \(Self.notDeleting)
+              AND \(Self.listed)
             """) { statement in
             try database.bind(Self.jsonIDList(running), at: 1, to: statement)
             guard sqlite3_step(statement) == SQLITE_ROW else { return nil }

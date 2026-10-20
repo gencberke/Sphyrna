@@ -111,6 +111,7 @@ extension ConversationIntents {
         throw SessionRuntimeError.deletionRefused("Removing is not available here")
     }
     public func deletionRecoveryFailure() async -> String? { nil }
+    public func deleteSideChats(inProject projectID: UUID) async throws {}
 }
 
 extension CatalogModel {

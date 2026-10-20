@@ -29,6 +29,7 @@ extension ChatSessionDriver {
     /// Transitions run one at a time, in the order asked (`serialMode`); a pick made while the process starts waits for
     /// the start, and for the Ask layer a resumed Ask session gets.
     public func setPermissionMode(_ mode: String) async throws {
+        try refuseInSideChat()
         try await serialMode {
             if holdsPicks {
                 if heldPicks.childMode == nil {
@@ -99,6 +100,7 @@ extension ChatSessionDriver {
 
     /// Turns Ask off for `mode` (nil: the mode it replaced, else Ask before edits).
     public func leaveAsk(to mode: String? = nil) async throws {
+        try refuseInSideChat()
         try await serialMode { try await leaveAskNow(to: mode) }
     }
 
@@ -155,6 +157,7 @@ extension ChatSessionDriver {
     /// the lowest), and cleared for a model without effort, live and in the catalog, so no later spawn passes a `--effort`
     /// the model lacks.
     public func setModel(_ name: String) async throws {
+        try refuseInSideChat()
         if let current = pickableRun {
             _ = try await current.channel.request(.setModel(name))
             // The chip and the ring show the chosen model until a newer `system/init` names the one that runs.
@@ -177,6 +180,7 @@ extension ChatSessionDriver {
     }
 
     public func setEffort(_ level: String) async throws {
+        try refuseInSideChat()
         if let current = pickableRun {
             _ = try await current.channel.request(.applyFlagSettings(.effortLevel(level)))
         } else if holdsPicks {
@@ -190,6 +194,7 @@ extension ChatSessionDriver {
 
     /// Back to the CLI's own effort (the slider's Default): the live setting and the catalog's record are cleared.
     public func clearEffort() async throws {
+        try refuseInSideChat()
         if let current = pickableRun {
             _ = try await current.channel.request(.applyFlagSettings(.effortLevel(nil)))
         } else if holdsPicks {
@@ -210,7 +215,9 @@ extension ChatSessionDriver {
         await loadStoredChoices()
         choices = choices.merging(newer)
         await followRun()
-        await runtime.recordLaunchChoices(newer, sessionID: sessionID)
+        // A side chat's choices are the fork's own and fixed (mode `default`, the parent's model and effort): recording them would
+        // make the project remember them for its next session.
+        if sideChatParent == nil { await runtime.recordLaunchChoices(newer, sessionID: sessionID) }
         changed()
         onChoicesChanged(choices)
     }

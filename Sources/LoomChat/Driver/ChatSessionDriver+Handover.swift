@@ -30,6 +30,7 @@ extension ChatSessionDriver {
     /// itself: the run stays here, so what was picked meanwhile reaches it and the queue goes on (a Cancel after the turn
     /// ended would otherwise leave "After this turn" items with nothing to release them).
     public func handOverToTerminal(pointOfNoReturn: (@Sendable () async -> Void)? = nil) async throws {
+        try refuseInSideChat()
         switch phase {
         case .starting, .stopping: throw ChatDriverError.busy
         case .stopped, .failed, .ready, .working, .needsYou: break

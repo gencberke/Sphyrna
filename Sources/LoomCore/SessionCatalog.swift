@@ -39,13 +39,18 @@ public struct CatalogSession: Equatable, Sendable {
     /// `.terminal` the terminal; nil for a session that has not run since V16. The runtime writes it when a run
     /// starts, so it is the persisted fact a stopped session is resumed by, never a view flag.
     public let runEndpoint: RunEndpointKind?
+    /// Set for a side chat (V22): the fork of another session, which no list shows. Nil for every other session.
+    public let sideChat: SideChatLink?
+
+    public var isSideChat: Bool { sideChat != nil }
 
     public init(
         session: ManagedSession, title: String?, createdAt: Date, lastUsedAt: Date,
         lifecycle: SessionLifecycle, pinned: Bool, projectID: UUID? = nil,
         titleIsCustom: Bool = false, staleSince: Date? = nil, lastActivityAt: Date? = nil,
-        openedBy: UUID? = nil, runEndpoint: RunEndpointKind? = nil
+        openedBy: UUID? = nil, runEndpoint: RunEndpointKind? = nil, sideChat: SideChatLink? = nil
     ) {
+        self.sideChat = sideChat
         self.runEndpoint = runEndpoint
         self.openedBy = openedBy
         self.lastActivityAt = lastActivityAt ?? lastUsedAt
@@ -58,6 +63,24 @@ public struct CatalogSession: Equatable, Sendable {
         self.projectID = projectID
         self.titleIsCustom = titleIsCustom
         self.staleSince = staleSince
+    }
+}
+
+/// What ties a side chat's card to the session it was forked from (V22). The CLI records no parent in a fork's transcript or
+/// hooks (S6 and S6b), so the link is Loom's own: three columns of the card.
+public struct SideChatLink: Equatable, Sendable {
+    /// The parent's Loom session id.
+    public let parentSessionID: UUID
+    /// When Loom spawned the fork, taken before the spawn: what the fork can see ends at about this time.
+    public let forkedAt: Date
+    /// The uuid of the fork's first user message, Loom's own send; nil until that message is sent. The fork's transcript starts
+    /// with a copy of the parent's, so this is where the side chat's own turns begin.
+    public let firstUUID: String?
+
+    public init(parentSessionID: UUID, forkedAt: Date, firstUUID: String? = nil) {
+        self.parentSessionID = parentSessionID
+        self.forkedAt = forkedAt
+        self.firstUUID = firstUUID
     }
 }
 
@@ -195,14 +218,20 @@ public actor SessionCatalog {
     static let sessionColumns = """
         s.id, s.provider, s.provider_conversation_id, s.working_directory, s.title,
         s.created_at, s.last_used_at, s.lifecycle, s.pinned, s.project_id, s.title_is_custom,
-        s.stale_since, \(activityExpression), s.ticket_key, s.opened_by, s.run_endpoint
+        s.stale_since, \(activityExpression), s.ticket_key, s.opened_by, s.run_endpoint,
+        s.parent_session_id, s.forked_at, s.side_first_uuid
         """
     /// How many columns `sessionColumns` has: a query that adds its own columns reads them after this many.
-    static let sessionColumnCount: Int32 = 16
+    static let sessionColumnCount: Int32 = 19
     /// A row an older build wrote has no activity time yet: it reads as its use time.
     static let activityExpression = "COALESCE(s.last_activity_at, s.last_used_at)"
     /// Excludes conversations with a `deletions` row (fence); `s` is the sessions alias.
     static let notDeleting = "NOT EXISTS (SELECT 1 FROM deletions d WHERE d.session_id = s.id)"
+    /// Excludes side chats (V22: a fork of a session, hidden from every list, count and search); `s` is the sessions alias.
+    static let notSideChat = "s.parent_session_id IS NULL"
+    /// What every list, count and search over the sessions applies: not being deleted, and not a side chat. A query by one
+    /// session's id that the runtime or a side chat's own view needs (`session(id:)`, `markUsed`) does not.
+    static let listed = "\(notDeleting) AND \(notSideChat)"
     let database: CatalogDatabase
     /// The catalog file; its folder is the data root (backups, diagnostics and runs live beside it).
     public nonisolated let catalogURL: URL
@@ -354,22 +383,36 @@ public actor SessionCatalog {
             // Column 13 is `ticket_key`: older builds wrote it and read it; nothing here does.
             // A requester id that does not parse is dropped, never a reason to skip the row.
             openedBy: database.optionalText(statement, column: 14).flatMap(UUID.init(uuidString:)),
-            runEndpoint: database.optionalText(statement, column: 15).flatMap(RunEndpointKind.init(rawValue:))
+            runEndpoint: database.optionalText(statement, column: 15).flatMap(RunEndpointKind.init(rawValue:)),
+            sideChat: try decodeSideChatLink(statement, firstColumn: 16,
+                                             createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 5)))
         )
+    }
+
+    /// Columns `parent_session_id`, `forked_at`, `side_first_uuid`. A parent id that does not parse is an invalid row: dropping
+    /// it would turn a side chat into a session every list shows.
+    private func decodeSideChatLink(_ statement: OpaquePointer, firstColumn: Int32, createdAt: Date) throws -> SideChatLink? {
+        guard let stored = database.optionalText(statement, column: firstColumn) else { return nil }
+        guard let parent = UUID(uuidString: stored) else { throw SessionCatalogError.invalidRow("invalid side chat parent identity") }
+        return SideChatLink(
+            parentSessionID: parent,
+            forkedAt: database.optionalDouble(statement, column: firstColumn + 1).map(Date.init(timeIntervalSince1970:)) ?? createdAt,
+            firstUUID: database.optionalText(statement, column: firstColumn + 2))
     }
 
     func insertSessionRow(
         _ session: ManagedSession, title: String?, createdAt: Date,
         lastUsedAt: Date, lifecycle: SessionLifecycle, pinned: Bool,
         projectID: UUID? = nil, staleSince: Date? = nil, lastActivityAt: Date? = nil,
-        titleIsCustom: Bool = false, openedBy: UUID? = nil
+        titleIsCustom: Bool = false, openedBy: UUID? = nil, sideChat: SideChatLink? = nil
     ) throws {
         try database.withStatement("""
             INSERT INTO sessions (
                 id, provider, provider_conversation_id, working_directory, title,
                 created_at, last_used_at, lifecycle, pinned, project_id, stale_since,
-                last_activity_at, title_is_custom, ticket_key, opened_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                last_activity_at, title_is_custom, ticket_key, opened_by,
+                parent_session_id, forked_at, side_first_uuid
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """) { statement in
             try database.bind(session.id.uuidString, at: 1, to: statement)
             try database.bind(session.provider.rawValue, at: 2, to: statement)
@@ -387,6 +430,10 @@ public actor SessionCatalog {
             sqlite3_bind_int(statement, 13, titleIsCustom ? 1 : 0)
             sqlite3_bind_null(statement, 14) // ticket_key: no longer written (D-69)
             try database.bind(openedBy?.uuidString, at: 15, to: statement)
+            try database.bind(sideChat?.parentSessionID.uuidString, at: 16, to: statement)
+            if let sideChat { sqlite3_bind_double(statement, 17, sideChat.forkedAt.timeIntervalSince1970) }
+            else { sqlite3_bind_null(statement, 17) }
+            try database.bind(sideChat?.firstUUID, at: 18, to: statement)
             try database.stepDone(statement, operation: "insert session")
         }
     }

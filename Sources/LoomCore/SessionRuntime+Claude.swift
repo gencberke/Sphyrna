@@ -109,7 +109,8 @@ extension SessionRuntime {
         sessionID: UUID, hooks: ClaudeHookLaunchConfiguration,
         choices: ClaudeLaunchChoices = ClaudeLaunchChoices(),
         opening: ProviderLaunchProfile.ClaudeOpening? = nil,
-        face: ProviderLaunchProfile.ClaudeFace = .terminal
+        face: ProviderLaunchProfile.ClaudeFace = .terminal,
+        askRules: [String] = []
     ) throws -> ProviderLaunchProfile {
         let (choices, askReplaced) = face == .terminal ? Self.terminalAskRule(choices) : (choices, false)
         let environment = LaunchEnvironment.make(
@@ -119,7 +120,13 @@ extension SessionRuntime {
         var model: String?
         // The session's own record names the effort and the model first (`ClaudeLaunchChoices`); the transcript is the
         // fallback, since neither face restores them on `--resume` (spike S2).
-        if case let .resume(conversationID) = route {
+        // A fork takes them from its parent's transcript: it starts with the parent's choices, as the cache prefix needs.
+        let transcriptConversation: String? = switch route {
+        case let .resume(conversationID): conversationID
+        case let .fork(parent, _): parent
+        case .new: nil
+        }
+        if let conversationID = transcriptConversation {
             let layout = ClaudeProfileLayout(
                 toolchain: toolchain, home: URL(fileURLWithPath: configuration.homeDirectory, isDirectory: true)
             )
@@ -141,7 +148,8 @@ extension SessionRuntime {
         let built = try ProviderLaunchProfile.claude(
             route: route, capabilities: toolchain.capabilities,
             config: toolchain.profileDirectory ?? URL(fileURLWithPath: "/"),
-            environment: environment, hooks: hooks, effort: effort, model: model, choices: choices, opening: opening, face: face
+            environment: environment, hooks: hooks, effort: effort, model: model, choices: choices, opening: opening, face: face,
+            askRules: askRules
         )
         var profileEnvironment = built.environment
         // The provider's own default profile: do not pin a config directory.

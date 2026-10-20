@@ -48,22 +48,29 @@ extension SessionRuntime {
     ) async throws -> RuntimePipeLaunch {
         try await withResume(sessionID: sessionID, providers: [.claude]) { _, conversationID, toolchain in
             let hooks = try self.ensureHooks()
+            var launchChoices = try await self.resumeChoices(sessionID: sessionID, passed: choices)
+            // A side chat resumes as what it is (V22): `--permission-mode default` and the ask rules, so every edit still waits
+            // for Loom's answer. Its stored mode is `default` already; this keeps it so whatever a row holds.
+            let isSideChat = try await self.catalog.session(id: sessionID)?.isSideChat == true
+            if isSideChat { launchChoices.permissionMode = ClaudePermissionMode.askBeforeEdits.rawValue }
             let profile = try self.claudeProfile(
                 route: .resume(conversationID), toolchain: toolchain, sessionID: sessionID, hooks: hooks,
-                choices: try await self.resumeChoices(sessionID: sessionID, passed: choices), face: .chat
+                choices: launchChoices, face: .chat, askRules: isSideChat ? Self.sideChatAskRules : []
             )
             return try await self.launchChatClaude(sessionID: sessionID, toolchain: toolchain, profile: profile,
                                                    outputSink: outputSink, isResume: true)
         }
     }
 
-    private func launchChatClaude(
+    func launchChatClaude(
         sessionID: UUID, toolchain: ProviderToolchain, profile: ProviderLaunchProfile,
-        outputSink: any PipeOutputSink, isResume: Bool
+        outputSink: any PipeOutputSink, isResume: Bool, isFork: Bool = false
     ) async throws -> RuntimePipeLaunch {
         let runID = UUID()
         // Before the spawn: the child's first hook (SessionStart) must not publish a work state for it.
         await claudeAdapter.handOverWorkState(runID: runID)
+        // A fork's `SessionStart` (source `fork`) names the id its card already holds: it never makes a card (V22).
+        if isFork { await claudeAdapter.markForkRun(runID: runID) }
         let launch: ManagedPipeLaunch
         do {
             guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }

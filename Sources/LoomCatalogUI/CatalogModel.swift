@@ -50,6 +50,9 @@ public protocol ConversationIntents: AnyObject {
     /// "Remove from Loom Only" (DP-CP4-7): the session and Loom's own data for it go; Claude's files stay.
     func removeFromLoomOnly(sessionID: UUID) async throws
     func deletionRecoveryFailure() async -> String?
+    /// Before a project is removed (V22): the side chats of its sessions go, each through the verified deletion path. They are
+    /// hidden from every list and from the project's count, so nothing else would take them. Default: nothing to do.
+    func deleteSideChats(inProject projectID: UUID) async throws
     /// The last screen of a session whose run ended, as a static snapshot (FB4-3). Defaults: none.
     func endedScreen(sessionID: UUID) -> TerminalScreenSnapshot?
     /// "Show Details" and a deleted session: lets go of the kept screen so the session shows its record.
@@ -608,7 +611,7 @@ public final class CatalogModel {
         var indicators: [SessionIndicator] = []
         for (sessionID, state) in liveStates {
             guard let record = rowModels[sessionID]?.record ?? liveRecords[sessionID],
-                  record.projectID == id else { continue }
+                  record.projectID == id, !record.isSideChat else { continue }
             indicators.append(SessionIndicator(record: record, live: state,
                                                awaitingOpenApproval: awaitingOpenApproval.contains(sessionID)))
         }
@@ -626,6 +629,8 @@ public final class CatalogModel {
             guard let record, self.liveStates[id] != nil else { return }
             self.liveRecords[id] = record
             self.liveRevision &+= 1
+            // A side chat's record leaves the Active set it may have entered before it was known.
+            if record.isSideChat { self.updateActive(id) }
             self.updateAttentionCount()
         }
     }
@@ -1256,6 +1261,7 @@ public final class CatalogModel {
     public func removeProject(_ id: UUID) async {
         guard let catalog else { return }
         do {
+            try await intents?.deleteSideChats(inProject: id)
             try await catalog.removeProject(id: id)
             errorMessage = nil
             // The project's page or draft goes with it; the next new session no longer targets it.

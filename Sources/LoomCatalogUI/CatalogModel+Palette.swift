@@ -357,7 +357,7 @@ extension CatalogModel {
     func paletteSessions(folds: PaletteFoldCache? = nil) -> [PaletteSessionInfo] {
         var records = rowModels.mapValues(\.record)
         for (id, record) in liveRecords where records[id] == nil { records[id] = record }
-        return records.values.filter { !isDeleting($0.session.id) }.map { paletteSession(for: $0, folds: folds) }
+        return records.values.filter { !isDeleting($0.session.id) && !$0.isSideChat }.map { paletteSession(for: $0, folds: folds) }
     }
 
     func paletteSession(for record: CatalogSession, folds: PaletteFoldCache? = nil) -> PaletteSessionInfo {

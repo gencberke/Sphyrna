@@ -42,6 +42,12 @@ public enum ChatDriverError: Error, Equatable, Sendable {
     case modeNotChanged(staysInAsk: Bool)
     /// Ask cannot be turned on: the CLI did not find Loom's output style (its plugin folder could not be written).
     case askUnavailable
+    /// A message that begins with "/" was sent to a side chat: "Commands don't run in a side chat".
+    case commandsRefused
+    /// The action does not exist in a side chat (a mode, model or effort change, a handover to the terminal).
+    case notInSideChat
+    /// A side chat's first launch was asked of a driver that is not a side chat's.
+    case notASideChat
 }
 
 /// The engine of a Chat-face session (V16): the user's own `claude` speaking stream-json over pipes, inside the
@@ -88,6 +94,13 @@ public actor ChatSessionDriver {
     /// Where the copies a files rewind keeps for Undo are written (nil: the session cannot rewind files).
     let rewindStore: ChatRewindStore?
     let journal: DiagnosticJournal?
+    /// Decides tool requests before they become cards (`receiveToolRequest`); nil for a main session, whose every request is a
+    /// card. A side chat's is `SideChatPolicy`.
+    let requestPolicy: (any ChatRequestPolicy)?
+    /// The session this driver's session was forked from: set for a side chat's driver only (V22,
+    /// ChatSessionDriver+SideChat.swift). A side chat has no title generation, no slash commands, no mode, model or effort
+    /// change, no handover and no files rewind.
+    let sideChatParent: UUID?
     let clock: @Sendable () -> Date
     let readyTimeout: Duration
     let onChoicesChanged: @Sendable (ClaudeLaunchChoices) -> Void
@@ -236,9 +249,19 @@ public actor ChatSessionDriver {
     /// The wait in use; tests shorten it.
     var sideQuestionWait = ChatSessionDriver.sideQuestionTimeout
 
+    // The side chat (ChatSessionDriver+SideChat.swift, and the policy intake in ChatSessionDriver+Requests.swift)
+
+    /// Requests the policy answered: those it refused (each left a line in the stream) and those it allowed (a read-only command).
+    var policyRefusals = 0
+    var policyAllowed = 0
+    /// The side chat's first message was sent (its uuid is the card's `side_first_uuid`, written once).
+    var sideFirstSent = false
+
     /// - Parameters:
     ///   - queueStore: where the "After this turn" queue is kept; nil keeps it in memory (tests).
     ///   - rewindStore: where a files rewind keeps its copies; nil turns the action off.
+    ///   - requestPolicy: answers tool requests before they become cards; nil (a main session) lists every one.
+    ///   - sideChatParent: this driver is a side chat's, forked from that session (V22).
     ///   - onChoicesChanged: a change the user made live (mode, model, effort, a plan approval's mode). The runtime
     ///     already recorded it in the catalog; this only tells the UI.
     ///   - onContextWindow: each `result`'s `modelUsage.<model>.contextWindow` (the model name as the context ring keys
@@ -251,6 +274,7 @@ public actor ChatSessionDriver {
     /// hook) calls them while the main thread may wait in a nested run loop. Hop with a task of your own.
     public init(sessionID: UUID, runtime: SessionRuntime, queueStore: ChatQueueStore? = nil, draftStore: ChatDraftStore? = nil,
                 rewindStore: ChatRewindStore? = nil, journal: DiagnosticJournal? = nil,
+                requestPolicy: (any ChatRequestPolicy)? = nil, sideChatParent: UUID? = nil,
                 readyTimeout: Duration = .seconds(30),
                 clock: @escaping @Sendable () -> Date = { Date() },
                 onChoicesChanged: @escaping @Sendable (ClaudeLaunchChoices) -> Void = { _ in },
@@ -263,6 +287,8 @@ public actor ChatSessionDriver {
         self.draftStore = draftStore
         self.rewindStore = rewindStore
         self.journal = journal
+        self.requestPolicy = requestPolicy
+        self.sideChatParent = sideChatParent
         self.readyTimeout = readyTimeout
         self.clock = clock
         self.onChoicesChanged = onChoicesChanged

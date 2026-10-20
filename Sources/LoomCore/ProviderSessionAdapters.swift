@@ -28,6 +28,15 @@ public actor ClaudeSessionAdapter {
     }
 
     private func isDriverRun(_ runID: UUID) -> Bool { driverRuns.withLock { $0.contains(runID) } }
+
+    /// Runs started with the fork route (a side chat's first launch, V22). The fork's own `SessionStart` has source `"fork"`
+    /// (S6b); for these runs the id it names is already on the card, so the event never moves the run or makes a card.
+    private let forkRuns = Mutex<Set<UUID>>([])
+
+    /// Before the spawn of a fork-route run (`SessionRuntime.startSideChat`).
+    func markForkRun(runID: UUID) {
+        _ = forkRuns.withLock { $0.insert(runID) }
+    }
     /// Runs for which at least one hook message reached Loom, whatever became of it. Set from the
     /// ingress thread, so it lives outside the actor's state.
     private let hookArrivals = Mutex<Set<UUID>>([])
@@ -65,6 +74,7 @@ public actor ClaudeSessionAdapter {
         if discardTracker {
             trackers[runID] = nil
             _ = driverRuns.withLock { $0.remove(runID) }
+            _ = forkRuns.withLock { $0.remove(runID) }
             silenceWatchdogs.removeValue(forKey: runID)?.cancel()
             silenceIssues[runID] = nil
             _ = hookArrivals.withLock { $0.remove(runID) }
@@ -265,18 +275,28 @@ public actor ClaudeSessionAdapter {
             case "resume": transition = .resume
             default: transition = .automatic
             }
-            do {
-                _ = try await supervisor.adoptConversation(
-                    runID: envelope.managedRunID,
-                    conversationID: event.providerSessionID,
-                    transition: transition, at: receivedAt
-                )
-            } catch SessionManagementError.conversationBeingDeleted {
-                // A deleted conversation never comes back; this is not an error to show.
-                return .staleRun
-            } catch SessionManagementError.runNotFound {
-                // The run is being stopped (a Stop right after the start): its identity no longer matters.
-                return .staleRun
+            if source == "fork", forkRuns.withLock({ $0.contains(envelope.managedRunID) }) {
+                // The safety net of the fork route: the card was made with the fork's id before the spawn (a pre-assigned
+                // `--session-id`), so there is nothing to adopt. A hook that names another id is recorded and changes nothing: the
+                // card stays as it is, and no second card appears.
+                if event.providerSessionID.lowercased() != context.session.providerConversationID?.lowercased() {
+                    supervisor.journal?.record("side_chat_identity_mismatch", [:])
+                    LoomLog.error(.claudeHooks, "A side chat's SessionStart named an id other than its card's; ignored")
+                }
+            } else {
+                do {
+                    _ = try await supervisor.adoptConversation(
+                        runID: envelope.managedRunID,
+                        conversationID: event.providerSessionID,
+                        transition: transition, at: receivedAt
+                    )
+                } catch SessionManagementError.conversationBeingDeleted {
+                    // A deleted conversation never comes back; this is not an error to show.
+                    return .staleRun
+                } catch SessionManagementError.runNotFound {
+                    // The run is being stopped (a Stop right after the start): its identity no longer matters.
+                    return .staleRun
+                }
             }
         }
         guard supervisor.providerWorkStateIsReliable(runID: envelope.managedRunID) else {

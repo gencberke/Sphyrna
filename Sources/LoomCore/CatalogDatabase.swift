@@ -77,6 +77,7 @@ final class CatalogDatabase: @unchecked Sendable {
         try ensureActivityColumn()
         try ensureOriginColumns()
         try ensureLaunchColumns()
+        try ensureSideChatColumns()
         try ensureProjectColors()
         try validateSchema()
         guard try scalarText("PRAGMA journal_mode = WAL").lowercased() == "wal" else {
@@ -277,6 +278,25 @@ final class CatalogDatabase: @unchecked Sendable {
         try transaction {
             // Read again under the write lock: another process may have added them meanwhile.
             for name in try missing() { try execute("ALTER TABLE sessions ADD COLUMN \(name) TEXT") }
+        }
+    }
+
+    /// `sessions.parent_session_id`, `forked_at` and `side_first_uuid` (V22): the link of a side chat's card to the session it was
+    /// forked from, when it was forked, and the uuid of its first user message. All three are NULL for every other session, and
+    /// `parent_session_id IS NULL` is what every list asks (`SessionCatalog.notSideChat`). Added to schema 3 on open like the
+    /// launch columns: nullable, no `user_version` bump, so an older build that names its own columns still opens the catalog
+    /// (and, not knowing the column, would list a side chat's card; the card is a real session, resumable and deletable).
+    func ensureSideChatColumns() throws {
+        let columns = [("parent_session_id", "TEXT"), ("forked_at", "REAL"), ("side_first_uuid", "TEXT")]
+        func missing() throws -> [(String, String)] {
+            try columns.filter {
+                try scalarInt64("SELECT count(*) FROM pragma_table_info('sessions') WHERE name = '\($0.0)'") == 0
+            }
+        }
+        guard try !missing().isEmpty else { return }
+        try transaction {
+            // Read again under the write lock: another process may have added them meanwhile.
+            for (name, type) in try missing() { try execute("ALTER TABLE sessions ADD COLUMN \(name) \(type)") }
         }
     }
 

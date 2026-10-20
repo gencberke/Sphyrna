@@ -74,7 +74,7 @@ struct Rig {
                 capabilities: ProviderCapabilities(
                     version: version,
                     help: "--settings <settings> --session-id <id> --effort <level> -n, --name <name> --plugin-dir <path> "
-                        + "--permission-mode <mode> --model <model>",
+                        + "--permission-mode <mode> --model <model> --fork-session",
                     serverHelp: "--listen <URL>"
                 ),
                 environment: ["PATH": "/usr/bin:/bin", "HOME": home.path].merging(environment) { _, new in new },

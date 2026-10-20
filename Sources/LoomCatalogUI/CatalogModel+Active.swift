@@ -19,7 +19,9 @@ extension CatalogModel {
     /// moves `activeRevision` (one regroup), anything else costs a set lookup.
     func updateActive(_ id: UUID) {
         let live = liveStates[id]
+        // A side chat is never in Active (it has no row; the Side tab shows it).
         let member = live?.runID != nil && (live?.activePhase != .inactive || awaitingOpenApproval.contains(id))
+            && (rowModels[id]?.record ?? liveRecords[id])?.isSideChat != true
         if live?.runID == nil, heldActiveID == id {
             heldActiveID = nil // a run that ended is out, even when it was the selected one
         } else if member, id == selectedSessionID {

@@ -69,7 +69,7 @@ extension SessionCatalog {
             bindings.append((nil, cursor.timestamp))
             bindings.append((cursor.id, nil))
         }
-        conditions.append(Self.notDeleting)
+        conditions.append(Self.listed)
         let whereClause = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
         let sql = """
             SELECT \(Self.sessionColumns) FROM sessions s
@@ -145,7 +145,7 @@ extension SessionCatalog {
 
     private func searchByProject(search: String, limit: Int, rowCap: Int) throws -> CatalogSearchResult {
         var (conditions, bindings) = conditions(for: CatalogQuery(scope: .all, order: .creation, search: search))
-        conditions.append(Self.notDeleting)
+        conditions.append(Self.listed)
         let sql = """
             SELECT * FROM (
                 SELECT \(Self.sessionColumns),
@@ -199,7 +199,7 @@ extension SessionCatalog {
     /// One session as the lists read it: nil when it does not exist or is being deleted (a list never shows it).
     public func listedSession(id: UUID) throws -> CatalogSession? {
         try database.withStatement("""
-            SELECT \(Self.sessionColumns) FROM sessions s WHERE s.id = ? AND \(Self.notDeleting) LIMIT 1
+            SELECT \(Self.sessionColumns) FROM sessions s WHERE s.id = ? AND \(Self.listed) LIMIT 1
             """) { statement in
             try database.bind(id.uuidString, at: 1, to: statement)
             guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
@@ -234,7 +234,7 @@ extension SessionCatalog {
 
     public func oldestLastUsed(lifecycle: SessionLifecycle) throws -> Date? {
         try database.withStatement(
-            "SELECT MIN(s.last_used_at) FROM sessions s WHERE s.lifecycle = ? AND \(Self.notDeleting)"
+            "SELECT MIN(s.last_used_at) FROM sessions s WHERE s.lifecycle = ? AND \(Self.listed)"
         ) { statement in
             try database.bind(lifecycle.rawValue, at: 1, to: statement)
             guard sqlite3_step(statement) == SQLITE_ROW else { return nil }

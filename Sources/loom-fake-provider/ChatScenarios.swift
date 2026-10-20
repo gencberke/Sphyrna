@@ -1,6 +1,7 @@
 import Foundation
 
-// Chat-mode scenarios, chosen by the text of a user message: `/scenario <name> [args]`. `/clear` is
+// Chat-mode scenarios, chosen by the text of a user message: `/scenario <name> [args]` (`~scenario` in a side chat, which sends no
+// text that starts with a slash). `/clear` is
 // `reset`, `/compact` is `compact`, any other text is a plain streamed `answer`. Every scenario is one turn
 // and ends in a `result`. Names:
 //   answer                            streamed text deltas
@@ -48,7 +49,9 @@ import Foundation
 
 extension ChatEngine {
     func runScenario(_ text: String) throws {
-        let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        var words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        // `~scenario` is `/scenario` for a side chat, which sends no text that starts with a slash (V22).
+        if words.first == "~scenario" { words[0] = "/scenario" }
         var name = "answer"
         var args: [String] = []
         var prompt = text

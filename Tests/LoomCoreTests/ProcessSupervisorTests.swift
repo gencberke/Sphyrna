@@ -865,6 +865,25 @@ struct ProcessSupervisorTests {
         #expect((await supervisor.shutdown()).succeeded)
     }
 
+    /// V22 part 2: the CLI writes ids in lower case and a Swift `uuidString` is upper case. A hook that names the id the run's card
+    /// already holds, in either case, adopts nothing and moves nothing: no new card, no move of the run.
+    @Test(arguments: ["abcdef12-0000-4000-8000-000000000001", "ABCDEF12-0000-4000-8000-000000000001"])
+    func aConversationIdThatDiffersOnlyInCaseIsTheSameConversation(hook: String) async throws {
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
+        let id = UUID()
+        let stored = "abcdef12-0000-4000-8000-000000000001"
+        let live = try await launch("stubborn", sessionID: id, supervisor: supervisor,
+                                    provider: .claude, providerConversationID: stored)
+        _ = try await ready(terminal: live.terminal)
+        let run = try #require(live.session.currentRun?.id)
+        for transition in [ConversationTransition.new, .resume, .automatic] {
+            #expect(try await supervisor.adoptConversation(runID: run, conversationID: hook, transition: transition) == id)
+        }
+        #expect(await supervisor.session(id: id)?.currentRun?.id == run)
+        #expect(await supervisor.session(id: id)?.providerConversationID == stored)
+        #expect((await supervisor.shutdown(graceSeconds: 0.02)).succeeded)
+    }
+
     @Test(arguments: [false, true])
     func unknownOwnershipCountPreservesContextUntilVerifiedRetry(quitting: Bool) async throws {
         let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())

@@ -16,7 +16,9 @@ extension CatalogModel {
     /// Active section. One rule for "not read" on every surface (UI-MAP, Active).
     func attentionCandidates() -> [AttentionCandidate] {
         liveStates.compactMap { id, state in
-            guard let record = rowModels[id]?.record ?? liveRecords[id] else { return nil }
+            // A side chat that waits for the user raises nothing here (the Dock badge, Home, the menu bar and the
+            // notifications all read this set): the Side tab shows it.
+            guard let record = rowModels[id]?.record ?? liveRecords[id], !record.isSideChat else { return nil }
             let indicator = SessionIndicator(record: record, live: state,
                                              awaitingOpenApproval: awaitingOpenApproval.contains(id))
             if case .failed = indicator, state.activePhase != .endedUnread { return nil }
@@ -63,7 +65,7 @@ extension CatalogModel {
     /// when the menu opens, never per frame.
     func menuBarEntries() -> [MenuBarEntry] {
         liveStates.compactMap { id, state in
-            guard let record = rowModels[id]?.record ?? liveRecords[id] else { return nil }
+            guard let record = rowModels[id]?.record ?? liveRecords[id], !record.isSideChat else { return nil }
             let indicator = SessionIndicator(record: record, live: state, awaitingOpenApproval: awaitingOpenApproval.contains(id))
             guard ProjectAttention(indicator) != nil || indicator == .working else { return nil }
             let project = projectName(for: record)

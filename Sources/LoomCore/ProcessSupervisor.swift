@@ -123,7 +123,7 @@ public actor ProcessSupervisor {
     /// `title` is an automatic title (a later rename wins); `openedBy` is set for a session an agent
     /// asked Loom to open (D-40).
     public func createSession(_ session: ManagedSession, projectID: UUID? = nil, title: String? = nil,
-                              openedBy: UUID? = nil) async throws {
+                              openedBy: UUID? = nil, sideChat: SideChatLink? = nil) async throws {
         guard !stopping else { throw SessionManagementError.shutdownStarted }
         guard sessions[session.id] == nil, !reservedSessions.contains(session.id) else {
             throw SessionManagementError.sessionAlreadyExists(session.id)
@@ -133,7 +133,7 @@ public actor ProcessSupervisor {
         if let catalog {
             try await catalog.insertSession(
                 session, title: title.flatMap { SessionCatalog.normalizedTitle($0) },
-                projectID: projectID, openedBy: openedBy
+                projectID: projectID, openedBy: openedBy, sideChat: sideChat
             )
         }
         guard !stopping else { throw SessionManagementError.shutdownStarted }
@@ -569,7 +569,9 @@ public actor ProcessSupervisor {
               var current = sessions[runtime.activeSessionID] else {
             throw SessionManagementError.runNotFound(runID)
         }
-        if current.providerConversationID == conversationID { return current.id }
+        // The CLI writes ids in lower case and Swift's `uuidString` is upper case: an id is the same id in either (a card whose
+        // id came from `--session-id` must not read as a different conversation, which would move the run to a new card).
+        if current.providerConversationID?.lowercased() == conversationID.lowercased() { return current.id }
         let provider = current.provider
         // Neither a pending deletion nor one finished in this process may get a
         // row back from a late event that names its provider conversation.

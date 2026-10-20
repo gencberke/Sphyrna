@@ -8,11 +8,14 @@ import Synchronization
 extension AppDelegate {
     /// Creates the usage model and the Settings controller. Nothing is read here: the first scan
     /// starts when the catalog's first load completes (`CatalogModel.start`).
-    func installUsage(model: CatalogModel, root: URL, refused: Bool) {
+    func installUsage(model: CatalogModel, root: URL, refused: Bool, catalog: SessionCatalog?) {
         let layout = usageProfileLayout(root: root)
         var usageModel: UsageModel?
         if !refused {
-            let index = ClaudeUsageIndex(databaseURL: root.appendingPathComponent("usage-index.sqlite3"), profile: layout)
+            // The side chats' ids (V22): a fork copies its parent's messages, which the index must keep the parent's.
+            let index = ClaudeUsageIndex(
+                databaseURL: root.appendingPathComponent("usage-index.sqlite3"), profile: layout,
+                sideChats: { (try? await catalog?.sideChatProviderIDs()) ?? [] })
             let toolchain = claudeToolchain
             let limits = ClaudePlanLimitsFetcher(
                 toolchain: { try await toolchain.claude() }, profile: layout,

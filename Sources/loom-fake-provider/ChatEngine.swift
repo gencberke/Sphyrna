@@ -43,6 +43,10 @@ enum TurnEnd: Error {
 struct ChatConfig {
     var sessionID: String
     var resumed: Bool
+    /// `--resume <parent> --fork-session --session-id <new>` (a side chat's first launch, V22): the parent's id. The fork takes the
+    /// `--session-id` as its own id from its first stream line, copies the parent's uuid-bearing transcript records under it
+    /// (after a `{"type":"mode"}` line, as the real CLI does) and runs its SessionStart hook with source `fork`.
+    var forkParent: String?
     var model: String
     var permissionMode: String
     var effort: String?
@@ -105,7 +109,10 @@ struct ChatConfig {
             arguments.firstIndex(of: flag).flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
         }
         resumed = value("--resume") != nil
-        sessionID = value("--resume") ?? value("--session-id") ?? UUID().uuidString.lowercased()
+        forkParent = arguments.contains("--fork-session") ? value("--resume") : nil
+        sessionID = forkParent != nil
+            ? (value("--session-id") ?? UUID().uuidString.lowercased())
+            : (value("--resume") ?? value("--session-id") ?? UUID().uuidString.lowercased())
         model = value("--model") ?? "claude-fake-5-1"
         permissionMode = value("--permission-mode") ?? "default"
         effort = value("--effort")
@@ -278,6 +285,22 @@ final class ChatTranscript {
     }
 
     func switchSession(_ id: String) { sessionID = id }
+
+    /// A fork's transcript: the mode line, then every uuid-bearing record of the parent's transcript with the fork's `sessionId`
+    /// (same uuids, same timestamps; S6b). Records without a uuid are not copied. A parent with no file gives the mode line only.
+    func copyFork(from parent: String) {
+        guard let directory else { return }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        append(["type": "mode", "mode": "normal", "sessionId": sessionID])
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent("\(parent).jsonl")),
+              let text = String(data: data, encoding: .utf8) else { return }
+        for line in text.split(separator: "\n") {
+            guard var record = (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? ChatObject,
+                  record["uuid"] != nil else { continue }
+            record["sessionId"] = sessionID
+            append(record)
+        }
+    }
 
     func append(_ record: ChatObject, agent: String? = nil) {
         guard let directory else { return }
@@ -826,7 +849,8 @@ final class ChatEngine {
         }
         inbox.startReading()
         registry("idle")
-        hook("SessionStart", ["source": config.resumed ? "resume" : "startup"])
+        if let parent = config.forkParent { transcript.copyFork(from: parent) }
+        hook("SessionStart", ["source": config.forkParent != nil ? "fork" : config.resumed ? "resume" : "startup"])
         while true {
             if !unread.isEmpty {
                 runTurn(unread.removeFirst())

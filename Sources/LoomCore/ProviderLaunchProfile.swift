@@ -7,6 +7,8 @@ public struct ProviderCapabilities: Codable, Sendable {
     public let supportsListen: Bool
     public let supportsDisableDaemonAutoStart: Bool
     public let supportsSessionID: Bool
+    /// Whether `--help` lists `--fork-session`: without it (and `--session-id`) the CLI cannot start a side chat (V22).
+    public let supportsForkSession: Bool
     public let supportsSettings: Bool
     public let supportsEffort: Bool
     public let supportsName: Bool
@@ -26,6 +28,7 @@ public struct ProviderCapabilities: Codable, Sendable {
             $0.split(whereSeparator: \.isWhitespace).first == "daemon_auto_start"
         }
         supportsSessionID = help.contains("--session-id <")
+        supportsForkSession = help.contains("--fork-session")
         supportsSettings = help.contains("--settings <")
         supportsEffort = help.contains("--effort <")
         supportsName = help.contains("--name <")
@@ -83,7 +86,8 @@ public struct ProviderCapabilities: Codable, Sendable {
     /// The Claude options this build looked for in `--help` and found, by name: what a journal or a
     /// diagnostics export says the CLI supports.
     public var detectedClaudeOptions: [String] {
-        [("--settings", supportsSettings), ("--session-id", supportsSessionID), ("--effort", supportsEffort),
+        [("--settings", supportsSettings), ("--session-id", supportsSessionID), ("--fork-session", supportsForkSession),
+         ("--effort", supportsEffort),
          ("--name", supportsName), ("--plugin-dir", supportsPluginDirectory)]
             .filter { $0.1 }.map { $0.0 }
     }
@@ -118,6 +122,10 @@ public struct ProviderLaunchProfile: Sendable {
     public enum ClaudeRoute: Equatable, Sendable {
         case new(UUID)
         case resume(String)
+        /// A side chat's first launch (V22, spikes S6 and S6b): `--resume <parent> --fork-session --session-id <newID>`. The
+        /// CLI copies the parent's transcript into a new session that takes `newID` (a lower-case UUID Loom chose, so its
+        /// card holds the id before the spawn) and leaves the parent alone. Every later launch of the fork is `.resume(newID)`.
+        case fork(parent: String, newID: String)
     }
 
     /// How Loom talks to the Claude it starts: the TUI in a terminal, or the stream-json child of the Chat face
@@ -191,7 +199,8 @@ public struct ProviderLaunchProfile: Sendable {
         model: String? = nil,
         choices: ClaudeLaunchChoices = ClaudeLaunchChoices(),
         opening: ClaudeOpening? = nil,
-        face: ClaudeFace = .terminal
+        face: ClaudeFace = .terminal,
+        askRules: [String] = []
     ) throws -> Self {
         // `--help` is text that can change shape without the option going away, so an option it does
         // not mention is passed anyway: if Claude really lacks it, Claude's own error is what the
@@ -205,6 +214,11 @@ public struct ProviderLaunchProfile: Sendable {
                 throw LoomError.message("Claude resume requires a provider session identity")
             }
             routeArguments = ["--resume", providerSessionID]
+        case let .fork(parent, newID):
+            guard !parent.isEmpty else { throw LoomError.message("Claude fork requires the parent's provider session identity") }
+            // The CLI exits before any output for an id that is not a UUID (S6b), so the card is never made for one.
+            guard UUID(uuidString: newID) != nil else { throw LoomError.message("A forked session's identity must be a UUID") }
+            routeArguments = ["--resume", parent, "--fork-session", "--session-id", newID]
         }
         // The level the session's record names, else the one its transcript last recorded; without either Claude
         // falls back to the saved default.
@@ -282,7 +296,7 @@ public struct ProviderLaunchProfile: Sendable {
         if let plugin = hooks?.pluginDirectory, capabilities.supportsPluginDirectory {
             pluginArguments = ["--plugin-dir", plugin]
         }
-        let settings = try claudeSettings(hooks: hooks)
+        let settings = try claudeSettings(hooks: hooks, askRules: askRules)
         return Self(
             arguments: faceArguments + routeArguments + effortArguments + choiceArguments + ["--settings", settings]
                 + pluginArguments + openingArguments,
@@ -298,12 +312,19 @@ public struct ProviderLaunchProfile: Sendable {
         var missing: [String] = []
         if !capabilities.supportsSettings { missing.append("--settings") }
         if case .new = route, !capabilities.supportsSessionID { missing.append("--session-id") }
+        if case .fork = route {
+            if !capabilities.supportsSessionID { missing.append("--session-id") }
+            if !capabilities.supportsForkSession { missing.append("--fork-session") }
+        }
         if let opening, !opening.title.isEmpty, !capabilities.supportsName { missing.append("--name") }
         return missing
     }
 
-    private static func claudeSettings(hooks: ClaudeHookLaunchConfiguration?) throws -> String {
+    private static func claudeSettings(hooks: ClaudeHookLaunchConfiguration?, askRules: [String]) throws -> String {
         var settings: [String: Any] = ["crossSessionInbound": "refuse"]
+        // A side chat's (V22): these tools ask even where the user's own allow rules would let them through, so Loom's policy
+        // answers every one of them (`can_use_tool`). An ask rule is a launch setting; it does not change the cache prefix (step 0).
+        if !askRules.isEmpty { settings["permissions"] = ["ask": askRules] }
         if let hooks {
             // These authority events only forward local IPC. Keep helpers
             // synchronous and bounded so Loom does not reorder identity/state
