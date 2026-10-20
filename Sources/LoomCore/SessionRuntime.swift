@@ -262,6 +262,11 @@ public actor SessionRuntime {
     /// stop can refuse late input atomically (see `TerminalInputGate`).
     public nonisolated let inputGate: TerminalInputGate
     let configuration: SessionRuntimeConfiguration
+    /// The read model of this runtime's sessions: the catalog's listed sessions with the hub's live state (`SessionDirectory`).
+    public nonisolated var directory: SessionDirectory {
+        SessionDirectory(catalog: catalog, events: supervisor.events,
+                         openRequests: { [openRequests] in await openRequests.snapshot() })
+    }
     /// Where a component that keeps data for a conversation registers its cleanup for a deletion (`ConversationForgetters`).
     public nonisolated var conversationForgetters: ConversationForgetters { configuration.forgetters }
     let claudeAdapter: ClaudeSessionAdapter
