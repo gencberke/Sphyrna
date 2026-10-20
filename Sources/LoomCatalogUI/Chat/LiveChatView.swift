@@ -43,6 +43,10 @@ final class LiveChatViewModel {
             context.canReadNow = true
             context.readNow = { [weak composer] rowID in composer?.readNow(rowID: rowID) }
             context.retry = { [weak composer] rowID in composer?.retry(rowID: rowID) }
+            // Rewind files (V21): the composer knows whether the session waits at its prompt; the app opens the sheet.
+            context.rewind.source = { [weak composer] in composer?.state.rewind }
+            context.rewindFiles = { [weak composer] rowID in composer?.onRewindFiles?(rowID) }
+            context.undoRewind = { [weak composer] rewindID in composer?.onUndoRewind?(rewindID) }
         }
         controller.onNeedOlder = { [weak feed, weak controller] in feed?.loadOlder(controller) }
         controller.onTypeToFocus = composer.map { composer in { [weak composer] event in composer?.typeToFocus(event) } }

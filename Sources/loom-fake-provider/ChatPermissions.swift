@@ -282,10 +282,27 @@ extension ChatEngine {
         let content = args.dropFirst().joined(separator: " ")
         let path = config.cwd + "/" + name
         let made = try gatedStep(name: "Write", input: ["file_path": path, "content": content], lead: "I'll write \(name).") { input in
+            // A file the Write tool changes is tracked by the checkpoints (V21), with what it held before.
+            let before = FileManager.default.contents(atPath: path).map { String(decoding: $0, as: UTF8.self) }
+            checkpoints.willChange(path)
             try? (input["content"] as? String ?? "").write(toFile: path, atomically: true, encoding: .utf8)
-            return ("File created successfully at: \(path)",
-                    ["type": "create", "filePath": path, "content": content, "structuredPatch": [] as [Any],
-                     "originalFile": NSNull(), "userModified": false] as ChatObject)
+            guard let before else {
+                return ("File created successfully at: \(path)",
+                        ["type": "create", "filePath": path, "content": content, "structuredPatch": [] as [Any],
+                         "originalFile": NSNull(), "userModified": false] as ChatObject)
+            }
+            // Over an existing file the result is an update with the whole file as one hunk.
+            func lines(_ text: String) -> [String] {
+                var parts = text.components(separatedBy: "\n")
+                if parts.last == "" { parts.removeLast() }
+                return parts
+            }
+            let old = lines(before), new = lines(content)
+            let hunk: ChatObject = ["oldStart": 1, "oldLines": old.count, "newStart": 1, "newLines": new.count,
+                                    "lines": old.map { "-" + $0 } + new.map { "+" + $0 }]
+            return ("The file \(path) has been updated successfully.",
+                    ["type": "update", "filePath": path, "content": content, "structuredPatch": [hunk],
+                     "originalFile": before, "userModified": false] as ChatObject)
         }
         try assistantMessage([.text(report(made: made, what: "wrote \(name)"))])
     }

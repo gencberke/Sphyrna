@@ -351,6 +351,8 @@ public struct ChatComposerState: Sendable, Equatable {
     public var contextTokens: Int?
     public var contextWindow: Int?
     public var contextModel: String?
+    /// Whether the rows of the stream may offer "Rewind files" now (V21): the session waits at its prompt.
+    public var rewind: RewindAvailability
 }
 
 extension ChatComposerState {
@@ -361,6 +363,6 @@ extension ChatComposerState {
             choices: ClaudeLaunchChoices(), permissionMode: nil, resolvedModel: nil, reportedEffort: nil, models: [],
             commands: [], slashCommands: [], skills: [], terminalOnlyCommands: [], backgroundTaskCount: 0,
             unreadMessageIDs: [], hasReturnedDrafts: false, hasWithdrawnDrafts: false, contextTokens: nil, contextWindow: nil,
-            contextModel: nil)
+            contextModel: nil, rewind: .stopped)
     }
 }

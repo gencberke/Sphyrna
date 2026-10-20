@@ -42,6 +42,18 @@ public struct DetailView: View {
         .sheet(item: Binding(get: { model.deletions.confirmation }, set: { model.deletions.confirmation = $0 })) { confirmation in
             DeleteConversationSheet(model: model, confirmation: confirmation)
         }
+        .sheet(item: Binding(get: { model.rewinds.sheet }, set: { if $0 == nil { model.cancelRewind() } })) { sheet in
+            RewindSheetView(model: model, sheet: sheet)
+        }
+        .alert("Undo the rewind?", isPresented: Binding(
+            get: { model.rewinds.undoPrompt != nil }, set: { if !$0 { model.cancelUndoPrompt() } }
+        ), presenting: model.rewinds.undoPrompt) { _ in
+            Button("Cancel", role: .cancel) {}
+            Button("Overwrite and Undo", role: .destructive) { model.confirmUndoOverwrite() }
+        } message: { prompt in
+            Text("These files changed after the rewind, and Undo overwrites them with the copies Loom kept: "
+                + prompt.files.joined(separator: ", "))
+        }
     }
 }
 

@@ -662,7 +662,7 @@ struct FakeProviderChatTests {
     }
 
     @Test func aMultiMegabyteLineArrivesWholeAndTheMinimalControlRequestsAnswer() async throws {
-        let rig = try ChatRig()
+        let rig = try ChatRig(environment: ["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING": "true"])
         defer { rig.stop() }
         rig.user("/scenario bigline 2", uuid: "b1")
         _ = try await rig.waitResult(timeout: 30)
@@ -686,12 +686,70 @@ struct FakeProviderChatTests {
 
         rig.control("r1", "rewind_files", ["user_message_id": "b1", "dry_run": true])
         let dry = payload(try await rig.wait(isResponse("r1")))
-        #expect(dry["canRewind"] as? Bool == true && (dry["filesChanged"] as? [String])?.isEmpty == false)
+        // A checkpoint exists for the message, and the scenario wrote no file: nothing to rewind.
+        #expect(dry["canRewind"] as? Bool == true && (dry["filesChanged"] as? [String])?.isEmpty == true)
         rig.control("r2", "rewind_conversation", ["target_message_uuid": "b1"])
         let rewound = payload(try await rig.wait(isResponse("r2")))
         #expect(rewound["rewound"] as? Bool == true && rewound["prefillText"] as? String == "/scenario bigline 2")
         rig.control("g1", "background_tasks")
         #expect(payload(try await rig.wait(isResponse("g1"))).isEmpty)
+        #expect(await rig.finish())
+    }
+
+    /// `rewind_files` as S8 saw the CLI (V21): checkpoints per user message from the switch on, only the Write tool's files, a
+    /// dry run that changes nothing, a real run that restores them, and the two shapes of "cannot".
+    @Test func rewindFilesFollowsTheCheckpointsTheWayTheCliDoes() async throws {
+        let rig = try ChatRig(arguments: ["--permission-mode", "bypassPermissions"],
+                              environment: ["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING": "true"])
+        defer { rig.stop() }
+        let file = rig.root.appendingPathComponent("a.txt")
+        rig.user("/scenario file a.txt one", uuid: "u1")
+        _ = try await rig.waitResult()
+        rig.user("/scenario file a.txt two", uuid: "u2")
+        _ = try await rig.waitResult()
+        rig.user("/scenario run touch shell.txt", uuid: "u3")
+        _ = try await rig.waitResult()
+        #expect(try String(contentsOf: file, encoding: .utf8) == "two")
+
+        rig.control("d2", "rewind_files", ["user_message_id": "u2", "dry_run": true])
+        let dry = payload(try await rig.wait(isResponse("d2")))
+        #expect(dry["canRewind"] as? Bool == true && dry["filesChanged"] as? [String] == [realPath(file)])
+        #expect(dry["insertions"] as? Int == 1 && dry["deletions"] as? Int == 1)
+        #expect(try String(contentsOf: file, encoding: .utf8) == "two")
+
+        // An unknown id has no checkpoint: inside a success for a dry run, an error frame for a real one.
+        rig.control("d9", "rewind_files", ["user_message_id": "nope", "dry_run": true])
+        let none = payload(try await rig.wait(isResponse("d9")))
+        #expect(none["canRewind"] as? Bool == false && none["error"] as? String == "No file checkpoint found for this message.")
+        rig.control("r9", "rewind_files", ["user_message_id": "nope"])
+        let refused = try await rig.wait(isResponse("r9"))
+        let frame = try #require(refused["response"] as? ChatRig.Record)
+        #expect(frame["subtype"] as? String == "error" && frame["error"] as? String == "No file checkpoint found for this message.")
+
+        // The real run restores the tracked file to before u2; the file only a shell command made stays.
+        rig.control("r2", "rewind_files", ["user_message_id": "u2"])
+        let done = payload(try await rig.wait(isResponse("r2")))
+        #expect(done["canRewind"] as? Bool == true && done["skippedLinks"] as? Int == 0)
+        #expect(try String(contentsOf: file, encoding: .utf8) == "one")
+        // To before u1 the file did not exist.
+        rig.control("r1", "rewind_files", ["user_message_id": "u1"])
+        _ = try await rig.wait(isResponse("r1"))
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        #expect(FileManager.default.fileExists(atPath: rig.root.appendingPathComponent("shell.txt").path))
+        #expect(await rig.finish())
+    }
+
+    @Test func rewindFilesIsNotEnabledWithoutTheSwitch() async throws {
+        let rig = try ChatRig()
+        defer { rig.stop() }
+        rig.user("hello", uuid: "u1")
+        _ = try await rig.waitResult()
+        rig.control("d1", "rewind_files", ["user_message_id": "u1", "dry_run": true])
+        let dry = payload(try await rig.wait(isResponse("d1")))
+        #expect(dry["canRewind"] as? Bool == false && dry["error"] as? String == "File rewinding is not enabled.")
+        rig.control("r1", "rewind_files", ["user_message_id": "u1"])
+        let frame = try #require(try await rig.wait(isResponse("r1"))["response"] as? ChatRig.Record)
+        #expect(frame["subtype"] as? String == "error" && frame["error"] as? String == "File rewinding is not enabled.")
         #expect(await rig.finish())
     }
 

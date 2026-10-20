@@ -162,6 +162,10 @@ final class ChatComposerModel {
     @ObservationIgnored let driver: ChatSessionDriver
     @ObservationIgnored var environment: ComposerEnvironment
     @ObservationIgnored let drafts: ChatDraftStore?
+    /// Rewind files (V21), set by the app: "Rewind files" on a user message opens the sheet, Undo on the rewind's marker runs.
+    /// The rows reach them through the composer as they reach Read now and Retry.
+    @ObservationIgnored var onRewindFiles: ((_ rowID: String) -> Void)?
+    @ObservationIgnored var onUndoRewind: ((_ rewindID: String) -> Void)?
     /// The text as the field last reported it (not observed: a keystroke must not redraw anything).
     @ObservationIgnored private(set) var text = ""
     @ObservationIgnored weak var editor: (any ComposerEditorBridge)?

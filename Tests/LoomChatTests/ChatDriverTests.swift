@@ -99,10 +99,11 @@ struct Rig {
     }
 
     func driver(_ sessionID: UUID = UUID(), queue: ChatQueueStore? = nil, drafts: ChatDraftStore? = nil,
-                readyTimeout: Duration = .seconds(20)) -> ChatSessionDriver {
+                rewinds: ChatRewindStore? = nil, readyTimeout: Duration = .seconds(20)) -> ChatSessionDriver {
         let reports = reports
         return ChatSessionDriver(
-            sessionID: sessionID, runtime: runtime, queueStore: queue, draftStore: drafts, readyTimeout: readyTimeout,
+            sessionID: sessionID, runtime: runtime, queueStore: queue, draftStore: drafts, rewindStore: rewinds,
+            readyTimeout: readyTimeout,
             onChoicesChanged: { value in reports.choices.withLock { $0.append(value) } },
             onContextWindow: { model, window in reports.windows.withLock { $0[model] = window } }
         )

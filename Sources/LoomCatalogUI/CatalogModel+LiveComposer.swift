@@ -16,6 +16,13 @@ extension CatalogModel {
         // view binds it to the feed it shows now (else the folder, history and the handover notice
         // would answer nothing after the feed was released), and the feed's pinned cards take the composer's text and keys.
         composer.environment = composerEnvironment(feed: feed)
+        // Rewind files (V21): the sheet and the marker's Undo are the app's; the composer only passes the rows' asks on.
+        composer.onRewindFiles = { [weak self, weak feed, driver] rowID in
+            self?.requestRewind(driver: driver, card: id, feed: feed, rowID: rowID)
+        }
+        composer.onUndoRewind = { [weak self, weak feed, driver] rewindID in
+            self?.undoRewind(driver: driver, rewindID: rewindID, directory: feed?.workingDirectory)
+        }
         composer.attach(cards: feed.cards)
         return composer
     }

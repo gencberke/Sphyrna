@@ -85,6 +85,8 @@ public actor ChatSessionDriver {
     let queueStore: ChatQueueStore?
     /// Where the composer's drafts are kept: messages Claude never read are written here when a run ends.
     let draftStore: ChatDraftStore?
+    /// Where the copies a files rewind keeps for Undo are written (nil: the session cannot rewind files).
+    let rewindStore: ChatRewindStore?
     let journal: DiagnosticJournal?
     let clock: @Sendable () -> Date
     let readyTimeout: Duration
@@ -220,8 +222,16 @@ public actor ChatSessionDriver {
     /// release come while it stays parked: the order a slow mode change gives it).
     var handoverParked: (@Sendable () async -> Void)?
 
+    // Rewind files (ChatSessionDriver+Rewind.swift)
+
+    /// A rewind or an Undo is under way: nothing else starts a turn or another rewind meanwhile.
+    var rewindBusy = false
+    /// The session's newest rewind: its marker, and whether Undo is still offered (until the next message is sent).
+    var newestRewind: RewindRecord?
+
     /// - Parameters:
     ///   - queueStore: where the "After this turn" queue is kept; nil keeps it in memory (tests).
+    ///   - rewindStore: where a files rewind keeps its copies; nil turns the action off.
     ///   - onChoicesChanged: a change the user made live (mode, model, effort, a plan approval's mode). The runtime
     ///     already recorded it in the catalog; this only tells the UI.
     ///   - onContextWindow: each `result`'s `modelUsage.<model>.contextWindow` (the model name as the context ring keys
@@ -233,7 +243,7 @@ public actor ChatSessionDriver {
     /// The callbacks are synchronous and must not wait for the main actor: a `result` read during Quit (the stop
     /// hook) calls them while the main thread may wait in a nested run loop. Hop with a task of your own.
     public init(sessionID: UUID, runtime: SessionRuntime, queueStore: ChatQueueStore? = nil, draftStore: ChatDraftStore? = nil,
-                journal: DiagnosticJournal? = nil,
+                rewindStore: ChatRewindStore? = nil, journal: DiagnosticJournal? = nil,
                 readyTimeout: Duration = .seconds(30),
                 clock: @escaping @Sendable () -> Date = { Date() },
                 onChoicesChanged: @escaping @Sendable (ClaudeLaunchChoices) -> Void = { _ in },
@@ -244,6 +254,7 @@ public actor ChatSessionDriver {
         self.runtime = runtime
         self.queueStore = queueStore
         self.draftStore = draftStore
+        self.rewindStore = rewindStore
         self.journal = journal
         self.readyTimeout = readyTimeout
         self.clock = clock
@@ -313,7 +324,8 @@ public actor ChatSessionDriver {
             terminalOnlyCommands: initialized?.terminalSlashCommands ?? [], backgroundTaskCount: background.count,
             unreadMessageIDs: unreadRows,
             hasReturnedDrafts: !returnedDrafts.isEmpty, hasWithdrawnDrafts: !withdrawnDrafts.isEmpty,
-            contextTokens: model.contextUsage.map(\.contextTokens), contextWindow: window, contextModel: resolved
+            contextTokens: model.contextUsage.map(\.contextTokens), contextWindow: window, contextModel: resolved,
+            rewind: rewindAvailability()
         )
     }
 

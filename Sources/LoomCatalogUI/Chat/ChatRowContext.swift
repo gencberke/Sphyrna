@@ -59,6 +59,11 @@ final class ChatRowContext {
     var canReadNow = false
     var readNow: (_ rowID: String) -> Void = { _ in }
     var retry: (_ rowID: String) -> Void = { _ in }
+    /// Rewind files (V21): whether the action is on (read from the live chat's composer), the action on a user message's
+    /// footer, and Undo on the marker a rewind left. A transcript's stream has none of it.
+    let rewind = ChatRewindAccess()
+    var rewindFiles: (_ rowID: String) -> Void = { _ in }
+    var undoRewind: (_ rewindID: String) -> Void = { _ in }
     var copy: (_ text: String) -> Void = { text in
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)

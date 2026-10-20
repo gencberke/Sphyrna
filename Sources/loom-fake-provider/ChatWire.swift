@@ -20,7 +20,7 @@ import Foundation
 //   - `system/api_retry`, `compact_boundary`, `system/status` compacting and `conversation_reset` shapes
 //     (from the typings only).
 //   - The `later` coalescing rule (the fake never coalesces) and what `completed` covers after a join.
-//   - `side_question` / `rewind_*` details beyond the recorded response keys.
+//   - `side_question` / `rewind_conversation` details beyond the recorded response keys.
 //   - `system/session_state_changed` is emitted only when CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS or
 //     CLAUDE_CODE_SDK_READS_SESSION_STATE is `1` (confirmed: `initialize.session_state` needs no switch).
 
@@ -364,10 +364,15 @@ struct ChatWire {
         ["response": "Fake side answer to: \(question.prefix(100))", "synthetic": false]
     }
 
-    func rewindFilesResponse(dryRun: Bool) -> Object {
-        dryRun ? ["canRewind": true, "filesChanged": ["/tmp/fake-project/a.txt"], "insertions": 1, "deletions": 2]
-               : ["canRewind": true, "skippedLinks": 0]
+    /// `rewind_files`, as S8 saw it: a dry run answers the files and line totals, or `canRewind:false` with the CLI's text
+    /// inside a success; a real run answers `skippedLinks` (a refusal is an error frame, `controlError`).
+    func rewindFilesDryRun(files: [String], insertions: Int, deletions: Int) -> Object {
+        ["canRewind": true, "filesChanged": files, "insertions": insertions, "deletions": deletions]
     }
+
+    func rewindFilesCannot(_ error: String) -> Object { ["canRewind": false, "error": error] }
+
+    func rewindFilesDone() -> Object { ["canRewind": true, "skippedLinks": 0] }
 
     func rewindConversationResponse(target: String, prefill: String, preceding: String) -> Object {
         ["rewound": true, "targetMessageUuid": target, "prefillText": prefill, "precedingAssistantUuid": preceding]

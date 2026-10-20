@@ -34,6 +34,22 @@ public struct ControlReply: Sendable, Equatable {
     /// For a `rewind_conversation` reply: the original text of the message, to put back in the composer.
     public var prefillText: String? { payload["prefillText"]?.string }
 
+    /// For a `rewind_files` reply (dry run or real): false when the CLI cannot rewind to that message (the dry run says
+    /// so inside a success; a real run answers an error frame instead, `ControlError.rejected`). Nil when the reply holds
+    /// no such key.
+    public var canRewind: Bool? { payload["canRewind"]?.bool }
+
+    /// For a `rewind_files` dry run: the absolute paths the rewind would change.
+    public var filesChanged: [String] { (payload["filesChanged"]?.array ?? []).compactMap(\.string) }
+
+    /// For a `rewind_files` dry run: lines added and removed over the whole set (the CLI gives totals, not counts per file).
+    public var insertions: Int? { payload["insertions"]?.int }
+    public var deletions: Int? { payload["deletions"]?.int }
+
+    /// For a `rewind_files` reply that cannot rewind: the CLI's text ("No file checkpoint found for this message.",
+    /// "File rewinding is not enabled.").
+    public var rewindError: String? { payload["error"]?.string }
+
     /// For a `list_permission_rules` reply: `{state:{rules:[{behavior, source, rule, …}]}}`.
     public var permissionRules: [PermissionRuleRow] {
         (payload["state"]?["rules"]?.array ?? []).compactMap { row in

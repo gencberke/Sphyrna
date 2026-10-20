@@ -445,6 +445,8 @@ public final class CatalogModel {
     public let inspector: InspectorState
     /// The Changes tab's holder (V20): what each session's tab read, and its comment drafts (`CatalogModel+Changes`).
     let changes = ChangesState()
+    /// Rewind files (V21): the open sheet and the Undo prompt (`CatalogModel+Rewind`).
+    let rewinds = RewindState()
     public let home = HomeState()
     public let palette = PaletteState()
     public let newSession = NewSessionState()

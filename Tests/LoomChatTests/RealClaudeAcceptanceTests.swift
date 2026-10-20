@@ -385,6 +385,70 @@ struct RealClaudeAcceptanceTests {
         }
     }
 
+    // MARK: V21. Rewind files
+
+    /// Release C, V21, against the real CLI (two Haiku turns): a dry run, the marks from the real transcript, a real rewind that
+    /// replaced a file the user had changed (Loom's copy holds the user's version), and Undo from that copy.
+    @Test func v21RewindFilesDryRunMarksRealRewindAndUndoAgainstTheRealCli() async throws {
+        try await AccRig.run("v21-rewind") { rig in
+            let store = ChatRewindStore(directory: rig.root.appendingPathComponent("chat-rewinds", isDirectory: true), trash: { url in
+                try FileManager.default.removeItem(at: url)
+            })
+            let driver = rig.driver(rewinds: store)
+            try await driver.startNew(projectID: nil, draft: rig.draft(mode: "acceptEdits"))
+            rig.turn("V21 turn 1: Write creates v21.txt")
+            try await driver.send("Use the Write tool to create the file v21.txt in the current folder with exactly one line: one. "
+                                  + "Then reply with the single word: done")
+            #expect(await rig.waitIdle(driver, 120))
+            rig.turn("V21 turn 2: Edit changes v21.txt")
+            let second = try await driver.send("Use the Edit tool to change the line in v21.txt from one to two (read the file first if the "
+                                               + "tool needs that). Then reply with the single word: done")
+            #expect(await rig.waitIdle(driver, 120))
+            #expect(rig.read("v21.txt") == "two\n")
+
+            // The dry run: the CLI names the file and the totals; Loom can keep a copy.
+            let preview = try await driver.rewindPreview(userMessageID: second.id)
+            rig.log("dry run: \(preview.files.count) file(s), +\(preview.insertions) -\(preview.deletions), copy \(preview.copy), path shapes \(preview.files.map { URL(fileURLWithPath: $0).lastPathComponent })")
+            #expect(preview.files.map { URL(fileURLWithPath: $0).lastPathComponent } == ["v21.txt"])
+            #expect(preview.insertions == 1 && preview.deletions == 1 && preview.canKeepCopy)
+            #expect(rig.read("v21.txt") == "two\n")
+            await #expect(throws: ChatRewindError.cannot(.noCheckpoint)) { try await driver.rewindPreview(userMessageID: UUID().uuidString.lowercased()) }
+
+            // The marks, from the real transcript's edit records: as Claude left it, then changed by the user after 3 s.
+            let conversation = try #require(await driver.liveState().conversationID)
+            let transcript = try #require(ClaudeTranscriptLocator.locate(sessionID: conversation, configDirectory: rig.config,
+                                                                         workingDirectory: rig.work.path))
+            let scan = EditScan.scan(file: transcript, scope: .wholeSession)
+            rig.log("edit scan: \(scan.files.count) file(s), last edit time known \(scan.files.first?.lastEdit?.timestamp != nil), truncated \(scan.truncated)")
+            func marks() -> [String: RewindFileMark] {
+                RewindOutsideChange.marks(files: preview.files, scan: scan) { path in
+                    let modified = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+                    return RewindOutsideChange.FileState(exists: modified != nil, modified: modified)
+                }
+            }
+            rig.log("marks before the user's edit: \(marks().values.map(\.text))")
+            #expect(marks().isEmpty)
+            try await Task.sleep(for: .seconds(3))
+            try rig.write("v21.txt", "two\nthe user's own line\n")
+            rig.log("marks after the user's edit: \(marks().values.map(\.text))")
+            #expect(marks().values.first == .changedSinceClaude)
+
+            // The real rewind restores the file Claude's tools touched, over the user's line; the copy holds the user's version.
+            let result = try await driver.rewindFiles(userMessageID: second.id, messageTitle: "Use the Edit tool")
+            #expect(rig.read("v21.txt") == "one\n")
+            let manifest = try store.load(sessionID: await driver.snapshot().sessionID, rewindID: result.rewindID)
+            rig.log("rewound: \(result.files.count) file(s); manifest completed \(manifest.completed), hash before == user's version \(manifest.files.first?.sha256 == ChatRewindStore.hash(Data("two\nthe user's own line\n".utf8)))")
+            #expect(manifest.completed && manifest.files.first?.sha256 == ChatRewindStore.hash(Data("two\nthe user's own line\n".utf8)))
+            #expect(manifest.files.first?.sha256After == ChatRewindStore.hash(Data("one\n".utf8)))
+            #expect(await driver.openUndoRewindID() == result.rewindID)
+
+            // Undo puts the user's version back from Loom's copy.
+            let undone = try await driver.undoRewind(rewindID: result.rewindID)
+            rig.log("undo restored \(undone.restored.count) file(s), trashed \(undone.trashed.count)")
+            #expect(rig.read("v21.txt") == "two\nthe user's own line\n")
+        }
+    }
+
     // MARK: A8. /clear
 
     @Test func a8ClearMovesTheRunToANewCardAndASendWorks() async throws {
@@ -708,8 +772,8 @@ private final class AccRig: Sendable {
         try? FileManager.default.removeItem(at: root)
     }
 
-    func driver(onMoved: @escaping @Sendable (UUID, UUID) -> Void = { _, _ in }) -> ChatSessionDriver {
-        ChatSessionDriver(sessionID: UUID(), runtime: runtime, readyTimeout: .seconds(30), onMoved: onMoved)
+    func driver(rewinds: ChatRewindStore? = nil, onMoved: @escaping @Sendable (UUID, UUID) -> Void = { _, _ in }) -> ChatSessionDriver {
+        ChatSessionDriver(sessionID: UUID(), runtime: runtime, rewindStore: rewinds, readyTimeout: .seconds(30), onMoved: onMoved)
     }
 
     func draft(mode: String) -> NewSessionLaunch {

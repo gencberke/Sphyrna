@@ -18,6 +18,8 @@ extension ChatSessionDriver {
             return .queued(try enqueue(text))
         }
         guard !handover.isHolding else { throw ChatDriverError.handingOver }
+        // A files rewind (or its Undo) is under way: a turn must not start in the middle of it.
+        guard !rewindBusy else { throw ChatDriverError.busy }
         try await ensureLive()
         return .sent(try await write(message, priority: .next))
     }
@@ -31,6 +33,7 @@ extension ChatSessionDriver {
             if case let .user(prompt) = entry.body { prompt.delivery == .notDelivered } else { false }
         }) == true, let message = sent[messageID] else { throw ChatDriverError.notPending(messageID) }
         guard !handover.isHolding else { throw ChatDriverError.handingOver }
+        guard !rewindBusy else { throw ChatDriverError.busy }
         try await ensureLive()
         let uuid = try await write(message, priority: .next)
         sent[messageID] = nil
@@ -144,6 +147,8 @@ extension ChatSessionDriver {
             changed()
             throw error
         }
+        // The files are no longer as the newest rewind left them: its Undo goes.
+        closeRewindUndo(to: .expired)
         await beginTurn()
         requestTitleIfNeeded(for: message)
         return uuid

@@ -19,6 +19,8 @@ public final class ChatSessionHost {
     public let queueStore: ChatQueueStore
     /// The composers' unsent drafts (V17), in the data folder's `chat-drafts`.
     public let draftStore: ChatDraftStore
+    /// The copies a files rewind keeps for Undo (V21), in the data folder's `chat-rewinds`.
+    public let rewindStore: ChatRewindStore
     private let journal: DiagnosticJournal?
     private let choicesChanged: @MainActor (UUID, ClaudeLaunchChoices) -> Void
     private let contextWindow: @MainActor (String, Int) -> Void
@@ -55,6 +57,7 @@ public final class ChatSessionHost {
         self.runtime = runtime
         queueStore = ChatQueueStore(directory: dataRoot.appendingPathComponent("chat-queues", isDirectory: true))
         draftStore = ChatDraftStore(directory: dataRoot.appendingPathComponent("chat-drafts", isDirectory: true))
+        rewindStore = ChatRewindStore(directory: dataRoot.appendingPathComponent("chat-rewinds", isDirectory: true))
         self.journal = journal
         self.choicesChanged = choicesChanged
         self.contextWindow = contextWindow
@@ -75,7 +78,8 @@ public final class ChatSessionHost {
         let titled = titleGenerated
         let registry = drivers
         let driver = ChatSessionDriver(
-            sessionID: sessionID, runtime: runtime, queueStore: queueStore, draftStore: draftStore, journal: journal,
+            sessionID: sessionID, runtime: runtime, queueStore: queueStore, draftStore: draftStore, rewindStore: rewindStore,
+            journal: journal,
             onChoicesChanged: { choices in Task { @MainActor in record(sessionID, choices) } },
             onContextWindow: { model, size in Task { @MainActor in window(model, size) } },
             onMoved: { from, to in
@@ -194,7 +198,7 @@ public final class ChatSessionHost {
     }
 
     /// The session was deleted through Loom, or its start failed before Ready: its driver goes, and its queue and draft
-    /// files with it (they are what the user wrote).
+    /// files with it (they are what the user wrote), and the copies of its files rewinds.
     public func forget(sessionID: UUID) {
         if let driver = drivers[sessionID] {
             let id = ObjectIdentifier(driver)
@@ -211,12 +215,15 @@ public final class ChatSessionHost {
         do { try draftStore.forget(sessionID: sessionID) } catch {
             LoomLog.error(.lifecycle, "A deleted session's Chat draft could not be removed (\(LoomLog.category(of: error)))")
         }
+        do { try rewindStore.forget(sessionID: sessionID) } catch {
+            LoomLog.error(.lifecycle, "A deleted session's rewind copies could not be removed (\(LoomLog.category(of: error)))")
+        }
     }
 
-    /// Removes queue and draft files of sessions the catalog no longer has (deleted while no host ran, or by launch
-    /// recovery).
+    /// Removes queue, draft and rewind-copy files of sessions the catalog no longer has (deleted while no host ran, or by
+    /// launch recovery).
     public func removeQueuesOfDeletedSessions() async {
-        for id in queueStore.sessionIDs().union(draftStore.sessionIDs()) {
+        for id in queueStore.sessionIDs().union(draftStore.sessionIDs()).union(rewindStore.sessionIDs()) {
             // A catalog that cannot answer removes nothing.
             guard (try? await runtime.catalog.session(id: id).map { _ in true } ?? false) == false else { continue }
             forget(sessionID: id)

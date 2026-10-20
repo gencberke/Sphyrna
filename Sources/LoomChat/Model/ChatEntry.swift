@@ -220,6 +220,38 @@ public enum Marker: Equatable, Sendable {
     case face(Face)
     /// Output of a local command (`/context`, `!ls`) or a system notice.
     case notice(String)
+    /// The files were rewound to before a message (V21). Only Loom has this row: the transcript does not record a rewind.
+    case rewound(RewindMarker)
+}
+
+/// What the stream keeps of a files rewind: the message it went back to (its first words) and whether Undo is still open.
+public struct RewindMarker: Equatable, Sendable {
+    public enum Undo: Equatable, Sendable {
+        /// The newest rewind of the session, and no message was sent since.
+        case available
+        case undone
+        /// A message was sent after the rewind: the files are no longer as the rewind left them.
+        case expired
+    }
+
+    public var rewindID: String
+    /// The first words of the message the files went back to.
+    public var title: String
+    public var undo: Undo
+
+    public init(rewindID: String, title: String, undo: Undo = .available) {
+        self.rewindID = rewindID
+        self.title = title
+        self.undo = undo
+    }
+
+    /// The first six words of a message, at most 48 characters; a message that goes on ends in an ellipsis.
+    public static func title(from text: String) -> String {
+        let all = text.split(whereSeparator: \.isWhitespace)
+        let words = all.prefix(6).joined(separator: " ")
+        guard words.count <= 48 else { return String(words.prefix(47)).trimmingCharacters(in: .whitespaces) + "\u{2026}" }
+        return all.count > 6 ? words + "\u{2026}" : words
+    }
 }
 
 /// A record kept as it came: a type this build does not know, a line over the size limit, or a line that is not

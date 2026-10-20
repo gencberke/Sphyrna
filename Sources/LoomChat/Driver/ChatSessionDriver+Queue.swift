@@ -45,6 +45,8 @@ extension ChatSessionDriver {
     public func sendQueuedNow(id: String) async throws -> String {
         guard queue.items.contains(where: { $0.id == id }) else { throw ChatDriverError.noSuchQueueItem(id) }
         guard !handover.isHolding else { throw ChatDriverError.handingOver }
+        // A files rewind (or its Undo) is under way: a turn must not start in the middle of it.
+        guard !rewindBusy else { throw ChatDriverError.busy }
         // `now` cancels the running step: into a waiting approval it would land on the request. The user answers it first.
         guard requests.isEmpty else { throw ChatDriverError.requestWaiting }
         try await ensureLive()
@@ -64,8 +66,10 @@ extension ChatSessionDriver {
         }
     }
 
-    /// Lifts a pause; the first item goes out when no turn runs and no request waits.
+    /// Lifts a pause; the first item goes out when no turn runs and no request waits. Refused (the pause stays) while a
+    /// files rewind or its Undo runs.
     public func resumeQueue() async throws {
+        guard !rewindBusy else { throw ChatDriverError.busy }
         queue.paused = nil
         saveQueue()
         try await releaseQueue()

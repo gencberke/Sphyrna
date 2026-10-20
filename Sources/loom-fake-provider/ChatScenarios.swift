@@ -37,7 +37,9 @@ import Foundation
 //   unknown                           an unknown record type, an unknown system subtype and keep_alive
 //   bigline [MiB]                     a Bash result whose line is about 2x MiB (default 3)
 //   flood [n]                         n small assistant rows at once (default 1000), no transcript, then an answer
-//   file <name> <text>                a Write of <text> to <name> in the work folder, decided by the permission rules
+//   file <name> <text>                a Write of <text> to <name> in the work folder (over an existing file: an update with one
+//                                     whole-file hunk), decided by the permission rules; the file is then tracked by the
+//                                     checkpoints that `rewind_files` uses (ChatCheckpoints.swift)
 //   run <command>                     a Bash call (`mkdir <d>` and `touch <f>` take effect), decided by the rules
 //   web WebFetch|WebSearch            a research call, decided by the rules (ChatPermissions.swift)
 //   bg-agent [ms]                     an Agent in the background; its end starts a CLI turn that tries to write its report

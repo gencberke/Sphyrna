@@ -383,6 +383,8 @@ final class ChatEngine {
     var lastAssistantUUID: String?
     /// The Agent tool_use id of a subagent that is running, to its identity.
     var subagents: [String: AgentInfo] = [:]
+    /// File checkpoints for `rewind_files` (ChatCheckpoints.swift).
+    let checkpoints = ChatCheckpoints(environment: ProcessInfo.processInfo.environment)
 
     let registryStartedAt = Date()
     let slashCommands = ["compact", "clear", "context", "review", "init"]
@@ -703,7 +705,7 @@ final class ChatEngine {
             if config.controlDelayMs > 0 { usleep(UInt32(config.controlDelayMs) * 1_000) } // written, answered late
             send(wire.controlSuccess(id, ["title": title]))
         case "rewind_files":
-            send(wire.controlSuccess(id, wire.rewindFilesResponse(dryRun: body["dry_run"] as? Bool ?? false)))
+            rewindFiles(id: id, body: body)
         case "rewind_conversation":
             let target = body["target_message_uuid"] as? String ?? ""
             send(wire.controlSuccess(id, wire.rewindConversationResponse(
@@ -839,6 +841,7 @@ final class ChatEngine {
         registry("busy")
         if !sessionBusy { sessionBusy = true; sessionState("running") }
         if let first {
+            checkpoints.messageStarted(first.uuid)
             lifecycle(first.uuid, "started")
             hook("UserPromptSubmit", ["prompt_id": first.uuid])
             sendInit()

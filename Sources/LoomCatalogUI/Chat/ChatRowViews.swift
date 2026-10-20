@@ -24,11 +24,11 @@ struct ChatRowView: View {
         switch row.kind {
         case let .start(date):
             ChatMarkerLine(text: ChatMarkerText.start(date))
-        case let .marker(marker, _):
-            if case let .notice(text) = marker {
-                ChatNoticeView(text: text)
-            } else {
-                ChatMarkerLine(text: ChatMarkerText.text(marker))
+        case let .marker(marker, date):
+            switch marker {
+            case let .notice(text): ChatNoticeView(text: text)
+            case let .rewound(rewound): ChatRewoundMarkerView(marker: rewound, date: date, context: context)
+            default: ChatMarkerLine(text: ChatMarkerText.text(marker))
             }
         case let .divider(text):
             ChatMarkerLine(text: text)
@@ -105,6 +105,8 @@ enum ChatMarkerText {
             return face == .continuedInTerminal ? "Continued in Terminal" : "Back in Chat"
         case let .notice(text):
             return text
+        case let .rewound(rewound):
+            return ChatRewoundMarkerView.text(rewound, date: nil)
         }
     }
 
@@ -222,7 +224,7 @@ struct ChatUserMessageView: View {
     }
 }
 
-/// The time and Copy on hover, or what became of a message that was not read. It reads the row's hover itself, so a hover
+/// The time, Copy and Rewind files on hover, or what became of a message that was not read. It reads the row's hover itself, so a hover
 /// evaluates this view and nothing above it.
 private struct ChatUserFooter: View {
     let entry: ChatEntry
@@ -260,6 +262,9 @@ private struct ChatUserFooter: View {
                 if hovering {
                     if let time = entry.timestamp { Text(ChatTime.label(for: time)).foregroundStyle(LoomTheme.Text.secondaryStyle) }
                     ChatCopyButton(text: prompt.text, context: context)
+                    ChatRewindButton(state: ChatRewindAction.state(for: entry, availability: context.rewind.availability)) {
+                        context.rewindFiles(entry.id)
+                    }
                 }
             }
         }
