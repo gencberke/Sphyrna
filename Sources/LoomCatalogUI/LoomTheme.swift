@@ -142,7 +142,7 @@ enum LoomTheme {
         static let primary = primaryPair.color
         static let secondary = secondaryPair.color
         /// The quiet voice: labels, meta, key hints, counts and line numbers. On a popover quiet text is secondary.
-        static let tertiaryPair = Adaptive(dark: RGB(hex: 0x868690), light: RGB(hex: 0x69676D))
+        static let tertiaryPair = Adaptive(dark: RGB(hex: 0x868690), light: RGB(hex: 0x67656B))
         static let tertiaryRGB = tertiaryPair.dark
         static let tertiary = tertiaryPair.color
         /// Placeholders, disabled items and decorative marks, never text you need.

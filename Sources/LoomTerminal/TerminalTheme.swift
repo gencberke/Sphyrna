@@ -34,8 +34,8 @@ public struct TerminalRGB: Sendable, Hashable {
 /// Loom installs the VS Code dark terminal palette and the standard xterm
 /// cube and gray ramp, all in sRGB.
 public enum TerminalTheme {
-    /// Night fleece, direction A's panel `#1D1C22` and the default tone (D-63).
-    public static let defaultBackgroundRGB = TerminalRGB(red: 29, green: 28, blue: 34)
+    /// Ink's Neutral canvas `#0C0C0E`, the default tone (D-81); the app sets the chosen tone's canvas at launch.
+    public static let defaultBackgroundRGB = TerminalRGB(red: 12, green: 12, blue: 14)
     public static let foregroundRGB = TerminalRGB(red: 232, green: 230, blue: 238)
     public static let foreground = foregroundRGB.nsColor
 

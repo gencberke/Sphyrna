@@ -42,14 +42,9 @@ struct ThemeAppearanceTests {
         }
     }
 
-    /// A floor. A pair in `known` misses it today: the check is marked as a known issue with the figure (so it fails the day
-    /// the pair starts to hold, and the list stays true); the planner decides those values.
-    private static func floor(_ value: Double, _ floor: Double, _ id: String, known: Set<String> = []) {
-        if known.contains(id) {
-            withKnownIssue("\(id): \(String(format: "%.2f", value)) under \(floor)") { #expect(value >= floor, "\(id)") }
-        } else {
-            #expect(value >= floor, "\(id): \(value)")
-        }
+    /// A floor, with the pair's name and figure in the failure.
+    private static func floor(_ value: Double, _ floor: Double, _ id: String) {
+        #expect(value >= floor, "\(id): \(value)")
     }
 
     /// Where the sidebar tint sits: opaque (Solid, Reduce Transparency), and over the glass material at its two
@@ -112,16 +107,8 @@ struct ThemeAppearanceTests {
         }
     }
 
-    /// Tertiary is the quiet voice, readable: 4.5:1 on the canvas and both raised levels and under the pill's fills over
-    /// the canvas. These pairs miss it today (figures in the issue comments, from the Ink values of DESIGN §3):
-    /// the pressed fill over the canvas in Ink (4.02 to 4.03) and in Paper (4.24 Neutral, 4.12 Warm and Cool), and the selected
-    /// fill over the canvas in Paper Warm (4.37) and Cool (4.38). Hover holds everywhere.
-    private static let tertiaryMisses: Set<String> = [
-        "dark neutral canvas+pressed", "dark warm canvas+pressed", "dark cool canvas+pressed",
-        "light neutral canvas+pressed", "light warm canvas+pressed", "light cool canvas+pressed",
-        "light warm canvas+selected", "light cool canvas+selected",
-    ]
-
+    /// Tertiary is the quiet voice, readable: 4.5:1 on the canvas and both raised levels, and under the hover and selected
+    /// fills over the canvas. A press is momentary, so the pressed fill has no text floor (the main planner, 21 Oct).
     @Test func tertiaryHoldsItsFloorOnTheLevelsAndUnderTheFillsOverTheCanvas() {
         for appearance in Appearance.allCases {
             for tone in PaneTone.allCases {
@@ -130,8 +117,8 @@ struct ThemeAppearanceTests {
                     Self.floor(text.contrast(with: level.rgb), 4.5, "\(appearance) \(tone) \(level.name)")
                 }
                 let canvas = Self.levels(appearance, tone)[0]
-                for fill in Self.fills(appearance, over: canvas) {
-                    Self.floor(text.contrast(with: fill.rgb), 4.5, "\(appearance) \(tone) \(fill.name)", known: Self.tertiaryMisses)
+                for fill in Self.fills(appearance, over: canvas) where !fill.name.hasSuffix("+pressed") {
+                    Self.floor(text.contrast(with: fill.rgb), 4.5, "\(appearance) \(tone) \(fill.name)")
                 }
             }
         }
@@ -183,15 +170,14 @@ struct ThemeAppearanceTests {
         }
     }
 
-    /// DESIGN §3 Contrast asks 3:1 of the subagent tree's turns on the canvas. Ink's tree greys are `#3B3B41`, `#433C34` and
-    /// `#363E4C` (Paper `#C4C2BE`, `#CFC4B3`, `#BCC2CB`) on canvases that are close to them: 1.76, 1.80, 1.82 in Ink and
-    /// 1.65, 1.55, 1.61 in Paper (Neutral, Warm, Cool). The values are the design's; the planner decides.
-    @Test func theTreeHoldsThreeToOneOnTheCanvas() {
-        let known: Set<String> = ["dark neutral", "dark warm", "dark cool", "light neutral", "light warm", "light cool"]
+    /// The subagent tree is structure, like the hairlines, and carries no state (the row's mark does), so it has no 3:1
+    /// floor (the main planner, 21 Oct). It is opaque and stays visible on the canvas in every cast: at least 1.5:1 (Ink's
+    /// greys give 1.76 to 1.82 in Ink and 1.55 to 1.65 in Paper).
+    @Test func theTreeStaysVisibleOnTheCanvas() {
         for appearance in Appearance.allCases {
             for tone in PaneTone.allCases {
                 let greys = Self.greys(appearance, tone)
-                Self.floor(greys.tree.contrast(with: greys.canvas), 3, "\(appearance) \(tone)", known: known)
+                Self.floor(greys.tree.contrast(with: greys.canvas), 1.5, "\(appearance) \(tone) tree")
             }
         }
     }
@@ -359,7 +345,7 @@ struct ThemeAppearanceTests {
         typealias Text = LoomTheme.Text
         #expect(Text.primaryPair == LoomTheme.Adaptive(dark: RGB(hex: 0xECECEF), light: RGB(hex: 0x19181B)))
         #expect(Text.secondaryPair == LoomTheme.Adaptive(dark: RGB(hex: 0x9E9EA8), light: RGB(hex: 0x5F5D63)))
-        #expect(Text.tertiaryPair == LoomTheme.Adaptive(dark: RGB(hex: 0x868690), light: RGB(hex: 0x69676D)))
+        #expect(Text.tertiaryPair == LoomTheme.Adaptive(dark: RGB(hex: 0x868690), light: RGB(hex: 0x67656B)))
         #expect(Text.faintPair == LoomTheme.Adaptive(dark: RGB(hex: 0x6B6B75), light: RGB(hex: 0x8E8B91)))
         #expect(Text.secondaryIncreasedPair == LoomTheme.Adaptive(dark: RGB(hex: 0xBDBDC6), light: RGB(hex: 0x47454B)))
         typealias Accent = LoomTheme.Accent
