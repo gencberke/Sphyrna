@@ -30,6 +30,8 @@ enum ComposerKeys {
         case live
         /// The new-session draft's composer: ↵ starts the session, ⌘↵ starts it and opens a fresh draft.
         case draft
+        /// The quick question's field (V22): ↵ asks, ⇧↵ makes a new line, Esc closes the panel.
+        case quick
     }
 
     /// What the composer is doing when a key arrives.
@@ -85,6 +87,8 @@ enum ComposerKeys {
         /// ⌃O: the stream's view (Chat | Concise | Verbose), also while the composer has the keyboard (V19: the key acts on
         /// the face shown; in the terminal it stays Claude's own).
         case cycleView
+        /// Esc in the quick question's field: the panel closes.
+        case closePanel
         /// The key is taken and does nothing (Esc while a card waits, a held ↵).
         case ignore
         /// The text view handles the key as it would.
@@ -124,6 +128,7 @@ enum ComposerKeys {
         case escape:
             guard !state.hasMarkedText else { return .passThrough }
             guard modifiers.isEmpty else { return .passThrough }
+            if state.mode == .quick { return .closePanel }
             if state.menuOpen { return .closeMenu }
             if state.editingQueued { return .cancelEdit }
             // The draft has nothing to interrupt, and an idle composer has none either: Esc does nothing there (and the text

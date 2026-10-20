@@ -229,6 +229,13 @@ public actor ChatSessionDriver {
     /// The session's newest rewind: its marker, and whether Undo is still offered (until the next message is sent).
     var newestRewind: RewindRecord?
 
+    // The quick question (ChatSessionDriver+Side.swift)
+
+    /// How long a quick question waits for its answer (S6: 2 to 5 s when idle).
+    public static let sideQuestionTimeout: Duration = .seconds(120)
+    /// The wait in use; tests shorten it.
+    var sideQuestionWait = ChatSessionDriver.sideQuestionTimeout
+
     /// - Parameters:
     ///   - queueStore: where the "After this turn" queue is kept; nil keeps it in memory (tests).
     ///   - rewindStore: where a files rewind keeps its copies; nil turns the action off.

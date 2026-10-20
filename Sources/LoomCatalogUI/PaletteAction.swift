@@ -16,6 +16,7 @@ public enum PaletteAction: String, CaseIterable, Sendable {
     case renameSession
     case resumeSession
     case stopSession
+    case askQuickQuestion
     case toggleSidebar
     case recentActivityView
     case projectView
@@ -47,6 +48,7 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         case .renameSession: "Rename session…"
         case .resumeSession: "Resume session"
         case .stopSession: "Stop session"
+        case .askQuickQuestion: "Ask a quick question"
         case .toggleSidebar: "Toggle sidebar"
         case .recentActivityView: "Show recent activity"
         case .projectView: "Group sessions by project"
@@ -69,6 +71,7 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         case .renameSession: ["title", "name"]
         case .resumeSession: ["start again", "continue"]
         case .stopSession: ["quit", "end", "interrupt"]
+        case .askQuickQuestion: ["btw", "side question", "ask", "one-shot", "aside"]
         case .toggleSidebar: ["hide", "show"]
         case .recentActivityView: ["list", "sort"]
         case .projectView: ["list", "folders"]
@@ -89,6 +92,7 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         case .renameSession: "pencil"
         case .resumeSession: "play"
         case .stopSession: "stop"
+        case .askQuickQuestion: "questionmark.bubble"
         case .toggleSidebar: "sidebar.left"
         case .recentActivityView: "clock"
         case .projectView: "folder"
@@ -106,6 +110,7 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         case .findSession: PaletteKeyHint.text(modifiers: [.command], key: "f")
         case .resumeSession: PaletteKeyHint.text(modifiers: [.command], key: "r")
         case .stopSession: PaletteKeyHint.text(modifiers: [.command], key: ".")
+        case .askQuickQuestion: PaletteKeyHint.text(modifiers: [.command], key: ";")
         case .toggleSidebar: PaletteKeyHint.text(modifiers: [.control, .command], key: "s")
         case .settings: PaletteKeyHint.text(modifiers: [.command], key: ",")
         default: nil
@@ -130,6 +135,7 @@ public enum PaletteAction: String, CaseIterable, Sendable {
             return model.selectedRow.map { model.canResume($0) } ?? false
         case .stopSession:
             return model.selectedRow.map { model.canStop($0) } ?? false
+        case .askQuickQuestion: return model.canAskQuickQuestion
         default: return false
         }
     }
@@ -140,7 +146,8 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         case .newSession:
             guard let id = model.contextProjectID, let name = model.projects.first(where: { $0.id == id })?.name else { return nil }
             return "in " + name
-        case .toggleInspector, .openInTab, .renameSession, .resumeSession, .stopSession, .showChat, .showTerminal:
+        case .toggleInspector, .openInTab, .renameSession, .resumeSession, .stopSession, .askQuickQuestion, .showChat,
+             .showTerminal:
             guard let row = model.selectedRow else { return nil }
             return "for " + model.title(of: row)
         default: return nil
@@ -160,6 +167,7 @@ public enum PaletteAction: String, CaseIterable, Sendable {
             if let id = model.selectedSessionID { model.resumeConversation(id) }
         case .stopSession:
             if let id = model.selectedSessionID { model.stopConversation(id) }
+        case .askQuickQuestion: model.askQuickQuestion()
         case .toggleSidebar: model.onToggleSidebar?()
         case .recentActivityView: model.setViewMode(.activity)
         case .projectView: model.setViewMode(.projects)

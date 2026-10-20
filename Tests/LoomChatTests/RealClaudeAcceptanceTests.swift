@@ -449,6 +449,77 @@ struct RealClaudeAcceptanceTests {
         }
     }
 
+    // MARK: V22 part 1. The quick question
+
+    /// Release C, V22 part 1, against the real CLI (two Haiku turns and two side questions): a quick question while the session
+    /// is idle and one while a Bash tool runs, each answered from the session's context, and the session's transcript is the
+    /// same file before and after each (SHA-256), without the question in it. Output: counts, booleans and hashes, no content.
+    @Test func v22aQuickQuestionAnswersWhileIdleAndWhileAToolRunsAndLeavesTheTranscriptAlone() async throws {
+        try await AccRig.run("v22a-quick") { rig in
+            try rig.write("note.txt", "The code word is PERSIMMON-42.\n")
+            let driver = rig.driver()
+            try await driver.startNew(projectID: nil, draft: rig.draft(mode: "default"))
+            rig.turn("V22a turn 1: Read reads note.txt")
+            try await driver.send("Use the Read tool on note.txt, then reply with the single word: done")
+            #expect(await rig.waitIdle(driver, 120))
+            let conversation = try #require(await driver.liveState().conversationID)
+            func transcriptHash() -> String {
+                let data = (try? Data(contentsOf: rig.transcriptURL(conversation))) ?? Data()
+                return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            }
+            func milliseconds(_ since: ContinuousClock.Instant) -> Int {
+                let elapsed = since.duration(to: .now)
+                return Int(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
+            }
+
+            // Idle.
+            let idleBefore = transcriptHash()
+            let entriesBefore = await driver.snapshot().model.entries.map(\.id)
+            rig.log("side question 1 of 2, idle; availability \(await driver.sideQuestionAvailability())")
+            var clock = ContinuousClock.now
+            let first = try await driver.sideQuestion("What is the code word you read in note.txt? Answer in one short sentence.")
+            rig.log("side question 1 answered in \(milliseconds(clock)) ms, \(first.count) characters, names the code word \(first.contains("PERSIMMON"))")
+            #expect(first.contains("PERSIMMON"))
+            #expect(transcriptHash() == idleBefore)
+            #expect(await driver.snapshot().model.entries.map(\.id) == entriesBefore)
+            #expect(await driver.currentPhase == .ready)
+            #expect(!rig.transcriptContains(conversation, "code word you read"))
+
+            // While a Bash tool runs. The default mode asks before the command (in the first run the second question met that
+            // waiting card, not a running tool): this one command is allowed once, so the tool really runs.
+            rig.turn("V22a turn 2: Bash sleeps 60 s")
+            try await driver.send("Use the Bash tool to run exactly: sleep 60. Then reply with the single word: done")
+            if let card = await rig.waitRequest(driver, 12) {
+                rig.log("the profile asked before the Bash command; allowed once")
+                try await driver.answer(requestID: card.requestID, .allowOnce)
+            }
+            let running = await rig.wait(60) {
+                let state = await driver.snapshot()
+                return state.phase == .working && state.model.tools.contains { $0.status == .running }
+            }
+            rig.log("a tool is running and no card waits: \(running)")
+            #expect(running)
+            // The transcript settles (the tool call's records land) before it is hashed.
+            var busyBefore = transcriptHash()
+            for _ in 0..<10 {
+                try await Task.sleep(for: .seconds(1))
+                let now = transcriptHash()
+                if now == busyBefore { break }
+                busyBefore = now
+            }
+            rig.log("side question 2 of 2, while the tool runs; availability \(await driver.sideQuestionAvailability())")
+            clock = ContinuousClock.now
+            let second = try await driver.sideQuestion("What is the code word you read in note.txt? Answer in one short sentence.")
+            rig.log("side question 2 answered in \(milliseconds(clock)) ms, \(second.count) characters, names the code word \(second.contains("PERSIMMON"))")
+            #expect(second.contains("PERSIMMON"))
+            #expect(transcriptHash() == busyBefore)
+            #expect(await driver.currentPhase == .working, "the question changed no phase")
+            #expect(await rig.waitIdle(driver, 120))
+            #expect(!rig.transcriptContains(conversation, "code word you read"))
+            rig.log("transcript unchanged by both questions (hashes compared above); question text in the transcript: \(rig.transcriptContains(conversation, "code word you read"))")
+        }
+    }
+
     // MARK: A8. /clear
 
     @Test func a8ClearMovesTheRunToANewCardAndASendWorks() async throws {

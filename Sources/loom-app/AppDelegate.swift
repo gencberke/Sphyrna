@@ -560,6 +560,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func stopFromMenu(_ sender: Any?) {
         if let id = model?.selectedSessionID { model?.stopConversation(id) }
     }
+    @objc func askQuickQuestionFromMenu(_ sender: Any?) {
+        presentMainWindow(reason: "quick-question-menu")
+        model?.askQuickQuestion()
+    }
     @objc func deleteFromMenu(_ sender: Any?) {
         if let id = model?.selectedSessionID { model?.requestDeletion(id) }
     }
@@ -596,6 +600,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return model.selectedRow.map(model.canResume) ?? false
         case #selector(stopFromMenu(_:)):
             return model.selectedRow.map(model.canStop) ?? false
+        case #selector(askQuickQuestionFromMenu(_:)):
+            let reason = model.quickQuestionUnavailableReason
+            item.subtitle = reason
+            item.toolTip = reason
+            return reason == nil
         case #selector(deleteFromMenu(_:)):
             // Cmd+Delete belongs to a text field being edited (search, or rename in its sheet window)
             // and to a focused terminal (Cmd+Backspace edits the prompt line there), and does nothing

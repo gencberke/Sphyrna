@@ -101,6 +101,8 @@ struct LiveChatView<Pinned: View>: View {
     var onOpenChanges: ((Bool) -> Void)?
     /// "Switch to Terminal" on the policy banner (the switch in Settings goes to Terminal and this session moves); nil where the session cannot be moved.
     var onContinueInTerminal: (() -> Void)?
+    /// The quick question's panel for this session (V22), drawn over the bottom of the stream while it is open.
+    var quickQuestion: QuickQuestionPanel?
     @ViewBuilder let pinned: (_ maxHeight: CGFloat?) -> Pinned
     @State private var model: LiveChatViewModel?
 
@@ -108,7 +110,8 @@ struct LiveChatView<Pinned: View>: View {
         ZStack {
             if let model {
                 LiveChatContent(model: model, feed: feed, composer: composer, onOpenSubagent: onOpenSubagent,
-                                onOpenChanges: onOpenChanges, onContinueInTerminal: onContinueInTerminal, pinned: pinned)
+                                onOpenChanges: onOpenChanges, onContinueInTerminal: onContinueInTerminal,
+                                quickQuestion: quickQuestion, pinned: pinned)
             } else {
                 LoomTheme.Surface.canvas
             }
@@ -135,6 +138,7 @@ struct LiveChatContent<Pinned: View>: View {
     let onOpenSubagent: ((String?, String) -> Void)?
     var onOpenChanges: ((Bool) -> Void)?
     var onContinueInTerminal: (() -> Void)?
+    var quickQuestion: QuickQuestionPanel?
     /// The cards that wait for the user, between the stream and the composer. They get the most they may take.
     @ViewBuilder let pinned: (_ maxHeight: CGFloat?) -> Pinned
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -178,6 +182,22 @@ struct LiveChatContent<Pinned: View>: View {
         })
     }
 
+    /// The quick question (V22): a card over the bottom of the stream, above the composer. It stays only while the session can
+    /// take a question: a stopped session, one that leaves the Chat face or one a handover holds closes it.
+    @ViewBuilder private var quickQuestionOverlay: some View {
+        if let quickQuestion, let composer {
+            let availability = composer.sideQuestionAvailability
+            ZStack {
+                if quickQuestion.isOpen, availability == .available {
+                    QuickQuestionPanelView(panel: quickQuestion)
+                        .transition(reduceMotion ? .identity : .opacity)
+                }
+            }
+            .animation(reduceMotion ? nil : .easeOut(duration: LoomTheme.Chat.fadeDuration), value: quickQuestion.isOpen)
+            .onChange(of: availability, initial: true) { _, value in quickQuestion.reconcile(value) }
+        }
+    }
+
     private var stream: some View {
         let presentation = feed.presentation
         return ZStack {
@@ -203,6 +223,7 @@ struct LiveChatContent<Pinned: View>: View {
                         .padding(.top, 10).padding(.trailing, 14)
                     }
                 }
+                .overlay(alignment: .bottom) { quickQuestionOverlay }
                 .onGeometryChange(for: CGSize.self) { $0.size } action: { width = $0.width; streamHeight = $0.height }
             }
             ChatWindowVisibility { model.setWindowVisible($0) }.frame(width: 0, height: 0)

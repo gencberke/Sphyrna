@@ -41,6 +41,10 @@ extension AppDelegate {
         let stop = fileMenu.addItem(withTitle: "Stop Session", action: #selector(stopFromMenu(_:)),
                                     keyEquivalent: ".")
         stop.target = self
+        // V22: a one-shot question over the selected Chat session's context (⌘;). Off, with its reason under it, unless the
+        // session is a running Chat one; the command palette has the same action for layouts where ";" needs Shift.
+        fileMenu.addItem(withTitle: "Ask a Quick Question…", action: #selector(askQuickQuestionFromMenu(_:)),
+                         keyEquivalent: ";").target = self
         fileMenu.addItem(.separator())
         let delete = fileMenu.addItem(withTitle: "Delete Permanently…", action: #selector(deleteFromMenu(_:)),
                                       keyEquivalent: "\u{8}")

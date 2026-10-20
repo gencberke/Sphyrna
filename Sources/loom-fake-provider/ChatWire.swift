@@ -360,8 +360,8 @@ struct ChatWire {
                          "seven_day": ["utilization": 82.0, "resets_at": "2026-10-12T09:00:00Z"] as Object]]
     }
 
-    func sideQuestionResponse(_ question: String) -> Object {
-        ["response": "Fake side answer to: \(question.prefix(100))", "synthetic": false]
+    func sideQuestionResponse(_ question: String, text: String? = nil) -> Object {
+        ["response": text ?? "Fake side answer to: \(question.prefix(100))", "synthetic": false]
     }
 
     /// `rewind_files`, as S8 saw it: a dry run answers the files and line totals, or `canRewind:false` with the CLI's text

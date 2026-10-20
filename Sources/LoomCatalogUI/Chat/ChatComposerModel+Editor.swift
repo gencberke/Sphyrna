@@ -47,7 +47,7 @@ extension ChatComposerModel: ComposerEditorHost {
         case .focusCard: cards?.focus()
         case .cycleView: environment.cycleView?()
         case .ignore: break
-        case .newline, .passThrough: return false
+        case .newline, .passThrough, .closePanel: return false
         }
         return true
     }

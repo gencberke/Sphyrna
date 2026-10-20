@@ -93,6 +93,12 @@ struct ChatConfig {
     var titleDeferredPastReset: Bool
     /// LOOM_FAKE_CHAT_TITLE_LOG: a file that gets one line per `generate_session_title` request (tests count the tries).
     var titleLog: String?
+    /// The `side_question` answer (V22): LOOM_FAKE_CHAT_SIDE_ANSWER is its text (default "Fake side answer to: <question>"),
+    /// LOOM_FAKE_CHAT_SIDE_DELAY_MS holds it back this long, and LOOM_FAKE_CHAT_SIDE sets how it goes: `error` answers an error
+    /// frame, `unsupported` the error of a CLI that predates the request, `silent` never answers (the host's timeout).
+    var sideAnswer: String?
+    var sideDelayMs: Int
+    var sideMode: String?
 
     init(arguments: [String], environment: [String: String]) {
         func value(_ flag: String) -> String? {
@@ -141,6 +147,9 @@ struct ChatConfig {
         controlDelayMs = environment["LOOM_FAKE_CHAT_CONTROL_DELAY_MS"].flatMap(Int.init) ?? 0
         titleDeferredPastReset = environment["LOOM_FAKE_CHAT_TITLE_DEFER"] == "reset"
         titleLog = environment["LOOM_FAKE_CHAT_TITLE_LOG"]
+        sideAnswer = environment["LOOM_FAKE_CHAT_SIDE_ANSWER"]
+        sideDelayMs = environment["LOOM_FAKE_CHAT_SIDE_DELAY_MS"].flatMap(Int.init) ?? 0
+        sideMode = environment["LOOM_FAKE_CHAT_SIDE"]
         userRules = (environment["LOOM_FAKE_CHAT_USER_RULES"]
             .flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) } as? [ChatObject] ?? []).compactMap { row in
             guard let behavior = row["behavior"] as? String, let source = row["source"] as? String,
@@ -672,8 +681,18 @@ final class ChatEngine {
             send(wire.controlSuccess(id, [:]))
         case "side_question":
             // No lifecycle, no turn, nothing in the transcript.
+            if config.sideMode == "unsupported" {
+                send(wire.controlError(id, "Unsupported control request subtype: side_question"))
+                return
+            }
             send(wire.controlProgress(id))
-            send(wire.controlSuccess(id, wire.sideQuestionResponse(body["question"] as? String ?? "")))
+            if config.sideMode == "silent" { return }
+            if config.sideDelayMs > 0 { usleep(UInt32(config.sideDelayMs) * 1_000) }
+            if config.sideMode == "error" {
+                send(wire.controlError(id, "The side question could not be answered", code: "fail_side"))
+                return
+            }
+            send(wire.controlSuccess(id, wire.sideQuestionResponse(body["question"] as? String ?? "", text: config.sideAnswer)))
         case "generate_session_title":
             // The terminal face's own naming, on demand: "Fake title: <first three words>", and the transcript's `ai-title`
             // when the host asks to persist it. `title` in LOOM_FAKE_CHAT_FAIL_PICKS refuses it; `titlenull` answers null.

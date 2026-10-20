@@ -447,6 +447,8 @@ public final class CatalogModel {
     let changes = ChangesState()
     /// Rewind files (V21): the open sheet and the Undo prompt (`CatalogModel+Rewind`).
     let rewinds = RewindState()
+    /// The quick question's panels, one per session (V22; `CatalogModel+QuickQuestion`).
+    let quick = QuickQuestionState()
     public let home = HomeState()
     public let palette = PaletteState()
     public let newSession = NewSessionState()
