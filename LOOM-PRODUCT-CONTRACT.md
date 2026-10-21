@@ -288,6 +288,19 @@ The root cause of the old Herdr GPU problem has not been proven. With the same t
 
 Other [numerical proposals](plans/cp5/RESOURCE-BUDGET-PROPOSAL.md) for memory, GPU and latency have not yet been approved. Without an accepted scope and measurement, “lightness verified” is not claimed.
 
+### The subscription and the agents' context
+
+21 October 2026 user decision ([D-83](DECISIONS.md) (c)): what Sphyrna costs the user's Claude subscription, and what it adds to an agent's context, stay out of sight.
+
+- **Model calls.** Sphyrna makes a model call on the user's subscription only for what the user sends, asks or approves: a message, a quick question, a side chat's question, Compact, a comment or a note sent to a session, an approved opening. It makes two calls of its own:
+  - a Chat session's title, the call the terminal CLI makes by itself: one per session, at most three tries, on at most 2,000 characters of the first message;
+  - once Remora is built, its morning brief: at most once a day, on the first Home of the day after 04:00 when a session moved since the last one. It waits while the 5-hour limit is under the share Settings names (10 % by default), and it is off when Remora is off or the brief is set to When I ask ([D-64](DECISIONS.md), DESIGN §20). Remora's calls carry no tools, hooks, MCP servers, settings sources or session persistence, and the CLI's non-essential traffic is off for them.
+
+  Nothing else runs a model in the background: no timer, watcher, retry loop or per-turn call. Reading the plan limits is not a model call.
+- **Context.** A session Sphyrna starts holds what the same CLI holds in the user's terminal, plus only the descriptions of Sphyrna's skills (each at most 300 characters) and, in Ask, Ask's output style. A skill's instructions load only when the agent uses it. Hooks print nothing; Sphyrna appends no system prompt and writes no instructions file.
+- **The CLI's own behaviour** in a session stays the user's ([D-20](DECISIONS.md)): Sphyrna neither adds nor turns off what the CLI does there.
+- **Guards.** Each of these limits has a test that fails when it grows: `PluginContractTests`, `LaunchContractTests`, `HookSilenceTests` and `ChatModelCallTests` (docs/ARCHITECTURE.md).
+
 ## 11. Development checkpoints
 
 Each checkpoint result is recorded as **verified / failed / not verified**. Synthetic data and Loom-owned test processes are used. User data, the processes of other applications and real chat history are not experiment material.
