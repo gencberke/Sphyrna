@@ -136,8 +136,7 @@ struct SessionServiceFaceTableTests {
         let terminalStart = try await start(fixture, text: "second")
         note("start, Sessions run in Terminal", await liveEndpoint(fixture, terminalStart))
 
-        // An approved open request: the terminal whatever the switch says. (D-69 (1) says every start follows the switch;
-        // C5 changes this cell to follow it.)
+        // An approved open request follows the switch like a start (D-69 (1), C5b).
         note("approved open request, Sessions run in Terminal",
              await liveEndpoint(fixture, try await approvedOpening(fixture, requester: terminalStart)))
         model.setNewSessionFace(.chat)
@@ -177,7 +176,7 @@ struct SessionServiceFaceTableTests {
             "start, Sessions run in Chat": "pipe",
             "start, Sessions run in Terminal": "terminal",
             "approved open request, Sessions run in Terminal": "terminal",
-            "approved open request, Sessions run in Chat": "terminal",
+            "approved open request, Sessions run in Chat": "pipe",
             "stopped session shows its live chat, Sessions run in Chat": "true",
             "stopped session shows its live chat, Sessions run in Terminal": "false",
             "stopped session's route, Sessions run in Chat": "chat",

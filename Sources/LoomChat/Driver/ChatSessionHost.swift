@@ -187,6 +187,22 @@ public final class ChatSessionHost {
         return driver
     }
 
+    /// Starts the session an agent's approved open request opens (C5b, D-40) in the Chat face: the runtime approves
+    /// `requestID` with a Chat start and the request's message is sent once Ready. Same contract as `startNewSession`:
+    /// `onReady` runs at Ready, a start that fails before it throws and its caller lets the host `forget` the driver,
+    /// and a message that fails afterwards goes to the session's own draft.
+    @discardableResult
+    public func startOpenedSession(requestID: UUID, sessionID: UUID = UUID(),
+                                   onReady: (@Sendable () async -> Void)? = nil) async throws -> ChatSessionDriver {
+        let driver = driver(for: sessionID)
+        let hold = afterReadyForTesting
+        try await driver.startOpened(requestID: requestID, onReady: {
+            await onReady?()
+            await hold?()
+        })
+        return driver
+    }
+
     /// Test seam: runs right after `onReady` and before the draft's first message goes out.
     var afterReadyForTesting: (@Sendable () async -> Void)?
 

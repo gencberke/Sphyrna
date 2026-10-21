@@ -132,7 +132,7 @@ try:
                     '--claude-config', str(PROBE / 'claude-config'), '--evidence-tokens', ','.join(TOKENS)], check=True)
     app_pid = measure.wait_json(evidence / 'launched.json', 30)['pid']
     until('ready', lambda s: s['catalog']['ready'] and s['catalog']['actionsAvailable'], 30)
-    measure.send('live-chat:off', evidence)  # a start follows Settings 'Sessions run in' (Chat by default); this script drives the TUI
+    measure.send('live-chat:off', evidence)  # a start, and since C5b an approved opening, follows Settings 'Sessions run in' (Chat by default); this script pins Terminal for the whole run (the parent and the child are found through conversationTerminals)
     time.sleep(1)
     measure.send('resize:1180x760', evidence)
     measure.send('view-mode:activity', evidence)

@@ -462,8 +462,10 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
     /// A failed start is shown in the request's box (the runtime keeps it as failed) and never retried.
     public func approveOpen(requestID: UUID) {
         guard let model, model.actionsAvailable, approvingOpen.insert(requestID).inserted else { return }
-        // The policy answers the terminal today for every harness; C5b gives an approved opening the switch's face.
-        assert(model.facePolicy.faceOfApprovedOpening(model.capabilities(of: .claude)) == .terminal, "an approved opening starts in the terminal")
+        if model.facePolicy.faceOfApprovedOpening(model.capabilities(of: .claude)) == .chat, let host = model.chatSessions {
+            approveOpenInChat(requestID: requestID, host: host)
+            return
+        }
         let surface = TerminalSurface(fontSize: model.terminalFontSize)
         let size = surface.gridSize
         Task {
@@ -477,6 +479,27 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
                 surface.runEnded()
                 // A start that failed is on the request's box; only an answer that could not be given is a banner.
                 if error is OpenSessionError { report(error, "The request could not be answered") }
+            }
+        }
+    }
+
+    /// The approved opening in the Chat face (C5b): the host starts it, the request's message goes out once Ready, and no
+    /// terminal is adopted. A start that failed is on the request's box; one that failed after the child was spawned
+    /// (it never answered `initialize`) has no box left, so it is a banner, and the driver goes.
+    private func approveOpenInChat(requestID: UUID, host: ChatSessionHost) {
+        let sessionID = UUID()
+        Task {
+            defer { approvingOpen.remove(requestID) }
+            let ready = OneShot {}
+            do {
+                try await host.startOpenedSession(requestID: requestID, sessionID: sessionID,
+                                                  onReady: { await MainActor.run { ready.fire() } })
+            } catch {
+                let stopped = (error as? ChatDriverError) == .stopping
+                if !ready.fired, !stopped { host.forget(sessionID: sessionID) }
+                if error is OpenSessionError || (error is ChatDriverError && !stopped) {
+                    report(error, error is OpenSessionError ? "The request could not be answered" : "Claude could not be started")
+                }
             }
         }
     }

@@ -39,13 +39,18 @@ struct FacePolicyTests {
         }
     }
 
-    @Test func anApprovedOpeningIsTheTerminalsWhateverTheSwitchAndTheHostSay() {
+    @Test func anApprovedOpeningFollowsTheSwitchLikeAStart() {
         for runsIn in [SessionLiveFace.chat, .terminal] {
             for host in [true, false] {
                 let policy = FacePolicy(runsIn: runsIn, structuredHostAvailable: host)
-                #expect(policy.faceOfApprovedOpening(Self.claude) == .terminal)
-                #expect(policy.faceOfApprovedOpening(Self.codex) == .terminal)
+                for harness in [Self.claude, Self.codex, Self.synthetic] {
+                    #expect(policy.faceOfApprovedOpening(harness) == policy.faceOfStart(harness))
+                }
             }
         }
+        #expect(FacePolicy(runsIn: .chat, structuredHostAvailable: true).faceOfApprovedOpening(Self.claude) == .chat)
+        #expect(FacePolicy(runsIn: .terminal, structuredHostAvailable: true).faceOfApprovedOpening(Self.claude) == .terminal)
+        #expect(FacePolicy(runsIn: .chat, structuredHostAvailable: false).faceOfApprovedOpening(Self.claude) == .terminal)
+        #expect(FacePolicy(runsIn: .chat, structuredHostAvailable: true).faceOfApprovedOpening(Self.codex) == .terminal)
     }
 }

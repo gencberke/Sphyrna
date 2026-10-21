@@ -40,6 +40,29 @@ extension SessionRuntime {
         return launch
     }
 
+    /// The Chat face's approval (C5b): the same request, the same coordinator and the same answer to the agent
+    /// (`started <id>` once the child is spawned), but the session starts in the Chat face with the request's title and
+    /// `openedBy`. The caller (the Chat driver) sends `firstMessage` over stdin once the CLI is ready, as a draft's.
+    /// A failed start throws and leaves the request in the list as failed; it is never retried.
+    public func approveOpenRequestInChat(
+        _ requestID: UUID, sessionID: UUID = UUID(), outputSink: any PipeOutputSink
+    ) async throws -> RuntimeOpenedChat {
+        let launched = ChatLaunchBox()
+        let started = try await openRequests.approve(requestID) { spec in
+            let launch = try await self.startChatConversation(
+                projectID: spec.projectID, sessionID: sessionID,
+                opening: SessionOpening(title: spec.title, firstMessage: spec.message, openedBy: spec.requesterID),
+                outputSink: outputSink
+            )
+            launched.value = RuntimeOpenedChat(launch: launch, firstMessage: spec.message)
+            return launch.sessionID
+        }
+        guard let opened = launched.value, opened.launch.sessionID == started else {
+            throw OpenSessionError.unknownRequest(requestID)
+        }
+        return opened
+    }
+
     /// The agent's command is answered `denied`; nothing starts.
     public func denyOpenRequest(_ requestID: UUID) async throws {
         try await openRequests.deny(requestID)
@@ -53,4 +76,14 @@ extension SessionRuntime {
 
 private final class LaunchBox: @unchecked Sendable {
     var value: RuntimeLaunch?
+}
+
+private final class ChatLaunchBox: @unchecked Sendable {
+    var value: RuntimeOpenedChat?
+}
+
+/// The Chat launch of an approved opening: the pipes, and the request's message the driver sends once ready.
+public struct RuntimeOpenedChat: Sendable {
+    public let launch: RuntimePipeLaunch
+    public let firstMessage: String
 }

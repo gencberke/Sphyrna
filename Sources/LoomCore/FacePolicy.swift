@@ -26,10 +26,10 @@ public struct FacePolicy: Equatable, Sendable {
         faceOfStart(harness)
     }
 
-    /// The face of a session an agent's approved open request starts. The terminal whatever the switch says, today
-    /// (D-69 (1) says every start follows the switch; C5b changes this one answer).
+    /// The face of a session an agent's approved open request starts: an approved opening follows the switch like every
+    /// other start (D-69 (1)), so it is a start's answer.
     public func faceOfApprovedOpening(_ harness: HarnessCapabilities) -> SessionLiveFace {
-        .terminal
+        faceOfStart(harness)
     }
 
     /// Whether a stopped session of a harness shows its structured face (the live chat, composer included) rather than the

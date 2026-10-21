@@ -24,16 +24,18 @@ extension SessionRuntime {
     /// (`withNewStart`, `startClaude`): one start per project, the first message's size, the toolchain and profile
     /// before the card, the draft's branch or worktree right before it (undone when the start fails), the choices
     /// recorded with it. `sessionID` is chosen by the caller so its driver exists before the first byte arrives. The
-    /// draft's first message is not an argument here: the driver sends it over stdin once the CLI is ready.
+    /// draft's first message is not an argument here: the driver sends it over stdin once the CLI is ready. An
+    /// `opening` (an agent's approved request, C5b) is the other source of a first message and is sent the same way;
+    /// it gives the card its title and `openedBy`. Never both an opening and a draft (`withNewStart` refuses that).
     public func startChatConversation(
         projectID: UUID?, sessionID: UUID = UUID(), draft: NewSessionLaunch? = nil,
-        outputSink: any PipeOutputSink
+        opening: SessionOpening? = nil, outputSink: any PipeOutputSink
     ) async throws -> RuntimePipeLaunch {
-        try await withNewStart(provider: .claude, projectID: projectID, opening: nil, draft: draft) {
+        try await withNewStart(provider: .claude, projectID: projectID, opening: opening, draft: draft) {
             directory, toolchain in
             try await self.startClaude(
                 sessionID: sessionID, projectID: projectID, directory: directory, toolchain: toolchain,
-                opening: nil, draft: draft, face: .chat
+                opening: opening, draft: draft, face: .chat
             ) { profile in
                 try await self.launchChatClaude(sessionID: sessionID, toolchain: toolchain, profile: profile,
                                                 outputSink: outputSink, isResume: false)

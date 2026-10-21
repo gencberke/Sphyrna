@@ -30,6 +30,30 @@ extension ChatSessionDriver {
         }
     }
 
+    /// Starts this (new) session in the Chat face as an agent's approved open request (C5b, D-40): the runtime approves
+    /// the request with a Chat start (title, `openedBy`), and the request's message goes out over stdin once Ready, as a
+    /// draft's does. `onReady` runs once `initialize` succeeded, before the message is sent. A start that fails before
+    /// that throws; the request was then failed (a start that threw) or answered (the child was spawned), and the caller
+    /// lets the host `forget` the driver. A message that cannot go out afterwards goes to this session's own draft.
+    @discardableResult
+    public func startOpened(requestID: UUID, onReady: (@Sendable () async -> Void)? = nil) async throws -> ChatSendReceipt? {
+        let id = sessionID
+        let message = OpenedMessage()
+        try await launch(isResume: false) { sink in
+            let opened = try await self.runtime.approveOpenRequestInChat(requestID, sessionID: id, outputSink: sink)
+            message.text = opened.firstMessage
+            return opened.launch
+        }
+        await onReady?()
+        guard let text = message.text, !text.isEmpty else { return nil }
+        do {
+            return try await send(text)
+        } catch {
+            keepForUser([ChatReturnedDraft(messageID: "", text: text, attachments: [])])
+            throw error
+        }
+    }
+
     /// Resumes the stopped session in the Chat face (`--resume`, with the mode, model and effort the catalog holds).
     public func resume() async throws {
         let id = sessionID
@@ -181,6 +205,11 @@ extension ChatSessionDriver {
             Task { try? await self.stopAfterFailure() }
             throw ChatDriverError.couldNotStart("no answer to initialize")
         }
+    }
+
+    /// The message of an approved opening, handed from the start's closure to the send after Ready.
+    private final class OpenedMessage: @unchecked Sendable {
+        var text: String?
     }
 
     private func stopAfterFailure() async throws {
