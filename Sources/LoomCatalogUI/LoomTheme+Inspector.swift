@@ -57,11 +57,6 @@ extension LoomTheme {
         static let detailHeaderGap: CGFloat = 8
         static let backGap: CGFloat = 4
         static let backGlyph = Font.system(size: 11, weight: .semibold)
-
-        /// The header toggle: one 24 pt segment in a group of its own, 2 pt before the control group. The
-        /// header row keeps its title at 100 pt down to the narrowest detail pane, so the toggle takes 26 pt.
-        static let toggleWidth: CGFloat = 24
-        static let toggleGap: CGFloat = 2
     }
 }
 

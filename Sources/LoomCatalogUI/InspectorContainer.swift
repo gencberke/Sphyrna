@@ -163,28 +163,6 @@ private extension Int {
     var nonZero: Int? { self == 0 ? nil : self }
 }
 
-/// The header's inspector toggle: one segment in a group of its own, beside the control group. It does what
-/// View > Toggle Inspector does, and shows whether the session's inspector is open.
-struct InspectorToggleButton: View {
-    let model: CatalogModel
-    let sessionID: UUID
-
-    var body: some View {
-        let open = model.inspector.isOpen(for: sessionID)
-        Button { model.setInspector(open: !open, for: sessionID) } label: {
-            Image(systemName: "sidebar.right").frame(width: LoomTheme.Inspector.toggleWidth)
-        }
-        .buttonStyle(HeaderSegmentStyle(secondaryUntilHovered: !open)).focusEffectDisabled()
-        .frame(height: LoomTheme.Header.groupHeight)
-        .background(open ? LoomTheme.Surface.controlHover : LoomTheme.Header.group)
-        .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
-        .fixedSize()
-        .help(open ? "Hide Inspector (⌥⌘B)" : "Show Inspector (⌥⌘B)")
-        .accessibilityLabel(open ? "Hide inspector" : "Show inspector")
-        .accessibilityIdentifier("inspector-toggle")
-    }
-}
-
 /// Where the inspector of the selected session goes for a detail pane this wide (pure, so a test reads it).
 enum InspectorPlacement: Equatable {
     /// Closed, or no session selected.
