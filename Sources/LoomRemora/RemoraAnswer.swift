@@ -17,6 +17,10 @@ public struct RemoraAnswer: Equatable, Sendable {
     public var chips: [RemoraChip]
     public var drafts: [RemoraDraft]
     public var proposedFacts: [String]
+    /// A brief's rewritten project notes and its one-line summary of the day (empty and nil for a question or a block
+    /// without them). `RemoraMemory.apply` is what uses them.
+    public var notes: [RemoraNoteUpdate] = []
+    public var summary: String?
     public var block: BlockState
     /// The model id from `system/init` (`claude-sonnet-5-5`).
     public var model: String?

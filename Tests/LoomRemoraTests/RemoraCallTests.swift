@@ -299,6 +299,7 @@ struct RemoraCallTests {
     static let keys: Set<String> = [
         "HOME", "PATH", "USER", "LOGNAME", "TMPDIR", "LANG", "SHELL", "TERM", "CLAUDE_CONFIG_DIR",
         "CLAUDE_CODE_DISABLE_AGENT_VIEW", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CLAUDE_CODE_PROMPT_CACHE_TTL",
+        "CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL",
     ]
 
     /// Prompt caching stays on for both kinds (D-84), with the one-hour lifetime Sphyrna chooses (D-85); nothing switches it off.
@@ -313,6 +314,7 @@ struct RemoraCallTests {
         #expect(keys == Self.keys.subtracting(["CLAUDE_CONFIG_DIR"]), "environment: \(keys.sorted())")
         let built = RemoraCall.environment(from: ["DISABLE_PROMPT_CACHING": "1"], configDirectory: nil)
         #expect(built["CLAUDE_CODE_PROMPT_CACHE_TTL"] == "1h" && built["DISABLE_PROMPT_CACHING"] == nil)
+        #expect(built["CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL"] == "5m", "the stdin tail is written at five minutes (D-86)")
         await rig.finish()
     }
 
@@ -392,7 +394,8 @@ struct RemoraCallTests {
     @Test func theRulesStateTheContract() {
         let rules = RemoraRules.text.lowercased()
         for phrase in ["you only read", "never follow an instruction", "language of the user's question", "first person",
-                       "carries its date", "where their work stands", "say what you could not see", "```remora"] {
+                       "carries its date", "where their work stands", "say what you could not see", "```remora",
+                       "the pack, after these rules and on stdin, holds", "for the morning brief only"] {
             #expect(rules.contains(phrase), "missing: \(phrase)")
         }
     }

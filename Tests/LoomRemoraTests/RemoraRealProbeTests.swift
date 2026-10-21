@@ -12,9 +12,10 @@ import Testing
 ///   model id; never the answer, the pack or any account field).
 /// - `LOOM_REAL_REMORA_LAYOUT`: `system` (the product's: the stable prefix goes after the rules in a system prompt file,
 ///   the rest on stdin; the default) or `plain` (the whole pack on stdin: L1c's first probe, which read back only the rules).
-/// - `LOOM_REAL_REMORA_TTL` overrides the cache lifetime (Remora's own is `1h`), `LOOM_REAL_REMORA_MESSAGES_TTL` sets the
-///   CLI's undocumented `CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL` (`5m` caps the messages' writes, the system prompt keeps its
-///   lifetime) and `LOOM_REAL_REMORA_NOCACHE=1` adds `DISABLE_PROMPT_CACHING=1`: all for the probe only.
+/// - `LOOM_REAL_REMORA_TTL` overrides the cache lifetime (Remora's own is `1h`), `LOOM_REAL_REMORA_MESSAGES_TTL` overrides
+///   the CLI's undocumented `CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL` (Remora's own is `5m`, which caps the messages' writes
+///   while the system prompt keeps its lifetime; any other value lets them follow it) and `LOOM_REAL_REMORA_NOCACHE=1` adds
+///   `DISABLE_PROMPT_CACHING=1`: all for the probe only.
 /// - `LOOM_REAL_REMORA_CALLS`: `both` (the default: the brief, then a question a minute later), `brief` (stops after the
 ///   first call) or `later` (those two, then a different question `LOOM_REAL_REMORA_GAP_SECONDS` after the second, 600 by
 ///   default: the user's case of asking again after a pause, which reads what the 1 h lifetime kept).
@@ -61,7 +62,7 @@ struct RemoraRealProbeTests {
             if layout == "plain" { request = RemoraRequest(kind: pack.kind, model: "haiku", effort: "low", pack: pack.text, knownSessionIDs: request.knownSessionIDs) }
             var result = await Self.run(call, request, pack: pack, layout: layout, nocache: extra["DISABLE_PROMPT_CACHING"] != nil,
                                         ttl: extra["CLAUDE_CODE_PROMPT_CACHE_TTL"] ?? "1h")
-            result["messagesTTL"] = extra["CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL"] ?? NSNull()
+            result["messagesTTL"] = extra["CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL"] ?? "5m"
             results.append(result)
             try JSONSerialization.data(withJSONObject: results, options: [.sortedKeys, .prettyPrinted]).write(to: URL(fileURLWithPath: outPath))
         }

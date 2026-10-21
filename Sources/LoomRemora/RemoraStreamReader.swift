@@ -93,6 +93,8 @@ struct RemoraStreamReader {
                 answer.chips = block.chips
                 answer.drafts = block.drafts
                 answer.proposedFacts = block.facts
+                answer.notes = block.notes
+                answer.summary = block.summary
             } else {
                 answer.block = .invalid
             }

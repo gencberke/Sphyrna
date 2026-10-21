@@ -12,14 +12,31 @@ public struct RemoraDraft: Equatable, Sendable {
     public var text: String
 }
 
+/// A brief's rewrite of one project's note, as the block carries it: the ids are strings the pack wrote (`apply` checks
+/// them against the pack).
+public struct RemoraNoteUpdate: Equatable, Sendable {
+    public struct Item: Equatable, Sendable {
+        public var text: String
+        public var sessions: [String]
+    }
+
+    public var project: String
+    public var items: [Item]
+}
+
 /// What the closing fenced block of an answer holds, validated: `` ```remora `` and a JSON object
 ///
 ///     {"cited":["<id>"],"chips":[{"session":"<id>","why":"..."}],"drafts":[{"session":"<id>","text":"..."}],"facts":["..."]}
 ///
-/// closed by a line of three backticks. Every field is optional. Session ids that are not in the pack's set are dropped
+/// closed by a line of three backticks. A brief's block may also carry `"notes":[{"project":"<id>","items":[{"text":"…",
+/// "sessions":["<id>"]}]}]` and `"summary":"<one line>"`. Every field is optional. Session ids that are not in the pack's set are dropped
 /// (with the chip or draft that carries them), repeated ids and empty strings go, and sizes are bounded (see `Limits`).
 /// A block that is not one JSON object, has a field of the wrong type or is over `Limits.blockBytes` is invalid as a
-/// whole: the answer keeps its text and loses only these fields.
+/// whole: the answer keeps its text and loses only these fields. `notes` and `summary` are the exception to that: a
+/// `notes` of the wrong type, or an entry that is not a project with items, costs only the notes (or that entry); the
+/// rest of the block stands. A note's project must be a UUID and its sessions UUIDs (no more is known here: `apply` checks
+/// them against the pack, and a session the project's earlier note cited may be one the pack does not name); an item
+/// with no session left is dropped, because nothing could forget it.
 public struct RemoraBlock: Equatable, Sendable {
     public enum Limits {
         public static let blockBytes = 16 * 1024
@@ -30,12 +47,19 @@ public struct RemoraBlock: Equatable, Sendable {
         public static let whyCharacters = 140
         public static let draftCharacters = 600
         public static let factCharacters = 240
+        public static let noteProjects = 6
+        public static let noteItems = 8
+        public static let noteItemCharacters = RemoraProjectNote.Limits.itemCharacters
+        public static let noteItemSessions = 4
+        public static let summaryCharacters = 240
     }
 
     public var cited: [String] = []
     public var chips: [RemoraChip] = []
     public var drafts: [RemoraDraft] = []
     public var facts: [String] = []
+    public var notes: [RemoraNoteUpdate] = []
+    public var summary: String?
 
     /// `blockText` is everything from the opening fence on. Nil when the block is invalid.
     static func parse(_ blockText: String, knownSessionIDs known: Set<String>) -> RemoraBlock? {
@@ -74,7 +98,30 @@ public struct RemoraBlock: Equatable, Sendable {
             let text = clean(fact, Limits.factCharacters)
             if !text.isEmpty, !block.facts.contains(text) { block.facts.append(text) }
         }
+        block.notes = parseNotes(object["notes"])
+        block.summary = (object["summary"] as? String).map { clean($0, Limits.summaryCharacters) }.flatMap { $0.isEmpty ? nil : $0 }
         return block
+    }
+
+    private static func parseNotes(_ value: Any?) -> [RemoraNoteUpdate] {
+        guard let entries = value as? [Any] else { return [] }
+        var seen = Set<String>()
+        var notes: [RemoraNoteUpdate] = []
+        for case let entry as [String: Any] in entries {
+            guard notes.count < Limits.noteProjects, let raw = entry["project"] as? String, let project = UUID(uuidString: raw),
+                  seen.insert(project.uuidString).inserted, let rawItems = entry["items"] as? [Any] else { continue }
+            var items: [RemoraNoteUpdate.Item] = []
+            for case let item as [String: Any] in rawItems where items.count < Limits.noteItems {
+                let text = clean(item["text"] as? String, Limits.noteItemCharacters)
+                var ids: [String] = []
+                for case let id as String in (item["sessions"] as? [Any]) ?? [] where ids.count < Limits.noteItemSessions {
+                    if let uuid = UUID(uuidString: id), !ids.contains(uuid.uuidString) { ids.append(uuid.uuidString) }
+                }
+                if !text.isEmpty, !ids.isEmpty { items.append(RemoraNoteUpdate.Item(text: text, sessions: ids)) }
+            }
+            notes.append(RemoraNoteUpdate(project: project.uuidString, items: items))
+        }
+        return notes
     }
 
     /// The JSON between the opening fence line and the closing one (or the end of the text, for a block the model never

@@ -88,9 +88,14 @@ public struct RemoraCall: Sendable {
     /// plan, chooses its lifetime. Claude Code 2.1.242 and later reads it for the main conversation, `-p` runs included.
     /// An hour, because the user asks through the day with gaps over five minutes, and because on usage credits the
     /// default drops to five minutes (an hour's write costs 2x the input price, a five-minute write 1.25x).
+    /// `CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL=5m` keeps the hour for the system prompt alone (D-86): the stdin tail, which
+    /// is different on every call, is written at five minutes. The key is undocumented; Claude Code 2.1.300's binary honours
+    /// it in its TTL function (`function DX(e){return a.CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL==="5m"?"5m":e}`), and
+    /// `RemoraUsage` counts the calls in which a later version ignores it (its drift count).
     public static let environmentKeys: Set<String> = [
         "HOME", "PATH", "USER", "LOGNAME", "TMPDIR", "LANG", "SHELL", "TERM", "CLAUDE_CONFIG_DIR",
         "CLAUDE_CODE_DISABLE_AGENT_VIEW", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CLAUDE_CODE_PROMPT_CACHE_TTL",
+        "CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL",
     ]
 
     /// `claude`'s arguments for a model and an effort. No `--input-format` (the pack is plain text on stdin), no plugin
@@ -120,6 +125,12 @@ public struct RemoraCall: Sendable {
         return file
     }
 
+    /// The system prompt's estimated size (characters / 4): the rules and the request's suffix. What the drift check
+    /// compares the one-hour cache write with.
+    static func systemPromptTokens(for request: RemoraRequest) -> Int {
+        RemoraPack.estimate(RemoraRules.text + request.systemSuffix)
+    }
+
     /// The child's environment out of the one sessions run with (`source`: the resolved toolchain's). Missing basics
     /// get a plain default so the login can be found; nothing else of `source` is passed on.
     public static func environment(from source: [String: String], configDirectory: String?) -> [String: String] {
@@ -137,6 +148,7 @@ public struct RemoraCall: Sendable {
         result["CLAUDE_CODE_DISABLE_AGENT_VIEW"] = "1"
         result["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
         result["CLAUDE_CODE_PROMPT_CACHE_TTL"] = "1h"
+        result["CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL"] = "5m"
         return result
     }
 
@@ -229,6 +241,7 @@ public struct RemoraCall: Sendable {
             }
         }
         defer { if let systemFile { try? FileManager.default.removeItem(at: systemFile) } }
+        let systemTokens = Self.systemPromptTokens(for: request)
         var reader = RemoraStreamReader(knownSessionIDs: request.knownSessionIDs)
         var delivered = false
         usage?.recordStart(request.kind)
@@ -242,12 +255,12 @@ public struct RemoraCall: Sendable {
             delivered = true
             switch outcome {
             case let .answer(answer):
-                usage?.recordResult(tokens: answer.usage, costUSD: answer.costUSD)
+                usage?.recordResult(tokens: answer.usage, costUSD: answer.costUSD, systemPromptTokens: systemTokens)
                 var answer = answer
                 answer.duration = clock.now - began
                 continuation.yield(.finished(answer))
             case let .failure(failed):
-                usage?.recordResult(tokens: failed.usage ?? RemoraTokenUsage(), costUSD: reader.costUSD)
+                usage?.recordResult(tokens: failed.usage ?? RemoraTokenUsage(), costUSD: reader.costUSD, systemPromptTokens: systemTokens)
                 continuation.finish(throwing: failed)
             }
         }
