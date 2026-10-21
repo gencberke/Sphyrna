@@ -10,12 +10,21 @@ struct ChatProseView: View {
     let context: ChatRowContext
     @State private var hovering = false
 
+    /// The space above and below the blocks. The measurer adds them to the blocks' heights (`ChatRowMeasurer`).
+    static let topInset: CGFloat = 10
+    static let bottomInset: CGFloat = 4
+
     var body: some View {
         let _ = ChatRenderProbe.proseBody(in: context)
         if case let .assistantText(text) = entry.body {
             VStack(alignment: .leading, spacing: 0) {
-                ChatMarkdownView(blocks: ChatContent.blocks(id: entry.id, text: text.text, isStreaming: text.isStreaming, in: context),
-                                 flags: flags, rowID: entry.id, isStreaming: text.isStreaming, context: context)
+                if text.isStreaming {
+                    ChatStreamingMarkdownView(parts: ChatContent.streamingBlocks(id: entry.id, text: text.text, in: context),
+                                              flags: flags, rowID: entry.id, context: context)
+                } else {
+                    ChatMarkdownView(blocks: ChatContent.blocks(id: entry.id, text: text.text, isStreaming: false, in: context),
+                                     flags: flags, rowID: entry.id, isStreaming: false, context: context)
+                }
                 if settled {
                     HStack(spacing: 6) {
                         if let notes = context.sideNotes {
@@ -32,10 +41,68 @@ struct ChatProseView: View {
                     .padding(.leading, -6)
                 }
             }
-            .padding(.top, 10).padding(.bottom, 4)
+            .padding(.top, Self.topInset).padding(.bottom, Self.bottomInset)
             .frame(maxWidth: .infinity, alignment: .leading)
             .onHover { if settled { hovering = $0 } }
         }
+    }
+}
+
+/// A streaming message: the settled head as one view that is drawn again only when the head or its wrap flags change, and the
+/// open tail, which is drawn every time. Laid out as one list of blocks: the head, the same 12 pt, the tail, and every
+/// block keeps the index it has in the whole message (the wrap flag and Copy use it).
+struct ChatStreamingMarkdownView: View {
+    let parts: ChatContent.StreamingBlocks
+    let flags: Set<String>
+    let rowID: String
+    let context: ChatRowContext
+
+    var body: some View {
+        if parts.isComposable {
+            VStack(alignment: .leading, spacing: LoomTheme.Chat.blockSpacing) {
+                if !parts.head.isEmpty {
+                    ChatSettledBlocksView(blocks: parts.head, token: parts.headToken,
+                                          wrapped: ChatSettledBlocksView.wrappedIndexes(in: flags, below: parts.head.count),
+                                          flags: flags, rowID: rowID, context: context)
+                        .equatable()
+                }
+                if !parts.tail.isEmpty {
+                    ChatMarkdownView(blocks: parts.tail, flags: flags, rowID: rowID, isStreaming: true, context: context,
+                                     firstIndex: parts.head.count)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            ChatMarkdownView(blocks: parts.blocks, flags: flags, rowID: rowID, isStreaming: true, context: context)
+        }
+    }
+}
+
+/// The settled blocks of a streaming message. Two of them are equal when they are the same head (the token: row, block count,
+/// hash of the text) with the same wrap flags, so a flush that only grows the tail does not evaluate them again. What else
+/// changes how a block looks does not come through here: the width is layout, and the appearance and the tone are read by the
+/// views inside from the environment and `ThemeState`, which redraw them on their own.
+struct ChatSettledBlocksView: View, Equatable {
+    let blocks: [MarkdownBlock]
+    let token: ChatContent.HeadToken
+    /// The top-level indexes below the head's count whose code block wraps.
+    let wrapped: [Int]
+    /// Not compared: only the wrap flags below the head's count are read from it.
+    let flags: Set<String>
+    let rowID: String
+    let context: ChatRowContext
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.token == rhs.token && lhs.wrapped == rhs.wrapped }
+
+    static func wrappedIndexes(in flags: Set<String>, below count: Int) -> [Int] {
+        flags.compactMap { flag in
+            guard flag.hasPrefix("wrap:"), let index = Int(flag.dropFirst(5)), index < count else { return nil }
+            return index
+        }.sorted()
+    }
+
+    var body: some View {
+        ChatMarkdownView(blocks: blocks, flags: flags, rowID: rowID, isStreaming: false, context: context)
     }
 }
 
@@ -48,15 +115,42 @@ struct ChatMarkdownView: View {
     let context: ChatRowContext
     /// The top-level block this list belongs to, for the wrap flag of a code block inside a list or a quote.
     var topIndex: Int?
+    /// The index of `blocks[0]` among the message's top-level blocks: a list that is the open tail of a streaming message
+    /// starts after the settled head, and its blocks keep the indexes they have in the whole message.
+    var firstIndex = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: LoomTheme.Chat.blockSpacing) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
-                blockView(block, index: topIndex ?? index, isLast: index == blocks.count - 1)
+            ForEach(Array(blocks.enumerated()), id: \.offset) { position, block in
+                // The probe counts where a top-level block's view is built (once per evaluation of this list) and where its body runs.
+                let _ = topIndex == nil ? ChatRenderProbe.blockBuilt(index: firstIndex + position, block: block, in: context) : ()
+                ChatMarkdownBlockView(block: block, index: topIndex ?? (firstIndex + position), isLast: position == blocks.count - 1,
+                                      flags: flags, rowID: rowID, isStreaming: isStreaming, context: context,
+                                      isTopLevel: topIndex == nil)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .environment(\.openURL, OpenURLAction { url in ChatContent.isFollowable(url) ? .systemAction : .discarded })
+    }
+}
+
+/// One block of a message: the unit the stream's settled head keeps and the measurer measures.
+struct ChatMarkdownBlockView: View {
+    let block: MarkdownBlock
+    /// The index the block's flags use: its place among the message's top-level blocks, or the one of the top-level block it
+    /// sits in.
+    let index: Int
+    let isLast: Bool
+    let flags: Set<String>
+    let rowID: String
+    let isStreaming: Bool
+    let context: ChatRowContext
+    /// A block of the message's own list, not one inside a list item or a quote: the render probe counts its evaluations.
+    var isTopLevel = false
+
+    var body: some View {
+        let _ = isTopLevel ? ChatRenderProbe.blockBody(index: index, block: block, in: context) : ()
+        blockView(block, index: index, isLast: isLast)
     }
 
     @ViewBuilder private func blockView(_ block: MarkdownBlock, index: Int, isLast: Bool) -> some View {

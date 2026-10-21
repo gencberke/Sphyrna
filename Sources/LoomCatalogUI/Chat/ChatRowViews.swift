@@ -14,10 +14,10 @@ struct ChatRowView: View {
     var body: some View {
         content
             .environment(\.chatMeasuring, measuring)
-            .padding(.leading, row.foldGuide == nil ? 0 : LoomTheme.Chat.Tree.foldIndent)
+            .padding(.leading, ChatRowGeometry.foldInset(row.foldGuide))
             .chatTree(row.foldGuide.map { .fold($0) })
             .padding(.horizontal, context.columnPadding)
-            .frame(maxWidth: LoomTheme.Chat.column)
+            .frame(maxWidth: ChatRowGeometry.column)
             .frame(maxWidth: .infinity)
     }
 
@@ -64,6 +64,23 @@ struct ChatRowView: View {
                 .font(LoomTheme.Chat.toolLabel).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .frame(maxWidth: .infinity, minHeight: 120)
         }
+    }
+}
+
+/// The widths `ChatRowView` lays a row out with, in one place: the measurer works out a prose row's content width from the
+/// same numbers the view pads and frames it with (`ChatStreamMeasureTests` fails when the two drift apart).
+enum ChatRowGeometry {
+    /// The widest a row is.
+    static let column = LoomTheme.Chat.column
+
+    /// The space a row hanging on an open turn fold's guide leaves for it.
+    static func foldInset(_ guide: ChatTreePosition?) -> CGFloat {
+        guide == nil ? 0 : LoomTheme.Chat.Tree.foldIndent
+    }
+
+    /// The width a row's content is laid out at, in a table `rowWidth` wide.
+    static func contentWidth(rowWidth: CGFloat, columnPadding: CGFloat, foldGuide: ChatTreePosition?) -> CGFloat {
+        max(0, min(rowWidth, column) - 2 * columnPadding - foldInset(foldGuide))
     }
 }
 

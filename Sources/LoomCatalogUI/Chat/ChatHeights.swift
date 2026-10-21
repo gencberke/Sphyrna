@@ -114,11 +114,32 @@ enum ChatRowEstimate {
 
 /// Measures a row exactly: the row's SwiftUI view, laid out at the table's width. One hosting controller is reused for
 /// every measurement. It runs synchronously on the main actor and only for rows that are about to be drawn.
+///
+/// A prose row whose message is still streaming is composed instead of laid out whole (C7): the row's insets, the heights of the
+/// settled head's blocks (each measured once, kept under the row, the block's index, its content, the width and its wrap flag)
+/// and the open tail, which is measured with a hosting controller, plus the 12 pt between them. The unceiled sizes are summed
+/// and the total is ceiled once. A settled row, every other kind of row, and a message the composition does not cover are
+/// laid out whole, as before; `ChatStreamMeasureTests` pins the composition against the whole layout.
 @MainActor
 final class ChatRowMeasurer {
     private let host: NSHostingController<ChatRowView>
+    private var markdownHost: NSHostingController<ChatMarkdownView>?
     private let context: ChatRowContext
     private(set) var measurements = 0
+
+    /// What a block's height depends on besides the row (whose id is the outer key): its place, its content, the width and
+    /// whether its code wraps.
+    private struct BlockKey: Hashable {
+        let index: Int
+        let hash: Int
+        let width: Int
+        let wrapped: Bool
+    }
+
+    private var blockHeights: [String: [BlockKey: CGFloat]] = [:]
+    /// Rows whose blocks are kept; a stream has one or two, and a block's height at a width the window left is dead weight.
+    private static let rowsKept = 4
+    private static let blocksKept = 4_096
 
     init(context: ChatRowContext) {
         self.context = context
@@ -130,10 +151,66 @@ final class ChatRowMeasurer {
         measurements += 1
         ChatRenderProbe.measured(row.id, in: context)
         let began = ChatRenderProbe.owns(context) ? ContinuousClock.now : nil
-        host.rootView = ChatRowView(row: row, context: context, measuring: true)
-        let size = host.sizeThatFits(in: CGSize(width: width, height: 100_000))
+        let height: CGFloat
+        if let composed = composedHeight(of: row, width: width) {
+            height = composed
+        } else {
+            if ChatRenderProbe.owns(context), case let .prose(entry, _) = row.kind, case let .assistantText(text) = entry.body {
+                ChatRenderProbe.measuredText(characters: text.text.utf8.count,
+                                             blocks: ChatContent.blocks(id: entry.id, text: text.text, isStreaming: text.isStreaming).count,
+                                             in: context)
+            }
+            host.rootView = ChatRowView(row: row, context: context, measuring: true)
+            height = host.sizeThatFits(in: CGSize(width: width, height: 100_000)).height
+        }
         if let began { ChatRenderProbe.measuredFor(row.id, ContinuousClock.now - began) }
-        return max(1, ceil(size.height))
+        return max(1, ceil(height))
+    }
+
+    /// The unceiled height of a streaming prose row, composed from its parts; nil for a row that is measured whole.
+    func composedHeight(of row: ChatRow, width: CGFloat) -> CGFloat? {
+        guard case let .prose(entry, settled) = row.kind, !settled, case let .assistantText(text) = entry.body, text.isStreaming else {
+            return nil
+        }
+        let parts = ChatContent.streamingBlocks(id: entry.id, text: text.text, in: context)
+        guard parts.isComposable else { return nil }
+        let content = ChatRowGeometry.contentWidth(rowWidth: width, columnPadding: context.columnPadding, foldGuide: row.foldGuide)
+        var total = ChatProseView.topInset + ChatProseView.bottomInset
+        var count = 0
+        for (index, block) in parts.head.enumerated() {
+            total += settledHeight(of: block, hash: parts.headHashes[index], index: index, row: row, width: content)
+            count += 1
+        }
+        if !parts.tail.isEmpty {
+            ChatRenderProbe.measuredText(characters: parts.tailCharacters, blocks: parts.tail.count, in: context)
+            total += markdownHeight(ChatMarkdownView(blocks: parts.tail, flags: row.flags, rowID: row.id, isStreaming: true,
+                                                     context: context, firstIndex: parts.head.count), width: content)
+            count += 1
+        }
+        return total + LoomTheme.Chat.blockSpacing * CGFloat(max(0, count - 1))
+    }
+
+    private func settledHeight(of block: MarkdownBlock, hash: Int, index: Int, row: ChatRow, width: CGFloat) -> CGFloat {
+        let key = BlockKey(index: index, hash: hash, width: Int((width * 100).rounded()), wrapped: row.flags.contains("wrap:\(index)"))
+        if let known = blockHeights[row.id]?[key] { return known }
+        ChatRenderProbe.measuredText(characters: ChatContent.characters(of: block), blocks: 1, in: context)
+        let height = markdownHeight(ChatMarkdownView(blocks: [block], flags: row.flags, rowID: row.id, isStreaming: false,
+                                                     context: context, firstIndex: index), width: width)
+        if blockHeights[row.id] == nil, blockHeights.count >= Self.rowsKept { blockHeights.removeAll() }
+        if (blockHeights[row.id]?.count ?? 0) >= Self.blocksKept { blockHeights[row.id] = nil }
+        blockHeights[row.id, default: [:]][key] = height
+        return height
+    }
+
+    private func markdownHeight(_ view: ChatMarkdownView, width: CGFloat) -> CGFloat {
+        let host = markdownHost ?? {
+            let host = NSHostingController(rootView: view)
+            host.sizingOptions = []
+            markdownHost = host
+            return host
+        }()
+        host.rootView = view
+        return host.sizeThatFits(in: CGSize(width: width, height: 100_000)).height
     }
 }
 
@@ -155,6 +232,15 @@ enum ChatRenderProbe {
     private(set) static var markdownParses = 0
     private(set) static var markdownCharacters = 0
     private(set) static var inlineParses = 0
+    /// What the measuring path (`ChatRowMeasurer`) laid out since `watch(scope:)`: the characters and top-level blocks of the
+    /// prose it handed to a hosting controller. A whole-row measure of a growing answer counts the whole answer; the composed
+    /// measure of a streaming one counts the open tail and the blocks whose height it had not cached.
+    private(set) static var measuredCharacters = 0
+    private(set) static var measuredBlocks = 0
+    /// By `"<index>#<content hash>"`, the block as it was drawn: how often the view of a top-level markdown block was built
+    /// (an evaluation of the list that holds it) and how often its own body ran.
+    private(set) static var blockBuilds: [String: Int] = [:]
+    private(set) static var blockBodies: [String: Int] = [:]
 
     /// Starts counting the views of `scope` (the `probeScope` of their context) from zero. Replaces what was watched; two
     /// tests never watch together (`.renderProbe` in the tests).
@@ -176,6 +262,10 @@ enum ChatRenderProbe {
         markdownParses = 0
         markdownCharacters = 0
         inlineParses = 0
+        measuredCharacters = 0
+        measuredBlocks = 0
+        blockBuilds = [:]
+        blockBodies = [:]
         measureTime = [:]
     }
 
@@ -200,6 +290,22 @@ enum ChatRenderProbe {
         guard owns(context) else { return }
         markdownParses += 1
         markdownCharacters += characters
+    }
+
+    static func measuredText(characters: Int, blocks: Int, in context: ChatRowContext?) {
+        guard owns(context) else { return }
+        measuredCharacters += characters
+        measuredBlocks += blocks
+    }
+
+    static func blockBuilt(index: Int, block: MarkdownBlock, in context: ChatRowContext?) {
+        guard owns(context) else { return }
+        blockBuilds["\(index)#\(block.hashValue)", default: 0] += 1
+    }
+
+    static func blockBody(index: Int, block: MarkdownBlock, in context: ChatRowContext?) {
+        guard owns(context) else { return }
+        blockBodies["\(index)#\(block.hashValue)", default: 0] += 1
     }
 
     static func inlineParsed(in context: ChatRowContext?) {

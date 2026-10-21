@@ -55,6 +55,12 @@ extension ChatHosted {
             var streamMs: [Double] = []
             var perRow: [String] = []
             var rowReloads = 0
+            /// The characters and blocks the measuring path laid out between one rebuild and the next, in order (C7).
+            var measuredCharactersPerRebuild: [Int] = []
+            var measuredBlocksPerRebuild: [Int] = []
+            /// How often each top-level markdown block's view was built, and its body evaluated, over the whole stream, by `"<index>#<content hash>"` (C7).
+            var blockBuilds: [String: Int] = [:]
+            var blockBodies: [String: Int] = [:]
         }
 
         /// A live turn that streams `characters` of text in deltas of `piece` characters, a frame apart, into a hosted stream.
@@ -84,6 +90,7 @@ extension ChatHosted {
             var run = Run()
             let began = ContinuousClock.now
             var position = 0
+            var lastCharacters = 0, lastBlocks = 0
             while position < text.count {
                 let end = min(position + piece, text.count)
                 let before = presentation.rebuilds
@@ -92,6 +99,12 @@ extension ChatHosted {
                 position = end
                 run.deltas += 1
                 await settle(stream)
+                if presentation.rebuilds > before {
+                    run.measuredCharactersPerRebuild.append(ChatRenderProbe.measuredCharacters - lastCharacters)
+                    run.measuredBlocksPerRebuild.append(ChatRenderProbe.measuredBlocks - lastBlocks)
+                    lastCharacters = ChatRenderProbe.measuredCharacters
+                    lastBlocks = ChatRenderProbe.measuredBlocks
+                }
             }
             if wait > .zero { try? await Task.sleep(for: wait) }
             await stream.settle(2)
@@ -103,6 +116,8 @@ extension ChatHosted {
             run.parses = ChatRenderProbe.markdownParses
             run.parsedCharacters = ChatRenderProbe.markdownCharacters
             run.inlineParses = ChatRenderProbe.inlineParses
+            run.blockBuilds = ChatRenderProbe.blockBuilds
+            run.blockBodies = ChatRenderProbe.blockBodies
             run.perRow = ChatRenderProbe.configured.map { String(format: "%@: configured %d, measured %d in %.0f ms", $0.key, $0.value, ChatRenderProbe.measuredRows[$0.key] ?? 0, ChatRenderProbe.measureTime[$0.key] ?? 0) }.sorted()
             run.rowReloads = stream.controller.table.rowReloads - reloadsBefore
             run.rebuilds = presentation.rebuilds - rebuildsBefore
