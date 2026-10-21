@@ -117,6 +117,12 @@ public final class RemoraHost {
                            onText: @escaping @MainActor (String) -> Void = { _ in }) async -> RemoraOutcome {
         guard settings.isOn else { return .notDue(.skip(.remoraOff)) }
         guard running == nil else { return .busy }
+        // The cheap rules of `RemoraSchedule.decide`, in its order, before the catalog is read: after the day's brief that read
+        // would be wasted on every Home view. Each answer is the one `decide` gives.
+        if settings.briefMode != .automatic { return .notDue(.skip(.whenIAsk)) }
+        if let last = loadLastBrief(), last >= RemoraSchedule.dayStart(containing: clock(), in: timeZone) {
+            return .notDue(.skip(.alreadyBriefedToday))
+        }
         let newest = (try? await readMaps())?.newestActivity(excluding: settings.excludedProjects)
         let decision = RemoraSchedule.decide(RemoraScheduleInput(
             remoraOn: settings.isOn, briefMode: settings.briefMode, now: clock(), timeZone: timeZone,
@@ -184,6 +190,8 @@ public final class RemoraHost {
                 if Task.isCancelled { return .cancelled }
                 return .failed(RemoraFailure(kind: .endedWithoutAnswer, detail: "The call ended without a result", usage: nil))
             }
+            // Off or a new exclusion cancelled the call after its stream ended: nothing is applied (`update(settings:)`).
+            try Task.checkCancellation()
             var facts: [String]
             var journaled = true
             do {
@@ -301,17 +309,29 @@ public final class RemoraHost {
 
     // MARK: Settings
 
-    /// The settings changed (the app persists them). A project that became excluded loses its note now; a new `Remora.md` path
-    /// makes the host use that file from now on (the memory stays, so its counters and the forgetter's reach are unchanged).
+    /// The settings changed (the app persists them). Remora turned off, or an excluded set that grew, stops the call in flight
+    /// first: it is cancelled (`.cancelled`, nothing applied), and this waits for it to end, so a call already inside the
+    /// memory's `apply` has written before anything is deleted. Only then does a project that became excluded lose its note.
+    /// A new `Remora.md` path makes the host use that file from now on (the memory stays, so its counters and the forgetter's
+    /// reach are unchanged). A shrinking exclusion set or any other change leaves the call running.
     public func update(settings updated: RemoraPreferences) async {
         let old = settings
+        let added = updated.excludedProjects.subtracting(old.excludedProjects)
+        let stopping = (old.isOn && !updated.isOn) || !added.isEmpty
+        let inFlight = stopping ? running : nil
+        inFlight?.cancel()
+        // The new settings are in place before the wait, so a call that starts meanwhile follows them (Off refuses it).
         settings = updated
+        if let inFlight {
+            _ = await inFlight.value
+            // `run` clears `running` when it resumes, which can come after this does: the call is over when this returns.
+            while running == inFlight { await Task.yield() }
+        }
         if updated.noteFilePath != old.noteFilePath {
             let fresh = RemoraDurableNote(url: updated.noteURL(defaultIn: directory), timeZone: timeZone, clock: clock)
             note = fresh
             if let memory = box.use(note: fresh) { await memory.setDurableNote(fresh) }
         }
-        let added = updated.excludedProjects.subtracting(old.excludedProjects)
         if !added.isEmpty, let memory = try? await box.open() {
             for project in added { await memory.excludeProject(project) }
         }

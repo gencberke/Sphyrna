@@ -142,6 +142,79 @@ struct RemoraHostTests {
         await rig.finish()
     }
 
+    // MARK: Off or a new exclusion stops the call in flight
+
+    /// A brief's answer that writes the rig project's note (the fake streams it in 7-character pieces, 400 ms apart in `slow`).
+    private func noteAnswer(_ rig: RemoraHostRig) -> String {
+        """
+        Moved.
+
+        ```remora
+        {"notes":[{"project":"\(rig.project.uuidString)","items":[{"text":"Review","sessions":["\(rig.session.uuidString)"]}]}]}
+        ```
+        """
+    }
+
+    private func slowBrief(_ rig: RemoraHostRig, settings: RemoraPreferences = RemoraPreferences()) -> RemoraHost {
+        rig.makeHost(script: ["LOOM_FAKE_REMORA": "slow", "LOOM_FAKE_REMORA_ANSWER": noteAnswer(rig)], settings: settings,
+                     withTranscript: true)
+    }
+
+    @Test func excludingTheProjectWhileABriefRunsStopsTheCallAndLeavesNoNote() async throws {
+        let rig = try RemoraHostRig()
+        let host = slowBrief(rig)
+        let running = Task { await host.brief() }
+        let pid = try #require(await rig.pid())
+        try await Task.sleep(for: .milliseconds(700))
+        #expect(host.isRunning && host.activeKind == .brief)
+        await host.excludeProject(rig.project)
+        #expect(!host.isRunning, "the exclusion returned while the call still ran")
+        #expect(await running.value == .cancelled)
+        #expect(await rig.gone(pid), "the child outlived the exclusion")
+        #expect(await host.notes().isEmpty, "an excluded project was remembered")
+        #expect(await host.journal(on: rig.clock.now).isEmpty, "the stopped call applied its answer")
+        #expect(host.settings.excludedProjects == [rig.project])
+        await rig.finish()
+    }
+
+    @Test func turningRemoraOffWhileABriefRunsStopsTheCallAndAppliesNothing() async throws {
+        let rig = try RemoraHostRig()
+        let host = slowBrief(rig)
+        let running = Task { await host.brief() }
+        let pid = try #require(await rig.pid())
+        try await Task.sleep(for: .milliseconds(700))
+        #expect(host.isRunning)
+        var off = host.settings
+        off.isOn = false
+        await host.update(settings: off)
+        #expect(!host.isRunning && !host.settings.isOn)
+        #expect(await running.value == .cancelled)
+        #expect(await rig.gone(pid), "the child outlived Off")
+        #expect(await host.notes().isEmpty && host.settings.excludedProjects.isEmpty)
+        #expect(await host.journal(on: rig.clock.now).isEmpty, "the stopped call applied its answer")
+        await rig.finish()
+    }
+
+    @Test func aSettingsChangeThatIsNeitherOffNorAGrowingExclusionLetsTheCallFinish() async throws {
+        let rig = try RemoraHostRig()
+        let other = UUID(), third = UUID()
+        let host = slowBrief(rig, settings: RemoraPreferences(excludedProjects: [other, third]))
+        let running = Task { await host.brief() }
+        _ = try #require(await rig.pid())
+        try await Task.sleep(for: .milliseconds(700))
+        var changed = host.settings
+        changed.model = "haiku"
+        changed.proposals = false
+        await host.update(settings: changed)
+        #expect(host.isRunning, "a model change stopped the call")
+        changed.excludedProjects = [other]
+        await host.update(settings: changed)
+        #expect(host.isRunning, "a shrinking exclusion set stopped the call")
+        guard case .answered = await running.value else { Issue.record("the call did not finish"); await rig.finish(); return }
+        #expect(await host.notes().map(\.project) == [rig.project], "the control's answer writes the note the other tests keep out")
+        await rig.finish()
+    }
+
     // MARK: The brief's day
 
     @Test func anAutomaticBriefRunsOncePerDayAndARelaunchedHostDoesNotRunItAgain() async throws {
@@ -165,6 +238,28 @@ struct RemoraHostTests {
         #expect(!rig.ranAProcess, "a second brief started a process")
         // A brief the user asks for runs anyway.
         guard case .answered = await relaunched.brief() else { Issue.record("the asked brief did not run"); await rig.finish(); return }
+        await rig.finish()
+    }
+
+    @Test func theCheapRulesAnswerBeforeTheCatalogIsRead() async throws {
+        let rig = try RemoraHostRig()
+        let host = rig.makeHost()
+        guard case .answered = await host.briefIfDue(homeShown: true, windowRemainingShare: 1) else {
+            Issue.record("the day's brief did not run"); await rig.finish(); return
+        }
+        let reads = rig.maps.readCount
+        #expect(reads > 0, "the brief read the maps itself")
+        // Every Home view after the day's brief, in the same host and in a relaunched one: no read.
+        #expect(await host.briefIfDue(homeShown: true, windowRemainingShare: 1) == .notDue(.skip(.alreadyBriefedToday)))
+        #expect(await rig.makeHost().briefIfDue(homeShown: true, windowRemainingShare: 1) == .notDue(.skip(.alreadyBriefedToday)))
+        // Off and When I ask answer the same without it.
+        #expect(await rig.makeHost(settings: RemoraPreferences(isOn: false)).briefIfDue(homeShown: true, windowRemainingShare: 1) == .notDue(.skip(.remoraOff)))
+        #expect(await rig.makeHost(settings: RemoraPreferences(briefMode: .whenIAsk)).briefIfDue(homeShown: true, windowRemainingShare: 1) == .notDue(.skip(.whenIAsk)))
+        #expect(rig.maps.readCount == reads, "a cheap rule still read the catalog")
+        // The next day's first view does read it (the rule is the day, not the file).
+        rig.clock.now = rig.clock.now.addingTimeInterval(24 * 3_600)
+        _ = await rig.makeHost().briefIfDue(homeShown: false, windowRemainingShare: 1)
+        #expect(rig.maps.readCount == reads + 1)
         await rig.finish()
     }
 

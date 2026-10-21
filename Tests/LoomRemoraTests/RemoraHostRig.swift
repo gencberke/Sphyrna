@@ -24,6 +24,11 @@ final class HostMaps: @unchecked Sendable {
         get { lock.withLock { value } }
         set { lock.withLock { value = newValue } }
     }
+    private var reads = 0
+    /// What the host's maps closure reads: the same maps, counted.
+    func read() -> RemoraCatalogMaps { lock.withLock { reads += 1; return value } }
+    /// How many times a host read the catalog's maps.
+    var readCount: Int { lock.withLock { reads } }
 }
 
 /// The text a host's `onText` got, in order.
@@ -66,7 +71,7 @@ final class RemoraHostRig {
 
     /// A host over this rig's root. A second one on the same rig is a relaunch: nothing is shared but the folder.
     func makeHost(script: [String: String] = [:], settings: RemoraPreferences = RemoraPreferences(),
-                  failToStart: RemoraFailure? = nil) -> RemoraHost {
+                  failToStart: RemoraFailure? = nil, withTranscript: Bool = false) -> RemoraHost {
         let summary = SessionSummary(id: session, harness: .claude, title: "Billing", projectID: project, projectName: "loom",
                                      state: .idle, face: nil, lastActivityAt: clock.now.addingTimeInterval(-3_600))
         var extra = ["LOOM_FAKE_REMORA_LOG": log.path, "LOOM_FAKE_PIDFILE": pids.path]
@@ -77,10 +82,15 @@ final class RemoraHostRig {
         let maps = maps
         let clock = clock
         let environment = extra
+        let projects = withTranscript ? (try? writeTranscript()) : nil
         return RemoraHost(
             dataRoot: root, settings: settings,
-            sessions: { _ in [summary] }, transcript: { _ in nil },
-            maps: { maps.maps },
+            sessions: { _ in [summary] },
+            transcript: { summary in
+                guard let projects else { return nil }
+                return ClaudeTranscriptLocator.locate(sessionID: summary.id.uuidString, projectsDirectory: projects)
+            },
+            maps: { maps.read() },
             makeCall: { usage in
                 if let failToStart { throw failToStart }
                 return RemoraCall(
@@ -90,6 +100,18 @@ final class RemoraHostRig {
                     additionalEnvironment: environment)
             },
             timeZone: zone, clock: { clock.now })
+    }
+
+    /// A transcript of the rig's session, so a brief reads it (a pack's `readSessionIDs` are the sessions with an excerpt, and
+    /// only those make a project's note writable). Returns the `projects` folder it lives in.
+    func writeTranscript() throws -> URL {
+        let projects = root.appendingPathComponent("projects", isDirectory: true)
+        let folder = projects.appendingPathComponent("-work-loom", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let lines = [RemoraPackWorld.user("Fix the billing importer"), RemoraPackWorld.assistant("The importer now skips empty rows.")]
+        try (lines.joined(separator: "\n") + "\n").write(
+            to: folder.appendingPathComponent("\(session.uuidString).jsonl"), atomically: true, encoding: .utf8)
+        return projects
     }
 
     /// Whether a fake process ran since `forgetProcesses()` (it writes its pid and its log).
