@@ -2,39 +2,175 @@ import Foundation
 import LoomCore
 import SwiftUI
 
-/// What the Overview tab says about a session, as a plain value so the words can be tested without a view.
-/// It holds the session's status, why it has that status (the reason the hooks gave), where it works, and
-/// what it has under it. The context is drawn separately from `UsageModel.contexts`.
+/// What the Overview tab says about a session, as a plain value so the words can be tested without a view: the facts of
+/// the session (its state, when it started, the Claude Code version, the model and its effort, the permission mode), the
+/// worktree (project, branch and its base, folder), the files of the last turn and the subagents. The context is drawn
+/// separately from `UsageModel.contexts`. A Codex session has what it always had (its state, start, project, branch and
+/// folder); nothing is asked of Codex for the rest.
 struct InspectorOverviewContent: Equatable {
-    let status: String
-    let reason: String?
-    let project: String?
-    let branch: String?
-    /// The model's short name (the header segment's source); nil for a session with no reading and no model picked.
-    let model: String?
-    let folder: String
-    let lastActivity: Date
-    /// "2 running · 1 finished"; nil without subagents.
-    let agents: String?
-
-    @MainActor init(row: SessionRowModel, project: String?, branch: String?, model: String? = nil) {
-        let record = row.record
-        status = row.indicator.label ?? (record.lifecycle == .active ? "Not running" : "—")
-        reason = row.live?.displayReason.flatMap(InspectorReasonText.line)
-        self.project = project
-        self.branch = branch
-        self.model = model
-        folder = (record.session.workingDirectory as NSString).abbreviatingWithTildeInPath
-        lastActivity = record.lastActivityAt
-        agents = Self.agents(row.live?.subagents ?? [])
+    /// The permission mode: the title under Loom's name, and the key the mode's icon and tone are looked up by.
+    struct Mode: Equatable {
+        let title: String
+        let key: String?
     }
 
-    static func agents(_ records: [SubagentRecord]) -> String? {
-        guard !records.isEmpty else { return nil }
-        let running = records.filter(\.isRunning).count
-        let finished = records.count - running
-        return [running > 0 ? "\(running) running" : nil, finished > 0 ? "\(finished) finished" : nil]
-            .compactMap { $0 }.joined(separator: " · ")
+    struct FileRow: Equatable, Identifiable {
+        let id: String
+        /// The file's own name; the path is its tooltip.
+        let name: String
+        let path: String
+        let added: Int
+        let removed: Int
+    }
+
+    /// The last turn's edits, once they were read; `isRead` is false before that, so no empty sentence is said too early.
+    struct LastTurn: Equatable {
+        let files: [FileRow]
+        /// Files past `LoomTheme.Overview.maxFiles`.
+        let more: Int
+        let isRead: Bool
+
+        var isEmpty: Bool { isRead && files.isEmpty }
+    }
+
+    struct Agents: Equatable {
+        let running: Int
+        let rows: [InspectorAgentsContent.Row]
+        /// Subagents past `LoomTheme.Overview.maxAgents`.
+        let more: Int
+
+        var title: String { "Agents \u{00B7} \(running) running" }
+    }
+
+    /// The state's word: the pill's label; "Not running" for a session with no run, "—" for an ended one.
+    let status: String
+    /// The session's creation: "14:02 today", "Yesterday 09:12", a date.
+    let started: String
+    /// "Claude Code 2.1.300"; nil for another harness and while no source knows the version.
+    let claudeCode: String?
+    /// The model's short name (the header segment's source); nil for a session with no reading and no model picked.
+    let model: String?
+    /// The effort in the CLI's own word, lowercase ("high"); nil when none is known.
+    let effort: String?
+    let mode: Mode?
+    let project: String?
+    let branch: String?
+    /// The branch it is measured against, when known and not the branch itself.
+    let base: String?
+    /// The folder as the row shows it ("~/…/loom-v2/wt/ink") and in full (what the copy button copies).
+    let folder: String
+    let folderPath: String
+    /// Nil where the harness's edits are not read (Codex): no section.
+    let lastTurn: LastTurn?
+    /// Nil for a session that never had a subagent: no section.
+    let agents: Agents?
+
+    /// `reportedMode` and `reportedEffort` are the run's own words (the Chat composer's, else the hooks'); `launchedMode` and
+    /// `launchedEffort` are the stored launch choices, which hold until the run reports (and for a stopped session).
+    init(status: String, createdAt: Date, now: Date, provider: ManagedSession.Provider, claudeVersion: String?, model: String?,
+         reportedMode: String?, launchedMode: String?, reportedEffort: String?, launchedEffort: String?,
+         project: String?, branch: String?, base: String?, directory: String,
+         edits: [ChangesFile]?, readsEdits: Bool, subagents: [SubagentRecord]?, waiting: Set<String> = [],
+         home: String = NSHomeDirectory(), calendar: Calendar = .current, locale: Locale = .current) {
+        let isClaude = provider == .claude
+        self.status = status
+        started = LoomDateFormat.started(createdAt, now: now, calendar: calendar, locale: locale)
+        claudeCode = isClaude ? claudeVersion.flatMap { $0.isEmpty ? nil : "Claude Code \($0)" } : nil
+        self.model = isClaude ? model : nil
+        effort = isClaude ? Self.effortWord(reportedEffort ?? launchedEffort) : nil
+        mode = isClaude ? Self.mode(reportedMode ?? launchedMode) : nil
+        self.project = project
+        self.branch = branch
+        self.base = GitBaseBranch.shown(base: base, branch: branch)
+        folderPath = directory
+        folder = OverviewFolderText.display(directory, home: home)
+        if readsEdits {
+            let rows = (edits ?? []).map { file in
+                FileRow(id: file.id, name: (file.displayPath as NSString).lastPathComponent, path: file.displayPath,
+                        added: file.added, removed: file.removed)
+            }
+            lastTurn = LastTurn(files: Array(rows.prefix(LoomTheme.Overview.maxFiles)),
+                                more: max(0, rows.count - LoomTheme.Overview.maxFiles), isRead: edits != nil)
+        } else {
+            lastTurn = nil
+        }
+        agents = Self.agents(subagents, now: now, waiting: waiting)
+    }
+
+    /// The CLI's word, trimmed and in lowercase ("high", "xhigh"); nil for none.
+    static func effortWord(_ raw: String?) -> String? {
+        guard let word = raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !word.isEmpty else { return nil }
+        return word
+    }
+
+    /// The mode as Loom names it. `dontAsk` is what Ask runs on (D-63), so it takes Ask's look; a word Loom has no name for
+    /// keeps the CLI's own and takes the neutral shield (`ComposerModeLook`).
+    static func mode(_ raw: String?) -> Mode? {
+        guard let raw, !raw.isEmpty else { return nil }
+        let key = raw == ClaudePermissionMode.ask.cliValue ? ClaudePermissionMode.ask.rawValue : raw
+        return Mode(title: ClaudePermissionMode.title(forRaw: raw), key: key)
+    }
+
+    /// The section is there once the session has had a subagent, with the running ones counted ("Agents · 0 running" after
+    /// they finished). Running ones come first, then the interrupted and the finished, each oldest first.
+    static func agents(_ records: [SubagentRecord]?, now: Date, waiting: Set<String> = []) -> Agents? {
+        guard let records, !records.isEmpty else { return nil }
+        let content = InspectorAgentsContent(records: records, now: now, waiting: waiting)
+        let live = content.running.filter { $0.note == nil }
+        let rest = content.running.filter { $0.note != nil } + content.finished
+        let rows = live + rest
+        return Agents(running: live.count, rows: Array(rows.prefix(LoomTheme.Overview.maxAgents)),
+                      more: max(0, rows.count - LoomTheme.Overview.maxAgents))
+    }
+}
+
+/// The words of the Overview's context block (the reference's "38% of the window" over "76.1K of 200K tokens"). The grouped
+/// caption of `ContextRingText` stays for the surfaces that use it.
+enum OverviewContextText {
+    static func headline(_ usage: ContextUsage) -> String {
+        usage.percent.map { "\(UsageFormat.percent($0)) of the window" } ?? "\(UsageFormat.tokens(usage.tokens)) tokens"
+    }
+
+    static func detail(_ usage: ContextUsage) -> String {
+        guard let window = usage.window else { return "Window unknown" }
+        return "\(UsageFormat.tokens(usage.tokens)) of \(UsageFormat.tokens(window)) tokens"
+    }
+}
+
+/// The folder as the Overview shows it: under the home folder as "~", and long paths cut in the middle ("~/…/loom-v2/wt/ink").
+enum OverviewFolderText {
+    /// The last folders kept after the "…".
+    static let tail = 3
+
+    static func display(_ path: String, home: String = NSHomeDirectory()) -> String {
+        let shown = abbreviated(path, home: home)
+        let parts = shown.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        let underHome = shown.hasPrefix("~")
+        let names = underHome ? Array(parts.dropFirst()) : parts
+        guard names.count > tail else { return shown }
+        return (underHome ? "~/\u{2026}/" : "/\u{2026}/") + names.suffix(tail).joined(separator: "/")
+    }
+
+    private static func abbreviated(_ path: String, home: String) -> String {
+        guard !home.isEmpty, home != "/" else { return path }
+        if path == home { return "~" }
+        if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }
+        return path
+    }
+}
+
+extension LoomDateFormat {
+    /// When a session started, as the Overview says it: "14:02 today", "Yesterday 09:12", and a date beyond that.
+    static func started(_ date: Date, now: Date, zone: TimeZone? = nil, calendar: Calendar = .current,
+                        locale: Locale = .current) -> String {
+        let time = Self.time(date, zone: zone, locale: locale, calendar: calendar)
+        var calendar = calendar
+        if let zone { calendar.timeZone = zone }
+        if calendar.isDate(date, inSameDayAs: now) { return "\(time) today" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
+            return "Yesterday \(time)"
+        }
+        return Self.date(date, zone: zone, locale: locale, calendar: calendar)
     }
 }
 
@@ -64,66 +200,4 @@ enum InspectorReasonText {
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
-}
-
-/// The Overview tab: facts about the session, its context, and what runs under it.
-struct InspectorOverview: View {
-    let model: CatalogModel
-    let row: SessionRowModel
-    @Environment(\.inspectorOverlays) private var overlays
-
-    var body: some View {
-        let chip = model.headerChip(of: row.record)
-        let content = InspectorOverviewContent(
-            row: row, project: model.projectName(for: row.record), branch: chip?.branch,
-            model: model.modelContent(of: row.record)?.name)
-        ScrollView {
-            VStack(alignment: .leading, spacing: LoomTheme.Inspector.sectionGap) {
-                InspectorSection(title: "Session") {
-                    VStack(alignment: .leading, spacing: LoomTheme.Inspector.factRowGap) {
-                        InspectorFact("Status", content.status)
-                        if let reason = content.reason { InspectorFact("Why", reason) }
-                        InspectorFact("Project", content.project ?? "No project")
-                        if let branch = content.branch { InspectorFact("Branch", branch, mono: true) }
-                        if let name = content.model { InspectorFact("Model", name) }
-                        InspectorFact("Folder", content.folder, mono: true)
-                        InspectorFact("Last activity", LoomDateFormat.dateTime(content.lastActivity), mono: true)
-                    }
-                }
-                InspectorSection(title: "Context") { context }
-                if let agents = content.agents {
-                    InspectorSection(title: "Agents") {
-                        HStack {
-                            Text(agents).inspectorType(LoomTheme.Inspector.factMono).foregroundStyle(LoomTheme.Text.primary)
-                            Spacer(minLength: LoomTheme.Space.detailMinSpacer)
-                            Button("Show Agents") { model.selectInspectorTab(.agents) }
-                                .buttonStyle(.link).inspectorType(LoomTheme.Inspector.factValue)
-                        }
-                    }
-                }
-            }
-            .padding(LoomTheme.Inspector.bodyInset)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .loadsLaunchModel(model, row: row)
-        .accessibilityIdentifier("inspector-overview")
-    }
-
-    @ViewBuilder private var context: some View {
-        if row.record.session.provider != .claude {
-            note("The context is read for Claude sessions.")
-        } else if let id = row.record.session.providerConversationID, let usage = model.usage?.contexts[id] {
-            VStack(alignment: .leading, spacing: LoomTheme.Inspector.factRowGap) {
-                ContextRing(usage: usage, showsLabel: true)
-                Text(ContextRingText.caption(usage)).inspectorType(LoomTheme.InkType.meta)
-                    .foregroundStyle(LoomTheme.Inspector.quiet(overlays: overlays)).textSelection(.enabled)
-            }
-        } else {
-            note("No reading yet. It appears after the session's first reply.")
-        }
-    }
-
-    private func note(_ text: String) -> some View {
-        Text(text).inspectorType(LoomTheme.Inspector.factValue).foregroundStyle(LoomTheme.Text.secondaryStyle)
-    }
 }

@@ -363,7 +363,8 @@ public actor ChatSessionDriver {
             unreadMessageIDs: unreadRows,
             hasReturnedDrafts: !returnedDrafts.isEmpty, hasWithdrawnDrafts: !withdrawnDrafts.isEmpty,
             contextTokens: model.contextUsage.map(\.contextTokens), contextWindow: window, contextModel: resolved,
-            rewind: rewindAvailability()
+            rewind: rewindAvailability(),
+            claudeCodeVersion: (initialized?.claudeCodeVersion ?? model.ready?.claudeCodeVersion).flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 

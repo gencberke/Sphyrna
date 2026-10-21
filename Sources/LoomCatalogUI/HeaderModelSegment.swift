@@ -45,18 +45,33 @@ struct HeaderModelContent: Equatable {
     }
 }
 
-/// The launch model of the sessions the header and the inspector have shown: the catalog's `sessions` row is the one
+/// The launch choices of the sessions the header and the inspector have shown: the catalog's `sessions` row is the one
 /// source (the UI keeps no copy of its own), read once per run of a shown session. Only the selected session is read, so
-/// a change redraws only the views that show it.
+/// a change redraws only the views that show it. The model is held apart from the effort and the mode, so the header's
+/// segment (which reads the model) does not redraw for the Overview's other two.
 @MainActor @Observable
 final class SessionLaunchModels {
     private(set) var chosen: [UUID: String] = [:]
+    /// The effort and the permission mode a session was launched with (the CLI's words), for the Overview before the run
+    /// reports its own.
+    private(set) var launched: [UUID: ClaudeLaunchChoices] = [:]
+    /// The Claude Code version the runtime's toolchain probe read; nil until a start resolved it.
+    private(set) var claudeVersion: String?
 
     func model(of id: UUID) -> String? { chosen[id] }
+    func effort(of id: UUID) -> String? { launched[id]?.effort }
+    func permissionMode(of id: UUID) -> String? { launched[id]?.permissionMode }
 
     func load(_ id: UUID, from catalog: SessionCatalog?) async {
         guard let catalog, let choices = try? await catalog.launchChoices(sessionID: id) else { return }
         if chosen[id] != choices.model { chosen[id] = choices.model }
+        let own = ClaudeLaunchChoices(permissionMode: choices.permissionMode, effort: choices.effort)
+        if launched[id] != own { launched[id] = own }
+    }
+
+    func loadClaudeVersion(from intents: (any ConversationIntents)?) async {
+        let version = await intents?.toolchainVersion(provider: .claude)
+        if claudeVersion != version { claudeVersion = version }
     }
 }
 

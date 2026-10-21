@@ -1003,4 +1003,17 @@ extension ChatDriverTests {
         #expect(state.choices.effort == "low")
         await rig.finish()
     }
+
+    /// The Overview's Claude row reads the version the CLI named: the `initialize` answer's, then the newest `system/init`'s.
+    @Test func theComposerStateCarriesTheClaudeCodeVersionTheCLINamed() async throws {
+        let rig = try await Rig.make()
+        let driver = rig.driver(UUID())
+        #expect(await driver.composerState().claudeCodeVersion == nil, "nothing is known before a run")
+        try await driver.startNew(projectID: nil)
+        #expect(await driver.composerState().claudeCodeVersion == "2.1.300-fake")
+        try await driver.send("hello")
+        #expect(await idle(driver))
+        #expect(await driver.composerState().claudeCodeVersion == "2.1.300-fake")
+        await rig.finish()
+    }
 }

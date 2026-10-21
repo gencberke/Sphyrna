@@ -28,13 +28,8 @@ extension LoomTheme {
         static let sectionGap: CGFloat = 20
         static let sectionTitleGap: CGFloat = 12
         static let sectionLabel = InkType.label
-        static let factLabelWidth: CGFloat = 80
-        static let factRowGap: CGFloat = 8
-        static let factColumnGap: CGFloat = 12
         static let factLabel = InkType.small
         static let factValue = InkType.small
-        /// What the machine says: a branch, a folder, a time, a count.
-        static let factMono = InkType.metaLarge
         static let rowGap: CGFloat = 8
 
         /// The quiet voice (counts, section labels, the context's tokens): tertiary, and secondary on a popover, where the

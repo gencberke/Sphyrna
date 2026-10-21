@@ -5,9 +5,10 @@ import LoomCore
 /// The Changes tab on the model (V20): what it reads, when, and how its comments go to Claude.
 ///
 /// Nothing reads while the tab is closed and nothing polls. `changesTrigger` is nil unless the selected session's
-/// inspector is open on Changes; the inspector's `.task(id:)` runs `runChangesRead()` when it becomes non-nil and again
-/// when the scope changes or a turn ends (`noteChangesWorking`). The turn scopes read the session's transcript on disk
-/// (`EditScan`); the branch scope asks git (`GitChanges`) for a file list, and for one file's diff when it is shown.
+/// inspector is open on Changes, or on Overview of a session whose edits are read (the Overview lists the last turn's files);
+/// the inspector's `.task(id:)` runs `runChangesRead()` when it becomes non-nil and again when the scope changes or a turn
+/// ends (`noteChangesWorking`). The turn scopes read the session's transcript on disk (`EditScan`); the branch scope asks git
+/// (`GitChanges`) for a file list, and for one file's diff when it is shown.
 extension CatalogModel {
     // MARK: When it reads
 
@@ -15,11 +16,23 @@ extension CatalogModel {
         selectedSessionID == sessionID && inspector.isOpen(for: sessionID) && inspector.tab == .changes
     }
 
-    /// What the tab reads for now, or nil while it is closed.
+    /// The Overview is open on the session and lists the last turn's files, which are the Changes tab's own last-turn read
+    /// (the same state, so the tab finds them when it opens).
+    private func isOverviewReadingEdits(on sessionID: UUID) -> Bool {
+        guard selectedSessionID == sessionID, inspector.isOpen(for: sessionID), shownInspectorTab == .overview,
+              let provider = changesRow(sessionID)?.record.session.provider else { return false }
+        return capabilities(of: provider).readsTranscript
+    }
+
+    /// What the tab reads for now, or nil while it is closed. The Overview reads the last turn whatever scope the tab shows.
     var changesTrigger: ChangesTrigger? {
-        guard let id = selectedSessionID, isChangesTabOpen(on: id) else { return nil }
-        let session = changes.session(for: id)
-        return ChangesTrigger(session: id, scope: session.scope, revision: session.revision)
+        guard let id = selectedSessionID else { return nil }
+        if isChangesTabOpen(on: id) {
+            let session = changes.session(for: id)
+            return ChangesTrigger(session: id, scope: session.scope, revision: session.revision)
+        }
+        guard isOverviewReadingEdits(on: id) else { return nil }
+        return ChangesTrigger(session: id, scope: .lastTurn, revision: changes.session(for: id).revision)
     }
 
     /// The tab's count: the files of the current scope, once it was read.
@@ -39,7 +52,8 @@ extension CatalogModel {
     func noteChangesWorking(_ working: Bool, for sessionID: UUID) {
         let session = changes.session(for: sessionID)
         defer { session.wasWorking = working }
-        guard session.wasWorking == true, !working, isChangesTabOpen(on: sessionID) else { return }
+        guard session.wasWorking == true, !working, isChangesTabOpen(on: sessionID) || isOverviewReadingEdits(on: sessionID)
+        else { return }
         session.bumpRevision()
     }
 

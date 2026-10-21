@@ -108,7 +108,8 @@ struct ChangesModelTests {
         #expect(model.changesTrigger == nil)
         await model.runChangesRead()
         model.setInspector(open: true, for: id)
-        #expect(model.changesTrigger == nil, "the inspector is open on Overview")
+        model.selectInspectorTab(.agents)
+        #expect(model.changesTrigger == nil, "the inspector is open on Agents")
         await model.runChangesRead()
         // A turn that ends while the tab is not showing wakes nothing.
         model.noteChangesWorking(true, for: id)
@@ -135,7 +136,7 @@ struct ChangesModelTests {
         #expect(f.log.scans == [.lastTurn, .lastTurn, .wholeSession] && f.log.lists == 0)
 
         // Closed again: the same calls read nothing, and neither does a turn that ends.
-        model.selectInspectorTab(.overview)
+        model.selectInspectorTab(.agents)
         #expect(model.changesTrigger == nil)
         await model.runChangesRead()
         model.noteChangesWorking(true, for: id)
@@ -147,6 +148,45 @@ struct ChangesModelTests {
         model.selectInspectorTab(.changes)
         model.select(f.rig.ids[1])
         #expect(model.changesTrigger == nil, "the second session's inspector is closed")
+    }
+
+    /// The Overview lists the last turn's files: it reads them while it is open, as the tab does, into the same state.
+    @Test func theOverviewReadsTheLastTurnWhileItIsOpenWhateverScopeTheTabShows() async throws {
+        let f = try await fixture()
+        defer { f.cleanup() }
+        let (model, id) = (f.model, f.id)
+        f.log.edits = edited(["/w/a.swift", "/w/b.swift"])
+        #expect(model.changesTrigger == nil, "closed")
+        model.setInspector(open: true, for: id)
+        #expect(model.inspector.tab == .overview)
+        #expect(model.changesTrigger == ChangesTrigger(session: id, scope: .lastTurn, revision: 0))
+        await model.runChangesRead()
+        #expect(f.log.scans == [.lastTurn] && f.log.lists == 0 && f.log.diffs.isEmpty)
+        #expect(model.changes.session(for: id).state(.lastTurn).data?.files.map(\.absolutePath).sorted() == ["/w/a.swift", "/w/b.swift"])
+
+        // The tab's scope is the tab's: the Overview still reads the last turn.
+        model.setChangesScope(.branch, for: id)
+        #expect(model.changesTrigger?.scope == .lastTurn)
+
+        // A turn that ends while it shows is a reason to read again; one that starts is not.
+        model.noteChangesWorking(true, for: id)
+        #expect(model.changesTrigger?.revision == 0)
+        model.noteChangesWorking(false, for: id)
+        #expect(model.changesTrigger?.revision == 1)
+        await model.runChangesRead()
+        #expect(f.log.scans == [.lastTurn, .lastTurn])
+
+        // Another tab: nothing reads for the Overview, and the tab opens on what the Overview read.
+        model.selectInspectorTab(.agents)
+        #expect(model.changesTrigger == nil)
+        model.noteChangesWorking(true, for: id)
+        model.noteChangesWorking(false, for: id)
+        #expect(f.log.total == 2)
+        model.setChangesScope(.lastTurn, for: id)
+        model.selectInspectorTab(.changes)
+        #expect(model.changes.session(for: id).state(.lastTurn).data?.files.count == 2)
+        model.setInspector(open: false, for: id)
+        #expect(model.changesTrigger == nil)
     }
 
     /// RS-8: a card that waits moved the indicator off `.working`, so each approval card made a read and the allow made another.
@@ -208,8 +248,9 @@ struct ChangesModelTests {
         f.log.holdNextScan()
         let slow = Task { await f.model.runChangesRead() }
         #expect(await inspectorWaitUntil { f.log.scans.count == 1 })
-        // The tab closes while the scan is out; its answer arrives and is not shown.
-        f.model.selectInspectorTab(.overview)
+        // The tab closes while the scan is out (to Agents: the Overview reads the last turn too); its answer arrives and is
+        // not shown.
+        f.model.selectInspectorTab(.agents)
         f.log.release()
         await slow.value
         #expect(f.model.changes.session(for: f.id).state(.lastTurn).data == nil)

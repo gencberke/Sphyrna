@@ -540,6 +540,10 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
             path: path, agentID: agentID, projectsDirectory: await runtime.claudeProjectsDirectory())
     }
 
+    public func toolchainVersion(provider: ManagedSession.Provider) async -> String? {
+        await runtime.toolchainVersion(for: provider)
+    }
+
     // Permanent deletion: the runtime owns every step; these only forward.
 
     public func deletionPreview(sessionID: UUID) async throws -> ConversationDeletionPreview {

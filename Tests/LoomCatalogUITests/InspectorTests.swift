@@ -98,10 +98,30 @@ struct InspectorTests {
         #expect(line(.failure(category: nil), "Overloaded") == "Overloaded")
     }
 
-    @Test func theAgentsCountsAndTheTabsReadFromTheRecords() {
-        #expect(InspectorOverviewContent.agents([]) == nil)
-        #expect(InspectorOverviewContent.agents([inspectorRecord("a"), inspectorRecord("b", running: false), inspectorRecord("c")]) == "2 running · 1 finished")
-        #expect(InspectorOverviewContent.agents([inspectorRecord("b", running: false)]) == "1 finished")
+    @Test func theOverviewsAgentsHideForASessionThatNeverHadOneAndCountTheRunningOnes() {
+        let now = inspectorT0.addingTimeInterval(120)
+        #expect(InspectorOverviewContent.agents(nil, now: now) == nil, "a list not read yet says nothing")
+        #expect(InspectorOverviewContent.agents([], now: now) == nil, "no agent ever: no section")
+
+        let mixed = InspectorOverviewContent.agents(
+            [inspectorRecord("a"), inspectorRecord("b", running: false), inspectorRecord("c", started: inspectorT0.addingTimeInterval(30))],
+            now: now)
+        #expect(mixed?.running == 2 && mixed?.title == "Agents \u{00B7} 2 running")
+        #expect(mixed?.rows.map(\.id) == ["a", "c", "b"], "the running ones first, then the finished")
+
+        // Every agent finished: the section stays, with none running.
+        let finished = InspectorOverviewContent.agents([inspectorRecord("b", running: false)], now: now)
+        #expect(finished?.running == 0 && finished?.title == "Agents \u{00B7} 0 running" && finished?.rows.count == 1)
+
+        // An interrupted one (a stopped session's) is not running, and comes after the live ones.
+        var interrupted = inspectorRecord("i")
+        interrupted.wasInterrupted = true
+        let stopped = InspectorOverviewContent.agents([interrupted, inspectorRecord("live")], now: now)
+        #expect(stopped?.running == 1 && stopped?.rows.map(\.id) == ["live", "i"])
+
+        // The list is cut where the section ends, and says how many are not shown.
+        let many = InspectorOverviewContent.agents((0..<8).map { inspectorRecord("r\($0)") }, now: now)
+        #expect(many?.running == 8 && many?.rows.count == LoomTheme.Overview.maxAgents && many?.more == 3)
         #expect(InspectorTabBar.title(.overview) == "Overview" && InspectorTabBar.title(.agents) == "Agents")
     }
 

@@ -354,6 +354,8 @@ public struct ChatComposerState: Sendable, Equatable {
     public var contextModel: String?
     /// Whether the rows of the stream may offer "Rewind files" now (V21): the session waits at its prompt.
     public var rewind: RewindAvailability
+    /// The Claude Code version the CLI named in its `system/init` or its `initialize` answer ("2.1.300"); nil before either.
+    public var claudeCodeVersion: String?
 }
 
 extension ChatComposerState {

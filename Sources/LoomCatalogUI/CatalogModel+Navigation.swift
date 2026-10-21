@@ -154,4 +154,5 @@ extension ConversationIntents {
 
 extension ConversationIntents {
     public func subagentTranscript(path: String, agentID: String) async -> SubagentTranscriptFile? { nil }
+    public func toolchainVersion(provider: ManagedSession.Provider) async -> String? { nil }
 }

@@ -59,6 +59,9 @@ public protocol ConversationIntents: AnyObject {
     func closeEndedScreen(sessionID: UUID)
     /// A subagent's transcript file, checked against the profile's `projects` folder (FB4-5). Defaults: none.
     func subagentTranscript(path: String, agentID: String) async -> SubagentTranscriptFile?
+    /// The version of a provider's CLI the runtime's cached probe read ("2.1.300"), for the inspector's Overview. Nil until a
+    /// start resolved it. Defaults: nil.
+    func toolchainVersion(provider: ManagedSession.Provider) async -> String?
 }
 
 public enum ConversationBusy: Equatable, Sendable {

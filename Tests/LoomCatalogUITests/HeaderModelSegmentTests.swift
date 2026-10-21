@@ -109,12 +109,15 @@ struct HeaderModelSegmentTests {
     @MainActor
     final class Intents: ConversationIntents {
         var terminals: [UUID: NSView] = [:]
+        /// What the runtime's toolchain probe would answer.
+        var version: String?
         func start(provider: ManagedSession.Provider, projectID: UUID?) {}
         func resume(sessionID: UUID) {}
         func stop(sessionID: UUID) {}
         func answer(sessionID: UUID, requestID: String, accept: Bool) {}
         func viewed(sessionID: UUID) {}
         func terminalView(sessionID: UUID) -> NSView? { terminals[sessionID] }
+        func toolchainVersion(provider: ManagedSession.Provider) async -> String? { provider == .claude ? version : nil }
     }
 
     private func rig() async throws -> Rig {
@@ -134,7 +137,7 @@ struct HeaderModelSegmentTests {
         let main = try await insert(.claude, "conv-main", "AL contract denetimi ve tam review", at: 3_000)
         let bare = try await insert(.claude, "conv-bare", "A session nothing was picked for", at: 2_000)
         let codex = try await insert(.codex, "conv-codex", "A Codex session", at: 1_000)
-        try await catalog.recordLaunchChoices(ClaudeLaunchChoices(model: "sonnet"), sessionID: main)
+        try await catalog.recordLaunchChoices(ClaudeLaunchChoices(permissionMode: "default", model: "sonnet", effort: "high"), sessionID: main)
         let index = ContextFakeIndex()
         let usage = UsageModel(index: index, clock: { Self.now }, timeZone: Self.zone,
                                debounce: .milliseconds(20), activationCooldown: .zero)
@@ -429,14 +432,25 @@ struct HeaderModelSegmentTests {
             }
         }
         var found = texts()
-        for _ in 0..<(wanted == nil ? 3 : 20) where !found.contains(where: { $0 == wanted ?? "" }) {
+        for _ in 0..<(wanted == nil ? 3 : 20) where !found.contains(where: { Self.isRow(wanted ?? "", $0) }) {
             try await settle(window, rounds: 1)
             found = texts()
         }
         return found
     }
 
-    @Test func theInspectorOverviewHasAModelFactNextToTheBranch() async throws {
+    /// Whether an accessibility label is the Overview's row (or section) `name`: the name alone, or the name before its value.
+    /// Without case: the section labels draw in capitals (Ink's label type), and the tree reads them so.
+    private static func isRow(_ name: String, _ label: String) -> Bool {
+        let (name, label) = (name.lowercased(), label.lowercased())
+        return label == name || label.hasPrefix(name + ",") || label.hasPrefix(name + " ")
+    }
+
+    private func rows(_ names: [String], in texts: [String]) -> [String] {
+        names.filter { name in texts.contains { Self.isRow(name, $0) } }
+    }
+
+    @Test func theInspectorOverviewHasAModelFactInTheSessionSectionBeforeTheBranch() async throws {
         let rig = try await rig()
         defer { cleanup(rig) }
         rig.index.set(["conv-main": sample()])
@@ -445,14 +459,13 @@ struct HeaderModelSegmentTests {
         rig.model.trackInspectorContext()
         await rig.usage.settle()
 
-        // The reading's model, in the header segment's words, right after the Branch fact.
+        // The reading's model, in the header segment's words: in Session, which comes before Worktree and its Branch.
         let row = try #require(rig.model.selectedRow)
-        // (The fact's value is a selectable text the accessibility tree does not list; its name is checked on the model.)
         let texts = try await overviewTexts(rig, row: row, waitingFor: "Model")
-        let branch = try #require(texts.firstIndex(of: "Branch"), "texts \(texts)")
-        #expect(texts[branch + 1] == "Model", "the Model fact follows the Branch fact: \(texts)")
+        let model = try #require(texts.firstIndex { Self.isRow("Model", $0) }, "texts \(texts)")
+        let branch = try #require(texts.firstIndex { Self.isRow("Branch", $0) }, "texts \(texts)")
+        #expect(model < branch, "the Model fact is in Session, before Worktree's Branch: \(texts)")
         #expect(rig.model.modelContent(of: row.record)?.name == "Opus 5.5")
-        #expect(InspectorOverviewContent(row: row, project: nil, branch: nil, model: "Opus 5.5").model == "Opus 5.5")
     }
 
     @Test func theInspectorModelFactIsTheLaunchModelBeforeAReadingAndAbsentWithoutBoth() async throws {
@@ -462,13 +475,74 @@ struct HeaderModelSegmentTests {
         let mainRow = try #require(rig.model.selectedRow)
         #expect(rig.model.modelContent(of: mainRow.record) == nil, "nothing is read until the view asks for the launch model")
         let launched = try await overviewTexts(rig, row: mainRow, waitingFor: "Model")
-        #expect(launched.contains("Model"), "the Model fact shows once the launch model is read: \(launched)")
+        #expect(launched.contains { Self.isRow("Model", $0) }, "the Model fact shows once the launch model is read: \(launched)")
         #expect(rig.model.modelContent(of: mainRow.record)?.name == "Sonnet")
         #expect(rig.model.modelContent(of: mainRow.record)?.usage == nil)
+        // The stored effort and mode, until the run reports its own.
+        #expect(rig.model.launchModels.effort(of: rig.main) == "high" && rig.model.launchModels.permissionMode(of: rig.main) == "default")
+        #expect(launched.contains { Self.isRow("Mode", $0) }, "the stored mode shows before the run reports: \(launched)")
 
         try await select(rig.bare, in: rig)
         let none = try await overviewTexts(rig, row: try #require(rig.model.selectedRow), waitingFor: nil)
-        #expect(!none.contains("Model"), "texts \(none)")
-        #expect(none.contains("Branch"))
+        #expect(!none.contains { Self.isRow("Model", $0) }, "texts \(none)")
+        #expect(!none.contains { Self.isRow("Mode", $0) }, "no mode was ever recorded for it: \(none)")
+        #expect(none.contains { Self.isRow("Branch", $0) })
+    }
+
+    @Test func theOverviewDrawsItsSectionsInOrderForALiveTerminalSession() async throws {
+        let rig = try await rig()
+        defer { cleanup(rig) }
+        rig.intents.version = "2.1.300"
+        rig.intents.terminals[rig.main] = TerminalSurface().view
+        rig.index.set(["conv-main": sample()])
+        rig.usage.setContextWindow(200_000, forModel: "claude-opus-5-5")
+        let live = SessionViewState(
+            status: ProviderWorkState(activity: .working), runID: UUID(), subagents: [inspectorRecord("a1")], runEndpoint: .terminal,
+            permissionMode: "acceptEdits", effort: "max")
+        try await select(rig.main, in: rig, live: live)
+        rig.model.trackInspectorContext()
+        await rig.usage.settle()
+        let row = try #require(rig.model.selectedRow)
+        #expect(rig.model.launchModels.claudeVersion == nil, "the toolchain is not asked before the Overview is on screen")
+        let texts = try await overviewTexts(rig, row: row, waitingFor: "Claude")
+
+        let headers = rows(["Session", "Context", "Worktree", "Changes \u{00B7} last turn", "Agents \u{00B7} 1 running"], in: texts)
+        #expect(headers.count == 5, "the five sections: \(texts)")
+        let order = ["Session", "Context", "Worktree", "Changes \u{00B7} last turn", "Agents \u{00B7} 1 running"]
+            .compactMap { name in texts.firstIndex { Self.isRow(name, $0) } }
+        #expect(order == order.sorted() && order.count == 5, "in the reference's order: \(texts)")
+        let facts = rows(["State", "Started", "Claude", "Model", "Mode", "Project", "Branch", "Folder"], in: texts)
+        #expect(facts == ["State", "Started", "Claude", "Model", "Mode", "Project", "Branch", "Folder"], "texts \(texts)")
+        #expect(rig.model.launchModels.claudeVersion == "2.1.300")
+        // The run's own words win over what was stored at launch (default, high).
+        #expect(rig.model.launchModels.permissionMode(of: rig.main) == "default" && row.live?.permissionMode == "acceptEdits")
+    }
+
+    @Test func aCodexSessionsOverviewHasOnlyWhatItAlwaysHad() async throws {
+        let rig = try await rig()
+        defer { cleanup(rig) }
+        rig.intents.version = "2.1.300"
+        try await select(rig.codex, in: rig)
+        let row = try #require(rig.model.selectedRow)
+        let texts = try await overviewTexts(rig, row: row, waitingFor: "Folder")
+        #expect(rows(["Session", "Context", "Worktree"], in: texts) == ["Session", "Context", "Worktree"], "texts \(texts)")
+        #expect(rows(["State", "Started", "Project", "Branch", "Folder"], in: texts) == ["State", "Started", "Project", "Branch", "Folder"])
+        #expect(rows(["Claude", "Model", "Mode", "Effort"], in: texts).isEmpty, "nothing new for Codex: \(texts)")
+        #expect(!texts.contains { $0.lowercased().hasPrefix("changes") || $0.lowercased().hasPrefix("agents") },
+                "no Changes or Agents section: \(texts)")
+        // Opened on Overview, its edits are not read either.
+        rig.model.setInspector(open: true, for: rig.codex)
+        #expect(rig.model.changesTrigger == nil)
+    }
+
+    @Test func aSessionWithoutAgentsHidesTheAgentsSectionAndSaysThereIsNoReading() async throws {
+        let rig = try await rig()
+        defer { cleanup(rig) }
+        try await select(rig.bare, in: rig)
+        let row = try #require(rig.model.selectedRow)
+        let texts = try await overviewTexts(rig, row: row, waitingFor: "Folder")
+        #expect(!texts.contains { $0.lowercased().hasPrefix("agents") }, "no agent ever: no section: \(texts)")
+        #expect(rows(["Changes \u{00B7} last turn"], in: texts).count == 1, "a Claude session lists its last turn: \(texts)")
+        #expect(texts.contains { $0.hasPrefix("No reading yet") }, "texts \(texts)")
     }
 }
