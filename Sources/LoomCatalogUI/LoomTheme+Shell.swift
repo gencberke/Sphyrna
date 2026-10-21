@@ -166,6 +166,21 @@ public enum ShellChrome {
     public static var dividerColor: NSColor { LoomTheme.Shell.dividerColor }
 }
 
+/// The main window's split view: the sidebar beside the main pane, divided by the canvas's 1 pt hairline (DESIGN §2 item
+/// 2). A split view controller's own split view is vertical; one set in its place starts horizontal (the panes would
+/// stack), so this one is made vertical and thin here.
+public final class CanvasSplitView: NSSplitView {
+    public override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        isVertical = true
+        dividerStyle = .thin
+    }
+
+    public required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    public override var dividerColor: NSColor { ShellChrome.dividerColor }
+}
+
 // MARK: Focus ring
 
 /// Sphyrna's focus ring on a control: the accent, 2 pt wide and 2 pt outside it (2.5 wide under Increase Contrast), drawn

@@ -139,4 +139,12 @@ struct ShellInkTests {
         }
         #expect(worst < 0.01, "no hairline or backdrop near the pane's edges: \(worst)")
     }
+
+    /// The main window's split view puts the sidebar beside the main pane. A split view set in place of the controller's
+    /// own starts horizontal, which stacked the sidebar above the pane (seen in batch B's first screenshots).
+    @MainActor @Test func theCanvasSplitViewSetsTheSidebarBesideThePane() {
+        let split = CanvasSplitView()
+        #expect(split.isVertical)
+        #expect(split.dividerStyle == .thin)
+    }
 }

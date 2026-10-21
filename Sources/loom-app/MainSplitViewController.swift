@@ -2,11 +2,6 @@ import AppKit
 import LoomCatalogUI
 import SwiftUI
 
-/// The divider between the sidebar and the main pane is the canvas's hairline (DESIGN §2 item 2): one canvas, split by a 1 pt line.
-final class CanvasSplitView: NSSplitView {
-    override var dividerColor: NSColor { ShellChrome.dividerColor }
-}
-
 /// The one main window's content: a native sidebar (SwiftUI catalog) beside the
 /// detail pane (CHECKPOINT-5-HISTORY §4.1: sidebar 300 pt in 220–520 pt, detail at least 480 pt).
 /// Width and collapse state are persisted through the model's preferences.
