@@ -47,6 +47,17 @@ The Mac is fanless and overheats. Therefore:
 
 Builds are serialized: only the agent whose Brief says it holds the build slot builds at a time; the planner-reviewer hands the slot out. Scripts that use the repo-local `.build` (`cp5-c-observer-smoke.py`) count as builds and need the slot.
 
+### 3.1 Test cadence: slices, one pooled batch, fixes, scoped re-checks (D-90, 22 Oct 2026)
+
+Testing must not block development. Comprehensive tests and the optimizer run only when they are needed and enough has collected to be worth the screen time and the heat. The work moves in four steps:
+
+1. **Feature slices.** A slice runs only its own narrow, off-screen checks: `scripts/check.sh --suite <the suites it touches>` and a regression test shown to fail without the fix. What it cannot prove off screen (window tests, visual pairs, hover/focus/VoiceOver passes, app smokes, measurements, real-Claude checks) goes into the test pool as a named item, not into a run of its own: the slice's Report lists it under **Unverified**, and the planner appends it to the pool (the End Batch runbook and the evening queue, [plans/ACTIVE-PLAN.md §4](plans/ACTIVE-PLAN.md#4-complete-end-batch-runbook-d-87)). The next slice starts right after review; it does not wait for a heavy run.
+2. **Pooled batch.** The pool runs once, as one batch on the integrated head (`v2`), in an idle window the user has given (§3): when several integrated slices have collected, at a milestone or release candidate, or for a concrete risk the narrow checks cannot reach. The full gate (`--full --idle`) is one item of the batch, not a separate run. A failure is recorded with its log and is not chased during the batch; the batch runs on.
+3. **Fix slices.** After the batch, each failure becomes a bounded fix slice with its own regression test that fails without the fix.
+4. **Scoped verification.** After a fix, only what failed and the fix's own suites run again, never the whole pool. The whole pool or the full gate runs again only for a new release candidate, or when a fix touched shared ground (process ownership, lifecycle, deletion, `Package.swift`, the build or packaging).
+
+The closing `@optimizer` review ([D-06](DECISIONS.md)) follows the same rule: once, when a release or checkpoint closes or a body of integrated slices has collected for review, or earlier only for a concrete structural or resource problem; never per slice.
+
 ## 4. Isolation
 
 - The real `~/.claude`, `~/.codex`, running sessions and ChatGPT.app are read-only and never test data. Use isolated profiles: `CLAUDE_CONFIG_DIR` = `~/Library/Application Support/Loom-Dev/probe/claude-config`; Codex home `~/.loom-dev/codex-home` (Darwin `sun_path` limit).
