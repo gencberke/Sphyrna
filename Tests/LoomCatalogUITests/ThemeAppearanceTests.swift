@@ -662,7 +662,7 @@ struct ThemeAppearanceTests {
     }
 
     @Test func settingsHasAThemeSectionBetweenGeneralAndUsage() {
-        #expect(SettingsSection.available(cleanupReview: false).map(\.title) == ["General", "Theme", "Usage", "About"])
+        #expect(SettingsSection.available(cleanupReview: false).map(\.title) == ["General", "Theme", "Usage", "Remora", "About"])
     }
 }
 

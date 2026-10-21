@@ -2,13 +2,18 @@ import Foundation
 import LoomCore
 import SwiftUI
 
-/// The two questions Settings asks before it changes something (DESIGN §6 Sheets, D-83): both are sheets of the family
+/// The questions Settings asks before it changes something (DESIGN §6 Sheets, D-83) and Remora's memory: sheets of the family
 /// (`SheetFamily.swift`) over the Settings window.
 public enum SettingsSheet: Hashable, Sendable {
     /// "Start new sessions in Full access?": picking Full access as the default mode.
     case fullAccess
     /// "Delete N sessions?": the checked sessions of the cleanup review.
     case delete
+    /// Remora's memory, 560 wide (DESIGN §20).
+    case remoraMemory
+    /// "Clear Remora's working memory?" from Settings' Clear… or the memory sheet's button; from the sheet, Cancel and the answer
+    /// bring the memory sheet back.
+    case remoraClear(returnsToMemory: Bool)
 }
 
 /// The words of the two sheets, as plain values so tests pin them.
@@ -75,8 +80,8 @@ struct DeleteSheetText: Equatable {
 enum SettingsSheets {
     /// The sheet that fits a request, over the Settings window.
     @MainActor @ViewBuilder
-    static func view(for sheet: SettingsSheet, model: CatalogModel, profile: URL?,
-                     presenter: SheetPresenter<SettingsSheet>) -> some View {
+    static func view(for sheet: SettingsSheet, model: CatalogModel, profile: URL?, navigation: SettingsNavigation) -> some View {
+        let presenter = navigation.sheets
         switch sheet {
         case .fullAccess:
             FullAccessSheet(model: model, presenter: presenter)
@@ -84,6 +89,11 @@ enum SettingsSheets {
             if let review = model.cleanupReview {
                 DeleteSessionsSheet(review: review, catalog: model, profile: profile, presenter: presenter)
             }
+        case .remoraMemory:
+            RemoraMemorySheet(catalog: model, navigation: navigation)
+                .padding(.bottom, LoomTheme.MemorySheet.windowBottom)
+        case let .remoraClear(returnsToMemory):
+            RemoraClearSheet(model: model, presenter: presenter, returnsToMemory: returnsToMemory)
         }
     }
 }
@@ -108,6 +118,37 @@ struct FullAccessSheet: View {
             SheetText(text: SettingsSheetText.fullAccessBody)
         }
         .accessibilityIdentifier("settings-sheet-full-access")
+    }
+}
+
+/// "Clear Remora's working memory?": Cancel has the focus; "Clear Working Memory" is in the failure wash; Return does nothing and Esc
+/// cancels. `Remora.md` is kept. Opened from the memory sheet, either answer brings the memory sheet back.
+struct RemoraClearSheet: View {
+    let model: CatalogModel
+    let presenter: SheetPresenter<SettingsSheet>
+    let returnsToMemory: Bool
+
+    var body: some View {
+        InkSheet(
+            title: RemoraSettingsText.clearTitle, cancel: leave,
+            actions: [SheetAction(id: "clear-memory", title: RemoraSettingsText.clearConfirm, tint: .failure,
+                                  perform: { Self.confirm(model: model, presenter: presenter, returnsToMemory: returnsToMemory) })]
+        ) {
+            SheetText(text: RemoraSettingsText.clearBody)
+        }
+        .accessibilityIdentifier("settings-sheet-remora-clear")
+    }
+
+    private func leave() { Self.leave(presenter: presenter, returnsToMemory: returnsToMemory) }
+
+    /// The one place the working memory is cleared (`Remora.md` stays): the question's own button.
+    static func confirm(model: CatalogModel, presenter: SheetPresenter<SettingsSheet>, returnsToMemory: Bool) {
+        model.clearRemoraWorkingMemory()
+        leave(presenter: presenter, returnsToMemory: returnsToMemory)
+    }
+
+    static func leave(presenter: SheetPresenter<SettingsSheet>, returnsToMemory: Bool) {
+        if returnsToMemory { presenter.present(.remoraMemory) } else { presenter.dismiss() }
     }
 }
 

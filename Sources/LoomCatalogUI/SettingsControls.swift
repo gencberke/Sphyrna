@@ -13,6 +13,7 @@ struct InkSegmented<Value: Hashable>: View {
     let selection: Value
     var enabled = true
     let onSelect: (Value) -> Void
+    @Environment(\.isEnabled) private var environmentEnabled
 
     private typealias S = LoomTheme.Settings
 
@@ -27,6 +28,7 @@ struct InkSegmented<Value: Hashable>: View {
         .frame(height: S.segmentGroupHeight)
         .fixedSize()
         .disabled(!enabled)
+        .opacity(enabled && environmentEnabled ? 1 : LoomTheme.Opacity.disabled)
         .accessibilityElement(children: .contain)
     }
 }
@@ -174,6 +176,7 @@ struct InkStepper: View {
     var decreaseHelp = "Less"
     var increaseHelp = "More"
     let onChange: (Int) -> Void
+    @Environment(\.isEnabled) private var enabled
 
     private typealias S = LoomTheme.Settings
 
@@ -181,6 +184,7 @@ struct InkStepper: View {
         HStack(spacing: 0) {
             stepButton(-1, glyph: "minus", help: decreaseHelp)
             Text(valueText).projectType(S.stepperValue).monospacedDigit().foregroundStyle(LoomTheme.Text.primary)
+                .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
                 .frame(minWidth: S.stepperValueMinWidth).frame(height: S.stepperHeight)
                 .padding(.horizontal, LoomTheme.Line.hairline)
                 .overlay(alignment: .leading) { rule }

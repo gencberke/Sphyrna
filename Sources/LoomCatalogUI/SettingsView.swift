@@ -3,7 +3,7 @@ import LoomCore
 import SwiftUI
 
 public enum SettingsSection: CaseIterable, Identifiable, Hashable, Sendable {
-    case general, theme, usage, conversations, about
+    case general, theme, usage, conversations, remora, about
 
     public var id: Self { self }
     public var title: String {
@@ -12,6 +12,7 @@ public enum SettingsSection: CaseIterable, Identifiable, Hashable, Sendable {
         case .theme: "Theme"
         case .usage: "Usage"
         case .conversations: "Sessions"
+        case .remora: "Remora"
         case .about: "About"
         }
     }
@@ -27,8 +28,12 @@ public enum SettingsSection: CaseIterable, Identifiable, Hashable, Sendable {
 @MainActor @Observable
 public final class SettingsNavigation {
     public var section: SettingsSection
-    /// The Full Access and Delete questions: sheets of §6's family over the window.
+    /// The Full Access, Delete and Clear questions and Remora's memory: sheets of §6's family over the window.
     let sheets = SheetPresenter<SettingsSheet>()
+    /// The tab Remora's memory sheet shows.
+    public internal(set) var memoryTab: RemoraMemoryTab = .journal
+    /// The memory note's two native panels (Choose… and Open); a test replaces them.
+    @ObservationIgnored var noteActions: RemoraNoteActions = .live
 
     public init(section: SettingsSection = .general) { self.section = section }
 
@@ -36,6 +41,19 @@ public final class SettingsNavigation {
     public func open(_ requested: SettingsSection?) {
         if let requested, requested != section { section = requested }
     }
+
+    /// Opens Remora's tab with its memory sheet over it, on the tab named (the journal by default). This is the one call a door outside
+    /// Settings makes (Home's ⋯ → Memory… and the footer's Memory…): show the window (`showSettings(section: .remora)`), then
+    /// `openRemoraMemory()` on its navigation.
+    public func openRemoraMemory(tab: RemoraMemoryTab = .journal) {
+        section = .remora
+        memoryTab = tab
+        sheets.present(.remoraMemory)
+    }
+
+    /// Clear…: asks first. Nothing is cleared until the question's own button is pressed; from the memory sheet, either answer
+    /// brings that sheet back.
+    func askToClearRemoraMemory(fromMemorySheet: Bool) { sheets.present(.remoraClear(returnsToMemory: fromMemorySheet)) }
 
     /// The sheet that is open, if any.
     public var openSheet: SettingsSheet? { sheets.presented }
@@ -60,7 +78,7 @@ public struct SettingsAbout: Equatable, Sendable {
     }
 }
 
-/// The Settings window's content: the 52 pt band with the section tabs (General, Theme, Usage, Sessions where offered, About), the open
+/// The Settings window's content: the 52 pt band with the section tabs (General, Theme, Usage, Sessions where offered, Remora, About), the open
 /// section under it, and the sheets over both. One fixed size (DESIGN §2 item 5; the window controller sets the size).
 public struct SettingsView: View {
     let model: CatalogModel
@@ -86,6 +104,7 @@ public struct SettingsView: View {
             case .general: GeneralSettings(model: model, sheets: navigation.sheets)
             case .theme: ThemeSettings(model: model)
             case .usage: UsageSettings(usage: usage, profile: about.claudeProfile)
+            case .remora: RemoraSettingsView(model: model, navigation: navigation)
             case .about: AboutSettings(about: about, diagnostics: diagnostics)
             case .conversations:
                 if let review = model.cleanupReview {
@@ -102,7 +121,7 @@ public struct SettingsView: View {
         .ignoresSafeArea()
         .tint(LoomTheme.Accent.base)
         .sheetLayer(navigation.sheets, headerOffset: LoomTheme.Settings.bandHeight) { sheet in
-            SettingsSheets.view(for: sheet, model: model, profile: about.claudeProfile, presenter: navigation.sheets)
+            SettingsSheets.view(for: sheet, model: model, profile: about.claudeProfile, navigation: navigation)
         }
     }
 }

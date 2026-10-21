@@ -19,6 +19,9 @@ import LoomCore
 ///   deletes straight away, as before.
 /// - `cleanup-seed[:<n>]`: gives Settings → Sessions rows to show: `n` (3 by default) stale Claude sessions of the first project and
 ///   one pinned stale session (kept), written to the evidence catalog, then a fresh review. Fake-provider runs only.
+/// - `remora-memory:<open|journal|notes|vault|clear|close>`: Settings → Remora with Remora's memory sheet over it, on the tab named
+///   (`open` keeps the one it showed), or with the Clear question over it (`clear`), or the sheet closed (`close`): the same
+///   `SettingsNavigation.openRemoraMemory(tab:)` that Home's door calls. The snapshot's `settings` gains `memoryTab`.
 /// - `usage-select:<24h|7d|30d|90d>`: the period control.
 /// - `usage-refresh[:<label>]`: refreshes now and writes `ack-usage-refresh-<label>.json` when done.
 @MainActor
@@ -57,6 +60,18 @@ extension DevelopmentEvidence {
                 navigation.setSheet(.delete)
             default:
                 navigation.setSheet(nil)
+            }
+        case "remora-memory":
+            if argument == "close" {
+                app.settingsController?.navigation.setSheet(nil)
+                return true
+            }
+            app.showSettings(section: .remora)
+            guard let navigation = app.settingsController?.navigation else { return true }
+            if argument == "clear" {
+                navigation.setSheet(.remoraClear(returnsToMemory: false))
+            } else {
+                navigation.openRemoraMemory(tab: RemoraMemoryTab.allCases.first { $0.evidenceName == argument } ?? navigation.memoryTab)
             }
         case "cleanup-seed":
             guard !app.redactsContent, let runtime = app.runtime else { return true }
@@ -114,6 +129,7 @@ extension AppDelegate {
             "cleanup": cleanupEvidence,
             "general": generalSettingsEvidence,
             "sheet": settingsController?.navigation.openSheet.map { String(describing: $0) } ?? NSNull(),
+            "memoryTab": settingsController?.navigation.memoryTab.evidenceName ?? NSNull(),
         ]
     }
 

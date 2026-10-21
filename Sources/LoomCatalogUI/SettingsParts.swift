@@ -5,6 +5,19 @@ import SwiftUI
 
 private typealias S = LoomTheme.Settings
 
+extension EnvironmentValues {
+    /// Set under a switch that turned a part of a page off (Remora's): the parts draw their text at 38 % as the controls draw
+    /// themselves when disabled.
+    @Entry var settingsDimmed = false
+}
+
+extension View {
+    /// Turns this part of a page off: it answers nothing, the keyboard skips it, and its text and controls are drawn at 38 %.
+    func settingsDimmed(_ dimmed: Bool) -> some View {
+        disabled(dimmed).environment(\.settingsDimmed, dimmed)
+    }
+}
+
 /// A section's page: its content scrolls under the title band, 32 in from the sides, 22 below the band and 26 above the window's edge.
 struct SettingsPage<Content: View>: View {
     @ViewBuilder let content: Content
@@ -21,10 +34,12 @@ struct SettingsPage<Content: View>: View {
 /// A section label: capitals in the label type, tertiary.
 struct SettingsLabel: View {
     let text: String
+    @Environment(\.settingsDimmed) private var dimmed
 
     var body: some View {
         Text(text).projectType(LoomTheme.InkType.label).textCase(.uppercase)
             .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            .opacity(dimmed ? LoomTheme.RemoraTab.dimmed : 1)
             .accessibilityAddTraits(.isHeader)
     }
 }
@@ -77,12 +92,22 @@ struct SettingsRowText: View {
     var detail: String?
     /// One attention line under the help.
     var notice: String?
+    /// A fact in the mono face instead of a line of help (Remora's counts and path): one line, cut in the middle if it is long, and
+    /// selectable, at most `detailWidth` wide.
+    var detailStyle: LoomTheme.InkStyle?
+    var detailWidth = S.helpMaxWidth
+    @Environment(\.settingsDimmed) private var dimmed
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title).projectType(S.rowTitle).foregroundStyle(LoomTheme.Text.primary)
                 .frame(minHeight: S.rowTitleLine, alignment: .leading)
-            if let detail {
+            if let detail, let detailStyle {
+                Text(detail).projectType(detailStyle).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                    .frame(maxWidth: detailWidth, alignment: .leading)
+                    .padding(.top, S.helpTop).padding(.bottom, S.helpSpacing)
+            } else if let detail {
                 Text(detail).projectType(S.rowHelp).lineSpacing(S.helpSpacing)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle)
                     .frame(maxWidth: S.helpMaxWidth, alignment: .leading)
@@ -96,6 +121,7 @@ struct SettingsRowText: View {
         }
         // The text takes the lines it needs: beside a control the row was sized from the control, and the help was cut to one line.
         .fixedSize(horizontal: false, vertical: true)
+        .opacity(dimmed ? LoomTheme.RemoraTab.dimmed : 1)
     }
 }
 
@@ -104,11 +130,13 @@ struct SettingsRow<Trailing: View>: View {
     let title: String
     var detail: String?
     var notice: String?
+    var detailStyle: LoomTheme.InkStyle?
+    var detailWidth = S.helpMaxWidth
     @ViewBuilder let trailing: Trailing
 
     var body: some View {
         HStack(spacing: S.rowGap) {
-            SettingsRowText(title: title, detail: detail, notice: notice)
+            SettingsRowText(title: title, detail: detail, notice: notice, detailStyle: detailStyle, detailWidth: detailWidth)
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: S.controlGap) { trailing }.fixedSize()
         }

@@ -10,9 +10,22 @@ import SwiftUI
 
 // MARK: Rules
 
-/// How wide a sheet is: 420, or 480 when it lists files.
+/// The widths of the family: 420 for a question, 480 for one that lists files, 560 for Remora's memory (DESIGN §20).
+enum SheetWidth: CaseIterable, Sendable {
+    case standard, files, memory
+}
+
+/// How wide a sheet is: 420, or 480 when it lists files, or 560 for the memory sheet.
 enum SheetLayout {
-    static func width(listsFiles: Bool) -> CGFloat { listsFiles ? LoomTheme.Sheet.wideWidth : LoomTheme.Sheet.width }
+    static func width(_ kind: SheetWidth) -> CGFloat {
+        switch kind {
+        case .standard: LoomTheme.Sheet.width
+        case .files: LoomTheme.Sheet.wideWidth
+        case .memory: LoomTheme.Sheet.memoryWidth
+        }
+    }
+
+    static func width(listsFiles: Bool) -> CGFloat { width(listsFiles ? .files : .standard) }
 }
 
 /// The keys of a sheet. Esc cancels. Return does nothing, unless the sheet has a filled button (only a sheet that saves has one), and
@@ -210,6 +223,10 @@ struct InkSheet<Content: View>: View {
     var subject: String?
     /// 480 wide instead of 420.
     var listsFiles = false
+    /// A width of the family beyond those two (560 for the memory sheet); it wins over `listsFiles`.
+    var width: SheetWidth?
+    /// The way out is "Cancel" unless a sheet that only shows things calls it "Done": it closes as Esc does and is not filled.
+    var cancelTitle = "Cancel"
     var cancelEnabled = true
     let cancel: () -> Void
     var leading: SheetAction?
@@ -239,7 +256,7 @@ struct InkSheet<Content: View>: View {
             buttons.padding(.top, LoomTheme.Sheet.buttonsTop)
         }
         .padding(LoomTheme.Sheet.padding)
-        .frame(width: SheetLayout.width(listsFiles: listsFiles), alignment: .leading)
+        .frame(width: width.map { SheetLayout.width($0) } ?? SheetLayout.width(listsFiles: listsFiles), alignment: .leading)
         .background(shape.fill(LoomTheme.Surface.popover))
         .overlay { if let ring { shape.strokeBorder(ring.color, lineWidth: LoomTheme.Line.hairline) } }
         .depth(LoomTheme.Elevation.popover)
@@ -269,7 +286,7 @@ struct InkSheet<Content: View>: View {
     }
 
     private var cancelButton: SheetAction {
-        SheetAction(id: SheetFocusOrder.cancel, title: "Cancel", isEnabled: cancelEnabled, perform: cancel)
+        SheetAction(id: SheetFocusOrder.cancel, title: cancelTitle, isEnabled: cancelEnabled, perform: cancel)
     }
 
     /// The buttons the focus can reach, in the order Tab runs through them.

@@ -4,9 +4,10 @@ import SwiftUI
 /// changes, on the popover surface over the window's scrim.
 extension LoomTheme {
     enum Sheet {
-        /// 420 wide, or 480 when the sheet lists files.
+        /// 420 wide, or 480 when the sheet lists files, or 560 for Remora's memory.
         static let width: CGFloat = 420
         static let wideWidth: CGFloat = 480
+        static let memoryWidth: CGFloat = 560
         /// The popover's surface, radius 12, 20 inside, with the popover's ring and shadow (`Elevation.popover`).
         static let radius = InkRadius.card
         static let padding: CGFloat = 20
