@@ -99,7 +99,7 @@ private struct HomeLists: View {
 
 /// The empty Needs you card's one row: it says what appears there (DESIGN §9 Nothing waiting).
 private struct HomeBlankRow: View {
-    static let text = "A session that waits for an answer, or finished while you were away, is listed here."
+    static let text = "A session that waits for your answer is listed here."
 
     var body: some View {
         VStack(spacing: 0) {
