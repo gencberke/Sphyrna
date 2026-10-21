@@ -449,6 +449,8 @@ public final class CatalogModel {
     let side = SideState()
     public let home = HomeState()
     public let palette = PaletteState()
+    /// The main window's questions (I6b): one sheet at a time, its value read from the state above (`MainWindowSheet`).
+    let sheets = SheetPresenter<MainWindowSheet>()
     public let newSession = NewSessionState()
     public let projectPage = ProjectPageState()
     /// The face choice per session and the read-only Chat flag (`DetailRoute`).
@@ -513,6 +515,8 @@ public final class CatalogModel {
         side.onShown = { [weak self] parent, id in self?.sessions?.sideChatShown(id, in: parent) }
         side.onRead = { [weak self] parent, id in self?.sessions?.sideChatRead(id, in: parent) }
         remora.install(preferences: preferences.current.remora) { [weak self] value in self?.persist { $0.remora = value } }
+        // The window's sheet is its own state, read where it is shown: one question, and no second copy of it.
+        sheets.source = { [weak self] in self?.mainWindowSheet }
     }
 
     deinit {

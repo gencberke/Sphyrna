@@ -134,6 +134,18 @@ enum ChangesBodyWords {
     }
 }
 
+/// What the list's row says for a file: a rename reads "old → new", the old path tertiary and the name primary.
+enum ChangesFileText {
+    static func name(_ name: String, oldPath: String?) -> AttributedString {
+        guard let oldPath else { return AttributedString(name) }
+        var old = AttributedString("\(oldPath) \u{2192} ")
+        old.foregroundColor = LoomTheme.Text.tertiary
+        var new = AttributedString(name)
+        new.foregroundColor = LoomTheme.Text.primary
+        return old + new
+    }
+}
+
 /// The scope's files: folders first as the changed-files card draws them, with the +/− counts and the comment count.
 private struct ChangesFileList: View {
     let model: CatalogModel
@@ -185,7 +197,9 @@ private struct ChangesFileList: View {
     }
 
     static func accessibilityLabel(file: ChangesFile, comments: Int) -> String {
-        var parts = [file.displayPath, "\(file.added) added", "\(file.removed) removed"]
+        var parts = [file.displayPath]
+        if let oldPath = file.oldPath { parts.append("renamed from \(oldPath)") }
+        parts += [file.status.word, "\(file.added) added", "\(file.removed) removed"]
         if comments > 0 { parts.append("\(comments) comment\(comments == 1 ? "" : "s")") }
         return parts.joined(separator: ", ")
     }
@@ -205,9 +219,11 @@ private struct ChangesFileRow: View {
         HStack(spacing: 0) {
             Button { model.selectChangesFile(file.id, in: sessionID) } label: {
                 HStack(spacing: LoomTheme.Changes.fileRowGap) {
-                    Image(systemName: "doc.text").font(LoomTheme.Changes.fileGlyph).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                        .frame(width: LoomTheme.Changes.fileGlyphWidth).accessibilityHidden(true)
-                    Text(verbatim: line.name).font(LoomTheme.Changes.fileName).foregroundStyle(LoomTheme.Text.primary)
+                    Text(verbatim: file.status.letter).font(LoomTheme.Changes.statusFont)
+                        .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                        .frame(width: LoomTheme.Changes.statusWidth).accessibilityHidden(true)
+                    Text(ChangesFileText.name(line.name, oldPath: file.oldPath))
+                        .font(LoomTheme.Changes.fileName).foregroundStyle(LoomTheme.Text.primary)
                         .lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: LoomTheme.Changes.fileRowGap)
                     ChatChangeCounts(added: line.added, removed: line.removed)

@@ -38,9 +38,6 @@ private struct SideTabContent: View {
             SideComposerView(model: model, row: row, session: session).id(row.id)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .sheet(item: Binding(get: { session.discard }, set: { if $0 == nil { model.cancelDiscardSideChat(in: row.id) } })) { request in
-            SideDiscardSheet(model: model, parent: row.id, request: request)
-        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inspector-side")
     }
@@ -179,34 +176,16 @@ struct SideDiscardSheet: View {
     let model: CatalogModel
     let parent: UUID
     let request: SideDiscardRequest
-    @FocusState private var focus: Field?
-
-    private enum Field { case cancel }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Space.sheetSpacing) {
-            Text(SideText.discardTitle).font(LoomTheme.Typography.title)
-            Text(request.title).font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
-                .lineLimit(2).truncationMode(.tail)
-            Text(SideText.discardMessage).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.primary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: LoomTheme.Side.headerGap) {
-                Spacer()
-                Button(SideText.discardCancel) { model.cancelDiscardSideChat(in: parent) }
-                    .keyboardShortcut(.cancelAction)
-                    .focused($focus, equals: .cancel)
-                    .buttonStyle(ControlButtonStyle(kind: .secondary))
-                    .accessibilityIdentifier("side-discard-cancel")
-                Button(SideText.discardConfirm) { Task { await model.confirmDiscardSideChat(in: parent) } }
-                    .buttonStyle(ControlButtonStyle(kind: .destructive))
-                    .accessibilityIdentifier("side-discard-confirm")
-            }
+        InkSheet(
+            title: SideText.discardTitle, subject: request.title,
+            cancelTitle: SideText.discardCancel, cancel: { model.cancelDiscardSideChat(in: parent) },
+            actions: [SheetAction(id: "discard", title: SideText.discardConfirm, tint: .failure,
+                                  perform: { Task { await model.confirmDiscardSideChat(in: parent) } })]
+        ) {
+            SheetText(text: SideText.discardMessage)
         }
-        .padding(LoomTheme.Space.sheetPadding)
-        .frame(width: LoomTheme.Layout.sheetWidth)
-        .tint(LoomTheme.Accent.base)
-        .defaultFocus($focus, .cancel)
-        .onKeyPress(.return) { .handled }
         .accessibilityIdentifier("side-discard-sheet")
     }
 }

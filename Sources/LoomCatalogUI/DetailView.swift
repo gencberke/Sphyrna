@@ -63,15 +63,6 @@ public struct DetailView: View {
         .ignoresSafeArea(.container, edges: .top)
         .tint(LoomTheme.Accent.base)
         .environment(\.indicatorsAnimate, model.windowIsActive)
-        .sheet(item: $model.renameDraft) { draft in
-            RenameSheet(model: model, draft: draft)
-        }
-        .sheet(item: Binding(get: { model.deletions.confirmation }, set: { model.deletions.confirmation = $0 })) { confirmation in
-            DeleteConversationSheet(model: model, confirmation: confirmation)
-        }
-        .sheet(item: Binding(get: { model.rewinds.sheet }, set: { if $0 == nil { model.cancelRewind() } })) { sheet in
-            RewindSheetView(model: model, sheet: sheet)
-        }
         .alert("Undo the rewind?", isPresented: Binding(
             get: { model.rewinds.undoPrompt != nil }, set: { if !$0 { model.cancelUndoPrompt() } }
         ), presenting: model.rewinds.undoPrompt) { _ in
@@ -396,34 +387,31 @@ struct RenameSheet: View {
     @Bindable var draft: RenameDraft
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Space.sheetSpacing) {
-            Text("Rename session").font(LoomTheme.Typography.title)
-            TextField("Title", text: $draft.text)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { save() }
-                .accessibilityLabel("Session title")
-            HStack {
-                Text("\(draft.text.count)/\(SessionCatalog.maxTitleLength)")
-                    .foregroundStyle(draft.text.count > SessionCatalog.maxTitleLength
-                                     ? LoomTheme.Status.failure : LoomTheme.Text.secondary)
-                Text("Longer titles are shortened. An empty title returns to the automatic one.")
-                    .foregroundStyle(LoomTheme.Text.secondary)
-            }
-            .font(LoomTheme.Typography.caption)
-            if let failure = draft.failure {
-                Text(failure).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.failure)
-            }
-            HStack {
-                Spacer()
-                Button("Cancel") { model.renameDraft = nil }.keyboardShortcut(.cancelAction)
-                    .buttonStyle(ControlButtonStyle(kind: .secondary))
-                Button("Save") { save() }.keyboardShortcut(.defaultAction).disabled(draft.saving)
-                    .buttonStyle(AccentButtonStyle(kind: .filled))
+        InkSheet(
+            title: "Rename session", cancel: { model.renameDraft = nil },
+            actions: [SheetAction(id: "save", title: "Save", tint: .filled, isEnabled: !draft.saving, perform: save)]
+        ) {
+            VStack(alignment: .leading, spacing: 0) {
+                TextField("Title", text: $draft.text)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { save() }
+                    .accessibilityLabel("Session title")
+                    .padding(.top, LoomTheme.Sheet.fieldTop)
+                HStack {
+                    Text("\(draft.text.count)/\(SessionCatalog.maxTitleLength)")
+                        .foregroundStyle(draft.text.count > SessionCatalog.maxTitleLength
+                                         ? LoomTheme.Status.failure : LoomTheme.Text.secondary)
+                    Text("Longer titles are shortened. An empty title returns to the automatic one.")
+                        .foregroundStyle(LoomTheme.Text.secondary)
+                }
+                .font(LoomTheme.Typography.caption)
+                .padding(.top, LoomTheme.Sheet.fieldGap)
+                if let failure = draft.failure {
+                    Text(failure).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.failure)
+                        .padding(.top, LoomTheme.Sheet.factGap)
+                }
             }
         }
-        .padding(LoomTheme.Space.sheetPadding)
-        .frame(width: LoomTheme.Layout.sheetWidth)
-        .tint(LoomTheme.Accent.base)
     }
 
     private func save() {

@@ -580,6 +580,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func showNextTab(_ sender: Any?) { model?.selectAdjacentTab(.next) }
     @objc func showPreviousTab(_ sender: Any?) { model?.selectAdjacentTab(.previous) }
     @objc func closeTabFromMenu(_ sender: Any?) { model?.closeSelectedTab() }
+    /// Close Window (⌘W). A method of its own, so that the sheet rule can hold the key back while a question is open.
+    @objc func closeWindowFromMenu(_ sender: Any?) { window?.performClose(nil) }
     @objc func jumpToNextAttention(_ sender: Any?) { jumpToAttention(item: .next) }
     @objc func jumpToPreviousAttention(_ sender: Any?) { jumpToAttention(item: .previous) }
     private func jumpToAttention(item: StepDirection) {
@@ -602,6 +604,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return false // listed in every build, startable only where the build includes Codex (D-69)
         }
         guard let model else { return true }
+        // A sheet asks one question: the window's own key commands wait until it is answered, so no shortcut renames, deletes,
+        // rewinds, closes or starts anything behind it. The menu items stay usable with the mouse (only a key-down is held back).
+        if NSApp.currentEvent?.type == .keyDown,
+           MainWindowKeys.holdsBack(attachedSheet: window?.attachedSheet != nil, sheetOpen: model.mainSheetIsOpen) {
+            return false
+        }
         switch item.action {
         case #selector(newClaudeFromMenu(_:)):
             return model.canStart(.claude, projectID: model.contextProjectID)
@@ -617,12 +625,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             item.toolTip = reason
             return reason == nil
         case #selector(deleteFromMenu(_:)):
-            // Cmd+Delete belongs to a text field being edited (search, or rename in its sheet window)
-            // and to a focused terminal (Cmd+Backspace edits the prompt line there), and does nothing
-            // while a sheet is open; the menu item itself stays usable with the mouse.
+            // Cmd+Delete belongs to a text field being edited (search, or rename's field) and to a focused terminal
+            // (Cmd+Backspace edits the prompt line there); a sheet open already held the key back above. The menu item
+            // itself stays usable with the mouse.
             if NSApp.currentEvent?.type == .keyDown {
                 let responder = NSApp.keyWindow?.firstResponder
-                if responder is NSText || responder is LoomTerminalView || window?.attachedSheet != nil { return false }
+                if responder is NSText || responder is LoomTerminalView { return false }
             }
             return model.selectedRow.map(model.canDelete) ?? false
         case #selector(showNextTab(_:)), #selector(showPreviousTab(_:)):

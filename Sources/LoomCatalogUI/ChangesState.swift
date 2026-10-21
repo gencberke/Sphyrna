@@ -24,6 +24,39 @@ enum ChangesScope: String, CaseIterable, Sendable {
     var isEdits: Bool { self != .branch }
 }
 
+/// How a file of a scope differs from before it: the list's status letter (M, A, D, R; DESIGN §13 File list).
+enum ChangesFileStatus: String, Equatable, Sendable, CaseIterable {
+    case modified = "M"
+    case added = "A"
+    case deleted = "D"
+    case renamed = "R"
+
+    /// The letter the list draws.
+    var letter: String { rawValue }
+
+    /// What VoiceOver reads in its place.
+    var word: String {
+        switch self {
+        case .modified: "Modified"
+        case .added: "Added"
+        case .deleted: "Deleted"
+        case .renamed: "Renamed"
+        }
+    }
+
+    /// Claude's edits: a file the scope created is added; the edit tools do not delete files, so the rest are modified.
+    static func edit(isCreate: Bool) -> Self { isCreate ? .added : .modified }
+
+    /// Git's list: an untracked file is added, a rename keeps its letter, and a tracked file that lost every line is deleted.
+    static func branch(_ status: GitChangeStatus, added: Int, removed: Int) -> Self {
+        switch status {
+        case .renamed: .renamed
+        case .untracked: .added
+        case .modified: added == 0 && removed > 0 ? .deleted : .modified
+        }
+    }
+}
+
 /// One file of a scope, as the list and the message name it.
 struct ChangesFile: Equatable, Identifiable, Sendable {
     /// Unique within the scope: the absolute path of an edit, the repository path of a branch file.
@@ -35,6 +68,10 @@ struct ChangesFile: Equatable, Identifiable, Sendable {
     var removed: Int
     var isBinary = false
     var isTooLarge = false
+    /// The list's letter: modified, added, deleted or renamed.
+    var status: ChangesFileStatus = .modified
+    /// The path before a rename (branch scope only): the list reads "old → new".
+    var oldPath: String?
 }
 
 /// What a scope read.

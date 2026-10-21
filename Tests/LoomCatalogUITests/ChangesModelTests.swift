@@ -321,8 +321,52 @@ struct ChangesModelTests {
         #expect(session.gitDiffs["dir/b.txt"] == nil)
     }
 
-    @Test func theBranchScopeIsOffOrFailedWithItsOwnWords() async throws {
+    /// The list's letter per file (DESIGN §13): a rename keeps R and its old path, an untracked file is A, a tracked file that lost
+    /// every line is D, and any other tracked change is M.
+    @Test func theBranchListCarriesEachFilesStatusLetterAndARenamesOldPath() async throws {
         let f = try await fixture()
+        defer { f.cleanup() }
+        f.log.git = .list(GitChangeList(root: "/repo", baseName: "main", onBase: false, compareTo: "abc", files: [
+            GitChangeFile(path: "src/new.swift", oldPath: "src/old.swift", status: .renamed, added: 1, removed: 1),
+            GitChangeFile(path: "added.swift", status: .untracked, added: 3, removed: 0),
+            GitChangeFile(path: "gone.swift", status: .modified, added: 0, removed: 7),
+            GitChangeFile(path: "edited.swift", status: .modified, added: 2, removed: 1),
+        ], omittedFiles: 0))
+        f.model.openChanges(.branch, for: f.id)
+        await f.model.runChangesRead()
+        let data = try #require(f.model.changes.session(for: f.id).currentState.data)
+        func file(_ id: String) -> ChangesFile? { data.files.first { $0.id == id } }
+        #expect(file("src/new.swift")?.status == .renamed && file("src/new.swift")?.oldPath == "src/old.swift")
+        #expect(file("added.swift")?.status == .added && file("added.swift")?.oldPath == nil)
+        #expect(file("gone.swift")?.status == .deleted)
+        #expect(file("edited.swift")?.status == .modified)
+        #expect(ChangesFileStatus.allCases.map(\.letter) == ["M", "A", "D", "R"])
+        // The row reads a rename as "old → new", and a plain file as its name.
+        #expect(String(ChangesFileText.name("new.swift", oldPath: "old.swift").characters) == "old.swift \u{2192} new.swift")
+        #expect(String(ChangesFileText.name("plain.swift", oldPath: nil).characters) == "plain.swift")
+    }
+
+    /// A file the turn created is A in the edit scopes; an edit of an existing file is M.
+    @Test func theEditScopesMarkAFileTheScopeCreatedAsAdded() async throws {
+        let f = try await fixture()
+        defer { f.cleanup() }
+        func edit(_ path: String, create: Bool, lines: [String]) -> EditRecord {
+            EditRecord(toolName: create ? "Write" : "Edit", toolUseID: "t-" + path, timestamp: nil, path: path,
+                       hunks: [DiffHunk(oldStart: create ? 0 : 1, oldLines: create ? 0 : 1, newStart: 1, newLines: lines.count,
+                                        lines: lines)], isCreate: create)
+        }
+        f.log.edits = EditScanResult(files: [
+            EditedFile(path: "/w/made.swift", edits: [edit("/w/made.swift", create: true, lines: ["+new"])]),
+            EditedFile(path: "/w/edited.swift", edits: [edit("/w/edited.swift", create: false, lines: ["-a", "+b"])]),
+        ], truncated: false, bytesCovered: 10)
+        f.model.openChanges(.lastTurn, for: f.id)
+        await f.model.runChangesRead()
+        let files = try #require(f.model.changes.session(for: f.id).currentState.data?.files)
+        #expect(files.first { $0.id == "/w/made.swift" }?.status == .added)
+        #expect(files.first { $0.id == "/w/edited.swift" }?.status == .modified)
+    }
+
+    @Test func theBranchScopeIsOffOrFailedWithItsOwnWords() async throws {        let f = try await fixture()
         defer { f.cleanup() }
         let model = f.model
         model.setInspector(open: true, for: f.id)
@@ -492,8 +536,20 @@ struct ChangesModelTests {
         #expect(cell.count == 1 && cell[0].anchor == ChangeAnchor(fileID: "n", line: nil, removed: false, text: "x = 1"))
     }
 
-    @Test func theFileListIsATreeWithFoldersFirst() {
-        func file(_ path: String) -> ChangesFile { ChangesFile(id: path, displayPath: path, absolutePath: "/r/" + path, added: 1, removed: 0) }
+    /// DESIGN §13 Diff: the two line-number columns run from each hunk's own starts, and a hunk header line opens each hunk.
+    @Test func twoHunksCarryTheirOwnHeaderAndTheirOwnLineNumbersOnBothSides() {
+        let first = DiffHunk(oldStart: 10, oldLines: 2, newStart: 10, newLines: 3, lines: [" a", "-b", "+B", "+C"])
+        let second = DiffHunk(oldStart: 40, oldLines: 2, newStart: 41, newLines: 2, lines: [" keep", " last"])
+        let items = ChangesDiffLayout.items(of: [first, second], fileID: "f")
+        #expect(items.count == 8, "a header and four rows, then a header and two rows")
+        #expect(items[0].kind == .hunkHeader("@@ -10,2 +10,3 @@"))
+        #expect(items[5].kind == .hunkHeader("@@ -40,2 +41,2 @@"))
+        let rows = items.compactMap { item -> DiffRow? in if case let .row(row) = item.kind { row } else { nil } }
+        #expect(rows.map(\.oldNumber) == [10, 11, nil, nil, 40, 41])
+        #expect(rows.map(\.newNumber) == [10, nil, 11, 12, 41, 42])
+    }
+
+    @Test func theFileListIsATreeWithFoldersFirst() {        func file(_ path: String) -> ChangesFile { ChangesFile(id: path, displayPath: path, absolutePath: "/r/" + path, added: 1, removed: 0) }
         let lines = ChangesTree.lines(of: [file("README.md"), file("src/auth/login.swift"), file("src/auth/token.swift"), file("z.swift")])
         #expect(lines.map(\.name) == ["src/auth/", "login.swift", "token.swift", "README.md", "z.swift"])
         #expect(lines.map(\.isFolder) == [true, false, false, false, false])

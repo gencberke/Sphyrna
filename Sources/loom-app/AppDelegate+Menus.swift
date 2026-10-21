@@ -56,7 +56,7 @@ extension AppDelegate {
                                         keyEquivalent: "w")
         closeTab.keyEquivalentModifierMask = [.command, .option]
         closeTab.target = self
-        fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        fileMenu.addItem(withTitle: "Close Window", action: #selector(closeWindowFromMenu(_:)), keyEquivalent: "w").target = self
         fileItem.submenu = fileMenu
         main.addItem(fileItem)
 

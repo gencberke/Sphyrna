@@ -113,7 +113,8 @@ extension CatalogModel {
             files.append(ChangesFile(
                 id: file.path, displayPath: EditScan.shorten(file.path, workingDirectory: directory), absolutePath: file.path,
                 added: file.added, removed: file.removed,
-                isTooLarge: shown.reduce(0) { $0 + $1.lines.count } > LoomTheme.Changes.maxDiffLines))
+                isTooLarge: shown.reduce(0) { $0 + $1.lines.count } > LoomTheme.Changes.maxDiffLines,
+                status: .edit(isCreate: file.edits.first?.isCreate == true)))
         }
         session.setState(.ready(ChangesScopeData(files: files, hunks: hunks, truncated: result.truncated)), for: trigger.scope)
         selectFirstFileIfNeeded(session, scope: trigger.scope)
@@ -138,7 +139,8 @@ extension CatalogModel {
         case let .list(list):
             let files = list.files.map { file in
                 ChangesFile(id: file.path, displayPath: file.path, absolutePath: list.absolutePath(of: file),
-                            added: file.added, removed: file.removed, isBinary: file.isBinary, isTooLarge: file.isTooLarge)
+                            added: file.added, removed: file.removed, isBinary: file.isBinary, isTooLarge: file.isTooLarge,
+                            status: .branch(file.status, added: file.added, removed: file.removed), oldPath: file.oldPath)
             }
             session.resetGitDiffs()
             session.setState(.ready(ChangesScopeData(files: files, omittedFiles: list.omittedFiles, baseName: list.baseName,

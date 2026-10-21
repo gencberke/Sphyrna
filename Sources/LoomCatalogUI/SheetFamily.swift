@@ -67,15 +67,24 @@ enum SheetFocusOrder {
 // MARK: Presenter
 
 /// Which sheet a window shows: nil for none. The window's own keys (⌘W, ⌘N …) read `isOpen` to hold back while one is open.
+///
+/// A window that holds its questions in its own state (the main window's four) gives the presenter a `source`: the sheet is then read
+/// from that state on every access, so the sheet and the question it asks cannot disagree, and `present`/`dismiss` are not used.
 @MainActor @Observable
 final class SheetPresenter<Sheet: Hashable> {
-    private(set) var presented: Sheet?
+    private var own: Sheet?
+    /// Where the sheet comes from when it is not this presenter's (a model's derived sheet); nil for a presenter that owns its own.
+    @ObservationIgnored var source: (@MainActor () -> Sheet?)?
+
+    init(source: (@MainActor () -> Sheet?)? = nil) { self.source = source }
+
+    var presented: Sheet? { source?() ?? own }
 
     var isOpen: Bool { presented != nil }
 
-    func present(_ sheet: Sheet) { presented = sheet }
+    func present(_ sheet: Sheet) { own = sheet }
 
-    func dismiss() { presented = nil }
+    func dismiss() { own = nil }
 }
 
 extension View {

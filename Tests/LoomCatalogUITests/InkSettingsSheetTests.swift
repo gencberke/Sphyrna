@@ -5,6 +5,12 @@ import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
 
+/// A window's own state, as the source of a `SheetPresenter` in `aPresenterReadsAWindowsOwnStateAsItsSheet`.
+@MainActor
+private final class SheetSourceBox {
+    var question: Int?
+}
+
 /// I4b: the sheet family's rules as plain values (keys, widths, focus order), Delete's and Full Access's words, the stepper's ends and
 /// the source guard over the family's files.
 @MainActor
@@ -112,7 +118,7 @@ struct InkSettingsSheetTests {
     @Test func theSheetFamilyBindsNoDefaultCancelExitOrSubmitKey() throws {
         let sources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/LoomCatalogUI", isDirectory: true)
-        let names = ["SheetFamily.swift", "SettingsSheets.swift", "LoomTheme+Sheets.swift"]
+        let names = ["SheetFamily.swift", "SettingsSheets.swift", "LoomTheme+Sheets.swift", "MainSheets.swift"]
         for name in names {
             let text = try String(contentsOf: sources.appendingPathComponent(name), encoding: .utf8)
             let code = text.split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
@@ -122,5 +128,75 @@ struct InkSettingsSheetTests {
                 #expect(!code.contains { $0.contains(banned) }, "\(name) uses \(banned)")
             }
         }
+    }
+
+    // MARK: The main window's questions
+
+    @Test func theMainWindowsFourQuestionsAreBodiesOfTheFamilyAndNoLongerAttachedSheets() throws {
+        let sources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/LoomCatalogUI", isDirectory: true)
+        func source(_ path: String) throws -> String {
+            try String(contentsOf: sources.appendingPathComponent(path), encoding: .utf8)
+        }
+        // Rename, Delete, Rewind Files and Discard Side Chat are `InkSheet` bodies, one each.
+        for path in ["DetailView.swift", "DeletionViews.swift", "Chat/RewindSheetView.swift", "SideTab.swift"] {
+            let text = try source(path)
+            #expect(text.components(separatedBy: "InkSheet(").count - 1 == 1, "\(path) draws its question as a sheet of the family")
+        }
+        // The detail pane and the inspector no longer attach a sheet: the window's own layer does (`MainSheets.swift`).
+        #expect(!(try source("DetailView.swift")).contains(".sheet("), "the detail pane attaches no sheet")
+        #expect(!(try source("SideTab.swift")).contains(".sheet("), "the Side tab attaches no sheet")
+        let sheets = try source("MainSheets.swift")
+        #expect(sheets.contains("sheetLayer(") && sheets.contains("makeMainSheetOverlayView"))
+        // The bodies take their keys through the family, never through a default, cancel, exit or submit action.
+        for path in ["MainSheets.swift", "DeletionViews.swift", "Chat/RewindSheetView.swift", "SideTab.swift"] {
+            let code = try source(path).split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            for banned in [".defaultAction", ".cancelAction", "onExitCommand", "onSubmit", ".keyboardShortcut("] {
+                #expect(!code.contains { $0.contains(banned) }, "\(path) uses \(banned)")
+            }
+        }
+    }
+
+    @Test func theWindowsOwnKeysHoldBackWhileAQuestionIsOpen() {
+        #expect(!MainWindowKeys.holdsBack(attachedSheet: false, sheetOpen: false))
+        #expect(MainWindowKeys.holdsBack(attachedSheet: false, sheetOpen: true))
+        #expect(MainWindowKeys.holdsBack(attachedSheet: true, sheetOpen: false), "a native sheet holds them back too")
+        #expect(MainWindowKeys.holdsBack(attachedSheet: true, sheetOpen: true))
+    }
+
+    @Test func aPresenterReadsAWindowsOwnStateAsItsSheet() {
+        let box = SheetSourceBox()
+        let presenter = SheetPresenter<Int>(source: { box.question })
+        #expect(!presenter.isOpen && presenter.presented == nil)
+        box.question = 1
+        #expect(presenter.isOpen && presenter.presented == 1)
+        // The state closes it: no `dismiss` of the presenter's own is needed, and there is nothing to fall out of step.
+        box.question = nil
+        #expect(!presenter.isOpen && presenter.presented == nil)
+    }
+
+    @Test func theWindowDerivesItsSheetFromTheStateThatAsksTheQuestion() async throws {
+        let rig = try await InspectorRig.make()
+        defer { rig.cleanup() }
+        let model = rig.model
+        let id = rig.ids[0]
+        #expect(model.mainWindowSheet == nil && !model.mainSheetIsOpen)
+
+        model.renameDraft = RenameDraft(id: id, text: "Title")
+        #expect(model.mainWindowSheet == .rename(id) && model.mainSheetIsOpen)
+        #expect(model.sheets.presented == .rename(id), "the presenter reads the window's state")
+        model.renameDraft = nil
+        #expect(model.mainWindowSheet == nil && !model.mainSheetIsOpen)
+
+        model.deletions.confirmation = DeletionConfirmation(id: id, title: "Session 0")
+        #expect(model.mainWindowSheet == .delete(id))
+        model.cancelDeletion()
+        #expect(model.mainWindowSheet == nil)
+
+        let side = model.side.session(for: id)
+        side.discard = SideDiscardRequest(id: id, title: "Side chat")
+        #expect(model.mainWindowSheet == .discard(parent: id, id: id))
+        model.cancelDiscardSideChat(in: id)
+        #expect(model.mainWindowSheet == nil)
     }
 }

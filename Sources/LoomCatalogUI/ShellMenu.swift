@@ -38,6 +38,12 @@ public final class ShellMenuTarget: NSObject, NSMenuItemValidation {
 
     public func validateMenuItem(_ item: NSMenuItem) -> Bool {
         guard let command = ShellCommand(rawValue: item.tag), let model = model() else { return false }
+        // The window's own keys wait while one of its sheets asks a question (`MainWindowKeys`); the menu item itself stays
+        // usable with the mouse.
+        if NSApp.currentEvent?.type == .keyDown,
+           MainWindowKeys.holdsBack(attachedSheet: false, sheetOpen: model.mainSheetIsOpen) {
+            return false
+        }
         return command.isEnabled(on: model)
     }
 }

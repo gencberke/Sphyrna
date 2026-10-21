@@ -7,48 +7,46 @@ struct DeleteConversationSheet: View {
     let confirmation: DeletionConfirmation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Space.sheetSpacing) {
-            Text("Delete this session?").font(LoomTheme.Typography.title)
-            Text(confirmation.title).font(LoomTheme.Typography.bodyStrong)
-                .foregroundStyle(LoomTheme.Text.primary).lineLimit(2).truncationMode(.tail)
-            switch confirmation.phase {
-            case .loading:
-                HStack(spacing: LoomTheme.Space.headerSpacing) {
-                    ProgressView().controlSize(.small)
-                    Text("Checking what Claude has kept for this session…")
-                        .foregroundStyle(LoomTheme.Text.secondary)
-                }
-                .font(LoomTheme.Typography.small)
-            case let .ready(preview):
-                Text(DeletionCopy.confirmBody(preview))
-                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.primary)
-                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                if !preview.unreachable.isEmpty {
-                    Text(DeletionCopy.unreachableNote(preview.unreachable))
-                        .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.failure)
-                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                }
-            case let .unavailable(message):
-                Text(message).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.failure)
-                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-            }
-            HStack {
-                if confirmation.offersRemoveFromLoomOnly {
-                    Button("Remove from Loom Only") { model.requestRemoveFromLoomOnly(confirmation.id) }
-                        .help("Removes the session from Loom. Claude's files are not touched.")
-                }
-                Spacer()
-                Button("Cancel") { model.cancelDeletion() }.keyboardShortcut(.cancelAction)
-                Button("Delete Permanently") { Task { await model.confirmDeletion() } }
-                    .buttonStyle(DestructiveButtonStyle())
-                    .disabled(!confirmation.canConfirm)
-            }
+        InkSheet(
+            title: "Delete this session?", subject: confirmation.title, listsFiles: true,
+            cancel: { model.cancelDeletion() },
+            leading: confirmation.offersRemoveFromLoomOnly
+                ? SheetAction(id: "remove-from-loom", title: "Remove from Loom Only",
+                              perform: { model.requestRemoveFromLoomOnly(confirmation.id) })
+                : nil,
+            actions: [SheetAction(id: "delete-permanently", title: "Delete Permanently", tint: .failure,
+                                  isEnabled: confirmation.canConfirm,
+                                  perform: { Task { await model.confirmDeletion() } })]
+        ) {
+            facts
         }
         .removeFromLoomAlert(model: model, id: confirmation.id)
-        .padding(LoomTheme.Space.sheetPadding)
-        .frame(width: LoomTheme.Layout.sheetWidth)
-        .tint(LoomTheme.Accent.base)
         .accessibilityIdentifier("delete-confirm-sheet")
+    }
+
+    @ViewBuilder private var facts: some View {
+        switch confirmation.phase {
+        case .loading:
+            HStack(spacing: LoomTheme.Space.headerSpacing) {
+                ProgressView().controlSize(.small)
+                Text("Checking what Claude has kept for this session…")
+                    .projectType(LoomTheme.Sheet.text).foregroundStyle(LoomTheme.Text.secondary)
+            }
+            .padding(.top, LoomTheme.Sheet.textTop)
+        case let .ready(preview):
+            SheetText(text: DeletionCopy.confirmBody(preview))
+            if !preview.unreachable.isEmpty {
+                Text(DeletionCopy.unreachableNote(preview.unreachable))
+                    .projectType(LoomTheme.Sheet.text).foregroundStyle(LoomTheme.Status.failure)
+                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, LoomTheme.Sheet.factGap)
+            }
+        case let .unavailable(message):
+            Text(message)
+                .projectType(LoomTheme.Sheet.text).foregroundStyle(LoomTheme.Status.failure)
+                .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                .padding(.top, LoomTheme.Sheet.textTop)
+        }
     }
 }
 

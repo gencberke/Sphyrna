@@ -26,6 +26,10 @@ extension LoomTheme {
         static let text = InkStyle(size: 12.5)
         static let textLine: CGFloat = 18.75
         static let textTop: CGFloat = 12
+        /// A field of the sheet (Rename's title): 12 under the title, its note 6 under it, and a failure 8 under the facts.
+        static let fieldTop: CGFloat = 12
+        static let fieldGap: CGFloat = 6
+        static let factGap: CGFloat = 8
 
         /// A list under a label: 14 below the text, the label 6 above its items; an item has a 4 pt dot 13 in and is 2 from the next.
         static let listTop: CGFloat = 14

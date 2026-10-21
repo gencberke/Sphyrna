@@ -3,48 +3,22 @@ import SwiftUI
 
 /// "Rewind files to before this message?" (V21): the dry run is the confirmation. Paths relative to the working folder with
 /// the totals, a warning on each file Claude did not leave as it is, the honest label, and Cancel and "Rewind files". Cancel
-/// is the default (Esc); Return never confirms.
+/// is the default (Esc); Return never confirms. A sheet of the family (`InkSheet`), 480 wide since it lists files.
 struct RewindSheetView: View {
     let model: CatalogModel
     let sheet: RewindSheetState
-    @FocusState private var focus: Field?
-
-    private enum Field { case cancel }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Space.sheetSpacing) {
-            Text(RewindCopy.title).font(LoomTheme.Typography.title)
-            if !sheet.title.isEmpty {
-                Text("\u{201C}\(sheet.title)\u{201D}").font(LoomTheme.Typography.bodyStrong)
-                    .foregroundStyle(LoomTheme.Text.primary).lineLimit(2).truncationMode(.tail)
-            }
-            phase
-            HStack {
-                Spacer()
-                Button("Cancel") { model.cancelRewind() }
-                    .keyboardShortcut(.cancelAction)
-                    .focused($focus, equals: .cancel)
-                    .disabled(!sheet.canCancel)
-                    .accessibilityIdentifier("rewind-cancel")
-                Button("Rewind files") { Task { await model.confirmRewind() } }
-                    .buttonStyle(AccentButtonStyle(kind: .tinted))
-                    .disabled(!sheet.canConfirm)
-                    .accessibilityIdentifier("rewind-confirm")
-            }
-        }
-        .padding(LoomTheme.Space.sheetPadding)
-        .frame(width: LoomTheme.Rewind.sheetWidth)
-        .tint(LoomTheme.Accent.base)
-        .defaultFocus($focus, .cancel)
-        .onKeyPress(phases: .down) { press in
-            switch RewindSheetKeys.reaction(to: press.key) {
-            case .cancel:
-                guard sheet.canCancel else { return .handled }
-                model.cancelRewind()
-                return .handled
-            case .swallow: return .handled
-            case .ignore: return .ignored
-            }
+        InkSheet(
+            title: RewindCopy.title,
+            subject: sheet.title.isEmpty ? nil : "\u{201C}\(sheet.title)\u{201D}",
+            listsFiles: true,
+            cancelEnabled: sheet.canCancel,
+            cancel: { model.cancelRewind() },
+            actions: [SheetAction(id: "rewind-confirm", title: "Rewind files", tint: .accent, isEnabled: sheet.canConfirm,
+                                  perform: { Task { await model.confirmRewind() } })]
+        ) {
+            phase.padding(.top, LoomTheme.Sheet.textTop)
         }
         .accessibilityIdentifier("rewind-sheet")
     }

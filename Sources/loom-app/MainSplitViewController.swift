@@ -69,6 +69,15 @@ final class MainSplitViewController: NSSplitViewController {
             hosts.leadingAnchor.constraint(equalTo: view.leadingAnchor), hosts.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             hosts.topAnchor.constraint(equalTo: view.topAnchor), hosts.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+        // The window's questions (rename, delete, rewind, discard) are one more window-level layer, over the panes and the
+        // popovers alike: a question hides the whole window and takes every click while it is open.
+        let sheets = makeMainSheetOverlayView(model: model)
+        sheets.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(sheets)
+        NSLayoutConstraint.activate([
+            sheets.leadingAnchor.constraint(equalTo: view.leadingAnchor), sheets.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            sheets.topAnchor.constraint(equalTo: view.topAnchor), sheets.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
     }
 
     override func viewDidLayout() {

@@ -28,6 +28,9 @@ extension LoomTheme {
         /// The slot at the end of a file row for its "Open in editor" button (shown under the pointer and on the open file).
         static let openSlot: CGFloat = 24
         static let fileName = Font.system(size: 12, design: .monospaced)
+        /// The status letter (M, A, D, R) takes the slot the doc glyph had: 10 wide, in the row's mono, tertiary.
+        static let statusFont = Font.system(size: 12, design: .monospaced)
+        static let statusWidth: CGFloat = 10
         static let fileListMaxHeight: CGFloat = 168
         static let commentBadgeGap: CGFloat = 4
 
