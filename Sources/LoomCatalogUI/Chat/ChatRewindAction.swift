@@ -23,7 +23,7 @@ enum RewindActionState: Equatable {
 }
 
 enum ChatRewindAction {
-    static let title = "Rewind files to before this message"
+    static let title = "Rewind Files to Before This Message"
 
     /// A row offers the action when it is a user prompt Claude read that carries a message uuid: typed, or sent by Loom.
     /// Task notifications, meta records and Loom's own marker rows are not user entries; a subagent's brief is not a prompt of
@@ -56,16 +56,22 @@ struct ChatRewindButton: View {
     }
 
     private func button(reason: String?) -> some View {
+        RewindLink(reason: reason, action: action)
+    }
+}
+
+/// The link beside Copy: the glyph and the title in the footer's link look (22 pt, 11.5 medium), faded while it is off.
+private struct RewindLink: View {
+    let reason: String?
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
         Button(action: action) {
-            HStack(spacing: LoomTheme.Rewind.actionGap) {
-                Image(systemName: "arrow.uturn.backward").font(LoomTheme.Rewind.actionGlyph)
-                Text(ChatRewindAction.title)
-            }
+            ChatLinkLabel(title: ChatRewindAction.title, symbol: "arrow.uturn.backward", hovering: hovering && reason == nil)
         }
         .buttonStyle(.plain)
-        .font(LoomTheme.Chat.meta)
-        .foregroundStyle(LoomTheme.Text.secondaryStyle)
-        .frame(minHeight: 18)
+        .onHover { hovering = $0 }
         .disabled(reason != nil)
         .opacity(reason == nil ? 1 : LoomTheme.Opacity.disabled)
         .help(reason ?? ChatRewindAction.title)
@@ -82,16 +88,17 @@ struct ChatRewoundMarkerView: View {
     let context: ChatRowContext
 
     var body: some View {
-        HStack(spacing: LoomTheme.Rewind.markerGap) {
+        HStack(spacing: LoomTheme.Chat.markerGap) {
             line
             Text(Self.text(marker, date: date)).font(LoomTheme.Chat.markerText)
-                .foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1).layoutPriority(1)
+                .foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1).layoutPriority(1)
             if marker.undo == .available {
                 ChatLinkButton(title: "Undo") { context.undoRewind(marker.rewindID) }.layoutPriority(2)
             }
             line
         }
-        .frame(height: LoomTheme.Chat.markerHeight)
+        .frame(height: LoomTheme.Chat.markerLineHeight)
+        .padding(.vertical, LoomTheme.Chat.markerPaddingV)
     }
 
     private var line: some View { Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline) }

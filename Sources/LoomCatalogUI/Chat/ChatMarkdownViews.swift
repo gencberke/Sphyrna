@@ -13,25 +13,26 @@ struct ChatProseView: View {
     var body: some View {
         let _ = ChatRenderProbe.proseBody(in: context)
         if case let .assistantText(text) = entry.body {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 0) {
                 ChatMarkdownView(blocks: ChatContent.blocks(id: entry.id, text: text.text, isStreaming: text.isStreaming, in: context),
                                  flags: flags, rowID: entry.id, isStreaming: text.isStreaming, context: context)
                 if settled {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 6) {
                         if let notes = context.sideNotes {
                             // A side chat's answer: the two actions stay in view (V22 part 3).
                             SideAnswerActions(entryID: entry.id, text: text.text, notes: notes, context: context)
                         } else if hovering {
                             ChatCopyButton(text: text.text, context: context)
                             if let time = entry.timestamp {
-                                Text(ChatTime.label(for: time)).font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                                Text(ChatTime.label(for: time)).font(LoomTheme.Chat.timeMono).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                             }
                         }
                     }
-                    .frame(height: 18)
+                    .frame(height: LoomTheme.Chat.replyFooterHeight)
+                    .padding(.leading, -6)
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.top, 10).padding(.bottom, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
             .onHover { if settled { hovering = $0 } }
         }
@@ -86,7 +87,7 @@ struct ChatMarkdownView: View {
                 }
             }
         case let .quote(inner):
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
                 RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim).fill(LoomTheme.Chat.quoteBar).frame(width: LoomTheme.Chat.quoteBarWidth)
                 ChatMarkdownView(blocks: inner, flags: flags, rowID: rowID, isStreaming: isStreaming, context: context, topIndex: index)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle)
@@ -147,8 +148,8 @@ struct ChatMarkdownTableView: View {
                     .overlay(alignment: .top) { Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline) }
                 }
             }
-            .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.md).strokeBorder(LoomTheme.Surface.hairlineStyle))
-            .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.md))
+            .overlay(RoundedRectangle(cornerRadius: LoomTheme.Chat.codeRadius).strokeBorder(LoomTheme.Surface.hairlineStyle))
+            .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Chat.codeRadius))
         }
     }
 
@@ -159,16 +160,17 @@ struct ChatMarkdownTableView: View {
         case .trailing: .trailing
         }
         return Text(ChatContent.inline(source, in: context))
-            .font(header ? LoomTheme.Chat.toolLabelStrong : LoomTheme.Chat.toolLabel)
-            .foregroundStyle(LoomTheme.Text.primary)
+            .font(header ? LoomTheme.Chat.linkLabel : LoomTheme.Chat.toolLabel)
+            .foregroundStyle(header ? AnyShapeStyle(LoomTheme.Text.secondaryStyle) : AnyShapeStyle(LoomTheme.Text.primary))
             .textSelection(.enabled)
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .frame(minWidth: 60, maxWidth: 320, alignment: alignment)
+            .padding(.horizontal, 14).padding(.vertical, 6)
+            .frame(minWidth: 60, maxWidth: 320, minHeight: LoomTheme.Chat.tableRowHeight, alignment: alignment)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
 
-/// A fenced code block: the language, Copy and a wrap toggle on a header; the code scrolls sideways unless it wraps.
+/// A fenced code block (DESIGN §7): a card (raised 1, radius 8, a hairline) with a 30 pt header (the language in mono 11
+/// tertiary, a wrap toggle and Copy) over the code in 12.5 / 20; the code scrolls sideways unless it wraps.
 struct ChatCodeBlockView: View {
     let language: String?
     let code: String
@@ -179,32 +181,32 @@ struct ChatCodeBlockView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Text(verbatim: language ?? "text").font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            HStack(spacing: 2) {
+                Text(verbatim: language ?? "text").font(LoomTheme.Chat.timeMono).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 Spacer(minLength: 0)
-                Button(action: toggleWrap) {
-                    Image(systemName: wrapped ? "text.alignleft" : "arrow.turn.down.left").font(LoomTheme.Chat.rowIcon)
-                }
-                .buttonStyle(.plain).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                .frame(minWidth: 24, minHeight: 20)
-                .help(wrapped ? "Do not wrap lines" : "Wrap lines")
-                .accessibilityLabel(wrapped ? "Do not wrap lines" : "Wrap lines")
+                ChatIconButton(symbol: wrapped ? "text.alignleft" : "arrow.turn.down.left",
+                               label: wrapped ? "Do not wrap lines" : "Wrap lines", action: toggleWrap)
                 ChatCopyButton(text: code, context: context)
             }
-            .padding(.horizontal, 10)
+            .padding(.leading, LoomTheme.Chat.outputPaddingH).padding(.trailing, 4)
             .frame(height: LoomTheme.Chat.codeHeaderHeight)
             Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
             if wrapped {
-                codeText.padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                codeText.padding(codePadding).frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    codeText.padding(10).fixedSize(horizontal: true, vertical: true)
+                    codeText.padding(codePadding).fixedSize(horizontal: true, vertical: true)
                 }
             }
         }
-        .background(RoundedRectangle(cornerRadius: LoomTheme.Chat.codeRadius).fill(LoomTheme.Surface.card))
+        .background(RoundedRectangle(cornerRadius: LoomTheme.Chat.codeRadius).fill(LoomTheme.Chat.cardFill))
         .overlay(RoundedRectangle(cornerRadius: LoomTheme.Chat.codeRadius).strokeBorder(LoomTheme.Surface.hairlineStyle))
         .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Chat.codeRadius))
+    }
+
+    private var codePadding: EdgeInsets {
+        EdgeInsets(top: LoomTheme.Chat.codePaddingTop, leading: LoomTheme.Chat.codePaddingH,
+                   bottom: LoomTheme.Chat.codePaddingBottom, trailing: LoomTheme.Chat.codePaddingH)
     }
 
     @ViewBuilder private var codeText: some View {
@@ -213,8 +215,10 @@ struct ChatCodeBlockView: View {
             if let colored { Text(colored) } else { Text(verbatim: code) }
         }
         .font(LoomTheme.Chat.body)
-        .lineSpacing(LoomTheme.Chat.bodyLineHeight - 15)
+        .lineSpacing(LoomTheme.Chat.codeLineSpacing)
         .foregroundStyle(LoomTheme.Chat.syntaxPlain)
         .textSelection(.enabled)
+        // Line spacing falls between lines only; half of it above and below makes every line 20 high.
+        .padding(.vertical, LoomTheme.Chat.codeLineSpacing / 2)
     }
 }

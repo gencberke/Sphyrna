@@ -128,7 +128,7 @@ struct ChatTranscriptContent<Fallback: View>: View {
 // MARK: Overlays
 
 /// The view switch: Normal, Thinking, Verbose. ⌃O cycles it only while the stream has focus (the table's key handling), so
-/// it never takes the key from a terminal beside the chat.
+/// it never takes the key from a terminal beside the chat. A 24 pt chip, radius 6, on the canvas at 92 % with an inset edge.
 struct ChatViewChip: View {
     let mode: ChatViewMode
     /// The glyph and the key only (a narrow stream); the tooltip and the accessibility value still name the view.
@@ -140,18 +140,21 @@ struct ChatViewChip: View {
     static func isCompact(width: CGFloat) -> Bool { width < LoomTheme.Chat.chipCompactBelow }
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: LoomTheme.InkRadius.control)
         Button(action: cycle) {
-            HStack(spacing: 5) {
-                Image(systemName: "eye").font(LoomTheme.Chat.chevron)
+            HStack(spacing: compact ? 5 : 7) {
+                Image(systemName: "eye").font(LoomTheme.Chat.linkSymbol)
                 if !compact { Text(mode.title) }
-                Text("\u{2303}O").foregroundStyle(LoomTheme.Text.secondaryStyle)
+                Text("\u{2303}O").font(LoomTheme.Chat.keyCap)
+                    .padding(.horizontal, 4)
+                    .background(RoundedRectangle(cornerRadius: LoomTheme.InkRadius.key).fill(LoomTheme.Surface.hoverTone.color))
             }
             .font(LoomTheme.Chat.viewChip)
-            .foregroundStyle(LoomTheme.Text.primary)
-            .padding(.horizontal, 9).frame(height: 22)
-            .background(Capsule().fill(LoomTheme.Surface.card).overlay(Capsule().fill(hovering ? LoomTheme.Highlight.hover : Color.clear)))
-            .overlay(Capsule().strokeBorder(LoomTheme.Surface.hairlineStyle))
-            .contentShape(Capsule())
+            .foregroundStyle(hovering ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
+            .padding(.leading, compact ? 5 : 8).padding(.trailing, 5).frame(height: LoomTheme.Chat.viewChipHeight)
+            .background(shape.fill(LoomTheme.Chat.viewChipFill))
+            .overlay(shape.strokeBorder(hovering ? LoomTheme.Surface.strongerHairline : LoomTheme.Surface.strongHairline))
+            .contentShape(shape)
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
@@ -162,24 +165,28 @@ struct ChatViewChip: View {
     }
 }
 
+/// "Jump to Latest": a pill on the popover level (its fill, hairline and shadow), 28 pt. The host places it above the composer
+/// and fades it in over 150 ms.
 struct ChatJumpPill: View {
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: "arrow.down").font(LoomTheme.Chat.chevron)
-                Text("Jump to latest")
+                Image(systemName: "arrow.down").font(LoomTheme.Chat.linkSymbol)
+                Text("Jump to Latest")
             }
             .font(LoomTheme.Chat.jumpPill)
             .foregroundStyle(LoomTheme.Text.primary)
-            .padding(.horizontal, 12).frame(height: LoomTheme.Chat.jumpPillHeight)
+            .padding(.leading, LoomTheme.Chat.jumpPillPaddingLeading).padding(.trailing, LoomTheme.Chat.jumpPillPaddingTrailing)
+            .frame(height: LoomTheme.Chat.jumpPillHeight)
             .background(Capsule().fill(LoomTheme.Chat.jumpFill))
             .overlay(Capsule().strokeBorder(LoomTheme.Surface.hairlineStyle))
+            .depth(LoomTheme.Elevation.popover)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Jump to latest")
+        .accessibilityLabel("Jump to Latest")
     }
 }
 

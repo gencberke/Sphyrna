@@ -73,7 +73,7 @@ struct RewindFilesUITests {
         #expect(ChatRewindAction.state(for: prompt, availability: nil) == .hidden)
         let answer = try #require(entries().first { if case .assistantText = $0.body { true } else { false } })
         #expect(ChatRewindAction.state(for: answer, availability: .available) == .hidden)
-        #expect(ChatRewindAction.title == "Rewind files to before this message")
+        #expect(ChatRewindAction.title == "Rewind Files to Before This Message")
     }
 
     @Test func theNewestPromptIsTheOneWhoseTurnTheRewindLosesForGood() {

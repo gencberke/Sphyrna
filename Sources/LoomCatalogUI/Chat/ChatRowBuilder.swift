@@ -104,7 +104,7 @@ enum ChatRowBuilder {
         }
         // Work that never finished in a turn that is not live (a transcript has no result to say so) was stopped.
         if !live { visible = visible.map(settledCopy) }
-        guard let turn else { return emit(visible, turn: nil, input: input, finalAnswerID: nil, settled: false) }
+        guard let turn else { return withAgentsHeaders(emit(visible, turn: nil, input: input, finalAnswerID: nil, settled: false)) }
 
         let interrupted = turn.status == .interrupted || visible.contains { if case .marker(.interrupted) = $0.body { true } else { false } }
         var failed = false
@@ -134,7 +134,9 @@ enum ChatRowBuilder {
                     let id = foldID(turn.id)
                     let open = isOpen(id, default: mode.opensFoldsAndGroups, input)
                     out.append(ChatRow(id: id, kind: .turnFold(fold.fold), open: open))
-                    if open { out += emit(fold.folded, turn: turn, input: input, finalAnswerID: nil, settled: settled) }
+                    if open {
+                        out += hungOnGuide(emit(fold.folded, turn: turn, input: input, finalAnswerID: nil, settled: settled))
+                    }
                 }
                 if fold.range.contains(index) {
                     if fold.keeps(entry) { pending.append(entry) }
@@ -158,7 +160,44 @@ enum ChatRowBuilder {
                     ChangedFiles(turnID: turn.id, files: files, lines: ChatWork.tree(of: files)))))
             }
         }
-        return out
+        return withAgentsHeaders(out)
+    }
+
+    /// The rows of an open fold's work, each hanging on the fold's guide; the last one ends it.
+    private static func hungOnGuide(_ rows: [ChatRow]) -> [ChatRow] {
+        rows.enumerated().map { index, row in
+            var row = row
+            row.foldGuide = index == rows.count - 1 ? .last : .middle
+            return row
+        }
+    }
+
+    /// The first card of each run of subagent cards says how many agents there are and how they stand.
+    static func withAgentsHeaders(_ rows: [ChatRow]) -> [ChatRow] {
+        var rows = rows
+        var index = 0
+        while index < rows.count {
+            guard case .subagent = rows[index].kind else { index += 1; continue }
+            var end = index + 1
+            while end < rows.count, case .subagent = rows[end].kind { end += 1 }
+            let statuses = rows[index..<end].compactMap { row -> SubagentRun.Status? in
+                if case let .subagent(entry) = row.kind, case let .subagent(run) = entry.body { run.status } else { nil }
+            }
+            rows[index].agentsHeader = agentsHeader(statuses)
+            index = end
+        }
+        return rows
+    }
+
+    /// "2 agents \u{00B7} 1 working \u{00B7} 1 done": a count of each state that is there (one agent: "1 agent \u{00B7} working").
+    static func agentsHeader(_ runs: [SubagentRun.Status]) -> String {
+        let states: [(SubagentRun.Status, String)] = [(.running, "working"), (.succeeded, "done"), (.failed, "failed"), (.interrupted, "stopped")]
+        let parts = states.compactMap { status, word -> String? in
+            let count = runs.filter { $0 == status }.count
+            guard count > 0 else { return nil }
+            return runs.count == 1 ? word : "\(count) \(word)"
+        }
+        return (["\(runs.count) agent\(runs.count == 1 ? "" : "s")"] + parts).joined(separator: " \u{00B7} ")
     }
 
     private static func settledCopy(_ entry: ChatEntry) -> ChatEntry {
@@ -255,31 +294,41 @@ enum ChatRowBuilder {
             out.append(ChatRow(id: "thought:" + turn.id, kind: .thought(thought)))
         }
         let start = turn.startedAt ?? input.liveStarts[turn.id]
+        let parts = liveParts(visible, model: input.model, workingDirectory: input.workingDirectory)
         out.append(ChatRow(id: id, kind: .live(LiveRow(
-            turnID: turn.id, label: liveLabel(visible, model: input.model, workingDirectory: input.workingDirectory),
+            turnID: turn.id, label: parts.subject.isEmpty ? parts.verb : parts.verb + " " + parts.subject,
+            subject: parts.subject, subjectIsMono: parts.mono,
             startedAt: start, lastActivity: input.lastActivity, hiddenTools: tail)), open: open))
         return out
     }
 
     static func liveLabel(_ visible: [ChatEntry], model: TurnModel, workingDirectory: String?) -> String {
-        if model.activity == "compacting" { return "Compacting" }
+        let parts = liveParts(visible, model: model, workingDirectory: workingDirectory)
+        return parts.subject.isEmpty ? parts.verb : parts.verb + " " + parts.subject
+    }
+
+    /// What Claude does now: the verb ("Running") and what it acts on, which the live row draws in mono when it is code or a path.
+    static func liveParts(_ visible: [ChatEntry], model: TurnModel, workingDirectory: String?)
+        -> (verb: String, subject: String, mono: Bool) {
+        if model.activity == "compacting" { return ("Compacting", "", false) }
         for entry in visible.reversed() {
             switch entry.body {
             case let .tool(call) where call.status == .running:
-                return ChatWork.sentence(ChatWork.label(for: call, workingDirectory: workingDirectory), running: true)
+                let label = ChatWork.label(for: call, workingDirectory: workingDirectory)
+                return (label.verbRunning, label.subject, label.mono)
             case let .subagent(run) where run.status == .running:
-                return "Waiting for \(run.subagentType ?? "an agent")"
+                return ("Waiting for \(run.subagentType ?? "an agent")", "", false)
             case .thinking:
-                return "Thinking"
+                return ("Thinking", "", false)
             case .user:
-                return "Working"
+                return ("Working", "", false)
             case .assistantText:
-                return "Writing"
+                return ("Writing", "", false)
             default:
                 continue
             }
         }
-        return "Working"
+        return ("Working", "", false)
     }
 
     // MARK: Rows of entries
@@ -303,7 +352,13 @@ enum ChatRowBuilder {
                                   status: groupStatus(calls), failedCount: calls.filter { $0.status == .failed }.count)
             let open = isOpen(id, default: mode.opensFoldsAndGroups, input)
             out.append(ChatRow(id: id, kind: .group(group), open: open))
-            if open { out += tools.map { toolRow($0, input: input, indent: 1) } }
+            if open {
+                out += tools.enumerated().map { index, tool in
+                    var row = toolRow(tool, input: input, indent: 1)
+                    row.branch = index == tools.count - 1 ? .last : .middle
+                    return row
+                }
+            }
         }
 
         for entry in entries {

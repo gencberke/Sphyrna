@@ -5,11 +5,6 @@ import SwiftUI
 /// `LoomTheme*.swift` this file is exempt from the theme guard.
 extension LoomTheme {
     enum Rewind {
-        // MARK: The footer action
-
-        static let actionGlyph = Font.system(size: 10, weight: .semibold)
-        static let actionGap: CGFloat = 4
-
         // MARK: The sheet
 
         /// Paths and marks need more room than the 420 pt of a plain confirmation.

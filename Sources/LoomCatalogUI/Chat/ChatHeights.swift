@@ -52,30 +52,31 @@ enum ChatRowEstimate {
             return LoomTheme.Chat.markerHeight
         case let .user(entry):
             guard case let .user(prompt) = entry.body else { return 60 }
-            let bubble = content * LoomTheme.Chat.userMaxWidthFraction - 32
+            let bubble = min(content * LoomTheme.Chat.userMaxWidthFraction, LoomTheme.Chat.userMaxWidth) - 2 * LoomTheme.Chat.userPaddingH
             // A collapsed row shows seven lines, so the start of a long message says as much as all of it (a chip can be 16 MB).
             let count = lines(row.open ? prompt.text : String(ChatUserText.collapsedPrefix(prompt.text)), charsPerLine: bubble / 7.4)
             let shown = row.open ? count : min(count, LoomTheme.Chat.userCollapsedLines)
-            return CGFloat(shown) * 22 + 16 + 26 + (prompt.images.isEmpty ? 0 : 80)
+            return CGFloat(shown) * 22 + 2 * LoomTheme.Chat.userPaddingV + LoomTheme.Chat.userFooterHeight + LoomTheme.Chat.userTopGap
+                + (prompt.images.isEmpty ? 0 : 80) + (ChatUserText.isLong(prompt.text) ? 26 : 0)
         case let .prose(entry, settled):
             guard case let .assistantText(text) = entry.body else { return 40 }
-            return proseHeight(text.text, width: content) + (settled ? 28 : 8)
+            return proseHeight(text.text, width: content) + (settled ? 32 : 14)
         case let .thinking(entry):
             guard case let .thinking(thinking) = entry.body else { return 28 }
-            return 28 + (row.open ? CGFloat(lines(thinking.text, charsPerLine: content / 7)) * 20 + 12 : 0)
+            return LoomTheme.Chat.workRowHeight + (row.open ? CGFloat(lines(thinking.text, charsPerLine: content / 7)) * LoomTheme.Chat.thinkingLineHeight + 12 : 0)
         case .tool:
             return LoomTheme.Chat.workRowHeight + (row.open ? 120 : 0)
         case .group: return LoomTheme.Chat.workRowHeight
-        case .subagent: return 78
+        case .subagent: return 78 + (row.agentsHeader == nil ? 0 : 32)
         case let .plan(entry):
             guard case let .plan(plan) = entry.body else { return 120 }
             return 90 + min(proseHeight(plan.markdown, width: content), row.open ? .greatestFiniteMagnitude : 220)
         case .request: return 28
         case .raw: return LoomTheme.Chat.workRowHeight + (row.open ? 150 : 0)
-        case .turnFold: return 38
-        case let .changedFiles(card): return 56 + CGFloat(card.lines.count) * 20
-        case .thought: return 30
-        case .live: return LoomTheme.Chat.workRowHeight + 4
+        case .turnFold: return LoomTheme.Chat.foldHeight + 12
+        case let .changedFiles(card): return 20 + LoomTheme.Chat.changesHeaderHeight + CGFloat(card.lines.count) * LoomTheme.Chat.changesFileHeight
+        case .thought: return 52
+        case .live: return LoomTheme.Chat.liveHeight + 6
         case .empty: return 140
         }
     }

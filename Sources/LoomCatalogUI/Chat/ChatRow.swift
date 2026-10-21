@@ -41,6 +41,12 @@ struct ChatRow: Identifiable, Equatable {
     var flags: Set<String> = []
     /// One step of nesting: the tools of an open group.
     var indent = 0
+    /// Where a step of an open group hangs on the group's branch (DESIGN §7); nil for any other row. The last step ends the line.
+    var branch: ChatTreePosition?
+    /// Where a row of an open turn fold hangs on the fold's guide; the last row ends it. Nil outside a fold.
+    var foldGuide: ChatTreePosition?
+    /// The line over the first subagent card of a run of cards: "2 agents · 1 working · 1 done". Nil on the others.
+    var agentsHeader: String?
     /// What "Show all" read from the transcript for a clipped tool result: its text (cut at about 1 MiB), or that it
     /// could not be read.
     var fullOutput: ChatFullOutput?
@@ -119,6 +125,9 @@ struct LiveRow: Equatable {
     var turnID: String
     /// "Editing migrations/0042.py", "Thinking", "Working".
     var label: String
+    /// What the label's verb acts on ("migrations/0042.py"), drawn apart in mono; empty when the label is the verb alone.
+    var subject = ""
+    var subjectIsMono = false
     var startedAt: Date?
     /// When something last arrived; after 40 s without, the row says so.
     var lastActivity: Date?

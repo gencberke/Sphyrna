@@ -14,7 +14,8 @@ struct ChatRowView: View {
     var body: some View {
         content
             .environment(\.chatMeasuring, measuring)
-            .padding(.leading, CGFloat(row.indent) * LoomTheme.Chat.indentStep)
+            .padding(.leading, row.foldGuide == nil ? 0 : LoomTheme.Chat.Tree.foldIndent)
+            .chatTree(row.foldGuide.map { .fold($0) })
             .padding(.horizontal, context.columnPadding)
             .frame(maxWidth: LoomTheme.Chat.column)
             .frame(maxWidth: .infinity)
@@ -43,7 +44,7 @@ struct ChatRowView: View {
         case let .group(group):
             ChatGroupRowView(group: group, open: row.open, rowID: row.id, context: context)
         case let .subagent(entry):
-            ChatSubagentCardView(entry: entry, context: context)
+            ChatSubagentCardView(entry: entry, header: row.agentsHeader, context: context)
         case let .plan(entry):
             ChatPlanCardView(entry: entry, open: row.open, flags: row.flags, rowID: row.id, context: context)
         case let .request(entry):
@@ -117,18 +118,19 @@ enum ChatMarkerText {
 
 // MARK: Markers
 
-/// A hairline with a centred label.
+/// A hairline with a centred label in the machine's voice: mono 11, tertiary, 12 from each line.
 struct ChatMarkerLine: View {
     let text: String
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: LoomTheme.Chat.markerGap) {
             line
-            Text(text).font(LoomTheme.Chat.markerText).foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)
+            Text(text).font(LoomTheme.Chat.markerText).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
                 .layoutPriority(1)
             line
         }
-        .frame(height: LoomTheme.Chat.markerHeight)
+        .frame(height: LoomTheme.Chat.markerLineHeight)
+        .padding(.vertical, LoomTheme.Chat.markerPaddingV)
         .accessibilityElement(children: .combine)
     }
 
@@ -173,21 +175,27 @@ struct ChatUserMessageView: View {
 
     var body: some View {
         if let prompt {
-            VStack(alignment: .trailing, spacing: 2) {
-                bubble(prompt)
+            let _ = ChatUserText.bubbleEvaluated(entry.id)
+            let long = ChatUserText.isLong(prompt.text)
+            VStack(alignment: .trailing, spacing: 0) {
+                ChatCappedWidth(fraction: LoomTheme.Chat.userMaxWidthFraction, maximum: LoomTheme.Chat.userMaxWidth) {
+                    bubble(prompt, collapsed: long && !open)
+                }
+                if long {
+                    ChatLinkButton(title: open ? "Show Less" : "Show Full Message", prominent: true) { context.toggle(entry.id) }
+                        .padding(.top, 4).padding(.trailing, -6)
+                }
                 ChatUserFooter(entry: entry, prompt: prompt, context: context, hover: hover)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.top, 4)
+            .padding(.top, LoomTheme.Chat.userTopGap)
             .onHover { hover.isOver = $0 }
         }
     }
 
-    private func bubble(_ prompt: UserPrompt) -> some View {
-        let _ = ChatUserText.bubbleEvaluated(entry.id)
-        let long = ChatUserText.isLong(prompt.text)
-        let collapsed = long && !open
-        return VStack(alignment: .leading, spacing: 8) {
+    /// The one bubble: the fill, no edge, radius 12, padded 9 \u{00D7} 14.
+    private func bubble(_ prompt: UserPrompt, collapsed: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             if !prompt.images.isEmpty {
                 HStack(spacing: 8) {
                     ForEach(Array(prompt.images.enumerated()), id: \.offset) { _, image in
@@ -203,29 +211,41 @@ struct ChatUserMessageView: View {
                     .lineLimit(collapsed ? LoomTheme.Chat.userCollapsedLines : nil)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
-            }
-            if long {
-                Button(open ? "Show less" : "Show full message") { context.toggle(entry.id) }
-                    .buttonStyle(.plain).font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Accent.high)
+                    // Line spacing falls between lines only; half of it above and below makes every line 22 high, as the reference's.
+                    .padding(.vertical, LoomTheme.Chat.readingLineSpacing / 2)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(userShape.fill(LoomTheme.Chat.userFill))
-        .overlay(userShape.strokeBorder(LoomTheme.Chat.userStroke, lineWidth: LoomTheme.Line.hairline))
+        .padding(.horizontal, LoomTheme.Chat.userPaddingH)
+        .padding(.vertical, LoomTheme.Chat.userPaddingV)
+        .background(RoundedRectangle(cornerRadius: LoomTheme.Chat.userRadius).fill(LoomTheme.Chat.userFill))
         // Dimmed until the CLI has it (`queued`); after that it looks normal and only the mark says it waits (spec).
-        .opacity(prompt.delivery == .pending ? 0.6 : 1)
-        .frame(maxWidth: .infinity, alignment: .trailing)
-    }
-
-    private var userShape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(cornerRadii: .init(topLeading: LoomTheme.Chat.userRadius, bottomLeading: LoomTheme.Chat.userRadius,
-                                                  bottomTrailing: LoomTheme.Chat.userTailRadius, topTrailing: LoomTheme.Chat.userRadius))
+        .opacity(prompt.delivery == .pending ? 0.5 : 1)
     }
 }
 
-/// The time, Copy and Rewind files on hover, or what became of a message that was not read. It reads the row's hover itself, so a hover
-/// evaluates this view and nothing above it.
+/// The widest a view gets: `fraction` of the width it is offered and at most `maximum`. Your message takes it (80 % of the
+/// column, 560 at most), and its own text sets the width below that.
+struct ChatCappedWidth: Layout {
+    let fraction: CGFloat
+    let maximum: CGFloat
+
+    /// The width the content is offered when `width` is offered to this layout.
+    static func cap(_ width: CGFloat?, fraction: CGFloat, maximum: CGFloat) -> CGFloat {
+        width.map { min($0 * fraction, maximum) } ?? maximum
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let child = subviews.first else { return .zero }
+        return child.sizeThatFits(ProposedViewSize(width: Self.cap(proposal.width, fraction: fraction, maximum: maximum),
+                                                   height: proposal.height))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
+    }
+}
+/// What became of your message, or its time, Copy and Rewind Files on hover. One line (26 pt) under the bubble, in 11.5
+/// tertiary. It reads the row's hover itself, so a hover evaluates this view and nothing above it.
 private struct ChatUserFooter: View {
     let entry: ChatEntry
     let prompt: UserPrompt
@@ -235,33 +255,40 @@ private struct ChatUserFooter: View {
     var body: some View {
         let hovering = hover.isOver || LookEvidence.forcesHover(ChatUserMessageView.highlightKey(entry.id))
         let _ = ChatUserText.footerEvaluated(entry.id)
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             switch prompt.delivery {
             case .notDelivered:
-                Text("Not delivered").foregroundStyle(LoomTheme.Status.failureLight)
-                switch prompt.followUp {
-                case .sentAgain?: Text("Sent again below").foregroundStyle(LoomTheme.Text.secondaryStyle)
-                case .handedBack?: Text("Back where you wrote it").foregroundStyle(LoomTheme.Text.secondaryStyle)
-                case nil: EmptyView()
+                Group {
+                    Text("Not delivered")
+                    switch prompt.followUp {
+                    case .sentAgain?: separator; Text("Sent again below")
+                    case .handedBack?: separator; Text("Back where you wrote it")
+                    case nil: EmptyView()
+                    }
                 }
+                .foregroundStyle(LoomTheme.Status.failureLight)
                 if context.canReadNow, prompt.followUp == nil {
                     ChatLinkButton(title: "Retry") { context.retry(entry.id) }
-                    ChatCopyButton(text: prompt.text, context: context)
+                    ChatCopyButton(text: prompt.text, context: context, showsIcon: false)
                 }
             case .cancelled:
-                Text("Withdrawn before Claude read it").foregroundStyle(LoomTheme.Text.secondaryStyle)
+                Text("Withdrawn before Claude read it")
             case .pending:
                 EmptyView()
             case .queued:
                 // Only a message sent while a turn ran waits for its step; an idle send's echo is just a moment away.
                 if prompt.sentWhileWorking {
-                    Text("Waiting for the current step").foregroundStyle(LoomTheme.Text.secondaryStyle)
-                    if context.canReadNow { ChatLinkButton(title: "Read now") { context.readNow(entry.id) } }
+                    Text("Sent while Claude worked")
+                    separator
+                    Text("Waiting for the current step")
+                    if context.canReadNow { ChatLinkButton(title: "Read Now", prominent: true) { context.readNow(entry.id) } }
                 }
             case .read:
                 if hovering {
-                    if let time = entry.timestamp { Text(ChatTime.label(for: time)).foregroundStyle(LoomTheme.Text.secondaryStyle) }
-                    ChatCopyButton(text: prompt.text, context: context)
+                    if let time = entry.timestamp {
+                        Text(ChatTime.label(for: time)).font(LoomTheme.Chat.timeMono).padding(.horizontal, 4)
+                    }
+                    ChatCopyButton(text: prompt.text, context: context, iconOnly: true)
                     ChatRewindButton(state: ChatRewindAction.state(for: entry, availability: context.rewind.availability)) {
                         context.rewindFiles(entry.id)
                     }
@@ -269,29 +296,101 @@ private struct ChatUserFooter: View {
             }
         }
         .font(LoomTheme.Chat.meta)
-        .frame(height: 16)
+        .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+        .lineLimit(1)
+        .frame(height: LoomTheme.Chat.userFooterHeight)
+        .padding(.trailing, -6)
     }
+
+    private var separator: some View { Text("\u{00B7}").foregroundStyle(LoomTheme.Text.faint) }
 }
 
-/// A small text button of a row's footer (Retry, Read now).
+/// A small link of a row or a card (the reference's `lk2`): 22 pt, radius 6, 11.5 medium, secondary and primary under the
+/// pointer, or the accent for the one action a row leads to. The hover is its own, so a hover redraws this button only.
 struct ChatLinkButton: View {
     let title: String
+    var symbol: String?
+    /// A chevron after the title ("Open in Changes").
+    var chevron = false
+    /// The accent: the action the row leads to (Read Now, Show Full Message).
+    var prominent = false
+    /// The accessibility identifier is derived from the title (the evidence run and tests find the button by it).
+    var identified = true
     let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
-        Button(title, action: action)
-            .buttonStyle(.plain).font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Accent.high)
-            .frame(minHeight: 18)
-            .accessibilityIdentifier("chat-row-" + title.lowercased().replacingOccurrences(of: " ", with: "-"))
+        Button(action: action) { ChatLinkLabel(title: title, symbol: symbol, chevron: chevron, prominent: prominent, hovering: hovering) }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .modifier(Identified(id: identified ? "chat-row-" + title.lowercased().replacingOccurrences(of: " ", with: "-") : nil))
+    }
+
+    private struct Identified: ViewModifier {
+        let id: String?
+
+        func body(content: Content) -> some View {
+            if let id { content.accessibilityIdentifier(id) } else { content }
+        }
     }
 }
 
-/// Copy, with "Copied" for 1.2 s.
+/// The look of a link: shared by `ChatLinkButton` and the buttons that keep their own state (Copy).
+struct ChatLinkLabel: View {
+    let title: String
+    var symbol: String?
+    var chevron = false
+    var prominent = false
+    let hovering: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if let symbol { Image(systemName: symbol).font(LoomTheme.Chat.linkSymbol) }
+            Text(title)
+            if chevron { Image(systemName: "chevron.right").font(LoomTheme.Chat.chevron).accessibilityHidden(true) }
+        }
+        .font(LoomTheme.Chat.linkLabel)
+        .foregroundStyle(prominent ? AnyShapeStyle(LoomTheme.Accent.high)
+                         : hovering ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
+        .lineLimit(1)
+        .padding(.horizontal, 6)
+        .frame(height: LoomTheme.Chat.linkHeight)
+        .background(RowHighlight(state: hovering ? .hover : .none, radius: LoomTheme.InkRadius.control))
+        .contentShape(Rectangle())
+    }
+}
+
+/// An icon-only button of a row (22 pt, the reference's `ib sm`).
+struct ChatIconButton: View {
+    let symbol: String
+    let label: String
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(LoomTheme.Chat.linkSymbol)
+                .foregroundStyle(hovering ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
+                .frame(width: LoomTheme.Chat.linkHeight, height: LoomTheme.Chat.linkHeight)
+                .background(RowHighlight(state: hovering ? .hover : .none, radius: LoomTheme.InkRadius.control))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(label)
+        .accessibilityLabel(label)
+    }
+}
+
+/// Copy, with "Copied" for 1.2 s: a link with the copy glyph, or the glyph alone.
 struct ChatCopyButton: View {
     let text: String
     let context: ChatRowContext
     var label = "Copy"
+    var showsIcon = true
+    var iconOnly = false
     @State private var copied = false
+    @State private var hovering = false
 
     var body: some View {
         Button {
@@ -302,15 +401,20 @@ struct ChatCopyButton: View {
                 copied = false
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: copied ? "checkmark" : "doc.on.doc").font(LoomTheme.Chat.chevron)
-                Text(copied ? "Copied" : label)
+            if iconOnly {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc").font(LoomTheme.Chat.linkSymbol)
+                    .foregroundStyle(hovering ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
+                    .frame(width: LoomTheme.Chat.linkHeight, height: LoomTheme.Chat.linkHeight)
+                    .background(RowHighlight(state: hovering ? .hover : .none, radius: LoomTheme.InkRadius.control))
+                    .contentShape(Rectangle())
+            } else {
+                ChatLinkLabel(title: copied ? "Copied" : label, symbol: showsIcon ? (copied ? "checkmark" : "doc.on.doc") : nil,
+                              hovering: hovering)
             }
         }
         .buttonStyle(.plain)
-        .font(LoomTheme.Chat.meta)
-        .foregroundStyle(LoomTheme.Text.secondaryStyle)
-        .frame(minWidth: 24, minHeight: 18)
+        .onHover { hovering = $0 }
+        .help(label)
         .accessibilityLabel(label)
     }
 }
@@ -341,20 +445,22 @@ struct ChatThumbnail: View {
 
 // MARK: Small rows
 
+/// Claude's latest thought above the live row (Normal view): italic 12.5 / 19 in tertiary, 21 in, cut after 4 lines.
 struct ChatThoughtLineView: View {
     let text: String
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "sparkles").font(LoomTheme.Chat.rowIcon).frame(width: LoomTheme.Chat.iconSlot)
-            Text(verbatim: text).italic().lineLimit(LoomTheme.Chat.thoughtLineLimit).fixedSize(horizontal: false, vertical: true)
-        }
-        .font(LoomTheme.Chat.toolLabel)
-        .foregroundStyle(LoomTheme.Text.secondaryStyle)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Thinking: \(text)")
+        Text(verbatim: text)
+            .font(LoomTheme.Chat.thoughtText).italic()
+            .lineSpacing(LoomTheme.Chat.thoughtLineSpacing)
+            .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            .lineLimit(LoomTheme.Chat.thoughtLineLimit).fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, LoomTheme.Chat.thoughtLineSpacing / 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, LoomTheme.Chat.thoughtInset)
+            .padding(.top, 12).padding(.bottom, 2)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Thinking: \(text)")
     }
 }
 
@@ -410,8 +516,8 @@ struct ChatRawRecordView: View {
                         Text(verbatim: Self.detail(raw)).font(LoomTheme.Chat.metaMono).foregroundStyle(LoomTheme.Chat.output)
                             .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(10)
                     }
-                    .frame(maxHeight: LoomTheme.Chat.bodyMaxHeight)
-                    .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.md).fill(LoomTheme.Chat.outputFill))
+                    .frame(maxHeight: LoomTheme.Chat.outputMaxHeight)
+                    .background(RoundedRectangle(cornerRadius: LoomTheme.Chat.codeRadius).fill(LoomTheme.Chat.outputFill))
                     .padding(.bottom, 4)
                 }
             }
@@ -484,7 +590,7 @@ struct ChatChevron: View {
     var body: some View {
         Image(systemName: "chevron.right").font(LoomTheme.Chat.chevron)
             .rotationEffect(.degrees(open ? 90 : 0))
-            .foregroundStyle(LoomTheme.Text.secondaryStyle)
+            .foregroundStyle(LoomTheme.Text.tertiaryStyle)
             .frame(width: 14)
             .accessibilityHidden(true)
     }
