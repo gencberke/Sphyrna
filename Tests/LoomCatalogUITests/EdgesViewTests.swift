@@ -116,6 +116,54 @@ struct EdgesViewTests {
         #expect(opened.contains("ownership-notice") && opened.contains("info-message") && opened.contains("banner-stack-peek"))
     }
 
+    @Test func twoFailedDeletionsKeepTheirButtonsApart() async throws {
+        enableAccessibilityTree()
+        let fixture = try await fixture()
+        defer { fixture.cleanup() }
+        let first = UUID(), second = UUID()
+        let items = BannerItems.make(BannerSources(deletions: [first, second].map {
+            BannerDeletion(id: $0, title: "t", isDeleting: false, lastFailure: "files", canRetry: true, canRemove: true)
+        }))
+        let state = BannerStackState()
+        state.open = true
+        let (window, hosting) = hosted(Banners(model: fixture.model, items: items, state: state), width: 700, height: 400)
+        defer { window.contentView = nil; window.close() }
+        await settle(window)
+        let ids = accessibilityElements(in: hosting).compactMap { $0.accessibilityIdentifier?() }
+        for id in [first, second].map({ $0.uuidString.lowercased() }) {
+            #expect(ids.contains("deletion-retry-\(id)") && ids.contains("deletion-remove-\(id)"), "\(ids)")
+        }
+    }
+
+    // MARK: The second card
+
+    /// A box under the stack's 8 pt gap, drawn offscreen in Ink: the alpha 2 above its top edge, 40 in from its leading edge and
+    /// beside the tab (6 in), and inside the box.
+    private func tabAlpha(_ peek: BannerPeek?) throws -> (tab: CGFloat, beside: CGFloat, box: CGFloat) {
+        let top = LoomTheme.Edges.stackPaddingTop
+        let host = NSHostingView(rootView: BannerBox(tone: .failure, text: "Claude could not be started.", peek: peek)
+            .padding(.top, top).frame(width: 400))
+        host.appearance = NSAppearance(named: .darkAqua)
+        host.frame = NSRect(origin: .zero, size: host.fittingSize)
+        host.layoutSubtreeIfNeeded()
+        #expect(abs(host.bounds.height - (top + LoomTheme.ChatBanner.minHeight)) < 1, "the tab adds no height: \(host.bounds.height)")
+        let rep = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: rep)
+        let scale = CGFloat(rep.pixelsWide) / host.bounds.width
+        func alpha(_ x: CGFloat, _ y: CGFloat) -> CGFloat { rep.colorAt(x: Int(x * scale), y: Int(y * scale))?.alphaComponent ?? 0 }
+        return (alpha(40, top - 2), alpha(LoomTheme.Edges.stackTabInset - 4, top - 2), alpha(40, top + LoomTheme.ChatBanner.minHeight / 2))
+    }
+
+    @Test func theSecondCardPeeksAboveAClosedStackInsideTheGapAboveIt() throws {
+        func peek(open: Bool) -> BannerPeek { BannerPeek(hidden: 2, open: open, identifier: "p", toggle: {}) }
+        let closed = try tabAlpha(peek(open: false))
+        #expect(closed.box > 0.9 && closed.tab > 0.01 && closed.beside < 0.01, "closed: \(closed)")
+        let opened = try tabAlpha(peek(open: true))
+        #expect(opened.box > 0.9 && opened.tab < 0.01, "opened: no tab, the others are under it: \(opened)")
+        let alone = try tabAlpha(nil)
+        #expect(alone.box > 0.9 && alone.tab < 0.01, "one box: nothing waits behind it: \(alone)")
+    }
+
     // MARK: The ended line
 
     @Test func theEndedLineIsFortyHighAndGetsEightAndAHairlineAfterAStack() async throws {

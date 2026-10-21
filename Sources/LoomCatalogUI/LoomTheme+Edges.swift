@@ -74,5 +74,10 @@ extension LoomTheme {
         static let detailTop: CGFloat = 2
         static let detail = InkType.metaLarge.font
         static let actionGap: CGFloat = 6
+        /// The second card's tab above a closed stack: 5 high and 10 in from each side, inside the gap above the first box. The
+        /// reference gives it corners of 7, which CSS scales to the tab's height of 5.
+        static let stackTabHeight: CGFloat = 5
+        static let stackTabInset: CGFloat = 10
+        static let stackTabRadius: CGFloat = 5
     }
 }

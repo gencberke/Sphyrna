@@ -66,8 +66,10 @@ struct EdgesPureTests {
 
         let closed = BannerPeek(hidden: items.count - 1, open: false, identifier: "p", toggle: {})
         let opened = BannerPeek(hidden: items.count - 1, open: true, identifier: "p", toggle: {})
-        #expect(closed.text == "+7" && closed.label == "Show 7 more notices")
-        #expect(opened.text == "\u{2212}7" && opened.label == "Show fewer notices")
+        #expect(closed.text == "+7" && closed.label == "Show 7 more notices" && closed.help == "Show all")
+        // The reference's words while open (`edge.js` drawStack); the AX label stays a sentence.
+        #expect(opened.text == "Show Fewer" && opened.label == "Show fewer notices" && opened.help == "Show one")
+        #expect(closed.showsTab && !opened.showsTab, "the second card peeks above a closed stack only")
     }
 
     @Test func thePeekClosesByItselfWhenFewerThanTwoBoxesAreLeft() {

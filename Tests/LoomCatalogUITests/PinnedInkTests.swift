@@ -136,6 +136,9 @@ struct PinnedInkTests {
         #expect(none.height == 0)
         let one = fitting(ChatBannerView(items: [item(.policy)], dismiss: { _ in }, perform: { _ in }))
         #expect(one.height >= LoomTheme.ChatBanner.minHeight && one.height < 2 * LoomTheme.ChatBanner.minHeight + Pinned.stackPaddingBottom)
+        // A second banner waits behind "+1": the second card's tab draws in the room above, so nothing under the stream moves.
+        let two = fitting(ChatBannerView(items: [item(.policy), item(.wireDrift)], dismiss: { _ in }, perform: { _ in }))
+        #expect(two.height == one.height, "\(two.height) vs \(one.height)")
     }
 
     // MARK: The live row says Waiting for you

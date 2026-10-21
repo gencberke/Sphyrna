@@ -30,7 +30,7 @@ struct BannerAction: Identifiable {
     let perform: () -> Void
 }
 
-/// "+N" on the first box while others wait; opens them under it in place and closes them again.
+/// "+N" on the first box while others wait; opens them under it in place, and "Show Fewer" closes them again.
 struct BannerPeek {
     /// How many boxes wait behind the first.
     let hidden: Int
@@ -38,8 +38,12 @@ struct BannerPeek {
     let identifier: String
     let toggle: () -> Void
 
-    var text: String { open ? "\u{2212}\(hidden)" : "+\(hidden)" }
+    var text: String { open ? "Show Fewer" : "+\(hidden)" }
     var label: String { open ? "Show fewer notices" : "Show \(hidden) more notices" }
+    var help: String { open ? "Show one" : "Show all" }
+    /// While closed the second card's top edge shows above the box. The tab draws outside the box's frame, so a second banner
+    /// arriving changes no height (the terminal below is not resized again).
+    var showsTab: Bool { !open }
 }
 
 struct BannerDismiss {
@@ -91,6 +95,9 @@ struct BannerBox: View {
         .padding(.leading, LoomTheme.ChatBanner.paddingLeading).padding(.trailing, LoomTheme.ChatBanner.paddingTrailing)
         .frame(minHeight: LoomTheme.ChatBanner.minHeight)
         .pinnedSurface(radius: LoomTheme.ChatBanner.radius, fill: LoomTheme.Pinned.cardFill, edge: tone.edge)
+        .background(alignment: .top) {
+            if peek?.showsTab == true { BannerStackTab() }
+        }
     }
 
     @ViewBuilder private var symbol: some View {
@@ -138,8 +145,27 @@ struct BannerBox: View {
                 .frame(minHeight: LoomTheme.ChatBanner.peekHeight).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .help(peek.help)
         .accessibilityLabel(peek.label)
         .accessibilityIdentifier(peek.identifier)
+    }
+}
+
+/// The second card peeking above a closed stack (the reference's `.banner.stack::before`): 5 high, 10 in from each side, raised 1
+/// with a hairline along its top and sides. The shape runs on under the box and is cut at the box's top edge, so no line closes
+/// it at the bottom.
+private struct BannerStackTab: View {
+    var body: some View {
+        let edges = LoomTheme.Edges.self
+        let shape = UnevenRoundedRectangle(topLeadingRadius: edges.stackTabRadius, topTrailingRadius: edges.stackTabRadius)
+        shape.fill(LoomTheme.Surface.raised1)
+            .overlay { shape.strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline) }
+            .frame(height: edges.stackTabHeight + edges.stackTabRadius)
+            .frame(height: edges.stackTabHeight, alignment: .top)
+            .clipped()
+            .padding(.horizontal, edges.stackTabInset)
+            .offset(y: -edges.stackTabHeight)
+            .accessibilityHidden(true)
     }
 }
 

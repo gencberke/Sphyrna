@@ -227,10 +227,11 @@ struct Banners: View {
     /// tint, D-78).
     private func actions(for item: BannerItem) -> [BannerAction] {
         guard case .deletionFailure(let id) = item.kind else { return [] }
-        var actions = [BannerAction(id: "deletion-retry", title: "Try Again", style: .accent, enabled: item.canRetry,
+        let suffix = id.uuidString.lowercased()
+        var actions = [BannerAction(id: "deletion-retry-\(suffix)", title: "Try Again", style: .accent, enabled: item.canRetry,
                                     perform: { Task { await model.retryDeletion(id) } })]
         if item.canRemove {
-            actions.append(BannerAction(id: "deletion-remove", title: "Remove from Loom Only", style: .failure,
+            actions.append(BannerAction(id: "deletion-remove-\(suffix)", title: "Remove from Loom Only", style: .failure,
                                         help: "Removes the session from Loom. Claude's files are not touched.",
                                         perform: { model.requestRemoveFromLoomOnly(id) }))
         }
