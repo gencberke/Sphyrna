@@ -55,6 +55,22 @@ enum DetailRoute: Equatable {
         case .startupError, .devTerminal, .noSelection, .home, .draft, .projectPage: false
         }
     }
+
+    /// Whether the pane draws its 52 pt header row above the content. Home and the project page do not: their content starts
+    /// at the window's top, and the window's buttons, "Show Sidebar" and the "Preparing…" notice float over it on the centre
+    /// line (`DetailPageChrome`). Every other route keeps the row: a session's, the development terminal's, the draft's line
+    /// (`DraftHeaderLine`) and the bare row of an empty pane or a startup error.
+    var drawsHeaderRow: Bool {
+        switch self {
+        case .home, .projectPage: false
+        case .startupError, .devTerminal, .terminal, .endedScreen, .record, .chat, .draft, .noSelection: true
+        }
+    }
+
+    /// The draft whose line the header row draws; nil on every other route.
+    var draftHeader: DraftHeaderTarget? {
+        if case .draft(let projectID) = self { DraftHeaderTarget(projectID: projectID) } else { nil }
+    }
 }
 
 extension CatalogModel {

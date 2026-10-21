@@ -133,7 +133,8 @@ struct ConversationTabStripTests {
         fixture.model.openTab(fixture.ids[1])
         #expect(fixture.model.tabStripIsVisible && fixture.model.detailRoute.showsSessionHeader)
         #expect(DetailHeader.drawsStrip(model: fixture.model, showsSessionHeader: fixture.model.detailRoute.showsSessionHeader))
-        // Home, a draft and a project page: the tabs stay open behind them, the row is not drawn, the header is 52 and bare.
+        // Home, a draft and a project page: the tabs stay open behind them and the row is not drawn. The row itself (an empty pane,
+        // a startup error, a draft's line) is 52 and has no hairline; Home and the project page draw none (`DetailShellTests`).
         fixture.model.showHome()
         #expect(fixture.model.tabStripIsVisible, "the tabs stay open behind Home")
         #expect(!fixture.model.detailRoute.showsSessionHeader)

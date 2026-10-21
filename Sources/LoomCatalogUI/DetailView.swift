@@ -8,6 +8,11 @@ public struct DetailView: View {
 
     public init(model: CatalogModel) { self.model = model }
 
+    /// Whether the banner stacks above the content hold nothing (neither `Banners` nor the deletion banner draws a row).
+    static func bannersAreEmpty(_ model: CatalogModel) -> Bool {
+        Banners.isEmpty(for: model) && model.deletions.pending.isEmpty && model.deletions.recoveryFailure == nil
+    }
+
     public var body: some View {
         let route = model.detailRoute
         // One canvas (DESIGN §2 item 2, §6 Terminal framing): no panel, no inset, no border and no second background around
@@ -16,10 +21,12 @@ public struct DetailView: View {
             // The whole top stack sits above the content: the Chat stream is an AppKit scroll view that is laid over its
             // neighbours (it hid the header and the banners, so a handover's refusal was never seen). It has the page's
             // own fill, so no row shows through behind it, and it takes the clicks on its transparent parts.
-            DetailHeader(model: model, showsSessionHeader: route.showsSessionHeader)
-                .background(route.surface)
-                .contentShape(Rectangle())
-                .zIndex(2)
+            if route.drawsHeaderRow {
+                DetailHeader(model: model, showsSessionHeader: route.showsSessionHeader, draft: route.draftHeader)
+                    .background(route.surface)
+                    .contentShape(Rectangle())
+                    .zIndex(2)
+            }
             // The tab row belongs to the content column, so that the inspector, when it is a column, starts on the tab row's
             // line and its own 36 pt bar sits beside the row (`detailInspector`).
             VStack(spacing: 0) {
@@ -30,12 +37,20 @@ public struct DetailView: View {
                     Banners(model: model)
                     DeletionBanner(model: model)
                 }
+                // Without a header row a banner would sit under the window's buttons: it keeps the header's 52 pt above it.
+                .padding(.top, DetailPageChrome.bannerTop(route: route, bannersAreEmpty: Self.bannersAreEmpty(model)))
                 .background(route.surface)
                 .contentShape(Rectangle())
                 .zIndex(1)
                 DetailContent(model: model, route: route)
+                    .environment(\.detailLeadingClearance, route.drawsHeaderRow ? 0 : DetailPageChrome.leadingClearance(
+                        sidebarCollapsed: model.sidebarCollapsed, isFullScreen: model.isFullScreen))
             }
             .detailInspector(model: model)
+        }
+        // Home and the project page draw no row: the window's buttons, "Show Sidebar" and the notice float over the page.
+        .overlay(alignment: .topLeading) {
+            if !route.drawsHeaderRow { DetailPageChrome(model: model) }
         }
         .background(route.surface)
         // The terminal face is dark in both appearances (D-63): the whole pane, header and inspector included,
@@ -65,11 +80,15 @@ public struct DetailView: View {
     }
 }
 
-/// The session header (DESIGN §6 Header): 52 pt on the canvas, its content centred 26 pt from the window top, with a hairline
-/// under it. Home, a draft and a project page are not about a session: their header is bare, with no hairline.
+/// The header row (DESIGN §6 Header, §8 Header): 52 pt on the canvas, its content centred 26 pt from the window top. A session
+/// has a hairline under it; so does the development terminal. The draft's row carries its crumb and the project's button
+/// (`DraftHeaderLine`) and, like an empty pane or a startup error, has no hairline. Home and the project page draw no row
+/// (`DetailRoute.drawsHeaderRow`): `DetailPageChrome` keeps their window buttons usable.
 struct DetailHeader: View {
     let model: CatalogModel
     var showsSessionHeader = true
+    /// Set on the draft route: the row draws the draft's line.
+    var draft: DraftHeaderTarget?
     static let height = LoomTheme.Layout.headerHeight
 
     /// The tab row belongs to the page that shows a session (the route with the session header); the model's
@@ -91,20 +110,16 @@ struct DetailHeader: View {
                 // The native buttons start 19 pt from the window edge, inside this row.
                 Color.clear.frame(width: LoomTheme.Layout.detailButtonsGap)
             }
-            if model.sidebarCollapsed {
-                Button { model.onToggleSidebar?() } label: {
-                    Image(systemName: "sidebar.left")
-                }
-                .buttonStyle(ChromeButtonStyle()).focusEffectDisabled()
-                .help("Show Sidebar (⌃⌘S)")
-                .accessibilityLabel("Show sidebar")
-            }
+            if model.sidebarCollapsed { ShowSidebarButton(model: model) }
             if model.showsDevTerminal {
                 ProviderIcon(provider: .synthetic, size: LoomTheme.Layout.harnessMarkHeader)
                 Text("Synthetic terminal (development)").font(LoomTheme.Header.titleFont).lineLimit(1)
                 Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             } else if showsSessionHeader, let row = model.selectedRow {
                 SessionHeaderRow(model: model, row: row)
+            } else if let draft {
+                // The draft's line shows the "Preparing…" notice itself, after its crumb.
+                DraftHeaderLine(model: model, projectID: draft.projectID)
             } else if let notice = model.preparingNotice {
                 PreparingNotice(text: notice)
                 Spacer(minLength: LoomTheme.Space.detailMinSpacer)
@@ -123,6 +138,59 @@ struct DetailHeader: View {
                     .accessibilityHidden(true)
             }
         }
+    }
+}
+
+/// "Show Sidebar" while the sidebar is collapsed: an icon button on the header's centre line.
+struct ShowSidebarButton: View {
+    let model: CatalogModel
+
+    var body: some View {
+        Button { model.onToggleSidebar?() } label: {
+            Image(systemName: "sidebar.left")
+        }
+        .buttonStyle(ChromeButtonStyle()).focusEffectDisabled()
+        .help("Show Sidebar (⌃⌘S)")
+        .accessibilityLabel("Show sidebar")
+    }
+}
+
+/// What floats over a page that draws no header row (Home, the project page) on the 26 pt centre line: the clearance for the
+/// window's native buttons and "Show Sidebar" while the sidebar is collapsed, and the "Preparing…" notice, in the order and
+/// at the places the header row has them. It is an overlay on the whole pane, so it takes no layout space; only its buttons
+/// take clicks. A page that puts its own content on that line keeps clear with `EnvironmentValues.detailLeadingClearance`.
+struct DetailPageChrome: View {
+    let model: CatalogModel
+
+    private var reservesWindowButtons: Bool { model.sidebarCollapsed && !model.isFullScreen }
+
+    var body: some View {
+        HStack(spacing: LoomTheme.Space.detailSpacing) {
+            if reservesWindowButtons { Color.clear.frame(width: LoomTheme.Layout.detailButtonsGap) }
+            if model.sidebarCollapsed { ShowSidebarButton(model: model) }
+            if let notice = model.preparingNotice { PreparingNotice(text: notice).allowsHitTesting(false) }
+        }
+        .font(LoomTheme.Typography.body)
+        .foregroundStyle(LoomTheme.Text.primary)
+        .padding(.leading, LoomTheme.Header.leadingInset)
+        .frame(height: LoomTheme.Layout.headerHeight)
+    }
+
+    /// Where a page's content on the centre line may start while the buttons float over it: past the leading inset, the
+    /// window buttons' clearance (not in full screen, where the buttons are gone), the gap and "Show Sidebar", plus one
+    /// more gap. 0 while the sidebar is open: the buttons are in the sidebar then.
+    static func leadingClearance(sidebarCollapsed: Bool, isFullScreen: Bool) -> CGFloat {
+        guard sidebarCollapsed else { return 0 }
+        let gap = LoomTheme.Space.detailSpacing
+        let buttons = isFullScreen ? 0 : LoomTheme.Layout.detailButtonsGap + gap
+        let toggle = ChromeButtonStyle.hitSize(for: LoomTheme.Layout.chromeButton).width
+        return LoomTheme.Header.leadingInset + buttons + toggle + gap
+    }
+
+    /// The space above the banners: a page without a header row keeps the header's 52 pt above a banner, which would
+    /// otherwise sit under the window's buttons; nothing while there is no banner, or when the row is drawn.
+    static func bannerTop(route: DetailRoute, bannersAreEmpty: Bool) -> CGFloat {
+        route.drawsHeaderRow || bannersAreEmpty ? 0 : LoomTheme.Layout.headerHeight
     }
 }
 
