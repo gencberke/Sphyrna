@@ -36,7 +36,7 @@ final class TerminalContainerView: NSView {
 }
 
 /// Connects the catalog model's intents to the session service and keeps the live terminals. The service owns the
-/// lifecycle (start, resume, stop, the answers, deletion) and its state; this class forwards the intents, does what the
+/// lifecycle (start, resume, stop, the handover, the answers, deletion) and its state; this class forwards the intents, does what the
 /// UI must do at the moments the service tells (show a session, close its tab, word a failure), and is the service's
 /// terminal sinks. It keeps one terminal per live run; a card sees a terminal only while it owns that run, so after
 /// `/clear` or `/new` the same terminal belongs to the new card and callbacks bound to the old card do nothing.
@@ -62,10 +62,20 @@ public final class ConversationController: NewSessionIntents, HandoverIntents, T
     var ownerLookup: (UUID) async -> UUID?
     private var observer: Task<Void, Never>?
     private var openRequestObserver: Task<Void, Never>?
-    /// Handovers between the faces that wait or run (V19), by session.
-    var handoverTasks: [UUID: Task<Void, Never>] = [:]
-    /// Held at a handover's point of no return, with its target (tests act at that phase; nil in the app).
-    var handoverGate: (@MainActor (UUID, SessionFace) async -> Void)?
+    /// Held at a handover's point of no return, with its target (tests act at that phase; nil in the app). The service holds
+    /// the hold; this is its seam in the UI's own type.
+    var handoverGate: (@MainActor (UUID, SessionFace) async -> Void)? {
+        didSet {
+            guard let gate = handoverGate else {
+                service.handoverGate = nil
+                return
+            }
+            service.handoverGate = { (id: UUID, face: SessionLiveFace) async in
+                let target: SessionFace = face == .chat ? .chat : .terminal
+                await gate(id, target)
+            }
+        }
+    }
     /// Held after a Stop returned from the runtime, before the tab decision (tests navigate at that phase; nil in the app).
     var stopGate: (@MainActor (UUID) async -> Void)?
 
@@ -248,7 +258,7 @@ public final class ConversationController: NewSessionIntents, HandoverIntents, T
     }
 
     public func resume(sessionID: UUID) {
-        guard let model, model.actionsAvailable, model.handovers[sessionID] == nil else { return }
+        guard let model, model.actionsAvailable else { return }
         service.resume(sessionID: sessionID, knownProvider: model.knownProvider(of: sessionID),
                        shown: { [weak model] id in model?.showStarted(id) })
     }
@@ -264,9 +274,6 @@ public final class ConversationController: NewSessionIntents, HandoverIntents, T
         let navigationAtStop = model.navigationCount
         service.stop(
             sessionID: sessionID, liveRunID: model.liveStates[sessionID]?.runID,
-            // A Stop ends a handover: the user chose to end the session, not to move it. Before the point of no return the
-            // wait ends; after it the other face does not start.
-            willStop: { [weak self] in self?.stopHandover(sessionID: sessionID) },
             settled: { [weak self] outcome in await self?.stopSettled(sessionID, outcome, navigationAtStop: navigationAtStop) }
         )
     }
@@ -487,6 +494,7 @@ public final class ConversationController: NewSessionIntents, HandoverIntents, T
         case let .startFailed(provider): "\(ProviderName.title(provider)) could not be started"
         case .resumeFailed: "The session could not be resumed"
         case .stopFailed: "The session could not be stopped"
+        case .handoverFailed: "The session could not be moved"
         case .answerNotDelivered: "The answer was not delivered"
         case .openRequestNotAnswered: "The request could not be answered"
         case .openRequestNotDenied: "The request could not be denied"

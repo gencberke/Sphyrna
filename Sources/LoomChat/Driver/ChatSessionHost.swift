@@ -29,6 +29,9 @@ public final class ChatSessionHost {
     /// By the card each driver's run is on. Re-keyed synchronously from the driver when its run moves (a driver must
     /// not wait for the main actor), so it is behind a lock rather than main-actor state.
     private let drivers = ChatDriverRegistry()
+    /// The drivers of the Chat → terminal moves under way, by the session the move began on (V19): a `/clear` that re-keys a
+    /// driver meanwhile does not lose it. Dropped by `finishHandover`.
+    var movingDrivers: [UUID: ChatSessionDriver] = [:]
     /// What the app keeps per driver while the driver is here (the live chat's presentation, the composer), by driver and
     /// by the type of the thing kept.
     private var attachments: [AttachmentKey: (driver: ChatSessionDriver, value: AnyObject)] = [:]

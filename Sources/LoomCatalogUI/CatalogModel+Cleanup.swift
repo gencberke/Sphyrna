@@ -10,7 +10,7 @@ extension CatalogModel {
     public func setPinned(_ id: UUID, _ pinned: Bool) async {
         guard let catalog else { return }
         do {
-            try await catalog.setPinned(pinned, for: id)
+            try await recordWrites(over: catalog).setPinned(sessionID: id, pinned)
         } catch {
             report(error, pinned ? "The session could not be pinned" : "The session could not be unpinned")
             return

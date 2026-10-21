@@ -354,26 +354,6 @@ public actor SessionLifecycleController {
         try await reschedule()
     }
 
-    @discardableResult
-    public func registerPendingPrompt(sessionID: UUID, id: UUID = UUID()) -> UUID {
-        pendingPrompts[sessionID, default: []].insert(id)
-        generations[sessionID, default: 0] &+= 1
-        return id
-    }
-
-    public func completePromptDelivery(sessionID: UUID, id: UUID) {
-        pendingPrompts[sessionID]?.remove(id)
-        if pendingPrompts[sessionID]?.isEmpty == true { pendingPrompts[sessionID] = nil }
-        generations[sessionID, default: 0] &+= 1
-        blockedDue[sessionID] = nil
-        descendantBackoff[sessionID] = nil
-        Task { try? await self.reschedule() }
-    }
-
-    public func pendingPromptIDs(sessionID: UUID) -> Set<UUID> {
-        pendingPrompts[sessionID] ?? []
-    }
-
     public func markViewed(sessionID: UUID, at date: Date = Date()) async throws {
         try await catalog.markUsed(sessionID: sessionID, at: date, reactivate: false)
         try await reschedule()
@@ -519,32 +499,5 @@ public actor SessionLifecycleController {
             sessionID: sessionID, change: .lifecycle(.idle)
         )
         return .transitioned(report)
-    }
-
-    public func resume(
-        sessionID: UUID, executable: String, profile: ProviderLaunchProfile,
-        rows: UInt16 = 24, columns: UInt16 = 80,
-        outputSink: (any TerminalOutputSink)? = nil,
-        at date: Date = Date()
-    ) async throws -> ManagedSessionLaunch {
-        let launch = try await supervisor.launch(
-            sessionID: sessionID, executable: executable,
-            arguments: profile.arguments, environment: profile.environment,
-            rows: rows, columns: columns, outputSink: outputSink
-        )
-        do {
-            try await catalog.markUsed(
-                sessionID: sessionID, at: date, reactivate: true, movesActivity: false
-            )
-            await supervisor.events.publish(
-                sessionID: sessionID, change: .lifecycle(.active)
-            )
-        } catch {
-            // Do not leave an untracked resumed process alive when the durable
-            // lifecycle update fails after the PTY has already launched.
-            _ = try? await supervisor.stop(sessionID: sessionID)
-            throw error
-        }
-        return launch
     }
 }

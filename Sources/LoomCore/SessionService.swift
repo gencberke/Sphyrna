@@ -6,6 +6,8 @@ public struct SessionFailure: Sendable {
         case startFailed(ManagedSession.Provider)
         case resumeFailed
         case stopFailed
+        /// A move to the terminal failed or was refused. The error is the refusal's words (`HandoverRefusal`) when it was one.
+        case handoverFailed
         case answerNotDelivered
         case openRequestNotAnswered
         case openRequestNotDenied
@@ -29,8 +31,9 @@ public struct SessionStopOutcome: Sendable {
     public let run: UUID?
 }
 
-/// The one owner of a session's lifecycle: start, resume, stop, the answers to a session's requests and to an agent's
-/// open requests, and deletion; and of the state those operations pass through (`transitions`). Whatever the harness and
+/// The one owner of a session's lifecycle: start, resume, stop, the Chat → terminal handover, the answers to a session's
+/// requests and to an agent's open requests, deletion, and the session's own writes (title, pin); and of the state those
+/// operations pass through (`transitions`). Whatever the harness and
 /// whatever the face, the UI sends intents and reads state; what it must do at a moment of an operation it is told by the
 /// closure it passed or by `failureHandler`, always on the main actor and before the operation releases what it holds.
 ///
@@ -44,6 +47,8 @@ public struct SessionStopOutcome: Sendable {
 public final class SessionService {
     public let runtime: SessionRuntime
     public let transitions: SessionTransitions
+    /// The writes to a session's own record (title, pin), over the runtime's catalog.
+    public let records: SessionRecordWrites
     /// The app-wide switch ("Sessions run in", D-69): the UI sets it from its preferences.
     public var runsIn: SessionLiveFace
     /// The structured face's host; nil in a test or a window with no runtime, where every session runs in the terminal.
@@ -53,11 +58,16 @@ public final class SessionService {
     private let startableProviders: Set<ManagedSession.Provider>
     /// Approvals in flight: a second click on "Open Session" must not ask the runtime twice.
     private var approving: Set<UUID> = []
+    /// The handovers' tasks, by session (V19): a Cancel or a Stop cancels the task of its session.
+    private var handoverTasks: [UUID: Task<Void, Never>] = [:]
+    /// Held at a handover's point of no return, with its target (tests act at that phase; nil in the app).
+    public var handoverGate: (@MainActor (UUID, SessionLiveFace) async -> Void)?
 
     public init(runtime: SessionRuntime, startableProviders: Set<ManagedSession.Provider>, runsIn: SessionLiveFace = .chat,
                 structuredHost: (any StructuredFaceHost)? = nil, terminal: (any TerminalFaceSinks)? = nil,
                 transitions: SessionTransitions = SessionTransitions()) {
         self.runtime = runtime
+        records = SessionRecordWrites(catalog: runtime.catalog)
         self.startableProviders = startableProviders
         self.runsIn = runsIn
         self.structuredHost = structuredHost
@@ -198,7 +208,8 @@ public final class SessionService {
     @discardableResult
     public func resume(sessionID: UUID, knownProvider: ManagedSession.Provider?,
                        shown: @escaping @MainActor (UUID) -> Void) -> Task<Void, Never>? {
-        guard transitions.busy[sessionID] == nil else { return nil }
+        // A session that is being moved to the terminal is not resumed: the move starts the terminal's run itself.
+        guard transitions.busy[sessionID] == nil, transitions.handovers[sessionID] == nil else { return nil }
         if let knownProvider, !capabilities(of: knownProvider).startable { return nil }
         transitions.setBusy(sessionID, .resuming)
         return Task {
@@ -241,14 +252,16 @@ public final class SessionService {
 
     // MARK: Stop
 
-    /// Stops the session's run. `willStop` runs first, before the session is busy and before anything is captured (the UI
-    /// ends a handover there). `liveRunID` is the run the UI knows of when no terminal here holds it. `settled` is told when
+    /// Stops the session's run. A Stop ends a handover in any phase (the user chose to end the session, not to move it):
+    /// before the point of no return the wait ends, after it the terminal does not start. `willStop` runs next, before the
+    /// session is busy and before anything is captured. `liveRunID` is the run the UI knows of when no terminal here holds it. `settled` is told when
     /// the runtime answered, after the terminal's own settling and before busy is released (the UI decides about the
     /// session's tab and shows an unverified stop there). A Stop that could not be asked is a `stopFailed`.
     @discardableResult
     public func stop(sessionID: UUID, liveRunID: UUID?, willStop: @MainActor () -> Void = {},
                      settled: @escaping @MainActor (SessionStopOutcome) async -> Void) -> Task<Void, Never>? {
         guard transitions.busy[sessionID] != .stopping else { return nil }
+        if transitions.handovers[sessionID] != nil { endHandover(sessionID) }
         willStop()
         transitions.setBusy(sessionID, .stopping)
         // What the user sees now is what stays: taken before any signal.
@@ -268,6 +281,105 @@ public final class SessionService {
                 failureHandler(SessionFailure(.stopFailed, error))
             }
         }
+    }
+
+    // MARK: Handover (Chat → terminal, V19)
+
+    /// Moves a Chat session to the terminal. The order never has two owners: the Chat run ends in the verified order (a
+    /// running turn is waited for first), then the terminal's run starts; the runtime's same-session guard refuses a second
+    /// run of a session that still has one. Refused (nil) when the target is not the terminal (the other direction was
+    /// removed: no release build reached it), without a structured face, or while the session has a handover or is busy.
+    ///
+    /// The move has a point of no return (`Handover.Phase.switching`). Before it, Cancel and Stop end the move and the
+    /// session goes on where it was. After it, Cancel is no longer offered, and a Stop ends the terminal's start: the task is
+    /// cancelled, and right before the terminal would start the move looks for the cancellation and for a Stop that is under
+    /// way, for the session it began on and for the card a `/clear` moved the run to.
+    ///
+    /// What the UI does at the moments of the move it is told by closures, on the main actor: `terminalWillStart` with the
+    /// card the terminal will resume (the UI looks at the terminal from now on), `shown` once the terminal runs (to show it),
+    /// `cleared` when a `/clear` ended the wait (nothing moved, and it is not a failure). A refusal or a failure is reported
+    /// as `SessionFailure.Kind.handoverFailed`; a move the user ended (Cancel, Stop) reports nothing. The face is told
+    /// `finishHandover` whatever the result, and the handover leaves `transitions` only then.
+    @discardableResult
+    public func handOver(sessionID: UUID, to target: SessionLiveFace,
+                         terminalWillStart: @escaping @MainActor (UUID) -> Void,
+                         shown: @escaping @MainActor (UUID) -> Void,
+                         cleared: @escaping @MainActor () -> Void) -> Task<Void, Never>? {
+        guard target == .terminal, let host = structuredHost,
+              transitions.handovers[sessionID] == nil, transitions.busy[sessionID] == nil else { return nil }
+        transitions.setHandover(Handover(target: target), for: sessionID)
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await runHandover(sessionID: sessionID, host: host, terminalWillStart: terminalWillStart,
+                              shown: shown, cleared: cleared)
+        }
+        handoverTasks[sessionID] = task
+        return task
+    }
+
+    /// The user's Cancel: ends a wait that has not reached the point of no return.
+    public func cancelHandover(sessionID: UUID) {
+        guard transitions.handovers[sessionID]?.phase == .waiting else { return }
+        endHandover(sessionID)
+    }
+
+    private func endHandover(_ sessionID: UUID) {
+        handoverTasks[sessionID]?.cancel()
+        // The Chat face's wait is the face's own: it does not look at task cancellation. (After its point of no return it
+        // ignores this.)
+        structuredHost?.cancelHandover(sessionID: sessionID)
+    }
+
+    /// Whether the move must not start the terminal now: its task was cancelled or a Stop is under way for `sessionID`.
+    private func moveEnded(_ sessionID: UUID) -> Bool {
+        Task.isCancelled || transitions.busy[sessionID] == .stopping
+    }
+
+    private func runHandover(sessionID: UUID, host: any StructuredFaceHost,
+                             terminalWillStart: @MainActor (UUID) -> Void,
+                             shown: @MainActor (UUID) -> Void,
+                             cleared: @MainActor () -> Void) async {
+        do {
+            try await moveToTerminal(sessionID, host: host, terminalWillStart: terminalWillStart, shown: shown)
+        } catch {
+            // The Chat run ended for a move that did not happen: the queue says it was interrupted, not moved.
+            if transitions.handovers[sessionID]?.phase == .switching { await host.handoverFailed(sessionID: sessionID) }
+            let refusal = host.handoverRefusal(of: error)
+            if error is CancellationError || Task.isCancelled {
+                // The user ended the move (Cancel, Stop): the session goes on where it was, or stays stopped.
+            } else if refusal == .cleared {
+                cleared()
+            } else {
+                failureHandler(SessionFailure(.handoverFailed, refusal.map { $0 as any Error } ?? error))
+            }
+        }
+        // The move is over, made or not: the face was holding the session for it (a send was refused meanwhile), and it is
+        // its own again now.
+        await host.finishHandover(sessionID: sessionID)
+        transitions.setHandover(nil, for: sessionID)
+        handoverTasks[sessionID] = nil
+    }
+
+    /// The Chat run ends (after its turn), then the terminal resumes the session.
+    private func moveToTerminal(_ sessionID: UUID, host: any StructuredFaceHost,
+                                terminalWillStart: @MainActor (UUID) -> Void,
+                                shown: @MainActor (UUID) -> Void) async throws {
+        let card = try await host.handOverToTerminal(sessionID: sessionID, pointOfNoReturn: { [weak self] in
+            await self?.passPointOfNoReturn(sessionID, to: .terminal)
+        })
+        // A session with no run here had nothing to wait for: the move is at its point now.
+        if transitions.handovers[sessionID]?.phase != .switching { await passPointOfNoReturn(sessionID, to: .terminal) }
+        // The Chat run has ended; the terminal starts unless a Stop came in meanwhile. `card` is the one the run ended on.
+        if moveEnded(sessionID) || moveEnded(card) { throw CancellationError() }
+        terminalWillStart(card)
+        try await resumeInTerminal(card, shown: shown)
+        await host.noteContinuedInTerminal(sessionID: sessionID)
+    }
+
+    /// The wait is over: from here Cancel is not offered. (Tests hold the move here, to act at this phase.)
+    private func passPointOfNoReturn(_ sessionID: UUID, to target: SessionLiveFace) async {
+        transitions.setHandover(Handover(target: target, phase: .switching), for: sessionID)
+        await handoverGate?(sessionID, target)
     }
 
     // MARK: Requests
@@ -354,6 +466,17 @@ public final class SessionService {
     /// The user looked at the session: its finished state is read.
     public func markViewed(sessionID: UUID) async {
         try? await runtime.markViewed(sessionID: sessionID)
+    }
+
+    // MARK: The session's own record
+
+    /// The user's writes to a session's record (title, pin): the same catalog methods underneath.
+    public func renameSession(sessionID: UUID, to title: String) async throws {
+        try await records.rename(sessionID: sessionID, to: title)
+    }
+
+    public func setPinned(sessionID: UUID, _ pinned: Bool) async throws {
+        try await records.setPinned(sessionID: sessionID, pinned)
     }
 
     // MARK: Deletion

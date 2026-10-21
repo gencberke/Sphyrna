@@ -85,6 +85,53 @@ private final class FakeHost: StructuredFaceHost {
         if error is HostStopping { return .stopping }
         return error is HostFailure ? .failure : .other
     }
+
+    // The move to the terminal.
+    enum Move {
+        /// Passes the point of no return, ends the run and answers the card it ended on.
+        case moves(card: UUID)
+        /// Waits for a Cancel, then throws `CancellationError` (the Chat face's wait).
+        case waits
+        /// Refuses before the point of no return.
+        case refuses(any Error)
+        /// Passes the point of no return, then fails.
+        case failsAfterPoint(any Error)
+    }
+
+    var move = Move.waits
+    private let cancel = Gate()
+    private(set) var moveBegan: [UUID] = []
+    private(set) var cancelled: [UUID] = []
+    private(set) var movesFailed: [UUID] = []
+    private(set) var continuedInTerminal: [UUID] = []
+    private(set) var finished: [UUID] = []
+
+    func handOverToTerminal(sessionID: UUID, pointOfNoReturn: @escaping @Sendable () async -> Void) async throws -> UUID {
+        moveBegan.append(sessionID)
+        switch move {
+        case let .moves(card):
+            await pointOfNoReturn()
+            return card
+        case .waits:
+            await cancel.wait()
+            throw CancellationError()
+        case let .refuses(error):
+            throw error
+        case let .failsAfterPoint(error):
+            await pointOfNoReturn()
+            throw error
+        }
+    }
+
+    func cancelHandover(sessionID: UUID) {
+        cancelled.append(sessionID)
+        cancel.open()
+    }
+
+    func handoverFailed(sessionID: UUID) async { movesFailed.append(sessionID) }
+    func noteContinuedInTerminal(sessionID: UUID) async { continuedInTerminal.append(sessionID) }
+    func finishHandover(sessionID: UUID) async { finished.append(sessionID) }
+    func handoverRefusal(of error: any Error) -> HandoverRefusal? { error as? HandoverRefusal }
 }
 
 @MainActor
@@ -132,10 +179,12 @@ private final class Told {
     private(set) var cards: [UUID] = []
     private(set) var notStarted = 0
     private(set) var failures: [SessionFailure.Kind] = []
+    private(set) var failureErrors: [any Error] = []
     var events: [String] = []
 
     func failure(_ failure: SessionFailure) {
         failures.append(failure.kind)
+        failureErrors.append(failure.error)
         events.append("failure")
     }
 
@@ -405,6 +454,240 @@ struct SessionServiceTests {
         #expect(rig.sinks.released.count == 1)
         // And it may be stopped again.
         #expect(rig.service.stop(sessionID: id, liveRunID: nil, settled: { _ in }) != nil)
+    }
+
+    // MARK: Handover (Chat → terminal)
+
+    /// What the UI was told during a move, in order.
+    private final class MoveLog {
+        var events: [String] = []
+    }
+
+    private func handOver(_ rig: Rig, _ id: UUID, _ log: MoveLog = MoveLog()) -> Task<Void, Never>? {
+        rig.service.handOver(
+            sessionID: id, to: .terminal,
+            terminalWillStart: { log.events.append("willStart:\($0 == id ? "same" : "card")") },
+            shown: { _ in log.events.append("shown") },
+            cleared: { log.events.append("cleared") }
+        )
+    }
+
+    /// Lets the move's task begin and reach the face.
+    private func untilTheFaceHasTheMove(_ rig: Rig, _ id: UUID) async {
+        while !rig.host.moveBegan.contains(id) { await Task.yield() }
+    }
+
+    @Test func aCancelBeforeThePointEndsTheMoveAndTheFaceIsToldItIsOver() async throws {
+        let rig = try await makeRig()
+        defer { rig.context.cleanup() }
+        let id = UUID()
+        let log = MoveLog()
+        rig.host.move = .waits
+        let task = handOver(rig, id, log)
+        #expect(rig.service.transitions.handovers[id] == Handover(target: .terminal, phase: .waiting))
+        // A second move of the same session is refused while one is under way.
+        #expect(handOver(rig, id) == nil)
+
+        rig.service.cancelHandover(sessionID: id)
+        await task?.value
+        #expect(rig.host.cancelled == [id])
+        // Nothing moved, nothing failed, nothing was told to the UI; the face is its own again.
+        #expect(log.events.isEmpty && rig.told.failures.isEmpty && rig.sinks.requested == 0)
+        #expect(rig.host.movesFailed.isEmpty, "the run did not end for a move")
+        #expect(rig.host.finished == [id] && rig.service.transitions.handovers[id] == nil)
+    }
+
+    @Test func aCancelAtThePointOfNoReturnDoesNothing() async throws {
+        let rig = try await makeRig()
+        defer { rig.context.cleanup() }
+        let id = UUID()
+        let gate = Gate()
+        var reached: [SessionLiveFace] = []
+        rig.service.handoverGate = { _, target in
+            reached.append(target)
+            await gate.wait()
+        }
+        rig.host.move = .failsAfterPoint(HostFailure())
+        let task = handOver(rig, id)
+        await untilTheFaceHasTheMove(rig, id)
+        while reached.isEmpty { await Task.yield() }
+        #expect(rig.service.transitions.handovers[id]?.phase == .switching)
+        rig.service.cancelHandover(sessionID: id)
+        #expect(rig.host.cancelled.isEmpty, "Cancel is not offered after the point")
+        #expect(rig.service.transitions.handovers[id]?.phase == .switching)
+        gate.open()
+        await task?.value
+        // The run ended for a move that did not happen: the face is told, and the failure is a banner.
+        #expect(rig.host.movesFailed == [id] && rig.told.failures == [.handoverFailed])
+        #expect(rig.host.finished == [id] && rig.service.transitions.handovers[id] == nil)
+    }
+
+    @Test func aStopEndsAWaitingMove() async throws {
+        let rig = try await makeRig()
+        defer { rig.context.cleanup() }
+        let id = UUID()
+        let log = MoveLog()
+        rig.host.move = .waits
+        let task = handOver(rig, id, log)
+        let stop = rig.service.stop(sessionID: id, liveRunID: nil, settled: { _ in })
+        #expect(rig.host.cancelled == [id], "the Stop ended the wait")
+        await task?.value
+        await stop?.value
+        #expect(log.events.isEmpty && !rig.told.failures.contains(.handoverFailed))
+        #expect(rig.host.finished == [id] && rig.service.transitions.handovers[id] == nil)
+    }
+
+    @Test func aStopAtThePointOfNoReturnStopsTheTerminalStart() async throws {
+        let rig = try await makeRig()
+        defer { rig.context.cleanup() }
+        let id = UUID()
+        let log = MoveLog()
+        let gate = Gate()
+        var reached = false
+        rig.service.handoverGate = { _, _ in
+            reached = true
+            await gate.wait()
+        }
+        rig.host.move = .moves(card: id)
+        let task = handOver(rig, id, log)
+        while !reached { await Task.yield() }
+        let stop = rig.service.stop(sessionID: id, liveRunID: nil, settled: { _ in })
+        gate.open()
+        await task?.value
+        await stop?.value
+        // The terminal never started: no look at it, no sink, no run; the Chat run that ended is told it was interrupted.
+        #expect(log.events.isEmpty && rig.sinks.requested == 0 && rig.host.continuedInTerminal.isEmpty)
+        #expect(rig.host.movesFailed == [id])
+        #expect(!rig.told.failures.contains(.handoverFailed), "a move the user ended is not a failure")
+        #expect(rig.host.finished == [id] && rig.service.transitions.handovers[id] == nil)
+    }
+
+    @Test func aStopOfTheCardAClearMovedTheRunToStopsTheTerminalStartToo() async throws {
+        let rig = try await makeRig()
+        defer { rig.context.cleanup() }
+        let id = UUID(), card = UUID()
+        let log = MoveLog()
+        let gate = Gate()
+        var reached = false
+        rig.service.handoverGate = { _, _ in
+            reached = true
+            await gate.wait()
+        }
+        rig.host.move = .moves(card: card)
+        let task = handOver(rig, id, log)
+        while !reached { await Task.yield() }
+        rig.service.transitions.setBusy(card, .stopping)
+        gate.open()
+        await task?.value
+        rig.service.transitions.setBusy(card, nil)
+        #expect(log.events.isEmpty && rig.sinks.requested == 0)
+        #expect(rig.host.movesFailed == [id] && rig.told.failures.isEmpty)
+        #expect(rig.host.finished == [id])
+    }
+
+    @Test func aMoveThatSucceedsLooksAtTheTerminalFirstThenResumesTheCardTheRunEndedOn() async throws {
+        let rig = try await makeRig()
+        defer { rig.context.cleanup() }
+        // The card the run ended on is a session the runtime can resume (a `/clear` made it).
+        let session = ManagedSession(provider: .claude, providerConversationID: "moved-1", workingDirectory: rig.context.home.path)
+        try await rig.context.supervisor.createSession(session)
+        let id = UUID()
+        let log = MoveLog()
+        rig.host.move = .moves(card: session.id)
+        await handOver(rig, id, log)?.value
+        #expect(log.events == ["willStart:card", "shown"])
+        #expect(rig.sinks.adopted.map(\.sessionID) == [session.id])
+        #expect(rig.host.continuedInTerminal == [id], "the face notes it on the session the move began on")
+        #expect(rig.host.movesFailed.isEmpty && rig.told.failures.isEmpty)
+        #expect(rig.host.finished == [id] && rig.service.transitions.handovers[id] == nil)
+        _ = await rig.context.runtime.shutdown()
+    }
+
+    @Test func aRefusalIsABannerInTheWordsOfTheRefusal() async throws {
+        let rig = try await makeRig()
+        defer { rig.context.cleanup() }
+        for refusal in [HandoverRefusal.requestWaiting, .backgroundWork, .busy] {
+            let id = UUID()
+            rig.host.move = .refuses(refusal)
+            await handOver(rig, id)?.value
+            #expect(rig.host.finished.last == id && rig.service.transitions.handovers[id] == nil)
+        }
+        #expect(rig.told.failures == [.handoverFailed, .handoverFailed, .handoverFailed])
+        let words = rig.told.failureErrors.map { ($0 as? HandoverRefusal)?.description }
+        #expect(words == [HandoverRefusal.requestWaiting, .backgroundWork, .busy].map(\.description))
+        #expect(rig.host.movesFailed.isEmpty, "a refusal comes before the point: no run ended")
+        // Any other error is reported as it is.
+        rig.host.move = .refuses(HostFailure())
+        await handOver(rig, UUID())?.value
+        #expect(rig.told.failureErrors.last is HostFailure)
+    }
+
+    @Test func aClearDuringTheWaitIsAnInfoNotAFailure() async throws {
+        let rig = try await makeRig()
+        defer { rig.context.cleanup() }
+        let id = UUID()
+        let log = MoveLog()
+        rig.host.move = .refuses(HandoverRefusal.cleared)
+        await handOver(rig, id, log)?.value
+        #expect(log.events == ["cleared"] && rig.told.failures.isEmpty)
+        #expect(rig.host.finished == [id])
+    }
+
+    @Test func theFaceIsToldTheMoveIsOverWhateverTheResult() async throws {
+        let rig = try await makeRig()
+        defer { rig.context.cleanup() }
+        // The terminal cannot start (the runtime does not know the card): the run ended for nothing, the banner says so.
+        let id = UUID(), card = UUID()
+        rig.host.move = .moves(card: card)
+        await handOver(rig, id)?.value
+        #expect(rig.told.failures == [.handoverFailed])
+        #expect(rig.host.finished == [id] && rig.host.continuedInTerminal.isEmpty)
+        #expect(rig.service.transitions.handovers[id] == nil)
+    }
+
+    @Test func aMoveIsRefusedWithoutAStructuredFaceAndAResumeIsRefusedDuringAMove() async throws {
+        let none = try await makeRig(host: false)
+        defer { none.context.cleanup() }
+        #expect(handOver(none, UUID()) == nil)
+        #expect(none.service.transitions.handovers.isEmpty)
+
+        let rig = try await makeRig()
+        defer { rig.context.cleanup() }
+        let id = UUID()
+        rig.host.move = .waits
+        let task = handOver(rig, id)
+        #expect(rig.service.resume(sessionID: id, knownProvider: .claude, shown: { _ in }) == nil)
+        #expect(rig.service.transitions.busy[id] == nil && rig.host.resumed.isEmpty)
+        // A busy session is not moved either.
+        let busy = UUID()
+        rig.service.transitions.setBusy(busy, .resuming)
+        #expect(handOver(rig, busy) == nil)
+        rig.service.cancelHandover(sessionID: id)
+        await task?.value
+        // Once the move is over the session resumes again.
+        #expect(rig.service.resume(sessionID: id, knownProvider: .claude, shown: { _ in }) != nil)
+    }
+
+    @Test func theOtherDirectionIsNotAMove() async throws {
+        let rig = try await makeRig()
+        defer { rig.context.cleanup() }
+        #expect(rig.service.handOver(sessionID: UUID(), to: .chat, terminalWillStart: { _ in }, shown: { _ in }, cleared: {}) == nil)
+    }
+
+    // MARK: The session's own record
+
+    @Test func renameAndPinGoThroughTheCatalogOfTheRuntime() async throws {
+        let rig = try await makeRig()
+        defer { rig.context.cleanup() }
+        let session = ManagedSession(provider: .claude, providerConversationID: "titled-1", workingDirectory: rig.context.home.path)
+        try await rig.context.supervisor.createSession(session)
+        try await rig.service.renameSession(sessionID: session.id, to: "  Mine  ")
+        try await rig.service.setPinned(sessionID: session.id, true)
+        let record = try #require(try await rig.context.catalog.session(id: session.id))
+        #expect(record.title == "Mine" && record.pinned)
+        try await rig.service.setPinned(sessionID: session.id, false)
+        #expect(try await rig.context.catalog.session(id: session.id)?.pinned == false)
+        await #expect(throws: SessionCatalogError.self) { try await rig.service.renameSession(sessionID: UUID(), to: "x") }
     }
 
     // MARK: Answers

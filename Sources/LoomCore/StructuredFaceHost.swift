@@ -28,4 +28,26 @@ public protocol StructuredFaceHost: AnyObject {
     /// Lets go of a session that never answered (and of its files).
     func forget(sessionID: UUID)
     func errorKind(of error: any Error) -> StructuredFaceErrorKind
+
+    // MARK: The move to the terminal (V19)
+    //
+    // The face holds the session for the whole move: from `handOverToTerminal` until `finishHandover`, whatever the result,
+    // it refuses new turns and keeps its queue. The service tells the same session id throughout; the face keeps the
+    // object it began with, so a `/clear` that moves the run to a new card in between does not lose it.
+
+    /// Lets go of the session's run for the terminal: waits for a running turn, refuses what must not be moved (a waiting
+    /// request, background work, a start or stop under way: see `handoverRefusal`), tells `pointOfNoReturn` once the wait is
+    /// over and the run is about to end, then ends the run in the verified order. Throws `CancellationError` when
+    /// `cancelHandover` ended the wait. Returns the card the run ended on: after a `/clear` that is not `sessionID`.
+    func handOverToTerminal(sessionID: UUID, pointOfNoReturn: @escaping @Sendable () async -> Void) async throws -> UUID
+    /// Ends the wait of a move that has not reached its point of no return (a later call does nothing).
+    func cancelHandover(sessionID: UUID)
+    /// The run ended for a move that did not happen: the face says it was interrupted, not moved.
+    func handoverFailed(sessionID: UUID) async
+    /// The terminal has the session: the face notes that it continued there.
+    func noteContinuedInTerminal(sessionID: UUID) async
+    /// The move is over, made or not: the face is its own again.
+    func finishHandover(sessionID: UUID) async
+    /// How a refusal or failure of the move reads, nil for any other error.
+    func handoverRefusal(of error: any Error) -> HandoverRefusal?
 }

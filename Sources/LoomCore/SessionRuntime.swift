@@ -633,11 +633,6 @@ public actor SessionRuntime {
         try await lifecycle.markViewed(sessionID: sessionID)
     }
 
-    /// Explicit user reactivation of a stale conversation (resume does it too). The activity time stays.
-    public func reactivate(sessionID: UUID) async throws {
-        try await lifecycle.reactivate(sessionID: sessionID)
-    }
-
     // MARK: Quit
 
     /// One shutdown for everything the app owns. Starts refusing new work

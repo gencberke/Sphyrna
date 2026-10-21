@@ -18,7 +18,8 @@ public struct StartKey: Hashable, Sendable {
     }
 }
 
-/// The transition state of every session's lifecycle: busy per session, and the starts that have no finished card yet.
+/// The transition state of every session's lifecycle: busy per session, the starts that have no finished card yet, and the
+/// handovers under way.
 /// `SessionService` is the only writer in the app; views read it (observed: a view that reads it redraws when it changes),
 /// and a model with no service owns an object of its own, so its reads stay valid. The mutators are `package` for that
 /// one reason: the service, and the model's test seams.
@@ -29,6 +30,8 @@ public final class SessionTransitions {
     public private(set) var startingKeys: Set<StartKey> = []
     /// The starts that have no card yet (the toolchain is still resolving); a subset of `startingKeys`.
     public private(set) var preparingStarts: Set<StartKey> = []
+    /// The Chat → terminal moves that wait or run (V19), by session.
+    public private(set) var handovers: [UUID: Handover] = [:]
 
     public init() {}
 
@@ -48,4 +51,8 @@ public final class SessionTransitions {
     }
 
     package func setBusy(_ id: UUID, _ value: ConversationBusy?) { busy[id] = value }
+
+    package func setHandover(_ value: Handover?, for id: UUID) {
+        if handovers[id] != value { handovers[id] = value }
+    }
 }

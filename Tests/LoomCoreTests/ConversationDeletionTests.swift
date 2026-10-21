@@ -509,7 +509,6 @@ struct ConversationDeletionTests {
         #expect(try await world.catalog.runs().isEmpty)
         #expect(await world.supervisor.runningSessionIDs().isEmpty)
         await #expect(throws: SessionCatalogError.self) { try await world.runtime.markViewed(sessionID: session.id) }
-        await #expect(throws: SessionCatalogError.self) { try await world.runtime.reactivate(sessionID: session.id) }
         #expect((await world.runtime.shutdown()).succeeded)
     }
 

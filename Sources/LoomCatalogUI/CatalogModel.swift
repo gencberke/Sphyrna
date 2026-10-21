@@ -336,8 +336,8 @@ public final class CatalogModel {
     /// that read `actionsAvailable` re-evaluate when the runtime attaches after the first page.
     public private(set) var intentsRevision = 0
     public var busy: [UUID: ConversationBusy] { transitions.busy }
-    /// Handovers between the faces that wait or run (V19), by session.
-    public internal(set) var handovers: [UUID: Handover] = [:]
+    /// Handovers between the faces that wait or run (V19), by session: the service's state.
+    public var handovers: [UUID: Handover] { transitions.handovers }
     /// The Conversations section's model; set by the app only where permanent deletion is offered (CP4-G).
     public internal(set) var cleanupReview: CleanupReviewModel?
     public var startingKeys: Set<StartKey> { transitions.startingKeys }
@@ -1460,7 +1460,7 @@ public final class CatalogModel {
     public func rename(sessionID: UUID, to title: String) async throws {
         guard let catalog else { return }
         do {
-            try await catalog.renameSession(sessionID: sessionID, to: title)
+            try await recordWrites(over: catalog).rename(sessionID: sessionID, to: title)
         } catch {
             report(error, "The title could not be saved")
             throw error
@@ -1724,6 +1724,11 @@ public final class CatalogModel {
         transitions = service.transitions
         service.runsIn = newSessionFace == .chat ? .chat : .terminal
         service.structuredHost = chatSessions
+    }
+
+    /// The writes to a session's record: the service's, or (a model with no service) the same over the model's catalog.
+    func recordWrites(over catalog: SessionCatalog) -> SessionRecordWrites {
+        sessions?.records ?? SessionRecordWrites(catalog: catalog)
     }
 
     // Test seams: a model with no service drives its own transitions.

@@ -47,7 +47,7 @@ struct SessionLifecycleTests {
             .appendingPathComponent("loom-test-child").path
     }
 
-    @Test func quietSessionIdlesWithoutStoppingAnotherAndResumesSameConversation() async throws {
+    @Test func quietSessionIdlesWithoutStoppingAnother() async throws {
         let context = try await makeContext(idleAfter: 10)
         defer { try? FileManager.default.removeItem(at: context.root) }
         let firstID = UUID(), secondID = UUID()
@@ -87,21 +87,6 @@ struct SessionLifecycleTests {
             $0.identity.pid == second.terminal.pid
         })
 
-        let environment = LaunchEnvironment.make(
-            path: "/usr/bin:/bin", runID: context.supervisor.ownershipRunID,
-            sessionID: firstID
-        )
-        let resumed = try await context.lifecycle.resume(
-            sessionID: firstID, executable: childPath,
-            profile: ProviderLaunchProfile(
-                arguments: ["stubborn"], environment: environment
-            ), at: Date(timeIntervalSince1970: 210)
-        )
-        _ = try await ready(resumed.terminal)
-        #expect(resumed.session.id == firstID)
-        #expect(resumed.session.providerConversationID == "claude-conversation")
-        #expect(resumed.session.workingDirectory == context.root.path)
-        #expect(try await context.catalog.session(id: firstID)?.lifecycle == .active)
         #expect((await context.supervisor.shutdown(graceSeconds: 0.2)).succeeded)
     }
 
@@ -155,50 +140,6 @@ struct SessionLifecycleTests {
         }
         #expect(approvalBlockers.contains(.waitingForApproval))
         #expect((await context.supervisor.shutdown(graceSeconds: 0.2)).succeeded)
-    }
-
-    @Test func promptRegisteredDuringStopIsRetainedForResumeWithoutSecondProcess() async throws {
-        let context = try await makeContext(idleAfter: 1, stopGrace: 0.08)
-        defer { try? FileManager.default.removeItem(at: context.root) }
-        let sessionID = UUID()
-        let launch = try await launchClaude(
-            sessionID: sessionID, conversationID: "claude-race",
-            mode: "stubborn", context: context
-        )
-        _ = try await ready(launch.terminal)
-        let runID = try #require(launch.session.currentRun?.id)
-        try await makeClaudeQuiet(
-            launchSessionID: sessionID, runID: runID,
-            conversationID: "claude-race", adapter: context.claude
-        )
-        try await context.lifecycle.captureProcessBaseline(sessionID: sessionID)
-        try await context.catalog.markUsed(
-            sessionID: sessionID, at: Date(timeIntervalSince1970: 10),
-            reactivate: true
-        )
-
-        let evaluation = Task {
-            try await context.lifecycle.evaluateIdle(
-                sessionID: sessionID, at: Date(timeIntervalSince1970: 20)
-            )
-        }
-        let deadline = ProcessInfo.processInfo.systemUptime + 1
-        while await context.supervisor.session(id: sessionID)?.currentRun?.state != .stopping,
-              ProcessInfo.processInfo.systemUptime < deadline {
-            try await Task.sleep(for: .milliseconds(2))
-        }
-        let promptID = await context.lifecycle.registerPendingPrompt(sessionID: sessionID)
-        let result = try await evaluation.value
-        guard case let .interruptedByNewWork(report, pending) = result else {
-            Issue.record("Prompt/idle race was not surfaced")
-            return
-        }
-        #expect(report.succeeded)
-        #expect(pending == [promptID])
-        #expect(await context.lifecycle.pendingPromptIDs(sessionID: sessionID) == [promptID])
-        #expect(await context.supervisor.session(id: sessionID)?.currentRun == nil)
-        #expect(try await context.catalog.session(id: sessionID)?.lifecycle == .active)
-        #expect((await context.supervisor.shutdown()).succeeded)
     }
 
     @Test func staleClassificationDoesNotReviveOnView() async throws {
