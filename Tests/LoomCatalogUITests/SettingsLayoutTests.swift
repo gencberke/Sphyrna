@@ -67,6 +67,23 @@ struct SettingsLayoutTests {
         #expect(abs(own - 40) <= 0.5, "\(own)")
     }
 
+    /// The reference's verticals: a line of help is exactly 17, so a row with two lines of help is 11 + 18 + 2 + 34 + 11 = 76 (it was
+    /// 78: the face's own line is 15, not the 14.1 its ascender and descender give, and the spacing was worked out from the
+    /// latter); and a group's label is a 10.5 line 8 above its card (it took its face's own, taller line).
+    @Test func twoLinesOfHelpMakeASeventySixRowAndTheCardSitsEighteenAndAHalfUnderItsLabel() {
+        let S = LoomTheme.Settings.self
+        func height<V: View>(_ view: V) -> CGFloat {
+            let host = NSHostingView(rootView: view.frame(width: 592))
+            host.layoutSubtreeIfNeeded()
+            return host.fittingSize.height
+        }
+        let row = SettingsRow(title: "Sessions run in", detail: GeneralSettings.sessionFaceDetail) { EmptyView() }
+        #expect(abs(height(row) - (2 * S.rowPaddingV + S.rowTitleLine + S.helpTop + 2 * S.rowHelpLine)) <= 0.5, "\(height(row))")
+        let label = height(SettingsGroup(label: "Sessions") { row }) - height(SettingsCard { row })
+        #expect(abs(label - (S.labelLine + S.labelBottom)) <= 0.5, "\(label)")
+        #expect(S.glyphDrop(size: S.rowHelp.size, lineHeight: S.rowHelpLine) == 1)
+    }
+
     /// At 680 pt wide the description of "Sessions run in" and of "Mode of new sessions" took two lines and was cut to one
     /// with an ellipsis (a row beside a segmented control or a menu was sized from the control), while rows beside a switch
     /// showed in full. A description is at most 380 wide now (the reference's), so the first two take two lines or more and

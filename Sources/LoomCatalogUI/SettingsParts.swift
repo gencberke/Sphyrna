@@ -39,6 +39,8 @@ struct SettingsLabel: View {
     var body: some View {
         Text(text).projectType(LoomTheme.InkType.label).textCase(.uppercase)
             .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            // The reference's line box (line-height 1): the glyphs overflow it evenly, and the card sits 8 below it.
+            .frame(height: S.labelLine)
             .opacity(dimmed ? LoomTheme.RemoraTab.dimmed : 1)
             .accessibilityAddTraits(.isHeader)
     }
@@ -107,21 +109,27 @@ struct SettingsRowText: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title).projectType(S.rowTitle).foregroundStyle(LoomTheme.Text.primary)
                 .frame(minHeight: S.rowTitleLine, alignment: .leading)
+            // Each line of help is exactly 17 (the reference's line box), whatever the face's own metrics give, with its glyphs
+            // where the reference centres them (`glyphDrop`).
             if let detail, let detailStyle {
-                Text(detail).projectType(detailStyle).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                Text(detail).projectType(detailStyle).lineHeight(.exact(points: S.rowHelpLine))
+                    .offset(y: S.glyphDrop(size: detailStyle.size, mono: detailStyle.mono, lineHeight: S.rowHelpLine))
+                    .foregroundStyle(LoomTheme.Text.secondaryStyle)
                     .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                     .frame(maxWidth: detailWidth, alignment: .leading)
-                    .padding(.top, S.helpTop).padding(.bottom, S.helpSpacing)
+                    .padding(.top, S.helpTop)
             } else if let detail {
-                Text(detail).projectType(S.rowHelp).lineSpacing(S.helpSpacing)
+                Text(detail).projectType(S.rowHelp).lineHeight(.exact(points: S.rowHelpLine))
+                    .offset(y: S.glyphDrop(size: S.rowHelp.size, lineHeight: S.rowHelpLine))
                     .foregroundStyle(LoomTheme.Text.secondaryStyle)
                     .frame(maxWidth: S.helpMaxWidth, alignment: .leading)
-                    .padding(.top, S.helpTop).padding(.bottom, S.helpSpacing)
+                    .padding(.top, S.helpTop)
             }
             if let notice {
-                Text(notice).projectType(S.rowHelp).lineSpacing(S.helpSpacing)
+                Text(notice).projectType(S.rowHelp).lineHeight(.exact(points: S.rowHelpLine))
+                    .offset(y: S.glyphDrop(size: S.rowHelp.size, lineHeight: S.rowHelpLine))
                     .foregroundStyle(LoomTheme.Status.attentionLight)
-                    .padding(.top, S.noticeTop - (detail == nil ? 0 : S.helpSpacing)).padding(.bottom, S.helpSpacing)
+                    .padding(.top, S.noticeTop)
             }
         }
         // The text takes the lines it needs: beside a control the row was sized from the control, and the help was cut to one line.

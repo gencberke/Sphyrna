@@ -34,6 +34,8 @@ extension LoomTheme {
 
         /// The label over a card: capitals, 2 in from the card's edge and 8 above it; a link-style button ends the line.
         static let labelLeading: CGFloat = 2
+        /// The label's line is as high as its size (the reference's `line-height: 1`), 8 above the card.
+        static let labelLine = InkType.label.size
         static let labelBottom: CGFloat = 8
         static let labelGap: CGFloat = 10
         static let linkHeight: CGFloat = 18
@@ -80,8 +82,15 @@ extension LoomTheme {
             return max(0, lineHeight - (font.ascender - font.descender + font.leading))
         }
 
-        static let helpSpacing = lineSpacing(size: InkType.small.size, lineHeight: rowHelpLine)
         static let titleSpacing = lineSpacing(size: InkType.body.size, lineHeight: rowTitleLine)
+
+        /// How far a face's glyphs move down in an exact line box to sit as the reference's do. CoreText leaves an exact line's
+        /// extra room under the glyphs; CSS splits it above and below. The face's own line is its ascender and descender, each
+        /// to a whole point (15 for 12 pt), so 12 pt help in a 17 line moves down 1.
+        static func glyphDrop(size: CGFloat, mono: Bool = false, lineHeight: CGFloat) -> CGFloat {
+            let font = mono ? NSFont.monospacedSystemFont(ofSize: size, weight: .regular) : NSFont.systemFont(ofSize: size)
+            return max(0, (lineHeight - (font.ascender.rounded(.up) + (-font.descender).rounded(.up))) / 2)
+        }
 
         // MARK: The popup (a menu picker)
 
