@@ -191,6 +191,8 @@ Authorization and task execution are considered separately:
 - A chain that goes beyond the limits of the task the user gave is not considered automatically authorized.
 - An agent message is not an answer, on the user's behalf, to another session's pending tool/operation approval.
 
+21 October 2026 user decision ([D-83](DECISIONS.md) (b)): an agent inside a Sphyrna session may read, through the authenticated control socket, a read-only list of the user's other sessions: id, title, project, state, harness, face and last activity, at most 100 per answer. It never reads a session's content, path or transcript, and the list needs no approval. Anything that starts or changes a session still needs the user's approval ([D-40](DECISIONS.md)).
+
 Recording the message, forwarding it to the provider, its acceptance by the target and the completion of the task are different stages. A transport response or an agent saying “done” is not by itself proof that operations under Loom's control were actually performed. The source of a result notification must be clear.
 
 On ambiguous delivery, no blind automatic retry must be done; a crash or a reconnection must not run the same work twice. If a queue is used, persistence, cancellation, time/size limits and the behavior of late messages to a deleted target must be defined. Tasks already recorded may be kept while the app is closed; it is not assumed that a closed app will pick up newly arriving work on its own.

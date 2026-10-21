@@ -380,7 +380,7 @@ The figures above are estimates from the reference's values; the tests give the 
 **Keys and state.**
 - Neither button is the default action, and Return never answers the callout; Return stays with the terminal.
 - While it waits, or after a failed start until it is dismissed, the requester's row, tab and project dot read **Needs approval**.
-- Sphyrna keeps no tracker keys and does not look up existing sessions (D-69).
+- Sphyrna keeps no tracker keys (D-69). `open` always starts a new session; an agent can list the user's sessions, read only, with `sessions` (D-83), and asks the user before it reuses one.
 
 **After approval.** Nothing changes the selection: approving leaves the user where they are, and the new session appears at the top of its project with its spinner.
 
