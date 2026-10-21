@@ -27,7 +27,7 @@ let package = Package(
         .target(name: "LoomTerminal", dependencies: [
             "LoomCore", .product(name: "SwiftTerm", package: "SwiftTerm"),
         ]),
-        .target(name: "LoomCatalogUI", dependencies: ["LoomCore", "LoomTerminal", "LoomChat"]),
+        .target(name: "LoomCatalogUI", dependencies: ["LoomCore", "LoomTerminal", "LoomChat", "LoomRemora"]),
         // The chat engine's pure model and wire protocol (v2): no UI, no process spawning.
         .target(name: "LoomChat", dependencies: ["LoomCore"]),
         // Remora's call (v2): one owned `claude -p` child per question or brief and its answer. No UI.
@@ -54,6 +54,6 @@ let package = Package(
         .testTarget(name: "LoomChatTests", dependencies: ["LoomChat", "LoomCore"]),
         .testTarget(name: "LoomRemoraTests", dependencies: ["LoomRemora", "LoomChat", "LoomCore"]),
         .testTarget(name: "LoomLaunchOptionsTests", dependencies: ["LoomLaunchOptions"]),
-        .testTarget(name: "LoomCatalogUITests", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomChat"]),
+        .testTarget(name: "LoomCatalogUITests", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomChat", "LoomRemora"]),
     ]
 )

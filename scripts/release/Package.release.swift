@@ -23,7 +23,7 @@ let package = Package(
         .target(name: "LoomTerminal", dependencies: [
             "LoomCore", .product(name: "SwiftTerm", package: "SwiftTerm"),
         ]),
-        .target(name: "LoomCatalogUI", dependencies: ["LoomCore", "LoomTerminal", "LoomChat"]),
+        .target(name: "LoomCatalogUI", dependencies: ["LoomCore", "LoomTerminal", "LoomChat", "LoomRemora"]),
         .target(name: "LoomChat", dependencies: ["LoomCore"]),
         .target(name: "LoomRemora", dependencies: ["LoomCore", "LoomChat"]),
         .target(name: "LoomLaunchOptions"),

@@ -473,6 +473,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     supervisor: supervisor, catalog: catalog,
                     configuration: runtimeConfiguration(root: root, supervisor: supervisor, model: model)
                 )
+                // Remora's host, with its forgetter registered before `start()`: a deletion that start recovers reaches Remora's
+                // memory too. It starts nothing and reads only a folder listing; nothing calls Remora until the UI does.
+                let slot = claudeToolchain
+                await model.installRemora(runtime: created, dataRoot: root, toolchain: { try await slot.claude() },
+                                          profile: usageProfileLayout(root: root))
                 try await created.start()
                 // The one session service: it holds the Chat host (made with the model's closures), the controller keeps the
                 // terminals for it, and the model reads its state and the host through it.

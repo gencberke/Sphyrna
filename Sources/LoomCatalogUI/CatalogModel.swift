@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import LoomChat
 import LoomCore
+import LoomRemora
 import LoomTerminal
 import Observation
 
@@ -466,6 +467,9 @@ public final class CatalogModel {
     @ObservationIgnored private var ownChatSessions: ChatSessionHost?
     /// What the app keeps per Chat driver: the live feeds and the composers (`ChatAttachments`).
     @ObservationIgnored let chatAttachments = ChatAttachments()
+    /// Remora's state for the UI and the host it forwards to (`CatalogModel+Remora.swift`). Holds no host until the app
+    /// installs one, and then every Remora method of the model works; without one each refuses quietly.
+    @ObservationIgnored public let remora = RemoraModelState()
     /// The service that owns every session's lifecycle (attached by the controller; nil in a window with no runtime).
     @ObservationIgnored private(set) var sessions: SessionService?
     /// Moves when a Chat driver moved to another card (`/clear`): a view that looked a driver up by card reads again.
@@ -508,6 +512,7 @@ public final class CatalogModel {
         // The session service decides when a side chat's process ends (D-72); the tab reports what it shows and reads.
         side.onShown = { [weak self] parent, id in self?.sessions?.sideChatShown(id, in: parent) }
         side.onRead = { [weak self] parent, id in self?.sessions?.sideChatRead(id, in: parent) }
+        remora.install(preferences: preferences.current.remora) { [weak self] value in self?.persist { $0.remora = value } }
     }
 
     deinit {

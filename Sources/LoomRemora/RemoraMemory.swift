@@ -42,7 +42,7 @@ public actor RemoraMemory {
     private let projectsDirectory: URL
     private let calendar: Calendar
     private let clock: @Sendable () -> Date
-    private let durableNote: RemoraDurableNote?
+    private var durableNote: RemoraDurableNote?
     private var undoable: [RemoraUndoToken: (project: UUID, note: RemoraProjectNote)] = [:]
 
     /// - Parameter durableNote: `Remora.md`, when the app has a path for it: the share carries its text and `apply` does not
@@ -63,6 +63,10 @@ public actor RemoraMemory {
         usage = RemoraUsage(calendar: calendar, clock: clock, persistedAt: directory.appendingPathComponent(Self.usageName))
         try? RemoraJournalFiles(directory: journalDirectory, calendar: calendar).fold(now: clock())
     }
+
+    /// `Remora.md` moved (Settings' Choose…): the share and `apply` read the new note from now on. The store itself stays
+    /// the same, so its use counters, undo tokens and the forgetters that reach it are not replaced.
+    public func setDurableNote(_ note: RemoraDurableNote?) { durableNote = note }
 
     private var journalFiles: RemoraJournalFiles { RemoraJournalFiles(directory: journalDirectory, calendar: calendar) }
 

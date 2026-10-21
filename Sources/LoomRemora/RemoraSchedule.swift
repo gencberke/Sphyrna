@@ -1,7 +1,7 @@
 import Foundation
 
 /// How Settings says the morning brief starts.
-public enum RemoraBriefMode: Equatable, Sendable {
+public enum RemoraBriefMode: String, Codable, Equatable, Sendable {
     /// Sphyrna runs it by itself, at most once a day.
     case automatic
     /// Only when the user asks for it.

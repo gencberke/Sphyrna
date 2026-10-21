@@ -1,4 +1,5 @@
 import Foundation
+import LoomRemora
 
 /// The main window's frame in screen coordinates (AppKit, bottom-left origin).
 public struct WindowFrame: Codable, Equatable, Sendable {
@@ -168,6 +169,9 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     public var appearance: AppearanceSetting
     /// Settings → Theme → Tone (D-63, D-81). A file written before the setting existed reads as Neutral.
     public var paneTone: PaneTone
+    /// Remora's settings (LOMBOT §6.2); the defaults live in `RemoraPreferences`. A file written before Remora existed reads as
+    /// those defaults, and so does any field of it that is missing or unreadable.
+    public var remora: RemoraPreferences
 
     /// The selected session, as every caller before destinations knew it; setting it sets the destination.
     /// The key is still written when the destination is a session, so an older build reads it too.
@@ -186,7 +190,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
                 showInMenuBar: Bool = true, notifyApprovals: Bool = true, sidebarStyle: SidebarStyle = .solid,
                 launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = [],
                 searchSessionText: Bool = true, newSessionFace: SessionFace = .chat,
-                appearance: AppearanceSetting = .dark, paneTone: PaneTone = .neutral) {
+                appearance: AppearanceSetting = .dark, paneTone: PaneTone = .neutral,
+                remora: RemoraPreferences = RemoraPreferences()) {
         self.viewMode = viewMode
         self.destination = destination ?? selectedSessionID.map(Destination.session)
         self.sidebarWidth = Self.clamped(sidebarWidth)
@@ -204,6 +209,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         self.newSessionFace = newSessionFace
         self.appearance = appearance
         self.paneTone = paneTone
+        self.remora = remora
     }
 
     public init(from decoder: any Decoder) throws {
@@ -233,14 +239,15 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             searchSessionText: (try? container.decodeIfPresent(Bool.self, forKey: .searchSessionText)) ?? true,
             newSessionFace: (try? container.decodeIfPresent(SessionFace.self, forKey: .newSessionFace)) ?? .chat,
             appearance: (try? container.decodeIfPresent(AppearanceSetting.self, forKey: .appearance)) ?? .dark,
-            paneTone: (try? container.decodeIfPresent(PaneTone.self, forKey: .paneTone)) ?? .neutral
+            paneTone: (try? container.decodeIfPresent(PaneTone.self, forKey: .paneTone)) ?? .neutral,
+            remora: (try? container.decodeIfPresent(RemoraPreferences.self, forKey: .remora)) ?? RemoraPreferences()
         )
     }
 
     private enum CodingKeys: String, CodingKey {
         case viewMode, selectedSessionID, destination, sidebarWidth, sidebarCollapsed, terminalFontSize, openTabs
         case windowFrame, projectColors, showInMenuBar, notifyApprovals, sidebarStyle, launchView, inspectorOpen
-        case searchSessionText, newSessionFace, appearance, paneTone
+        case searchSessionText, newSessionFace, appearance, paneTone, remora
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -263,6 +270,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         try container.encode(newSessionFace, forKey: .newSessionFace)
         try container.encode(appearance, forKey: .appearance)
         try container.encode(paneTone, forKey: .paneTone)
+        try container.encode(remora, forKey: .remora)
     }
 
     private struct Lossy<Value: Decodable>: Decodable {

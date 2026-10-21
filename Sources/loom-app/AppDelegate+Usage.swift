@@ -62,7 +62,7 @@ extension AppDelegate {
     /// A conversation resolves the real toolchain only when it first starts, so a profile that only
     /// the login shell sets is not seen until a later launch environment is inherited; usage then
     /// reads the default profile (the launcher uses the same fallback).
-    private func usageProfileLayout(root: URL) -> ClaudeProfileLayout {
+    func usageProfileLayout(root: URL) -> ClaudeProfileLayout {
         ClaudeProfileLayout(
             profileDirectory: evidenceClaudeProfile(root: root),
             environment: ProcessInfo.processInfo.environment,
