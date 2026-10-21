@@ -372,7 +372,7 @@ The figures above are estimates from the reference's values; the tests give the 
 
 (D-39, D-40, 12 Oct 2026.)
 
-**The request.** An agent's request to open a session never starts anything by itself. A callout above the requesting session's terminal (§6 Controls) asks "Open a new session?". It shows:
+**The request.** An agent's request to open a session never starts anything by itself. A callout above the requesting session's terminal (§6 Controls), or in Chat at the top of the requester's chat with its other requests, asks "Open a new session?". It shows:
 - the project and the title, in mono meta;
 - the first lines of the message, with the rest one click away in a bounded scroll area;
 - two buttons, **Deny** and **Open Session**.

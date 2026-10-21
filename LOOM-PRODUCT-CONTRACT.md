@@ -191,7 +191,7 @@ Authorization and task execution are considered separately:
 - A chain that goes beyond the limits of the task the user gave is not considered automatically authorized.
 - An agent message is not an answer, on the user's behalf, to another session's pending tool/operation approval.
 
-21 October 2026 user decision ([D-83](DECISIONS.md) (b)): an agent inside a Sphyrna session may read, through the authenticated control socket, a read-only list of the user's other sessions: id, title, project, state, harness, face and last activity, at most 100 per answer. It never reads a session's content, path or transcript, and the list needs no approval. Anything that starts or changes a session still needs the user's approval ([D-40](DECISIONS.md)).
+21 October 2026 user decision ([D-83](DECISIONS.md) (b)): an agent inside a Sphyrna session may read, through the authenticated control socket, a read-only list of the user's other sessions: id, title, project, state, harness, face and last activity, at most 100 per answer. It never reads a session's content, path or transcript, and the list needs no approval. Anything that starts or changes a session still needs the user's approval ([D-40](DECISIONS.md)). An approved opening starts in the face that Settings' "Sessions run in" names, like every other start ([D-69](DECISIONS.md) (1)); in Chat the request's message is the new session's first message, and its title is the request's.
 
 Recording the message, forwarding it to the provider, its acceptance by the target and the completion of the task are different stages. A transport response or an agent saying “done” is not by itself proof that operations under Loom's control were actually performed. The source of a result notification must be clear.
 
