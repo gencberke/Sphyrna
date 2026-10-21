@@ -35,6 +35,7 @@ extension LoomTheme {
         // MARK: The project menu (`pmenu`)
 
         static let menuWidth: CGFloat = 276
+        /// The pill sits 6 inside a menu's edge: this menu, the mode list and the / and @ menus (DESIGN §6 Controls, §11 Menus).
         static let menuInset: CGFloat = 6
         static let rowHeight: CGFloat = InkHeight.sidebarRow
         static let rowRadius: CGFloat = InkRadius.row

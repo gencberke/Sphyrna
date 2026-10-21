@@ -125,7 +125,8 @@ extension LoomTheme {
         static let menuRowHeight: CGFloat = InkHeight.field
         static let menuMaxRows = 8
         static let menuRadius: CGFloat = InkRadius.card
-        static let menuInset: CGFloat = Highlight.inset
+        /// The pill sits 6 inside the menu's edge, as in every popover and menu of the host (DESIGN §6 Controls, §11 Menus).
+        static let menuInset: CGFloat = Host.menuInset
         /// The gap above the card is the host's: 6 (the reference's `place`).
         static let menuGap: CGFloat = Host.anchorGap
         static let menuHeadHeight: CGFloat = 28
@@ -199,7 +200,8 @@ extension LoomTheme {
 
         /// The mode popover is 312 wide (`pr2` rows: 16 | name | check, a 12 pt line under the name).
         static let pickWidth: CGFloat = 312
-        static let pickInset: CGFloat = Highlight.inset
+        /// The pill sits 6 inside the list's edge (DESIGN §6 Controls, §11 Menus).
+        static let pickInset: CGFloat = Host.menuInset
         static let pickRowRadius: CGFloat = Highlight.radius
         static let pickRowPaddingV: CGFloat = 8
         /// A mode row's own padding: 10 aside, 7 above and 8 below (optical, off the grid).

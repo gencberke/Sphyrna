@@ -64,8 +64,11 @@ struct HighlightTests {
 
     @Test func theMenusPopoversAndThePaletteShareThePillsRadiusAndInset() {
         #expect(LoomTheme.Composer.pickRowRadius == LoomTheme.Highlight.radius)
-        #expect(LoomTheme.Composer.pickInset == LoomTheme.Highlight.inset)
-        #expect(LoomTheme.Composer.menuInset == LoomTheme.Highlight.inset)
+        // In the mode list and the / and @ menus the pill sits DESIGN's 6 inside the edge (§6 Controls, §11 Menus), as in the
+        // host's other popovers and menus.
+        #expect(LoomTheme.Composer.pickInset == 6)
+        #expect(LoomTheme.Composer.menuInset == 6)
+        #expect(LoomTheme.Host.menuInset == 6)
         #expect(PaletteMetrics.rowRadius == LoomTheme.Highlight.radius)
         #expect(PaletteMetrics.listPadding == LoomTheme.Highlight.inset)
         #expect(LoomTheme.ProjectPage.rowRadius == LoomTheme.Highlight.radiusCompact, "the project page's rows are DESIGN's 8")
