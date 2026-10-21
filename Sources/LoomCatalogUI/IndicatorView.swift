@@ -2,8 +2,8 @@ import AppKit
 import LoomCore
 import SwiftUI
 
-/// design/DESIGN.md §4: small colored indicators. Working is eight dots chasing
-/// around a rounded rectangle; attention and results are single dots.
+/// design/DESIGN.md §4: small colored indicators. Working is the braille spinner (`BrailleSpinner`); attention and
+/// results are 7 pt dots, State unknown a hollow 8 pt ring in faint.
 extension EnvironmentValues {
     /// Whether working indicators may animate: the window is visible and
     /// active and the surface carrying them is on screen. Set by the root views
@@ -23,10 +23,10 @@ struct IndicatorView: View {
     }
 
     /// Stepped, low-rate animation (not display-rate).
-    static let framesPerSecond = LoomTheme.Motion.chaseFramesPerSecond
+    static let framesPerSecond = LoomTheme.Spinner.framesPerSecond
 
-    /// The chase runs only for a working conversation in an active, visible
-    /// window (contract §10); otherwise it is a static frame. Like the system's
+    /// The spinner runs only for a working conversation in an active, visible
+    /// window (contract §10); otherwise it stands on its first frame. Like the system's
     /// own small progress spinners it keeps running under Reduce Motion (user
     /// decision, 6 Oct 2026).
     static func isAnimating(_ indicator: SessionIndicator, indicatorsAnimate: Bool) -> Bool {
@@ -38,7 +38,7 @@ struct IndicatorView: View {
             switch indicator {
             case .working:
                 let animating = Self.isAnimating(indicator, indicatorsAnimate: indicatorsAnimate)
-                ChaseDots(animating: animating).frame(width: LoomTheme.Layout.chaseSide, height: LoomTheme.Layout.chaseSide)
+                BrailleSpinner(animating: animating)
             case .waitingForApproval, .waitingForInput:
                 dot(LoomTheme.Status.attention)
             case .unviewedCompletion:
@@ -53,7 +53,7 @@ struct IndicatorView: View {
             case .identityUnclear:
                 ring(LoomTheme.Status.attention)
             case .unknown:
-                ring(LoomTheme.Text.secondary)
+                ring(LoomTheme.Text.faint)
             case .ready, .idle, .stale, .ended:
                 Color.clear
             }
@@ -63,12 +63,12 @@ struct IndicatorView: View {
     }
 
     private func dot(_ color: Color) -> some View {
-        Circle().fill(color).frame(width: LoomTheme.Layout.pip, height: LoomTheme.Layout.pip)
+        Circle().fill(color).frame(width: LoomTheme.StatusMark.dot, height: LoomTheme.StatusMark.dot)
     }
 
     private func ring(_ color: Color) -> some View {
         Circle().strokeBorder(color, lineWidth: LoomTheme.Line.indicatorRing)
-            .frame(width: LoomTheme.Layout.pip, height: LoomTheme.Layout.pip)
+            .frame(width: LoomTheme.StatusMark.ring, height: LoomTheme.StatusMark.ring)
     }
 }
 
@@ -82,150 +82,6 @@ struct Diamond: Shape {
         path.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
         path.closeSubpath()
         return path
-    }
-}
-
-/// Eight dots on a rounded rectangle; the bright head advances one dot per step.
-/// The chase is a Core Animation discrete keyframe animation: it runs in the
-/// render server, so an animating indicator costs the app no wakeups and no
-/// SwiftUI updates (a TimelineView re-evaluated the whole view graph per tick).
-struct ChaseDots: NSViewRepresentable {
-    let animating: Bool
-    /// 1 for the card's indicator; a subagent row draws the same chase smaller (same layers, same rate).
-    var scale: CGFloat = 1
-    static let dotCount = LoomTheme.Motion.chaseDotCount
-    /// Opacity by distance behind the head.
-    static let trail = LoomTheme.Motion.chaseTrail
-    static let rest = LoomTheme.Motion.chaseRest
-
-    static func opacity(dot: Int, step: Int, trail: [Double] = ChaseDots.trail, rest: Double = ChaseDots.rest) -> Double {
-        let behind = ((step - dot) % dotCount + dotCount) % dotCount
-        return behind < trail.count ? trail[behind] : rest
-    }
-
-    /// The dots' places on the rounded rectangle as fractions of its span, clockwise from the top-left
-    /// corner (y points down): corners and edge midpoints.
-    static let unit: [(x: CGFloat, y: CGFloat)] = [(0, 0), (0.5, 0), (1, 0), (1, 0.5), (1, 1), (0.5, 1), (0, 1), (0, 0.5)]
-
-    func makeNSView(context: Context) -> LayerView { LayerView(scale: scale) }
-
-    func updateNSView(_ view: LayerView, context: Context) {
-        // The chase takes the scheme the SwiftUI environment resolves (the terminal face's header is dark in Light).
-        view.setAppearance(LoomTheme.Appearance(context.environment.colorScheme))
-        view.setAnimating(animating)
-    }
-
-    final class LayerView: NSView {
-        static let key = "chase"
-        private var dots: [CALayer] = []
-        private var wantsAnimation = false
-        private let scale: CGFloat
-        private var trail = ChaseDots.trail
-        private var rest = ChaseDots.rest
-        /// The chase's colour while it follows the theme; `configure(color:…)` (the menu bar item) replaces it with
-        /// a fixed one. Layers cannot see the SwiftUI environment, so this view resolves the dynamic colour itself.
-        private var followsTheme = true
-        private var appearanceOverride: LoomTheme.Appearance?
-        /// The colour the dots are drawn in now (test seam).
-        var dotColor: CGColor? { dots.first?.backgroundColor }
-
-        /// Whether the keyframe animation is installed (test seam).
-        var isRunning: Bool { dots.first?.animation(forKey: Self.key) != nil }
-        /// What the render server currently shows per dot (evidence).
-        var presentedOpacities: [Float] { dots.map { $0.presentation()?.opacity ?? $0.opacity } }
-
-        override var intrinsicContentSize: NSSize {
-            NSSize(width: LoomTheme.Layout.chaseSide * scale, height: LoomTheme.Layout.chaseSide * scale)
-        }
-
-        override convenience init(frame: NSRect) { self.init(frame: frame, scale: 1) }
-
-        convenience init(scale: CGFloat) { self.init(frame: .zero, scale: scale) }
-
-        private init(frame: NSRect, scale: CGFloat) {
-            self.scale = scale
-            super.init(frame: frame)
-            wantsLayer = true
-            layer?.masksToBounds = false
-            let side = LoomTheme.Layout.chaseSide * scale, inset = LoomTheme.Layout.chaseInset * scale
-            let radius = LoomTheme.Layout.chaseDotRadius * scale
-            let span = side - 2 * inset
-            // Clockwise from the top-left corner: corners and edge midpoints (view y points up).
-            for (index, point) in ChaseDots.unit.enumerated() {
-                let dot = CALayer()
-                dot.bounds = CGRect(x: 0, y: 0, width: radius * 2, height: radius * 2)
-                dot.cornerRadius = radius
-                dot.position = CGPoint(x: inset + point.x * span, y: side - (inset + point.y * span))
-                dot.opacity = Float(ChaseDots.opacity(dot: index, step: 0))
-                layer?.addSublayer(dot)
-                dots.append(dot)
-            }
-            applyThemeColor()
-        }
-
-        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-
-        /// The look the SwiftUI environment resolves for this chase; nil follows the view's own appearance.
-        func setAppearance(_ appearance: LoomTheme.Appearance?) {
-            guard appearance != appearanceOverride else { return }
-            appearanceOverride = appearance
-            applyThemeColor()
-        }
-
-        override func viewDidChangeEffectiveAppearance() {
-            super.viewDidChangeEffectiveAppearance()
-            applyThemeColor()
-        }
-
-        private func applyThemeColor() {
-            guard followsTheme else { return }
-            let look = appearanceOverride ?? LoomTheme.Appearance(effectiveAppearance)
-            let color = LoomTheme.Text.primaryPair[look].cgColor
-            for dot in dots { dot.backgroundColor = color }
-        }
-
-        func setAnimating(_ value: Bool) {
-            wantsAnimation = value
-            apply()
-        }
-
-        /// A chase in another colour and trail (the menu bar item follows the bar's appearance and
-        /// Increase Contrast). A running animation is rebuilt with the new opacities.
-        func configure(color: CGColor, trail: [Double], rest: Double) {
-            self.trail = trail
-            self.rest = rest
-            followsTheme = false
-            for (index, dot) in dots.enumerated() {
-                dot.backgroundColor = color
-                dot.opacity = Float(ChaseDots.opacity(dot: index, step: 0, trail: trail, rest: rest))
-                dot.removeAnimation(forKey: Self.key)
-            }
-            apply()
-        }
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            apply() // animations do not survive leaving a window
-        }
-
-        private func apply() {
-            for (index, dot) in dots.enumerated() {
-                if wantsAnimation && window != nil {
-                    guard dot.animation(forKey: Self.key) == nil else { continue }
-                    let steps = ChaseDots.dotCount
-                    let animation = CAKeyframeAnimation(keyPath: "opacity")
-                    animation.calculationMode = .discrete
-                    animation.values = (0..<steps).map { Float(ChaseDots.opacity(dot: index, step: $0, trail: trail, rest: rest)) }
-                    animation.keyTimes = (0...steps).map { NSNumber(value: Double($0) / Double(steps)) }
-                    animation.duration = Double(steps) / IndicatorView.framesPerSecond
-                    animation.repeatCount = .infinity
-                    animation.isRemovedOnCompletion = false
-                    dot.add(animation, forKey: Self.key)
-                } else {
-                    dot.removeAnimation(forKey: Self.key)
-                }
-            }
-        }
     }
 }
 
@@ -250,14 +106,14 @@ extension ProjectAttention {
     }
 }
 
-/// Evidence: the chase animations currently installed in a window's view tree.
+/// Evidence: the spinner animations currently installed in a window's view tree.
 public enum IndicatorEvidence {
     @MainActor public static func chases(in view: NSView) -> [String: Any] {
-        func find(_ view: NSView) -> [ChaseDots.LayerView] {
-            (view as? ChaseDots.LayerView).map { [$0] } ?? view.subviews.flatMap(find)
+        func find(_ view: NSView) -> [BrailleSpinner.LayerView] {
+            (view as? BrailleSpinner.LayerView).map { [$0] } ?? view.subviews.flatMap(find)
         }
         let all = find(view)
         return ["total": all.count, "running": all.filter(\.isRunning).count,
-                "presentedOpacities": all.first(where: \.isRunning)?.presentedOpacities.map { Double($0) } ?? []]
+                "presentedFrame": all.first(where: \.isRunning)?.presentedFrame ?? NSNull()]
     }
 }

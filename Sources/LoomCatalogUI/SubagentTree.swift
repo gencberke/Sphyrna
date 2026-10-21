@@ -9,7 +9,7 @@ import SwiftUI
 /// - finished subagents of the current turn fold into one "N finished" row that expands to their rows;
 ///   with only finished ones, only that row shows;
 /// - a subagent a subagent started (`depth` > 1) is indented one step per level on the same guide.
-/// - a running subagent whose request waits for the user (V23) takes the attention mark in place of the chase, and is
+/// - a running subagent whose request waits for the user (V23) takes the attention mark in place of the spinner, and is
 ///   always among the shown rows, even past the cap: the order of the rows does not change.
 /// Elapsed and duration text is derived from `now`, the sidebar's minute tick: no timer of its own.
 struct SubagentTreeContent: Equatable {
@@ -205,8 +205,7 @@ private struct SubagentRowView: View {
         case .running where row.isWaiting:
             IndicatorView(indicator: .waitingForApproval)
         case .running:
-            ChaseDots(animating: animates, scale: LoomTheme.Layout.subagentChaseScale)
-                .frame(width: LoomTheme.Layout.chaseSide, height: LoomTheme.Layout.chaseSide)
+            BrailleSpinner(animating: animates, style: .subagent)
         case .finished, .finishedFold:
             Image(systemName: "checkmark").font(LoomTheme.Typography.subagentGlyph)
                 .foregroundStyle(LoomTheme.Text.faint)

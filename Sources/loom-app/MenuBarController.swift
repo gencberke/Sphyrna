@@ -83,7 +83,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             item.target = self
             item.representedObject = spec.sessionID
             item.attributedTitle = MenuBarRowText.attributed(title: spec.title, project: spec.project)
-            item.image = spec.attention.map(MenuBarArt.rowDotImage) ?? MenuBarArt.rowChaseImage()
+            item.image = spec.attention.map(MenuBarArt.rowDotImage) ?? MenuBarArt.rowSpinnerImage()
             return item
         case .more:
             return target(NSMenuItem(title: spec.title, action: #selector(bringForwardClicked(_:)), keyEquivalent: ""))

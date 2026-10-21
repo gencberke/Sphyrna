@@ -112,8 +112,8 @@ struct LoomMarkShape: Shape {
     }
 }
 
-/// How the menu bar item is drawn (D-52). One drawing routine serves the real item (the chase is a layer
-/// animation on top of it), the evidence pictures (the chase's first frame drawn in) and the idle
+/// How the menu bar item is drawn (D-52). One drawing routine serves the real item (the spinner is a layer
+/// animation on top of it), the evidence pictures (the spinner's first frame drawn in) and the idle
 /// template. All geometry and colour is `LoomTheme.MenuBar`.
 public enum MenuBarArt {
     public static var canvas: CGSize { LoomTheme.MenuBar.canvas }
@@ -128,7 +128,7 @@ public enum MenuBarArt {
     public static func templateImage() -> NSImage {
         let image = NSImage(size: canvas, flipped: true) { _ in
             guard let context = NSGraphicsContext.current?.cgContext else { return false }
-            draw(in: context, badge: .none, darkBar: false, increasedContrast: false, chaseStep: nil)
+            draw(in: context, badge: .none, darkBar: false, increasedContrast: false, spinnerFrame: nil)
             return true
         }
         image.isTemplate = true
@@ -137,39 +137,34 @@ public enum MenuBarArt {
 
     /// With a badge Loom draws the item itself: the handler runs with the bar's appearance (and the
     /// system's Increase Contrast setting) every time the image is drawn, so the mark stays black on a
-    /// light bar and white on a dark one. The chase, when there is one, is not drawn here.
+    /// light bar and white on a dark one. The spinner, when there is one, is not drawn here.
     @MainActor
     public static func badgedImage(_ badge: MenuBarBadge) -> NSImage {
         let image = NSImage(size: canvas, flipped: true) { _ in
             guard let context = NSGraphicsContext.current?.cgContext else { return false }
             draw(in: context, badge: badge, darkBar: isDark(NSAppearance.currentDrawing()),
-                 increasedContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast, chaseStep: nil)
+                 increasedContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast, spinnerFrame: nil)
             return true
         }
         image.isTemplate = false
         return image
     }
 
-    /// The chase's dots as fractions of the canvas, for the layer view and the static frame alike.
-    static func chaseDotCenters() -> (centers: [CGPoint], radius: CGFloat) {
+    /// The badge slot as a rectangle in the canvas: the spinner's layer on the live item, its first frame in a picture.
+    static func spinnerRect() -> CGRect {
         let theme = LoomTheme.MenuBar.self
-        let scale = theme.chaseScale
-        let origin = CGPoint(x: theme.markOrigin.x + theme.chaseOrigin.x, y: theme.markOrigin.y + theme.chaseOrigin.y)
-        let inset = LoomTheme.Layout.chaseInset * scale
-        let span = LoomTheme.Layout.chaseSide * scale - 2 * inset
-        return (ChaseDots.unit.map { CGPoint(x: origin.x + inset + $0.x * span, y: origin.y + inset + $0.y * span) },
-                LoomTheme.Layout.chaseDotRadius * scale)
+        let side = LoomTheme.Spinner.menuBarSide
+        return CGRect(x: theme.markOrigin.x + theme.chaseOrigin.x, y: theme.markOrigin.y + theme.chaseOrigin.y,
+                      width: side, height: side)
     }
 
-    static func chaseColors(darkBar: Bool, increasedContrast: Bool) -> (color: CGColor, trail: [Double], rest: Double) {
-        (LoomTheme.MenuBar.markRGB(darkBar: darkBar).cgColor,
-         increasedContrast ? LoomTheme.MenuBar.chaseTrailIncreased : ChaseDots.trail,
-         increasedContrast ? LoomTheme.MenuBar.chaseRestIncreased : ChaseDots.rest)
-    }
+    /// The spinner on a bar: white on a dark one, black on a light one, as the mark is. Increase Contrast changes
+    /// nothing here: the glyph has no dim part to lift (the chase's trail did).
+    static func spinnerColor(darkBar: Bool) -> CGColor { LoomTheme.MenuBar.markRGB(darkBar: darkBar).cgColor }
 
-    /// Draws the item into a context whose origin is the canvas' top-left (y pointing down). `chaseStep`
-    /// draws the working chase at that step (evidence); the live item leaves it to the layers.
-    static func draw(in context: CGContext, badge: MenuBarBadge, darkBar: Bool, increasedContrast: Bool, chaseStep: Int?) {
+    /// Draws the item into a context whose origin is the canvas' top-left (y pointing down). `spinnerFrame`
+    /// draws the working spinner at that frame (evidence); the live item leaves it to the layer.
+    static func draw(in context: CGContext, badge: MenuBarBadge, darkBar: Bool, increasedContrast: Bool, spinnerFrame: Int?) {
         let theme = LoomTheme.MenuBar.self
         context.saveGState()
         defer { context.restoreGState() }
@@ -203,15 +198,9 @@ public enum MenuBarArt {
             context.fillEllipse(in: CGRect(x: theme.markOrigin.x + center.x - diameter / 2,
                                            y: theme.markOrigin.y + center.y - diameter / 2,
                                            width: diameter, height: diameter))
-        } else if badge == .working, let step = chaseStep {
-            let colors = chaseColors(darkBar: darkBar, increasedContrast: increasedContrast)
-            let dots = chaseDotCenters()
-            for (index, center) in dots.centers.enumerated() {
-                let opacity = ChaseDots.opacity(dot: index, step: step, trail: colors.trail, rest: colors.rest)
-                context.setFillColor(colors.color.copy(alpha: opacity) ?? colors.color)
-                context.fillEllipse(in: CGRect(x: center.x - dots.radius, y: center.y - dots.radius,
-                                               width: dots.radius * 2, height: dots.radius * 2))
-            }
+        } else if badge == .working, let frame = spinnerFrame {
+            BrailleFrames.draw(frame: frame, style: .menuBar, color: spinnerColor(darkBar: darkBar), in: context,
+                               rect: spinnerRect(), scale: 4)
         }
     }
 
@@ -220,7 +209,7 @@ public enum MenuBarArt {
                width: radius * 2, height: radius * 2)
     }
 
-    /// Evidence: the item as it looks on a bar of the given appearance, at `scale`x, as PNG data. The chase
+    /// Evidence: the item as it looks on a bar of the given appearance, at `scale`x, as PNG data. The spinner
     /// is its first frame, drawn in. This is the item's own drawing, not a capture of the screen.
     public static func evidencePNG(badge: MenuBarBadge, darkBar: Bool, increasedContrast: Bool, scale: Int = 2) -> Data? {
         let theme = LoomTheme.MenuBar.self
@@ -237,7 +226,7 @@ public enum MenuBarArt {
         context.setFillColor((darkBar ? theme.barDarkRGB : theme.barLightRGB).cgColor)
         context.fill(CGRect(x: 0, y: 0, width: theme.barWidth, height: theme.barHeight))
         context.translateBy(x: (theme.barWidth - theme.canvas.width) / 2, y: (theme.barHeight - theme.canvas.height) / 2)
-        draw(in: context, badge: badge, darkBar: darkBar, increasedContrast: increasedContrast, chaseStep: 0)
+        draw(in: context, badge: badge, darkBar: darkBar, increasedContrast: increasedContrast, spinnerFrame: 0)
         return bitmap.representation(using: .png, properties: [:])
     }
 
@@ -260,21 +249,17 @@ public enum MenuBarArt {
         return image
     }
 
-    /// A working session's glyph: the chase on its first frame, static, as a template so a highlighted row inverts it.
+    /// A working session's glyph: the spinner on its first frame, static, as a template so a highlighted row inverts it.
     @MainActor
-    public static func rowChaseImage() -> NSImage {
+    public static func rowSpinnerImage() -> NSImage {
         let glyph = LoomTheme.MenuBar.rowGlyph
         let image = NSImage(size: NSSize(width: glyph, height: glyph), flipped: true) { rect in
             guard let context = NSGraphicsContext.current?.cgContext else { return false }
-            let scale = rect.width / LoomTheme.Layout.chaseSide
-            let inset = LoomTheme.Layout.chaseInset * scale
-            let span = rect.width - 2 * inset
-            for (index, point) in ChaseDots.unit.enumerated() {
-                let radius = LoomTheme.Layout.chaseDotRadius * scale
-                context.setFillColor(CGColor(gray: 0, alpha: ChaseDots.opacity(dot: index, step: 0)))
-                context.fillEllipse(in: CGRect(x: inset + point.x * span - radius, y: inset + point.y * span - radius,
-                                               width: radius * 2, height: radius * 2))
-            }
+            // The pixels the menu draws at: the context's own scale.
+            let scale = max(1, (context.userSpaceToDeviceSpaceTransform.a).rounded())
+            BrailleFrames.draw(frame: 0, style: .status, color: CGColor(gray: 0, alpha: 1), in: context,
+                               rect: CGRect(x: (rect.width - LoomTheme.Spinner.side) / 2, y: (rect.height - LoomTheme.Spinner.side) / 2,
+                                            width: LoomTheme.Spinner.side, height: LoomTheme.Spinner.side), scale: scale)
             return true
         }
         image.isTemplate = true

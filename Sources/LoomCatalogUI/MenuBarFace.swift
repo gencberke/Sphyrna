@@ -1,23 +1,23 @@
 import AppKit
 
-/// The face of the menu bar item (D-52): the mark, and in its lower right corner the working chase or a
+/// The face of the menu bar item (D-52): the mark, and in its lower right corner the working spinner or a
 /// status dot. Idle is a plain template image; with a badge the image is drawn by Loom
-/// (`MenuBarArt`) so the mark still follows the bar's appearance. The chase is a render-server layer
+/// (`MenuBarArt`) so the mark still follows the bar's appearance. The spinner is a render-server layer
 /// animation on top of the image, added when the badge becomes working and removed in every other state:
 /// no timer, no polling, no image swaps per step, so the item costs the app no wakeups while it moves.
 @MainActor
 public final class MenuBarFace {
     private let button: NSStatusBarButton
-    private let host = ChaseHost()
-    private let chase = ChaseDots.LayerView(scale: LoomTheme.MenuBar.chaseScale)
+    private let host = BarHost()
+    private let spinner = BrailleSpinner.LayerView(style: .menuBar)
     private var images: [MenuBarBadge: NSImage] = [:]
     private var contrastObserver: NSObjectProtocol?
     public private(set) var summary = MenuBarSummary.idle
 
     public var badge: MenuBarBadge { summary.badge }
-    /// Evidence: whether the chase animation is installed on the item.
-    public var isChaseRunning: Bool { badge == .working && chase.isRunning }
-    public var chaseOpacities: [Float] { chase.presentedOpacities }
+    /// Evidence: whether the spinner animation is installed on the item (the evidence key is still "chaseRunning").
+    public var isChaseRunning: Bool { badge == .working && spinner.isRunning }
+    public var spinnerFrame: Int? { spinner.presentedFrame }
     public var appearanceName: String { button.effectiveAppearance.name.rawValue }
 
     public init(button: NSStatusBarButton) {
@@ -32,12 +32,12 @@ public final class MenuBarFace {
             host.heightAnchor.constraint(equalToConstant: MenuBarArt.canvas.height),
         ])
         let theme = LoomTheme.MenuBar.self
-        let side = LoomTheme.Layout.chaseSide * theme.chaseScale
-        chase.frame = CGRect(x: theme.markOrigin.x + theme.chaseOrigin.x,
+        let side = LoomTheme.Spinner.menuBarSide
+        spinner.frame = CGRect(x: theme.markOrigin.x + theme.chaseOrigin.x,
                              y: theme.canvas.height - (theme.markOrigin.y + theme.chaseOrigin.y + side),
                              width: side, height: side)
-        chase.isHidden = true
-        host.addSubview(chase)
+        spinner.isHidden = true
+        host.addSubview(spinner)
         host.onAppearanceChange = { [weak self] in self?.restyle() }
         contrastObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
@@ -51,7 +51,7 @@ public final class MenuBarFace {
         if let contrastObserver { NSWorkspace.shared.notificationCenter.removeObserver(contrastObserver) }
     }
 
-    /// Shows the summary: the image for its badge, the label, and the chase only while it works.
+    /// Shows the summary: the image for its badge, the label, and the spinner only while it works.
     public func apply(_ summary: MenuBarSummary) {
         let wasWorking = self.summary.badge == .working
         self.summary = summary
@@ -61,17 +61,14 @@ public final class MenuBarFace {
         if button.image !== images[summary.badge] { button.image = images[summary.badge] }
         button.setAccessibilityLabel(summary.accessibilityLabel)
         let working = summary.badge == .working
-        chase.isHidden = !working
-        if working, !wasWorking { restyle() } // a running chase is left alone while it keeps working
-        chase.setAnimating(working)
+        spinner.isHidden = !working
+        if working, !wasWorking { restyle() } // a running spinner is left alone while it keeps working
+        spinner.setAnimating(working)
     }
 
     /// The layer colours follow the bar's appearance and Increase Contrast.
     private func restyle() {
-        let colors = MenuBarArt.chaseColors(
-            darkBar: MenuBarArt.isDark(button.effectiveAppearance),
-            increasedContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast)
-        chase.configure(color: colors.color, trail: colors.trail, rest: colors.rest)
+        spinner.configure(color: MenuBarArt.spinnerColor(darkBar: MenuBarArt.isDark(button.effectiveAppearance)))
         button.needsDisplay = true
     }
 
@@ -83,7 +80,7 @@ public final class MenuBarFace {
     }
 
     /// Reports an appearance change of the bar (its button's effective appearance).
-    private final class ChaseHost: NSView {
+    private final class BarHost: NSView {
         var onAppearanceChange: (() -> Void)?
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }

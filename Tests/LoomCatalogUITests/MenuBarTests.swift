@@ -19,7 +19,7 @@ struct MenuBarTests {
 
     // MARK: State
 
-    @Test func theDotBeatsTheChaseAndTheStrongestClassWins() {
+    @Test func theDotBeatsTheSpinnerAndTheStrongestClassWins() {
         let working = entry(1, .working)
         #expect(MenuBarState.derive([]).summary.badge == .none)
         #expect(MenuBarState.derive([working]).summary.badge == .working)
@@ -215,6 +215,31 @@ struct MenuBarTests {
         #expect(onDark.brightnessComponent > 0.9 && onLight.brightnessComponent < 0.1)
     }
 
+    /// The working badge is the spinner's first frame, white on a dark bar and black on a light one, in the badge slot
+    /// that the mark is cut away around.
+    @Test func theWorkingBadgeDrawsTheSpinnerOnADarkAndALightBar() throws {
+        let theme = LoomTheme.MenuBar.self
+        let origin = CGPoint(x: (theme.barWidth - theme.canvas.width) / 2, y: (theme.barHeight - theme.canvas.height) / 2)
+        let slot = MenuBarArt.spinnerRect()
+        for darkBar in [true, false] {
+            let png = try #require(MenuBarArt.evidencePNG(badge: .working, darkBar: darkBar, increasedContrast: false))
+            let bitmap = try #require(NSBitmapImageRep(data: png))
+            let bar = darkBar ? theme.barDarkRGB : theme.barLightRGB
+            var glyph = 0
+            for y in Int((origin.y + slot.minY) * 2)..<Int((origin.y + slot.maxY) * 2) {
+                for x in Int((origin.x + slot.minX) * 2)..<Int((origin.x + slot.maxX) * 2) {
+                    let color = try #require(bitmap.colorAt(x: x, y: y))
+                    // Glyph pixels are the bar's opposite: white on a dark bar, black on a light one.
+                    if darkBar ? color.brightnessComponent > 0.9 : color.brightnessComponent < 0.1 { glyph += 1 }
+                }
+            }
+            #expect(glyph > 8, "the spinner's dots on a \(darkBar ? "dark" : "light") bar: \(glyph) pixels (bar \(bar))")
+        }
+        // Increase Contrast changes nothing on the glyph: it has no dim part.
+        #expect(MenuBarArt.spinnerColor(darkBar: true) == LoomTheme.MenuBar.markRGB(darkBar: true).cgColor)
+        #expect(MenuBarArt.spinnerColor(darkBar: false) == LoomTheme.MenuBar.markRGB(darkBar: false).cgColor)
+    }
+
     @Test func increaseContrastEnlargesTheDotAndUsesAStrongerHue() {
         let theme = LoomTheme.MenuBar.self
         #expect(theme.dotDiameterIncreased == 8 && theme.dotDiameter == 7)
@@ -230,10 +255,6 @@ struct MenuBarTests {
         #expect(theme.dotRGB(.unviewed, darkBar: false, increasedContrast: false) == LoomTheme.RGB(hex: 0x2A5FD6))
         #expect(theme.dotRGB(.failure, darkBar: false, increasedContrast: false) == LoomTheme.RGB(hex: 0xC9332E))
         #expect(theme.dotRGB(.attention, darkBar: true, increasedContrast: false) == LoomTheme.Status.attentionRGB)
-        // The chase trail floor rises from 16 % to 45 %.
-        #expect(ChaseDots.rest == 0.16 && theme.chaseRestIncreased == 0.45)
-        let floor = ChaseDots.opacity(dot: 0, step: 4, trail: theme.chaseTrailIncreased, rest: theme.chaseRestIncreased)
-        #expect(floor == 0.45)
     }
 
     // MARK: Preferences and Settings lines

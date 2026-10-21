@@ -50,12 +50,12 @@ struct IdentityMarksTests {
         }
     }
 
-    /// A 7 pt diamond covers about half the 8 pt dot's area (24.5 against 50.3 pt squared) and reaches the middle of its
+    /// A 7 pt diamond covers about two thirds of the 7 pt dot's area (24.5 against 38.5 pt squared) and reaches the middle of its
     /// edges, not their corners.
     @Test func failureIsADiamondOnlyWhileDifferentiateWithoutColorIsOn() throws {
         let dot = try ink(indicator(.failed(nil), differentiate: false))
         let diamond = try ink(indicator(.failed(nil), differentiate: true))
-        #expect(abs(dot.area - Double.pi * 16) < 3, "the dot covers \(dot.area) pt squared")
+        #expect(abs(dot.area - Double.pi * 3.5 * 3.5) < 3, "the dot covers \(dot.area) pt squared")
         #expect(abs(diamond.area - 24.5) < 3, "the diamond covers \(diamond.area) pt squared")
         #expect(abs(diamond.rect.width - LoomTheme.Layout.failureDiamond) < 0.6
                 && abs(diamond.rect.height - LoomTheme.Layout.failureDiamond) < 0.6, "\(diamond.rect)")
@@ -66,6 +66,22 @@ struct IdentityMarksTests {
         #expect(abs(attention.area - dot.area) < 1, "attention is a dot under the setting")
         let unviewed = try ink(indicator(.unviewedCompletion, differentiate: true))
         #expect(abs(unviewed.area - dot.area) < 1)
+    }
+
+    /// Ink's status marks (DESIGN §4): the attention, unviewed and failure dots are 7 pt; State unknown and Identity
+    /// unclear are hollow rings, 8 pt across.
+    @Test func theDotsAreSevenPointsAndTheRingsEight() throws {
+        for state in [SessionIndicator.waitingForApproval, .waitingForInput, .unviewedCompletion, .failed(nil)] {
+            let dot = try ink(indicator(state, differentiate: false))
+            #expect(abs(dot.rect.width - 7) < 0.6 && abs(dot.rect.height - 7) < 0.6, "\(state): \(dot.rect)")
+        }
+        for state in [SessionIndicator.unknown, .identityUnclear] {
+            let ring = try ink(indicator(state, differentiate: false))
+            #expect(abs(ring.rect.width - 8) < 0.6 && abs(ring.rect.height - 8) < 0.6, "\(state): \(ring.rect)")
+            // Hollow: the ring's ink is its stroke, far less than a disc of that size.
+            #expect(ring.area < Double.pi * 16 * 0.75, "\(state) covers \(ring.area) pt squared")
+        }
+        #expect(LoomTheme.StatusMark.dot == 7 && LoomTheme.StatusMark.ring == 8)
     }
 
     /// The project row's dot follows the card's rule: failure is a diamond under the setting, attention and an

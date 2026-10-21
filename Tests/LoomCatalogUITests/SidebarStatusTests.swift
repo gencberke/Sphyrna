@@ -17,8 +17,8 @@ private final class RecordingIntents: ConversationIntents {
 }
 
 @MainActor
-private func chaseViews(in view: NSView) -> [ChaseDots.LayerView] {
-    (view as? ChaseDots.LayerView).map { [$0] } ?? view.subviews.flatMap(chaseViews(in:))
+private func spinnerViews(in view: NSView) -> [BrailleSpinner.LayerView] {
+    (view as? BrailleSpinner.LayerView).map { [$0] } ?? view.subviews.flatMap(spinnerViews(in:))
 }
 
 @MainActor
@@ -268,23 +268,23 @@ struct SidebarStatusTests {
             window.contentView = hosting
             window.orderFrontRegardless()
             defer { window.orderOut(nil) }
-            // The chase view exists, in the window, once SwiftUI has laid the hosting view out; how long that takes
+            // The spinner view exists, in the window, once SwiftUI has laid the hosting view out; how long that takes
             // depends on the load, so wait for it. Its animation is installed in the same pass that puts it there.
-            var chase: ChaseDots.LayerView?
-            for _ in 0..<500 where chase?.window == nil {
+            var found: BrailleSpinner.LayerView?
+            for _ in 0..<500 where found?.window == nil {
                 try await Task.sleep(for: .milliseconds(20))
-                chase = chaseViews(in: hosting).first
+                found = spinnerViews(in: hosting).first
             }
-            let dots = try #require(chase)
-            #expect(dots.window != nil, "the chase view never reached the window")
+            let spinner = try #require(found)
+            #expect(spinner.window != nil, "the spinner view never reached the window")
             if animate {
-                for _ in 0..<500 where !dots.isRunning { try await Task.sleep(for: .milliseconds(20)) }
-                return dots.isRunning
+                for _ in 0..<500 where !spinner.isRunning { try await Task.sleep(for: .milliseconds(20)) }
+                return spinner.isRunning
             }
             // Not running must hold, not only at the first look.
             for _ in 0..<10 {
                 try await Task.sleep(for: .milliseconds(20))
-                if dots.isRunning { return true }
+                if spinner.isRunning { return true }
             }
             return false
         }
@@ -324,7 +324,7 @@ struct SidebarStatusTests {
         defer { window.orderOut(nil) }
         func running() async throws -> Bool {
             try await Task.sleep(for: .milliseconds(400))
-            return chaseViews(in: hosting.view).contains { $0.isRunning }
+            return spinnerViews(in: hosting.view).contains { $0.isRunning }
         }
         #expect(!(try await running()), "inactive window must be static")
         model.setWindowActive(true)
@@ -343,11 +343,51 @@ struct SidebarStatusTests {
         #expect(!ChromeButtonStyle.showsFocusRing(focused: false, keyboardNavigation: true))
     }
 
-    @Test func chaseHeadAdvancesOneDotPerStepWithAFadingTail() {
-        #expect(ChaseDots.opacity(dot: 3, step: 3) == 1)
-        #expect(ChaseDots.opacity(dot: 2, step: 3) == ChaseDots.trail[1])
-        #expect(ChaseDots.opacity(dot: 7, step: 0) == ChaseDots.trail[1])
-        #expect(ChaseDots.opacity(dot: 4, step: 3) == ChaseDots.rest)
-        #expect(ChaseDots.opacity(dot: 1, step: 9) == 1)
+    /// Ink's spinner (DESIGN §4): ten frames of one braille cell, in this order, drawn once.
+    @Test func theSpinnerHasTenBrailleFramesInOrder() throws {
+        #expect(LoomTheme.Spinner.frames == ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+        #expect(LoomTheme.Spinner.frames.joined() == "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+        let black = CGColor(gray: 0, alpha: 1)
+        let images = try (0..<BrailleFrames.frameCount).map {
+            try #require(BrailleFrames.image(frame: $0, style: .status, color: black, scale: 2))
+        }
+        #expect(images.count == 10)
+        // Each frame is a different picture of the same size, with something drawn in it.
+        for (index, image) in images.enumerated() {
+            #expect(image.width == 24 && image.height == 24)
+            let bytes = try #require(image.dataProvider?.data as Data?)
+            #expect(bytes.contains { $0 != 0 }, "frame \(index) is empty")
+            for other in images[(index + 1)...] {
+                #expect((other.dataProvider?.data as Data?) != (image.dataProvider?.data as Data?))
+            }
+        }
+    }
+
+    /// The animation is the render server's: one discrete keyframe animation over `contents` at 12 frames a second,
+    /// installed on the layer and never rebuilt per step (no timer, no redraw while it runs).
+    @MainActor @Test func theSpinnerIsOneDiscreteKeyframeAnimationAtTwelveFramesASecond() async throws {
+        let view = BrailleSpinner.LayerView(style: .status)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 40, height: 40), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.contentView = view
+        #expect(!view.isRunning, "a spinner that is not asked to move stands on its first frame")
+        view.setAnimating(true)
+        let animation = try #require(view.animation as? CAKeyframeAnimation)
+        #expect(animation.keyPath == "contents" && animation.calculationMode == .discrete)
+        #expect(animation.values?.count == 10 && animation.keyTimes?.count == 11)
+        #expect(animation.duration == 10 / 12 && animation.repeatCount == .infinity && !animation.isRemovedOnCompletion)
+        #expect(IndicatorView.framesPerSecond == 12)
+        // Its values are the view's ten frames, in order.
+        let values = try #require(animation.values)
+        #expect(view.frameImages.count == 10)
+        for (value, frame) in zip(values, view.frameImages) { #expect(CFEqual(value as CFTypeRef, frame)) }
+        // Running costs no drawing: the frames are drawn once.
+        let drawn = view.renderCount
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(view.renderCount == drawn && view.isRunning)
+        view.setAnimating(false)
+        #expect(!view.isRunning)
     }
 }

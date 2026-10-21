@@ -1,7 +1,7 @@
 import Foundation
 import LoomCore
 
-/// What the menu bar item's badge slot holds (D-52): the working chase, or the dot of the most urgent
+/// What the menu bar item's badge slot holds (D-52): the working spinner, or the dot of the most urgent
 /// session that needs the user. The dot wins when both apply. The raw values are the evidence names.
 public enum MenuBarBadge: String, Equatable, Sendable {
     case none, working, failure, attention, unviewed

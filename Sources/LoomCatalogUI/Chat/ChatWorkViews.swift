@@ -103,7 +103,7 @@ extension ChatWork.Label {
     func verbPhrase(running: Bool) -> String { running ? verbRunning : verb }
 }
 
-/// The status glyph of a tool row: the working chase while it runs, a plain icon otherwise.
+/// The status glyph of a tool row: the working spinner while it runs, a plain icon otherwise.
 struct ChatToolIcon: View {
     let status: ToolCall.Status
     let symbol: String
@@ -113,7 +113,7 @@ struct ChatToolIcon: View {
         Group {
             switch status {
             case .running:
-                ChaseDots(animating: animates, scale: 0.75)
+                BrailleSpinner(animating: animates, style: .subagent)
             case .failed:
                 Image(systemName: "exclamationmark.triangle").foregroundStyle(LoomTheme.Status.failureLight)
             case .denied:
@@ -594,7 +594,7 @@ struct ChatSubagentStatus: View {
         HStack(spacing: 6) {
             switch run.status {
             case .running:
-                ChaseDots(animating: context.animates, scale: 0.75).frame(width: 12, height: 12)
+                BrailleSpinner(animating: context.animates, style: .subagent)
                 ChatElapsedText(start: run.startedAt, end: nil, clock: context.clock)
             case .succeeded:
                 Image(systemName: "checkmark").font(LoomTheme.Chat.chevron).foregroundStyle(LoomTheme.Success.light)
@@ -746,7 +746,7 @@ struct ChatLiveRowView: View {
     var body: some View {
         Button { if !live.hiddenTools.isEmpty { context.toggle(rowID) } } label: {
             HStack(spacing: 9) {
-                ChaseDots(animating: context.animates).frame(width: 12, height: 12)
+                BrailleSpinner(animating: context.animates)
                 ChatLiveStatusText(live: live, clock: context.clock)
                 Spacer(minLength: 8)
                 if !live.hiddenTools.isEmpty {

@@ -595,27 +595,27 @@ struct ThemeAppearanceTests {
 
     // MARK: Layers
 
-    /// A layer cannot see the SwiftUI environment: the working chase follows its view's appearance when that changes.
-    @MainActor @Test func theWorkingChaseFollowsAnAppearanceChange() throws {
-        let view = ChaseDots.LayerView(scale: 1)
+    /// A layer cannot see the SwiftUI environment: the working spinner follows its view's appearance when that changes.
+    @MainActor @Test func theWorkingSpinnerFollowsAnAppearanceChange() throws {
+        let view = BrailleSpinner.LayerView(style: .status)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 40, height: 40), styleMask: [.borderless],
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { window.close() }
         window.contentView = view
         window.appearance = NSAppearance(named: .darkAqua)
-        let dark = try #require(view.dotColor.flatMap { NSColor(cgColor: $0)?.usingColorSpace(.sRGB) })
+        let dark = try #require(view.glyphColor.flatMap { NSColor(cgColor: $0)?.usingColorSpace(.sRGB) })
         #expect(close(RGB(bytes: (Int(dark.redComponent * 255), Int(dark.greenComponent * 255), Int(dark.blueComponent * 255))),
                       LoomTheme.Text.primaryPair.dark), "Dark: the primary text colour")
         window.appearance = NSAppearance(named: .aqua)
-        let light = try #require(view.dotColor.flatMap { NSColor(cgColor: $0)?.usingColorSpace(.sRGB) })
+        let light = try #require(view.glyphColor.flatMap { NSColor(cgColor: $0)?.usingColorSpace(.sRGB) })
         #expect(close(RGB(bytes: (Int(light.redComponent * 255), Int(light.greenComponent * 255), Int(light.blueComponent * 255))),
                       LoomTheme.Text.primaryPair.light), "Light: the ink")
     }
 
     /// The SwiftUI environment can override the view's look (the terminal face's header is dark in Light).
-    @MainActor @Test func theWorkingChaseTakesTheEnvironmentsLookWhenItIsGiven() throws {
-        let view = ChaseDots.LayerView(scale: 1)
+    @MainActor @Test func theWorkingSpinnerTakesTheEnvironmentsLookWhenItIsGiven() throws {
+        let view = BrailleSpinner.LayerView(style: .status)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 40, height: 40), styleMask: [.borderless],
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -623,8 +623,8 @@ struct ThemeAppearanceTests {
         window.contentView = view
         window.appearance = NSAppearance(named: .aqua)
         view.setAppearance(.dark)
-        let color = try #require(view.dotColor.flatMap { NSColor(cgColor: $0)?.usingColorSpace(.sRGB) })
-        #expect(color.redComponent > 0.8, "light dots on a dark panel inside a light window")
+        let color = try #require(view.glyphColor.flatMap { NSColor(cgColor: $0)?.usingColorSpace(.sRGB) })
+        #expect(color.redComponent > 0.8, "a light glyph on a dark panel inside a light window")
     }
 
     // MARK: Settings
