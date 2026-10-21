@@ -6,7 +6,7 @@ import SwiftUI
 struct BranchStrip: View {
     let model: CatalogModel
     let projectID: UUID?
-    @State private var popover: BranchKind?
+    private let openState = InkOpenState.shared
 
     private var draft: SessionDraft { model.newSession.draft(for: projectID) ?? SessionDraft(projectID: projectID) }
 
@@ -14,11 +14,13 @@ struct BranchStrip: View {
         let segments = DraftWords.segments(
             hasProject: projectID != nil, branch: model.newSession.branch(for: projectID), chosen: draft.branchKind,
             name: model.draftBranchName(draft))
+        let spot = InkOpeners.placement(.branchName, onDraft: true) ?? InkOpeners.Spot(side: .below, alignment: .leading)
         HStack(spacing: LoomTheme.Draft.segmentGap) {
             ForEach(segments, id: \.kind) { segment in
                 StripSegment(segment: segment) { choose(segment.kind) }
-                    .popover(isPresented: open(segment.kind), arrowEdge: .bottom) {
-                        BranchNamePopover(model: model, projectID: projectID, kind: segment.kind) { popover = nil }
+                    .inkPopover(isPresented: open(segment.kind), id: "draft-branch-name", label: branchPopoverLabel(segment.kind),
+                                side: spot.side, alignment: spot.alignment) {
+                        BranchNamePopover(model: model, projectID: projectID, kind: segment.kind) { openState.draft = nil }
                     }
             }
         }
@@ -30,17 +32,21 @@ struct BranchStrip: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Branch, \(segments.first(where: \.isChosen)?.accessibilityLabel ?? "")")
         .accessibilityIdentifier("draft-branch")
+        // A popover does not outlive its page: coming back to it finds it shut.
+        .onDisappear { if openState.draft?.projectID == projectID { openState.draft = nil } }
     }
 
     private func choose(_ kind: BranchKind) {
         let next = DraftWords.afterClick(kind)
         if draft.branchKind != next.chosen { model.setDraftBranch(next.chosen, projectID: projectID) }
-        popover = next.popover
+        openState.draft = next.popover.map { .init(projectID: projectID, popover: .branchName($0)) }
     }
 
     private func open(_ kind: BranchKind) -> Binding<Bool> {
-        Binding(get: { popover == kind }, set: { shown in if !shown, popover == kind { popover = nil } })
+        openState.draftBinding(.branchName(kind), projectID: projectID)
     }
+
+    private func branchPopoverLabel(_ kind: BranchKind) -> String { kind == .newWorktree ? "Worktree name" : "Branch name" }
 }
 
 /// One segment: 22 high inside the group's 2, radius 5. The chosen one is raised (Segment on, a strong hairline and a 1 pt drop).
@@ -136,7 +142,6 @@ private struct BranchNamePopover: View {
         }
         .padding(LoomTheme.Draft.popoverPadding)
         .frame(width: NewSessionLayout.popoverWidth)
-        .background(LoomTheme.Surface.popover)
         .onAppear {
             name = draft.branchName ?? ""
             focused = true

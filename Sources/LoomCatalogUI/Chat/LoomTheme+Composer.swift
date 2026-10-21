@@ -126,7 +126,8 @@ extension LoomTheme {
         static let menuMaxRows = 8
         static let menuRadius: CGFloat = InkRadius.card
         static let menuInset: CGFloat = Highlight.inset
-        static let menuGap: CGFloat = 8
+        /// The gap above the card is the host's: 6 (the reference's `place`).
+        static let menuGap: CGFloat = Host.anchorGap
         static let menuHeadHeight: CGFloat = 28
         static let menuHeadFont = Font.system(size: 11.5, weight: .medium)
         static let menuCommandFont = Font.system(size: 12, design: .monospaced)

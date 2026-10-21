@@ -167,7 +167,11 @@ struct PinnedFixRoundTests {
                         || name == "LiveChatView.swift")
             }
         files.append(sources.appendingPathComponent("SessionChatView.swift"))
-        #expect(files.count >= 12, "\(files.map(\.lastPathComponent))")
+        // The popover and menu host (I4) takes Esc in its own key handling while one of its popovers is open; its files are outside
+        // Chat/ and are scanned too, so no default or cancel key of theirs can answer a card.
+        for name in InkHostSources.files { files.append(sources.appendingPathComponent(name)) }
+        #expect(files.count >= 12 + InkHostSources.files.count, "\(files.map(\.lastPathComponent))")
+        for file in files { #expect(FileManager.default.fileExists(atPath: file.path), "\(file.lastPathComponent) is scanned and must exist") }
         for file in files {
             let text = try String(contentsOf: file, encoding: .utf8)
             let code = text.split(separator: "\n").filter {

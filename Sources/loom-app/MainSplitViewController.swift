@@ -13,11 +13,15 @@ final class MainSplitViewController: NSSplitViewController {
     /// AppKit's sidebar item is the one truth for collapsed or not; this mirrors it into the model.
     private let collapseSync: SidebarCollapseSync
     private var widthTask: Task<Void, Never>?
+    /// The window's popover and menu host: the composer's pickers, the draft's, and the project menu open in it.
+    private let inkHost: InkHost
 
     init(model: CatalogModel) {
         self.model = model
-        let sidebar = NSHostingController(rootView: SidebarView(model: model))
-        let detail = NSHostingController(rootView: DetailView(model: model))
+        let host = InkHost()
+        inkHost = host
+        let sidebar = NSHostingController(rootView: SidebarView(model: model).inkHost(host))
+        let detail = NSHostingController(rootView: DetailView(model: model).inkHost(host))
         sidebar.sizingOptions = []
         detail.sizingOptions = []
         sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
@@ -55,6 +59,15 @@ final class MainSplitViewController: NSSplitViewController {
         NSLayoutConstraint.activate([
             palette.leadingAnchor.constraint(equalTo: view.leadingAnchor), palette.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             palette.topAnchor.constraint(equalTo: view.topAnchor), palette.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        // The popovers and menus (the composer's pickers, the draft's, the project menu) are one more window-level layer, over the
+        // palette's so that a popover is never under it; it takes clicks and keys only while one is open.
+        let hosts = inkHost.view
+        hosts.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(hosts)
+        NSLayoutConstraint.activate([
+            hosts.leadingAnchor.constraint(equalTo: view.leadingAnchor), hosts.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            hosts.topAnchor.constraint(equalTo: view.topAnchor), hosts.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
     }
 

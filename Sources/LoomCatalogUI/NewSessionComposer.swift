@@ -53,7 +53,7 @@ struct NewSessionComposer: View {
                     .padding(.horizontal, NewSessionLayout.textInset).padding(.bottom, LoomTheme.Space.requestPadding)
                     .accessibilityIdentifier("draft-store-notice")
             }
-            ComposerBar(model: model, projectID: projectID)
+            ComposerBar(model: model, projectID: projectID, restoreFocus: { host.focusEditor() })
         }
         .composerCard()
         .accessibilityElement(children: .contain)
@@ -89,12 +89,15 @@ enum NewSessionLayout {
 }
 
 /// Mode and model chips and Send: the bar of D-58 without a ring (no session yet) and without +, whose menus need a
-/// session's commands. The chips and their popovers are the live composer's (`ComposerPickers`, D-63; the one model chip, D-75).
+/// session's commands. The chips and their popovers are the live composer's (`ComposerPickers`, D-63; the one model chip, D-75),
+/// opening below their chips in the window's host (`InkOpeners`). Which one is open is `InkOpenState`'s, so the evidence can
+/// open it.
 private struct ComposerBar: View {
     let model: CatalogModel
     let projectID: UUID?
-    @State private var modeOpen = false
-    @State private var modelOpen = false
+    /// Gives the keyboard back to the draft's text when a popover closes.
+    let restoreFocus: () -> Void
+    private let openState = InkOpenState.shared
 
     var body: some View {
         let resolved = model.resolvedStart(for: projectID)
@@ -104,6 +107,8 @@ private struct ComposerBar: View {
             modelChip(resolved)
             SendButton(model: model, projectID: projectID)
         }
+        // A popover does not outlive its page: coming back to it finds it shut.
+        .onDisappear { if openState.draft?.projectID == projectID { openState.draft = nil } }
     }
 
     private func modeChip(_ resolved: ResolvedStart) -> some View {
@@ -115,7 +120,8 @@ private struct ComposerBar: View {
         return ComposerModeChip(
             selected: resolved.mode.value, title: title, help: "Permission mode of the new session", identifier: "draft-mode",
             reset: picked ? { model.setDraftMode(.inherit, projectID: projectID) } : nil,
-            askAllowed: model.newSessionAllowsAsk, isOpen: $modeOpen) { mode in
+            askAllowed: model.newSessionAllowsAsk, onDraft: true, restoreFocus: restoreFocus,
+            isOpen: openState.draftBinding(.mode, projectID: projectID)) { mode in
             model.setDraftMode(.value(mode.rawValue), projectID: projectID)
         }
     }
@@ -132,7 +138,7 @@ private struct ComposerBar: View {
             codexNote: model.newSessionUnavailableReason(.codex) ?? ComposerModelNotes.inNewSession)
         return ComposerModelChip(
             picker: picker, identifier: "draft-model", help: "Model and effort of the new session",
-            isOpen: $modelOpen,
+            onDraft: true, restoreFocus: restoreFocus, isOpen: openState.draftBinding(.model, projectID: projectID),
             onPickModel: { value in model.setDraftModel(value.map { .value($0) } ?? .claudeDefault, projectID: projectID) },
             onPickEffort: { model.setDraftEffort(.value($0), projectID: projectID) },
             onResetEffort: { model.setDraftEffort(.inherit, projectID: projectID) })
@@ -159,6 +165,7 @@ private struct SendButton: View {
 final class DraftComposerHost: ComposerEditorHost {
     private let model: CatalogModel
     private let projectID: UUID?
+    private weak var editor: (any ComposerEditorBridge)?
 
     init(model: CatalogModel, projectID: UUID?) {
         self.model = model
@@ -195,5 +202,8 @@ final class DraftComposerHost: ComposerEditorHost {
     func editorEndedEditing() { model.newSession.flush() }
     func paste(_ pasteboard: NSPasteboard, plain: Bool) -> Bool { false }
     func drop(_ pasteboard: NSPasteboard) -> Bool { false }
-    func editorAttached(_ bridge: (any ComposerEditorBridge)?) {}
+    func editorAttached(_ bridge: (any ComposerEditorBridge)?) { editor = bridge }
+
+    /// The draft's text takes the keyboard back (a popover closed).
+    func focusEditor() { editor?.focus() }
 }

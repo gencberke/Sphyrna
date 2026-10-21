@@ -1,4 +1,5 @@
 import LoomCore
+import Observation
 import SwiftUI
 
 // The composer bar's mode picker (D-63, after Codex's). The model chip with its one popover is `ComposerModelPopover.swift`.
@@ -38,16 +39,43 @@ struct ComposerPickRow: Identifiable, Equatable {
     var isEnabled = true
 }
 
+/// The cursor of a pick list: the row under the pointer or the arrow keys. The chip that opens the list holds it, because the
+/// host (not the list) reads the keys (`ComposerPickList.resolve`).
+@MainActor @Observable
+final class ComposerPickCursor {
+    var highlighted: Int?
+}
+
 /// The rows of a popover, as in Codex's model list: a header, rows with a rounded highlight under the pointer or the arrow
-/// keys, and a check mark on the chosen one. ↑ and ↓ move, ↵ and Space choose.
+/// keys, and a check mark on the chosen one. ↑ and ↓ move (and stop at the ends), ↵ and Space choose.
 struct ComposerPickList: View {
     var header: String?
     var rows: [ComposerPickRow]
     var identifier: String
     var width: CGFloat = LoomTheme.Composer.pickWidth
+    var cursor: ComposerPickCursor
     var onPick: (String) -> Void
-    @State private var highlighted: Int?
-    @FocusState private var focused: Bool
+
+    /// What a key does to the list: the new highlight, the row it picks, and whether the list used the key. Pure, so the rules are
+    /// tested without a view.
+    struct Step: Equatable {
+        var highlighted: Int?
+        var pick: String?
+        var handled: Bool
+    }
+
+    static func resolve(_ key: InkKey, highlighted: Int?, rows: [ComposerPickRow]) -> Step {
+        let unused = Step(highlighted: highlighted, pick: nil, handled: false)
+        guard !rows.isEmpty else { return unused }
+        switch key {
+        case .down: return Step(highlighted: min((highlighted ?? -1) + 1, rows.count - 1), pick: nil, handled: true)
+        case .up: return Step(highlighted: max((highlighted ?? rows.count) - 1, 0), pick: nil, handled: true)
+        case .return, .space:
+            guard let highlighted, rows.indices.contains(highlighted), rows[highlighted].isEnabled else { return unused }
+            return Step(highlighted: highlighted, pick: rows[highlighted].id, handled: true)
+        case .left, .right, .escape: return unused
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -69,32 +97,13 @@ struct ComposerPickList: View {
         }
         .padding(LoomTheme.Composer.pickInset)
         .frame(width: width)
-        .background(LoomTheme.Surface.popover)
-        .focusable()
-        .focused($focused)
-        .focusEffectDisabled()
-        .onKeyPress(keys: [.upArrow, .downArrow, .return, .space]) { press in handle(press.key) }
-        .onAppear { focused = true }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(identifier)
     }
 
-    private func handle(_ key: KeyEquivalent) -> KeyPress.Result {
-        guard !rows.isEmpty else { return .ignored }
-        switch key {
-        case .downArrow: highlighted = min((highlighted ?? -1) + 1, rows.count - 1)
-        case .upArrow: highlighted = max((highlighted ?? rows.count) - 1, 0)
-        case .return, .space:
-            guard let highlighted, rows.indices.contains(highlighted), rows[highlighted].isEnabled else { return .ignored }
-            onPick(rows[highlighted].id)
-        default: return .ignored
-        }
-        return .handled
-    }
-
     private func rowView(_ row: ComposerPickRow, index: Int) -> some View {
         // The row draws the hover fill: its secondary text takes the lifted tone that holds 4.5:1 on it (`OnPopover`).
-        let lit = row.isEnabled && (highlighted == index || LookEvidence.forcesHover("pick:\(row.id)"))
+        let lit = row.isEnabled && (cursor.highlighted == index || LookEvidence.forcesHover("pick:\(row.id)"))
         return Button { if row.isEnabled { onPick(row.id) } } label: {
             HStack(alignment: row.subtitle == nil ? .center : .top, spacing: LoomTheme.Composer.modelColumnGap) {
                 if let symbol = row.symbol {
@@ -129,7 +138,7 @@ struct ComposerPickList: View {
         .buttonStyle(.plain)
         .disabled(!row.isEnabled)
         .onHover { inside in
-            if inside { highlighted = index } else if highlighted == index { highlighted = nil }
+            if inside { cursor.highlighted = index } else if cursor.highlighted == index { cursor.highlighted = nil }
         }
         .accessibilityLabel(row.subtitle.map { "\(row.title), \($0)" } ?? row.title)
         .accessibilityAddTraits(row.checked ? .isSelected : [])
@@ -139,8 +148,9 @@ struct ComposerPickList: View {
 
 // MARK: Mode chip
 
-/// The permission mode on the bar: its icon and name in the mode's tone, and the mode list in a popover. The draft passes a
-/// `reset` ("Use the default for this project") when its pick differs from what the project would start in.
+/// The permission mode on the bar: its icon and name in the mode's tone, and the mode list in the window's host (above the chip on
+/// the live composer, below it on the draft page, leading edges aligned). The draft passes a `reset` ("Use the default for this
+/// project") when its pick differs from what the project would start in.
 struct ComposerModeChip: View {
     /// The mode as Loom stores it; nil while nothing says which mode runs.
     var selected: String?
@@ -150,11 +160,18 @@ struct ComposerModeChip: View {
     var reset: (() -> Void)?
     /// Ask works in Chat only: false where the session will start in the terminal, and the row says so.
     var askAllowed = true
+    /// The draft page's chip opens its list below it; the live composer's dock opens it above (`InkOpeners`).
+    var onDraft = false
+    /// Gives the keyboard back to the composer's text when the list closes.
+    var restoreFocus: (() -> Void)?
     @Binding var isOpen: Bool
     var onPick: (ClaudePermissionMode) -> Void
+    @State private var cursor = ComposerPickCursor()
 
     var body: some View {
         let tint = selected == nil ? LoomTheme.Composer.modeColor : ComposerModeLook.color(forRaw: selected)
+        let rows = Self.rows(selected: selected, askAllowed: askAllowed)
+        let spot = InkOpeners.placement(.mode, onDraft: onDraft) ?? InkOpeners.Spot(side: .above, alignment: .leading)
         Button { isOpen.toggle() } label: {
             ComposerChipLabel(symbol: ComposerModeLook.symbol(forRaw: selected), title: title)
         }
@@ -162,12 +179,15 @@ struct ComposerModeChip: View {
         .help(help)
         .accessibilityLabel("Permission mode, \(title)")
         .accessibilityIdentifier(identifier)
-        .popover(isPresented: $isOpen, arrowEdge: .top) {
+        .inkPopover(isPresented: $isOpen, id: identifier, label: "Mode", side: spot.side,
+                    alignment: spot.alignment, keys: { key in
+            let step = ComposerPickList.resolve(key, highlighted: cursor.highlighted, rows: rows)
+            cursor.highlighted = step.highlighted
+            if let pick = step.pick { choose(pick) }
+            return step.handled
+        }, restoreFocus: restoreFocus, content: {
             VStack(spacing: 0) {
-                ComposerPickList(header: "Mode", rows: Self.rows(selected: selected, askAllowed: askAllowed), identifier: "\(identifier)-list") { id in
-                    isOpen = false
-                    if let mode = ClaudePermissionMode(rawValue: id) { onPick(mode) }
-                }
+                ComposerPickList(header: "Mode", rows: rows, identifier: "\(identifier)-list", cursor: cursor) { choose($0) }
                 if let reset {
                     Divider().overlay(LoomTheme.Composer.pickDivider)
                     Button("Use the default for this project") {
@@ -181,8 +201,13 @@ struct ComposerModeChip: View {
                     .accessibilityIdentifier("\(identifier)-reset")
                 }
             }
-            .background(LoomTheme.Surface.popover)
-        }
+        })
+        .onChange(of: isOpen) { _, open in if !open { cursor.highlighted = nil } }
+    }
+
+    private func choose(_ id: String) {
+        isOpen = false
+        if let mode = ClaudePermissionMode(rawValue: id) { onPick(mode) }
     }
 
     /// The mode list: the five modes the menus offer, with the chosen one checked. A session in plan mode (not offered) has no check.

@@ -63,8 +63,9 @@ struct ProjectMenuPlan: Equatable {
     }
 }
 
-/// The items of a project's menu, for a `Menu` or a `.contextMenu` to hold: the sidebar head's ⋯ and its context menu, and the
-/// project page's ⋯. Color stays `ProjectColorMenu`'s native submenu; DESIGN's row of seven swatches needs a custom menu host.
+/// The items of a project's right-click menu, for a `.contextMenu` to hold (the sidebar head's). The ⋯ buttons open the same plan in
+/// the window's host (`ProjectMenuView`), where Color is DESIGN's row of seven swatches; a native menu cannot hold that row, so the
+/// right-click menu keeps `ProjectColorMenu`'s submenu.
 struct ProjectActionsMenu: View {
     let model: CatalogModel
     let project: CatalogProject

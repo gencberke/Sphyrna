@@ -437,16 +437,11 @@ struct ProjectHeader: View {
             ProjectStartButton(model: model, project: project)
                 .focused($focused, equals: .start)
                 .revealed(showsControls)
-            Menu {
-                ProjectActionsMenu(model: model, project: project)
-            } label: {
-                Image(systemName: "ellipsis")
-            }
-            .menuStyle(.button).buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.projectMenuButton))
-            .menuIndicator(.hidden).fixedSize()
-            .revealed(showsControls)
-            .help(count > 0 ? "Only an empty project can be removed" : "Project actions")
-            .accessibilityLabel("Actions for \(project.name)")
+            // The project menu opens in the window's host (DESIGN §10); the right-click menu below stays native.
+            ProjectMenuButton(model: model, project: project, origin: .sidebar,
+                              style: ChromeButtonStyle(size: LoomTheme.Layout.projectMenuButton),
+                              help: count > 0 ? "Only an empty project can be removed" : "Project actions")
+                .revealed(showsControls)
         }
         .overlay(alignment: .trailing) {
             // The name takes the room and the dot stands at the head's trailing end (just before the controls while they show).

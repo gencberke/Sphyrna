@@ -1,4 +1,5 @@
 import LoomCore
+import Observation
 import SwiftUI
 
 // The one model chip of the composer's bar and its one popover (D-75, DESIGN §11): the models grouped by harness, then the
@@ -141,11 +142,16 @@ enum EffortSliderMath {
 // MARK: The chip
 
 /// The one model chip (D-75): the harness's mark, the model, the effort as a lighter word and a chevron. One target, one
-/// popover. In this build every session runs on Claude Code.
+/// popover, in the window's host with its trailing edge on the chip's: above it in the live composer, below it on the draft page
+/// (`InkOpeners`). In this build every session runs on Claude Code.
 struct ComposerModelChip: View {
     var picker: ComposerModelPicker
     var identifier: String
     var help: String
+    /// The draft page's chip opens its popover below it (DESIGN §8); the live composer's dock opens it above.
+    var onDraft = false
+    /// Gives the keyboard back to the composer's text when the popover closes.
+    var restoreFocus: (() -> Void)?
     @Binding var isOpen: Bool
     /// `nil`: Default.
     var onPickModel: (String?) -> Void
@@ -153,8 +159,10 @@ struct ComposerModelChip: View {
     var onResetEffort: () -> Void
 
     static let defaultID = ComposerModelPicker.defaultID
+    @State private var cursor = ComposerModelCursor()
 
     var body: some View {
+        let spot = InkOpeners.placement(.model, onDraft: onDraft) ?? InkOpeners.Spot(side: .above, alignment: .trailing)
         Button { isOpen.toggle() } label: {
             HStack(spacing: LoomTheme.Composer.chipPartGap) {
                 ProviderIcon(provider: .claude, size: LoomTheme.Composer.harnessMark)
@@ -172,11 +180,27 @@ struct ComposerModelChip: View {
         .help(help)
         .accessibilityLabel(picker.chipEffortWord.map { "Model, \(picker.modelTitle), effort \($0)" } ?? "Model, \(picker.modelTitle)")
         .accessibilityIdentifier(identifier)
-        .popover(isPresented: $isOpen, arrowEdge: .top) {
+        .inkPopover(isPresented: $isOpen, id: identifier, label: "Model and effort", side: spot.side, alignment: spot.alignment,
+                    keys: { key in
+            let outcome = ComposerModelPopover.resolve(key, picker: picker, cursor: cursor.id)
+            cursor.id = outcome.cursor
+            if let level = outcome.effort { onPickEffort(level) }
+            if let model = outcome.pickModel { onPickModel(model == ComposerModelPicker.defaultID ? nil : model) }
+            if outcome.done { isOpen = false }
+            return outcome.handled
+        }, restoreFocus: restoreFocus, content: {
             ComposerModelPopover(picker: picker, identifier: identifier, onPickModel: onPickModel, onPickEffort: onPickEffort,
-                                 onResetEffort: onResetEffort) { isOpen = false }
-        }
+                                 onResetEffort: onResetEffort, cursor: cursor) { isOpen = false }
+        })
+        .onChange(of: isOpen) { _, open in if !open { cursor.id = nil } }
     }
+}
+
+/// The row under the pointer or the arrow keys in the model popover. The chip holds it, because the host (not the popover) reads
+/// the keys (`ComposerModelPopover.resolve`).
+@MainActor @Observable
+final class ComposerModelCursor {
+    var id: String?
 }
 
 // MARK: The popover
@@ -188,16 +212,21 @@ struct ComposerModelPopover: View {
     var onPickModel: (String?) -> Void
     var onPickEffort: (String) -> Void
     var onResetEffort: () -> Void
+    /// The row under the pointer or the arrow keys; it starts on the chosen model. A test hosting the popover alone gets its own.
+    var cursor = ComposerModelCursor()
+    /// Closes the popover. The host reads the keys, so ↵ closes through the chip; a host that closes it another way passes its own.
     var onDone: () -> Void
-    /// The row under the pointer or the arrow keys; it starts on the chosen model.
-    @State private var cursor: String?
     /// The level under the thumb while it is dragged.
     @State private var preview: Int?
-    @FocusState private var focused: Bool
 
     private var groups: [ComposerModelGroup] { picker.groups() }
-    private var pickableIDs: [String] { groups.filter(\.isLive).flatMap { $0.rows.filter(\.isEnabled).map(\.id) } }
-    private var chosenIndex: Int? { picker.chosenLevel.flatMap(picker.levels.firstIndex(of:)) }
+    private var chosenIndex: Int? { Self.chosenIndex(picker) }
+
+    private static func pickableIDs(_ picker: ComposerModelPicker) -> [String] {
+        picker.groups().filter(\.isLive).flatMap { $0.rows.filter(\.isEnabled).map(\.id) }
+    }
+
+    private static func chosenIndex(_ picker: ComposerModelPicker) -> Int? { picker.chosenLevel.flatMap(picker.levels.firstIndex(of:)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -215,15 +244,7 @@ struct ComposerModelPopover: View {
         }
         .padding(LoomTheme.Composer.modelPopoverInset)
         .frame(width: LoomTheme.Composer.modelPopoverWidth)
-        .background(LoomTheme.Surface.popover)
-        .focusable()
-        .focused($focused)
-        .focusEffectDisabled()
-        .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return]) { press in handle(press.key) }
-        .onAppear {
-            cursor = picker.chosenID
-            focused = true
-        }
+        .onAppear { if cursor.id == nil { cursor.id = picker.chosenID } }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("\(identifier)-list")
     }
@@ -251,9 +272,9 @@ struct ComposerModelPopover: View {
     }
 
     private func liveRow(_ row: ComposerPickRow) -> some View {
-        let lit = cursor == row.id || LookEvidence.forcesHover("pick:\(row.id)")
+        let lit = cursor.id == row.id || LookEvidence.forcesHover("pick:\(row.id)")
         return Button {
-            cursor = row.id
+            cursor.id = row.id
             onPickModel(row.id == ComposerModelPicker.defaultID ? nil : row.id)
         } label: {
             rowLabel(row, name: LoomTheme.Composer.modelNameFont, nameStyle: AnyShapeStyle(LoomTheme.Text.primary),
@@ -263,7 +284,7 @@ struct ComposerModelPopover: View {
         }
         .buttonStyle(.plain)
         .onHover { inside in
-            if inside { cursor = row.id } else if cursor == row.id { cursor = nil }
+            if inside { cursor.id = row.id } else if cursor.id == row.id { cursor.id = nil }
         }
         .accessibilityLabel(row.subtitle.map { "\(row.title), \($0)" } ?? row.title)
         .accessibilityAddTraits(row.checked ? .isSelected : [])
@@ -377,30 +398,39 @@ struct ComposerModelPopover: View {
 
     // MARK: Keys
 
-    private func handle(_ key: KeyEquivalent) -> KeyPress.Result {
+    /// What a key does in the popover. Pure, so each rule is tested without a view.
+    struct Outcome: Equatable {
+        /// The row under the cursor after the key.
+        var cursor: String?
+        /// A level the key sets (← →).
+        var effort: String?
+        /// A model ↵ picks (the highlighted one, when it is not already the chosen one).
+        var pickModel: String?
+        /// ↵ closes the popover.
+        var done = false
+        var handled = false
+    }
+
+    /// ↑ ↓ move between the models that can be picked (wrapping), ← → step the effort (stopping at the ends), ↵ picks the
+    /// highlighted model if it is not the chosen one and closes. Space and the other keys are not used.
+    static func resolve(_ key: InkKey, picker: ComposerModelPicker, cursor: String?) -> Outcome {
+        var outcome = Outcome(cursor: cursor)
         switch key {
-        case .downArrow: moveCursor(by: 1)
-        case .upArrow: moveCursor(by: -1)
-        case .leftArrow: stepEffort(by: -1)
-        case .rightArrow: stepEffort(by: 1)
-        case .return:
-            if let id = ComposerPopoverKeys.pickOnDone(cursor: cursor, chosen: picker.chosenID) {
-                onPickModel(id == ComposerModelPicker.defaultID ? nil : id)
+        case .down, .up:
+            let ids = pickableIDs(picker)
+            let delta = key == .down ? 1 : -1
+            outcome.cursor = ComposerPopoverKeys.cursor(from: cursor.flatMap(ids.firstIndex(of:)), delta: delta, count: ids.count).map { ids[$0] }
+        case .left, .right:
+            if let target = EffortSliderMath.step(from: chosenIndex(picker), delta: key == .right ? 1 : -1, count: picker.levels.count) {
+                outcome.effort = picker.levels[target]
             }
-            onDone()
-        default: return .ignored
+        case .return:
+            outcome.pickModel = ComposerPopoverKeys.pickOnDone(cursor: cursor, chosen: picker.chosenID)
+            outcome.done = true
+        case .space, .escape: return outcome
         }
-        return .handled
-    }
-
-    private func moveCursor(by delta: Int) {
-        let ids = pickableIDs
-        cursor = ComposerPopoverKeys.cursor(from: cursor.flatMap(ids.firstIndex(of:)), delta: delta, count: ids.count).map { ids[$0] }
-    }
-
-    private func stepEffort(by delta: Int) {
-        guard let target = EffortSliderMath.step(from: chosenIndex, delta: delta, count: picker.levels.count) else { return }
-        onPickEffort(picker.levels[target])
+        outcome.handled = true
+        return outcome
     }
 }
 

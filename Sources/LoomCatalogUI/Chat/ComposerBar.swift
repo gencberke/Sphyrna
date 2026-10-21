@@ -1,5 +1,6 @@
 import LoomChat
 import LoomCore
+import Observation
 import SwiftUI
 
 /// The pieces of the composer's bar, which the draft's composer and the session's own composer share (D-58, after Codex's
@@ -297,12 +298,37 @@ enum ComposerPlusItem: CaseIterable, Identifiable {
     }
 }
 
-/// The + chip (28 square, a 14 pt glyph) and its popover: icon, name and the key cap on each row (the reference's `plusA`).
+/// The + chip (28 square, a 14 pt glyph) and its popover in the window's host, above the chip with their leading edges aligned: icon,
+/// name and the key cap on each row (the reference's `plusA`). ↑ ↓ move between the three rows and ↵ picks.
 struct ComposerPlusChip: View {
     @Binding var isOpen: Bool
+    /// Gives the keyboard back to the composer's text when the popover closes.
+    var restoreFocus: (() -> Void)?
     var onChoose: (ComposerPlusItem) -> Void
+    @State private var cursor = ComposerPickCursor()
+
+    /// What a key does to the rows: the new highlight, the item it picks, and whether the popover used the key (↑ ↓ wrap).
+    struct Step: Equatable {
+        var highlighted: Int?
+        var pick: ComposerPlusItem?
+        var handled: Bool
+    }
+
+    static func resolve(_ key: InkKey, highlighted: Int?) -> Step {
+        let items = ComposerPlusItem.allCases
+        switch key {
+        case .down, .up:
+            return Step(highlighted: ComposerPopoverKeys.cursor(from: highlighted, delta: key == .down ? 1 : -1, count: items.count),
+                        pick: nil, handled: true)
+        case .return, .space:
+            guard let highlighted, items.indices.contains(highlighted) else { return Step(highlighted: highlighted, pick: nil, handled: false) }
+            return Step(highlighted: highlighted, pick: items[highlighted], handled: true)
+        case .left, .right, .escape: return Step(highlighted: highlighted, pick: nil, handled: false)
+        }
+    }
 
     var body: some View {
+        let spot = InkOpeners.placement(.plus, onDraft: false) ?? InkOpeners.Spot(side: .above, alignment: .leading)
         Button { isOpen.toggle() } label: {
             Image(systemName: "plus").font(LoomTheme.Composer.plusIcon)
                 .frame(width: LoomTheme.Composer.controlSide, height: LoomTheme.Composer.controlSide).contentShape(Rectangle())
@@ -311,34 +337,49 @@ struct ComposerPlusChip: View {
         .help("Add images and files, mention a file or session, or run a command")
         .accessibilityLabel("Add")
         .accessibilityIdentifier("composer-plus")
-        .popover(isPresented: $isOpen, arrowEdge: .top) {
+        .inkPopover(isPresented: $isOpen, id: "composer-plus", label: "Add", side: spot.side, alignment: spot.alignment, keys: { key in
+            let step = Self.resolve(key, highlighted: cursor.highlighted)
+            cursor.highlighted = step.highlighted
+            if let item = step.pick { choose(item) }
+            return step.handled
+        }, restoreFocus: restoreFocus, content: {
             VStack(spacing: 0) {
-                ForEach(ComposerPlusItem.allCases) { item in
-                    Button {
-                        isOpen = false
-                        onChoose(item)
-                    } label: {
-                        HStack(spacing: LoomTheme.Composer.modelColumnGap) {
-                            Image(systemName: item.symbol).font(LoomTheme.Composer.menuIconFont)
-                                .foregroundStyle(LoomTheme.OnPopover.secondary(lit: false))
-                                .frame(width: LoomTheme.Composer.menuIconSlot)
-                            Text(item.title).font(LoomTheme.Composer.modelNameFont).foregroundStyle(LoomTheme.Text.primary)
-                            Spacer(minLength: LoomTheme.Space.detailMinSpacer)
-                            SidebarKeyCap(text: item.shortcut)
-                        }
-                        .padding(.horizontal, LoomTheme.Composer.modelRowPaddingH)
-                        .frame(height: LoomTheme.Composer.modelRowHeight)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(RowButtonStyle(radius: LoomTheme.Composer.modelRowRadius))
-                    .accessibilityLabel(item.title)
-                    .accessibilityIdentifier(item.identifier)
+                ForEach(Array(ComposerPlusItem.allCases.enumerated()), id: \.element) { index, item in
+                    row(item, lit: cursor.highlighted == index, index: index)
                 }
             }
             .padding(LoomTheme.Composer.modelPopoverInset)
             .frame(width: LoomTheme.Composer.plusPopoverWidth)
-            .background(LoomTheme.Surface.popover)
+        })
+        .onChange(of: isOpen) { _, open in if !open { cursor.highlighted = nil } }
+    }
+
+    private func choose(_ item: ComposerPlusItem) {
+        isOpen = false
+        onChoose(item)
+    }
+
+    private func row(_ item: ComposerPlusItem, lit: Bool, index: Int) -> some View {
+        Button { choose(item) } label: {
+            HStack(spacing: LoomTheme.Composer.modelColumnGap) {
+                Image(systemName: item.symbol).font(LoomTheme.Composer.menuIconFont)
+                    .foregroundStyle(LoomTheme.OnPopover.secondary(lit: lit))
+                    .frame(width: LoomTheme.Composer.menuIconSlot)
+                Text(item.title).font(LoomTheme.Composer.modelNameFont).foregroundStyle(LoomTheme.Text.primary)
+                Spacer(minLength: LoomTheme.Space.detailMinSpacer)
+                SidebarKeyCap(text: item.shortcut)
+            }
+            .padding(.horizontal, LoomTheme.Composer.modelRowPaddingH)
+            .frame(height: LoomTheme.Composer.modelRowHeight)
+            .background(RowHighlight(state: .resolve(selected: false, hovering: lit), radius: LoomTheme.Composer.modelRowRadius))
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            if inside { cursor.highlighted = index } else if cursor.highlighted == index { cursor.highlighted = nil }
+        }
+        .accessibilityLabel(item.title)
+        .accessibilityIdentifier(item.identifier)
     }
 }
 
@@ -350,11 +391,24 @@ struct ComposerRing: View {
     var usage: ContextUsage?
     var canCompact: Bool
     var onCompact: () -> Void
+    /// Gives the keyboard back to the composer's text when the popover closes.
+    var restoreFocus: (() -> Void)?
     @Binding var showsPopover: Bool
     @State private var hoverTask: Task<Void, Never>?
+    /// A popover the pointer opened leaves the keyboard in the composer, so typing is not interrupted by a pointer passing over.
+    @State private var openedByHover = false
+
+    private func compact() {
+        showsPopover = false
+        onCompact()
+    }
 
     var body: some View {
-        Button { showsPopover.toggle() } label: {
+        let spot = InkOpeners.placement(.ring, onDraft: false) ?? InkOpeners.Spot(side: .above, alignment: .trailing)
+        Button {
+            openedByHover = false
+            showsPopover.toggle()
+        } label: {
             ring
                 .frame(minWidth: LoomTheme.Composer.controlSide, minHeight: LoomTheme.Composer.controlSide)
                 .contentShape(Rectangle())
@@ -365,17 +419,22 @@ struct ComposerRing: View {
             if inside {
                 hoverTask = Task {
                     try? await Task.sleep(for: .seconds(LoomTheme.Composer.ringHoverDelay))
-                    guard !Task.isCancelled else { return }
+                    guard !Task.isCancelled, !showsPopover else { return }
+                    openedByHover = true
                     showsPopover = true
                 }
             }
         }
-        .popover(isPresented: $showsPopover, arrowEdge: .top) {
-            ComposerContextPopover(usage: usage, canCompact: canCompact) {
-                showsPopover = false
-                onCompact()
-            }
-        }
+        .inkPopover(isPresented: $showsPopover, id: "composer-ring", label: "Context", side: spot.side, alignment: spot.alignment,
+                    takesKeyboard: !openedByHover, keys: { key in
+            // The only button is Compact Now: ↵ and Space press it while it is on.
+            guard (key == .return || key == .space) && canCompact else { return false }
+            compact()
+            return true
+        }, restoreFocus: restoreFocus, content: {
+            ComposerContextPopover(usage: usage, canCompact: canCompact) { compact() }
+        })
+        .onChange(of: showsPopover) { _, open in if !open { openedByHover = false } }
         .accessibilityLabel(usage.map { ContextRingText.spoken($0) } ?? "Context, not known yet")
         .accessibilityIdentifier("composer-ring")
     }
@@ -435,6 +494,5 @@ struct ComposerContextPopover: View {
         }
         .padding(.horizontal, LoomTheme.Composer.ringPopoverPaddingH).padding(.vertical, LoomTheme.Composer.ringPopoverPaddingV)
         .frame(width: LoomTheme.Composer.ringPopoverWidth, alignment: .leading)
-        .background(LoomTheme.Surface.popover)
     }
 }

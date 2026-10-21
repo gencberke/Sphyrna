@@ -120,14 +120,14 @@ struct SidebarAccessibilityTests {
         #expect(chevron.node.role == "AXButton")
         #expect(chevron.node.value == "Expanded")
 
-        // The project actions button keeps its drawn size but answers over at least 24 x 24.
+        // The project actions button keeps its drawn size but answers over at least 24 x 24. It is a button that opens the project
+        // menu in the window's host (I4), so it reads as a button whose hint says it opens a menu (it was a pop-up button).
         let menu = try #require(accessibilityElements(in: hosting.view).first {
-            ($0.accessibilityRole?() == .menuButton) && ($0.accessibilityHelp?() ?? "").contains("Only an empty project")
+            ($0.accessibilityLabel?() ?? "") == "Actions for proj" && ($0.accessibilityHelp?() ?? "").contains("Opens a menu")
         })
+        #expect(menu.accessibilityRole?() == .button)
         let menuFrame = try #require(menu.accessibilityFrame?())
         print("AXDUMP project actions frame:", menuFrame)
-        // The pop-up button reads its drawn 22 x 20 here (24 x 24 before I3r's row); its hit area is the chevron's style and is
-        // not measured by a click (a menu opens modally). Needs eyes.
         #expect(menuFrame.width >= LoomTheme.Layout.projectMenuButton.width && menuFrame.height >= LoomTheme.Layout.projectMenuButton.height)
         let chevronFrame = try #require(chevron.element.accessibilityFrame?())
         #expect(chevronFrame.width >= 24 && chevronFrame.height >= 24)

@@ -253,7 +253,8 @@ struct LiveComposerBar: View {
         } trailing: {
             ComposerRing(usage: ComposerBarText.contextUsage(state, fallback: model.environment.contextFallback()),
                          canCompact: state.phase == .ready && !state.turnRunning && state.requestCount == 0,
-                         onCompact: { model.compactNow() }, showsPopover: Bindable(model).ringPopoverOpen)
+                         onCompact: { model.compactNow() }, restoreFocus: { model.focusComposer() },
+                         showsPopover: Bindable(model).ringPopoverOpen)
             modelChip(state)
             sendButton
         }
@@ -262,7 +263,7 @@ struct LiveComposerBar: View {
     }
 
     private var plusChip: some View {
-        ComposerPlusChip(isOpen: $plusOpen) { choose($0) }
+        ComposerPlusChip(isOpen: $plusOpen, restoreFocus: { model.focusComposer() }) { choose($0) }
     }
 
     private func choose(_ item: ComposerPlusItem) {
@@ -288,14 +289,14 @@ struct LiveComposerBar: View {
             selected: ComposerBarText.selectedMode(permissionMode: state.permissionMode, choices: state.choices),
             title: ComposerBarText.modeTitle(permissionMode: state.permissionMode, choices: state.choices),
             help: "Permission mode of this session. It changes at once.", identifier: "composer-mode", reset: nil,
-            isOpen: Bindable(model).modePopoverOpen) { mode in model.setMode(mode.rawValue) }
+            restoreFocus: { model.focusComposer() }, isOpen: Bindable(model).modePopoverOpen) { mode in model.setMode(mode.rawValue) }
     }
 
     private func modelChip(_ state: ChatComposerState) -> some View {
         ComposerModelChip(
             picker: model.modelPicker, identifier: "composer-model",
             help: "Model and effort of this session. They change at once.",
-            isOpen: Bindable(model).modelPopoverOpen,
+            restoreFocus: { model.focusComposer() }, isOpen: Bindable(model).modelPopoverOpen,
             onPickModel: { model.setModel($0 ?? ComposerModelChip.defaultID) }, onPickEffort: { model.setEffort($0) },
             onResetEffort: { model.resetEffort() })
     }

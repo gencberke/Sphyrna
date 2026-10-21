@@ -7,10 +7,12 @@ import LoomCatalogUI
 /// - `project-page:<project id>`: a click on a project's name in the sidebar (`showProjectPage`).
 /// - `project-tab:<sessions|branches|instructions>`: a click on one of the page's tabs.
 /// - `project-preset:<project id>:<index>`: a click on the page's preset with that index.
+/// - `project-menu:<project id>:<page|sidebar|off>`: the project menu from the page's ⋯ or the sidebar head's ⋯, opened in the
+///   window's host as a click opens it (`off` closes it). The sidebar head's ⋯ is there while its project is listed.
 /// - `project-page-state:<label>`: only writes the acknowledgement.
 ///
 /// Every command waits (at most four seconds) for the page's reads to end, then writes `ack-<command name>.json`
-/// (`ack-project-page.json`, `ack-project-tab.json`, `ack-project-preset.json`); `project-page-state` adds its label
+/// (`ack-project-page.json`, `ack-project-tab.json`, `ack-project-preset.json`, `ack-project-menu.json`); `project-page-state` adds its label
 /// like `palette-state` does (`ack-project-page-state-<label>.json`, letters, digits and `-` of the label; just
 /// `ack-project-page-state.json` without one). The file holds what the page holds as numbers and flags, and how many
 /// reads of each kind it made. No title, path, branch name or line of text is in it.
@@ -31,6 +33,10 @@ extension DevelopmentEvidence {
             let parts = argument.split(separator: ":")
             guard parts.count == 2, let id = UUID(uuidString: String(parts[0])), let index = Int(parts[1]) else { return false }
             clicked = model.usePresetForEvidence(index: index, projectID: id)
+        case "project-menu":
+            let parts = argument.split(separator: ":")
+            guard parts.count == 2, let id = UUID(uuidString: String(parts[0])) else { return false }
+            clicked = InkEvidence.projectMenu(projectID: id, origin: String(parts[1]))
         case "project-page-state": break
         default: return false
         }

@@ -9,6 +9,9 @@ import LoomCatalogUI
 /// - `draft-text:<project id|none>:<text>`: the draft composer's text change.
 /// - `draft-discard:<project id|none>`: the draft row's Discard.
 /// - `draft-branch:<project id|none>:<stay|newBranch|newWorktree>[:name]` and `draft-send:<project id|none>`: the strip and Send.
+/// - `draft-popover:<project id|none>:<model|mode|branch|off>`: the draft page's model, mode or branch-name popover, opened in the
+///   window's host as a click on its chip or segment opens it (`off` closes it). The live composer's own are `composer-popover` and
+///   `composer-ring`.
 /// - `render-probe:<start|reset>`: counts body evaluations (the snapshot's `renderProbe`).
 /// - `search-session-text:<on|off>`: Settings → General → Search session text.
 /// - `hover:<key|none>`: holds the pill of the row named `key` at its hover fill (V25; keys are `sidebar-card:<id>`, `sidebar-home`,
@@ -51,6 +54,8 @@ extension DevelopmentEvidence {
         case "draft-send":
             guard let id = project(argument) else { return false }
             model.sendDraft(projectID: id)
+        case "draft-popover":
+            guard let id = project(argument), InkEvidence.draftPopover(projectID: id, kind: rest(argument), model: model) else { return false }
         case "dismiss-error":
             model.dismissError()
         case "render-probe":

@@ -107,16 +107,7 @@ private struct ProjectPageHeader: View {
             }
             Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             HStack(spacing: LoomTheme.ProjectPage.endGap) {
-                Menu {
-                    ProjectActionsMenu(model: model, project: project)
-                } label: {
-                    Image(systemName: "ellipsis")
-                }
-                .menuStyle(.button).buttonStyle(ChromeButtonStyle())
-                .menuIndicator(.hidden).fixedSize()
-                .help("Project actions")
-                .accessibilityLabel("Actions for \(project.name)")
-                .accessibilityIdentifier("project-actions")
+                ProjectMenuButton(model: model, project: project, origin: .page)
                 Button { model.beginNewSession(projectID: project.id) } label: {
                     HStack(spacing: LoomTheme.ProjectPage.newSessionGlyphGap) {
                         Image(systemName: "square.and.pencil").font(LoomTheme.ProjectPage.newSessionGlyph)

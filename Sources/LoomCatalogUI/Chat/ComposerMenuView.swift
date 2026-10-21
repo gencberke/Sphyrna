@@ -7,6 +7,8 @@ struct ComposerMenuPanel: View {
     let model: ChatComposerModel
     let menu: ComposerMenuState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The menu enters with opacity and a 3 pt rise over 160 ms, and at once under Reduce Motion (DESIGN §6 Motion).
+    @State private var entered = false
 
     /// What the menu is called for VoiceOver.
     private var title: String {
@@ -54,6 +56,9 @@ struct ComposerMenuPanel: View {
         .overlay(RoundedRectangle(cornerRadius: LoomTheme.Composer.menuRadius)
             .strokeBorder(LoomTheme.Surface.hairline, lineWidth: LoomTheme.Line.hairline))
         .depth(LoomTheme.Elevation.popover)
+        .opacity(entered ? 1 : 0)
+        .offset(y: entered ? 0 : LoomTheme.Host.rise)
+        .onAppear { withAnimation(LoomTheme.Host.entrance(reduceMotion: reduceMotion)) { entered = true } }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
         .accessibilityIdentifier("composer-menu")
