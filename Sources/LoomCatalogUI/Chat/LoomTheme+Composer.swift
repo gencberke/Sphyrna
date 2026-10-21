@@ -16,8 +16,6 @@ extension LoomTheme {
         static let radius: CGFloat = InkRadius.composer
         /// The card is raised 2; it follows the tone, so computed, never stored.
         static var fill: Color { Surface.raised2 }
-        /// The edge the side composer draws; the dock's card draws `Elevation.composer`'s ring instead.
-        static let stroke = Surface.strongHairline
         /// The lift of the card: a 12 % ring, an inset top highlight and the 90 pt shadow (`--sh-composer`).
         static let depth = Elevation.composer
         static let textInsetH: CGFloat = 16

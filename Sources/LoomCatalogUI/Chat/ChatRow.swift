@@ -131,6 +131,9 @@ struct LiveRow: Equatable {
     var startedAt: Date?
     /// When something last arrived; after 40 s without, the row says so.
     var lastActivity: Date?
+    /// A request of this session waits for the user (DESIGN §7 Live row): the row says "Waiting for you" in the attention text,
+    /// with the attention dot in place of the spinner. A presentation field: the row's id and the cost of the stream stay.
+    var isWaitingForUser = false
     /// Tools that trail the turn and are collapsed into this row.
     var hiddenTools: [ChatEntry]
 }

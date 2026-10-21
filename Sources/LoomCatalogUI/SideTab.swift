@@ -64,7 +64,7 @@ private struct SideTabContent: View {
     }
 }
 
-/// "Side chat", what it saw, and "New side chat".
+/// "Side chat", what it saw, and "New side chat": the title in 13 semibold, the note in 11.5 tertiary and a "+" icon button.
 struct SideHeader: View {
     let model: CatalogModel
     let parent: UUID
@@ -72,33 +72,25 @@ struct SideHeader: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: LoomTheme.Side.headerGap) {
-            Image(systemName: "arrow.triangle.branch").font(LoomTheme.Side.headerGlyph)
-                .foregroundStyle(LoomTheme.Text.secondaryStyle).padding(.top, LoomTheme.Side.headerNoteGap).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: LoomTheme.Side.headerNoteGap) {
                 Text(SideText.headerTitle).font(LoomTheme.Side.headerTitle).foregroundStyle(LoomTheme.Text.primary)
                 Text(SideText.headerNote(forkedAt: item.forkedAt)).font(LoomTheme.Side.headerNote)
-                    .foregroundStyle(LoomTheme.Text.secondaryStyle).fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(LoomTheme.Text.tertiaryStyle).fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("side-header-note")
             }
             Spacer(minLength: LoomTheme.Side.headerButtonGap)
-            Button { model.startNewSideChat(in: parent) } label: {
-                Image(systemName: "plus").font(LoomTheme.Side.headerButtonGlyph)
-                    .frame(width: LoomTheme.Side.controlSide, height: LoomTheme.Side.controlSide).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).foregroundStyle(LoomTheme.Text.secondaryStyle)
-            .help(SideText.newSideChat)
-            .accessibilityLabel(SideText.newSideChat)
-            .accessibilityIdentifier("side-new")
+            Button { model.startNewSideChat(in: parent) } label: { Image(systemName: "plus") }
+                .buttonStyle(ChromeButtonStyle())
+                .help(SideText.newSideChat)
+                .accessibilityLabel(SideText.newSideChat)
+                .accessibilityIdentifier("side-new")
         }
-        .padding(.horizontal, LoomTheme.Side.headerInsetH).padding(.vertical, LoomTheme.Side.headerInsetV)
+        .padding(.horizontal, LoomTheme.Side.headerInsetH).padding(.top, LoomTheme.Side.headerInsetV)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline).accessibilityHidden(true)
-        }
     }
 }
 
-/// The session's other side chats, newest first.
+/// The session's other side chats, newest first: a clock, "Earlier side chats · N" and a chevron, in 12 secondary.
 struct SideEarlierMenu: View {
     let model: CatalogModel
     let parent: UUID
@@ -111,18 +103,21 @@ struct SideEarlierMenu: View {
                     Button(SideText.earlierEntry(item)) { model.openSideChat(item.id, in: parent) }
                 }
             } label: {
-                Text("\(SideText.earlier) \u{00B7} \(items.count)").font(LoomTheme.Side.earlierFont)
-                    .foregroundStyle(LoomTheme.Text.secondaryStyle)
+                HStack(spacing: LoomTheme.Side.earlierGap) {
+                    Image(systemName: "clock").font(LoomTheme.Side.earlierGlyph)
+                    Text("\(SideText.earlier) \u{00B7} \(items.count)").font(LoomTheme.Side.earlierFont)
+                    Image(systemName: "chevron.down").font(LoomTheme.Side.earlierChevron)
+                }
+                .foregroundStyle(LoomTheme.Text.secondaryStyle)
             }
-            .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .accessibilityLabel("\(SideText.earlier), \(items.count)")
             .accessibilityIdentifier("side-earlier")
             Spacer(minLength: 0)
         }
         .padding(.horizontal, LoomTheme.Side.headerInsetH)
-        .frame(height: LoomTheme.Side.earlierHeight)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline).accessibilityHidden(true)
-        }
+        .padding(.top, LoomTheme.Side.earlierTop)
+        .frame(minHeight: LoomTheme.Side.earlierHeight)
     }
 }
 
@@ -144,10 +139,11 @@ struct SideEmptyState: View {
 struct SideStatusLine: View {
     let text: String
     var busy = false
+    @Environment(\.indicatorsAnimate) private var animates
 
     var body: some View {
         HStack(spacing: LoomTheme.Side.headerButtonGap) {
-            if busy { ProgressView().controlSize(.small) }
+            if busy { BrailleSpinner(animating: animates).frame(width: LoomTheme.Layout.indicatorSlot.width).accessibilityHidden(true) }
             Text(text).font(LoomTheme.Side.statusFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -157,7 +153,7 @@ struct SideStatusLine: View {
     }
 }
 
-/// A discard that did not finish: why, and "Try again" (the deletion's own retry).
+/// A discard that did not finish: why, and "Try Again" (the deletion's own retry).
 private struct SideDiscardFailure: View {
     let model: CatalogModel
     let parent: UUID
@@ -168,8 +164,8 @@ private struct SideDiscardFailure: View {
         VStack(alignment: .leading, spacing: LoomTheme.Side.headerButtonGap) {
             Text(text).font(LoomTheme.Side.statusFont).foregroundStyle(LoomTheme.Status.failureLight)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Try again") { Task { await model.retryDiscardSideChat(id, in: parent) } }
-                .buttonStyle(SettingsButtonStyle())
+            Button("Try Again") { Task { await model.retryDiscardSideChat(id, in: parent) } }
+                .buttonStyle(ControlButtonStyle(kind: .secondary))
         }
         .padding(.horizontal, LoomTheme.Side.statusInsetH).padding(.vertical, LoomTheme.Side.headerInsetV)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -177,11 +173,15 @@ private struct SideDiscardFailure: View {
     }
 }
 
-/// "Discard this side chat?": Cancel is the default button (and Esc), so Return never discards.
+/// "Discard this side chat?" (DESIGN §6 Sheets): a sheet that removes has no default button. Cancel has the focus and Esc,
+/// Discard is tinted in the failure tone, and Return does nothing.
 struct SideDiscardSheet: View {
     let model: CatalogModel
     let parent: UUID
     let request: SideDiscardRequest
+    @FocusState private var focus: Field?
+
+    private enum Field { case cancel }
 
     var body: some View {
         VStack(alignment: .leading, spacing: LoomTheme.Space.sheetSpacing) {
@@ -190,26 +190,29 @@ struct SideDiscardSheet: View {
                 .lineLimit(2).truncationMode(.tail)
             Text(SideText.discardMessage).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.primary)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack {
+            HStack(spacing: LoomTheme.Side.headerGap) {
                 Spacer()
                 Button(SideText.discardCancel) { model.cancelDiscardSideChat(in: parent) }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(AccentButtonStyle(kind: .filled))
+                    .keyboardShortcut(.cancelAction)
+                    .focused($focus, equals: .cancel)
+                    .buttonStyle(ControlButtonStyle(kind: .secondary))
                     .accessibilityIdentifier("side-discard-cancel")
                 Button(SideText.discardConfirm) { Task { await model.confirmDiscardSideChat(in: parent) } }
-                    .buttonStyle(DestructiveButtonStyle())
+                    .buttonStyle(ControlButtonStyle(kind: .destructive))
                     .accessibilityIdentifier("side-discard-confirm")
             }
         }
         .padding(LoomTheme.Space.sheetPadding)
         .frame(width: LoomTheme.Layout.sheetWidth)
         .tint(LoomTheme.Accent.base)
+        .defaultFocus($focus, .cancel)
+        .onKeyPress(.return) { .handled }
         .accessibilityIdentifier("side-discard-sheet")
     }
 }
 
-/// "Send to main as a note" and "Copy" under a finished side answer. After the note went, "Sent to the main session" takes the
-/// button's place. Off, with the reason, where the parent is not a Chat session.
+/// Copy and "Send to Main as a Note" under a finished side answer, secondary small buttons. After the note went, "Sent to the
+/// main session" takes the note button's place. Off, with the reason, where the parent is not a Chat session.
 struct SideAnswerActions: View {
     let entryID: String
     let text: String
@@ -220,6 +223,7 @@ struct SideAnswerActions: View {
         let status = notes.status(for: entryID)
         let availability = notes.availability()
         HStack(spacing: LoomTheme.Side.actionGap) {
+            AsideCopyButton(text: text, context: context)
             switch status {
             case .sent:
                 HStack(spacing: LoomTheme.Side.actionGlyphGap) {
@@ -230,24 +234,44 @@ struct SideAnswerActions: View {
                 .accessibilityElement(children: .combine).accessibilityIdentifier("side-note-sent")
             case .idle, .sending, .failed:
                 let reason: String? = { if case let .off(why) = availability { why } else { nil } }()
-                Button { notes.send(entryID) } label: {
-                    HStack(spacing: LoomTheme.Side.actionGlyphGap) {
-                        Image(systemName: "arrow.up").font(LoomTheme.Side.actionGlyph)
-                        Text(SideText.sendNote)
-                    }
-                }
-                .buttonStyle(.plain).font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                .disabled(reason != nil || status == .sending)
-                .opacity(reason == nil ? 1 : LoomTheme.Opacity.disabled)
-                .help(reason ?? SideText.sendNote)
-                .accessibilityLabel(SideText.sendNote).accessibilityHint(reason ?? "")
-                .accessibilityIdentifier("side-note-send")
+                Button(SideText.sendNote) { notes.send(entryID) }
+                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                    .disabled(reason != nil || status == .sending)
+                    .help(reason ?? SideText.sendNote)
+                    .accessibilityLabel(SideText.sendNote).accessibilityHint(reason ?? "")
+                    .accessibilityIdentifier("side-note-send")
             }
-            ChatCopyButton(text: text, context: context)
             if case let .failed(message) = status {
                 Text(message).font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Status.failureLight).lineLimit(1)
                     .truncationMode(.tail).help(message)
             }
         }
+    }
+}
+
+/// Copy on an aside's answer: a secondary small button with the copy glyph, "Copied" for 1.2 s (the quick question and the Side
+/// tab; the stream's link-style Copy is the main chat's).
+struct AsideCopyButton: View {
+    let text: String
+    let context: ChatRowContext
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            context.copy(text)
+            copied = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(LoomTheme.Chat.copiedDuration))
+                copied = false
+            }
+        } label: {
+            HStack(spacing: LoomTheme.Side.actionGlyphGap) {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc").font(LoomTheme.Side.actionGlyph)
+                Text(copied ? "Copied" : "Copy")
+            }
+        }
+        .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+        .help("Copy")
+        .accessibilityLabel("Copy")
     }
 }

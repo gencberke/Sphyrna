@@ -336,6 +336,7 @@ final class LiveChatFeed: ChatDriverAttachment {
             if wasInUse, !isInUse { onUnused?() }
         }
         presentation.setWorking(state.turnRunning)
+        presentation.setWaitingForUser(!state.requests.isEmpty)
         presentation.setLastActivity(state.lastActivity)
         if policySignal != state.policySignal { policySignal = state.policySignal }
         let drift = state.drift.filter { if case .unknownRecord = $0 { false } else { true } }.count

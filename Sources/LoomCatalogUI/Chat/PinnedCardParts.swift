@@ -1,12 +1,14 @@
 import LoomChat
 import SwiftUI
 
-// The pieces every pinned card is built from (V18): the frame with its title and counter, the buttons, the note field, the
-// code block, the keyboard region.
+// The pieces every pinned card is built from (V18, DESIGN §12): the surface and the frame with its heading and counter, the
+// buttons and the build-mode segments, the more menu, the code box and the keyboard region.
 
 /// One button of a card. Nothing here is a default action: no button answers to Return, and Esc answers to none.
 struct PinnedAction: Identifiable {
-    enum Style { case neutral, accent }
+    /// A neutral button is the control family's secondary one, an accent button its filled one (the way forward), a segment is
+    /// one choice of a group (a plan's build mode).
+    enum Style { case neutral, accent, segment }
 
     let id: String
     let title: String
@@ -14,57 +16,238 @@ struct PinnedAction: Identifiable {
     /// A mode segment that is the current choice.
     var isOn = false
     var isEnabled = true
+    /// A segment's glyph and tone (its mode's).
+    var symbol: String?
+    var tone: Color?
     let perform: () -> Void
 }
 
-struct PinnedButtonStyle: ButtonStyle {
-    let style: PinnedAction.Style
-    let isOn: Bool
-    let isFocused: Bool
-    @Environment(\.isEnabled) private var enabled
+/// The words of a card that its models do not word as commands: Title Case for what a button says (DESIGN §6 Voice).
+enum PinnedCopy {
+    private static let small: Set<String> = ["a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to"]
 
-    func makeBody(configuration: Configuration) -> some View {
-        let pressed = configuration.isPressed
-        configuration.label
-            .font(LoomTheme.Pinned.button)
-            .foregroundStyle(foreground)
-            .padding(.horizontal, LoomTheme.Pinned.buttonPaddingH)
-            .frame(height: LoomTheme.Pinned.buttonHeight)
-            .background(RoundedRectangle(cornerRadius: LoomTheme.Pinned.buttonRadius).fill(fill(pressed: pressed)))
-            .overlay(RoundedRectangle(cornerRadius: LoomTheme.Pinned.buttonRadius)
-                .strokeBorder(isFocused ? AnyShapeStyle(LoomTheme.Surface.focusRing) : AnyShapeStyle(LoomTheme.Surface.hairlineStyle),
-                              lineWidth: isFocused ? LoomTheme.Line.focusRing : LoomTheme.Line.hairline))
-            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Pinned.buttonRadius))
-            .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
+    /// "Allow for this session" -> "Allow for This Session". A word that already has a capital inside ("WebFetch") stays;
+    /// the first word is always capitalised.
+    static func titleCase(_ text: String) -> String {
+        text.split(separator: " ", omittingEmptySubsequences: false).enumerated().map { index, word in
+            let word = String(word)
+            guard let first = word.first else { return word }
+            if word.contains(where: \.isUppercase) { return word }
+            if index > 0, small.contains(word) { return word }
+            return first.uppercased() + word.dropFirst()
+        }.joined(separator: " ")
     }
 
-    private var foreground: Color {
-        style == .accent && !isOn ? LoomTheme.Accent.onAccent : LoomTheme.Text.primary
-    }
+    /// The mono hint of an approval: how the keys reach the card (E3).
+    static let approvalHint = "tab to the request \u{00B7} \u{2190} \u{2192} \u{00B7} space"
 
-    private func fill(pressed: Bool) -> Color {
-        if style == .accent { return LoomTheme.Accent.base.opacity(pressed ? LoomTheme.Opacity.accentPressed : 1) }
-        if isOn { return LoomTheme.Accent.base.opacity(LoomTheme.Opacity.accentTintPressed) }
-        return pressed ? LoomTheme.Surface.controlPressed : LoomTheme.Surface.control
+    /// The mono hint of a question: the digits that pick, and where the user's own answer goes.
+    static func questionHint(optionCount: Int) -> String {
+        let digits = min(max(optionCount, 1), 9)
+        return (digits == 1 ? "1" : "1\u{2013}\(digits)") + " pick \u{00B7} or write your own answer below"
     }
 }
 
-/// A row of buttons; the one at `focused` wears the focus ring.
+// MARK: Buttons
+
+/// The control family's button on a card (26 high, radius 6, 12.5 medium): secondary with a strong-hairline edge, or filled with
+/// the accent. The card's own ring (`isFocused`, moved with ← and →) is the family's focus ring; the button does not read the
+/// system focus, which the card's key region holds for all of its buttons.
+struct PinnedButtonStyle: ButtonStyle {
+    let style: PinnedAction.Style
+    let isFocused: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        Styled(configuration: configuration, accent: style == .accent, isFocused: isFocused)
+    }
+
+    private struct Styled: View {
+        let configuration: ButtonStyle.Configuration
+        let accent: Bool
+        let isFocused: Bool
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var enabled
+        @Environment(\.colorSchemeContrast) private var contrast
+
+        var body: some View {
+            let active = enabled && hovering
+            let pressed = enabled && configuration.isPressed
+            let shape = RoundedRectangle(cornerRadius: LoomTheme.Pinned.buttonRadius)
+            configuration.label
+                .font(LoomTheme.InkType.button.font)
+                .foregroundStyle(accent ? LoomTheme.Accent.onAccent : LoomTheme.Text.primary)
+                .padding(.horizontal, LoomTheme.Pinned.buttonPaddingH)
+                .frame(height: LoomTheme.Pinned.buttonHeight)
+                .background(shape.fill(fill(active: active, pressed: pressed)))
+                .overlay(shape.strokeBorder(edge(active: active), lineWidth: LoomTheme.Line.hairline))
+                .controlFocusRing(visible: isFocused, radius: LoomTheme.Pinned.buttonRadius)
+                .contentShape(shape)
+                .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
+                .onHover { hovering = $0 }
+        }
+
+        private func fill(active: Bool, pressed: Bool) -> Color {
+            if accent {
+                if pressed { return LoomTheme.Accent.base.opacity(LoomTheme.Opacity.accentPressed) }
+                return active ? LoomTheme.Control.primaryHover : LoomTheme.Accent.base
+            }
+            return pressed ? LoomTheme.Surface.pressed : (active ? LoomTheme.Surface.hover : .clear)
+        }
+
+        private func edge(active: Bool) -> AnyShapeStyle {
+            guard !accent else { return AnyShapeStyle(Color.clear) }
+            if contrast == .increased { return AnyShapeStyle(LoomTheme.Surface.hairlineStyle) }
+            return AnyShapeStyle(active ? LoomTheme.Surface.strongerHairline : LoomTheme.Surface.strongHairline)
+        }
+    }
+}
+
+/// One choice of a segmented group (DESIGN §6 Tabs): 22 high, radius 5, in its own tone; the chosen one is raised (Segment on,
+/// a strong hairline and a 1 pt drop).
+struct PinnedSegmentStyle: ButtonStyle {
+    let tone: Color
+    let isOn: Bool
+    let isFocused: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        Styled(configuration: configuration, tone: tone, isOn: isOn, isFocused: isFocused)
+    }
+
+    private struct Styled: View {
+        let configuration: ButtonStyle.Configuration
+        let tone: Color
+        let isOn: Bool
+        let isFocused: Bool
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var enabled
+
+        var body: some View {
+            let shape = RoundedRectangle(cornerRadius: LoomTheme.Pinned.segmentRadius)
+            configuration.label
+                .font(LoomTheme.Pinned.segment)
+                .foregroundStyle(tone)
+                .padding(.horizontal, LoomTheme.Pinned.segmentPaddingH)
+                .frame(height: LoomTheme.Pinned.segmentHeight)
+                .background {
+                    if isOn {
+                        shape.fill(LoomTheme.Surface.segmentOn)
+                            .shadow(color: LoomTheme.Pinned.segmentDrop, radius: 1, x: 0, y: 1)
+                            .overlay(shape.strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
+                    } else if enabled && (hovering || configuration.isPressed) {
+                        shape.fill(configuration.isPressed ? LoomTheme.Surface.pressed : LoomTheme.Surface.hover)
+                    }
+                }
+                .controlFocusRing(visible: isFocused, radius: LoomTheme.Pinned.segmentRadius)
+                .contentShape(shape)
+                .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
+                .onHover { hovering = $0 }
+        }
+    }
+}
+
+/// A row of buttons; the one at `focused` wears the focus ring. Segments that follow one another are one group.
 struct PinnedButtonRow: View {
     let actions: [PinnedAction]
     let focused: Int?
     /// The position of the first button among all of the card's buttons, when a card shows them in more than one row.
     var firstIndex = 0
 
-    var body: some View {
-        HStack(spacing: LoomTheme.Pinned.buttonSpacing) {
-            ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
-                Button(action: action.perform) { Text(verbatim: action.title).lineLimit(1).fixedSize() }
-                    .buttonStyle(PinnedButtonStyle(style: action.style, isOn: action.isOn, isFocused: focused == firstIndex + index))
-                    .disabled(!action.isEnabled)
-                    .accessibilityAddTraits(action.isOn ? .isSelected : [])
+    private enum Run: Identifiable {
+        case button(offset: Int, PinnedAction)
+        case segments([(offset: Int, action: PinnedAction)])
+
+        var id: String {
+            switch self {
+            case let .button(_, action): action.id
+            case let .segments(items): "segments:" + (items.first?.action.id ?? "")
             }
         }
+    }
+
+    private var runs: [Run] {
+        var out: [Run] = []
+        for (offset, action) in actions.enumerated() {
+            if action.style == .segment {
+                if case var .segments(items)? = out.last {
+                    items.append((offset, action))
+                    out[out.count - 1] = .segments(items)
+                } else {
+                    out.append(.segments([(offset, action)]))
+                }
+            } else {
+                out.append(.button(offset: offset, action))
+            }
+        }
+        return out
+    }
+
+    var body: some View {
+        HStack(spacing: LoomTheme.Pinned.buttonSpacing) {
+            ForEach(runs) { run in
+                switch run {
+                case let .button(offset, action):
+                    Button(action: action.perform) { Text(verbatim: action.title).lineLimit(1).fixedSize() }
+                        .buttonStyle(PinnedButtonStyle(style: action.style, isFocused: focused == firstIndex + offset))
+                        .disabled(!action.isEnabled)
+                case let .segments(items):
+                    HStack(spacing: LoomTheme.Pinned.segmentInset) {
+                        ForEach(items, id: \.action.id) { item in
+                            Button(action: item.action.perform) {
+                                HStack(spacing: LoomTheme.Pinned.segmentGap) {
+                                    if let symbol = item.action.symbol {
+                                        Image(systemName: symbol).font(LoomTheme.Pinned.segmentIcon).accessibilityHidden(true)
+                                    }
+                                    Text(verbatim: item.action.title).lineLimit(1).fixedSize()
+                                }
+                            }
+                            .buttonStyle(PinnedSegmentStyle(tone: item.action.tone ?? LoomTheme.Text.secondary, isOn: item.action.isOn,
+                                                            isFocused: focused == firstIndex + item.offset))
+                            .disabled(!item.action.isEnabled)
+                            .accessibilityAddTraits(item.action.isOn ? .isSelected : [])
+                        }
+                    }
+                    .padding(LoomTheme.Pinned.segmentInset)
+                    .background(RoundedRectangle(cornerRadius: LoomTheme.Pinned.segmentGroupRadius).fill(LoomTheme.Surface.hover))
+                }
+            }
+        }
+    }
+}
+
+/// ⋯: the answers a card keeps behind it (Deny and Stop, Stop This Turn), and the Side composer's "…". An icon button of the
+/// control family: 26 pt on a card.
+struct PinnedMoreMenu<Items: View>: View {
+    let busy: Bool
+    var label = "More answers"
+    var side = LoomTheme.Control.iconSize.width
+    @ViewBuilder let items: Items
+    @State private var hovering = false
+
+    var body: some View {
+        Menu {
+            items
+        } label: {
+            Image(systemName: "ellipsis").font(LoomTheme.Pinned.ellipsis)
+                .foregroundStyle(hovering ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
+                .frame(width: side, height: side)
+                .background(RowHighlight(state: hovering ? .hover : .none, radius: LoomTheme.Control.iconRadius))
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden)
+        .fixedSize()
+        .onHover { hovering = $0 }
+        .disabled(busy)
+        .accessibilityLabel(label)
+    }
+}
+
+/// The mono line at the left of a card's buttons: where the keys lead (E3). It is the first thing to go when the row is narrow.
+struct PinnedHint: View {
+    let text: String
+
+    var body: some View {
+        Text(verbatim: text).font(LoomTheme.Pinned.hint).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            .lineLimit(1).fixedSize()
     }
 }
 
@@ -144,70 +327,137 @@ extension View {
     }
 }
 
-/// The frame of a card: its icon, title and who it concerns, the counter, the body, and the failure of the last answer.
+// MARK: Surface
+
+extension View {
+    /// A card's or a line's surface: the fill, a 1 pt edge inside it and, for a lifted card, Ink's inner top highlight and the
+    /// card's drop (`Elevation.card`).
+    func pinnedSurface(radius: CGFloat, fill: Color, edge: AnyShapeStyle, lifted: Bool = false) -> some View {
+        modifier(PinnedSurface(radius: radius, fill: fill, edge: edge, lifted: lifted))
+    }
+}
+
+private struct PinnedSurface: ViewModifier {
+    let radius: CGFloat
+    let fill: Color
+    let edge: AnyShapeStyle
+    let lifted: Bool
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius)
+        let depth = LoomTheme.Pinned.depth[LoomTheme.Appearance(scheme)]
+        content
+            .background {
+                if lifted { shape.fill(fill).depth(LoomTheme.Pinned.depth) } else { shape.fill(fill) }
+            }
+            .overlay {
+                if lifted, let top = depth.insetHighlight {
+                    // The highlight is the shape less the same shape one point lower: a crescent along the top edge.
+                    shape.fill(top.color)
+                        .mask {
+                            ZStack {
+                                Rectangle()
+                                shape.offset(y: LoomTheme.Line.hairline).blendMode(.destinationOut)
+                            }
+                            .compositingGroup()
+                        }
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay(shape.strokeBorder(edge, lineWidth: LoomTheme.Line.hairline).allowsHitTesting(false))
+    }
+}
+
+// MARK: Card
+
+/// What leads a card's heading (E1): the attention dot for an approval, a 15 pt glyph for a question and a plan, and a quiet
+/// triangle for the card a dead process cut off.
+enum PinnedMark: Equatable {
+    case dot
+    case glyph(String)
+    case cutOff
+}
+
+/// The frame of a card: its mark, the request in Sphyrna's words, the kind in mono and the counter, the body, and the failure of
+/// the last answer. Raised 2 with radius 12 and the attention edge at 34 %; the card itself stays neutral.
 struct PinnedCardChrome<Content: View>: View {
     let cards: PinnedCardsModel
-    let symbol: String
+    let mark: PinnedMark
     let title: String
-    let who: String?
-    var tint: Color = LoomTheme.Status.attention
-    var strokeOpacity = LoomTheme.Pinned.strokeOpacity
+    let kind: String?
     var showsCounter = true
     var failure: String?
     @ViewBuilder let content: Content
 
+    private var isCutOff: Bool { mark == .cutOff }
+
     var body: some View {
         VStack(alignment: .leading, spacing: LoomTheme.Pinned.sectionSpacing) {
-            HStack(spacing: 8) {
-                Image(systemName: symbol).font(LoomTheme.Pinned.icon).foregroundStyle(tint)
-                    .frame(width: LoomTheme.Pinned.iconSlot, height: LoomTheme.Pinned.iconSlot)
-                    .background(RoundedRectangle(cornerRadius: LoomTheme.Pinned.iconRadius).fill(tint.opacity(LoomTheme.Pinned.iconFillOpacity)))
-                    .accessibilityHidden(true)
+            HStack(spacing: LoomTheme.Pinned.headerGap) {
+                markView
                 Text(verbatim: title).font(LoomTheme.Pinned.title).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
-                Spacer(minLength: 8)
-                if let who {
-                    Text(verbatim: who).font(LoomTheme.Pinned.who).foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)
+                    .layoutPriority(1)
+                if let kind {
+                    Text(verbatim: kind).font(LoomTheme.Pinned.kind).foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)
                 }
+                Spacer(minLength: LoomTheme.Pinned.headerGap)
                 if showsCounter, let counter = cards.counter { PinnedStepper(cards: cards, counter: counter) }
             }
             content
             if let failure {
-                Text(verbatim: failure).font(LoomTheme.Pinned.detail).foregroundStyle(LoomTheme.Status.failure)
+                Text(verbatim: failure).font(LoomTheme.Pinned.detail).foregroundStyle(LoomTheme.Status.failureLight)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("pinned-failure")
             }
         }
         .padding(LoomTheme.Pinned.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: LoomTheme.Pinned.cardRadius).fill(LoomTheme.Pinned.cardFill))
-        .overlay(RoundedRectangle(cornerRadius: LoomTheme.Pinned.cardRadius).strokeBorder(tint.opacity(strokeOpacity)))
+        .pinnedSurface(radius: LoomTheme.Pinned.cardRadius, fill: LoomTheme.Pinned.cardFill,
+                       edge: isCutOff ? AnyShapeStyle(LoomTheme.Surface.strongHairline)
+                           : AnyShapeStyle(LoomTheme.Status.attention.opacity(LoomTheme.Pinned.edgeOpacity)),
+                       lifted: true)
+        .opacity(isCutOff ? LoomTheme.Pinned.cutOffOpacity : 1)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
     }
+
+    @ViewBuilder private var markView: some View {
+        switch mark {
+        case .dot:
+            Circle().fill(LoomTheme.Status.attention).frame(width: LoomTheme.Pinned.headerDot, height: LoomTheme.Pinned.headerDot)
+                .accessibilityHidden(true)
+        case let .glyph(symbol):
+            Image(systemName: symbol).font(LoomTheme.Pinned.headerGlyph).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                .accessibilityHidden(true)
+        case .cutOff:
+            Image(systemName: "exclamationmark.triangle").font(LoomTheme.Pinned.headerGlyph)
+                .foregroundStyle(LoomTheme.Text.tertiaryStyle).accessibilityHidden(true)
+        }
+    }
 }
 
-/// "‹ 1 of 3 ›": the counter, and the way to look at the other cards. It answers nothing.
+/// "1 of 3" in mono, tertiary, with ‹ › beside it: the way to look at the other cards. It answers nothing.
 struct PinnedStepper: View {
     let cards: PinnedCardsModel
     let counter: String
 
     var body: some View {
-        HStack(spacing: 4) {
-            Button { cards.step(-1) } label: { Image(systemName: "chevron.left").font(LoomTheme.Pinned.stepperChevron) }
+        HStack(spacing: LoomTheme.Pinned.stepGap) {
+            Button { cards.step(-1) } label: { Image(systemName: "chevron.left").font(LoomTheme.Pinned.stepChevron) }
+                .buttonStyle(ChromeButtonStyle(size: LoomTheme.Pinned.stepButton))
                 .accessibilityLabel("Previous request")
-            Text(verbatim: counter).font(LoomTheme.Pinned.stepper).monospacedDigit()
+            Text(verbatim: counter).font(LoomTheme.Pinned.counter).foregroundStyle(LoomTheme.Text.tertiaryStyle).monospacedDigit()
                 .accessibilityIdentifier("pinned-counter")
-            Button { cards.step(1) } label: { Image(systemName: "chevron.right").font(LoomTheme.Pinned.stepperChevron) }
+            Button { cards.step(1) } label: { Image(systemName: "chevron.right").font(LoomTheme.Pinned.stepChevron) }
+                .buttonStyle(ChromeButtonStyle(size: LoomTheme.Pinned.stepButton))
                 .accessibilityLabel("Next request")
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(LoomTheme.Text.secondaryStyle)
-        .padding(.leading, 10)
-        .overlay(alignment: .leading) { Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(width: 1, height: 14) }
     }
 }
 
-/// A command or a diff in mono: five lines, then it scrolls inside the card.
+/// A command or a diff in mono: five lines (111 pt), then it scrolls inside the card. Raised 1 with a hairline, `$` before a
+/// command in the tertiary tone.
 struct PinnedCodeBlock: View {
     let lines: [PinnedApprovalContent.Line]
     let prompt: String?
@@ -217,9 +467,9 @@ struct PinnedCodeBlock: View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: LoomTheme.Pinned.headerGap) {
                         if let prompt {
-                            Text(verbatim: index == 0 ? prompt : " ").foregroundStyle(LoomTheme.Text.faint)
+                            Text(verbatim: index == 0 ? prompt : " ").foregroundStyle(LoomTheme.Text.tertiaryStyle)
                         }
                         Text(verbatim: line.text.isEmpty ? " " : line.text).foregroundStyle(color(line.tone))
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -229,19 +479,19 @@ struct PinnedCodeBlock: View {
                     .background(background(line.tone))
                 }
             }
-            .padding(LoomTheme.Pinned.codePadding)
+            .padding(.vertical, LoomTheme.Pinned.codePaddingV).padding(.horizontal, LoomTheme.Pinned.codePaddingH)
             .textSelection(.enabled)
         }
-        .frame(height: CGFloat(visible) * LoomTheme.Pinned.codeLineHeight + 2 * LoomTheme.Pinned.codePadding)
+        .frame(height: CGFloat(visible) * LoomTheme.Pinned.codeLineHeight + 2 * LoomTheme.Pinned.codePaddingV)
         .scrollBounceBehavior(.basedOnSize)
-        .background(RoundedRectangle(cornerRadius: LoomTheme.Pinned.codeRadius).fill(LoomTheme.Pinned.codeFill))
-        .overlay(RoundedRectangle(cornerRadius: LoomTheme.Pinned.codeRadius).strokeBorder(LoomTheme.Surface.hairlineStyle))
+        .pinnedSurface(radius: LoomTheme.Pinned.codeRadius, fill: LoomTheme.Pinned.codeFill,
+                       edge: AnyShapeStyle(LoomTheme.Surface.hairlineStyle))
         .accessibilityIdentifier("pinned-code")
     }
 
     private func color(_ tone: PinnedApprovalContent.Line.Tone) -> Color {
         switch tone {
-        case .plain: LoomTheme.Chat.syntaxPlain
+        case .plain: LoomTheme.Text.primary
         case .added: LoomTheme.Chat.diffAdd
         case .removed: LoomTheme.Chat.diffRemove
         case .meta: LoomTheme.Text.secondary

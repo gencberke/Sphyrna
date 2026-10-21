@@ -137,8 +137,8 @@ struct SideTabTests {
         #expect(SideText.allowEditsHelp == "Claude may ask to change files or run commands here. Each request asks you first.")
         #expect(SideText.forkUnsupported == "This Claude version cannot fork a session")
         #expect(SideText.notesNeedChat == "Notes go to Claude in a Chat session")
-        #expect(SideText.sendNote == "Send to main as a note" && SideText.noteSent == "Sent to the main session")
-        #expect(SideText.discard == "Discard side chat" && SideText.discardTitle == "Discard this side chat?")
+        #expect(SideText.sendNote == "Send to Main as a Note" && SideText.noteSent == "Sent to the main session")
+        #expect(SideText.discard == "Discard Side Chat" && SideText.discardTitle == "Discard this side chat?")
         #expect(SideText.newSideChat == "New side chat" && SideText.earlier == "Earlier side chats")
         #expect(ChatSessionDriver.commandsRefusedText == "Commands don't run in a side chat")
     }

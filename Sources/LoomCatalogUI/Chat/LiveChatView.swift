@@ -146,20 +146,43 @@ struct LiveChatContent<Pinned: View>: View {
     @State private var height: CGFloat = 0
     /// The stream's own height: with a card, the banner and the composer under it, a short window leaves it a sliver.
     @State private var streamHeight: CGFloat = .infinity
+    /// What sits under the stream (the banner, the cards and the composer): the pill and the quick question float above it.
+    @State private var lowerHeight: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
             stream
-            banner
-            // The slot between the stream and the composer: V18's card stack. The stream gives way to it and to the composer.
-            pinned(height > 0 ? height * (composer?.cardShown == true ? LoomTheme.Pinned.compactStackMaxHeightFraction
-                                          : LoomTheme.Pinned.stackMaxHeightFraction) : nil)
-                // Laid out before the stream: the stream gives way to the card (up to its share), not the card to the stream.
-                .layoutPriority(1)
-            if let composer { ChatComposerDock(model: composer) }
+            // The stream gives way to what is under it: V18's card stack and the composer, up to the cards' share.
+            VStack(spacing: 0) {
+                banner
+                // The slot between the stream and the composer: V18's card stack.
+                pinned(height > 0 ? height * (composer?.cardShown == true ? LoomTheme.Pinned.compactStackMaxHeightFraction
+                                              : LoomTheme.Pinned.stackMaxHeightFraction) : nil)
+                    // Laid out before the stream: the stream gives way to the card (up to its share), not the card to the stream.
+                    .layoutPriority(1)
+                if let composer { ChatComposerDock(model: composer) }
+            }
+            .layoutPriority(1)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { lowerHeight = $0 }
         }
         .background(LoomTheme.Surface.canvas)
+        // The popover level, above the composer (DESIGN §7 Scroll latch): "Jump to Latest" and, over it, the quick question.
+        .overlay(alignment: .bottom) { jumpPill }
+        .overlay(alignment: .bottom) { quickQuestionOverlay.padding(.bottom, lowerHeight) }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+    }
+
+    /// "Jump to Latest": appears 150 ms after the reader leaves the end, and hides at once on return.
+    @ViewBuilder private var jumpPill: some View {
+        ZStack {
+            if feed.phase == .ready, model.showsJump {
+                ChatJumpPill { model.jumpToLatest() }
+                    .padding(.bottom, LoomTheme.Pinned.jumpPillGap)
+                    .transition(reduceMotion ? .identity : .opacity)
+            }
+        }
+        .padding(.bottom, lowerHeight)
+        .animation(reduceMotion ? nil : .easeOut(duration: LoomTheme.Chat.fadeDuration), value: model.showsJump)
     }
 
     /// The one banner above the composer (CHAT-SPEC → Markers and banners): the policy signal with Switch to Terminal,
@@ -185,7 +208,7 @@ struct LiveChatContent<Pinned: View>: View {
     /// The quick question (V22): a card over the bottom of the stream, above the composer. It stays only while the session can
     /// take a question: a stopped session, one that leaves the Chat face or one a handover holds closes it.
     @ViewBuilder private var quickQuestionOverlay: some View {
-        if let quickQuestion, let composer {
+        if let quickQuestion, let composer, feed.phase == .ready {
             let availability = composer.sideQuestionAvailability
             ZStack {
                 if quickQuestion.isOpen, availability == .available {
@@ -203,28 +226,17 @@ struct LiveChatContent<Pinned: View>: View {
         return ZStack {
             LoomTheme.Surface.canvas
             if feed.phase == .ready {
-                ZStack(alignment: .bottom) {
-                    ChatStreamHost(controller: model.controller)
-                    VStack(spacing: 8) {
-                        if model.showsJump {
-                            ChatJumpPill { model.jumpToLatest() }
-                                .transition(reduceMotion ? .identity : .opacity)
+                ChatStreamHost(controller: model.controller)
+                    .overlay(alignment: .topTrailing) {
+                        // Not in a sliver of a stream: it would stick out from under the banner.
+                        if streamHeight >= LoomTheme.Chat.viewChipMinimumStreamHeight {
+                            ChatViewChip(mode: presentation.viewMode, compact: ChatViewChip.isCompact(width: width)) {
+                                presentation.cycleViewMode()
+                            }
+                            .padding(.top, 10).padding(.trailing, 14)
                         }
                     }
-                    .padding(.bottom, 12)
-                    .animation(reduceMotion ? nil : .easeOut(duration: LoomTheme.Chat.fadeDuration), value: model.showsJump)
-                }
-                .overlay(alignment: .topTrailing) {
-                    // Not in a sliver of a stream: it would stick out from under the banner.
-                    if streamHeight >= LoomTheme.Chat.viewChipMinimumStreamHeight {
-                        ChatViewChip(mode: presentation.viewMode, compact: ChatViewChip.isCompact(width: width)) {
-                            presentation.cycleViewMode()
-                        }
-                        .padding(.top, 10).padding(.trailing, 14)
-                    }
-                }
-                .overlay(alignment: .bottom) { quickQuestionOverlay }
-                .onGeometryChange(for: CGSize.self) { $0.size } action: { width = $0.width; streamHeight = $0.height }
+                    .onGeometryChange(for: CGSize.self) { $0.size } action: { width = $0.width; streamHeight = $0.height }
             }
             ChatWindowVisibility { model.setWindowVisible($0) }.frame(width: 0, height: 0)
         }

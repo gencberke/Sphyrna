@@ -19,6 +19,8 @@ struct ChatBuildInput {
     /// When the live turn was first seen, for a turn whose prompt carries no timestamp.
     var liveStarts: [String: Date] = [:]
     var lastActivity: Date?
+    /// A request of this session waits for the user: the live row says so (it changes that row only).
+    var isWaitingForUser = false
 }
 
 /// Derives the rows of the stream from the entries and the turns: the work rows and their groups, the turn fold, the live
@@ -298,7 +300,7 @@ enum ChatRowBuilder {
         out.append(ChatRow(id: id, kind: .live(LiveRow(
             turnID: turn.id, label: parts.subject.isEmpty ? parts.verb : parts.verb + " " + parts.subject,
             subject: parts.subject, subjectIsMono: parts.mono,
-            startedAt: start, lastActivity: input.lastActivity, hiddenTools: tail)), open: open))
+            startedAt: start, lastActivity: input.lastActivity, isWaitingForUser: input.isWaitingForUser, hiddenTools: tail)), open: open))
         return out
     }
 

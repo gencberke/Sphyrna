@@ -961,7 +961,7 @@ struct ChatLiveRowView: View {
         }
         .buttonStyle(.plain)
         .padding(.top, 6)
-        .accessibilityLabel(live.label)
+        .accessibilityLabel(live.isWaitingForUser ? ChatLiveStatusText.waitingText : live.label)
         .accessibilityValue(live.hiddenTools.isEmpty ? "" : (open ? "steps shown" : "steps hidden"))
     }
 }
@@ -977,11 +977,15 @@ struct ChatLiveStatusText: View {
         let quiet = Self.quietSeconds(live, now: now)
         HStack(spacing: 9) {
             Group {
-                if quiet != nil { IndicatorView(indicator: .unknown) } else { BrailleSpinner(animating: animates) }
+                // A request waits for you: the attention dot in place of the spinner, and the row says so (DESIGN §7 Live row).
+                if live.isWaitingForUser { IndicatorView(indicator: .waitingForInput) }
+                else if quiet != nil { IndicatorView(indicator: .unknown) } else { BrailleSpinner(animating: animates) }
             }
             .frame(width: LoomTheme.Layout.indicatorSlot.width)
             .accessibilityHidden(true)
-            if let quiet {
+            if live.isWaitingForUser {
+                Text(Self.waitingText).font(LoomTheme.Chat.toolLabel).foregroundStyle(LoomTheme.Status.attentionLight)
+            } else if let quiet {
                 Text("No activity for \(quiet)s").font(LoomTheme.Chat.toolLabel).foregroundStyle(LoomTheme.Text.secondaryStyle)
             } else {
                 words
@@ -1014,8 +1018,15 @@ struct ChatLiveStatusText: View {
         return Int(now.timeIntervalSince(last))
     }
 
+    /// What the line says while a request waits for you.
+    static let waitingText = "Waiting for you"
+
     /// The text of the line as the accessibility tree and the tests read it.
     static func text(_ live: LiveRow, now: Date) -> String {
+        if live.isWaitingForUser {
+            guard let start = live.startedAt else { return waitingText }
+            return "\(waitingText) \u{00B7} \(ChatTime.clock(seconds: now.timeIntervalSince(start)))"
+        }
         if let quiet = quietSeconds(live, now: now) { return "No activity for \(quiet)s" }
         guard let start = live.startedAt else { return live.label }
         return "\(live.label) \u{00B7} \(ChatTime.clock(seconds: now.timeIntervalSince(start)))"

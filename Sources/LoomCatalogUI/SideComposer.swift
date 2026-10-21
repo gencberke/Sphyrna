@@ -105,10 +105,10 @@ struct SideComposerView: View {
             }
             SideComposerBar(model: model, row: row, session: session, sendOff: off != nil || isDiscarding) { host.submit() }
         }
-        .background(RoundedRectangle(cornerRadius: LoomTheme.Side.composerRadius).fill(LoomTheme.Composer.fill))
+        .background(RoundedRectangle(cornerRadius: LoomTheme.Side.composerRadius).fill(LoomTheme.Side.composerFill))
         .overlay(RoundedRectangle(cornerRadius: LoomTheme.Side.composerRadius)
-            .strokeBorder(LoomTheme.Composer.stroke, lineWidth: LoomTheme.Line.hairline))
-        .padding(LoomTheme.Side.composerInset)
+            .strokeBorder(LoomTheme.Side.composerEdge, lineWidth: LoomTheme.Line.hairline))
+        .padding(.horizontal, LoomTheme.Side.composerInsetH).padding(.bottom, LoomTheme.Side.composerInsetBottom)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("side-composer")
     }
@@ -128,41 +128,85 @@ private struct SideComposerBar: View {
         HStack(spacing: LoomTheme.Side.barGap) {
             if let open {
                 Button(SideText.close) { Task { await model.closeSideChat(open.id, in: row.id) } }
-                    .buttonStyle(.plain).font(LoomTheme.Side.barFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
                     .disabled(live?.isRunning != true)
-                    .opacity(live?.isRunning == true ? 1 : LoomTheme.Opacity.disabled)
                     .help("Stops the side chat. Its thread stays, and your next question resumes it.")
                     .accessibilityIdentifier("side-close")
             }
-            Text(model.modelContent(of: row.record)?.name ?? "Model").font(LoomTheme.Side.barFont)
-                .foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)
-                .help(SideText.modelHelp).accessibilityLabel("Model, \(SideText.modelHelp)")
-                .accessibilityIdentifier("side-model")
+            HStack(spacing: LoomTheme.Side.switchGap) {
+                ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Side.barMarkSize)
+                Text(model.modelContent(of: row.record)?.name ?? "Model").lineLimit(1)
+            }
+            .font(LoomTheme.Side.barFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            .padding(.horizontal, LoomTheme.Side.barLabelPadding)
+            .help(SideText.modelHelp).accessibilityElement(children: .combine)
+            .accessibilityLabel("Model, \(SideText.modelHelp)")
+            .accessibilityIdentifier("side-model")
+            Spacer(minLength: 0)
             if let open {
                 Toggle(SideText.allowEdits, isOn: Binding(
                     get: { live?.allowsEdits ?? false },
                     set: { value in Task { await model.setSideAllowsEdits(value, chat: open.id, in: row.id) } }
                 ))
-                .toggleStyle(.checkbox).controlSize(.small).font(LoomTheme.Side.barFont)
-                .foregroundStyle(LoomTheme.Text.secondaryStyle)
+                .toggleStyle(ControlSwitchStyle())
                 // The permission is the running process's: a closed side chat starts again with edits off.
                 .disabled(live?.isRunning != true)
                 .help(SideText.allowEditsHelp).accessibilityHint(SideText.allowEditsHelp)
                 .accessibilityIdentifier("side-allow-edits")
-                Menu {
-                    Button(SideText.discard, role: .destructive) { model.requestDiscardSideChat(open.id, in: row.id) }
-                } label: {
-                    Image(systemName: "ellipsis").font(LoomTheme.Side.barGlyph)
-                        .frame(width: LoomTheme.Side.controlSide, height: LoomTheme.Side.controlSide)
+                PinnedMoreMenu(busy: false, label: "More", side: LoomTheme.Side.controlSide) {
+                    Button(SideText.discard, systemImage: "trash", role: .destructive) {
+                        model.requestDiscardSideChat(open.id, in: row.id)
+                    }
                 }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                .accessibilityLabel("More").accessibilityIdentifier("side-more")
+                .accessibilityIdentifier("side-more")
             }
-            Spacer(minLength: 0)
             ComposerSendButton(look: canSend ? .send : .disabled, label: "Ask on the side", help: "Ask on the side (↵)",
                                identifier: "side-send") { _ in send() }
         }
         .padding(.horizontal, LoomTheme.Side.barInset)
         .frame(height: LoomTheme.Side.barHeight)
+    }
+}
+
+/// The control family's switch (DESIGN §6 Controls): 28 × 16, the stronger hairline as the track and the accent when on, a white
+/// 12 pt knob. The label comes first, 6 before the track. Keyboard: Space, as for any button.
+struct ControlSwitchStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Styled(configuration: configuration)
+    }
+
+    private struct Styled: View {
+        let configuration: ToggleStyleConfiguration
+        @Environment(\.isEnabled) private var enabled
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        var body: some View {
+            Button { configuration.isOn.toggle() } label: {
+                HStack(spacing: LoomTheme.Side.switchGap) {
+                    configuration.label.font(LoomTheme.Side.barFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    track
+                }
+                .padding(.horizontal, LoomTheme.Side.barLabelPadding)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
+            .accessibilityValue(configuration.isOn ? "on" : "off")
+            .accessibilityAddTraits(.isToggle)
+        }
+
+        private var track: some View {
+            Capsule().fill(configuration.isOn ? LoomTheme.Side.switchOnFill : LoomTheme.Side.switchOffFill)
+                .frame(width: LoomTheme.Side.switchWidth, height: LoomTheme.Side.switchHeight)
+                .overlay(alignment: .leading) {
+                    Circle().fill(LoomTheme.Side.switchKnobFill)
+                        .shadow(color: LoomTheme.Side.switchKnobShadow, radius: 1, x: 0, y: 1)
+                        .frame(width: LoomTheme.Side.switchKnob, height: LoomTheme.Side.switchKnob)
+                        .offset(x: LoomTheme.Side.switchInset
+                            + (configuration.isOn ? LoomTheme.Side.switchWidth - LoomTheme.Side.switchKnob - 2 * LoomTheme.Side.switchInset : 0))
+                }
+                .animation(reduceMotion ? nil : .easeOut(duration: LoomTheme.Highlight.fadeDuration), value: configuration.isOn)
+                .accessibilityHidden(true)
+        }
     }
 }

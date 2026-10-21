@@ -66,6 +66,7 @@ struct ChatRowStore {
             var liveStart: Date?
             var lastActivity: Date?
             var activity: String?
+            var isWaitingForUser: Bool
         }
 
         init(_ input: ChatBuildInput) {
@@ -77,7 +78,8 @@ struct ChatRowStore {
             fullOutputs = input.fullOutputs
             let id = input.model.turns.last?.id
             newest = Newest(id: id, isWorking: input.isWorking, liveStart: id.flatMap { input.liveStarts[$0] },
-                            lastActivity: input.lastActivity, activity: input.model.activity)
+                            lastActivity: input.lastActivity, activity: input.model.activity,
+                            isWaitingForUser: input.isWaitingForUser)
         }
     }
 

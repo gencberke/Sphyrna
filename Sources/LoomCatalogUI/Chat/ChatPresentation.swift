@@ -34,6 +34,8 @@ final class ChatPresentation {
     @ObservationIgnored private var fullOutputs: [String: ChatFullOutput] = [:]
     @ObservationIgnored private var liveStarts: [String: Date] = [:]
     @ObservationIgnored private var lastActivity: Date?
+    /// A request of this session waits for the user (the feed's cards): the live row says "Waiting for you".
+    @ObservationIgnored private(set) var isWaitingForUser = false
     /// The last activity comes only from the source's own clock (`setLastActivity`: a chat driver's newest stdout line);
     /// a change applied, a snapshot taken after Loom's own edit included, does not count as activity.
     @ObservationIgnored var activityFromSource = false
@@ -231,6 +233,13 @@ final class ChatPresentation {
         if isLoaded { rebuild() }
     }
 
+    /// Whether a request of this session waits for the user. Only the live row reads it, so only the newest turn is derived again.
+    func setWaitingForUser(_ value: Bool) {
+        guard isWaitingForUser != value else { return }
+        isWaitingForUser = value
+        if isLoaded { rebuild() }
+    }
+
     func setWorkingDirectory(_ value: String?) {
         workingDirectory = value
         controller?.context.workingDirectory = value
@@ -290,7 +299,7 @@ final class ChatPresentation {
         }
         return ChatBuildInput(model: model, mode: viewMode, toggled: toggled, flags: flags, fullOutputs: fullOutputs,
                               isWorking: isWorking, hasOlder: hasOlder, workingDirectory: workingDirectory,
-                              liveStarts: liveStarts, lastActivity: lastActivity)
+                              liveStarts: liveStarts, lastActivity: lastActivity, isWaitingForUser: isWaitingForUser)
     }
 
     /// Hands the attached stream what differs from the rows it has (`ChatRowStore`). `cause` says what changed; without one,

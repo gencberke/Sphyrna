@@ -229,7 +229,6 @@ extension LoomTheme {
         /// The jump pill's and the view chip's fills.
         /// The jump pill and other fills that are a panel level follow the tone, so they are computed.
         static var jumpFill: Color { Surface.popover }
-        static let foldFill = Surface.hoverTone.color
         static var viewChipFill: Color { Surface.canvas.opacity(viewChipFillOpacity) }
 
         // MARK: Syntax (VS Code Dark+, the terminal's palette; Light+ for the light theme, a step deeper where

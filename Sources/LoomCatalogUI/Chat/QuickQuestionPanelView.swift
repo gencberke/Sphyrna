@@ -61,12 +61,13 @@ enum QuickQuestionText {
     static func waiting(seconds: Int) -> String { "Thinking \u{00B7} \(max(0, seconds)) s" }
 }
 
-/// The floating card: the last question with its answer, the field, and one quiet line about what the session sees. Over the
-/// bottom of the chat column, at the composer's width; the stream behind it stays live.
+/// The floating card: the last question with its answer, the field with its Send, and one quiet line about what the session
+/// sees. Over the bottom of the chat column, at the composer's width, on the popover level; the stream behind it stays live.
 struct QuickQuestionPanelView: View {
     let panel: QuickQuestionPanel
     @State private var host: QuickQuestionEditorHost
     @State private var fieldHeight = LoomTheme.QuickQuestion.fieldMinimumHeight
+    @Environment(\.indicatorsAnimate) private var animates
 
     init(panel: QuickQuestionPanel) {
         self.panel = panel
@@ -74,23 +75,25 @@ struct QuickQuestionPanelView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.QuickQuestion.rowGap) {
+        let shape = RoundedRectangle(cornerRadius: LoomTheme.QuickQuestion.radius)
+        VStack(alignment: .leading, spacing: 0) {
             if let question = panel.question, panel.isWaiting || panel.answer != nil { thread(question) }
             if let failure = panel.failure {
                 Text(failure).font(LoomTheme.QuickQuestion.statusFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.trailing, LoomTheme.QuickQuestion.closeSide).padding(.bottom, LoomTheme.QuickQuestion.rowGap)
                     .accessibilityIdentifier("quick-question-failure")
             }
-            field
+            fieldRow(separated: (panel.question != nil && (panel.isWaiting || panel.answer != nil)) || panel.failure != nil)
             Text(QuickQuestionText.hint).font(LoomTheme.QuickQuestion.hintFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, LoomTheme.QuickQuestion.hintTop)
                 .accessibilityIdentifier("quick-question-hint")
         }
-        .padding(.horizontal, LoomTheme.QuickQuestion.insetH)
+        .padding(.leading, LoomTheme.QuickQuestion.insetLeading).padding(.trailing, LoomTheme.QuickQuestion.insetTrailing)
         .padding(.top, LoomTheme.QuickQuestion.insetTop).padding(.bottom, LoomTheme.QuickQuestion.insetBottom)
-        .background(RoundedRectangle(cornerRadius: LoomTheme.QuickQuestion.radius).fill(LoomTheme.QuickQuestion.fill))
-        .overlay(RoundedRectangle(cornerRadius: LoomTheme.QuickQuestion.radius)
-            .strokeBorder(LoomTheme.QuickQuestion.stroke, lineWidth: LoomTheme.Line.hairline))
+        .background(shape.fill(LoomTheme.QuickQuestion.fill))
+        .overlay(shape.strokeBorder(LoomTheme.QuickQuestion.ring, lineWidth: LoomTheme.Line.hairline))
         .depth(LoomTheme.Elevation.popover)
         .overlay(alignment: .topTrailing) { closeButton }
         .frame(maxWidth: LoomTheme.QuickQuestion.column)
@@ -101,6 +104,26 @@ struct QuickQuestionPanelView: View {
         .accessibilityLabel("Quick question")
         .accessibilityIdentifier("quick-question")
         .onChange(of: panel.focusRequests) { host.focus() }
+    }
+
+    /// The field and its round Send, under a hairline once there is a question, an answer or a failure above it: Return asks too,
+    /// and Send is off while a question waits or nothing is typed.
+    @ViewBuilder private func fieldRow(separated: Bool) -> some View {
+        let row = HStack(alignment: .bottom, spacing: LoomTheme.QuickQuestion.fieldGap) {
+            field
+            ComposerSendButton(look: panel.canSend ? .send : .disabled, label: "Ask", help: "Ask (\u{21A9})",
+                               identifier: "quick-question-send") { _ in panel.submit() }
+        }
+        if separated {
+            row.padding(.top, LoomTheme.QuickQuestion.fieldPaddingTop)
+                .overlay(alignment: .top) {
+                    Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline).accessibilityHidden(true)
+                }
+                .padding(.top, LoomTheme.QuickQuestion.fieldTop)
+        } else {
+            // Nothing above it: the field starts below the close button, so Send never sits under it.
+            row.padding(.top, LoomTheme.QuickQuestion.closeClearance)
+        }
     }
 
     private var field: some View {
@@ -126,8 +149,11 @@ struct QuickQuestionPanelView: View {
             if let since = panel.waitingSince {
                 // One timer, alive only while the question waits: it ends with the answer, the error or the panel.
                 TimelineView(.periodic(from: since, by: 1)) { timeline in
-                    Text(QuickQuestionText.waiting(seconds: Int(timeline.date.timeIntervalSince(since))))
-                        .font(LoomTheme.QuickQuestion.statusFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    HStack(spacing: LoomTheme.QuickQuestion.rowGap) {
+                        BrailleSpinner(animating: animates).frame(width: LoomTheme.QuickQuestion.spinnerSlot).accessibilityHidden(true)
+                        Text(QuickQuestionText.waiting(seconds: Int(timeline.date.timeIntervalSince(since))))
+                            .font(LoomTheme.QuickQuestion.statusFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    }
                 }
                 .accessibilityIdentifier("quick-question-waiting")
             } else if let answer = panel.answer {
@@ -138,20 +164,13 @@ struct QuickQuestionPanelView: View {
                 .frame(maxHeight: LoomTheme.QuickQuestion.answerMaxHeight)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("quick-question-answer")
-                HStack { ChatCopyButton(text: answer, context: panel.context); Spacer(minLength: 0) }
+                HStack { AsideCopyButton(text: answer, context: panel.context); Spacer(minLength: 0) }
             }
         }
     }
 
     private var closeButton: some View {
-        Button { panel.close() } label: {
-            Image(systemName: "xmark").font(LoomTheme.QuickQuestion.closeGlyph).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                .frame(width: LoomTheme.QuickQuestion.closeSide, height: LoomTheme.QuickQuestion.closeSide)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.top, LoomTheme.QuickQuestion.insetTop - 4).padding(.trailing, LoomTheme.QuickQuestion.insetH - 8)
-        .accessibilityLabel("Close")
-        .help("Close (esc)")
+        ChatIconButton(symbol: "xmark", label: "Close") { panel.close() }
+            .padding(.top, LoomTheme.QuickQuestion.closeInset).padding(.trailing, LoomTheme.QuickQuestion.closeInset)
     }
 }
