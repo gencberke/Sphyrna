@@ -477,9 +477,19 @@ struct SessionListEntry: View {
     let row: SessionRowModel
     let model: CatalogModel
     var body: some View {
+        let subagents = row.live?.subagents ?? []
         VStack(alignment: .leading, spacing: 0) {
             SessionCardView(row: row, model: model)
-            if let subagents = row.live?.subagents, !subagents.isEmpty {
+                .overlay {
+                    // A card is taller than a 28 pt row: its line leaves the status mark inside it (DESIGN §4).
+                    if !subagents.isEmpty, !SessionCardView.isOneLine(mode: model.viewMode) {
+                        SubagentTrunkShape()
+                            .stroke(LoomTheme.Surface.tree, style: StrokeStyle(lineWidth: LoomTheme.Branches.lineWidth))
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+            if !subagents.isEmpty {
                 SubagentTreeView(sessionID: row.id, records: subagents, model: model, waiting: SubagentWaiting.ids(in: row.live))
             }
         }
@@ -645,7 +655,8 @@ struct SessionCardView: View {
             .foregroundStyle(quiet)
             .padding(.leading, LoomTheme.Sidebar.cardTextIndent)
         }
-        .padding(.horizontal, LoomTheme.Space.cardH).padding(.vertical, LoomTheme.Space.cardV)
+        .padding(.leading, LoomTheme.Sidebar.rowLeading).padding(.trailing, LoomTheme.Space.cardH)
+        .padding(.vertical, LoomTheme.Space.cardV)
         .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radius))
     }
 
@@ -684,7 +695,7 @@ struct SessionCardView: View {
             Spacer(minLength: LoomTheme.Space.headerSpacing)
             CardTimeLabel(row: row, model: model, onTint: onTint)
         }
-        .padding(.horizontal, LoomTheme.Space.cardH)
+        .padding(.leading, LoomTheme.Sidebar.rowLeading).padding(.trailing, LoomTheme.Space.cardH)
         .frame(height: LoomTheme.Sidebar.lineRowHeight)
         .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusCompact))
     }

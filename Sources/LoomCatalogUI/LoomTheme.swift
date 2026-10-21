@@ -476,10 +476,8 @@ enum LoomTheme {
         static let chevron = Font.system(size: 9, weight: .semibold)
         /// The pin glyph in a pinned conversation's card (second row).
         static let pinGlyph = Font.system(size: 10)
-        /// A subagent row under a card (D-39): the agent type, and the elapsed time or duration.
-        static let subagentType = Font.system(size: 11, weight: .medium)
+        /// A subagent's elapsed time or duration in the inspector's Agents list.
         static let subagentTime = Font.system(size: 10.5).monospacedDigit()
-        static let subagentGlyph = Font.system(size: 10)
         /// The subagent panel's transcript (FB4-5): the terminal's face at the size of the mock.
         static let transcript = Font.system(size: 12, design: .monospaced)
         static let transcriptStrong = Font.system(size: 12, weight: .bold, design: .monospaced)
@@ -519,18 +517,8 @@ enum LoomTheme {
         static let cardSpacing: CGFloat = 8
         static let cardLineSpacing: CGFloat = 4
         static let cardIndicatorTop: CGFloat = 1
-        // Subagents under a card (D-39): a hairline guide under the card's indicator column.
-        /// The guide's distance from the list edge (the center of the card's indicator slot).
-        static let subagentGuideInset: CGFloat = 13
-        /// Space between the guide and the rows, and a row's own leading and trailing padding.
-        static let subagentGuidePad: CGFloat = 8
-        static let subagentRowLeading: CGFloat = 4
-        static let subagentRowTrailing: CGFloat = 8
-        static let subagentColumnGap: CGFloat = 8
+        /// The gap between a subagent's type and description in the inspector's Agents list.
         static let subagentTextGap: CGFloat = 4
-        /// One step of nesting for a subagent a subagent started.
-        static let subagentIndent: CGFloat = 8
-        static let subagentTreeBottom: CGFloat = 2
         // The subagent panel's transcript (FB4-5).
         static let transcriptInset: CGFloat = 16
         static let transcriptRowGap: CGFloat = 8
@@ -667,8 +655,6 @@ enum LoomTheme {
         static let heroMarkWidth: CGFloat = 36
         /// The failure mark under "Differentiate without color" (the identity proposal's diamond, corner to corner).
         static let failureDiamond: CGFloat = 7
-        /// A subagent row's height.
-        static let subagentRowHeight: CGFloat = 22
     }
 
     // MARK: Menu bar item

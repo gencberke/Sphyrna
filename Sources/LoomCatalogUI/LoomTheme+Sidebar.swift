@@ -57,8 +57,8 @@ extension LoomTheme {
 
         // MARK: A project head (28 pt): its mark, its name, the attention dot; chevron, + and ⋯ on hover
 
-        /// The head's content starts 6 pt in so the mark's centre sits over the sessions' status column (optical).
-        static let headLeading: CGFloat = 6
+        /// The head's content starts 14 pt in, so the mark's centre sits over the sessions' status column.
+        static let headLeading: CGFloat = 14
         static let headTrailing: CGFloat = 4
         static let headSpacing: CGFloat = 6
         static let headTop: CGFloat = 8
@@ -67,6 +67,9 @@ extension LoomTheme {
         // MARK: A session row (project view, 28 pt) and an activity card (radius 10)
 
         static let lineRowHeight = InkHeight.sidebarRow
+        /// A session row's, an activity card's and a draft row's leading inset: it puts the status column's centre 22 pt
+        /// from the list's edge, where the subagent branches leave it (`Branches.column`). The trailing inset is `Space.cardH`.
+        static let rowLeading: CGFloat = 16
         static let lineTitle = InkType.body.font
         static let lineTitleSelected = Font.system(size: 13, weight: .medium)
         /// The time at a row's trailing end: mono 11.

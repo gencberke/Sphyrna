@@ -207,6 +207,17 @@ struct SubagentBranchesShape: Shape {
     func path(in rect: CGRect) -> Path { branches.path(from: rect.origin) }
 }
 
+/// An activity card's part of the line: from under its status mark to its bottom, where the first branch takes over.
+struct SubagentTrunkShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let x = rect.minX + LoomTheme.Branches.column + LoomTheme.Branches.lineWidth / 2
+        var path = Path()
+        path.move(to: CGPoint(x: x, y: rect.minY + LoomTheme.Branches.cardTrunkTop))
+        path.addLine(to: CGPoint(x: x, y: rect.maxY))
+        return path
+    }
+}
+
 /// The tree under a session card: a branch per row, drawn over the rows from the session's status column, which the list's
 /// leading edge places 22 pt in (`Branches.column`).
 struct SubagentTreeView: View {

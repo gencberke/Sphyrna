@@ -56,7 +56,7 @@ struct DraftRow: View {
                 .accessibilityLabel("Discard draft")
             }
         }
-        .padding(.horizontal, LoomTheme.Space.cardH)
+        .padding(.leading, LoomTheme.Sidebar.rowLeading).padding(.trailing, LoomTheme.Space.cardH)
         .frame(height: LoomTheme.Sidebar.lineRowHeight)
         .rowPill(selected: selected, radius: LoomTheme.Highlight.radiusCompact, key: "sidebar-draft:\(draft.id)")
         .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusCompact))

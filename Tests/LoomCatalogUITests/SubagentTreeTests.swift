@@ -114,6 +114,16 @@ struct SubagentTreeTests {
         #expect(SubagentBranches(depths: [1, 1, 1]).height == 72)
     }
 
+    @Test func theBranchesLeaveTheStatusColumnTheRowsAndHeadsDraw() {
+        // The tree has no inset of its own, so the session rows (and the project head's mark above them) must centre
+        // their status column on the first branch's line; an activity card's line starts 7 pt under its mark.
+        let column = LoomTheme.Branches.column
+        #expect(LoomTheme.Sidebar.rowLeading + LoomTheme.Layout.indicatorSlot.width / 2 == column)
+        #expect(LoomTheme.Sidebar.headLeading + LoomTheme.ProjectMarkStyle.Size.head.side / 2 == column)
+        let trunk = SubagentTrunkShape().path(in: CGRect(x: 0, y: 0, width: 260, height: 60)).boundingRect
+        #expect(trunk.minX == column + 0.5 && trunk.minY == LoomTheme.Space.cardV + 8 + 7 && trunk.maxY == 60)
+    }
+
     @Test func eachRowHangsOnABranchAndTheLastOneEnds() {
         let tree = SubagentBranches(depths: [1, 1, 1])
         #expect(tree.branches.map(\.isLast) == [false, false, true])
