@@ -49,6 +49,7 @@ Docs are the memory that lets the next session continue; they are not a message 
 | docs/ARCHITECTURE.md | implementer who changes structure, checked at review | New target, moved responsibility, new process type, new vendor patch. |
 | design/DESIGN.md (Ink, v3: the target), design/UI-MAP.md (what the code draws) | UI implementer, checked at review; rule changes only with a user decision | DESIGN.md: a new or changed rule, surface, token, state or interaction. UI-MAP.md: any change to a surface in code, each Ink migration step included. |
 | design/reference.html, design/landing.html (built from design/reference-src/) | planner-reviewer | A design decision that changes a surface: its document in `reference-src/docs/` changes with DESIGN.md, and `build.py` writes both pages. Never edited by hand. |
+| design/pre-reference-preview-pages/ | none (a record) | Never. The accepted previews 01 to 07 and identity (D-74 to D-81) as they stood before the reference; not the visual target. |
 | DEVELOPMENT.md, scripts/README.md | whoever changes tooling, checked at review | New command, flag, script, path or policy. |
 | plans/V2-PLAN.md and its specs in plans/v2/ (earlier checkpoints: plans/CHECKPOINT-n.md, plans/cpn/*.md) | planner-reviewer | Plan, slice decisions, acceptance results, closure. |
 

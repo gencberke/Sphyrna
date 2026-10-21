@@ -1,0 +1,2440 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loom · Ink · 03 The project page</title>
+<style>
+/* ============================================================
+   Ink: Loom's design language. Preview 03: the project page.
+   Tokens first (Ink = dark, Paper = light), then the document,
+   then the app's parts. Every app part uses only the tokens.
+   ============================================================ */
+:root{
+  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Inter,system-ui,sans-serif;
+  --display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Inter,system-ui,sans-serif;
+  --mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+:root,[data-theme=dark]{
+  color-scheme:dark;
+  --page:#070708;
+  --canvas:#0C0C0E;
+  --raise-1:#121215;
+  --raise-2:#17171B;
+  --popover:#1C1C21;
+  --seg-on:#26262C;
+  --line:rgba(255,255,255,.075);
+  --line-2:rgba(255,255,255,.115);
+  --line-3:rgba(255,255,255,.2);
+  --hover:rgba(255,255,255,.05);
+  --selected:rgba(255,255,255,.08);
+  --pressed:rgba(255,255,255,.12);
+  --fg-1:#ECECEF;
+  --fg-2:#9E9EA8;
+  --fg-3:#868690;
+  --faint:#6B6B75;
+  --fg-4:#45454D;
+  --accent:#8791CF;--accent-hi:#A9B0E3;--accent-lo:#5E68A8;--accent-wash:rgba(135,145,207,.16);--on-accent:#0B0E16;
+  --attn:#FF9E0A;--attn-text:#FFB547;--attn-wash:rgba(255,158,10,.13);
+  --unv:#5C8CFF;--unv-text:#8FB0FF;--unv-wash:rgba(92,140,255,.13);
+  --fail:#F2615C;--fail-text:#FF8A85;--fail-wash:rgba(242,97,92,.13);
+  --ok:#4CC38A;--ok-text:#7BDBA8;
+  --add-band:rgba(76,195,138,.09);--del-band:rgba(242,97,92,.09);
+  --grid:rgba(255,255,255,.034);
+  --tree:#3B3B41;
+  --art:236,236,240;
+  --sh-card:inset 0 1px 0 rgba(255,255,255,.03),0 1px 2px rgba(0,0,0,.45);
+  --sh-pop:0 0 0 1px rgba(255,255,255,.08),0 24px 64px rgba(0,0,0,.62),0 2px 8px rgba(0,0,0,.4);
+  --sh-win:0 0 0 1px rgba(255,255,255,.085),0 50px 140px rgba(0,0,0,.72);
+  --sh-composer:0 0 0 1px rgba(255,255,255,.12),0 30px 90px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.045);
+  --rose:#E68EBA;--orchid:#D194E6;--aqua:#80D5DB;--mint:#83D8B0;--sage:#92C186;--lemon:#CCE07B;
+}
+[data-theme=light]{
+  color-scheme:light;
+  --page:#E9E8E4;
+  --canvas:#F7F6F3;
+  --raise-1:#FBFAF8;
+  --raise-2:#FEFDFC;
+  --popover:#FFFFFF;
+  --seg-on:#FFFFFF;
+  --line:rgba(30,28,26,.085);
+  --line-2:rgba(30,28,26,.13);
+  --line-3:rgba(30,28,26,.24);
+  --hover:rgba(30,28,26,.045);
+  --selected:rgba(30,28,26,.07);
+  --pressed:rgba(30,28,26,.1);
+  --fg-1:#19181B;--fg-2:#5F5D63;--fg-3:#69676D;--faint:#8E8B91;--fg-4:#BCB9BD;
+  --accent:#4B56A8;--accent-hi:#3A4491;--accent-lo:#A3ABDD;--accent-wash:rgba(75,86,168,.11);--on-accent:#FBF8F2;
+  --attn:#C46A00;--attn-text:#7A3A00;--attn-wash:rgba(196,106,0,.11);
+  --unv:#2557CC;--unv-text:#1B43A3;--unv-wash:rgba(37,87,204,.1);
+  --fail:#C8322C;--fail-text:#8E1D19;--fail-wash:rgba(200,50,44,.1);
+  --ok:#186E43;--ok-text:#125A36;
+  --add-band:rgba(24,110,67,.08);--del-band:rgba(200,50,44,.08);
+  --grid:rgba(30,28,26,.06);
+  --tree:#C4C2BE;
+  --art:22,21,24;
+  --sh-card:0 1px 2px rgba(30,28,26,.06);
+  --sh-pop:0 0 0 1px rgba(30,28,26,.1),0 24px 60px rgba(30,28,26,.16),0 2px 6px rgba(30,28,26,.06);
+  --sh-win:0 0 0 1px rgba(30,28,26,.13),0 50px 120px rgba(30,28,26,.22);
+  --sh-composer:0 0 0 1px rgba(30,28,26,.12),0 24px 70px rgba(30,28,26,.13);
+  --rose:#B03F78;--orchid:#8A42AC;--aqua:#10747E;--mint:#1A7A51;--sage:#557A28;--lemon:#6F7500;
+}
+
+/* ---------- base ---------- */
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--page)}
+body{font:13px/1.45 var(--ui);color:var(--fg-1);-webkit-font-smoothing:antialiased;background:var(--page);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:32px 32px;background-attachment:fixed}
+button,input,textarea{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer;text-align:inherit}
+svg{display:block;flex:none}
+[hidden]{display:none!important}
+.mono{font-family:var(--mono)}
+.label{font:500 10.5px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--fg-3)}
+kbd{font:10.5px/16px var(--mono);color:var(--fg-3);padding:0 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line-2);white-space:nowrap}
+
+/* ---------- document chrome ---------- */
+.top{position:sticky;top:0;z-index:100;height:48px;display:flex;align-items:center;gap:18px;padding:0 24px;
+  background:color-mix(in srgb,var(--page) 80%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:baseline;gap:10px;font:600 13px var(--ui);white-space:nowrap}
+.brand .mono{font-weight:400;font-size:11px;color:var(--fg-3)}
+.top nav{display:flex;gap:2px}
+.top nav a{height:26px;display:inline-flex;align-items:center;padding:0 9px;border-radius:6px;color:var(--fg-2);text-decoration:none;font-size:12.5px}
+.top nav a:hover{background:var(--hover);color:var(--fg-1)}
+.tools{margin-left:auto;display:flex;align-items:center;gap:12px}
+.tool{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg-2);cursor:pointer;user-select:none}
+.wrap{max-width:1344px;margin:0 auto;padding:0 32px}
+
+.intro{position:relative;height:500px;overflow:hidden;border-bottom:1px solid var(--line);background:var(--canvas)}
+.intro .artbg{-webkit-mask-image:radial-gradient(ellipse 80% 90% at 50% 40%,#000 35%,transparent 100%);mask-image:radial-gradient(ellipse 80% 90% at 50% 40%,#000 35%,transparent 100%)}
+.intro .copy{position:relative;z-index:2;max-width:1344px;margin:0 auto;padding:118px 32px 0;pointer-events:none}
+.eyebrow{font:11px var(--mono);color:var(--fg-3);letter-spacing:.04em}
+.hero-title{font:200 104px/1 var(--display);letter-spacing:-.05em;margin:20px 0 22px}
+.lede{max-width:600px;font-size:15.5px;line-height:1.6;color:var(--fg-2)}
+.lede b{color:var(--fg-1);font-weight:500}
+.rules{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);box-shadow:0 0 0 1px var(--line);border-radius:14px;overflow:hidden;margin:44px 0 0}
+.rule{background:var(--canvas);padding:20px 22px 22px}
+.rule .n{font:11px var(--mono);color:var(--fg-3)}
+.rule h3{font:600 14px var(--ui);margin:12px 0 6px}
+.rule p{font-size:12.5px;color:var(--fg-2);line-height:1.55}
+.phases{display:flex;gap:28px;margin:18px 2px 0;font:11.5px var(--mono);color:var(--fg-3)}
+.phases b{color:var(--fg-1);font-weight:500}
+.sec{padding:76px 0 8px}
+.sechead{display:grid;grid-template-columns:56px 1fr;align-items:baseline;margin-bottom:26px}
+.sechead .num{font:11px var(--mono);color:var(--fg-3)}
+.sechead h2{font:300 34px/1.1 var(--display);letter-spacing:-.025em}
+.sechead p{grid-column:2;margin-top:10px;max-width:720px;color:var(--fg-2);font-size:13.5px;line-height:1.55}
+.legend{list-style:none;display:grid;grid-template-columns:repeat(4,1fr);gap:14px 28px;margin:26px 0 0}
+.legend li{font-size:12.5px;color:var(--fg-2);line-height:1.5}
+.legend b{font:600 10.5px var(--mono);color:var(--fg-1);margin-right:6px}
+
+.stage{position:relative;width:100%}
+.stage.zoomed{overflow-x:auto;overflow-y:hidden}
+.win{position:absolute;left:0;top:0;transform-origin:0 0;border-radius:12px;overflow:hidden;background:var(--canvas);box-shadow:var(--sh-win);display:flex;color:var(--fg-1)}
+.pin{position:absolute;z-index:60;min-width:22px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--on-accent);font:700 9.5px/18px var(--mono);text-align:center;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 30%,transparent);display:none;pointer-events:none}
+body.pins .pin{display:block}
+
+/* ---------- controls: one family ---------- */
+.btn{height:26px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 10px;border-radius:6px;font:500 12.5px var(--ui);color:var(--fg-1);white-space:nowrap;transition:background .12s,box-shadow .12s,color .12s}
+.btn svg{width:14px;height:14px}
+.btn.pri{background:var(--accent);color:var(--on-accent)}
+.btn.pri:hover{background:color-mix(in srgb,var(--accent) 86%,#fff)}
+[data-theme=light] .btn.pri:hover{background:color-mix(in srgb,var(--accent) 86%,#000)}
+.btn.sec{box-shadow:inset 0 0 0 1px var(--line-2)}
+.btn.sec:hover{background:var(--hover);box-shadow:inset 0 0 0 1px var(--line-3)}
+.btn.gh{color:var(--fg-2)}
+.btn.gh:hover{background:var(--hover);color:var(--fg-1)}
+.btn.dan{color:var(--fail-text)}
+.btn.dan:hover{background:var(--fail-wash)}
+.btn.lg{height:30px;padding:0 14px;border-radius:8px;font-size:13px}
+.btn.sm{height:22px;padding:0 8px;border-radius:5px;font-size:11.5px}
+.btn:disabled{opacity:.38;cursor:default;background:none}
+.btn.pri:disabled{background:var(--accent)}
+.btn.focus,.btn:focus-visible,.ib:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ib{width:26px;height:26px;display:inline-grid;place-items:center;border-radius:6px;color:var(--fg-2);flex:none;transition:background .12s,color .12s}
+.ib:hover{background:var(--hover);color:var(--fg-1)}
+.ib.on{background:var(--selected);color:var(--fg-1)}
+.ib svg{width:16px;height:16px}
+.seg{display:inline-flex;height:26px;padding:2px;border-radius:7px;background:var(--hover);gap:2px;flex:none}
+.seg button{height:22px;padding:0 10px;border-radius:5px;font:500 12px var(--ui);color:var(--fg-2);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.seg button svg{width:13px;height:13px}
+.seg button:hover{color:var(--fg-1)}
+.seg button.on{background:var(--seg-on);color:var(--fg-1);box-shadow:0 0 0 1px var(--line-2),0 1px 2px rgba(0,0,0,.22)}
+.sw{width:28px;height:16px;border-radius:8px;background:var(--line-3);position:relative;transition:background .12s;flex:none;cursor:pointer}
+.sw::after{content:"";position:absolute;left:2px;top:2px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.35);transition:transform .12s}
+.sw.on{background:var(--accent)}
+.sw.on::after{transform:translateX(12px)}
+.field{height:30px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:8px;box-shadow:inset 0 0 0 1px var(--line-2);color:var(--faint);font-size:13px;min-width:230px}
+.field svg{width:15px;height:15px}
+.field.focus{box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px var(--accent-wash);color:var(--fg-1)}
+.field kbd{margin-left:auto}
+.caret{display:inline-block;width:1.5px;height:15px;background:var(--accent);margin-left:-6px;animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.chip{height:22px;display:inline-flex;align-items:center;gap:6px;padding:0 8px;border-radius:6px;box-shadow:inset 0 0 0 1px var(--line-2);font:12px var(--ui);color:var(--fg-1);white-space:nowrap;flex:none}
+.chip .rail{width:2px;height:12px;border-radius:1px;background:var(--tone,var(--fg-3))}
+.chip .sep{width:1px;height:12px;background:var(--line-2)}
+.chip .br{font:11.5px var(--mono);color:var(--fg-2);display:inline-flex;align-items:center;gap:4px}
+.chip .br svg{width:12px;height:12px}
+.chip.proj{padding-left:4px;background:color-mix(in srgb,var(--tone) 10%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--tone) 32%,transparent)}
+.state{height:22px;border-radius:11px;padding:0 9px 0 7px;display:inline-flex;align-items:center;gap:6px;font:500 11.5px var(--ui);background:var(--selected);color:var(--fg-1);white-space:nowrap;flex:none}
+.state.attn{background:var(--attn-wash);color:var(--attn-text)}
+.state.unv{background:var(--unv-wash);color:var(--unv-text)}
+.state.fail{background:var(--fail-wash);color:var(--fail-text)}
+.state.idle{background:var(--hover);color:var(--fg-2);padding:0 9px}
+.modelseg{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-2);height:22px;padding:0 4px;white-space:nowrap}
+.cgroup{height:26px;display:inline-flex;border-radius:7px;box-shadow:inset 0 0 0 1px var(--line-2);overflow:hidden;flex:none}
+.cgroup button{height:26px;padding:0 10px;display:inline-flex;align-items:center;gap:7px;font:500 12px var(--ui);color:var(--fg-1)}
+.cgroup button:hover{background:var(--hover)}
+.cgroup button.more{width:30px;padding:0;justify-content:center;color:var(--fg-2)}
+.cgroup button.more:hover{color:var(--fg-1)}
+.cgroup button svg{width:16px;height:16px}
+.cgroup .div{width:1px;background:var(--line-2)}
+.stopsq{width:8px;height:8px;border-radius:1.5px;background:currentColor}
+.vline{width:1px;height:16px;background:var(--line-2);margin:0 2px;flex:none}
+.badge{min-width:18px;height:17px;padding:0 5px;border-radius:9px;font:600 10.5px/17px var(--ui);text-align:center;font-variant-numeric:tabular-nums}
+.badge.attn{background:var(--attn-wash);color:var(--attn-text)}
+
+/* ---------- status marks ---------- */
+.spin{display:inline-grid;place-items:center;width:12px;height:12px;font:14px/1 var(--mono);color:var(--fg-1);flex:none}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
+.dot.attn{background:var(--attn)}.dot.unv{background:var(--unv)}.dot.fail{background:var(--fail)}
+.ring{width:8px;height:8px;border-radius:50%;display:inline-block;box-shadow:inset 0 0 0 1.5px var(--faint)}
+.ring.attn{box-shadow:inset 0 0 0 1.5px var(--attn)}
+.diamond{width:7px;height:7px;background:var(--fail);transform:rotate(45deg) scale(.86);border-radius:1px;display:inline-block}
+
+/* ---------- project colour: a mark, and the tint of tabs and of the selected session ---------- */
+.pmark{width:16px;height:16px;border-radius:5px;display:inline-grid;place-items:center;flex:none;background:color-mix(in srgb,var(--tone) 24%,transparent);color:var(--tone);font:700 9.5px/1 var(--ui)}
+.pmark.sm{width:14px;height:14px;border-radius:4px;font-size:8.5px}
+.pmark.lg{width:26px;height:26px;border-radius:8px;font-size:12.5px}
+[data-theme=light] .pmark{background:color-mix(in srgb,var(--tone) 15%,transparent)}
+
+/* ---------- sidebar ---------- */
+.side{width:260px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--canvas);position:relative;min-height:0}
+.side-top{height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 20px}
+.lights{display:flex;gap:8px}
+.lights i{width:12px;height:12px;border-radius:50%;background:#FF5F57;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.25)}
+.lights i:nth-child(2){background:#FEBC2E}.lights i:nth-child(3){background:#28C840}
+.search{margin:0 12px 10px;height:30px;flex:none;display:flex;align-items:center;gap:8px;padding:0 6px 0 10px;border-radius:8px;box-shadow:inset 0 0 0 1px var(--line-2);color:var(--faint);font-size:13px;transition:box-shadow .12s}
+.search:hover{box-shadow:inset 0 0 0 1px var(--line-3)}
+.search svg{width:15px;height:15px}
+.search kbd{margin-left:auto}
+.nav{padding:0 8px 4px}
+.row{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:8px;color:var(--fg-1);font-size:13px;position:relative;cursor:default;transition:background .12s}
+.row:hover{background:var(--hover)}
+.row.sel{background:var(--selected);box-shadow:inset 0 0 0 1px var(--line)}
+.row .ic{width:16px;display:grid;place-items:center;color:var(--fg-2)}
+.row .ic svg{width:15px;height:15px}
+.row .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .meta{font:11px var(--mono);color:var(--fg-3);flex:none}
+.row .badge,.row kbd{margin-left:auto}
+.row.act{color:var(--fg-2)}
+.row.act:hover{color:var(--fg-1)}
+.side-sec{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 8px}
+.view{font:11px var(--mono);color:var(--fg-3)}
+.view b{color:var(--fg-1);font-weight:500}
+.plist{flex:1;min-height:0;overflow:hidden;padding-bottom:8px}
+.pgroup{position:relative;padding:2px 8px 8px}
+.proj-head{height:28px;display:flex;align-items:center;gap:6px;padding:0 8px 0 14px;color:var(--fg-1);font:500 12.5px var(--ui);border-radius:8px;cursor:default}
+.proj-head .pn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.proj-head:hover{background:var(--hover);color:var(--fg-1)}
+.proj-head .chev{margin-left:auto;color:var(--fg-3);opacity:0;transition:opacity .12s}
+.proj-head .chev svg{width:13px;height:13px}
+.proj-head:hover .chev{opacity:1}
+.srow{padding-left:16px}
+.srow.sel{background:color-mix(in srgb,var(--tone) 14%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--tone) 34%,transparent)}
+.srow .ind{width:12px;height:12px;flex:none;display:grid;place-items:center}
+.srow.sel .t{font-weight:500}
+.srow.draft .t{font-style:italic;color:var(--fg-2)}
+.srow .x{margin-left:auto;color:var(--fg-3);opacity:0}
+.srow .x svg{width:12px;height:12px}
+.srow.draft:hover .x{opacity:1}
+.sub{height:24px;display:flex;align-items:center;gap:6px;padding:0 8px 0 35px;position:relative;font-size:11.5px;color:var(--fg-2);border-radius:7px}
+.sub:hover{background:var(--hover)}
+.sub .g{position:absolute;top:0;bottom:0;width:1px;background:var(--tree)}
+.sub .br{position:absolute;top:-7px;width:9px;height:19px;border-left:1px solid var(--tree);border-bottom:1px solid var(--tree);border-bottom-left-radius:7px}
+.sub .br.mid::before{content:"";position:absolute;left:-1px;top:0;height:31px;border-left:1px solid var(--tree)}
+.sub .ind{width:12px;height:12px;display:grid;place-items:center;flex:none}
+.sub .ind.ck{color:var(--fg-3)}
+.sub .ind.ck svg{width:11px;height:11px}
+.sub .spin{font-size:12.5px;color:var(--fg-2)}
+.sub .ty{font-weight:500;color:var(--fg-1);flex:none}
+.sub.done .ty{font-weight:400;color:var(--fg-2)}
+.sub .de{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub .el{font:10.5px var(--mono);color:var(--fg-3);flex:none}
+.side-foot{margin-top:auto;height:46px;flex:none;display:flex;align-items:center;gap:4px;padding:0 10px;border-top:1px solid var(--line)}
+.usage{display:flex;align-items:center;gap:7px;height:26px;padding:0 8px;border-radius:6px;font:11px var(--mono);color:var(--fg-3);transition:background .12s}
+.usage:hover{background:var(--hover)}
+.usage .v{color:var(--fg-2)}
+.meter{width:40px;height:4px;border-radius:2px;background:var(--line-2);position:relative;overflow:hidden}
+.meter i{position:absolute;left:0;top:0;bottom:0;background:var(--fg-2);border-radius:2px}
+
+/* ---------- detail ---------- */
+.detail{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--canvas);color:var(--fg-1);position:relative;overflow:hidden}
+.dhead{height:52px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px 0 20px;border-bottom:1px solid var(--line);position:relative;z-index:3}
+.dhead.bare{border-bottom:0}
+.dtitle{font:600 13px var(--ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dhead .end{margin-left:auto;display:flex;align-items:center;gap:8px}
+.crumb{font:12px var(--mono);color:var(--fg-3)}
+.crumb b{color:var(--fg-2);font-weight:400}
+.dbody{flex:1;min-height:0;display:flex}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.tabbar{height:36px;flex:none;display:flex;align-items:center;gap:4px;padding:0 8px;border-bottom:1px solid var(--line)}
+.tab{height:26px;max-width:230px;display:flex;align-items:center;gap:7px;padding:0 6px;border-radius:7px;font:12.5px var(--ui);color:var(--fg-2);position:relative;cursor:default;white-space:nowrap;background:color-mix(in srgb,var(--tone) 6%,transparent);transition:background .12s,color .12s,box-shadow .12s}
+.tab:hover,.tab.hov{background:color-mix(in srgb,var(--tone) 11%,transparent);color:var(--fg-1)}
+.tab.on{background:color-mix(in srgb,var(--tone) 16%,transparent);color:var(--fg-1);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--tone) 42%,transparent)}
+.tab .ind{width:12px;height:12px;display:grid;place-items:center;flex:none}
+.tab .t{overflow:hidden;text-overflow:ellipsis}
+.tab .x{width:16px;height:16px;border-radius:4px;display:grid;place-items:center;color:var(--fg-3);opacity:0;flex:none}
+.tab .x svg{width:11px;height:11px}
+.tab:hover .x,.tab.on .x{opacity:1}
+.tab .x:hover{background:var(--hover);color:var(--fg-1)}
+.tabbar .ib{width:24px;height:24px}
+
+/* terminal: dark in both appearances, flush on the canvas */
+.term{flex:1;min-height:0;overflow:hidden;padding:16px 20px;font:13px/1.56 var(--mono);color:#D4D4D8;white-space:pre;background:var(--canvas)}
+.term .o{color:#D97757}.term .d{color:#85858F}.term .b{color:#F2F2F4;font-weight:600}.term .u{color:#B8B8C2}
+.term .g{color:#4EC9A0}.term .w{color:#F2F2F4}.term .cy{color:#6CC4DC}
+.term .ad{background:rgba(78,201,160,.13);color:#E6E6EA;display:inline-block;min-width:62ch}
+.term .rm{background:rgba(242,97,92,.13);color:#E6E6EA;display:inline-block;min-width:62ch}
+.term .trule{display:block;height:0;border-top:1px solid #34343B;margin:10px 0 6px}
+.term .cur{display:inline-block;width:.62em;height:1.15em;background:#D4D4D8;vertical-align:-3px}
+
+/* inspector */
+.insp{width:var(--iw,328px);flex:none;border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--canvas)}
+.itabs{height:36px;flex:none;display:flex;align-items:stretch;gap:18px;padding:0 16px;border-bottom:1px solid var(--line)}
+.itab{display:flex;align-items:center;gap:6px;font:500 12.5px var(--ui);color:var(--fg-2);position:relative;white-space:nowrap}
+.itab:hover{color:var(--fg-1)}
+.itab.on{color:var(--fg-1)}
+.itab.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1.5px;background:var(--accent);border-radius:1px}
+.itab .n{font:10.5px var(--mono);color:var(--fg-3)}
+.itab .wd{width:6px;height:6px;border-radius:50%;background:var(--attn)}
+.ipanel{flex:1;min-height:0;overflow:hidden;padding:18px 16px;display:flex;flex-direction:column}
+.isec+.isec{margin-top:22px}
+.ihead{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+.ihead .lk{font-size:11.5px;color:var(--fg-2);display:inline-flex;align-items:center;gap:2px}
+.ihead .lk:hover{color:var(--fg-1)}
+.ihead .lk svg{width:12px;height:12px}
+.facts{display:grid;grid-template-columns:72px 1fr;gap:8px 12px;font-size:12px;align-items:center}
+.facts dt{color:var(--fg-3)}
+.facts dd{display:flex;align-items:center;gap:7px;min-width:0;color:var(--fg-1)}
+.facts dd svg{width:13px;height:13px}
+.facts .m{font:11.5px var(--mono);color:var(--fg-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.facts .ib{width:20px;height:20px;margin-left:auto}
+.facts .ib svg{width:13px;height:13px}
+.ctx{display:flex;align-items:center;gap:12px}
+.ctx svg{width:30px;height:30px}
+.ctx b{font:500 13px var(--ui)}
+.ctx span{display:block;font:11px var(--mono);color:var(--fg-3);margin-top:2px}
+.mini{display:flex;align-items:center;gap:8px;height:24px;font:11.5px var(--mono);color:var(--fg-2)}
+.mini .f{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mini .pm{display:flex;gap:6px;font-size:11px}
+.add{color:var(--ok-text)}.del{color:var(--fail-text)}
+.arow{display:flex;align-items:center;gap:8px;height:26px;font-size:12px}
+.arow .ind{width:12px;display:grid;place-items:center}
+.arow .ty{font-weight:500}
+.arow .de{flex:1;min-width:0;color:var(--fg-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arow .el{font:11px var(--mono);color:var(--fg-3)}
+
+/* Changes */
+.quiet{font-size:12px;color:var(--fg-3);margin:11px 0 14px}
+.files{border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);overflow:hidden;flex:none}
+.fdir{height:28px;display:flex;align-items:center;gap:6px;padding:0 12px;font:11.5px var(--mono);color:var(--fg-3)}
+.fdir svg{width:12px;height:12px}
+.frow{height:29px;display:flex;align-items:center;gap:8px;padding:0 12px 0 30px;font:12px var(--mono);color:var(--fg-2);border-top:1px solid var(--line);cursor:default}
+.frow:hover{background:var(--hover)}
+.frow.on{background:var(--selected);color:var(--fg-1)}
+.frow .st{font:600 10px var(--mono);width:10px;color:var(--fg-3)}
+.frow .pm{margin-left:auto;display:flex;gap:6px;font-size:11px}
+.diff{margin-top:14px;border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);overflow:hidden;background:var(--raise-1);flex:none}
+.diff-h{height:36px;display:flex;align-items:center;gap:8px;padding:0 6px 0 12px;border-bottom:1px solid var(--line);font:11.5px var(--mono);color:var(--fg-2)}
+.diff-h .btn{margin-left:auto}
+.dl{display:grid;grid-template-columns:36px 36px 16px 1fr;font:11.5px/20px var(--mono);color:var(--fg-2)}
+.dl>span:nth-child(-n+2){text-align:right;padding-right:8px;color:var(--fg-4)}
+.dl .sg{text-align:center}
+.dl .tx{white-space:pre;overflow:hidden;text-overflow:ellipsis}
+.dl.a{background:var(--add-band);color:var(--fg-1)}.dl.a .sg{color:var(--ok-text)}
+.dl.r{background:var(--del-band);color:var(--fg-1)}.dl.r .sg{color:var(--fail-text)}
+.dl.h{color:var(--fg-3);padding:4px 0;font-size:11px}
+.dl.h .tx{grid-column:1/5;padding-left:12px;text-align:left;color:var(--fg-3)}
+
+/* Agents */
+.agent{display:grid;grid-template-columns:14px 1fr auto;gap:3px 8px;align-items:center;padding:10px 12px;border-radius:10px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line);margin-bottom:6px;cursor:default}
+.agent:hover{box-shadow:inset 0 0 0 1px var(--line-2)}
+.agent.on{box-shadow:inset 0 0 0 1px var(--line-3);background:var(--raise-2)}
+.agent .ind{display:grid;place-items:center}
+.agent .ty{font:500 12.5px var(--ui)}
+.agent .el{font:11px var(--mono);color:var(--fg-3)}
+.agent .de{grid-column:2/4;font-size:12px;color:var(--fg-2)}
+.fold{display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;color:var(--fg-2);font-size:12px;border-radius:8px}
+.fold:hover{background:var(--hover);color:var(--fg-1)}
+.fold svg{width:13px;height:13px}
+.stream{margin-top:12px;border-top:1px solid var(--line);padding-top:14px}
+.ev{display:grid;grid-template-columns:52px 1fr;gap:8px;font:11.5px/1.55 var(--mono);color:var(--fg-2);padding:2px 0}
+.ev .k{color:var(--fg-3)}
+.ev.txt{display:block;font:12.5px/1.55 var(--ui);color:var(--fg-1);padding:8px 0 2px}
+
+/* Side */
+.sideh{display:flex;align-items:flex-start;gap:8px}
+.sideh h4{font:600 13px var(--ui)}
+.sideh p{font-size:11.5px;color:var(--fg-3);margin-top:3px;line-height:1.45}
+.sideh .ib{margin-left:auto}
+.earlier{margin-top:12px;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-2)}
+.earlier svg{width:12px;height:12px}
+.qst{margin:18px 0 8px;font:500 12.5px var(--ui);color:var(--fg-2)}
+.ans{font-size:13px;line-height:1.58;color:var(--fg-1)}
+.ans code{font:11.5px var(--mono);padding:1px 5px;border-radius:4px;background:var(--hover)}
+.acts{display:flex;align-items:center;gap:6px;margin-top:10px;flex-wrap:wrap}
+.acts small{font-size:11px;color:var(--fg-3)}
+.minic{margin-top:auto;border-radius:12px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line-2);padding:11px 12px 8px}
+.minic .ph{font-size:13px;color:var(--faint);height:22px}
+.minic .bar{display:flex;align-items:center;gap:4px;margin-top:6px}
+.minic .bar .sp{flex:1}
+.minic .lbl{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--fg-2);padding:0 6px}
+.minic .send{width:26px;height:26px}
+
+/* popovers: menus and the palette */
+.pop{position:absolute;z-index:40;background:var(--popover);border-radius:12px;box-shadow:var(--sh-pop);padding:6px;min-width:250px;opacity:0;transform:translateY(3px);pointer-events:none}
+.pop.open{opacity:1;transform:none;pointer-events:auto;transition:opacity .16s var(--ease),transform .16s var(--ease)}
+.pop.static{position:relative;opacity:1;transform:none;pointer-events:auto;z-index:1}
+.mi{height:28px;display:flex;align-items:center;gap:10px;padding:0 8px;border-radius:7px;font-size:13px;color:var(--fg-1);width:100%;cursor:default}
+.mi:hover,.mi.cur{background:var(--hover)}
+[data-theme=dark] .mi:hover,[data-theme=dark] .mi.cur{background:rgba(255,255,255,.07)}
+.mi .ic{width:16px;color:var(--fg-2);display:grid;place-items:center}
+.mi .ic svg{width:15px;height:15px}
+.mi kbd{margin-left:auto}
+.mi.dis{color:var(--fg-3)}
+.mi.dis:hover{background:none}
+.mi.dis .ic{color:var(--fg-4)}
+.mi.danger,.mi.danger .ic{color:var(--fail-text)}
+.mnote{padding:0 8px 6px 34px;font-size:11.5px;color:var(--fg-3);margin-top:-2px}
+.msep{height:1px;background:var(--line);margin:6px -6px}
+.mlabel{display:block;padding:8px 8px 7px}
+.scrim{position:absolute;inset:0;z-index:45;background:rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .16s}
+[data-theme=light] .scrim{background:rgba(42,38,34,.22)}
+.scrim.open{opacity:1;pointer-events:auto}
+.palette{position:absolute;left:50%;top:88px;width:620px;margin-left:-310px;z-index:46;background:var(--popover);border-radius:14px;box-shadow:var(--sh-pop);overflow:hidden;opacity:0;transform:translateY(4px);pointer-events:none}
+.palette.open{opacity:1;transform:none;pointer-events:auto;transition:opacity .16s var(--ease),transform .16s var(--ease)}
+.palette.static{position:relative;left:auto;top:auto;margin:0;opacity:1;transform:none;pointer-events:auto;width:100%;max-width:620px;z-index:1}
+.pal-in{height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line);color:var(--fg-3)}
+.pal-in svg{width:17px;height:17px}
+.pal-in input{flex:1;background:none;border:0;outline:0;font-size:15px;color:var(--fg-1);caret-color:var(--accent)}
+.pal-in input::placeholder{color:var(--faint)}
+.pal-list{padding:4px 8px 8px}
+.pal-h{height:28px;display:flex;align-items:flex-end;padding:0 8px 7px}
+.prow{height:34px;display:flex;align-items:center;gap:10px;padding:0 8px;border-radius:9px;font-size:13px;cursor:default}
+.prow.cur{background:var(--hover)}
+[data-theme=dark] .prow.cur{background:rgba(255,255,255,.07)}
+.prow .ind{width:16px;display:grid;place-items:center;color:var(--fg-2)}
+.prow .ind svg{width:15px;height:15px}
+.prow b{font-weight:600;color:var(--fg-1)}
+.prow .m{margin-left:auto;font:11px var(--mono);color:var(--fg-3);display:flex;align-items:center;gap:8px}
+.pal-foot{height:34px;display:flex;align-items:center;gap:16px;padding:0 16px;border-top:1px solid var(--line);font:11px var(--mono);color:var(--fg-3)}
+.pal-foot b{font-weight:500;color:var(--fg-2)}
+
+/* ---------- the art layer ---------- */
+.artbg{position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:28px 28px;background-position:center center;
+  -webkit-mask-image:radial-gradient(ellipse 78% 74% at 50% 46%,#000 38%,transparent 100%);mask-image:radial-gradient(ellipse 78% 74% at 50% 46%,#000 38%,transparent 100%)}
+.ocean{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block}
+.ocean.calm{-webkit-mask-image:radial-gradient(ellipse 40% 30% at 50% 40%,rgba(0,0,0,.22),#000 85%);mask-image:radial-gradient(ellipse 40% 30% at 50% 40%,rgba(0,0,0,.22),#000 85%)}
+.ocean.band{-webkit-mask-image:linear-gradient(#000 45%,transparent 100%);mask-image:linear-gradient(#000 45%,transparent 100%)}
+.fishline{position:relative;height:18px;overflow:hidden;font:11px/18px var(--mono);color:var(--fg-3);width:100%}
+.fishline span{position:absolute;top:0;left:-70px;white-space:pre;animation:swim 18s linear infinite}
+.fishline span:nth-child(2){animation-duration:27s;animation-delay:-11s;opacity:.55}
+@keyframes swim{to{left:100%}}
+
+/* ---------- draft (new session) ---------- */
+.draftpage{position:relative;z-index:2;width:720px;margin:0 auto;padding-top:126px;text-align:center}
+.ask{font:200 46px/1.12 var(--display);letter-spacing:-.032em;color:var(--fg-1)}
+.pick{font:inherit;letter-spacing:inherit;color:var(--fg-1);display:inline-flex;align-items:center;gap:4px;line-height:1;padding-bottom:4px;
+  background:linear-gradient(color-mix(in srgb,var(--tone) 85%,transparent),color-mix(in srgb,var(--tone) 85%,transparent)) left bottom/100% 2px no-repeat}
+.pick svg{width:20px;height:20px;color:var(--fg-3);margin-top:6px}
+.pick:hover svg{color:var(--fg-1)}
+.folder{margin-top:16px;font:12px var(--mono);color:var(--fg-3);display:flex;justify-content:center;gap:10px}
+.composer{margin:30px auto 0;width:680px;text-align:left;border-radius:18px;background:var(--raise-2);box-shadow:var(--sh-composer);padding:15px 12px 10px 18px}
+.composer textarea{display:block;width:100%;height:68px;resize:none;border:0;outline:0;background:none;font:15px/1.55 var(--ui);color:var(--fg-1);caret-color:var(--accent)}
+.composer textarea::placeholder{color:var(--faint)}
+.cbar{display:flex;align-items:center;gap:2px;margin:4px 0 0 -8px}
+.cchip{height:28px;display:inline-flex;align-items:center;gap:6px;padding:0 9px;border-radius:8px;font:500 12px var(--ui);color:var(--fg-2);white-space:nowrap;transition:background .12s,color .12s}
+.cchip svg{width:14px;height:14px}
+.cchip:hover{background:var(--hover);color:var(--fg-1)}
+.cchip.mode{color:var(--accent-hi)}
+.cchip .eff{color:var(--fg-3);font-weight:400}
+.send{margin-left:auto;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--fg-4);color:var(--canvas);transition:background .12s;flex:none}
+.send svg{width:16px;height:16px;stroke-width:1.8}
+.send.ready{background:var(--accent);color:var(--on-accent)}
+.keys{margin-top:14px;font:11px var(--mono);color:var(--fg-3);display:flex;justify-content:center;gap:18px}
+.keys b{color:var(--fg-2);font-weight:500}
+.under{display:flex;justify-content:center;margin-top:26px}
+.presets{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:14px}
+.pchip{height:26px;display:inline-flex;align-items:center;padding:0 11px;border-radius:13px;box-shadow:inset 0 0 0 1px var(--line-2);font-size:12px;color:var(--fg-2);background:color-mix(in srgb,var(--canvas) 72%,transparent);transition:color .12s,box-shadow .12s}
+.pchip:hover{color:var(--fg-1);box-shadow:inset 0 0 0 1px var(--line-3)}
+.recent{position:absolute;right:0;top:0}
+
+/* ---------- Home ---------- */
+.home{position:relative;flex:1;min-height:0;overflow:hidden;padding:0 32px}
+.hero{position:relative;z-index:2;max-width:1000px;margin:0 auto;padding:84px 0 34px}
+.hero h1{font:200 42px/1.12 var(--display);letter-spacing:-.03em;margin:14px 0 12px}
+.hero h1 em{font-style:normal;color:var(--attn-text)}
+.hero p{font-size:13px;color:var(--fg-2)}
+.hero p b{color:var(--fg-1);font-weight:500}
+.hcols{position:relative;z-index:2;max-width:1000px;margin:0 auto;display:grid;grid-template-columns:1fr 316px;gap:24px;align-items:start}
+.card{background:var(--raise-1);border-radius:12px;box-shadow:inset 0 0 0 1px var(--line),var(--sh-card)}
+.lc+.lc{margin-top:14px}
+.lc-h{height:42px;display:flex;align-items:center;gap:9px;padding:0 16px;font:600 13px var(--ui)}
+.lc-h .n{font:11px var(--mono);color:var(--fg-3);font-weight:400}
+.hrow{position:relative;padding:11px 16px 12px;border-top:1px solid var(--line);display:grid;grid-template-columns:12px 1fr auto;gap:3px 10px;align-items:center;cursor:default;transition:background .12s}
+.hrow:hover{background:var(--hover)}
+.hrow .ind{display:grid;place-items:center}
+.hrow .t{font:500 13px var(--ui);display:flex;align-items:center;gap:10px;min-width:0}
+.pj{display:inline-flex;align-items:center;gap:6px;font:11px var(--mono);color:var(--fg-3);font-weight:400}
+.hrow .age{font:11px var(--mono);color:var(--fg-3)}
+.hrow .why{grid-column:2/3;font-size:12px;color:var(--fg-2)}
+.hrow .acts{grid-column:3;grid-row:2;margin:0;opacity:0;transition:opacity .12s;justify-content:flex-end}
+.hrow:hover .acts,.hrow.hov .acts{opacity:1}
+.hrow.one{padding:9px 16px}
+.sc{padding:16px}
+.sc-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.sc-h b{font:600 13px var(--ui)}
+.sc-h span{font:11px var(--mono);color:var(--fg-3)}
+.pace{margin-top:14px}
+.pace .l{display:flex;justify-content:space-between;font-size:12px}
+.pace .l b{font-weight:600}
+.pace .l span{color:var(--fg-2)}
+.ptrack{position:relative;height:6px;border-radius:3px;background:var(--line-2);margin:8px 0 7px}
+.ptrack i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--fg-2)}
+.ptrack em{position:absolute;top:-2px;width:2px;height:10px;border-radius:1px;background:var(--fg-1)}
+.pace small{font-size:11px;color:var(--fg-3)}
+.today{font-size:12.5px;color:var(--fg-2);margin-top:8px;line-height:1.7}
+.today b{color:var(--fg-1);font-weight:600}
+.sc+.sc{margin-top:14px}
+
+/* ---------- parts sheet ---------- */
+.parts{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+.spec{grid-column:span 4;background:var(--canvas);border-radius:14px;box-shadow:inset 0 0 0 1px var(--line);padding:18px 20px 20px;position:relative;overflow:hidden}
+.spec.w5{grid-column:span 5}.spec.w6{grid-column:span 6}.spec.w7{grid-column:span 7}.spec.w8{grid-column:span 8}.spec.w12{grid-column:span 12}
+.spec>.label{display:block;margin-bottom:18px}
+.spec .note{margin-top:16px;font-size:11.5px;color:var(--fg-3);line-height:1.55}
+.ln{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ln+.ln{margin-top:12px}
+.ln .cap{font:11px var(--mono);color:var(--fg-3);width:96px;flex:none}
+.marks{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 10px}
+.mk{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--fg-2)}
+.mk .ind{width:14px;display:grid;place-items:center}
+.callout{border-radius:12px;background:var(--attn-wash);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--attn) 32%,transparent);padding:14px 16px}
+.callout h5{font:600 13px var(--ui);display:flex;align-items:center;gap:8px}
+.callout .meta{font:11.5px var(--mono);color:var(--fg-2);margin:6px 0 8px}
+.callout p{font-size:12.5px;color:var(--fg-1);line-height:1.5}
+.callout .acts{justify-content:flex-end;margin-top:12px}
+.empty{text-align:center;padding:10px 0 4px}
+.empty canvas{width:100%;height:80px;display:block}
+.empty h6{font:600 13px var(--ui);margin-top:8px}
+.empty p{font-size:12px;color:var(--fg-3);margin-top:3px}
+
+/* ---------- tokens ---------- */
+.tok{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+.swatches{display:grid;grid-template-columns:repeat(2,1fr);gap:0 28px}
+.swcol h4{font:500 12px var(--ui);color:var(--fg-2);margin-bottom:10px}
+.sw-row{display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:center;height:30px;font-size:12px}
+.sw-row i{width:30px;height:20px;border-radius:5px;box-shadow:inset 0 0 0 1px rgba(128,128,128,.25)}
+.sw-row span:last-child{font:11px var(--mono);color:var(--fg-3)}
+.tones{display:flex;gap:6px;margin-top:10px}
+.tones i{flex:1;height:20px;border-radius:5px}
+.tyrow{display:grid;grid-template-columns:150px 1fr;gap:6px 18px;align-items:baseline}
+.tyrow .k{font:11px var(--mono);color:var(--fg-3)}
+.tyrow+.tyrow{margin-top:14px}
+.shape{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+.shape div{display:flex;flex-direction:column;align-items:center;gap:8px;font:11px var(--mono);color:var(--fg-3)}
+.shape b{display:block;width:52px;height:40px;box-shadow:inset 0 0 0 1px var(--line-3);background:var(--hover)}
+.hts{display:flex;align-items:flex-end;gap:12px;margin-top:20px}
+.hts div{display:flex;flex-direction:column;align-items:center;gap:8px;font:11px var(--mono);color:var(--fg-3)}
+.hts b{display:block;width:40px;border-radius:5px;background:var(--hover);box-shadow:inset 0 0 0 1px var(--line-2)}
+.motion{display:grid;grid-template-columns:130px 1fr;gap:9px 16px;font-size:12.5px}
+.motion dt{font:11.5px var(--mono);color:var(--fg-1)}
+.motion dd{color:var(--fg-2)}
+.react{list-style:none;counter-reset:r;display:grid;grid-template-columns:repeat(2,1fr);gap:12px 28px}
+.react li{counter-increment:r;position:relative;padding-left:30px;font-size:13px;color:var(--fg-2);line-height:1.55}
+.react li::before{content:counter(r,decimal-leading-zero);position:absolute;left:0;top:1px;font:11px var(--mono);color:var(--fg-3)}
+.react li b{color:var(--fg-1);font-weight:500}
+footer{padding:56px 0 72px;font:11px var(--mono);color:var(--fg-3)}
+.pcgrid{display:grid;grid-template-columns:1.1fr 1.4fr 1fr;gap:28px}
+.cap2{font:11px var(--mono);color:var(--fg-3);margin-bottom:12px}
+.rnote{font-size:12px;color:var(--fg-2);line-height:1.6;padding-top:4px}
+.schoolbox{position:relative;height:400px;border-radius:14px;overflow:hidden;background:var(--canvas);box-shadow:inset 0 0 0 1px var(--line)}
+.cast{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px}
+.who{background:var(--canvas);border-radius:14px;box-shadow:inset 0 0 0 1px var(--line);padding:4px 20px 20px}
+.who canvas{width:100%;height:150px;display:block}
+.who h4{font:600 14px var(--ui);margin-top:4px;display:flex;align-items:baseline;gap:10px}
+.who h4 span{font:400 11px var(--mono);color:var(--fg-3)}
+.who p{font-size:12.5px;color:var(--fg-2);margin-top:8px;line-height:1.55}
+.flow{margin-top:16px;background:var(--canvas);border-radius:14px;box-shadow:inset 0 0 0 1px var(--line);padding:18px 20px 6px}
+.flow>.label{display:block;margin-bottom:6px}
+.flrow{display:grid;grid-template-columns:200px 250px 1fr;gap:16px;padding:11px 0;border-top:1px solid var(--line);font-size:12.5px;align-items:baseline}
+.flrow b{font-weight:500}
+.flrow span{font:11.5px var(--mono);color:var(--fg-1)}
+.flrow p{color:var(--fg-2)}
+/* ============================================================
+   Phase 2: the chat. Everything below uses Phase 1's tokens,
+   plus the mode tones and the code colours (DESIGN.md §3, §7).
+   ============================================================ */
+:root,[data-theme=dark]{
+  --bubble:rgba(255,255,255,.07);
+  --m-ask:#7FC8D8;--m-abe:#A9B0E3;--m-acc:#86D3A4;--m-auto:#D9C677;--m-full:#EF9C70;--m-plan:#B9A0E6;
+  --syn-tx:#D4D4D4;--syn-kw:#569CD6;--syn-ctl:#C586C0;--syn-ty:#4EC9B0;--syn-str:#CE9178;--syn-num:#B5CEA8;--syn-com:#6A9955;--syn-fn:#DCDCAA;--syn-var:#9CDCFE;
+  --thumb:#FFFFFF;--sh-card2:0 14px 36px rgba(0,0,0,.34),0 1px 2px rgba(0,0,0,.4);
+}
+[data-theme=light]{
+  --bubble:rgba(30,28,26,.06);
+  --m-ask:#0E6B7A;--m-abe:#3A4491;--m-acc:#1B6B3F;--m-auto:#745B00;--m-full:#9E4108;--m-plan:#6B46B0;
+  --syn-tx:#1F1E22;--syn-kw:#0000FF;--syn-ctl:#AF00DB;--syn-ty:#1F6E86;--syn-str:#A31515;--syn-num:#07714A;--syn-com:#008000;--syn-fn:#795E26;--syn-var:#001080;
+  --thumb:#FBF8F2;--sh-card2:0 12px 30px rgba(30,28,26,.09),0 1px 2px rgba(30,28,26,.06);
+}
+.grow{flex:1;min-width:0}
+.ib.sm{width:22px;height:22px;border-radius:5px}
+.ib.sm svg{width:13px;height:13px}
+.lk2{height:22px;display:inline-flex;align-items:center;gap:5px;padding:0 6px;border-radius:6px;font:500 11.5px var(--ui);color:var(--fg-2);white-space:nowrap;transition:background .12s,color .12s;flex:none}
+.lk2:hover{background:var(--hover);color:var(--fg-1)}
+.lk2 svg{width:13px;height:13px}
+.lk2.acc{color:var(--accent-hi)}
+.lk2.dis{opacity:.45;cursor:default}
+.lk2.dis:hover{background:none;color:var(--fg-2)}
+.tm{font:11px var(--mono);color:var(--fg-3);white-space:nowrap;flex:none}
+
+/* ---------- the chat face: a stream over a docked composer ---------- */
+.chat{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.scroller{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--line-3) transparent;
+  -webkit-mask-image:linear-gradient(#000 calc(100% - 18px),transparent);mask-image:linear-gradient(#000 calc(100% - 18px),transparent)}
+.col{width:min(700px,calc(100% - 64px));margin:0 auto;padding:30px 0 20px}
+.viewchip{position:absolute;top:10px;right:12px;z-index:5;height:24px;display:inline-flex;align-items:center;gap:7px;padding:0 5px 0 8px;border-radius:6px;font:500 11.5px var(--ui);color:var(--fg-2);
+  background:color-mix(in srgb,var(--canvas) 92%,transparent);box-shadow:inset 0 0 0 1px var(--line-2);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);transition:color .12s,box-shadow .12s}
+.viewchip:hover{color:var(--fg-1);box-shadow:inset 0 0 0 1px var(--line-3)}
+.viewchip svg{width:13px;height:13px}
+.viewchip kbd{font-size:10px;line-height:15px;padding:0 4px}
+.viewchip.compact{padding:0 5px;gap:5px}
+
+/* your message: the one bubble */
+.you{display:flex;flex-direction:column;align-items:flex-end;margin:28px 0 6px}
+.col>.you:first-child{margin-top:0}
+.bubble{max-width:min(80%,560px);padding:9px 14px 10px;border-radius:12px;background:var(--bubble);font:14px/22px var(--ui);color:var(--fg-1);white-space:pre-wrap;overflow-wrap:anywhere;text-align:left}
+.bubble.long{max-height:164px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 60%,transparent);mask-image:linear-gradient(#000 60%,transparent)}
+.bubble .at{font:12.5px var(--mono);color:var(--accent-hi)}
+.you.pending .bubble{opacity:.5}
+.you-foot{height:26px;display:flex;align-items:center;gap:2px;margin:3px -6px 0 0;opacity:0;transition:opacity .12s}
+.you-foot .tm{padding:0 4px}
+.you:hover .you-foot,.you.hov .you-foot{opacity:1}
+.you-mark{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:2px 6px;margin-top:6px;font-size:11.5px;color:var(--fg-3)}
+.you-mark>*{white-space:nowrap}
+.you-mark i{font-style:normal;color:var(--fg-4)}
+.you-mark .lk2{height:20px;margin:0 -6px 0 -2px}
+.you-mark.fail{color:var(--fail-text)}
+.you-mark.fail .lk2{color:var(--fg-2)}
+.you .lk2.acc{margin-top:4px;margin-right:-6px}
+
+/* Claude's prose: the page */
+.prose{font:14px/22px var(--ui);color:var(--fg-1);margin:14px 0;overflow-wrap:break-word}
+.prose>*+*{margin-top:12px}
+.prose ul,.prose ol{padding-left:22px}
+.prose li+li{margin-top:4px}
+.prose li::marker{color:var(--fg-3)}
+.prose b{font-weight:600}
+.prose code{font:12.5px var(--mono);padding:1px 5px;border-radius:4px;background:var(--hover);box-shadow:inset 0 0 0 1px var(--line)}
+.prose h4{font:600 14px/22px var(--ui)}
+.prose blockquote{padding-left:12px;border-left:2px solid var(--line-3);color:var(--fg-2)}
+.reply{position:relative}
+.reply-foot{height:26px;display:flex;align-items:center;gap:2px;margin:-8px 0 0 -6px;opacity:0;transition:opacity .12s}
+.reply:hover .reply-foot,.reply.hov .reply-foot{opacity:1}
+
+/* work: one quiet line per step, opened in place */
+.witem{position:relative}
+.wrow{height:26px;display:flex;align-items:center;gap:8px;margin:0 -8px;padding:0 8px;border-radius:8px;font:12.5px var(--ui);color:var(--fg-2);white-space:nowrap;cursor:default;transition:background .12s,color .12s}
+.wrow:hover{background:var(--hover);color:var(--fg-1)}
+.wrow .wi{width:16px;height:16px;display:grid;place-items:center;color:var(--fg-3);flex:none}
+.wrow .wi svg{width:14px;height:14px}
+.wrow .wi .spin{font-size:13px;color:var(--fg-2)}
+.wrow .ar{font:12px var(--mono);color:var(--fg-2);min-width:0;overflow:hidden;text-overflow:ellipsis}
+.wrow:hover .ar{color:var(--fg-1)}
+.wrow .pm{font:11.5px var(--mono);display:inline-flex;gap:6px;flex:none}
+.wrow .ex{font:11.5px var(--mono);color:var(--fail-text);flex:none}
+.wrow .rt{color:var(--fg-3);flex:none}
+.wrow .tm{margin-left:auto;padding-left:8px;opacity:0;transition:opacity .12s}
+.wrow:hover .tm{opacity:1}
+.wrow .cv{width:14px;display:grid;place-items:center;color:var(--fg-3);flex:none;transition:transform .16s var(--ease)}
+.wrow .cv svg{width:12px;height:12px}
+.wrow.flat{cursor:default}
+.wrow.flat:hover{background:none;color:var(--fg-2)}
+.witem.open>.wrow .cv{transform:rotate(90deg)}
+.witem>.wkids,.witem>.wbody{display:none}
+.witem.open>.wkids,.witem.open>.wbody{display:block}
+.witem.fail>.wrow{color:var(--fg-1)}
+.witem.fail>.wrow .wi{color:var(--fail)}
+/* a group's steps branch from its icon, as subagents branch in the sidebar */
+.wkids>.witem>.wrow{padding-left:24px}
+.wkids>.witem::before{content:"";position:absolute;left:8px;top:-7px;width:7px;height:20px;border-left:1px solid var(--tree);border-bottom:1px solid var(--tree);border-bottom-left-radius:6px;pointer-events:none}
+.wkids>.witem:not(:last-child)::after{content:"";position:absolute;left:8px;top:6px;bottom:0;border-left:1px solid var(--tree);pointer-events:none}
+.wbody{margin:3px 0 10px 24px}
+.wkids .wbody{margin-left:40px}
+.out{border-radius:8px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.out-h{height:28px;display:flex;align-items:center;gap:8px;padding:0 4px 0 12px;border-bottom:1px solid var(--line);font:11px var(--mono);color:var(--fg-3);white-space:nowrap}
+.out-h b{font-weight:400;color:var(--fg-2);overflow:hidden;text-overflow:ellipsis}
+.out pre{margin:0;padding:8px 12px 10px;font:11.5px/18px var(--mono);color:var(--fg-2);white-space:pre;overflow:auto;max-height:306px}
+.out pre .e{color:var(--fail-text)}
+.out pre .g{color:var(--ok-text)}
+.out pre .h{color:var(--fg-1)}
+.out.fail{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--fail) 36%,transparent)}
+.out.fail .out-h{color:var(--fail-text);border-bottom-color:color-mix(in srgb,var(--fail) 22%,transparent)}
+.out .dl{grid-template-columns:34px 34px 16px 1fr}
+.out-f{height:30px;display:flex;align-items:center;gap:8px;padding:0 4px 0 12px;border-top:1px solid var(--line);font:11px var(--mono);color:var(--fg-3)}
+.out-f .grow{flex:1}
+.hits{padding:6px 0 8px}
+.hit{display:grid;grid-template-columns:1fr auto;gap:12px;padding:0 12px;font:11.5px/20px var(--mono);color:var(--fg-2)}
+.hit span:last-child{color:var(--fg-3)}
+
+/* thinking */
+.thought{margin:16px 0 0 21px;font:italic 12.5px/19px var(--ui);color:var(--fg-3);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.think{display:none}
+.chat[data-view=thinking] .think,.chat[data-view=verbose] .think{display:block}
+.chat[data-view=thinking] .thought,.chat[data-view=verbose] .thought{display:none}
+.wbody.tb{font:italic 12.5px/20px var(--ui);color:var(--fg-2);margin:2px 0 10px 24px}
+.wrow .wi .ast{font:600 13px/1 var(--mono);color:var(--fg-3)}
+
+/* the turn's fold, and the live line */
+.tfold{margin:8px 0 4px}
+.foldrow{height:28px;width:100%;display:flex;align-items:center;gap:8px;font:12.5px var(--ui);color:var(--fg-3);white-space:nowrap;cursor:default;transition:color .12s}
+.foldrow:hover{color:var(--fg-1)}
+.foldrow .cv{width:14px;display:grid;place-items:center;transition:transform .16s var(--ease)}
+.foldrow .cv svg{width:12px;height:12px}
+.foldrow .mono{font-size:11.5px}
+.foldrow::after{content:"";flex:1;height:1px;background:var(--line);margin-left:6px}
+.tfold.open>.foldrow .cv{transform:rotate(90deg)}
+.foldbody{display:none;position:relative;padding:2px 0 6px 22px}
+.tfold.open>.foldbody{display:block}
+.foldbody::before{content:"";position:absolute;left:7px;top:0;bottom:10px;border-left:1px solid var(--tree)}
+.foldbody>.prose:first-child{margin-top:6px}
+.live{height:28px;display:flex;align-items:center;gap:9px;margin:6px 0 0;font:12.5px var(--ui);color:var(--fg-1);white-space:nowrap}
+.live .mk2{width:12px;display:grid;place-items:center;flex:none}
+.live .spin{font-size:14px}
+.live .ar{font:12px var(--mono);overflow:hidden;text-overflow:ellipsis;min-width:0}
+.live .clk{font:11.5px var(--mono);color:var(--fg-3);flex:none}
+.live i{font-style:normal;color:var(--fg-4)}
+.live.wait{color:var(--attn-text)}
+.live.quiet{color:var(--fg-2)}
+
+/* markers: a hairline and a centred label */
+.marker{display:flex;align-items:center;gap:12px;margin:28px 0;font:11px var(--mono);color:var(--fg-3);white-space:nowrap}
+.marker::before,.marker::after{content:"";flex:1;height:1px;background:var(--line)}
+.marker .lk2{font:500 11px var(--ui);height:20px;margin:0 -4px}
+.auto{display:flex;align-items:center;gap:8px;height:26px;margin:22px 0 4px;font:12.5px var(--ui);color:var(--fg-2)}
+.auto .wi{width:16px;display:grid;place-items:center;color:var(--fg-3)}
+.auto .wi svg{width:14px;height:14px}
+.auto .ar{font:12px var(--mono);color:var(--fg-3)}
+
+/* subagents in the stream */
+.agents{margin:12px 0}
+.agents-h{height:26px;display:flex;align-items:center;gap:8px;font:12.5px var(--ui);color:var(--fg-2)}
+.agents-h .wi{width:16px;display:grid;place-items:center;color:var(--fg-3)}
+.agents-h .wi svg{width:14px;height:14px}
+.acard{display:grid;grid-template-columns:16px minmax(0,1fr) auto;column-gap:8px;row-gap:3px;align-items:center;padding:10px 12px;border-radius:12px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line);margin-top:6px;cursor:default;transition:box-shadow .12s}
+.acard:hover{box-shadow:inset 0 0 0 1px var(--line-2)}
+.acard .ind{display:grid;place-items:center;color:var(--fg-3)}
+.acard .ind svg{width:12px;height:12px}
+.acard .hd{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap}
+.acard .ty{font:500 12.5px var(--ui);color:var(--fg-1);flex:none}
+.acard .de{font-size:12.5px;color:var(--fg-2);overflow:hidden;text-overflow:ellipsis}
+.acard .el{font:11px var(--mono);color:var(--fg-3)}
+.acard .nw{grid-column:2/4;font-size:12.5px;line-height:19px;color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acard.done .nw{color:var(--fg-3)}
+.acard .ft{grid-column:2/4;display:flex;justify-content:flex-end;margin:0 -6px -4px 0}
+
+/* the changed-files card */
+.ccard{margin:18px 0 6px;border-radius:12px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.ccard-h{height:40px;display:flex;align-items:center;gap:10px;padding:0 6px 0 14px;font:500 12.5px var(--ui);color:var(--fg-1)}
+.ccard-h .pm{font:11.5px var(--mono);display:inline-flex;gap:6px;font-weight:400}
+.ccard-h .lk2{margin-left:auto}
+.ccard .fdir{border-top:1px solid var(--line)}
+.reply+.ccard{margin-top:6px}
+.ccard .fdir+.frow{border-top:0}
+
+/* content */
+.code{border-radius:8px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.code-h{height:30px;display:flex;align-items:center;gap:2px;padding:0 4px 0 12px;border-bottom:1px solid var(--line);font:11px var(--mono);color:var(--fg-3)}
+.code-h .ib{width:24px;height:24px}
+.code-h .ib svg{width:14px;height:14px}
+.code pre{margin:0;padding:10px 14px 12px;font:12.5px/20px var(--mono);color:var(--syn-tx);white-space:pre;overflow-x:auto}
+.code.wrap pre{white-space:pre-wrap}
+.code pre .k{color:var(--syn-kw)}.code pre .x{color:var(--syn-ctl)}.code pre .t{color:var(--syn-ty)}.code pre .s{color:var(--syn-str)}
+.code pre .n{color:var(--syn-num)}.code pre .c{color:var(--syn-com)}.code pre .f{color:var(--syn-fn)}.code pre .v{color:var(--syn-var)}
+.tbl{overflow-x:auto;border-radius:8px;box-shadow:inset 0 0 0 1px var(--line)}
+.tbl table{border-collapse:collapse;width:max-content;min-width:100%;font-size:12.5px;line-height:1.4}
+.tbl th{font:500 11.5px var(--ui);color:var(--fg-2);text-align:left;padding:0 14px;height:30px;white-space:nowrap}
+.tbl td{padding:0 14px;height:30px;border-top:1px solid var(--line);white-space:nowrap}
+.tbl td.m{font:11.5px var(--mono);color:var(--fg-2)}
+
+/* the plan as a document */
+.plandoc{margin:14px 0 6px;border-radius:12px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.pd-h{height:40px;display:flex;align-items:center;gap:8px;padding:0 6px 0 14px;font:600 13px var(--ui);border-bottom:1px solid var(--line)}
+.pd-h .wi{color:var(--m-plan);display:grid}
+.pd-h .wi svg{width:15px;height:15px}
+.pd-h .tm{font-weight:400}
+.pd-b{padding:2px 16px 0;max-height:236px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 70%,transparent);mask-image:linear-gradient(#000 70%,transparent)}
+.pd-b.full{max-height:none;-webkit-mask-image:none;mask-image:none;padding-bottom:4px}
+.pd-f{height:34px;display:flex;align-items:center;padding:0 8px}
+
+/* ---------- the dock: the composer and what sits on it ---------- */
+.dock{flex:none;position:relative;padding:2px 0 12px}
+.dock-in{width:min(700px,calc(100% - 64px));margin:0 auto;position:relative}
+.dock .composer{margin:0;width:auto;padding:12px 10px 0 16px;position:relative;z-index:2}
+.dock .composer textarea{height:44px;font:14px/22px var(--ui)}
+.chat.compact .dock .composer textarea{height:22px}
+.dock .cbar{height:38px;margin:2px 0 0 -8px}
+.cchip.mode{color:var(--mt,var(--accent-hi))}
+.cchip.mode svg{color:var(--mt,var(--accent-hi))}
+.dock .send{margin-left:2px}
+.dock .keys{justify-content:flex-start;gap:16px;margin:8px 0 0 16px}
+.chat.compact .dock .keys{display:none}
+.cring{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;flex:none;transition:background .12s}
+.cring:hover{background:var(--hover)}
+.cring svg{width:16px;height:16px}
+.send.stop{background:var(--fg-1);color:var(--canvas)}
+.send .sq{width:10px;height:10px;border-radius:2.5px;background:currentColor}
+.send.word{width:auto;padding:0 13px 0 10px;border-radius:16px;display:inline-flex;align-items:center;gap:6px;font:600 12.5px var(--ui);background:var(--accent);color:var(--on-accent);white-space:nowrap}
+.send.word svg{width:14px;height:14px}
+.send:disabled{cursor:default}
+.jump{position:absolute;left:50%;top:-42px;z-index:6;height:28px;padding:0 12px 0 9px;border-radius:14px;display:inline-flex;align-items:center;gap:6px;background:var(--popover);box-shadow:var(--sh-pop);font:500 12px var(--ui);color:var(--fg-1);white-space:nowrap;
+  opacity:0;transform:translate(-50%,4px);pointer-events:none;transition:opacity .16s var(--ease),transform .16s var(--ease)}
+.jump.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.jump svg{width:13px;height:13px}
+.cnote{display:flex;align-items:center;gap:6px;margin:0 0 7px 16px;font-size:11.5px;color:var(--fg-3)}
+.cnote svg{width:12px;height:12px}
+
+/* the queue: a drawer tucked behind the composer */
+.qstrip{margin:0 14px -12px;padding:4px 6px 18px;border-radius:12px 12px 0 0;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line);position:relative;z-index:1}
+.qhead{height:28px;display:flex;align-items:center;gap:8px;padding:0 2px 0 8px;font-size:12px;color:var(--fg-2)}
+.qhead .label{color:var(--fg-2)}
+.qhead .cv{display:grid;color:var(--fg-3);transition:transform .16s var(--ease)}
+.qhead .cv svg{width:12px;height:12px}
+.qstrip.shut .qhead .cv{transform:rotate(-90deg)}
+.qstrip.shut .qrow{display:none}
+.qrow{height:30px;display:flex;align-items:center;gap:8px;padding:0 3px 0 8px;border-radius:8px;font-size:12.5px;color:var(--fg-1);transition:background .12s}
+.qrow:hover{background:var(--hover)}
+.qrow .wi{display:grid;color:var(--fg-3)}
+.qrow .wi svg{width:13px;height:13px}
+.qrow .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qrow .qa{display:flex;gap:2px;opacity:0;transition:opacity .12s}
+.qrow:hover .qa{opacity:1}
+.qrow.editing{background:var(--accent-wash);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent)}
+.qrow.editing .qa{opacity:0}
+.qpause{display:none;align-items:center;gap:8px;height:30px;padding:0 3px 0 8px;font-size:12.5px;color:var(--fg-1)}
+.qpause svg{width:13px;height:13px;color:var(--fg-3)}
+.qstrip.paused .qpause{display:flex}
+.qstrip.paused .qhead{display:none}
+.qstrip.paused .qrow{opacity:.6}
+
+/* requests: one pinned card, an orange edge and a dot */
+.pinned{margin:0 0 10px}
+.pcard{border-radius:12px;background:var(--raise-2);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--attn) 34%,transparent),var(--sh-card2);padding:14px 16px 12px}
+.pc-h{display:flex;align-items:center;gap:8px;font:600 13px var(--ui);color:var(--fg-1);white-space:nowrap}
+.pc-h .pc-kind{font:11.5px var(--mono);color:var(--fg-2);font-weight:400}
+.pc-h .cnt{margin-left:auto;font:11px var(--mono);color:var(--fg-3);font-weight:400}
+.pc-h>[data-i]{display:grid;color:var(--fg-2)}
+.pc-h>[data-i] svg{width:15px;height:15px}
+.pc-cmd{margin-top:12px;border-radius:8px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line);padding:8px 12px;font:12px/19px var(--mono);color:var(--fg-1);max-height:111px;overflow:auto;white-space:pre}
+.pc-cmd .pr{color:var(--fg-3);user-select:none}
+.pc-says{margin-top:12px;font-size:12.5px;line-height:1.5;color:var(--fg-2)}
+.pc-says b{color:var(--fg-1);font-weight:600}
+.pc-why{margin-top:2px;font-size:12px;color:var(--fg-3)}
+.pc-q{margin-top:10px;font-size:13px;line-height:1.5;color:var(--fg-1)}
+.pc-sub{margin-top:6px;font:11.5px var(--mono);color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-acts{display:flex;align-items:center;gap:8px;margin-top:12px}
+.pc-acts .grow{flex:1}
+.pc-hint{font:11px var(--mono);color:var(--fg-3);white-space:nowrap}
+.pc-then{font-size:12px;color:var(--fg-2)}
+.pcard .seg button svg{width:13px;height:13px}
+.pcard.cut{box-shadow:inset 0 0 0 1px var(--line-2),var(--sh-card2);opacity:.92}
+.pcard.cut .pc-h>[data-i]{color:var(--fg-3)}
+.opts{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.opt{display:grid;grid-template-columns:20px 1fr;gap:1px 10px;align-items:start;padding:8px 12px 9px 9px;border-radius:8px;box-shadow:inset 0 0 0 1px var(--line-2);text-align:left;cursor:default;transition:background .12s,box-shadow .12s}
+.opt:hover{background:var(--hover);box-shadow:inset 0 0 0 1px var(--line-3)}
+.opt.on{background:var(--accent-wash);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 55%,transparent)}
+.opt .no{width:20px;height:19px;font:11px/19px var(--mono);color:var(--fg-3);text-align:center;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line-2)}
+.opt.on .no{color:var(--on-accent);background:var(--accent);box-shadow:none}
+.opt b{font:500 13px/19px var(--ui);color:var(--fg-1)}
+.opt span:last-child{grid-column:2;font-size:12px;color:var(--fg-2);line-height:1.45}
+.held{width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:10px;background:var(--raise-2);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--attn) 34%,transparent);font:500 12.5px var(--ui);color:var(--fg-1)}
+.held .tm{margin-left:auto}
+.answered{height:32px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:10px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line);font-size:12.5px;color:var(--fg-2);white-space:nowrap;overflow:hidden}
+.answered svg{width:13px;height:13px;color:var(--ok-text);flex:none}
+.answered .ar{font:12px var(--mono);color:var(--fg-1);overflow:hidden;text-overflow:ellipsis}
+
+/* banners: one shows, the rest wait behind a peek */
+.banner{position:relative;display:flex;align-items:center;gap:10px;min-height:36px;padding:0 6px 0 12px;border-radius:10px;background:var(--raise-2);box-shadow:inset 0 0 0 1px var(--line-2);font-size:12.5px;color:var(--fg-1)}
+.banner>[data-i]{display:grid;color:var(--fg-3);flex:none}
+.banner>[data-i] svg{width:14px;height:14px}
+.banner.attn{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--attn) 34%,transparent)}
+.banner.attn>[data-i]{color:var(--attn)}
+.banner .peek{font:11px var(--mono);color:var(--fg-3);padding:0 4px}
+.banner.stack{margin-top:6px}
+.banner.stack::before{content:"";position:absolute;left:10px;right:10px;top:-5px;height:5px;border-radius:7px 7px 0 0;background:var(--raise-1);box-shadow:inset 0 1px 0 var(--line-2),inset 1px 0 0 var(--line-2),inset -1px 0 0 var(--line-2)}
+
+/* pick lists: the mode, the model, the effort, / and @ */
+.pop.pl{padding:6px;min-width:0}
+.plh{display:flex;align-items:center;justify-content:space-between;padding:7px 8px 6px;font:500 11.5px var(--ui);color:var(--fg-3)}
+.pr2{display:grid;grid-template-columns:16px 1fr 14px;gap:1px 10px;align-items:start;padding:7px 10px 8px;border-radius:8px;color:var(--fg-1);cursor:default;text-align:left;width:100%}
+.pr2:hover,.pr2.cur{background:var(--hover)}
+[data-theme=dark] .pr2:hover,[data-theme=dark] .pr2.cur{background:rgba(255,255,255,.07)}
+.pr2 .ic{display:grid;place-items:center;height:19px;color:var(--fg-2)}
+.pr2 .ic svg{width:15px;height:15px}
+.pr2 b{font:500 13px/19px var(--ui)}
+.pr2 .d{grid-column:2;font-size:12px;line-height:1.4;color:var(--fg-2)}
+.pr2 .ck{display:grid;place-items:center;height:19px;color:var(--fg-1)}
+.pr2 .ck svg{width:13px;height:13px}
+.pr2.one{grid-template-columns:16px 1fr auto;align-items:center;padding:0 10px;height:30px}
+.pr2.one .ic,.pr2.one .ck{height:auto}
+.pr2 .mono{font:12px var(--mono)}
+.pr2 .m{font:11px var(--mono);color:var(--fg-3)}
+.pr2.dis{color:var(--fg-3)}
+.pr2.dis:hover{background:none}
+.pr2.dis .ic{color:var(--fg-4)}
+.pr2 kbd{margin-left:8px}
+.effort{padding:10px 12px 8px;width:286px}
+.eff-h{display:flex;align-items:center;justify-content:space-between}
+.eff-h b{font:600 13px var(--ui)}
+.eff-h .lk2{margin-right:-6px}
+.slider{position:relative;height:22px;margin:14px 7px 2px;cursor:pointer}
+.slider .trk{position:absolute;left:0;right:0;top:8px;height:6px;border-radius:3px;background:var(--line-3)}
+.slider .fill{position:absolute;left:0;top:8px;height:6px;border-radius:3px;background:var(--accent)}
+.slider .stop{position:absolute;top:9px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--line-3)}
+[data-theme=dark] .slider .stop{background:rgba(255,255,255,.22)}
+[data-theme=light] .slider .stop{background:rgba(30,28,26,.22)}
+.slider .stop.in{background:rgba(255,255,255,.55)}
+[data-theme=light] .slider .stop.in{background:rgba(251,248,242,.7)}
+.slider .th{position:absolute;top:4px;width:14px;height:14px;margin-left:-7px;border-radius:50%;background:var(--thumb);box-shadow:0 0 0 .5px rgba(0,0,0,.25),0 1px 3px rgba(0,0,0,.35);transition:left .12s var(--ease)}
+.slider+.lvls{display:flex;justify-content:space-between;margin:4px 0 0;font:10.5px var(--mono);color:var(--fg-3)}
+.lvls span.on{color:var(--fg-1)}
+.eff-f{display:flex;align-items:center;justify-content:space-between;margin-top:10px;font-size:11.5px;color:var(--fg-3)}
+.ctxp{padding:12px 14px;width:268px}
+.ctxp b{font:600 13px var(--ui)}
+.ctxp .bar{height:6px;border-radius:3px;background:var(--line-3);margin:10px 0 8px;overflow:hidden}
+.ctxp .bar i{display:block;height:100%;background:var(--fg-2);border-radius:3px}
+.ctxp p{font-size:11.5px;color:var(--fg-3);line-height:1.5}
+.ctxp .btn{margin-top:10px}
+.mhit{font-weight:600;color:var(--fg-1)}
+
+/* attachments */
+.atts{display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap}
+.thumb{width:56px;height:42px;border-radius:7px;box-shadow:inset 0 0 0 1px var(--line-2);position:relative;overflow:hidden;background:var(--raise-1)}
+.thumb i{position:absolute;inset:0}
+.thumb .xb{position:absolute;right:3px;top:3px;width:15px;height:15px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;display:grid;place-items:center}
+.thumb .xb svg{width:9px;height:9px}
+.att{height:42px;display:inline-flex;align-items:center;gap:8px;padding:0 10px 0 9px;border-radius:7px;box-shadow:inset 0 0 0 1px var(--line-2);font-size:12px;color:var(--fg-1)}
+.att svg{width:15px;height:15px;color:var(--fg-3)}
+.att span{font:11px var(--mono);color:var(--fg-3)}
+.mchip{font:12.5px var(--mono);color:var(--accent-hi);background:var(--accent-wash);border-radius:5px;padding:1px 5px}
+
+/* asides: the quick question and the side chat */
+.qq{position:absolute;left:0;right:0;bottom:calc(100% + 10px);z-index:30;background:var(--popover);border-radius:14px;box-shadow:var(--sh-pop);padding:12px 12px 10px 16px;opacity:0;transform:translateY(4px);pointer-events:none}
+.qq.open{opacity:1;transform:none;pointer-events:auto;transition:opacity .16s var(--ease),transform .16s var(--ease)}
+.qq-x{position:absolute;right:8px;top:8px}
+.qq-q{font:500 12.5px var(--ui);color:var(--fg-2);padding-right:30px}
+.qq-wait{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--fg-2)}
+.qq-wait .spin{font-size:13px;color:var(--fg-2)}
+.qq-a{margin-top:8px;max-height:240px;overflow:auto;font:14px/22px var(--ui);color:var(--fg-1)}
+.qq-a>*+*{margin-top:10px}
+.qq-a code{font:12.5px var(--mono);padding:1px 5px;border-radius:4px;background:var(--hover);box-shadow:inset 0 0 0 1px var(--line)}
+.qq-in{display:flex;align-items:flex-end;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.qq-in textarea{flex:1;height:22px;resize:none;border:0;outline:0;background:none;font:14px/22px var(--ui);color:var(--fg-1);caret-color:var(--accent)}
+.qq-in textarea::placeholder{color:var(--faint)}
+.qq-in .send{width:28px;height:28px;margin:0}
+.qq-in .send svg{width:14px;height:14px}
+.qq-hint{margin-top:6px;font-size:11.5px;color:var(--fg-2)}
+.side-th{flex:1;min-height:0;overflow:auto;margin:12px -16px 0;padding:0 16px}
+.side-th .you{margin-top:16px}
+.side-th .bubble{max-width:88%}
+.side-th .prose{margin:10px 0}
+.sentnote{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--fg-3)}
+.sentnote svg{width:12px;height:12px;color:var(--ok-text)}
+
+/* the rewind sheet */
+.sheet{width:480px;max-width:100%;border-radius:12px;background:var(--popover);box-shadow:var(--sh-pop);padding:20px 20px 16px}
+.sheet h5{font:600 14px var(--ui)}
+.sheet .q{margin-top:4px;font-size:12.5px;color:var(--fg-2)}
+.sheet .sum{margin-top:14px;display:flex;align-items:center;gap:10px;font:500 12.5px var(--ui)}
+.sheet .sum .pm{font:11.5px var(--mono);display:flex;gap:6px;font-weight:400}
+.sheet .paths{margin-top:8px;border-radius:8px;box-shadow:inset 0 0 0 1px var(--line);padding:6px 0}
+.sheet .paths div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 12px;height:24px;font:12px var(--mono);color:var(--fg-1)}
+.sheet .paths span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet .paths em{white-space:nowrap;flex:none}
+.sheet .paths em{font:normal 11.5px var(--ui);color:var(--attn-text)}
+.sheet p{margin-top:12px;font-size:12px;line-height:1.55;color:var(--fg-2)}
+.sheet p.att2{color:var(--attn-text)}
+.sheet .acts{justify-content:flex-end;margin-top:16px}
+
+/* the parts sheet: a small canvas for each part */
+.pcanvas{background:var(--canvas);border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);padding:16px 22px}
+.pcanvas.pad0{padding:10px 18px}
+.states{display:grid;grid-template-columns:repeat(4,1fr);gap:18px 14px}
+.st1{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.st1 .cap{font:11px var(--mono);color:var(--fg-3)}
+.st1 .send{margin-left:0}
+.keys{flex-wrap:wrap;row-gap:4px}
+.keys span{white-space:nowrap}
+.st1 b{font:500 12px var(--ui);color:var(--fg-1)}
+.keyrows{display:flex;flex-direction:column;gap:10px}
+.keyrow{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:baseline}
+.keyrow .keys{margin:0;justify-content:flex-start;gap:16px}
+.chips2{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+@media (max-width:980px){.states{grid-template-columns:repeat(2,1fr)}.keyrow{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){.jump,.qq,.pop{transition:none!important}}
+
+/* ============================================================
+   Round 2: the harness's mark, the sidebar's two views and one
+   popover for the model and its effort.
+   ============================================================ */
+.hm{width:12px;height:12px;flex:none;display:inline-block;vertical-align:middle;background:center/contain no-repeat}
+.hm.claude{background-image:var(--h-claude)}
+.hm.codex{color:var(--fg-1);background:currentColor;-webkit-mask:var(--h-knot) center/contain no-repeat;mask:var(--h-knot) center/contain no-repeat}
+.hm.md{width:13px;height:13px}
+.srow .hm{margin:0 -1px 0 -2px}
+.tab .tx{position:relative;width:16px;height:16px;flex:none;display:grid;place-items:center}
+.tab .tx .x{position:absolute;inset:0}
+.tab .tx .hm{transition:opacity .12s}
+.tab .tx .x,.tab.on .tx .x{opacity:0}
+.tab:hover .tx .x,.tab.hov .tx .x{opacity:1}
+.tab:hover .tx .hm,.tab.hov .tx .hm{opacity:0}
+.cchip.mdl{gap:6px;padding:0 6px 0 8px}
+.cchip.mdl .hm{width:13px;height:13px}
+.cchip.mdl .cv{display:grid;place-items:center;color:var(--fg-3);margin-left:-2px}
+.cchip.mdl .cv svg{width:12px;height:12px}
+.mi .ic .hm{width:14px;height:14px}
+
+/* the sidebar's two views: projects, and recent activity */
+.side .view button{font:inherit;color:var(--fg-3);padding:0;background:none;border:0;cursor:pointer}
+.side .view button.on{color:var(--fg-1);font-weight:500}
+.side .view button:not(.on):hover{color:var(--fg-2)}
+.side .alist{display:none;flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;padding:0 8px 8px}
+.side[data-view=activity] .plist{display:none}
+.side[data-view=activity] .alist{display:block}
+.ahead{display:flex;align-items:baseline;gap:6px;padding:12px 8px 5px 16px;font:500 11.5px var(--ui);color:var(--fg-3)}
+.ahead .n{font:10.5px var(--mono)}
+.alist>.ahead:first-child{padding-top:0}
+.scard{position:relative;padding:5px 8px 6px 16px;border-radius:10px;cursor:default;transition:background .12s}
+.scard:hover{background:var(--hover)}
+.scard.sel{background:color-mix(in srgb,var(--tone) 14%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--tone) 34%,transparent)}
+.scard .c1{display:flex;align-items:center;gap:8px;height:18px;font-size:13px;color:var(--fg-1)}
+.scard .ind{width:12px;height:12px;flex:none;display:grid;place-items:center}
+.scard .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scard.sel .t{font-weight:500}
+.scard .meta{font:11px var(--mono);color:var(--fg-3);flex:none}
+.scard .why{margin:1px 0 0 37px;font-size:11.5px;line-height:16px;color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scard .why .mono{font:11px var(--mono);color:var(--fg-1)}
+.scard .c3{display:flex;align-items:center;gap:5px;height:16px;margin:2px 0 0 37px;font-size:11px;color:var(--fg-3);white-space:nowrap}
+.scard .c3 .bi{display:grid;place-items:center;flex:none}
+.scard .c3 .bi svg{width:11px;height:11px}
+.scard .c3 .bn{font:10.5px var(--mono);min-width:0;overflow:hidden;text-overflow:ellipsis}
+.scard .c3 .pj{display:inline-flex;align-items:center;gap:5px;flex:none;margin-left:auto}
+.scard .c1 .hm{margin:0 -1px 0 -2px}
+.pmark.xs{width:12px;height:12px;border-radius:3.5px;font-size:7.5px}
+.scard.tree::after{content:"";position:absolute;left:22px;top:21px;bottom:0;border-left:1px solid var(--tree)}
+.alist .draft .pmark{margin-left:auto}
+.alist .draft .x{position:absolute;right:10px}
+.alist .draft:hover .pmark{opacity:0}
+
+/* one popover: the models by harness, then the effort */
+.mpick{width:332px}
+.mpick .hhead{display:flex;align-items:center;gap:7px;height:28px;padding:0 10px;font:500 11.5px var(--ui);color:var(--fg-2)}
+.mpick .hhead b{font-weight:600;color:var(--fg-1)}
+.mpick .hhead .hnote{margin-left:auto;font:10.5px var(--mono);color:var(--fg-3)}
+.mpick .hgrp+.hgrp{margin-top:5px;padding-top:5px;border-top:1px solid var(--line)}
+.mrow{display:grid;grid-template-columns:86px 1fr 14px;align-items:center;gap:0 10px;height:30px;padding:0 10px;border-radius:8px;color:var(--fg-1);text-align:left;width:100%;cursor:default}
+.mrow:hover,.mrow.cur{background:var(--hover)}
+[data-theme=dark] .mrow:hover,[data-theme=dark] .mrow.cur{background:rgba(255,255,255,.07)}
+.mrow b{font:500 13px var(--ui);white-space:nowrap}
+.mrow .d{font-size:12px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrow .ck{display:grid;place-items:center;color:var(--fg-1)}
+.mrow .ck svg{width:13px;height:13px}
+.mrow.dis b{color:var(--fg-2);font-weight:400}
+.mrow.dis:hover,[data-theme=dark] .mrow.dis:hover{background:none}
+.hgrp.other .hhead b{color:var(--fg-2);font-weight:500}
+.mpick .effort{width:auto;margin-top:5px;padding:10px 10px 4px;border-top:1px solid var(--line)}
+.mpick .eff-h{justify-content:flex-start;gap:8px}
+.mpick .eff-h .lbl{font:500 11.5px var(--ui);color:var(--fg-3)}
+.mpick .eff-h .lk2{margin:0 -4px 0 auto}
+.effort .eff-none{display:none;margin-top:6px;font-size:12px;color:var(--fg-3)}
+.effort.none .slider,.effort.none .lvls,.effort.none [data-role=efftitle]{display:none}
+.effort.none .eff-none{display:block}
+.mkeys{display:flex;gap:14px;margin-top:6px;padding:7px 10px 3px;border-top:1px solid var(--line);font:10.5px var(--mono);color:var(--fg-3)}
+.mkeys b{color:var(--fg-2);font-weight:500}
+
+/* the composer sheet */
+.mdemo{display:flex;gap:22px;align-items:flex-start}
+.mcol{display:flex;flex-direction:column;gap:10px;flex:none}
+.mcap{font:500 11.5px var(--ui);color:var(--fg-3)}
+.mtext{flex:1;min-width:220px;padding-top:24px}
+.mtext p{font-size:12.5px;line-height:1.55;color:var(--fg-2);margin:0 0 10px}
+.mtext b{color:var(--fg-1);font-weight:600}
+.hmdemo{display:flex;flex-direction:column;gap:14px}
+.hmdemo .srow{padding-left:16px}
+.hmhead{display:flex;align-items:center;gap:8px;font-size:13px}
+.hmhead b{font-weight:600}
+@media (max-width:1180px){.mdemo{flex-wrap:wrap}.mtext{padding-top:0}}
+/* The harness marks, embedded: assets/harness/harness-claude.png (the Claude spark, in its clay) and
+   harness-codex-template.png (the ChatGPT knot, a template drawn in the text colour). */
+:root{--h-claude:url("data:image/png;base64,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");--h-knot:url("data:image/png;base64,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")}
+/* ============================================================
+   Preview 03: the project page, and the new-session page on the
+   one model chip. Phase 1's tokens and parts and Phase 2's marks,
+   chips and pick lists; below are only the page's own parts.
+   ============================================================ */
+.proj-head.sel{background:var(--selected);box-shadow:inset 0 0 0 1px var(--line)}
+.srow.stale .t{color:var(--fg-2)}
+.side .nosess{height:28px;display:flex;align-items:center;padding:0 8px 0 38px;font-size:12px;color:var(--fg-3)}
+
+/* the page: one column on the canvas, its head on the window's header line */
+.ppage{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--line-3) transparent}
+.pcol{max-width:1000px;margin:0 auto;padding:0 32px 32px}
+.narrow .pcol{padding:0 20px 24px}
+.phead{height:52px;display:flex;align-items:center;gap:10px;min-width:0}
+.pname{font:600 20px/1 var(--ui);letter-spacing:-.012em;white-space:nowrap}
+.ppath{font:12px var(--mono);color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;margin:3px 0 0 2px;user-select:text;cursor:text}
+.phead .end{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+.phead .btn.pri svg{width:15px;height:15px}
+.pstats{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:2px;font-size:12px;color:var(--fg-2)}
+.pstats>span{white-space:nowrap}
+.pstats b{font-weight:600;color:var(--fg-1)}
+.pstats .pbr{display:inline-flex;align-items:center;gap:4px;font:11.5px var(--mono)}
+.pstats .pbr svg{width:12px;height:12px}
+.ptabs{height:36px;display:flex;align-items:stretch;gap:18px;margin-top:14px;border-bottom:1px solid var(--line)}
+.ptabs .itab{cursor:pointer}
+.ppanel{padding-top:10px}
+
+/* the Sessions tab: the list on the canvas, two cards beside it (above and below it when narrow) */
+.pgrid{display:grid;grid-template-columns:minmax(0,1fr) 300px;grid-template-areas:"list presets" "list week" "list .";grid-template-rows:auto auto 1fr;gap:14px 20px;align-items:start}
+.pgrid>.slist,.pgrid>.pempty{grid-area:list}
+.pgrid>.c-presets{grid-area:presets}
+.pgrid>.c-week{grid-area:week}
+.narrow .pgrid{grid-template-columns:minmax(0,1fr);grid-template-areas:"presets" "list" "week";grid-template-rows:auto}
+.slist{min-width:0;container-type:inline-size}
+.sr{padding:2px 0;border-top:1px solid var(--line)}
+.sr:first-child{border-top:0;padding-top:0}
+.sr-in{display:grid;grid-template-columns:12px 12px minmax(0,1fr) 170px 44px;column-gap:10px;align-items:start;padding:8px 12px 9px;border-radius:8px;cursor:default;transition:background .12s}
+.sr-in:hover,.sr.hov .sr-in{background:var(--hover)}
+.sr .ind{width:12px;height:12px;display:grid;place-items:center;margin-top:3px}
+.sr .hm{margin-top:3px}
+.sr .tt{min-width:0}
+.sr .t{display:block;font:500 13px/18px var(--ui);color:var(--fg-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sr.stale .t{color:var(--fg-2)}
+.sr .sl{display:block;margin-top:1px;font-size:12px;line-height:17px;color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sr .sl .mono{font:11.5px var(--mono);color:var(--fg-1)}
+.sr .bc{display:flex;align-items:center;gap:5px;min-width:0;font:11.5px/18px var(--mono);color:var(--fg-2)}
+.sr .bc svg{width:12px;height:12px;flex:none}
+.sr .bc span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sr .ts{font:11.5px/18px var(--mono);color:var(--fg-3);text-align:right;white-space:nowrap}
+.sr.nobr .sr-in{grid-template-columns:12px 12px minmax(0,1fr) 44px}
+@container (max-width:459px){.sr-in{grid-template-columns:12px 12px minmax(0,1fr) 44px}.sr .bc{display:none}}
+
+/* the side cards */
+.sc-h .nt{font:11px var(--mono);color:var(--fg-3)}
+.psets{margin-top:10px}
+.pset{width:calc(100% + 16px);height:28px;display:flex;align-items:center;gap:9px;margin:0 -8px;padding:0 8px;border-radius:8px;font-size:13px;color:var(--fg-1);cursor:default;transition:background .12s}
+.pset:hover{background:var(--hover)}
+.pset .mo{display:grid;place-items:center;width:14px;flex:none;color:var(--mt)}
+.pset .mo svg{width:14px;height:14px}
+.pset .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pset .md{display:inline-flex;align-items:center;gap:5px;flex:none;font:11px var(--mono);color:var(--fg-3)}
+.pset .all{font:10px var(--mono);color:var(--fg-3);padding:0 4px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line-2);flex:none}
+.cardnote{margin-top:8px;font-size:12px;line-height:1.5;color:var(--fg-2)}
+.wk{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.wk b{display:block;font:600 18px/1.25 var(--ui);font-variant-numeric:tabular-nums;color:var(--fg-1)}
+.wk span{display:block;margin-top:1px;font-size:11.5px;line-height:1.35;color:var(--fg-2)}
+
+/* an empty project: a small hammerhead swims in place over one plain line */
+.pempty{text-align:center;padding:18px 0 8px}
+.pempty canvas{width:100%;height:110px;display:block}
+.pempty p{margin-top:6px;font-size:12.5px;color:var(--fg-2)}
+
+/* Branches and Instructions read in a column of at most 700 */
+.p700{max-width:700px}
+.brw{height:34px;display:flex;align-items:center;gap:10px;padding:0 12px;border-top:1px solid var(--line)}
+.brw:first-child{border-top:0}
+.brw .g{display:grid;place-items:center;width:12px;flex:none;color:var(--fg-3)}
+.brw .g svg{width:12px;height:12px}
+.brw .bn2{font:12.5px var(--mono);color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:none;max-width:46%}
+.brw.cur .bn2{color:var(--fg-1)}
+.brw .cur2{font:500 11px var(--ui);color:var(--accent-hi);flex:none}
+.brw .wt{font-size:11.5px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.brw .wt b{font:11px var(--mono);font-weight:400}
+.brw .ns{margin-left:auto;font-size:11.5px;color:var(--fg-2);white-space:nowrap;flex:none}
+.brw .ts{width:44px;font:11.5px var(--mono);color:var(--fg-3);text-align:right;flex:none}
+.pnote{padding:10px 12px;font-size:12.5px;line-height:1.5;color:var(--fg-2)}
+.ihd{display:flex;align-items:center;gap:8px;height:30px;font-size:11.5px;color:var(--fg-3)}
+.ihd>[data-i] svg{width:14px;height:14px}
+.ihd .fn{font:12.5px var(--mono);color:var(--fg-1)}
+.ihd .lk2{margin-left:auto}
+.mdc{margin-top:6px;border-radius:12px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line),var(--sh-card);padding:18px 22px 20px}
+.mdc .prose{margin:0}
+.mdc h3{font:600 17px/1.3 var(--ui)}
+.cutnote{margin-top:10px;font-size:12px;color:var(--fg-3)}
+
+/* the project menu: the sidebar's, also at the page's trailing edge */
+.pmenu{width:276px}
+.mi .cvn{margin-left:auto;font-size:12px;color:var(--fg-3)}
+.swrow{display:flex;align-items:center;gap:7px;padding:3px 8px 7px 34px}
+.swt{width:18px;height:18px;border-radius:5px;flex:none;cursor:pointer;background:color-mix(in srgb,var(--tone) 24%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--tone) 46%,transparent);position:relative}
+[data-theme=light] .swt{background:color-mix(in srgb,var(--tone) 15%,transparent)}
+.swt.on{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--tone) 46%,transparent),0 0 0 1.5px var(--popover),0 0 0 3px var(--tone)}
+.swt.none{background:none;box-shadow:inset 0 0 0 1px var(--line-3)}
+.swt.none::after{content:"";position:absolute;left:3px;right:3px;top:8.5px;height:1px;background:var(--line-3);transform:rotate(-45deg)}
+
+/* the new-session page: the chip's popover opens under the chip */
+.draftpage .cchip.mdl{margin-left:auto}
+.draftpage .send{margin-left:4px}
+.win .pop[data-place^=below]{transform:translateY(-3px)}
+.win .pop[data-place^=below].open{transform:none}
+.mpick .hnote:empty{display:none}
+.hgrp.later .hhead b{color:var(--fg-2);font-weight:500}
+.mfoot{padding:6px 10px 2px;font-size:11.5px;color:var(--fg-3)}
+
+/* the sheet's small canvases */
+.pc2{background:var(--canvas);border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);padding:14px 16px}
+.pc2+.pc2{margin-top:10px}
+.pc2 .card{box-shadow:inset 0 0 0 1px var(--line)}
+.stlab{font:11px var(--mono);color:var(--fg-3);margin:0 0 6px 12px}
+.chiprow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.chiprow .cchip{box-shadow:inset 0 0 0 1px var(--line)}
+@media (max-width:980px){.pcgrid,.cast{grid-template-columns:1fr}.flrow{grid-template-columns:1fr;gap:4px}.rules{grid-template-columns:1fr}.legend{grid-template-columns:1fr 1fr}.spec,.spec.w5,.spec.w6,.spec.w7,.spec.w8{grid-column:span 12}.react{grid-template-columns:1fr}.top nav{display:none}}
+@media (prefers-reduced-motion:reduce){.caret{animation:none}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">Loom · Ink <span class="mono">03 the project page</span></div>
+  <nav>
+    <a href="#project">Project</a><a href="#new">New session</a><a href="#narrow">Narrow and empty</a><a href="#parts">Parts</a><a href="#react">React</a>
+  </nav>
+  <div class="tools">
+    <div class="seg" id="themeSeg"><button class="on" data-theme-set="dark">Ink</button><button data-theme-set="light">Paper</button></div>
+    <label class="tool"><span class="sw on" id="swAmbient"></span>Sharks</label>
+    <label class="tool"><span class="sw" id="swPins"></span>Pins</label>
+    <label class="tool"><span class="sw" id="swZoom"></span>100%</label>
+  </div>
+</header>
+
+<section class="intro">
+  <div class="artbg"></div>
+  <canvas class="ocean" id="ocean-intro"></canvas>
+  <div class="copy">
+    <div class="eyebrow">v3 · ui revision · preview 03 · the project page</div>
+    <h1 class="hero-title">Project</h1>
+    <p class="lede">One codebase on one page: its sessions with their last line, its branches, and the CLAUDE.md Claude reads there. The page shows what Loom already holds and starts nothing by itself. <b>One column on the canvas, the project's name on the window's header line, and the harness's mark on every session.</b></p>
+  </div>
+</section>
+
+<div class="wrap">
+  <div class="rules">
+    <div class="rule"><div class="n">01</div><h3>The head is the header</h3><p>The project's mark, its name in title type and its folder sit on the window's header line, where a session's title would be. What you can do sits at the trailing edge: ⋯ and New session.</p></div>
+    <div class="rule"><div class="n">02</div><h3>Sessions read like the sidebar</h3><p>A row is the status, the harness's mark, the title and its last line, then the branch and the time. The list lies flat on the canvas between hairlines, and the pill comes on hover.</p></div>
+    <div class="rule"><div class="n">03</div><h3>Cards hold the summaries</h3><p>Presets and the past seven days are the only lifted things on the page: beside the list, or above and below it when the pane is narrow.</p></div>
+    <div class="rule"><div class="n">04</div><h3>Three tabs, one at a time</h3><p>Sessions, Branches and Instructions are view tabs. Branches and Instructions read in a column of at most 700, and the page opens on Sessions every time.</p></div>
+    <div class="rule"><div class="n">05</div><h3>The model picks the harness</h3><p>On a new session, the one chip lists Claude Code's and Codex's models together. The model you pick decides the harness the session starts on, and the session keeps it.</p></div>
+    <div class="rule"><div class="n">06</div><h3>Nothing new runs</h3><p>The page reads the catalog, the usage index, the git files and CLAUDE.md once per visit, and lets them go when it closes. Nothing is watched.</p></div>
+  </div>
+  <div class="phases"><span><b>Phase 1</b> · the language and the shell (D-74)</span><span><b>Phase 2</b> · the chat (D-75)</span><span><b>03</b> · the project page (this page)</span><span><b>Then</b> · 04 Settings and About · 05 review · 06 edge states · 07 Lombot</span></div>
+
+  <!-- ================= 01 PROJECT ================= -->
+  <section class="sec" id="project">
+    <div class="sechead"><span class="num">01</span><h2>Project page</h2>
+      <p>A click on a project's name in the sidebar opens its page. Switch the tabs, hover the rows and the presets, open ⋯ and try a colour. New session takes you to the next frame.</p></div>
+    <div class="stage"><div class="win" id="winA" data-w="1280" data-h="800">
+      <aside class="side" data-sel="none" data-head="loom"></aside>
+      <main class="detail">
+        <div class="ppage" data-proj="loom" style="--tone:var(--orchid)">
+          <div class="pcol">
+            <header class="phead">
+              <span class="pmark lg">L</span><h1 class="pname">loom</h1><span class="ppath" title="~/Documents/github/loom">~/Documents/github/loom</span>
+              <div class="end">
+                <button class="ib" data-open="pmenu" data-i="more" title="Project actions"></button>
+                <button class="btn pri lg" data-jump="#new"><span data-i="compose"></span>New session</button>
+              </div>
+            </header>
+            <div class="pstats"><span><b>3</b> running</span><span><b>9</b> sessions</span><span><b>3.1M</b> tokens, past 7 days</span><span class="pbr" title="Branch swarm/1"><span data-i="branch"></span>swarm/1</span></div>
+            <nav class="ptabs"><button class="itab on" data-ptab="sessions">Sessions<span class="n">9</span></button><button class="itab" data-ptab="branches">Branches<span class="n">7</span></button><button class="itab" data-ptab="instructions">Instructions</button></nav>
+            <div class="ppanel" data-ptab="sessions">
+              <div class="pgrid">
+                <div class="slist" data-list="loom"></div>
+                <article class="card sc c-presets">
+                  <div class="sc-h"><b>Presets</b><span class="nt">this project</span></div>
+                  <div class="psets">
+                    <button class="pset" style="--mt:var(--m-acc)" title="Accept edits · Sonnet 5.5&#10;Run the whole test suite, then fix every failure it reports."><span class="mo" data-i="penline"></span><span class="nm">Run tests, fix failures</span><span class="md"><span class="hm claude"></span>Sonnet 5.5</span></button>
+                    <button class="pset" style="--mt:var(--m-plan)" title="Plan · Opus 5.5&#10;Read ROADMAP.md and plan the next slice; ask before you write it down."><span class="mo" data-i="list"></span><span class="nm">Plan the next slice</span><span class="md"><span class="hm claude"></span>Opus 5.5</span></button>
+                    <button class="pset" style="--mt:var(--m-ask)" title="Ask · Opus 5.5&#10;Review the open branch against main and list what would block a merge."><span class="mo" data-i="bubble"></span><span class="nm">Review the branch</span><span class="md"><span class="hm claude"></span>Opus 5.5</span></button>
+                    <button class="pset" style="--mt:var(--m-abe)" title="Ask before edits · GPT-6.1 Sol&#10;Give me a second opinion on the uncommitted diff."><span class="mo" data-i="shield"></span><span class="nm">Second opinion</span><span class="md"><span class="hm codex"></span>GPT-6.1 Sol</span></button>
+                    <button class="pset" style="--mt:var(--m-ask)" title="All projects · Ask · Haiku 5.5&#10;Explain what this folder is for and how its parts fit."><span class="mo" data-i="bubble"></span><span class="nm">Explain this folder</span><span class="all">all</span><span class="md"><span class="hm claude"></span>Haiku 5.5</span></button>
+                  </div>
+                </article>
+                <article class="card sc c-week">
+                  <div class="sc-h"><b>Past 7 days</b></div>
+                  <div class="wk"><div><b>3.1M</b><span>tokens</span></div><div><b>7</b><span>sessions with usage</span></div><div><b>$31</b><span>estimate</span></div></div>
+                </article>
+              </div>
+            </div>
+            <div class="ppanel" data-ptab="branches" hidden><div class="p700" data-branches="loom"></div></div>
+            <div class="ppanel" data-ptab="instructions" hidden>
+              <div class="p700">
+                <div class="ihd"><span data-i="book"></span><span class="fn">CLAUDE.md</span><span>13 lines · 2d</span><button class="lk2"><span data-i="open"></span>Open in editor</button></div>
+                <div class="mdc"><div class="prose">
+                  <h3>Loom — Claude Code entry</h3>
+                  <p>The repo workflow is in <code>AGENTS.md</code>. If it is not already in your context, read it at session start.</p>
+                  <p>Main session: start with <code>STATUS.md</code> → <code>AGENTS.md</code> → <code>ROADMAP.md</code>; check <code>DECISIONS.md</code> before assuming scope or permissions. Subagent: your Brief is your task; read the docs it names plus DEVELOPMENT.md §2–§4 before building or testing.</p>
+                  <p>Hard rules (details in AGENTS.md and DEVELOPMENT.md):</p>
+                  <ul>
+                    <li>Real <code>~/.claude</code> and <code>~/.codex</code>, the installed Loom Dev app, the default dev catalog and the daily Loom app are never test material.</li>
+                    <li>No parallel builds; heavy tests and on-screen measurements only when the user says the computer is idle.</li>
+                    <li>Keep other agents' changes; never stash, reset, checkout or clean them. No commit, push or PR unless the user asks.</li>
+                    <li>Only the main session writes STATUS, ROADMAP, DECISIONS and plans; subagents report Doc impact.</li>
+                    <li>Docs and code in English; talk to the user in Turkish.</li>
+                  </ul>
+                </div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+      <div class="pop pmenu" data-pop="pmenu" data-place="below-right" id="projMenu">
+        <span class="label mlabel">loom</span>
+        <button class="mi"><span class="ic"><span class="hm claude md"></span></span>New Claude Session</button>
+        <button class="mi" data-codex><span class="ic"><span class="hm codex md"></span></span>New Codex Session</button>
+        <div class="mnote" data-codex-note hidden>Codex comes in a later version</div>
+        <div class="msep"></div>
+        <div class="mi" style="cursor:default"><span class="ic" data-i="swatch"></span>Color<span class="cvn" data-role="tonename">Orchid</span></div>
+        <div class="swrow">
+          <span class="swt" style="--tone:var(--rose)" data-tone="rose" title="Rose"></span><span class="swt on" style="--tone:var(--orchid)" data-tone="orchid" title="Orchid"></span><span class="swt" style="--tone:var(--aqua)" data-tone="aqua" title="Aqua"></span><span class="swt" style="--tone:var(--mint)" data-tone="mint" title="Mint"></span><span class="swt" style="--tone:var(--sage)" data-tone="sage" title="Sage"></span><span class="swt" style="--tone:var(--lemon)" data-tone="lemon" title="Lemon"></span><span class="swt none" data-tone="none" title="None"></span>
+        </div>
+        <div class="msep"></div>
+        <button class="mi dis"><span class="ic" data-i="mvup"></span>Move Up</button>
+        <button class="mi"><span class="ic" data-i="mvdown"></span>Move Down</button>
+        <div class="msep"></div>
+        <button class="mi dis"><span class="ic" data-i="trash"></span>Remove Empty Project</button>
+        <div class="mnote">Only a project with no sessions can be removed</div>
+      </div>
+      <div class="pop" data-pop="plus" style="left:10px;bottom:52px">
+        <span class="label mlabel">New</span>
+        <button class="mi"><span class="ic"><span class="hm claude md"></span></span>New Claude Session<kbd>⌘N</kbd></button>
+        <button class="mi" data-codex><span class="ic"><span class="hm codex md"></span></span>New Codex Session</button>
+        <div class="mnote" data-codex-note hidden>Codex comes in a later version</div>
+        <div class="msep"></div>
+        <button class="mi"><span class="ic" data-i="folder"></span>Add Project…</button>
+      </div>
+      <div class="scrim" data-close></div>
+      <div class="palette" data-pop="palette">
+        <div class="pal-in"><span data-i="search"></span><input placeholder="Search sessions, projects and commands" autocomplete="off"><kbd>esc</kbd></div>
+        <div class="pal-list">
+          <div class="pal-h label">Sessions</div>
+          <div class="prow cur"><span class="ind" data-mark="work"></span>Port the sidebar to Ink tokens<span class="m" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom · now</span></div>
+          <div class="prow"><span class="ind" data-mark="attn"></span>Review the gate failure<span class="m" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom · needs you</span></div>
+          <div class="prow"><span class="ind" data-mark="unv"></span>Thesis outline<span class="m" style="--tone:var(--aqua)"><span class="pmark sm">S</span>second-brain · 25m</span></div>
+          <div class="pal-h label">Projects</div>
+          <div class="prow" style="--tone:var(--orchid)"><span class="ind"><span class="pmark sm">L</span></span>loom<span class="m">9 sessions</span></div>
+          <div class="pal-h label">Commands</div>
+          <div class="prow"><span class="ind" data-i="claude"></span>New Claude Session<span class="m"><kbd>⌘N</kbd></span></div>
+          <div class="prow"><span class="ind" data-i="gear"></span>Settings<span class="m"><kbd>⌘,</kbd></span></div>
+        </div>
+        <div class="pal-foot"><span><b>↑↓</b> move</span><span><b>↵</b> open</span><span><b>esc</b> close</span></div>
+      </div>
+      <span class="pin" data-for=".phead .pmark" data-dx="-30" data-dy="4">A1</span>
+      <span class="pin" data-for=".pstats" data-dx="-30" data-dy="0">A2</span>
+      <span class="pin" data-for=".ptabs .itab.on" data-at="r" data-dx="4" data-dy="-6">A3</span>
+      <span class="pin" data-for=".ppanel:not([hidden]) .sr[data-s=gate]" data-dx="-30" data-dy="14">A4</span>
+      <span class="pin" data-for=".ppanel:not([hidden]) .c-presets" data-at="r" data-dx="-34" data-dy="-9">A5</span>
+      <span class="pin" data-for=".ppanel:not([hidden]) .c-week" data-at="r" data-dx="-34" data-dy="-9">A6</span>
+      <span class="pin" data-for=".side .proj-head.sel" data-at="r" data-dx="-44" data-dy="5">A7</span>
+      <span class="pin" data-for=".phead [data-open=pmenu]" data-dx="-28" data-dy="4">A8</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>A1</b>The head sits on the window's header line, where a session's title would be: the project's mark (26), the name in title type and the folder in mono, which you can select. There is no bar of its own.</li>
+      <li><b>A2</b>The stats count what the page holds: sessions with a run under way, all of the project's sessions, the week's tokens (only above 0) and the folder's branch.</li>
+      <li><b>A3</b>View tabs, underlined: Sessions, Branches and Instructions. The page opens on Sessions every time.</li>
+      <li><b>A4</b>A session row reads like the sidebar's: the status, the harness's mark, the title and its last line (the reason Loom holds, else the end of the transcript), the branch and the time. A click shows the session.</li>
+      <li><b>A5</b>Presets: a first message with its mode and model. The mode's icon in its tone, the name, and the model after its harness's mark; the message is in the tooltip. A click opens a new session with it and starts nothing.</li>
+      <li><b>A6</b>The past seven days from the usage index: tokens, the sessions with usage, and the estimate.</li>
+      <li><b>A7</b>While its page is open, the project's head in the sidebar takes the neutral selected fill; the tint stays for a selected session.</li>
+      <li><b>A8</b>⋯ is the sidebar's project menu: new sessions with their harness's mark, the colour as seven swatches, the place in the list, and Remove Empty Project.</li>
+    </ol>
+  </section>
+
+  <!-- ================= 02 NEW SESSION ================= -->
+  <section class="sec" id="new">
+    <div class="sechead"><span class="num">02</span><h2>New session</h2>
+      <p>Phase 1's new-session page with the one model chip. Its popover is open: Claude Code's and Codex's models in one list, the effort under them. Pick a GPT model and the chip takes the knot, because the session will start on Codex. The switch shows a build that cannot start Codex yet; ↑ ↓ ← → and ↵ work while the popover is open.</p></div>
+    <div class="ln" style="margin:0 0 18px 56px">
+      <div class="seg" id="codexSeg"><button class="on" data-codex-set="on">Codex can start</button><button data-codex-set="off">Codex comes later</button></div>
+    </div>
+    <div class="stage"><div class="win" id="winB" data-w="1280" data-h="880">
+      <aside class="side" data-sel="none"></aside>
+      <main class="detail">
+        <div class="artbg"></div>
+        <canvas class="ocean calm" id="ocean-draft"></canvas>
+        <header class="dhead bare"><span class="crumb"><b>loom</b> / new session</span>
+          <div class="end"><button class="btn gh sm" data-jump="#project" title="Opens the project's page"><span data-i="clock"></span>9 sessions in loom</button></div></header>
+        <div class="draftpage" style="--tone:var(--orchid)">
+          <h1 class="ask">What should we work on in <button class="pick">loom<span data-i="chev-d"></span></button>?</h1>
+          <div class="folder"><span>~/Documents/github/loom</span><span>·</span><span>swarm/1</span><span>·</span><span>clean</span></div>
+          <div class="composer">
+            <textarea id="draftTextB" placeholder="Describe the task. @ mentions a file, / runs a command."></textarea>
+            <div class="cbar">
+              <button class="cchip" title="Attach, mention or run a command" data-i="plus"></button>
+              <button class="cchip mode" style="--mt:var(--m-abe)"><span data-i="shield"></span>Ask before edits</button>
+              <button class="cchip mdl" data-open="modelB" data-role="modelchip" title="Model and effort"><span class="hm claude" data-role="hmark"></span><span data-role="modelname">Opus 5.5</span><span class="eff" data-role="effname">High</span><span class="cv" data-i="chev-d"></span></button>
+              <button class="send" id="draftSendB" data-i="up" title="Start a Claude Code session"></button>
+            </div>
+          </div>
+          <div class="keys"><span><b>↵</b> start</span><span><b>⌘↵</b> start in the background</span><span><b>⇧↵</b> new line</span></div>
+          <div class="under"><div class="seg"><button class="on"><span data-i="branch"></span>Stay on swarm/1</button><button>New branch</button><button>New worktree</button></div></div>
+          <div class="presets"><span class="label" style="margin-right:4px">Presets</span><button class="pchip">Run tests, fix failures</button><button class="pchip">Plan the next slice</button><button class="pchip">Second opinion</button></div>
+        </div>
+      </main>
+      <div class="pop pl mpick" data-pop="modelB" data-place="below-right" id="draftModels">
+        <div class="hgrp" data-h="claude">
+          <div class="hhead"><span class="hm claude"></span><b>Claude Code</b><span class="hnote"></span></div>
+          <button class="mrow" data-model="Default" data-levels="low medium high xhigh max"><b>Default</b><span class="d">Opus 5.5, recommended</span><span class="ck"></span></button>
+          <button class="mrow" data-model="Fable 5.1" data-levels="low medium high xhigh max"><b>Fable 5.1</b><span class="d">Hardest, long-horizon work</span><span class="ck"></span></button>
+          <button class="mrow cur" data-model="Opus 5.5" data-levels="low medium high xhigh max"><b>Opus 5.5</b><span class="d">Long agentic coding</span><span class="ck" data-i="check"></span></button>
+          <button class="mrow" data-model="Sonnet 5.5" data-levels="low medium high xhigh max"><b>Sonnet 5.5</b><span class="d">Fast, everyday work</span><span class="ck"></span></button>
+          <button class="mrow" data-model="Haiku 5.5" data-levels=""><b>Haiku 5.5</b><span class="d">Quick answers, no effort</span><span class="ck"></span></button>
+        </div>
+        <div class="hgrp" data-h="codex">
+          <div class="hhead"><span class="hm codex"></span><b>Codex</b><span class="hnote"></span></div>
+          <button class="mrow" data-model="GPT-6 Astra" data-levels="none low medium high xhigh max"><b>GPT-6 Astra</b><span class="d">Most capable</span><span class="ck"></span></button>
+          <button class="mrow" data-model="GPT-6.1 Sol" data-levels="none low medium high xhigh max"><b>GPT-6.1 Sol</b><span class="d">Near Astra, for less</span><span class="ck"></span></button>
+          <button class="mrow" data-model="GPT-6 Luna" data-levels="none low medium high xhigh max"><b>GPT-6 Luna</b><span class="d">Focused, high-volume work</span><span class="ck"></span></button>
+        </div>
+        <div class="effort">
+          <div class="eff-h"><span class="lbl">Effort</span><b data-role="efftitle">High</b><button class="lk2 dis" data-act="effreset" title="Back to High, the effort this project starts with">Reset</button></div>
+          <div class="slider" data-role="slider" data-levels="low medium high xhigh max" data-level="high" data-base="high"></div>
+          <div class="lvls"></div>
+          <div class="eff-none">This model has no effort setting.</div>
+        </div>
+        <div class="mkeys"><span><b>↑↓</b> model</span><span><b>←→</b> effort</span><span><b>↵</b> done</span></div>
+      </div>
+      <div class="pop" data-pop="plus" style="left:10px;bottom:52px">
+        <span class="label mlabel">New</span>
+        <button class="mi"><span class="ic"><span class="hm claude md"></span></span>New Claude Session<kbd>⌘N</kbd></button>
+        <button class="mi" data-codex><span class="ic"><span class="hm codex md"></span></span>New Codex Session</button>
+        <div class="mnote" data-codex-note hidden>Codex comes in a later version</div>
+        <div class="msep"></div>
+        <button class="mi"><span class="ic" data-i="folder"></span>Add Project…</button>
+      </div>
+      <span class="pin" data-for=".cbar .cchip.mdl" data-dx="4" data-dy="-26">B1</span>
+      <span class="pin" data-for="#draftModels.open .hgrp[data-h=codex] .hhead" data-at="r" data-dx="-4" data-dy="5">B2</span>
+      <span class="pin" data-for="#draftModels.open .effort" data-at="r" data-dx="-4" data-dy="8">B3</span>
+      <span class="pin" data-for=".dhead .btn.gh" data-dx="-30" data-dy="2">B4</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>B1</b>The one chip, as in a session: the harness's mark, the model and the effort as a lighter word. On a new session it is also how you choose the harness: the knot means the session starts on Codex.</li>
+      <li><b>B2</b>Both harnesses are live here, the models grouped under their marks. A session keeps its harness afterwards, so inside it the other group is dimmed (preview 02). Switch to "Codex comes later" for a build that cannot start Codex.</li>
+      <li><b>B3</b>The effort follows the picked model's own levels: Claude Code's five, Codex's six, none for Haiku. Reset goes back to what this project starts with.</li>
+      <li><b>B4</b>The new-session page links to the project's page, and the page's New session comes back here. The rest is Phase 1's page, unchanged.</li>
+    </ol>
+  </section>
+
+  <!-- ================= 03 NARROW AND EMPTY ================= -->
+  <section class="sec" id="narrow">
+    <div class="sechead"><span class="num">03</span><h2>Narrow and empty</h2>
+      <p>Under 760 of pane width the page is one column: Presets above the list, the past seven days under it, and a 20 pt inset. second-brain is not a Git repository, so its rows and its stats line have no branch. Switch to an empty project for a page with no sessions.</p></div>
+    <div class="ln" style="margin:0 0 18px 56px">
+      <div class="seg" id="cSeg"><button class="on" data-cproj="second-brain">second-brain</button><button data-cproj="dotfiles">An empty project</button></div>
+    </div>
+    <div class="stage"><div class="win" id="winC" data-w="940" data-h="700">
+      <aside class="side" data-sel="none" data-head="second-brain" data-extra="dotfiles" data-collapse="loom"></aside>
+      <main class="detail narrow">
+        <div class="ppage" data-cpage="second-brain" style="--tone:var(--aqua)">
+          <div class="pcol">
+            <header class="phead">
+              <span class="pmark lg">S</span><h1 class="pname">second-brain</h1><span class="ppath" title="~/Documents/second-brain">~/Documents/second-brain</span>
+              <div class="end">
+                <button class="ib" data-i="more" title="Project actions"></button>
+                <button class="btn pri lg"><span data-i="compose"></span>New session</button>
+              </div>
+            </header>
+            <div class="pstats"><span><b>1</b> running</span><span><b>4</b> sessions</span><span><b>820K</b> tokens, past 7 days</span></div>
+            <nav class="ptabs"><button class="itab on" data-ptab="sessions">Sessions<span class="n">4</span></button><button class="itab" data-ptab="branches">Branches</button><button class="itab" data-ptab="instructions">Instructions</button></nav>
+            <div class="ppanel" data-ptab="sessions">
+              <div class="pgrid">
+                <article class="card sc c-presets">
+                  <div class="sc-h"><b>Presets</b></div>
+                  <p class="cardnote">Save a first message as a preset from a new session, and it shows up here.</p>
+                </article>
+                <div class="slist" data-list="second-brain"></div>
+                <article class="card sc c-week">
+                  <div class="sc-h"><b>Past 7 days</b></div>
+                  <div class="wk"><div><b>820K</b><span>tokens</span></div><div><b>3</b><span>sessions with usage</span></div><div><b>$9</b><span>estimate</span></div></div>
+                </article>
+              </div>
+            </div>
+            <div class="ppanel" data-ptab="branches" hidden><div class="p700"><p class="pnote">This folder is not in a Git repository, or its branches could not be read.</p></div></div>
+            <div class="ppanel" data-ptab="instructions" hidden><div class="p700"><p class="pnote">This project has no CLAUDE.md. Claude reads one from the project folder when it starts a session there.</p></div></div>
+          </div>
+        </div>
+        <div class="ppage" data-cpage="dotfiles" style="--tone:var(--rose)" hidden>
+          <div class="pcol">
+            <header class="phead">
+              <span class="pmark lg">D</span><h1 class="pname">dotfiles</h1><span class="ppath" title="~/dotfiles">~/dotfiles</span>
+              <div class="end">
+                <button class="ib" data-i="more" title="Project actions"></button>
+                <button class="btn pri lg"><span data-i="compose"></span>New session</button>
+              </div>
+            </header>
+            <div class="pstats"><span><b>0</b> sessions</span><span class="pbr" title="Branch main"><span data-i="branch"></span>main</span></div>
+            <nav class="ptabs"><button class="itab on" data-ptab="sessions">Sessions</button><button class="itab" data-ptab="branches">Branches<span class="n">1</span></button><button class="itab" data-ptab="instructions">Instructions</button></nav>
+            <div class="ppanel" data-ptab="sessions">
+              <div class="pgrid">
+                <article class="card sc c-presets">
+                  <div class="sc-h"><b>Presets</b></div>
+                  <p class="cardnote">Save a first message as a preset from a new session, and it shows up here.</p>
+                </article>
+                <div class="pempty"><canvas id="empty-proj"></canvas><p>No sessions in this project yet. New session starts one.</p></div>
+                <article class="card sc c-week">
+                  <div class="sc-h"><b>Past 7 days</b></div>
+                  <p class="cardnote">No usage in the past 7 days.</p>
+                </article>
+              </div>
+            </div>
+            <div class="ppanel" data-ptab="branches" hidden><div class="p700" data-branches="dotfiles"></div></div>
+            <div class="ppanel" data-ptab="instructions" hidden><div class="p700"><p class="pnote">This project has no CLAUDE.md. Claude reads one from the project folder when it starts a session there.</p></div></div>
+          </div>
+        </div>
+      </main>
+      <div class="pop" data-pop="plus" style="left:10px;bottom:52px">
+        <span class="label mlabel">New</span>
+        <button class="mi"><span class="ic"><span class="hm claude md"></span></span>New Claude Session<kbd>⌘N</kbd></button>
+        <button class="mi" data-codex><span class="ic"><span class="hm codex md"></span></span>New Codex Session</button>
+        <div class="mnote" data-codex-note hidden>Codex comes in a later version</div>
+        <div class="msep"></div>
+        <button class="mi"><span class="ic" data-i="folder"></span>Add Project…</button>
+      </div>
+      <span class="pin" data-for=".ppage:not([hidden]) .ppanel:not([hidden]) .c-presets" data-at="r" data-dx="-34" data-dy="-9">C1</span>
+      <span class="pin" data-for=".ppage[data-cpage=second-brain]:not([hidden]) .ppanel:not([hidden]) .sr[data-s=th]" data-at="r" data-dx="-34" data-dy="14">C2</span>
+      <span class="pin" data-for=".ppage:not([hidden]) .ppanel:not([hidden]) .pempty canvas" data-dx="40" data-dy="40">C3</span>
+      <span class="pin" data-for=".side .nosess" data-at="r" data-dx="-60" data-dy="5">C4</span>
+    </div></div>
+    <ol class="legend">
+      <li><b>C1</b>Under 760 of pane width, one column: Presets above the list and the past seven days under it, with a 20 pt inset. An empty card says how to fill it.</li>
+      <li><b>C2</b>Outside a Git repository a row has no branch, and neither has the stats line; the time keeps its column. Under 460 a row drops its branch too.</li>
+      <li><b>C3</b>An empty project: a small hammerhead swims in place over one plain line, as in the empty panes. It stops off screen, and swims on under Reduce Motion unless Animated art is off (D-79).</li>
+      <li><b>C4</b>In the sidebar an empty project says "No sessions", and a collapsed one keeps only its head and its dot.</li>
+    </ol>
+  </section>
+
+  <!-- ================= 04 PARTS ================= -->
+  <section class="sec" id="parts">
+    <div class="sechead"><span class="num">04</span><h2>Parts</h2>
+      <p>Each part of the page in its one look, with its states. The menus and the popover are the frames' own.</p></div>
+    <div class="parts">
+      <div class="spec w12"><span class="label">A session row</span>
+        <div class="pc2"><div class="slist" data-list="states"></div></div>
+        <div class="pc2" style="width:460px"><div class="stlab">under 460: no branch</div><div class="slist" data-list="narrow"></div></div>
+        <p class="note">The status, the harness's mark, the title (13 medium) and its last line (12 secondary), the branch (mono 11.5, 170 wide) and the time (mono, 44 wide). The last line is the reason Loom holds, such as Allow, Asks, Plan ready or Failed; otherwise it is the first line of the transcript's end, read once per visit and only for a row that is drawn. A stale session dims its title.</p>
+      </div>
+      <div class="spec w6"><span class="label">The head and its stats</span>
+        <div class="pc2" style="--tone:var(--orchid)"><div class="phead"><span class="pmark lg">L</span><span class="pname">loom</span><span class="ppath">~/Documents/github/loom</span><div class="end"><button class="ib" data-i="more"></button><button class="btn pri lg"><span data-i="compose"></span>New session</button></div></div>
+          <div class="pstats"><span><b>3</b> running</span><span><b>9</b> sessions</span><span><b>3.1M</b> tokens, past 7 days</span><span class="pbr"><span data-i="branch"></span>swarm/1</span></div></div>
+        <div class="pc2" style="--tone:var(--fg-2)"><div class="phead"><span class="pmark lg">N</span><span class="pname">notes</span><span class="ppath">~/notes</span><div class="end"><button class="btn pri lg"><span data-i="compose"></span>New session</button></div></div>
+          <div class="pstats"><span><b>1</b> session</span></div></div>
+        <p class="note">The head is 52 pt, on the window's header line. A project with no tone (None, or Project colors off) has a neutral mark. Nothing is counted when there is nothing to count: no "running" without a run, no tokens without usage, no branch outside Git.</p>
+      </div>
+      <div class="spec w6"><span class="label">The project menu</span>
+        <div data-clone="#projMenu"></div>
+        <p class="note">The same menu as the sidebar's ⋯ and its right-click: new sessions with their harness's mark, the colour as seven swatches with the current one ringed, Move Up and Move Down, and Remove Empty Project, which works only on an empty project.</p>
+      </div>
+      <div class="spec w6"><span class="label">Presets</span>
+        <div class="pc2"><article class="card sc" style="width:300px">
+          <div class="sc-h"><b>Presets</b><span class="nt">this project</span></div>
+          <div class="psets">
+            <button class="pset" style="--mt:var(--m-acc)"><span class="mo" data-i="penline"></span><span class="nm">Run tests, fix failures</span><span class="md"><span class="hm claude"></span>Sonnet 5.5</span></button>
+            <button class="pset" style="--mt:var(--m-abe)"><span class="mo" data-i="shield"></span><span class="nm">Second opinion</span><span class="md"><span class="hm codex"></span>GPT-6.1 Sol</span></button>
+          </div></article></div>
+        <p class="note">The mode's icon in its tone and the model after its harness's mark say how the session will start; the tooltip has the message. "all" marks a preset every project shares. The context menu removes one.</p>
+      </div>
+      <div class="spec w6"><span class="label">Past 7 days</span>
+        <div class="pc2"><article class="card sc" style="width:300px"><div class="sc-h"><b>Past 7 days</b></div><div class="wk"><div><b>3.1M</b><span>tokens</span></div><div><b>7</b><span>sessions with usage</span></div><div><b>$31</b><span>estimate</span></div></div></article></div>
+        <div class="pc2"><article class="card sc" style="width:300px"><div class="sc-h"><b>Past 7 days</b></div><p class="cardnote">Could not read this project's usage.</p></article></div>
+        <p class="note">Figures are 18 semibold with tabular digits. "Sessions with usage" counts the sessions with usage records this week, not the project's sessions. While the index reads, the card says "Reading usage…".</p>
+      </div>
+      <div class="spec w6"><span class="label">Branches</span>
+        <div class="pc2"><div data-branches="loom" data-max="4"></div><p class="cutnote" style="margin-left:12px">Only the first 200 branches are listed.</p></div>
+        <p class="note">Read from the repository's own files, with no git process: the current branch first, then by when each one changed. A branch another worktree has checked out names that folder; a count says how many listed sessions work on it.</p>
+      </div>
+      <div class="spec w6"><span class="label">Instructions</span>
+        <div class="pc2"><div class="ihd"><span data-i="book"></span><span class="fn">CLAUDE.md</span><span>48 KB · 2d</span><button class="lk2"><span data-i="open"></span>Open in editor</button></div>
+          <p class="cutnote">Showing the first 32 KB of 48 KB. Open the file to read the rest.</p></div>
+        <div class="pc2"><p class="pnote" style="padding:0">This project has no CLAUDE.md. Claude reads one from the project folder when it starts a session there.</p></div>
+        <p class="note">CLAUDE.md (or .claude/CLAUDE.md), read only, through the chat's Markdown at reading size, the first 32 KB. New here: Open in editor beside the file's name, so the cut note has somewhere to send you.</p>
+      </div>
+      <div class="spec w12"><span class="label">The model chip on a new session</span>
+        <div class="mdemo">
+          <div class="mcol">
+            <span class="mcap">Claude Code</span>
+            <div class="chiprow"><button class="cchip mdl"><span class="hm claude"></span>Opus 5.5<span class="eff">High</span><span class="cv" data-i="chev-d"></span></button></div>
+            <span class="mcap">Codex</span>
+            <div class="chiprow"><button class="cchip mdl"><span class="hm codex"></span>GPT-6.1 Sol<span class="eff">Medium</span><span class="cv" data-i="chev-d"></span></button></div>
+            <span class="mcap">No effort setting</span>
+            <div class="chiprow"><button class="cchip mdl"><span class="hm claude"></span>Haiku 5.5<span class="cv" data-i="chev-d"></span></button></div>
+          </div>
+          <div class="mcol">
+            <span class="mcap">A build that cannot start Codex</span>
+            <div class="pop pl mpick static">
+              <div class="hgrp" data-h="claude">
+                <div class="hhead"><span class="hm claude"></span><b>Claude Code</b><span class="hnote"></span></div>
+                <button class="mrow" data-model="Default" data-levels="low medium high xhigh max"><b>Default</b><span class="d">Opus 5.5, recommended</span><span class="ck"></span></button>
+                <button class="mrow cur" data-model="Opus 5.5" data-levels="low medium high xhigh max"><b>Opus 5.5</b><span class="d">Long agentic coding</span><span class="ck" data-i="check"></span></button>
+                <button class="mrow" data-model="Sonnet 5.5" data-levels="low medium high xhigh max"><b>Sonnet 5.5</b><span class="d">Fast, everyday work</span><span class="ck"></span></button>
+              </div>
+              <div class="hgrp later" data-h="codex">
+                <div class="hhead"><span class="hm codex"></span><b>Codex</b><span class="hnote">in a later version</span></div>
+                <button class="mrow dis" data-model="GPT-6 Astra" data-levels="none low medium high xhigh max"><b>GPT-6 Astra</b><span class="d">Most capable</span><span class="ck"></span></button>
+                <button class="mrow dis" data-model="GPT-6.1 Sol" data-levels="none low medium high xhigh max"><b>GPT-6.1 Sol</b><span class="d">Near Astra, for less</span><span class="ck"></span></button>
+              </div>
+              <div class="effort">
+                <div class="eff-h"><span class="lbl">Effort</span><b data-role="efftitle">High</b><button class="lk2 dis" data-act="effreset">Reset</button></div>
+                <div class="slider" data-role="slider" data-levels="low medium high xhigh max" data-level="high" data-base="high"></div>
+                <div class="lvls"></div>
+                <div class="eff-none">This model has no effort setting.</div>
+              </div>
+            </div>
+          </div>
+          <div class="mtext">
+            <p><b>The model picks the harness.</b> On a new session both groups are live. A Claude model starts a Claude Code session and a GPT model a Codex one; the chip's mark says which before you press ↵.</p>
+            <p><b>A session keeps it.</b> Once the session runs, the other harness's models are dimmed, "in a new session" (preview 02).</p>
+            <p><b>Today's build.</b> Codex cannot start yet, so its group is dimmed with "in a later version", and a pick never lands there.</p>
+            <p><b>The mode chip</b> keeps Loom's modes for now. Codex's own approval modes come with Codex's planning.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 05 REACT ================= -->
+  <section class="sec" id="react">
+    <div class="sechead"><span class="num">05</span><h2>What to react to</h2>
+      <p>The content is the project page as built (DESIGN §10); this preview draws it in Ink and adds the harness. A yes, a no or "more like X" on each is enough.</p></div>
+    <ol class="react">
+      <li><b>The head on the header line.</b> The project's name in title type where a session's title would be, with no bar of its own. Right, or a smaller head in header type?</li>
+      <li><b>The list on the canvas.</b> Flat rows between hairlines, with cards only for the summaries. Or should the list be a card, as on Home?</li>
+      <li><b>Presets.</b> The mode's icon in its tone and the model with its harness's mark, the message in the tooltip. Enough, or should the mode's name show too?</li>
+      <li><b>⋯ on the page.</b> The sidebar's project menu again, with the colour as swatches. Worth having here?</li>
+      <li><b>The model picks the harness.</b> A GPT model starts a Codex session, and only the chip's mark says so before you start. Clear enough?</li>
+      <li><b>An empty project.</b> A small hammerhead in place over the line. Fine, or keep empty pages without art?</li>
+      <li><b>Open in editor</b> beside CLAUDE.md is new. Keep it?</li>
+    </ol>
+  </section>
+  <footer>Loom v3 · Ink · design preview 03 · 20 Oct 2026 · the content is DESIGN §10 and the project page as built; this page draws its look and the one model chip</footer>
+</div>
+
+<script>
+(() => {
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+/* ---------- icons (16 pt, 1.4 stroke) ---------- */
+const ICON = {
+  search:'<circle cx="7" cy="7" r="4.6"/><path d="m10.5 10.5 3.5 3.5"/>',
+  home:'<path d="M2.6 7.2 8 2.9l5.4 4.3V13a.9.9 0 0 1-.9.9H9.7V10.2H6.3v3.7H3.5a.9.9 0 0 1-.9-.9z"/>',
+  plus:'<path d="M8 3.2v9.6M3.2 8h9.6"/>',
+  'chev-d':'<path d="m4.6 6.4 3.4 3.4 3.4-3.4"/>',
+  'chev-r':'<path d="m6.4 4.6 3.4 3.4-3.4 3.4"/>',
+  'side-l':'<rect x="2" y="3" width="12" height="10" rx="2.2"/><path d="M6.2 3v10"/>',
+  'side-r':'<rect x="2" y="3" width="12" height="10" rx="2.2"/><path d="M9.8 3v10"/>',
+  gear:'<circle cx="8" cy="8" r="2"/><path d="M8 1.9v1.7M8 12.4v1.7M14.1 8h-1.7M3.6 8H1.9M12.3 3.7l-1.2 1.2M4.9 11.1l-1.2 1.2M12.3 12.3l-1.2-1.2M4.9 4.9 3.7 3.7"/><circle cx="8" cy="8" r="4.4"/>',
+  more:'<circle cx="3.6" cy="8" r=".95" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r=".95" fill="currentColor" stroke="none"/><circle cx="12.4" cy="8" r=".95" fill="currentColor" stroke="none"/>',
+  branch:'<circle cx="5" cy="3.9" r="1.4"/><circle cx="5" cy="12.1" r="1.4"/><circle cx="11" cy="6" r="1.4"/><path d="M5 5.3v5.4M11 7.4c0 2.3-2.1 2.7-4.7 3.7"/>',
+  x:'<path d="m4.6 4.6 6.8 6.8M11.4 4.6l-6.8 6.8"/>',
+  check:'<path d="m3.6 8.4 2.9 2.9 5.9-6.6"/>',
+  up:'<path d="M8 12.6V3.6M4.3 7.2 8 3.5l3.7 3.7"/>',
+  copy:'<rect x="5.6" y="5.6" width="7.8" height="7.8" rx="1.6"/><path d="M10.4 5.6V4c0-.8-.6-1.4-1.4-1.4H4c-.8 0-1.4.6-1.4 1.4v5c0 .8.6 1.4 1.4 1.4h1.6"/>',
+  open:'<path d="M9.2 2.8h4v4M13.2 2.8 7.8 8.2M11.6 9.6v2.7c0 .5-.4.9-.9.9H3.7a.9.9 0 0 1-.9-.9V5.3c0-.5.4-.9.9-.9h2.7"/>',
+  folder:'<path d="M2.3 4.7c0-.7.6-1.3 1.3-1.3h2.5l1.4 1.5h4.9c.7 0 1.3.6 1.3 1.3v5.6c0 .7-.6 1.3-1.3 1.3H3.6c-.7 0-1.3-.6-1.3-1.3z"/>',
+  shield:'<path d="M8 2.2 13 4v3.6c0 3-2.1 5.1-5 6.2-2.9-1.1-5-3.2-5-6.2V4z"/>',
+  clock:'<circle cx="8" cy="8" r="5.6"/><path d="M8 5v3.2l2.1 1.3"/>',
+  pencil:'<path d="M10.6 2.9a1.5 1.5 0 0 1 2.1 2.1l-7.4 7.4-2.8.7.7-2.8z"/>',
+  trash:'<path d="M3 4.6h10M6.4 4.6V3.2h3.2v1.4M4.3 4.6l.6 8.2c0 .6.5 1 1.1 1h4c.6 0 1.1-.4 1.1-1l.6-8.2"/>',
+  claude:'<path d="M8 1.8 8.9 6l3.6-2.4L10.1 7.1 14.3 8l-4.2.9 2.4 3.5-3.6-2.4L8 14.2 7.1 10l-3.6 2.4L5.9 8.9 1.7 8l4.2-.9-2.4-3.5L7.1 6z" fill="#D97757" stroke="none"/>',
+  codex:'<path d="M8 2.2 13 5.1v5.8L8 13.8 3 10.9V5.1z"/><path d="M8 2.2v11.6M3 5.1l10 5.8M13 5.1 3 10.9"/>',
+  eye:'<path d="M1.9 8s2.3-4.3 6.1-4.3S14.1 8 14.1 8s-2.3 4.3-6.1 4.3S1.9 8 1.9 8z"/><circle cx="8" cy="8" r="1.9"/>',
+  rewind:'<path d="M5.4 5.4h4.4a3.3 3.3 0 0 1 0 6.6H6.6"/><path d="M7.4 3.1 5.1 5.4l2.3 2.3"/>',
+  doc:'<path d="M4.3 2.4h4.8l2.6 2.6v7.6c0 .6-.4 1-1 1H4.3c-.6 0-1-.4-1-1V3.4c0-.6.4-1 1-1z"/><path d="M9 2.5v2.7h2.7M5.7 8.2h4.6M5.7 10.6h3.2"/>',
+  docplus:'<path d="M4.3 2.4h4.8l2.6 2.6v7.6c0 .6-.4 1-1 1H4.3c-.6 0-1-.4-1-1V3.4c0-.6.4-1 1-1z"/><path d="M9 2.5v2.7h2.7M7.5 7.4v4M5.5 9.4h4"/>',
+  file:'<path d="M4.3 2.4h4.8l2.6 2.6v7.6c0 .6-.4 1-1 1H4.3c-.6 0-1-.4-1-1V3.4c0-.6.4-1 1-1z"/><path d="M9 2.5v2.7h2.7"/>',
+  term:'<rect x="2" y="3" width="12" height="10" rx="2"/><path d="m4.9 6.3 2 1.7-2 1.7M8.6 10h2.6"/>',
+  agent:'<circle cx="8" cy="5.5" r="2.4"/><path d="M3.4 13.2c.5-2.3 2.3-3.7 4.6-3.7s4.1 1.4 4.6 3.7"/>',
+  after:'<path d="M4 3.4v4.3c0 1.2.9 2.1 2.1 2.1h6.2"/><path d="m10 7.5 2.4 2.3-2.4 2.3"/>',
+  pause:'<path d="M6 4.2v7.6M10 4.2v7.6"/>',
+  play:'<path d="M5.6 3.8v8.4L12 8z"/>',
+  bubble:'<path d="M3 4.6c0-1 .7-1.7 1.7-1.7h6.6c1 0 1.7.7 1.7 1.7v4.4c0 1-.7 1.7-1.7 1.7H7.4L4.6 13v-2.3C3.7 10.6 3 9.9 3 9z"/>',
+  penline:'<path d="M10.3 2.9a1.4 1.4 0 0 1 2 2L6.6 10.6l-2.7.7.7-2.7z"/><path d="M8.4 13.3h4.8"/>',
+  bolt:'<path d="M9 1.9 4.3 9h3.4l-.6 5.1L11.7 7H8.3z"/>',
+  excl:'<circle cx="8" cy="8" r="5.6"/><path d="M8 5v3.4"/><circle cx="8" cy="10.8" r=".8" fill="currentColor" stroke="none"/>',
+  list:'<rect x="2.2" y="3" width="11.6" height="10" rx="2"/><path d="M7 6.3h4.4M7 9.7h4.4"/><circle cx="4.9" cy="6.3" r=".75" fill="currentColor" stroke="none"/><circle cx="4.9" cy="9.7" r=".75" fill="currentColor" stroke="none"/>',
+  clip:'<path d="m12.4 7.5-4.6 4.6a2.9 2.9 0 0 1-4.1-4.1l4.9-4.9a1.9 1.9 0 0 1 2.7 2.7L6.6 10.5a1 1 0 0 1-1.4-1.4L9.5 4.8"/>',
+  at:'<circle cx="8" cy="8" r="2.4"/><path d="M10.4 8v.9c0 1 .7 1.7 1.6 1.7s1.6-.8 1.6-2.4a5.6 5.6 0 1 0-2.6 4.7"/>',
+  slash:'<path d="M10.4 2.8 5.6 13.2"/>',
+  sparkle:'<path d="m7 2.4 1.1 3.1 3.1 1.1-3.1 1.1L7 10.8 5.9 7.7 2.8 6.6l3.1-1.1z"/><path d="m11.8 9.6.5 1.4 1.4.5-1.4.5-.5 1.4-.5-1.4-1.4-.5 1.4-.5z"/>',
+  question:'<circle cx="8" cy="8" r="5.6"/><path d="M6.3 6.4a1.8 1.8 0 0 1 3.5.5c0 1.2-1.8 1.5-1.8 2.6"/><circle cx="8" cy="11.1" r=".8" fill="currentColor" stroke="none"/>',
+  warn:'<path d="M7.1 3.1a1 1 0 0 1 1.8 0l4.9 8.6a1 1 0 0 1-.9 1.5H3.1a1 1 0 0 1-.9-1.5z"/><path d="M8 6.4v2.8"/><circle cx="8" cy="11" r=".75" fill="currentColor" stroke="none"/>',
+  down:'<path d="M8 3.4v9.1M4.3 8.8 8 12.5l3.7-3.7"/>',
+  wrap:'<path d="M2.8 4.3h10.4M2.8 8h8.4a2 2 0 0 1 0 4H8.4"/><path d="m9.8 10.6-1.4 1.4 1.4 1.4M2.8 12h3.2"/>',
+  bell:'<path d="M4.4 10.9V7.5a3.6 3.6 0 0 1 7.2 0v3.4l1.2 1.3H3.2z"/><path d="M6.7 13.6a1.4 1.4 0 0 0 2.6 0"/>',
+  plug:'<path d="M6.5 2.7H4.3c-.6 0-1 .4-1 1V6c.9-.4 2 .2 2 1.2S4.2 8.8 3.3 8.4v2.3c0 .6.4 1 1 1h2.3c-.4-.9.2-2 1.2-2s1.6 1.1 1.2 2h2.3c.6 0 1-.4 1-1V8.4c.9.4 2-.2 2-1.2s-1.1-1.6-2-1.2V3.7c0-.6-.4-1-1-1H9c.4-.9-.2-2-1.2-2s-1.6 1.1-1.3 2z"/>',
+  globe:'<circle cx="8" cy="8" r="5.6"/><path d="M2.4 8h11.2M8 2.4c1.5 1.6 2.3 3.5 2.3 5.6S9.5 12 8 13.6C6.5 12 5.7 10.1 5.7 8S6.5 4 8 2.4z"/>',
+  refresh:'<path d="M12.8 7.5A4.8 4.8 0 1 0 11.4 11"/><path d="M13 3.7v3.8H9.2"/>',
+  compose:'<path d="M12.6 9.4v2.9c0 .7-.6 1.3-1.3 1.3H3.7c-.7 0-1.3-.6-1.3-1.3V4.7c0-.7.6-1.3 1.3-1.3h2.9"/><path d="M11.3 2.5a1.4 1.4 0 0 1 2 2L8.1 9.7l-2.6.7.7-2.6z"/>',
+  book:'<path d="M2.4 3.3c2-.7 3.9-.4 5.6.9v9.1c-1.7-1.3-3.6-1.6-5.6-.9z"/><path d="M13.6 3.3c-2-.7-3.9-.4-5.6.9v9.1c1.7-1.3 3.6-1.6 5.6-.9z"/>',
+  mvup:'<path d="M8 12.8V4M4.6 7.3 8 3.9l3.4 3.4"/>',
+  mvdown:'<path d="M8 3.2V12M4.6 8.7 8 12.1l3.4-3.4"/>',
+  swatch:'<rect x="2.6" y="2.6" width="4.6" height="4.6" rx="1.2"/><rect x="8.8" y="2.6" width="4.6" height="4.6" rx="1.2"/><rect x="2.6" y="8.8" width="4.6" height="4.6" rx="1.2"/><rect x="8.8" y="8.8" width="4.6" height="4.6" rx="1.2"/>'
+};
+const svg = n => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${ICON[n] || ''}</svg>`;
+
+/* ---------- status marks ---------- */
+const mark = st => st === 'work' ? '<span class="spin" aria-hidden="true">⠋</span>' : st ? `<i class="dot ${st}"></i>` : '';
+
+/* ---------- the sidebar, the same in every frame ---------- */
+const PROJECTS = [
+  { name:'loom', tone:'var(--orchid)', dot:'attn', sessions:[
+    { id:'ink', t:'Port the sidebar to Ink tokens', st:'work', meta:'now', subs:[
+      { st:'work', type:'explorer', d:'Map every sidebar token', e:'2m' },
+      { st:'work', type:'implementer', d:'Port SidebarRow to Ink', e:'now', subs:[
+        { st:'work', type:'explorer', d:'Find the footer tokens', e:'now' } ] },
+      { st:'done', type:'2 finished' } ] },
+    { id:'gate', t:'Review the gate failure', st:'attn', meta:'now' },
+    { id:'rc', t:'Release C health check', st:'unv', meta:'12m' },
+    { id:'lb', t:'Lombot spike S10', st:'', meta:'2h' },
+    { draft:true, t:'Try a lighter inspector…' } ] },
+  { name:'second-brain', tone:'var(--aqua)', dot:'unv', sessions:[
+    { id:'vm', t:'Weekly vault maintenance', st:'work', meta:'now' },
+    { id:'th', t:'Thesis outline', st:'unv', meta:'25m' } ] },
+  { name:'backend-api', tone:'var(--mint)', dot:'fail', sessions:[
+    { id:'jwt', t:'Migrate auth to JWT', st:'fail', meta:'3h' },
+    { id:'rl', t:'Rate limiter tests', st:'', meta:'2d' } ] }
+];
+// A subagent row branches from its parent's status column: one branch per row, the last one curving, and a guide that runs on
+// for every ancestor that still has a sibling below.
+const STEP = 19;
+function subs(list, depth, cont) {
+  return list.map((a, k) => {
+    const last = k === list.length - 1, x = 22 + (depth - 1) * STEP;
+    const guides = cont.map((on, d) => on ? `<i class="g" style="left:${22 + d * STEP}px"></i>` : '').join('');
+    const ind = a.st === 'done' ? '<span class="ind ck" data-i="check"></span>' : `<span class="ind">${mark(a.st)}</span>`;
+    return `<div class="sub${a.st === 'done' ? ' done' : ''}" style="padding-left:${x + 13}px">${guides}<i class="br ${last ? 'last' : 'mid'}" style="left:${x}px"></i>${ind}<span class="ty">${a.type}</span><span class="de">${a.d || ''}</span><span class="el">${a.e || ''}</span></div>`
+      + (a.subs ? subs(a.subs, depth + 1, [...cont, !last]) : '');
+  }).join('');
+}
+const initial = name => name.replace(/[^a-z]/gi, '').charAt(0).toUpperCase();
+function projectGroup(p, sel) {
+  return `<div class="pgroup" style="--tone:${p.tone}">
+    <div class="proj-head"><span class="pmark">${initial(p.name)}</span><span class="pn">${p.name}</span>${p.dot ? `<i class="dot ${p.dot}" style="width:6px;height:6px"></i>` : ''}<span class="chev" data-i="chev-d"></span></div>
+    ${p.sessions.map(s => s.draft
+      ? `<div class="row srow draft"><span class="ind"></span><span class="t">${s.t}</span><span class="x" data-i="x"></span></div>`
+      : `<div class="row srow${s.id === sel ? ' sel' : ''}" data-s="${s.id}"><span class="ind">${mark(s.st)}</span><span class="t">${s.t}</span><span class="meta">${s.meta}</span></div>` + (s.subs ? subs(s.subs, 1, []) : '')
+    ).join('')}
+  </div>`;
+}
+function sidebar(sel) {
+  return `
+    <div class="side-top"><div class="lights"><i></i><i></i><i></i></div><button class="ib" title="Hide the sidebar" data-i="side-l"></button></div>
+    <button class="search" data-open="palette"><span data-i="search"></span><span>Search</span><kbd>⌘K</kbd></button>
+    <div class="nav">
+      <div class="row${sel === 'home' ? ' sel' : ''}"><span class="ic" data-i="home"></span><span class="t">Home</span><span class="badge attn">1</span></div>
+      <div class="row act"><span class="ic" data-i="plus"></span><span class="t">New session</span><kbd>⌘N</kbd></div>
+    </div>
+    <div class="side-sec"><span class="label">Projects</span><span class="view"><b>projects</b> · activity</span></div>
+    <div class="plist">${PROJECTS.map(p => projectGroup(p, sel)).join('')}</div>
+    <div class="side-foot">
+      <button class="ib" data-open="plus" data-i="plus" title="New"></button>
+      <button class="usage" title="Plan limits: 5-hour 62% left, weekly 74% left"><span>5h</span><span class="meter"><i style="width:62%"></i></span><span class="v">62%</span><span>·</span><span>wk</span><span class="v">74%</span></button>
+      <button class="ib" data-i="gear" title="Settings" style="margin-left:auto"></button>
+    </div>`;
+}
+$$('.side[data-sel]').forEach(el => el.innerHTML = sidebar(el.dataset.sel));
+$$('[data-tree]').forEach(el => el.innerHTML = projectGroup(PROJECTS[0], el.dataset.tree));
+$$('[data-mark]').forEach(el => el.innerHTML = mark(el.dataset.mark));
+$$('[data-i]').forEach(el => el.insertAdjacentHTML('afterbegin', svg(el.dataset.i)));
+
+/* ---------- frames: fit to the page, or 100 % ---------- */
+let zoom = false;
+function fit() {
+  $$('.stage').forEach(st => {
+    const win = st.firstElementChild, w = +win.dataset.w, h = +win.dataset.h;
+    win.style.width = w + 'px'; win.style.height = h + 'px';
+    const avail = st.clientWidth, s = zoom ? 1 : Math.min(1, avail / w);
+    win.style.transform = `scale(${s})`;
+    win.style.left = (!zoom && avail > w) ? (avail - w) / 2 + 'px' : '0';
+    st.style.height = Math.ceil(h * s) + (zoom ? 14 : 0) + 'px';
+    st.classList.toggle('zoomed', zoom);
+  });
+}
+addEventListener('resize', fit); fit();
+new ResizeObserver(fit).observe(document.body);
+
+/* ---------- switches ---------- */
+const sw = (id, fn) => { const el = $(id); el.parentElement.addEventListener('click', () => { el.classList.toggle('on'); fn(el.classList.contains('on')); }); };
+sw('#swAmbient', on => { ambient = on; oceans.forEach(o => o.sync()); });
+sw('#swPins', on => document.body.classList.toggle('pins', on));
+sw('#swZoom', on => { zoom = on; fit(); });
+$$('#themeSeg button').forEach(b => b.addEventListener('click', () => {
+  document.documentElement.dataset.theme = b.dataset.themeSet;
+  $$('#themeSeg button').forEach(x => x.classList.toggle('on', x === b));
+  oceans.forEach(o => { o.readInk(); o.draw(); });
+}));
+$$('.seg').forEach(s => { if (s.id !== 'themeSeg') s.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $$('button', s).forEach(x => x.classList.toggle('on', x === b)); }); });
+$$('.spec .sw, .minic .sw').forEach(s => s.addEventListener('click', () => s.classList.toggle('on')));
+
+/* ---------- the session frame's behaviour ---------- */
+const winA = $('#winA');
+function showTab(insp, key) {
+  const t = $(`.itab[data-tab="${key}"]`, insp);
+  $$('.itab', insp).forEach(x => x.classList.toggle('on', x === t));
+  $$('.ipanel', insp).forEach(p => p.hidden = p.dataset.tab !== key);
+  insp.style.setProperty('--iw', t.dataset.w + 'px');
+}
+$$('.insp').forEach(insp => {
+  $$('.itab', insp).forEach(t => t.addEventListener('click', () => showTab(insp, t.dataset.tab)));
+  $$('[data-goto]', insp).forEach(b => b.addEventListener('click', () => showTab(insp, b.dataset.goto)));
+});
+$$('.srow', winA).forEach(r => r.addEventListener('click', () => { if (r.classList.contains('draft')) return; $$('.srow', winA).forEach(x => x.classList.toggle('sel', x === r)); }));
+$$('.tab', winA).forEach(t => t.addEventListener('click', e => { if (e.target.closest('.x')) return; $$('.tab', winA).forEach(x => x.classList.toggle('on', x === t)); }));
+$$('.frow', winA).forEach(r => r.addEventListener('click', () => $$('.frow', winA).forEach(x => x.classList.toggle('on', x === r))));
+$$('.agent', winA).forEach(r => r.addEventListener('click', () => $$('.agent', winA).forEach(x => x.classList.toggle('on', x === r))));
+
+function closeAll() { $$('.pop.open, .palette.open, .scrim.open').forEach(e => e.classList.remove('open')); }
+document.addEventListener('click', e => {
+  const opener = e.target.closest('[data-open]');
+  if (opener) {
+    const win = opener.closest('.win'), id = opener.dataset.open, el = win && $(`[data-pop="${id}"]`, win);
+    if (!el) return;
+    const was = el.classList.contains('open');
+    closeAll();
+    if (!was) {
+      el.classList.add('open');
+      if (id === 'palette') { $('.scrim', win).classList.add('open'); const inp = $('input', el); inp.value = ''; filter(el, ''); setTimeout(() => inp.focus({ preventScroll: true }), 20); }
+    }
+    e.stopPropagation(); return;
+  }
+  if (!e.target.closest('.pop:not(.static), .palette:not(.static)')) closeAll();
+});
+function rows(pal) { return $$('.prow', pal).filter(r => !r.hidden); }
+function filter(pal, q) {
+  q = q.trim().toLowerCase();
+  $$('.prow', pal).forEach(r => r.hidden = q && !r.textContent.toLowerCase().includes(q));
+  $$('.pal-h', pal).forEach(h => { let n = h.nextElementSibling, any = false; while (n && !n.classList.contains('pal-h')) { if (!n.hidden) any = true; n = n.nextElementSibling; } h.hidden = !any; });
+  $$('.prow', pal).forEach(r => r.classList.remove('cur'));
+  const first = rows(pal)[0]; if (first) first.classList.add('cur');
+}
+const palA = $('.palette[data-pop="palette"]', winA);
+$('input', palA).addEventListener('input', e => filter(palA, e.target.value));
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeAll(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('.search', winA).click(); return; }
+  if (palA.classList.contains('open') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    e.preventDefault();
+    const list = rows(palA), i = list.findIndex(r => r.classList.contains('cur'));
+    const next = list[(i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length];
+    list.forEach(r => r.classList.toggle('cur', r === next));
+  }
+  if (palA.classList.contains('open') && e.key === 'Enter') closeAll();
+});
+$$('.prow', palA).forEach(r => r.addEventListener('mousemove', () => $$('.prow', palA).forEach(x => x.classList.toggle('cur', x === r))));
+
+/* ---------- the working mark: a braille spinner ---------- */
+const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'; let si = 0;
+setInterval(() => { if (document.hidden) return; si = (si + 1) % SPIN.length; $$('.spin').forEach(e => e.textContent = SPIN[si]); }, 80);
+
+/* ============================================================
+   The art layer: ASCII hammerheads.
+   Each shark is a spine that follows its own path, with a
+   travelling body wave. Its silhouette (body, hammer, fins,
+   tail) is filled into a one-pixel-per-cell field, and each
+   cell's coverage picks a character from a density ramp.
+   ============================================================ */
+const MONO = '"SF Mono", SFMono-Regular, ui-monospace, Menlo, monospace';
+const GLYPH = { 1:'.', 2:':', 3:'-', 4:'=', 5:'+', 6:'*', 7:'#', 8:'%', 9:'@', 10:'o', 11:'-', 12:'~', 13:'.', 14:'·', 15:'°' };
+// The cast. A profile is the half width along the body (0 = the head, 1 = the tail's root), as a share of the length.
+// `ext` is how far the spine runs past the body (the thresher's long tail), `reach` how much path the body remembers.
+const KINDS = {
+  hammerhead: { reach: 1.3, ext: 1, beat: .42, core: .3, profile: [[0,.03],[.05,.046],[.11,.064],[.19,.08],[.27,.085],[.37,.078],[.49,.062],[.61,.045],[.73,.03],[.83,.02],[.91,.014],[1,.009]] },
+  thresher: { reach: 2.1, ext: 1.7, beat: .5, core: .3, profile: [[0,.006],[.03,.028],[.08,.048],[.16,.064],[.26,.07],[.38,.064],[.5,.05],[.62,.035],[.74,.023],[.84,.015],[.92,.011],[1,.008]] },
+  whale: { reach: 1.3, ext: 1, beat: .22, core: .16, profile: [[0,.068],[.03,.08],[.08,.092],[.16,.102],[.26,.106],[.38,.098],[.5,.082],[.62,.06],[.74,.04],[.84,.025],[.92,.016],[1,.011]] }
+};
+function widthAt(profile, s) {
+  if (s <= 0) return profile[0][1];
+  for (let i = 1; i < profile.length; i++) {
+    const [s1, w1] = profile[i];
+    if (s <= s1) { const [s0, w0] = profile[i - 1], f = (s - s0) / (s1 - s0), k = f * f * (3 - 2 * f); return w0 + (w1 - w0) * k; }
+  }
+  return profile[profile.length - 1][1];
+}
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function tangents(pts) {
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+    const dx = a.x - b.x, dy = a.y - b.y, l = Math.hypot(dx, dy) || 1;
+    pts[i].tx = dx / l; pts[i].ty = dy / l;
+  }
+}
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const oceans = [];
+let ambient = true;
+
+class Shark {
+  constructor(ocean, spec, i) {
+    this.o = ocean;
+    Object.assign(this, { kind: 'hammerhead', L: 300, depth: .6, speed: 16 }, spec);
+    this.K = KINDS[this.kind]; this.baseL = this.L;
+    this.phase = Math.random() * 6.28; this.seed = Math.random() * 100; this.wakeT = 0; this.tail = null;
+    this.spawn(true, i);
+  }
+  hw(s) { return widthAt(this.K.profile, s) * this.L; }
+  spawn(initial, i = 0) {
+    const { w, h } = this.o;
+    if (this.fx != null) {
+      if (this.center) this.L = Math.min(this.baseL, w * .82 / (this.K.ext + .2));
+      this.x = this.center ? w / 2 + this.L * (this.K.ext * .5 + .05) : w * this.fx; this.y = h * this.fy; this.heading = this.angle || 0;
+    } else {
+      const right = initial ? (i % 2 === 0) : Math.random() < .5;
+      this.heading = (right ? 0 : Math.PI) + (Math.random() - .5) * .5;
+      this.y = h * (.2 + Math.random() * .6);
+      this.x = initial ? w * (.18 + ((i * .37) % .7) + Math.random() * .1) : (right ? -this.L * .25 : w + this.L * .25);
+    }
+    this.trail = [];
+    for (let d = 0; d <= this.L * this.K.reach; d += 4) this.trail.push({ x: this.x - Math.cos(this.heading) * d, y: this.y - Math.sin(this.heading) * d });
+  }
+  step(dt, t) {
+    this.phase += dt * Math.PI * 2 * this.K.beat;
+    if (!this.speed) return;
+    const { w, h } = this.o, n = Math.sin(t * .13 + this.seed) * .6 + Math.sin(t * .071 + this.seed * 1.7) * .4;
+    this.heading += n * .12 * dt;
+    const c = Math.sign(Math.cos(this.heading)) || 1, m = h * .14;
+    if (this.y < m) this.heading += .3 * dt * c;
+    if (this.y > h - m) this.heading -= .3 * dt * c;
+    const v = this.speed * (1 + .14 * Math.sin(this.phase));
+    this.x += Math.cos(this.heading) * v * dt; this.y += Math.sin(this.heading) * v * dt;
+    if (dist(this, this.trail[0]) >= 3) this.trail.unshift({ x: this.x, y: this.y });
+    let acc = dist(this, this.trail[0]);
+    for (let k = 1; k < this.trail.length; k++) { acc += dist(this.trail[k], this.trail[k - 1]); if (acc > this.L * this.K.reach) { this.trail.length = k + 1; break; } }
+    const pad = this.L * (this.K.ext + .3);
+    if (this.x < -pad || this.x > w + pad || this.y < -pad || this.y > h + pad) this.spawn(false);
+  }
+  spine(N) {
+    const L = this.L, ext = this.K.ext, poly = [{ x: this.x, y: this.y }].concat(this.trail), pts = new Array(N);
+    let seg = 0, acc = 0, segLen = dist(poly[0], poly[1]);
+    for (let i = 0; i < N; i++) {
+      const s = i / (N - 1) * ext, d = s * L;
+      while (seg < poly.length - 2 && acc + segLen < d) { acc += segLen; seg++; segLen = dist(poly[seg], poly[seg + 1]); }
+      const a = poly[seg], b = poly[seg + 1] || a, f = segLen > 0 ? Math.min(1, Math.max(0, (d - acc) / segLen)) : 0;
+      pts[i] = { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, s };
+    }
+    tangents(pts);
+    const swim = this.speed ? 1 : .6, calm = this.kind === 'whale' ? .7 : 1;
+    for (const p of pts) {
+      const amp = L * .042 * swim * calm * (.1 + Math.pow(Math.min(p.s, 1.25), 1.6)), off = amp * Math.sin(p.s * 5.3 - this.phase);
+      p.x += -p.ty * off; p.y += p.tx * off;
+    }
+    tangents(pts);
+    return pts;
+  }
+  geometry() {
+    const L = this.L, kind = this.kind, ext = this.K.ext, N = Math.round(34 * ext), sp = this.spine(N);
+    const fr = p => ({ x: p.x, y: p.y, tx: p.tx, ty: p.ty, nx: -p.ty, ny: p.tx });
+    const at = s => {
+      const f = Math.max(0, Math.min(1, s / ext)) * (N - 1), i = Math.min(N - 2, Math.floor(f)), k = f - i, a = sp[i], b = sp[i + 1];
+      const tx = a.tx + (b.tx - a.tx) * k, ty = a.ty + (b.ty - a.ty) * k, l = Math.hypot(tx, ty) || 1;
+      return fr({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, tx: tx / l, ty: ty / l });
+    };
+    const P = (f, along, lat) => ({ x: f.x + f.tx * along + f.nx * lat, y: f.y + f.ty * along + f.ny * lat });
+    const hw = s => this.hw(s);
+    const left = [], right = [];
+    for (let i = 0; i < N; i++) { const s = i / (N - 1) * ext; if (s > .93) break; const f = fr(sp[i]); left.push(P(f, 0, hw(s))); right.push(P(f, 0, -hw(s))); }
+    const shapes = [left.concat(right.reverse())], eyes = [], spots = [], lines = [];
+    const h0 = fr(sp[0]);
+    if (kind === 'hammerhead') {
+      const span = L * .17, front = [], back = [];
+      for (let k = 0; k <= 16; k++) {
+        const u = -1 + k / 8, along = L * (.014 - .032 * u * u), chord = L * .066 * (1 - .4 * u * u);
+        front.push(P(h0, along + chord * .5, u * span)); back.push(P(h0, along - chord * .5, u * span));
+      }
+      shapes.push(front.concat(back.reverse()));
+      eyes.push(P(h0, -L * .016, span * .95), P(h0, -L * .016, -span * .95));
+    } else if (kind === 'thresher') {
+      const e = at(.07); eyes.push(P(e, 0, hw(.07) * .7), P(e, 0, -hw(.07) * .7));
+    } else {
+      const e = at(.035); eyes.push(P(e, 0, hw(.035) * .9), P(e, 0, -hw(.035) * .9));
+      for (let s = .08, r = 0; s < .8; s += .055, r++) for (let q = -.7 + (r % 2) * .175; q <= .71; q += .35) spots.push(P(at(s), 0, q * hw(s)));
+    }
+    const flap = 1 + .07 * Math.sin(this.phase * .5);
+    const [p0, p1, back, reach] = { hammerhead: [.2, .33, .15, .1], thresher: [.19, .3, .2, .17], whale: [.2, .36, .13, .15] }[kind];
+    for (const side of [1, -1]) {
+      const pm = (p0 + p1) / 2;
+      shapes.push([P(at(p0), 0, side * hw(p0) * .9), P(at(pm), -L * back, side * (hw(pm) + L * reach * flap)), P(at(p1), 0, side * hw(p1) * .9)]);
+      shapes.push([P(at(.6), 0, side * hw(.6) * .9), P(at(.62), -L * .05, side * (hw(.62) + L * .035)), P(at(.66), 0, side * hw(.66) * .9)]);
+    }
+    const tr = at(.88), te = at(1);
+    let tip;
+    if (kind === 'thresher') {
+      shapes.push([P(tr, 0, -hw(.88)), P(te, -L * .07, -L * .05), P(te, -L * .01, 0)]);
+      const bl = [], br = [];
+      for (let i = 0; i < N; i++) {
+        const s = i / (N - 1) * ext; if (s < .86) continue;
+        const f = fr(sp[i]), k = (s - .86) / (ext - .86), w = L * (.016 * Math.pow(1 - k, .9) + .002);
+        bl.push(P(f, 0, w)); br.push(P(f, 0, -w));
+      }
+      shapes.push(bl.concat(br.reverse()));
+      tip = sp[N - 1];
+    } else {
+      const lobe = kind === 'whale' ? [.14, .13, .14, -.13] : [.16, .11, .09, -.075];
+      shapes.push([P(tr, 0, hw(.88)), P(te, -L * lobe[0], L * lobe[1]), P(te, -L * .045, 0), P(te, -L * lobe[2], L * lobe[3]), P(tr, 0, -hw(.88))]);
+      tip = P(te, -L * .06, 0);
+    }
+    const cl = [], cr = [];
+    for (let i = 1; i < N; i++) { const s = i / (N - 1) * ext; if (s > .74) break; const f = fr(sp[i]), w = hw(s) * .45; cl.push(P(f, 0, w)); cr.push(P(f, 0, -w)); }
+    const ridge = (q, a, b) => { const pts = []; for (let s = a; s <= b + 1e-6; s += .03) { const f = at(s); pts.push(P(f, 0, q * hw(s))); } return pts; };
+    if (kind === 'whale') lines.push(ridge(0, .12, .8), ridge(.5, .14, .7), ridge(-.5, .14, .7));
+    else lines.push(ridge(0, .27, .45));
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const poly of shapes) for (const q of poly) { if (q.x < x0) x0 = q.x; if (q.y < y0) y0 = q.y; if (q.x > x1) x1 = q.x; if (q.y > y1) y1 = q.y; }
+    const tf = fr(sp[N - 1]);
+    return { shapes, core: cl.concat(cr.reverse()), lines, eyes, spots, tail: { x: tip.x, y: tip.y, tx: tf.tx, ty: tf.ty }, box: { x0, y0, x1, y1 } };
+  }
+}
+
+class Ocean {
+  constructor(canvas, opts = {}) {
+    this.c = canvas; this.ctx = canvas.getContext('2d');
+    this.opt = Object.assign({ cell: 12, fps: 24, alpha: .55, specs: [], wake: true, plankton: 26, still: false }, opts);
+    this.f = document.createElement('canvas'); this.fx = this.f.getContext('2d', { willReadFrequently: true });
+    this.visible = false; this.t = 0; this.last = 0; this.acc = 0; this.raf = 0; this.wake = [];
+    this.resize();
+    this.sharks = this.opt.specs.map((s, i) => new Shark(this, s, i));
+    this.plankton = Array.from({ length: this.opt.plankton }, () => this.mote(false));
+    this.readInk();
+    for (let k = 0; k < 40; k++) this.simulate(.05);
+    this.draw();
+    new ResizeObserver(() => {
+      const w = this.w, h = this.h;
+      if (Math.max(1, this.c.clientWidth) === w && Math.max(1, this.c.clientHeight) === h) return;
+      this.resize();
+      // A canvas that was laid out before its page had a width (a hidden pane) seeds again at its real size.
+      if (w < 50 || h < 50) { this.sharks.forEach((s, i) => s.spawn(true, i)); this.plankton = this.plankton.map(() => this.mote(false)); }
+      else this.sharks.forEach((s, i) => { if (s.center) s.spawn(true, i); });
+      this.draw();
+    }).observe(canvas);
+    new IntersectionObserver(es => { this.visible = es[0].isIntersecting; this.sync(); }, { threshold: 0 }).observe(canvas);
+    oceans.push(this);
+  }
+  readInk() { this.ink = getComputedStyle(this.c).getPropertyValue('--art').trim() || '236,236,240'; }
+  resize() {
+    const w = Math.max(1, this.c.clientWidth), h = Math.max(1, this.c.clientHeight), dpr = Math.min(2, devicePixelRatio || 1);
+    this.c.width = Math.round(w * dpr); this.c.height = Math.round(h * dpr);
+    this.w = w; this.h = h;
+    const ctx = this.ctx; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.font = `${this.opt.cell}px ${MONO}`; ctx.textBaseline = 'top';
+    this.cw = ctx.measureText('M').width || this.opt.cell * .6;
+    this.ch = Math.round(this.opt.cell * 1.22);
+    this.cols = Math.ceil(w / this.cw) + 1; this.rows = Math.ceil(h / this.ch) + 1;
+    this.f.width = this.cols; this.f.height = this.rows;
+    this.code = new Uint8Array(this.cols * this.rows); this.alpha = new Float32Array(this.cols * this.rows);
+  }
+  mote(edge) {
+    return { x: Math.random() * this.w, y: edge ? this.h + 6 : Math.random() * this.h, vx: (Math.random() - .5) * 5, vy: -(1.2 + Math.random() * 2.6),
+      f: .4 + Math.random(), p: Math.random() * 6.28, a: .1 + Math.random() * .16, g: Math.random() < .75 ? 13 : 14 };
+  }
+  sync() {
+    // The art moves under Reduce Motion too, as the spinner does (D-79); only the Sharks switch, the app's Animated art, stops it.
+    const go = ambient && this.visible && !document.hidden && !this.opt.still;
+    if (go && !this.raf) { this.last = performance.now(); this.raf = requestAnimationFrame(this.loop); }
+    if (!go && this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; }
+  }
+  loop = now => {
+    this.raf = requestAnimationFrame(this.loop);
+    this.acc += Math.min(.1, (now - this.last) / 1000); this.last = now;
+    if (this.acc < 1 / this.opt.fps) return;
+    const dt = this.acc; this.acc = 0;
+    this.simulate(dt); this.draw();
+  };
+  simulate(dt) {
+    this.t += dt;
+    for (const s of this.sharks) s.step(dt, this.t);
+    for (const m of this.plankton) {
+      m.x += m.vx * dt + Math.sin(this.t * m.f + m.p) * 3 * dt; m.y += m.vy * dt;
+      if (m.y < -8 || m.x < -8 || m.x > this.w + 8) Object.assign(m, this.mote(true));
+    }
+    if (this.opt.wake) {
+      for (const s of this.sharks) {
+        s.wakeT += dt;
+        if (s.speed && s.tail && s.wakeT > .3) { s.wakeT = 0; this.wake.push({ x: s.tail.x, y: s.tail.y, vx: -s.tail.tx * 5, vy: -s.tail.ty * 5, life: 0, max: 2.4, a: s.depth }); }
+      }
+      for (const p of this.wake) { p.life += dt; p.x += p.vx * dt; p.y += p.vy * dt; }
+      this.wake = this.wake.filter(p => p.life < p.max);
+    }
+  }
+  put(x, y, g, a) {
+    const c = Math.floor(x / this.cw), r = Math.floor(y / this.ch);
+    if (c < 0 || r < 0 || c >= this.cols || r >= this.rows) return;
+    const i = r * this.cols + c;
+    if (a > this.alpha[i]) { this.alpha[i] = a; this.code[i] = g; }
+  }
+  stamp(s) {
+    const { fx, cols, rows, cw, ch } = this, geo = s.geometry(), A = this.opt.alpha * s.depth;
+    const c0 = Math.max(0, Math.floor(geo.box.x0 / cw) - 1), r0 = Math.max(0, Math.floor(geo.box.y0 / ch) - 1);
+    const c1 = Math.min(cols - 1, Math.ceil(geo.box.x1 / cw) + 1), r1 = Math.min(rows - 1, Math.ceil(geo.box.y1 / ch) + 1);
+    s.tail = geo.tail;
+    if (c1 < c0 || r1 < r0) return;
+    fx.setTransform(1, 0, 0, 1, 0, 0); fx.globalCompositeOperation = 'source-over'; fx.clearRect(0, 0, cols, rows);
+    fx.setTransform(1 / cw, 0, 0, 1 / ch, 0, 0); fx.globalCompositeOperation = 'lighter';
+    const path = poly => { fx.moveTo(poly[0].x, poly[0].y); for (let k = 1; k < poly.length; k++) fx.lineTo(poly[k].x, poly[k].y); fx.closePath(); };
+    fx.fillStyle = 'rgba(255,255,255,.5)'; fx.beginPath(); geo.shapes.forEach(path); fx.fill('nonzero');
+    fx.fillStyle = `rgba(255,255,255,${s.K.core})`; fx.beginPath(); path(geo.core); fx.fill();
+    fx.strokeStyle = 'rgba(255,255,255,.22)'; fx.lineWidth = s.L * (s.kind === 'whale' ? .012 : .022); fx.lineCap = 'round';
+    for (const line of geo.lines) { fx.beginPath(); line.forEach((q, k) => k ? fx.lineTo(q.x, q.y) : fx.moveTo(q.x, q.y)); fx.stroke(); }
+    const w = c1 - c0 + 1, h = r1 - r0 + 1, data = fx.getImageData(c0, r0, w, h).data;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const v = data[(y * w + x) * 4 + 3] / 255;
+      if (v < .05) continue;
+      const i = (r0 + y) * cols + c0 + x;
+      this.code[i] = Math.min(9, Math.max(1, Math.floor(Math.pow(v, .9) * 10)));
+      this.alpha[i] = A * (.3 + .7 * v);
+    }
+    // Spots only on the body; eyes always, since a hammer's tips are thin.
+    const over = (pts, g, a, always) => {
+      for (const e of pts) {
+        const c = Math.floor(e.x / cw), r = Math.floor(e.y / ch);
+        if (c < 0 || r < 0 || c >= cols || r >= rows) continue;
+        const i = r * cols + c;
+        if (always || this.code[i] > 3) { this.code[i] = g; this.alpha[i] = a; }
+      }
+    };
+    over(geo.spots, 15, A * .95, false);
+    over(geo.eyes, 10, A, true);
+  }
+  draw() {
+    const { ctx, cols, rows, cw, ch } = this, N = cols * rows;
+    this.code.fill(0); this.alpha.fill(0);
+    for (const m of this.plankton) this.put(m.x, m.y, m.g, m.a * this.opt.alpha * 1.4);
+    for (const p of this.wake) { const k = 1 - p.life / p.max; this.put(p.x, p.y, k > .55 ? 12 : 11, k * .55 * p.a * this.opt.alpha); }
+    [...this.sharks].sort((a, b) => a.depth - b.depth).forEach(s => this.stamp(s));
+    ctx.clearRect(0, 0, this.w, this.h);
+    const buckets = new Map();
+    for (let i = 0; i < N; i++) {
+      if (!this.code[i]) continue;
+      const a = Math.round(this.alpha[i] * 40) / 40;
+      if (a <= 0) continue;
+      let b = buckets.get(a); if (!b) buckets.set(a, b = []); b.push(i);
+    }
+    for (const [a, list] of buckets) {
+      ctx.fillStyle = `rgba(${this.ink},${a})`;
+      for (const i of list) ctx.fillText(GLYPH[this.code[i]], (i % cols) * cw, ((i / cols) | 0) * ch);
+    }
+  }
+}
+
+const sea = (id, o) => { const c = document.getElementById(id); return c && new Ocean(c, o); };
+sea('ocean-intro', { cell: 11, alpha: .6, specs: [{ kind: 'hammerhead', L: 540, depth: .64, speed: 16 }, { kind: 'whale', L: 840, depth: .26, speed: 8 }] });
+sea('ocean-draft', { cell: 11, alpha: .5, specs: [{ kind: 'hammerhead', L: 420, depth: .6, speed: 15 }, { kind: 'hammerhead', L: 270, depth: .95, speed: 21 }, { kind: 'whale', L: 760, depth: .24, speed: 7 }] });
+// A shark swimming in place: an empty project's page.
+const inPlace = (kind, L, cell) => ({ cell, fps: 12, alpha: .72, plankton: 0, wake: false, specs: [{ kind, L, depth: 1, speed: 0, fx: .5, fy: .5, angle: 0, center: true }] });
+sea('empty-proj', inPlace('hammerhead', 120, 6));
+document.addEventListener('visibilitychange', () => oceans.forEach(o => o.sync()));
+reduceMotion.addEventListener('change', () => oceans.forEach(o => o.sync()));
+/* ============================================================
+   Preview 03: the project page and the new-session page's one
+   model chip. Listeners are delegated.
+   ============================================================ */
+const iconize = root => $$('[data-i]', root).forEach(el => { if (!el.querySelector(':scope>svg')) el.insertAdjacentHTML('afterbegin', svg(el.dataset.i)); });
+const winB = $('#winB'), winC = $('#winC');
+const HNAME = { claude: 'Claude Code', codex: 'Codex' };
+const hmark = h => `<span class="hm ${h}" title="${HNAME[h]}"></span>`;
+const M = s => `<span class="mono">${s}</span>`;
+
+/* ---------- the projects: each session's harness, branch and last line ---------- */
+// `ago` is minutes since the last activity (the activity view's order); `day` its heading when it is not today.
+PROJECTS[0].sessions = [
+  { id: 'ink', t: 'Port the sidebar to Ink tokens', st: 'work', h: 'claude', meta: 'now', ago: 0, br: 'ui/ink-sidebar', line: 'Editing ' + M('Sources/LoomCatalogUI/SidebarRow.swift'),
+    subs: [{ st: 'work', type: 'explorer', d: "Check the tree colour's contrast", e: '52s' }, { st: 'done', type: '1 finished' }] },
+  { id: 'gate', t: 'Review the gate failure', st: 'attn', h: 'claude', meta: 'now', ago: 0, br: 'fix/side-chat-race', line: 'Allow: ' + M('swift test -c release --filter SideChatFlowTests'),
+    why: 'Allow: ' + M('swift test -c release --filter SideChatFlowTests') },
+  { id: 'rc', t: 'Release C health check', st: 'unv', h: 'claude', meta: '12m', ago: 12, br: 'release/c', line: 'Four checks ran; the last answer lists one follow-up.' },
+  { id: 'lb', t: 'Lombot spike S10', st: '', h: 'codex', meta: '2h', ago: 120, br: 'spike/lombot-s10', line: 'The notes are in ' + M('plans/v2-research/LOMBOT-S10.md') + '.' },
+  { id: 'p2', t: 'Draw the chat preview', st: '', h: 'claude', meta: '4h', ago: 240, br: 'swarm/1', line: 'Round 2 is in ' + M('design/ui-revision/02-chat.html') + '.' },
+  { id: 'kn', t: 'Cut the ChatGPT knot', st: '', h: 'claude', meta: '5h', ago: 300, br: 'swarm/1', line: 'The knot is a template image: black on transparent, 128 px.' },
+  { id: 'fx', t: 'Release C fix round 2', st: '', h: 'claude', meta: '1d', ago: 1440, day: 'Yesterday', br: 'v2', line: 'Five fixes; the gate passes on ' + M('371aaf6') + '.' },
+  { id: 'rw', t: 'Rewind copy limits', st: '', h: 'codex', meta: '2d', ago: 2880, day: 'Sunday', br: 'v2', line: 'The copy lives only while its Undo is offered.' },
+  { id: 'cr', t: 'Changes tab review', st: '', stale: true, h: 'claude', meta: '2w', ago: 23040, day: '4 October', br: 'v2', line: 'Comments go back to Claude as one message.' },
+  { draft: true, t: 'Try a lighter inspector…' }
+];
+PROJECTS[1].sessions = [
+  { id: 'vm', t: 'Weekly vault maintenance', st: 'work', h: 'claude', meta: 'now', ago: 1, line: 'Editing ' + M('Projects.md') },
+  { id: 'th', t: 'Thesis outline', st: 'unv', h: 'codex', meta: '25m', ago: 25, line: 'The outline has six chapters and a reading list of twelve papers.' },
+  { id: 'rd', t: 'Reading list for chapter 3', st: '', h: 'claude', meta: '2d', ago: 2900, day: 'Sunday', line: 'Twelve papers; four are open access.' },
+  { id: 'ib', t: 'Tidy the inbox notes', st: '', h: 'codex', meta: '5d', ago: 7200, day: 'Thursday', line: 'Moved 31 notes out of the inbox.' }
+];
+PROJECTS[2].sessions = [
+  { id: 'jwt', t: 'Migrate auth to JWT', st: 'fail', h: 'codex', meta: '3h', ago: 180, br: 'feat/jwt-auth', line: 'Failed: codex exited with code 1', why: 'Failed: codex exited with code 1' },
+  { id: 'rl', t: 'Rate limiter tests', st: '', h: 'codex', meta: '2d', ago: 2880, day: 'Sunday', br: 'main', line: 'Added 12 tests; all 214 pass.' }
+];
+const DOTFILES = { name: 'dotfiles', tone: 'var(--rose)', sessions: [] };
+const byName = n => [...PROJECTS, DOTFILES].find(p => p.name === n);
+// The parts sheet's rows: one per state the last line can show.
+const STATES = [
+  PROJECTS[0].sessions[0], PROJECTS[0].sessions[1],
+  { id: 's3', t: 'Pick the webhook fix', st: 'attn', h: 'claude', meta: '3m', br: 'fix/webhook-sig', line: 'Asks: Which fix should I make?' },
+  { id: 's4', t: 'Plan the Settings round', st: 'attn', h: 'claude', meta: '8m', br: 'swarm/1', line: 'Plan ready for review' },
+  PROJECTS[2].sessions[0], PROJECTS[0].sessions[2], PROJECTS[0].sessions[3], PROJECTS[0].sessions[8]
+];
+const LISTS = { states: STATES, narrow: [STATES[1], STATES[6]] };
+
+/* ---------- the sidebar: Phase 2's rows, the head of an open page, and an empty project ---------- */
+const LIVE = ['work', 'attn', 'unv', 'fail'];
+const rowV = (s, sel) => `<div class="row srow${s.id === sel ? ' sel' : ''}${s.stale ? ' stale' : ''}" data-s="${s.id}"><span class="ind">${mark(s.st)}</span>${hmark(s.h)}<span class="t">${s.t}</span><span class="meta">${s.meta}</span></div>` + (s.subs ? subs(s.subs, 1, []) : '');
+const draftV = (s, p, withMark) => `<div class="row srow draft"${withMark ? ` style="--tone:${p.tone}"` : ''}><span class="ind"></span><span class="t">${s.t}</span>${withMark ? `<span class="pmark xs">${initial(p.name)}</span>` : ''}<span class="x" data-i="x"></span></div>`;
+function groupV(p, sel, head, shut) {
+  const body = shut ? '' : p.sessions.length ? p.sessions.map(s => s.draft ? draftV(s, p, false) : rowV(s, sel)).join('') : '<div class="nosess">No sessions</div>';
+  return `<div class="pgroup" style="--tone:${p.tone}">
+    <div class="proj-head${p.name === head ? ' sel' : ''}"><span class="pmark">${initial(p.name)}</span><span class="pn">${p.name}</span>${p.dot ? `<i class="dot ${p.dot}" style="width:6px;height:6px"></i>` : ''}<span class="chev" data-i="${shut ? 'chev-r' : 'chev-d'}"></span></div>
+    ${body}
+  </div>`;
+}
+const cardV = (s, p, sel, active) => `<div class="scard${s.id === sel ? ' sel' : ''}${s.subs ? ' tree' : ''}" data-s="${s.id}" style="--tone:${p.tone}">
+    <div class="c1"><span class="ind">${mark(s.st)}</span>${hmark(s.h)}<span class="t">${s.t}</span><span class="meta">${s.meta}</span></div>
+    ${active ? `<div class="why"${s.why ? '' : ' hidden'}>${s.why || ''}</div>` : ''}
+    <div class="c3">${s.br ? `<span class="bi" data-i="branch"></span><span class="bn">${s.br}</span>` : ''}<span class="pj"><span class="pmark xs">${initial(p.name)}</span>${p.name}</span></div>
+  </div>` + (s.subs ? subs(s.subs, 1, []) : '');
+function activityV(list, sel) {
+  const all = list.flatMap(p => p.sessions.map(s => ({ s, p })));
+  const drafts = all.filter(x => x.s.draft), rows = all.filter(x => !x.s.draft).sort((a, b) => a.s.ago - b.s.ago);
+  const isActive = x => LIVE.includes(x.s.st) || x.s.id === sel;
+  const active = rows.filter(isActive), days = [];
+  rows.filter(x => !isActive(x)).forEach(x => { const d = x.s.day || 'Today'; let g = days.find(g => g.d === d); if (!g) days.push(g = { d, list: [] }); g.list.push(x); });
+  const head = (t, n) => `<div class="ahead">${t}${n ? `<span class="n">${n}</span>` : ''}</div>`;
+  return (drafts.length ? head('Drafts', drafts.length) + drafts.map(({ s, p }) => draftV(s, p, true)).join('') : '')
+    + head('Active', active.length) + active.map(({ s, p }) => cardV(s, p, sel, true)).join('')
+    + days.map(g => head(g.d) + g.list.map(({ s, p }) => cardV(s, p, sel, false)).join('')).join('');
+}
+function drawSide(side) {
+  const sel = side.dataset.sel, head = side.dataset.head, shut = (side.dataset.collapse || '').split(' ');
+  const list = side.dataset.extra ? [...PROJECTS, DOTFILES] : PROJECTS;
+  side.innerHTML = sidebar(sel);
+  $('.side-sec', side).innerHTML = '<span class="label" data-role="vlabel">Projects</span><span class="view"><button class="on" data-view="projects" title="Group by project · ⌘2">projects</button> · <button data-view="activity" title="Recent activity · ⌘1">activity</button></span>';
+  $('.plist', side).innerHTML = list.map(p => groupV(p, sel, head, shut.includes(p.name))).join('');
+  $('.plist', side).insertAdjacentHTML('afterend', `<div class="alist">${activityV(list, sel)}</div>`);
+  iconize(side);
+  setView(side, side.dataset.view || 'projects');
+}
+function setView(side, v) {
+  side.dataset.view = v;
+  $$('.view button', side).forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  $('[data-role=vlabel]', side).textContent = v === 'activity' ? 'Activity' : 'Projects';
+}
+$$('.side[data-sel]').forEach(drawSide);
+
+/* ---------- the page: session rows and branch rows from the same data ---------- */
+const srV = s => `<div class="sr${s.stale ? ' stale' : ''}${s.br ? '' : ' nobr'}" data-s="${s.id}" title="Opens the session"><div class="sr-in"><span class="ind">${mark(s.st)}</span>${hmark(s.h)}<span class="tt"><span class="t">${s.t}</span>${s.line ? `<span class="sl">${s.line}</span>` : ''}</span>${s.br ? `<span class="bc"><span data-i="branch"></span><span>${s.br}</span></span>` : ''}<span class="ts">${s.meta}</span></div></div>`;
+$$('[data-list]').forEach(el => {
+  const rows = LISTS[el.dataset.list] || byName(el.dataset.list).sessions.filter(s => !s.draft);
+  el.innerHTML = rows.map(srV).join(''); iconize(el);
+});
+// The current branch first, then by when each one changed; a branch another worktree has checked out names that folder.
+const BRANCHES = {
+  loom: [
+    { n: 'swarm/1', cur: true, s: 2, t: 'now' },
+    { n: 'ui/ink-sidebar', wt: '~/Library/Caches/loom-v2/wt/ink', s: 1, t: 'now' },
+    { n: 'release/c', s: 1, t: '12m' },
+    { n: 'fix/side-chat-race', wt: '~/Library/Caches/loom-v2/wt/sideflake', s: 1, t: '1h' },
+    { n: 'v2', wt: '~/Library/Caches/loom-v2/wt/v2', s: 3, t: '2h' },
+    { n: 'spike/lombot-s10', s: 1, t: '2h' },
+    { n: 'main', s: 0, t: '3d' }
+  ],
+  dotfiles: [{ n: 'main', cur: true, s: 0, t: '3w' }]
+};
+const brV = b => `<div class="brw${b.cur ? ' cur' : ''}"><span class="g" data-i="branch"></span><span class="bn2">${b.n}</span>${b.cur ? '<span class="cur2">current</span>' : b.wt ? `<span class="wt">worktree <b>${b.wt}</b></span>` : ''}<span class="ns">${b.s ? (b.s === 1 ? '1 session' : b.s + ' sessions') : ''}</span><span class="ts">${b.t}</span></div>`;
+$$('[data-branches]').forEach(el => { el.innerHTML = BRANCHES[el.dataset.branches].slice(0, +el.dataset.max || 99).map(brV).join(''); iconize(el); });
+
+/* ---------- the parts sheet shows the frames' own menus ---------- */
+$$('[data-clone]').forEach(ph => {
+  const src = $(ph.dataset.clone); if (!src) return;
+  const c = src.cloneNode(true);
+  c.classList.add('static'); c.classList.remove('open');
+  ['data-pop', 'id', 'data-place'].forEach(a => c.removeAttribute(a));
+  ['left', 'top', 'bottom', 'right'].forEach(p => c.style[p] = '');
+  ph.replaceWith(c);
+});
+
+/* ---------- popovers that open under their control ---------- */
+function placeBelow(pop, anchor) {
+  const win = anchor.closest('.win'); if (!win) return;
+  const wr = win.getBoundingClientRect(); if (!wr.width) return;
+  const s = wr.width / win.offsetWidth, ar = anchor.getBoundingClientRect();
+  const x0 = (ar.left - wr.left) / s, x1 = (ar.right - wr.left) / s, y1 = (ar.bottom - wr.top) / s;
+  pop.style.bottom = 'auto'; pop.style.right = 'auto';
+  pop.style.top = (y1 + 6) + 'px';
+  const w = pop.offsetWidth;
+  pop.style.left = Math.max(8, Math.min(win.offsetWidth - w - 8, pop.dataset.place === 'below-right' ? x1 - w : x0)) + 'px';
+}
+const placeOpen = () => $$('.win .pop.open[data-place^=below]').forEach(pop => { const op = $(`[data-open="${pop.dataset.pop}"]`, pop.closest('.win')); if (op) placeBelow(pop, op); });
+// Phase 1's listener opens a popover; this one, added later, puts it under the control that opened it.
+document.addEventListener('click', e => { if (e.target.closest('[data-open]')) placeOpen(); });
+
+/* ---------- the one model chip: models by harness, the effort under them ---------- */
+const LNAME = { none: 'None', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
+const levelsOf = box => box.dataset.levels.split(' ');
+function buildSlider(box) {
+  const lv = levelsOf(box), n = lv.length, at = k => n > 1 ? k / (n - 1) * 100 : 0;
+  box.innerHTML = '<span class="trk"></span><span class="fill"></span>' + lv.map((_, k) => `<span class="stop" style="left:${at(k)}%"></span>`).join('') + '<span class="th"></span>';
+  const names = $('.lvls', box.closest('.effort')); if (names) names.innerHTML = lv.map(l => `<span>${l}</span>`).join('');
+}
+function paintSlider(box, level) {
+  const lv = levelsOf(box), n = lv.length, i = Math.max(0, lv.indexOf(level)), pct = n > 1 ? i / (n - 1) * 100 : 0;
+  box.dataset.level = lv[i];
+  $('.fill', box).style.width = pct + '%'; $('.th', box).style.left = pct + '%';
+  $$('.stop', box).forEach((d, k) => d.classList.toggle('in', k < i));
+  const root = box.closest('.effort');
+  $$('.lvls span', root).forEach((sp, k) => sp.classList.toggle('on', k === i));
+  const t = $('[data-role=efftitle]', root); if (t) t.textContent = LNAME[lv[i]];
+  const r = $('[data-act=effreset]', root); if (r) r.classList.toggle('dis', lv[i] === (box.dataset.base || 'high'));
+}
+$$('[data-role=slider]').forEach(b => { buildSlider(b); paintSlider(b, b.dataset.level || 'high'); });
+function setEffort(win, box, level) {
+  paintSlider(box, level);
+  if (!win) return;
+  const e = $('[data-role=effname]', win); if (e) e.textContent = LNAME[box.dataset.level];
+}
+const draftModels = $('#draftModels'), modelChip = $('[data-role=modelchip]', winB);
+function pickModel(row) {
+  const menu = row.closest('.pop'), box = $('[data-role=slider]', menu), eff = box.closest('.effort'), lv = row.dataset.levels;
+  $$('.mrow .ck', menu).forEach(c => c.innerHTML = '');
+  $('.ck', row).innerHTML = svg('check');
+  $$('.mrow', menu).forEach(r => r.classList.toggle('cur', r === row));
+  // A model with no effort levels gets no effort word and no track; one with other levels keeps the level, or its lowest.
+  eff.classList.toggle('none', !lv);
+  if (lv && lv !== box.dataset.levels) {
+    const was = box.dataset.level; box.dataset.levels = lv; buildSlider(box);
+    const L = levelsOf(box); paintSlider(box, L.includes(was) ? was : L[0]);
+  }
+  if (menu.classList.contains('static')) return;
+  // On a new session the model decides the harness: the chip's mark says which one the session starts on.
+  const h = row.closest('.hgrp').dataset.h, hm = $('[data-role=hmark]', modelChip);
+  hm.className = `hm ${h}`; hm.title = HNAME[h];
+  $('[data-role=modelname]', modelChip).textContent = row.dataset.model === 'Default' ? 'Default model' : row.dataset.model;
+  const en = $('[data-role=effname]', modelChip); en.hidden = !lv; if (lv) en.textContent = LNAME[box.dataset.level];
+  $('#draftSendB').title = `Start a ${HNAME[h]} session`;
+  if (menu.classList.contains('open')) placeBelow(menu, modelChip);
+}
+// A build that cannot start Codex: its entries are off, and its models are listed dimmed.
+function setCodex(on) {
+  $$('[data-codex]').forEach(el => el.classList.toggle('dis', !on));
+  $$('[data-codex-note]').forEach(el => el.hidden = on);
+  const g = $('.hgrp[data-h=codex]', draftModels);
+  g.classList.toggle('later', !on);
+  $$('.mrow', g).forEach(r => r.classList.toggle('dis', !on));
+  $('.hnote', g).textContent = on ? '' : 'in a later version';
+  if (!on && $('.ck svg', g)) pickModel($('.mrow[data-model="Opus 5.5"]', draftModels));
+}
+$$('#codexSeg button').forEach(b => b.addEventListener('click', () => setCodex(b.dataset.codexSet === 'on')));
+document.addEventListener('keydown', e => {
+  if (!draftModels.classList.contains('open')) return;
+  const box = $('[data-role=slider]', draftModels), k = e.key;
+  if (k === 'ArrowLeft' || k === 'ArrowRight') {
+    if (!box.closest('.effort').classList.contains('none')) {
+      const L = levelsOf(box), i = L.indexOf(box.dataset.level) + (k === 'ArrowRight' ? 1 : -1);
+      if (i >= 0 && i < L.length) setEffort(winB, box, L[i]);
+    }
+  } else if (k === 'ArrowDown' || k === 'ArrowUp') {
+    const rows = $$('.mrow:not(.dis)', draftModels); let i = rows.findIndex(r => r.classList.contains('cur'));
+    if (i < 0) i = rows.findIndex(r => $('.ck svg', r));
+    i = (i + (k === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
+    rows.forEach((r, n) => r.classList.toggle('cur', n === i));
+  } else if (k === 'Enter') {
+    const c = $('.mrow.cur', draftModels); if (c && !$('.ck svg', c)) pickModel(c);
+    closeAll();
+  } else return;
+  e.preventDefault(); e.stopImmediatePropagation();
+}, true);
+const draftText = $('#draftTextB'), draftSend = $('#draftSendB');
+draftText.addEventListener('input', () => draftSend.classList.toggle('ready', draftText.value.trim().length > 0));
+
+/* ---------- the project's colour, from the menu ---------- */
+const TONE = { rose: 'Rose', orchid: 'Orchid', aqua: 'Aqua', mint: 'Mint', sage: 'Sage', lemon: 'Lemon', none: 'None' };
+function setTone(sw) {
+  const k = sw.dataset.tone, v = k === 'none' ? 'var(--fg-2)' : `var(--${k})`;
+  PROJECTS[0].tone = v;
+  $$('.swt', sw.parentElement).forEach(x => x.classList.toggle('on', x === sw));
+  $('[data-role=tonename]', sw.closest('.pop')).textContent = TONE[k];
+  $$('.ppage[data-proj=loom], #winB .draftpage').forEach(el => el.style.setProperty('--tone', v));
+  $$('.side[data-sel]').forEach(drawSide);
+}
+
+/* ---------- frame C: second-brain, or a project with no sessions ---------- */
+$$('#cSeg button').forEach(b => b.addEventListener('click', () => {
+  const name = b.dataset.cproj;
+  $$('.ppage[data-cpage]', winC).forEach(p => p.hidden = p.dataset.cpage !== name);
+  const side = $('.side', winC); side.dataset.head = name; drawSide(side);
+}));
+
+/* ---------- one delegated listener for clicks ---------- */
+document.addEventListener('click', e => {
+  const t = e.target, win = t.closest('.win');
+  if (t.closest('[data-open]')) return;
+  const vb = t.closest('.side .view button'); if (vb) return setView(vb.closest('.side'), vb.dataset.view);
+  const jump = t.closest('[data-jump]'); if (jump) { $(jump.dataset.jump).scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+  const tab = t.closest('.ptabs .itab');
+  if (tab) {
+    const page = tab.closest('.ppage');
+    $$('.ptabs .itab', page).forEach(x => x.classList.toggle('on', x === tab));
+    $$('.ppanel', page).forEach(p => p.hidden = p.dataset.ptab !== tab.dataset.ptab);
+    page.scrollTop = 0; return;
+  }
+  const sw = t.closest('.swt'); if (sw && !sw.closest('.static')) return setTone(sw);
+  const model = t.closest('.mrow[data-model]'); if (model) { if (!model.classList.contains('dis')) pickModel(model); return; }
+  const slider = t.closest('[data-role=slider]');
+  if (slider) {
+    const r = slider.getBoundingClientRect(), L = levelsOf(slider), i = Math.round(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (L.length - 1));
+    setEffort(slider.closest('.static') ? null : win, slider, L[i]); return;
+  }
+  const reset = t.closest('[data-act=effreset]');
+  if (reset && !reset.classList.contains('dis')) { const b = $('[data-role=slider]', reset.closest('.effort')); setEffort(reset.closest('.static') ? null : win, b, b.dataset.base || 'high'); }
+});
+
+/* ---------- pins: each sits by the part it names, and hides when that part is out of sight ---------- */
+function placePins(win) {
+  if (!document.body.classList.contains('pins')) return;
+  const wr = win.getBoundingClientRect(), s = wr.width / win.offsetWidth || 1;
+  $$('.pin[data-for]', win).forEach(p => {
+    const t = $(p.dataset.for, win);
+    let vis = !!t && t.getClientRects().length > 0;
+    if (vis) {
+      const r = t.getBoundingClientRect();
+      p.style.left = ((p.dataset.at === 'r' ? r.right : r.left) - wr.left) / s + (+p.dataset.dx || 0) + 'px';
+      p.style.top = (r.top - wr.top) / s + (+p.dataset.dy || 0) + 'px';
+      const sc = t.closest('.ppage');
+      if (sc) { const sr = sc.getBoundingClientRect(); vis = r.bottom > sr.top + 12 * s && r.top < sr.bottom - 12 * s; }
+    }
+    p.style.visibility = vis ? '' : 'hidden';
+  });
+}
+const placeAllPins = () => [winA, winB, winC].forEach(placePins);
+document.addEventListener('scroll', e => { const w = e.target instanceof Element && e.target.closest('.win'); if (w) placePins(w); }, true);
+// The page's own switches (the theme, the sharks, the pins, the size, the build) leave a frame's popover open.
+[$('header.top'), $('#codexSeg')].forEach(el => el.addEventListener('click', e => e.stopPropagation()));
+const relayout = () => requestAnimationFrame(() => { placeOpen(); placeAllPins(); });
+$('#swPins').parentElement.addEventListener('click', relayout);
+addEventListener('resize', relayout);
+new ResizeObserver(relayout).observe(document.body);
+document.addEventListener('click', () => requestAnimationFrame(placeAllPins));
+
+/* ---------- start: the new-session frame opens with its popover showing ---------- */
+const settle = () => { draftModels.classList.add('open'); placeOpen(); placeAllPins(); };
+requestAnimationFrame(() => requestAnimationFrame(settle));
+addEventListener('load', settle);
+})();
+</script>
+</body>
+</html>

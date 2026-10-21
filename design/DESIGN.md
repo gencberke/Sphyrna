@@ -42,7 +42,7 @@ What it changes is the surface.
 - Claude's desktop sidebar: subagents branching from their session, one branch per row.
 - [stackedlol/ascii-sharks](https://github.com/stackedlol/ascii-sharks): sharks drawn as an ASCII density field. Sphyrna's sharks are its own code (§17).
 
-**History.** The earlier previews and design files that the reference replaced (D-82) are not part of this contract, and nothing here links to them. The content and behaviour they chose still stand where §2–§20 keep them; their look does not.
+**History.** The accepted previews, 01 to 07 and the identity (D-74 to D-81), are kept in `design/pre-reference-preview-pages/` as they stood before the reference: a record, never edited. They are not part of this contract. The reference brought each of them up to date with the decisions that came after it, so where a preview and the reference differ, the reference holds. The other design files the reference replaced (D-82) are in git only.
 
 ## 2. Elements to keep
 
@@ -396,7 +396,7 @@ The figures above are estimates from the reference's values; the tests give the 
 - **Settled by D-83:** the two readings the reference made in Settings, which §2 now holds as rules (Full access asks first; the cleanup's Delete), and the rename's open questions (O-14): the bundle id, the data folder and the repository keep Loom's names, and the wordmark is set in SF Pro (§6 Name and marks).
 - **The knot in code.** The app draws the harness marks as images (`ProviderIcon`). The ChatGPT knot needs a template image drawn in the text colour, so it comes with the build (V2-PLAN §13). Until then the app shows `harness-codex.png`, the ChatGPT app icon.
 - **The art in the app** (§17): a native renderer within the budgets. A spike measures it before it is built.
-- **The README renders** (`design/readme/*.html`) show Night Fleece. They are redrawn in Ink before 1.6.0's README, from the reference's documents.
+- **The README renders.** Their Night Fleece sources were removed on 21 Oct. `assets/readme/` keeps 0.4.4's pictures until I7 draws new sources (`design/readme/*.html`) in Ink, from the reference's documents, before 1.6.0's README.
 - **Settled by Ink:** the navbar's "more solid" layout (user feedback item 6, 5 Oct 2026). The header on the canvas, with its hairline, its two groups and one control family, is the answer; O-03 stays closed.
 - **Settled by D-69** (O-12):
   - the failure diamond under Differentiate without color, on a row's mark and a project's dot alike;
