@@ -70,6 +70,7 @@ private extension String {
 struct InspectorOverview: View {
     let model: CatalogModel
     let row: SessionRowModel
+    @Environment(\.inspectorOverlays) private var overlays
 
     var body: some View {
         let chip = model.headerChip(of: row.record)
@@ -86,18 +87,17 @@ struct InspectorOverview: View {
                         if let branch = content.branch { InspectorFact("Branch", branch, mono: true) }
                         if let name = content.model { InspectorFact("Model", name) }
                         InspectorFact("Folder", content.folder, mono: true)
-                        InspectorFact("Last activity",
-                                      LoomDateFormat.dateTime(content.lastActivity))
+                        InspectorFact("Last activity", LoomDateFormat.dateTime(content.lastActivity), mono: true)
                     }
                 }
                 InspectorSection(title: "Context") { context }
                 if let agents = content.agents {
                     InspectorSection(title: "Agents") {
                         HStack {
-                            Text(agents).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.primary)
+                            Text(agents).inspectorType(LoomTheme.Inspector.factMono).foregroundStyle(LoomTheme.Text.primary)
                             Spacer(minLength: LoomTheme.Space.detailMinSpacer)
                             Button("Show Agents") { model.selectInspectorTab(.agents) }
-                                .buttonStyle(.link).font(LoomTheme.Typography.small)
+                                .buttonStyle(.link).inspectorType(LoomTheme.Inspector.factValue)
                         }
                     }
                 }
@@ -115,8 +115,8 @@ struct InspectorOverview: View {
         } else if let id = row.record.session.providerConversationID, let usage = model.usage?.contexts[id] {
             VStack(alignment: .leading, spacing: LoomTheme.Inspector.factRowGap) {
                 ContextRing(usage: usage, showsLabel: true)
-                Text(ContextRingText.caption(usage)).font(LoomTheme.Typography.caption)
-                    .foregroundStyle(LoomTheme.Text.secondaryStyle).textSelection(.enabled)
+                Text(ContextRingText.caption(usage)).inspectorType(LoomTheme.InkType.meta)
+                    .foregroundStyle(LoomTheme.Inspector.quiet(overlays: overlays)).textSelection(.enabled)
             }
         } else {
             note("No reading yet. It appears after the session's first reply.")
@@ -124,6 +124,6 @@ struct InspectorOverview: View {
     }
 
     private func note(_ text: String) -> some View {
-        Text(text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
+        Text(text).inspectorType(LoomTheme.Inspector.factValue).foregroundStyle(LoomTheme.Text.secondaryStyle)
     }
 }

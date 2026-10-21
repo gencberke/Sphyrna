@@ -34,9 +34,8 @@ struct ChangesInspectorTests {
         #expect(InspectorPlacement.overlay.inspectorWidth(detailWidth: 464, tabWidth: review) == 464)
     }
 
-    @Test func theTabBarNamesTheTabAndGivesItItsSymbol() {
+    @Test func theTabBarNamesTheTab() {
         #expect(InspectorTabBar.title(.changes) == "Changes")
-        #expect(InspectorTabBar.symbol(.changes) == "plus.forwardslash.minus")
     }
 
     @Test func aChangedLineHoldsItsTextContrastInBothAppearancesOnEveryTone() {

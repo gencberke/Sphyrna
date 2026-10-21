@@ -32,6 +32,7 @@ struct InspectorContainer: View {
         }
         .frame(width: width)
         .modifier(OverlayShadow(overlays: overlays))
+        .environment(\.inspectorOverlays, overlays)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inspector")
     }
@@ -50,18 +51,11 @@ private struct OverlayShadow: ViewModifier {
     }
 }
 
-/// The tabs: the open one shows its name, the others their symbol and count.
+/// The view tabs (DESIGN §6 Tabs): underlined text on a 36 pt bar with a hairline, each showing its name. The open one has an
+/// accent underline on the hairline; a count in mono, or the Side tab's dot, follows the label.
 struct InspectorTabBar: View {
     let model: CatalogModel
-
-    static func symbol(_ tab: InspectorTab) -> String {
-        switch tab {
-        case .overview: "info.circle"
-        case .changes: "plus.forwardslash.minus"
-        case .agents: "person.crop.circle"
-        case .side: "arrow.triangle.branch"
-        }
-    }
+    @Environment(\.inspectorOverlays) private var overlays
 
     static func title(_ tab: InspectorTab) -> String {
         switch tab {
@@ -97,23 +91,19 @@ struct InspectorTabBar: View {
                 let selected = model.shownInspectorTab == tab
                 Button { model.selectInspectorTab(tab) } label: {
                     HStack(spacing: LoomTheme.Inspector.tabContentGap) {
-                        Image(systemName: Self.symbol(tab)).font(LoomTheme.Inspector.tabGlyph)
-                            .accessibilityHidden(true)
-                        if selected { Text(Self.title(tab)).font(LoomTheme.Typography.smallMedium) }
+                        Text(Self.title(tab)).inspectorType(LoomTheme.Inspector.tabLabel)
                         if let count = count(tab) {
-                            Text("\(count)").font(LoomTheme.Typography.caption).monospacedDigit()
-                                .foregroundStyle(LoomTheme.Text.secondaryStyle)
+                            Text("\(count)").inspectorType(LoomTheme.Inspector.tabCount)
+                                .foregroundStyle(LoomTheme.Inspector.quiet(overlays: overlays))
                         } else if showsDot(tab) {
                             Circle().fill(LoomTheme.Side.dot).frame(width: LoomTheme.Side.dotSize, height: LoomTheme.Side.dotSize)
                                 .accessibilityHidden(true).accessibilityIdentifier("inspector-side-dot")
                         }
                     }
-                    .padding(.horizontal, selected ? LoomTheme.Inspector.tabInset : LoomTheme.Inspector.tabInsetCompact)
-                    .frame(height: LoomTheme.Inspector.tabHeight)
-                    .foregroundStyle(selected ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
-                    .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusControl))
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(RowButtonStyle(selected: selected, radius: LoomTheme.Highlight.radiusControl, key: "inspector-tab:\(tab)"))
+                .buttonStyle(InspectorTabStyle(selected: selected, key: "inspector-tab:\(tab)"))
                 .focusEffectDisabled()
                 .accessibilityLabel(accessibilityLabel(tab))
                 .accessibilityAddTraits(selected ? .isSelected : [])
@@ -122,9 +112,49 @@ struct InspectorTabBar: View {
         }
         .padding(.horizontal, LoomTheme.Inspector.tabBarInset)
         .frame(height: LoomTheme.Inspector.tabBarHeight)
-        .overlay(alignment: .bottom) {
+        // Behind the tabs, so the open tab's underline is drawn over the hairline it sits on.
+        .background(alignment: .bottom) {
             Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
                 .accessibilityHidden(true)
+        }
+    }
+}
+
+/// A view tab's look: secondary text, primary on hover and when open, and the open tab's accent underline along the bar's
+/// bottom edge. No pill (DESIGN §6 Tabs). `key` names the tab for the evidence run's `hover:` command.
+private struct InspectorTabStyle: ButtonStyle {
+    let selected: Bool
+    let key: String
+
+    func makeBody(configuration: Configuration) -> some View {
+        Tab(configuration: configuration, selected: selected, key: key)
+    }
+
+    private struct Tab: View {
+        let configuration: ButtonStyle.Configuration
+        let selected: Bool
+        let key: String
+        @State private var hovering = false
+        @Environment(\.isFocused) private var focused
+        @Environment(\.colorSchemeContrast) private var contrast
+
+        var body: some View {
+            let ring = ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)
+            let lit = selected || hovering || LookEvidence.forcesHover(key)
+            configuration.label
+                .foregroundStyle(lit ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
+                .opacity(configuration.isPressed ? LoomTheme.Opacity.rowPressed : 1)
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(LoomTheme.Accent.base).frame(height: LoomTheme.Inspector.tabUnderline)
+                        .opacity(selected ? 1 : 0).accessibilityHidden(true)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: LoomTheme.InkRadius.key)
+                        .strokeBorder(ring ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast))
+                        .padding(.vertical, LoomTheme.Inspector.tabFocusInset)
+                        .padding(.horizontal, -LoomTheme.Inspector.tabFocusOutset)
+                }
+                .onHover { hovering = $0 }
         }
     }
 }

@@ -18,7 +18,6 @@ struct SideTabTests {
         // The others keep their widths.
         #expect(InspectorTab.overview.width == 328 && InspectorTab.agents.width == 328 && InspectorTab.changes.width == 556)
         #expect(InspectorTabBar.title(.side) == "Side")
-        #expect(InspectorTabBar.symbol(.side) == "arrow.triangle.branch")
     }
 
     @Test func theOverlayRuleUsesTheSideWidthAndTheWidthChangesOnlyWithTheTab() {
