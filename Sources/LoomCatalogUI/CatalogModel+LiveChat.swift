@@ -3,13 +3,13 @@ import LoomChat
 import LoomCore
 
 /// The live Chat face's actions on the model (V16): thin calls into the app's `ChatSessionHost`, which owns the
-/// drivers and their state. The composer (V17) and the cards (V18) call these; evidence does too. Each refuses
+/// drivers and their state (the session service holds it). The composer (V17) and the cards (V18) call these; evidence does too. Each refuses
 /// without the app's Chat host, and for a session whose run is a terminal run (that is a handover, V19).
 extension CatalogModel {
-    /// Makes the Chat face's holder for this runtime; the app calls it once, with the runtime. Each turn's context
-    /// window feeds the context ring.
-    public func installChatSessions(runtime: SessionRuntime, dataRoot: URL) {
-        let host = ChatSessionHost(
+    /// Makes the Chat face's holder for this runtime, with the model's closures; the app gives it to the session service it
+    /// creates and then calls `chatSessionsInstalled`. Each turn's context window feeds the context ring.
+    public func makeChatSessionHost(runtime: SessionRuntime, dataRoot: URL) -> ChatSessionHost {
+        ChatSessionHost(
             runtime: runtime, dataRoot: dataRoot, journal: DiagnosticJournal.forDataRoot(dataRoot),
             // A live change of mode, model or effort is what the project starts its next session with.
             choicesChanged: { [weak self] _, _ in self?.refreshLastUsedChoices() },
@@ -19,9 +19,22 @@ extension CatalogModel {
             titleGenerated: { [weak self] id, title in
                 guard let self else { return }
                 Task { await self.terminalTitleChanged(sessionID: id, title: title) }
-            }
+            },
+            // A deleted session's composer must not write its draft again, and its feed has nothing left to show.
+            driverForgotten: { [weak self] driver in self?.chatAttachments.driverForgotten(driver) }
         )
+    }
+
+    /// Makes the Chat face's holder and installs it in one step (a model with a service of its own, or none).
+    public func installChatSessions(runtime: SessionRuntime, dataRoot: URL) {
+        let host = makeChatSessionHost(runtime: runtime, dataRoot: dataRoot)
         chatSessions = host
+        chatSessionsInstalled(runtime: runtime, host: host)
+    }
+
+    /// What installing the host does besides holding it: the Changes tab's git reader, and the removal of the files of sessions
+    /// deleted while no host ran. Once, in the app.
+    public func chatSessionsInstalled(runtime: SessionRuntime, host: ChatSessionHost) {
         // The Changes tab's Branch scope reads git through the runtime's supervisor, so the helper is owned and stopped by Quit.
         Task { [weak self] in
             let supervisor = await runtime.supervisor
@@ -45,18 +58,18 @@ extension CatalogModel {
         return chatSessions?.driver(for: row.id)
     }
 
-    /// The live stream of a driver (its presentation under the transcript's history), kept by the host while a view shows
+    /// The live stream of a driver (its presentation under the transcript's history), kept with the driver while a view shows
     /// it or its run lives, and then among the few last used. Made by the first view that shows it, with that view's
     /// session id and folder.
     func liveChatFeed(for driver: ChatSessionDriver, card: UUID, conversationID: String?, workingDirectory: String?) -> LiveChatFeed? {
-        guard let host = chatSessions else { return nil }
+        guard chatSessions != nil else { return nil }
         let config = claudeConfigDirectory
-        return host.attachment(for: driver) {
+        return chatAttachments.attachment(for: driver) {
             let feed = LiveChatFeed(source: driver, card: card, conversationID: conversationID, configDirectory: config,
                                     workingDirectory: workingDirectory)
-            feed.onUnused = { [weak host, weak driver] in
-                guard let host, let driver else { return }
-                host.releaseAttachment(for: driver)
+            feed.onUnused = { [weak attachments = chatAttachments, weak driver] in
+                guard let attachments, let driver else { return }
+                attachments.releaseAttachment(for: driver)
             }
             return feed
         }
@@ -132,7 +145,7 @@ extension CatalogModel {
 
     private func liveChatViewState(_ sessionID: UUID) -> [String: Any] {
         guard let driver = chatSessions?.existingDriver(for: sessionID),
-              let feed: LiveChatFeed = chatSessions?.existingAttachment(for: driver) else { return ["feed": false] }
+              let feed: LiveChatFeed = chatAttachments.existingAttachment(for: driver) else { return ["feed": false] }
         let presentation = feed.presentation
         let model = presentation.model
         let rows = presentation.controller?.rows ?? []

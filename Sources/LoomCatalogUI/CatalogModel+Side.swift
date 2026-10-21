@@ -98,12 +98,8 @@ final class SideChatLive {
     private(set) var isWaiting = false
     private(set) var allowsEdits = false
     @ObservationIgnored private var task: Task<Void, Never>?
-    /// This side chat is no longer the open one (or its parent's run ended) while a turn ran or a card waited: it stops the moment
-    /// it settles (D-72). Opening it again clears this, unless the parent's stop set `retiresEvenIfOpen`.
-    @ObservationIgnored var retiresWhenSettled = false
-    @ObservationIgnored var retiresEvenIfOpen = false
-    /// Asked, on the main actor, when a flagged side chat has settled.
-    @ObservationIgnored var onSettled: (@MainActor () -> Void)?
+    /// Told, on the main actor, after every read: the session service decides whether this side chat has to end now (D-72).
+    @ObservationIgnored var onRead: (@MainActor () -> Void)?
 
     init(id: UUID, driver: ChatSessionDriver) {
         self.id = id
@@ -143,7 +139,7 @@ final class SideChatLive {
         if isWaiting != waiting { isWaiting = waiting }
         let edits = side?.allowsEdits ?? false
         if allowsEdits != edits { allowsEdits = edits }
-        if retiresWhenSettled, await driver.isLiveAndSettled { onSettled?() }
+        onRead?()
     }
 }
 
@@ -205,8 +201,9 @@ final class SideSession {
     let parentID: UUID
     /// The session's side chats, newest first.
     private(set) var items: [SideChatItem] = []
-    /// The one the tab shows; nil is the empty state (nothing opened yet, or "New side chat").
-    var openID: UUID?
+    /// The one the tab shows; nil is the empty state (nothing opened yet, or "New side chat"). Every change is told to
+    /// `onShown`.
+    private(set) var openID: UUID?
     /// The field's text, kept while the tab is away.
     var composerText = ""
     /// One quiet line under the field: why the last question did not go.
@@ -224,8 +221,10 @@ final class SideSession {
     private(set) var asked: Set<UUID> = []
     /// The tab chose what to show once; later reads leave the choice alone.
     @ObservationIgnored var choseDefault = false
-    /// Asked when a followed side chat that was told to retire has settled (the model stops it).
-    @ObservationIgnored var onSettled: (@MainActor (UUID) -> Void)?
+    /// Told when the tab shows another side chat (or none).
+    @ObservationIgnored var onShown: (@MainActor (UUID?) -> Void)?
+    /// Told when a followed side chat was read (its id).
+    @ObservationIgnored var onRead: (@MainActor (UUID) -> Void)?
     @ObservationIgnored private var parentDriver: ChatSessionDriver?
     @ObservationIgnored private var parentWatch: Task<Void, Never>?
 
@@ -234,6 +233,12 @@ final class SideSession {
     func item(_ id: UUID?) -> SideChatItem? { id.flatMap { id in items.first { $0.id == id } } }
 
     var openItem: SideChatItem? { item(openID) }
+
+    func show(_ id: UUID?) {
+        guard openID != id else { return }
+        openID = id
+        onShown?(id)
+    }
 
     func setItems(_ value: [SideChatItem]) {
         if items != value { items = value }
@@ -255,15 +260,16 @@ final class SideSession {
         if let known = lives[id], known.driver === driver { return known }
         lives[id]?.stop()
         let made = SideChatLive(id: id, driver: driver)
-        made.onSettled = { [weak self] in self?.onSettled?(id) }
+        made.onRead = { [weak self] in self?.onRead?(id) }
         lives[id] = made
         made.start()
         return made
     }
 
-    /// Watches the parent's driver: `onStopped` runs when its run ends, by a Stop or by itself. A run that ends in a move to the
-    /// terminal (a handover holds the driver) is not a stop. One watch per driver.
-    func watchParent(_ driver: ChatSessionDriver, onStopped: @escaping @MainActor () async -> Void) {
+    /// Watches the parent's driver: `onStopped` runs when its run ends, by a Stop, by itself or in a move to the terminal (the
+    /// service tells the move from a stop), with the card the driver's run is on then (not the parent's own after a `/clear`).
+    /// One watch per driver.
+    func watchParent(_ driver: ChatSessionDriver, onStopped: @escaping @MainActor (_ runCard: UUID) async -> Void) {
         guard parentDriver !== driver else { return }
         parentWatch?.cancel()
         parentDriver = driver
@@ -274,8 +280,7 @@ final class SideSession {
                 let live = await driver.liveState().phase.isLive
                 defer { wasLive = live }
                 guard wasLive, !live else { continue }
-                if await driver.isHandingOver { continue }
-                await onStopped()
+                await onStopped(await driver.sessionID)
             }
         }
     }
@@ -311,7 +316,7 @@ final class SideSession {
         notes[id] = nil
         discarding.remove(id)
         discardFailures[id] = nil
-        if openID == id { openID = nil }
+        if openID == id { show(nil) }
         items.removeAll { $0.id == id }
     }
 }
@@ -320,15 +325,18 @@ final class SideSession {
 @MainActor @Observable
 final class SideState {
     private(set) var sessions: [UUID: SideSession] = [:]
-    /// A side chat that was told to retire has settled (parent, side chat): the model stops it.
-    @ObservationIgnored var onSettled: (@MainActor (UUID, UUID) -> Void)?
+    /// A followed side chat was read (parent, side chat).
+    @ObservationIgnored var onRead: (@MainActor (UUID, UUID) -> Void)?
+    /// The tab of a session shows another side chat, or none (parent, side chat).
+    @ObservationIgnored var onShown: (@MainActor (UUID, UUID?) -> Void)?
 
     func existing(for id: UUID?) -> SideSession? { id.flatMap { sessions[$0] } }
 
     func session(for id: UUID) -> SideSession {
         if let known = sessions[id] { return known }
         let made = SideSession(parentID: id)
-        made.onSettled = { [weak self] sideID in self?.onSettled?(id, sideID) }
+        made.onRead = { [weak self] sideID in self?.onRead?(id, sideID) }
+        made.onShown = { [weak self] sideID in self?.onShown?(id, sideID) }
         sessions[id] = made
         return made
     }
@@ -387,7 +395,7 @@ extension CatalogModel {
         let session = side.session(for: parent)
         let items = records.compactMap(SideChatItem.init).sorted { ($0.forkedAt, $0.id.uuidString) > ($1.forkedAt, $1.id.uuidString) }
         session.setItems(items)
-        if let open = session.openID, session.item(open) == nil, !session.discarding.contains(open) { session.openID = nil }
+        if let open = session.openID, session.item(open) == nil, !session.discarding.contains(open) { session.show(nil) }
         for item in items {
             if let driver = chatSessions?.existingDriver(for: item.id) { followSideChat(driver, id: item.id, in: parent) }
         }
@@ -396,7 +404,7 @@ extension CatalogModel {
         guard session.openID == nil else { return }
         let waiting = items.first { session.live(for: $0.id)?.isWaiting == true }
         let running = items.first { session.live(for: $0.id)?.isRunning == true }
-        if let chosen = waiting ?? running { session.openID = chosen.id }
+        if let chosen = waiting ?? running { session.show(chosen.id) }
     }
 
     // MARK: Choosing what the tab shows
@@ -410,48 +418,29 @@ extension CatalogModel {
         return driver
     }
 
-    /// Follows a side chat's driver, and the parent's run once, so a side chat can be retired when its parent stops.
+    /// Follows a side chat's driver, and the parent's run once, so the session service learns when the parent's run ended and
+    /// when a side chat it is waiting for has settled (D-72).
     @discardableResult
     private func followSideChat(_ driver: ChatSessionDriver, id: UUID, in parent: UUID) -> SideChatLive {
         let session = side.session(for: parent)
         if let parentDriver = chatSessions?.existingDriver(for: parent) {
-            session.watchParent(parentDriver) { [weak self] in await self?.retireSideChats(of: parent) }
+            session.watchParent(parentDriver) { [weak self, weak session] runCard in
+                guard let self, let session else { return }
+                await sessions?.parentRunEnded(parent, runCard: runCard, sideChats: Array(session.lives.keys))
+            }
         }
         return session.follow(driver, id: id)
     }
 
-    // MARK: Retiring (D-72)
-
-    /// A side chat's process runs only while it is the open one in its parent's Side tab. One that stops being the open one is
-    /// retired: stopped at once when it is idle (the same stop as Close), else when its turn ends and its cards are answered,
-    /// unless it became the open one again by then. `evenIfOpen` is the parent's stop: it retires the open one too.
-    func retireSideChat(_ id: UUID, in parent: UUID, evenIfOpen: Bool = false) async {
-        let session = side.session(for: parent)
-        guard let driver = chatSessions?.existingDriver(for: id) else { return }
-        let live = followSideChat(driver, id: id, in: parent)
-        let evenIfOpen = evenIfOpen || live.retiresEvenIfOpen
-        func clearFlags() { live.retiresWhenSettled = false; live.retiresEvenIfOpen = false }
-        if !evenIfOpen, session.openID == id { clearFlags(); return }
-        guard await driver.currentPhase.isLive else { clearFlags(); return }
-        if await driver.isLiveAndSettled {
-            clearFlags()
-            await closeSideChat(id, in: parent)
-        } else {
-            live.retiresWhenSettled = true
-            live.retiresEvenIfOpen = evenIfOpen
-        }
-    }
-
-    /// The parent's run ended: every side chat it has is retired by the same rule.
-    func retireSideChats(of parent: UUID) async {
-        guard let session = side.existing(for: parent) else { return }
-        for id in Array(session.lives.keys) { await retireSideChat(id, in: parent, evenIfOpen: true) }
-    }
-
-    /// The tab shows another side chat (or none): the one it showed is retired.
+    /// The tab shows another side chat (or none): the service retires the one it showed (D-72).
     private func retirePreviouslyOpen(_ previous: UUID?, in parent: UUID) {
         guard let previous else { return }
-        Task { [weak self] in await self?.retireSideChat(previous, in: parent) }
+        Task { [weak self] in
+            guard let self else { return }
+            // The follower is what tells the service when it has settled.
+            if let driver = chatSessions?.existingDriver(for: previous) { followSideChat(driver, id: previous, in: parent) }
+            await sessions?.sideChatLeft(previous, in: parent)
+        }
     }
 
     /// Opens one of the session's side chats in the tab (from "Earlier side chats").
@@ -461,10 +450,8 @@ extension CatalogModel {
         session.choseDefault = true
         sideDriver(for: id, in: parent)
         let previous = session.openID
-        session.openID = id
+        session.show(id)
         session.notice = nil
-        // Open again before it settled: it stays (unless its parent's stop retired it).
-        if let live = session.live(for: id), !live.retiresEvenIfOpen { live.retiresWhenSettled = false }
         if previous != id { retirePreviouslyOpen(previous, in: parent) }
     }
 
@@ -473,7 +460,7 @@ extension CatalogModel {
         let session = side.session(for: parent)
         session.choseDefault = true
         let previous = session.openID
-        session.openID = nil
+        session.show(nil)
         session.notice = nil
         retirePreviouslyOpen(previous, in: parent)
     }
@@ -510,7 +497,7 @@ extension CatalogModel {
                 let id = await driver.sessionID
                 followSideChat(driver, id: id, in: parent)
                 await refreshSideChats(for: parent)
-                session.openID = id
+                session.show(id)
             }
             session.composerText = ""
             session.markAsked(await driver.sessionID)
@@ -538,19 +525,20 @@ extension CatalogModel {
     // MARK: Close, edits, discard
 
     /// "Close": the side chat's process stops in the driver's stop order. The thread stays, read from the fork's transcript, and
-    /// the next question resumes it.
+    /// the next question resumes it. The toggle "Allow edits" reads off once the run is gone (the face's Close stop does that).
     func closeSideChat(_ id: UUID, in parent: UUID) async {
-        guard let driver = sideDriver(for: id, in: parent) else { return }
-        let session = side.session(for: parent)
-        do {
-            _ = try await driver.stop()
-        } catch SessionRuntimeError.notRunning {
-        } catch {
-            session.notice = Self.userMessage(for: error, context: "The side chat could not be closed")
+        guard sideDriver(for: id, in: parent) != nil else { return }
+        var failure: (any Error)?
+        if let sessions {
+            failure = await sessions.closeSideChat(id)
+        } else {
+            do { try await chatSessions?.closeSession(sessionID: id) } catch { failure = error }
         }
-        // The permission belonged to the process that is gone: the toggle reads off at once (the driver's next start turns it
-        // off again, whatever ended the run).
-        if await !driver.currentPhase.isLive { await driver.setAllowsEdits(false) }
+        if let failure { side.session(for: parent).notice = Self.sideChatCloseFailedText(failure) }
+    }
+
+    nonisolated static func sideChatCloseFailedText(_ error: any Error) -> String {
+        userMessage(for: error, context: "The side chat could not be closed")
     }
 
     /// "Allow edits" for this side chat only: the driver's policy turns edits and writing commands into cards.
@@ -609,22 +597,22 @@ extension CatalogModel {
 
     /// The open side chat's stream: the main chat's `LiveChatFeed` over the fork's driver, with no history before the first
     /// question, the same rows, and cards that never offer "Allow for this session". Made by the first view that shows it and
-    /// kept by the host with the driver.
+    /// kept with the driver.
     func sideFeed(for item: SideChatItem, in parent: UUID) -> LiveChatFeed? {
         guard let host = chatSessions, let driver = host.existingDriver(for: item.id) else { return nil }
         let config = claudeConfigDirectory
         let directory = sideRow(parent)?.record.session.workingDirectory
         let sideSession = side.session(for: parent)
         let id = item.id
-        return host.attachment(for: driver) {
+        return chatAttachments.attachment(for: driver) {
             let feed = LiveChatFeed(source: driver, card: id, conversationID: item.conversationID, configDirectory: config,
                                     workingDirectory: directory)
             // The card is read again at each history read: the first question's uuid is written when it is sent.
             feed.sideFirstUUID = { [weak sideSession] in sideSession?.item(id)?.firstUUID }
             feed.cards.offersSessionGrants = false
-            feed.onUnused = { [weak host, weak driver] in
-                guard let host, let driver else { return }
-                host.releaseAttachment(for: driver)
+            feed.onUnused = { [weak attachments = chatAttachments, weak driver] in
+                guard let attachments, let driver else { return }
+                attachments.releaseAttachment(for: driver)
             }
             return feed
         }
@@ -652,7 +640,7 @@ extension CatalogModel {
     /// started its turn (the last prompt of the main thread before it).
     func sideQuestionAndAnswer(forAnswer answerID: String, chat id: UUID, in parent: UUID) -> (question: String, answer: String)? {
         guard let host = chatSessions, let driver = host.existingDriver(for: id),
-              let feed: LiveChatFeed = host.existingAttachment(for: driver) else { return nil }
+              let feed: LiveChatFeed = chatAttachments.existingAttachment(for: driver) else { return nil }
         let model = feed.joinedModel
         guard let position = model.entries.firstIndex(where: { $0.id == answerID }),
               case let .assistantText(answer) = model.entries[position].body else { return nil }

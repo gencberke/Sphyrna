@@ -49,6 +49,7 @@ struct ChatComposerBehaviorTests {
     @MainActor struct Fixture {
         let rig: LiveRig
         let host: ChatSessionHost
+        let attachments: ChatAttachments
         let driver: ChatSessionDriver
         let composer: ChatComposerModel
         let id: UUID
@@ -58,7 +59,8 @@ struct ChatComposerBehaviorTests {
     private func make(files: String? = nil, started: Bool = true, choices: ClaudeLaunchChoices? = nil) async throws -> Fixture {
         let rig = try await LiveRig.make()
         let id = UUID()
-        let host = ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root)
+        let attachments = ChatAttachments()
+        let host = ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root, driverForgotten: { attachments.driverForgotten($0) })
         let driver = started
             ? try await host.startNewSession(projectID: nil, sessionID: id, draft: choices.map { NewSessionLaunch(firstMessage: "", choices: $0) })
             : host.driver(for: id)
@@ -70,7 +72,7 @@ struct ChatComposerBehaviorTests {
         composer.start()
         await composer.refresh()
         await composer.attachmentsRestored()
-        return Fixture(rig: rig, host: host, driver: driver, composer: composer, id: id)
+        return Fixture(rig: rig, host: host, attachments: attachments, driver: driver, composer: composer, id: id)
     }
 
     private func waitUntil(_ seconds: Double = 12, _ condition: () async -> Bool) async -> Bool {
@@ -930,7 +932,7 @@ struct ChatComposerBehaviorTests {
     /// Fix 14: a composer the host forgot (its session was deleted) writes no draft any more.
     @Test func aForgottenComposerWritesNoDraft() async throws {
         let fixture = try await make()
-        let composer = fixture.host.attachment(for: fixture.driver) { fixture.composer }
+        let composer = fixture.attachments.attachment(for: fixture.driver) { fixture.composer }
         type("about to be forgotten", into: fixture)
         composer.flushDraft()
         #expect(try fixture.store.load(sessionID: fixture.id)?.text == "about to be forgotten")

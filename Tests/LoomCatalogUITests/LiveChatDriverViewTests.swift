@@ -116,16 +116,17 @@ struct LiveChatDriverViewTests {
         let rig = try await LiveRig.make()
         let id = UUID()
         let host = ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root)
+        let attachments = ChatAttachments()
         let driver = try await host.startNewSession(projectID: nil, sessionID: id)
         try await driver.send("hello before the view")
         #expect(await idle(driver))
 
         // The view opens now: the transcript holds the first turn, and so does the live model.
         let conversation = id.uuidString.lowercased()
-        let feed = host.attachment(for: driver) {
+        let feed = attachments.attachment(for: driver) {
             LiveChatFeed(source: driver, card: id, conversationID: conversation, configDirectory: rig.profile, workingDirectory: nil)
         }
-        #expect(host.attachment(for: driver) { LiveChatFeed(source: driver, card: id, conversationID: nil, configDirectory: nil,
+        #expect(attachments.attachment(for: driver) { LiveChatFeed(source: driver, card: id, conversationID: nil, configDirectory: nil,
                                                             workingDirectory: nil) } === feed)
         let stream = ChatHostedStream()
         feed.attach(stream.controller)
@@ -166,7 +167,7 @@ struct LiveChatDriverViewTests {
         #expect(await waitUntil { await driver.sessionID != id })
         let card = await driver.sessionID
         #expect(await waitUntil { feed.card == card && feed.presentation !== before && feed.presentation.isLoaded })
-        #expect(host.attachment(for: driver) { LiveChatFeed(source: driver, card: card, conversationID: nil, configDirectory: nil,
+        #expect(attachments.attachment(for: driver) { LiveChatFeed(source: driver, card: card, conversationID: nil, configDirectory: nil,
                                                             workingDirectory: nil) } === feed)
         #expect(feed.presentation.model.markers.contains(.reset(trigger: "clear")))
         #expect(Self.prompts(feed.presentation.model).isEmpty)
@@ -296,26 +297,27 @@ extension LiveChatDriverViewTests {
     @Test func theHostKeepsAFewFeedsAndThoseInUse() async throws {
         let rig = try await LiveRig.make()
         let host = ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root)
+        let attachments = ChatAttachments()
         let drivers = (0..<6).map { _ in host.driver(for: UUID()) }
         var feeds: [LiveChatFeed] = []
         for (index, driver) in drivers.enumerated() {
-            let feed = host.attachment(for: driver) {
+            let feed = attachments.attachment(for: driver) {
                 LiveChatFeed(source: driver, card: UUID(), conversationID: nil, configDirectory: nil, workingDirectory: nil)
             }
-            feed.onUnused = { [weak host, weak driver] in
-                guard let host, let driver else { return }
-                host.releaseAttachment(for: driver)
+            feed.onUnused = { [weak attachments, weak driver] in
+                guard let attachments, let driver else { return }
+                attachments.releaseAttachment(for: driver)
             }
             if index == 0 { feed.viewAppeared() }
             feeds.append(feed)
         }
-        let kept = { (driver: ChatSessionDriver) -> Bool in (host.existingAttachment(for: driver) as LiveChatFeed?) != nil }
-        #expect(host.attachedDriverOrder.count == ChatSessionHost.attachmentLimit)
+        let kept = { (driver: ChatSessionDriver) -> Bool in (attachments.existingAttachment(for: driver) as LiveChatFeed?) != nil }
+        #expect(attachments.attachedDriverOrder.count == ChatAttachments.limit)
         #expect(kept(drivers[0]))
         #expect(!kept(drivers[1]) && !kept(drivers[2]))
         #expect(drivers[3...].allSatisfy(kept))
         // Not let go while shown; let go once its view went (its run never lived).
-        host.releaseAttachment(for: drivers[0])
+        attachments.releaseAttachment(for: drivers[0])
         #expect(kept(drivers[0]))
         feeds[0].viewWentAway(ChatStreamController(context: ChatRowContext()))
         #expect(!kept(drivers[0]))

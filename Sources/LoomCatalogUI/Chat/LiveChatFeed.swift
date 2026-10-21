@@ -4,7 +4,7 @@ import LoomCore
 import Observation
 
 /// The live chat of one Chat-face driver (V16): the session's `ChatPresentation`, fed by the driver's changes under the
-/// history its transcript holds. The app's `ChatSessionHost` keeps one per driver for as long as it keeps the driver, so the
+/// history its transcript holds. The app's `ChatAttachments` keeps one per driver for as long as the host keeps the driver, so the
 /// presentation (model, folds, view, scroll memory) outlives the views that show it and a window that is covered.
 ///
 /// - History: the transcript is cold-opened once, through a `TranscriptLens`, and cut where the live run begins
@@ -62,7 +62,7 @@ final class LiveChatFeed: ChatDriverAttachment {
     /// is over can go (`isInUse`).
     @ObservationIgnored private(set) var viewCount = 0
     @ObservationIgnored private var driverLive = false
-    /// The feed is no longer needed: its owner (the app's host) lets it go.
+    /// The feed is no longer needed: its owner (`ChatAttachments`) lets it go.
     @ObservationIgnored var onUnused: (() -> Void)?
     /// A side chat's feed (V22 part 3) shows the fork's own turns only: this gives the uuid of its first question, asked at
     /// every history read (the card writes it when the question is sent). What the transcript holds before it is the parent's
@@ -345,7 +345,7 @@ final class LiveChatFeed: ChatDriverAttachment {
 
     // MARK: Views
 
-    /// The feed is shown by a view, or its run lives: the host keeps it.
+    /// The feed is shown by a view, or its run lives: `ChatAttachments` keeps it.
     var isInUse: Bool { viewCount > 0 || driverLive }
 
     /// A view of the feed appeared (`attach` follows once it can be seen) or went for good.
@@ -358,8 +358,8 @@ final class LiveChatFeed: ChatDriverAttachment {
     }
 
     /// The ended view of a session (its transcript, with the cards its run's end cut off above the bottom edge) shows the
-    /// feed's cards: it counts as a view, so the host keeps the feed while that view is on screen and lets it go (as the least
-    /// recently used) once nobody shows it. The driver keeps what was cut off, so the next view reads it again.
+    /// feed's cards: it counts as a view, so `ChatAttachments` keeps the feed while that view is on screen and lets it go (as the
+    /// least recently used) once nobody shows it. The driver keeps what was cut off, so the next view reads it again.
     func endedViewAppeared() {
         viewCount += 1
         followState()

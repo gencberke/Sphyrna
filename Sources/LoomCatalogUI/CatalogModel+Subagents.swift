@@ -150,7 +150,7 @@ extension CatalogModel {
     @discardableResult
     func showAgentRequest(agentID: String, in sessionID: UUID) -> Bool {
         guard let driver = liveChatDriver(for: sessionID),
-              let feed: LiveChatFeed = chatSessions?.existingAttachment(for: driver) else { return false }
+              let feed: LiveChatFeed = chatAttachments.existingAttachment(for: driver) else { return false }
         return feed.cards.reveal(agentID: agentID)
     }
 }

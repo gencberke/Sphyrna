@@ -2,17 +2,17 @@ import Foundation
 import LoomChat
 import LoomCore
 
-/// The session's composer (V17) on the model: made by the first live view of a Chat session and kept by the host for as
-/// long as it keeps the driver, so the text, attachments, history and menus outlive the view.
+/// The session's composer (V17) on the model: made by the first live view of a Chat session and kept with the driver for as
+/// long as the host keeps it, so the text, attachments, history and menus outlive the view.
 extension CatalogModel {
     func liveChatComposer(for driver: ChatSessionDriver, row: SessionRowModel, feed: LiveChatFeed) -> ChatComposerModel? {
         guard let host = chatSessions else { return nil }
         let id = row.id
         let drafts = host.draftStore
-        let composer = host.attachment(for: driver) {
+        let composer = chatAttachments.attachment(for: driver) {
             ChatComposerModel(driver: driver, card: id, drafts: drafts, environment: composerEnvironment(feed: feed))
         }
-        // The composer outlives a feed the host let go of, and its environment holds the feed it was made with weakly: every
+        // The composer outlives a feed `ChatAttachments` let go of, and its environment holds the feed it was made with weakly: every
         // view binds it to the feed it shows now (else the folder, history and the handover notice
         // would answer nothing after the feed was released), and the feed's pinned cards take the composer's text and keys.
         composer.environment = composerEnvironment(feed: feed)
@@ -75,7 +75,7 @@ extension CatalogModel {
 
     /// Writes every composer's draft now (Quit).
     public func flushChatComposers() {
-        for composer in chatSessions?.kept(ofType: ChatComposerModel.self) ?? [] { composer.flushDraft() }
+        for composer in chatAttachments.kept(ofType: ChatComposerModel.self) { composer.flushDraft() }
     }
 }
 
@@ -85,7 +85,7 @@ extension CatalogModel {
     /// The session's composer, when a live view made one.
     func composer(of sessionID: UUID) -> ChatComposerModel? {
         guard let driver = chatSessions?.existingDriver(for: sessionID) else { return nil }
-        return chatSessions?.existingAttachment(for: driver)
+        return chatAttachments.existingAttachment(for: driver)
     }
 
     /// Drives the composer as the user does and reports what it holds (kinds and counts; the evidence driver decides whether

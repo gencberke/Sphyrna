@@ -474,10 +474,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     configuration: runtimeConfiguration(root: root, supervisor: supervisor, model: model)
                 )
                 try await created.start()
-                // The one session service: the controller keeps the terminals for it, the model reads its state.
-                let sessions = SessionService(runtime: created, startableProviders: startableProviders)
+                // The one session service: it holds the Chat host (made with the model's closures), the controller keeps the
+                // terminals for it, and the model reads its state and the host through it.
+                let chatHost = model.makeChatSessionHost(runtime: created, dataRoot: root)
+                let sessions = SessionService(runtime: created, startableProviders: startableProviders,
+                                              structuredHost: chatHost)
                 let conversations = ConversationController(service: sessions, model: model)
-                model.installChatSessions(runtime: created, dataRoot: root)
+                model.chatSessionsInstalled(runtime: created, host: chatHost)
                 await conversations.begin()
                 // The cleanup review (Settings → Sessions) is in every build (D-69); it deletes only what
                 // the user confirms there.

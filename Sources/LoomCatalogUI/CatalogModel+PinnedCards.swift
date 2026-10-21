@@ -8,7 +8,7 @@ extension CatalogModel {
     /// The cards of the session whose driver lives (made with its live stream).
     func pinnedCards(for sessionID: UUID) -> PinnedCardsModel? {
         guard let driver = chatSessions?.existingDriver(for: sessionID) else { return nil }
-        let feed: LiveChatFeed? = chatSessions?.existingAttachment(for: driver)
+        let feed: LiveChatFeed? = chatAttachments.existingAttachment(for: driver)
         return feed?.cards
     }
 

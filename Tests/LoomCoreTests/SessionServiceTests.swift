@@ -132,6 +132,23 @@ private final class FakeHost: StructuredFaceHost {
     func noteContinuedInTerminal(sessionID: UUID) async { continuedInTerminal.append(sessionID) }
     func finishHandover(sessionID: UUID) async { finished.append(sessionID) }
     func handoverRefusal(of error: any Error) -> HandoverRefusal? { error as? HandoverRefusal }
+
+    // What a session's run is doing: set by the test, by id.
+    var live: Set<UUID> = []
+    var settled: Set<UUID> = []
+    var handingOver: Set<UUID> = []
+    var closeFailure: (any Error)?
+    private(set) var closed: [UUID] = []
+
+    func isLive(sessionID: UUID) async -> Bool { live.contains(sessionID) }
+    func isLiveAndSettled(sessionID: UUID) async -> Bool { live.contains(sessionID) && settled.contains(sessionID) }
+    func isHandingOver(sessionID: UUID) async -> Bool { handingOver.contains(sessionID) }
+
+    func closeSession(sessionID: UUID) async throws {
+        closed.append(sessionID)
+        if let closeFailure { throw closeFailure }
+        live.remove(sessionID)
+    }
 }
 
 @MainActor
@@ -181,6 +198,8 @@ private final class Told {
     private(set) var failures: [SessionFailure.Kind] = []
     private(set) var failureErrors: [any Error] = []
     var events: [String] = []
+    /// A side chat's Close that the rule's retirement could not do (parent, side chat).
+    var closeFailed: [(UUID, UUID)] = []
 
     func failure(_ failure: SessionFailure) {
         failures.append(failure.kind)
@@ -700,5 +719,144 @@ struct SessionServiceTests {
         await rig.service.denyOpen(requestID: UUID()).value
         await rig.service.dismissOpen(requestID: UUID()).value
         #expect(rig.told.failures == [.answerNotDelivered, .openRequestNotDenied, .openRequestNotDismissed])
+    }
+
+    // MARK: Side chats (D-72)
+
+    private func sideChatRig() async throws -> (rig: Rig, parent: UUID, side: UUID) {
+        (try await makeRig(), UUID(), UUID())
+    }
+
+    @Test func anIdleSideChatThatIsNoLongerOpenIsStoppedAtOnceAndOneThatIsStillOpenIsNot() async throws {
+        let (rig, parent, side) = try await sideChatRig()
+        defer { rig.context.cleanup() }
+        rig.host.live = [side]
+        rig.host.settled = [side]
+        rig.service.sideChatShown(side, in: parent)
+        // Asked while it is the open one: nothing to retire.
+        await rig.service.sideChatLeft(side, in: parent)
+        #expect(rig.host.closed.isEmpty)
+        rig.service.sideChatShown(nil, in: parent)
+        await rig.service.sideChatLeft(side, in: parent)
+        #expect(rig.host.closed == [side])
+    }
+
+    @Test func aBusySideChatIsStoppedOnlyOnceItHasSettled() async throws {
+        let (rig, parent, side) = try await sideChatRig()
+        defer { rig.context.cleanup() }
+        rig.host.live = [side]
+        rig.service.sideChatShown(side, in: parent)
+        rig.service.sideChatShown(nil, in: parent)
+        await rig.service.sideChatLeft(side, in: parent)
+        #expect(rig.host.closed.isEmpty, "a running turn or a waiting card is not cut")
+        // Read while still busy: nothing yet, and it keeps waiting.
+        await rig.service.sideChatRead(side, in: parent)?.value
+        #expect(rig.host.closed.isEmpty)
+        rig.host.settled = [side]
+        let read = rig.service.sideChatRead(side, in: parent)
+        await read?.value
+        #expect(rig.host.closed == [side])
+        // Done: later reads have nothing to do.
+        #expect(rig.service.sideChatRead(side, in: parent) == nil)
+    }
+
+    @Test func aSideChatOpenedAgainBeforeItSettledStays() async throws {
+        let (rig, parent, side) = try await sideChatRig()
+        defer { rig.context.cleanup() }
+        rig.host.live = [side]
+        rig.service.sideChatShown(side, in: parent)
+        rig.service.sideChatShown(nil, in: parent)
+        await rig.service.sideChatLeft(side, in: parent)
+        rig.service.sideChatShown(side, in: parent)
+        rig.host.settled = [side]
+        #expect(rig.service.sideChatRead(side, in: parent) == nil)
+        #expect(rig.host.closed.isEmpty)
+        // And the flag is gone for good: it is retired again only by being left again.
+        rig.service.sideChatShown(nil, in: parent)
+        await rig.service.sideChatLeft(side, in: parent)
+        #expect(rig.host.closed == [side])
+    }
+
+    @Test func theParentsStopRetiresTheOpenSideChatToo() async throws {
+        let (rig, parent, side) = try await sideChatRig()
+        defer { rig.context.cleanup() }
+        let other = UUID()
+        rig.host.live = [side, other]
+        rig.host.settled = [side, other]
+        rig.service.sideChatShown(side, in: parent)
+        await rig.service.parentRunEnded(parent, runCard: parent, sideChats: [side, other])
+        #expect(Set(rig.host.closed) == [side, other], "the open one is retired as well")
+    }
+
+    @Test func aBusySideChatThatTheParentsStopRetiredIsNotSavedByOpeningItAgain() async throws {
+        let (rig, parent, side) = try await sideChatRig()
+        defer { rig.context.cleanup() }
+        rig.host.live = [side]
+        rig.service.sideChatShown(side, in: parent)
+        await rig.service.parentRunEnded(parent, runCard: parent, sideChats: [side])
+        #expect(rig.host.closed.isEmpty, "not cut while its turn runs")
+        // Reopened (or never left): still the parent's stop.
+        rig.service.sideChatShown(side, in: parent)
+        rig.host.settled = [side]
+        await rig.service.sideChatRead(side, in: parent)?.value
+        #expect(rig.host.closed == [side])
+    }
+
+    @Test func aRunThatEndedInAMoveToTheTerminalIsNotAParentStop() async throws {
+        let (rig, parent, side) = try await sideChatRig()
+        defer { rig.context.cleanup() }
+        rig.host.live = [side]
+        rig.host.settled = [side]
+        rig.host.handingOver = [parent]
+        await rig.service.parentRunEnded(parent, runCard: parent, sideChats: [side])
+        #expect(rig.host.closed.isEmpty)
+        rig.host.handingOver = []
+        await rig.service.parentRunEnded(parent, runCard: parent, sideChats: [side])
+        #expect(rig.host.closed == [side])
+    }
+
+    @Test func aRunThatMovedOffItsCardByAClearAndEndedInAMoveIsNotAParentStopEither() async throws {
+        let (rig, parent, side) = try await sideChatRig()
+        defer { rig.context.cleanup() }
+        let runCard = UUID()
+        rig.host.live = [side]
+        rig.host.settled = [side]
+        // The side chats were forked from `parent`; after a `/clear` its run is on `runCard`, which is the one being moved.
+        rig.host.handingOver = [runCard]
+        await rig.service.parentRunEnded(parent, runCard: runCard, sideChats: [side])
+        #expect(rig.host.closed.isEmpty)
+        // The same parent whose run card is not being moved was stopped.
+        await rig.service.parentRunEnded(parent, runCard: UUID(), sideChats: [side])
+        #expect(rig.host.closed == [side])
+    }
+
+    @Test func aSideChatWithNoLiveRunIsLeftAlone() async throws {
+        let (rig, parent, side) = try await sideChatRig()
+        defer { rig.context.cleanup() }
+        rig.host.settled = [side]
+        await rig.service.sideChatLeft(side, in: parent)
+        await rig.service.parentRunEnded(parent, runCard: parent, sideChats: [side])
+        #expect(rig.host.closed.isEmpty)
+        // Nothing was kept for it: when a later run settles, no read ends it.
+        rig.host.live = [side]
+        #expect(rig.service.sideChatRead(side, in: parent) == nil)
+        #expect(rig.host.closed.isEmpty)
+    }
+
+    @Test func aRetirementThatCouldNotStopTheSideChatIsToldToTheUI() async throws {
+        let (rig, parent, side) = try await sideChatRig()
+        defer { rig.context.cleanup() }
+        let told = Told()
+        rig.service.sideChatCloseFailed = { parent, side, _ in told.closeFailed.append((parent, side)) }
+        rig.host.live = [side]
+        rig.host.settled = [side]
+        rig.host.closeFailure = HostFailure()
+        await rig.service.sideChatLeft(side, in: parent)
+        #expect(rig.host.closed == [side] && told.closeFailed.count == 1 && told.closeFailed[0] == (parent, side))
+        // The user's own Close answers its caller.
+        #expect(await rig.service.closeSideChat(side) is HostFailure)
+        #expect(told.closeFailed.count == 1)
+        rig.host.closeFailure = nil
+        #expect(await rig.service.closeSideChat(side) == nil)
     }
 }

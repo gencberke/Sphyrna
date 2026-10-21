@@ -32,8 +32,8 @@ public struct SessionStopOutcome: Sendable {
 }
 
 /// The one owner of a session's lifecycle: start, resume, stop, the Chat → terminal handover, the answers to a session's
-/// requests and to an agent's open requests, deletion, and the session's own writes (title, pin); and of the state those
-/// operations pass through (`transitions`). Whatever the harness and
+/// requests and to an agent's open requests, deletion, the session's own writes (title, pin) and when a side chat's
+/// process ends (D-72); and of the state those operations pass through (`transitions`). Whatever the harness and
 /// whatever the face, the UI sends intents and reads state; what it must do at a moment of an operation it is told by the
 /// closure it passed or by `failureHandler`, always on the main actor and before the operation releases what it holds.
 ///
@@ -51,7 +51,8 @@ public final class SessionService {
     public let records: SessionRecordWrites
     /// The app-wide switch ("Sessions run in", D-69): the UI sets it from its preferences.
     public var runsIn: SessionLiveFace
-    /// The structured face's host; nil in a test or a window with no runtime, where every session runs in the terminal.
+    /// The structured face's host, held here and nowhere else strongly (the app makes it and gives it to the service); nil in a
+    /// test or a window with no runtime, where every session runs in the terminal.
     public var structuredHost: (any StructuredFaceHost)?
     public weak var terminal: (any TerminalFaceSinks)?
     public var failureHandler: @MainActor (SessionFailure) -> Void = { _ in }
@@ -62,6 +63,20 @@ public final class SessionService {
     private var handoverTasks: [UUID: Task<Void, Never>] = [:]
     /// Held at a handover's point of no return, with its target (tests act at that phase; nil in the app).
     public var handoverGate: (@MainActor (UUID, SessionLiveFace) async -> Void)?
+    /// A side chat's Close stop failed when the rule ended it (parent, side chat): the UI words it on the tab. The user's own
+    /// Close answers the failure to its caller instead.
+    public var sideChatCloseFailed: @MainActor (_ parent: UUID, _ sideChat: UUID, _ error: any Error) -> Void = { _, _, _ in }
+    /// The side chat each parent's Side tab shows now, as the UI reports it.
+    private var shownSideChats: [UUID: UUID] = [:]
+    /// Side chats that were not idle when they stopped being the open one (or when their parent's run ended): by side chat.
+    private var retirements: [UUID: SideChatRetirement] = [:]
+
+    private struct SideChatRetirement {
+        /// Stop it once its turn ended and its cards are answered.
+        var whenSettled = true
+        /// The parent's run ended: a reopen does not save it.
+        var evenIfOpen: Bool
+    }
 
     public init(runtime: SessionRuntime, startableProviders: Set<ManagedSession.Provider>, runsIn: SessionLiveFace = .chat,
                 structuredHost: (any StructuredFaceHost)? = nil, terminal: (any TerminalFaceSinks)? = nil,
@@ -477,6 +492,79 @@ public final class SessionService {
 
     public func setPinned(sessionID: UUID, _ pinned: Bool) async throws {
         try await records.setPinned(sessionID: sessionID, pinned)
+    }
+
+    // MARK: Side chats (D-72)
+
+    // A side chat's process runs only while it is the open one in its parent's Side tab. One that stops being the open one is
+    // retired: stopped at once when it is idle (the Close stop), else when its turn ends and its cards are answered, unless it
+    // became the open one again by then. The parent's run ending (a Stop, or by itself; a move to the terminal is not one)
+    // retires every side chat the parent has, the open one too, and a reopen does not save it. A side chat with no live run is
+    // left alone. The UI reports what it observes (which one the tab shows, that a followed side chat was read, that the
+    // parent's run ended); the face answers whether a run is live, idle or being moved.
+
+    /// The tab shows this side chat now (nil: none, the empty state or "New side chat"). Showing one again before it settled
+    /// keeps it, unless its parent's run ended.
+    public func sideChatShown(_ id: UUID?, in parent: UUID) {
+        shownSideChats[parent] = id
+        if let id, retirements[id]?.evenIfOpen == false { retirements[id] = nil }
+    }
+
+    /// The tab stopped showing this side chat.
+    public func sideChatLeft(_ id: UUID, in parent: UUID) async {
+        await retire(id, in: parent, evenIfOpen: false)
+    }
+
+    /// A followed side chat's state was read: one that was told to retire when it settles ends if it has. Nil when it is not
+    /// waiting to settle.
+    @discardableResult
+    public func sideChatRead(_ id: UUID, in parent: UUID) -> Task<Void, Never>? {
+        guard retirements[id]?.whenSettled == true else { return nil }
+        return Task {
+            guard let host = structuredHost, await host.isLiveAndSettled(sessionID: id),
+                  // Claimed before anything else is awaited: a second read in the meantime ends nothing twice.
+                  let claimed = retirements.removeValue(forKey: id) else { return }
+            await retire(id, in: parent, evenIfOpen: claimed.evenIfOpen)
+        }
+    }
+
+    /// The parent's run ended and `sideChats` are the ones the UI follows: each is retired, the open one too. `runCard` is the
+    /// card the parent's run is on (a `/clear` moves it off `parent`, the card the side chats were forked from). A run that
+    /// ended in a move to the terminal is not a stop and retires none.
+    public func parentRunEnded(_ parent: UUID, runCard: UUID, sideChats: [UUID]) async {
+        guard let host = structuredHost, await !host.isHandingOver(sessionID: runCard) else { return }
+        for id in sideChats { await retire(id, in: parent, evenIfOpen: true) }
+    }
+
+    /// "Close": the side chat's process stops in the face's stop order. Nil when it stopped or was not running, else the
+    /// failure.
+    public func closeSideChat(_ id: UUID) async -> (any Error)? {
+        guard let host = structuredHost else { return nil }
+        do {
+            try await host.closeSession(sessionID: id)
+            return nil
+        } catch {
+            return error
+        }
+    }
+
+    private func retire(_ id: UUID, in parent: UUID, evenIfOpen: Bool) async {
+        guard let host = structuredHost else { return }
+        let evenIfOpen = evenIfOpen || retirements[id]?.evenIfOpen == true
+        if !evenIfOpen, shownSideChats[parent] == id {
+            retirements[id] = nil
+            return
+        }
+        guard await host.isLive(sessionID: id) else {
+            retirements[id] = nil
+            return
+        }
+        if await host.isLiveAndSettled(sessionID: id) {
+            retirements[id] = nil
+            if let error = await closeSideChat(id) { sideChatCloseFailed(parent, id, error) }
+        } else {
+            retirements[id] = SideChatRetirement(evenIfOpen: evenIfOpen)
+        }
     }
 
     // MARK: Deletion

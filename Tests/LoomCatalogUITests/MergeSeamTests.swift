@@ -208,7 +208,7 @@ struct MergeSeamTests {
             return model.liveChatComposer(for: shown, row: row, feed: feed)
         }
         let composer = try #require(compose())
-        host.releaseAttachment(for: driver)
+        model.chatAttachments.releaseAttachment(for: driver)
         // A new view, a new feed: the same composer.
         let again = try #require(compose())
         #expect(again === composer)

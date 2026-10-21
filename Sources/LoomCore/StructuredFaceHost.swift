@@ -29,6 +29,20 @@ public protocol StructuredFaceHost: AnyObject {
     func forget(sessionID: UUID)
     func errorKind(of error: any Error) -> StructuredFaceErrorKind
 
+    // MARK: What a session's run is doing
+    //
+    // Asked of any session the face knows by id (a side chat is one). A session the face has no run for is not live.
+
+    /// The session has a run the face drives (it is not stopped).
+    func isLive(sessionID: UUID) async -> Bool
+    /// The session's run is live and idle: no turn running and no card waiting.
+    func isLiveAndSettled(sessionID: UUID) async -> Bool
+    /// The session's run is being given to the terminal (`handOverToTerminal` has begun and `finishHandover` has not).
+    func isHandingOver(sessionID: UUID) async -> Bool
+    /// The Close stop: the run ends in the face's verified stop order and is awaited. A session that was not running is not an
+    /// error; any other failure is thrown, after the face has left the session as the stop left it.
+    func closeSession(sessionID: UUID) async throws
+
     // MARK: The move to the terminal (V19)
     //
     // The face holds the session for the whole move: from `handOverToTerminal` until `finishHandover`, whatever the result,

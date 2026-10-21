@@ -22,6 +22,40 @@ extension ChatSessionHost: StructuredFaceHost {
         return error == .stopping ? .stopping : .failure
     }
 
+    // MARK: What a session's run is doing
+
+    public func isLive(sessionID: UUID) async -> Bool {
+        guard let driver = existingDriver(for: sessionID) else { return false }
+        return await driver.currentPhase.isLive
+    }
+
+    public func isLiveAndSettled(sessionID: UUID) async -> Bool {
+        guard let driver = existingDriver(for: sessionID) else { return false }
+        return await driver.isLiveAndSettled
+    }
+
+    public func isHandingOver(sessionID: UUID) async -> Bool {
+        // The driver a move holds first: a `/clear` in the move re-keys the driver, and the session id still names it.
+        guard let driver = movingDrivers[sessionID] ?? existingDriver(for: sessionID) else { return false }
+        return await driver.isHandingOver
+    }
+
+    /// The Close stop: the process stops in the driver's order (interrupt, `result`, stdin, exit). One that was not running is
+    /// not an error. Whatever ended the run, the session's "allow edits" permission belonged to the process that is gone: it
+    /// reads off at once (the driver's next start turns it off again).
+    public func closeSession(sessionID: UUID) async throws {
+        guard let driver = existingDriver(for: sessionID) else { return }
+        var failure: (any Error)?
+        do {
+            _ = try await driver.stop()
+        } catch SessionRuntimeError.notRunning {
+        } catch {
+            failure = error
+        }
+        if await !driver.currentPhase.isLive { await driver.setAllowsEdits(false) }
+        if let failure { throw failure }
+    }
+
     // MARK: The move to the terminal (V19)
 
     public func handOverToTerminal(sessionID: UUID, pointOfNoReturn: @escaping @Sendable () async -> Void) async throws -> UUID {

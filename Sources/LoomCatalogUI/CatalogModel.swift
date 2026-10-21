@@ -452,10 +452,20 @@ public final class CatalogModel {
     public let projectPage = ProjectPageState()
     /// The face choice per session and the read-only Chat flag (`DetailRoute`).
     public let faces = SessionFaces()
-    /// The Chat face's drivers (V16): their own object, made by the app with the runtime; nil without one.
-    @ObservationIgnored public var chatSessions: ChatSessionHost? {
-        didSet { sessions?.structuredHost = chatSessions }
+    /// The Chat face's drivers (V16): their own object, made by the app with the runtime; nil without one. The session service
+    /// holds it, and a model with no service keeps one of its own (`ownChatSessions`), as it keeps its own transitions.
+    public var chatSessions: ChatSessionHost? {
+        get {
+            if let sessions { return sessions.structuredHost as? ChatSessionHost }
+            return ownChatSessions
+        }
+        set {
+            if let sessions { sessions.structuredHost = newValue } else { ownChatSessions = newValue }
+        }
     }
+    @ObservationIgnored private var ownChatSessions: ChatSessionHost?
+    /// What the app keeps per Chat driver: the live feeds and the composers (`ChatAttachments`).
+    @ObservationIgnored let chatAttachments = ChatAttachments()
     /// The service that owns every session's lifecycle (attached by the controller; nil in a window with no runtime).
     @ObservationIgnored private(set) var sessions: SessionService?
     /// Moves when a Chat driver moved to another card (`/clear`): a view that looked a driver up by card reads again.
@@ -495,9 +505,9 @@ public final class CatalogModel {
         tabs = ConversationTabs(pinned: preferences.current.openTabs)
         today = Calendar.current.startOfDay(for: now)
         palette.searchesConversations = searchesSessionText
-        side.onSettled = { [weak self] parent, id in
-            Task { [weak self] in await self?.retireSideChat(id, in: parent) }
-        }
+        // The session service decides when a side chat's process ends (D-72); the tab reports what it shows and reads.
+        side.onShown = { [weak self] parent, id in self?.sessions?.sideChatShown(id, in: parent) }
+        side.onRead = { [weak self] parent, id in self?.sessions?.sideChatRead(id, in: parent) }
     }
 
     deinit {
@@ -1717,13 +1727,18 @@ public final class CatalogModel {
 
     // Called by the conversation controller.
 
-    /// The session service owns the lifecycle's state. From here the model reads its transitions, and the service reads the
-    /// switch and the Chat host from the model's preferences and installation (`setNewSessionFace`, `chatSessions`).
+    /// The session service owns the lifecycle's state. From here the model reads its transitions and the Chat host, and the
+    /// service reads the switch from the model's preferences (`setNewSessionFace`). A host the model held before the service
+    /// came (a model with no service) goes to the service unless it has one.
     func attach(sessions service: SessionService) {
         sessions = service
         transitions = service.transitions
         service.runsIn = newSessionFace == .chat ? .chat : .terminal
-        service.structuredHost = chatSessions
+        if service.structuredHost == nil { service.structuredHost = ownChatSessions }
+        ownChatSessions = nil
+        service.sideChatCloseFailed = { [weak self] parent, id, error in
+            self?.side.session(for: parent).notice = Self.sideChatCloseFailedText(error)
+        }
     }
 
     /// The writes to a session's record: the service's, or (a model with no service) the same over the model's catalog.
