@@ -71,13 +71,18 @@ extension SettingsGroup where Trailing == EmptyView {
     }
 }
 
-/// A card: raised 1, radius 12, a hairline edge and the card's depth. Its rows are full width and divide by hairlines.
+/// A card: raised 1, radius 12, a hairline edge and the card's depth. Its rows sit inside the rows' inset, and the hairlines between them
+/// run within it.
 struct SettingsCard<Content: View>: View {
+    /// A card of rows takes the rows' inset (`S.rowsInset*`); a card that lays out its own content (Usage's) does not.
+    var holdsRows = true
     @ViewBuilder let content: Content
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: S.cardRadius)
         VStack(spacing: 0) { content }
+            .padding(.top, holdsRows ? S.rowsInsetTop : 0).padding(.bottom, holdsRows ? S.rowsInsetBottom : 0)
+            .padding(.leading, holdsRows ? S.rowsInsetLeading : 0).padding(.trailing, holdsRows ? S.rowsInsetTrailing : 0)
             .frame(maxWidth: .infinity)
             .background(shape.fill(LoomTheme.Surface.raised1))
             .overlay(shape.strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))

@@ -158,7 +158,7 @@ struct UsageCard<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        SettingsCard {
+        SettingsCard(holdsRows: false) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .firstTextBaseline, spacing: S.headGap) {
                     Text(title).projectType(S.headTitle).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)

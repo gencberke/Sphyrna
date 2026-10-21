@@ -46,7 +46,14 @@ extension LoomTheme {
 
         /// A card: raised 1, radius 12, a hairline edge and the card's depth.
         static let cardRadius = InkRadius.card
-        /// A row: at least 48 high, 11 above and below, 16 in, 20 between its text and its control.
+        /// A card of rows (D-88, the reference's drawing): the rows sit 5 below the card's top and 6 above its bottom, 16 in from its
+        /// leading edge and 8 from its trailing one. A row's content so starts 32 in and ends 24 from the trailing edge, and the rule
+        /// between two rows runs from 16 to 8 inside the card. Usage's cards keep their own padding.
+        static let rowsInsetTop: CGFloat = 5
+        static let rowsInsetBottom: CGFloat = 6
+        static let rowsInsetLeading: CGFloat = 16
+        static let rowsInsetTrailing: CGFloat = 8
+        /// A row: at least 48 high, 11 above and below, 16 inside the rows' inset, 20 between its text and its control.
         static let rowMinHeight: CGFloat = 48
         static let rowPaddingV: CGFloat = 11
         static let rowPaddingH: CGFloat = 16

@@ -43,6 +43,30 @@ struct SettingsLayoutTests {
         return frames
     }
 
+    /// D-88, the reference's drawing: a card's rows sit 16 in from its leading edge, so a row's text starts 32 inside the card, 64
+    /// from the window's edge under the page's 32. It started 16 inside the card before.
+    @Test func aRowsTextStartsThirtyTwoInsideItsCard() async throws {
+        let frames = try await textFrames()
+        let title = try #require(frames["Sessions run in"])
+        let S = LoomTheme.Settings.self
+        #expect(S.rowsInsetLeading + S.rowPaddingH == 32 && S.rowsInsetTrailing + S.rowPaddingH == 24)
+        #expect(abs(title.minX - (S.bodyInset + S.rowsInsetLeading + S.rowPaddingH)) <= 1, "the title starts at \(title.minX)")
+    }
+
+    /// A card of rows keeps 5 above its rows and 6 below them; Usage's cards lay out their own content and take no inset.
+    @Test func aCardOfRowsKeepsFiveAboveAndSixBelowAndUsagesCardsKeepTheirOwn() {
+        let S = LoomTheme.Settings.self
+        func height<V: View>(_ view: V) -> CGFloat {
+            let host = NSHostingView(rootView: view.frame(width: 616))
+            host.layoutSubtreeIfNeeded()
+            return host.fittingSize.height
+        }
+        let rows = height(SettingsCard { SettingsRow(title: "One") { EmptyView() } })
+        #expect(abs(rows - (S.rowMinHeight + S.rowsInsetTop + S.rowsInsetBottom)) <= 0.5, "\(rows)")
+        let own = height(SettingsCard(holdsRows: false) { Color.clear.frame(height: 40) })
+        #expect(abs(own - 40) <= 0.5, "\(own)")
+    }
+
     /// At 680 pt wide the description of "Sessions run in" and of "Mode of new sessions" took two lines and was cut to one
     /// with an ellipsis (a row beside a segmented control or a menu was sized from the control), while rows beside a switch
     /// showed in full. A description is at most 380 wide now (the reference's), so the first two take two lines or more and
