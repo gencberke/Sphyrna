@@ -210,8 +210,9 @@ struct PinnedInkTests {
         let fields: [String: JSONValue] = ["subtype": "can_use_tool", "tool_name": "Bash", "input": ["command": "ls"], "tool_use_id": "toolu_a"]
         let pending = ChatPendingRequest(requestID: "a", request: ToolPermissionRequest(json: .object(fields))!,
                                          arrivedAt: Date(timeIntervalSince1970: 1), agent: nil)
+        // Sized for a whole-target run's load, not an idle machine (as LiveChatFeedTests' waits).
         func wait(_ condition: () -> Bool) async -> Bool {
-            let deadline = Date().addingTimeInterval(3)
+            let deadline = Date().addingTimeInterval(10)
             while Date() < deadline {
                 if condition() { return true }
                 try? await Task.sleep(for: .milliseconds(10))
