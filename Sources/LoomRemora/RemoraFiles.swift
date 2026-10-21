@@ -68,6 +68,16 @@ enum RemoraFiles {
 
     static func remove(_ url: URL) { try? FileManager.default.removeItem(at: url) }
 
+    /// When the file or folder was last modified; nil when it is not there.
+    static func modificationDate(_ url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+    }
+
+    /// Sets the file's modification date (an undo puts a file back with the time it had).
+    static func setModificationDate(_ date: Date, of url: URL) {
+        try? FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: url.path)
+    }
+
     static func names(in folder: URL) -> [String] {
         ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).sorted()
     }

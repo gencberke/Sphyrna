@@ -290,7 +290,10 @@ public final class RemoraHost {
         let names = (try? await readMaps())?.projectNames ?? [:]
         var result: [RemoraHostNote] = []
         for project in await memory.noteProjects() {
-            if let note = await memory.note(for: project) { result.append(RemoraHostNote(project: project, name: names[project], note: note)) }
+            if let note = await memory.note(for: project) {
+                result.append(RemoraHostNote(project: project, name: names[project], note: note,
+                                             rewrittenAt: await memory.noteRewrittenAt(for: project)))
+            }
         }
         return result
     }
@@ -318,6 +321,20 @@ public final class RemoraHost {
     public func journalDays() async -> [Date] {
         guard let memory = try? await box.open() else { return [] }
         return await memory.journalDays()
+    }
+
+    /// The folded weeks (the days older than 14), oldest first, each with its first day and its lines (a line's id is the day
+    /// it folds, which `removeJournalLine(id:)` takes). Like the days read, it returns what is on disk: an excluded project's
+    /// lines stay there and are kept out of the share only.
+    public func journalWeeks() async -> [RemoraWeekSummary] {
+        guard let memory = try? await box.open() else { return [] }
+        return await memory.weeklySummaries()
+    }
+
+    /// When the journal or a project note was last written; nil when the working memory is empty.
+    public func workingMemoryUpdatedAt() async -> Date? {
+        guard let memory = try? await box.open() else { return nil }
+        return await memory.workingMemoryUpdatedAt()
     }
 
     public func journal(on date: Date) async -> [RemoraJournalEntry] {

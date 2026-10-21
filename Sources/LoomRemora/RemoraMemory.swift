@@ -46,7 +46,8 @@ public actor RemoraMemory {
     /// Sessions permanently deleted while this process ran: `apply` leaves them out of what it writes, so a call that was
     /// running when `forget(session:)` came cannot bring their words back. Not persisted.
     private var forgotten: Set<UUID>
-    private var undoable: [RemoraUndoToken: (project: UUID, note: RemoraProjectNote)] = [:]
+    /// A removed note with the time its file had, so an undo puts it back as it was (not as a fresh rewrite).
+    private var undoable: [RemoraUndoToken: (project: UUID, note: RemoraProjectNote, rewrittenAt: Date?)] = [:]
 
     /// - Parameter durableNote: `Remora.md`, when the app has a path for it: the share carries its text and `apply` does not
     ///   propose a fact it already holds.
@@ -115,6 +116,28 @@ public actor RemoraMemory {
         RemoraFiles.readText(noteURL(project)).map(RemoraProjectNote.init(text:)).flatMap { $0.items.isEmpty ? nil : $0 }
     }
 
+    /// When the project's note file was last written: the morning brief's rewrite and the user's Edit move it, an undo of a
+    /// removal puts back the time the note had. Nil when there is no note.
+    public func noteRewrittenAt(for project: UUID) -> Date? {
+        note(for: project) == nil ? nil : RemoraFiles.modificationDate(noteURL(project))
+    }
+
+    /// When the working memory (the journal and the project notes) was last written: the newest modification date of their
+    /// files and of the two folders (a folder's date moves when a file in it is written, removed or put back). Nil when
+    /// neither holds a journal or note file. Read from the disk each time, so it survives a relaunch.
+    public func workingMemoryUpdatedAt() -> Date? {
+        var newest: Date?
+        var holdsAFile = false
+        for folder in [journalDirectory, projectsDirectory] {
+            let files = RemoraFiles.names(in: folder).filter { $0.hasSuffix(".md") && !$0.hasPrefix(".") }
+            guard !files.isEmpty else { continue }
+            holdsAFile = true
+            let dates = ([folder] + files.map { folder.appendingPathComponent($0) }).compactMap(RemoraFiles.modificationDate)
+            for date in dates where newest.map({ date > $0 }) ?? true { newest = date }
+        }
+        return holdsAFile ? newest : nil
+    }
+
     /// The projects that have a note.
     public func noteProjects() -> [UUID] {
         RemoraFiles.names(in: projectsDirectory).filter { $0.hasSuffix(".md") }
@@ -158,18 +181,23 @@ public actor RemoraMemory {
     /// Deletes the note; the token restores it with `undo(_:)`. Nil when there was none.
     public func removeNote(project: UUID) throws -> RemoraUndoToken? {
         guard let note = note(for: project) else { return nil }
+        let rewrittenAt = RemoraFiles.modificationDate(noteURL(project))
         RemoraFiles.remove(noteURL(project))
         let token = RemoraUndoToken()
-        undoable[token] = (project, note)
+        undoable[token] = (project, note, rewrittenAt)
         if undoable.count > 20, let oldest = undoable.keys.first(where: { $0 != token }) { undoable[oldest] = nil }
         return token
     }
 
-    /// Puts a removed note back. False when the token is spent or unknown, or the project has a note again.
+    /// Puts a removed note back, with the time its file had before the removal. False when the token is spent or unknown, or
+    /// the project has a note again.
     @discardableResult
     public func undo(_ token: RemoraUndoToken) throws -> Bool {
         guard let entry = undoable[token], note(for: entry.project) == nil else { return false }
         try write(entry.note, for: entry.project)
+        if let rewrittenAt = entry.rewrittenAt, !entry.note.items.isEmpty {
+            RemoraFiles.setModificationDate(rewrittenAt, of: noteURL(entry.project))
+        }
         undoable[token] = nil
         return true
     }
@@ -193,7 +221,7 @@ public actor RemoraMemory {
             guard let note = note(for: project), note.sessionIDs.contains(session) else { continue }
             try write(note.forgetting(session), for: project)
         }
-        for (token, entry) in undoable { undoable[token] = (entry.project, entry.note.forgetting(session)) }
+        for (token, entry) in undoable { undoable[token] = (entry.project, entry.note.forgetting(session), entry.rewrittenAt) }
     }
 
     /// The project is excluded from Remora: its note is deleted now. Journal lines that cite only its sessions stay on

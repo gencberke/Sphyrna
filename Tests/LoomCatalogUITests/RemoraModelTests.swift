@@ -511,4 +511,176 @@ struct RemoraModelTests {
         #expect(remora.lastAnswer?.kind == .brief && rig.ranAProcess)
         await rig.finish()
     }
+
+    // MARK: L3a3: the folded weeks, the two times and the removal's own Undo
+
+    /// `YYYY-MM-DD` of a date in the current time zone (Remora's calendar in the rig).
+    private static func dayString(_ date: Date) -> String {
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    /// A question's journal line on `date`, written by a store of its own whose clock is that day (it folds nothing), before
+    /// the rig's host opens the memory (which folds then).
+    private static func seedJournal(at directory: URL, on date: Date, sessions: [UUID]) async throws {
+        let seed = try RemoraMemory(directory: directory, clock: { date })
+        try await seed.appendJournal(RemoraJournalEntry.make(
+            kind: .question, question: "What moved?", answerText: "Billing waits.", sessions: sessions, model: nil, tokens: 10,
+            summary: nil, date: date))
+    }
+
+    @Test func theFoldedWeeksAreReadWithTheirFirstDayAndLinesAndALineIdOrADeletionRemovesOne() async throws {
+        let rig = try Rig()
+        let removed = Date().addingTimeInterval(-20 * 86_400)
+        let forgotten = Date().addingTimeInterval(-22 * 86_400)
+        let deleted = UUID()
+        try await Self.seedJournal(at: rig.remora, on: removed, sessions: [rig.session])
+        try await Self.seedJournal(at: rig.remora, on: forgotten, sessions: [deleted])
+        let weeks = await rig.model.remoraJournalWeeks()
+        var iso = Calendar(identifier: .iso8601)
+        iso.timeZone = .current
+        let starts = Set([removed, forgotten].compactMap { iso.dateInterval(of: .weekOfYear, for: $0)?.start })
+        #expect(Set(weeks.map(\.start)) == starts, "each week starts on its Monday at local midnight")
+        let lines = weeks.flatMap(\.lines)
+        #expect(Set(lines.map(\.id)) == [Self.dayString(removed), Self.dayString(forgotten)])
+        #expect(lines.allSatisfy { $0.text == "1 question" })
+        #expect(await rig.model.remoraJournalDays().isEmpty, "the days older than 14 were not folded")
+        // A line's id removes it through the journal's ×.
+        rig.model.removeRemoraJournalLine(id: Self.dayString(removed))
+        await rig.model.remora.settle()
+        #expect(await rig.model.remoraJournalWeeks().flatMap(\.lines).map(\.id) == [Self.dayString(forgotten)])
+        // A session deleted through the forgetter takes its folded line out of the weeks read.
+        let host = try #require(rig.host)
+        try await host.forgetter.forget(sessionID: deleted, providerIDs: [])
+        #expect(await rig.model.remoraJournalWeeks().flatMap(\.lines).isEmpty)
+        await rig.finish()
+
+        let none = try Rig(withHost: false)
+        defer { try? FileManager.default.removeItem(at: none.root) }
+        #expect(await none.model.remoraJournalWeeks().isEmpty)
+        #expect(await none.model.remoraWorkingMemoryUpdatedAt() == nil)
+    }
+
+    @Test func theWeeksReadTreatsAnExcludedProjectAsTheDaysReadDoes() async throws {
+        let rig = try Rig()
+        let now = Date()
+        try await Self.seedJournal(at: rig.remora, on: now.addingTimeInterval(-20 * 86_400), sessions: [rig.session])
+        try await Self.seedJournal(at: rig.remora, on: now, sessions: [rig.session])
+        rig.model.setRemoraExcluded(rig.project, true)
+        await rig.model.remora.settle()
+        // Both reads return what is on disk: the excluded project's lines stay there (kept out of the share only).
+        let days = await rig.model.remoraJournal(on: now)
+        let folded = await rig.model.remoraJournalWeeks().flatMap(\.lines)
+        #expect(days.map(\.sessions) == [[rig.session]])
+        #expect(folded.count == 1, "the weeks read and the days read disagree on an excluded project")
+        await rig.finish()
+    }
+
+    @Test func theWorkingMemorysUpdatedTimeIsNilWhenEmptyFollowsAWriteAndSurvivesARelaunch() async throws {
+        let first = try Rig()
+        #expect(await first.model.remoraWorkingMemoryUpdatedAt() == nil)
+        let before = Date().addingTimeInterval(-1)
+        first.model.editRemoraNote(project: first.project, text: "Waits on review")
+        await first.model.remora.settle()
+        let written = try #require(await first.model.remoraWorkingMemoryUpdatedAt(), "a note write left no time")
+        #expect(written >= before)
+        // A journal line moves it too.
+        let projects = first.remora.appendingPathComponent(RemoraMemory.projectsName)
+        let past = Date(timeIntervalSince1970: 1_700_000_000)
+        for path in [projects.path, projects.appendingPathComponent(first.project.uuidString + ".md").path,
+                     first.remora.appendingPathComponent(RemoraMemory.journalName).path] {
+            try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: path)
+        }
+        #expect(await first.model.remoraWorkingMemoryUpdatedAt() == past)
+        #expect(first.model.askRemora("What moved?"))
+        await first.model.remora.settle()
+        let journaled = try #require(await first.model.remoraWorkingMemoryUpdatedAt())
+        #expect(journaled >= before)
+        // A fresh host on the same folder reads the same time.
+        let second = try Rig(root: first.root)
+        #expect(await second.model.remoraWorkingMemoryUpdatedAt() == journaled)
+        // Clear empties it.
+        second.model.clearRemoraWorkingMemory()
+        await second.model.remora.settle()
+        #expect(await second.model.remoraWorkingMemoryUpdatedAt() == nil)
+        await second.finish()
+        await first.finish()
+    }
+
+    @Test func aNotesRewrittenTimeFollowsItsFileAndAnUndoKeepsTheTimeBeforeTheRemoval() async throws {
+        let rig = try Rig()
+        let seed = try RemoraMemory(directory: rig.remora)
+        try await seed.replaceNote(project: rig.project, items: [RemoraNoteItem(text: "Waits on review", sessions: [rig.session])])
+        let file = rig.remora.appendingPathComponent(RemoraMemory.projectsName).appendingPathComponent(rig.project.uuidString + ".md")
+        let past = Date(timeIntervalSince1970: 1_700_000_000)
+        try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: file.path)
+        #expect(await rig.model.remoraNotes().map(\.rewrittenAt) == [past])
+        let token = try #require(await rig.model.removeRemoraNoteWithUndo(project: rig.project))
+        #expect(await rig.model.remoraNotes().isEmpty)
+        rig.model.undoRemora(token)
+        await rig.model.remora.settle()
+        #expect(await rig.model.remoraNotes().map(\.rewrittenAt) == [past], "the undo read as a fresh rewrite")
+        // An edit rewrites it: the time moves.
+        let before = Date().addingTimeInterval(-1)
+        rig.model.editRemoraNote(project: rig.project, text: "Waits on a second review")
+        await rig.model.remora.settle()
+        let edited = try #require(await rig.model.remoraNotes().first?.rewrittenAt)
+        #expect(edited >= before)
+        await rig.finish()
+    }
+
+    @Test func twoRemovalsInFlightEachReturnTheUndoOfTheirOwnNote() async throws {
+        let rig = try Rig()
+        let model = rig.model
+        let seed = try RemoraMemory(directory: rig.remora)
+        // The memory is open, as after the sheet's first load: the two removals are not serialized by its opening.
+        #expect(await model.remoraNotes().isEmpty)
+        for round in 0..<5 {
+            let first = UUID()
+            let second = UUID()
+            try await seed.replaceNote(project: first, items: [RemoraNoteItem(text: "First waits \(round)")])
+            try await seed.replaceNote(project: second, items: [RemoraNoteItem(text: "Second waits \(round)")])
+            // Both start before either finishes.
+            let one = Task { await model.removeRemoraNoteWithUndo(project: first) }
+            let two = Task { await model.removeRemoraNoteWithUndo(project: second) }
+            let firstToken = try #require(await one.value)
+            let secondToken = try #require(await two.value)
+            #expect(firstToken != secondToken, "round \(round): both removals returned one token")
+            #expect(await model.remoraNotes().isEmpty)
+            #expect(model.remora.lastUndo == firstToken || model.remora.lastUndo == secondToken)
+            model.undoRemora(firstToken)
+            await model.remora.settle()
+            #expect(await model.remoraNotes().map(\.project) == [first], "round \(round): the first removal's Undo restored another note")
+            model.undoRemora(secondToken)
+            await model.remora.settle()
+            #expect(Set(await model.remoraNotes().map(\.project)) == [first, second])
+            try await seed.replaceNote(project: first, items: [])
+            try await seed.replaceNote(project: second, items: [])
+        }
+        await rig.finish()
+    }
+
+    @Test func aRemovalInFlightWithAConfirmedFactStillReturnsItsOwnUndo() async throws {
+        let rig = try Rig()
+        let model = rig.model
+        let other = UUID()
+        let seed = try RemoraMemory(directory: rig.remora)
+        try await seed.replaceNote(project: rig.project, items: [RemoraNoteItem(text: "Waits on review")])
+        try await seed.replaceNote(project: other, items: [RemoraNoteItem(text: "Ships Friday")])
+        let removal = Task { await model.removeRemoraNoteWithUndo(project: rig.project) }
+        model.confirmRemoraFact("I prefer tabs")
+        let token = try #require(await removal.value)
+        await model.remora.settle()
+        #expect(model.remora.lastRemembered == "I prefer tabs" || model.remora.lastUndo == token)
+        model.undoRemora(token)
+        await model.remora.settle()
+        #expect(Set(await model.remoraNotes().map(\.project)) == [rig.project, other], "the removal's own token did not restore its note")
+        // The fact is still remembered: the removal's Undo was not the fact's.
+        let note = try String(contentsOf: rig.remora.appendingPathComponent("Remora.md"), encoding: .utf8)
+        #expect(note.contains("I prefer tabs"))
+        // `lastUndo` holds the newest token, as before.
+        let newest = try #require(await model.removeRemoraNoteWithUndo(project: other))
+        #expect(model.remora.lastUndo == newest)
+        await rig.finish()
+    }
 }

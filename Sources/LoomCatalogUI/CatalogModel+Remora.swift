@@ -222,6 +222,13 @@ extension CatalogModel {
 
     public func remoraJournal(on date: Date) async -> [RemoraJournalEntry] { await remora.host?.journal(on: date) ?? [] }
 
+    /// The weeks the journal folds its days older than 14 into, oldest first; empty without a host.
+    public func remoraJournalWeeks() async -> [RemoraWeekSummary] { await remora.host?.journalWeeks() ?? [] }
+
+    /// Settings' Working memory line: when the journal or a project note was last written; nil when it is empty or there is
+    /// no host. Read from the files on each call (never at launch).
+    public func remoraWorkingMemoryUpdatedAt() async -> Date? { await remora.host?.workingMemoryUpdatedAt() }
+
     /// Edit: `text` is the note as the user left it.
     public func editRemoraNote(project: UUID, text: String) {
         guard let host = remora.host else { return }
@@ -231,7 +238,8 @@ extension CatalogModel {
         }
     }
 
-    /// Deletes a project's note; `remora.lastUndo` restores it.
+    /// Deletes a project's note; `remora.lastUndo` restores it. Goes once the memory sheet uses `removeRemoraNoteWithUndo`:
+    /// a second removal or a remembered fact can replace `lastUndo` before the sheet reads it.
     public func removeRemoraNote(project: UUID) {
         guard let host = remora.host else { return }
         track { state in
@@ -241,6 +249,25 @@ extension CatalogModel {
             }
             state.usage = await host.usage() ?? state.usage
         }
+    }
+
+    /// Deletes a project's note and returns this removal's own Undo token (nil when there was no note, or no host). A tracked
+    /// change like the others (`remoraMemoryChanged()` waits for it), and it sets `remora.lastUndo` as `removeRemoraNote` does,
+    /// so Home's single Undo still holds the newest token.
+    public func removeRemoraNoteWithUndo(project: UUID) async -> RemoraUndoToken? {
+        guard let host = remora.host else { return nil }
+        let state = remora
+        let removal = Task { () -> RemoraUndoToken? in
+            let token = await host.removeNote(project: project)
+            if let token {
+                state.lastUndo = token
+                state.lastRemembered = nil
+            }
+            state.usage = await host.usage() ?? state.usage
+            return token
+        }
+        track { _ in _ = await removal.value }
+        return await removal.value
     }
 
     /// The × on a journal line.

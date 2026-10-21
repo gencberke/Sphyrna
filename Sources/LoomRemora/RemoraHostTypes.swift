@@ -53,6 +53,9 @@ public struct RemoraHostNote: Equatable, Sendable {
     public var project: UUID
     public var name: String?
     public var note: RemoraProjectNote
+    /// When the note's file was last written (Tiles: "the time its note was rewritten"). The morning brief's rewrite and the
+    /// user's Edit move it; an Undo of a removal puts back the time the note had before. Nil when unknown.
+    public var rewrittenAt: Date? = nil
 }
 
 /// What a call reads, known once its pack is built and before the model is asked: "Reading 6 sessions and 3 project notes…"

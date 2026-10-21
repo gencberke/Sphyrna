@@ -10,6 +10,8 @@ public struct RemoraWeekSummary: Equatable, Sendable {
 
     /// `YYYY-Www`.
     public var week: String
+    /// The week's first day (its Monday) at local midnight in Remora's calendar.
+    public var start: Date
     public var lines: [Line]
 }
 
@@ -42,7 +44,7 @@ struct RemoraJournalFiles {
     func summary(of week: RemoraWeek) -> RemoraWeekSummary {
         let text = RemoraFiles.readText(url(week.string)) ?? ""
         let items = RemoraFiles.lines(of: text).compactMap(RemoraDatedItem.init(line:))
-        return RemoraWeekSummary(week: week.string, lines: items.map { .init(id: $0.day.string, text: $0.text) })
+        return RemoraWeekSummary(week: week.string, start: week.firstDay(calendar: calendar).start(in: calendar), lines: items.map { .init(id: $0.day.string, text: $0.text) })
     }
 
     // MARK: Write
