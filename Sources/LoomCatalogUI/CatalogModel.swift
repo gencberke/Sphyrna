@@ -64,22 +64,6 @@ public protocol ConversationIntents: AnyObject {
     func toolchainVersion(provider: ManagedSession.Provider) async -> String?
 }
 
-public enum ConversationBusy: Equatable, Sendable {
-    case starting
-    case resuming
-    case stopping
-}
-
-/// A new-conversation request that is still starting (one per provider and project).
-public struct StartKey: Hashable, Sendable {
-    public let provider: ManagedSession.Provider
-    public let projectID: UUID?
-    public init(provider: ManagedSession.Provider, projectID: UUID?) {
-        self.provider = provider
-        self.projectID = projectID
-    }
-}
-
 /// A development terminal shown in the detail pane (A slice fixture). Never
 /// created by opening the app or by selecting a conversation.
 public struct DevTerminal {
@@ -343,17 +327,20 @@ public final class CatalogModel {
             if intents != nil, isReady { updateViewing(); refreshPendingDeletionsSoon() }
         }
     }
+    /// The lifecycle's transition state, owned by the session service (the model's own object until a service is attached).
+    /// Views read busy and the start keys through the model; Observation tracks them through this object.
+    public private(set) var transitions = SessionTransitions()
     /// New-conversation requests that have no card yet (the toolchain is still resolving).
-    public private(set) var preparingStarts: Set<StartKey> = []
+    public var preparingStarts: Set<StartKey> { transitions.preparingStarts }
     /// Observed stand-in for the attach of `intents` (which is not itself observed), so views
     /// that read `actionsAvailable` re-evaluate when the runtime attaches after the first page.
     public private(set) var intentsRevision = 0
-    public private(set) var busy: [UUID: ConversationBusy] = [:]
+    public var busy: [UUID: ConversationBusy] { transitions.busy }
     /// Handovers between the faces that wait or run (V19), by session.
     public internal(set) var handovers: [UUID: Handover] = [:]
     /// The Conversations section's model; set by the app only where permanent deletion is offered (CP4-G).
     public internal(set) var cleanupReview: CleanupReviewModel?
-    public private(set) var startingKeys: Set<StartKey> = []
+    public var startingKeys: Set<StartKey> { transitions.startingKeys }
     /// Bumped whenever a live terminal appears or goes away, so the detail
     /// pane re-evaluates which terminal (if any) it shows.
     public private(set) var terminalRevision = 0
@@ -466,7 +453,11 @@ public final class CatalogModel {
     /// The face choice per session and the read-only Chat flag (`DetailRoute`).
     public let faces = SessionFaces()
     /// The Chat face's drivers (V16): their own object, made by the app with the runtime; nil without one.
-    @ObservationIgnored public var chatSessions: ChatSessionHost?
+    @ObservationIgnored public var chatSessions: ChatSessionHost? {
+        didSet { sessions?.structuredHost = chatSessions }
+    }
+    /// The service that owns every session's lifecycle (attached by the controller; nil in a window with no runtime).
+    @ObservationIgnored private(set) var sessions: SessionService?
     /// Moves when a Chat driver moved to another card (`/clear`): a view that looked a driver up by card reads again.
     public internal(set) var chatDriversRevision = 0
     /// The Claude config directory the app reads transcripts from, one value for the Chat view and the palette's
@@ -1327,6 +1318,7 @@ public final class CatalogModel {
     public func setNewSessionFace(_ face: SessionFace) {
         guard face != newSessionFace else { return }
         newSessionFace = face
+        sessions?.runsIn = face == .chat ? .chat : .terminal
         persist { $0.newSessionFace = face }
     }
 
@@ -1725,18 +1717,19 @@ public final class CatalogModel {
 
     // Called by the conversation controller.
 
-    func beginStart(_ key: StartKey) -> Bool {
-        let inserted = startingKeys.insert(key).inserted
-        if inserted { preparingStarts.insert(key) }
-        return inserted
+    /// The session service owns the lifecycle's state. From here the model reads its transitions, and the service reads the
+    /// switch and the Chat host from the model's preferences and installation (`setNewSessionFace`, `chatSessions`).
+    func attach(sessions service: SessionService) {
+        sessions = service
+        transitions = service.transitions
+        service.runsIn = newSessionFace == .chat ? .chat : .terminal
+        service.structuredHost = chatSessions
     }
-    /// The card exists now (its own "Starting…" state takes over from the preparing notice).
-    func cardCreated(for key: StartKey) { preparingStarts.remove(key) }
-    func endStart(_ key: StartKey) {
-        startingKeys.remove(key)
-        preparingStarts.remove(key)
-    }
-    func setBusy(_ id: UUID, _ value: ConversationBusy?) { busy[id] = value }
+
+    // Test seams: a model with no service drives its own transitions.
+    func beginStart(_ key: StartKey) -> Bool { transitions.beginStart(key) }
+    func endStart(_ key: StartKey) { transitions.endStart(key) }
+    func setBusy(_ id: UUID, _ value: ConversationBusy?) { transitions.setBusy(id, value) }
     func terminalsChanged() { terminalRevision &+= 1 }
     func reportFailure(_ text: String) { errorMessage = text }
     func showInfo(_ text: String) { infoMessage = text }

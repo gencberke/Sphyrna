@@ -35,27 +35,13 @@ final class TerminalContainerView: NSView {
     }
 }
 
-/// An action that runs once, on the main actor (the card of a Chat start exists: told once, from either of two places).
+/// Connects the catalog model's intents to the session service and keeps the live terminals. The service owns the
+/// lifecycle (start, resume, stop, the answers, deletion) and its state; this class forwards the intents, does what the
+/// UI must do at the moments the service tells (show a session, close its tab, word a failure), and is the service's
+/// terminal sinks. It keeps one terminal per live run; a card sees a terminal only while it owns that run, so after
+/// `/clear` or `/new` the same terminal belongs to the new card and callbacks bound to the old card do nothing.
 @MainActor
-final class OneShot {
-    private(set) var fired = false
-    private let body: @MainActor () -> Void
-
-    init(_ body: @escaping @MainActor () -> Void) { self.body = body }
-
-    func fire() {
-        guard !fired else { return }
-        fired = true
-        body()
-    }
-}
-
-/// Connects the catalog model's intents to the runtime and to the live
-/// terminals. It keeps one terminal per live run; a card sees a terminal only
-/// while it owns that run, so after `/clear` or `/new` the same terminal
-/// belongs to the new card and callbacks bound to the old card do nothing.
-@MainActor
-public final class ConversationController: NewSessionIntents, HandoverIntents {
+public final class ConversationController: NewSessionIntents, HandoverIntents, TerminalFaceSinks {
     struct Entry {
         let runID: UUID
         let surface: TerminalSurface
@@ -64,6 +50,7 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
     }
 
     let runtime: SessionRuntime
+    let service: SessionService
     weak var model: CatalogModel?
     private(set) var entries: [UUID: Entry] = [:]
     /// The last screens of ended runs, by session (FB4-3): static snapshots, no surface is kept.
@@ -75,8 +62,6 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
     var ownerLookup: (UUID) async -> UUID?
     private var observer: Task<Void, Never>?
     private var openRequestObserver: Task<Void, Never>?
-    /// Approvals in flight: a second click on "Open Session" must not ask the runtime twice.
-    private var approvingOpen: Set<UUID> = []
     /// Handovers between the faces that wait or run (V19), by session.
     var handoverTasks: [UUID: Task<Void, Never>] = [:]
     /// Held at a handover's point of no return, with its target (tests act at that phase; nil in the app).
@@ -84,11 +69,21 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
     /// Held after a Stop returned from the runtime, before the tab decision (tests navigate at that phase; nil in the app).
     var stopGate: (@MainActor (UUID) async -> Void)?
 
-    public init(runtime: SessionRuntime, model: CatalogModel) {
-        self.runtime = runtime
+    public init(service: SessionService, model: CatalogModel) {
+        runtime = service.runtime
+        self.service = service
         self.model = model
+        let runtime = service.runtime
         ownerLookup = { runID in await runtime.supervisor.activeSessionID(runID: runID) }
+        service.terminal = self
+        service.failureHandler = { [weak self] failure in self?.report(failure) }
+        model.attach(sessions: service)
         model.intents = self
+    }
+
+    /// A controller with a service of its own, built from the model's build identity (the app builds the service itself).
+    public convenience init(runtime: SessionRuntime, model: CatalogModel) {
+        self.init(service: SessionService(runtime: runtime, startableProviders: model.startableProviders), model: model)
     }
 
     deinit {
@@ -232,208 +227,68 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
 
     public func startSession(projectID: UUID?, launch: NewSessionLaunch, focus: NewSessionFocus,
                              outcome: @escaping @MainActor (NewSessionOutcome) -> Void) {
-        // Settings → "Sessions run in" (V19, D-69): Chat by default. Without the app's Chat host (a test, a runtime-less
-        // window) there is no Chat face to start in, and the terminal start stands.
-        if let model, model.facePolicy.faceOfStart(model.capabilities(of: .claude)) == .chat {
-            startInChat(projectID: projectID, launch: launch, focus: focus, outcome: outcome)
-        } else {
-            start(provider: .claude, projectID: projectID, draft: launch, focus: focus, outcome: outcome)
-        }
-    }
-
-    /// A new Claude session in the Chat face from a draft's first send. "Started" is told once Claude answered
-    /// `initialize` (Ready, normally well under a second): the draft is told then, and a fresh draft or the session
-    /// itself is shown. A start that fails before that is `.failed` and the draft page gives the text back; a first
-    /// message that fails after it goes to the session's own draft. The two outcomes exclude each other and come in
-    /// the order they happen (`onReady` is awaited, so `.started` is told before the first message is sent).
-    private func startInChat(projectID: UUID?, launch: NewSessionLaunch, focus: NewSessionFocus,
-                             outcome: @escaping @MainActor (NewSessionOutcome) -> Void) {
-        guard let model, model.actionsAvailable, model.capabilities(of: .claude).startable,
-              let host = model.chatSessions else {
+        guard let model, model.actionsAvailable else {
             outcome(.failed)
             return
         }
-        let key = StartKey(provider: .claude, projectID: projectID)
-        guard model.beginStart(key) else {
-            outcome(.failed)
-            return
-        }
-        let sessionID = UUID()
-        // The project's start is over once the draft was told, or when the start failed: whatever the first message
-        // does after Ready belongs to the session's own draft, and the next draft of the project may start meanwhile.
-        let release = OneShot { [weak model] in model?.endStart(key) }
-        let shot = OneShot { [weak model] in
-            guard let model else { return }
-            model.cardCreated(for: key)
-            outcome(.started(sessionID))
-            if focus == .session { model.showStarted(sessionID) }
-            release.fire()
-        }
-        Task {
-            defer { release.fire() }
-            do {
-                try await host.startNewSession(projectID: projectID, sessionID: sessionID, draft: launch,
-                                               onReady: { await MainActor.run { shot.fire() } })
-                shot.fire()
-            } catch {
-                // Cancelled by a Stop while starting: not a failure to report.
-                let stopped = (error as? ChatDriverError) == .stopping
-                // A start that failed before Ready keeps no driver (its card stays, as after a terminal start that
-                // failed): nothing shows a live Chat for a session that never answered.
-                if !shot.fired, !stopped { host.forget(sessionID: sessionID) }
-                if !stopped { report(error, "Claude could not be started") }
-                if !shot.fired { outcome(.failed) }
-            }
-        }
+        // Settings → "Sessions run in" (V19, D-69) decides the face; the service starts the session in it.
+        service.startSession(
+            projectID: projectID, launch: launch,
+            cardCreated: { [weak model] id in
+                outcome(.started(id))
+                if focus == .session { model?.showStarted(id) }
+            },
+            notStarted: { outcome(.failed) }
+        )
     }
 
     public func start(provider: ManagedSession.Provider, projectID: UUID?) {
-        start(provider: provider, projectID: projectID, draft: nil, focus: .session, outcome: nil)
-    }
-
-    /// The one start path. `draft` is a new-session draft's first send (V07): the runtime starts Claude with
-    /// that message, mode, model and branch choice. `focus` says whether the new session is shown (↵) or the
-    /// window moves on to a fresh draft (⌘↵); `outcome` is told once whether the card exists.
-    private func start(provider: ManagedSession.Provider, projectID: UUID?, draft: NewSessionLaunch?,
-                       focus: NewSessionFocus, outcome: (@MainActor (NewSessionOutcome) -> Void)?) {
-        guard let model, model.actionsAvailable, model.capabilities(of: provider).startable else {
-            outcome?(.failed)
-            return
-        }
-        let key = StartKey(provider: provider, projectID: projectID)
-        guard model.beginStart(key) else {
-            outcome?(.failed)
-            return
-        }
-        let surface = TerminalSurface(fontSize: model.terminalFontSize)
-        let size = surface.gridSize
-        Task {
-            var pendingSessionID: UUID?
-            var reported = false
-            defer {
-                model.endStart(key)
-                if let pendingSessionID { model.setBusy(pendingSessionID, nil) }
-            }
-            /// The card exists: the draft is told, then the session is shown unless a fresh draft is.
-            @MainActor func cardReady(_ launch: RuntimeLaunch) {
-                guard !reported else { return }
-                reported = true
-                outcome?(.started(launch.sessionID))
-                if focus == .session { model.showStarted(launch.sessionID) }
-            }
-            do {
-                let launch = try await runtime.startConversation(
-                    provider: provider, projectID: projectID, rows: size.rows,
-                    columns: size.columns, outputSink: surface.outputSink, draft: draft,
-                    onTerminalReady: { launch in
-                        pendingSessionID = launch.sessionID
-                        model.cardCreated(for: key)
-                        self.adopt(launch, surface: surface)
-                        model.setBusy(launch.sessionID, .starting)
-                        cardReady(launch)
-                    }
-                )
-                if pendingSessionID == nil {
-                    model.cardCreated(for: key)
-                    adopt(launch, surface: surface)
-                    cardReady(launch)
-                }
-            } catch {
-                surface.runEnded()
-                await reconcile()
-                report(error, "\(ProviderName.title(provider)) could not be started")
-                if !reported { outcome?(.failed) }
-            }
-        }
+        guard let model, model.actionsAvailable else { return }
+        service.start(provider: provider, projectID: projectID, cardCreated: { [weak model] id in model?.showStarted(id) })
     }
 
     public func resume(sessionID: UUID) {
-        guard let model, model.actionsAvailable, model.busy[sessionID] == nil, model.handovers[sessionID] == nil else { return }
-        let known = model.knownProvider(of: sessionID)
-        if let known, !model.capabilities(of: known).startable { return }
-        model.setBusy(sessionID, .resuming)
-        Task {
-            defer { model.setBusy(sessionID, nil) }
-            do {
-                // A session resumes in the face the app-wide switch names (D-69), not in the endpoint of its last run:
-                // that only says how the run was driven. Codex stays in the terminal.
-                var provider = known
-                if provider == nil, let catalog = model.catalog {
-                    provider = try await catalog.session(id: sessionID)?.session.provider
-                    // The model has no row for this id (a direct call): the catalog decides, same rule.
-                    if let provider, !model.capabilities(of: provider).startable { return }
-                }
-                if let provider, model.facePolicy.faceOfResume(model.capabilities(of: provider)) == .chat, let host = model.chatSessions {
-                    try await host.driver(for: sessionID).resume()
-                    model.showStarted(sessionID)
-                } else {
-                    // S2: the CLI restores neither mode nor model nor effort; the runtime passes the session's own,
-                    // from the catalog (V16).
-                    try await resumeInTerminal(sessionID)
-                }
-            } catch {
-                report(error, "The session could not be resumed")
-            }
-        }
+        guard let model, model.actionsAvailable, model.handovers[sessionID] == nil else { return }
+        service.resume(sessionID: sessionID, knownProvider: model.knownProvider(of: sessionID),
+                       shown: { [weak model] id in model?.showStarted(id) })
     }
 
     /// Resumes the session in a terminal and shows it.
     func resumeInTerminal(_ sessionID: UUID) async throws {
         guard let model else { return }
-        let surface = TerminalSurface(fontSize: model.terminalFontSize)
-        let size = surface.gridSize
-        do {
-            let launch = try await runtime.resumeConversation(
-                sessionID: sessionID, rows: size.rows, columns: size.columns, outputSink: surface.outputSink
-            )
-            adopt(launch, surface: surface)
-            model.showStarted(launch.sessionID)
-        } catch {
-            surface.runEnded()
-            throw error
-        }
+        try await service.resumeInTerminal(sessionID, shown: { model.showStarted($0) })
     }
 
     public func stop(sessionID: UUID) {
-        guard let model, model.actionsAvailable, model.busy[sessionID] != .stopping else { return }
-        // A Stop ends a handover: the user chose to end the session, not to move it. Before the point of no return the
-        // wait ends; after it the other face does not start.
-        stopHandover(sessionID: sessionID)
-        model.setBusy(sessionID, .stopping)
-        let stopped = entries.values.first { $0.owner == sessionID }
-        let stoppedRun = stopped?.runID ?? model.liveStates[sessionID]?.runID
+        guard let model, model.actionsAvailable else { return }
         let navigationAtStop = model.navigationCount
-        // What the user sees now is what stays: taken before any signal, so whatever the program draws
-        // while it exits cannot replace it.
-        if let stopped, let seen = stopped.surface.captureVisibleScreen() { stopCaptures[stopped.runID] = seen }
-        Task {
-            defer { model.setBusy(sessionID, nil) }
-            do {
-                let report = try await runtime.stopConversation(sessionID: sessionID)
-                if let stoppedRun {
-                    // The run's end takes the capture; one that was not taken (a stop that failed) is let go.
-                    if report.succeeded { await reconcile() }
-                    stopCaptures[stoppedRun] = nil
-                }
-                await stopGate?(sessionID)
-                // A verified stop closes the session's tab like its close button. A stop that is not
-                // verified keeps it, and so does a session that has a new run meanwhile. If the user moved the
-                // window while the stop verified (opened the session again), the tab is only unpinned: closing
-                // it would take them away from where they came back to.
-                if report.succeeded, !hasNewRun(sessionID, since: stoppedRun) {
-                    if model.navigationCount == navigationAtStop { model.closeTab(sessionID) } else { model.unpinTab(sessionID) }
-                }
-                if !report.succeeded {
-                    // The card also carries the unverified stop; this makes it hard to miss.
-                    let providerFailure = report.providerStages?.first { $0.outcome == "failed" }?.failureDescription
-                    let detail = providerFailure ?? report.errors.first ?? "Process cleanup was not verified"
-                    let count = report.remainingCountVerified == false ? "unavailable" : "\(report.remaining.count) remaining"
-                    model.reportFailure("\(detail). Last process check: \(count). Stop it again to retry.")
-                }
-            } catch {
-                if let stoppedRun { stopCaptures[stoppedRun] = nil }
-                report(error, "The session could not be stopped")
-            }
+        service.stop(
+            sessionID: sessionID, liveRunID: model.liveStates[sessionID]?.runID,
+            // A Stop ends a handover: the user chose to end the session, not to move it. Before the point of no return the
+            // wait ends; after it the other face does not start.
+            willStop: { [weak self] in self?.stopHandover(sessionID: sessionID) },
+            settled: { [weak self] outcome in await self?.stopSettled(sessionID, outcome, navigationAtStop: navigationAtStop) }
+        )
+    }
+
+    /// The runtime answered the Stop (busy is still held): the tab decision and the unverified stop's banner.
+    private func stopSettled(_ sessionID: UUID, _ outcome: SessionStopOutcome, navigationAtStop: Int) async {
+        guard let model else { return }
+        let report = outcome.report
+        await stopGate?(sessionID)
+        // A verified stop closes the session's tab like its close button. A stop that is not
+        // verified keeps it, and so does a session that has a new run meanwhile. If the user moved the
+        // window while the stop verified (opened the session again), the tab is only unpinned: closing
+        // it would take them away from where they came back to.
+        if report.succeeded, !hasNewRun(sessionID, since: outcome.run) {
+            if model.navigationCount == navigationAtStop { model.closeTab(sessionID) } else { model.unpinTab(sessionID) }
+        }
+        if !report.succeeded {
+            // The card also carries the unverified stop; this makes it hard to miss.
+            let providerFailure = report.providerStages?.first { $0.outcome == "failed" }?.failureDescription
+            let detail = providerFailure ?? report.errors.first ?? "Process cleanup was not verified"
+            let count = report.remainingCountVerified == false ? "unavailable" : "\(report.remaining.count) remaining"
+            model.reportFailure("\(detail). Last process check: \(count). Stop it again to retry.")
         }
     }
 
@@ -445,82 +300,22 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
     }
 
     public func answer(sessionID: UUID, requestID: String, accept: Bool) {
-        Task {
-            do {
-                try await runtime.respond(
-                    sessionID: sessionID, requestID: requestID, decision: accept ? .accept : .decline
-                )
-            } catch {
-                // The failed answer stays on the request itself; nothing is assumed answered.
-                report(error, "The answer was not delivered")
-            }
-        }
+        service.answer(sessionID: sessionID, requestID: requestID, accept: accept)
     }
 
-    /// "Open Session" on an agent's request (D-40). The runtime starts the session through the normal
-    /// start path; the terminal is adopted exactly as a start adopts it. The selection does not move.
-    /// A failed start is shown in the request's box (the runtime keeps it as failed) and never retried.
+    /// "Open Session" on an agent's request (D-40). The selection does not move.
     public func approveOpen(requestID: UUID) {
-        guard let model, model.actionsAvailable, approvingOpen.insert(requestID).inserted else { return }
-        if model.facePolicy.faceOfApprovedOpening(model.capabilities(of: .claude)) == .chat, let host = model.chatSessions {
-            approveOpenInChat(requestID: requestID, host: host)
-            return
-        }
-        let surface = TerminalSurface(fontSize: model.terminalFontSize)
-        let size = surface.gridSize
-        Task {
-            defer { approvingOpen.remove(requestID) }
-            do {
-                let launch = try await runtime.approveOpenRequest(
-                    requestID, rows: size.rows, columns: size.columns, outputSink: surface.outputSink
-                )
-                adopt(launch, surface: surface)
-            } catch {
-                surface.runEnded()
-                // A start that failed is on the request's box; only an answer that could not be given is a banner.
-                if error is OpenSessionError { report(error, "The request could not be answered") }
-            }
-        }
+        guard let model, model.actionsAvailable else { return }
+        service.approveOpen(requestID: requestID)
     }
 
-    /// The approved opening in the Chat face (C5b): the host starts it, the request's message goes out once Ready, and no
-    /// terminal is adopted. A start that failed is on the request's box; one that failed after the child was spawned
-    /// (it never answered `initialize`) has no box left, so it is a banner, and the driver goes.
-    private func approveOpenInChat(requestID: UUID, host: ChatSessionHost) {
-        let sessionID = UUID()
-        Task {
-            defer { approvingOpen.remove(requestID) }
-            let ready = OneShot {}
-            do {
-                try await host.startOpenedSession(requestID: requestID, sessionID: sessionID,
-                                                  onReady: { await MainActor.run { ready.fire() } })
-            } catch {
-                let stopped = (error as? ChatDriverError) == .stopping
-                if !ready.fired, !stopped { host.forget(sessionID: sessionID) }
-                if error is OpenSessionError || (error is ChatDriverError && !stopped) {
-                    report(error, error is OpenSessionError ? "The request could not be answered" : "Claude could not be started")
-                }
-            }
-        }
-    }
+    public func denyOpen(requestID: UUID) { service.denyOpen(requestID: requestID) }
 
-    public func denyOpen(requestID: UUID) {
-        Task {
-            do { try await runtime.denyOpenRequest(requestID) }
-            catch { report(error, "The request could not be denied") }
-        }
-    }
-
-    public func dismissOpen(requestID: UUID) {
-        Task {
-            do { try await runtime.dismissOpenRequest(requestID) }
-            catch { report(error, "The request could not be dismissed") }
-        }
-    }
+    public func dismissOpen(requestID: UUID) { service.dismissOpen(requestID: requestID) }
 
     public func viewed(sessionID: UUID) {
         Task {
-            try? await runtime.markViewed(sessionID: sessionID)
+            await service.markViewed(sessionID: sessionID)
             await model?.viewRecorded(sessionID)
         }
     }
@@ -544,37 +339,63 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
         await runtime.toolchainVersion(for: provider)
     }
 
-    // Permanent deletion: the runtime owns every step; these only forward.
+    // Permanent deletion: the service forwards to the runtime, which owns every step.
 
     public func deletionPreview(sessionID: UUID) async throws -> ConversationDeletionPreview {
-        try await runtime.deletionPreview(id: sessionID)
+        try await service.deletionPreview(sessionID: sessionID)
     }
 
     public func deleteConversation(sessionID: UUID) async throws -> ConversationDeletionOutcome {
-        try await runtime.deleteConversation(id: sessionID)
+        try await service.deleteConversation(sessionID: sessionID)
     }
 
     public func retryDeletion(sessionID: UUID) async throws -> ConversationDeletionOutcome {
-        try await runtime.retryDeletion(id: sessionID)
+        try await service.retryDeletion(sessionID: sessionID)
     }
 
     public func pendingDeletions() async throws -> [PendingConversationDeletion] {
-        try await runtime.pendingDeletions()
+        try await service.pendingDeletions()
     }
 
     public func removeFromLoomOnly(sessionID: UUID) async throws {
-        try await runtime.removeFromLoomOnly(id: sessionID)
+        try await service.removeFromLoomOnly(sessionID: sessionID)
     }
 
     public func deletionRecoveryFailure() async -> String? {
-        await runtime.deletionRecoveryFailure()
+        await service.deletionRecoveryFailure()
     }
 
     public func deleteSideChats(inProject projectID: UUID) async throws {
-        try await runtime.deleteSideChats(inProject: projectID)
+        try await service.deleteSideChats(inProject: projectID)
     }
 
-    // MARK: Terminals
+    // MARK: Terminals (the service's sinks)
+
+    public func newRunSink() -> TerminalRunSink? {
+        guard let model else { return nil }
+        let surface = TerminalSurface(fontSize: model.terminalFontSize)
+        let size = surface.gridSize
+        return TerminalRunSink(rows: size.rows, columns: size.columns, output: surface.outputSink, handle: surface)
+    }
+
+    public func adopt(_ launch: RuntimeLaunch, into sink: TerminalRunSink) {
+        guard let surface = sink.handle as? TerminalSurface else { return }
+        adopt(launch, surface: surface)
+    }
+
+    public func runFailedToStart(_ sink: TerminalRunSink) {
+        (sink.handle as? TerminalSurface)?.runEnded()
+    }
+
+    public func captureForStop(sessionID: UUID) -> UUID? {
+        guard let stopped = entries.values.first(where: { $0.owner == sessionID }) else { return nil }
+        // What the user sees now is what stays: the service asks before any signal, so whatever the program draws
+        // while it exits cannot replace it.
+        if let seen = stopped.surface.captureVisibleScreen() { stopCaptures[stopped.runID] = seen }
+        return stopped.runID
+    }
+
+    public func releaseStopCapture(run: UUID) { stopCaptures[run] = nil }
 
     private func adopt(_ launch: RuntimeLaunch, surface: TerminalSurface) {
         let runID = launch.runID
@@ -608,7 +429,7 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
     }
 
     /// Reconciles with the hub's current states (a new terminal, a failed start).
-    func reconcile() async {
+    public func reconcile() async {
         await reconcile(await runtime.supervisor.events.snapshot())
     }
 
@@ -658,6 +479,20 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
         guard endedScreens.count > 0 else { return }
         endedScreens.removeAll()
         model?.terminalsChanged()
+    }
+
+    /// The words of a failure the service reports.
+    private func report(_ failure: SessionFailure) {
+        let context = switch failure.kind {
+        case let .startFailed(provider): "\(ProviderName.title(provider)) could not be started"
+        case .resumeFailed: "The session could not be resumed"
+        case .stopFailed: "The session could not be stopped"
+        case .answerNotDelivered: "The answer was not delivered"
+        case .openRequestNotAnswered: "The request could not be answered"
+        case .openRequestNotDenied: "The request could not be denied"
+        case .openRequestNotDismissed: "The request could not be dismissed"
+        }
+        report(failure.error, context)
     }
 
     func report(_ error: any Error, _ context: String) {
