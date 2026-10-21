@@ -62,17 +62,15 @@ extension CatalogModel {
     // MARK: The menu bar item
 
     /// The sessions the menu bar menu lists, with the titles and projects as the cards show them. Built
-    /// when the menu opens, never per frame.
+    /// when the menu opens, never per frame. The set is the Dock's (`attentionCandidates`, one rule for
+    /// "not read" on every surface, DESIGN §19) plus its working rows, which the badge never counts.
     func menuBarEntries() -> [MenuBarEntry] {
-        liveStates.compactMap { id, state in
-            guard let record = rowModels[id]?.record ?? liveRecords[id], !record.isSideChat else { return nil }
-            let indicator = SessionIndicator(record: record, live: state, awaitingOpenApproval: awaitingOpenApproval.contains(id))
-            // The Dock's set (DESIGN §19): a failed turn that has been read leaves the menu, as it leaves the badge
-            // (`attentionCandidates`). One rule for "not read" on every surface.
-            if case .failed = indicator, state.activePhase != .endedUnread { return nil }
-            guard ProjectAttention(indicator) != nil || indicator == .working else { return nil }
+        attentionCandidates().compactMap { candidate in
+            guard ProjectAttention(candidate.indicator) != nil || candidate.indicator == .working else { return nil }
+            guard let record = rowModels[candidate.id]?.record ?? liveRecords[candidate.id] else { return nil }
             let project = projectName(for: record)
-            return MenuBarEntry(id: id, indicator: indicator, lastActivityAt: record.lastActivityAt,
+            return MenuBarEntry(id: candidate.id, indicator: candidate.indicator,
+                                lastActivityAt: candidate.lastActivityAt,
                                 title: record.displayTitle(projectName: project), project: project)
         }
     }

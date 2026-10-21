@@ -525,27 +525,16 @@ enum LoomTheme {
         static let detailInset: CGFloat = 16
         static let detailSpacing: CGFloat = 8
         static let detailMinSpacer: CGFloat = 8
-        static let bannerSpacing: CGFloat = 8
         static let bannerBottom: CGFloat = 8
         static let bannerRowSpacing: CGFloat = 8
         static let emptyStateSpacing: CGFloat = 12
         static let messageSpacing: CGFloat = 8
         static let messagePadding: CGFloat = 24
-        static let detailPadding: CGFloat = 24
-        static let detailSectionSpacing: CGFloat = 16
-        static let detailTitleSpacing: CGFloat = 12
-        static let detailLineSpacing: CGFloat = 4
-        static let factColumnSpacing: CGFloat = 16
-        static let factRowSpacing: CGFloat = 8
-        static let actionsSpacing: CGFloat = 8
-        // Requests and notices.
+        // Requests.
         static let requestListSpacing: CGFloat = 8
         static let requestSpacing: CGFloat = 8
         static let requestLineSpacing: CGFloat = 4
         static let requestPadding: CGFloat = 12
-        static let noticeSpacing: CGFloat = 8
-        static let noticeLineSpacing: CGFloat = 4
-        static let noticePadding: CGFloat = 12
         // Accent buttons.
         static let buttonH: CGFloat = 12
         static let buttonV: CGFloat = 4
@@ -582,12 +571,10 @@ enum LoomTheme {
         static let harnessMarkMenu: CGFloat = 14
         static let providerIconHeader: CGFloat = harnessMarkHeader
         static let providerIconDefault: CGFloat = 15
-        static let providerIconDetail: CGFloat = 34
         static let messageMaxWidth: CGFloat = 420
         /// The request box for an agent's "open a session": its label column, and the scroll area of the full message.
         static let requestLabelWidth: CGFloat = 52
         static let requestMessageMaxHeight: CGFloat = 160
-        static let detailMaxWidth: CGFloat = 640
         static let sheetWidth: CGFloat = 420
         /// The older segment's and button's height (see `Space.settingsSegmentH`).
         static let settingsSegmentHeight: CGFloat = 24
