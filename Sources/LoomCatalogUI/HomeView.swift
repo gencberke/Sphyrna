@@ -1,10 +1,10 @@
 import LoomCore
 import SwiftUI
 
-/// The launch view (V05): what needs you, what finished unread, the plan limits, Today and what Quit cut short.
-/// It summarises what Loom already knows; it starts nothing by itself and has no timer of its own. The top of the
-/// page below the header is left clear (V19: the start box went; an assistant takes that place later). Sessions start
-/// from the sidebar's New session. `DetailContent` draws it for `.home`.
+/// The launch view (V05, DESIGN §9): the band that says the state in one sentence, then what wants the user (Continue, Needs
+/// you, Finished, not read), and beside them the plan limits and Today. It summarises what Loom already knows; it starts
+/// nothing by itself and has no timer of its own. There is no session header and no start box (V19): sessions start from the
+/// sidebar's New session. `DetailContent` draws it for `.home`.
 struct HomeView: View {
     let model: CatalogModel
 
@@ -30,85 +30,66 @@ struct HomeView: View {
     }
 }
 
-/// Home with something in the catalog: the header and the sections.
+/// Home with something in the catalog: the band, the notice when Claude is missing, and the blocks.
 private struct HomeBoardView: View {
     let model: CatalogModel
 
     var body: some View {
         GeometryReader { proxy in
-            let content = min(proxy.size.width, LoomTheme.Home.maxWidth) - 2 * LoomTheme.Home.sideInset
+            let paneWidth = proxy.size.width
             ScrollView {
-                VStack(alignment: .leading, spacing: LoomTheme.Home.blockGap) {
-                    HomeHeader(model: model)
-                    if model.homeClaudeCLIMissing { HomeNoClaudeNotice(model: model) }
-                    if content >= LoomTheme.Home.wideFrom {
-                        HStack(alignment: .top, spacing: LoomTheme.Home.columnGap) {
-                            HomeLists(model: model).frame(maxWidth: .infinity, alignment: .topLeading)
-                            HomeSide(model: model, continueFirst: false).frame(width: LoomTheme.Home.sideColumn)
+                VStack(spacing: 0) {
+                    HomeBand(model: model, paneWidth: paneWidth)
+                    VStack(alignment: .leading, spacing: LoomTheme.Home.blockGap) {
+                        if model.homeClaudeCLIMissing { HomeNoClaudeNotice(model: model) }
+                        if HomeLayout.isWide(paneWidth: paneWidth) {
+                            HStack(alignment: .top, spacing: LoomTheme.Home.columnGap) {
+                                HomeLists(model: model).frame(maxWidth: .infinity, alignment: .topLeading)
+                                HomeUsage(model: model).frame(width: LoomTheme.Home.sideColumn)
+                            }
+                        } else {
+                            HomeLists(model: model)
+                            HomeUsage(model: model)
                         }
-                    } else {
-                        HomeLists(model: model)
-                        HomeSide(model: model, continueFirst: true)
                     }
+                    .frame(maxWidth: LoomTheme.Home.maxWidth - 2 * LoomTheme.Home.sideInset)
+                    .padding(.horizontal, LoomTheme.Home.sideInset)
+                    .padding(.bottom, LoomTheme.Home.bottom)
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: LoomTheme.Home.maxWidth - 2 * LoomTheme.Home.sideInset)
-                .padding(.horizontal, LoomTheme.Home.sideInset)
-                .padding(.top, LoomTheme.Home.top).padding(.bottom, LoomTheme.Home.bottom)
-                .frame(maxWidth: .infinity)
             }
         }
     }
 }
 
-/// The title with the date, and the way to the palette.
-private struct HomeHeader: View {
-    let model: CatalogModel
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: LoomTheme.Space.detailTitleSpacing) {
-            Text("Home").font(LoomTheme.TypeScale.display).foregroundStyle(LoomTheme.Text.primary)
-                .accessibilityAddTraits(.isHeader)
-            Text(LoomDateFormat.fullDate(model.today))
-                .font(LoomTheme.Typography.body).foregroundStyle(LoomTheme.Text.secondaryStyle)
-            Spacer(minLength: LoomTheme.Space.detailMinSpacer)
-            Button { model.openPalette() } label: {
-                HStack(spacing: LoomTheme.Space.hintSpacing) {
-                    Image(systemName: "magnifyingglass").font(LoomTheme.Typography.small)
-                    Text("Jump to")
-                    Text("⌘K").foregroundStyle(LoomTheme.Text.secondaryStyle)
-                }
-            }
-            .buttonStyle(ChipButtonStyle())
-            .help("Open the command palette")
-            .accessibilityLabel("Jump to, Command K")
-            .accessibilityIdentifier("home-jump")
-        }
-    }
-}
-
-/// The left column: what needs the user, then what finished unread. With nothing in either, one quiet card.
+/// The left column (under the band in a narrow pane, with the side cards below): Continue when a quit cut sessions short,
+/// then Needs you, which stays when empty with the one line that says what appears there, then Finished, not read when
+/// something finished. `HomeLayout.cards` decides which show.
 private struct HomeLists: View {
     let model: CatalogModel
 
     var body: some View {
         let board = model.homeBoard()
+        let cards = HomeLayout.cards(needsYou: board.needsYou.count, finished: board.finished.count,
+                                     toContinue: model.homeContinueEntries().count)
         VStack(alignment: .leading, spacing: LoomTheme.Home.blockGap) {
-            if board.count == 0 {
-                HomeNothingWaiting()
-            }
-            if !board.needsYou.isEmpty {
-                HomeSectionCard(title: "Needs you", count: board.needsYou.count, pip: LoomTheme.Status.attention,
-                                identifier: "home-needs-you") {
-                    ForEach(Array(board.needsYou.enumerated()), id: \.element.id) { index, entry in
-                        HomeEntryRow(model: model, entry: entry, showsRule: index > 0)
+            ForEach(cards, id: \.self) { card in
+                switch card {
+                case .continueSessions:
+                    HomeContinue(model: model)
+                case .needsYou:
+                    HomeListCard(title: "Needs you", count: board.needsYou.isEmpty ? nil : board.needsYou.count,
+                                 pip: board.needsYou.isEmpty ? nil : LoomTheme.Status.attention, identifier: "home-needs-you") {
+                        if board.needsYou.isEmpty {
+                            HomeBlankRow()
+                        } else {
+                            ForEach(board.needsYou) { HomeEntryRow(model: model, entry: $0) }
+                        }
                     }
-                }
-            }
-            if !board.finished.isEmpty {
-                HomeSectionCard(title: "Finished, not read", count: board.finished.count, pip: LoomTheme.Status.unviewed,
-                                identifier: "home-finished") {
-                    ForEach(Array(board.finished.enumerated()), id: \.element.id) { index, entry in
-                        HomeEntryRow(model: model, entry: entry, showsRule: index > 0)
+                case .finished:
+                    HomeListCard(title: "Finished, not read", count: board.finished.count, pip: LoomTheme.Status.unviewed,
+                                 identifier: "home-finished") {
+                        ForEach(board.finished) { HomeEntryRow(model: model, entry: $0) }
                     }
                 }
             }
@@ -116,33 +97,20 @@ private struct HomeLists: View {
     }
 }
 
-/// The right column (below the lists in a narrow panel): plan limits, Today, Continue. A block with nothing to
-/// say is left out. Under the lists Continue comes first: it is the one block there that asks for a click.
-private struct HomeSide: View {
-    let model: CatalogModel
-    let continueFirst: Bool
+/// The empty Needs you card's one row: it says what appears there (DESIGN §9 Nothing waiting).
+private struct HomeBlankRow: View {
+    static let text = "A session that waits for an answer, or finished while you were away, is listed here."
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Home.blockGap) {
-            if continueFirst { HomeContinue(model: model) }
-            HomeUsage(model: model)
-            if !continueFirst { HomeContinue(model: model) }
-        }
-    }
-}
-
-/// Both lists are empty: say so once, and what would show up here.
-private struct HomeNothingWaiting: View {
-    var body: some View {
-        HomeCard(identifier: "home-nothing-waiting") {
-            VStack(alignment: .leading, spacing: LoomTheme.Space.headerSpacing) {
-                Text("Nothing needs you").font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
-                Text("A session that waits for an answer, or finished while you were away, is listed here.")
-                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(LoomTheme.Home.itemPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(spacing: 0) {
+            Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline).accessibilityHidden(true)
+            Text(Self.text)
+                .homeType(LoomTheme.Home.blank).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, LoomTheme.Home.itemPadding)
+                .padding(.top, LoomTheme.Home.blankTop).padding(.bottom, LoomTheme.Home.blankBottom)
+                .accessibilityIdentifier("home-needs-you-empty")
         }
     }
 }

@@ -142,11 +142,12 @@ struct HomeTests {
         #expect(line(states.failed) == "Failed: Too many requests")
         let entry = try #require(board.needsYou.first { $0.id == states.approval })
         #expect(entry.projectName == rig.projects[0].name && entry.indicator == .waitingForApproval)
+        #expect(entry.provider == .claude, "the row draws the harness's mark")
     }
 
     @Test func aStateWithoutAReasonFallsBackToWhatTheStateSays() {
         func entry(_ indicator: SessionIndicator, reason: StatusReason? = nil) -> HomeEntry {
-            HomeEntry(id: UUID(), title: "t", projectName: nil, tone: nil, indicator: indicator,
+            HomeEntry(id: UUID(), title: "t", projectName: nil, tone: nil, provider: .claude, indicator: indicator,
                       reason: SessionReasonLine(reason), lastActivityAt: Date())
         }
         #expect(entry(.waitingForApproval).line == "Needs approval")
@@ -174,6 +175,29 @@ struct HomeTests {
         #expect(model.homeBoard().needsYou.map(\.id) == [ids[0]])
     }
 
+    /// The band's "Two sessions are working." needs a count that follows the sessions: `menuBarSummary` is not observed, so the
+    /// count is derived the way the summary is, after `liveRevision`, and a working session that stops redraws the band.
+    @Test func theBandsWorkingCountIsObservedAndIsTheMenuBarsCount() async throws {
+        let rig = try await ListRig.make(projects: 1, perProject: 4, unassigned: 0, mode: .activity)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let ids = try #require(rig.ids[rig.projects[0].id])
+        #expect(model.homeWorkingCount() == 0)
+        try await rig.feed(.runStarted(UUID()), for: ids[0])
+        try await rig.feed(.status(ProviderWorkState(activity: .working)), for: ids[0])
+        try await rig.feed(.runStarted(UUID()), for: ids[1])
+        try await rig.feed(.status(ProviderWorkState(activity: .working)), for: ids[1])
+        try await rig.feed(.runStarted(UUID()), for: ids[2])
+        try await rig.feed(.status(ProviderWorkState(activity: .waitingForApproval)), for: ids[2])
+        #expect(model.homeWorkingCount() == 2, "a session that waits for the user is not working")
+        #expect(model.homeWorkingCount() == model.menuBarSummary.working)
+        #expect(model.homeBoard().count == model.menuBarSummary.needsYou, "the sentence's two numbers are the menu bar's")
+        let seen = ObservedWrite { _ = model.homeWorkingCount() }
+        try await rig.feed(.status(ProviderWorkState(activity: .turnComplete)), for: ids[1])
+        #expect(seen.wrote, "the band redraws when a session stops working")
+        #expect(model.homeWorkingCount() == 1)
+    }
+
     // MARK: Continue
 
     private struct CatalogRig {
@@ -192,7 +216,8 @@ struct HomeTests {
         var old = UUID()
     }
 
-    private func catalogRig(projectNames: [String] = ["api", "billing"]) async throws -> CatalogRig {
+    private func catalogRig(projectNames: [String] = ["api", "billing"],
+                            startable: Set<ManagedSession.Provider> = [.claude]) async throws -> CatalogRig {
         let root = try temporaryRoot()
         let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
         var projects: [CatalogProject] = []
@@ -220,7 +245,7 @@ struct HomeTests {
             root: root, catalog: catalog,
             model: CatalogModel(catalog: catalog, events: SessionEventHub(),
                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("ui-preferences.json")),
-                                startableProviders: [.claude]),
+                                startableProviders: startable),
             intents: HomeIntents(), projects: projects)
         rig.quit = try await insert(.claude, "Backfill script", project: projects.last, ended: noon.addingTimeInterval(-3 * hour),
                                     reason: .applicationQuit)
@@ -258,6 +283,7 @@ struct HomeTests {
         let entry = try #require(entries.first)
         #expect(entry.title == "Backfill script" && entry.projectName == "billing")
         #expect(entry.endedAt == noon.addingTimeInterval(-3 * 3_600))
+        #expect(entry.provider == .claude)
 
         model.resumeFromHome(rig.quit)
         #expect(rig.intents.resumed == [rig.quit], "Resume goes through the existing resume path")
@@ -270,6 +296,15 @@ struct HomeTests {
         #expect(model.homeContinueEntries().isEmpty, "a stopped session is not a Quit one")
         model.setBusy(rig.quit, .resuming)
         #expect(model.homeContinueEntries().isEmpty)
+    }
+
+    /// DESIGN §9 Row: a Continue row carries its harness's mark, so each entry names the harness its session runs on.
+    @Test func continueEntriesNameTheHarnessOfTheirSession() async throws {
+        let rig = try await catalogRig(startable: [.claude, .codex])
+        defer { cleanup(rig) }
+        await rig.model.refreshHome()
+        let providers = Dictionary(uniqueKeysWithValues: rig.model.homeContinueEntries().map { ($0.id, $0.provider) })
+        #expect(providers[rig.quit] == .claude && providers[rig.codex] == .codex, "\(providers)")
     }
 
     @Test func aResumeThatCannotApplyLeavesTheCardAlone() async throws {

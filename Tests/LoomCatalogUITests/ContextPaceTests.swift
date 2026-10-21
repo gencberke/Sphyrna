@@ -260,7 +260,7 @@ struct ContextPaceTests {
     @Test func theMetersUseNoSuccessGreenAndTheFooterChipsFillTone() {
         // One neutral fill and one warning colour for every plan meter; success is a content colour (DESIGN §4).
         #expect(LoomTheme.PlanPaceLine.fill == LoomTheme.Text.secondary)
-        #expect(LoomTheme.PlanPaceLine.lasts == LoomTheme.Text.secondary, "a limit that lasts is not green")
+        #expect(LoomTheme.PlanPaceLine.lasts == LoomTheme.Text.tertiary, "a limit that lasts is not green; its sentence is the quiet tone")
         #expect(LoomTheme.PlanPaceLine.fillOver == LoomTheme.Status.attention)
         #expect(LoomTheme.PlanPaceLine.runsOut == LoomTheme.Status.attentionLight)
         #expect(LoomTheme.PlanPaceLine.lasts != LoomTheme.Success.light)

@@ -26,6 +26,10 @@ struct HomeRenderTests {
         }
     }
 
+    private func frame(of id: String, in view: NSView) -> CGRect? {
+        accessibilityElements(in: view).first { $0.accessibilityIdentifier?() == id }.flatMap { $0.accessibilityFrame?() }
+    }
+
     /// Hosts `HomeView` unshown. The window is never ordered front, so no test puts anything on screen.
     private func hostHome(_ model: CatalogModel, width: CGFloat, height: CGFloat) -> (NSWindow, NSHostingController<HomeView>) {
         let hosting = NSHostingController(rootView: HomeView(model: model))
@@ -103,21 +107,51 @@ struct HomeRenderTests {
         #expect(said.contains { $0.hasPrefix("Plan limits, 5-hour window") && $0.contains("Weekly") }, "the plan limits card is one element")
         #expect(!said.contains { $0.hasPrefix("5-hour window") }, "its meters are not read one by one")
         #expect(said.contains { $0.hasPrefix("Today, ") }, "today's figures are one line")
-        #expect(said.contains("Resume Backfill script"))
+
+        // The band says the state in one sentence, from the same counts as the lists and the menu bar.
+        let board = rig.model.homeBoard()
+        let sentence = HomeBandText.Sentence(working: rig.model.homeWorkingCount(), needsYou: board.count).text
+        #expect(board.count == 2 && said.contains(sentence), "the band reads '\(sentence)'")
+        #expect(found.contains("home-band") && found.contains("home-date") && found.contains("home-sentence"))
+
+        // Continue is the lists' first card in both layouts; the side cards sit beside the lists, or under them when narrow.
+        let continueFrame = try #require(frame(of: "home-continue", in: hosting.view))
+        let needsFrame = try #require(frame(of: "home-needs-you", in: hosting.view))
+        let limitsFrame = try #require(frame(of: "home-limits", in: hosting.view))
+        #expect(continueFrame.midY > needsFrame.midY, "Continue is above Needs you at \(Int(size.width)) pt")
+        if HomeLayout.isWide(paneWidth: size.width) {
+            #expect(limitsFrame.minX >= needsFrame.maxX && limitsFrame.midY > needsFrame.minY, "beside the lists: \(limitsFrame) \(needsFrame)")
+        } else {
+            #expect(limitsFrame.midY < needsFrame.midY, "under the lists: \(limitsFrame) \(needsFrame)")
+        }
+
+        // The actions show on hover and focus only, and are the rows' accessibility actions at all times.
+        func actions(_ id: String) -> [Set<String>] {
+            accessibilityElements(in: hosting.view).filter { $0.accessibilityIdentifier?() == id }.map { element in
+                Set((element.accessibilityCustomActions?() ?? []).map(\.name))
+            }
+        }
+        #expect(actions("home-entry").contains(["Open Session", "Mark as Read"] as Set), "a finished turn: \(actions("home-entry"))")
+        #expect(actions("home-entry").contains(["Open Session"] as Set), "a session that waits has nothing to mark read")
+        #expect(actions("home-continue-entry") == [["Resume"] as Set], "\(actions("home-continue-entry"))")
     }
 
-    @Test func homeWithNothingToReportSaysSoOnce() async throws {
+    @Test func homeWithNothingToReportKeepsTheNeedsYouCardEmptyAndSaysSoInTheBand() async throws {
         enableAccessibilityTree()
         let rig = try await ListRig.make(projects: 1, perProject: 2, unassigned: 0, mode: .activity)
         defer { rig.cleanup() }
         rig.model.showHome()
         let (window, hosting) = hostHome(rig.model, width: 940, height: 740)
         defer { window.close() }
-        try await settle(window) { self.identifiers(in: hosting.view).contains("home-nothing-waiting") }
+        try await settle(window) { self.identifiers(in: hosting.view).contains("home-needs-you") }
         let found = Set(identifiers(in: hosting.view))
-        #expect(found.contains("home-nothing-waiting") && !found.contains("home-start"))
-        #expect(!found.contains("home-needs-you") && !found.contains("home-finished") && !found.contains("home-continue"))
+        // The "Nothing needs you" card went (DESIGN §9): the Needs you card stays, empty, with the line that says what appears there.
+        #expect(found.contains("home-needs-you") && found.contains("home-needs-you-empty") && !found.contains("home-start"))
+        #expect(!found.contains("home-nothing-waiting") && !found.contains("home-finished") && !found.contains("home-continue"))
         #expect(!found.contains("home-limits") && !found.contains("home-no-claude"), "no usage model, no plan limits")
+        let said = labels(in: hosting.view)
+        #expect(said.contains("Needs you"), "the empty card's heading has no count")
+        #expect(said.contains("Nothing is working or waiting."), "the band says it")
     }
 
     @Test func anEmptyCatalogShowsTheAddProjectStateAndNoStartBox() async throws {

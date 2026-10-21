@@ -53,17 +53,17 @@ struct PlanPaceLine: View {
     let timeZone: TimeZone
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.PlanPaceLine.titleGap) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(PlanPaceText.title(pace.kind)).font(LoomTheme.Typography.bodyStrong)
+                Text(PlanPaceText.title(pace.kind)).homeType(LoomTheme.PlanPaceLine.name)
                     .foregroundStyle(LoomTheme.Text.primary)
                 Spacer(minLength: LoomTheme.Space.chipSplitGap)
-                Text(PlanPaceText.remaining(pace)).font(LoomTheme.Typography.small).monospacedDigit()
+                Text(PlanPaceText.remaining(pace)).homeType(LoomTheme.PlanPaceLine.left).monospacedDigit()
                     .foregroundStyle(LoomTheme.Text.secondary)
             }
-            meter
+            meter.padding(.top, LoomTheme.PlanPaceLine.meterTop).padding(.bottom, LoomTheme.PlanPaceLine.meterBottom)
             Text(PlanPaceText.sentence(pace, now: now, timeZone: timeZone))
-                .font(LoomTheme.Typography.caption)
+                .homeType(LoomTheme.PlanPaceLine.sentence)
                 .foregroundStyle(sentenceStyle)
                 // A long sentence ("Resets Monday 09:00 · at this pace it runs out Thursday 18:30") wraps in a narrow card
                 // rather than losing the time the limit runs out.

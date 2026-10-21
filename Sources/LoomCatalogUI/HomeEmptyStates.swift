@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// What Home says in each first-run case. Plain values so a test reads the words without a view.
@@ -24,74 +25,129 @@ struct HomeEmptyCopy: Equatable {
             + "Sessions already listed stay readable.")
 }
 
-/// Home over an empty catalog: no project and no session. The Home route comes before "Add a project", so
-/// Home carries this state itself, with the add-project action; with no Claude CLI it says that first.
+/// The words of Check Again while it asks (DESIGN §9 Empty states).
+enum HomeCheckAgain {
+    static func title(checking: Bool) -> String { checking ? "Checking…" : "Check Again" }
+}
+
+/// Check Again: asks for the plan limits again, which resolves the Claude CLI again. While that asks it says "Checking…" with
+/// the spinner and is off.
+private struct HomeCheckAgainButton: View {
+    let model: CatalogModel
+    var size: LoomTheme.Control.Size = .regular
+    @Environment(\.indicatorsAnimate) private var indicatorsAnimate
+
+    var body: some View {
+        let checking = model.usage?.isRefreshing ?? false
+        Button { model.recheckClaude() } label: {
+            HStack(spacing: LoomTheme.Home.projectGap) {
+                if checking {
+                    BrailleSpinner(animating: indicatorsAnimate).frame(width: LoomTheme.Layout.indicatorSlot.width).accessibilityHidden(true)
+                }
+                Text(HomeCheckAgain.title(checking: checking))
+            }
+        }
+        .buttonStyle(ControlButtonStyle(kind: .secondary, size: size))
+        .disabled(checking)
+        .accessibilityIdentifier("home-check-again")
+    }
+}
+
+/// Home over an empty catalog: no project and no session. The Home route comes before "Add a project", so Home carries this
+/// state itself, with the add-project action; with no Claude CLI it says that first. It is its own view, not `Message`:
+/// the first run carries the app icon at 84 over the faint grid, and a missing Claude the attention triangle at 40.
 struct HomeEmptyCatalog: View {
     let model: CatalogModel
 
-    /// The first run carries the Loom mark; the missing-Claude state keeps its warning symbol.
+    /// The first run carries the app icon; the missing-Claude state keeps its warning symbol.
     static func showsMark(claudeMissing: Bool) -> Bool { !claudeMissing }
 
     var body: some View {
         let missing = model.homeClaudeCLIMissing
         let copy = missing ? HomeEmptyCopy.noClaude : HomeEmptyCopy.noProjects
-        VStack(spacing: LoomTheme.Space.emptyStateSpacing) {
-            // The first run carries the Loom mark; a missing Claude keeps its warning symbol (D-69, O-12).
-            Message(symbol: copy.symbol, title: copy.title, text: copy.text, showsMark: Self.showsMark(claudeMissing: missing))
-            HStack(alignment: .top) {
+        VStack(spacing: 0) {
+            if Self.showsMark(claudeMissing: missing) {
+                Image(nsImage: NSApplication.shared.applicationIconImage)
+                    .resizable().interpolation(.high)
+                    .frame(width: LoomTheme.Home.iconSide, height: LoomTheme.Home.iconSide)
+                    .depth(LoomTheme.Home.iconDepth)
+                    .accessibilityHidden(true)
+                    .accessibilityIdentifier("home-app-icon")
+            } else {
+                Image(systemName: copy.symbol).homeType(LoomTheme.Home.symbol).foregroundStyle(LoomTheme.Status.attention)
+                    .frame(width: LoomTheme.Home.symbolBox, height: LoomTheme.Home.symbolBox)
+                    .accessibilityHidden(true)
+            }
+            Text(copy.title).homeType(LoomTheme.InkType.title).foregroundStyle(LoomTheme.Text.primary)
+                .padding(.top, LoomTheme.Home.titleTop)
+                .accessibilityAddTraits(.isHeader)
+            Text(copy.text).homeType(LoomTheme.Home.firstText).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                .lineSpacing(LoomTheme.Home.textLineSpacing)
+                .multilineTextAlignment(.center).textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: LoomTheme.Home.textWidth)
+                .padding(.top, LoomTheme.Home.textTop)
+            HStack(alignment: .top, spacing: LoomTheme.Home.firstActionsGap) {
                 Button("Add Project…") { model.presentAddProject() }
                     .keyboardShortcut("o", modifiers: .command)
-                    .buttonStyle(AccentButtonStyle(kind: .filled))
+                    .buttonStyle(ControlButtonStyle(kind: .primary))
                     .accessibilityIdentifier("home-add-project")
                 if missing {
-                    Button("Check Again") { model.recheckClaude() }
-                        .accessibilityIdentifier("home-check-again")
+                    HomeCheckAgainButton(model: model)
                 } else {
                     Button("New Claude Session") { model.beginNewSession(projectID: nil) }
+                        .buttonStyle(ControlButtonStyle(kind: .secondary))
                         .disabled(!model.canStart(.claude, projectID: nil))
                         .accessibilityIdentifier("home-new-session")
                 }
                 // Codex is listed in every build (D-69); a build that cannot start it shows the entry disabled, with
                 // the reason (`startableProviders` is the build's decision).
-                VStack(spacing: LoomTheme.Space.noticeLineSpacing) {
+                VStack(spacing: LoomTheme.Home.codexNoteGap) {
                     Button("New Codex Session") { model.startConversation(.codex, projectID: nil) }
+                        .buttonStyle(ControlButtonStyle(kind: .secondary))
                         .disabled(!model.canStart(.codex, projectID: nil))
                         .accessibilityIdentifier("home-new-codex-session")
                     if let reason = model.newSessionUnavailableReason(.codex) {
-                        Text(reason).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+                        Text(reason).homeType(LoomTheme.Home.codexNote).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                             .accessibilityIdentifier("home-new-codex-reason")
                     }
                 }
             }
+            .padding(.top, LoomTheme.Home.actionsTop)
         }
+        .padding(.bottom, LoomTheme.Home.lift)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            if Self.showsMark(claudeMissing: missing) { CanvasGrid() }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(missing ? "home-no-claude" : "home-empty-catalog")
     }
 }
 
-/// Above a catalog that has sessions: the start box gives way to this notice while no Claude CLI works.
+/// Above a catalog that has sessions: a card under the band while no Claude CLI works (DESIGN §9 Empty states). Plan limits is
+/// left out, and so is the sidebar's New session row.
 struct HomeNoClaudeNotice: View {
     let model: CatalogModel
 
     var body: some View {
         let copy = HomeEmptyCopy.noClaudeWithSessions
         HomeCard(identifier: "home-no-claude") {
-            HStack(alignment: .top, spacing: LoomTheme.Space.noticeSpacing) {
-                Image(systemName: copy.symbol).font(LoomTheme.Typography.body)
-                    .foregroundStyle(LoomTheme.Status.attention).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: LoomTheme.Space.noticeLineSpacing) {
-                    Text(copy.title).font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
-                    Text(copy.text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button("Check Again") { model.recheckClaude() }
-                        .buttonStyle(ChipButtonStyle())
-                        .padding(.top, LoomTheme.Space.headerSpacing)
-                        .accessibilityIdentifier("home-check-again")
+            HStack(alignment: .center, spacing: LoomTheme.Home.noticeGap) {
+                HStack(alignment: .top, spacing: LoomTheme.Home.noticeGap) {
+                    Image(systemName: copy.symbol).homeType(LoomTheme.Home.noticeSymbol)
+                        .foregroundStyle(LoomTheme.Status.attention)
+                        .frame(width: LoomTheme.Home.noticeColumn, alignment: .leading).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: LoomTheme.Home.noticeTextGap) {
+                        Text(copy.title).homeType(LoomTheme.Home.noticeTitle).foregroundStyle(LoomTheme.Text.primary)
+                        Text(copy.text).homeType(LoomTheme.Home.noticeText).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                Spacer(minLength: 0)
+                Spacer(minLength: LoomTheme.Home.noticeGap)
+                HomeCheckAgainButton(model: model, size: .small)
             }
-            .padding(LoomTheme.Space.noticePadding)
+            .padding(.vertical, LoomTheme.Home.noticePaddingV).padding(.horizontal, LoomTheme.Home.noticePaddingH)
         }
     }
 }

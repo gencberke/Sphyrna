@@ -25,7 +25,13 @@ extension LoomTheme {
         static let meterRadius: CGFloat = 3
         static let tickWidth: CGFloat = 2
         static let tickOverhang: CGFloat = 2
-        static let titleGap: CGFloat = 6
+        /// The meter is 8 under the name line and 7 above the sentence (the reference's `.ptrack` margin).
+        static let meterTop: CGFloat = 8
+        static let meterBottom: CGFloat = 7
+        /// The name 12 semibold, what is left 12, and the sentence 11 (Home's pace block).
+        static let name = InkStyle(size: 12, weight: .semibold)
+        static let left = InkType.small
+        static let sentence = InkStyle(size: 11)
         /// Every plan meter fills what is left, from the leading edge (the footer chip's direction, and the word "left"),
         /// in the neutral tone; the attention colour marks a window that runs out or has under `lowBelow` left. Success
         /// is a content colour and stays out of it (V25).
@@ -33,7 +39,7 @@ extension LoomTheme {
         static let fill = Text.secondary
         static let fillOver = Status.attention
         static let tick = Text.primary
-        static let lasts = Text.secondary
+        static let lasts = Text.tertiary
         static let runsOut = Status.attentionLight
         /// Under this share left (as the footer chip's `lowBelowPercent`) a meter takes the attention colour.
         static let lowBelow = 0.20

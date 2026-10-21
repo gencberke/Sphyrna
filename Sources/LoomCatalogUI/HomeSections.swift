@@ -3,44 +3,60 @@ import SwiftUI
 
 // MARK: Surfaces
 
-/// The Night Fleece 2 card: the card surface, radius 12, a hairline and the card depth.
+/// A card: the card surface, radius 12, a hairline and the card's depth. Its content is clipped to the shape, so a row's hover
+/// fill across the whole card width follows the corners.
 struct HomeCard<Content: View>: View {
     let identifier: String
     @ViewBuilder let content: Content
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: LoomTheme.Radius.block)
         content
-            .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.block).fill(LoomTheme.Surface.card))
-            .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.block)
-                .strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
+            .clipShape(shape)
+            .background(shape.fill(LoomTheme.Surface.card))
+            .overlay(shape.strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
             .depth(LoomTheme.Elevation.card)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier(identifier)
     }
 }
 
-/// A list block: a heading row above (a status dot, the title, the count), then the card with its rows.
-struct HomeSectionCard<Content: View>: View {
+/// What VoiceOver reads for a list card's heading: "Needs you, 1", or the title alone without a count.
+enum HomeListHeading {
+    static func label(title: String, count: Int?) -> String { count.map { "\(title), \($0)" } ?? title }
+}
+
+/// A list card: a 42 pt heading row (an optional status dot, the title, an optional count), then its rows. Each row draws the
+/// hairline above it.
+struct HomeListCard<Content: View>: View {
     let title: String
-    let count: Int
-    let pip: Color
+    /// Nil shows no count (the empty Needs you card).
+    var count: Int?
+    /// Nil shows no dot.
+    var pip: Color?
     let identifier: String
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Home.headingGap) {
-            HStack(spacing: LoomTheme.Space.chipInset) {
-                Circle().fill(pip).frame(width: LoomTheme.Home.pip, height: LoomTheme.Home.pip).accessibilityHidden(true)
-                Text(title).font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
-                    .accessibilityAddTraits(.isHeader)
-                Text("\(count)").font(LoomTheme.Typography.small).monospacedDigit()
-                    .foregroundStyle(LoomTheme.Text.secondaryStyle)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(title), \(count)")
-            .accessibilityAddTraits(.isHeader)
-            HomeCard(identifier: identifier) {
-                VStack(spacing: 0) { content }
+        HomeCard(identifier: identifier) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: LoomTheme.Home.headGap) {
+                    if let pip {
+                        Circle().fill(pip).frame(width: LoomTheme.Home.pip, height: LoomTheme.Home.pip).accessibilityHidden(true)
+                    }
+                    Text(title).homeType(LoomTheme.Home.headTitle).foregroundStyle(LoomTheme.Text.primary)
+                    if let count {
+                        Text("\(count)").homeType(LoomTheme.Home.headCount).monospacedDigit()
+                            .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, LoomTheme.Home.itemPadding)
+                .frame(height: LoomTheme.Home.headHeight)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(HomeListHeading.label(title: title, count: count))
+                .accessibilityAddTraits(.isHeader)
+                content
             }
         }
     }
@@ -50,6 +66,8 @@ struct HomeSectionCard<Content: View>: View {
 struct HomeSideCard<Content: View>: View {
     let title: String
     var meta: String?
+    /// How far under the heading the content starts, on top of the heading's own 4.
+    var contentTop: CGFloat = LoomTheme.Home.todayTop
     /// When set, VoiceOver reads the whole block (heading and content) as one element saying this.
     var summary: String?
     let identifier: String
@@ -57,16 +75,16 @@ struct HomeSideCard<Content: View>: View {
 
     var body: some View {
         HomeCard(identifier: identifier) {
-            let block = VStack(alignment: .leading, spacing: LoomTheme.Home.limitGap) {
-                HStack {
-                    Text(title).font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
+            let block = VStack(alignment: .leading, spacing: LoomTheme.Home.sideHeadGap) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(title).homeType(LoomTheme.Home.sideTitle).foregroundStyle(LoomTheme.Text.primary)
                         .accessibilityAddTraits(.isHeader)
                     Spacer(minLength: LoomTheme.Space.chipSplitGap)
                     if let meta {
-                        Text(meta).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                        Text(meta).homeType(LoomTheme.Home.sideNote).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                     }
                 }
-                content
+                content.padding(.top, contentTop)
             }
             .padding(LoomTheme.Home.sideCardPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -89,89 +107,32 @@ enum HomeAgeText {
     }
 }
 
-/// The project (its stripe and name) and a time, on one line. It is the only part of a card that reads the
-/// minute tick, so the tick redraws these lines and nothing else.
-struct HomeMeta: View {
+/// A time in mono tertiary: "4m", or spelled out after a verb ("Last active 11h ago"). It is the only part of a row that reads
+/// the minute tick, so the tick redraws these labels and nothing else.
+struct HomeAgeLabel: View {
     let model: CatalogModel
-    let projectName: String?
-    let tone: ProjectTone?
     let date: Date
-    /// Spells the time out after this word ("Last active 2h ago"); nil shows the card's short "2h".
+    /// Spells the time out after this word; nil shows the row's short "2h".
     var verb: String?
 
     var body: some View {
-        let age = verb.map { "\($0) " + HomeAgeText.ago(from: date, to: model.now) }
-            ?? RelativeTime.string(from: date, to: model.now)
-        HStack(spacing: LoomTheme.Space.hintSpacing) {
-            if let tone {
-                RoundedRectangle(cornerRadius: LoomTheme.ProjectColor.stripeRadius)
-                    .fill(LoomTheme.ProjectColor.stripe(tone))
-                    .frame(width: LoomTheme.Home.toneStripe.width, height: LoomTheme.Home.toneStripe.height)
-                    .accessibilityHidden(true)
-            }
-            Text(projectName.map { $0 + " · " + age } ?? age)
-                .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                .lineLimit(1).truncationMode(.middle)
-        }
-        .fixedSize(horizontal: false, vertical: true)
+        Text(verb.map { "\($0) " + HomeAgeText.ago(from: date, to: model.now) } ?? RelativeTime.string(from: date, to: model.now))
+            .homeType(LoomTheme.Home.rowMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
     }
 }
 
-// MARK: Needs you, Finished
-
-/// One session in a list: its state, title, project and age, the line (what it waits for or did last) and
-/// the ways on: open it, or mark a finished turn read.
-struct HomeEntryRow: View {
-    let model: CatalogModel
-    let entry: HomeEntry
-    let showsRule: Bool
+/// The project's mark (14) and its name in mono tertiary, after a row's title. A session without a project shows neither.
+struct HomeProjectTag: View {
+    let name: String
+    let tone: ProjectTone?
 
     var body: some View {
-        VStack(spacing: 0) {
-            if showsRule {
-                Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
-                    .accessibilityHidden(true)
-            }
-            HStack(alignment: .top, spacing: LoomTheme.Space.requestPadding) {
-                IndicatorView(indicator: entry.indicator).padding(.top, LoomTheme.Space.cardIndicatorTop)
-                VStack(alignment: .leading, spacing: LoomTheme.Space.headerSpacing) {
-                    HStack(alignment: .firstTextBaseline, spacing: LoomTheme.Space.chipInset) {
-                        Text(entry.title).font(LoomTheme.Typography.cardTitle(selected: false))
-                            .foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
-                        Spacer(minLength: LoomTheme.Space.chipInset)
-                        HomeMeta(model: model, projectName: entry.projectName, tone: entry.tone, date: entry.lastActivityAt)
-                    }
-                    Text(entry.line).font(LoomTheme.Typography.small)
-                        .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("home-entry-line")
-                    HStack(spacing: LoomTheme.Space.chipSplitGap) {
-                        Button("Open Session") { model.select(entry.id) }
-                            .buttonStyle(AccentButtonStyle(kind: .tinted))
-                            .accessibilityLabel("Open \(entry.title)")
-                            .accessibilityIdentifier("home-open")
-                        if entry.canMarkRead {
-                            Button("Mark as Read") { model.markRead(entry.id) }
-                                .buttonStyle(ChipButtonStyle())
-                                .accessibilityLabel("Mark \(entry.title) as read")
-                                .accessibilityIdentifier("home-mark-read")
-                        }
-                    }
-                    .padding(.top, LoomTheme.Space.headerSpacing)
-                }
-            }
-            // The text keeps `itemPadding` and `itemPaddingV` from the card's edge and the hairline; the pill sits `Highlight.inset` inside the card and a little
-            // inside the hairlines. A click on the row opens the session, as Open Session does.
-            .padding(.horizontal, LoomTheme.Home.itemPadding - LoomTheme.Highlight.inset)
-            .padding(.vertical, LoomTheme.Home.itemPaddingV - LoomTheme.Home.rowPillGap)
-            .rowPill(radius: LoomTheme.Highlight.radius, key: "home-entry:\(entry.id)")
-            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radius))
-            .onTapGesture { model.select(entry.id) }
-            .padding(.horizontal, LoomTheme.Highlight.inset)
-            .padding(.vertical, LoomTheme.Home.rowPillGap)
+        HStack(spacing: LoomTheme.Home.projectGap) {
+            ProjectMarkView(name: name, tone: tone, size: .chip)
+            Text(name).homeType(LoomTheme.Home.rowMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                .lineLimit(1).truncationMode(.middle)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("home-entry")
     }
 }
 
@@ -196,7 +157,7 @@ struct HomeUsage: View {
                 } else if limitsFailure != nil {
                     HomeSideCard(title: "Plan limits", identifier: "home-limits") {
                         Text("Claude did not report plan limits, so Loom shows none.")
-                            .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                            .homeType(LoomTheme.Home.reason).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -219,10 +180,12 @@ struct HomePlanLimits: View {
 
     var body: some View {
         let line = PlanLimitsLine(paces: paces, now: now, timeZone: timeZone)
-        HomeSideCard(title: "Plan limits", meta: updated.map { "updated " + $0 }, summary: line.spoken,
-                     identifier: "home-limits") {
-            ForEach(Array(paces.enumerated()), id: \.offset) { _, pace in
-                PlanPaceLine(pace: pace, now: now, timeZone: timeZone)
+        HomeSideCard(title: "Plan limits", meta: updated.map { "updated " + $0 }, contentTop: LoomTheme.Home.paceGap,
+                     summary: line.spoken, identifier: "home-limits") {
+            VStack(alignment: .leading, spacing: LoomTheme.Home.paceGap) {
+                ForEach(Array(paces.enumerated()), id: \.offset) { _, pace in
+                    PlanPaceLine(pace: pace, now: now, timeZone: timeZone)
+                }
             }
         }
         .help(line.tooltip(paces: paces, now: now, timeZone: timeZone))
@@ -289,12 +252,12 @@ private struct HomeTodayLine: View {
     let figures: HomeTodayFigures
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Space.headerSpacing) {
+        VStack(alignment: .leading, spacing: LoomTheme.Home.todayGap) {
             let stats = figures.stats
             if !stats.isEmpty {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: LoomTheme.Space.chipInset) { statViews(stats) }.fixedSize()
-                    VStack(alignment: .leading, spacing: LoomTheme.Space.cardGap) { statViews(stats) }
+                    VStack(alignment: .leading, spacing: LoomTheme.Home.todayGap) { statViews(stats) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(figures.kindsTooltip ?? "")
@@ -303,7 +266,7 @@ private struct HomeTodayLine: View {
                 .accessibilityIdentifier("home-today")
             }
             if let note = figures.note {
-                Text(note).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                Text(note).homeType(LoomTheme.Home.sideNote).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
                     .accessibilityIdentifier("home-today")
             }
         }
@@ -316,60 +279,7 @@ private struct HomeTodayLine: View {
             }
             let figure = Text(stat.figure).fontWeight(.semibold).monospacedDigit().foregroundStyle(LoomTheme.Text.primary)
             let label = Text(" " + stat.label).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-            Text("\(figure)\(label)").font(LoomTheme.Typography.small).lineLimit(1)
+            Text("\(figure)\(label)").homeType(LoomTheme.Home.today).lineLimit(1)
         }
-    }
-}
-
-// MARK: Continue
-
-/// Sessions Quit (or a crash) cut short, each with Resume and the time it was last active. The list comes from the
-/// catalog read made when Home opened; a session that runs again, or that Resume was pressed for, drops out at once.
-struct HomeContinue: View {
-    let model: CatalogModel
-    @State private var showsAll = false
-
-    var body: some View {
-        let entries = model.homeContinueEntries()
-        if !entries.isEmpty {
-            let shown = showsAll ? entries : Array(entries.prefix(LoomTheme.Home.continueShown))
-            HomeSideCard(title: "Continue", meta: "\(entries.count)", identifier: "home-continue") {
-                VStack(alignment: .leading, spacing: LoomTheme.Space.requestPadding) {
-                    Text(entries.count == 1 ? "This session was running when Loom quit."
-                         : "These sessions were running when Loom quit.")
-                        .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                        .fixedSize(horizontal: false, vertical: true)
-                    ForEach(shown) { entry in
-                        HomeContinueRow(model: model, entry: entry)
-                    }
-                    if entries.count > shown.count {
-                        Button("Show \(entries.count - shown.count) More") { showsAll = true }
-                            .buttonStyle(ChipButtonStyle()).accessibilityIdentifier("home-continue-more")
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct HomeContinueRow: View {
-    let model: CatalogModel
-    let entry: HomeContinueEntry
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Space.headerSpacing) {
-            Text(entry.title).font(LoomTheme.Typography.cardTitle(selected: false))
-                .foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
-            HomeMeta(model: model, projectName: entry.projectName, tone: entry.tone, date: entry.endedAt, verb: "Last active")
-            Button { model.resumeFromHome(entry.id) } label: {
-                Label("Resume", systemImage: "play")
-            }
-            .buttonStyle(ChipButtonStyle())
-            .padding(.top, LoomTheme.Space.headerSpacing)
-            .accessibilityLabel("Resume \(entry.title)")
-            .accessibilityIdentifier("home-resume")
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("home-continue-entry")
     }
 }

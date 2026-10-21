@@ -10,6 +10,8 @@ enum LoomDateFormat {
     private enum Kind: String {
         /// The time of day, "8:41 AM" or "08:41".
         case time
+        /// The time of day on a 24-hour clock whatever the locale's habit, "08:41" (Home's date line).
+        case time24
         /// The date with its year, "Oct 18, 2026".
         case date
         /// Date and time, "Oct 18, 2026 at 8:41 AM".
@@ -36,6 +38,11 @@ enum LoomDateFormat {
 
     static func time(_ date: Date, zone: TimeZone? = nil, locale: Locale = .current, calendar: Calendar = .current) -> String {
         string(.time, date, zone, locale, calendar)
+    }
+
+    /// "08:41" on a 24-hour clock, in the locale's own digits and separator.
+    static func time24(_ date: Date, zone: TimeZone? = nil, locale: Locale = .current, calendar: Calendar = .current) -> String {
+        string(.time24, date, zone, locale, calendar)
     }
 
     static func date(_ date: Date, zone: TimeZone? = nil, locale: Locale = .current, calendar: Calendar = .current) -> String {
@@ -81,6 +88,7 @@ enum LoomDateFormat {
             formatter.timeZone = zone
             switch kind {
             case .time: formatter.dateStyle = .none; formatter.timeStyle = .short
+            case .time24: formatter.setLocalizedDateFormatFromTemplate("HHmm")
             case .date: formatter.dateStyle = .medium; formatter.timeStyle = .none
             case .dateTime: formatter.dateStyle = .medium; formatter.timeStyle = .short
             case .dayMonth: formatter.setLocalizedDateFormatFromTemplate("MMMd")

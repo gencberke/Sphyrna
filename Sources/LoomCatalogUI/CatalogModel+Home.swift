@@ -44,6 +44,8 @@ struct HomeEntry: Identifiable, Equatable {
     let title: String
     let projectName: String?
     let tone: ProjectTone?
+    /// The harness the session runs on: a row draws its mark (DESIGN §9 Row).
+    let provider: ManagedSession.Provider
     let indicator: SessionIndicator
     /// What it waits for or did last (V03), one bounded line.
     let reason: SessionReasonLine?
@@ -87,6 +89,7 @@ struct HomeContinueEntry: Identifiable, Equatable {
     let title: String
     let projectName: String?
     let tone: ProjectTone?
+    let provider: ManagedSession.Provider
     let endedAt: Date
 }
 
@@ -134,11 +137,19 @@ extension CatalogModel {
             let name = projectName(for: record)
             let entry = HomeEntry(
                 id: id, title: record.displayTitle(projectName: name), projectName: name,
-                tone: projectTone(forProject: record.projectID), indicator: candidate.indicator,
+                tone: projectTone(forProject: record.projectID), provider: record.session.provider, indicator: candidate.indicator,
                 reason: SessionReasonLine(liveStates[id]?.displayReason), lastActivityAt: candidate.lastActivityAt)
             if HomeBoard.isFinished(candidate.indicator) { board.finished.append(entry) } else { board.needsYou.append(entry) }
         }
         return board
+    }
+
+    /// How many sessions are working and need nobody: the band's "Two sessions are working.". Read like `homeBoard` (after
+    /// `liveRevision`, so a live change redraws it) from the derivation the menu bar's summary comes from;
+    /// `menuBarSummary` itself is not observed, so a view must not read it.
+    func homeWorkingCount() -> Int {
+        _ = liveRevision
+        return MenuBarSummary.derive(attentionCandidates()).working
     }
 
     // MARK: Evidence
@@ -175,7 +186,7 @@ extension CatalogModel {
             let name = projectName(for: record)
             return HomeContinueEntry(
                 id: id, title: record.displayTitle(projectName: name), projectName: name,
-                tone: projectTone(forProject: record.projectID), endedAt: run.endedAt)
+                tone: projectTone(forProject: record.projectID), provider: record.session.provider, endedAt: run.endedAt)
         }
     }
 
