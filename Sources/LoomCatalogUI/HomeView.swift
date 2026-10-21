@@ -7,6 +7,16 @@ import SwiftUI
 /// sidebar's New session. `DetailContent` draws it for `.home`.
 struct HomeView: View {
     let model: CatalogModel
+    /// What Remora's section reads for itself, and keeps of the user's own choices, while Home is on screen. Both go with the view.
+    @State private var reads: HomeRemoraReads
+    @State private var remoraUI = HomeRemoraUI()
+    @State private var windowProbe = HomeWindowProbe()
+    @State private var windowAttached = false
+
+    init(model: CatalogModel) {
+        self.model = model
+        _reads = State(initialValue: HomeRemoraReads(baselineUndo: model.remora.lastUndo))
+    }
 
     var body: some View {
         Group {
@@ -15,12 +25,21 @@ struct HomeView: View {
             } else if model.homeCatalogIsEmpty {
                 HomeEmptyCatalog(model: model)
             } else {
-                HomeBoardView(model: model)
+                HomeBoardView(model: model, reads: reads, remoraUI: remoraUI)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(HomeWindowProbeView(probe: windowProbe) { windowAttached = true })
         .task(id: model.homeReadKey) {
             await model.refreshHome()
+        }
+        // Each time Home shows (and once more when its window is known): the day's kept brief is read again and, with the brief on
+        // Automatic, the model decides the morning brief. This is the one place the automatic brief is asked.
+        .task(id: windowAttached) {
+            await HomeRemoraCalls.homeShown(model: model, window: windowProbe.facts)
+        }
+        .task(id: model.homeRemoraReadKey) {
+            await reads.read(model: model)
         }
         .task(id: model.homeTodayKey) {
             await model.refreshHomeToday()
@@ -33,13 +52,15 @@ struct HomeView: View {
 /// Home with something in the catalog: the band, the notice when Claude is missing, and the blocks.
 private struct HomeBoardView: View {
     let model: CatalogModel
+    let reads: HomeRemoraReads
+    let remoraUI: HomeRemoraUI
 
     var body: some View {
         GeometryReader { proxy in
             let paneWidth = proxy.size.width
             ScrollView {
                 VStack(spacing: 0) {
-                    HomeBand(model: model, paneWidth: paneWidth)
+                    HomeTop(model: model, paneWidth: paneWidth, reads: reads, remoraUI: remoraUI)
                     VStack(alignment: .leading, spacing: LoomTheme.Home.blockGap) {
                         if model.homeClaudeCLIMissing { HomeNoClaudeNotice(model: model) }
                         if HomeLayout.isWide(paneWidth: paneWidth) {
@@ -58,6 +79,25 @@ private struct HomeBoardView: View {
                     .frame(maxWidth: .infinity)
                 }
             }
+        }
+    }
+}
+
+/// The top of Home: Remora's section when it is on and has something to say, else the band (DESIGN §9). Before any session the band
+/// stays and one line says what Remora will do.
+private struct HomeTop: View {
+    let model: CatalogModel
+    let paneWidth: CGFloat
+    let reads: HomeRemoraReads
+    let remoraUI: HomeRemoraUI
+
+    var body: some View {
+        let context = HomeRemoraContext.make(model: model, reads: reads, ui: remoraUI)
+        if context.state.replacesBand {
+            HomeRemoraSection(model: model, paneWidth: paneWidth, ui: remoraUI, reads: reads)
+        } else {
+            HomeBand(model: model, paneWidth: paneWidth,
+                     note: context.state == .beforeAnySession ? HomeRemoraText.beforeAnySession : nil)
         }
     }
 }

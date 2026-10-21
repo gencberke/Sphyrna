@@ -128,6 +128,8 @@ enum HomeLayout {
 struct HomeBand: View {
     let model: CatalogModel
     let paneWidth: CGFloat
+    /// One line under the sentence, in secondary: what Remora will do before the first session (DESIGN §20 States).
+    var note: String?
     @Environment(\.detailLeadingClearance) private var clearance
 
     var body: some View {
@@ -151,6 +153,13 @@ struct HomeBand: View {
                         .alignmentGuide(.top) { $0[.bottom] + LoomTheme.Home.eyebrowGap }
                 }
             if !counts.isEmpty { HomeCountsLine(counts: counts) }
+            if let note {
+                Text(note).homeType(LoomTheme.Remora.none).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, LoomTheme.Remora.noneTop - LoomTheme.Home.countsGap)
+                    .accessibilityIdentifier("home-remora-none")
+            }
         }
         .frame(maxWidth: LoomTheme.Home.maxWidth - 2 * LoomTheme.Home.sideInset)
         .padding(.leading, HomeLayout.bandLeadingExtra(paneWidth: paneWidth, clearance: clearance))

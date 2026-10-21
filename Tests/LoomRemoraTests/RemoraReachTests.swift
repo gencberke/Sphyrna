@@ -23,8 +23,13 @@ struct RemoraReachTests {
     static let hostNamers: Set<String> = [host, model]
     /// Calls of the unasked entry `briefIfDue(`: the model's `briefRemoraIfDue`.
     static let unaskedCalls: [String: Int] = [model: 1]
-    /// Calls of the model API's three entries: none yet (the Home views, slice L3b, are the first).
-    static let modelAPICalls: [String: Int] = [:]
+    /// Calls of the model API's three entries (`askRemora(`, `briefRemora(` and `briefRemoraIfDue(`, summed for each file), where each is
+    /// written. Home's calls are all in one file (L3b): the automatic brief when Home shows (1), Catch Me Up, Catch Me Up Anyway and Try Again
+    /// of a brief (1) and the field's question (1). The evidence command file counts too (`remora-brief`, `remora-ask`). ⌘K's Ask and the
+    /// new-session page's brief (L3c) will add their own.
+    static let homeCalls = "Sources/LoomCatalogUI/HomeRemoraCalls.swift"
+    static let evidenceCalls = "Sources/loom-app/Evidence/EvidenceRemoraCommands.swift"
+    static let modelAPICalls: [String: Int] = [homeCalls: 3, evidenceCalls: 2]
 
     /// Names that would make something run by itself, in Remora's files.
     static let selfStarting = ["Timer", "DispatchSource", "NWPathMonitor", "FSEventStream", "NotificationCenter", "asyncAfter", "Task.sleep"]
@@ -94,7 +99,7 @@ struct RemoraReachTests {
         #expect(messages.isEmpty, "\(messages)")
     }
 
-    @Test func theModelAPIHasNoCallerYet() {
+    @Test func theModelAPIIsCalledOnlyFromTheListedFiles() {
         var found: [String: Int] = [:]
         for name in ["askRemora", "briefRemora", "briefRemoraIfDue"] {
             for (path, count) in Self.counts(of: name) { found[path, default: 0] += count }
