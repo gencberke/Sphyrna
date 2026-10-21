@@ -94,9 +94,84 @@ struct SubagentTreeTests {
         #expect(rows.map(\.tap) == [.openSubagent, .openSubagent, .openSubagent, .toggleRunning, .toggleFinished, .openSubagent])
     }
 
-    @Test func aNestedSubagentIndentsOneStepPerLevel() {
+    @Test func aNestedSubagentBranchesOneStepFurtherPerLevel() {
         let rows = content([running("a"), running("b", depth: 2), running("c", depth: 3)]).rows
         #expect(rows.map(\.depth) == [1, 2, 3])
+    }
+
+    // MARK: Branches (A8)
+
+    private typealias Segment = SubagentBranches.Segment
+
+    @Test func theBranchGeometryIsInksOwn() {
+        typealias M = LoomTheme.Branches
+        // The status column at 22, one step of 19, 24 pt rows, a 7 pt curve into a 9 pt arm, a 1 pt line.
+        #expect(M.column == 22 && M.step == 19 && M.rowHeight == 24)
+        #expect(M.curveRadius == 7 && M.arm == 9 && M.overhang == 7 && M.lineWidth == 1)
+        #expect(SubagentBranches.x(depth: 1) == 22 && SubagentBranches.x(depth: 2) == 41 && SubagentBranches.x(depth: 3) == 60)
+        // The row's mark starts 13 right of its line.
+        #expect(SubagentBranches.contentLeading(depth: 1) == 35 && SubagentBranches.contentLeading(depth: 2) == 54)
+        #expect(SubagentBranches(depths: [1, 1, 1]).height == 72)
+    }
+
+    @Test func eachRowHangsOnABranchAndTheLastOneEnds() {
+        let tree = SubagentBranches(depths: [1, 1, 1])
+        #expect(tree.branches.map(\.isLast) == [false, false, true])
+        #expect(tree.segments == [
+            .turn(x: 22, rowTop: 0), .line(x: 22, from: -7, to: 24),
+            .turn(x: 22, rowTop: 24), .line(x: 22, from: 17, to: 48),
+            .turn(x: 22, rowTop: 48),
+        ])
+        // Nothing runs below the last row's curve, and a lone row only curves.
+        #expect(SubagentBranches(depths: [1]).segments == [.turn(x: 22, rowTop: 0)])
+    }
+
+    @Test func aNestedBranchStepsFurtherAndItsAncestorsLineRunsOnWhileASiblingIsBelow() {
+        // a (1) / b (2) / c (2) / d (1): a's line runs beside b and c, because d is a sibling of a below them.
+        let tree = SubagentBranches(depths: [1, 2, 2, 1])
+        #expect(tree.branches.map(\.isLast) == [false, false, true, true])
+        #expect(tree.branches.map(\.passing) == [[], [1], [1], []])
+        #expect(tree.segments == [
+            .turn(x: 22, rowTop: 0), .line(x: 22, from: -7, to: 24),
+            .turn(x: 41, rowTop: 24), .line(x: 41, from: 17, to: 48), .line(x: 22, from: 24, to: 48),
+            .turn(x: 41, rowTop: 48), .line(x: 22, from: 48, to: 72),
+            .turn(x: 22, rowTop: 72),
+        ])
+        // With no sibling of a below, its line ends at its own curve and does not run beside the children.
+        let ended = SubagentBranches(depths: [1, 2, 2])
+        #expect(ended.branches.map(\.isLast) == [true, false, true] && ended.branches.map(\.passing) == [[], [], []])
+        // Three levels: the grandchild's two ancestors each run on only while they have a sibling below.
+        let deep = SubagentBranches(depths: [1, 2, 3, 2, 1])
+        #expect(deep.branches.map(\.passing) == [[], [1], [1, 2], [1], []])
+        #expect(deep.branches.map(\.isLast) == [false, false, true, true, true])
+    }
+
+    @Test func theTreesRowsGiveTheBranchesTheirDepths() {
+        let rows = content([running("a"), running("b", depth: 2), finished("f")], finished: true).rows
+        #expect(rows.map(\.id) == ["a", "b", "finished", "f"])
+        let tree = SubagentBranches(depths: rows.map(\.depth))
+        // The fold row and the finished rows hang on branches like any other row.
+        #expect(tree.branches.count == rows.count && tree.branches.last?.isLast == true)
+        #expect(tree.height == CGFloat(rows.count) * 24)
+    }
+
+    /// The path, drawn without a window: the line's pixels sit on the column, the arm reaches 9 pt, and the last branch
+    /// leaves nothing below its curve.
+    @Test func thePathDrawsOneLineAtTheColumnAndEndsAtTheLastRow() throws {
+        let renderer = ImageRenderer(content: SubagentBranchesShape(branches: SubagentBranches(depths: [1, 1]))
+            .stroke(Color.black, style: StrokeStyle(lineWidth: 1))
+            .padding(.top, 10).frame(width: 60, height: 80, alignment: .topLeading).background(Color.white))
+        renderer.scale = 1
+        let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+        func dark(_ x: Int, _ y: Int) -> Bool { (bitmap.colorAt(x: x, y: y)?.redComponent ?? 1) < 0.5 }
+        // The tree starts at y = 10. The first branch starts 7 above it, and carries on through the first row to the second.
+        #expect(dark(22, 3) && dark(22, 12) && dark(22, 30) && dark(22, 36))
+        #expect(!dark(21, 30) && !dark(23, 30) && !dark(22, 1))
+        // The first arm runs along y = 21 to x = 31; the second row's along y = 45.
+        #expect(dark(30, 21) && !dark(32, 21))
+        #expect(dark(30, 45) && !dark(32, 45))
+        // The last branch ends at its curve: nothing runs on below it.
+        #expect(!dark(22, 50) && !dark(22, 60))
     }
 
     // MARK: Hosted in the sidebar
