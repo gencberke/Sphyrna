@@ -100,7 +100,7 @@ cat > "$host/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 # Provider marks shown on conversation cards (design/DESIGN.md §2.4).
-cp assets/harness/harness-claude.png assets/harness/harness-codex.png "$app/Contents/Resources/"
+cp assets/harness/harness-claude.png assets/harness/harness-codex.png assets/harness/harness-codex-template.png "$app/Contents/Resources/"
 revision=$(git rev-parse --short HEAD)
 # Numeric and growing, as LaunchServices expects (build-loom.sh does the same); the commit is LoomRevision.
 build_number=$(git rev-list --count HEAD)

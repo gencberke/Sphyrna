@@ -13,7 +13,7 @@ release_allow=(
   Vendor/SwiftTerm/Package.swift Vendor/SwiftTerm/LICENSE
   Vendor/SwiftTerm/Sources Vendor/SwiftTerm/Plugins Vendor/SwiftTerm/swifterm-terminfo
   # Assets the app bundles (icon, provider marks), and the pictures of the README (not bundled).
-  assets/Loom.icns assets/harness/harness-claude.png assets/harness/harness-codex.png assets/readme
+  assets/Loom.icns assets/harness/harness-claude.png assets/harness/harness-codex.png assets/harness/harness-codex-template.png assets/readme
 )
 
 # Git pathspecs removed from the export. Sources/loom-app/Evidence is the development-only acceptance
