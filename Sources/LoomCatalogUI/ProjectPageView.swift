@@ -2,11 +2,11 @@ import Foundation
 import LoomCore
 import SwiftUI
 
-/// A project's page (V08; design preview `v2-studio-preview` "Project"): its name and folder, a line of
-/// numbers, and three tabs. Sessions lists the project's sessions with their last line beside the presets
-/// and the past week's usage; Branches lists the repository's local branches; Instructions shows the
-/// project's CLAUDE.md. The page reads when it opens and not before (its task ends when it closes);
-/// `DetailContent` draws it for `.projectPage`.
+/// A project's page (V08; DESIGN §10): its head on the window's first 52 pt line, a line of numbers, and three view tabs. Sessions
+/// lists the project's sessions with their last line beside the presets and the past week's usage; Branches lists the repository's
+/// local branches; Instructions shows the project's CLAUDE.md. The page draws no header row: its head is the first line of its
+/// scrolling column, and the window's buttons float over that line while the sidebar is collapsed (`DetailPageChrome`). The page
+/// reads when it opens and not before (its task ends when it closes); `DetailContent` draws it for `.projectPage`.
 struct ProjectPageView: View {
     let model: CatalogModel
     let projectID: UUID
@@ -30,64 +30,159 @@ struct ProjectPageView: View {
         .onDisappear { model.closeProjectPage() }
     }
 
-    private var wide: Bool { width >= LoomTheme.ProjectPage.wideBreakpoint }
+    private var wide: Bool { ProjectPageLayout.isWide(paneWidth: width) }
 
     private func content(_ project: CatalogProject) -> some View {
         let page = model.projectPage
-        let inset = wide ? LoomTheme.ProjectPage.sideInset : LoomTheme.ProjectPage.sideInsetNarrow
+        let inset = ProjectPageLayout.inset(paneWidth: width)
+        let sessions = model.sessionCounts[project.id] ?? page.records.count
         return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                ProjectPageHeader(model: model, project: project)
+                ProjectPageHeader(model: model, project: project, paneWidth: width)
                 ProjectStatsLine(model: model, project: project)
-                ProjectTabs(page: page)
-                switch page.tab {
-                case .sessions: ProjectSessionsTab(model: model, project: project, wide: wide)
-                case .branches: ProjectBranchesTab(model: model)
-                case .instructions: ProjectInstructionsTab(page: page)
+                ViewTabs(tabs: ProjectTabsText.items(sessions: sessions, branches: page.branches?.branches.count),
+                         selection: page.tab) { page.tab = $0 }
+                Group {
+                    switch page.tab {
+                    case .sessions: ProjectSessionsTab(model: model, project: project, wide: wide)
+                    case .branches: ProjectBranchesTab(model: model)
+                    case .instructions: ProjectInstructionsTab(page: page, project: project, now: model.now)
+                    }
                 }
+                .padding(.top, LoomTheme.ProjectPage.panelTop)
             }
             .padding(.horizontal, inset)
-            .padding(.top, LoomTheme.ProjectPage.top)
+            .frame(maxWidth: LoomTheme.ProjectPage.maxWidth, alignment: .leading)
             .padding(.bottom, LoomTheme.ProjectPage.bottom)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
     }
 }
 
-/// The tone stripe, the name and folder, and New session.
+/// Where the page's parts go (pure, so a test reads it).
+enum ProjectPageLayout {
+    /// The side column sits beside the sessions from `wideBreakpoint` of pane width.
+    static func isWide(paneWidth: CGFloat) -> Bool { paneWidth >= LoomTheme.ProjectPage.wideBreakpoint }
+
+    /// The column's side inset: 32, and 20 below the breakpoint.
+    static func inset(paneWidth: CGFloat) -> CGFloat {
+        isWide(paneWidth: paneWidth) ? LoomTheme.ProjectPage.sideInset : LoomTheme.ProjectPage.sideInsetNarrow
+    }
+
+    /// How far the column's content starts from the pane's leading edge: the centred column's margin and its inset.
+    static func columnEdge(paneWidth: CGFloat) -> CGFloat {
+        max(0, (paneWidth - min(paneWidth, LoomTheme.ProjectPage.maxWidth)) / 2) + inset(paneWidth: paneWidth)
+    }
+
+    /// How much further the head keeps from the column's leading edge so that what floats over the top 52 pt stays clear: the head
+    /// starts at `max(the column's inset, detailLeadingClearance)`, less what the column already has. While the "Preparing…" notice
+    /// shows (`noticeWidth`), the head also starts past it: the notice floats at the clearance while the sidebar is collapsed and at
+    /// the header's leading inset while it is open, and takes no layout space.
+    static func headLeadingExtra(paneWidth: CGFloat, clearance: CGFloat, noticeWidth: CGFloat?) -> CGFloat {
+        let start = noticeWidth.map {
+            (clearance > 0 ? clearance : LoomTheme.Header.leadingInset) + $0 + LoomTheme.Space.detailSpacing
+        } ?? clearance
+        return max(0, start - columnEdge(paneWidth: paneWidth))
+    }
+}
+
+/// The head: the project's mark (26), its name in title type and its folder in mono, which can be selected; at the trailing edge,
+/// 8 apart, ⋯ (the project menu, `ProjectActionsMenu`) and New session, the page's main action.
 private struct ProjectPageHeader: View {
     let model: CatalogModel
     let project: CatalogProject
+    let paneWidth: CGFloat
+    /// What keeps the head clear of the window's buttons and "Show Sidebar" (`ProjectPageLayout.headLeadingExtra`).
+    @Environment(\.detailLeadingClearance) private var clearance
+    @State private var noticeWidth: CGFloat = 0
 
     var body: some View {
-        HStack(alignment: .center, spacing: LoomTheme.ProjectPage.headerGap) {
-            if let tone = model.projectTone(forProject: project.id) {
-                RoundedRectangle(cornerRadius: LoomTheme.ProjectColor.stripeRadius)
-                    .fill(LoomTheme.ProjectColor.stripe(tone))
-                    .frame(width: LoomTheme.ProjectPage.stripe.width, height: LoomTheme.ProjectPage.stripe.height)
-                    .accessibilityHidden(true)
-            }
-            VStack(alignment: .leading, spacing: LoomTheme.Space.aboutHeadSpacing) {
-                Text(project.name).font(LoomTheme.ProjectPage.name).foregroundStyle(LoomTheme.Text.primary)
-                    .lineLimit(1).truncationMode(.tail)
+        let notice = model.preparingNotice
+        HStack(spacing: LoomTheme.ProjectPage.headGap) {
+            ProjectMarkView(name: project.name, tone: model.projectTone(forProject: project.id), size: .page)
+            HStack(alignment: .firstTextBaseline, spacing: LoomTheme.ProjectPage.headGap + LoomTheme.ProjectPage.pathLeading) {
+                Text(project.name).projectType(LoomTheme.ProjectPage.name).foregroundStyle(LoomTheme.Text.primary)
+                    .lineLimit(1).truncationMode(.tail).layoutPriority(1)
                     .accessibilityAddTraits(.isHeader).accessibilityIdentifier("project-name")
                 Text((project.path as NSString).abbreviatingWithTildeInPath)
-                    .font(LoomTheme.ProjectPage.pathFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .projectType(LoomTheme.ProjectPage.path).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                     .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                    .help(project.path)
                     .accessibilityIdentifier("project-path")
             }
             Spacer(minLength: LoomTheme.Space.detailMinSpacer)
-            Button { model.beginNewSession(projectID: project.id) } label: {
-                Label("New session", systemImage: "square.and.pencil").lineLimit(1)
+            HStack(spacing: LoomTheme.ProjectPage.endGap) {
+                Menu {
+                    ProjectActionsMenu(model: model, project: project)
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .menuStyle(.button).buttonStyle(ChromeButtonStyle())
+                .menuIndicator(.hidden).fixedSize()
+                .help("Project actions")
+                .accessibilityLabel("Actions for \(project.name)")
+                .accessibilityIdentifier("project-actions")
+                Button { model.beginNewSession(projectID: project.id) } label: {
+                    HStack(spacing: LoomTheme.ProjectPage.newSessionGlyphGap) {
+                        Image(systemName: "square.and.pencil").font(LoomTheme.ProjectPage.newSessionGlyph)
+                        Text("New session").lineLimit(1)
+                    }
+                }
+                .buttonStyle(ControlButtonStyle(kind: .primary, size: .page))
+                .accessibilityIdentifier("project-new-session")
             }
-            .buttonStyle(AccentButtonStyle(kind: .filled))
-            .accessibilityIdentifier("project-new-session")
+            .fixedSize()
+        }
+        .padding(.leading, ProjectPageLayout.headLeadingExtra(
+            paneWidth: paneWidth, clearance: clearance, noticeWidth: notice == nil ? nil : noticeWidth))
+        .frame(height: LoomTheme.ProjectPage.headHeight)
+        // The notice floats over this line and takes no layout space; a copy of it, hidden, tells how wide it is.
+        .background(alignment: .leading) {
+            if let notice {
+                PreparingNotice(text: notice).fixedSize()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { noticeWidth = $0 }
+                    .hidden()
+            }
         }
     }
 }
 
-/// "3 running · 18 sessions · 4.8M tokens, past 7 days · main": the numbers the page already holds. The
-/// figures wrap as whole items when the page is narrow; an item is never split across two lines.
+// MARK: The stats line
+
+/// The words of the stats line, "3 running · 9 sessions · 3.1M tokens, past 7 days" and the branch. Nothing is counted when there is
+/// nothing to count: no "running" without a run, no tokens without usage, no branch outside Git (DESIGN §10 Stats). The sessions
+/// figure is always there, "0 sessions" included.
+enum ProjectStatsText {
+    enum Item: Equatable {
+        case figure(count: Int, noun: String)
+        case tokens(figure: String, spoken: String)
+        case branch(String)
+
+        /// What assistive technologies read for the item.
+        var accessibilityLabel: String {
+            switch self {
+            case .figure(let count, let noun): "\(count) \(noun)"
+            case .tokens(_, let spoken): "\(spoken) tokens in the past 7 days"
+            case .branch(let label): "Branch \(label)"
+            }
+        }
+    }
+
+    /// `tokens` is the past week's total (`nil` while unread or unreadable); `branch` is the folder's, `nil` or unavailable outside Git.
+    static func items(running: Int, total: Int, tokens: Int64?, branch: GitBranch?) -> [Item] {
+        var items: [Item] = []
+        if running > 0 { items.append(.figure(count: running, noun: "running")) }
+        items.append(.figure(count: total, noun: total == 1 ? "session" : "sessions"))
+        if let tokens, tokens > 0 {
+            items.append(.tokens(figure: UsageFormat.tokens(tokens), spoken: UsageFormat.spokenTokens(tokens)))
+        }
+        if let branch, branch != .unavailable { items.append(.branch(branch.label)) }
+        return items
+    }
+}
+
+/// The numbers the page already holds. The items wrap as whole items when the page is narrow; an item is never split across two
+/// lines.
 private struct ProjectStatsLine: View {
     let model: CatalogModel
     let project: CatalogProject
@@ -100,69 +195,55 @@ private struct ProjectStatsLine: View {
         let running = page.records.filter { model.liveStates[$0.session.id]?.runID != nil }.count
         let total = model.sessionCounts[project.id] ?? page.records.count
         let branch = model.branches[project.path] ?? page.branches.map(\.current)
-        return FlowLayout(spacing: LoomTheme.ProjectPage.statsGap, lineSpacing: LoomTheme.ProjectPage.statsLineGap,
-                          centered: false) {
-            if running > 0 { figure(running, "running") }
-            figure(total, total == 1 ? "session" : "sessions")
-            if let usage = page.usage, usage.tokens.total > 0 {
-                HStack(spacing: LoomTheme.ProjectPage.figureGap) {
-                    Text(UsageFormat.tokens(usage.tokens.total)).fontWeight(.semibold).foregroundStyle(LoomTheme.Text.primary)
-                    Text("tokens, past 7 days")
-                }
-                .lineLimit(1).fixedSize()
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(UsageFormat.spokenTokens(usage.tokens.total)) tokens in the past 7 days")
-            }
-            if let branch, branch != .unavailable {
-                Text(branch.label).lineLimit(1).fixedSize().accessibilityLabel("Branch \(branch.label)")
+        let items = ProjectStatsText.items(running: running, total: total, tokens: page.usage?.tokens.total, branch: branch)
+        return FlowLayout(spacing: LoomTheme.ProjectPage.statsGap, lineSpacing: LoomTheme.ProjectPage.statsLineGap, centered: false) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                view(item)
+                    .lineLimit(1).fixedSize()
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(item.accessibilityLabel)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
+        .projectType(LoomTheme.ProjectPage.stats).foregroundStyle(LoomTheme.Text.secondaryStyle)
         .padding(.top, LoomTheme.ProjectPage.statsTop).padding(.bottom, LoomTheme.ProjectPage.statsBottom)
         .accessibilityIdentifier("project-stats")
     }
 
-    private func figure(_ count: Int, _ noun: String) -> some View {
+    @ViewBuilder private func view(_ item: ProjectStatsText.Item) -> some View {
+        switch item {
+        case .figure(let count, let noun): figure("\(count)", noun)
+        case .tokens(let figure, _): self.figure(figure, "tokens, past 7 days")
+        case .branch(let label):
+            HStack(spacing: LoomTheme.ProjectPage.statsBranchGap) {
+                Image(systemName: "arrow.triangle.branch").font(LoomTheme.ProjectPage.statsBranchGlyph)
+                Text(label).projectType(LoomTheme.ProjectPage.statsBranch)
+            }
+        }
+    }
+
+    private func figure(_ figure: String, _ noun: String) -> some View {
         HStack(spacing: LoomTheme.ProjectPage.figureGap) {
-            Text("\(count)").fontWeight(.semibold).foregroundStyle(LoomTheme.Text.primary)
+            Text(figure).projectType(LoomTheme.ProjectPage.statsFigure).foregroundStyle(LoomTheme.Text.primary)
             Text(noun)
         }
-        .lineLimit(1).fixedSize()
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(count) \(noun)")
     }
 }
 
-/// Sessions, Branches, Instructions: a 32 pt bar with a 2 pt accent underline under the open one.
-private struct ProjectTabs: View {
-    let page: ProjectPageState
+// MARK: The tabs
 
-    var body: some View {
-        HStack(spacing: LoomTheme.ProjectPage.tabGap) {
-            ForEach(ProjectPageTab.allCases, id: \.self) { tab in
-                Button { page.tab = tab } label: {
-                    Text(tab.rawValue)
-                        .font(LoomTheme.ProjectPage.tabFont)
-                        .foregroundStyle(page.tab == tab ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
-                        .padding(.horizontal, LoomTheme.ProjectPage.tabInset)
-                        .frame(height: LoomTheme.ProjectPage.tabHeight)
-                        .overlay(alignment: .bottom) {
-                            Rectangle().fill(page.tab == tab ? LoomTheme.Accent.base : Color.clear)
-                                .frame(height: LoomTheme.ProjectPage.tabUnderline)
-                        }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(RowButtonStyle(radius: LoomTheme.Highlight.radiusCompact, key: "project-tab:\(tab.rawValue)"))
-                .focusEffectDisabled()
-                .accessibilityAddTraits(page.tab == tab ? .isSelected : [])
-                .accessibilityIdentifier("project-tab-\(tab.rawValue.lowercased())")
+/// The view tabs' titles and counts: Sessions and Branches show how many they hold (nothing while there is none, or while the
+/// branches are unread), Instructions none.
+enum ProjectTabsText {
+    static func items(sessions: Int, branches: Int?) -> [ViewTabItem<ProjectPageTab>] {
+        ProjectPageTab.allCases.map { tab in
+            let count: Int? = switch tab {
+            case .sessions: sessions
+            case .branches: branches
+            case .instructions: nil
             }
-            Spacer(minLength: 0)
+            return ViewTabItem(id: tab, title: tab.rawValue, count: count.flatMap { $0 > 0 ? $0 : nil },
+                               identifier: "project-tab-\(tab.rawValue.lowercased())", hoverKey: "project-tab:\(tab.rawValue)")
         }
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
-        }
-        .padding(.bottom, LoomTheme.ProjectPage.tabsBottom)
     }
 }

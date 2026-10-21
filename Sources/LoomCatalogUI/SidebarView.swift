@@ -401,7 +401,6 @@ struct ProjectHeader: View {
     var body: some View {
         let count = model.sessionCounts[project.id] ?? 0
         let attention = model.attention(forProject: project.id)
-        let index = model.projects.firstIndex { $0.id == project.id } ?? 0
         let expanded = !project.collapsed
         let selected = model.destination == .projectPage(project.id)
         let key = "sidebar-project:\(project.id)"
@@ -439,19 +438,7 @@ struct ProjectHeader: View {
                 .focused($focused, equals: .start)
                 .revealed(showsControls)
             Menu {
-                Button("Move Up") { Task { await model.moveProject(project.id, by: -1) } }
-                    .disabled(index == 0)
-                Button("Move Down") { Task { await model.moveProject(project.id, by: 1) } }
-                    .disabled(index >= model.projects.count - 1)
-                Divider()
-                if model.projectColorsEnabled {
-                    ProjectColorMenu(model: model, project: project)
-                    Divider()
-                }
-                NewConversationButtons(model: model, projectID: project.id, suffix: " Here")
-                Divider()
-                Button("Remove Empty Project") { Task { await model.removeProject(project.id) } }
-                    .disabled(count > 0)
+                ProjectActionsMenu(model: model, project: project)
             } label: {
                 Image(systemName: "ellipsis")
             }
@@ -476,13 +463,7 @@ struct ProjectHeader: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture { model.showProjectPage(project.id) }
-        .contextMenu {
-            NewConversationButtons(model: model, projectID: project.id)
-            if model.projectColorsEnabled {
-                Divider()
-                ProjectColorMenu(model: model, project: project)
-            }
-        }
+        .contextMenu { ProjectActionsMenu(model: model, project: project) }
         .accessibilityElement(children: .contain)
         .help(project.path)
         // The gap above a head belongs to the list, not to the head's hover and click.
@@ -774,18 +755,17 @@ struct SessionCardView: View {
     }
 }
 
-/// The "new conversation" entries of the footer menu, a project's actions menu
-/// and a project row's context menu; all go through the model's one start path. Codex is listed in every
-/// build (D-69); where the build cannot start it the entry is disabled and followed by the reason.
+/// The "new conversation" entries of the footer menu; all go through the model's one start path (a project's menu lists the same
+/// entries through `ProjectActionsMenu`). Codex is listed in every build (D-69); where the build cannot start it the entry is
+/// disabled and followed by the reason.
 struct NewConversationButtons: View {
     let model: CatalogModel
     let projectID: UUID?
-    var suffix = ""
 
     var body: some View {
         ForEach(NewConversationAction.listed(on: model), id: \.provider) { action in
             Button { action.perform(on: model, projectID: projectID) } label: {
-                HarnessMenuLabel(provider: action.provider, title: action.title + suffix)
+                HarnessMenuLabel(provider: action.provider, title: action.title)
             }
             .disabled(!action.isEnabled(on: model, projectID: projectID))
             if let reason = action.unavailableReason(on: model) { Text(reason) }

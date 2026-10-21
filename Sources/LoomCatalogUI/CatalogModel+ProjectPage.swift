@@ -129,8 +129,14 @@ extension CatalogSession {
 enum ProjectSessionLine {
     /// The reason's line, unless it only says "Turn done": the transcript's last answer is more than that.
     static func text(reason: StatusReason?, transcript: String?) -> String? {
-        if let reason, let line = SessionReasonLine(reason), !isBareTurnDone(reason) { return line.text }
-        if let transcript, !transcript.isEmpty { return transcript }
+        line(reason: reason, transcript: transcript)?.text
+    }
+
+    /// The same line as a lead and a mono end (a command or a path an approval names), which the row draws in two voices. A
+    /// transcript's words are all lead.
+    static func line(reason: StatusReason?, transcript: String?) -> SessionReasonLine? {
+        if let reason, let line = SessionReasonLine(reason), !isBareTurnDone(reason) { return line }
+        if let transcript, !transcript.isEmpty { return SessionReasonLine(text: transcript) }
         return nil
     }
 

@@ -75,10 +75,11 @@ struct UIFixRoundTests {
         #expect(FlowLayout.lines(widths: [], spacing: 10, available: 100) == [[]])
     }
 
-    @Test func theSideCardsGoUnderTheListWhenNarrowAndNoEmptyPresetsCard() {
-        #expect(ProjectSessionsLayout.sideCards(wide: true, hasPresets: false) == [.presets, .usage])
-        #expect(ProjectSessionsLayout.sideCards(wide: false, hasPresets: true) == [.presets, .usage])
-        #expect(ProjectSessionsLayout.sideCards(wide: false, hasPresets: false) == [.usage])
+    // Moved with the project page's Ink look (DESIGN §10 Side cards, C1): narrow puts Presets above the list and Past 7 days under it,
+    // and the Presets card is always there (it used to drop out while the project had no preset).
+    @Test func narrowPutsPresetsAboveTheListAndThePastWeekBelowAndTheCardIsAlwaysThere() {
+        #expect(ProjectSessionsLayout.arrangement(wide: true) == .init(main: [.list], side: [.presets, .usage]))
+        #expect(ProjectSessionsLayout.arrangement(wide: false) == .init(main: [.presets, .list, .usage], side: []))
     }
 
     // MARK: Item 4: counts say what they count

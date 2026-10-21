@@ -17,6 +17,10 @@ enum ProjectBranchUse {
 struct ProjectBranchesTab: View {
     let model: CatalogModel
 
+    /// Said in place of the list for a folder outside Git, and while the branches are read.
+    static let notRepository = "This folder is not in a Git repository, or its branches could not be read."
+    static let reading = "Reading branches\u{2026}"
+
     var body: some View {
         let page = model.projectPage
         VStack(alignment: .leading, spacing: 0) {
@@ -32,13 +36,13 @@ struct ProjectBranchesTab: View {
                 }
                 if branches.truncated {
                     Text("Only the first \(branches.branches.count) branches are listed.")
-                        .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                        .padding(.top, LoomTheme.ProjectPage.cardGap)
+                        .projectType(LoomTheme.ProjectPage.cutNote).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                        .padding(.top, LoomTheme.ProjectPage.cutNoteTop)
                 }
             } else if page.branchesLoad == .loading {
-                note("Reading branches\u{2026}")
+                ProjectPageNote(text: Self.reading, identifier: "project-branches-note")
             } else {
-                note("This folder is not in a Git repository, or its branches could not be read.")
+                ProjectPageNote(text: Self.notRepository, identifier: "project-branches-note")
             }
         }
         .frame(maxWidth: LoomTheme.ProjectPage.instructionsMaxWidth, alignment: .leading)
@@ -46,46 +50,62 @@ struct ProjectBranchesTab: View {
         .accessibilityLabel("Branches")
         .accessibilityIdentifier("project-branches")
     }
+}
 
-    private func note(_ text: String) -> some View {
-        Text(text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
-            .padding(LoomTheme.ProjectPage.noticePadding)
-            .accessibilityIdentifier("project-branches-note")
+/// A line in place of a list: 12.5 secondary on 1.5, 10 above and below, 12 in.
+private struct ProjectPageNote: View {
+    let text: String
+    let identifier: String
+
+    var body: some View {
+        Text(text).projectType(LoomTheme.ProjectPage.note).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            .lineSpacing(LoomTheme.ProjectPage.noteSpacing)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, LoomTheme.ProjectPage.notePaddingH).padding(.vertical, LoomTheme.ProjectPage.notePaddingV)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier(identifier)
     }
 }
 
+/// A branch: its glyph, its name (primary and with an accent "current" for the project's own checkout), the folder of another
+/// worktree that has it, then how many listed sessions work on it and when its ref last changed.
 private struct ProjectBranchRow: View {
     let branch: ProjectBranch
     let sessions: Int
     let now: Date
 
     var body: some View {
-        HStack(spacing: LoomTheme.ProjectPage.rowColumnGap) {
-            Image(systemName: "arrow.triangle.branch").font(LoomTheme.ProjectPage.cardRowGlyph)
-                .foregroundStyle(LoomTheme.Text.secondaryStyle)
-                .frame(width: LoomTheme.Layout.indicatorSlot.width)
-            Text(branch.name).font(LoomTheme.ProjectPage.branchNameFont)
+        HStack(spacing: LoomTheme.ProjectPage.branchGap) {
+            Image(systemName: "arrow.triangle.branch").font(LoomTheme.ProjectPage.branchGlyph)
+                .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                .frame(width: LoomTheme.ProjectPage.branchGlyphBox)
+            Text(branch.name).projectType(LoomTheme.ProjectPage.branchName)
                 .foregroundStyle(branch.isCurrent ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
                 .lineLimit(1).truncationMode(.middle)
             if branch.isCurrent {
-                Text("current").font(LoomTheme.Typography.statusLabel).foregroundStyle(LoomTheme.Accent.high)
+                Text("current").projectType(LoomTheme.ProjectPage.branchCurrent).foregroundStyle(LoomTheme.Accent.high)
+                    .fixedSize()
             } else if let worktree = branch.worktree {
-                Text("worktree " + (worktree as NSString).abbreviatingWithTildeInPath)
-                    .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                let words = Text("worktree ").font(LoomTheme.ProjectPage.branchWorktree.font)
+                let folder = Text((worktree as NSString).abbreviatingWithTildeInPath)
+                    .font(LoomTheme.ProjectPage.branchWorktreeFolder.font)
+                Text("\(words)\(folder)")
+                    .foregroundStyle(LoomTheme.Text.tertiaryStyle)
                     .lineLimit(1).truncationMode(.head)
             }
             Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             if sessions > 0 {
                 Text(sessions == 1 ? "1 session" : "\(sessions) sessions")
-                    .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .projectType(LoomTheme.ProjectPage.branchSessions).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .fixedSize()
             }
             if let updated = branch.updated {
-                Text(RelativeTime.string(from: updated, to: now)).font(LoomTheme.ProjectPage.rowTime)
-                    .foregroundStyle(LoomTheme.Text.secondaryStyle)
-                    .frame(width: LoomTheme.ProjectPage.rowTimeWidth, alignment: .trailing)
+                Text(RelativeTime.string(from: updated, to: now)).projectType(LoomTheme.ProjectPage.branchTime)
+                    .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                    .frame(width: LoomTheme.ProjectPage.branchTimeWidth, alignment: .trailing)
             }
         }
-        .frame(minHeight: LoomTheme.ProjectPage.branchRowHeight)
+        .frame(height: LoomTheme.ProjectPage.branchRowHeight)
         .padding(.horizontal, LoomTheme.ProjectPage.rowPaddingH)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel([branch.name, branch.isCurrent ? "current" : nil, branch.worktree.map { _ in "in a worktree" },
@@ -94,39 +114,69 @@ private struct ProjectBranchRow: View {
     }
 }
 
-/// The Instructions tab: the project's CLAUDE.md, read-only.
+/// The words of the Instructions line: "13 lines · 2d" (the size when the file was cut), and the age as the rows write it.
+enum ProjectInstructionsText {
+    static func meta(_ instructions: ProjectInstructions, now: Date) -> String {
+        var parts: [String] = []
+        if let lines = instructions.lineCount { parts.append(lines == 1 ? "1 line" : "\(lines) lines") }
+        else { parts.append(size(instructions.byteCount)) }
+        if let modified = instructions.modified { parts.append(RelativeTime.string(from: modified, to: now)) }
+        return parts.joined(separator: " \u{00B7} ")
+    }
+
+    static func size(_ bytes: Int) -> String {
+        bytes >= 1_024 ? "\((bytes + 512) / 1_024) KB" : "\(bytes) bytes"
+    }
+
+    static let none = "This project has no CLAUDE.md. Claude reads one from the project folder when it starts a session there."
+    static let reading = "Reading CLAUDE.md\u{2026}"
+}
+
+/// The Instructions tab: the project's CLAUDE.md, read-only, with Open in Editor beside its name.
 struct ProjectInstructionsTab: View {
     let page: ProjectPageState
+    let project: CatalogProject
+    let now: Date
     @State private var flags: Set<String> = []
     @State private var context = ChatRowContext()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.ProjectPage.cardGap) {
+        VStack(alignment: .leading, spacing: 0) {
             if let instructions = page.instructions {
-                HStack(spacing: LoomTheme.Space.chipInset) {
-                    Image(systemName: "book").font(LoomTheme.ProjectPage.cardRowGlyph)
-                    Text(instructions.name).font(LoomTheme.ProjectPage.branchNameFont)
-                    Text(meta(instructions)).font(LoomTheme.Typography.caption)
-                    Spacer(minLength: 0)
+                HStack(spacing: LoomTheme.ProjectPage.instructionsGap) {
+                    Image(systemName: "book").font(LoomTheme.ProjectPage.instructionsGlyph)
+                        .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                    Text(instructions.name).projectType(LoomTheme.ProjectPage.instructionsName).foregroundStyle(LoomTheme.Text.primary)
+                    Text(ProjectInstructionsText.meta(instructions, now: now))
+                        .projectType(LoomTheme.ProjectPage.instructionsMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                    Spacer(minLength: LoomTheme.Space.detailMinSpacer)
+                    ChatLinkButton(title: "Open in Editor", symbol: "arrow.up.right.square", identified: false) {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: (project.path as NSString).appendingPathComponent(instructions.name)))
+                    }
+                    .accessibilityIdentifier("project-open-claude-md")
                 }
-                .foregroundStyle(LoomTheme.Text.secondaryStyle)
-                .accessibilityElement(children: .combine)
+                .frame(height: LoomTheme.ProjectPage.instructionsLineHeight)
+                let shape = RoundedRectangle(cornerRadius: LoomTheme.ProjectPage.cardRadius)
                 ChatMarkdownView(blocks: instructions.blocks, flags: flags, rowID: "project-instructions", context: context)
-                    .padding(LoomTheme.ProjectPage.instructionsPadding)
-                    .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.card).fill(LoomTheme.Surface.card))
-                    .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.card)
-                        .strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
+                    .padding(.horizontal, LoomTheme.ProjectPage.instructionsPaddingH)
+                    .padding(.top, LoomTheme.ProjectPage.instructionsPaddingTop).padding(.bottom, LoomTheme.ProjectPage.instructionsPaddingBottom)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(shape.fill(LoomTheme.Surface.card))
+                    .overlay(shape.strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
+                    .depth(LoomTheme.Elevation.card)
+                    .padding(.top, LoomTheme.ProjectPage.instructionsCardTop)
                     .accessibilityIdentifier("project-claude-md")
                 if instructions.truncated {
-                    Text("Showing the first \(Self.size(ProjectInstructionsReader.maxBytes)) of \(Self.size(instructions.byteCount)). "
-                         + "Open the file to read the rest.")
-                        .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    Text("Showing the first \(ProjectInstructionsText.size(ProjectInstructionsReader.maxBytes)) of "
+                         + "\(ProjectInstructionsText.size(instructions.byteCount)). Open the file to read the rest.")
+                        .projectType(LoomTheme.ProjectPage.cutNote).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                        .padding(.top, LoomTheme.ProjectPage.cutNoteTop)
                         .accessibilityIdentifier("project-claude-md-truncated")
                 }
             } else if page.instructionsLoad == .loading {
-                note("Reading CLAUDE.md\u{2026}")
+                ProjectPageNote(text: ProjectInstructionsText.reading, identifier: "project-instructions-note")
             } else {
-                note("This project has no CLAUDE.md. Claude reads one from the project folder when it starts a session there.")
+                ProjectPageNote(text: ProjectInstructionsText.none, identifier: "project-instructions-note")
             }
         }
         .frame(maxWidth: LoomTheme.ProjectPage.instructionsMaxWidth, alignment: .leading)
@@ -136,26 +186,5 @@ struct ProjectInstructionsTab: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Instructions")
         .accessibilityIdentifier("project-instructions")
-    }
-
-    private func note(_ text: String) -> some View {
-        Text(text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
-            .padding(LoomTheme.ProjectPage.noticePadding)
-            .accessibilityIdentifier("project-instructions-note")
-    }
-
-    private func meta(_ instructions: ProjectInstructions) -> String {
-        var parts: [String] = []
-        if let lines = instructions.lineCount { parts.append(lines == 1 ? "1 line" : "\(lines) lines") }
-        else { parts.append(Self.size(instructions.byteCount)) }
-        if let modified = instructions.modified {
-            let age = RelativeTime.string(from: modified, to: Date())
-            parts.append(age == "now" ? "changed just now" : "changed \(age) ago")
-        }
-        return parts.joined(separator: " \u{00B7} ")
-    }
-
-    static func size(_ bytes: Int) -> String {
-        bytes >= 1_024 ? "\((bytes + 512) / 1_024) KB" : "\(bytes) bytes"
     }
 }

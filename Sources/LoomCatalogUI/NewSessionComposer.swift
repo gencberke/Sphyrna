@@ -85,7 +85,6 @@ enum NewSessionLayout {
     static let textTop: CGFloat = LoomTheme.Composer.textTop
     static let textMinimumHeight: CGFloat = 60
     static let textMaximumHeight: CGFloat = 220
-    static let chipHeight: CGFloat = 26
     static let chipSpacing: CGFloat = LoomTheme.Composer.chipGap
 }
 
@@ -197,35 +196,4 @@ final class DraftComposerHost: ComposerEditorHost {
     func paste(_ pasteboard: NSPasteboard, plain: Bool) -> Bool { false }
     func drop(_ pasteboard: NSPasteboard) -> Bool { false }
     func editorAttached(_ bridge: (any ComposerEditorBridge)?) {}
-}
-
-/// A quiet chip: the control fill, hairline, small text; used for presets and the strip.
-struct ChipButtonStyle: ButtonStyle {
-    var emphasized = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        Chip(configuration: configuration, emphasized: emphasized)
-    }
-
-    private struct Chip: View {
-        let configuration: ButtonStyle.Configuration
-        let emphasized: Bool
-        @State private var hovering = false
-        @Environment(\.isEnabled) private var enabled
-
-        var body: some View {
-            configuration.label
-                .font(LoomTheme.Typography.small)
-                .foregroundStyle(hovering || emphasized ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
-                .padding(.horizontal, LoomTheme.Space.cardV).frame(minHeight: NewSessionLayout.chipHeight)
-                .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.sm).fill(
-                    configuration.isPressed ? LoomTheme.Surface.controlPressed
-                        : (hovering ? LoomTheme.Surface.controlHover : LoomTheme.Surface.control)))
-                .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.sm).strokeBorder(
-                    LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
-                .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.sm))
-                .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
-                .onHover { hovering = $0 }
-        }
-    }
 }

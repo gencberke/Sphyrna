@@ -68,7 +68,7 @@ struct HighlightTests {
         #expect(LoomTheme.Composer.menuInset == LoomTheme.Highlight.inset)
         #expect(PaletteMetrics.rowRadius == LoomTheme.Highlight.radius)
         #expect(PaletteMetrics.listPadding == LoomTheme.Highlight.inset)
-        #expect(LoomTheme.ProjectPage.rowRadius == LoomTheme.Highlight.radius)
+        #expect(LoomTheme.ProjectPage.rowRadius == LoomTheme.Highlight.radiusCompact, "the project page's rows are DESIGN's 8")
         #expect(LoomTheme.Layout.minimumHitTarget == CGSize(width: 24, height: 24))
         #expect(ChromeButtonStyle.hitSize(for: LoomTheme.Layout.projectMenuButton).height >= 24, "a pill never shrinks a hit area")
     }
@@ -185,9 +185,9 @@ struct HighlightTests {
             ("backGap", LoomTheme.Header.backGap), ("backTrailing", LoomTheme.Header.backTrailing),
             ("Home.sideInset", LoomTheme.Home.sideInset),
             ("Home.sideCardPadding", LoomTheme.Home.sideCardPadding), ("Home.itemPadding", LoomTheme.Home.itemPadding),
-            ("Page.sideInset", LoomTheme.ProjectPage.sideInset), ("Page.statsGap", LoomTheme.ProjectPage.statsGap),
-            ("Page.rowPaddingV", LoomTheme.ProjectPage.rowPaddingV), ("Page.cardPadding", LoomTheme.ProjectPage.cardPadding),
-            ("Page.statGap", LoomTheme.ProjectPage.statGap), ("Page.instructionsPadding", LoomTheme.ProjectPage.instructionsPadding),
+            ("Page.sideInset", LoomTheme.ProjectPage.sideInset), ("Page.columnGap", LoomTheme.ProjectPage.columnGap),
+            ("Page.rowPaddingH", LoomTheme.ProjectPage.rowPaddingH), ("Page.rowPaddingTop", LoomTheme.ProjectPage.rowPaddingTop),
+            ("Page.cardPadding", LoomTheme.ProjectPage.cardPadding), ("Page.statGap", LoomTheme.ProjectPage.statGap),
             ("Inspector.bodyInset", LoomTheme.Inspector.bodyInset),
             ("Inspector.sectionGap", LoomTheme.Inspector.sectionGap), ("Inspector.sectionTitleGap", LoomTheme.Inspector.sectionTitleGap),
             ("Inspector.agentPaddingV", LoomTheme.Inspector.agentPaddingV),

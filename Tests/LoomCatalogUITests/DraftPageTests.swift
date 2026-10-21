@@ -99,7 +99,7 @@ struct DraftPageTests {
         #expect(L.column == 720 && L.sideInset == 40 && L.bottomLift == 70)
         #expect(L.composerWidth == 680 && L.composerWidth < L.column)
         #expect([L.folderTop, L.composerTop, L.keysTop, L.stripTop, L.presetsTop] == [16, 30, 14, 26, 14])
-        #expect(L.presetGap == 8 && L.chipHeight == 26)
+        #expect(L.presetGap == 8)
         // The composer's own insets stay the live composer's (FixRoundLookTests ties the three).
         #expect(L.textInset == LoomTheme.Composer.textInsetH && L.textTop == LoomTheme.Composer.textTop)
     }
