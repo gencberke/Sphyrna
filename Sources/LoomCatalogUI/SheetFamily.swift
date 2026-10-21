@@ -332,6 +332,7 @@ struct SheetList: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(label).projectType(LoomTheme.InkType.label).textCase(.uppercase)
                 .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                .frame(height: LoomTheme.Sheet.labelLine)
                 .padding(.bottom, LoomTheme.Sheet.labelBottom)
                 .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: LoomTheme.Sheet.itemGap) {

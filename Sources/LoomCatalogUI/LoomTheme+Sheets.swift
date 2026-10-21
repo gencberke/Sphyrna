@@ -29,6 +29,8 @@ extension LoomTheme {
 
         /// A list under a label: 14 below the text, the label 6 above its items; an item has a 4 pt dot 13 in and is 2 from the next.
         static let listTop: CGFloat = 14
+        /// The label's line is as high as its size (the reference's `line-height: 1`), 6 above its items.
+        static let labelLine = InkType.label.size
         static let labelBottom: CGFloat = 6
         static let itemInset: CGFloat = 13
         static let itemGap: CGFloat = 2

@@ -131,6 +131,23 @@ struct SettingsLayoutTests {
         #expect(abs(note - S.noteLine) <= 0.5, "\(note)")
     }
 
+    /// A list's label sits on the reference's 10.5 line: the list's 14 pt top, that line and its 6 pt bottom, then the first item's
+    /// exact line. A second item adds the item gap and its line.
+    @Test func aSheetListsLabelSitsOnItsOwnLine() {
+        let Sheet = LoomTheme.Sheet.self
+        func height<V: View>(_ view: V) -> CGFloat {
+            let host = NSHostingView(rootView: view.frame(width: Sheet.width))
+            host.layoutSubtreeIfNeeded()
+            return host.fittingSize.height
+        }
+        let one = height(SheetList(label: "Removed", items: ["One short line"]))
+        // The host lays each line out on whole points: the 10.5 label line is 11 high and the 18.75 item line 19.
+        let expected = Sheet.listTop + Sheet.labelLine.rounded(.up) + Sheet.labelBottom + Sheet.textLine.rounded(.up)
+        #expect(abs(one - expected) <= 0.5, "\(one)")
+        let two = height(SheetList(label: "Removed", items: ["One short line", "Another short line"]))
+        #expect(abs(two - (one + Sheet.itemGap + Sheet.textLine)) <= 0.5, "\(two)")
+    }
+
     /// At 680 pt wide the description of "Sessions run in" and of "Mode of new sessions" took two lines and was cut to one
     /// with an ellipsis (a row beside a segmented control or a menu was sized from the control), while rows beside a switch
     /// showed in full. A description is at most 380 wide now (the reference's), so the first two take two lines or more and
