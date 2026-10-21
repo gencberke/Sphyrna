@@ -526,7 +526,7 @@ struct ConversationDeletionTests {
         for (event, fields) in [("Stop", ["last_assistant_message": "late"]), ("SessionEnd", ["reason": "other"]),
                                 ("SessionStart", ["source": "resume"]), ("UserPromptSubmit", [:])] as [(String, [String: Any])] {
             let late = try Self.envelope(launch.sessionID, run: launch.runID, event: event, providerSession: providerID, fields: fields)
-            #expect(try await world.runtime.claudeAdapter.receive(late) == .staleRun)
+            #expect(try await world.runtime.harnesses.claude.adapter.receive(late) == .staleRun)
         }
         #expect(try await world.catalog.sessions().isEmpty)
         #expect(try await world.catalog.session(provider: .claude, conversationID: providerID) == nil)
@@ -551,7 +551,7 @@ struct ConversationDeletionTests {
         // The surviving run reports a SessionStart(resume) of the deleted provider conversation.
         let resume = try Self.envelope(survivor.sessionID, run: survivor.runID, event: "SessionStart",
                                        providerSession: deletedID, fields: ["source": "resume"])
-        #expect(try await world.runtime.claudeAdapter.receive(resume) == .staleRun)
+        #expect(try await world.runtime.harnesses.claude.adapter.receive(resume) == .staleRun)
         #expect(try await world.catalog.session(provider: .claude, conversationID: deletedID) == nil)
         #expect(try await world.catalog.sessions().map(\.session.id) == [survivor.sessionID])
         #expect(await world.supervisor.managedSessions().map(\.id) == [survivor.sessionID])
@@ -578,7 +578,7 @@ struct ConversationDeletionTests {
 
         let resume = try Self.envelope(survivor.sessionID, run: survivor.runID, event: "SessionStart",
                                        providerSession: providerID, fields: ["source": "resume"])
-        #expect(try await world.runtime.claudeAdapter.receive(resume) == .staleRun)
+        #expect(try await world.runtime.harnesses.claude.adapter.receive(resume) == .staleRun)
         #expect(try await world.catalog.session(provider: .claude, conversationID: providerID) == nil)
         #expect(try await world.catalog.sessions().map(\.session.id) == [survivor.sessionID])
         #expect((await world.runtime.shutdown()).succeeded)

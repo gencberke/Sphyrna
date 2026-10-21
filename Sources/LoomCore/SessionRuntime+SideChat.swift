@@ -27,7 +27,7 @@ extension SessionRuntime {
         guard let parent = try await catalog.session(id: parentSessionID) else {
             throw SessionRuntimeError.sessionNotFound(parentSessionID)
         }
-        guard parent.session.provider == .claude else {
+        guard HarnessCapabilities.of(parent.session.provider, startable: []).sideChats else {
             throw SessionRuntimeError.unsupportedProvider(parent.session.provider)
         }
         guard !parent.isSideChat else { throw LoomError.message("A side chat cannot be forked") }

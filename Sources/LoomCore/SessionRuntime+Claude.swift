@@ -18,7 +18,7 @@ extension SessionRuntime {
         let token = UUID().uuidString + UUID().uuidString
         // One ordered path from the socket to the reducers: hook events of a
         // run are applied in arrival order, never in racing tasks.
-        let ingress = ClaudeHookIngress(adapter: claudeAdapter)
+        let ingress = ClaudeHookIngress(adapter: harnesses.claude.adapter)
         let events = ingress.stream
         let server = try ClaudeHookServer(socketPath: socket, authenticationToken: token) { envelope in
             ingress.receive(envelope)
@@ -58,7 +58,7 @@ extension SessionRuntime {
 
     private func deliver(hook envelope: ClaudeHookEnvelope) async {
         do {
-            let disposition = try await claudeAdapter.receive(envelope)
+            let disposition = try await harnesses.claude.adapter.receive(envelope)
             let event = try? ClaudeHookEvent(payload: envelope.payload)
             var name = event?.name ?? "unreadable"
             if case let .notification(type)? = event?.kind {
@@ -199,7 +199,7 @@ extension SessionRuntime {
         if let leader = launch.session.currentRun?.leader {
             let config = profile.environment["CLAUDE_CONFIG_DIR"].map { URL(fileURLWithPath: $0) }
                 ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude", isDirectory: true)
-            await claudeAdapter.observeRegistry(runID: runID, reader: ClaudeRegistryReader(
+            await harnesses.claude.observeRegistry(runID: runID, reader: ClaudeRegistryReader(
                 config: config.resolvingSymlinksInPath(), leader: leader,
                 directory: URL(fileURLWithPath: launch.session.workingDirectory).resolvingSymlinksInPath().standardizedFileURL.path))
         }

@@ -331,7 +331,7 @@ extension SessionRuntime {
         server: CodexServer, client: CodexAppServerClient, setupID: UUID
     ) async throws -> CodexSessionCoordinator {
         let coordinator = CodexSessionCoordinator(
-            client: client, supervisor: supervisor, adapter: codexAdapter,
+            client: client, supervisor: supervisor, adapter: harnesses.codex.adapter,
             router: CodexSessionRouter(diagnostics: routingDiagnostics)
         )
         do {

@@ -70,9 +70,9 @@ extension SessionRuntime {
     ) async throws -> RuntimePipeLaunch {
         let runID = UUID()
         // Before the spawn: the child's first hook (SessionStart) must not publish a work state for it.
-        await claudeAdapter.handOverWorkState(runID: runID)
+        await harnesses.claude.handOverWorkState(runID: runID)
         // A fork's `SessionStart` (source `fork`) names the id its card already holds: it never makes a card (V22).
-        if isFork { await claudeAdapter.markForkRun(runID: runID) }
+        if isFork { await harnesses.claude.markForkRun(runID: runID) }
         let launch: ManagedPipeLaunch
         do {
             guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
@@ -82,7 +82,7 @@ extension SessionRuntime {
                 environment: profile.environment, outputSink: outputSink, managedRunID: runID
             )
         } catch {
-            await claudeAdapter.stopRegistry(runID: runID)
+            await harnesses.claude.runEnded(runID: runID, in: self)
             LoomLog.error(.lifecycle, "Claude could not be started in the Chat face (\(LoomLog.category(of: error)))")
             if !(error is SessionRuntimeError), !(error is SessionManagementError) {
                 await invalidateToolchain(.claude)

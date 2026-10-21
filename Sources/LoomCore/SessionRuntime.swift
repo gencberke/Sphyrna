@@ -269,8 +269,8 @@ public actor SessionRuntime {
     }
     /// Where a component that keeps data for a conversation registers its cleanup for a deletion (`ConversationForgetters`).
     public nonisolated var conversationForgetters: ConversationForgetters { configuration.forgetters }
-    let claudeAdapter: ClaudeSessionAdapter
-    let codexAdapter: CodexSessionAdapter
+    /// The harnesses this runtime manages, by provider (R7): the provider-specific part of a session lives behind them.
+    let harnesses: HarnessRegistry
     /// Requests of agents to open a session (D-40); the UI answers them (`SessionRuntime+OpenRequests`).
     let openRequests: OpenSessionCoordinator
 
@@ -334,8 +334,7 @@ public actor SessionRuntime {
             supervisor: supervisor, catalog: catalog, policy: configuration.idlePolicy,
             inputGate: gate, companion: relay.companion
         )
-        claudeAdapter = ClaudeSessionAdapter(supervisor: supervisor, hookSilenceGrace: configuration.hookSilenceGrace)
-        codexAdapter = CodexSessionAdapter(supervisor: supervisor)
+        harnesses = HarnessRegistry(supervisor: supervisor, hookSilenceGrace: configuration.hookSilenceGrace)
         openRequests = OpenSessionCoordinator(
             catalog: catalog,
             authorize: { sessionID, runID in
@@ -418,49 +417,17 @@ public actor SessionRuntime {
         onTerminalReady: (@MainActor @Sendable (RuntimeLaunch) async -> Void)? = nil
     ) async throws -> RuntimeLaunch {
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
-        guard provider == .claude || provider == .codex else {
+        guard let harness = harnesses[provider] else {
             throw SessionRuntimeError.unsupportedProvider(provider)
         }
         let sessionID = UUID(), runID = UUID()
         return try await withNewStart(provider: provider, projectID: projectID, opening: opening, draft: draft) {
             directory, toolchain in
-            switch provider {
-            case .claude:
-                return try await self.startClaude(
-                    sessionID: sessionID, projectID: projectID, directory: directory, toolchain: toolchain,
-                    opening: opening, draft: draft, face: .terminal
-                ) { profile in
-                    try await self.launchClaude(
-                        sessionID: sessionID, runID: runID, toolchain: toolchain, profile: profile,
-                        rows: rows, columns: columns, outputSink: outputSink, tee: nil
-                    )
-                }
-            case .codex:
-                let (server, coordinator) = try await self.ensureCodex(card: sessionID, toolchain: toolchain)
-                let profile: ProviderLaunchProfile
-                do {
-                    profile = try self.codexNewProfile(
-                        toolchain: toolchain, sessionID: sessionID, directory: directory, server: server
-                    )
-                    try await self.supervisor.createSession(
-                        ManagedSession(id: sessionID, provider: .codex, workingDirectory: directory),
-                        projectID: projectID
-                    )
-                } catch {
-                    // No card exists to show a failed cleanup on: the caller gets it.
-                    throw await self.startFailure(error, cleaning: server)
-                }
-                self.startingSessions.insert(sessionID)
-                defer { self.startingSessions.remove(sessionID) }
-                return try await self.launchNewCodex(
-                    sessionID: sessionID, runID: runID, directory: directory,
-                    toolchain: toolchain, profile: profile, server: server, coordinator: coordinator,
-                    rows: rows, columns: columns, outputSink: outputSink,
-                    onTerminalReady: onTerminalReady
-                )
-            case .synthetic:
-                throw SessionRuntimeError.unsupportedProvider(provider)
-            }
+            try await harness.startTerminal(in: self, HarnessTerminalStart(
+                sessionID: sessionID, runID: runID, projectID: projectID, directory: directory, toolchain: toolchain,
+                rows: rows, columns: columns, outputSink: outputSink, opening: opening, draft: draft,
+                onTerminalReady: onTerminalReady
+            ))
         }
     }
 
@@ -475,30 +442,15 @@ public actor SessionRuntime {
         outputSink: (any TerminalOutputSink)? = nil,
         choices: ClaudeLaunchChoices = ClaudeLaunchChoices()
     ) async throws -> RuntimeLaunch {
-        try await withResume(sessionID: sessionID, providers: [.claude, .codex]) { session, conversationID, toolchain in
-            let tee = DiagnosticOutputTee(downstream: outputSink)
-            switch session.provider {
-            case .claude:
-                let hooks = try self.ensureHooks()
-                let profile = try self.claudeProfile(
-                    route: .resume(conversationID), toolchain: toolchain,
-                    sessionID: sessionID, hooks: hooks,
-                    choices: try await self.resumeChoices(sessionID: sessionID, passed: choices)
-                )
-                return try await self.launchClaude(
-                    sessionID: sessionID, runID: nil, toolchain: toolchain, profile: profile,
-                    rows: rows, columns: columns, outputSink: outputSink, tee: tee
-                )
-            case .codex:
-                let (server, coordinator) = try await self.ensureCodex(card: sessionID, toolchain: toolchain)
-                return try await self.resumeCodex(
-                    session: session, conversationID: conversationID, toolchain: toolchain,
-                    server: server, coordinator: coordinator,
-                    rows: rows, columns: columns, tee: tee
-                )
-            case .synthetic:
+        try await withResume(sessionID: sessionID, providers: harnesses.providers) { session, conversationID, toolchain in
+            guard let harness = self.harnesses[session.provider] else {
                 throw SessionRuntimeError.unsupportedProvider(session.provider)
             }
+            return try await harness.resumeTerminal(in: self, HarnessTerminalResume(
+                session: session, conversationID: conversationID, toolchain: toolchain,
+                rows: rows, columns: columns, outputSink: outputSink,
+                tee: DiagnosticOutputTee(downstream: outputSink), choices: choices
+            ))
         }
     }
 
@@ -511,7 +463,7 @@ public actor SessionRuntime {
         _ body: (_ directory: String, _ toolchain: ProviderToolchain) async throws -> T
     ) async throws -> T {
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
-        guard (opening == nil && draft == nil) || provider == .claude else {
+        guard (opening == nil && draft == nil) || harnesses[provider]?.takesOpeningOrDraft == true else {
             throw SessionRuntimeError.unsupportedProvider(provider)
         }
         guard opening == nil || draft == nil else {
@@ -949,7 +901,7 @@ public actor SessionRuntime {
             // Reentrant callers (the observer, Stop, a launch) race on the same
             // ended run: only the one that removes the record handles it.
             guard let record = runs.removeValue(forKey: snapshot.runID) else { continue }
-            if record.provider == .claude { await claudeAdapter.stopRegistry(runID: record.runID) }
+            if let harness = harnesses[record.provider] { await harness.runEnded(runID: record.runID, in: self) }
             // A start still waiting for this run's identity can stop waiting now.
             if record.server != nil, let (reservation, coordinator) = reservations[record.launchSessionID],
                reservation.managedRunID == record.runID {

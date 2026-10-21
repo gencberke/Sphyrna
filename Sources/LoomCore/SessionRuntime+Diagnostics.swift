@@ -41,18 +41,9 @@ extension SessionRuntime {
         }
     }
 
-    /// The CLI this run launches with: logged, and journaled when it is new or its version changed.
+    /// The CLI this run launches with: its harness logs and journals it when it keeps such a record.
     func noteToolchain(_ toolchain: ProviderToolchain, previous: ProviderToolchain?) {
-        guard toolchain.provider == .claude else { return }
-        let capabilities = toolchain.capabilities
-        let changed = previous.map { $0.capabilities.version != capabilities.version } ?? false
-        LoomLog.notice(.toolchain, "Claude CLI \(capabilities.version) resolved (\(capabilities.detectedClaudeOptions.count) of 6 known options listed)")
-        journal.record("claude_cli", [
-            "version": .string(capabilities.version),
-            "path": .string(DiagnosticPaths.abbreviate(toolchain.executable)),
-            "detectedOptions": .strings(capabilities.detectedClaudeOptions),
-            "changedFromPrevious": .bool(changed),
-        ])
+        harnesses[toolchain.provider]?.noteToolchain(toolchain, previous: previous, in: self)
     }
 
     /// A required option the CLI's help does not list: logged and journaled once per version and

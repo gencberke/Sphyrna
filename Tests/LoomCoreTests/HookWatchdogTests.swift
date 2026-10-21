@@ -44,7 +44,7 @@ struct HookWatchdogTests {
         // A turn runs (the registry says busy) and no hook ever arrives.
         try await screen.send("/work 2500")
         #expect(await SessionRuntimeTests.waitUntil(10) { await issue(context, launch.sessionID) == ClaudeSessionAdapter.hookSilenceIssue })
-        #expect(await context.runtime.claudeAdapter.silenceIssueRuns() == [launch.runID])
+        #expect(await context.runtime.harnesses.claude.adapter.silenceIssueRuns() == [launch.runID])
         #expect(DiagnosticJournal.forDataRoot(context.catalog.dataRoot).lines().contains { $0.contains("hook_silence") })
 
         // Hooks start working: the first event ends the watchdog and takes the issue back.
@@ -52,7 +52,7 @@ struct HookWatchdogTests {
         try await screen.send("hello again")
         #expect(await screen.contains("echo: hello again", timeout: 10))
         #expect(await SessionRuntimeTests.waitUntil(4) { await issue(context, launch.sessionID) == nil })
-        #expect(await context.runtime.claudeAdapter.silenceIssueRuns().isEmpty)
+        #expect(await context.runtime.harnesses.claude.adapter.silenceIssueRuns().isEmpty)
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
@@ -65,7 +65,7 @@ struct HookWatchdogTests {
         #expect(await screen.contains("FAKE-CLAUDE READY"))
         try await Task.sleep(for: .milliseconds(1_200))
         #expect(await issue(context, launch.sessionID) == nil)
-        #expect(await context.runtime.claudeAdapter.silenceIssueRuns().isEmpty)
+        #expect(await context.runtime.harnesses.claude.adapter.silenceIssueRuns().isEmpty)
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
@@ -77,7 +77,7 @@ struct HookWatchdogTests {
         try await screen.send("/work 800")
         try await Task.sleep(for: .milliseconds(1_200))
         #expect(await issue(context, launch.sessionID) == nil)
-        #expect(await context.runtime.claudeAdapter.silenceIssueRuns().isEmpty)
+        #expect(await context.runtime.harnesses.claude.adapter.silenceIssueRuns().isEmpty)
         #expect(await context.supervisor.providerWorkState(sessionID: launch.sessionID)?.activity == .turnComplete)
         #expect((await context.runtime.shutdown()).succeeded)
     }

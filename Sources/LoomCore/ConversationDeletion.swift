@@ -271,13 +271,10 @@ extension SessionRuntime {
     /// The refusals, and what the dry-run plan is made for.
     private func deletionRequest(_ id: UUID) async throws -> DeletionRequest {
         guard let record = try await catalog.session(id: id) else { throw SessionRuntimeError.sessionNotFound(id) }
-        switch record.session.provider {
-        case .claude: break
-        case .codex:
-            throw SessionRuntimeError.deletionRefused("Codex sessions cannot be deleted from Loom yet")
-        case .synthetic:
+        guard let harness = harnesses[record.session.provider] else {
             throw SessionRuntimeError.deletionRefused("This is not a provider session")
         }
+        if let refusal = harness.deletionRefusal { throw SessionRuntimeError.deletionRefused(refusal) }
         let providerIDs = try await catalog.providerIDs(of: id)
         for providerID in providerIDs {
             if try await catalog.isProviderIDShared(providerID, excluding: id) {
@@ -508,7 +505,7 @@ extension SessionRuntime {
     private func dropRuntimeState(of id: UUID, providerIDs: [String]) async throws {
         do { try await supervisor.discardSession(id, providerIDs: providerIDs) }
         catch { throw DeletionStepFailure("still_running") }
-        await claudeAdapter.forget(sessionID: id)
+        await harnesses.claude.forget(sessionID: id)
     }
 
     /// Every registered component drops its copy, then the deletion record (when there is one) goes.
