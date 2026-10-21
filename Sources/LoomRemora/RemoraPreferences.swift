@@ -5,7 +5,8 @@ import Foundation
 /// know, reads as that field's default, one field at a time.
 ///
 /// The defaults are the user's install (§6.2): on, Sonnet, low effort, an automatic brief, no excluded project, proposals
-/// on, a brief waits while less than 10 % of the plan's five-hour window is left, and `Remora.md` under the data folder.
+/// on, a brief waits while less than 10 % of the plan's five-hour window is left, `Remora.md` under the data folder, and the
+/// brief in the language of the last question (no language set).
 /// Whether the public build starts with Remora on is the planner's open point (LOMBOT §11); changing it is one value here.
 public struct RemoraPreferences: Codable, Equatable, Sendable {
     public static let defaultModel = "sonnet"
@@ -13,6 +14,8 @@ public struct RemoraPreferences: Codable, Equatable, Sendable {
     public static let defaultWindowThreshold = 0.10
     /// `Remora.md` when no path was chosen: in Remora's folder under the data folder, never a vault.
     public static let defaultNoteName = "Remora.md"
+    /// No language set: the brief follows the language of the user's last question.
+    public static let defaultLanguage: String? = nil
 
     public var isOn: Bool
     /// `sonnet`, `haiku` or a model id (`RemoraCall` falls back to `sonnet` for anything it cannot pass).
@@ -28,10 +31,14 @@ public struct RemoraPreferences: Codable, Equatable, Sendable {
     public var windowThreshold: Double
     /// An absolute path the user chose for `Remora.md`; nil means `<data root>/remora/Remora.md`.
     public var noteFilePath: String?
+    /// The language the morning brief is written in, a BCP-47 code such as `tr` or `en`; nil means the language of the last
+    /// question (questions are answered in their own language either way).
+    public var language: String?
 
     public init(isOn: Bool = true, model: String = RemoraPreferences.defaultModel, effort: String = RemoraPreferences.defaultEffort,
                 briefMode: RemoraBriefMode = .automatic, excludedProjects: Set<UUID> = [], proposals: Bool = true,
-                windowThreshold: Double = RemoraPreferences.defaultWindowThreshold, noteFilePath: String? = nil) {
+                windowThreshold: Double = RemoraPreferences.defaultWindowThreshold, noteFilePath: String? = nil,
+                language: String? = RemoraPreferences.defaultLanguage) {
         self.isOn = isOn
         self.model = model
         self.effort = effort
@@ -40,6 +47,7 @@ public struct RemoraPreferences: Codable, Equatable, Sendable {
         self.proposals = proposals
         self.windowThreshold = Self.clampedThreshold(windowThreshold)
         self.noteFilePath = Self.cleaned(noteFilePath)
+        self.language = Self.cleanedLanguage(language)
     }
 
     public init(from decoder: any Decoder) throws {
@@ -55,11 +63,12 @@ public struct RemoraPreferences: Codable, Equatable, Sendable {
             excludedProjects: Set((excluded ?? []).compactMap(UUID.init(uuidString:))),
             proposals: (try? container.decodeIfPresent(Bool.self, forKey: .proposals)) ?? true,
             windowThreshold: (try? container.decodeIfPresent(Double.self, forKey: .windowThreshold)) ?? Self.defaultWindowThreshold,
-            noteFilePath: (try? container.decodeIfPresent(String.self, forKey: .noteFilePath)) ?? nil)
+            noteFilePath: (try? container.decodeIfPresent(String.self, forKey: .noteFilePath)) ?? nil,
+            language: (try? container.decodeIfPresent(String.self, forKey: .language)) ?? Self.defaultLanguage)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case isOn, model, effort, briefMode, excludedProjects, proposals, windowThreshold, noteFilePath
+        case isOn, model, effort, briefMode, excludedProjects, proposals, windowThreshold, noteFilePath, language
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -72,6 +81,7 @@ public struct RemoraPreferences: Codable, Equatable, Sendable {
         try container.encode(proposals, forKey: .proposals)
         try container.encode(windowThreshold, forKey: .windowThreshold)
         try container.encodeIfPresent(noteFilePath, forKey: .noteFilePath)
+        try container.encodeIfPresent(language, forKey: .language)
     }
 
     /// Where `Remora.md` is: the chosen absolute path, else the default under `remoraDirectory`.
@@ -82,6 +92,14 @@ public struct RemoraPreferences: Codable, Equatable, Sendable {
 
     static func clampedThreshold(_ value: Double) -> Double {
         value.isFinite ? min(max(value, 0), 1) : defaultWindowThreshold
+    }
+
+    /// A language tag: letters and digits in groups of one to eight, joined by hyphens, the first of two or three letters
+    /// (`tr`, `en`, `zh-Hans`, `pt-BR`); anything else is "none".
+    private static func cleanedLanguage(_ code: String?) -> String? {
+        guard let code = code?.trimmingCharacters(in: .whitespacesAndNewlines), code.count <= 35,
+              code.range(of: "^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$", options: .regularExpression) != nil else { return nil }
+        return code
     }
 
     /// Only an absolute path counts; anything else is "none".

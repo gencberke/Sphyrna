@@ -54,3 +54,30 @@ public struct RemoraHostNote: Equatable, Sendable {
     public var name: String?
     public var note: RemoraProjectNote
 }
+
+/// What a call reads, known once its pack is built and before the model is asked: "Reading 6 sessions and 3 project notes…"
+/// (design/DESIGN.md §20). The counts are the footer's (`RemoraPackFacts`); a "Remember …" makes no pack and reports none.
+public struct RemoraReading: Equatable, Sendable {
+    /// The project a scoped question is about, by its id and name.
+    public struct Project: Equatable, Sendable {
+        public var id: UUID
+        public var name: String?
+
+        public init(id: UUID, name: String?) {
+            self.id = id
+            self.name = name
+        }
+    }
+
+    /// Sessions whose transcript the pack carries.
+    public var sessions: Int
+    public var projectNotes: Int
+    /// Set for a question about one project (or one session of it); nil for All projects and for a brief.
+    public var project: Project?
+
+    public init(sessions: Int, projectNotes: Int, project: Project? = nil) {
+        self.sessions = sessions
+        self.projectNotes = projectNotes
+        self.project = project
+    }
+}

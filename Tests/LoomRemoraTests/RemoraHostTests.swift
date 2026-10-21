@@ -332,6 +332,9 @@ struct RemoraHostTests {
         let rig = try RemoraHostRig()
         try FileManager.default.createDirectory(at: rig.remora, withIntermediateDirectories: true)
         for name in ["system-aaa.txt", "system-bbb.txt", "keep.txt"] { try Data("x".utf8).write(to: rig.remora.appendingPathComponent(name)) }
+        // The day's brief of an earlier day: a read would remove it (the day's end), so a file that is still there was not read.
+        try RemoraKeptBriefFile(directory: rig.remora).write(RemoraKeptBrief(
+            startedAt: rig.clock.now.addingTimeInterval(-3 * 86_400), text: "Old brief."))
         let host = rig.makeHost()
         let forgetters = ConversationForgetters()
         host.registerForgetter(in: forgetters)
@@ -345,6 +348,7 @@ struct RemoraHostTests {
             #expect(!FileManager.default.fileExists(atPath: rig.remora.appendingPathComponent(name).path), "\(name) was touched")
         }
         #expect(!FileManager.default.fileExists(atPath: rig.noteFile.path))
+        #expect(FileManager.default.fileExists(atPath: rig.keptBrief.path), "making the host read the day's brief")
         #expect(!rig.ranAProcess)
         await rig.finish()
     }

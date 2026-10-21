@@ -20,6 +20,15 @@ import Foundation
 //                             working directory, the environment's key names (never values) and the pid
 //   LOOM_FAKE_REMORA_MODEL    the model id in `system/init` (default claude-sonnet-5-5)
 //   LOOM_FAKE_PIDFILE         receives the pid, as for the other modes
+// An optional script file, `remora-fixture.json` in $CLAUDE_CONFIG_DIR (the app's evidence runs set it, and Remora's call passes
+// it on), is read when no `LOOM_FAKE_REMORA*` variable says the same thing (the variables win):
+//   {"answer":"text","mode":"slow","delayMs":200,"chips":["why"],"drafts":["one line"],"facts":["a fact"]}
+//   answer   the visible text only: the closing ```remora block is built here, with real session ids from the pack
+//   mode     as LOOM_FAKE_REMORA          delayMs  as LOOM_FAKE_REMORA_DELAY_MS
+//   chips    one chip per entry (its "why"), on the pack's sessions in the order its index lists them (default one chip)
+//   drafts   one draft per entry, likewise (default one draft)        facts   proposed facts (default none)
+// The ids come from the `<sessions>` index, which rides in the system-prompt file `--system-prompt-file` names (the request is
+// on stdin); a pack with no index gives a block with no chips or drafts.
 // The usage numbers are fixed: input 2, cache creation 1,200, cache read 0, output 64, cost $0.0123.
 
 let remoraDefaultAnswer = """
@@ -30,9 +39,70 @@ You left off in the loom project, where session s-one waits for your review.
 ```
 """
 
+/// What `remora-fixture.json` in the config directory says; every field is optional and an unreadable file says nothing.
+struct RemoraFixtureScript {
+    var answer: String?
+    var mode: String?
+    var delayMs: Int?
+    var chips: [String]?
+    var drafts: [String]?
+    var facts: [String]?
+
+    static let fileName = "remora-fixture.json"
+
+    init?(configDirectory: String?) {
+        guard let configDirectory, !configDirectory.isEmpty,
+              let data = FileManager.default.contents(atPath: configDirectory + "/" + Self.fileName),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        answer = object["answer"] as? String
+        mode = object["mode"] as? String
+        delayMs = object["delayMs"] as? Int
+        chips = (object["chips"] as? [Any])?.compactMap { $0 as? String }
+        drafts = (object["drafts"] as? [Any])?.compactMap { $0 as? String }
+        facts = (object["facts"] as? [Any])?.compactMap { $0 as? String }
+    }
+
+    /// The session ids of the pack's `<sessions>` index, in the order it lists them: the first block found in the system-prompt
+    /// file the arguments name, else in the request on stdin.
+    static func sessionIDs(arguments: [String], stdin: Data) -> [String] {
+        var sources: [String] = []
+        if let flag = arguments.firstIndex(of: "--system-prompt-file"), flag + 1 < arguments.count,
+           let text = try? String(contentsOfFile: arguments[flag + 1], encoding: .utf8) { sources.append(text) }
+        sources.append(String(decoding: stdin, as: UTF8.self))
+        for text in sources {
+            guard let start = text.range(of: "<sessions>\n"), let end = text.range(of: "</sessions>", range: start.upperBound..<text.endIndex)
+            else { continue }
+            let ids = text[start.upperBound..<end.lowerBound].split(separator: "\n").compactMap { row -> String? in
+                guard row.hasPrefix("- ") else { return nil }
+                let id = row.dropFirst(2).prefix(36)
+                return UUID(uuidString: String(id)) == nil ? nil : String(id)
+            }
+            if !ids.isEmpty { return ids }
+        }
+        return []
+    }
+
+    /// The answer's text and its closing block, with ids out of `sessions`.
+    func answerText(sessions: [String]) -> String {
+        let text = answer ?? "You left off in the loom project, where a session waits for your review."
+        if text.contains("```remora") { return text }
+        let why = chips ?? ["Waits for your review"]
+        let lines = drafts ?? ["Please run the checks again."]
+        let block: [String: Any] = [
+            "cited": Array(sessions.prefix(max(3, why.count, lines.count))),
+            "chips": zip(sessions, why).map { ["session": $0, "why": $1] },
+            "drafts": zip(sessions, lines).map { ["session": $0, "text": $1] },
+            "facts": facts ?? [],
+        ]
+        let json = (try? JSONSerialization.data(withJSONObject: block, options: [.sortedKeys])).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+        return text + "\n\n```remora\n" + json + "\n```"
+    }
+}
+
 func runFakeRemora(arguments: [String]) -> Never {
     let environment = ProcessInfo.processInfo.environment
-    let mode = environment["LOOM_FAKE_REMORA"] ?? "ok"
+    let script = RemoraFixtureScript(configDirectory: environment["CLAUDE_CONFIG_DIR"])
+    let mode = environment["LOOM_FAKE_REMORA"] ?? script?.mode ?? "ok"
     if let path = environment["LOOM_FAKE_PIDFILE"] { try? "\(getpid())".write(toFile: path, atomically: true, encoding: .utf8) }
     let pack = FileHandle.standardInput.readDataToEndOfFile()
     if let path = environment["LOOM_FAKE_REMORA_LOG"] {
@@ -46,8 +116,15 @@ func runFakeRemora(arguments: [String]) -> Never {
     }
     let model = environment["LOOM_FAKE_REMORA_MODEL"] ?? "claude-sonnet-5-5"
     let wire = ChatWire(session: UUID().uuidString.lowercased(), model: model)
-    let answer = environment["LOOM_FAKE_REMORA_ANSWER"] ?? remoraDefaultAnswer
-    let delay = max(mode == "slow" ? 400 : 0, Int(environment["LOOM_FAKE_REMORA_DELAY_MS"] ?? "") ?? 5)
+    let answer: String
+    if let fixed = environment["LOOM_FAKE_REMORA_ANSWER"] {
+        answer = fixed
+    } else if let script {
+        answer = script.answerText(sessions: RemoraFixtureScript.sessionIDs(arguments: arguments, stdin: pack))
+    } else {
+        answer = remoraDefaultAnswer
+    }
+    let delay = max(mode == "slow" ? 400 : 0, Int(environment["LOOM_FAKE_REMORA_DELAY_MS"] ?? "") ?? script?.delayMs ?? 5)
     let began = Date()
 
     func send(_ object: ChatWire.Object) { FileHandle.standardOutput.write(ChatWire.line(object)) }

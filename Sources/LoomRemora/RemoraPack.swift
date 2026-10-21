@@ -42,11 +42,15 @@ public struct RemoraPackSettings: Equatable, Sendable {
     /// Shown on the self card (the call's own arguments are `RemoraRequest`'s).
     public var model: String
     public var effort: String
+    /// The language a brief is written in (a BCP-47 code); nil adds no line. It goes into the brief's request, the dynamic part
+    /// of the pack, and never into the stable prefix. A question ignores it.
+    public var language: String?
 
-    public init(excludedProjects: Set<UUID> = [], model: String = "sonnet", effort: String = "low") {
+    public init(excludedProjects: Set<UUID> = [], model: String = "sonnet", effort: String = "low", language: String? = nil) {
         self.excludedProjects = excludedProjects
         self.model = model
         self.effort = effort
+        self.language = language
     }
 }
 

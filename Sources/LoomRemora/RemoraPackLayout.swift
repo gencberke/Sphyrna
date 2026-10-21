@@ -240,8 +240,17 @@ struct PackLayout {
             return "<question>\n\(clip(RemoraSecretMask.mask(text), toBytes: Self.questionBytes))\n</question>\n"
         case let .brief(since):
             return "<request>\nWrite my morning brief for Home: what moved since \(stamps.stamp(since)), which sessions need me, "
-                + "and where I could pick up. Sessions in the index with an older last activity did not move. Keep it short.\n</request>\n"
+                + "and where I could pick up. Sessions in the index with an older last activity did not move. Keep it short.\n"
+                + languageLine() + "</request>\n"
         }
+    }
+
+    /// The brief's language, one short line in the request (the dynamic part, so the cached prefix never depends on it); none
+    /// when no language is known.
+    private func languageLine() -> String {
+        guard let code = settings.language, !code.isEmpty else { return "" }
+        let name = Locale(identifier: "en").localizedString(forIdentifier: code) ?? code
+        return "Write the brief in \(name) (\(code)).\n"
     }
 
     // MARK: Text

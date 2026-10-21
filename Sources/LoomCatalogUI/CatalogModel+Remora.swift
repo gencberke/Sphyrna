@@ -13,6 +13,13 @@ public final class RemoraModelState {
         case briefing
     }
 
+    /// Which kind of call was stopped (by Stop, by turning Remora off or by excluding a project): Home says "Stopped. Ask
+    /// again…" for a question and the like for a brief.
+    public enum StoppedCall: Equatable, Sendable {
+        case question
+        case brief
+    }
+
     public internal(set) var phase: Phase = .idle
     /// The visible answer so far; reset when a call starts.
     public internal(set) var streamedText = ""
@@ -32,6 +39,19 @@ public final class RemoraModelState {
     public internal(set) var notSavedReason: String?
     /// Remora's settings as the app holds them (persisted in `UIPreferences.remora`).
     public internal(set) var preferences = RemoraPreferences()
+    /// What the last `briefRemoraIfDue` decided when it started no brief (a wait carries its reason: "…left until 13:40, so the
+    /// morning brief waits"); nil before any, and cleared when a brief starts. The UI reads the limits' reset itself.
+    public internal(set) var lastBriefDecision: RemoraBriefDecision?
+    /// The kind of call that was stopped; set when a call ends `.cancelled`, cleared when the next call starts.
+    public internal(set) var stopped: StoppedCall?
+    /// What the running call reads ("Reading 6 sessions and 3 project notes…"): set once the pack is built and before the
+    /// call starts, cleared when the call ends. A "Remember …" makes no pack and sets nothing.
+    public internal(set) var reading: RemoraReading?
+    /// The day's brief as Remora kept it, so Home can show it after a relaunch the same day. Nothing fills it at launch:
+    /// `loadRemoraKeptBrief()` reads it on first use, and a brief that answers replaces it. A copy that a deletion or an
+    /// exclusion removed from disk stays until the next load (`loadRemoraKeptBrief()` again), or Clear or an exclusion made
+    /// here, which reload it.
+    public internal(set) var keptBrief: RemoraKeptBrief?
 
     @ObservationIgnored var host: RemoraHost?
     @ObservationIgnored var persist: (@MainActor (RemoraPreferences) -> Void)?
@@ -87,14 +107,17 @@ extension CatalogModel {
     public func askRemora(_ question: String, scope: RemoraScope = .allProjects, followUp: Bool = false) -> Bool {
         let previous = followUp ? remora.lastAnswer?.exchange : nil
         return startRemora(.asking) { host, state, _ in
-            await host.ask(question, scope: scope, previous: previous, onText: { state.streamedText += $0 })
+            await host.ask(question, scope: scope, previous: previous, onReading: { state.reading = $0 },
+                           onText: { state.streamedText += $0 })
         }
     }
 
     /// The brief the user asked for: runs whatever the schedule says.
     @discardableResult
     public func briefRemora() -> Bool {
-        startRemora(.briefing) { host, state, _ in await host.brief(onText: { state.streamedText += $0 }) }
+        startRemora(.briefing) { host, state, _ in
+            await host.brief(onReading: { state.reading = $0 }, onText: { state.streamedText += $0 })
+        }
     }
 
     /// The morning brief, when the schedule says so (`RemoraSchedule`): Remora on and automatic, not briefed today, a session
@@ -108,7 +131,7 @@ extension CatalogModel {
         let share = remainingFiveHourShare()
         return startRemora(nil) { host, state, started in
             await host.briefIfDue(homeShown: homeShown, windowRemainingShare: share, onStart: started,
-                                  onText: { state.streamedText += $0 })
+                                  onReading: { state.reading = $0 }, onText: { state.streamedText += $0 })
         }
     }
 
@@ -138,16 +161,31 @@ extension CatalogModel {
             state.streamedText = ""
             state.lastFailure = nil
             state.notSavedReason = nil
+            state.stopped = nil
+            state.reading = nil
+            if kind == .briefing { state.lastBriefDecision = nil }
         }
         if phase != nil { begin() } else { state.deciding = true }
         state.task = Task {
             let outcome = await body(host, state, begin)
             state.finish(outcome)
+            state.reading = nil
             if outcome.changesUsage { state.usage = await host.usage() ?? state.usage }
+            // The brief that just answered is the day's: read back what the host kept (nil when it could not be written).
+            if case let .answered(answer) = outcome, answer.kind == .brief { state.keptBrief = await host.keptBrief() }
             state.deciding = false
             state.phase = .idle
         }
         return true
+    }
+
+    // MARK: The day's brief
+
+    /// Reads the day's brief that Remora kept (the file is read when this runs, never at launch) into `remora.keptBrief`: the
+    /// brief of an earlier day is removed and leaves nil. Home calls it when it is first shown (and may call it again).
+    public func loadRemoraKeptBrief() async {
+        guard let host = remora.host else { return }
+        remora.keptBrief = await host.keptBrief()
     }
 
     // MARK: Facts and undo
@@ -217,6 +255,7 @@ extension CatalogModel {
         track { state in
             await host.clearWorkingMemory()
             state.usage = await host.usage() ?? state.usage
+            if state.keptBrief != nil { state.keptBrief = await host.keptBrief() }
         }
     }
 
@@ -241,7 +280,7 @@ extension CatalogModel {
         next = RemoraPreferences(
             isOn: next.isOn, model: next.model, effort: next.effort, briefMode: next.briefMode,
             excludedProjects: next.excludedProjects, proposals: next.proposals, windowThreshold: next.windowThreshold,
-            noteFilePath: next.noteFilePath)
+            noteFilePath: next.noteFilePath, language: next.language)
         guard next != remora.preferences else { return }
         remora.preferences = next
         remora.persist?(next)
@@ -249,6 +288,8 @@ extension CatalogModel {
         track { state in
             await host.update(settings: next)
             state.usage = await host.usage() ?? state.usage
+            // A new exclusion may have removed the day's brief.
+            if state.keptBrief != nil { state.keptBrief = await host.keptBrief() }
         }
     }
 
@@ -258,6 +299,9 @@ extension CatalogModel {
     public func setRemoraBriefMode(_ mode: RemoraBriefMode) { updateRemoraPreferences { $0.briefMode = mode } }
     public func setRemoraProposals(_ on: Bool) { updateRemoraPreferences { $0.proposals = on } }
     public func setRemoraWindowThreshold(_ share: Double) { updateRemoraPreferences { $0.windowThreshold = share } }
+
+    /// The brief's language, a BCP-47 code such as `tr`; nil is "the language of your last question".
+    public func setRemoraLanguage(_ code: String?) { updateRemoraPreferences { $0.language = code } }
 
     /// A project leaves or joins Remora's reach; excluding it deletes its note.
     public func setRemoraExcluded(_ project: UUID, _ excluded: Bool) {
@@ -294,7 +338,15 @@ extension RemoraModelState {
             notSavedReason = nil
         case let .notSaved(reason):
             notSavedReason = reason
-        case .cancelled, .busy, .off, .notDue:
+        case .cancelled:
+            switch phase {
+            case .asking: stopped = .question
+            case .briefing: stopped = .brief
+            case .idle: break
+            }
+        case let .notDue(decision):
+            lastBriefDecision = decision
+        case .busy, .off:
             break
         }
     }

@@ -43,18 +43,22 @@ public actor RemoraMemory {
     private let calendar: Calendar
     private let clock: @Sendable () -> Date
     private var durableNote: RemoraDurableNote?
+    /// Sessions permanently deleted while this process ran: `apply` leaves them out of what it writes, so a call that was
+    /// running when `forget(session:)` came cannot bring their words back. Not persisted.
+    private var forgotten: Set<UUID>
     private var undoable: [RemoraUndoToken: (project: UUID, note: RemoraProjectNote)] = [:]
 
     /// - Parameter durableNote: `Remora.md`, when the app has a path for it: the share carries its text and `apply` does not
     ///   propose a fact it already holds.
     public init(directory: URL, timeZone: TimeZone = .current, clock: @escaping @Sendable () -> Date = { Date() },
-                durableNote: RemoraDurableNote? = nil) throws {
+                durableNote: RemoraDurableNote? = nil, forgotten: Set<UUID> = []) throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         self.directory = directory
         self.calendar = calendar
         self.clock = clock
         self.durableNote = durableNote
+        self.forgotten = forgotten
         journalDirectory = directory.appendingPathComponent(Self.journalName, isDirectory: true)
         projectsDirectory = directory.appendingPathComponent(Self.projectsName, isDirectory: true)
         try RemoraFiles.ensureDirectory(directory)
@@ -183,6 +187,7 @@ public actor RemoraMemory {
     /// A session was permanently deleted: every journal line that cites it goes, whatever else it cites; a note item that
     /// cites only it goes, and one that cites others too loses the id (the next brief rewrites the note). Idempotent.
     public func forget(session: UUID) throws {
+        forgotten.insert(session)
         try journalFiles.forget(session)
         for project in noteProjects() {
             guard let note = note(for: project), note.sessionIDs.contains(session) else { continue }
@@ -255,12 +260,19 @@ public actor RemoraMemory {
         var firstError: (any Error)?
         var sessions = pack.readSessionIDs
         for id in answer.cited.compactMap(UUID.init(uuidString:)) where !sessions.contains(id) { sessions.append(id) }
+        // A session deleted while the call ran is left out: a line that names only such sessions is not written at all.
+        let named = sessions
+        sessions.removeAll { forgotten.contains($0) }
         var question: String?
         if case let .question(text, _, _) = request { question = text }
         let entry = RemoraJournalEntry.make(
             kind: request.kind, question: question, answerText: answer.text, sessions: sessions, model: answer.model,
             tokens: answer.usage.total, summary: isBrief ? answer.summary : nil, date: clock())
-        do { try appendJournal(entry) } catch { firstError = error }
+        if sessions.isEmpty, !named.isEmpty {
+            // Nothing to write: every session this call rests on is gone.
+        } else {
+            do { try appendJournal(entry) } catch { firstError = error }
+        }
 
         if isBrief {
             let moved = Set(pack.readSessionIDs.compactMap { sessionProjects[$0] }).subtracting(excludedProjects)
@@ -269,7 +281,7 @@ public actor RemoraMemory {
                 let allowed = pack.namedSessionIDs.union(note(for: project)?.sessionIDs ?? [])
                 let items: [RemoraNoteItem] = update.items.compactMap { item in
                     var cited = Set<UUID>()
-                    let ids = item.sessions.compactMap(UUID.init(uuidString:)).filter { allowed.contains($0) && cited.insert($0).inserted }
+                    let ids = item.sessions.compactMap(UUID.init(uuidString:)).filter { allowed.contains($0) && !forgotten.contains($0) && cited.insert($0).inserted }
                     return ids.isEmpty ? nil : RemoraNoteItem(text: item.text, sessions: ids)
                 }
                 guard !items.isEmpty else { continue }

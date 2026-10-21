@@ -95,16 +95,18 @@ public final class RemoraHost {
     /// (the settings' exclusions, model and effort), the call; `onText` gets the visible answer as it streams; on the end,
     /// the memory applies the answer.
     public func ask(_ question: String, scope: RemoraScope = .allProjects, previous: RemoraExchange? = nil,
+                    onReading: @escaping @MainActor (RemoraReading) -> Void = { _ in },
                     onText: @escaping @MainActor (String) -> Void = { _ in }) async -> RemoraOutcome {
         guard settings.isOn else { return .off }
         if let fact = RemoraRemember.fact(in: question) { return await remember(fact) }
-        return await run(.question(question, scope: scope, previous: previous), onText: onText)
+        return await run(.question(question, scope: scope, previous: previous), onReading: onReading, onText: onText)
     }
 
     /// The brief the user asked for: it runs whatever the schedule says.
-    public func brief(onText: @escaping @MainActor (String) -> Void = { _ in }) async -> RemoraOutcome {
+    public func brief(onReading: @escaping @MainActor (RemoraReading) -> Void = { _ in },
+                      onText: @escaping @MainActor (String) -> Void = { _ in }) async -> RemoraOutcome {
         guard settings.isOn else { return .off }
-        return await runBrief(onText: onText)
+        return await runBrief(onReading: onReading, onText: onText)
     }
 
     /// The automatic brief: `RemoraSchedule.decide` over the settings, the day's record and the catalog's newest activity;
@@ -113,7 +115,9 @@ public final class RemoraHost {
     ///   - homeShown: Home is on screen.
     ///   - windowRemainingShare: what is left of the plan's five-hour window, 0...1; nil when unknown.
     ///   - onStart: called when a brief really starts (not for a `.wait`, a `.skip` or a refusal).
+    ///   - onReading: called with what the brief reads, once its pack is built and before the call starts.
     public func briefIfDue(homeShown: Bool, windowRemainingShare: Double?, onStart: @escaping @MainActor () -> Void = {},
+                           onReading: @escaping @MainActor (RemoraReading) -> Void = { _ in },
                            onText: @escaping @MainActor (String) -> Void = { _ in }) async -> RemoraOutcome {
         guard settings.isOn else { return .notDue(.skip(.remoraOff)) }
         guard running == nil else { return .busy }
@@ -129,7 +133,7 @@ public final class RemoraHost {
             lastBrief: loadLastBrief(), newestActivity: newest, homeShown: homeShown,
             windowRemainingShare: windowRemainingShare, windowThreshold: settings.windowThreshold))
         guard decision == .run else { return .notDue(decision) }
-        return await runBrief(onStart: onStart, onText: onText)
+        return await runBrief(onStart: onStart, onReading: onReading, onText: onText)
     }
 
     /// Ends the running call: its child gets SIGTERM, then SIGKILL; the call's `ask` or `brief` returns `.cancelled`.
@@ -137,25 +141,27 @@ public final class RemoraHost {
 
     /// A brief records the day's slot when it starts (a failed or stopped one is not retried the same day), and gives it back
     /// when it never reached the model (`notLoggedIn`, `couldNotStart`).
-    private func runBrief(onStart: @escaping @MainActor () -> Void = {}, onText: @escaping @MainActor (String) -> Void) async -> RemoraOutcome {
+    private func runBrief(onStart: @escaping @MainActor () -> Void = {}, onReading: @escaping @MainActor (RemoraReading) -> Void,
+                          onText: @escaping @MainActor (String) -> Void) async -> RemoraOutcome {
         guard running == nil else { return .busy }
         let now = clock()
         let previous = loadLastBrief()
         storeLastBrief(now)
         let since = RemoraSchedule.briefSince(now: now, lastBrief: previous, timeZone: timeZone)
-        let outcome = await run(.brief(since: since), onStart: onStart, onText: onText)
+        let outcome = await run(.brief(since: since), startedAt: now, onStart: onStart, onReading: onReading, onText: onText)
         if case let .failed(failure) = outcome, failure.kind == .notLoggedIn || failure.kind == .couldNotStart {
             storeLastBrief(previous)
         }
         return outcome
     }
 
-    private func run(_ request: RemoraPackRequest, onStart: @escaping @MainActor () -> Void = {},
-                     onText: @escaping @MainActor (String) -> Void) async -> RemoraOutcome {
+    private func run(_ request: RemoraPackRequest, startedAt: Date? = nil, onStart: @escaping @MainActor () -> Void = {},
+                     onReading: @escaping @MainActor (RemoraReading) -> Void, onText: @escaping @MainActor (String) -> Void) async -> RemoraOutcome {
         guard running == nil else { return .busy }
         activeKind = request.kind
         onStart()
-        let task = Task { await self.execute(request, onText: onText) }
+        let began = startedAt ?? clock()
+        let task = Task { await self.execute(request, startedAt: began, onReading: onReading, onText: onText) }
         running = task
         let outcome = await task.value
         running = nil
@@ -163,7 +169,8 @@ public final class RemoraHost {
         return outcome
     }
 
-    private func execute(_ request: RemoraPackRequest, onText: @escaping @MainActor (String) -> Void) async -> RemoraOutcome {
+    private func execute(_ request: RemoraPackRequest, startedAt: Date, onReading: @escaping @MainActor (RemoraReading) -> Void,
+                         onText: @escaping @MainActor (String) -> Void) async -> RemoraOutcome {
         let settings = settings
         do {
             let memory = try await box.open()
@@ -174,10 +181,18 @@ public final class RemoraHost {
             let share = await memory.share(
                 for: scope, excludedProjects: excluded, sessionProjects: maps.sessionProjects,
                 projectNames: maps.namedProjects(excluding: excluded))
+            // A brief's language: the one set in Settings, else the language of the last question (the journal's newest line).
+            var language: String?
+            if request.kind == .brief {
+                language = settings.language
+                if language == nil { language = await RemoraLanguage.ofLastQuestion(in: memory) }
+            }
             let pack = try await builder.build(
-                request, settings: RemoraPackSettings(excludedProjects: excluded, model: settings.model, effort: settings.effort),
+                request, settings: RemoraPackSettings(excludedProjects: excluded, model: settings.model, effort: settings.effort,
+                                                      language: language),
                 memory: share, today: memory.usage.today, now: clock(), timeZone: timeZone)
             try Task.checkCancellation()
+            onReading(Self.reading(of: pack, scope: scope, maps: maps))
             let call = try await makeCall(memory.usage)
             var finished: RemoraAnswer?
             for try await event in call.run(pack.request(model: settings.model, effort: settings.effort)) {
@@ -204,9 +219,13 @@ public final class RemoraHost {
             if !settings.proposals { facts = [] }
             var question: String?
             if case let .question(text, _, _) = request { question = text }
-            return .answered(RemoraHostAnswer(
+            let hosted = RemoraHostAnswer(
                 kind: request.kind, question: question, answer: answer, proposedFacts: facts,
-                readSessionIDs: pack.readSessionIDs, footer: pack.facts.text, journaled: journaled))
+                readSessionIDs: pack.readSessionIDs, footer: pack.facts.text, journaled: journaled)
+            // The day's brief is kept before the call counts as over, so a settings change that waits for it removes what it
+            // must (`update(settings:)`). A question keeps nothing.
+            if request.kind == .brief { box.keep(RemoraKeptBrief(hosted, startedAt: startedAt)) }
+            return .answered(hosted)
         } catch let failure as RemoraFailure {
             return Task.isCancelled ? .cancelled : .failed(failure)
         } catch {
@@ -215,7 +234,24 @@ public final class RemoraHost {
         }
     }
 
+    /// What the pack reads, for the line shown while the call runs: its counts, and for a question about one project (or one of
+    /// its sessions) that project.
+    private static func reading(of pack: RemoraPack, scope: RemoraScope, maps: RemoraCatalogMaps) -> RemoraReading {
+        let project: UUID? = switch scope {
+        case .allProjects: nil
+        case let .project(id): id
+        case let .session(id): maps.sessionProjects[id]
+        }
+        return RemoraReading(sessions: pack.facts.sessionsRead, projectNotes: pack.facts.projectNotes,
+                             project: project.map { RemoraReading.Project(id: $0, name: maps.projectNames[$0]) })
+    }
+
     // MARK: The day's brief
+
+    /// The day's brief as it was kept, read from `day-brief.json` when this is called (never at launch; the model calls it on
+    /// first use). Nil when none was kept, when the last one belongs to an earlier day (it is removed then), or when this
+    /// build cannot read it.
+    public func keptBrief() async -> RemoraKeptBrief? { await box.readKeptBrief() }
 
     /// When the last brief started (read from `last-brief.json` on first use); nil when none did.
     func loadLastBrief() -> Date? {
@@ -295,8 +331,9 @@ public final class RemoraHost {
         return (try? await memory.removeJournalLine(id: id)) ?? false
     }
 
-    /// Settings' Clear: the journal and the notes go (use counters and `Remora.md` stay).
+    /// Settings' Clear: the journal, the notes and the day's brief go (use counters and `Remora.md` stay).
     public func clearWorkingMemory() async {
+        box.removeKeptBrief()
         guard let memory = try? await box.open() else { return }
         await memory.clearWorkingMemory()
     }
@@ -332,8 +369,17 @@ public final class RemoraHost {
             note = fresh
             if let memory = box.use(note: fresh) { await memory.setDurableNote(fresh) }
         }
-        if !added.isEmpty, let memory = try? await box.open() {
-            for project in added { await memory.excludeProject(project) }
+        if !added.isEmpty {
+            // The day's brief goes when a session it names belongs to a newly excluded project (a session the catalog no longer
+            // knows has no project to match; when the catalog cannot be read at all, the brief goes).
+            let projects = (try? await readMaps())?.sessionProjects
+            box.removeKeptBrief { brief in
+                guard let projects else { return true }
+                return brief.sessionIDs.contains { projects[$0].map(added.contains) ?? false }
+            }
+            if let memory = try? await box.open() {
+                for project in added { await memory.excludeProject(project) }
+            }
         }
     }
 

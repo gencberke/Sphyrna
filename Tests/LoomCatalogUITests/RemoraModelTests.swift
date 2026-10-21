@@ -14,7 +14,6 @@ struct RemoraModelTests {
     /// A model, a host over a temporary data root, the fake provider and a list of one session.
     @MainActor
     private final class Rig {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-remora-model-\(UUID().uuidString.prefix(8))")
         let supervisor: ProcessSupervisor
         let model: CatalogModel
         private(set) var host: RemoraHost?
@@ -25,7 +24,11 @@ struct RemoraModelTests {
         var pids: URL { root.appendingPathComponent("fake-pid") }
         var log: URL { root.appendingPathComponent("fake-log.json") }
 
-        init(script: [String: String] = [:], withHost: Bool = true) throws {
+        let root: URL
+
+        /// `root`: an earlier rig's data root, for a relaunch (the same folder, a new model and a new host).
+        init(script: [String: String] = [:], withHost: Bool = true, root existing: URL? = nil) throws {
+            root = existing ?? FileManager.default.temporaryDirectory.appendingPathComponent("loom-remora-model-\(UUID().uuidString.prefix(8))")
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
             let store = UIPreferencesStore(url: root.appendingPathComponent("ui-preferences.json"))
@@ -277,6 +280,182 @@ struct RemoraModelTests {
         await remora.settle()
         #expect(try String(contentsOf: elsewhere, encoding: .utf8).contains("the vault is mine"))
         #expect(!FileManager.default.fileExists(atPath: rig.remora.appendingPathComponent("Remora.md").path))
+        await rig.finish()
+    }
+
+    // MARK: L3a2: the decision, the stop, the reading, the kept brief and the language
+
+    /// Short and slow: the fake's two 400 ms pauses are the window a test has to stop it.
+    private static let slow = ["LOOM_FAKE_REMORA": "slow", "LOOM_FAKE_REMORA_ANSWER": "Hello there"]
+
+    @Test func theLastScheduleDecisionIsKeptWithItsReasonAndAStartedBriefClearsIt() async throws {
+        let rig = try Rig()
+        let remora = rig.model.remora
+        #expect(remora.lastBriefDecision == nil)
+        rig.model.setRemoraBriefMode(.whenIAsk)
+        await remora.settle()
+        #expect(rig.model.briefRemoraIfDue(homeShown: true))
+        await remora.settle()
+        #expect(remora.lastBriefDecision == .skip(.whenIAsk) && remora.phase == .idle && !rig.ranAProcess)
+        // A wait carries its reason (the host's `.notDue(.wait)` goes through the same `finish`).
+        remora.finish(.notDue(.wait(.windowLow(remaining: 0.05))))
+        #expect(remora.lastBriefDecision == .wait(.windowLow(remaining: 0.05)))
+        // The newest decision replaces it.
+        rig.model.setRemoraBriefMode(.automatic)
+        await remora.settle()
+        #expect(rig.model.briefRemoraIfDue(homeShown: false))
+        await remora.settle()
+        #expect(remora.lastBriefDecision == .skip(.homeNotShown))
+        // A brief that starts clears it, the automatic one and the asked one alike.
+        #expect(rig.model.briefRemoraIfDue(homeShown: true))
+        await remora.settle()
+        #expect(remora.lastAnswer?.kind == .brief && remora.lastBriefDecision == nil)
+        remora.finish(.notDue(.skip(.alreadyBriefedToday)))
+        #expect(remora.lastBriefDecision == .skip(.alreadyBriefedToday))
+        #expect(rig.model.briefRemora())
+        #expect(remora.lastBriefDecision == nil)
+        await remora.settle()
+        await rig.finish()
+    }
+
+    @Test func aStoppedCallLeavesItsKindAndTheNextCallClearsIt() async throws {
+        let rig = try Rig(script: Self.slow)
+        let remora = rig.model.remora
+        #expect(remora.stopped == nil)
+        #expect(rig.model.askRemora("What moved?"))
+        _ = try #require(await rig.pid())
+        rig.model.stopRemora()
+        await remora.settle()
+        #expect(remora.stopped == .question && remora.lastFailure == nil && remora.phase == .idle)
+        try? FileManager.default.removeItem(at: rig.pids)
+        #expect(rig.model.briefRemora())
+        #expect(remora.stopped == nil, "the next call started with the old stop")
+        _ = try #require(await rig.pid())
+        rig.model.stopRemora()
+        await remora.settle()
+        #expect(remora.stopped == .brief)
+        // A call that ends well leaves no stop.
+        #expect(rig.model.askRemora("Once more?"))
+        await remora.settle()
+        #expect(remora.stopped == nil && remora.lastAnswer?.answer.text == "Hello there")
+        await rig.finish()
+    }
+
+    @Test func turningRemoraOffOrExcludingAProjectDuringACallIsAStopToo() async throws {
+        let off = try Rig(script: Self.slow)
+        #expect(off.model.briefRemora())
+        _ = try #require(await off.pid())
+        off.model.setRemoraOn(false)
+        await off.model.remora.settle()
+        #expect(off.model.remora.stopped == .brief && off.model.remora.phase == .idle)
+        await off.finish()
+
+        let excluded = try Rig(script: Self.slow)
+        #expect(excluded.model.askRemora("What moved?"))
+        _ = try #require(await excluded.pid())
+        excluded.model.setRemoraExcluded(excluded.project, true)
+        await excluded.model.remora.settle()
+        #expect(excluded.model.remora.stopped == .question)
+        await excluded.finish()
+    }
+
+    @Test func theReadingCountsAreSetBeforeTheCallStartsAndClearAtItsEnd() async throws {
+        let rig = try Rig(script: Self.slow)
+        let remora = rig.model.remora
+        let seed = try RemoraMemory(directory: rig.remora)
+        try await seed.replaceNote(project: rig.project, items: [RemoraNoteItem(text: "Waits on review", sessions: [rig.session])])
+        #expect(remora.reading == nil)
+        #expect(rig.model.askRemora("What moved?"))
+        _ = try #require(await rig.pid())
+        #expect(remora.phase == .asking, "the call was over before the counts were looked at")
+        #expect(remora.reading == RemoraReading(sessions: 0, projectNotes: 1, project: nil))
+        await remora.settle()
+        #expect(remora.reading == nil && remora.phase == .idle)
+
+        // A scoped question carries its project's id and name.
+        try? FileManager.default.removeItem(at: rig.pids)
+        #expect(rig.model.askRemora("What moved here?", scope: .project(rig.project)))
+        _ = try #require(await rig.pid())
+        #expect(remora.reading == RemoraReading(sessions: 0, projectNotes: 1, project: .init(id: rig.project, name: "loom")))
+        await remora.settle()
+        #expect(remora.reading == nil)
+
+        // A "Remember …" makes no pack: nothing was reported.
+        #expect(rig.model.askRemora("Remember that I prefer tabs"))
+        #expect(remora.reading == nil)
+        await remora.settle()
+        #expect(remora.reading == nil)
+        await rig.finish()
+    }
+
+    @Test func theDaysBriefIsReadOnFirstUseAfterARelaunchAndGoesWithClearOrAnExclusion() async throws {
+        let first = try Rig(script: ["LOOM_FAKE_REMORA_ANSWER": "Billing waits.\n\n```remora\n{\"cited\":[],\"chips\":[],\"facts\":[]}\n```"])
+        #expect(first.model.remora.keptBrief == nil)
+        await first.model.loadRemoraKeptBrief()
+        #expect(first.model.remora.keptBrief == nil, "there was nothing to read")
+        #expect(first.model.briefRemora())
+        await first.model.remora.settle()
+        let kept = try #require(first.model.remora.keptBrief, "a brief that answered is the day's")
+        #expect(kept.text == "Billing waits." && kept.footer.hasPrefix("read 0 sessions and 0 project notes"))
+        let mode = try #require(try FileManager.default.attributesOfItem(
+            atPath: first.remora.appendingPathComponent("day-brief.json").path)[.posixPermissions] as? Int)
+        #expect(mode == 0o600)
+
+        // The relaunch: a new model and host over the same folder. Nothing is read until the model is asked to.
+        let second = try Rig(root: first.root)
+        #expect(second.model.remora.keptBrief == nil)
+        await second.model.loadRemoraKeptBrief()
+        #expect(second.model.remora.keptBrief == kept)
+
+        // Clear removes it, from disk and from the model's copy.
+        second.model.clearRemoraWorkingMemory()
+        await second.model.remora.settle()
+        #expect(second.model.remora.keptBrief == nil)
+        #expect(!FileManager.default.fileExists(atPath: second.remora.appendingPathComponent("day-brief.json").path))
+        await second.finish()
+        await first.finish()
+    }
+
+    @Test func aNewExclusionOfTheBriefsProjectReloadsTheModelsCopyAsEmpty() async throws {
+        let rig = try Rig(script: ["LOOM_FAKE_REMORA_ANSWER": "Billing waits."])
+        #expect(rig.model.briefRemora())
+        await rig.model.remora.settle()
+        // The one session the brief read is none (no transcript); name the rig's session so the brief belongs to its project.
+        let file = rig.remora.appendingPathComponent("day-brief.json")
+        let stored = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        var named = stored
+        named["sessions"] = [rig.session.uuidString]
+        try JSONSerialization.data(withJSONObject: named).write(to: file)
+        await rig.model.loadRemoraKeptBrief()
+        #expect(rig.model.remora.keptBrief?.readSessionIDs == [rig.session])
+        rig.model.setRemoraExcluded(UUID(), true)
+        await rig.model.remora.settle()
+        #expect(rig.model.remora.keptBrief != nil, "a project the brief never read removed it")
+        rig.model.setRemoraExcluded(rig.project, true)
+        await rig.model.remora.settle()
+        #expect(rig.model.remora.keptBrief == nil && !FileManager.default.fileExists(atPath: file.path))
+        await rig.finish()
+    }
+
+    @Test func theBriefLanguageIsASettingThatRoundTripsAndReachesTheHost() async throws {
+        let rig = try Rig()
+        let model = rig.model
+        #expect(model.remora.preferences.language == nil)
+        model.setRemoraLanguage("tr")
+        await model.remora.settle()
+        #expect(model.remora.preferences.language == "tr" && rig.host?.settings.language == "tr")
+        #expect(UIPreferencesStore(url: rig.preferencesURL).current.remora.language == "tr")
+        let again = CatalogModel(catalog: nil, events: SessionEventHub(), preferences: UIPreferencesStore(url: rig.preferencesURL))
+        #expect(again.remora.preferences.language == "tr")
+        // Another setting keeps it, and a value that is no language tag is none.
+        model.setRemoraProposals(false)
+        #expect(model.remora.preferences.language == "tr")
+        model.setRemoraLanguage("not a language")
+        #expect(model.remora.preferences.language == nil)
+        model.setRemoraLanguage("tr")
+        model.setRemoraLanguage(nil)
+        await model.remora.settle()
+        #expect(model.remora.preferences.language == nil && rig.host?.settings.language == nil)
         await rig.finish()
     }
 }
