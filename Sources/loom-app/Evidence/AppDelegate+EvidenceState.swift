@@ -141,6 +141,8 @@ extension AppDelegate {
         state["openRequests"] = openRequestsEvidence
         state["usage"] = usageEvidence
         state["home"] = homeEvidence
+        state["edges"] = edgeEvidence
+        state["remora"] = remoraEvidence
         state.merge(systemEvidence) { _, new in new }
         if let window {
             state["windowFrame"] = [window.frame.origin.x, window.frame.origin.y, window.frame.width, window.frame.height]

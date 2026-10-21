@@ -87,6 +87,8 @@ extension DevelopmentEvidence {
             var handled = await handleSettingsCommand(name, argument) || handleTabCommand(name, argument)
             if !handled { handled = await handleSystemCommand(name, argument) }
             if !handled { handled = await handleChatCommand(name, argument) }
+            if !handled { handled = await handleEdgeCommand(name, argument) }
+            if !handled { handled = await handleRemoraCommand(name, argument) }
             guard handled else {
                 _ = await handleKeyCommand(name, argument)
                 return
