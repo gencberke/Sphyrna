@@ -301,7 +301,8 @@ struct UsageReportView: View {
                 caption("estimated")
             }
             Text("API-equivalent estimate — subscriptions are not billed per token.")
-                .projectType(S.fine).lineSpacing(S.fineSpacing).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                .projectType(S.fine).lineHeight(.exact(points: S.fineLine))
+                .offset(y: S.fineDrop).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .fixedSize(horizontal: false, vertical: true).padding(.top, S.fineTop)
         }
         .accessibilityElement(children: .combine)

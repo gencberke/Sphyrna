@@ -127,9 +127,11 @@ private struct JournalLine: View {
     var body: some View {
         let lit = hovering || LookEvidence.forcesHover("journal-line:\(line.id)")
         HStack(alignment: .top, spacing: M.lineGap) {
-            Text(line.time).projectType(M.lineTime).lineSpacing(M.timeSpacing).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            Text(line.time).projectType(M.lineTime).lineHeight(.exact(points: M.lineTimeHeight))
+                .offset(y: M.lineTimeDrop).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .frame(width: M.lineTimeWidth, alignment: .leading)
-            Text(line.text).projectType(M.lineText).lineSpacing(M.lineSpacing).foregroundStyle(LoomTheme.Text.primary)
+            Text(line.text).projectType(M.lineText).lineHeight(.exact(points: M.lineTextHeight))
+                .offset(y: M.lineTextDrop).foregroundStyle(LoomTheme.Text.primary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button(action: remove) {
@@ -240,8 +242,8 @@ private struct NoteCardView: View {
                     .onAppear { editorFocused = true }
                     .accessibilityLabel("Note of " + card.name)
             } else {
-                Text(card.text).projectType(M.noteBody).lineSpacing(M.noteBodySpacing)
-                    .foregroundStyle(LoomTheme.Text.secondaryStyle)
+                Text(card.text).projectType(M.noteBody).lineHeight(.exact(points: M.noteBodyHeight))
+                    .offset(y: M.noteBodyDrop).foregroundStyle(LoomTheme.Text.secondaryStyle)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -296,8 +298,8 @@ private struct NoteFilePane: View {
         let url = catalog.remoraNoteURL
         let shape = RoundedRectangle(cornerRadius: M.noteRadius)
         VStack(alignment: .leading, spacing: 0) {
-            Text(RemoraMemoryText.noteFileHolds).projectType(M.noteBody).lineSpacing(M.noteBodySpacing)
-                .foregroundStyle(LoomTheme.Text.secondaryStyle)
+            Text(RemoraMemoryText.noteFileHolds).projectType(M.noteBody).lineHeight(.exact(points: M.noteBodyHeight))
+                .offset(y: M.noteBodyDrop).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, M.noteFilePaddingTop).padding(.horizontal, M.noteFilePaddingH).padding(.bottom, M.noteFilePaddingBottom)
                 .frame(maxWidth: .infinity, alignment: .leading)

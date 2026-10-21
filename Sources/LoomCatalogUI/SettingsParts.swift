@@ -187,7 +187,8 @@ struct SettingsNote: View {
     var body: some View {
         VStack(spacing: 0) {
             Text(title).projectType(LoomTheme.InkType.title).foregroundStyle(LoomTheme.Text.primary)
-            Text(text).projectType(S.noteText).lineSpacing(S.noteSpacing)
+            Text(text).projectType(S.noteText).lineHeight(.exact(points: S.noteLine))
+                .offset(y: S.noteDrop)
                 .foregroundStyle(LoomTheme.Text.secondaryStyle).multilineTextAlignment(.center)
                 .frame(maxWidth: S.noteMaxWidth).fixedSize(horizontal: false, vertical: true)
                 .padding(.top, S.noteTextTop)

@@ -84,6 +84,53 @@ struct SettingsLayoutTests {
         #expect(S.glyphDrop(size: S.rowHelp.size, lineHeight: S.rowHelpLine) == 1)
     }
 
+    /// A sheet's facts are an exact line box: 12.5 on 18.75, under a 12 pt top, so one line is 30.75 high and two are 49.5, whatever
+    /// the face's own line would have given.
+    @Test func aSheetTextIsItsTopAndAWholeExactLineForEachLine() {
+        let Sheet = LoomTheme.Sheet.self
+        func height<V: View>(_ view: V) -> CGFloat {
+            let host = NSHostingView(rootView: view.frame(width: 592))
+            host.layoutSubtreeIfNeeded()
+            return host.fittingSize.height
+        }
+        let one = height(SheetText(text: "One short line"))
+        #expect(abs(one - (Sheet.textTop + Sheet.textLine)) <= 0.5, "\(one)")
+        let two = height(SheetText(text: "One short line\nAnother short line"))
+        #expect(abs(two - (Sheet.textTop + 2 * Sheet.textLine)) <= 0.5, "\(two)")
+    }
+
+    /// The rest of Settings' family text sits on the theme's exact line too: one more line makes the view exactly one line token taller,
+    /// in the sheet's title and subject and its list's items, and in a page state's text.
+    @Test func everyFamilyTextGrowsByExactlyOneLine() {
+        let Sheet = LoomTheme.Sheet.self
+        let S = LoomTheme.Settings.self
+        func height<V: View>(_ view: V, width: CGFloat) -> CGFloat {
+            let host = NSHostingView(rootView: view.frame(width: width))
+            host.layoutSubtreeIfNeeded()
+            return host.fittingSize.height
+        }
+        func lines(_ count: Int) -> String { (1...count).map { "Line \($0)" }.joined(separator: "\n") }
+
+        let title = height(InkSheet(title: lines(4), cancel: {}, actions: []) { EmptyView() }, width: Sheet.width)
+            - height(InkSheet(title: lines(3), cancel: {}, actions: []) { EmptyView() }, width: Sheet.width)
+        #expect(abs(title - Sheet.titleLine) <= 0.5, "\(title)")
+
+        // The subject is cut at two lines, so it can only grow from one to two.
+        let subject = height(InkSheet(title: "A question", subject: lines(2), cancel: {}, actions: []) { EmptyView() },
+                             width: Sheet.width)
+            - height(InkSheet(title: "A question", subject: lines(1), cancel: {}, actions: []) { EmptyView() },
+                     width: Sheet.width)
+        #expect(abs(subject - Sheet.subjectLine) <= 0.5, "\(subject)")
+
+        let item = height(SheetList(label: "Removed", items: [lines(5)]), width: Sheet.width)
+            - height(SheetList(label: "Removed", items: [lines(4)]), width: Sheet.width)
+        #expect(abs(item - Sheet.textLine) <= 0.5, "\(item)")
+
+        let note = height(SettingsNote(title: "Nothing yet", text: lines(5)), width: 592)
+            - height(SettingsNote(title: "Nothing yet", text: lines(4)), width: 592)
+        #expect(abs(note - S.noteLine) <= 0.5, "\(note)")
+    }
+
     /// At 680 pt wide the description of "Sessions run in" and of "Mode of new sessions" took two lines and was cut to one
     /// with an ellipsis (a row beside a segmented control or a menu was sized from the control), while rows beside a switch
     /// showed in full. A description is at most 380 wide now (the reference's), so the first two take two lines or more and

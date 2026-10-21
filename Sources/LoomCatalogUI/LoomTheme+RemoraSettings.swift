@@ -29,7 +29,7 @@ extension LoomTheme {
         static let noteTop: CGFloat = 10
         static let noteInset: CGFloat = 2
         static let noteMaxWidth: CGFloat = 560
-        static let noteSpacing = Settings.lineSpacing(size: 11.5, lineHeight: noteLine)
+        static let noteDrop = Settings.glyphDrop(size: 11.5, lineHeight: noteLine)
 
         /// The threshold stepper steps by 1 % from 0 % (the brief never waits) to 50 %.
         static let thresholdRange = 0...50
@@ -110,9 +110,9 @@ extension LoomTheme {
         static let emptyText = InkStyle(size: 12.5)
         static let emptyTop: CGFloat = 8
 
-        static let lineSpacing = Settings.lineSpacing(size: lineText.size, lineHeight: lineTextHeight)
-        static let timeSpacing = Settings.lineSpacing(size: lineTime.size, mono: true, lineHeight: lineTimeHeight)
+        static let lineTextDrop = Settings.glyphDrop(size: lineText.size, lineHeight: lineTextHeight)
+        static let lineTimeDrop = Settings.glyphDrop(size: lineTime.size, mono: true, lineHeight: lineTimeHeight)
         static let noteBodySpacing = Settings.lineSpacing(size: noteBody.size, lineHeight: noteBodyHeight)
-        static let noteFileSpacing = Settings.lineSpacing(size: noteFileText.size, mono: true, lineHeight: noteFileLine)
+        static let noteBodyDrop = Settings.glyphDrop(size: noteBody.size, lineHeight: noteBodyHeight)
     }
 }

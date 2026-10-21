@@ -52,8 +52,8 @@ extension LoomTheme {
         /// A sheet comes down under the window's header: Settings' band is 52.
         static let defaultHeaderOffset = InkHeight.header
 
-        static let titleSpacing = Settings.lineSpacing(size: title.size, lineHeight: titleLine)
-        static let subjectSpacing = Settings.lineSpacing(size: subject.size, lineHeight: subjectLine)
-        static let textSpacing = Settings.lineSpacing(size: text.size, lineHeight: textLine)
+        static let titleDrop = Settings.glyphDrop(size: title.size, lineHeight: titleLine)
+        static let subjectDrop = Settings.glyphDrop(size: subject.size, lineHeight: subjectLine)
+        static let textDrop = Settings.glyphDrop(size: text.size, lineHeight: textLine)
     }
 }

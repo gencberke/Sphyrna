@@ -82,8 +82,6 @@ extension LoomTheme {
             return max(0, lineHeight - (font.ascender - font.descender + font.leading))
         }
 
-        static let titleSpacing = lineSpacing(size: InkType.body.size, lineHeight: rowTitleLine)
-
         /// How far a face's glyphs move down in an exact line box to sit as the reference's do. CoreText leaves an exact line's
         /// extra room under the glyphs; CSS splits it above and below. The face's own line is its ascender and descender, each
         /// to a whole point (15 for 12 pt), so 12 pt help in a 17 line moves down 1.
@@ -184,7 +182,7 @@ extension LoomTheme {
         static let tileDetailTop: CGFloat = 1
         static let tileTextInset: CGFloat = 2
         static let tileBottom: CGFloat = 2
-        static let tileDetailSpacing = lineSpacing(size: 11.5, lineHeight: tileDetailLine)
+        static let tileDetailDrop = glyphDrop(size: 11.5, lineHeight: tileDetailLine)
         /// The miniature's edge and text in Ink and in Paper (`--tl`, `--tf`).
         static let miniEdge = AdaptiveTone(dark: Tone(rgb: whiteRGB, opacity: 0.09), light: Tone(rgb: inkRGB, opacity: 0.10))
 
@@ -228,7 +226,7 @@ extension LoomTheme {
         static let fine = InkStyle(size: 11)
         static let fineLine: CGFloat = 15
         static let fineTop: CGFloat = 10
-        static let fineSpacing = lineSpacing(size: 11, lineHeight: fineLine)
+        static let fineDrop = glyphDrop(size: 11, lineHeight: fineLine)
         /// The kinds: a grid of 96, flexible and 56, 10 apart, 24 high; a 3 pt bar of radius 2; the cache line is 6 below with a hairline
         /// above and 8 of padding.
         static let kindColumns = (label: CGFloat(96), value: CGFloat(56))
@@ -281,7 +279,7 @@ extension LoomTheme {
         static let notePath = InkStyle(size: 12, mono: true)
         static let notePathTop: CGFloat = 10
         static let noteButtonTop: CGFloat = 14
-        static let noteSpacing = lineSpacing(size: 12.5, lineHeight: noteLine)
+        static let noteDrop = glyphDrop(size: 12.5, lineHeight: noteLine)
 
         // MARK: Sessions
 

@@ -242,11 +242,13 @@ struct InkSheet<Content: View>: View {
         let shape = RoundedRectangle(cornerRadius: LoomTheme.Sheet.radius)
         let ring = LoomTheme.Elevation.popover[LoomTheme.Appearance(scheme)].ring
         VStack(alignment: .leading, spacing: 0) {
-            Text(title).projectType(LoomTheme.Sheet.title).lineSpacing(LoomTheme.Sheet.titleSpacing)
+            Text(title).projectType(LoomTheme.Sheet.title).lineHeight(.exact(points: LoomTheme.Sheet.titleLine))
+                .offset(y: LoomTheme.Sheet.titleDrop)
                 .foregroundStyle(LoomTheme.Text.primary).fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
             if let subject {
-                Text(subject).projectType(LoomTheme.Sheet.subject).lineSpacing(LoomTheme.Sheet.subjectSpacing)
+                Text(subject).projectType(LoomTheme.Sheet.subject).lineHeight(.exact(points: LoomTheme.Sheet.subjectLine))
+                    .offset(y: LoomTheme.Sheet.subjectDrop)
                     .foregroundStyle(LoomTheme.Text.primary)
                     .lineLimit(LoomTheme.Sheet.subjectLines).truncationMode(.tail)
                     .fixedSize(horizontal: false, vertical: true)
@@ -334,7 +336,8 @@ struct SheetList: View {
                 .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: LoomTheme.Sheet.itemGap) {
                 ForEach(items, id: \.self) { item in
-                    Text(item).projectType(LoomTheme.Sheet.text).lineSpacing(LoomTheme.Sheet.textSpacing)
+                    Text(item).projectType(LoomTheme.Sheet.text).lineHeight(.exact(points: LoomTheme.Sheet.textLine))
+                        .offset(y: LoomTheme.Sheet.textDrop)
                         .foregroundStyle(LoomTheme.Text.primary).fixedSize(horizontal: false, vertical: true)
                         .padding(.leading, LoomTheme.Sheet.itemInset)
                         .overlay(alignment: .topLeading) {
@@ -362,7 +365,8 @@ struct SheetText: View {
     let text: String
 
     var body: some View {
-        Text(text).projectType(LoomTheme.Sheet.text).lineSpacing(LoomTheme.Sheet.textSpacing)
+        Text(text).projectType(LoomTheme.Sheet.text).lineHeight(.exact(points: LoomTheme.Sheet.textLine))
+            .offset(y: LoomTheme.Sheet.textDrop)
             .foregroundStyle(LoomTheme.Text.primary).fixedSize(horizontal: false, vertical: true)
             .padding(.top, LoomTheme.Sheet.textTop)
     }

@@ -59,7 +59,8 @@ struct RemoraSettingsView: View {
                 }
                 .settingsDimmed(dimmed)
                 Text(Text_.lastLine(isOn: preferences.isOn))
-                    .projectType(R.note).lineSpacing(R.noteSpacing).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                    .projectType(R.note).lineHeight(.exact(points: R.noteLine))
+                    .offset(y: R.noteDrop).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                     .frame(maxWidth: R.noteMaxWidth, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, R.noteTop - S.groupGap).padding(.horizontal, R.noteInset)
