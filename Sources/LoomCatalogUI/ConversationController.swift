@@ -234,7 +234,7 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
                              outcome: @escaping @MainActor (NewSessionOutcome) -> Void) {
         // Settings → "Sessions run in" (V19, D-69): Chat by default. Without the app's Chat host (a test, a runtime-less
         // window) there is no Chat face to start in, and the terminal start stands.
-        if model?.newSessionFace == .chat, model?.chatSessions != nil {
+        if let model, model.facePolicy.faceOfStart(model.capabilities(of: .claude)) == .chat {
             startInChat(projectID: projectID, launch: launch, focus: focus, outcome: outcome)
         } else {
             start(provider: .claude, projectID: projectID, draft: launch, focus: focus, outcome: outcome)
@@ -363,7 +363,7 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
                     // The model has no row for this id (a direct call): the catalog decides, same rule.
                     if let provider, !model.capabilities(of: provider).startable { return }
                 }
-                if model.newSessionFace == .chat, provider.map({ model.capabilities(of: $0).structuredFace }) == true, let host = model.chatSessions {
+                if let provider, model.facePolicy.faceOfResume(model.capabilities(of: provider)) == .chat, let host = model.chatSessions {
                     try await host.driver(for: sessionID).resume()
                     model.showStarted(sessionID)
                 } else {
@@ -462,6 +462,8 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
     /// A failed start is shown in the request's box (the runtime keeps it as failed) and never retried.
     public func approveOpen(requestID: UUID) {
         guard let model, model.actionsAvailable, approvingOpen.insert(requestID).inserted else { return }
+        // The policy answers the terminal today for every harness; C5b gives an approved opening the switch's face.
+        assert(model.facePolicy.faceOfApprovedOpening(model.capabilities(of: .claude)) == .terminal, "an approved opening starts in the terminal")
         let surface = TerminalSurface(fontSize: model.terminalFontSize)
         let size = surface.gridSize
         Task {

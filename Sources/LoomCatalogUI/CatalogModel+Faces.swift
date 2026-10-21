@@ -20,12 +20,17 @@ extension CatalogModel {
         return owningFace(of: row)
     }
 
+    /// The face policy from this model's own state: the "Sessions run in" switch and whether the app's Chat host exists.
+    var facePolicy: FacePolicy {
+        FacePolicy(runsIn: newSessionFace == .chat ? .chat : .terminal, structuredHostAvailable: chatSessions != nil)
+    }
+
     /// A stopped Claude session shows its live chat, composer included, while the switch says Chat: typing and sending
     /// resumes it in that face. With the switch on Terminal it shows the terminal face's stopped screen. Needs the Chat
     /// host, no run of any kind, and an identity to resume by.
     func showsStoppedLiveChat(_ row: SessionRowModel) -> Bool {
-        guard chatSessions != nil, capabilities(of: row.record.session.provider).structuredFace, !isRunning(row),
-              newSessionFace == .chat else { return false }
+        guard facePolicy.showsStructuredFaceWhenStopped(capabilities(of: row.record.session.provider)),
+              !isRunning(row) else { return false }
         let identity = row.live?.conversationID ?? row.record.session.providerConversationID
         return identity?.isEmpty == false
     }
