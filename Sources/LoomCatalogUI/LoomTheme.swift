@@ -218,11 +218,6 @@ enum LoomTheme {
         static let attentionWash = attentionWashTone.color
         static let unviewedWash = unviewedWashTone.color
         static let failureWash = failureWashTone.color
-        /// The working chase is drawn in the primary text color.
-        static let working = Text.primary
-        /// The chase's colour for layers, which cannot see the SwiftUI environment: a dynamic colour the layer's
-        /// owner resolves again in `viewDidChangeEffectiveAppearance`.
-        static let workingNS = Text.primaryPair.nsColor
         /// Fill opacity of a callout tinted with a status color (the Ink wash, Ink's value).
         static let tintOpacity = 0.13
     }
@@ -689,18 +684,13 @@ enum LoomTheme {
         static let chipMeter = CGSize(width: 34, height: 4)
         // Indicators.
         static let indicatorSlot = CGSize(width: 12, height: 16)
-        static let chaseSide: CGFloat = 12
-        static let chaseInset: CGFloat = 1.6
-        static let chaseDotRadius: CGFloat = 1.45
-        static let pip: CGFloat = 8
         /// The Loom mark over the first-run Home (D-69): its width; the height follows the mark's box.
         static let heroMarkWidth: CGFloat = 36
         /// The failure mark under "Differentiate without color" (the identity proposal's diamond, corner to corner).
         static let failureDiamond: CGFloat = 7
         static let projectDot: CGFloat = 8
-        /// A subagent row: its height, and the scale of the working chase in its 12 pt slot.
+        /// A subagent row's height.
         static let subagentRowHeight: CGFloat = 22
-        static let subagentChaseScale: CGFloat = 0.75
     }
 
     // MARK: Menu bar item
@@ -717,9 +707,8 @@ enum LoomTheme {
         static let markBox = CGRect(x: 104, y: 136, width: 408, height: 376)
         static var markSize: CGSize { CGSize(width: markWidth, height: markWidth * markBox.height / markBox.width) }
 
-        // The badge slot, lower right. Working: the sidebar chase at 0.8 scale. Needs you: one dot.
+        // The badge slot, lower right. Working: the braille spinner. Needs you: one dot.
         // The mark is cut away around the badge so it sits on the bar. Coordinates are in the mark's box.
-        static let chaseScale: CGFloat = 0.8
         static let chaseOrigin = CGPoint(x: 9.4, y: 8)
         static let chaseCutoutCenter = CGPoint(x: 14.2, y: 12.8)
         static let chaseCutoutRadius: CGFloat = 7
@@ -736,9 +725,6 @@ enum LoomTheme {
         static let markOnLightRGB = RGB(red: 0, green: 0, blue: 0)
         static func markRGB(darkBar: Bool) -> RGB { darkBar ? markOnDarkRGB : markOnLightRGB }
 
-        /// Increase Contrast lifts the trail's floor from 16 % to 45 %.
-        static let chaseTrailIncreased: [Double] = [1, 0.85, 0.7, 0.55]
-        static let chaseRestIncreased = 0.45
 
         /// The dot's colour. A dark bar takes the theme's status values; a light bar darker ones (the
         /// brand hues are 1.4 to 2.2:1 on it); Increase Contrast a stronger hue, lighter on a dark bar
@@ -828,13 +814,6 @@ enum LoomTheme {
     // MARK: Motion
 
     enum Motion {
-        /// Stepped, low-rate animation (not display-rate).
-        static let chaseFramesPerSecond = 10.0
-        static let chaseDotCount = 8
-        /// Opacity by distance behind the head.
-        static let chaseTrail: [Double] = [1, 0.8, 0.55, 0.35]
-        static let chaseRest = 0.16
-
         /// One-shot transitions (design/DESIGN.md §6): ease-out, at most 200 ms.
         static let selectionDuration = 0.12
         static let bannerDuration = 0.20
