@@ -18,24 +18,21 @@ struct ProjectPageInkPureTests {
         #expect(collapsed == 128 && fullScreen == 54)
         // A 1,000 wide pane: the column's edge is its 32 inset.
         #expect(ProjectPageLayout.columnEdge(paneWidth: 1_000) == 32)
-        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_000, clearance: 0, noticeWidth: nil) == 0, "sidebar open")
-        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_000, clearance: collapsed, noticeWidth: nil) == 96)
-        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_000, clearance: fullScreen, noticeWidth: nil) == 22)
+        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_000, clearance: 0) == 0, "sidebar open")
+        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_000, clearance: collapsed) == 96)
+        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_000, clearance: fullScreen) == 22)
         // A wide pane centres the column: its edge is past the clearance already.
         #expect(ProjectPageLayout.columnEdge(paneWidth: 1_400) == 232)
-        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_400, clearance: collapsed, noticeWidth: nil) == 0)
+        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_400, clearance: collapsed) == 0)
         // Under 760 the inset is 20.
         #expect(ProjectPageLayout.columnEdge(paneWidth: 700) == 20)
-        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 700, clearance: collapsed, noticeWidth: nil) == 108)
+        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 700, clearance: collapsed) == 108)
     }
 
-    @Test func theHeadStartsPastThePreparingNoticeWhereverTheNoticeFloats() {
-        let collapsed = DetailPageChrome.leadingClearance(sidebarCollapsed: true, isFullScreen: false)
-        // The notice floats at the header's 20 inset while the sidebar is open, and at the clearance when it is collapsed; the head
-        // starts past its width and a gap of 8.
-        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_000, clearance: 0, noticeWidth: 110) == 106, "20 + 110 + 8, less the 32 the column has")
-        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_000, clearance: collapsed, noticeWidth: 110) == 214, "128 + 110 + 8, less 32")
-        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_400, clearance: 0, noticeWidth: 110) == 0)
+    @Test func theProjectPageDrawsNoPreparingNoticeOverItsHead() {
+        // The head holds the line (DESIGN §10 Head): the floating notice is left out there, and kept on Home's free line.
+        #expect(!DetailPageChrome.showsNotice(on: .projectPage(projectID: UUID())))
+        #expect(DetailPageChrome.showsNotice(on: .home))
     }
 
     @Test func theColumnIsWideFrom760AndInsetsTwentyBelow() {
@@ -264,12 +261,11 @@ struct ProjectPageInkViewTests {
         // The mark (26) and a gap (10) start at the column's 32 inset: the name begins 36 later; clear of the buttons it moves right.
         #expect(abs(open.name.minX - (32 + 26 + 10)) < 2, "\(open.name)")
         #expect(abs(collapsed.name.minX - open.name.minX - 96) < 2, "open \(open.name) collapsed \(collapsed.name)")
-        // While a "Preparing…" notice floats over the line, the head starts past it (the notice takes no layout space).
+        // A start that prepares does not move the head: the notice is not drawn on this page.
         rig.model.beginStart(StartKey(provider: .claude, projectID: rig.project.id))
         #expect(rig.model.preparingNotice != nil)
         let preparing = await head(clearance: 0)
-        #expect(preparing.name.minX - open.name.minX > 60 && preparing.name.minX - open.name.minX < 160,
-                "open \(open.name) preparing \(preparing.name)")
+        #expect(abs(preparing.name.minX - open.name.minX) < 1, "open \(open.name) preparing \(preparing.name)")
         // At the trailing edge, ⋯ then New session, 8 apart, 32 from the edge.
         #expect(abs(open.new.maxX - (940 - 32)) < 2 && abs(open.actions.maxX + 8 - open.new.minX) < 2, "\(open.actions) \(open.new)")
     }

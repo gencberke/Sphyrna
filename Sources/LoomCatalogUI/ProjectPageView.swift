@@ -74,15 +74,12 @@ enum ProjectPageLayout {
         max(0, (paneWidth - min(paneWidth, LoomTheme.ProjectPage.maxWidth)) / 2) + inset(paneWidth: paneWidth)
     }
 
-    /// How much further the head keeps from the column's leading edge so that what floats over the top 52 pt stays clear: the head
-    /// starts at `max(the column's inset, detailLeadingClearance)`, less what the column already has. While the "Preparing…" notice
-    /// shows (`noticeWidth`), the head also starts past it: the notice floats at the clearance while the sidebar is collapsed and at
-    /// the header's leading inset while it is open, and takes no layout space.
-    static func headLeadingExtra(paneWidth: CGFloat, clearance: CGFloat, noticeWidth: CGFloat?) -> CGFloat {
-        let start = noticeWidth.map {
-            (clearance > 0 ? clearance : LoomTheme.Header.leadingInset) + $0 + LoomTheme.Space.detailSpacing
-        } ?? clearance
-        return max(0, start - columnEdge(paneWidth: paneWidth))
+    /// How much further the head keeps from the column's leading edge so that the window's buttons and "Show Sidebar", which
+    /// float over the top 52 pt while the sidebar is collapsed, stay clear: the head starts at `max(the column's inset,
+    /// detailLeadingClearance)`, less what the column already has. The "Preparing…" notice is not drawn on this page
+    /// (`DetailPageChrome.showsNotice`).
+    static func headLeadingExtra(paneWidth: CGFloat, clearance: CGFloat) -> CGFloat {
+        max(0, clearance - columnEdge(paneWidth: paneWidth))
     }
 }
 
@@ -94,10 +91,8 @@ private struct ProjectPageHeader: View {
     let paneWidth: CGFloat
     /// What keeps the head clear of the window's buttons and "Show Sidebar" (`ProjectPageLayout.headLeadingExtra`).
     @Environment(\.detailLeadingClearance) private var clearance
-    @State private var noticeWidth: CGFloat = 0
 
     var body: some View {
-        let notice = model.preparingNotice
         HStack(spacing: LoomTheme.ProjectPage.headGap) {
             ProjectMarkView(name: project.name, tone: model.projectTone(forProject: project.id), size: .page)
             HStack(alignment: .firstTextBaseline, spacing: LoomTheme.ProjectPage.headGap + LoomTheme.ProjectPage.pathLeading) {
@@ -133,17 +128,8 @@ private struct ProjectPageHeader: View {
             }
             .fixedSize()
         }
-        .padding(.leading, ProjectPageLayout.headLeadingExtra(
-            paneWidth: paneWidth, clearance: clearance, noticeWidth: notice == nil ? nil : noticeWidth))
+        .padding(.leading, ProjectPageLayout.headLeadingExtra(paneWidth: paneWidth, clearance: clearance))
         .frame(height: LoomTheme.ProjectPage.headHeight)
-        // The notice floats over this line and takes no layout space; a copy of it, hidden, tells how wide it is.
-        .background(alignment: .leading) {
-            if let notice {
-                PreparingNotice(text: notice).fixedSize()
-                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { noticeWidth = $0 }
-                    .hidden()
-            }
-        }
     }
 }
 

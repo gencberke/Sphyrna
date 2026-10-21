@@ -164,11 +164,19 @@ struct DetailPageChrome: View {
 
     private var reservesWindowButtons: Bool { model.sidebarCollapsed && !model.isFullScreen }
 
+    /// The project page's head holds this line (DESIGN §10 Head), so the "Preparing…" notice is not drawn over it: a head that
+    /// moved aside during a start would be worse than a transient notice left out. Home's line is free, and shows it.
+    static func showsNotice(on route: DetailRoute) -> Bool {
+        if case .projectPage = route { false } else { true }
+    }
+
     var body: some View {
         HStack(spacing: LoomTheme.Space.detailSpacing) {
             if reservesWindowButtons { Color.clear.frame(width: LoomTheme.Layout.detailButtonsGap) }
             if model.sidebarCollapsed { ShowSidebarButton(model: model) }
-            if let notice = model.preparingNotice { PreparingNotice(text: notice).allowsHitTesting(false) }
+            if Self.showsNotice(on: model.detailRoute), let notice = model.preparingNotice {
+                PreparingNotice(text: notice).allowsHitTesting(false)
+            }
         }
         .font(LoomTheme.Typography.body)
         .foregroundStyle(LoomTheme.Text.primary)
