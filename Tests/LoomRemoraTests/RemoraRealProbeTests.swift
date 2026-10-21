@@ -4,10 +4,12 @@ import Testing
 @testable import LoomRemora
 
 /// The real-CLI probe of Remora's call (off unless `LOOM_REAL_REMORA_PROBE` is set): the whole call (supervisor, argv,
-/// environment, stream, answer) against the installed `claude` with the isolated probe profile and Haiku, on a synthetic
-/// workspace built by Remora's own pack builder. One run is a cold brief and then, straight after, a question on the same
+/// environment, stream, answer) against the installed `claude` with the isolated probe profile, on a synthetic workspace
+/// built by Remora's own pack builder. It calls with what Remora ships with (`RemoraPreferences.defaultModel` and
+/// `defaultEffort`), so its timings and cost are the product's. One run is a cold brief and then, straight after, a question on the same
 /// catalog (what a user's rhythm does), so the second call shows what the cache gives back of the first.
 ///
+/// - `LOOM_REAL_REMORA_MODEL` names another model for both calls (`haiku` for a cheap rerun); the effort stays the product's.
 /// - `LOOM_REAL_REMORA_OUT` names the file that receives the numbers (tokens with the cache split, cost, timings, the
 ///   model id; never the answer, the pack or any account field).
 /// - `LOOM_REAL_REMORA_LAYOUT`: `system` (the product's: the stable prefix goes after the rules in a system prompt file,
@@ -25,6 +27,7 @@ struct RemoraRealProbeTests {
         let environment = ProcessInfo.processInfo.environment
         let outPath = try #require(environment["LOOM_REAL_REMORA_OUT"])
         let layout = environment["LOOM_REAL_REMORA_LAYOUT"] ?? "system"
+        let (model, effort) = Self.modelAndEffort(environment)
         let profile = NSHomeDirectory() + "/Library/Application Support/Loom-Dev/probe/claude-config"
         let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
         var extra: [String: String] = [:]
@@ -43,7 +46,7 @@ struct RemoraRealProbeTests {
         let builder = world.builder()
         let now = world.base
         func pack(_ request: RemoraPackRequest, at offset: TimeInterval) async throws -> RemoraPack {
-            try await builder.build(request, settings: RemoraPackSettings(model: "haiku", effort: "low"), today: RemoraUsage().today,
+            try await builder.build(request, settings: RemoraPackSettings(model: model, effort: effort), today: RemoraUsage().today,
                                     now: now.addingTimeInterval(offset), timeZone: TimeZone(identifier: "Europe/Istanbul")!)
         }
         let brief = try await pack(.brief(since: now.addingTimeInterval(-20 * 3600)), at: 0)
@@ -58,11 +61,13 @@ struct RemoraRealProbeTests {
         }
         for (pack, gap) in zip(steps, gaps) {
             try await Task.sleep(for: gap)
-            var request = pack.request(model: "haiku", effort: "low")
-            if layout == "plain" { request = RemoraRequest(kind: pack.kind, model: "haiku", effort: "low", pack: pack.text, knownSessionIDs: request.knownSessionIDs) }
+            var request = pack.request(model: model, effort: effort)
+            if layout == "plain" { request = RemoraRequest(kind: pack.kind, model: model, effort: effort, pack: pack.text, knownSessionIDs: request.knownSessionIDs) }
             var result = await Self.run(call, request, pack: pack, layout: layout, nocache: extra["DISABLE_PROMPT_CACHING"] != nil,
                                         ttl: extra["CLAUDE_CODE_PROMPT_CACHE_TTL"] ?? "1h")
             result["messagesTTL"] = extra["CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL"] ?? "5m"
+            result["requestedModel"] = model
+            result["effort"] = effort
             results.append(result)
             try JSONSerialization.data(withJSONObject: results, options: [.sortedKeys, .prettyPrinted]).write(to: URL(fileURLWithPath: outPath))
         }
@@ -70,6 +75,12 @@ struct RemoraRealProbeTests {
         #expect((await supervisor.shutdown()).succeeded)
         #expect(try FileManager.default.contentsOfDirectory(atPath: "/private/tmp/loom-real/L1c/run").isEmpty)
         #expect(try FileManager.default.contentsOfDirectory(atPath: "/private/tmp/loom-real/L1c").filter { $0.hasPrefix("system-") }.isEmpty)
+    }
+
+    /// The model and effort both calls use: Remora's shipped ones, unless `LOOM_REAL_REMORA_MODEL` names another model.
+    static func modelAndEffort(_ environment: [String: String]) -> (model: String, effort: String) {
+        let named = environment["LOOM_REAL_REMORA_MODEL"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return (named.isEmpty ? RemoraPreferences.defaultModel : named, RemoraPreferences.defaultEffort)
     }
 
     private static func run(_ call: RemoraCall, _ request: RemoraRequest, pack: RemoraPack, layout: String, nocache: Bool,
@@ -156,5 +167,16 @@ struct RemoraRealProbeTests {
             try world.add(title: "Fix the \(area) (\(project.name) #\(index + 100))", project: project, minutesAgo: Double(index) * 20 + 5,
                           state: index % 5 == 0 ? .working : .idle, lines: turns(area, project: project.name))
         }
+    }
+}
+
+/// The probe's model needs no real call to check: it runs what Remora ships with unless it is told otherwise.
+struct RemoraRealProbeSettingsTests {
+    @Test func theProbeCallsWithWhatRemoraShipsUnlessAnotherModelIsNamed() {
+        let shipped = RemoraRealProbeTests.modelAndEffort([:])
+        #expect(shipped.model == RemoraPreferences.defaultModel && shipped.effort == RemoraPreferences.defaultEffort)
+        #expect(RemoraRealProbeTests.modelAndEffort(["LOOM_REAL_REMORA_MODEL": " "]).model == RemoraPreferences.defaultModel)
+        let cheap = RemoraRealProbeTests.modelAndEffort(["LOOM_REAL_REMORA_MODEL": "haiku"])
+        #expect(cheap.model == "haiku" && cheap.effort == RemoraPreferences.defaultEffort)
     }
 }
