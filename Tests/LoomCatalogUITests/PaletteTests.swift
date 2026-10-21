@@ -86,14 +86,15 @@ struct PaletteTests {
 
     // MARK: Ranking (pure)
 
-    private func info(_ title: String, project: String? = "api-gateway", age: TimeInterval = 3_600,
-                      indicator: SessionIndicator = .ready, reason: String? = nil, now: Date) -> PaletteSessionInfo {
-        PaletteSessionInfo(id: UUID(), title: title, project: project, provider: .claude,
+    private func info(_ title: String, project: String? = "api-gateway", provider: ManagedSession.Provider = .claude,
+                      age: TimeInterval = 3_600, indicator: SessionIndicator = .ready, reason: String? = nil,
+                      now: Date) -> PaletteSessionInfo {
+        PaletteSessionInfo(id: UUID(), title: title, project: project, provider: provider,
                            lastActivityAt: now.addingTimeInterval(-age), indicator: indicator, reason: reason)
     }
 
     private let sampleActions: [(action: PaletteAction, detail: String?)] = [
-        (.newSession, "in api-gateway"), (.home, nil), (.toggleInspector, nil), (.settings, nil), (.findSession, nil),
+        (.newSession, "in api-gateway"), (.home, nil), (.toggleInspector, nil), (.settings, nil),
     ]
 
     @Test func anEmptyQueryIsTriage() {
@@ -111,7 +112,7 @@ struct PaletteTests {
         #expect(titles(of: groups[0]) == ["Nightly import", "Webhook check", "Rate limiter"])
         #expect(groups[0].items[1].detail == "· allow git push")
         #expect(titles(of: groups[1]) == (0..<PaletteRanking.recentLimit).map { "Session \($0)" })
-        #expect(titles(of: groups[2]) == ["New session", "Home", "Toggle Inspector", "Settings…", "Search sessions in the sidebar"])
+        #expect(titles(of: groups[2]) == ["New session", "Home", "Toggle Inspector", "Settings…"])
         #expect(groups[2].items[0].detail == "in api-gateway" && groups[2].items[0].trailing == "⌘N")
         #expect(groups[2].items[1].trailing == "⌃⌘H", "Home shows its menu key: Control, then Command")
     }
@@ -146,6 +147,34 @@ struct PaletteTests {
         #expect(titles("webhook nope").isEmpty, "a word that matches nowhere drops the row")
         #expect(titles("wbk") == ["Webhook tests"], "three scattered letters of a title still match")
         #expect(titles("wb").isEmpty, "two scattered letters do not")
+    }
+
+    /// The sidebar's filter matched a session by its provider too; the palette, which the sidebar's search now opens, does the same
+    /// (DESIGN §2 item 3). A provider counts less than a title, like the project.
+    @Test func aQueryFindsASessionByItsProvider() {
+        let now = Date()
+        let codex = info("Refactor the parser", provider: .codex, now: now)
+        let claude = info("Port the sidebar", provider: .claude, now: now)
+        let named = info("Ask Codex about it", provider: .claude, now: now)
+        func titles(_ query: String, folded: Bool = false) -> [String] {
+            var rows = [codex, claude, named]
+            if folded {
+                // The live palette keeps each session's fold for the whole open; the provider is found there too.
+                let cache = PaletteFoldCache()
+                rows = rows.map { row in
+                    PaletteSessionInfo(id: row.id, title: row.title, project: row.project, provider: row.provider,
+                                       lastActivityAt: row.lastActivityAt, indicator: row.indicator, reason: row.reason,
+                                       folded: cache.folded(for: row.id, title: row.title, project: row.project, reason: row.reason))
+                }
+            }
+            return PaletteRanking.groups(query: query, sessions: rows, projects: [], actions: [], now: now)
+                .flatMap(\.items).map(\.title)
+        }
+        #expect(titles("codex") == ["Ask Codex about it", "Refactor the parser"], "the title match first, then the provider's")
+        #expect(titles("codex", folded: true) == ["Ask Codex about it", "Refactor the parser"])
+        #expect(Set(titles("claude")) == ["Port the sidebar", "Ask Codex about it"])
+        #expect(titles("CODEX parser") == ["Refactor the parser"], "every word must match, one of them the provider")
+        #expect(titles("synthetic").isEmpty)
     }
 
     @Test func needsYouStaysFirstAndAFreshSessionBeatsAnOldOne() {

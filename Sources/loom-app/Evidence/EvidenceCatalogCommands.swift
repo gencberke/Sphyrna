@@ -15,7 +15,15 @@ extension DevelopmentEvidence {
         switch name {
         case "toggle-sidebar": app.toggleSidebarForEvidence()
         case "select": model.select(argument == "none" ? nil : id(argument))
-        case "search": model.setSearchText(argument)
+        case "search":
+            // The sidebar's search is the palette's door: `search:<text>` types into the palette (opening it first), and an
+            // empty text closes it.
+            if argument.isEmpty {
+                model.palette.close()
+            } else {
+                if !model.palette.isOpen { model.openPalette() }
+                model.palette.setQuery(argument)
+            }
         case "view-mode": if let mode = CatalogViewMode(rawValue: argument) { model.setViewMode(mode) }
         case "add-project": await model.addProject(path: argument)
         case "remove-project": if let id = id(argument) { await model.removeProject(id) }

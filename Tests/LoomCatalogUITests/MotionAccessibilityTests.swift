@@ -79,22 +79,8 @@ struct MotionAccessibilityTests {
     @Test func smallControlsReachTheMinimumHitTarget() {
         let project = ChromeButtonStyle.hitSize(for: LoomTheme.Layout.projectMenuButton)
         #expect(project == LoomTheme.Layout.minimumHitTarget)
-        for size in [LoomTheme.Layout.chromeButton, LoomTheme.Layout.footerButton] {
-            #expect(ChromeButtonStyle.hitSize(for: size) == size) // already large enough: unchanged
-        }
+        let chrome = LoomTheme.Layout.chromeButton
+        #expect(ChromeButtonStyle.hitSize(for: chrome) == chrome) // already large enough: unchanged
         #expect(LoomTheme.Layout.minimumHitTarget.width >= 24 && LoomTheme.Layout.minimumHitTarget.height >= 24)
-    }
-
-    // MARK: Search focus
-
-    @Test func escapeClearsATextSearchAndLeavesAnEmptyOne() {
-        #expect(SearchField.escapeClearsSearch("rocket"))
-        #expect(!SearchField.escapeClearsSearch(""))
-    }
-
-    @Test func aProjectIsExpandedWhileSearchingWhateverItsFlagSays() {
-        #expect(ProjectHeader.isExpanded(collapsed: false, searching: false))
-        #expect(!ProjectHeader.isExpanded(collapsed: true, searching: false))
-        #expect(ProjectHeader.isExpanded(collapsed: true, searching: true))
     }
 }

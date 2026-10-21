@@ -15,11 +15,10 @@ public struct SidebarView: View {
     public var body: some View {
         VStack(spacing: 0) {
             SidebarHeader(model: model)
-            SearchField(model: model)
-                .padding(.horizontal, LoomTheme.Space.searchInset)
-                .padding(.bottom, LoomTheme.Space.searchBottom)
+            SearchDoor(model: model)
             HomeRow(model: model)
             NewSessionRow(model: model)
+            SidebarListHeading(model: model)
             SidebarList(model: model)
             SidebarFooter(model: model)
         }
@@ -31,6 +30,8 @@ public struct SidebarView: View {
     }
 }
 
+/// The 52 pt header row (DESIGN §2 item 1): the clearance for the native window buttons (none in full screen) and the sidebar
+/// toggle at the trailing end. Nothing else: the view switch is the list's heading, Add Project is in the footer's `+` menu.
 struct SidebarHeader: View {
     let model: CatalogModel
 
@@ -38,53 +39,23 @@ struct SidebarHeader: View {
         HStack(spacing: LoomTheme.Space.headerSpacing) {
             // Full screen has no native window buttons to clear.
             if !model.isFullScreen { Color.clear.frame(width: LoomTheme.Layout.sidebarButtonsGap) }
+            Spacer(minLength: LoomTheme.Space.headerSpacing)
             Button { model.onToggleSidebar?() } label: {
                 Image(systemName: "sidebar.left")
             }
             .buttonStyle(ChromeButtonStyle())
             .help("Hide Sidebar (⌃⌘S)")
             .accessibilityLabel("Hide sidebar")
-            Spacer(minLength: LoomTheme.Space.headerSpacing)
-            ModeButton(model: model, mode: .projects, symbol: "folder", help: "Group by project (⌘2)")
-            ModeButton(model: model, mode: .activity, symbol: "clock", help: "Sort by recent activity (⌘1)")
-            Menu {
-                Button("Add Project…") { model.presentAddProject() }
-                Divider()
-                Button("Group by Project") { model.setViewMode(.projects) }
-                Button("Recent Activity") { model.setViewMode(.activity) }
-            } label: {
-                Image(systemName: "ellipsis")
-            }
-            .menuStyle(.button).buttonStyle(ChromeButtonStyle()).menuIndicator(.hidden).fixedSize()
-            .help("More")
-            .accessibilityLabel("More actions")
         }
         .font(LoomTheme.Typography.body)
         .focusEffectDisabled()
-        .padding(.horizontal, LoomTheme.Space.headerInset)
+        .padding(.leading, LoomTheme.Space.headerInset)
+        .padding(.trailing, LoomTheme.Sidebar.headerTrailing)
         .frame(height: LoomTheme.Layout.headerHeight)
     }
 }
 
-struct ModeButton: View {
-    let model: CatalogModel
-    let mode: CatalogViewMode
-    let symbol: String
-    let help: String
-
-    var body: some View {
-        let selected = model.viewMode == mode
-        Button { model.setViewMode(mode) } label: {
-            Image(systemName: symbol)
-        }
-        .buttonStyle(ChromeButtonStyle(selected: selected))
-        .help(help)
-        .accessibilityLabel(mode == .projects ? "Group by project" : "Recent activity")
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
-/// The Home row under the search field: opens Home and shows how many sessions need the user (the Dock
+/// The Home row under the search door: opens Home and shows how many sessions need the user (the Dock
 /// badge's count). It is its own view and reads only the destination and that count, so a selection or a
 /// frame that changes neither redraws nothing here.
 struct HomeRow: View {
@@ -106,7 +77,8 @@ struct HomeRow: View {
             HStack(spacing: LoomTheme.Sidebar.homeRowSpacing) {
                 Image(systemName: "house").font(LoomTheme.Sidebar.homeGlyph)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle).accessibilityHidden(true)
-                Text("Home").font(LoomTheme.Typography.cardTitle(selected: selected))
+                    .frame(width: LoomTheme.Sidebar.homeGlyphColumn)
+                Text("Home").font(selected ? LoomTheme.Sidebar.lineTitleSelected : LoomTheme.Sidebar.lineTitle)
                     .foregroundStyle(LoomTheme.Text.primary)
                 Spacer(minLength: LoomTheme.Space.headerSpacing)
                 if count > 0 { HomeCountBadge(count: count) }
@@ -141,7 +113,8 @@ struct NewSessionRow: View {
             HStack(spacing: LoomTheme.Sidebar.homeRowSpacing) {
                 Image(systemName: "square.and.pencil").font(LoomTheme.Sidebar.homeGlyph)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle).accessibilityHidden(true)
-                Text(Self.title).font(LoomTheme.Typography.cardTitle(selected: false))
+                    .frame(width: LoomTheme.Sidebar.homeGlyphColumn)
+                Text(Self.title).font(LoomTheme.Sidebar.lineTitle)
                     .foregroundStyle(LoomTheme.Text.primary)
                 Spacer(minLength: LoomTheme.Space.headerSpacing)
             }
@@ -161,7 +134,7 @@ struct NewSessionRow: View {
     }
 }
 
-/// The count on the Home row: the light attention text on an attention wash.
+/// The count on the Home row: the attention text, in mono, on an attention wash.
 struct HomeCountBadge: View {
     let count: Int
 
@@ -170,54 +143,8 @@ struct HomeCountBadge: View {
             .foregroundStyle(LoomTheme.Status.attentionLight)
             .padding(.horizontal, LoomTheme.Sidebar.badgePadding)
             .frame(minWidth: LoomTheme.Sidebar.badgeMinWidth, minHeight: LoomTheme.Sidebar.badgeHeight)
-            .background(Capsule().fill(LoomTheme.Status.attention.opacity(LoomTheme.Sidebar.badgeWash)))
+            .background(Capsule().fill(LoomTheme.Status.attentionWash))
             .accessibilityHidden(true)
-    }
-}
-
-struct SearchField: View {
-    let model: CatalogModel
-    @FocusState private var focused: Bool
-
-    /// Esc clears a search that has text; with nothing to clear it leaves the field.
-    static func escapeClearsSearch(_ text: String) -> Bool { !text.isEmpty }
-
-    var body: some View {
-        HStack(spacing: LoomTheme.Space.searchSpacing) {
-            Image(systemName: "magnifyingglass").foregroundStyle(LoomTheme.Text.secondary)
-            TextField("Search sessions", text: Binding(
-                get: { model.searchText }, set: { model.setSearchText($0) }
-            ))
-            .textFieldStyle(.plain)
-            .foregroundStyle(LoomTheme.Text.primary)
-            .focused($focused)
-            .onExitCommand {
-                if Self.escapeClearsSearch(model.searchText) {
-                    model.setSearchText("")
-                } else {
-                    focused = false
-                    // The keyboard goes back to the terminal, not to the bare window.
-                    Task { @MainActor in
-                        let id = model.selectedSessionID
-                        let view = id.flatMap { model.terminalView(for: $0) }
-                        (view as? TerminalContainerView)?.focusTerminal()
-                    }
-                }
-            }
-            .onChange(of: model.searchFocusRequest) { focused = true }
-            .accessibilityLabel("Search sessions")
-            if !model.searchText.isEmpty {
-                Button { model.setSearchText("") } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(LoomTheme.Text.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
-            }
-        }
-        .font(LoomTheme.Typography.body)
-        .padding(.horizontal, LoomTheme.Space.searchPadding)
-        .frame(height: LoomTheme.Layout.searchHeight)
-        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.search).fill(LoomTheme.Surface.control))
     }
 }
 
@@ -267,24 +194,18 @@ struct ActivityList: View {
         let list = model.list(for: .activity)
         if list.rows.isEmpty {
             DraftRows(model: model)
-            EmptyListHint(model: model, isLoaded: list.isLoaded)
+            EmptyListHint(isLoaded: list.isLoaded)
         } else {
             // Grouped once per list change, membership flip and calendar day (`model.today`), not once per minute.
             let layout = model.activityLayout()
             let lastRowID = layout.lastRowID
             DraftRows(model: model)
             if !layout.active.isEmpty {
-                ActivityHeading {
-                    HStack(spacing: LoomTheme.Space.sectionSpacing) {
-                        Text("Active").foregroundStyle(LoomTheme.Text.primary)
-                        Text("\(layout.active.count)").foregroundStyle(LoomTheme.Text.secondaryStyle)
-                    }
-                    .accessibilityElement(children: .combine)
-                }
+                ActivityHeading(title: "Active", count: layout.active.count)
                 ForEach(layout.active) { row in activityEntry(row, lastRowID: lastRowID) }
             }
             ForEach(layout.days) { section in
-                ActivityHeading { Text(section.title).foregroundStyle(LoomTheme.Text.secondaryStyle) }
+                ActivityHeading(title: section.title)
                 ForEach(section.rows) { row in activityEntry(row, lastRowID: lastRowID) }
             }
             if list.hasMore { ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(LoomTheme.Space.loadingPadding) }
@@ -299,15 +220,20 @@ struct ActivityList: View {
     }
 }
 
-/// A heading of the activity list, a day or "Active": one font, one trait and the same paddings.
-struct ActivityHeading<Content: View>: View {
-    @ViewBuilder let content: Content
+/// A heading of the activity list (Drafts, Active or a day): 11.5 medium tertiary, the count in mono.
+struct ActivityHeading: View {
+    let title: String
+    var count: Int?
 
     var body: some View {
-        content
-            .font(LoomTheme.Typography.dayHeading)
-            .accessibilityAddTraits(.isHeader)
-            .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
+        HStack(spacing: LoomTheme.Space.sectionSpacing) {
+            Text(title).font(LoomTheme.Sidebar.sectionFont)
+            if let count { Text("\(count)").font(LoomTheme.Sidebar.sectionCountFont) }
+        }
+        .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+        .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
     }
 }
 
@@ -320,23 +246,20 @@ struct ProjectList: View {
     var body: some View {
         let _ = SidebarRenderProbe.projectList(of: model)
         let unassigned = model.list(for: .unassigned)
-        let visibleProjects = model.projects.filter {
-            !model.isSearching || !model.list(for: .project($0.id)).rows.isEmpty
+        if model.projects.isEmpty && unassigned.rows.isEmpty {
+            EmptyListHint(isLoaded: model.isReady)
         }
-        if visibleProjects.isEmpty && unassigned.rows.isEmpty {
-            EmptyListHint(model: model, isLoaded: model.isReady)
-        }
-        ForEach(visibleProjects) { project in
+        ForEach(model.projects) { project in
             ProjectHeader(model: model, project: project)
             let list = model.list(for: .project(project.id))
-            if model.isSearching || !project.collapsed {
+            if !project.collapsed {
                 DraftRows(model: model, scope: .project(project.id))
                 ForEach(list.rows) { row in
                     SessionListEntry(row: row, model: model)
                         .id(row.id)
                         .onAppear { if row.id == list.rows.last?.id { model.loadMore(.project(project.id)) } }
                 }
-                if list.rows.isEmpty && list.isLoaded && !model.isSearching {
+                if list.rows.isEmpty && list.isLoaded {
                     NoSessionsNote(model: model, projectID: project.id)
                 }
             }
@@ -381,55 +304,67 @@ private struct LoneDraftsSection: View {
     }
 }
 
+/// A group's title in the project view where there is no project (the sessions without one): a head of the project heads'
+/// shape, with a tray in place of the mark.
 struct SectionTitle: View {
     let title: String
     let symbol: String
 
     var body: some View {
-        HStack(spacing: LoomTheme.Space.sectionSpacing) {
+        HStack(spacing: LoomTheme.Sidebar.headSpacing) {
             Image(systemName: symbol).foregroundStyle(LoomTheme.Text.secondaryStyle).accessibilityHidden(true)
-            Text(title).font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
+                .frame(width: LoomTheme.ProjectMarkStyle.Size.head.side)
+            Text(title).font(LoomTheme.Sidebar.headName).foregroundStyle(LoomTheme.Text.primary)
             Spacer()
         }
-        .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
+        .padding(.leading, LoomTheme.Sidebar.headLeading)
+        .frame(height: LoomTheme.InkHeight.sidebarRow)
+        .padding(.top, LoomTheme.Sidebar.headTop)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }
 }
 
-/// A project's row in the project view, one line. A click on its name opens the project page (concept §3);
-/// the chevron beside it expands and collapses the project's sessions, as the whole row did before.
+/// A project's head in the project view, one 28 pt line: its mark, its name and its attention dot. A click on the name opens
+/// the project page (concept §3); the chevron, `+` and ⋯ show while the pointer is on the head or one of them has the keyboard,
+/// and stay accessibility actions at all times. The chevron expands and collapses the project's sessions. While its page is
+/// open the head takes the neutral selected fill (D-76).
 struct ProjectHeader: View {
     let model: CatalogModel
     let project: CatalogProject
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @State private var hovering = false
+    @FocusState private var focused: Control?
 
-    /// A search shows every matching project open, whatever its collapsed flag says.
-    static func isExpanded(collapsed: Bool, searching: Bool) -> Bool { searching || !collapsed }
+    /// The head's own controls, for the focus that reveals them.
+    enum Control: Hashable { case chevron, start, menu }
 
     /// The chevron's value for assistive technologies.
     static func disclosureValue(expanded: Bool) -> String { expanded ? "Expanded" : "Collapsed" }
+
+    /// Whether the chevron, `+` and ⋯ are drawn: under the pointer, or while one of them has the keyboard.
+    static func showsControls(hovering: Bool, focused: Bool) -> Bool { hovering || focused }
 
     var body: some View {
         let count = model.sessionCounts[project.id] ?? 0
         let attention = model.attention(forProject: project.id)
         let index = model.projects.firstIndex { $0.id == project.id } ?? 0
-        let expanded = Self.isExpanded(collapsed: project.collapsed, searching: model.isSearching)
+        let expanded = !project.collapsed
         let selected = model.destination == .projectPage(project.id)
-        let projectMenuExtra = (ChromeButtonStyle.hitSize(for: LoomTheme.Layout.projectMenuButton).height
-                                - LoomTheme.Layout.projectMenuButton.height) / 2
-        HStack(spacing: LoomTheme.Space.sectionSpacing) {
+        let key = "sidebar-project:\(project.id)"
+        let showsControls = Self.showsControls(hovering: hovering || LookEvidence.forcesHover(key), focused: focused != nil)
+        HStack(spacing: 0) {
             // The row's own button is what the keyboard and VoiceOver operate; a mouse click anywhere
             // on the padded row (the tap gesture below) does the same.
             Button { model.showProjectPage(project.id) } label: {
-                HStack(spacing: LoomTheme.Space.sectionSpacing) {
-                    Image(systemName: "folder").foregroundStyle(LoomTheme.Text.secondaryStyle)
-                    Text(project.name).font(LoomTheme.Typography.bodyStrong)
+                HStack(spacing: LoomTheme.Sidebar.headSpacing) {
+                    ProjectMarkView(name: project.name, tone: model.projectTone(forProject: project.id), size: .head)
+                    Text(project.name).font(LoomTheme.Sidebar.headName)
                         .foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
-                    Spacer(minLength: LoomTheme.Space.headerSpacing)
                     if let attention {
                         ProjectAttentionMark(attention: attention, differentiateWithoutColor: differentiateWithoutColor)
                     }
+                    Spacer(minLength: LoomTheme.Space.headerSpacing)
                 }
                 .contentShape(Rectangle())
             }
@@ -441,10 +376,14 @@ struct ProjectHeader: View {
                 Image(systemName: expanded ? "chevron.down" : "chevron.right").font(LoomTheme.Typography.chevron)
             }
             .buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.projectMenuButton))
+            .focused($focused, equals: .chevron)
+            .revealed(showsControls)
             .help(expanded ? "Collapse" : "Expand")
             .accessibilityLabel("Sessions in \(project.name)")
             .accessibilityValue(Self.disclosureValue(expanded: expanded))
             ProjectStartButton(model: model, project: project)
+                .focused($focused, equals: .start)
+                .revealed(showsControls)
             Menu {
                 Button("Move Up") { Task { await model.moveProject(project.id, by: -1) } }
                     .disabled(index == 0)
@@ -464,19 +403,16 @@ struct ProjectHeader: View {
             }
             .menuStyle(.button).buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.projectMenuButton))
             .menuIndicator(.hidden).fixedSize()
+            .revealed(showsControls)
             .help(count > 0 ? "Only an empty project can be removed" : "Project actions")
             .accessibilityLabel("Actions for \(project.name)")
         }
-        // The open page's fill reaches the row's own padding, so the content keeps its place inside it.
-        .padding(.horizontal, LoomTheme.Sidebar.headerFillInset)
-        .rowPill(selected: selected, radius: LoomTheme.Highlight.radiusCompact, key: "sidebar-project:\(project.id)")
-        // The menu button's 24 pt hit area is taller than its 20 pt drawing; the row keeps its height.
-        .padding(.horizontal, LoomTheme.Space.sectionInset - LoomTheme.Sidebar.headerFillInset)
-        .padding(.top, LoomTheme.Space.sectionTop - projectMenuExtra)
-        .padding(.bottom, LoomTheme.Space.sectionBottom - projectMenuExtra)
-        .projectStripe(model.projectTone(forProject: project.id),
-                       top: LoomTheme.ProjectColor.headerStripeTop, bottom: LoomTheme.ProjectColor.headerStripeBottom)
+        .padding(.leading, LoomTheme.Sidebar.headLeading)
+        .padding(.trailing, LoomTheme.Sidebar.headTrailing)
+        .frame(height: LoomTheme.InkHeight.sidebarRow)
+        .rowPill(selected: selected, radius: LoomTheme.Highlight.radiusCompact, key: key)
         .contentShape(Rectangle())
+        .onHover { hovering = $0 }
         .onTapGesture { model.showProjectPage(project.id) }
         .contextMenu {
             NewConversationButtons(model: model, projectID: project.id)
@@ -487,6 +423,16 @@ struct ProjectHeader: View {
         }
         .accessibilityElement(children: .contain)
         .help(project.path)
+        // The gap above a head belongs to the list, not to the head's hover and click.
+        .padding(.top, LoomTheme.Sidebar.headTop)
+    }
+}
+
+extension View {
+    /// Draws a control only while `shown`. At zero opacity SwiftUI drops it from the accessibility tree, so it is said to stay: the
+    /// project head's controls are accessibility actions at all times.
+    fileprivate func revealed(_ shown: Bool) -> some View {
+        opacity(shown ? 1 : 0).accessibilityHidden(false)
     }
 }
 
@@ -500,24 +446,20 @@ struct ProjectAttentionMark: View {
         if ProjectAttention.drawsDiamond(attention, differentiateWithoutColor: differentiateWithoutColor) {
             Diamond().fill(attention.color)
                 .frame(width: LoomTheme.Layout.failureDiamond, height: LoomTheme.Layout.failureDiamond)
-                .frame(width: LoomTheme.Layout.projectDot, height: LoomTheme.Layout.projectDot)
+                .frame(width: LoomTheme.StatusMark.dot, height: LoomTheme.StatusMark.dot)
         } else {
-            Circle().fill(attention.color).frame(width: LoomTheme.Layout.projectDot, height: LoomTheme.Layout.projectDot)
+            Circle().fill(attention.color).frame(width: LoomTheme.StatusMark.dot, height: LoomTheme.StatusMark.dot)
         }
     }
 }
 
 struct EmptyListHint: View {
-    let model: CatalogModel
     let isLoaded: Bool
 
     var body: some View {
         VStack(spacing: LoomTheme.Space.hintSpacing) {
             if !isLoaded {
                 ProgressView().controlSize(.small)
-            } else if model.isSearching {
-                Text("No matching sessions").foregroundStyle(LoomTheme.Text.primary)
-                Text("Search covers title, provider and project.").foregroundStyle(LoomTheme.Text.secondary)
             } else {
                 Text("No sessions yet. Add a project folder to begin.").foregroundStyle(LoomTheme.Text.secondary)
             }
@@ -544,11 +486,13 @@ struct SessionListEntry: View {
     }
 }
 
-/// The relative time on a card ("5m"), or "Deleting…". The only part of a card that reads the minute tick, so
+/// The relative time on a row or card ("5m"), or "Deleting…", in mono 11. The only part of a card that reads the minute tick, so
 /// the tick redraws these labels and nothing else of the card. The tooltip comes formatted with the row.
 struct CardTimeLabel: View {
     let row: SessionRowModel
     let model: CatalogModel
+    /// A selected row on its project's tint reads the time in secondary: tertiary is not promised on a tint.
+    var onTint = false
 
     static func text(for row: SessionRowModel, deleting: Bool, now: Date) -> String {
         deleting ? "Deleting…" : RelativeTime.string(from: row.record.lastActivityAt, to: now)
@@ -557,7 +501,8 @@ struct CardTimeLabel: View {
     var body: some View {
         let _ = SidebarRenderProbe.timeLabel(row.id)
         Text(Self.text(for: row, deleting: model.isDeleting(row.id), now: model.now))
-            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+            .font(LoomTheme.Sidebar.timeFont)
+            .foregroundStyle(onTint ? LoomTheme.Text.secondaryStyle : LoomTheme.Text.tertiaryStyle)
             .help(row.activityTooltip)
     }
 }
@@ -571,7 +516,7 @@ struct SessionCardView: View {
     /// card first. The projectless "Sessions" group exists only in the project view, so the mode alone decides.
     static func projectLabel(mode: CatalogViewMode, name: String?) -> String? { mode == .activity ? name : nil }
     static func repeatsProject(mode: CatalogViewMode) -> Bool { mode == .activity }
-    /// The project view lists its sessions as calm one-line rows; the activity view keeps the two-row card.
+    /// The project view lists its sessions as calm one-line rows; the activity view keeps the card.
     static func isOneLine(mode: CatalogViewMode) -> Bool { mode == .projects }
 
     /// What Pin promises. "Out of cleanup" is true only where the cleanup review exists (development
@@ -606,24 +551,25 @@ struct SessionCardView: View {
         let title = model.title(of: row, repeatsProject: Self.repeatsProject(mode: mode))
         let projectName = model.projectName(for: row.record)
         let origin = model.origin(of: row)
+        // The selected row takes its project's tint; no tone (None, no project, colours off) keeps the neutral fill.
+        let tone = model.projectTone(forProject: row.record.projectID)
+        let onTint = selected && tone != nil
         // The reason is read from the row's own property: only this card depends on it.
         // Only a card of the Active section says it; `inActiveSection` is held per row, like the selection.
-        // While a search shows the plain result there is no Active section, so no reason line either.
-        let reasonLine = row.inActiveSection && !oneLine && !model.isSearching ? SessionReasonLine(row.reason) : nil
+        let reasonLine = row.inActiveSection && !oneLine ? SessionReasonLine(row.reason) : nil
         // A click in the list never scrolls it (the card is already under the pointer).
         Button { model.selectFromList(row.id) } label: {
             if oneLine {
-                lineLabel(title: title, indicator: indicator, selected: selected)
+                lineLabel(title: title, indicator: indicator, selected: selected, onTint: onTint)
             } else {
-                cardLabel(title: title, indicator: indicator, selected: selected, mode: mode,
-                          projectName: projectName, origin: origin, reasonLine: reasonLine)
+                cardLabel(title: title, indicator: indicator, selected: selected, mode: mode, projectName: projectName,
+                          origin: origin, reasonLine: reasonLine, onTint: onTint)
             }
         }
         .buttonStyle(RowButtonStyle(
             selected: selected, radius: oneLine ? LoomTheme.Highlight.radiusCompact : LoomTheme.Highlight.radius,
-            key: "sidebar-card:\(row.id)"))
+            key: "sidebar-card:\(row.id)", tint: tone))
         .focusEffectDisabled()
-        .projectStripe(model.projectTone(forProject: row.record.projectID))
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.openTab(row.id, revealInList: false) })
         .contextMenu {
             Button("Rename…") { model.beginRename(row.id) }
@@ -644,85 +590,99 @@ struct SessionCardView: View {
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 
-    // MARK: Activity view: the two-row card
+    // MARK: Activity view: the card
 
+    /// Line 1 is the status column, the harness's mark, the title and the time. Line 2, only in the Active section, is the reason.
+    /// Line 3 is the fixed bottom row. Lines 2 and 3 start under the title.
     @ViewBuilder
     private func cardLabel(title: String, indicator: SessionIndicator, selected: Bool, mode: CatalogViewMode,
-                           projectName: String?, origin: SessionOrigin?, reasonLine: SessionReasonLine?) -> some View {
-        HStack(alignment: .top, spacing: LoomTheme.Space.cardSpacing) {
-            IndicatorView(indicator: indicator)
-                .padding(.top, LoomTheme.Space.cardIndicatorTop)
-            VStack(alignment: .leading, spacing: LoomTheme.Space.cardLineSpacing) {
-                HStack(spacing: LoomTheme.Space.cardRowSpacing) {
-                    Text(title)
-                        .font(LoomTheme.Typography.cardTitle(selected: selected))
-                        .foregroundStyle(indicator == .stale ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
-                        .lineLimit(1).truncationMode(.tail)
-                    Spacer(minLength: LoomTheme.Space.headerSpacing)
-                    CardTimeLabel(row: row, model: model)
+                           projectName: String?, origin: SessionOrigin?, reasonLine: SessionReasonLine?,
+                           onTint: Bool) -> some View {
+        let quiet = onTint ? LoomTheme.Text.secondaryStyle : LoomTheme.Text.tertiaryStyle
+        VStack(alignment: .leading, spacing: LoomTheme.Space.cardLineSpacing) {
+            HStack(spacing: LoomTheme.Space.cardSpacing) {
+                IndicatorView(indicator: indicator)
+                ProviderIcon(provider: row.record.session.provider)
+                titleText(title, indicator: indicator, selected: selected)
+                Spacer(minLength: LoomTheme.Space.headerSpacing)
+                CardTimeLabel(row: row, model: model, onTint: onTint)
+            }
+            if let reasonLine {
+                // What the session waits for or did last: its own line between the title and the fixed bottom row
+                // (D-69), so the card is one line taller while it needs the user. A command is mono.
+                reasonText(reasonLine)
+                    .foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.leading, LoomTheme.Sidebar.cardTextIndent)
+                    .help(reasonLine.help)
+            }
+            HStack(spacing: LoomTheme.Sidebar.metaSpacing) {
+                if let origin, origin.replacesBranch {
+                    // Same branch as the session that opened this one: the origin says more than the branch.
+                    Label(origin.cardLabel, systemImage: "arrow.turn.down.right")
+                        .font(LoomTheme.Sidebar.metaFont).lineLimit(1)
+                        .help(origin.tooltip)
+                } else {
+                    Label {
+                        Text((model.branches[row.record.session.workingDirectory] ?? .unavailable).label)
+                            .font(LoomTheme.Sidebar.metaMonoFont)
+                    } icon: {
+                        Image(systemName: "arrow.triangle.branch").font(LoomTheme.Sidebar.metaGlyph)
+                    }
+                    .lineLimit(1)
+                    .help(origin.map { "Git branch. " + $0.tooltip } ?? "Git branch")
                 }
-                if let reasonLine {
-                    // What the session waits for or did last: its own line between the title and the fixed bottom row
-                    // (D-69), so the card is one line taller while it needs the user.
-                    Text(reasonLine.text)
-                        .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
-                        .truncationMode(.tail)
-                        .help(reasonLine.help)
+                if row.record.pinned {
+                    Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
+                        .help(Self.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
                 }
-                HStack(spacing: LoomTheme.Space.cardRowSpacing) {
-                    if let origin, origin.replacesBranch {
-                        // Same branch as the session that opened this one: the origin says more than the branch.
-                        Label(origin.cardLabel, systemImage: "arrow.turn.down.right")
-                            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
-                            .help(origin.tooltip)
-                    } else {
-                        Label((model.branches[row.record.session.workingDirectory] ?? .unavailable).label,
-                              systemImage: "arrow.triangle.branch")
-                            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)
-                            .help(origin.map { "Git branch. " + $0.tooltip } ?? "Git branch")
-                    }
-                    if row.record.pinned {
-                        Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
-                            .foregroundStyle(LoomTheme.Text.secondary)
-                            .help(Self.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
-                    }
-                    Spacer(minLength: LoomTheme.Space.headerSpacing)
-                    if let projectName = SessionCardView.projectLabel(mode: mode, name: projectName) {
-                        Text(projectName).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
-                            .lineLimit(1)
-                    }
-                    ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.providerIconCard)
+                Spacer(minLength: LoomTheme.Space.headerSpacing)
+                if let projectName = SessionCardView.projectLabel(mode: mode, name: projectName) {
+                    ProjectMarkView(name: projectName, tone: model.projectTone(forProject: row.record.projectID), size: .card)
+                    Text(projectName).font(LoomTheme.Sidebar.metaFont).lineLimit(1)
                 }
             }
+            .foregroundStyle(quiet)
+            .padding(.leading, LoomTheme.Sidebar.cardTextIndent)
         }
         .padding(.horizontal, LoomTheme.Space.cardH).padding(.vertical, LoomTheme.Space.cardV)
         .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radius))
     }
 
+    private func titleText(_ title: String, indicator: SessionIndicator, selected: Bool) -> some View {
+        Text(title)
+            .font(selected ? LoomTheme.Sidebar.lineTitleSelected : LoomTheme.Sidebar.lineTitle)
+            .foregroundStyle(indicator == .stale ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
+            .lineLimit(1).truncationMode(.tail)
+    }
+
+    private func reasonText(_ line: SessionReasonLine) -> some View {
+        Group {
+            if let mono = line.mono {
+                Text("\(Text(line.lead).font(LoomTheme.Sidebar.reasonFont))\(Text(mono).font(LoomTheme.Sidebar.reasonMonoFont))")
+            } else {
+                Text(line.text).font(LoomTheme.Sidebar.reasonFont)
+            }
+        }
+    }
+
     // MARK: Project view: the one-line row
 
-    /// Indicator, title and time on one 28 pt line, on the card's leading edge (the subagent guide and the
-    /// project stripe keep their places). The branch, the origin and the reason are not drawn here: the
-    /// header and the Active section carry them, and the project page lists the rest.
+    /// Status column, the harness's mark, title, pin and time on one 28 pt line. The branch, the origin and the reason are not
+    /// drawn here: the header and the Active section carry them, and the project page lists the rest.
     @ViewBuilder
-    private func lineLabel(title: String, indicator: SessionIndicator, selected: Bool) -> some View {
+    private func lineLabel(title: String, indicator: SessionIndicator, selected: Bool, onTint: Bool) -> some View {
         HStack(spacing: LoomTheme.Space.cardSpacing) {
             IndicatorView(indicator: indicator)
-            Text(title)
-                .font(selected ? LoomTheme.Typography.bodyStrong : LoomTheme.Typography.body)
-                .foregroundStyle(indicator == .stale ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
-                .lineLimit(1).truncationMode(.tail)
+            ProviderIcon(provider: row.record.session.provider)
+            titleText(title, indicator: indicator, selected: selected)
             if row.record.pinned {
                 Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
-                    .foregroundStyle(LoomTheme.Text.secondary)
+                    .foregroundStyle(onTint ? LoomTheme.Text.secondaryStyle : LoomTheme.Text.tertiaryStyle)
                     .help(Self.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
             }
             Spacer(minLength: LoomTheme.Space.headerSpacing)
-            // Claude is the only provider of the daily app; a mark appears only where it tells sessions apart.
-            if row.record.session.provider != .claude {
-                ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.providerIconCard)
-            }
-            CardTimeLabel(row: row, model: model)
+            CardTimeLabel(row: row, model: model, onTint: onTint)
         }
         .padding(.horizontal, LoomTheme.Space.cardH)
         .frame(height: LoomTheme.Sidebar.lineRowHeight)
@@ -740,8 +700,10 @@ struct NewConversationButtons: View {
 
     var body: some View {
         ForEach(NewConversationAction.listed(on: model), id: \.provider) { action in
-            Button(action.title + suffix) { action.perform(on: model, projectID: projectID) }
-                .disabled(!action.isEnabled(on: model, projectID: projectID))
+            Button { action.perform(on: model, projectID: projectID) } label: {
+                HarnessMenuLabel(provider: action.provider, title: action.title + suffix)
+            }
+            .disabled(!action.isEnabled(on: model, projectID: projectID))
             if let reason = action.unavailableReason(on: model) { Text(reason) }
         }
     }
@@ -802,8 +764,10 @@ struct WithoutProjectStartButton: View {
 
     var body: some View {
         if let entry = ClaudeStartEntry.withoutProject(title: title, on: model) {
-            Button(entry.title) { entry.perform(on: model) }
-                .disabled(!entry.isEnabled(on: model))
+            Button { entry.perform(on: model) } label: {
+                HarnessMenuLabel(provider: .claude, title: entry.title)
+            }
+            .disabled(!entry.isEnabled(on: model))
         }
     }
 }

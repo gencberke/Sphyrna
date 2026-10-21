@@ -7,8 +7,8 @@ import LoomCore
 /// - Empty query: a small triage list. Needs you (every session that needs the user, most urgent first), then
 ///   the most recent sessions, then the first actions.
 /// - A query: every word must match. A word matches a title best as the whole title, then as its start, then as the
-///   start of a word in it, then anywhere in it, then as scattered letters; the project name and an action's
-///   keywords count less. A session that needs you gains a margin and a recent one a smaller one. Needs you stays
+///   start of a word in it, then anywhere in it, then as scattered letters; the project name, the provider's name
+///   ("Claude") and an action's keywords count less. A session that needs you gains a margin and a recent one a smaller one. Needs you stays
 ///   the first group; the others follow by their best row. Conversation hits are not ranked here: they are
 ///   appended in the order the scan found them (newest session first) as the last group, so the rows above never
 ///   move when they arrive.
@@ -29,6 +29,12 @@ enum PaletteRanking {
     static func fold(_ text: String) -> String {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
     }
+
+    /// The provider's name as the row says it ("Claude", "Codex"), folded once: a query finds a session by its harness too.
+    private static let providerFolds: [ManagedSession.Provider: String] = Dictionary(
+        uniqueKeysWithValues: [ManagedSession.Provider.claude, .codex, .synthetic].map { ($0, fold(ProviderName.title($0))) })
+
+    static func providerFold(_ provider: ManagedSession.Provider) -> String { providerFolds[provider] ?? "" }
 
     static func words(of query: String) -> [String] {
         fold(query).split(whereSeparator: \.isWhitespace).map(String.init)
@@ -148,7 +154,8 @@ enum PaletteRanking {
         var scoredSessions: [(PaletteSessionInfo, Double)] = []
         for session in sessions {
             let folded = session.folded ?? PaletteSessionInfo.Folded(title: session.title, project: session.project, reason: session.reason)
-            guard let score = match(words, foldedTitle: folded.title, foldedOthers: folded.others) else { continue }
+            guard let score = match(words, foldedTitle: folded.title,
+                                    foldedOthers: folded.others + [providerFold(session.provider)]) else { continue }
             scoredSessions.append((session, score + (session.needsYou ? needsYouMargin : 0)
                                    + recencyBonus(session.lastActivityAt, now: now)))
         }

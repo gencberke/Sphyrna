@@ -1,3 +1,4 @@
+import LoomCore
 import Observation
 import SwiftUI
 
@@ -47,17 +48,28 @@ enum HighlightState: Equatable {
 struct RowHighlight: View {
     let state: HighlightState
     var radius: CGFloat = LoomTheme.Highlight.radius
+    /// A selected session row or card takes its project's tone: 14 % of it with a 1 pt edge of it (DESIGN §6 Project colour).
+    /// No tone, and every other state, draw the neutral fills.
+    var tint: ProjectTone?
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: radius)
-        shape.fill(contrast == .increased ? state.fill.opacity(LoomTheme.Highlight.increasedFillScale) : state.fill)
-            .overlay(shape.strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline)
-                .opacity(state.drawsStroke(for: contrast) ? 1 : 0))
-            .animation(LoomTheme.Motion.animation(.selection, reduceMotion: reduceMotion), value: state)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+        if state == .selected, let tint {
+            shape.fill(LoomTheme.ProjectColor.selectionWashTone(tint).color)
+                .overlay(shape.strokeBorder(LoomTheme.ProjectColor.selectionEdgeStyle(tint), lineWidth: LoomTheme.Line.hairline))
+                .animation(LoomTheme.Motion.animation(.selection, reduceMotion: reduceMotion), value: state)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        } else {
+            shape.fill(contrast == .increased ? state.fill.opacity(LoomTheme.Highlight.increasedFillScale) : state.fill)
+                .overlay(shape.strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline)
+                    .opacity(state.drawsStroke(for: contrast) ? 1 : 0))
+                .animation(LoomTheme.Motion.animation(.selection, reduceMotion: reduceMotion), value: state)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 }
 
@@ -93,9 +105,11 @@ struct RowButtonStyle: ButtonStyle {
     var selected = false
     var radius: CGFloat?
     var key: String?
+    /// The selected session's project tone (a session row or card only; nil is the neutral selected fill).
+    var tint: ProjectTone?
 
     func makeBody(configuration: Configuration) -> some View {
-        Row(configuration: configuration, selected: selected, radius: radius, key: key)
+        Row(configuration: configuration, selected: selected, radius: radius, key: key, tint: tint)
     }
 
     private struct Row: View {
@@ -103,6 +117,7 @@ struct RowButtonStyle: ButtonStyle {
         let selected: Bool
         let radius: CGFloat?
         let key: String?
+        let tint: ProjectTone?
         @State private var hovering = false
         @Environment(\.isEnabled) private var enabled
         @Environment(\.isFocused) private var focused
@@ -116,7 +131,7 @@ struct RowButtonStyle: ButtonStyle {
                     selected: selected, hovering: hovering || LookEvidence.forcesHover(key),
                     pressed: configuration.isPressed, enabled: enabled)
                 configuration.label
-                    .background(RowHighlight(state: state, radius: radius))
+                    .background(RowHighlight(state: state, radius: radius, tint: tint))
                     .overlay(RoundedRectangle(cornerRadius: radius)
                         .strokeBorder(ring ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast)))
                     .onHover { hovering = $0 }

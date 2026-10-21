@@ -5,11 +5,11 @@ import LoomCatalogUI
 /// Key events through the real main window (I3), for the Return and search-focus checks.
 ///
 /// - `focus-terminal`: makes the selected conversation's terminal the first responder (what a click into it does).
-/// - `focus-search`: makes the main window's search field the first responder through Edit > Find's own model call.
+/// - `focus-search`: opens the command palette, which is what the sidebar's search door and Edit > Find (⌘F) do.
 /// - `key:<return|escape|cmd-f|…>`: sends that key as a native event (`NSApp.sendEvent` to the main window;
 ///   Cmd+F through the real main menu, as `tab-key` does). Every command writes `ack-key-<arg>.json`
-///   with the first responder's class, whether it is the selected terminal or a text field, the search text
-///   and how many requests the selected card still shows, so a Return that answered an approval is visible.
+///   with the first responder's class, whether it is the selected terminal or a text field, whether the palette is open and its
+///   query (empty for real providers) and how many requests the selected card still shows, so a Return that answered an approval is visible.
 @MainActor
 extension DevelopmentEvidence {
     /// Returns false when `name` is not a key command.
@@ -28,7 +28,7 @@ extension DevelopmentEvidence {
             }
             write("ack-key-focus-terminal", app.keyEvidence(["command": "focus-terminal"]))
         case "focus-search":
-            model.requestSearchFocus()
+            if !model.palette.isOpen { model.openPalette() }
             try? await Task.sleep(for: .milliseconds(500))
             write("ack-key-focus-search", app.keyEvidence(["command": "focus-search"]))
         case "key":
@@ -91,7 +91,8 @@ extension AppDelegate {
             "terminalContainerFocused": terminal.map { $0 === responder } ?? false,
             "textFieldFocused": responder is NSText,
             "windowIsKey": window?.isKeyWindow ?? false,
-            "search": model?.searchText ?? "",
+            "paletteOpen": model?.palette.isOpen ?? false,
+            "search": redactsContent ? "" : (model?.palette.query ?? ""),
             "selectedRequestCount": model?.selectedRow?.live?.userRequests.count ?? 0,
         ]
         state.merge(extra) { _, new in new }

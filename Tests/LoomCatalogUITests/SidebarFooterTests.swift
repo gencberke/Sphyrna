@@ -159,7 +159,7 @@ struct SidebarFooterTests {
     @MainActor private func inkColumns(_ chip: UsageChipContent, width: CGFloat) throws -> (first: Int, last: Int) {
         let view = UsageChipLabel(chip: chip)
             .padding(.horizontal, LoomTheme.Space.chipInset)
-            .frame(width: width, height: LoomTheme.Layout.footerChipHeight, alignment: .leading)
+            .frame(width: width, height: LoomTheme.Sidebar.chipHeight, alignment: .leading)
         let renderer = ImageRenderer(content: view)
         renderer.scale = 1
         let image = try #require(renderer.cgImage)

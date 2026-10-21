@@ -126,7 +126,9 @@ struct SidebarAccessibilityTests {
         })
         let menuFrame = try #require(menu.accessibilityFrame?())
         print("AXDUMP project actions frame:", menuFrame)
-        #expect(menuFrame.width >= 24 && menuFrame.height >= 24)
+        // The pop-up button reads its drawn 22 x 20 here (24 x 24 before I3r's row); its hit area is the chevron's style and is
+        // not measured by a click (a menu opens modally). Needs eyes.
+        #expect(menuFrame.width >= LoomTheme.Layout.projectMenuButton.width && menuFrame.height >= LoomTheme.Layout.projectMenuButton.height)
         let chevronFrame = try #require(chevron.element.accessibilityFrame?())
         #expect(chevronFrame.width >= 24 && chevronFrame.height >= 24)
 

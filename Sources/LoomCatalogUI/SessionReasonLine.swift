@@ -10,17 +10,23 @@ struct SessionReasonLine: Equatable {
     let text: String
     /// More of the same, for the tooltip: the command's own description.
     let note: String?
+    /// The end of `text` the machine said (the command or the path an approval names): the card draws it in mono.
+    let mono: String?
 
-    init(text: String, note: String? = nil) {
+    init(text: String, note: String? = nil, mono: String? = nil) {
         self.text = text
         self.note = note
+        self.mono = mono.flatMap { !$0.isEmpty && text.hasSuffix($0) ? $0 : nil }
     }
+
+    /// `text` without its mono end.
+    var lead: String { mono.map { String(text.dropLast($0.count)) } ?? text }
 
     init?(_ reason: StatusReason?) {
         guard let reason else { return nil }
         switch reason.kind {
         case .approval(let tool):
-            self.init(text: Self.approvalText(tool: tool, detail: reason.detail), note: reason.note)
+            self.init(text: Self.approvalText(tool: tool, detail: reason.detail), note: reason.note, mono: reason.detail)
         case .question:
             self.init(text: reason.detail.map { "Asks: \($0)" } ?? "Asks a question")
         case .planReady:

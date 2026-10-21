@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// The sidebar's bottom bar (D-32): the new-conversation menu, a compact Claude usage chip and
-/// Settings. The bar keeps today's 38 pt; the chip is the one flexible element, so its text never
-/// moves anything above it.
+/// The sidebar's bottom bar (D-32; DESIGN §2 item 5): 46 pt with a hairline above it, holding the `+` menu, a compact Claude usage
+/// chip in mono 11 and Settings. The chip is the one flexible element, so its text never moves anything above it.
 struct SidebarFooter: View {
     let model: CatalogModel
 
@@ -10,7 +9,7 @@ struct SidebarFooter: View {
     static func offersWithoutProject(contextProjectID: UUID?) -> Bool { contextProjectID != nil }
 
     var body: some View {
-        HStack(spacing: LoomTheme.Space.footerSpacing) {
+        HStack(spacing: LoomTheme.Sidebar.footerSpacing) {
             Menu {
                 NewConversationButtons(model: model, projectID: model.contextProjectID)
                 // The entries above start in the selected session's project; this one says "no project".
@@ -22,7 +21,7 @@ struct SidebarFooter: View {
             } label: {
                 Image(systemName: "plus")
             }
-            .menuStyle(.button).buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.footerButton))
+            .menuStyle(.button).buttonStyle(ChromeButtonStyle())
             .menuIndicator(.hidden).fixedSize()
             .help("New session or project")
             .accessibilityLabel("New session or project")
@@ -34,14 +33,17 @@ struct SidebarFooter: View {
             Button { model.showSettings() } label: {
                 Image(systemName: "gearshape")
             }
-            .buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.footerButton))
+            .buttonStyle(ChromeButtonStyle())
             .help("Settings")
             .accessibilityLabel("Settings")
         }
-        .font(LoomTheme.Typography.footerIcon)
         .focusEffectDisabled()
-        .padding(.horizontal, LoomTheme.Space.footerInset)
-        .frame(height: LoomTheme.Layout.footerHeight)
+        .padding(.horizontal, LoomTheme.Sidebar.footerInset)
+        .frame(height: LoomTheme.Sidebar.footerHeight)
+        .overlay(alignment: .top) {
+            Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
+                .allowsHitTesting(false).accessibilityHidden(true)
+        }
     }
 }
 
@@ -64,52 +66,55 @@ struct UsageChip: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: LoomTheme.Layout.footerChipHeight)
+        .frame(height: LoomTheme.Sidebar.chipHeight)
     }
 }
 
-/// Tokens on the left, the limit (name, meter, percent) pinned to the right. Narrow: the meter
+/// Tokens on the left, the limit (name, meter, percent) pinned to the right, in mono 11. Narrow: the meter
 /// drops first, then the tokens are cut with an ellipsis; the limit is never cut. No money.
 struct UsageChipLabel: View {
     let chip: UsageChipContent
     @Environment(\.usageChipHovered) private var hovered
 
     var body: some View {
-        let tone = hovered ? LoomTheme.Text.primary : LoomTheme.Text.secondary
+        // The words are the quiet voice and the figures one step up (the reference's `usage`); the pointer lifts both to primary.
+        let tone = hovered ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.tertiaryStyle)
+        let value = hovered ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle)
         Group {
             if let limit = chip.limit {
                 ViewThatFits(in: .horizontal) {
                     // No fixedSize here: ViewThatFits tests the ideal width (tokens, the least gap, limit), and the
                     // chosen child then takes the whole proposal so the spacer pushes the limit to the trailing edge.
                     // When none fits the last one is used and the tokens truncate.
-                    split(tone, limit, showMeter: true)
-                    split(tone, limit, showMeter: false)
+                    split(tone, value, limit, showMeter: true)
+                    split(tone, value, limit, showMeter: false)
                 }
             } else {
-                tokens(tone).truncationMode(.tail)
+                tokens(tone, value).truncationMode(.tail)
             }
         }
-        .font(LoomTheme.Typography.statusLabel).monospacedDigit()
+        .font(LoomTheme.Sidebar.chipFont)
         .lineLimit(1)
     }
 
-    private func split(_ tone: Color, _ limit: UsageChipContent.Limit, showMeter: Bool) -> some View {
+    private func split(_ tone: AnyShapeStyle, _ value: AnyShapeStyle, _ limit: UsageChipContent.Limit,
+                       showMeter: Bool) -> some View {
         HStack(spacing: 0) {
-            tokens(tone).truncationMode(.tail)
+            tokens(tone, value).truncationMode(.tail)
             Spacer(minLength: LoomTheme.Space.chipSplitGap)
             HStack(spacing: LoomTheme.Space.chipLimitGap) {
                 Text(limit.name).foregroundStyle(tone)
                 if showMeter { UsageChipMeter(remainingPercent: limit.remainingPercent, isLow: limit.isLow) }
-                Text(UsageFormat.percent(limit.remainingPercent)).fontWeight(.semibold)
-                    .foregroundStyle(limit.isLow ? LoomTheme.Status.attention : LoomTheme.Text.primary)
+                Text(UsageFormat.percent(limit.remainingPercent))
+                    .foregroundStyle(limit.isLow ? AnyShapeStyle(LoomTheme.Status.attentionLight) : value)
             }
             .fixedSize(horizontal: true, vertical: false)
         }
     }
 
-    private func tokens(_ tone: Color) -> Text {
+    private func tokens(_ tone: AnyShapeStyle, _ value: AnyShapeStyle) -> Text {
         let lead = Text(chip.lead).foregroundStyle(tone)
-        let figure = Text(chip.figure).fontWeight(.semibold).foregroundStyle(LoomTheme.Text.primary)
+        let figure = Text(chip.figure).foregroundStyle(value)
         let suffix = Text(chip.suffix).foregroundStyle(tone)
         return Text("\(lead)\(figure)\(suffix)")
     }
@@ -124,11 +129,11 @@ private struct UsageChipMeter: View {
         let fraction = CGFloat(min(max(remainingPercent, 0), 100)) / 100
         RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim)
             .fill(LoomTheme.Surface.chipMeterTrack)
-            .frame(width: LoomTheme.Layout.chipMeter.width, height: LoomTheme.Layout.chipMeter.height)
+            .frame(width: LoomTheme.Sidebar.chipMeter.width, height: LoomTheme.Sidebar.chipMeter.height)
             .overlay(alignment: .leading) {
                 RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim)
                     .fill(isLow ? LoomTheme.Status.attention : LoomTheme.Text.secondary)
-                    .frame(width: LoomTheme.Layout.chipMeter.width * fraction)
+                    .frame(width: LoomTheme.Sidebar.chipMeter.width * fraction)
             }
             .accessibilityHidden(true)
     }
@@ -160,7 +165,7 @@ private struct UsageChipButtonStyle: ButtonStyle {
                 .environment(\.usageChipHovered, hovering || configuration.isPressed)
                 .padding(.horizontal, LoomTheme.Space.chipInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: LoomTheme.Layout.footerChipHeight)
+                .frame(height: LoomTheme.Sidebar.chipHeight)
                 .background(RowHighlight(state: state, radius: LoomTheme.Highlight.radiusControl))
                 .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
                     .strokeBorder(ChromeButtonStyle.showsFocusRing(

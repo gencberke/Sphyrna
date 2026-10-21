@@ -223,9 +223,9 @@ enum LoomTheme {
     }
 
     /// The project colour class (D-48): six soft tones besides the accent and the three status hues. Used
-    /// only for the sidebar stripe, the tab tint and the header chip's stripe and wash; never a dot, never in the
-    /// indicator slot, never a text colour, never inside the terminal (DESIGN §6). The base colour is
-    /// the stripe colour and the tint source; Increase Contrast swaps in a lighter stripe colour.
+    /// only for the project's mark, the tab tint, the selected session's tint and the header chip's wash and edge; never a
+    /// dot, never in the indicator slot, never a text colour, never a stripe, never inside the terminal (DESIGN §6). The
+    /// base colour is the tint source; Increase Contrast swaps in a lighter tone for the edges and the mark's initial.
     /// Each base is at least 3:1 on the sidebar's worst case (`sidebarOverWhite`) and at least 30 degrees
     /// of hue from attention, unviewed, failure and the accent (`LoomThemeTests`).
     enum ProjectColor {
@@ -283,11 +283,8 @@ enum LoomTheme {
             appearance == .dark ? increasedRGB(tone) : lightIncreasedRGB(tone)
         }
 
-        static func stripeRGB(_ tone: ProjectTone, for contrast: ColorSchemeContrast) -> RGB {
-            contrast == .increased ? increasedRGB(tone) : baseRGB(tone)
-        }
-
-        /// The stripe colour as a style that resolves against the environment's contrast setting.
+        /// The tone as a style that resolves against the environment's contrast setting: the bars beside a project's name and
+        /// the mark's initial.
         static func stripe(_ tone: ProjectTone) -> ContrastStyle {
             ContrastStyle(standard: Tone(rgb: baseRGB(tone), opacity: 1),
                           increased: Tone(rgb: increasedRGB(tone), opacity: 1),
@@ -301,18 +298,14 @@ enum LoomTheme {
                          light: Tone(rgb: lightBaseRGB(tone), opacity: opacity))
         }
 
-        // The stripe: 3 pt, 4 pt under Increase Contrast. In the sidebar it sits in the list gutter,
-        // `stripeOutset` left of the leading edge of a project header and of each of its cards, so the
-        // header and its cards read as one rail; the header's stripe starts below the row's top padding.
-        static let stripeWidth: CGFloat = 3
-        static let stripeWidthIncreased: CGFloat = 4
+        /// The small bars other surfaces still draw beside a project's name (Home's rows, the project page, the draft page).
         static let stripeRadius: CGFloat = 2
-        static let stripeOutset: CGFloat = 4
-        static let headerStripeTop: CGFloat = 11
-        static let headerStripeBottom: CGFloat = 1
-        static func stripeWidth(for contrast: ColorSchemeContrast) -> CGFloat {
-            contrast == .increased ? stripeWidthIncreased : stripeWidth
-        }
+
+        // The selected session (DESIGN §6 Project colour): its row or card takes 14 % of the project's tone with a 1 pt edge of
+        // the tone at 34 %, 75 % under Increase Contrast. No tone: the neutral selected fill and its hairline.
+        static let selectionWash = 0.14
+        static let selectionEdge = 0.34
+        static let selectionEdgeIncreased = 0.75
 
         // Tab tint (DESIGN §6 Project colour): a wash of the tone on every tab, 6 % at rest, 11 % under the pointer and 16 %
         // on the open tab with a 1 pt edge of the tone at 42 %. Increase Contrast draws that edge in the lighter tone at
@@ -472,7 +465,6 @@ enum LoomTheme {
         static let smallMedium = Font.system(size: 12, weight: .medium)
         static let body = Font.system(size: 13)
         static let bodyStrong = Font.system(size: 13, weight: .semibold)
-        static let footerIcon = Font.system(size: 14)
         static let title = Font.system(size: 15, weight: .semibold)
         /// The Usage headline figure.
         static let display = Font.system(size: 32, weight: .semibold)
@@ -498,14 +490,9 @@ enum LoomTheme {
     // MARK: Space
 
     enum Space {
-        // Sidebar header, search, footer.
+        // Sidebar header and footer chip.
         static let headerSpacing: CGFloat = 4
         static let headerInset: CGFloat = 8
-        static let searchInset: CGFloat = 8
-        static let searchBottom: CGFloat = 8
-        static let searchSpacing: CGFloat = 8
-        static let searchPadding: CGFloat = 8
-        static let footerInset: CGFloat = 8
         static let footerSpacing: CGFloat = 8
         static let chipInset: CGFloat = 8
         /// The usage chip: the least space between tokens and limit, and between limit name, meter and percent.
@@ -531,7 +518,6 @@ enum LoomTheme {
         static let cardV: CGFloat = 8
         static let cardSpacing: CGFloat = 8
         static let cardLineSpacing: CGFloat = 4
-        static let cardRowSpacing: CGFloat = 8
         static let cardIndicatorTop: CGFloat = 1
         // Subagents under a card (D-39): a hairline guide under the card's indicator column.
         /// The guide's distance from the list edge (the center of the card's indicator slot).
@@ -626,15 +612,11 @@ enum LoomTheme {
         static let sidebarButtonsGap: CGFloat = 76
         /// Detail header (collapsed sidebar): space reserved for the native buttons.
         static let detailButtonsGap: CGFloat = 66
-        static let searchHeight: CGFloat = 30
-        static let footerHeight: CGFloat = 38
         /// An icon button: 26 pt, radius 6, a 16 pt glyph (DESIGN §6 Controls).
         static let chromeButton = CGSize(width: 26, height: 26)
-        static let footerButton = CGSize(width: 28, height: 26)
         static let projectMenuButton = CGSize(width: 22, height: 20)
         /// Every control answers a click within at least this area, whatever it draws.
         static let minimumHitTarget = CGSize(width: 24, height: 24)
-        static let providerIconCard: CGFloat = 14
         /// The harness's mark (DESIGN §6 Iconography): 12 on rows, cards and tabs, 13 in the header and on the model chip, 14 in menus.
         static let harnessMarkRow: CGFloat = 12
         static let harnessMarkHeader: CGFloat = 13
@@ -679,16 +661,12 @@ enum LoomTheme {
         static let aboutMark: CGFloat = 64
         /// Widest per-row result text in Settings → Conversations.
         static let cleanupResultMaxWidth: CGFloat = 260
-        static let footerChipHeight: CGFloat = 24
-        /// The usage chip's remaining-share meter (radius `Radius.barSlim`).
-        static let chipMeter = CGSize(width: 34, height: 4)
         // Indicators.
         static let indicatorSlot = CGSize(width: 12, height: 16)
         /// The Loom mark over the first-run Home (D-69): its width; the height follows the mark's box.
         static let heroMarkWidth: CGFloat = 36
         /// The failure mark under "Differentiate without color" (the identity proposal's diamond, corner to corner).
         static let failureDiamond: CGFloat = 7
-        static let projectDot: CGFloat = 8
         /// A subagent row's height.
         static let subagentRowHeight: CGFloat = 22
     }

@@ -579,9 +579,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
     @objc func selectNextSession(_ sender: Any?) { model?.selectAdjacentSession(.next) }
     @objc func selectPreviousSession(_ sender: Any?) { model?.selectAdjacentSession(.previous) }
+    /// Edit > Find (⌘F): the sidebar's search is the command palette's door, so Find opens the palette (an open one stays).
     @objc func findFromMenu(_ sender: Any?) {
         presentMainWindow(reason: "find-menu")
-        model?.requestSearchFocus()
+        if let model, !model.palette.isOpen { model.openPalette() }
     }
 
     /// Menu commands follow the same rules as the buttons.
@@ -627,7 +628,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         case #selector(collectDiagnosticsFromMenu(_:)):
             return diagnostics?.canCollect ?? false
         case #selector(findFromMenu(_:)):
-            // The search field lives in the main window; another key window (Settings) keeps Cmd+F to itself.
+            // The palette opens over the main window; another key window (Settings) keeps Cmd+F to itself.
             return NSApp.keyWindow.map { $0 === window } ?? true
         default:
             return true

@@ -1,31 +1,119 @@
+import LoomCore
 import SwiftUI
 
-/// Sidebar v2 (V04, concept §3): the Home row, the one-line session rows of a project group and the reason
-/// line of an Active card. The card, the stripe and the project header keep the values they have in
-/// `LoomTheme.Space`, `Layout` and `ProjectColor`; nothing here changes them.
+/// The sidebar in Ink (DESIGN §2 items 1, 3, 4 and 5, §6 Rows and Project colour; A1 and A2 of the reference): the header row,
+/// the search door, the Home and New session rows, the list's heading, the project head, the session line and the activity card,
+/// and the footer. Colours, hairlines and text tones are the shared tokens; the pill is `LoomTheme.Highlight`.
 extension LoomTheme {
     enum Sidebar {
-        /// The Home row under the search field: 30 high, the search field's radius, a 15 pt symbol column.
-        static let homeRowHeight: CGFloat = 30
+        // MARK: Header (52 pt): the window buttons' clearance and the sidebar toggle
+
+        /// The toggle sits at the trailing end, as in the reference.
+        static let headerTrailing: CGFloat = 12
+
+        // MARK: The search door (30 pt, radius 8, a hairline box)
+
+        static let doorHeight = InkHeight.field
+        static let doorRadius = InkRadius.row
+        /// The door's distance from the sidebar's edges, and below it.
+        static let doorInset: CGFloat = 12
+        static let doorBottom: CGFloat = 8
+        static let doorPaddingLeading: CGFloat = 8
+        static let doorPaddingTrailing: CGFloat = 6
+        static let doorSpacing: CGFloat = 8
+        static let doorGlyph = Font.system(size: 13)
+        static let doorLabel = InkType.body.font
+
+        /// The key cap: ⌘K in mono at the door's trailing end.
+        static let keyCapFont = InkStyle(size: 10.5, mono: true).font
+        static let keyCapPaddingH: CGFloat = 4
+        static let keyCapRadius = InkRadius.key
+
+        // MARK: Home and New session (28 pt, radius 8)
+
+        static let homeRowHeight = InkHeight.sidebarRow
         static let homeRowInset: CGFloat = 8
         static let homeRowSpacing: CGFloat = 8
-        static let homeRowBottom: CGFloat = 4
+        static let homeRowBottom: CGFloat = 2
         static let homeGlyph = Font.system(size: 13)
+        /// The glyph column, so Home and New session start their words at the same place.
+        static let homeGlyphColumn: CGFloat = 16
 
-        /// The count of what needs the user: an attention wash behind the light attention text (the plain
-        /// attention colour is 4.3 to 4.4:1 on its own wash), 18 wide at least, 17 high.
+        /// The count of what needs the user: the attention wash behind the attention text, in mono, 18 wide at least, 17 high.
         static let badgeMinWidth: CGFloat = 18
         static let badgeHeight: CGFloat = 17
         static let badgePadding: CGFloat = 4
-        static let badgeWash = 0.13
-        static let badgeFont = Font.system(size: 10.5, weight: .semibold).monospacedDigit()
+        static let badgeFont = InkStyle(size: 10.5, weight: .semibold, mono: true).font
 
-        /// A project row whose page is open is filled like a selected card; the fill starts this far inside
-        /// the row, so the symbol and the buttons keep the places they had.
-        static let headerFillInset: CGFloat = 8
+        // MARK: The list's heading: the view's name, and the switch "projects · activity"
 
-        /// A session row in a project group: one line, 28 high, on the card's leading edge so the subagent
-        /// guide and the project stripe keep their places.
-        static let lineRowHeight: CGFloat = 28
+        static let headingInset: CGFloat = 16
+        static let headingTop: CGFloat = 16
+        static let headingBottom: CGFloat = 4
+        static let headingLabel = InkType.label
+        static let switchGap: CGFloat = 4
+        static let switchFont = InkType.meta.font
+        static let switchFontChosen = Font.system(size: 11, weight: .medium, design: .monospaced)
+
+        // MARK: A project head (28 pt): its mark, its name, the attention dot; chevron, + and ⋯ on hover
+
+        /// The head's content starts 6 pt in so the mark's centre sits over the sessions' status column (optical).
+        static let headLeading: CGFloat = 6
+        static let headTrailing: CGFloat = 4
+        static let headSpacing: CGFloat = 6
+        static let headTop: CGFloat = 8
+        static let headName = Font.system(size: 12.5, weight: .medium)
+
+        // MARK: A session row (project view, 28 pt) and an activity card (radius 10)
+
+        static let lineRowHeight = InkHeight.sidebarRow
+        static let lineTitle = InkType.body.font
+        static let lineTitleSelected = Font.system(size: 13, weight: .medium)
+        /// The time at a row's trailing end: mono 11.
+        static let timeFont = InkType.meta.font
+        /// The reason line (11.5, secondary), a command in mono, and the card's fixed bottom row (11, tertiary).
+        static let reasonFont = Font.system(size: 11.5)
+        static let reasonMonoFont = Font.system(size: 11.5, design: .monospaced)
+        static let metaFont = Font.system(size: 11)
+        static let metaMonoFont = InkType.meta.font
+        static let metaGlyph = Font.system(size: 10)
+        static let metaSpacing: CGFloat = 4
+        /// Lines 2 and 3 of a card start under the title: the status slot, the mark and two gaps.
+        static var cardTextIndent: CGFloat {
+            Layout.indicatorSlot.width + Layout.harnessMarkRow + 2 * Space.cardSpacing
+        }
+
+        /// Section headings (Drafts, Active, the days): 11.5 medium tertiary, the count in mono.
+        static let sectionFont = Font.system(size: 11.5, weight: .medium)
+        static let sectionCountFont = InkType.meta.font
+
+        /// A draft row: italic, secondary.
+        static let draftFont = InkType.body.font
+
+        // MARK: Footer (46 pt, a hairline above)
+
+        static let footerHeight: CGFloat = 46
+        static let footerInset: CGFloat = 10
+        static let footerSpacing: CGFloat = 4
+        static let chipFont = InkType.meta.font
+        static let chipMeter = CGSize(width: 40, height: 4)
+        static let chipHeight: CGFloat = InkHeight.control
+    }
+}
+
+extension LoomTheme.ProjectColor {
+    /// The selected session's fill (14 % of the tone, in the appearance's own value).
+    static func selectionWashTone(_ tone: ProjectTone) -> LoomTheme.AdaptiveTone { wash(tone, opacity: selectionWash) }
+
+    /// The selected session's edge: 34 %, 75 % under Increase Contrast.
+    static func selectionEdgeStyle(_ tone: ProjectTone) -> LoomTheme.ContrastStyle {
+        edge(tone, opacity: selectionEdge, increasedOpacity: selectionEdgeIncreased)
+    }
+}
+
+extension View {
+    /// Draws a text in one of Ink's roles: its face, its tracking and, for the label, capitals.
+    func sidebarType(_ style: LoomTheme.InkStyle) -> some View {
+        font(style.font).tracking(style.trackingPoints).textCase(style.capitals ? .uppercase : nil)
     }
 }

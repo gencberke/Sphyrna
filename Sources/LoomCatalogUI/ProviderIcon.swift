@@ -30,6 +30,35 @@ enum ProviderImages {
     }
 }
 
+extension ProviderImages {
+    private static var menuCache: [ManagedSession.Provider: NSImage] = [:]
+
+    /// The mark of a menu item (DESIGN §6 Iconography: 14 in menus). A template stays one, so the menu tints it.
+    static func menuImage(for provider: ManagedSession.Provider) -> NSImage? {
+        if let cached = menuCache[provider] { return cached }
+        guard let found = image(for: provider), let sized = found.image.copy() as? NSImage else { return nil }
+        let side = LoomTheme.Layout.harnessMarkMenu
+        sized.size = NSSize(width: side, height: side)
+        sized.isTemplate = found.template
+        menuCache[provider] = sized
+        return sized
+    }
+}
+
+/// A menu item's title with its harness's mark (14) before it; the title alone where the build carries no image.
+struct HarnessMenuLabel: View {
+    let provider: ManagedSession.Provider
+    let title: String
+
+    var body: some View {
+        if let image = ProviderImages.menuImage(for: provider) {
+            Label { Text(title) } icon: { Image(nsImage: image) }
+        } else {
+            Text(title)
+        }
+    }
+}
+
 struct ProviderIcon: View {
     let provider: ManagedSession.Provider
     /// 12 on rows, cards and tabs; 13 in the header and on the model chip; 14 in menus (`LoomTheme.Layout.harnessMark…`).

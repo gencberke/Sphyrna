@@ -2,36 +2,10 @@ import AppKit
 import LoomCore
 import SwiftUI
 
-// The project colour surfaces (D-48; DESIGN §6): the sidebar stripe (the rows' slice removes it), the tab tint, the detail
-// header's project chip (`ProjectBranchChip`), the project's mark (`ProjectMarkView`) and the Color menu. Values are `LoomTheme.ProjectColor`'s; whether
-// anything is drawn is decided by `CatalogModel.projectTone(forProject:)`, `projectMark(of:)` and
-// `headerProjectMark(of:)`, which answer no tone while the setting is off.
-
-/// The 3 pt stripe (4 pt under Increase Contrast) of a project header or one of its cards. The caller
-/// places it `stripeOutset` left of the row's leading edge; it never takes a click or a VoiceOver stop.
-struct ProjectStripe: View {
-    let tone: ProjectTone
-    @Environment(\.colorSchemeContrast) private var contrast
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: LoomTheme.ProjectColor.stripeRadius)
-            .fill(LoomTheme.ProjectColor.stripe(tone))
-            .frame(width: LoomTheme.ProjectColor.stripeWidth(for: contrast))
-            .offset(x: -LoomTheme.ProjectColor.stripeOutset)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-    }
-}
-
-extension View {
-    /// The project's stripe in the list gutter, over the full height of the row; a header trims it
-    /// with `top` and `bottom`.
-    func projectStripe(_ tone: ProjectTone?, top: CGFloat = 0, bottom: CGFloat = 0) -> some View {
-        overlay(alignment: .leading) {
-            if let tone { ProjectStripe(tone: tone).padding(.top, top).padding(.bottom, bottom) }
-        }
-    }
-}
+// The project colour surfaces (D-48; DESIGN §6): the tab tint, the selected session's tint (`RowHighlight`), the detail
+// header's project chip (`ProjectBranchChip`), the project's mark (`ProjectMarkView`) and the Color menu. Values are
+// `LoomTheme.ProjectColor`'s; whether anything is drawn is decided by `CatalogModel.projectTone(forProject:)`, `projectMark(of:)` and
+// `headerProjectMark(of:)`, which answer no tone while the setting is off. There is no stripe in Ink.
 
 /// How a session tab is tinted by its project (DESIGN §6 Project colour): a wash of the tone on every tab, 6 % at rest, 11 %
 /// under the pointer and 16 % on the open tab, which also gets a 1 pt edge of the tone at 42 % in place of the hairline.

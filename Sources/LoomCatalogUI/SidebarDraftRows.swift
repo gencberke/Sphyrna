@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// A new-session draft with text, as the sidebar lists it (CHAT-SPEC → Draft session): a one-line row under its
-/// project in the project view, and at the top of the activity view. A click opens the draft; Discard throws it away
-/// (the × while the pointer is on the row, the context menu, and an accessibility action). An empty draft never gets
-/// a row.
+/// A new-session draft with text, as the sidebar lists it (CHAT-SPEC → Draft session, DESIGN §4): a one-line italic row in
+/// secondary under its project in the project view, and under "Drafts" at the top of the activity view, with no mark. A click
+/// opens the draft; Discard throws it away (the × while the pointer is on the row, the context menu, and an accessibility
+/// action). An empty draft never gets a row.
 struct DraftRow: View {
     let model: CatalogModel
     let draft: SessionDraft
@@ -36,8 +36,8 @@ struct DraftRow: View {
             Button { model.showDraft(projectID: draft.projectID) } label: {
                 HStack(spacing: LoomTheme.Space.cardSpacing) {
                     Text(title)
-                        .font(selected ? LoomTheme.Typography.bodyStrong : LoomTheme.Typography.body).italic()
-                        .foregroundStyle(LoomTheme.Text.secondary)
+                        .font(selected ? LoomTheme.Sidebar.lineTitleSelected : LoomTheme.Sidebar.draftFont).italic()
+                        .foregroundStyle(LoomTheme.Text.secondaryStyle)
                         .lineLimit(1).truncationMode(.tail)
                     Spacer(minLength: LoomTheme.Space.headerSpacing)
                 }
@@ -54,10 +54,6 @@ struct DraftRow: View {
                 .buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.projectMenuButton))
                 .help("Discard draft")
                 .accessibilityLabel("Discard draft")
-            } else {
-                Text(showsProject ? [project, "draft"].compactMap { $0 }.joined(separator: " · ") : "draft")
-                    .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
-                    .lineLimit(1)
             }
         }
         .padding(.horizontal, LoomTheme.Space.cardH)
@@ -67,7 +63,7 @@ struct DraftRow: View {
         // The button is what the keyboard operates; a click anywhere on the row does the same.
         .onTapGesture { model.showDraft(projectID: draft.projectID) }
         .onHover { hovering = $0 }
-        .projectStripe(model.projectTone(forProject: draft.projectID))
+        .help(showsProject ? (project ?? "") : "")
         .contextMenu {
             Button("Open Draft") { model.showDraft(projectID: draft.projectID) }
             Button("Discard Draft") { model.discardDraft(projectID: draft.projectID) }
@@ -77,8 +73,7 @@ struct DraftRow: View {
 }
 
 /// The draft rows of one place in the sidebar: every draft at the top of the activity view (under a "Drafts"
-/// heading), or the drafts of one project, or of no project, in the project view. Nothing while a search shows
-/// its plain result.
+/// heading), or the drafts of one project, or of no project, in the project view.
 struct DraftRows: View {
     enum Scope: Equatable {
         case all
@@ -90,7 +85,6 @@ struct DraftRows: View {
 
     /// The drafts a scope lists, newest first.
     static func drafts(in scope: Scope, of model: CatalogModel) -> [SessionDraft] {
-        guard !model.isSearching else { return [] }
         switch scope {
         case .all: return model.visibleDrafts
         case .project(let id): return model.visibleDrafts.filter { $0.projectID == id }
@@ -100,15 +94,7 @@ struct DraftRows: View {
     var body: some View {
         let drafts = Self.drafts(in: scope, of: model)
         if !drafts.isEmpty {
-            if scope == .all {
-                ActivityHeading {
-                    HStack(spacing: LoomTheme.Space.sectionSpacing) {
-                        Text("Drafts").foregroundStyle(LoomTheme.Text.primary)
-                        Text("\(drafts.count)").foregroundStyle(LoomTheme.Text.secondaryStyle)
-                    }
-                    .accessibilityElement(children: .combine)
-                }
-            }
+            if scope == .all { ActivityHeading(title: "Drafts", count: drafts.count) }
             ForEach(drafts) { draft in
                 // The same draft is drawn by the activity view and by its project; each place is its own row.
                 DraftRow(model: model, draft: draft, showsProject: scope == .all)

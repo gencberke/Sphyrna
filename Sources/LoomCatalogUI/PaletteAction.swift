@@ -11,7 +11,6 @@ public enum PaletteAction: String, CaseIterable, Sendable {
     case showTerminal
     case toggleInspector
     case nextAttention
-    case findSession
     case openInTab
     case renameSession
     case resumeSession
@@ -43,7 +42,6 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         }
         return switch self {
         case .nextAttention: "Jump to the next session that needs you"
-        case .findSession: "Search sessions in the sidebar"
         case .openInTab: "Open session in a tab"
         case .renameSession: "Rename session…"
         case .resumeSession: "Resume session"
@@ -57,7 +55,7 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         }
     }
 
-    /// Extra words the query can match, so "sidebar" finds "Search sessions in the sidebar" and "chat" finds Show Chat.
+    /// Extra words the query can match, so "chat" finds Show Chat.
     public var keywords: [String] {
         switch self {
         case .newSession: ["start", "create", "claude", "compose"]
@@ -66,7 +64,6 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         case .showTerminal: ["console", "claude code"]
         case .toggleInspector: ["panel", "details", "agents", "overview"]
         case .nextAttention: ["approval", "waiting", "needs"]
-        case .findSession: ["filter", "find", "search"]
         case .openInTab: ["pin", "tab"]
         case .renameSession: ["title", "name"]
         case .resumeSession: ["start again", "continue"]
@@ -87,7 +84,6 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         case .showTerminal: "terminal"
         case .toggleInspector: "sidebar.right"
         case .nextAttention: "bell"
-        case .findSession: "magnifyingglass"
         case .openInTab: "rectangle.stack"
         case .renameSession: "pencil"
         case .resumeSession: "play"
@@ -107,7 +103,6 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         case .nextAttention:
             PaletteKeyHint.text(modifiers: SessionShortcut.jumpToNextAttention.modifiers,
                                 key: SessionShortcut.jumpToNextAttention.keyEquivalent)
-        case .findSession: PaletteKeyHint.text(modifiers: [.command], key: "f")
         case .resumeSession: PaletteKeyHint.text(modifiers: [.command], key: "r")
         case .stopSession: PaletteKeyHint.text(modifiers: [.command], key: ".")
         case .askQuickQuestion: PaletteKeyHint.text(modifiers: [.command], key: ";")
@@ -122,7 +117,7 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         if let shellCommand { return shellCommand.isEnabled(on: model) }
         switch self {
         case .nextAttention: return model.canJumpToAttention
-        case .findSession, .settings: return true
+        case .settings: return true
         case .toggleSidebar: return model.onToggleSidebar != nil
         case .recentActivityView: return model.viewMode != .activity
         case .projectView: return model.viewMode != .projects
@@ -158,7 +153,6 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         if let shellCommand { return shellCommand.run(on: model) }
         switch self {
         case .nextAttention: model.jumpToAttention(.next)
-        case .findSession: model.requestSearchFocus()
         case .openInTab:
             if let id = model.selectedSessionID { model.openTab(id) }
         case .renameSession:

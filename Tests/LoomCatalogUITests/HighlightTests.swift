@@ -159,17 +159,16 @@ struct HighlightTests {
     // MARK: The 4 pt grid
 
     /// The gaps and paddings the spacing pass moved, as they are now. A gap or padding is a multiple of 4, or 2 between a glyph
-    /// and its text. What stays off the grid is optical or a size: the project stripe's top (11) and bottom (1) that line it up
-    /// with the name, the subagent guide's 13 (the centre of the indicator slot), a hairline, and the tab's 7 pt gap, which the reference draws.
+    /// and its text. What stays off the grid is optical or a size: the project head's leading 6 and the door's trailing 6, which line the mark's
+    /// centre up with the status column and seat the key cap, the subagent guide's 13 (the centre of the indicator slot), a hairline, and the tab's 7 pt gap, which the reference draws.
     @Test func theSpacingPassLeavesEveryMovedGapAndPaddingOnTheFourPointGrid() {
         typealias S = LoomTheme.Space
         let moved: [(String, CGFloat)] = [
-            ("headerInset", S.headerInset), ("searchInset", S.searchInset), ("searchPadding", S.searchPadding),
-            ("footerInset", S.footerInset), ("searchSpacing", S.searchSpacing), ("chipSplitGap", S.chipSplitGap),
+            ("headerInset", S.headerInset), ("chipSplitGap", S.chipSplitGap),
             ("chipLimitGap", S.chipLimitGap), ("listInset", S.listInset), ("sectionInset", S.sectionInset),
             ("sectionTop", S.sectionTop), ("sectionBottom", S.sectionBottom), ("rowFocusOutset", S.rowFocusOutset),
             ("emptyNoteInset", S.emptyNoteInset), ("emptyNoteVertical", S.emptyNoteVertical), ("hintSpacing", S.hintSpacing),
-            ("cardH", S.cardH), ("cardV", S.cardV), ("cardLineSpacing", S.cardLineSpacing), ("cardRowSpacing", S.cardRowSpacing),
+            ("cardH", S.cardH), ("cardV", S.cardV), ("cardLineSpacing", S.cardLineSpacing),
             ("subagentGuidePad", S.subagentGuidePad), ("subagentRowTrailing", S.subagentRowTrailing),
             ("subagentColumnGap", S.subagentColumnGap), ("subagentTextGap", S.subagentTextGap), ("subagentIndent", S.subagentIndent),
             ("transcriptInset", S.transcriptInset), ("detailInset", S.detailInset), ("bannerSpacing", S.bannerSpacing),
@@ -198,7 +197,11 @@ struct HighlightTests {
             ("Inspector.agentColumnGap", LoomTheme.Inspector.agentColumnGap), ("Inspector.agentLineGap", LoomTheme.Inspector.agentLineGap),
             ("Inspector.agentIndent", LoomTheme.Inspector.agentIndent),
             ("Sidebar.homeRowInset", LoomTheme.Sidebar.homeRowInset), ("Sidebar.homeRowSpacing", LoomTheme.Sidebar.homeRowSpacing),
-            ("Sidebar.badgePadding", LoomTheme.Sidebar.badgePadding), ("Sidebar.headerFillInset", LoomTheme.Sidebar.headerFillInset),
+            ("Sidebar.badgePadding", LoomTheme.Sidebar.badgePadding), ("Sidebar.doorInset", LoomTheme.Sidebar.doorInset),
+            ("Sidebar.doorBottom", LoomTheme.Sidebar.doorBottom), ("Sidebar.doorSpacing", LoomTheme.Sidebar.doorSpacing),
+            ("Sidebar.headingInset", LoomTheme.Sidebar.headingInset), ("Sidebar.headTop", LoomTheme.Sidebar.headTop),
+            ("Sidebar.headTrailing", LoomTheme.Sidebar.headTrailing), ("Sidebar.headerTrailing", LoomTheme.Sidebar.headerTrailing),
+            ("Sidebar.metaSpacing", LoomTheme.Sidebar.metaSpacing),
             ("Chat.columnPadding", LoomTheme.Chat.columnPadding), ("Chat.workRowPaddingH", LoomTheme.Chat.workRowPaddingH),
             ("Chat.blockSpacing", LoomTheme.Chat.blockSpacing),
             ("Composer.dockBottomInset", LoomTheme.Composer.dockBottomInset), ("Composer.dockTopInset", LoomTheme.Composer.dockTopInset),

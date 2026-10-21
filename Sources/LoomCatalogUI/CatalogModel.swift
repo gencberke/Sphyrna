@@ -927,20 +927,6 @@ public final class CatalogModel {
         }
     }
 
-    /// Counts requests to focus the search field (Edit > Find); the field reacts to each change.
-    public private(set) var searchFocusRequest = 0
-
-    /// Moves the keyboard to the search field. A collapsed sidebar is shown first and the field
-    /// is asked once the sidebar has had time to open (a hidden field cannot take focus).
-    public func requestSearchFocus() {
-        guard sidebarCollapsed else { searchFocusRequest &+= 1; return }
-        onToggleSidebar?()
-        Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(350))
-            self?.searchFocusRequest &+= 1
-        }
-    }
-
     public func setViewMode(_ mode: CatalogViewMode) {
         guard mode != viewMode else { return }
         viewMode = mode

@@ -137,13 +137,75 @@ struct ProjectColorUITests {
         }
     }
 
-    @Test func stripesAreFourPointsUnderIncreaseContrast() {
-        #expect(LoomTheme.ProjectColor.stripeWidth(for: .standard) == 3)
-        #expect(LoomTheme.ProjectColor.stripeWidth(for: .increased) == 4)
+    @Test func theToneStyleTakesTheLighterToneUnderIncreaseContrast() {
         for tone in ProjectTone.allCases {
-            #expect(LoomTheme.ProjectColor.stripeRGB(tone, for: .standard) == LoomTheme.ProjectColor.baseRGB(tone))
-            #expect(LoomTheme.ProjectColor.stripeRGB(tone, for: .increased) == LoomTheme.ProjectColor.increasedRGB(tone))
+            let style = LoomTheme.ProjectColor.stripe(tone)
+            #expect(style.tone(for: .standard).rgb == LoomTheme.ProjectColor.baseRGB(tone))
+            #expect(style.tone(for: .increased).rgb == LoomTheme.ProjectColor.increasedRGB(tone))
         }
+    }
+
+    // MARK: The selected session's tint
+
+    @Test func theSelectedSessionTakesFourteenPercentOfItsToneWithAnEdgeAtThirtyFour() throws {
+        #expect([LoomTheme.ProjectColor.selectionWash, LoomTheme.ProjectColor.selectionEdge,
+                 LoomTheme.ProjectColor.selectionEdgeIncreased] == [0.14, 0.34, 0.75])
+        for tone in ProjectTone.allCases {
+            let wash = LoomTheme.ProjectColor.selectionWashTone(tone)
+            #expect(wash.dark == LoomTheme.Tone(rgb: LoomTheme.ProjectColor.baseRGB(tone), opacity: 0.14), "\(tone), Ink")
+            #expect(wash.light == LoomTheme.Tone(rgb: LoomTheme.ProjectColor.lightBaseRGB(tone), opacity: 0.14), "\(tone), Paper")
+            let edge = LoomTheme.ProjectColor.selectionEdgeStyle(tone)
+            #expect(edge.tone(for: .standard) == LoomTheme.Tone(rgb: LoomTheme.ProjectColor.baseRGB(tone), opacity: 0.34))
+            #expect(edge.tone(for: .increased) == LoomTheme.Tone(rgb: LoomTheme.ProjectColor.increasedRGB(tone), opacity: 0.75))
+            #expect(edge.tone(for: .standard, appearance: .light).rgb == LoomTheme.ProjectColor.lightBaseRGB(tone))
+            #expect(edge.tone(for: .increased, appearance: .light).rgb == LoomTheme.ProjectColor.lightIncreasedRGB(tone))
+        }
+    }
+
+    /// Primary holds 7:1 and secondary 4.5:1 on the tinted selection (DESIGN §6 Project colour), in both appearances, the three
+    /// casts and every tone. Increase Contrast's lifted secondary stays within a hair of its own 7:1 there (6.97 at the least,
+    /// Paper's orchid in the Warm cast), so it is held at 6.9.
+    @Test func textOnTheTintedSelectionKeepsPrimarySevenAndSecondaryFourPointFive() {
+        for appearance in LoomTheme.Appearance.allCases {
+            for pane in PaneTone.allCases {
+                let canvas = LoomTheme.Surface.greys(appearance, tone: pane).canvas
+                for tone in ProjectTone.allCases {
+                    let wash = LoomTheme.ProjectColor.selectionWashTone(tone)[appearance]
+                    let ground = wash.rgb.composited(over: canvas, opacity: wash.opacity)
+                    let id = "\(appearance) \(pane) \(tone)"
+                    let primary = LoomTheme.Text.primaryPair[appearance].contrast(with: ground)
+                    let secondary = LoomTheme.Text.secondaryPair[appearance].contrast(with: ground)
+                    let lifted = LoomTheme.Text.secondaryIncreasedPair[appearance].contrast(with: ground)
+                    #expect(primary >= 7, "primary on the selection, \(id): \(primary)")
+                    #expect(secondary >= 4.5, "secondary on the selection, \(id): \(secondary)")
+                    #expect(lifted >= 6.9, "secondary, Increase Contrast, on the selection, \(id): \(lifted)")
+                }
+            }
+        }
+    }
+
+    /// A rendered pill: the selected state with a tone is 14 % of the tone (Ink and Paper), and without one the neutral fill.
+    @Test func aRenderedSelectedPillTakesTheToneOrTheNeutralFill() throws {
+        func center(_ tone: ProjectTone?, appearance: NSAppearance.Name) throws -> NSColor {
+            let view = NSHostingView(rootView: RowHighlight(state: .selected, radius: 8, tint: tone))
+            view.appearance = NSAppearance(named: appearance)
+            view.frame = NSRect(x: 0, y: 0, width: 40, height: 28)
+            view.layoutSubtreeIfNeeded()
+            let rep = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: rep)
+            let scale = rep.pixelsWide / 40
+            return try #require(rep.colorAt(x: 20 * scale, y: 14 * scale)?.usingColorSpace(.sRGB))
+        }
+        let ink = try center(.aqua, appearance: .darkAqua)
+        let aqua = LoomTheme.ProjectColor.baseRGB(.aqua)
+        #expect(abs(Double(ink.alphaComponent) - 0.14) < 0.03, "alpha \(ink.alphaComponent)")
+        #expect(abs(Double(ink.redComponent) - aqua.red) < 0.06 && abs(Double(ink.greenComponent) - aqua.green) < 0.06)
+        let paper = try center(.aqua, appearance: .aqua)
+        let paperAqua = LoomTheme.ProjectColor.lightBaseRGB(.aqua)
+        #expect(abs(Double(paper.alphaComponent) - 0.14) < 0.03 && abs(Double(paper.redComponent) - paperAqua.red) < 0.06,
+                "Paper uses the deeper tone")
+        let neutral = try center(nil, appearance: .darkAqua)
+        #expect(abs(Double(neutral.alphaComponent) - 0.08) < 0.03 && neutral.redComponent > 0.9, "the neutral selected fill")
     }
 
     // MARK: The project's mark

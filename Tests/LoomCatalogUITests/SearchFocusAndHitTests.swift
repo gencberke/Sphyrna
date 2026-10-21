@@ -5,16 +5,9 @@ import Testing
 import LoomCore
 @testable import LoomCatalogUI
 
-private func keyEvent(_ characters: String, keyCode: UInt16, in window: NSWindow,
-                      modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
-    try #require(NSEvent.keyEvent(
-        with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0, windowNumber: window.windowNumber,
-        context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode))
-}
-
 extension WindowEventTests {
-/// I3: Find focuses the search field, Esc clears it; small controls keep a 24 pt hit area;
-/// banners fade in only when Reduce Motion is off.
+/// The sidebar's search is the command palette's door; small controls keep a 24 pt hit area; banners fade in only when Reduce
+/// Motion is off.
 @MainActor
 @Suite(.timeLimit(.minutes(2)))
 struct SearchFocusAndHitTests {
@@ -25,47 +18,28 @@ struct SearchFocusAndHitTests {
                              preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json"))), root)
     }
 
-    /// Whether a text field's field editor holds the keyboard (the sidebar has one text field, the search).
-    private func searchHasFocus(in window: NSWindow) -> Bool { window.firstResponder is NSText }
-
-    @Test func findFocusesTheSearchFieldAndEscapeClearsThenLeavesIt() async throws {
-        let (model, root) = try model()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let (window, _) = host(SidebarView(model: model), size: NSSize(width: 300, height: 400))
-        defer { window.orderOut(nil) }
-        try await Task.sleep(for: .milliseconds(400))
-        #expect(!searchHasFocus(in: window))
-
-        model.requestSearchFocus() // what Edit > Find (Cmd+F) calls
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(searchHasFocus(in: window))
-
-        model.setSearchText("rocket")
-        try await Task.sleep(for: .milliseconds(200))
-        NSApp.sendEvent(try keyEvent("\u{1b}", keyCode: 53, in: window))
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(model.searchText.isEmpty, "Esc clears the search")
-        #expect(searchHasFocus(in: window), "the field keeps focus after clearing")
-
-        NSApp.sendEvent(try keyEvent("\u{1b}", keyCode: 53, in: window))
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(!searchHasFocus(in: window), "Esc on an empty field leaves it")
+    /// The sidebar's element that reads "Search, opens the command palette", as VoiceOver finds it.
+    private func door(in view: NSView) -> AnyObject? {
+        accessibilityElements(in: view).first { ($0.accessibilityLabel?() ?? "") == SearchDoor.accessibilityLabel }
     }
 
-    @Test func findOnACollapsedSidebarShowsItFirstThenFocuses() async throws {
+    @Test func theSearchDoorOpensThePaletteAndTheSidebarHoldsNoTextField() async throws {
+        enableAccessibilityTree()
         let (model, root) = try model()
         defer { try? FileManager.default.removeItem(at: root) }
-        var toggles = 0
-        model.onToggleSidebar = { toggles += 1; model.setSidebarCollapsed(false) }
-        model.setSidebarCollapsed(true)
-        let before = model.searchFocusRequest
-        model.requestSearchFocus()
-        #expect(toggles == 1)
-        #expect(model.searchFocusRequest == before, "not asked until the sidebar has opened")
-        try await Task.sleep(for: .milliseconds(600))
-        #expect(model.searchFocusRequest == before + 1)
-        model.requestSearchFocus() // already visible: asked at once
-        #expect(toggles == 1 && model.searchFocusRequest == before + 2)
+        let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 300, height: 400))
+        defer { window.orderOut(nil); model.palette.close() }
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(!(window.firstResponder is NSText), "no field holds the keyboard")
+        #expect(!accessibilityElements(in: hosting.view).contains { $0.accessibilityRole?() == .textField },
+                "the filter is gone: the sidebar has no text field")
+
+        let door = try #require(door(in: hosting.view), "the door is drawn")
+        #expect(door.accessibilityRole?() == .button)
+        #expect(!model.palette.isOpen)
+        #expect(door.accessibilityPerformPress?() == true)
+        #expect(model.palette.isOpen, "a click on the door runs what ⌘K runs")
+        #expect(SearchDoor.keyHint == "⌘K")
     }
 
     @Test func aSmallChromeButtonAnswersAClickOverAtLeastTheMinimumHitTarget() async throws {
@@ -98,9 +72,9 @@ struct SearchFocusAndHitTests {
         let small = try await hitExtent(of: LoomTheme.Layout.projectMenuButton) // drawn 22 x 20
         print("HITEXTENT 22x20 control answers", small.width, "x", small.height)
         #expect(small.width >= 23.5 && small.height >= 23.5, "a 22 x 20 control answers over at least 24 x 24")
-        let regular = try await hitExtent(of: LoomTheme.Layout.chromeButton) // 26 x 24 stays as drawn
-        print("HITEXTENT 26x24 control answers", regular.width, "x", regular.height)
-        #expect(regular.width >= 25.5 && regular.width <= 26.5 && regular.height >= 23.5 && regular.height <= 24.5)
+        let regular = try await hitExtent(of: LoomTheme.Layout.chromeButton) // 26 x 26 stays as drawn
+        print("HITEXTENT 26x26 control answers", regular.width, "x", regular.height)
+        #expect(regular.width >= 25.5 && regular.width <= 26.5 && regular.height >= 25.5 && regular.height <= 26.5)
     }
 
     /// Mean brightness of a hosted view's rendering.

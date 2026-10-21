@@ -92,7 +92,7 @@ struct IdentityMarksTests {
         }
         let dot = try ink(mark(.failure, false))
         let diamond = try ink(mark(.failure, true))
-        #expect(abs(dot.area - Double.pi * 16) < 3, "the dot covers \(dot.area) pt squared")
+        #expect(abs(dot.area - Double.pi * 12.25) < 3, "the dot covers \(dot.area) pt squared (7 pt)")
         #expect(abs(diamond.area - 24.5) < 3, "the diamond covers \(diamond.area) pt squared")
         #expect(abs(try ink(mark(.attention, true)).area - dot.area) < 1)
         #expect(abs(try ink(mark(.unviewed, true)).area - dot.area) < 1)

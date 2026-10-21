@@ -57,11 +57,6 @@ extension WindowEventTests {
             #expect(DraftRow.title(of: try #require(model.newSession.draft(for: rig.api))) == "fix the flaky test")
             #expect(DraftRow.accessibilityLabel(title: "fix the flaky test", project: "api") == "Draft, fix the flaky test, api")
 
-            // A search shows its plain result: no drafts.
-            model.setSearchText("anything")
-            #expect(DraftRows.drafts(in: .all, of: model).isEmpty)
-            model.setSearchText("")
-
             // Discard empties the slot; the file forgets it.
             model.discardDraft(projectID: rig.api)
             #expect(DraftRows.drafts(in: .project(rig.api), of: model).isEmpty)
