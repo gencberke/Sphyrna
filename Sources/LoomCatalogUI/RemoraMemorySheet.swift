@@ -284,7 +284,7 @@ private struct RemovedNote: View {
 
 // MARK: Remora.md
 
-/// The vault note: what it holds, where it is with Open in Obsidian, and the honest line about who writes there. Its text is not shown:
+/// The vault note: what it holds, where it is with Open (in Obsidian when it sits in a vault), and the honest line about who writes there. Its text is not shown:
 /// it opens in the user's own editor.
 private struct NoteFilePane: View {
     let catalog: CatalogModel
@@ -308,7 +308,7 @@ private struct NoteFilePane: View {
                     .projectType(M.pathText).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                     .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                 Spacer(minLength: 0)
-                Button(RemoraMemoryText.openInObsidian) { if let url { navigation.noteActions.open(url) } }
+                Button(RemoraMemoryText.openTitle(note: url)) { if let url { navigation.noteActions.open(url) } }
                     .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
                     .disabled(url == nil)
             }

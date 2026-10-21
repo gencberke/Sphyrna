@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 /// The memory note's two native panels as the app runs them. Choose… shows a file panel (a folder means `Remora.md` inside it) and Open
-/// opens the note in Obsidian where it is installed, else in whatever opens the file. No test calls these: tests replace
+/// opens the note in Obsidian when it sits in a vault and Obsidian is installed, else in whatever opens the file. No test calls these: tests replace
 /// `RemoraNoteActions` on the navigation.
 extension RemoraNoteActions {
     @MainActor static var live: RemoraNoteActions {
@@ -20,11 +20,7 @@ extension RemoraNoteActions {
                 return RemoraNoteChoice.url(forChosen: url, isDirectory: isDirectory.boolValue)
             },
             open: { url in
-                var allowed = CharacterSet.urlQueryAllowed
-                allowed.remove(charactersIn: "&=+#?")
-                if let path = url.path.addingPercentEncoding(withAllowedCharacters: allowed),
-                   let obsidian = URL(string: "obsidian://open?path=" + path),
-                   NSWorkspace.shared.urlForApplication(toOpen: obsidian) != nil {
+                if let obsidian = RemoraNoteChoice.obsidianURL(forNote: url), NSWorkspace.shared.urlForApplication(toOpen: obsidian) != nil {
                     NSWorkspace.shared.open(obsidian)
                 } else {
                     NSWorkspace.shared.open(url)

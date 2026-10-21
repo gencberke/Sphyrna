@@ -151,6 +151,30 @@ struct RemoraSettingsTests {
         #expect(RemoraNoteChoice.url(forChosen: file, isDirectory: false) == file)
     }
 
+    /// Open goes to Obsidian only for a note inside a vault (a folder above it holds `.obsidian`); Remora's own folder is outside every
+    /// vault, so its `Remora.md` opens in the app that opens the file. A temporary tree, never a real vault.
+    @Test func openGoesToObsidianOnlyForANoteInsideAVault() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-remora-vault-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vault = root.appendingPathComponent("second brain", isDirectory: true)
+        try FileManager.default.createDirectory(at: vault.appendingPathComponent(".obsidian"), withIntermediateDirectories: true)
+        let inside = vault.appendingPathComponent("Remora/Remora.md")
+        #expect(RemoraNoteChoice.vault(containing: inside)?.path == vault.standardizedFileURL.path)
+        let link = try #require(RemoraNoteChoice.obsidianURL(forNote: inside))
+        #expect(link.scheme == "obsidian" && link.absoluteString.contains("second%20brain/Remora/Remora.md"), "\(link)")
+        #expect(RemoraMemoryText.openTitle(note: inside) == "Open in Obsidian")
+
+        let outside = root.appendingPathComponent("remora/Remora.md")
+        #expect(RemoraNoteChoice.vault(containing: outside) == nil && RemoraNoteChoice.obsidianURL(forNote: outside) == nil)
+        #expect(RemoraMemoryText.openTitle(note: outside) == "Open" && RemoraMemoryText.openTitle(note: nil) == "Open")
+
+        // A file named .obsidian is not a vault.
+        let plain = root.appendingPathComponent("plain", isDirectory: true)
+        try FileManager.default.createDirectory(at: plain, withIntermediateDirectories: true)
+        try Data().write(to: plain.appendingPathComponent(".obsidian"))
+        #expect(RemoraNoteChoice.vault(containing: plain.appendingPathComponent("Remora.md")) == nil)
+    }
+
     @Test func theNotePathIsTheChosenFileElseRemoraMdInRemorasFolder() {
         let model = makeModel()
         #expect(model.remoraNoteURL == nil, "no host and no chosen file")

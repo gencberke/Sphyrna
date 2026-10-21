@@ -148,6 +148,29 @@ enum RemoraNoteChoice {
     static func url(forChosen url: URL, isDirectory: Bool) -> URL {
         isDirectory ? url.appendingPathComponent(RemoraPreferences.defaultNoteName) : url
     }
+
+    /// The Obsidian vault a note sits in: the nearest folder above it that holds a `.obsidian` folder, or nil outside every vault
+    /// (the default `Remora.md` in Remora's folder is outside). Obsidian answers a path outside its vaults with an error.
+    static func vault(containing note: URL, fileManager: FileManager = .default) -> URL? {
+        var folder = note.standardizedFileURL.deletingLastPathComponent()
+        while folder.pathComponents.count > 1 {
+            var isDirectory: ObjCBool = false
+            if fileManager.fileExists(atPath: folder.appendingPathComponent(".obsidian").path, isDirectory: &isDirectory),
+               isDirectory.boolValue {
+                return folder
+            }
+            folder = folder.deletingLastPathComponent()
+        }
+        return nil
+    }
+
+    /// Where Open sends a note inside a vault (DESIGN §20); nil sends it to the app that opens the file.
+    static func obsidianURL(forNote note: URL, fileManager: FileManager = .default) -> URL? {
+        guard vault(containing: note, fileManager: fileManager) != nil else { return nil }
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "&=+#?")
+        return note.path.addingPercentEncoding(withAllowedCharacters: allowed).flatMap { URL(string: "obsidian://open?path=" + $0) }
+    }
 }
 
 /// The two native panels the memory note's buttons open: Choose… (a file panel) and Open (the user's editor). They sit behind this
@@ -155,6 +178,6 @@ enum RemoraNoteChoice {
 struct RemoraNoteActions {
     /// Shows the file panel; the chosen note file, or nil when the panel was cancelled.
     var choose: @MainActor () -> URL?
-    /// Opens the note in the user's editor (Obsidian where it is installed).
+    /// Opens the note: in Obsidian when it sits in a vault and Obsidian is installed, else in the app that opens the file.
     var open: @MainActor (URL) -> Void
 }

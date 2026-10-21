@@ -20,6 +20,11 @@ enum RemoraMemoryText {
     /// The vault note: what it holds, where it is, and that Remora writes there only when asked.
     static let noteFileHolds = "Who Remora is, how you want answers, and what you asked it to remember, with dates."
     static let openInObsidian = "Open in Obsidian"
+
+    /// The note's button: Obsidian's name only when the note sits in a vault; elsewhere it opens in the app that opens the file.
+    static func openTitle(note: URL?) -> String {
+        note.flatMap { RemoraNoteChoice.vault(containing: $0) } != nil ? openInObsidian : RemoraSettingsText.open
+    }
     static let honesty = "Remora writes here only when you ask it to remember, or confirm a proposal, and only under its own headings. Edit the note itself in your vault."
     static let noNoteFile = "Remora has no memory note yet."
 }

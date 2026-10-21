@@ -157,7 +157,7 @@ struct RemoraSettingsHostedTests {
         navigation.openRemoraMemory(tab: tab)
         let (window, hosting) = host(settingsView(rig.model, navigation: navigation))
         defer { window.close() }
-        let marker = ["Asked “Which session", "The Ink sidebar port", "Open in Obsidian"][RemoraMemoryTab.allCases.firstIndex(of: tab)!]
+        let marker = ["Asked “Which session", "The Ink sidebar port", "Who Remora is"][RemoraMemoryTab.allCases.firstIndex(of: tab)!]
         try await settle(window) {
             self.elements(in: hosting).contains { (InkAX.value($0) ?? InkAX.label($0)).contains(marker) }
         }
