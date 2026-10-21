@@ -18,7 +18,7 @@ public enum ClaudeLoomPlugin {
     static let skill = """
         ---
         name: open-session
-        description: List the user's other Sphyrna sessions (read-only, no content) or open another top-level Claude session with a first message that the user approves in Sphyrna. Use when work should continue in its own session, or you need to find one. Only inside Sphyrna, where $LOOM_CLI is set.
+        description: This session runs inside Sphyrna, the desktop app that hosts it. Sphyrna can list the user's other sessions (read-only, no content) and open a new top-level Claude session with a first message the user approves. Use it to find a session, or when work should go on in its own session.
         ---
 
         # Sessions in Sphyrna

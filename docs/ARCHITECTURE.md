@@ -274,7 +274,10 @@ A draft is `CatalogModel+NewSession` state (`NewSessionState`); `sendDraft` clea
 Discovery (D-42): SessionRuntime.ensureHooks writes ClaudeLoomPlugin (the skill loom:open-session and the output style `loom:Ask`) into
     SessionRuntimeConfiguration.claudePluginDirectory (<data root>/claude-plugin; files rewritten only when they differ) on every
     Claude start, also without the control socket (it also holds Ask's output style, D-63); ProviderLaunchProfile adds `--plugin-dir <folder>` when Claude's help lists it. Claude keeps the skill's
-    description in context and reads its instructions (the command, its options and result lines) when it uses it.
+    description in context and reads its instructions (the command, its options and result lines) when it uses it. The
+    description (at most 300 characters, pinned by PluginContractTests) says first that the session runs inside Sphyrna,
+    the desktop app that hosts it, then what Sphyrna can do and when to use it (C5c, D-85); nothing is appended to the
+    system prompt and no hook prints it.
 Claude session runs  "$LOOM_CLI" open --title ... [--project P] (--message-file F | --message -)   (loom-hook, OpenSessionCommand;
     `--ticket K` is accepted and ignored since D-69, so older agent rules still exit 0)
  -> validates the input (OpenSessionInput: title 1-160, message <= 64 KiB UTF-8), then connects to
