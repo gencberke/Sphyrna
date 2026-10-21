@@ -71,8 +71,9 @@ struct InspectorWindowTests {
         let before = rig.spies[0].laidOutSizes.count
         rig.model.toggleInspector()
         await rig.settle()
-        // An animated column would hand the terminal a size per frame on its way from 1084 to 756 points.
-        #expect(Array(rig.spies[0].laidOutSizes.dropFirst(before)).map(\.width) == [756])
+        // An animated column would hand the terminal a size per frame on its way from 1100 to 772 points (the pane is
+        // flush since Ink: no panel margin around the terminal).
+        #expect(Array(rig.spies[0].laidOutSizes.dropFirst(before)).map(\.width) == [772])
     }
 
     @Test func switchingBetweenSessionsWithTheirInspectorsOpenResizesNothing() async throws {
