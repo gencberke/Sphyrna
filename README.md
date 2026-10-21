@@ -13,7 +13,7 @@ Status: 0.4.4 is in daily use on the user's Mac and public on GitHub. This tree 
 | [AGENTS.md](AGENTS.md), [CLAUDE.md](CLAUDE.md) | Agent workflow, role matrix, canonical file routing, working principles, and safety rules |
 | [STATUS.md](STATUS.md) | Live relay board: where the work stands now, worktrees, active file locks, and `@role` handoff queue |
 | [SPEC.md](SPEC.md) | Unified product & behavioral specification (replacing `LOOM-PRODUCT-CONTRACT.md` and `plans/v2/CHAT-SPEC.md`) |
-| [DECISIONS.md](DECISIONS.md) | User decisions: Approved & Active (`D-01`–`D-90`), Rejected & Superseded, and Pending / Open (`#open`) |
+| [DECISIONS.md](DECISIONS.md) | User decisions: Approved & Active (`D-01`–`D-91`), Rejected & Superseded, and Pending / Open (`#open`) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture: targets, runtime flows, process ownership, UI surface-to-code index (§11, replacing `design/UI-MAP.md`), and technical gotchas (§12) |
 | [design/DESIGN.md](design/DESIGN.md), [design/reference.html](design/reference.html) | Visual design system (Ink v3) and interactive reference |
 | [DEVELOPMENT.md](DEVELOPMENT.md), [scripts/README.md](scripts/README.md) | Build, test, isolation, evidence mode, packaging, and measurement |

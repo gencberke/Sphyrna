@@ -12,6 +12,7 @@
 - **Planner:** the session "Sphyrna 1.6.0 release planlama" is `@planner` from 22 Oct 02:20 (`@user`'s word). The earlier planner session ("Loom v2 geliştirme durumu") and the track sessions `sphyrna-ink` / `sphyrna-core` are idle and no longer drive work; implementers run as the planner's own subagents and slices integrate straight onto `v2` (the `ink` and `core` track branches are not used this round).
 - **`@opencode` not used** this round (`@user`, 22 Oct 02:40): Claude implementers only.
 - **Test cadence ([D-90](DECISIONS.md), [DEVELOPMENT.md §3.1](DEVELOPMENT.md#31-test-cadence-slices-one-pooled-batch-fixes-scoped-re-checks-d-90-22-oct-2026)):** slices run narrow off-screen checks only; on-screen and heavy checks collect in the test pool; the pool, the full gate and the optimizer run only when enough has collected; a fix gets a scoped re-check, not the whole pool.
+- **Overnight run authority ([D-91](DECISIONS.md), 22 Oct ~03:00):** `@user` went to sleep and authorized the planner to work until morning (slices, integration onto `v2`, the pooled batch in the idle window, real-Claude test turns where a check needs them; a light eye on usage). Tag, promote, install, push and release still wait for `@user`.
 - **Overnight idle window:** `@user` is asleep and the Mac stays on. `caffeinate -dims` (pid 69498) holds the display and the system awake until ~11:40 so the screen stays unlocked for the pooled batch.
 - **Quota:** 5-hour window at 1 % at 02:15 (resets 07:10); weekly 25 %.
 
