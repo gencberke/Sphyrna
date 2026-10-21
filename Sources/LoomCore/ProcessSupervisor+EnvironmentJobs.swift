@@ -138,9 +138,9 @@ extension ProcessSupervisor {
     /// it and released once no job uses it and it is verified empty; a later
     /// job opens a new scope. A one-shot helper's scope is stopped and
     /// released when it returns.
-    private enum JobScope { case environment, perCall }
+    enum JobScope { case environment, perCall }
 
-    private func runOwnedJob<Result: Sendable>(
+    func runOwnedJob<Result: Sendable>(
         scope kind: JobScope,
         _ operation: @escaping @Sendable (UUID, EnvironmentResolutionJob, HelperSpawner) throws -> Result
     ) async throws -> Result {

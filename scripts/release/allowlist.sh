@@ -4,7 +4,7 @@
 # The only paths exported from the loom-dev tag (promote) or the checked-out tree (check.sh --release-tree).
 release_allow=(
   Package.resolved THIRD-PARTY-NOTICES.md
-  Sources/CLoomPOSIX Sources/LoomCore Sources/LoomTerminal Sources/LoomCatalogUI Sources/LoomChat
+  Sources/CLoomPOSIX Sources/LoomCore Sources/LoomTerminal Sources/LoomCatalogUI Sources/LoomChat Sources/LoomRemora
   Sources/LoomLaunchOptions Sources/loom-app Sources/loom-run-host Sources/loom-hook
   # Vendored SwiftTerm as patched: library, build-info generator + plugin, the
   # terminfo entry the generator reads, its manifest and license. Tests, samples,

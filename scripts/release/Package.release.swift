@@ -25,6 +25,7 @@ let package = Package(
         ]),
         .target(name: "LoomCatalogUI", dependencies: ["LoomCore", "LoomTerminal", "LoomChat"]),
         .target(name: "LoomChat", dependencies: ["LoomCore"]),
+        .target(name: "LoomRemora", dependencies: ["LoomCore", "LoomChat"]),
         .target(name: "LoomLaunchOptions"),
         .executableTarget(name: "loom-app", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomLaunchOptions"]),
         .executableTarget(name: "loom-hook", dependencies: ["LoomCore"]),

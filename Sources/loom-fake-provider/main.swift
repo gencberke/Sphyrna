@@ -85,6 +85,14 @@ if arguments == ["--probe-flood"] {
     exit(0)
 }
 
+// Remora's one-shot call: `-p --output-format stream-json` with the pack on stdin and no `--input-format`. See
+// RemoraFixture.swift. Any other run without `--input-format` falls through to the roles below, as before.
+if arguments.contains("-p"), !arguments.contains("--input-format"),
+   let outputFormat = arguments.firstIndex(of: "--output-format"), outputFormat + 1 < arguments.count,
+   arguments[outputFormat + 1] == "stream-json" {
+    runFakeRemora(arguments: arguments)
+}
+
 // Stream-json mode, as the real CLI gets it. A chat session (`--session-id`/`--resume`, partial messages,
 // replayed user messages or a permission host: Loom's Chat face) is the scripted chat engine, see
 // ChatEngine.swift. The bare headless request (`-p --input-format stream-json`, the plan-limits ask) is the

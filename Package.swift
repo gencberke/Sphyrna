@@ -30,6 +30,8 @@ let package = Package(
         .target(name: "LoomCatalogUI", dependencies: ["LoomCore", "LoomTerminal", "LoomChat"]),
         // The chat engine's pure model and wire protocol (v2): no UI, no process spawning.
         .target(name: "LoomChat", dependencies: ["LoomCore"]),
+        // Remora's call (v2): one owned `claude -p` child per question or brief and its answer. No UI.
+        .target(name: "LoomRemora", dependencies: ["LoomCore", "LoomChat"]),
         // Pure launch-option rules (data root, evidence channel), testable without AppKit.
         .target(name: "LoomLaunchOptions"),
         // LOOM_EVIDENCE compiles Sources/loom-app/Evidence (acceptance tooling) into the development flavor only;
@@ -50,6 +52,7 @@ let package = Package(
         .testTarget(name: "LoomCoreTests", dependencies: ["LoomCore"]),
         .testTarget(name: "LoomTerminalTests", dependencies: ["LoomCore", "LoomTerminal"]),
         .testTarget(name: "LoomChatTests", dependencies: ["LoomChat", "LoomCore"]),
+        .testTarget(name: "LoomRemoraTests", dependencies: ["LoomRemora", "LoomChat", "LoomCore"]),
         .testTarget(name: "LoomLaunchOptionsTests", dependencies: ["LoomLaunchOptions"]),
         .testTarget(name: "LoomCatalogUITests", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomChat"]),
     ]

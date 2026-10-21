@@ -272,7 +272,7 @@ public enum LaunchEnvironment {
         for fd in [output[0], errors[0]] {
             guard fcntl(fd, F_SETFL, O_NONBLOCK) == 0 else { throw LoomError.system("Environment pipe mode", errno) }
         }
-        let pid = try spawner.spawn(executable, arguments, environment, directory, output[1], errors[1])
+        let pid = try spawner.spawn(executable, arguments, environment, directory, nil, output[1], errors[1])
         // Only the child keeps the write ends; EOF then means it exited.
         Darwin.close(output[1]); output[1] = -1
         Darwin.close(errors[1]); errors[1] = -1
@@ -315,7 +315,7 @@ public enum LaunchEnvironment {
     }
 
     static func spawnLocal(_ executable: String, _ arguments: [String], environment: [String: String],
-                           directory: String?, output: Int32, error: Int32) throws -> pid_t {
+                           directory: String?, input: Int32? = nil, output: Int32, error: Int32) throws -> pid_t {
         var actions: posix_spawn_file_actions_t?
         var attributes: posix_spawnattr_t?
         func check(_ error: Int32) throws {
@@ -325,14 +325,23 @@ public enum LaunchEnvironment {
         defer { posix_spawn_file_actions_destroy(&actions) }
         try check(posix_spawnattr_init(&attributes))
         defer { posix_spawnattr_destroy(&attributes) }
-        try check(posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0))
+        if let input { try check(posix_spawn_file_actions_adddup2(&actions, input, STDIN_FILENO)) }
+        else { try check(posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0)) }
         try check(posix_spawn_file_actions_adddup2(&actions, output, STDOUT_FILENO))
         try check(posix_spawn_file_actions_adddup2(&actions, error, STDERR_FILENO))
         if let directory {
             if #available(macOS 26, *) { try check(posix_spawn_file_actions_addchdir(&actions, directory)) }
             else { try check(posix_spawn_file_actions_addchdir_np(&actions, directory)) }
         }
-        try check(posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT)))
+        // Default signal dispositions and an empty mask, as the run host gives its children: a child must not inherit an
+        // ignored or blocked SIGTERM from the thread that spawns it (a streamed helper is ended with SIGTERM first).
+        var noSignals = sigset_t(), everySignal = sigset_t()
+        sigemptyset(&noSignals)
+        sigfillset(&everySignal)
+        try check(posix_spawnattr_setsigmask(&attributes, &noSignals))
+        try check(posix_spawnattr_setsigdefault(&attributes, &everySignal))
+        try check(posix_spawnattr_setflags(&attributes, Int16(
+            POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF)))
         try check(posix_spawnattr_setpgroup(&attributes, 0))
         let argv = ([executable] + arguments).map { strdup($0) }
         let envp = environment.map { strdup("\($0.key)=\($0.value)") }
@@ -352,8 +361,9 @@ public enum LaunchEnvironment {
 /// process left. Locally Loom is the parent and owns a process group; in a run
 /// scope the host is the parent and the whole scope is the cleanup boundary.
 struct HelperSpawner: Sendable {
+    /// `input` is the child's stdin (the read end of a pipe the caller feeds); nil gives it /dev/null.
     let spawn: @Sendable (_ executable: String, _ arguments: [String], _ environment: [String: String],
-                          _ directory: String?, _ output: Int32, _ error: Int32) throws -> pid_t
+                          _ directory: String?, _ input: Int32?, _ output: Int32, _ error: Int32) throws -> pid_t
     /// waitpid-encoded status once the process exited; nil while it runs.
     let status: @Sendable (pid_t) throws -> Int32?
     /// After a successful capture: release the exited process's PID only;
@@ -361,11 +371,13 @@ struct HelperSpawner: Sendable {
     let release: @Sendable (pid_t) -> Void
     /// After a failed capture or a one-shot helper: stop everything it left.
     let abort: @Sendable (pid_t) -> Void
+    /// SIGTERM to the child (its process group locally), the polite end of a streamed helper before `abort`.
+    let terminate: @Sendable (pid_t) -> Void
 
     static let local = HelperSpawner(
-        spawn: { executable, arguments, environment, directory, output, error in
+        spawn: { executable, arguments, environment, directory, input, output, error in
             try LaunchEnvironment.spawnLocal(executable, arguments, environment: environment,
-                                             directory: directory, output: output, error: error)
+                                             directory: directory, input: input, output: output, error: error)
         },
         status: { pid in
             var information = siginfo_t()
@@ -382,6 +394,10 @@ struct HelperSpawner: Sendable {
             kill(-pid, SIGKILL)
             kill(pid, SIGKILL)
             while waitpid(pid, nil, 0) < 0 && errno == EINTR {}
+        },
+        terminate: { pid in
+            kill(-pid, SIGTERM)
+            kill(pid, SIGTERM)
         }
     )
 
@@ -389,20 +405,28 @@ struct HelperSpawner: Sendable {
     /// is dedicated to this capture; finish stops all of the scope's forked work.
     static func scoped(_ scope: RunScope) -> HelperSpawner {
         HelperSpawner(
-            spawn: { executable, arguments, environment, directory, output, error in
-                let input = open("/dev/null", O_RDONLY | O_CLOEXEC)
-                guard input >= 0 else { throw LoomError.system("Environment input", errno) }
-                defer { Darwin.close(input) }
+            spawn: { executable, arguments, environment, directory, input, output, error in
+                var devNull: Int32 = -1
+                if input == nil {
+                    devNull = open("/dev/null", O_RDONLY | O_CLOEXEC)
+                    guard devNull >= 0 else { throw LoomError.system("Environment input", errno) }
+                }
+                defer { if devNull >= 0 { Darwin.close(devNull) } }
                 return try scope.spawnBlocking(
                     executable: executable, arguments: arguments, environment: environment,
-                    directory: directory ?? "", stdio: .descriptors(input: input, output: output, error: error)
+                    directory: directory ?? "", stdio: .descriptors(input: input ?? devNull, output: output, error: error)
                 )
             },
             status: { pid in scope.exitStatus(of: pid) },
             // The host reaped the child; its PID may already be reused, so no
             // PID or process-group signal is sent here.
             release: { _ in },
-            abort: { _ in _ = loom_kill_scope_forked_members(scope.coalitionID, 0, 2) }
+            abort: { _ in _ = loom_kill_scope_forked_members(scope.coalitionID, 0, 2) },
+            // Only while the same process still holds the pid in this scope (the host reaps and pids are reused).
+            terminate: { pid in
+                guard scope.exitStatus(of: pid) == nil, let member = RunScopeTable.lineage(pid: pid) else { return }
+                try? RunScopeTable.signal(member, coalitionID: scope.coalitionID, SIGTERM)
+            }
         )
     }
 }

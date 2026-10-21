@@ -382,6 +382,32 @@ struct RunScopeTests {
         #expect((await supervisor.shutdown()).succeeded)
     }
 
+    /// A streamed one-shot (Remora's call) runs in a run scope of its own when a launcher exists: the scope is in the
+    /// ledger while it runs, stdin reaches the child through the host, chunks arrive before the exit, and nothing is left.
+    @Test func aStreamedHelperRunsInItsOwnScopeAndLeavesNothingBehind() async throws {
+        let supervisor = try ProcessSupervisor(scopeLauncher: try launcher())
+        let stream = supervisor.streamHelper(
+            "/bin/sh", ["-c", "read line; echo got-$line; sleep 1; echo end"], environment: ["PATH": "/usr/bin:/bin"],
+            input: Data("pack\n".utf8), timeout: 20
+        )
+        var text = ""
+        var scopesWhileRunning = 0
+        let started = ContinuousClock.now
+        var firstAt: ContinuousClock.Instant?
+        for try await chunk in stream {
+            if firstAt == nil {
+                firstAt = .now
+                scopesWhileRunning = await supervisor.ledgerSnapshot().scopes?.count ?? 0
+            }
+            text += String(decoding: chunk, as: UTF8.self)
+        }
+        #expect(text == "got-pack\nend\n")
+        #expect(scopesWhileRunning == 1)
+        #expect(try #require(firstAt) - started < .seconds(1.5))
+        #expect(await supervisor.ledgerSnapshot().scopes?.isEmpty == true)
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
     // MARK: One run scope per Changes git read (RS-7)
 
     /// A `git` that reads no user config, as a script the scoped helper can run: the live reader passes its own fixed environment.
