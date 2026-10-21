@@ -14,6 +14,11 @@ import LoomCore
 /// - `mark-read:<id>`: the card menu's Mark as Read.
 /// - `appearance:<dark|light|system>`, `tone:<neutral|warm|cool>`: Settings → Theme (D-63), the same calls
 ///   the segmented control and the tone tiles make; the snapshot reports `appearance`, `effectiveAppearance`, `paneTone`.
+/// - `settings-sheet:<full-access|delete|off>`: opens a Settings sheet without acting on it (the Full Access question; the Delete
+///   question for the checked sessions, which needs a review with a checked row), or closes the open one. `cleanup-confirm` still
+///   deletes straight away, as before.
+/// - `cleanup-seed[:<n>]`: gives Settings → Sessions rows to show: `n` (3 by default) stale Claude sessions of the first project and
+///   one pinned stale session (kept), written to the evidence catalog, then a fresh review. Fake-provider runs only.
 /// - `usage-select:<24h|7d|30d|90d>`: the period control.
 /// - `usage-refresh[:<label>]`: refreshes now and writes `ack-usage-refresh-<label>.json` when done.
 @MainActor
@@ -40,6 +45,40 @@ extension DevelopmentEvidence {
             if argument == "all" { app.model?.cleanupReview?.selectAll() } else { app.model?.cleanupReview?.clearSelection() }
         case "cleanup-confirm":
             await app.model?.cleanupReview?.confirmDeletion()
+        case "settings-sheet":
+            guard let navigation = app.settingsController?.navigation else { return true }
+            switch argument {
+            case "full-access":
+                app.showSettings(section: .general)
+                navigation.setSheet(.fullAccess)
+            case "delete":
+                guard app.model?.cleanupReview?.canDelete == true else { return true }
+                app.showSettings(section: .conversations)
+                navigation.setSheet(.delete)
+            default:
+                navigation.setSheet(nil)
+            }
+        case "cleanup-seed":
+            guard !app.redactsContent, let runtime = app.runtime else { return true }
+            let catalog = await runtime.catalog
+            let project = app.model?.projects.first
+            let directory = project?.path ?? NSTemporaryDirectory()
+            let day: TimeInterval = 86_400
+            let now = Date()
+            let titles = ["Try the old sidebar spacing", "Rename the usage chip", "zsh prompt with the branch", "Tidy the inbox notes"]
+            for index in 0..<min(max(Int(argument) ?? 3, 0), titles.count) {
+                let session = ManagedSession(provider: .claude, workingDirectory: directory)
+                try? await catalog.insertSession(
+                    session, title: titles[index], createdAt: now.addingTimeInterval(-90 * day),
+                    lastUsedAt: now.addingTimeInterval(-Double(45 + 7 * index) * day), lifecycle: .stale,
+                    projectID: project?.id, staleSince: now.addingTimeInterval(-Double(30 + 7 * index) * day))
+            }
+            let kept = ManagedSession(provider: .claude, workingDirectory: directory)
+            try? await catalog.insertSession(
+                kept, title: "Release C health check", createdAt: now.addingTimeInterval(-90 * day),
+                lastUsedAt: now.addingTimeInterval(-60 * day), lifecycle: .stale, pinned: true, projectID: project?.id,
+                staleSince: now.addingTimeInterval(-45 * day))
+            await app.model?.cleanupReview?.open()
         case "pin", "unpin":
             if let id = UUID(uuidString: argument) { await app.model?.setPinned(id, name == "pin") }
         case "mark-read":
@@ -74,6 +113,7 @@ extension AppDelegate {
             "resizable": window?.styleMask.contains(.resizable) ?? NSNull(),
             "cleanup": cleanupEvidence,
             "general": generalSettingsEvidence,
+            "sheet": settingsController?.navigation.openSheet.map { String(describing: $0) } ?? NSNull(),
         ]
     }
 

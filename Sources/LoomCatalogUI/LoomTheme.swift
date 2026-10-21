@@ -555,35 +555,9 @@ enum LoomTheme {
         // Terminal host: the text keeps 16 pt of canvas around it, 20 at the leading edge (DESIGN §6 Terminal framing).
         static let terminalInset: CGFloat = 16
         static let terminalLeadingInset: CGFloat = 20
-        // Settings.
-        static let settingsInset: CGFloat = 32
-        static let settingsFooterInset: CGFloat = 24
-        static let settingsSectionGap: CGFloat = 20
-        static let settingsRowInset: CGFloat = 16
-        static let settingsRowV: CGFloat = 12
+        // The older segmented control and text button the Changes tab still draws with (`SegmentButtonStyle`, `SettingsButtonStyle`).
+        // Settings itself is `LoomTheme.Settings` (`LoomTheme+Settings.swift`).
         static let settingsSegmentH: CGFloat = 12
-        static let settingsTrack: CGFloat = 2
-        static let usageTotalsGap: CGFloat = 16
-        static let usageBarGap: CGFloat = 16
-        static let usageBarGapSlim: CGFloat = 2
-        static let usageCellGap: CGFloat = 4
-        static let usageCellLabelTop: CGFloat = 4
-        static let usageShareGap: CGFloat = 8
-        /// The Usage page's cards: the gap between them, the padding inside, and the header's gap to the body.
-        static let usageCardGap: CGFloat = 12
-        static let usageCardTop: CGFloat = 12
-        static let usageCardBottom: CGFloat = 16
-        static let usageCardHeaderBottom: CGFloat = 12
-        /// The period card's two columns, and the local-hours row (rule above and below, gap between its parts).
-        static let usageCardColumnGap: CGFloat = 24
-        static let usageRuleTop: CGFloat = 12
-        static let usageRuleBottom: CGFloat = 12
-        static let usageLocalGap: CGFloat = 8
-        static let aboutHeadTop: CGFloat = 28
-        static let aboutHeadBottom: CGFloat = 24
-        static let aboutHeadSpacing: CGFloat = 4
-        /// Settings → Theme: the gap between the main pane row's parts.
-        static let toneRowGap: CGFloat = 8
     }
 
     // MARK: Layout
@@ -615,37 +589,8 @@ enum LoomTheme {
         static let requestMessageMaxHeight: CGFloat = 160
         static let detailMaxWidth: CGFloat = 640
         static let sheetWidth: CGFloat = 420
-        /// The Settings window keeps one size for every section.
-        static let settingsWidth: CGFloat = 680
-        static let settingsHeight: CGFloat = 520
-        static let settingsTopHeight: CGFloat = 52
-        static let settingsFooterHeight: CGFloat = 32
+        /// The older segment's and button's height (see `Space.settingsSegmentH`).
         static let settingsSegmentHeight: CGFloat = 24
-        static let settingsRowMinHeight: CGFloat = 44
-        static let usageControlHeight: CGFloat = 28
-        static let usageBarsHeight: CGFloat = 72
-        /// A cell of the local-hours row.
-        static let usageCellHeight: CGFloat = 12
-        static let usageHeaderRowHeight: CGFloat = 24
-        static let usageRowHeight: CGFloat = 28
-        static let usageShareBar = CGSize(width: 48, height: 3)
-        /// A plan limit's used-share bar, and the label and reset columns beside it.
-        static let planLimitBarHeight: CGFloat = 4
-        static let planLimitLabelWidth: CGFloat = 56
-        static let planLimitResetWidth: CGFloat = 132
-        static let planLimitUsedWidth: CGFloat = 72
-        /// The period card: the total's column, and a token kind's row, label and value.
-        static let usageSummaryWidth: CGFloat = 200
-        static let usageKindRowHeight: CGFloat = 22
-        static let usageKindLabelWidth: CGFloat = 76
-        static let usageKindValueWidth: CGFloat = 48
-        /// The local-hours row: its label and its total.
-        static let usageLocalLabelWidth: CGFloat = 120
-        static let usageLocalTotalWidth: CGFloat = 48
-        static let usageEmptyHeight: CGFloat = 360
-        static let aboutMark: CGFloat = 64
-        /// Widest per-row result text in Settings → Conversations.
-        static let cleanupResultMaxWidth: CGFloat = 260
         // Indicators.
         static let indicatorSlot = CGSize(width: 12, height: 16)
         /// The Loom mark over the first-run Home (D-69): its width; the height follows the mark's box.

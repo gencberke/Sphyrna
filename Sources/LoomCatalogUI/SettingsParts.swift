@@ -1,0 +1,201 @@
+import SwiftUI
+
+// The building blocks of a Settings section (DESIGN §2 item 5; the reference's `.sbody`, `.slab`, `.scard`, `.srw`): a scrolling page
+// with a 32 inset, groups of cards under capital labels, and rows with a label, one line of help and a control at the trailing edge.
+
+private typealias S = LoomTheme.Settings
+
+/// A section's page: its content scrolls under the title band, 32 in from the sides, 22 below the band and 26 above the window's edge.
+struct SettingsPage<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ScrollView {
+            content
+                .padding(.horizontal, S.bodyInset).padding(.top, S.bodyTop).padding(.bottom, S.bodyBottom)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+}
+
+/// A section label: capitals in the label type, tertiary.
+struct SettingsLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text).projectType(LoomTheme.InkType.label).textCase(.uppercase)
+            .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// A group: an optional label over a card, with a link-style button at the end of the label's line where one is given.
+struct SettingsGroup<Content: View, Trailing: View>: View {
+    var label: String?
+    @ViewBuilder var trailing: Trailing
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let label {
+                HStack(alignment: .firstTextBaseline, spacing: S.labelGap) {
+                    SettingsLabel(text: label)
+                    Spacer(minLength: 0)
+                    trailing
+                }
+                .padding(.leading, S.labelLeading).padding(.bottom, S.labelBottom)
+            }
+            SettingsCard { content }
+        }
+    }
+}
+
+extension SettingsGroup where Trailing == EmptyView {
+    init(label: String? = nil, @ViewBuilder content: () -> Content) {
+        self.init(label: label, trailing: { EmptyView() }, content: content)
+    }
+}
+
+/// A card: raised 1, radius 12, a hairline edge and the card's depth. Its rows are full width and divide by hairlines.
+struct SettingsCard<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: S.cardRadius)
+        VStack(spacing: 0) { content }
+            .frame(maxWidth: .infinity)
+            .background(shape.fill(LoomTheme.Surface.raised1))
+            .overlay(shape.strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
+            .depth(LoomTheme.Elevation.card)
+    }
+}
+
+/// A row's text: the label in 13, one line of help in 12 secondary (at most 380 wide), and, where macOS says something is wrong, a line in
+/// the attention text.
+struct SettingsRowText: View {
+    let title: String
+    var detail: String?
+    /// One attention line under the help.
+    var notice: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title).projectType(S.rowTitle).foregroundStyle(LoomTheme.Text.primary)
+                .frame(minHeight: S.rowTitleLine, alignment: .leading)
+            if let detail {
+                Text(detail).projectType(S.rowHelp).lineSpacing(S.helpSpacing)
+                    .foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .frame(maxWidth: S.helpMaxWidth, alignment: .leading)
+                    .padding(.top, S.helpTop).padding(.bottom, S.helpSpacing)
+            }
+            if let notice {
+                Text(notice).projectType(S.rowHelp).lineSpacing(S.helpSpacing)
+                    .foregroundStyle(LoomTheme.Status.attentionLight)
+                    .padding(.top, S.noticeTop - (detail == nil ? 0 : S.helpSpacing)).padding(.bottom, S.helpSpacing)
+            }
+        }
+        // The text takes the lines it needs: beside a control the row was sized from the control, and the help was cut to one line.
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A row: its text, and its control at the trailing edge. At least 48 high.
+struct SettingsRow<Trailing: View>: View {
+    let title: String
+    var detail: String?
+    var notice: String?
+    @ViewBuilder let trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: S.rowGap) {
+            SettingsRowText(title: title, detail: detail, notice: notice)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: S.controlGap) { trailing }.fixedSize()
+        }
+        .padding(.vertical, S.rowPaddingV).padding(.horizontal, S.rowPaddingH)
+        .frame(minHeight: S.rowMinHeight)
+    }
+}
+
+/// The hairline between two rows.
+struct SettingsRowDivider: View {
+    var body: some View {
+        Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline).accessibilityHidden(true)
+    }
+}
+
+/// A switch whose label is only for assistive technologies.
+struct SettingsSwitch: View {
+    let title: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(title, isOn: $isOn)
+            .labelsHidden().toggleStyle(InkSwitchStyle())
+            .accessibilityLabel(title)
+    }
+}
+
+/// A page state in the middle of a section (Usage, Sessions): the title, a line of text, an optional path and button.
+struct SettingsNote: View {
+    let title: String
+    let text: String
+    var path: String?
+    var retry: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(title).projectType(LoomTheme.InkType.title).foregroundStyle(LoomTheme.Text.primary)
+            Text(text).projectType(S.noteText).lineSpacing(S.noteSpacing)
+                .foregroundStyle(LoomTheme.Text.secondaryStyle).multilineTextAlignment(.center)
+                .frame(maxWidth: S.noteMaxWidth).fixedSize(horizontal: false, vertical: true)
+                .padding(.top, S.noteTextTop)
+            if let path {
+                Text(path).projectType(S.notePath).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                    .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                    .padding(.top, S.notePathTop)
+            }
+            if let retry {
+                Button("Try again", action: retry)
+                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                    .padding(.top, S.noteButtonTop)
+            }
+        }
+        .padding(.horizontal, S.bodyInset).padding(.top, S.noteTop)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// A section's footer: 32 high under a hairline, a mono line at the leading edge and the section's buttons at the trailing edge.
+struct SettingsFooter<Leading: View, Trailing: View>: View {
+    @ViewBuilder let leading: Leading
+    @ViewBuilder let trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: S.footerGap) {
+            leading.projectType(S.footerText).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
+            Spacer(minLength: 0)
+            trailing
+        }
+        .monospacedDigit()
+        .padding(.leading, S.bodyInset).padding(.trailing, S.footerTrailing)
+        .frame(height: S.footerHeight)
+        .overlay(alignment: .top) { SettingsRowDivider() }
+    }
+}
+
+/// A footer's refresh button: an icon button of 24 with a 14 pt glyph.
+struct SettingsRefreshButton: View {
+    let label: String
+    var disabled = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { Image(systemName: "arrow.clockwise").font(S.footerGlyph) }
+            .buttonStyle(ChromeButtonStyle(size: S.footerButton))
+            .disabled(disabled)
+            .help(label)
+            .accessibilityLabel(label)
+    }
+}

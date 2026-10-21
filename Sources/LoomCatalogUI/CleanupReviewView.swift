@@ -3,11 +3,14 @@ import SwiftUI
 
 /// Settings → Sessions (CP4-G): stale sessions the cleanup rules allow deleting, with the kept ones
 /// and why, and the Cleanup part with the rules' two numbers (D-69). Nothing is checked by default
-/// and nothing is deleted without the button.
+/// and nothing is deleted without the button and the Delete sheet (D-83).
 struct CleanupReviewView: View {
     let review: CleanupReviewModel
     let catalog: CatalogModel
-    @State private var confirming = false
+    /// "Delete Sessions" opens the Delete sheet here.
+    let sheets: SheetPresenter<SettingsSheet>
+
+    private typealias S = LoomTheme.Settings
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,59 +18,58 @@ struct CleanupReviewView: View {
             footer
         }
         .task { await review.open() }
-        .alert("Delete \(review.selectedCount) \(review.selectedCount == 1 ? "session" : "sessions") permanently?",
-               isPresented: $confirming) {
-            Button("Delete", role: .destructive) { Task { await review.confirmDeletion() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Their Claude data and Loom records are removed and cannot be restored.")
-        }
     }
 
     @ViewBuilder
     private var content: some View {
         switch review.phase {
         case .idle, .loading where review.review == nil:
-            CleanupNotice(title: "Reviewing sessions", text: "Checking which stale sessions can be deleted.")
+            SettingsNote(title: "Reviewing sessions", text: "Checking which stale sessions can be deleted.")
         case .failed(let message) where review.review == nil:
-            CleanupNotice(title: "The review could not be made", text: message, retry: { Task { await review.open() } })
+            SettingsNote(title: "The review could not be made", text: message, retry: { Task { await review.open() } })
         default:
             if let snapshot = review.review { list(snapshot) } else { Spacer(minLength: 0) }
         }
     }
 
     private func list(_ snapshot: CleanupReview) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: LoomTheme.Space.settingsSectionGap) {
-                if review.showsDueNotice { dueCleanupNotice(snapshot) }
+        SettingsPage {
+            VStack(alignment: .leading, spacing: S.groupGap) {
+                if review.showsDueNotice {
+                    dueCleanupNotice(snapshot).padding(.bottom, S.dueBottom - S.groupGap)
+                }
                 if snapshot.eligible.isEmpty && snapshot.excluded.isEmpty {
                     Text("No stale sessions. Sessions unused for 15 days become stale.")
-                        .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
+                        .projectType(LoomTheme.InkType.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 }
                 if !snapshot.eligible.isEmpty { eligibleSection(snapshot) }
                 if !snapshot.excluded.isEmpty { keptSection(snapshot) }
                 CleanupSettingsSection(review: review)
                 if case .failed(let message) = review.phase {
-                    Text(message).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.failure)
+                    Text(message).projectType(LoomTheme.InkType.small).foregroundStyle(LoomTheme.Status.failureLight)
                         .textSelection(.enabled)
                 }
             }
-            .padding(.horizontal, LoomTheme.Space.settingsInset)
-            .padding(.top, LoomTheme.Space.settingsSegmentH)
-            .padding(.bottom, LoomTheme.Space.settingsSectionGap)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
+    /// A review is due: a card line with the info glyph, the words and Dismiss.
     private func dueCleanupNotice(_ snapshot: CleanupReview) -> some View {
-        HStack(spacing: LoomTheme.Space.settingsRowInset) {
-            Text(dueText(snapshot.mode))
-                .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
+        let shape = RoundedRectangle(cornerRadius: S.dueRadius)
+        return HStack(spacing: S.dueGap) {
+            Image(systemName: "info.circle").font(S.dueGlyph).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                .accessibilityHidden(true)
+            Text(dueText(snapshot.mode)).projectType(S.dueText).foregroundStyle(LoomTheme.Text.secondaryStyle)
             Spacer(minLength: 0)
             Button("Dismiss") { Task { await review.dismissDueReview() } }
-                .buttonStyle(SettingsButtonStyle())
+                .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
                 .accessibilityLabel("Dismiss the review")
         }
+        .padding(.vertical, S.duePaddingV).padding(.leading, S.duePaddingLeading).padding(.trailing, S.duePaddingTrailing)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(shape.fill(LoomTheme.Surface.raised1))
+        .overlay(shape.strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
+        .accessibilityElement(children: .contain)
     }
 
     private func dueText(_ mode: CleanupMode) -> String {
@@ -79,53 +81,43 @@ struct CleanupReviewView: View {
     }
 
     private func eligibleSection(_ snapshot: CleanupReview) -> some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Space.headerSpacing) {
-            HStack {
-                SectionHeading(review.hasResults ? "Deletion results (\(snapshot.eligible.count))" : "Can be deleted (\(snapshot.eligible.count))")
-                Spacer(minLength: 0)
+        let all = review.selectedCount == snapshot.eligible.count
+        return SettingsGroup(
+            label: review.hasResults ? "Deletion results (\(snapshot.eligible.count))" : "Can be deleted (\(snapshot.eligible.count))",
+            trailing: {
                 if !review.hasResults {
-                    Button(review.selectedCount == snapshot.eligible.count ? "Clear" : "Select all") {
-                        if review.selectedCount == snapshot.eligible.count { review.clearSelection() } else { review.selectAll() }
+                    Button(all ? "Clear" : "Select All") {
+                        if all { review.clearSelection() } else { review.selectAll() }
                     }
-                    .buttonStyle(SettingsButtonStyle()).disabled(review.isBusy)
+                    .buttonStyle(SettingsLinkButtonStyle(key: "settings-select-all")).disabled(review.isBusy)
                 }
-            }
-            SettingsCard {
+            },
+            content: {
                 ForEach(Array(snapshot.eligible.enumerated()), id: \.element.id) { index, row in
                     if index > 0 { SettingsRowDivider() }
                     eligibleRow(row)
                 }
-            }
-        }
+            })
     }
 
     private func eligibleRow(_ row: CleanupEligibleRow) -> some View {
         let title = row.record.displayTitle(projectName: catalog.projectName(for: row.record))
-        return HStack(spacing: LoomTheme.Space.settingsRowInset) {
-            if review.hasResults {
-                Color.clear.frame(width: 0)
-            } else {
-                Toggle(isOn: Binding(get: { review.isSelected(row.id) }, set: { review.setSelected(row.id, $0) })) {
-                    Text(title)
-                }
-                .toggleStyle(.checkbox).labelsHidden().disabled(review.isBusy)
-                .accessibilityLabel("Delete \(title)")
+        let result = review.results[row.id]
+        return HStack(spacing: S.sessionGap) {
+            if !review.hasResults {
+                Toggle(title, isOn: Binding(get: { review.isSelected(row.id) }, set: { review.setSelected(row.id, $0) }))
+                    .labelsHidden().toggleStyle(InkCheckboxStyle()).disabled(review.isBusy)
+                    .accessibilityLabel("Delete \(title)")
             }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(LoomTheme.Typography.smallMedium).lineLimit(1).truncationMode(.tail)
-                Text(details(row)).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
-                    .lineLimit(1).truncationMode(.tail)
-            }
-            .layoutPriority(1)
-            Spacer(minLength: LoomTheme.Space.settingsRowInset)
-            if let result = review.results[row.id] {
+            SessionRowText(title: title, detail: details(row), dimmed: result == .deleted)
+            if let result {
                 ResultText(result: result)
             } else if review.phase == .deleting && review.isSelected(row.id) {
-                Text("Waiting").font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+                Text("Waiting").projectType(S.sessionWhy).foregroundStyle(LoomTheme.Text.secondaryStyle)
             }
         }
-        .padding(.vertical, LoomTheme.Space.settingsRowV)
-        .frame(minHeight: LoomTheme.Layout.settingsRowMinHeight)
+        .padding(.vertical, S.sessionPaddingV).padding(.horizontal, S.rowPaddingH)
+        .frame(minHeight: S.sessionMinHeight)
         .accessibilityElement(children: .contain)
     }
 
@@ -139,49 +131,34 @@ struct CleanupReviewView: View {
     }
 
     private func keptSection(_ snapshot: CleanupReview) -> some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Space.headerSpacing) {
-            SectionHeading("Kept (\(snapshot.excluded.count))")
-            SettingsCard {
-                ForEach(Array(snapshot.excluded.enumerated()), id: \.element.id) { index, row in
-                    if index > 0 { SettingsRowDivider() }
-                    let title = row.record.displayTitle(projectName: catalog.projectName(for: row.record))
-                    HStack(spacing: LoomTheme.Space.settingsRowInset) {
-                        Text(title).font(LoomTheme.Typography.smallMedium).lineLimit(1).truncationMode(.tail)
-                        Spacer(minLength: LoomTheme.Space.settingsRowInset)
-                        Text(CleanupText.reason(row.reason))
-                            .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
-                            .lineLimit(1).truncationMode(.tail)
-                    }
-                    .padding(.vertical, LoomTheme.Space.settingsRowV)
-                    .frame(minHeight: LoomTheme.Layout.settingsRowMinHeight)
-                    .accessibilityElement(children: .combine)
+        SettingsGroup(label: "Kept (\(snapshot.excluded.count))") {
+            ForEach(Array(snapshot.excluded.enumerated()), id: \.element.id) { index, row in
+                if index > 0 { SettingsRowDivider() }
+                let title = row.record.displayTitle(projectName: catalog.projectName(for: row.record))
+                HStack(spacing: S.sessionGap) {
+                    SessionRowText(title: title, detail: catalog.projectName(for: row.record))
+                    Text(CleanupText.reason(row.reason))
+                        .projectType(S.sessionWhy).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                        .lineLimit(1).truncationMode(.tail)
                 }
+                .padding(.vertical, S.sessionPaddingV).padding(.horizontal, S.rowPaddingH)
+                .frame(minHeight: S.sessionMinHeight)
+                .accessibilityElement(children: .combine)
             }
         }
     }
 
     private var footer: some View {
-        HStack(spacing: LoomTheme.Space.footerSpacing) {
-            Text(footerText).lineLimit(1)
-            Spacer(minLength: 0)
-            Button { Task { await review.open() } } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(ChromeButtonStyle())
-                .disabled(review.isBusy)
-                .help("Review again")
-                .accessibilityLabel("Review again")
+        SettingsFooter {
+            Text(footerText)
+        } trailing: {
+            SettingsRefreshButton(label: "Review again", disabled: review.isBusy) { Task { await review.open() } }
             if !review.hasResults {
-                Button(review.selectedCount == 0 ? "Delete Sessions" : "Delete \(review.selectedCount) \(review.selectedCount == 1 ? "Session" : "Sessions")") {
-                    confirming = true
-                }
-                .buttonStyle(AccentButtonStyle(kind: .tinted))
-                .disabled(!review.canDelete)
+                Button("Delete Sessions") { sheets.present(.delete) }
+                    .buttonStyle(ControlButtonStyle(kind: .destructive, size: .small))
+                    .disabled(!review.canDelete)
             }
         }
-        .font(LoomTheme.Typography.caption).monospacedDigit()
-        .foregroundStyle(LoomTheme.Text.secondary)
-        .padding(.leading, LoomTheme.Space.settingsInset).padding(.trailing, LoomTheme.Space.settingsFooterInset)
-        .frame(height: LoomTheme.Layout.settingsFooterHeight)
-        .overlay(alignment: .top) { SettingsRowDivider() }
     }
 
     private var footerText: String {
@@ -198,50 +175,48 @@ struct CleanupReviewView: View {
     }
 }
 
-private struct SectionHeading: View {
-    let text: String
-    init(_ text: String) { self.text = text }
+/// A session row's text: the title in 13 on 18 (secondary once deleted), one line, and under it a mono line in tertiary.
+private struct SessionRowText: View {
+    let title: String
+    var detail: String?
+    var dimmed = false
+
+    private typealias S = LoomTheme.Settings
 
     var body: some View {
-        Text(text).font(LoomTheme.Typography.statusLabel).foregroundStyle(LoomTheme.Text.secondary)
-            .accessibilityAddTraits(.isHeader)
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title).projectType(S.sessionTitle)
+                .foregroundStyle(dimmed ? AnyShapeStyle(LoomTheme.Text.secondaryStyle) : AnyShapeStyle(LoomTheme.Text.primary))
+                .lineLimit(1).truncationMode(.tail).frame(minHeight: S.sessionTitleLine, alignment: .leading)
+            if let detail {
+                Text(detail).projectType(S.sessionSub).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                    .lineLimit(1).truncationMode(.tail).frame(minHeight: S.sessionSubLine, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .layoutPriority(1)
     }
 }
 
 private struct ResultText: View {
     let result: CleanupRowResult
 
+    private typealias S = LoomTheme.Settings
+
     var body: some View {
         Text(CleanupText.result(result))
-            .font(LoomTheme.Typography.caption)
-            .foregroundStyle(failed ? LoomTheme.Status.failure : LoomTheme.Text.secondary)
+            .projectType(S.sessionWhy)
+            .foregroundStyle(color)
             .lineLimit(2).multilineTextAlignment(.trailing)
-            .frame(maxWidth: LoomTheme.Layout.cleanupResultMaxWidth, alignment: .trailing)
+            .frame(maxWidth: S.sessionResultMaxWidth, alignment: .trailing)
     }
 
-    private var failed: Bool {
+    private var color: AnyShapeStyle {
         switch result {
-        case .failed, .incomplete: true
-        default: false
+        case .failed, .incomplete: AnyShapeStyle(LoomTheme.Status.failureLight)
+        case .deleted: AnyShapeStyle(LoomTheme.Text.primary)
+        default: AnyShapeStyle(LoomTheme.Text.secondaryStyle)
         }
-    }
-}
-
-private struct CleanupNotice: View {
-    let title: String
-    let text: String
-    var retry: (() -> Void)?
-
-    var body: some View {
-        VStack(spacing: LoomTheme.Space.hintSpacing) {
-            Text(title).font(LoomTheme.Typography.heading)
-            Text(text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
-                .multilineTextAlignment(.center).frame(maxWidth: LoomTheme.Layout.messageMaxWidth)
-            if let retry { Button("Try again", action: retry).buttonStyle(AccentButtonStyle(kind: .tinted)) }
-        }
-        .padding(.horizontal, LoomTheme.Space.settingsInset)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -249,30 +224,32 @@ private struct CleanupNotice: View {
 private struct CleanupSettingsSection: View {
     let review: CleanupReviewModel
 
+    private typealias S = LoomTheme.Settings
+
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Space.headerSpacing) {
-            HStack {
-                SectionHeading("Cleanup")
-                Spacer(minLength: 0)
-                Button("Reset to Defaults") { review.resetSettings() }
-                    .buttonStyle(SettingsButtonStyle())
-                    .disabled(review.settings.isStandard || review.isBusy)
-            }
-            SettingsCard {
-                numberRow(CleanupText.reviewIntervalTitle, detail: CleanupText.reviewIntervalDetail,
-                          range: CleanupSettings.reviewIntervalDaysRange,
-                          standard: CleanupSettings.standard.reviewIntervalDays, value: \.reviewIntervalDays)
-                SettingsRowDivider()
-                numberRow(CleanupText.deletionWaitTitle, detail: CleanupText.deletionWaitDetail,
-                          range: CleanupSettings.deletionWaitDaysRange,
-                          standard: CleanupSettings.standard.deletionWaitDays, value: \.deletionWaitDays)
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsGroup(
+                label: "Cleanup",
+                trailing: {
+                    Button("Reset to Defaults") { review.resetSettings() }
+                        .buttonStyle(SettingsLinkButtonStyle(key: "settings-reset-defaults"))
+                        .disabled(review.settings.isStandard || review.isBusy)
+                },
+                content: {
+                    numberRow(CleanupText.reviewIntervalTitle, detail: CleanupText.reviewIntervalDetail,
+                              range: CleanupSettings.reviewIntervalDaysRange,
+                              standard: CleanupSettings.standard.reviewIntervalDays, value: \.reviewIntervalDays)
+                    SettingsRowDivider()
+                    numberRow(CleanupText.deletionWaitTitle, detail: CleanupText.deletionWaitDetail,
+                              range: CleanupSettings.deletionWaitDaysRange,
+                              standard: CleanupSettings.standard.deletionWaitDays, value: \.deletionWaitDays)
+                })
             if let error = review.settingsError {
-                Text(error).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.failure)
-                    .textSelection(.enabled)
+                Text(error).projectType(S.changedNote).foregroundStyle(LoomTheme.Status.failureLight)
+                    .textSelection(.enabled).padding(.top, S.changedNoteTop)
             } else if review.settingsChangedSinceReview {
                 Text("A change applies from the next review. Review again to see it.")
-                    .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+                    .projectType(S.changedNote).foregroundStyle(LoomTheme.Text.tertiaryStyle).padding(.top, S.changedNoteTop)
             }
         }
     }
@@ -283,15 +260,9 @@ private struct CleanupSettingsSection: View {
     ) -> some View {
         let current = review.settings[keyPath: value]
         return SettingsRow(title: title, detail: "\(detail) Default \(CleanupNumberUnit.days(standard)).") {
-            HStack(spacing: LoomTheme.Space.settingsRowInset) {
-                Text(CleanupNumberUnit.days(current)).font(LoomTheme.Typography.small).monospacedDigit()
-                    .foregroundStyle(LoomTheme.Text.secondary)
-                Stepper(title, value: Binding(
-                    get: { current }, set: { number in review.updateSettings { $0[keyPath: value] = number } }
-                ), in: range)
-                .labelsHidden()
-                .accessibilityLabel(title)
-                .accessibilityValue(CleanupNumberUnit.days(current))
+            InkStepper(title: title, value: current, range: range, valueText: CleanupNumberUnit.days(current),
+                       decreaseHelp: "Fewer days", increaseHelp: "More days") { number in
+                review.updateSettings { $0[keyPath: value] = number }
             }
         }
     }

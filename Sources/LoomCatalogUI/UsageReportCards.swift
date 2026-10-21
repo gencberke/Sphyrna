@@ -149,8 +149,9 @@ extension String {
 
 // MARK: Views
 
-/// One card of the report: the Settings card surface, a header line (the title, a meta text on the
-/// right) and the body.
+private typealias S = LoomTheme.Settings
+
+/// One card of the report: the Settings card, a header line (the title, a mono meta text at the end, on one baseline) and the body.
 struct UsageCard<Content: View>: View {
     let title: String
     var meta: String?
@@ -159,39 +160,38 @@ struct UsageCard<Content: View>: View {
     var body: some View {
         SettingsCard {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .firstTextBaseline, spacing: LoomTheme.Space.usageLocalGap) {
-                    Text(title).font(LoomTheme.Typography.bodyStrong).lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: S.headGap) {
+                    Text(title).projectType(S.headTitle).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
                         .accessibilityAddTraits(.isHeader)
                     Spacer(minLength: 0)
                     if let meta {
-                        Text(meta).font(LoomTheme.Typography.caption).lineLimit(1)
-                            .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                        Text(meta).projectType(S.headMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
                     }
                 }
-                .padding(.bottom, LoomTheme.Space.usageCardHeaderBottom)
+                .padding(.bottom, S.headBottom)
                 content
             }
-            .padding(.top, LoomTheme.Space.usageCardTop).padding(.bottom, LoomTheme.Space.usageCardBottom)
+            .padding(.top, S.cardPaddingTop).padding(.horizontal, S.cardPaddingH).padding(.bottom, S.cardPaddingBottom)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .monospacedDigit()
     }
 }
 
-/// A thin share track; the fill never shrinks below 2 pt, so a small share stays visible. `track` is the neutral track every
-/// plan meter shares (`LoomTheme.PlanPaceLine.track`, the footer chip's) unless a caller asks for another.
+/// A thin share track; the fill never shrinks below 2 pt, so a small share stays visible.
 private struct UsageMeterBar: View {
     let fraction: Double
     let fill: Color
+    let track: Color
     let height: CGFloat
-    var track: Color = LoomTheme.Surface.activityCell(0)
+    let radius: CGFloat
 
     var body: some View {
         GeometryReader { proxy in
             let share = CGFloat(min(max(fraction, 0), 1))
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim).fill(track)
-                RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim).fill(fill)
+                RoundedRectangle(cornerRadius: radius).fill(track)
+                RoundedRectangle(cornerRadius: radius).fill(fill)
                     .frame(width: share > 0 ? min(proxy.size.width, max(2, proxy.size.width * share)) : 0)
             }
         }
@@ -211,7 +211,7 @@ struct UsageReportView: View {
 
     var body: some View {
         let planLimits = UsageCardText.planLimitsCard(limits: limits, failureReason: limitsFailure?.category.reason, now: now)
-        VStack(alignment: .leading, spacing: LoomTheme.Space.usageCardGap) {
+        VStack(alignment: .leading, spacing: S.cardGap) {
             ForEach(UsageCardText.cards(for: planLimits), id: \.self) { kind in
                 switch kind {
                 case .planLimits: planLimitsCard(planLimits)
@@ -221,10 +221,9 @@ struct UsageReportView: View {
                 }
             }
             if let skipped = UsageText.skippedLines(linesNotUnderstood) {
-                Text(skipped).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
+                Text(skipped).projectType(LoomTheme.InkType.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
             }
         }
-        .padding(.top, LoomTheme.Space.settingsSegmentH - 4)
     }
 
     // Plan limits
@@ -247,11 +246,10 @@ struct UsageReportView: View {
             }
         case let .unavailable(reason):
             UsageCard(title: "Plan limits") {
-                HStack {
-                    Text("Plan limits unavailable").font(LoomTheme.Typography.small)
-                    Spacer()
-                    Text(reason).font(LoomTheme.Typography.caption)
-                        .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                HStack(spacing: S.unavailableGap) {
+                    Text("Plan limits unavailable").projectType(S.limitLabel).foregroundStyle(LoomTheme.Text.primary)
+                    Spacer(minLength: 0)
+                    Text(reason).projectType(S.unavailableReason).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 }
                 .accessibilityElement(children: .combine)
             }
@@ -261,18 +259,21 @@ struct UsageReportView: View {
     }
 
     private func planLimitRow(_ text: UsagePlanLimitRowText) -> some View {
-        HStack(spacing: LoomTheme.Space.usageLocalGap) {
-            Text(text.title).frame(width: LoomTheme.Layout.planLimitLabelWidth, alignment: .leading)
+        HStack(spacing: S.limitGap) {
+            Text(text.title).projectType(S.limitLabel).foregroundStyle(LoomTheme.Text.primary)
+                .frame(width: S.limitColumns.label, alignment: .leading)
             UsageMeterBar(fraction: text.remainingFraction,
-                          fill: text.isLow ? LoomTheme.PlanPaceLine.fillOver : LoomTheme.PlanPaceLine.fill,
-                          height: LoomTheme.Layout.planLimitBarHeight, track: LoomTheme.PlanPaceLine.track)
-            Text(text.left).foregroundStyle(text.isLow ? LoomTheme.Status.attentionLight : LoomTheme.Text.primary)
-                .frame(width: LoomTheme.Layout.planLimitUsedWidth, alignment: .trailing)
-            Text(text.reset ?? "").foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                .frame(width: LoomTheme.Layout.planLimitResetWidth, alignment: .trailing)
+                          fill: text.isLow ? LoomTheme.Status.attention : LoomTheme.Text.secondary,
+                          track: LoomTheme.Surface.strongHairline, height: S.meterHeight, radius: S.meterRadius)
+            Text(text.left).projectType(S.limitLeft)
+                .foregroundStyle(text.isLow ? LoomTheme.Status.attentionLight : LoomTheme.Text.primary)
+                .frame(width: S.limitColumns.left, alignment: .trailing)
+            // 118 wide, and wider when the phrase needs it ("Resets Sun 12:00 PM"), at the meter's cost.
+            Text(text.reset ?? "").projectType(S.limitReset).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: S.limitColumns.reset, alignment: .trailing)
         }
-        .font(LoomTheme.Typography.small)
-        .frame(height: LoomTheme.Layout.usageHeaderRowHeight)
+        .frame(height: S.limitHeight)
         .help(text.used)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text.accessibilityLabel)
@@ -282,100 +283,96 @@ struct UsageReportView: View {
 
     private func periodCard(_ snapshot: UsageSnapshot) -> some View {
         UsageCard(title: UsageCardText.periodTitle(report.period), meta: UsageCardText.sessions(snapshot.sessionCount)) {
-            HStack(alignment: .top, spacing: LoomTheme.Space.usageCardColumnGap) {
-                summary(snapshot).frame(width: LoomTheme.Layout.usageSummaryWidth, alignment: .leading)
+            HStack(alignment: .top, spacing: S.summaryGap) {
+                summary(snapshot).frame(width: S.summaryWidth, alignment: .leading)
                 kinds(snapshot.tokens).frame(maxWidth: .infinity)
             }
         }
     }
 
     private func summary(_ snapshot: UsageSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(UsageFormat.tokens(snapshot.tokens.total)).font(LoomTheme.Typography.display).lineLimit(1)
+        VStack(alignment: .leading, spacing: 0) {
+            Text(UsageFormat.tokens(snapshot.tokens.total)).projectType(S.total).foregroundStyle(LoomTheme.Text.primary)
+                .lineLimit(1).frame(minHeight: S.totalLine, alignment: .leading)
                 .help("\(UsageFormat.grouped(snapshot.tokens.total)) tokens")
-            Text("tokens").font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+            caption("tokens")
             if let cost = UsageCardText.cost(snapshot) {
-                HStack(alignment: .firstTextBaseline, spacing: LoomTheme.Space.chipLimitGap) {
-                    Text(cost).font(LoomTheme.Typography.body)
-                    Text("estimated").font(LoomTheme.Typography.caption)
-                        .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                }
-                .padding(.top, LoomTheme.Space.footerSpacing)
+                Text(cost).projectType(S.cost).foregroundStyle(LoomTheme.Text.primary).padding(.top, S.costTop)
+                caption("estimated")
             }
             Text("API-equivalent estimate — subscriptions are not billed per token.")
-                .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                .fixedSize(horizontal: false, vertical: true)
+                .projectType(S.fine).lineSpacing(S.fineSpacing).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                .fixedSize(horizontal: false, vertical: true).padding(.top, S.fineTop)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text).projectType(S.caption).foregroundStyle(LoomTheme.Text.secondaryStyle).padding(.top, S.captionTop)
     }
 
     private func kinds(_ tokens: UsageTokens) -> some View {
         VStack(spacing: 0) {
             ForEach(UsageCardText.rankedKinds(tokens), id: \.title) { row in
-                HStack(spacing: LoomTheme.Space.usageLocalGap) {
-                    Text(row.title).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                        .frame(width: LoomTheme.Layout.usageKindLabelWidth, alignment: .leading)
-                    UsageMeterBar(fraction: row.fraction, fill: LoomTheme.Text.secondary,
-                                  height: LoomTheme.Layout.planLimitBarHeight)
-                    Text(row.value).frame(width: LoomTheme.Layout.usageKindValueWidth, alignment: .trailing)
+                HStack(spacing: S.kindGap) {
+                    Text(row.title).projectType(S.kindLabel).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                        .frame(width: S.kindColumns.label, alignment: .leading)
+                    UsageMeterBar(fraction: row.fraction, fill: LoomTheme.Text.tertiary, track: LoomTheme.Surface.hairline,
+                                  height: S.kindBar, radius: S.kindBarRadius)
+                    Text(row.value).projectType(S.kindValue).foregroundStyle(LoomTheme.Text.primary)
+                        .frame(width: S.kindColumns.value, alignment: .trailing)
                 }
-                .frame(height: LoomTheme.Layout.usageKindRowHeight)
+                .frame(height: S.kindHeight)
                 .help(row.tooltip)
                 .accessibilityElement(children: .combine)
             }
             HStack {
-                Text("Served from the cache").foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                Spacer()
-                Text(UsageCardText.servedFromCache(tokens))
+                Text("Served from the cache").projectType(LoomTheme.InkType.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                Spacer(minLength: 0)
+                Text(UsageCardText.servedFromCache(tokens)).projectType(S.cacheValue).foregroundStyle(LoomTheme.Text.primary)
             }
-            .frame(height: LoomTheme.Layout.usageKindRowHeight)
+            .padding(.top, S.cachePadding)
+            .overlay(alignment: .top) { SettingsRowDivider() }
+            .padding(.top, S.cacheTop)
             .help(UsageCardText.servedFromCacheTooltip)
             .accessibilityElement(children: .combine)
         }
-        .font(LoomTheme.Typography.small)
     }
 
     // Activity
 
     private var activityCard: some View {
         let bars = report.bars
-        let slim = bars.count > 7
-        let gap = slim ? (bars.count > 30 ? LoomTheme.Space.usageBarGapSlim / 2 : LoomTheme.Space.usageBarGapSlim)
-            : LoomTheme.Space.usageBarGap
         return UsageCard(title: UsageCardText.activityTitle(report.period),
                          meta: UsageCardText.peak(bars, period: report.period, timeZone: timeZone)) {
             VStack(alignment: .leading, spacing: 0) {
-                chart(bars, slim: slim, gap: gap)
-                axisLabels(bars, gap: gap)
-                SettingsRowDivider()
-                    .padding(.top, LoomTheme.Space.usageRuleTop).padding(.bottom, LoomTheme.Space.usageRuleBottom)
+                chart(bars)
+                axisLabels(bars)
                 localHours
             }
         }
     }
 
-    private func chart(_ bars: [UsageBar], slim: Bool, gap: CGFloat) -> some View {
+    private func chart(_ bars: [UsageBar]) -> some View {
         let peak = bars.max { $0.tokens < $1.tokens }
-        return HStack(alignment: .bottom, spacing: gap) {
+        return HStack(alignment: .bottom, spacing: S.barGap) {
             ForEach(bars.indices, id: \.self) { index in
                 let bar = bars[index]
-                UnevenRoundedRectangle(topLeadingRadius: slim ? LoomTheme.Radius.barSlim : LoomTheme.Radius.bar,
-                                       topTrailingRadius: slim ? LoomTheme.Radius.barSlim : LoomTheme.Radius.bar)
-                    .fill(bar.isCurrent ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
+                UnevenRoundedRectangle(topLeadingRadius: S.barRadius, topTrailingRadius: S.barRadius)
+                    .fill(bar.isCurrent ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Surface.strongerHairline))
                     .frame(height: barHeight(bar, peak: peak?.tokens ?? 0))
                     .frame(maxWidth: .infinity)
                     .help("\(UsageText.bucket(bar.start, report.period, timeZone)), \(UsageFormat.tokens(bar.tokens)) tokens")
             }
         }
-        .frame(height: LoomTheme.Layout.usageBarsHeight, alignment: .bottom)
-        .overlay(alignment: .bottom) { SettingsRowDivider() }
+        .frame(height: S.barsHeight, alignment: .bottom)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(chartDescription(bars))
     }
 
     private func barHeight(_ bar: UsageBar, peak: Int64) -> CGFloat {
         guard bar.tokens > 0, peak > 0 else { return 0 }
-        return max(2, LoomTheme.Layout.usageBarsHeight * CGFloat(bar.tokens) / CGFloat(peak))
+        return max(2, S.barsHeight * CGFloat(bar.tokens) / CGFloat(peak))
     }
 
     private func chartDescription(_ bars: [UsageBar]) -> String {
@@ -384,17 +381,17 @@ struct UsageReportView: View {
     }
 
     @ViewBuilder
-    private func axisLabels(_ bars: [UsageBar], gap: CGFloat) -> some View {
+    private func axisLabels(_ bars: [UsageBar]) -> some View {
         Group {
             switch report.period {
             case .days7:
-                HStack(spacing: gap) {
+                HStack(spacing: S.barGap) {
                     ForEach(bars.indices, id: \.self) { index in
                         Text(UsageText.weekday(bars[index].start, timeZone)).frame(maxWidth: .infinity)
                     }
                 }
             case .hours24:
-                HStack(spacing: gap) {
+                HStack(spacing: S.barGap) {
                     ForEach(bars.indices, id: \.self) { index in
                         // A blank line keeps the row's height; the label is wider than its bar and overlays it.
                         Text(" ").frame(maxWidth: .infinity)
@@ -411,8 +408,8 @@ struct UsageReportView: View {
                 }
             }
         }
-        .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-        .padding(.top, LoomTheme.Space.usageCellLabelTop)
+        .projectType(S.axis).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+        .padding(.top, S.axisTop)
         .accessibilityHidden(true)
     }
 
@@ -421,33 +418,36 @@ struct UsageReportView: View {
         let cells = report.cells
         let peak = cells.map(\.tokens).max() ?? 0
         let text = UsageCardText.localHours(cells)
-        return VStack(alignment: .leading, spacing: LoomTheme.Space.usageCellLabelTop) {
-            HStack(spacing: LoomTheme.Space.usageLocalGap) {
-                Text(text.label).font(LoomTheme.Typography.caption)
-                    .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle).lineLimit(1)
-                    .frame(width: LoomTheme.Layout.usageLocalLabelWidth, alignment: .leading)
-                HStack(spacing: LoomTheme.Space.usageCellGap) {
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: S.heatGap) {
+                Text(text.label).projectType(S.heatLabel).foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)
+                Spacer(minLength: 0)
+                HStack(spacing: S.heatCellGap) {
                     ForEach(cells.indices, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: LoomTheme.Radius.bar)
+                        RoundedRectangle(cornerRadius: S.heatCellRadius)
                             .fill(LoomTheme.Surface.activityCell(peak > 0 ? Double(cells[index].tokens) / Double(peak) : 0))
-                            .frame(height: LoomTheme.Layout.usageCellHeight)
+                            .frame(width: S.heatCell.width, height: S.heatCell.height)
                             .help("\(UsageText.hour(cells[index].start, timeZone)): \(UsageFormat.tokens(cells[index].tokens)) tokens")
                     }
                 }
-                Text(text.total).font(LoomTheme.Typography.small).lineLimit(1)
-                    .frame(width: LoomTheme.Layout.usageLocalTotalWidth, alignment: .trailing)
+                Text(text.total).projectType(S.heatTotal).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
+                    .frame(width: S.heatTotalWidth, alignment: .trailing)
             }
-            HStack(spacing: LoomTheme.Space.usageLocalGap) {
-                Color.clear.frame(width: LoomTheme.Layout.usageLocalLabelWidth, height: 1)
-                HStack(spacing: LoomTheme.Space.usageCellGap) {
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                HStack(spacing: S.heatCellGap) {
                     ForEach(cells.indices, id: \.self) { index in
-                        Text(UsageText.hour(cells[index].start, timeZone)).frame(maxWidth: .infinity)
+                        Text(UsageText.hour(cells[index].start, timeZone)).frame(width: S.heatCell.width)
                     }
                 }
-                .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                Color.clear.frame(width: LoomTheme.Layout.usageLocalTotalWidth, height: 1)
+                Color.clear.frame(width: S.hourLabelTrailing, height: 1)
             }
+            .projectType(S.hourLabel).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            .padding(.top, S.hourLabelTop)
         }
+        .padding(.top, S.heatPadding)
+        .overlay(alignment: .top) { SettingsRowDivider() }
+        .padding(.top, S.heatTop)
         .help(text.tooltip)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text.accessibilityLabel)
@@ -458,65 +458,63 @@ struct UsageReportView: View {
     private func modelsCard(_ snapshot: UsageSnapshot) -> some View {
         let whole = snapshot.tokens.total
         return UsageCard(title: "By model", meta: UsageCardText.models(snapshot.models.count)) {
-            Grid(alignment: .trailing, horizontalSpacing: LoomTheme.Space.usageTotalsGap, verticalSpacing: 0) {
-                GridRow {
-                    Text("Model").gridColumnAlignment(.leading)
-                    Text("Tokens")
-                    Text("Share")
-                    Text("Est. cost")
+            VStack(spacing: 0) {
+                modelRow(height: S.modelHeaderHeight, rule: false) {
+                    Text("Model").frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Tokens").frame(width: S.modelColumns.tokens, alignment: .trailing)
+                    Text("Share").frame(width: S.modelColumns.share, alignment: .trailing)
+                    Text("Est. cost").frame(width: S.modelColumns.cost, alignment: .trailing)
                 }
-                .font(LoomTheme.Typography.statusLabel).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
-                .frame(height: LoomTheme.Layout.usageHeaderRowHeight)
-                SettingsRowDivider().gridCellUnsizedAxes(.horizontal)
+                .projectType(S.modelHeader).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 ForEach(snapshot.models.indices, id: \.self) { index in
                     let model = snapshot.models[index]
-                    GridRow {
-                        Text(model.displayName).fontWeight(.medium).lineLimit(1)
+                    modelRow(height: S.modelRowHeight, rule: true) {
+                        Text(model.displayName).projectType(S.modelName).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(UsageFormat.tokens(model.tokens.total))
+                        Text(UsageFormat.tokens(model.tokens.total)).projectType(S.modelFigure)
+                            .foregroundStyle(LoomTheme.Text.primary)
+                            .frame(width: S.modelColumns.tokens, alignment: .trailing)
                             .help("\(UsageFormat.grouped(model.tokens.total)) tokens")
-                        HStack(spacing: LoomTheme.Space.usageShareGap) {
+                        HStack(spacing: S.shareGap) {
                             ShareBar(fraction: whole > 0 ? Double(model.tokens.total) / Double(whole) : 0)
                             // As wide as the widest share, so the bars line up from row to row.
                             ZStack(alignment: .trailing) {
                                 Text(UsageFormat.percent(100)).hidden().accessibilityHidden(true)
                                 Text(UsageFormat.percent(model.tokens.total, of: whole) ?? "—")
                             }
+                            .projectType(S.modelShare).foregroundStyle(LoomTheme.Text.secondaryStyle)
                         }
-                        .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                        .frame(width: S.modelColumns.share, alignment: .trailing)
                         Group {
                             if let cost = model.estimatedCostUSD {
-                                Text(UsageFormat.cost(cost))
+                                Text(UsageFormat.cost(cost)).foregroundStyle(LoomTheme.Text.primary)
                             } else {
-                                Text("—").foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                                Text("—").foregroundStyle(LoomTheme.Text.tertiaryStyle)
                                     .help("No price known for this model. Tokens are counted; cost is left out.")
                             }
                         }
-                    }
-                    .frame(height: LoomTheme.Layout.usageRowHeight)
-                    if index < snapshot.models.count - 1 {
-                        SettingsRowDivider().gridCellUnsizedAxes(.horizontal)
+                        .projectType(S.modelFigure)
+                        .frame(width: S.modelColumns.cost, alignment: .trailing)
                     }
                 }
             }
-            .font(LoomTheme.Typography.body)
         }
+    }
+
+    private func modelRow<Row: View>(height: CGFloat, rule: Bool, @ViewBuilder _ row: () -> Row) -> some View {
+        HStack(spacing: S.modelGap) { row() }
+            .frame(height: height)
+            .overlay(alignment: .top) { if rule { SettingsRowDivider() } }
     }
 }
 
-/// A thin track with the model's share in the secondary text tone.
+/// A thin track with the model's share in the tertiary text tone.
 private struct ShareBar: View {
     let fraction: Double
 
     var body: some View {
-        RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim)
-            .fill(LoomTheme.Surface.hairline)
-            .frame(width: LoomTheme.Layout.usageShareBar.width, height: LoomTheme.Layout.usageShareBar.height)
-            .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim)
-                    .fill(LoomTheme.Text.secondary)
-                    .frame(width: LoomTheme.Layout.usageShareBar.width * CGFloat(min(max(fraction, 0), 1)))
-            }
-            .accessibilityHidden(true)
+        UsageMeterBar(fraction: fraction, fill: LoomTheme.Text.tertiary, track: LoomTheme.Surface.hairline,
+                      height: S.shareBar.height, radius: S.kindBarRadius)
+            .frame(width: S.shareBar.width)
     }
 }

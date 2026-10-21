@@ -22,17 +22,27 @@ public enum SettingsSection: CaseIterable, Identifiable, Hashable, Sendable {
     }
 }
 
-/// Which section the one Settings window shows. The window controller and the view share it, so
+/// Which section the one Settings window shows, and which sheet is open over it. The window controller and the view share it, so
 /// the gear (no section) and the footer chip (Usage) reuse the same window.
 @MainActor @Observable
 public final class SettingsNavigation {
     public var section: SettingsSection
+    /// The Full Access and Delete questions: sheets of §6's family over the window.
+    let sheets = SheetPresenter<SettingsSheet>()
 
     public init(section: SettingsSection = .general) { self.section = section }
 
     /// A requested section wins; no section keeps the one the window already shows.
     public func open(_ requested: SettingsSection?) {
         if let requested, requested != section { section = requested }
+    }
+
+    /// The sheet that is open, if any.
+    public var openSheet: SettingsSheet? { sheets.presented }
+
+    /// Opens a sheet without acting on it, or closes the open one (nil). The evidence run uses this.
+    public func setSheet(_ sheet: SettingsSheet?) {
+        if let sheet { sheets.present(sheet) } else { sheets.dismiss() }
     }
 }
 
@@ -50,8 +60,8 @@ public struct SettingsAbout: Equatable, Sendable {
     }
 }
 
-/// The Settings window's content: a top section switcher over General, Theme, Usage and About (and Conversations where offered), one fixed
-/// size for all (DESIGN §6; the window controller forces dark and sets the size).
+/// The Settings window's content: the 52 pt band with the section tabs (General, Theme, Usage, Sessions where offered, About), the open
+/// section under it, and the sheets over both. One fixed size (DESIGN §2 item 5; the window controller sets the size).
 public struct SettingsView: View {
     let model: CatalogModel
     let usage: UsageModel?
@@ -70,106 +80,136 @@ public struct SettingsView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                SegmentedControl(
-                    values: SettingsSection.available(cleanupReview: model.cleanupReview != nil), title: \.title,
-                    selection: navigation.section,
-                    onSelect: { navigation.section = $0 })
-                    .accessibilityLabel("Settings section")
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: LoomTheme.Layout.settingsTopHeight)
+            SettingsBand(sections: SettingsSection.available(cleanupReview: model.cleanupReview != nil),
+                         selection: navigation.section, onSelect: { navigation.section = $0 })
             switch navigation.section {
-            case .general: GeneralSettings(model: model)
+            case .general: GeneralSettings(model: model, sheets: navigation.sheets)
             case .theme: ThemeSettings(model: model)
             case .usage: UsageSettings(usage: usage, profile: about.claudeProfile)
             case .about: AboutSettings(about: about, diagnostics: diagnostics)
             case .conversations:
-                if let review = model.cleanupReview { CleanupReviewView(review: review, catalog: model) }
-                else { GeneralSettings(model: model) }
+                if let review = model.cleanupReview {
+                    CleanupReviewView(review: review, catalog: model, sheets: navigation.sheets)
+                } else {
+                    GeneralSettings(model: model, sheets: navigation.sheets)
+                }
             }
         }
-        .frame(width: LoomTheme.Layout.settingsWidth, height: LoomTheme.Layout.settingsHeight)
-        .background(LoomTheme.Surface.panel)
+        .frame(width: LoomTheme.Settings.width, height: LoomTheme.Settings.height)
+        .background(LoomTheme.Surface.canvas)
         .foregroundStyle(LoomTheme.Text.primary)
-        .font(LoomTheme.Typography.body)
+        .font(LoomTheme.InkType.body.font)
         .ignoresSafeArea()
         .tint(LoomTheme.Accent.base)
+        .sheetLayer(navigation.sheets, headerOffset: LoomTheme.Settings.bandHeight) { sheet in
+            SettingsSheets.view(for: sheet, model: model, profile: about.claudeProfile, presenter: navigation.sheets)
+        }
+    }
+}
+
+// MARK: The band
+
+/// The title band: 52 high with a hairline under it, where the window's title would be. The sections are view tabs, centred, at the
+/// band's bottom edge. Only the close button shows, at the left, on the band's centre line.
+struct SettingsBand: View {
+    let sections: [SettingsSection]
+    let selection: SettingsSection
+    let onSelect: (SettingsSection) -> Void
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Color.clear
+            ViewTabs(
+                tabs: sections.map {
+                    ViewTabItem(id: $0, title: $0.title, identifier: "settings-tab-\($0.title)", hoverKey: "settings-tab:\($0.title)")
+                },
+                selection: selection, onSelect: onSelect)
+                .fixedSize(horizontal: true, vertical: false)
+                // The tabs bring their own hairline; the canvas under them hides the band's, so the rule is drawn once.
+                .background(LoomTheme.Surface.canvas)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: LoomTheme.Settings.bandHeight)
+        .background(alignment: .bottom) {
+            Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline).accessibilityHidden(true)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Settings section")
     }
 }
 
 // MARK: General
 
+/// What picking a mode as the default asks: only Full access, and only when it changes the default (D-83).
+enum FullAccessRule {
+    static func asks(choosing raw: String, current: String?) -> Bool {
+        raw == ClaudePermissionMode.fullAccess.rawValue && current != raw
+    }
+}
+
 struct GeneralSettings: View {
     let model: CatalogModel
-    /// Full access was picked as the default and waits for the confirmation (D-69).
-    @State private var confirmsFullAccess = false
+    /// Full access, picked as the default, waits here for its question (D-83).
+    let sheets: SheetPresenter<SettingsSheet>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Space.settingsSectionGap) {
-            SettingsCard {
-                SettingsRow(title: "Sessions run in", detail: Self.sessionFaceDetail) {
-                    SegmentedControl(values: SessionFace.allCases, title: \.title, selection: model.newSessionFace,
-                                     compact: true, onSelect: { model.setNewSessionFace($0) })
-                        .accessibilityLabel("Sessions run in")
-                }
-                SettingsRowDivider()
-                SettingsRow(title: "Mode of new sessions", detail: Self.startModeDetail) {
-                    Picker("Mode of new sessions", selection: Binding(
-                        get: { model.defaultStartMode ?? Self.lastUsedTag },
-                        set: { chosen in
-                            if chosen == ClaudePermissionMode.fullAccess.rawValue, model.defaultStartMode != chosen {
-                                confirmsFullAccess = true
-                            } else {
-                                model.setDefaultStartMode(chosen == Self.lastUsedTag ? nil : chosen)
-                            }
-                        }
-                    )) {
-                        Text("Last used in the project").tag(Self.lastUsedTag)
-                        Divider()
-                        ForEach(ClaudePermissionMode.menuModes, id: \.rawValue) { mode in
-                            Text(mode.title).tag(mode.rawValue)
+        SettingsPage {
+            VStack(alignment: .leading, spacing: LoomTheme.Settings.groupGap) {
+                SettingsGroup(label: "Sessions") {
+                    SettingsRow(title: "Sessions run in", detail: Self.sessionFaceDetail) {
+                        InkSegmented(values: SessionFace.allCases, title: \.title, selection: model.newSessionFace,
+                                     onSelect: { model.setNewSessionFace($0) })
+                            .accessibilityLabel("Sessions run in")
+                    }
+                    SettingsRowDivider()
+                    SettingsRow(title: "Mode of new sessions", detail: Self.startModeDetail) { modePicker }
+                    SettingsRowDivider()
+                    SettingsRow(title: "Terminal font size", detail: "Applies to existing and new terminals.") {
+                        SettingsPopup(
+                            title: "Terminal font size",
+                            selection: Binding(get: { model.terminalFontSize }, set: { model.setTerminalFontSize($0) }),
+                            valueText: "\(Int(model.terminalFontSize)) pt"
+                        ) {
+                            ForEach(11...20, id: \.self) { size in Text("\(size) pt").tag(Double(size)) }
                         }
                     }
-                    .labelsHidden().pickerStyle(.menu).fixedSize()
-                    .accessibilityLabel("Mode of new sessions")
-                }
-                SettingsRowDivider()
-                SettingsRow(title: "Terminal font size", detail: "Applies to existing and new terminals.") {
-                    Picker("Terminal font size", selection: Binding(
-                        get: { model.terminalFontSize }, set: { model.setTerminalFontSize($0) }
-                    )) {
-                        ForEach(11...20, id: \.self) { size in Text("\(size) pt").tag(Double(size)) }
+                    SettingsRowDivider()
+                    SettingsRow(title: "Search session text",
+                                detail: "Let the command palette look inside your sessions. It reads Claude's transcript files only while you type, and keeps nothing. Off, it searches titles, projects and actions.") {
+                        SettingsSwitch(title: "Search session text", isOn: Binding(
+                            get: { model.searchesSessionText }, set: { model.setSearchesSessionText($0) }))
                     }
-                    .labelsHidden().pickerStyle(.menu).fixedSize()
-                    .accessibilityLabel("Terminal font size")
                 }
-                SettingsRowDivider()
-                SettingsRow(title: "Search session text",
-                            detail: "Let the command palette look inside your sessions. It reads Claude's transcript files only while you type, and keeps nothing. Off, it searches titles, projects and actions.") {
-                    Toggle("Search session text", isOn: Binding(
-                        get: { model.searchesSessionText }, set: { model.setSearchesSessionText($0) }
-                    ))
-                    .labelsHidden().toggleStyle(.switch)
-                    .accessibilityLabel("Search session text")
+                SystemSettingsCard(model: model, integration: model.integration)
+                if let error = model.errorMessage {
+                    Text(error).foregroundStyle(LoomTheme.Status.failureLight).textSelection(.enabled)
                 }
             }
-            SystemSettingsCard(model: model, integration: model.integration)
-            if let error = model.errorMessage {
-                Text(error).foregroundStyle(LoomTheme.Status.failure).textSelection(.enabled)
-            }
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, LoomTheme.Space.settingsInset)
-        .padding(.top, LoomTheme.Space.settingsSegmentH)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .alert("Start new sessions in Full access?", isPresented: $confirmsFullAccess) {
-            Button("Use Full access", role: .destructive) {
-                model.setDefaultStartMode(ClaudePermissionMode.fullAccess.rawValue, confirmedFullAccess: true)
+    }
+
+    private var modePicker: some View {
+        let current = model.defaultStartMode
+        let mode = current.flatMap(ClaudePermissionMode.init(rawValue:))
+        return SettingsPopup(
+            title: "Mode of new sessions",
+            selection: Binding(
+                get: { current ?? Self.lastUsedTag },
+                set: { chosen in
+                    if FullAccessRule.asks(choosing: chosen, current: model.defaultStartMode) {
+                        sheets.present(.fullAccess)
+                    } else {
+                        model.setDefaultStartMode(chosen == Self.lastUsedTag ? nil : chosen)
+                    }
+                }),
+            valueText: mode?.title ?? "Last used in the project",
+            icon: current.map { (ComposerModeLook.symbol(forRaw: $0), ComposerModeLook.color(forRaw: $0)) }
+        ) {
+            Text("Last used in the project").tag(Self.lastUsedTag)
+            Divider()
+            ForEach(ClaudePermissionMode.menuModes, id: \.rawValue) { mode in
+                Text(mode.title).tag(mode.rawValue)
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Claude runs every tool without asking. Every new session starts in it until you change this. You can still pick another mode in a draft.")
         }
     }
 
@@ -189,44 +229,31 @@ struct SystemSettingsCard: View {
     var body: some View {
         let notifyNotice = SettingsNotice.notifications(integration.notificationAuthorization)
         let loginNotice = SettingsNotice.loginItem(integration.loginItemStatus)
-        SettingsCard {
+        SettingsGroup(label: "System") {
             SettingsRow(title: "Show in menu bar",
                         detail: "Show Loom's mark in the menu bar, with the sessions that need you or are working.") {
-                Toggle("Show in menu bar", isOn: Binding(
-                    get: { model.showInMenuBar }, set: { model.setShowInMenuBar($0) }
-                ))
-                .labelsHidden().toggleStyle(.switch)
-                .accessibilityLabel("Show in menu bar")
+                SettingsSwitch(title: "Show in menu bar", isOn: Binding(
+                    get: { model.showInMenuBar }, set: { model.setShowInMenuBar($0) }))
             }
             SettingsRowDivider()
             SettingsRow(title: "Notify when a session needs approval",
                         detail: "A banner when Claude waits for your approval and Loom is not the active app. macOS asks for permission once.",
                         notice: notifyNotice?.text) {
-                HStack(spacing: LoomTheme.Space.settingsRowInset) {
-                    if let notifyNotice {
-                        Button(notifyNotice.buttonTitle) { integration.openNotificationSettings() }
-                            .buttonStyle(SettingsButtonStyle())
-                    }
-                    Toggle("Notify when a session needs approval", isOn: Binding(
-                        get: { model.notifyApprovals }, set: { model.setNotifyApprovals($0) }
-                    ))
-                    .labelsHidden().toggleStyle(.switch)
-                    .accessibilityLabel("Notify when a session needs approval")
+                if let notifyNotice {
+                    Button(notifyNotice.buttonTitle) { integration.openNotificationSettings() }
+                        .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
                 }
+                SettingsSwitch(title: "Notify when a session needs approval", isOn: Binding(
+                    get: { model.notifyApprovals }, set: { model.setNotifyApprovals($0) }))
             }
             SettingsRowDivider()
             SettingsRow(title: "Open at login", detail: "Start Loom when you log in.", notice: loginNotice?.text) {
-                HStack(spacing: LoomTheme.Space.settingsRowInset) {
-                    if let loginNotice {
-                        Button(loginNotice.buttonTitle) { integration.openLoginItems() }
-                            .buttonStyle(SettingsButtonStyle())
-                    }
-                    Toggle("Open at login", isOn: Binding(
-                        get: { integration.loginItemStatus.switchIsOn }, set: { integration.setLoginItem($0) }
-                    ))
-                    .labelsHidden().toggleStyle(.switch)
-                    .accessibilityLabel("Open at login")
+                if let loginNotice {
+                    Button(loginNotice.buttonTitle) { integration.openLoginItems() }
+                        .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
                 }
+                SettingsSwitch(title: "Open at login", isOn: Binding(
+                    get: { integration.loginItemStatus.switchIsOn }, set: { integration.setLoginItem($0) }))
             }
         }
         // The system's side can change while Settings is closed or Loom is in the background.
@@ -243,48 +270,62 @@ struct AboutSettings: View {
     let about: SettingsAbout
     var diagnostics: DiagnosticsCollection?
 
+    private typealias S = LoomTheme.Settings
+
     var body: some View {
-        VStack(spacing: LoomTheme.Space.settingsSectionGap) {
-            VStack(spacing: LoomTheme.Space.aboutHeadSpacing) {
-                Image(nsImage: NSApplication.shared.applicationIconImage)
-                    .resizable().interpolation(.high)
-                    .frame(width: LoomTheme.Layout.aboutMark, height: LoomTheme.Layout.aboutMark)
-                    .accessibilityHidden(true)
-                Text("Loom").font(LoomTheme.Typography.heading).padding(.top, LoomTheme.Space.aboutHeadSpacing)
-                Text(about.version).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, LoomTheme.Space.aboutHeadTop)
-            .padding(.bottom, LoomTheme.Space.aboutHeadBottom - LoomTheme.Space.settingsSectionGap)
-            SettingsCard {
-                SettingsRow(title: "Data folder", detail: "Catalog, usage index and logs.") {
-                    HStack(spacing: LoomTheme.Space.settingsRowInset) {
+        SettingsPage {
+            VStack(spacing: 0) {
+                head.padding(.top, S.aboutTop - S.bodyTop)
+                SettingsCard {
+                    SettingsRow(title: "Data folder", detail: "Catalog, usage index and logs.") {
                         PathText(url: about.dataFolder)
                         Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([about.dataFolder]) }
-                            .buttonStyle(SettingsButtonStyle())
+                            .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
                             .accessibilityLabel("Reveal data folder in Finder")
                     }
-                }
-                if let profile = about.claudeProfile {
-                    SettingsRowDivider()
-                    SettingsRow(title: "Claude profile", detail: "Where usage is read from. Read only.") {
-                        PathText(url: profile)
+                    if let profile = about.claudeProfile {
+                        SettingsRowDivider()
+                        SettingsRow(title: "Claude profile", detail: "Where usage is read from. Read only.") {
+                            PathText(url: profile)
+                        }
+                    }
+                    if let diagnostics {
+                        SettingsRowDivider()
+                        SettingsRow(title: "Diagnostics", detail: "A folder with versions, counts and Loom's log. No session content.") {
+                            Button(diagnostics.isRunning ? "Collecting…" : "Collect Diagnostics…") { diagnostics.collect() }
+                                .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                                .disabled(!diagnostics.canCollect)
+                                .accessibilityLabel("Collect diagnostics")
+                        }
                     }
                 }
-                if let diagnostics {
-                    SettingsRowDivider()
-                    SettingsRow(title: "Diagnostics", detail: "A folder with versions, counts and Loom's log. No session content.") {
-                        Button(diagnostics.isRunning ? "Collecting…" : "Collect Diagnostics…") { diagnostics.collect() }
-                            .buttonStyle(SettingsButtonStyle())
-                            .disabled(!diagnostics.canCollect)
-                            .accessibilityLabel("Collect diagnostics")
-                    }
-                }
+                .padding(.top, S.aboutCardTop)
             }
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, LoomTheme.Space.settingsInset)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    /// The app's icon (the image already carries macOS's shape, so it is not rounded again) with a ring, a top highlight and a drop;
+    /// then the name and the version. The hammerhead behind them is I5's.
+    private var head: some View {
+        let shape = RoundedRectangle(cornerRadius: S.iconRadius)
+        return VStack(spacing: 0) {
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable().interpolation(.high)
+                .frame(width: S.iconSide, height: S.iconSide)
+                .overlay { shape.strokeBorder(S.iconRing, lineWidth: LoomTheme.Line.hairline) }
+                .overlay {
+                    shape.strokeBorder(
+                        LinearGradient(colors: [S.iconHighlight, .clear], startPoint: .top, endPoint: .center),
+                        lineWidth: LoomTheme.Line.hairline)
+                }
+                .shadow(color: S.iconDrop, radius: 1.5, x: 0, y: 1)
+                .accessibilityHidden(true)
+            Text("Loom").projectType(LoomTheme.InkType.title).foregroundStyle(LoomTheme.Text.primary)
+                .padding(.top, S.aboutNameTop)
+            Text(about.version).projectType(LoomTheme.InkType.metaLarge).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                .textSelection(.enabled).padding(.top, S.aboutVersionTop)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -294,8 +335,9 @@ struct PathText: View {
 
     var body: some View {
         Text(SettingsPaths.display(url))
-            .font(LoomTheme.Typography.mono).foregroundStyle(LoomTheme.Text.secondary)
+            .projectType(LoomTheme.Settings.path).foregroundStyle(LoomTheme.Text.secondaryStyle)
             .lineLimit(1).truncationMode(.middle)
+            .frame(maxWidth: LoomTheme.Settings.pathMaxWidth, alignment: .trailing)
             .textSelection(.enabled)
     }
 }
@@ -304,85 +346,10 @@ enum SettingsPaths {
     static func display(_ url: URL) -> String { (url.path as NSString).abbreviatingWithTildeInPath }
 }
 
-// MARK: Building blocks
+// MARK: The Changes tab's controls
 
-/// A rounded group of rows on the 6 % control tone.
-struct SettingsCard<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(spacing: 0) { content }
-            .padding(.horizontal, LoomTheme.Space.settingsRowInset)
-            .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.card).fill(LoomTheme.Surface.control))
-    }
-}
-
-struct SettingsRow<Trailing: View>: View {
-    let title: String
-    let detail: String
-    /// One orange line under the detail, only where macOS says something is wrong.
-    var notice: String?
-    @ViewBuilder let trailing: Trailing
-
-    var body: some View {
-        HStack(spacing: LoomTheme.Space.settingsRowInset) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(LoomTheme.Typography.smallMedium)
-                Text(detail).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
-                if let notice {
-                    Text(notice).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Status.attention)
-                }
-            }
-            // The text takes the lines it needs: beside a segmented control or a menu the row was sized from the control, and
-            // the description was cut to one line with an ellipsis.
-            .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: LoomTheme.Space.settingsRowInset)
-            trailing
-        }
-        .padding(.vertical, LoomTheme.Space.settingsRowV)
-        .frame(minHeight: LoomTheme.Layout.settingsRowMinHeight)
-    }
-}
-
-struct SettingsRowDivider: View {
-    var body: some View { Rectangle().fill(LoomTheme.Surface.hairline).frame(height: LoomTheme.Line.hairline) }
-}
-
-/// The section switcher and the period control: a 6 % track, the selected segment in the
-/// selected-card look (7 % fill, 10 % stroke).
-struct SegmentedControl<Value: Hashable>: View {
-    let values: [Value]
-    let title: (Value) -> String
-    let selection: Value
-    let onSelect: (Value) -> Void
-    var compact = false
-    var enabled = true
-
-    init(values: [Value], title: @escaping (Value) -> String, selection: Value,
-         compact: Bool = false, enabled: Bool = true, onSelect: @escaping (Value) -> Void) {
-        self.values = values
-        self.title = title
-        self.selection = selection
-        self.compact = compact
-        self.enabled = enabled
-        self.onSelect = onSelect
-    }
-
-    var body: some View {
-        HStack(spacing: LoomTheme.Space.settingsTrack) {
-            ForEach(values, id: \.self) { value in
-                Button(title(value)) { onSelect(value) }
-                    .buttonStyle(SegmentButtonStyle(selected: value == selection, compact: compact,
-                                                    key: "segment:\(title(value))"))
-                    .accessibilityAddTraits(value == selection ? .isSelected : [])
-            }
-        }
-        .padding(LoomTheme.Space.settingsTrack)
-        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.search).fill(LoomTheme.Surface.control))
-        .disabled(!enabled)
-        .accessibilityElement(children: .contain)
-    }
-}
+// `SegmentButtonStyle` and `SettingsButtonStyle` are the older controls; the Changes tab still draws with them (I6b moves it onto the
+// control family). Settings itself uses `InkSegmented`, `ControlButtonStyle` and the rest of `SettingsControls.swift`.
 
 struct SegmentButtonStyle: ButtonStyle {
     let selected: Bool

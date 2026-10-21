@@ -77,19 +77,6 @@ extension LoomTheme {
         AdaptiveTone(dark: Tone(rgb: whiteRGB, opacity: dark), light: Tone(rgb: inkRGB, opacity: light))
     }
 
-    /// Settings → Theme → Tone: a tone tile, the pane in miniature.
-    enum ThemeTile {
-        static let tilePadding: CGFloat = 8
-        static let previewHeight: CGFloat = 58
-        static let previewPadding: CGFloat = 8
-        static let previewGap: CGFloat = 6
-        static let previewLine: CGFloat = 54
-        static let previewLineHeight: CGFloat = 5
-        static let previewButton: CGFloat = 28
-        static let previewCard: CGFloat = 24
-        static let captionGap: CGFloat = 4
-    }
-
     /// The tone, app-wide and observable. Set by `CatalogModel` (Settings → Theme → Tone).
     final class ThemeState: Observable, @unchecked Sendable {
         static let shared = ThemeState()

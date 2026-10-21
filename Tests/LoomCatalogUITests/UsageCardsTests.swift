@@ -223,15 +223,15 @@ struct UsageCardsTests {
                         timeZone: Self.zone, now: Self.now)
     }
 
-    private var pageWidth: CGFloat { LoomTheme.Layout.settingsWidth - 2 * LoomTheme.Space.settingsInset }
+    private var pageWidth: CGFloat { LoomTheme.Settings.width - 2 * LoomTheme.Settings.bodyInset }
 
     /// The report at the Settings page width on the panel colour, to a PNG when `LOOM_USAGE_RENDER_DIR` is set.
     @discardableResult
     private func render(_ report: UsageReportView, name: String) throws -> CGSize {
         let page = report
-            .padding(.horizontal, LoomTheme.Space.settingsInset)
-            .padding(.bottom, LoomTheme.Space.settingsSectionGap)
-            .frame(width: LoomTheme.Layout.settingsWidth, alignment: .topLeading)
+            .padding(.horizontal, LoomTheme.Settings.bodyInset)
+            .padding(.bottom, LoomTheme.Settings.bodyBottom)
+            .frame(width: LoomTheme.Settings.width, alignment: .topLeading)
             .fixedSize(horizontal: false, vertical: true)
             .background(LoomTheme.Surface.panel)
             .environment(\.colorScheme, .dark)
@@ -260,7 +260,7 @@ struct UsageCardsTests {
             model("Haiku 5.5", 1_200_000, cost: 1.3)])
         let page = view(report(.days7, snap), limits: limits, skipped: 3)
         let size = try render(page, name: "7d-limits")
-        #expect(size.width == LoomTheme.Layout.settingsWidth)
+        #expect(size.width == LoomTheme.Settings.width)
         #expect(size.height > 400)
         let asked = askedSize(page)
         #expect(asked.width <= pageWidth + 0.5, "the report asked for \(asked.width) pt of \(pageWidth)")

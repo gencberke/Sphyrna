@@ -10,8 +10,8 @@ struct UsageSettings: View {
         if let usage {
             UsageContent(usage: usage, profile: profile)
         } else {
-            UsageNotice(title: "Usage is not available",
-                        text: "Loom could not open its usage index, so no Claude usage is shown.")
+            SettingsNote(title: "Usage is not available",
+                         text: "Loom could not open its usage index, so no Claude usage is shown.")
         }
     }
 }
@@ -20,73 +20,65 @@ private struct UsageContent: View {
     let usage: UsageModel
     let profile: URL?
 
+    private typealias S = LoomTheme.Settings
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("This Claude profile, all projects")
-                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
-                Spacer()
-                SegmentedControl(
-                    values: UsagePeriod.allCases, title: \.title, selection: usage.period,
-                    compact: true, enabled: usage.state == .ready, onSelect: { usage.select($0) })
-                    .accessibilityLabel("Period")
-            }
-            .frame(height: LoomTheme.Layout.usageControlHeight)
-            .padding(.horizontal, LoomTheme.Space.settingsInset)
-            body(for: usage.state)
+            content(for: usage.state)
             UsageFooter(usage: usage)
         }
         .onAppear { usage.setUsageSectionSelected(true) }
         .onDisappear { usage.setUsageSectionSelected(false) }
     }
 
+    /// "This Claude profile, all projects" and the periods; they are the page's first line and scroll with it.
+    private var periodLine: some View {
+        HStack(spacing: S.periodGap) {
+            Text("This Claude profile, all projects").projectType(S.periodText).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            Spacer(minLength: 0)
+            InkSegmented(values: UsagePeriod.allCases, title: \.title, selection: usage.period,
+                         enabled: usage.state == .ready, onSelect: { usage.select($0) })
+                .accessibilityLabel("Period")
+        }
+        .padding(.bottom, S.periodBottom)
+    }
+
     @ViewBuilder
-    private func body(for state: UsageState) -> some View {
+    private func content(for state: UsageState) -> some View {
         switch state {
         case .idle, .indexing:
-            UsageNotice(title: "Reading Claude's usage",
-                        text: "Loom is reading the transcripts Claude keeps on this Mac. This happens once; after that only new lines are read.")
+            note(SettingsNote(title: "Reading Claude's usage",
+                              text: "Loom is reading the transcripts Claude keeps on this Mac. This happens once; after that only new lines are read."))
         case let .failed(message):
-            UsageNotice(title: "Usage could not be read", text: message, retry: { usage.refresh(reason: .manual) })
+            note(SettingsNote(title: "Usage could not be read", text: message, retry: { usage.refresh(reason: .manual) }))
         case .ready:
             if !usage.hasHistory {
-                UsageNotice(title: "No Claude usage yet",
-                            text: "Loom found no transcripts in this Claude profile. Usage appears after a session finishes its first turn.",
-                            path: profile.map { SettingsPaths.display($0.appendingPathComponent("projects")) })
+                note(SettingsNote(title: "No Claude usage yet",
+                                  text: "Loom found no transcripts in this Claude profile. Usage appears after a session finishes its first turn.",
+                                  path: profile.map { SettingsPaths.display($0.appendingPathComponent("projects")) }))
             } else if let report = usage.report, report.period == usage.period {
-                ScrollView {
-                    UsageReportView(report: report, limits: usage.limits, limitsFailure: usage.limitsFailure,
-                                    linesNotUnderstood: usage.linesNotUnderstood, timeZone: usage.timeZone)
-                        .padding(.horizontal, LoomTheme.Space.settingsInset)
-                        .padding(.bottom, LoomTheme.Space.settingsSectionGap)
+                SettingsPage {
+                    VStack(alignment: .leading, spacing: 0) {
+                        periodLine
+                        UsageReportView(report: report, limits: usage.limits, limitsFailure: usage.limitsFailure,
+                                        linesNotUnderstood: usage.linesNotUnderstood, timeZone: usage.timeZone)
+                    }
                 }
             } else {
-                Spacer(minLength: 0)
+                VStack(spacing: 0) {
+                    periodLine.padding(.horizontal, S.bodyInset).padding(.top, S.bodyTop)
+                    Spacer(minLength: 0)
+                }
             }
         }
     }
-}
 
-private struct UsageNotice: View {
-    let title: String
-    let text: String
-    var path: String?
-    var retry: (() -> Void)?
-
-    var body: some View {
-        VStack(spacing: LoomTheme.Space.hintSpacing) {
-            Text(title).font(LoomTheme.Typography.heading)
-            Text(text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
-                .multilineTextAlignment(.center).frame(maxWidth: LoomTheme.Layout.messageMaxWidth)
-            if let path {
-                Text(path).font(LoomTheme.Typography.mono).foregroundStyle(LoomTheme.Text.secondary)
-                    .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
-            }
-            if let retry { Button("Try again", action: retry).buttonStyle(AccentButtonStyle(kind: .tinted)) }
+    /// A page state with the periods above it (disabled until a report is ready).
+    private func note(_ note: SettingsNote) -> some View {
+        VStack(spacing: 0) {
+            periodLine.padding(.horizontal, S.bodyInset).padding(.top, S.bodyTop)
+            note
         }
-        .padding(.horizontal, LoomTheme.Space.settingsInset)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -94,28 +86,24 @@ private struct UsageFooter: View {
     let usage: UsageModel
 
     var body: some View {
-        HStack(spacing: LoomTheme.Space.footerSpacing) {
+        SettingsFooter {
             if let message = usage.lastFailure {
-                Text("Could not update: \(message)").foregroundStyle(LoomTheme.Status.failure).lineLimit(1)
+                Text("Could not update: \(message)").foregroundStyle(LoomTheme.Status.failureLight)
             } else {
-                Text(updated)
-                if let asOf = usage.report?.snapshot.priceTableAsOf {
-                    Text("·")
-                    Text("Prices as of \(UsageText.priceDate(asOf))")
-                }
+                Text(text)
             }
-            Spacer(minLength: 0)
-            Button { usage.refresh(reason: .manual) } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(ChromeButtonStyle())
-                .disabled(usage.isRefreshing)
-                .help("Update usage now")
-                .accessibilityLabel("Update usage")
+        } trailing: {
+            SettingsRefreshButton(label: "Update usage now", disabled: usage.isRefreshing) {
+                usage.refresh(reason: .manual)
+            }
+            .accessibilityLabel("Update usage")
         }
-        .font(LoomTheme.Typography.caption).monospacedDigit()
-        .foregroundStyle(LoomTheme.Text.secondary)
-        .padding(.leading, LoomTheme.Space.settingsInset).padding(.trailing, LoomTheme.Space.settingsFooterInset)
-        .frame(height: LoomTheme.Layout.settingsFooterHeight)
-        .overlay(alignment: .top) { SettingsRowDivider() }
+    }
+
+    private var text: String {
+        var parts = [updated]
+        if let asOf = usage.report?.snapshot.priceTableAsOf { parts.append("Prices as of \(UsageText.priceDate(asOf))") }
+        return parts.joined(separator: " · ")
     }
 
     private var updated: String {

@@ -4,8 +4,9 @@ import LoomTerminal
 import SwiftUI
 
 /// The one Settings window: a fixed 680×520, reused by Cmd+, the gear and the usage chip.
-/// The title bar is transparent so the section switcher sits on the same 26 pt centerline as the
-/// main window's controls; the window is built on first use and only hidden when closed.
+/// The title bar is transparent and carries an empty unified toolbar, so the close button sits on the same 26 pt
+/// centerline as the main window's controls and the section tabs draw in the 52 pt band; the window is built on first use
+/// and only hidden when closed.
 @MainActor
 final class SettingsWindowController {
     static let contentSize = NSSize(width: 680, height: 520)
@@ -47,6 +48,11 @@ final class SettingsWindowController {
         window.title = "Settings"
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
+        // An empty unified toolbar, as the main window has (`AppDelegate.makeWindow`): AppKit centres the close button in the
+        // unified titlebar height, on y = 26. No item or separator is shown.
+        window.toolbar = NSToolbar(identifier: NSToolbar.Identifier("loom-settings"))
+        window.toolbarStyle = .unified
+        window.titlebarSeparatorStyle = .none
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
         // The window follows the app's appearance (Settings → Theme); its background is the main pane's panel.
