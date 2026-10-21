@@ -12,6 +12,9 @@ Modes (all at 1220x780):
   (default)    window visible and uncovered, one Chat session.
   --hidden     window closed, one Chat session (no layout, no timers expected).
   --sessions N N Chat sessions streaming at once, window hidden.
+  --idle       Chat sessions at rest (combine with --hidden or --sessions N; the window stays visible unless --hidden):
+               each runs one short stream turn first (IDLE_TURN_SECONDS at --rate) and the window samples them with no
+               turn running; the cell checks that no assistant record falls inside the window.
   --long       the seeded long session: a Chat session is made and stopped, scripts/perf/chat_long_session.py writes about
                10,000 records into its transcript, the app is quit and started again, the session is opened (cold open)
                and resumed, and the stream goes into it; window visible. The open times are recorded.
@@ -26,6 +29,7 @@ import perf_paths
 from perf_paths import REPO, load_module
 
 SIZE = (1220, 780)
+IDLE_TURN_SECONDS = 2
 
 
 def summarize(run_dir):
@@ -55,6 +59,7 @@ parser.add_argument('--tail', type=float, default=20, help='seconds the stream o
 parser.add_argument('--hidden', action='store_true')
 parser.add_argument('--sessions', type=int, default=1)
 parser.add_argument('--long', action='store_true')
+parser.add_argument('--idle', action='store_true', help='Chat sessions at rest after one short turn each')
 parser.add_argument('--records', type=int, default=10000, help='transcript records of the long session')
 parser.add_argument('--screenshot', action='store_true',
                     help='after the window, while the stream goes on: Loom\'s own window-only capture (screenshot-window.window.png in the cell)')
@@ -69,8 +74,10 @@ if args.long and (args.hidden or args.sessions > 1):
     parser.error('--long is a visible, single-session cell')
 if args.sessions < 1 or args.rate < 1 or min(args.warmup, args.duration, args.tail) < 0 or args.sample_every <= 0:
     parser.error('sessions, rate, durations must be positive')
-if args.sessions > 1:
-    args.hidden = True      # several sessions are measured with the window hidden
+if args.long and args.idle:
+    parser.error('--long and --idle do not combine')
+if args.sessions > 1 and not args.idle:
+    args.hidden = True      # several streaming sessions are measured with the window hidden
 app, run_dir = perf_paths.resolve_common(argparse.Namespace(app=args.app, run_dir=args.run_dir), 'chat-stream')
 fixtures = perf_paths.refuse_documents('Fixtures directory', args.fixtures)
 if not (fixtures / 'loom-fake-provider').is_file():
@@ -81,8 +88,9 @@ if not executable.is_file():
 
 measure = load_module('cp5_d_measure', REPO / 'scripts/cp5-d-measure.py')
 visibility = 'hidden' if args.hidden else 'visible'
-name = args.name or ('chat-long-%d' % args.rate if args.long else f'chat-sessions{args.sessions}-{args.rate}' if args.sessions > 1
-                     else f'chat-{visibility}-{args.rate}')
+name = args.name or ((f'chat-idle-sessions{args.sessions}-{visibility}' if args.sessions > 1 else f'chat-idle-{visibility}')
+                     if args.idle else 'chat-long-%d' % args.rate if args.long
+                     else f'chat-sessions{args.sessions}-{args.rate}' if args.sessions > 1 else f'chat-{visibility}-{args.rate}')
 cell = run_dir / 'cells' / name
 if cell.exists():
     cell.rename(cell.with_name(name + f'.invalid-{int(time.time())}'))
@@ -91,7 +99,7 @@ data = cell / 'data'
 config = data / 'claude-config'
 project = cell / 'project'
 project.mkdir()
-stream_seconds = args.warmup + args.duration + args.tail + 4 * args.sessions
+stream_seconds = IDLE_TURN_SECONDS if args.idle else args.warmup + args.duration + args.tail + 4 * args.sessions
 report = {'valid': False, 'invalidReasons': []}
 state = {'driver': None, 'cleaned': False}
 
@@ -259,6 +267,24 @@ def verify_stream(sid, since, expected_chars, window_start, window_end):
             'lastRecordAfterWindow': bool(times) and times[-1] >= window_end}
 
 
+def verify_idle(sid, since, window_start, window_end):
+    """What an idle session's transcript says (counts and times only): its short turn wrote assistant records before the
+    window, and none falls inside it."""
+    path = transcript_path(sid)
+    if path is None:
+        return {'session': sid, 'valid': False, 'reason': 'no transcript'}
+    times = []
+    for line in path.read_text(errors='replace').splitlines():
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if record.get('type') == 'assistant' and parse_time(record['timestamp']) >= since:
+            times.append(parse_time(record['timestamp']))
+    inside = [t for t in times if window_start <= t <= window_end]
+    return {'session': sid, 'valid': bool(times) and not inside, 'assistantRecords': len(times), 'recordsInWindow': len(inside)}
+
+
 def chat_view(sid, label='cv'):
     return fresh(f'chat-view:{sid}:{label}', f'chat-view-{label}.json', 10)
 
@@ -347,7 +373,7 @@ def run_cell():
         time.sleep(2)
     driver = make_driver()
     state['driver'] = driver
-    manifest = {'cell': name, 'mode': {'visibility': visibility, 'sessions': args.sessions, 'long': args.long},
+    manifest = {'cell': name, 'mode': {'visibility': visibility, 'sessions': args.sessions, 'long': args.long, 'idle': args.idle},
                 'rate': args.rate, 'streamSeconds': stream_seconds, 'window': f'{SIZE[0]}x{SIZE[1]}',
                 'warmup': args.warmup, 'duration': args.duration, 'sampleEvery': args.sample_every,
                 'app': str(app), 'binarySHA256': hashlib.sha256(executable.read_bytes()).hexdigest(),
@@ -414,6 +440,9 @@ def run_cell():
             since = time.time()
             sid = start_chat(project_id, f'/scenario stream {stream_seconds} {args.rate}')
             sessions.append((sid, since))
+            if args.idle:   # the turn has written, then ended (chat-state reports the newest session: this one)
+                until(lambda: transcript_path(sid), 30, 'the short turn wrote its transcript')
+                until(lambda: not fresh('chat-state:cs', 'chat-state-cs.json', 10).get('turnRunning'), 30, 'the short turn ended')
             time.sleep(1.0)
     time.sleep(args.warmup)
     window_start = time.time()
@@ -426,14 +455,18 @@ def run_cell():
         send('screenshot:window'); time.sleep(3)
     if args.long:
         long_info['liveRowsAtWindowEnd'] = chat_view(sessions[0][0], 'end')
-    # The stream ends by itself; wait for the last of them, then read the transcripts.
-    last_end = max(since for _, since in sessions) + stream_seconds
-    time.sleep(max(0, last_end + 6 - time.time()))
-    verification = [verify_stream(sid, since, stream_seconds * args.rate, window_start, window_end) for sid, since in sessions]
+    if args.idle:
+        verification = [verify_idle(sid, since, window_start, window_end) for sid, since in sessions]
+    else:
+        # The stream ends by itself; wait for the last of them, then read the transcripts.
+        last_end = max(since for _, since in sessions) + stream_seconds
+        time.sleep(max(0, last_end + 6 - time.time()))
+        verification = [verify_stream(sid, since, stream_seconds * args.rate, window_start, window_end) for sid, since in sessions]
     for item in verification:
         if not item.get('valid'):
-            report['invalidReasons'].append(f"stream of session {item['session'][:8]} not as asked: {json.dumps(item)}")
-    report.update({'scenario': f'chat-stream-{args.rate}', 'cell': manifest['mode'] | {'name': name, 'rate': args.rate},
+            report['invalidReasons'].append(f"{'idle' if args.idle else 'stream'} of session {item['session'][:8]} not as asked: "
+                                            f"{json.dumps(item)}")
+    report.update({'scenario': 'chat-idle' if args.idle else f'chat-stream-{args.rate}', 'cell': manifest['mode'] | {'name': name, 'rate': args.rate},
                    'sampleSeconds': samples[-1]['result']['uptime'] - samples[0]['result']['uptime'],
                    'warmupSeconds': args.warmup, 'sampleCount': len(samples), 'streamSeconds': stream_seconds,
                    'route': route, 'metrics': chat_metrics(samples), 'streamVerification': verification,
