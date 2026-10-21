@@ -458,4 +458,57 @@ struct RemoraModelTests {
         #expect(model.remora.preferences.language == nil && rig.host?.settings.language == nil)
         await rig.finish()
     }
+
+    // MARK: The development hold (a plain evidence launch holds Remora Off)
+
+    /// A data root whose preferences file says Remora is on, as a seeded or earlier run left it.
+    private static func rootWithRemoraOn() throws -> (root: URL, bytes: Data) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-remora-hold-\(UUID().uuidString.prefix(8))")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let bytes = Data(#"{"remora":{"isOn":true},"sidebarWidth":300}"#.utf8)
+        try bytes.write(to: root.appendingPathComponent("ui-preferences.json"))
+        return (root, bytes)
+    }
+
+    @Test func theHoldStopsEveryCallAndLeavesThePreferencesFileAsItWas() async throws {
+        let seeded = try Self.rootWithRemoraOn()
+        let rig = try Rig(root: seeded.root)
+        let remora = rig.model.remora
+        #expect(remora.preferences.isOn)
+        rig.model.holdRemoraOff()
+        await remora.settle()
+        #expect(!remora.preferences.isOn && rig.host?.settings.isOn == false)
+        // The same setup as the automatic brief's test: Home shown, online, due.
+        #expect(!rig.model.briefRemoraIfDue(homeShown: true))
+        #expect(!rig.model.askRemora("What moved?"))
+        #expect(!rig.model.briefRemora())
+        await remora.settle()
+        #expect(!rig.ranAProcess && remora.lastAnswer == nil && remora.phase == .idle)
+        #expect(try Data(contentsOf: rig.preferencesURL) == seeded.bytes, "the hold reached the preferences file")
+        await rig.finish()
+    }
+
+    @Test func theHeldOffNeverReachesTheFileAndTurningRemoraOnLiftsIt() async throws {
+        let seeded = try Self.rootWithRemoraOn()
+        let rig = try Rig(root: seeded.root)
+        let remora = rig.model.remora
+        rig.model.holdRemoraOff()
+        await remora.settle()
+        // A write of the whole preferences value (the sidebar width) keeps the file's Remora on.
+        rig.model.setSidebarWidth(360)
+        let written = try JSONDecoder().decode(UIPreferences.self, from: Data(contentsOf: rig.preferencesURL))
+        #expect(written.sidebarWidth == 360, "the write did not happen")
+        #expect(try Data(contentsOf: rig.preferencesURL) != seeded.bytes)
+        #expect(written.remora.isOn, "the held Off was written to the file")
+        #expect(!remora.preferences.isOn)
+        // Settings turns it on: kept as usual, and a brief starts again.
+        rig.model.setRemoraOn(true)
+        await remora.settle()
+        #expect(remora.preferences.isOn && rig.host?.settings.isOn == true)
+        #expect(UIPreferencesStore(url: rig.preferencesURL).current.remora.isOn)
+        #expect(rig.model.briefRemoraIfDue(homeShown: true))
+        await remora.settle()
+        #expect(remora.lastAnswer?.kind == .brief && rig.ranAProcess)
+        await rig.finish()
+    }
 }

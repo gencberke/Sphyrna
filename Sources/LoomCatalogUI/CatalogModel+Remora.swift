@@ -293,6 +293,20 @@ extension CatalogModel {
         }
     }
 
+    /// Holds Remora Off for this launch only, for a launch that must not reach a real CLI (a development evidence run
+    /// without fake providers or an isolated profile). Memory only: the preferences file stays as it was, and a later
+    /// write of the other preferences keeps the file's own Remora value. A change to a Remora setting during the run
+    /// writes Remora's settings as they then stand, Off included; turning Remora on in Settings persists as usual and
+    /// lifts the hold. A host that already exists is told, as `updateRemoraPreferences` does.
+    public func holdRemoraOff() {
+        guard remora.preferences.isOn else { return }
+        var next = remora.preferences
+        next.isOn = false
+        remora.preferences = next
+        guard let host = remora.host else { return }
+        track { _ in await host.update(settings: next) }
+    }
+
     public func setRemoraOn(_ on: Bool) { updateRemoraPreferences { $0.isOn = on } }
     public func setRemoraModel(_ model: String) { updateRemoraPreferences { $0.model = model } }
     public func setRemoraEffort(_ effort: String) { updateRemoraPreferences { $0.effort = effort } }

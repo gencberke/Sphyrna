@@ -20,6 +20,13 @@ extension AppDelegate {
 
     func configureEvidenceAtLaunch(model: CatalogModel) {
         guard options.isEvidence else { return }
+        // Without `--fake-providers` and `--claude-config`, `evidenceToolchains` resolves the real `claude` on the
+        // login PATH and `evidenceClaudeProfile` a fresh `<data root>/claude-config`: Remora would reach a real CLI.
+        // Such a launch holds it Off in memory; the preferences file is left as it is. Keep this condition in step
+        // with those two functions.
+        if value(after: "--fake-providers") == nil, value(after: "--claude-config") == nil {
+            model.holdRemoraOff()
+        }
         // The flag sets the sidebar style (Glass | Solid) in the isolated data root; the system's Reduce
         // Transparency still forces Solid, and no OS setting is changed.
         switch value(after: "--evidence-transparency") {
