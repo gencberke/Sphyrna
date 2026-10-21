@@ -40,20 +40,20 @@ struct StreamHelperTests {
 
     @Test func chunksArriveBeforeTheChildExits() async throws {
         let supervisor = try supervisor()
-        let started = ContinuousClock.now
-        var firstChunkAt: ContinuousClock.Instant?
+        // The child writes its second line only after the test saw the first (the gate file). A helper that held the output
+        // until the exit would never let the test see it, and the stream would end at the deadline instead: ordering, not a
+        // clock, so a loaded machine cannot fail it.
+        let gate = FileManager.default.temporaryDirectory.appendingPathComponent("stream-gate-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: gate) }
         var text = ""
         for try await chunk in supervisor.streamHelper(
-            "/bin/sh", ["-c", "echo one; sleep 1; echo two"], environment: environment, timeout: 10
+            "/bin/sh", ["-c", "echo one; while [ ! -e \(gate.path) ]; do sleep 0.02; done; echo two"],
+            environment: environment, timeout: 20
         ) {
-            if firstChunkAt == nil { firstChunkAt = .now }
+            if text.isEmpty { FileManager.default.createFile(atPath: gate.path, contents: nil) }
             text += String(decoding: chunk, as: UTF8.self)
         }
-        let finished = ContinuousClock.now
         #expect(text == "one\ntwo\n")
-        let first = try #require(firstChunkAt)
-        #expect(first - started < .seconds(0.8), "the first chunk waited for the exit")
-        #expect(finished - started > .seconds(0.9))
         #expect((await supervisor.shutdown()).succeeded)
     }
 
@@ -120,7 +120,8 @@ struct StreamHelperTests {
         #expect(failure as? StreamHelperError == .timedOut)
         #expect(text == "ready\n")
         #expect(elapsed > .seconds(0.9), "SIGKILL came before the grace: \(elapsed)")
-        #expect(elapsed < .seconds(3), "took \(elapsed)")
+        // The child never ends by itself: any end is the SIGKILL. The bound only catches a hang, with room for a loaded machine.
+        #expect(elapsed < .seconds(15), "took \(elapsed)")
         let pid = try #require(await readPID(file))
         #expect(try await gone(pid))
         #expect((await supervisor.shutdown()).succeeded)
@@ -135,12 +136,12 @@ struct StreamHelperTests {
         let elapsed = await clock.measure {
             do {
                 for try await _ in supervisor.streamHelper(
-                    "/bin/sh", script("exec sleep 60", pids: file), environment: environment, timeout: 0.4, terminationGrace: 5
+                    "/bin/sh", script("exec sleep 60", pids: file), environment: environment, timeout: 0.4, terminationGrace: 30
                 ) {}
             } catch { failure = error }
         }
         #expect(failure as? StreamHelperError == .timedOut)
-        #expect(elapsed < .seconds(2.5), "waited out the grace: \(elapsed)")
+        #expect(elapsed < .seconds(15), "waited out the 30 s grace: \(elapsed)")
         let pid = try #require(await readPID(file))
         #expect(try await gone(pid))
         #expect((await supervisor.shutdown()).succeeded)
@@ -164,8 +165,9 @@ struct StreamHelperTests {
             consumer.cancel()
             _ = try? await consumer.value
         }
-        #expect(elapsed < .seconds(1), "the consumer waited \(elapsed)")
-        #expect(try await gone(pid, within: 2))
+        // At once, against a child and a deadline of 60 s; the bound leaves room for a loaded machine.
+        #expect(elapsed < .seconds(10), "the consumer waited \(elapsed)")
+        #expect(try await gone(pid, within: 10))
         #expect((await supervisor.shutdown()).succeeded)
     }
 

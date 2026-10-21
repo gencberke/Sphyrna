@@ -386,24 +386,25 @@ struct RunScopeTests {
     /// ledger while it runs, stdin reaches the child through the host, chunks arrive before the exit, and nothing is left.
     @Test func aStreamedHelperRunsInItsOwnScopeAndLeavesNothingBehind() async throws {
         let supervisor = try ProcessSupervisor(scopeLauncher: try launcher())
+        // The child ends only after the test saw its first chunk (the gate file): a helper that held the output until the
+        // exit would never see it and would end at the deadline. Ordering, not a clock, so load cannot fail it.
+        let gate = FileManager.default.temporaryDirectory.appendingPathComponent("stream-gate-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: gate) }
         let stream = supervisor.streamHelper(
-            "/bin/sh", ["-c", "read line; echo got-$line; sleep 1; echo end"], environment: ["PATH": "/usr/bin:/bin"],
-            input: Data("pack\n".utf8), timeout: 20
+            "/bin/sh", ["-c", "read line; echo got-$line; while [ ! -e \(gate.path) ]; do sleep 0.02; done; echo end"],
+            environment: ["PATH": "/usr/bin:/bin"], input: Data("pack\n".utf8), timeout: 20
         )
         var text = ""
         var scopesWhileRunning = 0
-        let started = ContinuousClock.now
-        var firstAt: ContinuousClock.Instant?
         for try await chunk in stream {
-            if firstAt == nil {
-                firstAt = .now
+            if text.isEmpty {
                 scopesWhileRunning = await supervisor.ledgerSnapshot().scopes?.count ?? 0
+                FileManager.default.createFile(atPath: gate.path, contents: nil)
             }
             text += String(decoding: chunk, as: UTF8.self)
         }
         #expect(text == "got-pack\nend\n")
         #expect(scopesWhileRunning == 1)
-        #expect(try #require(firstAt) - started < .seconds(1.5))
         #expect(await supervisor.ledgerSnapshot().scopes?.isEmpty == true)
         #expect((await supervisor.shutdown()).succeeded)
     }

@@ -200,7 +200,8 @@ struct RemoraCallTests {
                 RemoraRequest(kind: .question, pack: "p")))
         }
         #expect(result.failure?.kind == .timedOut)
-        #expect(elapsed < .seconds(4), "took \(elapsed)")
+        // `silent` never answers: any end is the deadline. The bound only catches a hang, with room for a loaded machine.
+        #expect(elapsed < .seconds(20), "took \(elapsed)")
         let pid = try #require(await rig.pid())
         #expect(await gone(pid))
         await rig.finish()
@@ -240,8 +241,9 @@ struct RemoraCallTests {
             consumer.cancel()
             _ = await consumer.value
         }
-        #expect(elapsed < .seconds(1), "the consumer waited \(elapsed)")
-        #expect(await gone(pid, within: 3), "the child outlived the cancel")
+        // At once, against an answer that takes ~15 s; the bound leaves room for a loaded machine.
+        #expect(elapsed < .seconds(8), "the consumer waited \(elapsed)")
+        #expect(await gone(pid, within: 8), "the child outlived the cancel")
         let result = await consumer.value
         #expect(result.answer == nil && result.failure == nil, "a cancelled call ends quietly")
         await rig.finish()

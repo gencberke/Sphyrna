@@ -49,6 +49,10 @@ private final class RuntimeCodexLateTurnGate: @unchecked Sendable {
 struct SessionRuntimeCodexTests {
     typealias Screen = SessionRuntimeTests.Screen
 
+    /// A wait that follows a process start (an app-server, a TUI, a run host) in a test that may run beside every other
+    /// process-heavy suite: long enough for such a start under that load, still far inside the suite's time limit.
+    static let processStartWait: TimeInterval = 30
+
     static func launchCodex(
         _ context: RuntimeContext, projectID: UUID? = nil
     ) async throws -> (RuntimeLaunch, Screen) {
@@ -1146,11 +1150,23 @@ struct SessionRuntimeCodexTests {
         let (a, aScreen) = try await Self.launchCodex(context)
         let (b, bScreen) = try await Self.launchCodex(context)
         _ = aScreen
-        #expect(try await SessionRuntimeTests.waitUntil {
+        // Two app-servers, two TUIs and (scoped) their run hosts start beside the rest of a whole-target run: the waits that
+        // follow a process start get the time such a start takes there (5 s was not enough once, 21 Oct). A join that
+        // fails ends the wait at once with its card's issue, so a real binding failure is still quick and named.
+        var joinIssue: String?
+        let bound = try await SessionRuntimeTests.waitUntil(Self.processStartWait) {
+            for id in [a.sessionID, b.sessionID] {
+                if let issue = await context.events.snapshot().sessions[id]?.issue {
+                    joinIssue = issue
+                    return true
+                }
+            }
             let x = try await threadID(context, a.sessionID)
             let y = try await threadID(context, b.sessionID)
             return x != nil && y != nil
-        })
+        }
+        try #require(joinIssue == nil, "a Codex join failed: \(joinIssue ?? "")")
+        try #require(bound, "the two Codex threads did not bind within \(Self.processStartWait) s")
         let serverA = try #require(await context.runtime.codexServerIdentity(forSession: a.sessionID))
         let serverB = try #require(await context.runtime.codexServerIdentity(forSession: b.sessionID))
         let serverASession = try #require(serverA.internalSessionID)
@@ -1175,7 +1191,7 @@ struct SessionRuntimeCodexTests {
             #expect(ProcessTable.resourceCoalition(pid: procB.pid) == scopeB?.coalitionID)
             func escape(_ server: ProcessIdentity) async throws -> ProcessIdentity? {
                 let file = context.state.appendingPathComponent("server-escape.\(server.pid)")
-                guard await SessionRuntimeTests.waitUntil(5, { FileManager.default.fileExists(atPath: file.path) }),
+                guard await SessionRuntimeTests.waitUntil(Self.processStartWait, { FileManager.default.fileExists(atPath: file.path) }),
                       let text = try? String(contentsOf: file, encoding: .utf8), let pid = Int32(text) else { return nil }
                 return try ProcessTable.snapshot().first { $0.identity.pid == pid }?.identity
             }
@@ -1202,13 +1218,13 @@ struct SessionRuntimeCodexTests {
         if scoped, let escapeB { #expect(try isLive(escapeB)) }
         #expect(await context.runtime.codexServerSessionIDs() == [serverBSession])
         try await bScreen.send("approve after sibling stop")
-        #expect(await SessionRuntimeTests.waitUntil {
+        try #require(await SessionRuntimeTests.waitUntil(Self.processStartWait) {
             await context.events.snapshot().sessions[b.sessionID]?.userRequests.count == 1
         })
         #expect(await context.events.snapshot().sessions[a.sessionID]?.userRequests.isEmpty ?? true)
         let request = try #require(await context.events.snapshot().sessions[b.sessionID]?.userRequests.first)
         try await context.runtime.respond(sessionID: b.sessionID, requestID: request.id, decision: .accept)
-        #expect(await bScreen.contains("CODEX-TURN-DONE completed approved"))
+        #expect(await bScreen.contains("CODEX-TURN-DONE completed approved", timeout: Self.processStartWait))
 
         #expect((await context.runtime.shutdown()).succeeded)
         #expect(try !isLive(tuiB))
