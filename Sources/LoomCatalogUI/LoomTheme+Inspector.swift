@@ -36,22 +36,13 @@ extension LoomTheme {
         /// inspector sits when it overlays the content (DESIGN §3 Text).
         static func quiet(overlays: Bool) -> ContrastStyle { overlays ? Text.secondaryStyle : Text.tertiaryStyle }
 
-        // An agent row: a card with a 22 pt mark, the type and description, and the time.
-        static let agentPaddingH: CGFloat = 12
-        static let agentPaddingV: CGFloat = 8
-        static let agentMark: CGFloat = 22
-        static let agentMarkRadius: CGFloat = 6
-        static let agentMarkGlyph = Font.system(size: 12)
-        static let agentColumnGap: CGFloat = 8
-        static let agentLineGap: CGFloat = 4
+        // The Agents tab's list and transcript are `LoomTheme.Agents`. A subagent a subagent started is indented one step per level.
         static let agentIndent: CGFloat = 8
         static let agentMaxIndent = 2
-        static let agentMarkWash = Opacity.accentTint
-
-        // The drill-down header over a transcript.
-        static let detailHeaderGap: CGFloat = 8
-        static let backGap: CGFloat = 4
-        static let backGlyph = Font.system(size: 11, weight: .semibold)
+        // No longer drawn (the I6b Agents rows are `LoomTheme.Agents`); kept while `HighlightTests`' grid list names them.
+        static let agentPaddingV: CGFloat = 8
+        static let agentColumnGap: CGFloat = 8
+        static let agentLineGap: CGFloat = 4
     }
 }
 

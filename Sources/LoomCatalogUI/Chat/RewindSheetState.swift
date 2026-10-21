@@ -128,24 +128,6 @@ struct RewindUndoPrompt: Identifiable {
     let directory: String?
 }
 
-/// The keys of the sheet: Esc cancels, and Return does nothing (it never confirms a rewind).
-enum RewindSheetKeys {
-    enum Reaction: Equatable {
-        case cancel
-        /// The key is taken and nothing happens.
-        case swallow
-        case ignore
-    }
-
-    static func reaction(to key: KeyEquivalent) -> Reaction {
-        switch key {
-        case .escape: .cancel
-        case .return: .swallow
-        default: .ignore
-        }
-    }
-}
-
 @MainActor @Observable
 final class RewindState {
     var sheet: RewindSheetState?

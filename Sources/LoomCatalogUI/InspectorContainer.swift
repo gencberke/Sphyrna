@@ -192,6 +192,28 @@ enum InspectorPlacement: Equatable {
     }
 }
 
+/// The inspector's layout for a detail pane this wide, as one value (pure, so a test reads it): where it goes, how wide it is drawn
+/// and what the content keeps. The width is the open one (`CatalogModel.shownInspectorWidth`): the tab's, or the review width while
+/// the Agents tab shows a transcript; the overlay rule takes that same width.
+struct InspectorLayout: Equatable {
+    let placement: InspectorPlacement
+    let inspectorWidth: CGFloat
+    let contentWidth: CGFloat
+
+    init(open: Bool, detailWidth: CGFloat, openWidth: CGFloat) {
+        placement = InspectorPlacement.of(open: open, detailWidth: detailWidth, inspectorWidth: openWidth)
+        inspectorWidth = placement.inspectorWidth(detailWidth: detailWidth, tabWidth: openWidth)
+        contentWidth = placement.contentWidth(detailWidth: detailWidth, inspectorWidth: openWidth)
+    }
+}
+
+extension CatalogModel {
+    /// The selected session's inspector layout in a detail pane `detailWidth` wide.
+    func inspectorLayout(detailWidth: CGFloat) -> InspectorLayout {
+        InspectorLayout(open: inspector.isOpen(for: selectedSessionID), detailWidth: detailWidth, openWidth: shownInspectorWidth)
+    }
+}
+
 extension View {
     /// Puts the inspector of the selected session beside the content, or over it when the pane is too narrow to
     /// keep `LoomTheme.Inspector.minimumContent` of content next to it (`InspectorPlacement`). With no selected
@@ -203,12 +225,13 @@ extension View {
     /// pass; crossing the threshold changes that width once.
     func detailInspector(model: CatalogModel) -> some View {
         let open = model.inspector.isOpen(for: model.selectedSessionID)
-        let tabWidth = model.shownInspectorTab.width
+        let openWidth = model.shownInspectorWidth
         return GeometryReader { proxy in
-            let placement = InspectorPlacement.of(open: open, detailWidth: proxy.size.width, inspectorWidth: tabWidth)
-            let width = placement.inspectorWidth(detailWidth: proxy.size.width, tabWidth: tabWidth)
+            let layout = model.inspectorLayout(detailWidth: proxy.size.width)
+            let placement = layout.placement
+            let width = layout.inspectorWidth
             HStack(spacing: 0) {
-                self.frame(width: placement.contentWidth(detailWidth: proxy.size.width, inspectorWidth: tabWidth))
+                self.frame(width: layout.contentWidth)
                 if placement == .column {
                     InspectorContainer(model: model, width: width).transition(.identity)
                 }
@@ -221,8 +244,9 @@ extension View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // The tab's width is part of the layout: switching to or from Changes resizes the pane once, like a toggle.
-        .transaction(value: InspectorWidthKey(open: open, tab: model.shownInspectorTab)) { $0.animation = nil; $0.disablesAnimations = true }
+        // The open width is part of the layout: switching to or from Changes, or opening or closing a subagent's transcript, resizes
+        // the pane once, like a toggle.
+        .transaction(value: InspectorWidthKey(open: open, tab: model.shownInspectorTab, width: openWidth)) { $0.animation = nil; $0.disablesAnimations = true }
         .task(id: model.inspectorContextSessions) { model.trackInspectorContext() }
         // Changes reads only while its tab is open on this session: the key is nil otherwise (`CatalogModel+Changes`).
         .task(id: model.changesTrigger) { await model.runChangesRead() }
@@ -239,4 +263,5 @@ extension View {
 private struct InspectorWidthKey: Equatable {
     let open: Bool
     let tab: InspectorTab
+    let width: CGFloat
 }

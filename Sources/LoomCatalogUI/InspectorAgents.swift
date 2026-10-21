@@ -7,6 +7,19 @@ import SwiftUI
 /// request waits for the user says so (V23).
 struct InspectorAgentsContent: Equatable {
     struct Row: Equatable, Identifiable {
+        /// The tree's status column: the working spinner, the attention dot, or nothing once finished (DESIGN §4).
+        enum Status: Equatable {
+            case working
+            case waiting
+            case none
+        }
+
+        /// The small line under the description: "Waiting for you" in the attention text, or "Interrupted" in secondary.
+        struct Note: Equatable {
+            let text: String
+            let isAttention: Bool
+        }
+
         let id: String
         let title: String
         let detail: String?
@@ -19,6 +32,13 @@ struct InspectorAgentsContent: Equatable {
         /// "now" or "4m" for a running subagent, "41s" for a finished one.
         let time: String
         let accessibilityLabel: String
+
+        var status: Status { isWaiting ? .waiting : isRunning ? .working : .none }
+
+        var underLine: Note? {
+            if isWaiting { return Note(text: InspectorAgentsContent.waitingText, isAttention: true) }
+            return note.map { Note(text: $0, isAttention: false) }
+        }
     }
 
     let running: [Row]
@@ -28,11 +48,13 @@ struct InspectorAgentsContent: Equatable {
     var count: Int { running.count + finished.count }
 
     static let waitingText = "Waiting for you"
+    static let runningTitle = "Running"
+    static let finishedTitle = "Finished"
 
     init(records: [SubagentRecord], now: Date, waiting: Set<String> = []) {
         func row(_ record: SubagentRecord) -> Row {
             let type = record.agentType.isEmpty ? "Subagent" : record.agentType
-            let time = record.endedAt.map { SubagentTreeContent.duration(from: record.startedAt, to: $0) }
+            let time = record.endedAt.map { SubagentPillContent.duration(from: record.startedAt, to: $0) }
                 ?? RelativeTime.string(from: record.startedAt, to: now)
             let state = SubagentPillContent(record: record, now: now).label
             let isWaiting = record.isRunning && waiting.contains(record.id)
@@ -48,7 +70,34 @@ struct InspectorAgentsContent: Equatable {
     }
 }
 
-/// The Agents tab: the session's subagents; a click on one reads its transcript below a back control.
+/// The keys of an open transcript: Esc goes back to the list, as "‹ Agents" does. Other keys are not the tab's.
+enum AgentsTranscriptKeys {
+    enum Reaction: Equatable {
+        case back
+        case ignore
+    }
+
+    static func reaction(to key: KeyEquivalent) -> Reaction { key == .escape ? .back : .ignore }
+}
+
+extension InspectorAgents {
+    /// The inspector's width for a tab: an open transcript takes the review width, 556, as Changes does; the list keeps the tab's
+    /// own (328). The width follows the click that opens or closes the transcript, and never animates (a width change is a PTY resize).
+    nonisolated static func width(tab: InspectorTab, showsTranscript: Bool) -> CGFloat {
+        tab == .agents && showsTranscript ? LoomTheme.Rhythm.inspectorWidthReview : tab.width
+    }
+}
+
+extension CatalogModel {
+    /// The open inspector's width: the shown tab's, or the review width while the Agents tab shows the selected session's
+    /// subagent transcript.
+    var shownInspectorWidth: CGFloat {
+        let showsTranscript = viewedSubagent != nil && viewedSubagent?.sessionID == selectedSessionID && subagentPanel != nil
+        return InspectorAgents.width(tab: shownInspectorTab, showsTranscript: showsTranscript)
+    }
+}
+
+/// The Agents tab: the session's subagents; a click on one reads its transcript in the list's place, under "‹ Agents".
 /// The terminal stays on screen beside it.
 struct InspectorAgents: View {
     let model: CatalogModel
@@ -78,18 +127,19 @@ struct InspectorAgents: View {
         let content = InspectorAgentsContent(records: records ?? [], now: model.now, waiting: SubagentWaiting.ids(in: row.live))
         let readsFolder = model.agentsFolderIsReadable(row)
         return ScrollView {
-            VStack(alignment: .leading, spacing: LoomTheme.Inspector.sectionGap) {
+            VStack(alignment: .leading, spacing: LoomTheme.Agents.sectionGap) {
                 if content.isEmpty, records != nil {
-                    Text(Self.emptyText(isRunning: model.isRunning(row), readsFolder: readsFolder))
-                        .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    InspectorEmptyState(text: Self.emptyText(isRunning: model.isRunning(row), readsFolder: readsFolder))
                 }
                 if !content.running.isEmpty {
-                    InspectorSection(title: "Running", note: "\(content.running.count)") {
+                    InspectorSection(title: InspectorAgentsContent.runningTitle, note: "\(content.running.count)",
+                                     noteFollowsTitle: true, titleGap: LoomTheme.Agents.headGap) {
                         rows(content.running)
                     }
                 }
                 if !content.finished.isEmpty {
-                    InspectorSection(title: "Finished", note: "\(content.finished.count)") {
+                    InspectorSection(title: InspectorAgentsContent.finishedTitle, note: "\(content.finished.count)",
+                                     noteFollowsTitle: true, titleGap: LoomTheme.Agents.headGap) {
                         rows(content.finished)
                     }
                 }
@@ -100,7 +150,7 @@ struct InspectorAgents: View {
     }
 
     private func rows(_ rows: [InspectorAgentsContent.Row]) -> some View {
-        VStack(spacing: LoomTheme.Inspector.rowGap) {
+        VStack(spacing: LoomTheme.Agents.cardGap) {
             ForEach(rows) { agent in
                 InspectorAgentRow(agent: agent) { model.openSubagent(agent.id, in: row.id) }
                     .padding(.leading, CGFloat(min(agent.depth - 1, LoomTheme.Inspector.agentMaxIndent))
@@ -109,26 +159,28 @@ struct InspectorAgents: View {
         }
     }
 
-    /// A subagent open: a back control and its state, its name, then the transcript.
+    /// A subagent open: "‹ Agents" and its state pill, its name and the notice of a request that waits, then the transcript.
     private func detail(viewed: ViewedSubagent, panel: SubagentTranscriptModel) -> some View {
         let record = model.viewedSubagentRecord()
         let notice = SubagentWaiting.notice(
             agentID: viewed.agentID, record: record, state: row.live, indicator: row.indicator, endpoint: model.runEndpoint(of: row))
+        let isWaiting = record?.isRunning == true && SubagentWaiting.ids(in: row.live).contains(viewed.agentID)
+        let finished = record.map { $0.endedAt != nil && !$0.wasInterrupted } ?? false
         return VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: LoomTheme.Inspector.detailHeaderGap) {
-                HStack {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: LoomTheme.Space.detailSpacing) {
                     Button { model.closeSubagent() } label: {
-                        HStack(spacing: LoomTheme.Inspector.backGap) {
-                            Image(systemName: "chevron.left").font(LoomTheme.Inspector.backGlyph)
+                        HStack(spacing: LoomTheme.Agents.backGap) {
+                            Image(systemName: "chevron.left").font(LoomTheme.Agents.backGlyph)
                                 .accessibilityHidden(true)
-                            Text("Agents").font(LoomTheme.Typography.small)
+                            Text("Agents").projectType(LoomTheme.Agents.back).foregroundStyle(LoomTheme.Text.primary)
                         }
-                        .padding(.horizontal, LoomTheme.Header.backLeading)
-                        .frame(height: LoomTheme.Header.groupHeight)
+                        .padding(.leading, LoomTheme.Agents.backLeading).padding(.trailing, LoomTheme.Agents.backTrailing)
+                        .frame(height: LoomTheme.Agents.backHeight)
+                        .background(RoundedRectangle(cornerRadius: LoomTheme.Agents.backRadius).fill(LoomTheme.Highlight.hover))
+                        .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Agents.backRadius))
                     }
-                    .buttonStyle(HeaderSegmentStyle()).focusEffectDisabled()
-                    .background(LoomTheme.Header.group)
-                    .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
+                    .buttonStyle(RowButtonStyle(radius: LoomTheme.Agents.backRadius, key: "agents-back")).focusEffectDisabled()
                     .help("Back to the list of agents")
                     .accessibilityLabel("Back to the list of agents")
                     Spacer(minLength: LoomTheme.Space.detailMinSpacer)
@@ -139,73 +191,85 @@ struct InspectorAgents: View {
                         }
                     }
                 }
-                Text(SubagentTitle.text(record)).font(LoomTheme.Typography.bodyStrong)
-                    .foregroundStyle(LoomTheme.Text.primary).lineLimit(2).textSelection(.enabled)
+                Text(SubagentTitle.text(record)).projectType(LoomTheme.Agents.name)
+                    .foregroundStyle(LoomTheme.Text.primary).lineLimit(LoomTheme.Agents.nameLines).textSelection(.enabled)
+                    .padding(.top, LoomTheme.Agents.nameTop)
                 if let notice {
                     SubagentWaitingNotice(notice: notice) { model.showAgentRequest(agentID: viewed.agentID, in: row.id) }
+                        .padding(.top, LoomTheme.Agents.noticeTop)
                 }
             }
-            .padding(.horizontal, LoomTheme.Inspector.bodyInset).padding(.top, LoomTheme.Inspector.bodyInset)
-            .padding(.bottom, LoomTheme.Inspector.detailHeaderGap)
+            .padding(.horizontal, LoomTheme.Agents.headerInset)
+            .padding(.top, LoomTheme.Agents.headerTop).padding(.bottom, LoomTheme.Agents.headerBottom)
             Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
                 .accessibilityHidden(true)
             // One view per panel model: a new model (the same subagent opened again) is put on screen too.
-            SubagentTranscriptView(panel: panel).id(ObjectIdentifier(panel))
+            SubagentTranscriptView(panel: panel, isWaiting: isWaiting, isFinished: finished).id(ObjectIdentifier(panel))
+        }
+        // Esc goes back, as "‹ Agents" does, while the focus is in the tab; it never reaches past it into the terminal.
+        .focusable().focusEffectDisabled()
+        .onKeyPress(phases: .down) { press in
+            guard AgentsTranscriptKeys.reaction(to: press.key) == .back else { return .ignored }
+            model.closeSubagent()
+            return .handled
         }
     }
 }
 
-/// One subagent as a card in the list: a mark, the type over the description, and the time on the right.
+/// One subagent as a card in the list (DESIGN §4): the tree's status column, the type and the time on the first line, the
+/// description under them, and "Waiting for you" or "Interrupted" under that. No badge and no accent.
 struct InspectorAgentRow: View {
+    typealias Metrics = LoomTheme.Agents
     let agent: InspectorAgentsContent.Row
     let open: () -> Void
 
     var body: some View {
         Button(action: open) {
-            HStack(alignment: .top, spacing: LoomTheme.Inspector.agentColumnGap) {
-                Image(systemName: "person.crop.circle").font(LoomTheme.Inspector.agentMarkGlyph)
-                    .foregroundStyle(LoomTheme.Accent.high)
-                    .frame(width: LoomTheme.Inspector.agentMark, height: LoomTheme.Inspector.agentMark)
-                    .background(RoundedRectangle(cornerRadius: LoomTheme.Inspector.agentMarkRadius)
-                        .fill(LoomTheme.Accent.base.opacity(LoomTheme.Inspector.agentMarkWash)))
+            HStack(alignment: .top, spacing: Metrics.columnGap) {
+                status.frame(width: Metrics.statusColumn, height: Metrics.statusHeight)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: LoomTheme.Inspector.agentLineGap) {
-                    Text(agent.title).font(LoomTheme.Typography.smallMedium).foregroundStyle(LoomTheme.Accent.high)
-                        .lineLimit(1)
-                    if let detail = agent.detail {
-                        Text(detail).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                            .lineLimit(2).multilineTextAlignment(.leading)
+                VStack(alignment: .leading, spacing: Metrics.lineGap) {
+                    HStack(alignment: .firstTextBaseline, spacing: Metrics.columnGap) {
+                        Text(agent.title).projectType(Metrics.type).foregroundStyle(LoomTheme.Text.primary)
+                            .lineLimit(1).truncationMode(.tail)
+                        Spacer(minLength: 0)
+                        Text(agent.time).projectType(Metrics.time).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                            .lineLimit(1).fixedSize()
                     }
-                    if agent.isWaiting {
+                    .frame(minHeight: Metrics.statusHeight)
+                    if let detail = agent.detail {
+                        Text(detail).projectType(Metrics.detail).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                            .lineLimit(Metrics.detailLines).multilineTextAlignment(.leading)
+                    }
+                    if let note = agent.underLine {
                         // The attention text tone, AA on every surface of the inspector (`ThemeAppearanceTests`).
-                        Text(InspectorAgentsContent.waitingText).font(LoomTheme.Typography.caption)
-                            .foregroundStyle(LoomTheme.Status.attentionLight)
-                            .accessibilityIdentifier("agent-waiting:\(agent.id)")
-                    } else if let note = agent.note {
-                        Text(note).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                        Text(note.text).projectType(Metrics.note)
+                            .foregroundStyle(note.isAttention ? AnyShapeStyle(LoomTheme.Status.attentionLight)
+                                                              : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
+                            .accessibilityIdentifier(note.isAttention ? "agent-waiting:\(agent.id)" : "agent-note:\(agent.id)")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                HStack(spacing: LoomTheme.Space.subagentTextGap) {
-                    if agent.isWaiting {
-                        IndicatorView(indicator: .waitingForApproval)
-                    } else if agent.isRunning {
-                        IndicatorView(indicator: .working)
-                    }
-                    Text(agent.time).font(LoomTheme.Typography.subagentTime)
-                        .foregroundStyle(LoomTheme.Text.secondaryStyle)
-                }
             }
-            .padding(.horizontal, LoomTheme.Inspector.agentPaddingH).padding(.vertical, LoomTheme.Inspector.agentPaddingV)
+            .padding(.horizontal, Metrics.cardPaddingH)
+            .padding(.top, Metrics.cardPaddingTop).padding(.bottom, Metrics.cardPaddingBottom)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.card).fill(LoomTheme.Surface.card))
-            .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.card)
+            .background(RoundedRectangle(cornerRadius: Metrics.cardRadius).fill(Metrics.cardFill))
+            .overlay(RoundedRectangle(cornerRadius: Metrics.cardRadius)
                 .strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
-            .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.card))
+            .contentShape(RoundedRectangle(cornerRadius: Metrics.cardRadius))
         }
         // The card keeps its own fill; the shared pill's hover and press tones lie over it.
-        .buttonStyle(RowButtonStyle(radius: LoomTheme.Radius.card, key: "agent-row:\(agent.id)")).focusEffectDisabled()
+        .buttonStyle(RowButtonStyle(radius: Metrics.cardRadius, key: "agent-row:\(agent.id)")).focusEffectDisabled()
         .accessibilityLabel(agent.accessibilityLabel)
         .accessibilityHint("Shows the transcript")
+    }
+
+    @ViewBuilder private var status: some View {
+        switch agent.status {
+        case .working: IndicatorView(indicator: .working)
+        case .waiting: IndicatorView(indicator: .waitingForApproval)
+        case .none: Color.clear
+        }
     }
 }

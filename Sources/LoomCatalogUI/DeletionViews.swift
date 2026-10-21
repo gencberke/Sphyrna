@@ -1,22 +1,62 @@
 import LoomCore
 import SwiftUI
 
+/// Delete's facts for one session (DESIGN §6 Sheets, D-78): one lead sentence that ends "This can't be undone.", then what goes
+/// under "Removed" with the count, size and folder in mono, and what stays under "Kept". Every word comes from the runtime's dry run
+/// (`ConversationDeletionPreview`), as the paragraph it replaces did (`DeletionCopy.confirmBody`); Settings' cleanup Delete reads the
+/// same lists (`DeleteSheetText`).
+struct DeleteSessionFacts: Equatable {
+    static let removedTitle = "Removed"
+    static let keptTitle = "Kept"
+    /// One session's transcript; with side chats there is one per session, as the cleanup's Delete says.
+    static let removedItems = ["The transcript and the subagent transcripts", "File snapshots and session folders"]
+
+    let lead: String
+    let removed: [String]
+    /// "3 files · 10 bytes · in ~/.claude".
+    let totals: String
+    let kept: [String]
+
+    init(_ preview: ConversationDeletionPreview) {
+        let sideChats = preview.sideChatCount
+        let who = sideChats > 0 ? "it and its \(sideChats) side chat\(sideChats == 1 ? "" : "s")" : "it"
+        let theirs = sideChats > 0 ? "them" : "it"
+        let action = "removes \(who) from Loom and deletes Claude's local files for \(theirs)"
+        lead = (preview.isRunning ? "It is running now, so Loom stops it first, then \(action)" : "Loom \(action)")
+            + ". This can't be undone."
+        removed = sideChats > 0 ? DeleteSheetText.removedItems : Self.removedItems
+        let files = preview.fileCount == 1 ? "1 file" : "\(preview.fileCount) files"
+        let size = preview.byteCount == 0 ? "0 bytes" : DeleteSheetText.size(preview.byteCount)
+        let folder = (preview.configDirectory as NSString).abbreviatingWithTildeInPath
+        totals = "\(files) \u{00B7} \(size) \u{00B7} in \(folder)"
+        kept = DeleteSheetText.keptItems
+    }
+}
+
 /// The confirm sheet (CP4-D). It shows what the runtime's dry run found and removes nothing itself.
 struct DeleteConversationSheet: View {
     let model: CatalogModel
     let confirmation: DeletionConfirmation
 
+    /// The sheet's buttons (D-78, "Filled means Return"): a delete has no filled button, so Return does nothing, Esc cancels and the
+    /// focus starts on Cancel; Delete Permanently is tinted in the failure tone. Remove from Loom Only, where a folder blocks the
+    /// delete, is the way out at the leading edge.
+    static func buttons(for confirmation: DeletionConfirmation, removeOnly: @escaping () -> Void,
+                        delete: @escaping () -> Void) -> (leading: SheetAction?, actions: [SheetAction]) {
+        let leading = confirmation.offersRemoveFromLoomOnly
+            ? SheetAction(id: "remove-from-loom", title: "Remove from Loom Only", perform: removeOnly)
+            : nil
+        return (leading, [SheetAction(id: "delete-permanently", title: "Delete Permanently", tint: .failure,
+                                      isEnabled: confirmation.canConfirm, perform: delete)])
+    }
+
     var body: some View {
+        let buttons = Self.buttons(
+            for: confirmation, removeOnly: { model.requestRemoveFromLoomOnly(confirmation.id) },
+            delete: { Task { await model.confirmDeletion() } })
         InkSheet(
             title: "Delete this session?", subject: confirmation.title, listsFiles: true,
-            cancel: { model.cancelDeletion() },
-            leading: confirmation.offersRemoveFromLoomOnly
-                ? SheetAction(id: "remove-from-loom", title: "Remove from Loom Only",
-                              perform: { model.requestRemoveFromLoomOnly(confirmation.id) })
-                : nil,
-            actions: [SheetAction(id: "delete-permanently", title: "Delete Permanently", tint: .failure,
-                                  isEnabled: confirmation.canConfirm,
-                                  perform: { Task { await model.confirmDeletion() } })]
+            cancel: { model.cancelDeletion() }, leading: buttons.leading, actions: buttons.actions
         ) {
             facts
         }
@@ -34,16 +74,19 @@ struct DeleteConversationSheet: View {
             }
             .padding(.top, LoomTheme.Sheet.textTop)
         case let .ready(preview):
-            SheetText(text: DeletionCopy.confirmBody(preview))
+            let facts = DeleteSessionFacts(preview)
+            SheetText(text: facts.lead)
+            SheetList(label: DeleteSessionFacts.removedTitle, items: facts.removed, meta: facts.totals)
+            SheetList(label: DeleteSessionFacts.keptTitle, items: facts.kept)
             if !preview.unreachable.isEmpty {
                 Text(DeletionCopy.unreachableNote(preview.unreachable))
-                    .projectType(LoomTheme.Sheet.text).foregroundStyle(LoomTheme.Status.failure)
+                    .projectType(LoomTheme.Sheet.text).foregroundStyle(LoomTheme.Status.failureLight)
                     .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, LoomTheme.Sheet.factGap)
+                    .padding(.top, LoomTheme.Sheet.listTop)
             }
         case let .unavailable(message):
             Text(message)
-                .projectType(LoomTheme.Sheet.text).foregroundStyle(LoomTheme.Status.failure)
+                .projectType(LoomTheme.Sheet.text).foregroundStyle(LoomTheme.Status.failureLight)
                 .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 .padding(.top, LoomTheme.Sheet.textTop)
         }
@@ -84,14 +127,5 @@ struct DeletionMenuItems: View {
         Button(Self.deleteTitle) { model.requestDeletion(row.id) }
             .disabled(reason != nil)
         if let reason { Text(reason) }
-    }
-}
-
-/// A destructive button of the control family: the failure text, with the failure wash under the pointer.
-struct DestructiveButtonStyle: ButtonStyle {
-    var size: LoomTheme.Control.Size = .regular
-
-    func makeBody(configuration: Configuration) -> some View {
-        ControlButtonStyle(kind: .destructive, size: size).makeBody(configuration: configuration)
     }
 }

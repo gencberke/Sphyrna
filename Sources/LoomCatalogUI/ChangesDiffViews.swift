@@ -316,7 +316,7 @@ struct ChangesNote: View {
         HStack(spacing: LoomTheme.Changes.stateGap) {
             if busy { ProgressView().controlSize(.small) }
             Text(verbatim: text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
-            if let retry { Button("Try again", action: retry).buttonStyle(.plain).font(LoomTheme.Typography.small) }
+            if let retry { Button("Try Again", action: retry).buttonStyle(.plain).font(LoomTheme.Typography.small) }
             if let openPath { ChangesOpenInEditor(path: openPath) }
             Spacer(minLength: 0)
         }

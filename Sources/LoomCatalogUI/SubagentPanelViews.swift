@@ -24,13 +24,23 @@ struct SubagentPillContent: Equatable {
     let indicator: SessionIndicator
     let label: String
 
+    /// A finished subagent's run in the Agents tab, to the second: "41s", "1m 34s" ("7m" on the minute), "1h 2m". The tree keeps
+    /// its own one-unit duration ("18s", "2m").
+    static func duration(from start: Date, to end: Date) -> String {
+        let seconds = max(0, Int(end.timeIntervalSince(start)))
+        if seconds < 60 { return "\(seconds)s" }
+        if seconds < 3_600 { return seconds % 60 == 0 ? "\(seconds / 60)m" : "\(seconds / 60)m \(seconds % 60)s" }
+        let minutes = (seconds % 3_600) / 60
+        return minutes == 0 ? "\(seconds / 3_600)h" : "\(seconds / 3_600)h \(minutes)m"
+    }
+
     init(record: SubagentRecord, now: Date) {
         if record.wasInterrupted {
             indicator = .idle
             label = Self.interruptedLabel
         } else if let ended = record.endedAt {
             indicator = .idle
-            label = "Finished \(SubagentTreeContent.duration(from: record.startedAt, to: ended))"
+            label = "Finished \(Self.duration(from: record.startedAt, to: ended))"
         } else {
             indicator = .working
             let elapsed = RelativeTime.string(from: record.startedAt, to: now)
@@ -40,27 +50,27 @@ struct SubagentPillContent: Equatable {
 }
 
 /// The open subagent's request waits for the user (V23). On the Chat face it says where the card is and offers "Show the
-/// request", which brings the pinned card into view in the main chat; on the terminal face it points at the session's
-/// terminal, which stays on screen beside the inspector. Opacity only, like the other notices; the text is the attention
-/// text tone (AA on the inspector surface).
+/// Request", which brings the pinned card into view in the main chat; on the terminal face it points at the session's
+/// terminal, which stays on screen beside the inspector. The attention dot, then the words in the attention text tone (AA on
+/// the inspector surface), and the button at the trailing edge (the reference's `.agnote`). Opacity only, like the other notices.
 struct SubagentWaitingNotice: View {
+    static let showTitle = "Show the Request"
+
     let notice: SubagentWaiting.Notice
     let show: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Space.detailSpacing) {
-            HStack(alignment: .firstTextBaseline, spacing: LoomTheme.Space.detailSpacing) {
-                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(LoomTheme.Status.attention).accessibilityHidden(true)
-                Text(notice.text).foregroundStyle(LoomTheme.Status.attentionLight).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: LoomTheme.Space.detailMinSpacer)
-            }
+        HStack(alignment: .center, spacing: LoomTheme.Agents.columnGap) {
+            IndicatorView(indicator: .waitingForApproval).accessibilityHidden(true)
+            Text(notice.text).foregroundStyle(LoomTheme.Status.attentionLight).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             if notice == .chat {
-                Button("Show the request", action: show)
+                Button(Self.showTitle, action: show)
                     .buttonStyle(.plain).foregroundStyle(LoomTheme.Accent.high)
                     .accessibilityIdentifier("subagent-show-request")
             }
         }
-        .font(LoomTheme.Typography.small)
+        .projectType(LoomTheme.InkType.small)
         .fadesIn()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("subagent-approval-notice")

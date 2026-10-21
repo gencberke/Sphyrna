@@ -70,7 +70,13 @@ private struct ChangesBody: View {
             }
             switch state {
             case .idle, .loading:
-                ChangesNote(text: "Reading the changes", busy: true)
+                // Git can take its time: the branch says what it runs and for how long. The turn scopes read Claude's
+                // transcript, usually in a blink.
+                if scope == .branch {
+                    ChangesBranchReading()
+                } else {
+                    ChangesNote(text: ChangesBodyWords.readingEdits, busy: true)
+                }
             case let .off(reason):
                 ChangesNote(text: reason)
             case .timedOut:
@@ -79,7 +85,7 @@ private struct ChangesBody: View {
                 ChangesNote(text: "The changes could not be read. \(message)", retry: { model.retryChanges(for: sessionID) })
             case let .ready(data):
                 if data.files.isEmpty {
-                    ChangesNote(text: ChangesBodyWords.emptyText(scope: scope, data: data))
+                    InspectorEmptyState(text: ChangesBodyWords.emptyText(scope: scope, data: data))
                 } else {
                     ChangesFileList(model: model, sessionID: sessionID, session: session, data: data)
                     if let file = session.selected[scope].flatMap({ id in data.files.first { $0.id == id } }) {
@@ -125,12 +131,36 @@ enum ChangesBodyWords {
         }
     }
 
+    static let readingEdits = "Reading the changes"
+    static let readingBranch = "Reading the branch…"
+    /// The command the branch's list comes from (`GitChanges`): the merge base it compares to is known only once the read is done.
+    static let branchCommand = "git diff --numstat -M"
+
+    /// The line under "Reading the branch…": the command and how long it has run, counted from 1 in its first second.
+    static func readingLine(elapsed: TimeInterval) -> String {
+        "\(branchCommand) \u{00B7} \(Int(max(0, elapsed)) + 1) s"
+    }
+
     static func emptyText(scope: ChangesScope, data: ChangesScopeData) -> String {
         switch scope {
         case .lastTurn: "Claude has not edited files in the last turn."
         case .wholeSession: "Claude has not edited files in this session."
         case .branch: data.onBase ? "No uncommitted changes." : "No changes against \(data.baseName ?? "the base branch")."
         }
+    }
+}
+
+/// While git reads the branch (DESIGN §13): the art's place, "Reading the branch…", and the command with its time in mono. The
+/// time counts once a second while the read runs; the view goes when the read ends, and its clock with it.
+private struct ChangesBranchReading: View {
+    @State private var start = Date()
+
+    var body: some View {
+        TimelineView(.periodic(from: start, by: 1)) { context in
+            InspectorEmptyState(text: ChangesBodyWords.readingBranch,
+                                detail: ChangesBodyWords.readingLine(elapsed: context.date.timeIntervalSince(start)))
+        }
+        .accessibilityIdentifier("changes-reading-branch")
     }
 }
 

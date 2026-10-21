@@ -476,11 +476,6 @@ enum LoomTheme {
         static let chevron = Font.system(size: 9, weight: .semibold)
         /// The pin glyph in a pinned conversation's card (second row).
         static let pinGlyph = Font.system(size: 10)
-        /// A subagent's elapsed time or duration in the inspector's Agents list.
-        static let subagentTime = Font.system(size: 10.5).monospacedDigit()
-        /// The subagent panel's transcript (FB4-5): the terminal's face at the size of the mock.
-        static let transcript = Font.system(size: 12, design: .monospaced)
-        static let transcriptStrong = Font.system(size: 12, weight: .bold, design: .monospaced)
 
         static func cardTitle(selected: Bool) -> Font { .system(size: 13, weight: selected ? .semibold : .medium) }
     }
@@ -518,9 +513,6 @@ enum LoomTheme {
         static let subagentTextGap: CGFloat = 4
         // The subagent panel's transcript (FB4-5).
         static let transcriptInset: CGFloat = 16
-        static let transcriptRowGap: CGFloat = 8
-        /// The text after the glyph column (⏺, ⎿ and ✻ take this width).
-        static let transcriptGlyphColumn: CGFloat = 18
         // Detail pane.
         static let detailInset: CGFloat = 16
         static let detailSpacing: CGFloat = 8
@@ -575,7 +567,6 @@ enum LoomTheme {
         /// The request box for an agent's "open a session": its label column, and the scroll area of the full message.
         static let requestLabelWidth: CGFloat = 52
         static let requestMessageMaxHeight: CGFloat = 160
-        static let sheetWidth: CGFloat = 420
         /// The older segment's and button's height (see `Space.settingsSegmentH`).
         static let settingsSegmentHeight: CGFloat = 24
         // Indicators.

@@ -146,13 +146,6 @@ struct RewindFilesUITests {
         await rig.finish()
     }
 
-    @Test func returnDoesNothingInTheSheetAndEscapeCancels() {
-        #expect(RewindSheetKeys.reaction(to: .return) == .swallow)
-        #expect(RewindSheetKeys.reaction(to: .escape) == .cancel)
-        #expect(RewindSheetKeys.reaction(to: .space) == .ignore)
-        #expect(RewindSheetKeys.reaction(to: KeyEquivalent("r")) == .ignore)
-    }
-
     @Test func everyRefusalHasPlainWords() {
         #expect(RewindCopy.message(for: .notAvailable(.notIdle)) == "Rewind works while the session waits for you")
         #expect(RewindCopy.message(for: .notAvailable(.stopped)) == "Resume the session to rewind its files")

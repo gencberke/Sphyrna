@@ -7,8 +7,6 @@ extension LoomTheme {
     enum Rewind {
         // MARK: The sheet
 
-        /// Paths and marks need more room than the 420 pt of a plain confirmation.
-        static let sheetWidth: CGFloat = 480
         static let fileListMaxHeight: CGFloat = 156
         /// More files than this scroll inside their box.
         static let scrollAbove = 6
