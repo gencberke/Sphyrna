@@ -94,8 +94,53 @@ struct SidebarInkLayoutTests {
         #expect(LoomTheme.Sidebar.doorHeight == 30 && LoomTheme.Sidebar.doorRadius == 8)
         #expect(LoomTheme.Sidebar.footerHeight == 46)
         #expect(LoomTheme.Sidebar.chipMeter == CGSize(width: 40, height: 4))
-        // Lines 2 and 3 of a card start under its title: the status slot, the mark and two gaps.
-        #expect(LoomTheme.Sidebar.cardTextIndent == CGFloat(12 + 12 + 8 + 8))
+        // Lines 2 and 3 of a card start under its title: the status slot, the mark (trimmed 2 and 1) and two gaps, 37 in all.
+        #expect(LoomTheme.Sidebar.cardTextIndent == 37)
+    }
+
+    // MARK: The fixes from the lunch pairs (I3f)
+
+    @Test func theActivityHeadingsStartOnTheStatusColumnsLeftEdgeAndPadAsTheReferenceDoes() {
+        typealias S = LoomTheme.Sidebar
+        // The list's 8 plus the heading's 16: 24 from the sidebar's edge, where the status column starts.
+        #expect(LoomTheme.Space.listInset + S.rowLeading == 24)
+        #expect(S.activityHeadingTop == 12 && S.activityHeadingBottom == 5 && S.activityHeadingSpacing == 6)
+        #expect(ActivityHeading.top(for: .first, hasDrafts: true) == 0, "the first heading pads nothing above")
+        #expect(ActivityHeading.top(for: .firstUnlessDrafts, hasDrafts: false) == 0)
+        #expect(ActivityHeading.top(for: .firstUnlessDrafts, hasDrafts: true) == 12, "under the Drafts it is a later heading")
+        #expect(ActivityHeading.top(for: .later, hasDrafts: false) == 12)
+        // 8 under the label in both views; the first project head adds 2, the heads that follow a group 10.
+        #expect(S.headingBottom == 8)
+        #expect(ProjectHeader.topGap(isFirst: true) == 2 && ProjectHeader.topGap(isFirst: false) == 10)
+    }
+
+    @Test func theProjectHeadsAttentionDotStandsAtTheTrailingEndOrJustBeforeTheControls() {
+        // At rest 12 from the head's edge (the content row ends 4 in); with the controls shown, before their three 22 pt buttons.
+        #expect(ProjectHeader.attentionDotTrailing(showsControls: false) == 12 - LoomTheme.Sidebar.headTrailing)
+        #expect(ProjectHeader.controlsWidth == 66)
+        #expect(ProjectHeader.attentionDotTrailing(showsControls: true) == 66)
+    }
+
+    @Test func theNewSessionRowDrawsAPlusAndTheKeyCapAndItsTextTakesPrimaryUnderThePointer() {
+        #expect(NewSessionRow.keyHint == "\u{2318}N", "the cap is the command's own key")
+        #expect(NewSessionRow.keyHint != SearchDoor.keyHint)
+        #expect(!NewSessionRow.titleIsPrimary(hovering: false) && NewSessionRow.titleIsPrimary(hovering: true))
+        #expect(LoomTheme.Sidebar.homeGlyphColumn == 16)
+    }
+
+    @Test func theListStacksItsEntriesAndTheCardsPadFiveAndSix() {
+        typealias S = LoomTheme.Sidebar
+        #expect(S.listSpacing == 0)
+        #expect(S.cardTop == 5 && S.cardBottom == 6)
+        // The trunk of a card's line still starts 7 pt under the status mark's centre, read from the card's own padding.
+        let markCentre = S.cardTop + LoomTheme.Layout.indicatorSlot.height / 2
+        #expect(LoomTheme.Branches.cardTrunkTop == markCentre + 7)
+    }
+
+    @Test func theHarnessMarkIsTrimmedSoTheTitleStarts37PointsAfterTheStatusColumnsLeftEdge() {
+        typealias S = LoomTheme.Sidebar
+        #expect(S.markTrimLeading == 2 && S.markTrimTrailing == 1)
+        #expect(S.titleIndent == 37 && S.cardTextIndent == 37)
     }
 
     @Test func aReasonLineDrawsItsCommandInMono() {

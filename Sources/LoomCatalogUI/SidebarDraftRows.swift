@@ -94,7 +94,7 @@ struct DraftRows: View {
     var body: some View {
         let drafts = Self.drafts(in: scope, of: model)
         if !drafts.isEmpty {
-            if scope == .all { ActivityHeading(title: "Drafts", count: drafts.count) }
+            if scope == .all { ActivityHeading(model: model, title: "Drafts", count: drafts.count, position: .first) }
             ForEach(drafts) { draft in
                 // The same draft is drawn by the activity view and by its project; each place is its own row.
                 DraftRow(model: model, draft: draft, showsProject: scope == .all)

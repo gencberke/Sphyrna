@@ -500,9 +500,6 @@ enum LoomTheme {
         static let listInset: CGFloat = 8
         static let listBottom: CGFloat = 8
         static let sectionInset: CGFloat = 8
-        static let sectionTop: CGFloat = 16
-        static let sectionBottom: CGFloat = 4
-        static let sectionSpacing: CGFloat = 8
         /// How far a focused row's ring sits outside its content.
         static let rowFocusOutset: CGFloat = 4
         static let emptyNoteInset: CGFloat = 16

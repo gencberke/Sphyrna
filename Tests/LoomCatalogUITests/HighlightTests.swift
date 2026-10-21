@@ -166,7 +166,7 @@ struct HighlightTests {
         let moved: [(String, CGFloat)] = [
             ("headerInset", S.headerInset), ("chipSplitGap", S.chipSplitGap),
             ("chipLimitGap", S.chipLimitGap), ("listInset", S.listInset), ("sectionInset", S.sectionInset),
-            ("sectionTop", S.sectionTop), ("sectionBottom", S.sectionBottom), ("rowFocusOutset", S.rowFocusOutset),
+            ("rowFocusOutset", S.rowFocusOutset),
             ("emptyNoteInset", S.emptyNoteInset), ("emptyNoteVertical", S.emptyNoteVertical), ("hintSpacing", S.hintSpacing),
             ("cardH", S.cardH), ("cardV", S.cardV), ("cardLineSpacing", S.cardLineSpacing),
             ("subagentTextGap", S.subagentTextGap),
@@ -198,7 +198,7 @@ struct HighlightTests {
             ("Sidebar.homeRowInset", LoomTheme.Sidebar.homeRowInset), ("Sidebar.homeRowSpacing", LoomTheme.Sidebar.homeRowSpacing),
             ("Sidebar.badgePadding", LoomTheme.Sidebar.badgePadding), ("Sidebar.doorInset", LoomTheme.Sidebar.doorInset),
             ("Sidebar.doorBottom", LoomTheme.Sidebar.doorBottom), ("Sidebar.doorSpacing", LoomTheme.Sidebar.doorSpacing),
-            ("Sidebar.headingInset", LoomTheme.Sidebar.headingInset), ("Sidebar.headTop", LoomTheme.Sidebar.headTop),
+            ("Sidebar.headingInset", LoomTheme.Sidebar.headingInset),
             ("Sidebar.headTrailing", LoomTheme.Sidebar.headTrailing), ("Sidebar.headerTrailing", LoomTheme.Sidebar.headerTrailing),
             ("Sidebar.metaSpacing", LoomTheme.Sidebar.metaSpacing),
             ("Chat.columnPadding", LoomTheme.Chat.columnPadding), ("Chat.workRowPaddingH", LoomTheme.Chat.workRowPaddingH),

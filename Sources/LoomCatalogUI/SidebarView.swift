@@ -104,32 +104,45 @@ struct NewSessionRow: View {
     let model: CatalogModel
 
     static let title = "New session"
+    static let key = "sidebar-new-session"
+    @State private var hovering = false
+
+    /// The key cap at the trailing end, from the command's own key (⌘N), so the cap and the shortcut never differ.
+    static var keyHint: String {
+        PaletteKeyHint.text(modifiers: ShellCommand.newSession.modifiers, key: ShellCommand.newSession.keyEquivalent)
+    }
+
+    /// The row is an action: its text is secondary and takes primary under the pointer (the reference's `.row.act`).
+    static func titleIsPrimary(hovering: Bool) -> Bool { hovering }
 
     var body: some View {
         // Whether Claude can start at all is asked here. A start somewhere else does not matter: the row opens a draft, it
         // starts nothing, and the project is read when the row is clicked.
         let enabled = model.newSessionRowAvailable
+        let primary = Self.titleIsPrimary(hovering: hovering || LookEvidence.forcesHover(Self.key))
         Button { model.beginNewSessionInRecentProject() } label: {
             HStack(spacing: LoomTheme.Sidebar.homeRowSpacing) {
-                Image(systemName: "square.and.pencil").font(LoomTheme.Sidebar.homeGlyph)
+                Image(systemName: "plus").font(LoomTheme.Sidebar.newSessionGlyph)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle).accessibilityHidden(true)
                     .frame(width: LoomTheme.Sidebar.homeGlyphColumn)
                 Text(Self.title).font(LoomTheme.Sidebar.lineTitle)
-                    .foregroundStyle(LoomTheme.Text.primary)
+                    .foregroundStyle(primary ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
                 Spacer(minLength: LoomTheme.Space.headerSpacing)
+                SidebarKeyCap(text: Self.keyHint)
             }
             .padding(.horizontal, LoomTheme.Sidebar.homeRowInset)
             .frame(height: LoomTheme.Sidebar.homeRowHeight)
             .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusCompact))
         }
-        .buttonStyle(RowButtonStyle(radius: LoomTheme.Highlight.radiusCompact, key: "sidebar-new-session"))
+        .buttonStyle(RowButtonStyle(radius: LoomTheme.Highlight.radiusCompact, key: Self.key))
         .focusEffectDisabled()
+        .onHover { hovering = $0 }
         .disabled(!enabled)
         .padding(.horizontal, LoomTheme.Space.listInset)
         .padding(.bottom, LoomTheme.Sidebar.homeRowBottom)
         .accessibilityLabel(Self.title)
         .accessibilityAddTraits(.isButton)
-        .accessibilityIdentifier("sidebar-new-session")
+        .accessibilityIdentifier(Self.key)
         .help("New session in the project you used last (\u{2318}N on Home does the same)")
     }
 }
@@ -159,7 +172,7 @@ struct SidebarList: View {
         GeometryReader { viewport in
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: LoomTheme.Space.cardGap) {
+                    LazyVStack(alignment: .leading, spacing: LoomTheme.Sidebar.listSpacing) {
                         switch model.viewMode {
                         case .activity: ActivityList(model: model)
                         case .projects: ProjectList(model: model)
@@ -201,11 +214,12 @@ struct ActivityList: View {
             let lastRowID = layout.lastRowID
             DraftRows(model: model)
             if !layout.active.isEmpty {
-                ActivityHeading(title: "Active", count: layout.active.count)
+                ActivityHeading(model: model, title: "Active", count: layout.active.count, position: .firstUnlessDrafts)
                 ForEach(layout.active) { row in activityEntry(row, lastRowID: lastRowID) }
             }
             ForEach(layout.days) { section in
-                ActivityHeading(title: section.title)
+                ActivityHeading(model: model, title: section.title,
+                                position: layout.active.isEmpty && section.id == layout.days.first?.id ? .firstUnlessDrafts : .later)
                 ForEach(section.rows) { row in activityEntry(row, lastRowID: lastRowID) }
             }
             if list.hasMore { ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(LoomTheme.Space.loadingPadding) }
@@ -220,20 +234,45 @@ struct ActivityList: View {
     }
 }
 
-/// A heading of the activity list (Drafts, Active or a day): 11.5 medium tertiary, the count in mono.
+/// A heading of the activity list (Drafts, Active or a day): 11.5 medium tertiary, the count in mono 6 apart. It starts on the
+/// status column's left edge, pads 12 above and 5 below, and the list's first heading pads nothing above.
 struct ActivityHeading: View {
+    /// Where the heading stands in the list.
+    enum Position {
+        /// The list's first entry: Drafts.
+        case first
+        /// The first entry unless drafts stand above it: Active, or the first day when nothing is Active.
+        case firstUnlessDrafts
+        case later
+    }
+
+    let model: CatalogModel
     let title: String
     var count: Int?
+    var position = Position.later
+
+    /// The padding above a heading; `hasDrafts` matters only for a heading that may follow the drafts.
+    static func top(for position: Position, hasDrafts: Bool) -> CGFloat {
+        switch position {
+        case .first: 0
+        case .firstUnlessDrafts: hasDrafts ? LoomTheme.Sidebar.activityHeadingTop : 0
+        case .later: LoomTheme.Sidebar.activityHeadingTop
+        }
+    }
 
     var body: some View {
-        HStack(spacing: LoomTheme.Space.sectionSpacing) {
+        // Only the heading that may follow the drafts reads them, so a keystroke in a draft redraws this line and not the list.
+        let hasDrafts = position == .firstUnlessDrafts && !DraftRows.drafts(in: .all, of: model).isEmpty
+        HStack(alignment: .firstTextBaseline, spacing: LoomTheme.Sidebar.activityHeadingSpacing) {
             Text(title).font(LoomTheme.Sidebar.sectionFont)
             if let count { Text("\(count)").font(LoomTheme.Sidebar.sectionCountFont) }
         }
         .foregroundStyle(LoomTheme.Text.tertiaryStyle)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
-        .padding(.horizontal, LoomTheme.Space.sectionInset).padding(.top, LoomTheme.Space.sectionTop).padding(.bottom, LoomTheme.Space.sectionBottom)
+        .padding(.leading, LoomTheme.Sidebar.rowLeading).padding(.trailing, LoomTheme.Space.sectionInset)
+        .padding(.top, Self.top(for: position, hasDrafts: hasDrafts))
+        .padding(.bottom, LoomTheme.Sidebar.activityHeadingBottom)
     }
 }
 
@@ -250,7 +289,7 @@ struct ProjectList: View {
             EmptyListHint(isLoaded: model.isReady)
         }
         ForEach(model.projects) { project in
-            ProjectHeader(model: model, project: project)
+            ProjectHeader(model: model, project: project, isFirst: project.id == model.projects.first?.id)
             let list = model.list(for: .project(project.id))
             if !project.collapsed {
                 DraftRows(model: model, scope: .project(project.id))
@@ -319,7 +358,7 @@ struct SectionTitle: View {
         }
         .padding(.leading, LoomTheme.Sidebar.headLeading)
         .frame(height: LoomTheme.InkHeight.sidebarRow)
-        .padding(.top, LoomTheme.Sidebar.headTop)
+        .padding(.top, LoomTheme.Sidebar.groupGap)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }
@@ -332,6 +371,8 @@ struct SectionTitle: View {
 struct ProjectHeader: View {
     let model: CatalogModel
     let project: CatalogProject
+    /// The list's first head sits closer to the label than the heads that follow a group.
+    var isFirst = false
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @State private var hovering = false
     @FocusState private var focused: Control?
@@ -344,6 +385,18 @@ struct ProjectHeader: View {
 
     /// Whether the chevron, `+` and ⋯ are drawn: under the pointer, or while one of them has the keyboard.
     static func showsControls(hovering: Bool, focused: Bool) -> Bool { hovering || focused }
+
+    /// The room the three controls keep at the head's trailing end, drawn or not.
+    static var controlsWidth: CGFloat { 3 * LoomTheme.Layout.projectMenuButton.width }
+
+    /// How far the attention dot's trailing edge sits from the end of the head's content row: at the head's trailing end at rest,
+    /// just before the controls while they are shown.
+    static func attentionDotTrailing(showsControls: Bool) -> CGFloat {
+        showsControls ? controlsWidth : LoomTheme.Sidebar.headDotTrailing - LoomTheme.Sidebar.headTrailing
+    }
+
+    /// The gap above a head.
+    static func topGap(isFirst: Bool) -> CGFloat { isFirst ? LoomTheme.Sidebar.firstHeadTop : LoomTheme.Sidebar.groupGap }
 
     var body: some View {
         let count = model.sessionCounts[project.id] ?? 0
@@ -361,10 +414,11 @@ struct ProjectHeader: View {
                     ProjectMarkView(name: project.name, tone: model.projectTone(forProject: project.id), size: .head)
                     Text(project.name).font(LoomTheme.Sidebar.headName)
                         .foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
-                    if let attention {
-                        ProjectAttentionMark(attention: attention, differentiateWithoutColor: differentiateWithoutColor)
-                    }
                     Spacer(minLength: LoomTheme.Space.headerSpacing)
+                    // The dot itself is drawn by the overlay below; its room keeps the name from running under it.
+                    if attention != nil {
+                        Color.clear.frame(width: LoomTheme.StatusMark.dot, height: LoomTheme.StatusMark.dot)
+                    }
                 }
                 .contentShape(Rectangle())
             }
@@ -407,6 +461,14 @@ struct ProjectHeader: View {
             .help(count > 0 ? "Only an empty project can be removed" : "Project actions")
             .accessibilityLabel("Actions for \(project.name)")
         }
+        .overlay(alignment: .trailing) {
+            // The name takes the room and the dot stands at the head's trailing end (just before the controls while they show).
+            if let attention {
+                ProjectAttentionMark(attention: attention, differentiateWithoutColor: differentiateWithoutColor)
+                    .padding(.trailing, Self.attentionDotTrailing(showsControls: showsControls))
+                    .allowsHitTesting(false).accessibilityHidden(true)
+            }
+        }
         .padding(.leading, LoomTheme.Sidebar.headLeading)
         .padding(.trailing, LoomTheme.Sidebar.headTrailing)
         .frame(height: LoomTheme.InkHeight.sidebarRow)
@@ -424,7 +486,7 @@ struct ProjectHeader: View {
         .accessibilityElement(children: .contain)
         .help(project.path)
         // The gap above a head belongs to the list, not to the head's hover and click.
-        .padding(.top, LoomTheme.Sidebar.headTop)
+        .padding(.top, Self.topGap(isFirst: isFirst))
     }
 }
 
@@ -514,6 +576,17 @@ struct CardTimeLabel: View {
             .font(LoomTheme.Sidebar.timeFont)
             .foregroundStyle(onTint ? LoomTheme.Text.secondaryStyle : LoomTheme.Text.tertiaryStyle)
             .help(row.activityTooltip)
+    }
+}
+
+/// The harness's mark on a card or a row: 12 pt in a box trimmed 2 pt on the left and 1 pt on the right, as the reference draws it, so
+/// the title starts 37 pt after the status column's left edge.
+struct HarnessMark: View {
+    let provider: ManagedSession.Provider
+
+    var body: some View {
+        ProviderIcon(provider: provider)
+            .padding(.leading, -LoomTheme.Sidebar.markTrimLeading).padding(.trailing, -LoomTheme.Sidebar.markTrimTrailing)
     }
 }
 
@@ -612,7 +685,7 @@ struct SessionCardView: View {
         VStack(alignment: .leading, spacing: LoomTheme.Space.cardLineSpacing) {
             HStack(spacing: LoomTheme.Space.cardSpacing) {
                 IndicatorView(indicator: indicator)
-                ProviderIcon(provider: row.record.session.provider)
+                HarnessMark(provider: row.record.session.provider)
                 titleText(title, indicator: indicator, selected: selected)
                 Spacer(minLength: LoomTheme.Space.headerSpacing)
                 CardTimeLabel(row: row, model: model, onTint: onTint)
@@ -656,7 +729,7 @@ struct SessionCardView: View {
             .padding(.leading, LoomTheme.Sidebar.cardTextIndent)
         }
         .padding(.leading, LoomTheme.Sidebar.rowLeading).padding(.trailing, LoomTheme.Space.cardH)
-        .padding(.vertical, LoomTheme.Space.cardV)
+        .padding(.top, LoomTheme.Sidebar.cardTop).padding(.bottom, LoomTheme.Sidebar.cardBottom)
         .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radius))
     }
 
@@ -685,7 +758,7 @@ struct SessionCardView: View {
     private func lineLabel(title: String, indicator: SessionIndicator, selected: Bool, onTint: Bool) -> some View {
         HStack(spacing: LoomTheme.Space.cardSpacing) {
             IndicatorView(indicator: indicator)
-            ProviderIcon(provider: row.record.session.provider)
+            HarnessMark(provider: row.record.session.provider)
             titleText(title, indicator: indicator, selected: selected)
             if row.record.pinned {
                 Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)

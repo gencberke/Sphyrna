@@ -18,7 +18,7 @@ extension LoomTheme {
         static let lineWidth: CGFloat = 1
         /// In an activity card the line starts 7 pt under its status mark's centre, where a branch's overhang meets a
         /// 28 pt row's line, and runs down to the tree.
-        static var cardTrunkTop: CGFloat { Space.cardV + Layout.indicatorSlot.height / 2 + 7 }
+        static var cardTrunkTop: CGFloat { Sidebar.cardTop + Layout.indicatorSlot.height / 2 + overhang }
         /// A row's mark starts this far right of its branch's line.
         static let contentGap: CGFloat = 13
 

@@ -121,7 +121,7 @@ struct SubagentTreeTests {
         #expect(LoomTheme.Sidebar.rowLeading + LoomTheme.Layout.indicatorSlot.width / 2 == column)
         #expect(LoomTheme.Sidebar.headLeading + LoomTheme.ProjectMarkStyle.Size.head.side / 2 == column)
         let trunk = SubagentTrunkShape().path(in: CGRect(x: 0, y: 0, width: 260, height: 60)).boundingRect
-        #expect(trunk.minX == column + 0.5 && trunk.minY == LoomTheme.Space.cardV + 8 + 7 && trunk.maxY == 60)
+        #expect(trunk.minX == column + 0.5 && trunk.minY == LoomTheme.Sidebar.cardTop + 8 + 7 && trunk.maxY == 60)
     }
 
     @Test func eachRowHangsOnABranchAndTheLastOneEnds() {
