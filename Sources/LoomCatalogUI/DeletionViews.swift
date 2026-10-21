@@ -52,68 +52,8 @@ struct DeleteConversationSheet: View {
     }
 }
 
-/// Deletions that did not finish, or are finishing after a launch (one row each). Shown in every build:
-/// a deletion the runtime recovered must stay visible and retryable.
-struct DeletionBanner: View {
-    let model: CatalogModel
-
-    var body: some View {
-        let records = model.deletions.pending.values.sorted { ($0.requestedAt, $0.id.uuidString) < ($1.requestedAt, $1.id.uuidString) }
-        let recovery = model.deletions.recoveryFailure
-        if !records.isEmpty || recovery != nil {
-            VStack(spacing: LoomTheme.Space.bannerSpacing) {
-                if let recovery {
-                    Text(recovery).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.failure)
-                        .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
-                        .accessibilityIdentifier("deletion-recovery-failure")
-                }
-                ForEach(records) { record in
-                    DeletionBannerRow(model: model, record: record)
-                }
-            }
-            .padding(.horizontal, LoomTheme.Space.detailInset)
-            .padding(.bottom, LoomTheme.Space.bannerBottom)
-        }
-    }
-}
-
-struct DeletionBannerRow: View {
-    let model: CatalogModel
-    let record: PendingConversationDeletion
-
-    var body: some View {
-        let title = model.deletions.titles[record.id].flatMap { $0.isEmpty ? nil : $0 }
-        HStack(alignment: .top, spacing: LoomTheme.Space.bannerRowSpacing) {
-            if model.isDeleting(record.id) {
-                Text(title.map { "Deleting \($0)…" } ?? "Deleting a session…")
-                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                VStack(alignment: .leading, spacing: LoomTheme.Space.noticeLineSpacing) {
-                    Text(DeletionCopy.bannerText(lastFailure: record.lastFailure))
-                        .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.failure)
-                        .textSelection(.enabled)
-                    if let title {
-                        Text(title).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondary)
-                            .lineLimit(1).truncationMode(.tail)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Button("Try Again") { Task { await model.retryDeletion(record.id) } }
-                    .buttonStyle(AccentButtonStyle(kind: .tinted))
-                    .disabled(!model.canRetryDeletion(record.id))
-                if model.canRemoveFromLoomOnly(record.id) {
-                    Button("Remove from Loom Only") { model.requestRemoveFromLoomOnly(record.id) }
-                        .buttonStyle(AccentButtonStyle(kind: .tinted))
-                        .help("Removes the session from Loom. Claude's files are not touched.")
-                }
-            }
-        }
-        .removeFromLoomAlert(model: model, id: record.id)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("deletion-banner-\(record.id.uuidString.lowercased())")
-    }
-}
+// The deletions that did not finish, or are finishing after a launch, are boxes in the top stack (`Banners`, `BannerItems`):
+// shown in every build, because a deletion the runtime recovered must stay visible and retryable.
 
 extension View {
     /// The one alert "Remove from Loom Only" goes through, on the confirm sheet and on the banner.

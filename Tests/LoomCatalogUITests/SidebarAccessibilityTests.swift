@@ -173,8 +173,8 @@ struct SidebarAccessibilityTests {
         enableAccessibilityTree()
         let content = VStack {
             Message(symbol: "folder.badge.plus", title: "Add a project to begin", text: "Your projects appear in the sidebar.")
-            Notice(symbol: "exclamationmark.triangle.fill", color: LoomTheme.Status.failure,
-                   title: "Stop could not be verified", text: "The process is still running.")
+            Notice(RecordNotice(tone: .failure, symbol: "exclamationmark.triangle",
+                                title: "Stop could not be verified", text: "The process is still running."))
         }
         let (window, hosting) = host(content, size: NSSize(width: 500, height: 400))
         defer { window.orderOut(nil) }

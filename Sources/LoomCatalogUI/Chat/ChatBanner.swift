@@ -27,10 +27,12 @@ enum ChatBannerTone: Int, Comparable, CaseIterable {
         }
     }
 
+    /// The symbol takes the tone's text variant (the edges document's `fail-text` and `attn-text`), not the hue: the hue is for
+    /// dots and edges, and the text variant holds 4.5:1 on the box (raised 2) in both appearances.
     var symbolStyle: AnyShapeStyle {
         switch self {
-        case .failure: AnyShapeStyle(LoomTheme.Status.failure)
-        case .attention: AnyShapeStyle(LoomTheme.Status.attention)
+        case .failure: AnyShapeStyle(LoomTheme.Status.failureLight)
+        case .attention: AnyShapeStyle(LoomTheme.Status.attentionLight)
         case .note: AnyShapeStyle(LoomTheme.Text.tertiaryStyle)
         }
     }
@@ -136,30 +138,12 @@ struct ChatBannerView: View {
     }
 
     private func row(_ item: ChatBannerItem, peek: Bool) -> some View {
-        HStack(spacing: LoomTheme.ChatBanner.gap) {
-            Image(systemName: item.tone.symbol).font(LoomTheme.ChatBanner.symbol).foregroundStyle(item.tone.symbolStyle)
-                .frame(width: LoomTheme.ChatBanner.symbolSlot).accessibilityHidden(true)
-            Text(item.message).font(LoomTheme.ChatBanner.text).foregroundStyle(LoomTheme.Text.primary).lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let title = item.actionTitle {
-                Button(title) { perform(item.kind) }
-                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
-                    .accessibilityIdentifier("chat-banner-action")
-            }
-            if peek {
-                Button { open.toggle() } label: {
-                    Text(open ? "\u{2212}\(items.count - 1)" : "+\(items.count - 1)").font(LoomTheme.ChatBanner.peek)
-                        .foregroundStyle(LoomTheme.Text.tertiaryStyle).padding(.horizontal, LoomTheme.ChatBanner.peekPadding)
-                        .frame(minHeight: LoomTheme.ChatBanner.peekHeight).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(open ? "Show fewer notices" : "Show \(items.count - 1) more notices")
-                .accessibilityIdentifier("chat-banner-peek")
-            }
-            ChatIconButton(symbol: "xmark", label: "Dismiss") { dismiss(item.kind) }
-        }
-        .padding(.leading, LoomTheme.ChatBanner.paddingLeading).padding(.trailing, LoomTheme.ChatBanner.paddingTrailing)
-        .frame(minHeight: LoomTheme.ChatBanner.minHeight)
-        .pinnedSurface(radius: LoomTheme.ChatBanner.radius, fill: LoomTheme.Pinned.cardFill, edge: item.tone.edge)
+        BannerBox(
+            tone: item.tone, text: item.message, lineLimit: 2,
+            actions: item.actionTitle.map { title in
+                [BannerAction(id: "chat-banner-action", title: title, perform: { perform(item.kind) })]
+            } ?? [],
+            peek: peek ? BannerPeek(hidden: items.count - 1, open: open, identifier: "chat-banner-peek", toggle: { open.toggle() }) : nil,
+            dismiss: BannerDismiss(label: "Dismiss", perform: { dismiss(item.kind) }))
     }
 }

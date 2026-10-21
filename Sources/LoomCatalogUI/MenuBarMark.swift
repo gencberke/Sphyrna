@@ -232,7 +232,7 @@ public enum MenuBarArt {
 
     // MARK: Menu glyphs
 
-    /// A session row's dot (12 pt image, 8 pt dot) in the colour of its class; it follows the menu's appearance.
+    /// A session row's dot (12 pt image, 7 pt dot) in the colour of its class; it follows the menu's appearance.
     @MainActor
     public static func rowDotImage(_ attention: ProjectAttention) -> NSImage {
         let theme = LoomTheme.MenuBar.self

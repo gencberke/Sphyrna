@@ -229,9 +229,13 @@ struct ThemeAppearanceTests {
         for appearance in Appearance.allCases {
             for tone in PaneTone.allCases {
                 let greys = Self.greys(appearance, tone)
-                for (name, pair) in [("icon", LoomTheme.Status.attentionLightPair), ("message", LoomTheme.Text.primaryPair),
+                // The symbol takes the tone's text variant (`ChatBannerTone.symbolStyle`): the attention and the failure pair.
+                for (name, pair) in [("icon", LoomTheme.Status.attentionLightPair), ("failure icon", LoomTheme.Status.failureLightPair),
+                                     ("message", LoomTheme.Text.primaryPair),
                                      ("action", LoomTheme.Accent.basePair), ("dismiss", LoomTheme.Text.secondaryPair)] {
                     Self.floor(pair[appearance].contrast(with: greys.raised1), 4.5, "\(appearance) \(tone) banner \(name)")
+                    // The family's box itself is raised 2 (the chat's banner and the top stack).
+                    Self.floor(pair[appearance].contrast(with: greys.raised2), 4.5, "\(appearance) \(tone) banner \(name) on raised 2")
                 }
                 for (name, back) in [("header", greys.canvas), ("composer", greys.raised2)] {
                     Self.floor(LoomTheme.Text.secondaryPair[appearance].contrast(with: back), 4.5, "\(appearance) \(tone) notice on \(name)")

@@ -25,6 +25,18 @@ struct NewSessionComposer: View {
     private var sending: Bool { model.newSession.isSending(projectID) }
 
     var body: some View {
+        VStack(spacing: LoomTheme.Edges.stackGap) {
+            // The page's two notes are banners above the composer (DESIGN §19 Banners), each gone with its cause.
+            ForEach(DraftNotes.make(sendBlock: model.draftSendBlock(projectID: projectID), storeNotice: model.newSession.storeNotice)) { note in
+                BannerBox(tone: note.tone, text: note.text, selectable: true, textInsetV: LoomTheme.Edges.textInsetV,
+                          identifier: note.identifier)
+                    .fadesIn()
+            }
+            card
+        }
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topLeading) {
                 if draft.text.isEmpty {
@@ -41,23 +53,31 @@ struct NewSessionComposer: View {
             }
             .padding(.horizontal, NewSessionLayout.textInset).padding(.top, NewSessionLayout.textTop)
             .opacity(sending ? LoomTheme.Opacity.disabled : 1)
-            if let block = model.draftSendBlock(projectID: projectID) {
-                Text(block).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, NewSessionLayout.textInset).padding(.bottom, LoomTheme.Space.requestPadding)
-                    .accessibilityIdentifier("draft-send-block")
-            }
-            if let notice = model.newSession.storeNotice {
-                Text(notice).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, NewSessionLayout.textInset).padding(.bottom, LoomTheme.Space.requestPadding)
-                    .accessibilityIdentifier("draft-store-notice")
-            }
             ComposerBar(model: model, projectID: projectID, restoreFocus: { host.focusEditor() })
         }
         .composerCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("draft-composer-card")
+    }
+}
+
+/// The draft page's two notes (DESIGN §19 Banners): a message too long to start a session with is a note, and a draft that could
+/// not be saved limits what the page promises, so it is an attention banner. The heavier one comes first. Each goes with its
+/// cause.
+struct DraftNote: Equatable, Identifiable {
+    let tone: ChatBannerTone
+    let text: String
+    let identifier: String
+
+    var id: String { identifier }
+}
+
+enum DraftNotes {
+    static func make(sendBlock: String?, storeNotice: String?) -> [DraftNote] {
+        var notes: [DraftNote] = []
+        if let storeNotice { notes.append(DraftNote(tone: .attention, text: storeNotice, identifier: "draft-store-notice")) }
+        if let sendBlock { notes.append(DraftNote(tone: .note, text: sendBlock, identifier: "draft-send-block")) }
+        return notes
     }
 }
 

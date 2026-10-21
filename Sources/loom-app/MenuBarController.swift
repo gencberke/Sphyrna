@@ -91,6 +91,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             let item = target(NSMenuItem(title: spec.title, action: #selector(newSessionClicked(_:)), keyEquivalent: "n"))
             item.keyEquivalentModifierMask = [.command]
             item.isEnabled = spec.enabled
+            item.image = MenuBarArt.newSessionImage()
             return item
         case .openLoom:
             return target(NSMenuItem(title: spec.title, action: #selector(bringForwardClicked(_:)), keyEquivalent: ""))

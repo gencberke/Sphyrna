@@ -672,7 +672,7 @@ enum LoomTheme {
 
         // The menu. A session row: a 12 pt glyph, the title, and the project at the right edge.
         static let rowGlyph: CGFloat = 12
-        static let rowDot: CGFloat = 8
+        static let rowDot: CGFloat = 7
         static let titleFontSize: CGFloat = 13
         static let projectFontSize: CGFloat = 12
         /// The width of the title and project text together; the project keeps up to `projectMaxWidth`.

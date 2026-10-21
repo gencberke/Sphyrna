@@ -101,6 +101,27 @@ struct MenuBarModelTests {
         #expect(body == "enmusait · Claude is waiting for your approval.")
     }
 
+    /// DESIGN §19: the menu lists exactly the sessions the Dock counts. A failed turn the user has read leaves the Dock's set, so it
+    /// leaves the menu with it (the card keeps its red dot, as in the sidebar); working sessions are the menu's own second section.
+    @Test func theMenuListsExactlyTheSessionsTheDockCountsAReadFailureIncluded() async throws {
+        let rig = try await makeRig()
+        defer { rig.cleanup() }
+        await live(rig, 0, .failed("boom"))
+        await live(rig, 1, .failed("boom"))
+        await live(rig, 2, .waitingForInput)
+        #expect(await waitUntil { rig.model.attentionCount == 3 })
+        let menuIDs = { Set(rig.model.menuBarEntries().filter { ProjectAttention($0.indicator) != nil }.map(\.id)) }
+        #expect(menuIDs() == Set(rig.model.sessionsNeedingAttention()) && menuIDs().count == 3)
+
+        rig.model.markRead(rig.ids[1])
+        #expect(await waitUntil { rig.model.attentionCount == 2 })
+        let dock = Set(rig.model.sessionsNeedingAttention())
+        #expect(dock == [rig.ids[0], rig.ids[2]], "the read failure left the Dock's set")
+        #expect(menuIDs() == dock, "and the menu's")
+        #expect(Set(rig.model.menuBarState().needsYou.map(\.id)) == dock)
+        #expect(rig.model.menuBarState().summary.needsYou == 2)
+    }
+
     @Test func theTwoSwitchesPersistTouchNothingElseAndCallBack() async throws {
         let rig = try await makeRig()
         defer { rig.cleanup() }

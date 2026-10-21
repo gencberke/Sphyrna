@@ -69,7 +69,6 @@ struct SessionChatView: View {
         VStack(spacing: 0) {
             // A question the provider asked stays answerable while the chat is shown; Return never approves it.
             RequestList(model: model, row: row, returnApproves: false)
-            if let issue = SessionIssueNotice.message(for: row.live) { SessionIssueNotice(message: issue) }
             // A stopped session the Chat face owns has its composer instead: sending resumes it (V19).
             if Self.showsNotRunning(isRunning: model.isRunning(row)), !model.showsStoppedLiveChat(row) {
                 EndedScreenNotice(model: model, row: row, showsDetails: false)

@@ -174,7 +174,6 @@ struct DetailContent: View {
                 if let row = model.selectedRow, let terminal = model.terminalView(for: row.id) {
                     VStack(spacing: 0) {
                         RequestList(model: model, row: row, returnApproves: false)
-                        if let issue = SessionIssueNotice.message(for: row.live) { SessionIssueNotice(message: issue) }
                         TerminalHost(panel: terminal).id(ObjectIdentifier(terminal))
                     }
                 }

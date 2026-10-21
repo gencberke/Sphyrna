@@ -8,13 +8,15 @@ public struct DetailView: View {
 
     public init(model: CatalogModel) { self.model = model }
 
-    /// Whether the banner stacks above the content hold nothing (neither `Banners` nor the deletion banner draws a row).
-    static func bannersAreEmpty(_ model: CatalogModel) -> Bool {
-        Banners.isEmpty(for: model) && model.deletions.pending.isEmpty && model.deletions.recoveryFailure == nil
-    }
+    /// The top banner stack's state: whether "+N" has opened the others.
+    @State private var bannerState = BannerStackState()
+
+    /// Whether the banner stack above the content holds nothing.
+    static func bannersAreEmpty(_ model: CatalogModel) -> Bool { Banners.isEmpty(for: model) }
 
     public var body: some View {
         let route = model.detailRoute
+        let banners = Banners.items(for: model)
         // One canvas (DESIGN §2 item 2, §6 Terminal framing): no panel, no inset, no border and no second background around
         // the main pane. The sidebar and this pane are divided by the split view's hairline.
         VStack(spacing: 0) {
@@ -34,15 +36,17 @@ public struct DetailView: View {
                     if DetailHeader.drawsStrip(model: model, showsSessionHeader: route.showsSessionHeader) {
                         ConversationTabStrip(model: model)
                     }
-                    Banners(model: model)
-                    DeletionBanner(model: model)
+                    Banners(model: model, items: banners, state: bannerState)
                 }
                 // Without a header row a banner would sit under the window's buttons: it keeps the header's 52 pt above it.
-                .padding(.top, DetailPageChrome.bannerTop(route: route, bannersAreEmpty: Self.bannersAreEmpty(model)))
+                .padding(.top, DetailPageChrome.bannerTop(route: route, bannersAreEmpty: banners.isEmpty))
+                .onChange(of: banners.count) { _, count in bannerState.closeIfAlone(count) }
+                .onAppear { BannerStackState.current = bannerState }
                 .background(route.surface)
                 .contentShape(Rectangle())
                 .zIndex(1)
                 DetailContent(model: model, route: route)
+                    .environment(\.bannerStackShown, !banners.isEmpty)
                     .environment(\.detailLeadingClearance, route.drawsHeaderRow ? 0 : DetailPageChrome.leadingClearance(
                         sidebarCollapsed: model.sidebarCollapsed, isFullScreen: model.isFullScreen))
             }
@@ -300,104 +304,6 @@ struct PreparingNotice: View {
     }
 }
 
-struct Banners: View {
-    let model: CatalogModel
-
-    /// Whether the stack takes no layout space at all. The "Preparing…" notice is not part of it: a
-    /// row here would resize the terminal below (a PTY resize); it lives in the fixed-height header row.
-    static func isEmpty(for model: CatalogModel) -> Bool {
-        model.ownershipNotice == nil && model.statusMessage == nil
-            && model.errorMessage == nil && model.infoMessage == nil
-    }
-
-    private var isEmpty: Bool { Self.isEmpty(for: model) }
-
-    var body: some View {
-        VStack(spacing: LoomTheme.Space.bannerSpacing) {
-            if let notice = model.ownershipNotice {
-                Text(notice)
-                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Status.attention)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fadesIn()
-                    .accessibilityIdentifier("ownership-notice")
-            }
-            if let message = model.statusMessage {
-                Text(message)
-                    .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fadesIn()
-                    .accessibilityIdentifier("status-message")
-            }
-            if let message = model.errorMessage {
-                BannerRow(text: message, color: LoomTheme.Status.failure) { model.dismissError() }
-            }
-            if let message = model.infoMessage {
-                BannerRow(text: message, color: LoomTheme.Text.secondary) { model.dismissInfo() }
-            }
-        }
-        .padding(.horizontal, isEmpty ? 0 : LoomTheme.Space.detailInset)
-        .padding(.bottom, isEmpty ? 0 : LoomTheme.Space.bannerBottom)
-    }
-}
-
-struct BannerRow: View {
-    let text: String
-    let color: Color
-    let dismiss: () -> Void
-
-    var body: some View {
-        HStack(alignment: .top, spacing: LoomTheme.Space.bannerRowSpacing) {
-            Text(text).font(LoomTheme.Typography.small).foregroundStyle(color)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Button(action: dismiss) { Image(systemName: "xmark") }
-                .buttonStyle(.plain).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                .accessibilityLabel("Dismiss message")
-        }
-        .fadesIn()
-    }
-}
-
-/// The slim notice above the kept screen of a run that ended. Resume is never the default action (Return
-/// does nothing on an ended screen); "Show Details" lets go of the screen and
-/// shows the record. It fades in (opacity only): a height animation above the terminal would resize it.
-struct EndedScreenNotice: View {
-    let model: CatalogModel
-    let row: SessionRowModel
-    /// The kept screen offers "Show Details"; the chat view above the same notice has no screen to let go of.
-    var showsDetails = true
-
-    /// The notice text; a resume under way says so.
-    static func text(busy: ConversationBusy?) -> String {
-        busy == .resuming ? "Resuming…" : "This session is not running."
-    }
-
-    var body: some View {
-        HStack(spacing: LoomTheme.Space.detailSpacing) {
-            Text(Self.text(busy: model.busy[row.id]))
-                .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
-                .lineLimit(1)
-            Spacer(minLength: LoomTheme.Space.detailMinSpacer)
-            Button(row.record.lifecycle == .stale ? "Reactivate and Resume" : "Resume") {
-                model.resumeConversation(row.id)
-            }
-            .disabled(!model.canResume(row))
-            .buttonStyle(AccentButtonStyle(kind: .filled))
-            .onAppear { SidebarRenderProbe.appeared("resume", session: row.id) }
-            .onDisappear { SidebarRenderProbe.disappeared("resume", session: row.id) }
-            if showsDetails {
-                Button("Show Details") { model.closeEndedScreen(row.id) }
-                    .buttonStyle(ControlButtonStyle(kind: .secondary))
-                    .help("Closes this screen and shows the session's details")
-            }
-        }
-        .padding(.horizontal, LoomTheme.Space.detailInset).padding(.bottom, LoomTheme.Space.bannerBottom)
-        .fadesIn()
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("ended-screen-notice")
-    }
-}
-
 struct Message: View {
     let symbol: String
     let title: String
@@ -431,119 +337,6 @@ struct TerminalHost: NSViewRepresentable {
     let panel: NSView
     func makeNSView(context: Context) -> NSView { panel }
     func updateNSView(_ nsView: NSView, context: Context) {}
-}
-
-/// A history record without a live terminal. It states plainly what is not
-/// connected yet; nothing here can start a provider or a PTY.
-struct ConversationDetail: View {
-    let model: CatalogModel
-    let row: SessionRowModel
-    /// Shown as the Chat's fallback: the chat view already draws the requests above and, for a session without a
-    /// terminal, the notice with Resume, so this screen leaves both out rather than draw them twice (a second
-    /// request list would be a second Approve on the same question).
-    var inChat = false
-
-    nonisolated static func showsRequests(inChat: Bool) -> Bool { !inChat }
-
-    /// What Resume does, in the provider's own name.
-    nonisolated static func resumeExplanation(provider: String) -> String {
-        "Resume continues this \(provider) session in its folder. If \(provider) no longer has it, Loom says so."
-    }
-    nonisolated static func showsResume(inChat: Bool, hasTerminal: Bool) -> Bool { !inChat || hasTerminal }
-
-    /// The state line above the actions. It states what Loom knows: a pending
-    /// start, resume or stop; no run; a run without a terminal here; or that
-    /// actions are not available right now (for example while quitting).
-    nonisolated static func runStateHeading(busy: ConversationBusy?, canResume: Bool, isRunning: Bool) -> String {
-        switch busy {
-        case .starting: "Starting…"
-        case .resuming: "Resuming…"
-        case .stopping: "Stopping…"
-        case nil: canResume ? "Not running" : isRunning ? "Running" : "Not available right now"
-        }
-    }
-
-    var body: some View {
-        let record = row.record
-        let indicator = row.indicator
-        let provider = ProviderName.title(record.session.provider)
-        ScrollView {
-            VStack(alignment: .leading, spacing: LoomTheme.Space.detailSectionSpacing) {
-                HStack(spacing: LoomTheme.Space.detailTitleSpacing) {
-                    ProviderIcon(provider: record.session.provider, size: LoomTheme.Layout.providerIconDetail)
-                    VStack(alignment: .leading, spacing: LoomTheme.Space.detailLineSpacing) {
-                        Text(model.title(of: row)).font(LoomTheme.Typography.heading)
-                            .foregroundStyle(LoomTheme.Text.primary).textSelection(.enabled)
-                        Text(ProviderName.title(record.session.provider) + " session")
-                            .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
-                    }
-                }
-                if Self.showsRequests(inChat: inChat) { RequestList(model: model, row: row) }
-                if case let .stopUnverified(message) = indicator {
-                    Notice(symbol: "exclamationmark.triangle.fill", color: LoomTheme.Status.failure,
-                           title: "Stop could not be verified", text: message)
-                } else if case let .problem(message) = indicator {
-                    Notice(symbol: "exclamationmark.triangle.fill", color: LoomTheme.Status.failure,
-                           title: "This session has a problem", text: message)
-                } else if indicator == .identityUnclear {
-                    Notice(symbol: "questionmark.diamond", color: LoomTheme.Status.attention,
-                           title: "Session identity is not certain",
-                           text: "Loom could not tell which \(provider) session this is, so it changed nothing.")
-                } else if case let .failed(message) = indicator {
-                    Notice(symbol: "exclamationmark.triangle.fill", color: LoomTheme.Status.failure,
-                           title: "\(provider) reported a failure", text: message ?? "No details were provided.")
-                } else if indicator == .unviewedCompletion {
-                    Notice(symbol: "checkmark.circle", color: LoomTheme.Status.unviewed,
-                           title: "Finished while you were away", text: "\(provider) reported a completed turn.")
-                }
-                Grid(alignment: .leading, horizontalSpacing: LoomTheme.Space.factColumnSpacing, verticalSpacing: LoomTheme.Space.factRowSpacing) {
-                    Fact("Status", indicator.label ?? (record.lifecycle == .active ? "Not running" : "—"))
-                    Fact("Project", model.projectName(for: record) ?? "No project")
-                    if let origin = model.origin(of: row) { Fact("Opened by", origin.factValue) }
-                    Fact("Working directory", record.session.workingDirectory)
-                    Fact("\(provider) session ID", record.session.providerConversationID ?? "Not assigned yet")
-                    Fact("Created", LoomDateFormat.dateTime(record.createdAt))
-                    Fact("Last activity", LoomDateFormat.dateTime(record.lastActivityAt))
-                    Fact("Last used", LoomDateFormat.dateTime(record.lastUsedAt))
-                }
-                Divider().overlay(LoomTheme.Surface.hairline)
-                VStack(alignment: .leading, spacing: LoomTheme.Space.actionsSpacing) {
-                    Text(Self.runStateHeading(busy: model.busy[row.id], canResume: model.canResume(row),
-                                              isRunning: row.live?.runID != nil))
-                        .font(LoomTheme.Typography.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
-                    if let reason = model.resumeUnavailableReason(row) {
-                        Text(reason)
-                            .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
-                    } else {
-                        Text(Self.resumeExplanation(provider: provider))
-                            .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
-                    }
-                    HStack {
-                        if Self.showsResume(inChat: inChat, hasTerminal: model.isRunning(row)) {
-                            Button(record.lifecycle == .stale ? "Reactivate and Resume" : "Resume") {
-                                model.resumeConversation(row.id)
-                            }
-                            .disabled(!model.canResume(row))
-                            .buttonStyle(AccentButtonStyle(kind: .filled))
-                            .onAppear { SidebarRenderProbe.appeared("resume", session: row.id) }
-                            .onDisappear { SidebarRenderProbe.disappeared("resume", session: row.id) }
-                        }
-                        // Stop only where a run can be stopped; a session that is not running has nothing to stop.
-                        if model.canStop(row) {
-                            Button("Stop") { model.stopConversation(row.id) }
-                                .buttonStyle(ControlButtonStyle(kind: .secondary))
-                                .accessibilityIdentifier("record-stop")
-                        }
-                        Button("Rename…") { model.beginRename(row.id) }
-                            .buttonStyle(ControlButtonStyle(kind: .secondary))
-                    }
-                }
-            }
-            .padding(LoomTheme.Space.detailPadding)
-            .frame(maxWidth: LoomTheme.Layout.detailMaxWidth, alignment: .leading)
-            .frame(maxWidth: .infinity)
-        }
-    }
 }
 
 /// Questions the provider asked that only the user can answer, and the requests of this session's agent
@@ -594,41 +387,6 @@ struct RequestList: View {
                 OpenRequestBoxes(model: model, requests: openRequests)
             }
             .padding(.horizontal, LoomTheme.Space.detailInset).padding(.bottom, LoomTheme.Space.bannerBottom)
-        }
-    }
-}
-
-struct Notice: View {
-    let symbol: String
-    let color: Color
-    let title: String
-    let text: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: LoomTheme.Space.noticeSpacing) {
-            Image(systemName: symbol).foregroundStyle(color).accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: LoomTheme.Space.noticeLineSpacing) {
-                Text(title).font(LoomTheme.Typography.bodyStrong).foregroundStyle(color)
-                Text(text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.primary).textSelection(.enabled)
-            }
-        }
-        .padding(LoomTheme.Space.noticePadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.callout).fill(color.opacity(LoomTheme.Status.tintOpacity)))
-        .accessibilityElement(children: .contain)
-    }
-}
-
-struct Fact: View {
-    let name: String
-    let value: String
-    init(_ name: String, _ value: String) { self.name = name; self.value = value }
-
-    var body: some View {
-        GridRow(alignment: .firstTextBaseline) {
-            Text(name).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
-                .gridColumnAlignment(.trailing)
-            Text(value).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.primary).textSelection(.enabled)
         }
     }
 }

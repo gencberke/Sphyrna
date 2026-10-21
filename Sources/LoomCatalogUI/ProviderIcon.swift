@@ -45,6 +45,13 @@ extension ProviderImages {
     }
 }
 
+extension MenuBarArt {
+    /// Claude's mark at 14 for the menu bar's New Claude Session row (DESIGN §19: the menu carries the harness's mark). Nil where
+    /// the build carries no image.
+    @MainActor
+    public static func newSessionImage() -> NSImage? { ProviderImages.menuImage(for: .claude) }
+}
+
 /// A menu item's title with its harness's mark (14) before it; the title alone where the build carries no image.
 struct HarnessMenuLabel: View {
     let provider: ManagedSession.Provider

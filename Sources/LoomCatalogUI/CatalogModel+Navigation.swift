@@ -67,6 +67,9 @@ extension CatalogModel {
         liveStates.compactMap { id, state in
             guard let record = rowModels[id]?.record ?? liveRecords[id], !record.isSideChat else { return nil }
             let indicator = SessionIndicator(record: record, live: state, awaitingOpenApproval: awaitingOpenApproval.contains(id))
+            // The Dock's set (DESIGN §19): a failed turn that has been read leaves the menu, as it leaves the badge
+            // (`attentionCandidates`). One rule for "not read" on every surface.
+            if case .failed = indicator, state.activePhase != .endedUnread { return nil }
             guard ProjectAttention(indicator) != nil || indicator == .working else { return nil }
             let project = projectName(for: record)
             return MenuBarEntry(id: id, indicator: indicator, lastActivityAt: record.lastActivityAt,
