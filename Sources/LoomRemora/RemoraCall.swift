@@ -79,9 +79,12 @@ public struct RemoraCall: Sendable {
     /// The environment's keys, and the only ones a call's child gets. `CLAUDE_CONFIG_DIR` is set only for a profile that
     /// is not the home default (Claude names its stored login after an explicit config directory, so `~/.claude` is
     /// never passed explicitly, as for the plan-limits child); `USER` is required (without it the CLI says "Not logged in").
+    /// `DISABLE_PROMPT_CACHING=1` for every call: a brief runs once a day and is never read back, and two question packs
+    /// share only their first ~200–850 tokens (L1b), so the cache's 2× write would cost more than its reads save (L1a's
+    /// probe: a Haiku brief $0.0069 with the write, $0.0047 without).
     public static let environmentKeys: Set<String> = [
         "HOME", "PATH", "USER", "LOGNAME", "TMPDIR", "LANG", "SHELL", "TERM", "CLAUDE_CONFIG_DIR",
-        "CLAUDE_CODE_DISABLE_AGENT_VIEW", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+        "CLAUDE_CODE_DISABLE_AGENT_VIEW", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "DISABLE_PROMPT_CACHING",
     ]
 
     /// `claude`'s arguments for a model and an effort. No `--input-format` (the pack is plain text on stdin), no plugin
@@ -111,6 +114,7 @@ public struct RemoraCall: Sendable {
         if let configDirectory { result["CLAUDE_CONFIG_DIR"] = configDirectory }
         result["CLAUDE_CODE_DISABLE_AGENT_VIEW"] = "1"
         result["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+        result["DISABLE_PROMPT_CACHING"] = "1"
         return result
     }
 

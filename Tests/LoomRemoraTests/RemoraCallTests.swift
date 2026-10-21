@@ -287,11 +287,30 @@ struct RemoraCallTests {
         // (`__CF_USER_TEXT_ENCODING` is Foundation's own, set inside the fake process at start-up.)
         let keys = Set(try #require(record["environmentKeys"] as? [String])
             .filter { !$0.hasPrefix("LOOM_FAKE_") && $0 != "__CF_USER_TEXT_ENCODING" })
-        #expect(keys == RemoraCall.environmentKeys.subtracting(["CLAUDE_CONFIG_DIR"]), "environment: \(keys.sorted())")
+        #expect(keys == Self.keys.subtracting(["CLAUDE_CONFIG_DIR"]), "environment: \(keys.sorted())")
         // The work folder: the one given, made, and still empty.
         let cwd = try #require(record["cwd"] as? String)
         #expect(URL(fileURLWithPath: cwd).resolvingSymlinksInPath() == rig.work.resolvingSymlinksInPath())
         #expect(try FileManager.default.contentsOfDirectory(atPath: rig.work.path).isEmpty)
+        await rig.finish()
+    }
+
+    /// The list, spelled out: a key added fails the tests below, not only this file's source.
+    static let keys: Set<String> = [
+        "HOME", "PATH", "USER", "LOGNAME", "TMPDIR", "LANG", "SHELL", "TERM", "CLAUDE_CONFIG_DIR",
+        "CLAUDE_CODE_DISABLE_AGENT_VIEW", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "DISABLE_PROMPT_CACHING",
+    ]
+
+    /// Prompt caching is off for both kinds (the brief is never read back; two questions share too little of their packs).
+    @Test func aBriefsChildGetsTheSameListWithPromptCachingOff() async throws {
+        #expect(RemoraCall.environmentKeys == Self.keys)
+        let rig = try Rig()
+        let result = await collect(rig.call().run(RemoraRequest(kind: .brief, model: "haiku", effort: "low", pack: "brief pack")))
+        #expect(result.answer != nil)
+        let keys = Set(try #require(try rig.logged()["environmentKeys"] as? [String])
+            .filter { !$0.hasPrefix("LOOM_FAKE_") && $0 != "__CF_USER_TEXT_ENCODING" })
+        #expect(keys == Self.keys.subtracting(["CLAUDE_CONFIG_DIR"]), "environment: \(keys.sorted())")
+        #expect(RemoraCall.environment(from: [:], configDirectory: nil)["DISABLE_PROMPT_CACHING"] == "1")
         await rig.finish()
     }
 
@@ -300,12 +319,12 @@ struct RemoraCallTests {
                       "LANG": "tr_TR.UTF-8", "SHELL": "/bin/zsh", "TERM": "xterm", "ANTHROPIC_API_KEY": "secret",
                       "CLAUDE_CONFIG_DIR": "/elsewhere", "CLAUDE_CODE_OAUTH_TOKEN": "t", "OPENAI_API_KEY": "k"]
         let home = RemoraCall.environment(from: source, configDirectory: nil)
-        #expect(Set(home.keys) == RemoraCall.environmentKeys.subtracting(["CLAUDE_CONFIG_DIR"]))
+        #expect(Set(home.keys) == Self.keys.subtracting(["CLAUDE_CONFIG_DIR"]))
         #expect(home["HOME"] == "/Users/x" && home["PATH"] == "/opt/bin:/usr/bin" && home["USER"] == "x")
         #expect(home["CLAUDE_CODE_DISABLE_AGENT_VIEW"] == "1")
         #expect(home["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1")
         let pinned = RemoraCall.environment(from: source, configDirectory: "/profile")
-        #expect(Set(pinned.keys) == RemoraCall.environmentKeys)
+        #expect(Set(pinned.keys) == Self.keys)
         #expect(pinned["CLAUDE_CONFIG_DIR"] == "/profile")
         // USER is never missing (without it the CLI says "Not logged in").
         let bare = RemoraCall.environment(from: [:], configDirectory: nil)
