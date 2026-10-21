@@ -268,16 +268,14 @@ public final class SessionService {
     // MARK: Stop
 
     /// Stops the session's run. A Stop ends a handover in any phase (the user chose to end the session, not to move it):
-    /// before the point of no return the wait ends, after it the terminal does not start. `willStop` runs next, before the
-    /// session is busy and before anything is captured. `liveRunID` is the run the UI knows of when no terminal here holds it. `settled` is told when
+    /// before the point of no return the wait ends, after it the terminal does not start. `liveRunID` is the run the UI knows of when no terminal here holds it. `settled` is told when
     /// the runtime answered, after the terminal's own settling and before busy is released (the UI decides about the
     /// session's tab and shows an unverified stop there). A Stop that could not be asked is a `stopFailed`.
     @discardableResult
-    public func stop(sessionID: UUID, liveRunID: UUID?, willStop: @MainActor () -> Void = {},
+    public func stop(sessionID: UUID, liveRunID: UUID?,
                      settled: @escaping @MainActor (SessionStopOutcome) async -> Void) -> Task<Void, Never>? {
         guard transitions.busy[sessionID] != .stopping else { return nil }
         if transitions.handovers[sessionID] != nil { endHandover(sessionID) }
-        willStop()
         transitions.setBusy(sessionID, .stopping)
         // What the user sees now is what stays: taken before any signal.
         let stoppedRun = terminal?.captureForStop(sessionID: sessionID) ?? liveRunID

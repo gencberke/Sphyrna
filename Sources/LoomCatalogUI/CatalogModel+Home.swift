@@ -164,9 +164,6 @@ extension CatalogModel {
             paces: homePaces().count, reads: home.reads)
     }
 
-    /// Development evidence: Resume on a Continue card.
-    public func resumeHomeForEvidence(_ id: UUID) { resumeFromHome(id) }
-
     // MARK: Plan limits
 
     /// The pace of each plan window at the model's clock. Reading `now` here is what lets the minute tick
@@ -201,7 +198,7 @@ extension CatalogModel {
     /// Resume on a Continue card: the existing resume path, which selects the session once its run is up. The
     /// card is dropped from the list Home holds, so stopping the session again does not bring it back; the next
     /// read finds a later run and leaves it out too.
-    func resumeFromHome(_ id: UUID) {
+    public func resumeFromHome(_ id: UUID) {
         guard let held = home.quitRuns.first(where: { $0.session.session.id == id }), canResumeFromHome(held.session) else { return }
         resumeConversation(id)
         home.quitRuns.removeAll { $0.session.session.id == id }

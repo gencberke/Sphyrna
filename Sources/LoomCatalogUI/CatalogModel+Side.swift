@@ -36,6 +36,8 @@ enum SideText {
     static let discardConfirm = "Discard"
     static let discarding = "Discarding this side chat…"
     static let starting = "Starting the side chat…"
+    /// The context of the notice a failed Close leaves under the field.
+    static let closeFailed = "The side chat could not be closed"
 
     /// "Forked at 14:05 · sees the session up to then · the main session never sees it". The time is the app's own format:
     /// the time alone on the day of the fork, else with the day.
@@ -456,7 +458,7 @@ extension CatalogModel {
     }
 
     /// "New side chat": an empty thread; the next question forks again.
-    func startNewSideChat(in parent: UUID) {
+    public func startNewSideChat(in parent: UUID) {
         let session = side.session(for: parent)
         session.choseDefault = true
         let previous = session.openID
@@ -467,9 +469,17 @@ extension CatalogModel {
 
     // MARK: Asking
 
+    /// The field's own text: what the composer's binding does when the user types (the notice under the field goes).
+    public func setSideComposerText(_ text: String, in parent: UUID) {
+        let session = side.session(for: parent)
+        guard session.composerText != text else { return }
+        session.composerText = text
+        if session.notice != nil { session.notice = nil }
+    }
+
     /// The question in the field goes to the open side chat, or, with none open, starts a fork and goes to that. A message that
     /// begins with "/" is refused where it stands, before anything is forked: a side chat runs no command.
-    func submitSideQuestion(in parent: UUID) async {
+    public func submitSideQuestion(in parent: UUID) async {
         let session = side.session(for: parent)
         let text = session.composerText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !session.isBusy else { return }
@@ -538,7 +548,7 @@ extension CatalogModel {
     }
 
     nonisolated static func sideChatCloseFailedText(_ error: any Error) -> String {
-        userMessage(for: error, context: "The side chat could not be closed")
+        userMessage(for: error, context: SideText.closeFailed)
     }
 
     /// "Allow edits" for this side chat only: the driver's policy turns edits and writing commands into cards.
@@ -665,6 +675,84 @@ extension CatalogModel {
             notes.setStatus(.sent, for: answerID)
         } catch {
             notes.setStatus(.failed(Self.userMessage(for: error, context: "The note could not be sent")), for: answerID)
+        }
+    }
+}
+
+// MARK: The tab's state, for a parent that reads it (development evidence)
+
+/// What the Side tab of a session shows, as ids, booleans and one phase word: no text of a question, an answer or a notice.
+/// Encodes as `{"open", "busy", "notice", "closeFailed", "chats": [{"id", "phase", "live", "waiting", "settled", "asked"}]}`.
+public struct SideTabState: Encodable, Sendable, Equatable {
+    /// The followed driver's phase; `failed` for any failure and `none` when the side chat is not followed.
+    public enum Phase: String, Encodable, Sendable {
+        case stopped, starting, ready, working, needsYou, stopping, failed, none
+    }
+
+    public struct Chat: Encodable, Sendable, Equatable {
+        public let id: UUID
+        public let phase: Phase
+        /// Its process lives and takes input (`SideChatLive.isRunning`).
+        public let live: Bool
+        public let waiting: Bool
+        /// The driver's `isLiveAndSettled`, the rule D-72 retires on.
+        public let settled: Bool
+        /// A question was sent to it in this run (`SideSession.hasAsked`).
+        public let asked: Bool
+    }
+
+    /// The side chat the tab shows.
+    public let open: UUID?
+    /// A fork is starting or a question is going out.
+    public let busy: Bool
+    /// Some notice shows under the field.
+    public let notice: Bool
+    /// The notice is the one a failed Close leaves.
+    public let closeFailed: Bool
+    /// The tab's side chats, newest first.
+    public let chats: [Chat]
+
+    private enum CodingKeys: String, CodingKey { case open, busy, notice, closeFailed, chats }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        // `open` is written as null when nothing is open.
+        try container.encode(open, forKey: .open)
+        try container.encode(busy, forKey: .busy)
+        try container.encode(notice, forKey: .notice)
+        try container.encode(closeFailed, forKey: .closeFailed)
+        try container.encode(chats, forKey: .chats)
+    }
+}
+
+extension CatalogModel {
+    /// The Side tab of `parent`, read as `SideTabState` (nothing is made for a session whose tab was never used).
+    public func sideTabState(for parent: UUID) async -> SideTabState {
+        guard let session = side.existing(for: parent) else {
+            return SideTabState(open: nil, busy: false, notice: false, closeFailed: false, chats: [])
+        }
+        var chats: [SideTabState.Chat] = []
+        for item in session.items {
+            let live = session.live(for: item.id)
+            let settled = if let live { await live.driver.isLiveAndSettled } else { false }
+            chats.append(SideTabState.Chat(
+                id: item.id, phase: live.map { Self.sideTabPhase($0.phase) } ?? .none, live: live?.isRunning ?? false,
+                waiting: live?.isWaiting ?? false, settled: settled, asked: session.hasAsked(item.id)))
+        }
+        return SideTabState(
+            open: session.openID, busy: session.isBusy, notice: session.notice != nil,
+            closeFailed: session.notice?.hasPrefix(SideText.closeFailed) == true, chats: chats)
+    }
+
+    private static func sideTabPhase(_ phase: ChatDriverPhase) -> SideTabState.Phase {
+        switch phase {
+        case .stopped: .stopped
+        case .starting: .starting
+        case .ready: .ready
+        case .working: .working
+        case .needsYou: .needsYou
+        case .stopping: .stopping
+        case .failed: .failed
         }
     }
 }

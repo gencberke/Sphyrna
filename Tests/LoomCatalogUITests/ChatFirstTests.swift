@@ -372,11 +372,11 @@ struct ChatFirstTests {
 
     /// The refusal reaches the user in the words of the gate.
     @Test func aRefusalReadsTheSameWhoeverMadeIt() {
-        #expect(ConversationController.refusal(ChatDriverError.requestWaiting) == .requestWaiting)
-        #expect(ConversationController.refusal(ChatDriverError.backgroundWork) == .backgroundWork)
-        #expect(ConversationController.refusal(ChatDriverError.clearedDuringHandover) == .cleared)
+        #expect(ChatSessionHost.handoverRefusal(of: ChatDriverError.requestWaiting) == .requestWaiting)
+        #expect(ChatSessionHost.handoverRefusal(of: ChatDriverError.backgroundWork) == .backgroundWork)
+        #expect(ChatSessionHost.handoverRefusal(of: ChatDriverError.clearedDuringHandover) == .cleared)
         #expect(HandoverRefusal.cleared.description.contains("cleared"))
-        #expect(ConversationController.refusal(CancellationError()) == nil)
+        #expect(ChatSessionHost.handoverRefusal(of: CancellationError()) == nil)
     }
 
     /// S1, Chat to Terminal, before the point: Cancel ends the wait and the session goes on in Chat; Stop ends it and the

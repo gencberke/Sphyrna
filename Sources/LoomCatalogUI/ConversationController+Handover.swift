@@ -23,9 +23,4 @@ extension ConversationController {
     public func cancelHandover(sessionID: UUID) {
         service.cancelHandover(sessionID: sessionID)
     }
-
-    /// The words of a refusal the Chat driver or the gate made, nil for any other error (the Chat face reads its own errors).
-    static func refusal(_ error: any Error) -> HandoverRefusal? {
-        ChatSessionHost.handoverRefusal(of: error)
-    }
 }

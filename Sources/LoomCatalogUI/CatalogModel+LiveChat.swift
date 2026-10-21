@@ -81,18 +81,6 @@ extension CatalogModel {
         case noDriver(UUID)
     }
 
-    /// Starts a new Claude session in the Chat face and selects it. The first message goes over stdin once ready.
-    @discardableResult
-    public func startChatSession(projectID: UUID?, firstMessage: String = "",
-                                 choices: ClaudeLaunchChoices = ClaudeLaunchChoices()) async throws -> UUID {
-        guard let host = chatSessions else { throw LiveChatError.unavailable }
-        let id = UUID()
-        select(id)
-        try await host.startNewSession(projectID: projectID, sessionID: id,
-                                       draft: NewSessionLaunch(firstMessage: firstMessage, choices: choices))
-        return id
-    }
-
     /// The session's driver: one that exists, or a new one unless a terminal run holds the session.
     func chatDriver(for sessionID: UUID) throws -> ChatSessionDriver {
         guard let host = chatSessions else { throw LiveChatError.unavailable }
@@ -116,12 +104,9 @@ extension CatalogModel {
         try await chatDriver(for: sessionID).interrupt()
     }
 
-    public func stopChat(_ sessionID: UUID) async throws {
+    /// The driver's own stop, for the tests that need a Stop with no navigation (the app's Stop is the service's).
+    func stopChat(_ sessionID: UUID) async throws {
         try await chatDriver(for: sessionID).stop()
-    }
-
-    public func resumeChat(_ sessionID: UUID) async throws {
-        try await chatDriver(for: sessionID).resume()
     }
 
     /// "Read now" on the newest message the CLI holds unread: it is taken back and sent again to be read at once.

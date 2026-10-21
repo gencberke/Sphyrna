@@ -18,7 +18,7 @@ extension DevelopmentEvidence {
         case "show-home": model.showHome()
         case "home-resume":
             guard let id = UUID(uuidString: argument) else { return false }
-            model.resumeHomeForEvidence(id)
+            model.resumeFromHome(id)
         case "sidebar-new-session": model.beginNewSessionInRecentProject()
         default: return false
         }

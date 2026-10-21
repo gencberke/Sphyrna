@@ -9,9 +9,11 @@ import LoomCore
 /// - `live-chat:<on|off>`: Settings → "Sessions run in" (Chat on, Terminal off; Chat is the default since V19).
 /// - `continue-in:<session id>:<chat|terminal>` and `cancel-handover:<session id>`: the move the policy banner makes (no menu offers
 ///   it since D-69) and the way to end its wait.
-/// - `chat-start:<project id|none>[:<first message>]`: a new Claude session in the Chat face, selected, with the choices the draft resolves for the project.
+/// - `chat-start:<project id|none>[:<first message>]`: what the draft's send does (a new Claude session in the face "Sessions run in"
+///   names, selected, with the choices the draft resolves for the project); ends when the start has (the card exists or it failed).
 /// - `chat-send:<session id>:<text>` and `chat-send-after:<session id>:<text>`: ↵ and ⌘↵.
-/// - `chat-interrupt:<session id>`, `chat-stop:<session id>`, `chat-resume:<session id>`.
+/// - `chat-interrupt:<session id>`; `chat-stop:<session id>` and `chat-resume:<session id>` are the session's Stop and Resume (the
+///   service's), and end when it has released the session's busy state.
 /// - `chat-allow:<session id>` and `chat-deny:<session id>`: the oldest waiting request.
 /// - `chat-read-now:<session id>`: "Read now" on the newest message the CLI holds unread.
 /// - `card:<session id>:<action>`: one action on the session's pinned card, as a click does it (`allow-once`,
@@ -23,10 +25,22 @@ import LoomCore
 /// - `chat-state:<label>`: writes `chat-state-<label>.json` for the newest Chat session (or the selected one).
 /// - `composer-focus|type|clear|attach|paste|mode|model|effort|ring|popover:<session id>[:<text, path or KB>]` and `composer-state:<session id>:<label>`:
 ///   the session's composer as the user drives it (V17); `composer-state` writes `composer-<label>.json` (kinds and counts).
+/// - `side-ask:<session id>:<text>`: the Side tab's composer sends the text (a question to the open side chat, a fork when none is open).
+/// - `side-new:<session id>`: the Side tab's "+" (the next question forks again).
+/// - `side-state:<session id>:<label>`: writes `side-state-<label>.json`: `{open, busy, notice, closeFailed, chats: [{id,
+///   phase, live, waiting, settled, asked}]}`, ids, booleans and the phase word only, no text.
 /// Failures are written as `chat-error-<command>.json` with the error's category only.
 @MainActor
 extension DevelopmentEvidence {
     private static var newestChatSession: UUID?
+
+    /// Waits (at most a minute) for the session's busy state to be released: the end of the service's Stop or resume.
+    private static func untilIdle(_ session: UUID, in model: CatalogModel) async {
+        let deadline = ContinuousClock.now + .seconds(60)
+        while model.busy[session] != nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+    }
 
     /// Returns false when `name` is not a Chat command.
     func handleChatCommand(_ name: String, _ argument: String) async -> Bool {
@@ -52,16 +66,35 @@ extension DevelopmentEvidence {
         case "chat-start":
             let parts = argument.split(separator: ":", maxSplits: 1).map(String.init)
             let project = parts.first == "none" ? nil : parts.first.flatMap { UUID(uuidString: $0) }
-            // The choices the draft would resolve for the project: with no remembered mode, the explicit `default`.
-            await run { Self.newestChatSession = try await model.startChatSession(
-                projectID: project, firstMessage: parts.count > 1 ? parts[1] : "",
-                choices: model.draftStartChoices(projectID: project)) }
+            guard let intents = model.intents as? any NewSessionIntents else {
+                write("chat-error-\(name)", ["error": "unavailable"])
+                return true
+            }
+            // The draft page's send: the face follows Settings → "Sessions run in", and the choices are the ones the draft
+            // resolves for the project (with no remembered mode, the explicit `default`). The command ends with the start.
+            let launch = NewSessionLaunch(firstMessage: parts.count > 1 ? parts[1] : "",
+                                          choices: model.draftStartChoices(projectID: project))
+            let outcome = await withCheckedContinuation { (continuation: CheckedContinuation<NewSessionOutcome, Never>) in
+                intents.startSession(projectID: project, launch: launch, focus: .session) { continuation.resume(returning: $0) }
+            }
+            switch outcome {
+            case let .started(session): Self.newestChatSession = session
+            // The service's failure handler has the error (it is on the banner); the outcome carries none.
+            case .failed: write("chat-error-\(name)", ["error": "startFailed"])
+            }
         case "chat-send", "chat-send-after":
             guard let session = id(argument) else { return true }
             await run { _ = try await model.sendChatMessage(rest(argument), to: session, afterTurn: name == "chat-send-after") }
         case "chat-interrupt": if let session = id(argument) { await run { try await model.interruptChat(session) } }
-        case "chat-stop": if let session = id(argument) { await run { try await model.stopChat(session) } }
-        case "chat-resume": if let session = id(argument) { await run { try await model.resumeChat(session) } }
+        case "chat-stop":
+            // The service's Stop, as the session's Stop button asks it; the command ends when the Stop has (busy released).
+            guard let session = id(argument) else { return true }
+            model.stopConversation(session)
+            await Self.untilIdle(session, in: model)
+        case "chat-resume":
+            guard let session = id(argument) else { return true }
+            model.resumeConversation(session)
+            await Self.untilIdle(session, in: model)
         case "chat-allow", "chat-deny":
             if let session = id(argument) {
                 await run { try await model.answerFirstChatRequest(session, allow: name == "chat-allow") }
@@ -89,6 +122,19 @@ extension DevelopmentEvidence {
             state["sessionID"] = session.uuidString
             state["route"] = model.detailRouteKind
             write("chat-state-\(label)", state)
+        case "side-ask":
+            // The field's text, then the composer's send: a question to the open side chat, or a fork when none is open.
+            guard let parent = id(argument) else { return true }
+            model.setSideComposerText(rest(argument), in: parent)
+            await model.submitSideQuestion(in: parent)
+        case "side-new": if let parent = id(argument) { model.startNewSideChat(in: parent) }
+        case "side-state":
+            guard let parent = id(argument) else { return true }
+            let label = rest(argument).filter { $0.isLetter || $0.isNumber || $0 == "-" }
+            let state = await model.sideTabState(for: parent)
+            guard let data = try? JSONEncoder().encode(state),
+                  let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return true }
+            write("side-state-\(label)", object)
         case "composer-focus", "composer-type", "composer-clear", "composer-attach", "composer-paste", "composer-state",
              "composer-mode", "composer-model", "composer-effort", "composer-ring", "composer-folder", "composer-popover":
             // `composer-<command>:<session id>:<label or argument>`; `composer-state` writes `composer-<label>.json`.

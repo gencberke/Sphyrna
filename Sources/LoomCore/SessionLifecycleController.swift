@@ -56,7 +56,6 @@ public enum SessionIdleEvaluation: Sendable {
     case alreadyIdle
     case blocked(Set<SessionIdleBlocker>)
     case transitioned(SessionStopReport)
-    case interruptedByNewWork(SessionStopReport, pendingPromptIDs: Set<UUID>)
     case stopFailed(SessionStopReport)
 }
 
@@ -90,9 +89,8 @@ public struct SessionRunCompanion: Sendable {
     }
 }
 
-/// Provider-independent idle/stale coordinator. The UI must register a prompt
-/// before attempting terminal delivery; this gives shutdown a durable-in-memory
-/// handoff token when new work races the controlled stop.
+/// Provider-independent idle/stale coordinator: the idle-stop policy (D-38). Input the terminal accepted is held back by
+/// `inputGate`, so a stop for inactivity is decided against it.
 public actor SessionLifecycleController {
     private struct Baseline: Sendable {
         let runID: UUID
@@ -105,8 +103,6 @@ public actor SessionLifecycleController {
     public let policy: SessionIdlePolicy
     private let companion: SessionRunCompanion?
     private var baselines: [UUID: Baseline] = [:]
-    private var pendingPrompts: [UUID: Set<UUID>] = [:]
-    private var generations: [UUID: UInt64] = [:]
     private var timer: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
     private var blockedDue: [UUID: Date] = [:]
@@ -424,8 +420,6 @@ public actor SessionLifecycleController {
         } else {
             blockers.insert(.unknownAgentState)
         }
-        let promptCount = pendingPrompts[sessionID]?.count ?? 0
-        if promptCount > 0 { blockers.insert(.pendingPromptDelivery(promptCount)) }
 
         // The conversation's whole run scope counts, not only the run's own
         // tree: work its provider server forked is background work too.
@@ -464,7 +458,6 @@ public actor SessionLifecycleController {
             await supervisor.events.publish(sessionID: sessionID, change: .blockers([hold]))
             return .blocked([hold])
         }
-        let generation = generations[sessionID, default: 0]
         let report = try await supervisor.stopForIdle(
             sessionID: sessionID, graceSeconds: policy.stopGraceSeconds
         )
@@ -486,14 +479,6 @@ public actor SessionLifecycleController {
             return .stopFailed(report.adding(errors: errors))
         }
         baselines[sessionID] = nil
-        let pending = pendingPrompts[sessionID] ?? []
-        if generations[sessionID, default: 0] != generation || !pending.isEmpty {
-            try await catalog.updateLifecycle(sessionID: sessionID, lifecycle: .active)
-            await supervisor.events.publish(
-                sessionID: sessionID, change: .lifecycle(.active)
-            )
-            return .interruptedByNewWork(report, pendingPromptIDs: pending)
-        }
         try await catalog.updateLifecycle(sessionID: sessionID, lifecycle: .idle)
         await supervisor.events.publish(
             sessionID: sessionID, change: .lifecycle(.idle)

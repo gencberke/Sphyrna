@@ -438,11 +438,7 @@ struct SessionServiceTests {
         var secondRefused = false
         var verified = false
         var run: UUID?
-        var handoverEnded = false
-        let task = rig.service.stop(sessionID: id, liveRunID: nil, willStop: {
-            handoverEnded = true
-            #expect(rig.service.transitions.busy[id] == nil)
-        }, settled: { outcome in
+        let task = rig.service.stop(sessionID: id, liveRunID: nil, settled: { outcome in
             // The terminal settled first; busy still holds while the UI decides about the tab.
             during = rig.service.transitions.busy[id]
             secondRefused = rig.service.stop(sessionID: id, liveRunID: nil, settled: { _ in }) == nil
@@ -451,7 +447,7 @@ struct SessionServiceTests {
         })
         #expect(rig.service.transitions.busy[id] == .stopping)
         await task?.value
-        #expect(handoverEnded && during == .stopping && secondRefused && verified)
+        #expect(during == .stopping && secondRefused && verified)
         #expect(run == launch.runID && rig.sinks.captured == [launch.runID] && rig.sinks.released == [launch.runID])
         // The screen is kept before any signal, and the surfaces settle before the UI is told.
         #expect(rig.sinks.order == ["adopt", "capture", "reconcile"])
