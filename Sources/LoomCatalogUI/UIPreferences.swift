@@ -43,8 +43,8 @@ public enum CatalogViewMode: String, Codable, Sendable, CaseIterable {
     case projects
 }
 
-/// Settings → Theme → Sidebar (D-57; General until D-63). Glass is the behind-window material under the dark tone at 0.6
-/// (D-44); Solid is the same tone, opaque. Reduce Transparency draws Solid whatever this says.
+/// Settings → Theme → Sidebar (D-57; General until D-63). Solid, the opaque canvas, is the default (D-81); Glass is the canvas at
+/// 0.8 over the behind-window material. A stored choice is kept. Reduce Transparency draws Solid whatever this says.
 public enum SidebarStyle: String, Codable, Sendable, CaseIterable {
     case glass
     case solid
@@ -150,7 +150,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// Settings → General → Notify when a session needs approval. A file written before the setting
     /// existed reads as on. (Open at login is not a preference: the system holds it.)
     public var notifyApprovals: Bool
-    /// Settings → General → Sidebar: Glass or Solid (D-57). A file written before the setting existed reads as Glass.
+    /// Settings → General → Sidebar: Glass or Solid (D-57). A file written before the setting existed reads as Solid (D-81).
     public var sidebarStyle: SidebarStyle
     /// What the window opens on. A file written before the setting existed reads as the last session.
     public var launchView: LaunchView
@@ -183,7 +183,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
                 sidebarWidth: Double = UIPreferences.defaultSidebarWidth,
                 sidebarCollapsed: Bool = false, terminalFontSize: Double = UIPreferences.defaultTerminalFontSize,
                 openTabs: [UUID] = [], windowFrame: WindowFrame? = nil, projectColors: Bool = true,
-                showInMenuBar: Bool = true, notifyApprovals: Bool = true, sidebarStyle: SidebarStyle = .glass,
+                showInMenuBar: Bool = true, notifyApprovals: Bool = true, sidebarStyle: SidebarStyle = .solid,
                 launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = [],
                 searchSessionText: Bool = true, newSessionFace: SessionFace = .chat,
                 appearance: AppearanceSetting = .dark, paneTone: PaneTone = .neutral) {
@@ -226,7 +226,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             projectColors: (try? container.decodeIfPresent(Bool.self, forKey: .projectColors)) ?? true,
             showInMenuBar: (try? container.decodeIfPresent(Bool.self, forKey: .showInMenuBar)) ?? true,
             notifyApprovals: (try? container.decodeIfPresent(Bool.self, forKey: .notifyApprovals)) ?? true,
-            sidebarStyle: (try? container.decodeIfPresent(SidebarStyle.self, forKey: .sidebarStyle)) ?? .glass,
+            sidebarStyle: (try? container.decodeIfPresent(SidebarStyle.self, forKey: .sidebarStyle)) ?? .solid,
             launchView: (try? container.decodeIfPresent(LaunchView.self, forKey: .launchView)) ?? .lastSession,
             inspectorOpen: ((try? container.decodeIfPresent([Lossy<UUID>].self, forKey: .inspectorOpen)) ?? nil)?
                 .compactMap(\.value) ?? [],

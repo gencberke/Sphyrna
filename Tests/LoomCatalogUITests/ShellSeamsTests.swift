@@ -32,23 +32,41 @@ struct ShellSeamsTests {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let model = model(at: root)
-        #expect(model.sidebarStyle == .glass)
+        #expect(model.sidebarStyle == .solid, "Solid is the default (D-81)")
 
         // The sidebar's background reads the style itself (`SidebarBackground(style:)`); there is no bridge
         // through Reduce Transparency any more.
-        model.setSidebarStyle(.solid)
-        #expect(model.sidebarStyle == .solid)
-        #expect(try stored(root).sidebarStyle == .solid)
-        #expect(model.preferencesSnapshot.projectColors, "nothing else changed")
-
         model.setSidebarStyle(.glass)
         #expect(model.sidebarStyle == .glass)
         #expect(try stored(root).sidebarStyle == .glass)
+        #expect(model.preferencesSnapshot.projectColors, "nothing else changed")
+
+        model.setSidebarStyle(.solid)
+        #expect(model.sidebarStyle == .solid)
+        #expect(try stored(root).sidebarStyle == .solid)
 
         // A new window reads what was saved.
-        model.setSidebarStyle(.solid)
+        model.setSidebarStyle(.glass)
         let again = self.model(at: root)
-        #expect(again.sidebarStyle == .solid)
+        #expect(again.sidebarStyle == .glass)
+    }
+
+    /// DESIGN §2 item 2 (D-81): the sidebar is Solid for a fresh or missing preference, and a stored choice is kept. A user who
+    /// chose Glass keeps Glass; nobody is moved by the new default.
+    @Test func aFreshOrMissingSidebarPreferenceIsSolidAndAStoredChoiceIsKept() throws {
+        #expect(UIPreferences().sidebarStyle == .solid)
+        #expect(try JSONDecoder().decode(UIPreferences.self, from: Data("{}".utf8)).sidebarStyle == .solid)
+        #expect(try JSONDecoder().decode(UIPreferences.self, from: Data(#"{"sidebarStyle": "frosted"}"#.utf8)).sidebarStyle == .solid)
+        #expect(SidebarBackground(reduceTransparency: false).style == .solid, "a bare background draws Solid")
+
+        let fresh = try temporaryRoot()
+        let stored = try temporaryRoot()
+        defer { for root in [fresh, stored] { try? FileManager.default.removeItem(at: root) } }
+        #expect(model(at: fresh).sidebarStyle == .solid, "no file at all")
+        try Data(#"{"sidebarStyle": "glass"}"#.utf8).write(to: stored.appendingPathComponent("ui-preferences.json"))
+        #expect(model(at: stored).sidebarStyle == .glass, "a stored Glass stays Glass")
+        try Data(#"{"sidebarStyle": "solid"}"#.utf8).write(to: stored.appendingPathComponent("ui-preferences.json"))
+        #expect(model(at: stored).sidebarStyle == .solid)
     }
 
     @Test func theBackgroundDrawsTheStyleTheModelHoldsAndReduceTransparencyForcesSolid() {
@@ -56,7 +74,8 @@ struct ShellSeamsTests {
         func tint(_ style: SidebarStyle, _ reduce: Bool) -> Double {
             LoomTheme.Surface.sidebarTintOpacity(for: SidebarBackground.effectiveStyle(style, reduceTransparency: reduce))
         }
-        #expect(tint(.glass, false) == LoomTheme.Surface.sidebarTintOpacity)
+        #expect(tint(.glass, false) == LoomTheme.Surface.sidebarTintOpacity && LoomTheme.Surface.sidebarTintOpacity == 0.8,
+                "Glass is the canvas at 0.8 over the material")
         #expect(tint(.solid, false) == 1)
         #expect(tint(.glass, true) == 1 && tint(.solid, true) == 1)
     }
@@ -67,10 +86,10 @@ struct ShellSeamsTests {
         #expect(again.sidebarStyle == .solid && again.launchView == .home && again == preferences)
 
         let old = try JSONDecoder().decode(UIPreferences.self, from: Data("{}".utf8))
-        #expect(old.sidebarStyle == .glass && old.launchView == .lastSession && old.inspectorOpen.isEmpty)
+        #expect(old.sidebarStyle == .solid && old.launchView == .lastSession && old.inspectorOpen.isEmpty)
         let odd = try JSONDecoder().decode(
             UIPreferences.self, from: Data(#"{"sidebarStyle": "frosted", "launchView": 3, "inspectorOpen": ["x", 4]}"#.utf8))
-        #expect(odd.sidebarStyle == .glass && odd.launchView == .lastSession && odd.inspectorOpen.isEmpty)
+        #expect(odd.sidebarStyle == .solid && odd.launchView == .lastSession && odd.inspectorOpen.isEmpty)
     }
 
     // MARK: Launch view
@@ -228,7 +247,7 @@ struct ShellSeamsTests {
 
     // MARK: Inspector container
 
-    /// The brightest red along the inspector column's leading edge (the column is 328 pt wide, inside the 8 pt panel inset), low in the
+    /// The brightest red along the inspector column's leading edge (the column is 328 pt wide, flush with the window's trailing edge), low in the
     /// pane where no content is drawn, drawn offscreen. The inspector is the canvas like the pane, so an open column shows as
     /// its leading hairline, brighter than the flat canvas.
     private func inspectorEdgeBrightness(of model: CatalogModel) throws -> Double {
@@ -244,7 +263,7 @@ struct ShellSeamsTests {
         let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: bitmap)
         let scale = Double(bitmap.pixelsWide) / 1000
-        let edge = bitmap.pixelsWide - Int(((LoomTheme.Rhythm.inspectorWidth + LoomTheme.Space.panelInset) * scale).rounded())
+        let edge = bitmap.pixelsWide - Int((LoomTheme.Rhythm.inspectorWidth * scale).rounded())
         let rows = Int(Double(bitmap.pixelsHigh) * 0.8)..<Int(Double(bitmap.pixelsHigh) * 0.95)
         return rows.flatMap { y in (edge - 3...edge + 3).compactMap { x in
             bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB)?.redComponent

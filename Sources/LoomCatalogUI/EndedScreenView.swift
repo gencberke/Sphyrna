@@ -70,7 +70,7 @@ final class EndedScreenContainerView: NSView {
         addSubview(scrollView)
         let inset = LoomTheme.Space.terminalInset
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: LoomTheme.Space.terminalLeadingInset),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
             scrollView.topAnchor.constraint(equalTo: topAnchor, constant: inset),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -inset),

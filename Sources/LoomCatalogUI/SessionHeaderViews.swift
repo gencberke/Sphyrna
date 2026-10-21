@@ -2,9 +2,10 @@ import AppKit
 import LoomCore
 import SwiftUI
 
-// The pieces of the detail header row (FB3-2, D-53; DESIGN §3 "Header"): the state pill, the project chip
-// that ends with the Git branch, the hairline and the control group, and the layout that gives them
-// fixed places at the trailing edge while the title gives way first. Values are `LoomTheme.Header`'s.
+// The pieces of the session header (DESIGN §6 Header; A3 and A4 of the reference): the state pill right after the title, and
+// at the trailing edge the project chip that ends with the Git branch, the model segment, a hairline, the inspector toggle and
+// the control group, with the layout that gives them their places while the title gives way first. Values are
+// `LoomTheme.Header`'s.
 
 // MARK: State pill
 
@@ -16,8 +17,8 @@ struct StatePillStyle: Equatable {
     let wash: LoomTheme.Tone
     /// The wash in Light, where the neutral washes are ink and a status wash is the hue's Light step.
     let lightWash: LoomTheme.Tone
-    /// Whether the indicator has anything to draw (Ready, Idle and Stale draw none): without a mark the
-    /// label sits between two equal insets instead of after an empty slot.
+    /// Whether the indicator has anything to draw (Ready, Idle, Stale and State unknown draw none, DESIGN §4): without a
+    /// mark the label sits between two equal insets instead of after an empty slot.
     let showsIndicator: Bool
 
     private static let white = LoomTheme.RGB(red: 1, green: 1, blue: 1)
@@ -26,16 +27,15 @@ struct StatePillStyle: Equatable {
     init?(_ indicator: SessionIndicator, label override: String? = nil) {
         guard let label = override ?? indicator.label else { return nil }
         self.label = label
-        showsIndicator = ![.ready, .idle, .stale].contains(indicator)
+        showsIndicator = ![.ready, .idle, .stale, .unknown].contains(indicator)
         func tone(_ pair: LoomTheme.Adaptive) -> LoomTheme.ContrastStyle {
             LoomTheme.ContrastStyle(
                 standard: LoomTheme.Tone(rgb: pair.dark, opacity: 1), increased: LoomTheme.Tone(rgb: pair.dark, opacity: 1),
                 lightStandard: LoomTheme.Tone(rgb: pair.light, opacity: 1), lightIncreased: LoomTheme.Tone(rgb: pair.light, opacity: 1))
         }
-        func status(_ hue: LoomTheme.Adaptive, label lighter: LoomTheme.Adaptive)
+        func status(_ wash: LoomTheme.AdaptiveTone, label lighter: LoomTheme.Adaptive)
             -> (LoomTheme.ContrastStyle, LoomTheme.Tone, LoomTheme.Tone) {
-            (tone(lighter), LoomTheme.Tone(rgb: hue.dark, opacity: LoomTheme.Header.pillStatusWash),
-             LoomTheme.Tone(rgb: hue.light, opacity: LoomTheme.Header.pillStatusWash))
+            (tone(lighter), wash.dark, wash.light)
         }
         switch indicator {
         case .working:
@@ -47,11 +47,11 @@ struct StatePillStyle: Equatable {
             wash = LoomTheme.Tone(rgb: Self.white, opacity: LoomTheme.Header.pillNeutralWash)
             lightWash = LoomTheme.Tone(rgb: LoomTheme.inkRGB, opacity: LoomTheme.Header.pillNeutralLightWash)
         case .waitingForApproval, .waitingForInput, .identityUnclear:
-            (text, wash, lightWash) = status(LoomTheme.Status.attentionPair, label: LoomTheme.Header.attentionLabelPair)
+            (text, wash, lightWash) = status(LoomTheme.Status.attentionWashTone, label: LoomTheme.Header.attentionLabelPair)
         case .failed, .stopUnverified, .problem:
-            (text, wash, lightWash) = status(LoomTheme.Status.failurePair, label: LoomTheme.Header.failureLabelPair)
+            (text, wash, lightWash) = status(LoomTheme.Status.failureWashTone, label: LoomTheme.Header.failureLabelPair)
         case .unviewedCompletion:
-            (text, wash, lightWash) = status(LoomTheme.Status.unviewedPair, label: LoomTheme.Header.unviewedLabelPair)
+            (text, wash, lightWash) = status(LoomTheme.Status.unviewedWashTone, label: LoomTheme.Header.unviewedLabelPair)
         }
     }
 }
@@ -64,7 +64,7 @@ struct StatePill: View {
     var body: some View {
         HStack(spacing: LoomTheme.Header.pillGap) {
             if style.showsIndicator { IndicatorView(indicator: indicator) }
-            Text(style.label).font(LoomTheme.Typography.statusLabel).foregroundStyle(style.text)
+            Text(style.label).font(LoomTheme.Header.pillFont).foregroundStyle(style.text)
                 .lineLimit(1).fixedSize()
         }
         .padding(.leading, style.showsIndicator ? LoomTheme.Header.pillLeading : LoomTheme.Header.pillTrailing)
@@ -108,13 +108,13 @@ struct SessionHeaderChip: Equatable {
     var dropsBranch: Bool { project != nil && branch != nil }
 }
 
-/// The project chip: a stripe of the tone, the name, a hairline, the branch glyph and name. Wash of the tone
-/// at the tabs' resting strength (neutral white without a tone). Clipped, 22 pt high.
+/// The project chip: the project's mark, the name, a hairline, the branch glyph and name. The project's tone tints it (10 %
+/// with a 1 pt edge of the tone at 32 %); without a tone it is the neutral chip. Clipped, 22 pt high, radius 6.
 struct ProjectBranchChip: View {
     let chip: SessionHeaderChip
-    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: LoomTheme.Header.chipRadius)
         Group {
             if let project = chip.project {
                 // The first form that fits the proposed width is drawn: with the branch, then without it,
@@ -131,30 +131,31 @@ struct ProjectBranchChip: View {
         }
         .frame(height: LoomTheme.Header.chipHeight)
         .background(wash)
-        .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(edge, lineWidth: LoomTheme.Line.hairline).allowsHitTesting(false))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(chip.accessibilityLabel)
     }
 
     private var wash: Color {
-        chip.tone.map { LoomTheme.ProjectColor.wash($0, opacity: LoomTheme.ProjectColor.tabWash).color }
+        chip.tone.map { LoomTheme.ProjectColor.wash($0, opacity: LoomTheme.ProjectColor.chipWash).color }
             ?? LoomTheme.Header.chipNeutral
+    }
+
+    private var edge: AnyShapeStyle {
+        chip.tone.map { AnyShapeStyle(LoomTheme.ProjectColor.chipEdge($0)) } ?? AnyShapeStyle(LoomTheme.Surface.strongEdgeStyle)
     }
 
     private func named(_ project: String, branch: String?) -> some View {
         HStack(spacing: 0) {
-            if let tone = chip.tone {
-                Rectangle().fill(LoomTheme.ProjectColor.stripe(tone))
-                    .frame(width: LoomTheme.ProjectColor.stripeWidth(for: contrast))
-                    .accessibilityHidden(true)
-            }
+            ProjectMarkView(name: project, tone: chip.tone, size: .chip).padding(.leading, LoomTheme.Header.chipMarkInset)
             // The name is laid out first: the branch's capped frame would otherwise take more than its text and
             // leave the name shortened in a chip that has room.
-            Text(project).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.primary)
+            Text(project).font(LoomTheme.Header.chipNameFont).foregroundStyle(LoomTheme.Text.primary)
                 .lineLimit(1).truncationMode(.tail).layoutPriority(1)
-                .padding(.leading, chip.tone == nil ? LoomTheme.Header.chipInset : LoomTheme.Header.chipStripeGap)
+                .padding(.leading, LoomTheme.Header.chipMarkGap)
             if let branch {
-                Rectangle().fill(LoomTheme.Surface.hairlineStyle)
+                Rectangle().fill(LoomTheme.Surface.strongEdgeStyle)
                     .frame(width: LoomTheme.Line.hairline, height: LoomTheme.Header.chipRuleHeight)
                     .padding(.leading, LoomTheme.Header.chipRuleGap).padding(.trailing, LoomTheme.Header.chipRuleAfter)
                     .accessibilityHidden(true)
@@ -167,7 +168,7 @@ struct ProjectBranchChip: View {
     private func branchLabel(_ branch: String) -> some View {
         HStack(spacing: LoomTheme.Header.chipBranchGap) {
             Image(systemName: "arrow.triangle.branch").font(LoomTheme.Header.chipGlyph)
-            Text(branch).font(LoomTheme.Typography.small).lineLimit(1).truncationMode(.tail)
+            Text(branch).font(LoomTheme.Header.chipBranchFont).lineLimit(1).truncationMode(.tail)
         }
         .foregroundStyle(LoomTheme.Text.secondaryOnTintStyle)
         .cappedWidth(LoomTheme.Header.branchMaxWidth)
@@ -207,9 +208,9 @@ struct HeaderRule: View {
     }
 }
 
-/// A segment of the control group: hover and pressed fills from the chrome buttons' values, the focus
-/// ring inside the segment (the group clips it). The label is primary, or secondary until hovered
-/// (`secondaryUntilHovered`, the ⋯ glyph).
+/// A segment of the control group: the hover fill under the pointer and the pressed fill while pressed (DESIGN §6 Header: a
+/// segment's hover is the hover fill), the focus ring inside the segment (the group clips it). The label is primary, or
+/// secondary until hovered (`secondaryUntilHovered`, the ⋯ glyph).
 struct HeaderSegmentStyle: ButtonStyle {
     var secondaryUntilHovered = false
 
@@ -227,9 +228,8 @@ struct HeaderSegmentStyle: ButtonStyle {
 
         var body: some View {
             let active = hovering || configuration.isPressed
-            // A segment sits on the group's own 7 % fill, so its hover takes the selected step to show over it.
             let fill: Color = !enabled ? .clear : (configuration.isPressed ? LoomTheme.Highlight.pressed
-                : (hovering ? LoomTheme.Highlight.selected : .clear))
+                : (hovering ? LoomTheme.Highlight.hover : .clear))
             configuration.label
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(secondaryUntilHovered && !active ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
@@ -245,27 +245,46 @@ struct HeaderSegmentStyle: ButtonStyle {
     }
 }
 
-/// One container, 24 pt high: a Stop segment (only while the run can be stopped) and the ⋯ menu segment,
-/// with a hairline between them. When the run ends Stop goes and ⋯ stays at the trailing edge.
+/// The inspector toggle: a 26 pt icon button (`sidebar.right`), on the selected fill while the inspector is open. It does what
+/// View > Toggle Inspector does.
+struct HeaderInspectorToggle: View {
+    let model: CatalogModel
+    let sessionID: UUID
+
+    var body: some View {
+        let open = model.inspector.isOpen(for: sessionID)
+        Button { model.setInspector(open: !open, for: sessionID) } label: {
+            Image(systemName: "sidebar.right")
+        }
+        .buttonStyle(ChromeButtonStyle(selected: open, key: "inspector-toggle")).focusEffectDisabled()
+        .help(open ? "Hide Inspector (⌥⌘B)" : "Show Inspector (⌥⌘B)")
+        .accessibilityLabel(open ? "Hide inspector" : "Show inspector")
+        .accessibilityIdentifier("inspector-toggle")
+    }
+}
+
+/// One container, 26 pt high, radius 7, with the strong hairline for an edge: a Stop segment (only while the run can be
+/// stopped) and the ⋯ menu segment, with a hairline between them. When the run ends Stop goes and ⋯ stays at the trailing edge.
 struct HeaderControlGroup<MenuItems: View>: View {
     let canStop: Bool
     let stop: () -> Void
     @ViewBuilder let menuItems: () -> MenuItems
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: LoomTheme.Header.groupRadius)
         HStack(spacing: 0) {
             if canStop {
                 Button(action: stop) {
                     HStack(spacing: LoomTheme.Header.stopGap) {
                         RoundedRectangle(cornerRadius: LoomTheme.Header.stopGlyphRadius)
                             .frame(width: LoomTheme.Header.stopGlyph, height: LoomTheme.Header.stopGlyph)
-                        Text("Stop").font(LoomTheme.Typography.small)
+                        Text("Stop").font(LoomTheme.Header.stopFont)
                     }
                     .padding(.horizontal, LoomTheme.Header.stopPadding)
                 }
                 .buttonStyle(HeaderSegmentStyle()).focusEffectDisabled()
                 .accessibilityLabel("Stop session")
-                Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(width: LoomTheme.Line.hairline)
+                Rectangle().fill(LoomTheme.Surface.strongEdgeStyle).frame(width: LoomTheme.Line.hairline)
                     .accessibilityHidden(true)
             }
             Menu {
@@ -278,16 +297,17 @@ struct HeaderControlGroup<MenuItems: View>: View {
             .accessibilityLabel("Session actions")
         }
         .frame(height: LoomTheme.Header.groupHeight)
-        .background(LoomTheme.Header.group)
-        .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(LoomTheme.Surface.strongEdgeStyle, lineWidth: LoomTheme.Line.hairline).allowsHitTesting(false))
         .fixedSize()
     }
 }
 
 // MARK: Layout
 
-/// The places of the header row's flexible part, from the left: the title, then at the trailing edge the
-/// status (pill or plain text), the project chip, the model segment, the hairline and the control group.
+/// The places of the header row's flexible part, from the left: the title and right after it the status (the pill or a plain
+/// text), then at the trailing edge the project chip, the model segment, the hairline and the inspector toggle with the
+/// control group (the `group` slot).
 enum HeaderSlot: Hashable { case title, status, chip, model, rule, group }
 
 struct HeaderSlotKey: LayoutValueKey { static let defaultValue = HeaderSlot.title }
@@ -436,8 +456,18 @@ struct HeaderFlow: Layout {
         put(.model, width: plan.model, extra: 0.25)
         // The chip is proposed its planned width; a hair more keeps the full form when the plan chose it.
         put(.chip, width: plan.chip, extra: plan.showsBranch ? 0.25 : 0)
-        put(.status, width: plan.status)
-        map[.title]?.place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading,
-                           proposal: ProposedViewSize(width: plan.title, height: nil))
+        // The title keeps the leading edge and the status follows it, 8 apart: when the title is shorter than its room the
+        // gap opens between the status and the chip, not between the title and its status.
+        var titleEdge = bounds.minX
+        if let title = map[.title] {
+            let proposed = ProposedViewSize(width: plan.title, height: nil)
+            title.place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading, proposal: proposed)
+            let taken = title.sizeThatFits(proposed).width
+            titleEdge += taken + (taken > 0 ? LoomTheme.Space.detailSpacing : 0)
+        }
+        if let status = map[.status], let width = plan.status {
+            status.place(at: CGPoint(x: titleEdge, y: bounds.midY), anchor: .leading,
+                         proposal: ProposedViewSize(width: width, height: nil))
+        }
     }
 }

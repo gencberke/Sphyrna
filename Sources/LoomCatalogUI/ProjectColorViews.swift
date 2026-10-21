@@ -2,8 +2,8 @@ import AppKit
 import LoomCore
 import SwiftUI
 
-// The project colour surfaces (D-48; DESIGN §6): the sidebar stripe, the tab tint, the detail header's
-// project chip (`ProjectBranchChip`) and the Color menu. Values are `LoomTheme.ProjectColor`'s; whether
+// The project colour surfaces (D-48; DESIGN §6): the sidebar stripe (the rows' slice removes it), the tab tint, the detail
+// header's project chip (`ProjectBranchChip`), the project's mark (`ProjectMarkView`) and the Color menu. Values are `LoomTheme.ProjectColor`'s; whether
 // anything is drawn is decided by `CatalogModel.projectTone(forProject:)`, `projectMark(of:)` and
 // `headerProjectMark(of:)`, which answer no tone while the setting is off.
 
@@ -33,9 +33,9 @@ extension View {
     }
 }
 
-/// How a conversation tab is tinted by its project (T5): a wash of the tone on every tab, stronger on
-/// hover and on the open tab, and on the open tab a stroke of the tone in place of the hairline.
-/// No tone, no tint: the tab keeps today's fill and stroke.
+/// How a session tab is tinted by its project (DESIGN §6 Project colour): a wash of the tone on every tab, 6 % at rest, 11 %
+/// under the pointer and 16 % on the open tab, which also gets a 1 pt edge of the tone at 42 % in place of the hairline.
+/// No tone, no tint: the tab keeps the neutral fills.
 struct ProjectTabStyle: Equatable {
     /// The wash in Dark; `washColor` is what the tab draws (the tone's own value in each appearance).
     let wash: LoomTheme.Tone?
@@ -49,14 +49,7 @@ struct ProjectTabStyle: Equatable {
             : (hovering ? LoomTheme.ProjectColor.tabWashHover : LoomTheme.ProjectColor.tabWash)
         wash = LoomTheme.Tone(rgb: rgb, opacity: opacity)
         washColor = LoomTheme.ProjectColor.wash(tone, opacity: opacity).color
-        stroke = selected ? LoomTheme.ContrastStyle(
-            standard: LoomTheme.Tone(rgb: rgb, opacity: LoomTheme.ProjectColor.tabStrokeOpen),
-            increased: LoomTheme.Tone(rgb: LoomTheme.ProjectColor.increasedRGB(tone),
-                                      opacity: LoomTheme.ProjectColor.tabStrokeOpenIncreased),
-            lightStandard: LoomTheme.Tone(rgb: LoomTheme.ProjectColor.lightBaseRGB(tone),
-                                          opacity: LoomTheme.ProjectColor.tabStrokeOpen),
-            lightIncreased: LoomTheme.Tone(rgb: LoomTheme.ProjectColor.lightIncreasedRGB(tone),
-                                           opacity: LoomTheme.ProjectColor.tabStrokeOpenIncreased)) : nil
+        stroke = selected ? LoomTheme.ProjectColor.tabEdge(tone) : nil
     }
 
     /// `washColor` is derived from the tone and the opacity, and a dynamic colour has no identity to compare.

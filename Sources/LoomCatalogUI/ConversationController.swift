@@ -15,7 +15,7 @@ final class TerminalContainerView: NSView {
         terminal.translatesAutoresizingMaskIntoConstraints = false
         addSubview(terminal)
         NSLayoutConstraint.activate([
-            terminal.leadingAnchor.constraint(equalTo: leadingAnchor, constant: LoomTheme.Space.terminalInset),
+            terminal.leadingAnchor.constraint(equalTo: leadingAnchor, constant: LoomTheme.Space.terminalLeadingInset),
             terminal.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -LoomTheme.Space.terminalInset),
             terminal.topAnchor.constraint(equalTo: topAnchor, constant: LoomTheme.Space.terminalInset),
             terminal.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -LoomTheme.Space.terminalInset),

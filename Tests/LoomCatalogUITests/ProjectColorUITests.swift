@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 import Testing
@@ -122,7 +123,7 @@ struct ProjectColorUITests {
         #expect(open.wash == LoomTheme.Tone(rgb: rgb, opacity: LoomTheme.ProjectColor.tabWashOpen))
         #expect(openHover == open, "the open tab does not change on hover")
         #expect([LoomTheme.ProjectColor.tabWash, LoomTheme.ProjectColor.tabWashHover,
-                 LoomTheme.ProjectColor.tabWashOpen, LoomTheme.ProjectColor.tabStrokeOpen] == [0.10, 0.15, 0.15, 0.36])
+                 LoomTheme.ProjectColor.tabWashOpen, LoomTheme.ProjectColor.tabStrokeOpen] == [0.06, 0.11, 0.16, 0.42])
         #expect(rest.stroke == nil && hover.stroke == nil, "only the open tab carries the tone's stroke")
         let stroke = try #require(open.stroke)
         #expect(stroke.tone(for: .standard) == LoomTheme.Tone(rgb: rgb, opacity: LoomTheme.ProjectColor.tabStrokeOpen))
@@ -143,6 +144,75 @@ struct ProjectColorUITests {
             #expect(LoomTheme.ProjectColor.stripeRGB(tone, for: .standard) == LoomTheme.ProjectColor.baseRGB(tone))
             #expect(LoomTheme.ProjectColor.stripeRGB(tone, for: .increased) == LoomTheme.ProjectColor.increasedRGB(tone))
         }
+    }
+
+    // MARK: The project's mark
+
+    @Test func theMarkIsTheInitialOnASoftSquareOfTheTone() {
+        typealias M = LoomTheme.ProjectMarkStyle
+        let sizes = M.Size.allCases.map { ($0.side, $0.radius) }
+        #expect(sizes.contains { $0 == (16, 5) } && sizes.contains { $0 == (14, 4) } && sizes.contains { $0 == (12, 3.5) }
+                && sizes.contains { $0 == (26, 8) } && sizes.count == 4)
+        #expect(M.initial(of: "edd-backend") == "E" && M.initial(of: "  loom") == "L" && M.initial(of: "") == "?")
+        for tone in ProjectTone.allCases {
+            let square = M.square(tone)
+            #expect(square.dark == LoomTheme.Tone(rgb: LoomTheme.ProjectColor.baseRGB(tone), opacity: 0.24), "\(tone), Ink")
+            #expect(square.light == LoomTheme.Tone(rgb: LoomTheme.ProjectColor.lightBaseRGB(tone), opacity: 0.15), "\(tone), Paper")
+            let initial = M.initialStyle(tone)
+            #expect(initial.tone(for: .standard, appearance: .dark).rgb == LoomTheme.ProjectColor.baseRGB(tone))
+            #expect(initial.tone(for: .increased, appearance: .dark).rgb == LoomTheme.ProjectColor.increasedRGB(tone))
+            #expect(initial.tone(for: .increased, appearance: .light).rgb == LoomTheme.ProjectColor.lightIncreasedRGB(tone))
+        }
+        #expect(M.neutralSquare == LoomTheme.Surface.selectedTone, "no tone: the selected fill")
+    }
+
+    /// The initial holds 3:1 on its square over the canvas, in both appearances, the three casts and every tone, also under
+    /// Increase Contrast (DESIGN §6 Project colour: Ink 5.5 to 7.6, Paper 3.8 to 4.5). Without a tone the initial is secondary
+    /// text on the neutral square (4.5:1).
+    @Test func theInitialHoldsThreeToOneOnItsSquareInBothAppearancesAndEveryCast() {
+        typealias M = LoomTheme.ProjectMarkStyle
+        for appearance in LoomTheme.Appearance.allCases {
+            for pane in PaneTone.allCases {
+                let canvas = LoomTheme.Surface.greys(appearance, tone: pane).canvas
+                for tone in ProjectTone.allCases {
+                    let square = M.square(tone)[appearance]
+                    let ground = square.rgb.composited(over: canvas, opacity: square.opacity)
+                    for contrast in [ColorSchemeContrast.standard, .increased] {
+                        let initial = M.initialStyle(tone).tone(for: contrast, appearance: appearance).rgb
+                        #expect(initial.contrast(with: ground) >= 3, "\(appearance) \(pane) \(tone) \(contrast): \(initial.contrast(with: ground))")
+                    }
+                }
+                let neutral = M.neutralSquare[appearance]
+                let ground = neutral.rgb.composited(over: canvas, opacity: neutral.opacity)
+                let secondary = LoomTheme.Text.secondaryPair[appearance]
+                #expect(secondary.contrast(with: ground) >= 4.5, "\(appearance) \(pane) neutral")
+            }
+        }
+    }
+
+    /// A rendered mark: the square at the tone's own value and 24 % in Ink, a neutral square without a tone. Offscreen.
+    @Test func aRenderedMarkDrawsTheToneOrTheNeutralSquare() throws {
+        func edgePixel(_ tone: ProjectTone?, appearance: NSAppearance.Name) throws -> NSColor {
+            let view = NSHostingView(rootView: ProjectMarkView(name: "L", tone: tone, size: .head))
+            view.appearance = NSAppearance(named: appearance)
+            view.frame = NSRect(x: 0, y: 0, width: 16, height: 16)
+            view.layoutSubtreeIfNeeded()
+            let rep = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: rep)
+            // Left edge, mid-height: square only, the initial sits in the middle.
+            let scale = rep.pixelsWide / 16
+            return try #require(rep.colorAt(x: 1 * scale, y: 8 * scale)?.usingColorSpace(.sRGB))
+        }
+        let rose = try edgePixel(.rose, appearance: .darkAqua)
+        let tone = LoomTheme.ProjectColor.baseRGB(.rose)
+        #expect(abs(Double(rose.alphaComponent) - 0.24) < 0.04, "alpha \(rose.alphaComponent)")
+        #expect(abs(Double(rose.redComponent) - tone.red) < 0.06 && abs(Double(rose.blueComponent) - tone.blue) < 0.06)
+        let neutral = try edgePixel(nil, appearance: .darkAqua)
+        #expect(abs(Double(neutral.alphaComponent) - 0.08) < 0.04 && neutral.redComponent > 0.9, "the selected fill")
+        let paper = try edgePixel(.rose, appearance: .aqua)
+        #expect(abs(Double(paper.alphaComponent) - 0.15) < 0.04)
+        let paperTone = LoomTheme.ProjectColor.lightBaseRGB(.rose)
+        #expect(abs(Double(paper.redComponent) - paperTone.red) < 0.06, "Paper uses the deeper tone")
     }
 
     // MARK: Contrast and hue
@@ -200,8 +270,7 @@ struct ProjectColorUITests {
         return LoomTheme.ProjectColor.baseRGB(tone).composited(over: base, opacity: wash)
     }
 
-    /// The theme's tiers hold on the washed tabs in Ink, on every tone: primary at 7:1 on every tab (the open tab's 15 % wash
-    /// is the strongest that keeps Lemon there), and a washed tab's secondary text in `secondaryOnTint`: 4.5 or more on a
+    /// The theme's tiers hold on the washed tabs in Ink, on every tone: primary at 7:1 on every tab (the open tab's 16 % wash), and a washed tab's secondary text in `secondaryOnTint`: 4.5 or more on a
     /// resting tab and 3:1 for the close glyph on the open one. (Paper is in `ThemeAppearanceTests`.)
     @Test func textOnTheTintedTabsKeepsTheThemeTiers() {
         for pane in PaneTone.allCases {

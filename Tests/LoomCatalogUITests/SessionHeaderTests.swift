@@ -47,9 +47,9 @@ struct SessionHeaderTests {
 
     @Test func pillWashesAndLabelsFollowTheSpec() throws {
         #expect(StatePillStyle(.ended) == nil, "no label, no pill")
-        // Ready, Idle and Stale draw no indicator, so the pill has none either.
+        // Ready, Idle, Stale and State unknown draw no mark (DESIGN §4), so the pill has none either.
         for state in allStates {
-            #expect(StatePillStyle(state)?.showsIndicator == ![.ready, .idle, .stale].contains(state), "\(state)")
+            #expect(StatePillStyle(state)?.showsIndicator == ![.ready, .idle, .stale, .unknown].contains(state), "\(state)")
         }
         let working = try #require(StatePillStyle(.working))
         #expect(working.wash.opacity == LoomTheme.Surface.selectedOpacity && working.text.standard.rgb == LoomTheme.Text.primaryRGB)
@@ -71,25 +71,23 @@ struct SessionHeaderTests {
         }
     }
 
-    /// Primary text on the neutral chip and on every tone's wash (the tabs' resting 10 %) keeps 7:1, the
-    /// branch and its glyph in `secondaryOnTint` 4.5:1; the group's ⋯ glyph is a glyph (3:1) and "Stop" is primary.
+    /// Primary text on the neutral chip and on every tone's wash (the chip's 10 %) keeps 7:1, the branch and its glyph in
+    /// `secondaryOnTint` 4.5:1; the group rests on the canvas: its ⋯ glyph is a glyph (3:1) and "Stop" is primary.
     @Test func chipAndGroupTextKeepTheThemeTiers() {
         let neutral = over(LoomTheme.Tone(rgb: Self.white, opacity: LoomTheme.Header.chipNeutralWash))
         #expect(LoomTheme.Text.primaryRGB.contrast(with: neutral) >= 7)
         #expect(LoomTheme.Text.secondaryOnTintRGB.contrast(with: neutral) >= 4.5)
         #expect(LoomTheme.Text.secondaryIncreasedRGB.contrast(with: neutral) >= 4.5)
         for tone in ProjectTone.allCases {
-            let wash = over(LoomTheme.Tone(rgb: LoomTheme.ProjectColor.baseRGB(tone), opacity: LoomTheme.ProjectColor.tabWash))
+            let wash = over(LoomTheme.Tone(rgb: LoomTheme.ProjectColor.baseRGB(tone), opacity: LoomTheme.ProjectColor.chipWash))
             #expect(LoomTheme.Text.primaryRGB.contrast(with: wash) >= 7, "\(tone) name")
             #expect(LoomTheme.Text.secondaryOnTintRGB.contrast(with: wash) >= 4.5, "\(tone) branch")
             #expect(LoomTheme.Text.secondaryIncreasedRGB.contrast(with: wash) >= 4.5, "\(tone) branch, Increase Contrast")
-            // The stripe against the chip's own wash keeps the glyph tier.
-            #expect(LoomTheme.ProjectColor.baseRGB(tone).contrast(with: wash) >= 3, "\(tone) stripe")
         }
-        let group = over(LoomTheme.Tone(rgb: Self.white, opacity: LoomTheme.Header.groupWash))
+        let group = Self.panel
         #expect(LoomTheme.Text.primaryRGB.contrast(with: group) >= 7, "Stop")
         #expect(LoomTheme.Text.secondaryRGB.contrast(with: group) >= 3, "the ⋯ glyph")
-        let hover = Self.white.composited(over: group, opacity: LoomTheme.Surface.controlHoverOpacity)
+        let hover = Self.white.composited(over: group, opacity: LoomTheme.Surface.hoverOpacity)
         #expect(LoomTheme.Text.primaryRGB.contrast(with: hover) >= 7, "Stop while hovered")
     }
 
@@ -267,6 +265,7 @@ struct SessionHeaderTests {
         var chip: CGRect?
         var stop: CGRect?
         var menu: CGRect?
+        var toggle: CGRect?
         var width: CGFloat
         var group: CGRect? {
             guard let menu else { return nil }
@@ -318,6 +317,7 @@ struct SessionHeaderTests {
             switch text {
             case title: result.title = result.title ?? local
             case "Stop session": result.stop = result.stop ?? local
+            case "Show inspector", "Hide inspector": result.toggle = result.toggle ?? local
             default:
                 if text.hasPrefix("Project:") || text.hasPrefix("branch ") { result.chip = result.chip ?? local }
                 else if StatePillLabels.all.contains(text) { result.pill = result.pill ?? local }
@@ -343,7 +343,7 @@ struct SessionHeaderTests {
     /// What breaks the design's rules in one measured row (the tests use titles of 100 pt and more); empty when it holds.
     private func violations(_ frames: Frames) -> [String] {
         var found: [String] = []
-        let inset = LoomTheme.Space.detailInset
+        let inset = LoomTheme.Header.trailingInset
         let bounds = CGRect(x: 0, y: -10_000, width: frames.width, height: 20_000)
         for (name, frame) in [("pill", frames.pill), ("chip", frames.chip), ("group", frames.group)] {
             if let frame, frame.minX < 0 || frame.maxX > bounds.maxX { found.append("\(name) leaves the row: \(frame)") }
@@ -375,7 +375,7 @@ struct SessionHeaderTests {
         #expect(full > compact + 40)
 
         var seen: [CGFloat: Frames] = [:]
-        for width in [900, 700, 620, 520, 480] as [CGFloat] {
+        for width in [900, 700, 650, 520] as [CGFloat] {
             let frames = try await headerFrames(rig, width: width)
             seen[width] = frames
             #expect(frames.pill != nil && frames.chip != nil && frames.stop != nil && frames.menu != nil && frames.title != nil,
@@ -387,24 +387,58 @@ struct SessionHeaderTests {
                 #expect(hit.width >= 24 && hit.height >= 24, "width \(width): hit area \(hit)")
             }
         }
-        let wide = try #require(seen[900]), narrow = try #require(seen[480])
+        let wide = try #require(seen[900]), narrow = try #require(seen[520])
         // The pill and the control group never change size, and nothing moves with the title.
         #expect(abs(try #require(wide.pill).width - (try #require(narrow.pill).width)) < 0.5, "the pill never truncates")
         #expect(abs(try #require(wide.group).width - (try #require(narrow.group).width)) < 0.5)
         // Wide: the full chip, the title whole. Narrow: the title gave way, and the branch went.
         #expect(try #require(wide.chip).width > (full + compact) / 2, "900: the branch shows")
-        #expect(try #require(narrow.chip).width < (full + compact) / 2 + 0.5, "480: the branch is gone")
+        #expect(try #require(narrow.chip).width < (full + compact) / 2 + 0.5, "520: the branch is gone")
         #expect(try #require(narrow.title).width < (try #require(wide.title).width) - 40, "the title gives way")
-        // The title shortens first: at 620 the branch is still there with the title above 100 pt. (600 before V25 moved the
-        // row's paddings onto the 4 pt grid, which asks the row for about 6 pt more.)
-        let mid = try #require(seen[620])
+        // The title shortens first: at 650 the branch is still there with the title above 100 pt. (The toggle's 26 pt and its
+        // 8 pt gap, with the mark in the chip, ask for about 30 pt more than the Night Fleece row did: it was 620.)
+        let mid = try #require(seen[650])
         let midChip = try #require(mid.chip), midTitle = try #require(mid.title)
         #expect(midChip.width > (full + compact) / 2 && midTitle.width >= 99)
-        // The pill sits at the same place relative to the chip whatever the width.
-        for frames in seen.values {
-            let pill = try #require(frames.pill), chipFrame = try #require(frames.chip)
-            #expect(abs(chipFrame.minX - pill.maxX - LoomTheme.Space.detailSpacing) < 1)
+        // The least pane the window leaves (480): the pill, the toggle and the group keep their sizes and the chip its floor; the
+        // row's fixed parts leave the title about 90 pt there (DESIGN gives the title 100 pt down to the chip's floor only).
+        let least = try await headerFrames(rig, width: 480)
+        #expect(abs(try #require(least.pill).width - (try #require(wide.pill).width)) < 0.5)
+        #expect(abs(try #require(least.group).width - (try #require(wide.group).width)) < 0.5)
+        #expect(try #require(least.chip).width >= 50 && (try #require(least.title).width) >= 80, "480: \(least)")
+        #expect(try #require(least.group).maxX <= 480 - LoomTheme.Header.trailingInset + 1)
+        // The pill follows the title, 8 apart, whatever the width; the chip, the toggle and the group keep the trailing edge.
+        for (width, frames) in seen {
+            let title = try #require(frames.title), pill = try #require(frames.pill), chipFrame = try #require(frames.chip)
+            #expect(abs(pill.minX - title.maxX - LoomTheme.Space.detailSpacing) < 1.5, "\(width): the pill follows the title")
+            #expect(pill.maxX <= chipFrame.minX + 0.5, "\(width): the pill is before the chip")
         }
+        #expect(try #require(wide.chip).minX - (try #require(wide.pill).maxX) > 40, "wide: the room opens between the pill and the chip")
+    }
+
+    /// DESIGN §6 Header: 52 pt, its content centred on one line; the inspector toggle is a 26 pt icon button 8 before the group,
+    /// and the group is 26 high. The chip, the toggle and the group keep their sizes at every width.
+    @Test func theHeaderIs52WithItsPartsOnOneLineAndTheToggleIsAnIconButton() async throws {
+        let rig = try await rig()
+        defer { cleanup(rig) }
+        try await show(rig.inProject, in: rig, run(.working))
+        let block = NSHostingView(rootView: DetailHeader(model: rig.model).frame(width: 800))
+        block.layoutSubtreeIfNeeded()
+        #expect(block.fittingSize.height == LoomTheme.Layout.headerHeight && LoomTheme.Layout.headerHeight == 52)
+
+        var toggleSizes: Set<CGFloat> = []
+        for width in [900, 620, 480] as [CGFloat] {
+            let frames = try await headerFrames(rig, width: width)
+            let toggle = try #require(frames.toggle, "\(width): the toggle"), group = try #require(frames.group)
+            toggleSizes.insert(toggle.width)
+            #expect(toggle.width == 26 && toggle.height == 26, "\(width): a 26 pt icon button, \(toggle)")
+            #expect(abs(group.minX - toggle.maxX - LoomTheme.Space.detailSpacing) < 1.5, "\(width): 8 before the group")
+            #expect(group.height >= 26 - 0.5 && group.height <= 26 + 0.5, "\(width): the group is 26 high, \(group)")
+            // One centre line for the title, the pill, the chip, the toggle and the group.
+            let centres = [frames.title, frames.pill, frames.chip, frames.toggle, frames.group].compactMap { $0?.midY }
+            #expect((centres.max() ?? 0) - (centres.min() ?? 0) < 1.5, "\(width): one line, \(centres)")
+        }
+        #expect(toggleSizes == [26])
     }
 
     @Test func aNaiveRowFailsTheSameMeasurements() async throws {
@@ -426,7 +460,7 @@ struct SessionHeaderTests {
         }
         .font(LoomTheme.Typography.body)
         .padding(.horizontal, LoomTheme.Space.detailInset)
-        .frame(height: LoomTheme.Layout.detailRowHeight)
+        .frame(height: LoomTheme.Layout.headerHeight)
         let frames = try await frames(of: naive, width: 480, title: rig.model.title(of: row))
         let broken = violations(frames)
         #expect(!broken.isEmpty, "a naive row at 480 pt must trip the measurements: \(frames)")
@@ -447,7 +481,7 @@ struct SessionHeaderTests {
         #expect(idle.pill != nil, "an idle session still has its state")
         let idleMenu = try #require(idle.menu)
         #expect(abs(idleMenu.maxX - runningMenu.maxX) < 0.5, "⋯ stays where it was")
-        #expect(abs(idleMenu.maxX - (900 - LoomTheme.Space.detailInset)) < 1)
+        #expect(abs(idleMenu.maxX - (900 - LoomTheme.Header.trailingInset)) < 1)
 
         // A run that ended has no label and therefore no pill.
         rig.model.selectedRow?.apply(live: SessionViewState(lifecycle: .active))

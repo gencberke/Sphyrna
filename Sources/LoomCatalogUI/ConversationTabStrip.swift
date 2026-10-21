@@ -1,8 +1,8 @@
+import LoomCore
 import SwiftUI
 
-/// Geometry and visibility rules of the tab strip (design/run1-surfaces-preview.html,
-/// surface 3): tabs share the width between 112 and 200 pt; when 112 pt tabs no longer
-/// fit the list scrolls and a chevron button lists every tab.
+/// Geometry and visibility rules of the session tab row (DESIGN §6 Tabs): tabs share the width between 112 and 230 pt, the "+"
+/// button ends the row; when 112 pt tabs no longer fit the list scrolls and a chevron button lists every tab.
 struct TabStripLayout: Equatable {
     /// The strip is drawn for at least this many visible tabs.
     static let minimumTabs = 2
@@ -15,22 +15,29 @@ struct TabStripLayout: Equatable {
 
     private var inner: CGFloat { width - 2 * LoomTheme.TabStrip.inset }
 
+    /// What the "+" button takes at the end of the row, with its gap.
+    static var plusReserve: CGFloat { LoomTheme.TabStrip.gap + LoomTheme.TabStrip.plus }
+
+    /// The room for the tabs (and the chevron when they overflow): the row without its "+" button.
+    private var available: CGFloat { inner - Self.plusReserve }
+
     private func contentWidth(tabWidth: CGFloat) -> CGFloat {
         CGFloat(count) * tabWidth + CGFloat(max(count - 1, 0)) * LoomTheme.TabStrip.gap
     }
 
-    var overflows: Bool { contentWidth(tabWidth: LoomTheme.TabStrip.minTabWidth) > inner }
+    var overflows: Bool { contentWidth(tabWidth: LoomTheme.TabStrip.minTabWidth) > available }
 
     var tabWidth: CGFloat {
         guard count > 0 else { return LoomTheme.TabStrip.maxTabWidth }
         if overflows { return LoomTheme.TabStrip.minTabWidth }
-        let share = (inner - CGFloat(count - 1) * LoomTheme.TabStrip.gap) / CGFloat(count)
+        let share = (available - CGFloat(count - 1) * LoomTheme.TabStrip.gap) / CGFloat(count)
         return min(LoomTheme.TabStrip.maxTabWidth, max(LoomTheme.TabStrip.minTabWidth, share))
     }
 
-    /// The width of the scrolling list, which gives up room to the chevron when the tabs overflow.
+    /// The width of the scrolling list: the tabs themselves, so the "+" button follows the last one; when the tabs overflow it
+    /// gives up room to the chevron.
     var listWidth: CGFloat {
-        overflows ? inner - LoomTheme.TabStrip.gap - LoomTheme.TabStrip.overflowWidth : inner
+        overflows ? available - LoomTheme.TabStrip.gap - LoomTheme.TabStrip.overflowWidth : contentWidth(tabWidth: tabWidth)
     }
 
     /// Whether a tab is cut at the leading edge: the list is scrolled, so a fade there says there is more.
@@ -40,7 +47,7 @@ struct TabStripLayout: Equatable {
     func hiddenIndices(scrollOffset: CGFloat) -> [Int] {
         guard overflows else { return [] }
         let step = tabWidth + LoomTheme.TabStrip.gap
-        let indicator = LoomTheme.TabStrip.tabInset + LoomTheme.Layout.indicatorSlot.width
+        let indicator = LoomTheme.TabStrip.indicatorEnd
         return (0..<count).filter { index in
             let leading = CGFloat(index) * step - scrollOffset
             return leading < 0 || leading + indicator > listWidth
@@ -63,9 +70,9 @@ struct TabStripLayout: Equatable {
     }
 }
 
-/// The conversation tab strip (D-33): pinned tabs plus the selected conversation as one
-/// transient (italic) tab. Selecting a tab swaps the terminal view; it never starts or
-/// stops anything, and closing a tab only unpins it.
+/// The session tab row (D-33; DESIGN §6 Tabs): pinned tabs plus the selected session as one transient (italic) tab, 36 pt high
+/// with a hairline under it. Selecting a tab swaps the terminal view; it never starts or stops anything, and closing a tab only
+/// unpins it. A "+" icon button ends the row.
 struct ConversationTabStrip: View {
     let model: CatalogModel
     @State private var scrollOffset: CGFloat = 0
@@ -79,13 +86,34 @@ struct ConversationTabStrip: View {
                 if layout.overflows {
                     TabOverflowButton(model: model, ids: ids, layout: layout, scrollOffset: scrollOffset)
                 }
+                NewTabButton(model: model)
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, LoomTheme.TabStrip.inset)
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
         }
         .frame(height: LoomTheme.TabStrip.height)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline).accessibilityHidden(true)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Session tabs")
+    }
+}
+
+/// The "+" that ends the row: it opens the new-session page of the project on screen, what ⌘N does there.
+private struct NewTabButton: View {
+    let model: CatalogModel
+
+    var body: some View {
+        Button { ShellCommand.newSession.run(on: model) } label: { Image(systemName: "plus") }
+            .buttonStyle(ChromeButtonStyle(size: CGSize(width: LoomTheme.TabStrip.plus, height: LoomTheme.TabStrip.plus),
+                                           key: "tab-plus"))
+            .disabled(!ShellCommand.newSession.isEnabled(on: model))
+            .focusEffectDisabled()
+            .help("New session (⌘N)")
+            .accessibilityLabel("New session")
+            .accessibilityIdentifier("tab-new-session")
     }
 }
 
@@ -135,8 +163,8 @@ private struct TabList: View {
     }
 }
 
-/// One tab: indicator, title and a close button that is reserved on the selected tab only
-/// and appears over the end of the title on hover for the others.
+/// One tab (DESIGN §6 Tabs): the project's mark, the status slot, the title and a 16 pt end slot that shows the harness's mark
+/// and turns into the close button while the pointer is on the tab, the open tab too.
 struct ConversationTabItem: View {
     let model: CatalogModel
     let id: UUID
@@ -149,40 +177,33 @@ struct ConversationTabItem: View {
         let title = row.map { model.title(of: $0) } ?? "Session"
         let indicator = row?.indicator ?? .idle
         let mark = row.flatMap { model.projectMark(of: $0.record) }
+        // The mark names the project whatever the setting says; with project colors off it is neutral.
+        let shown = row.flatMap { model.headerProjectMark(of: $0.record) }
         let tint = ProjectTabStyle(tone: mark?.tone, selected: selected, hovering: hovering)
+        let shape = RoundedRectangle(cornerRadius: LoomTheme.TabStrip.tabRadius)
         HStack(spacing: LoomTheme.TabStrip.tabSpacing) {
+            if let shown { ProjectMarkView(name: shown.name, tone: mark?.tone, size: .chip) }
             IndicatorView(indicator: indicator)
             Text(title)
-                .font(LoomTheme.Typography.smallMedium).italic(transient)
-                .foregroundStyle(titleColor(selected: selected, stale: indicator == .stale, tinted: tint.wash != nil))
+                .font(LoomTheme.TabStrip.titleFont).italic(transient)
+                .foregroundStyle(titleColor(selected: selected, stale: indicator == .stale))
                 .lineLimit(1).truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if selected { TabCloseButton(model: model, id: id, tabHovering: hovering, tinted: tint.wash != nil) }
+            TabEndSlot(model: model, id: id, provider: row?.record.session.provider, showsClose: hovering)
         }
-        .padding(.leading, LoomTheme.TabStrip.tabInset)
-        .padding(.trailing, selected ? LoomTheme.TabStrip.selectedTrailing : LoomTheme.TabStrip.tabInset)
+        .padding(.horizontal, LoomTheme.TabStrip.tabInset)
         .frame(height: LoomTheme.TabStrip.tabHeight)
         .background {
-            // A project tone washes the tab over the selection fill; its hover wash replaces the hover fill.
+            // A project tone washes the tab; without a tone the neutral fills stand in (hover, and selected with a hairline).
             ZStack {
-                RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
-                    .fill(selected ? LoomTheme.Surface.selected
-                          : (hovering && tint.wash == nil ? LoomTheme.Highlight.hover : .clear))
-                if let wash = tint.washColor {
-                    RoundedRectangle(cornerRadius: LoomTheme.Radius.control).fill(wash)
-                }
+                shape.fill(selected ? LoomTheme.Surface.selected : (hovering && tint.wash == nil ? LoomTheme.Highlight.hover : .clear))
+                if let wash = tint.washColor { shape.fill(wash) }
             }
         }
-        .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
-            .strokeBorder(selected ? tint.stroke.map(AnyShapeStyle.init) ?? AnyShapeStyle(LoomTheme.Surface.hairline)
-                          : AnyShapeStyle(Color.clear), lineWidth: LoomTheme.Line.hairline))
-        .overlay(alignment: .trailing) {
-            if hovering && !selected {
-                TabCloseButton(model: model, id: id, tabHovering: true, tinted: tint.wash != nil)
-                    .padding(.trailing, LoomTheme.TabStrip.hoverCloseInset)
-            }
-        }
-        .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
+        .overlay(shape.strokeBorder(
+            selected ? tint.stroke.map(AnyShapeStyle.init) ?? AnyShapeStyle(LoomTheme.Surface.hairlineStyle) : AnyShapeStyle(Color.clear),
+            lineWidth: LoomTheme.Line.hairline))
+        .contentShape(shape)
         .onHover { hovering = $0 }
         .onTapGesture { model.selectTab(id) }
         // A double click pins the transient tab (a pinned tab ignores it).
@@ -213,40 +234,52 @@ struct ConversationTabItem: View {
         project.map { "\(title)\nProject: \($0)" } ?? title
     }
 
-    /// A tab washed with its project's tone keeps its secondary text at 4.5:1 with the lifted tone.
-    private func titleColor(selected: Bool, stale: Bool, tinted: Bool) -> Color {
-        let secondary = tinted ? LoomTheme.Text.secondaryOnTint : LoomTheme.Text.secondary
+    /// Secondary, primary on hover and when open (a stale tab's title stays secondary until it is open).
+    private func titleColor(selected: Bool, stale: Bool) -> Color {
         if selected { return LoomTheme.Text.primary }
-        if stale { return secondary }
-        return hovering ? LoomTheme.Text.primary : secondary
+        if stale { return LoomTheme.Text.secondary }
+        return hovering ? LoomTheme.Text.primary : LoomTheme.Text.secondary
+    }
+}
+
+/// The 16 pt slot at the end of a tab: the harness's mark (12) until the pointer is on the tab, then the close button.
+private struct TabEndSlot: View {
+    let model: CatalogModel
+    let id: UUID
+    let provider: ManagedSession.Provider?
+    let showsClose: Bool
+
+    var body: some View {
+        ZStack {
+            if showsClose {
+                TabCloseButton(model: model, id: id)
+            } else if let provider {
+                ProviderIcon(provider: provider, size: LoomTheme.Layout.harnessMarkRow)
+            }
+        }
+        .frame(width: LoomTheme.TabStrip.close, height: LoomTheme.TabStrip.close)
     }
 }
 
 private struct TabCloseButton: View {
     let model: CatalogModel
     let id: UUID
-    let tabHovering: Bool
-    /// The tab carries a project tone: the glyph uses the lifted secondary to keep 3:1 on the wash.
-    var tinted = false
     @State private var hovering = false
 
     var body: some View {
         Button { model.closeTab(id) } label: {
-            Image(systemName: "xmark").font(LoomTheme.Typography.chevron)
-                .foregroundStyle(hovering ? LoomTheme.Text.primary
-                                 : (tinted ? LoomTheme.Text.secondaryOnTint : LoomTheme.Text.secondary))
+            Image(systemName: "xmark").font(LoomTheme.TabStrip.closeGlyph)
+                .foregroundStyle(hovering ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
                 .frame(width: LoomTheme.TabStrip.close, height: LoomTheme.TabStrip.close)
-                .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.bar)
-                    .fill(hovering || (tabHovering && !isSelected) ? LoomTheme.Surface.controlPressed : .clear))
-                .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.bar))
+                .background(RoundedRectangle(cornerRadius: LoomTheme.TabStrip.closeRadius)
+                    .fill(hovering ? LoomTheme.Surface.hover : .clear))
+                .contentShape(RoundedRectangle(cornerRadius: LoomTheme.TabStrip.closeRadius))
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help("Close Tab (⌥⌘W)")
         .accessibilityHidden(true) // the tab's own "Close Tab" action does this
     }
-
-    private var isSelected: Bool { model.selectedSessionID == id }
 }
 
 /// The chevron at the end of an overflowing strip: lists every tab (a check on the selected

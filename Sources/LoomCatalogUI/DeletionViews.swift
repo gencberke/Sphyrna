@@ -149,25 +149,11 @@ struct DeletionMenuItems: View {
     }
 }
 
-/// A destructive button: the failure color as a fill with the same dark text the accent fill uses.
+/// A destructive button of the control family: the failure text, with the failure wash under the pointer.
 struct DestructiveButtonStyle: ButtonStyle {
+    var size: LoomTheme.Control.Size = .regular
+
     func makeBody(configuration: Configuration) -> some View {
-        Styled(configuration: configuration)
-    }
-
-    private struct Styled: View {
-        let configuration: ButtonStyle.Configuration
-        @Environment(\.isEnabled) private var enabled
-
-        var body: some View {
-            configuration.label
-                .font(LoomTheme.Typography.body)
-                .foregroundStyle(LoomTheme.Accent.onAccent)
-                .padding(.horizontal, LoomTheme.Space.buttonH).padding(.vertical, LoomTheme.Space.buttonV)
-                .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
-                    .fill(LoomTheme.Status.failure.opacity(configuration.isPressed ? LoomTheme.Opacity.accentPressed : 1)))
-                .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
-                .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
-        }
+        ControlButtonStyle(kind: .destructive, size: size).makeBody(configuration: configuration)
     }
 }

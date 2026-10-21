@@ -56,7 +56,7 @@ struct LoomThemeTests {
         #expect(LoomTheme.Text.faintRGB == RGB(hex: 0x6B6B75))
         #expect(LoomTheme.Accent.baseRGB == RGB(hex: 0x8791CF))
         #expect(LoomTheme.Accent.onAccentRGB == RGB(hex: 0x0B0E16))
-        #expect(LoomTheme.Surface.sidebarTintOpacity == 0.6)
+        #expect(LoomTheme.Surface.sidebarTintOpacity == 0.8)
         #expect(LoomTheme.inkRGB == RGB(hex: 0x1E1C1A))
     }
 
@@ -134,8 +134,8 @@ struct LoomThemeTests {
 
     // MARK: Glass | Solid (D-57)
 
-    @Test func theSidebarTintIsTodaysForGlassAndOpaqueForSolid() {
-        #expect(LoomTheme.Surface.sidebarTintOpacity(for: .glass) == 0.6)
+    @Test func theSidebarTintIsTheCanvasAtEightTenthsForGlassAndOpaqueForSolid() {
+        #expect(LoomTheme.Surface.sidebarTintOpacity(for: .glass) == 0.8)
         #expect(LoomTheme.Surface.sidebarTintOpacity(for: .solid) == 1)
     }
 

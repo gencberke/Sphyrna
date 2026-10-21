@@ -1,11 +1,11 @@
 import AppKit
 import SwiftUI
 
-/// The terminal remains opaque; only the sidebar uses native behind-window material, and only in the Glass
-/// style (D-57). Reduce Transparency draws Solid whatever the style says.
+/// The sidebar is the canvas: Solid (opaque) by default, or in the Glass style (D-57) the canvas at 0.8 over the native
+/// behind-window material. Nothing else uses the material. Reduce Transparency draws Solid whatever the style says.
 struct SidebarBackground: View {
     let reduceTransparency: Bool
-    var style: SidebarStyle = .glass
+    var style: SidebarStyle = .solid
 
     static func effectiveStyle(_ style: SidebarStyle, reduceTransparency: Bool) -> SidebarStyle {
         reduceTransparency ? .solid : style

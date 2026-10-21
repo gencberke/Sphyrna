@@ -20,31 +20,37 @@ struct ConversationTabStripTests {
         #expect(TabStripLayout.isVisible(tabCount: 8))
     }
 
+    /// The room for tabs is the row without its "+" button and its gap.
+    private let plus = TabStripLayout.plusReserve
+
     @Test func tabsShareTheWidthBetweenMinimumAndMaximum() {
-        // Detail panel at the default 1220 pt window with a 300 pt sidebar: 904 pt of strip.
+        // Detail pane at the default 1220 pt window with a 300 pt sidebar: 904 pt of row.
         let two = TabStripLayout(count: 2, width: 904)
-        #expect(two.tabWidth == LoomTheme.TabStrip.maxTabWidth)
+        #expect(two.tabWidth == LoomTheme.TabStrip.maxTabWidth && LoomTheme.TabStrip.maxTabWidth == 230)
         #expect(!two.overflows)
         let six = TabStripLayout(count: 6, width: 904)
         #expect(!six.overflows)
-        #expect(abs(six.tabWidth - (904 - 16 - 5 * 4) / 6) < 0.001) // about 145 pt, as in the design
+        #expect(abs(six.tabWidth - (904 - 16 - plus - 5 * 4) / 6) < 0.001) // about 137 pt: the "+" button takes its place
+        // The list is the tabs themselves, so the "+" button follows the last one.
+        #expect(abs(two.listWidth - (2 * 230 + 4)) < 0.001)
+        #expect(abs(six.listWidth - (904 - 16 - plus)) < 0.001)
     }
 
     @Test func tabsStopAtTheMinimumThenTheStripScrollsWithAChevron() {
         let five = TabStripLayout(count: 5, width: 904)
         #expect(!five.overflows)
         let eightWide = TabStripLayout(count: 8, width: 904)
-        #expect(eightWide.overflows) // 8 x 112 + 7 x 4 + padding = 940 pt
+        #expect(eightWide.overflows) // 8 x 112 + 7 x 4 = 924 pt, over the 860 pt the row leaves
         #expect(eightWide.tabWidth == LoomTheme.TabStrip.minTabWidth)
-        #expect(eightWide.listWidth == 904 - 16 - LoomTheme.TabStrip.gap - LoomTheme.TabStrip.overflowWidth)
+        #expect(eightWide.listWidth == 904 - 16 - plus - LoomTheme.TabStrip.gap - LoomTheme.TabStrip.overflowWidth)
         let eightNarrow = TabStripLayout(count: 8, width: 464) // 780 pt window, 300 pt sidebar
         #expect(eightNarrow.overflows && eightNarrow.tabWidth == LoomTheme.TabStrip.minTabWidth)
         let twoNarrow = TabStripLayout(count: 2, width: 464)
         #expect(!twoNarrow.overflows)
         // The boundary: exactly fitting is not an overflow, one point less is.
-        let exact = 4 * 112 + 3 * 4 + 16
-        #expect(!TabStripLayout(count: 4, width: CGFloat(exact)).overflows)
-        #expect(TabStripLayout(count: 4, width: CGFloat(exact - 1)).overflows)
+        let exact = 4 * 112 + 3 * 4 + 16 + plus
+        #expect(!TabStripLayout(count: 4, width: exact).overflows)
+        #expect(TabStripLayout(count: 4, width: exact - 1).overflows)
     }
 
     @Test func hiddenTabsAreTheOnesScrolledOutOfTheViewport() {
@@ -94,50 +100,113 @@ struct ConversationTabStripTests {
         var value: Bool { lock.lock(); defer { lock.unlock() }; return raised }
     }
 
-    // MARK: Vertical rhythm (FB-C): no gap between the title row and its tabs
+    // MARK: The header and the tab row (DESIGN §6 Tabs)
 
-    /// The real header-and-strip composition (`DetailTop`) laid out by AppKit, no window needed.
-    private func topBlockHeight(_ model: CatalogModel, showsSessionHeader: Bool = true) -> CGFloat {
-        let hosting = NSHostingView(rootView: DetailTop(model: model, showsSessionHeader: showsSessionHeader).frame(width: 800))
+    private func fittingHeight<Content: View>(_ content: Content) -> CGFloat {
+        let hosting = NSHostingView(rootView: content.frame(width: 800))
         hosting.layoutSubtreeIfNeeded()
         return hosting.fittingSize.height
     }
 
-    @Test func theStripSitsDirectlyUnderTheHeaderRowAndASingleTabKeepsTheOldBlock() async throws {
+    /// The header is 52 pt and the tab row 36 pt under it, in the content column; a single tab draws no row.
+    @Test func theHeaderIs52AndTheTabRowIs36AndAppearsWithTwoTabs() async throws {
         let fixture = try await makeFixture(rows: 2)
         defer { cleanup(fixture) }
         await fixture.model.start()
         fixture.model.select(fixture.ids[0])
         #expect(!fixture.model.tabStripIsVisible)
-        // One tab: the unchanged 52 pt block (36 pt row + 16 pt spacing above the terminal).
-        #expect(topBlockHeight(fixture.model) == LoomTheme.Layout.headerHeight)
+        #expect(!DetailHeader.drawsStrip(model: fixture.model, showsSessionHeader: true), "one tab: no row")
+        #expect(fittingHeight(DetailHeader(model: fixture.model)) == 52 && LoomTheme.Layout.headerHeight == 52)
         fixture.model.openTab(fixture.ids[0])
         fixture.model.select(fixture.ids[1])
         #expect(fixture.model.tabStripIsVisible)
-        // Two tabs: row and strip touch (36 + 32 pt), as in the approved preview.
-        #expect(topBlockHeight(fixture.model) == LoomTheme.Layout.detailRowHeight + LoomTheme.TabStrip.height)
+        #expect(DetailHeader.drawsStrip(model: fixture.model, showsSessionHeader: true), "two tabs: the row")
+        #expect(fittingHeight(DetailHeader(model: fixture.model)) == 52, "the row does not change the header")
+        #expect(fittingHeight(ConversationTabStrip(model: fixture.model)) == 36 && LoomTheme.TabStrip.height == 36)
     }
 
-    @Test func thePagesThatShowNoSessionDrawNoStripEvenWithTwoTabsOpen() async throws {
+    @Test func thePagesThatShowNoSessionDrawNoRowEvenWithTwoTabsOpen() async throws {
         let fixture = try await makeFixture(rows: 2)
         defer { cleanup(fixture) }
         await fixture.model.start()
         fixture.model.openTab(fixture.ids[0])
         fixture.model.openTab(fixture.ids[1])
         #expect(fixture.model.tabStripIsVisible && fixture.model.detailRoute.showsSessionHeader)
-        #expect(topBlockHeight(fixture.model) == LoomTheme.Layout.detailRowHeight + LoomTheme.TabStrip.height)
-        // Home, a draft and a project page: the plain 52 pt block, with the strip's 32 pt left out.
+        #expect(DetailHeader.drawsStrip(model: fixture.model, showsSessionHeader: fixture.model.detailRoute.showsSessionHeader))
+        // Home, a draft and a project page: the tabs stay open behind them, the row is not drawn, the header is 52 and bare.
         fixture.model.showHome()
         #expect(fixture.model.tabStripIsVisible, "the tabs stay open behind Home")
         #expect(!fixture.model.detailRoute.showsSessionHeader)
-        #expect(topBlockHeight(fixture.model, showsSessionHeader: fixture.model.detailRoute.showsSessionHeader)
-                == LoomTheme.Layout.headerHeight)
+        #expect(!DetailHeader.drawsStrip(model: fixture.model, showsSessionHeader: false))
+        #expect(!DetailHeader.drawsHairline(showsSessionHeader: false, showsDevTerminal: false), "a page's header is bare")
+        #expect(DetailHeader.drawsHairline(showsSessionHeader: true, showsDevTerminal: false))
+        #expect(fittingHeight(DetailHeader(model: fixture.model, showsSessionHeader: false)) == 52)
         fixture.model.showDraft(projectID: nil)
-        #expect(topBlockHeight(fixture.model, showsSessionHeader: fixture.model.detailRoute.showsSessionHeader)
-                == LoomTheme.Layout.headerHeight)
+        #expect(!DetailHeader.drawsStrip(model: fixture.model, showsSessionHeader: fixture.model.detailRoute.showsSessionHeader))
         fixture.model.select(fixture.ids[0])
-        #expect(topBlockHeight(fixture.model, showsSessionHeader: fixture.model.detailRoute.showsSessionHeader)
-                == LoomTheme.Layout.detailRowHeight + LoomTheme.TabStrip.height, "the strip is back with the session")
+        #expect(DetailHeader.drawsStrip(model: fixture.model, showsSessionHeader: fixture.model.detailRoute.showsSessionHeader),
+                "the row is back with the session")
+    }
+
+    /// The sizes of DESIGN §6 Tabs, and the tint of §6 Project colour: 6 %, 11 % and 16 % with a 42 % edge when open; no tone, no tint.
+    @Test func aTabHasTheSizesAndTheTintOfInk() {
+        typealias T = LoomTheme.TabStrip
+        #expect(T.tabHeight == 26 && T.tabRadius == 7 && T.gap == 4 && T.inset == 8 && T.maxTabWidth == 230 && T.minTabWidth == 112)
+        #expect(T.close == 16 && T.plus == 24 && LoomTheme.Layout.harnessMarkRow == 12)
+        for tone in ProjectTone.allCases {
+            let rest = ProjectTabStyle(tone: tone, selected: false, hovering: false)
+            let hover = ProjectTabStyle(tone: tone, selected: false, hovering: true)
+            let open = ProjectTabStyle(tone: tone, selected: true, hovering: true)
+            #expect(rest.wash?.opacity == 0.06 && hover.wash?.opacity == 0.11 && open.wash?.opacity == 0.16, "\(tone)")
+            #expect(rest.stroke == nil && hover.stroke == nil)
+            #expect(open.stroke?.standard.opacity == 0.42 && open.stroke?.standard.rgb == LoomTheme.ProjectColor.baseRGB(tone))
+            #expect(open.stroke?.lightStandard.rgb == LoomTheme.ProjectColor.lightBaseRGB(tone))
+        }
+        let none = ProjectTabStyle(tone: nil, selected: true, hovering: true)
+        #expect(none.wash == nil && none.washColor == nil && none.stroke == nil, "no tone: the neutral fills stand in")
+    }
+
+    /// The "+" ends the row and does what ⌘N does there: it opens the new-session page of the project on screen.
+    @Test func thePlusButtonOpensTheNewSessionPageLikeCommandN() async throws {
+        let fixture = try await makeFixture(rows: 2)
+        defer { cleanup(fixture) }
+        await fixture.model.start()
+        let intents = HeaderIntents()   // `CatalogModel.intents` is weak: the test holds the object
+        fixture.model.intents = intents
+        defer { withExtendedLifetime(intents) {} }
+        fixture.model.openTab(fixture.ids[0])
+        fixture.model.select(fixture.ids[1])
+        #expect(ShellCommand.newSession.keyEquivalent == "n" && ShellCommand.newSession.modifiers == [.command])
+        #expect(ShellCommand.newSession.isEnabled(on: fixture.model))
+
+        enableAccessibilityTree()
+        let size = NSSize(width: 800, height: LoomTheme.TabStrip.height)
+        let hosting = NSHostingController(rootView: ConversationTabStrip(model: fixture.model).frame(width: 800, height: size.height))
+        hosting.sizingOptions = []
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentViewController = hosting
+        window.setContentSize(size)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        for _ in 0..<4 {
+            try await Task.sleep(for: .milliseconds(100))
+            window.contentView?.layoutSubtreeIfNeeded()
+        }
+        let elements = accessibilityElements(in: hosting.view)
+        let plus = try #require(elements.first { ($0.accessibilityLabel?() ?? "") == "New session" }, "the + button")
+        let frame = try #require(plus.accessibilityFrame?())
+        #expect(frame.width >= 24 && frame.height >= 24, "a hit area of at least 24 x 24")
+        let tabs = elements.filter { ($0.accessibilityLabel?() ?? "").hasPrefix("Row ") }
+        let lastTab = try #require(tabs.compactMap { $0.accessibilityFrame?() }.max { $0.maxX < $1.maxX })
+        #expect(abs(frame.minX - lastTab.maxX - LoomTheme.TabStrip.gap) < 1.5, "the + follows the last tab: \(frame) \(lastTab)")
+
+        let context = fixture.model.contextProjectID
+        fixture.model.beginNewSession(projectID: context)
+        let expected = fixture.model.destination
+        fixture.model.select(fixture.ids[1])
+        #expect(plus.accessibilityPerformPress?() == true)
+        #expect(fixture.model.destination == expected, "the + opens the page ⌘N opens")
+        if case .draft = fixture.model.destination {} else { Issue.record("not a draft: \(String(describing: fixture.model.destination))") }
     }
 
     // MARK: Fixture

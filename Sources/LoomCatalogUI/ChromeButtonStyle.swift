@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Monochrome chrome button: explicit colors (a plain button otherwise picks up
-/// the accent tint for its symbol), hover and pressed backgrounds, and a
-/// subtle ring while focused (the system focus effect is switched off).
+/// The icon button of the control family (DESIGN §6 Controls): 26 pt, radius 6, a 16 pt glyph in secondary until hovered
+/// (explicit colors: a plain button otherwise picks up the accent tint for its symbol), the pill's hover, selected and pressed
+/// fills, and Sphyrna's focus ring (accent, 2 pt, 2 pt outside) with keyboard navigation (the system focus effect is switched off).
 struct ChromeButtonStyle: ButtonStyle {
     var selected = false
     var size = LoomTheme.Layout.chromeButton
@@ -32,21 +32,20 @@ struct ChromeButtonStyle: ButtonStyle {
         @State private var hovering = false
         @Environment(\.isEnabled) private var enabled
         @Environment(\.isFocused) private var focused
-        @Environment(\.colorSchemeContrast) private var contrast
 
         var body: some View {
             let hit = ChromeButtonStyle.hitSize(for: size)
             let active = hovering || LookEvidence.forcesHover(key)
             let state = HighlightState.resolve(selected: selected, hovering: active, pressed: configuration.isPressed, enabled: enabled)
             configuration.label
+                .font(LoomTheme.Control.iconGlyph)
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(selected || active || configuration.isPressed ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
                 .frame(width: size.width, height: size.height)
-                .background(RowHighlight(state: state, radius: LoomTheme.Highlight.radiusControl))
-                .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
-                    .strokeBorder(ChromeButtonStyle.showsFocusRing(
-                        focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)
-                        ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast)))
+                .background(RowHighlight(state: state, radius: LoomTheme.Control.iconRadius))
+                .controlFocusRing(
+                    visible: ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),
+                    radius: LoomTheme.Control.iconRadius)
                 .frame(width: hit.width, height: hit.height)
                 .contentShape(Rectangle())
                 .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)

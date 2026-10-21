@@ -160,7 +160,7 @@ struct HighlightTests {
 
     /// The gaps and paddings the spacing pass moved, as they are now. A gap or padding is a multiple of 4, or 2 between a glyph
     /// and its text. What stays off the grid is optical or a size: the project stripe's top (11) and bottom (1) that line it up
-    /// with the name, the subagent guide's 13 (the centre of the indicator slot), a hairline, and the 6 pt terminal inset, which DESIGN §6 fixes.
+    /// with the name, the subagent guide's 13 (the centre of the indicator slot), a hairline, and the tab's 7 pt gap, which the reference draws.
     @Test func theSpacingPassLeavesEveryMovedGapAndPaddingOnTheFourPointGrid() {
         typealias S = LoomTheme.Space
         let moved: [(String, CGFloat)] = [
@@ -181,7 +181,7 @@ struct HighlightTests {
             ("usageCardBottom", S.usageCardBottom), ("usageCardHeaderBottom", S.usageCardHeaderBottom),
             ("usageRuleBottom", S.usageRuleBottom), ("usageLocalGap", S.usageLocalGap), ("toneRowGap", S.toneRowGap),
             ("pillLeading", LoomTheme.Header.pillLeading), ("pillTrailing", LoomTheme.Header.pillTrailing),
-            ("pillGap", LoomTheme.Header.pillGap), ("chipStripeGap", LoomTheme.Header.chipStripeGap),
+            ("pillGap", LoomTheme.Header.pillGap), ("chipMarkGap", LoomTheme.Header.chipMarkGap),
             ("chipRuleAfter", LoomTheme.Header.chipRuleAfter), ("stopPadding", LoomTheme.Header.stopPadding),
             ("stopGap", LoomTheme.Header.stopGap), ("crumbGap", LoomTheme.Header.crumbGap),
             ("backGap", LoomTheme.Header.backGap), ("backTrailing", LoomTheme.Header.backTrailing),
@@ -216,8 +216,9 @@ struct HighlightTests {
         }
     }
 
-    @Test func theGeometryTheSpacingPassMustNotChangeIsUnchanged() {
-        #expect(LoomTheme.Layout.headerHeight == 52 && LoomTheme.Layout.detailRowHeight == 36)
-        #expect(LoomTheme.Space.terminalInset == 6 && LoomTheme.Space.panelInset == 8)
+    @Test func theShellGeometryIsInks() {
+        #expect(LoomTheme.Layout.headerHeight == 52 && LoomTheme.TabStrip.height == 36)
+        // The terminal sits flush on the canvas (DESIGN §6 Terminal framing): its text keeps 16 pt, 20 at the leading edge.
+        #expect(LoomTheme.Space.terminalInset == 16 && LoomTheme.Space.terminalLeadingInset == 20)
     }
 }

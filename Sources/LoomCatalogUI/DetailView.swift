@@ -10,30 +10,38 @@ public struct DetailView: View {
 
     public var body: some View {
         let route = model.detailRoute
+        // One canvas (DESIGN §2 item 2, §6 Terminal framing): no panel, no inset, no border and no second background around
+        // the main pane. The sidebar and this pane are divided by the split view's hairline.
         VStack(spacing: 0) {
             // The whole top stack sits above the content: the Chat stream is an AppKit scroll view that is laid over its
             // neighbours (it hid the header and the banners, so a handover's refusal was never seen). It has the page's
             // own fill, so no row shows through behind it, and it takes the clicks on its transparent parts.
+            DetailHeader(model: model, showsSessionHeader: route.showsSessionHeader)
+                .background(route.surface)
+                .contentShape(Rectangle())
+                .zIndex(2)
+            // The tab row belongs to the content column, so that the inspector, when it is a column, starts on the tab row's
+            // line and its own 36 pt bar sits beside the row (`detailInspector`).
             VStack(spacing: 0) {
-                DetailTop(model: model, showsSessionHeader: route.showsSessionHeader)
-                Banners(model: model)
-                DeletionBanner(model: model)
+                VStack(spacing: 0) {
+                    if DetailHeader.drawsStrip(model: model, showsSessionHeader: route.showsSessionHeader) {
+                        ConversationTabStrip(model: model)
+                    }
+                    Banners(model: model)
+                    DeletionBanner(model: model)
+                }
+                .background(route.surface)
+                .contentShape(Rectangle())
+                .zIndex(1)
+                DetailContent(model: model, route: route)
             }
-            .background(route.surface)
-            .contentShape(Rectangle())
-            .zIndex(1)
-            DetailContent(model: model, route: route)
-                .detailInspector(model: model)
+            .detailInspector(model: model)
         }
-        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).fill(route.surface))
-        .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel).stroke(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
-        .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.panel))
-        // The terminal face is dark in both appearances (D-63): the whole panel, header and inspector included,
-        // is drawn under a dark scheme; the sidebar, the backdrop and every other page follow the appearance.
+        .background(route.surface)
+        // The terminal face is dark in both appearances (D-63): the whole pane, header and inspector included,
+        // is drawn under a dark scheme; the sidebar and every other page follow the appearance.
         .environment(\.colorScheme, route.drawsDark ? .dark : colorScheme)
-        .padding(LoomTheme.Space.panelInset)
         .ignoresSafeArea(.container, edges: .top)
-        .background(LoomTheme.Surface.backdrop.ignoresSafeArea())
         .tint(LoomTheme.Accent.base)
         .environment(\.indicatorsAnimate, model.windowIsActive)
         .sheet(item: $model.renameDraft) { draft in
@@ -57,40 +65,21 @@ public struct DetailView: View {
     }
 }
 
-/// The header and, when two or more tabs are open and the page shows a session, the tab strip directly
-/// under it. Home, a draft and a project page are not a session: no strip there. Banners come below both,
-/// so nothing sits between a title and its tabs.
-struct DetailTop: View {
-    let model: CatalogModel
-    /// False on Home, a draft and a project page: the header then carries no session.
-    var showsSessionHeader = true
-
-    var body: some View {
-        VStack(spacing: 0) {
-            DetailHeader(model: model, showsSessionHeader: showsSessionHeader)
-            if DetailHeader.drawsStrip(model: model, showsSessionHeader: showsSessionHeader) {
-                ConversationTabStrip(model: model)
-            }
-        }
-    }
-}
-
+/// The session header (DESIGN §6 Header): 52 pt on the canvas, its content centred 26 pt from the window top, with a hairline
+/// under it. Home, a draft and a project page are not about a session: their header is bare, with no hairline.
 struct DetailHeader: View {
     let model: CatalogModel
     var showsSessionHeader = true
-    static let rowHeight = LoomTheme.Layout.detailRowHeight
+    static let height = LoomTheme.Layout.headerHeight
 
-    /// The rest of the 52 pt header block is spacing above the terminal; the strip, when shown,
-    /// takes that place (header row 36 pt + strip 32 pt, as in the approved preview).
-    static func bottomSpacing(stripVisible: Bool) -> CGFloat {
-        stripVisible ? 0 : LoomTheme.Layout.headerHeight - rowHeight
-    }
-
-    /// The strip belongs to the page that shows a session (the route with the session header); the model's
+    /// The tab row belongs to the page that shows a session (the route with the session header); the model's
     /// `tabStripIsVisible` only says there are enough tabs.
     static func drawsStrip(model: CatalogModel, showsSessionHeader: Bool) -> Bool {
         showsSessionHeader && model.tabStripIsVisible
     }
+
+    /// The hairline under the header: a session's, and the development terminal's; the pages have none.
+    static func drawsHairline(showsSessionHeader: Bool, showsDevTerminal: Bool) -> Bool { showsSessionHeader || showsDevTerminal }
 
     /// The native buttons sit over this header's leading edge only while the
     /// sidebar (which otherwise carries them) is collapsed.
@@ -111,8 +100,8 @@ struct DetailHeader: View {
                 .accessibilityLabel("Show sidebar")
             }
             if model.showsDevTerminal {
-                ProviderIcon(provider: .synthetic, size: LoomTheme.Layout.providerIconHeader)
-                Text("Synthetic terminal (development)").fontWeight(.semibold).lineLimit(1)
+                ProviderIcon(provider: .synthetic, size: LoomTheme.Layout.harnessMarkHeader)
+                Text("Synthetic terminal (development)").font(LoomTheme.Header.titleFont).lineLimit(1)
                 Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             } else if showsSessionHeader, let row = model.selectedRow {
                 SessionHeaderRow(model: model, row: row)
@@ -125,17 +114,21 @@ struct DetailHeader: View {
         }
         .font(LoomTheme.Typography.body)
         .foregroundStyle(LoomTheme.Text.primary)
-        .padding(.horizontal, LoomTheme.Space.detailInset)
-        // The window buttons are centered natively 26 pt below the window top
-        // (8 pt panel inset + 18 pt); the row's center line is the same.
-        .frame(height: Self.rowHeight)
-        .padding(.bottom, Self.bottomSpacing(stripVisible: Self.drawsStrip(model: model, showsSessionHeader: showsSessionHeader)))
+        .padding(.leading, LoomTheme.Header.leadingInset).padding(.trailing, LoomTheme.Header.trailingInset)
+        // The window buttons are centered natively 26 pt below the window top; the row's center line is the same.
+        .frame(height: Self.height)
+        .overlay(alignment: .bottom) {
+            if Self.drawsHairline(showsSessionHeader: showsSessionHeader, showsDevTerminal: model.showsDevTerminal) {
+                Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 }
 
-/// A selected session in the header row (D-53, "A with the branch"): the provider mark, then the title,
-/// which gives way first; at fixed places on the right the state pill (or a transient text in its place),
-/// the project chip ending with the branch, the model segment where the face has no composer bar, a hairline and the
+/// A selected session in the header row (DESIGN §6 Header): the harness's mark, then the title, which gives way first, and
+/// right after it the state pill (or a transient text in its place); at fixed places at the trailing edge the project chip
+/// ending with the branch, the model segment where the face has no composer bar, a hairline, the inspector toggle and the
 /// control group (`HeaderFlow`).
 struct SessionHeaderRow: View {
     let model: CatalogModel
@@ -144,9 +137,9 @@ struct SessionHeaderRow: View {
     var body: some View {
         let _ = HeaderRenderProbe.row(row.id)
         HStack(spacing: LoomTheme.Space.detailSpacing) {
-            ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.providerIconHeader)
+            ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.harnessMarkHeader)
             HeaderFlow {
-                Text(model.title(of: row)).fontWeight(.semibold).lineLimit(1).truncationMode(.tail)
+                Text(model.title(of: row)).font(LoomTheme.Header.titleFont).lineLimit(1).truncationMode(.tail)
                     .headerSlot(.title)
                 status
                 if let chip = model.headerChip(of: row.record) {
@@ -159,8 +152,8 @@ struct SessionHeaderRow: View {
                 }
                 HeaderRule().headerSlot(.rule)
                 // The inspector toggle sits beside the control group and shares its place in the row.
-                HStack(spacing: LoomTheme.Inspector.toggleGap) {
-                    InspectorToggleButton(model: model, sessionID: row.id)
+                HStack(spacing: LoomTheme.Space.detailSpacing) {
+                    HeaderInspectorToggle(model: model, sessionID: row.id)
                     HeaderControlGroup(canStop: model.canStop(row), stop: { model.stopConversation(row.id) }) {
                         Button("Rename…") { model.beginRename(row.id) }
                         Button("Open in Tab") { model.openTab(row.id) }
@@ -318,6 +311,7 @@ struct EndedScreenNotice: View {
             .onDisappear { SidebarRenderProbe.disappeared("resume", session: row.id) }
             if showsDetails {
                 Button("Show Details") { model.closeEndedScreen(row.id) }
+                    .buttonStyle(ControlButtonStyle(kind: .secondary))
                     .help("Closes this screen and shows the session's details")
             }
         }
@@ -461,9 +455,11 @@ struct ConversationDetail: View {
                         // Stop only where a run can be stopped; a session that is not running has nothing to stop.
                         if model.canStop(row) {
                             Button("Stop") { model.stopConversation(row.id) }
+                                .buttonStyle(ControlButtonStyle(kind: .secondary))
                                 .accessibilityIdentifier("record-stop")
                         }
                         Button("Rename…") { model.beginRename(row.id) }
+                            .buttonStyle(ControlButtonStyle(kind: .secondary))
                     }
                 }
             }
@@ -504,6 +500,7 @@ struct RequestList: View {
                             Button("Deny") {
                                 model.answerRequest(sessionID: row.id, requestID: request.id, accept: false)
                             }
+                            .buttonStyle(ControlButtonStyle(kind: .secondary))
                             Button("Approve") {
                                 model.answerRequest(sessionID: row.id, requestID: request.id, accept: true)
                             }
@@ -585,6 +582,7 @@ struct RenameSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel") { model.renameDraft = nil }.keyboardShortcut(.cancelAction)
+                    .buttonStyle(ControlButtonStyle(kind: .secondary))
                 Button("Save") { save() }.keyboardShortcut(.defaultAction).disabled(draft.saving)
                     .buttonStyle(AccentButtonStyle(kind: .filled))
             }
@@ -599,39 +597,16 @@ struct RenameSheet: View {
     }
 }
 
-/// The brand accent on a button. `filled` is the default action (dark text on
-/// the accent; light text on it is only 2.2 to 3.0:1); `tinted` is a quieter
-/// action such as Stop (accent text on a faint accent fill).
+/// The brand accent on a button, in the control family (`ControlButtonStyle`). `filled` is the default action (on-accent text on
+/// the accent; light text on it is only 2.2 to 3.0:1); `tinted` is a quieter action such as Try again (accent text on a faint
+/// accent fill). `size` is the family's: 26 high by default, 30 for a page's main action.
 struct AccentButtonStyle: ButtonStyle {
     enum Kind { case filled, tinted }
     let kind: Kind
+    var size: LoomTheme.Control.Size = .regular
 
     func makeBody(configuration: Configuration) -> some View {
-        Styled(configuration: configuration, kind: kind)
-    }
-
-    private struct Styled: View {
-        let configuration: ButtonStyle.Configuration
-        let kind: Kind
-        @Environment(\.isEnabled) private var enabled
-
-        var body: some View {
-            let pressed = configuration.isPressed
-            configuration.label
-                .font(LoomTheme.Typography.body)
-                .foregroundStyle(kind == .filled ? LoomTheme.Accent.onAccent : LoomTheme.Accent.base)
-                .padding(.horizontal, LoomTheme.Space.buttonH).padding(.vertical, LoomTheme.Space.buttonV)
-                .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.control).fill(fill(pressed: pressed)))
-                .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
-                .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
-        }
-
-        private func fill(pressed: Bool) -> Color {
-            switch kind {
-            case .filled: LoomTheme.Accent.base.opacity(pressed ? LoomTheme.Opacity.accentPressed : 1)
-            case .tinted: LoomTheme.Accent.base.opacity(pressed ? LoomTheme.Opacity.accentTintPressed : LoomTheme.Opacity.accentTint)
-            }
-        }
+        ControlButtonStyle(kind: kind == .filled ? .primary : .tinted, size: size).makeBody(configuration: configuration)
     }
 }
 

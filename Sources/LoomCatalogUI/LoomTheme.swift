@@ -45,9 +45,9 @@ enum LoomTheme {
     // MARK: Color
 
     enum Surface {
-        /// The tint over the sidebar material in Glass (the sidebar slice moves it); Solid is opaque
-        /// (`sidebarTintOpacity(for:)`). The tint's colour is the tone's canvas (`LoomTheme+Surfaces`).
-        static let sidebarTintOpacity = 0.6
+        /// The tint over the sidebar material in Glass: the canvas at 0.8 over the behind-window material (DESIGN §2 item 2);
+        /// Solid is opaque (`sidebarTintOpacity(for:)`). The tint's colour is the tone's canvas (`LoomTheme+Surfaces`).
+        static let sidebarTintOpacity = 0.8
 
         // Lines, white in Ink and the ink `#1E1C1A` in Paper (DESIGN §3 Surfaces, lines and fills).
         static let hairlineOpacity = 0.075
@@ -319,35 +319,42 @@ enum LoomTheme {
             contrast == .increased ? stripeWidthIncreased : stripeWidth
         }
 
-        // Tab tint (T5): a wash of the tone on every tab, a step stronger on hover; on the open tab a
-        // stronger wash over the selection fill and a 1 pt stroke of the tone. Increase Contrast draws
-        // that stroke in the lighter stripe colour at a higher opacity; the washes stay as they are.
-        // The open tab's wash is the strongest that keeps primary text at 7:1 on every tone (the
-        // preview drew 18 %, which takes Lemon, Aqua, Mint and Sage under it); secondary text on a
-        // washed tab is `Text.secondaryOnTint`.
-        static let tabWash = 0.10
-        static let tabWashHover = 0.15
-        static let tabWashOpen = 0.15
-        static let tabStrokeOpen = 0.36
+        // Tab tint (DESIGN §6 Project colour): a wash of the tone on every tab, 6 % at rest, 11 % under the pointer and 16 %
+        // on the open tab with a 1 pt edge of the tone at 42 %. Increase Contrast draws that edge in the lighter tone at
+        // 75 %; the washes stay as they are. Primary text holds 7:1 and secondary 4.5:1 on every tint (`ProjectColorUITests`).
+        static let tabWash = 0.06
+        static let tabWashHover = 0.11
+        static let tabWashOpen = 0.16
+        static let tabStrokeOpen = 0.42
         static let tabStrokeOpenIncreased = 0.75
+        /// The header chip: 10 % with a 1 pt edge of the tone at 32 % (75 % under Increase Contrast).
+        static let chipWash = 0.10
+        static let chipEdgeOpacity = 0.32
+        static let chipEdgeIncreasedOpacity = 0.75
 
         /// The menu swatch: a rounded square, never a dot.
         static let swatch: CGFloat = 12
         static let swatchRadius: CGFloat = 3
     }
 
-    /// The detail header row (FB3-2, D-53; design/feedback-3-preview.html, "Chosen: A with the branch"):
-    /// the title on the left; at fixed places on the right a state pill, a project chip ending with the
-    /// branch, a hairline and one control group of a Stop segment and a ⋯ segment.
+    /// The session header (DESIGN §6 Header; A3 and A4 of the reference): 52 pt on the canvas with a hairline under it. From
+    /// the left the harness's mark, the title and right after it the state pill; at the trailing edge, 8 apart, the project
+    /// chip, the model segment, a hairline, the inspector toggle and the control group.
     enum Header {
-        // State pill: a capsule with the indicator and the label. Working sits on a light white wash in
-        // primary text, the other neutral states on a fainter one in lifted secondary text; attention,
-        // failure and the unviewed finish take a low wash of their own colour and a lighter label of
-        // it (the plain status colours are 4.3 to 4.4:1 on their wash for failure and unviewed).
-        static let pillHeight: CGFloat = 22
+        /// The row's content insets: the terminal's text starts at the same 20 pt.
+        static let leadingInset: CGFloat = 20
+        static let trailingInset: CGFloat = 12
+        /// The title: 13 semibold, one line.
+        static let titleFont = InkType.header.font
+
+        // State pill: a 22 pt capsule with the mark and the label in 11.5 medium. Working sits on the selected fill in
+        // primary text, Ready, Idle, Stale and State unknown on the hover fill in secondary text with no mark; attention,
+        // failure and the unviewed finish take a low wash of their own colour behind the text variant (DESIGN §4).
+        static let pillHeight: CGFloat = InkHeight.chip
         static let pillLeading: CGFloat = 8
         static let pillTrailing: CGFloat = 8
-        static let pillGap: CGFloat = 8
+        static let pillGap: CGFloat = 4
+        static let pillFont = Font.system(size: 11.5, weight: .medium)
         static let pillWorkingWash = Surface.selectedOpacity
         static let pillNeutralWash = Surface.hoverOpacity
         static let pillStatusWash = 0.13
@@ -358,17 +365,23 @@ enum LoomTheme {
         static let failureLabelPair = Status.failureLightPair
         static let unviewedLabelPair = Status.unviewedLightPair
 
-        // Project chip: the tone stripe (full height), the project name, a hairline, the branch.
-        static let chipHeight: CGFloat = 22
-        /// Space after the stripe; a chip without a stripe insets its text `chipInset` instead.
-        static let chipStripeGap: CGFloat = 8
+        // Project chip: 22 pt, radius 6; the project's mark 4 pt from the edge, the name in 12 primary, a 1 x 12 hairline, the
+        // branch glyph and the branch in mono 11.5 secondary. The tint is the project's (10 % with a 32 % edge); without a
+        // tone the chip is neutral (the selected fill with the strong hairline).
+        static let chipHeight: CGFloat = InkHeight.chip
+        static let chipRadius: CGFloat = InkRadius.control
+        static let chipMarkInset: CGFloat = 4
+        /// Space after the mark; a chip without a mark (no project) insets its text `chipInset` instead.
+        static let chipMarkGap: CGFloat = 8
         static let chipInset: CGFloat = 8
         static let chipRuleGap: CGFloat = 8
         static let chipRuleAfter: CGFloat = 8
-        static let chipRuleHeight: CGFloat = 14
+        static let chipRuleHeight: CGFloat = 12
         static let chipBranchGap: CGFloat = 4
         /// The glyph before the branch name.
         static let chipGlyph = Font.system(size: 11)
+        static let chipNameFont = InkType.small.font
+        static let chipBranchFont = InkType.metaLarge.font
         /// A longer branch name ends in an ellipsis; 320 pt holds names like "release/2026-10/hotfix-PAY-142".
         static let branchMaxWidth: CGFloat = 320
         /// The neutral chip (no project, None, colours off): the selected fill.
@@ -379,21 +392,26 @@ enum LoomTheme {
         // The model segment after the chip: the ring (or a token count) and the model's name, plain text.
         static let modelGap: CGFloat = 6
 
-        // The hairline before the control group, and the group.
+        // The hairline before the inspector toggle, the toggle and the control group.
         static let ruleHeight: CGFloat = 16
         static let ruleMargin: CGFloat = 2
-        static let groupHeight: CGFloat = 24
+        static let toggleSize: CGFloat = InkHeight.control
+        /// The control group: 26 high, radius 7, the strong hairline for an edge; it rests on no fill.
+        static let groupHeight: CGFloat = InkHeight.control
+        static let groupRadius: CGFloat = InkRadius.group
         static let groupWash = Surface.selectedOpacity
         static let groupTone = Surface.selectedTone
         static let group = groupTone.color
         /// The state pill's washes in Paper: working and neutral are ink overlays, a status wash is its own hue.
         static let pillWorkingLightWash = Surface.selectedLightOpacity
         static let pillNeutralLightWash = Surface.hoverLightOpacity
+        /// The Stop segment: an 8 x 8 square with radius 1.5 and "Stop" in 12 medium; the ⋯ segment is 30 wide.
         static let stopGlyph: CGFloat = 8
         static let stopGlyphRadius: CGFloat = 1.5
         static let stopPadding: CGFloat = 8
         static let stopGap: CGFloat = 8
-        static let menuSegmentWidth: CGFloat = 28
+        static let stopFont = Font.system(size: 12, weight: .medium)
+        static let menuSegmentWidth: CGFloat = 30
 
         // The subagent panel's header (FB4-5): the crumb, and the Session control with its Esc key cap.
         static let crumbGap: CGFloat = 8
@@ -403,14 +421,15 @@ enum LoomTheme {
         static let backTrailing: CGFloat = 8
         static let keyCapPadding: CGFloat = 4
 
-        // Narrow rows: the title gives way down to this width, then the branch goes, then the project
-        // name shortens (never below the floor).
+        // Narrow rows: the title gives way down to this width, then the model segment goes, then the chip gives up its
+        // branch, then the project name shortens (never below the floor).
         static let titleMinWidth: CGFloat = 100
         static let chipFloorWidth: CGFloat = 56
     }
 
     enum Opacity {
-        static let disabled = 0.4
+        /// A disabled control is drawn at 38 % (DESIGN §6 Controls).
+        static let disabled = 0.38
         static let accentPressed = 0.8
         static let accentTint = 0.14
         static let accentTintPressed = 0.24
@@ -435,7 +454,9 @@ enum LoomTheme {
 
     enum Line {
         static let hairline: CGFloat = 1
-        static let focusRing: CGFloat = 1.5
+        /// Sphyrna's focus ring: the accent, 2 pt wide, 2 pt outside the control (`focusRingOffset`); 2.5 under Increase Contrast.
+        static let focusRing: CGFloat = 2
+        static let focusRingOffset: CGFloat = 2
         /// The focus ring is thicker under Increase Contrast.
         static let focusRingIncreased: CGFloat = 2.5
         static func focusRing(for contrast: ColorSchemeContrast) -> CGFloat {
@@ -534,8 +555,7 @@ enum LoomTheme {
         static let transcriptRowGap: CGFloat = 8
         /// The text after the glyph column (⏺, ⎿ and ✻ take this width).
         static let transcriptGlyphColumn: CGFloat = 18
-        // Detail panel.
-        static let panelInset: CGFloat = 8
+        // Detail pane.
         static let detailInset: CGFloat = 16
         static let detailSpacing: CGFloat = 8
         static let detailMinSpacer: CGFloat = 8
@@ -566,8 +586,9 @@ enum LoomTheme {
         // Sheet.
         static let sheetSpacing: CGFloat = 12
         static let sheetPadding: CGFloat = 20
-        // Terminal host.
-        static let terminalInset: CGFloat = 6
+        // Terminal host: the text keeps 16 pt of canvas around it, 20 at the leading edge (DESIGN §6 Terminal framing).
+        static let terminalInset: CGFloat = 16
+        static let terminalLeadingInset: CGFloat = 20
         // Settings.
         static let settingsInset: CGFloat = 32
         static let settingsFooterInset: CGFloat = 24
@@ -606,20 +627,24 @@ enum LoomTheme {
         // 26 pt below the window top (x 19...79), which is also the center of the
         // 52 pt sidebar header row and of the detail header row.
         static let headerHeight: CGFloat = 52
-        static let detailRowHeight: CGFloat = 36
         /// Sidebar header: space before the toggle so it clears the native buttons.
         static let sidebarButtonsGap: CGFloat = 76
         /// Detail header (collapsed sidebar): space reserved for the native buttons.
         static let detailButtonsGap: CGFloat = 66
         static let searchHeight: CGFloat = 30
         static let footerHeight: CGFloat = 38
-        static let chromeButton = CGSize(width: 26, height: 24)
+        /// An icon button: 26 pt, radius 6, a 16 pt glyph (DESIGN §6 Controls).
+        static let chromeButton = CGSize(width: 26, height: 26)
         static let footerButton = CGSize(width: 28, height: 26)
         static let projectMenuButton = CGSize(width: 22, height: 20)
         /// Every control answers a click within at least this area, whatever it draws.
         static let minimumHitTarget = CGSize(width: 24, height: 24)
         static let providerIconCard: CGFloat = 14
-        static let providerIconHeader: CGFloat = 16
+        /// The harness's mark (DESIGN §6 Iconography): 12 on rows, cards and tabs, 13 in the header and on the model chip, 14 in menus.
+        static let harnessMarkRow: CGFloat = 12
+        static let harnessMarkHeader: CGFloat = 13
+        static let harnessMarkMenu: CGFloat = 14
+        static let providerIconHeader: CGFloat = harnessMarkHeader
         static let providerIconDefault: CGFloat = 15
         static let providerIconDetail: CGFloat = 34
         static let messageMaxWidth: CGFloat = 420
@@ -766,23 +791,31 @@ enum LoomTheme {
 
     // MARK: Tab strip
 
-    /// The conversation tab strip (design/run1-surfaces-preview.html, surface 3).
+    /// The session tab row (DESIGN §6 Tabs): 36 pt under the header with a hairline under it. A tab is a 26 pt pill of radius 7,
+    /// 4 apart and 8 from the row's edge, at most 230 wide, tinted with its project's tone.
     enum TabStrip {
-        static let height: CGFloat = 32
-        static let tabHeight: CGFloat = 24
+        static let height: CGFloat = InkHeight.tabRow
+        static let tabHeight: CGFloat = InkHeight.control
+        static let tabRadius: CGFloat = InkRadius.group
         static let minTabWidth: CGFloat = 112
-        static let maxTabWidth: CGFloat = 200
+        static let maxTabWidth: CGFloat = 230
         static let gap: CGFloat = 4
         static let inset: CGFloat = 8
-        /// Space inside a tab before the indicator, and after the title when no close button is shown.
-        static let tabInset: CGFloat = 8
-        /// Space between a tab's indicator and title.
-        static let tabSpacing: CGFloat = 6
-        /// The selected tab's trailing padding around its reserved close slot.
-        static let selectedTrailing: CGFloat = 4
+        /// Space inside a tab before the project's mark and after its end slot.
+        static let tabInset: CGFloat = 6
+        /// Space between a tab's parts: the mark, the status slot, the title and the end slot.
+        static let tabSpacing: CGFloat = 7
+        /// Where a tab's status slot ends: the project's mark (14), a gap, then the slot.
+        static var indicatorEnd: CGFloat { tabInset + ProjectMarkStyle.Size.chip.side + tabSpacing + Layout.indicatorSlot.width }
+        /// The title: 12.5, secondary; primary on hover and when open.
+        static let titleFont = Font.system(size: 12.5)
+        /// The end slot: the harness's mark (12) until the pointer is on the tab, then the close button, 16 either way.
         static let close: CGFloat = 16
-        /// The hover close button sits this far from the top and trailing edge of an unselected tab.
-        static let hoverCloseInset: CGFloat = 3
+        static let closeRadius: CGFloat = InkRadius.key
+        static let closeGlyph = Font.system(size: 9, weight: .semibold)
+        /// The "+" icon button that ends the row.
+        static let plus: CGFloat = 24
+        static let plusGlyph = Font.system(size: 14)
         static let overflowWidth: CGFloat = 28
         /// Trailing fade of the scrolling list.
         static let fadeWidth: CGFloat = 28
