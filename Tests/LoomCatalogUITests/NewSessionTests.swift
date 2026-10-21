@@ -707,6 +707,36 @@ struct NewSessionTests {
         }
     }
 
+    /// DESIGN §8: the popover closes on a name Git would refuse, and the page keeps Send off and says why on the chosen segment.
+    @Test func aBadNameKeepsSendOffAndTheChosenSegmentSaysWhy() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        await openDraft(model, rig.projectID)
+        model.setDraftText("work", projectID: rig.projectID)
+        func chosen() -> DraftWords.Segment {
+            let draft = model.newSession.draft(for: rig.projectID) ?? SessionDraft(projectID: rig.projectID)
+            return DraftWords.segments(
+                hasProject: true, branch: model.newSession.branch(for: rig.projectID), chosen: draft.branchKind,
+                name: model.draftBranchName(draft)).first(where: \.isChosen)!
+        }
+        model.setDraftBranch(.newBranch, name: "bad name", projectID: rig.projectID)
+        #expect(!model.canSendDraft(projectID: rig.projectID))
+        #expect(chosen().kind == .newBranch && chosen().name == "bad name" && chosen().reason == DraftWords.invalidName)
+        model.setDraftBranch(.newWorktree, projectID: rig.projectID)
+        #expect(chosen().kind == .newWorktree && chosen().name == "bad name" && chosen().reason != nil, "the name carries over")
+        #expect(!model.canSendDraft(projectID: rig.projectID))
+        model.setDraftBranch(.newWorktree, name: "feat/mine", projectID: rig.projectID)
+        #expect(model.canSendDraft(projectID: rig.projectID))
+        #expect(chosen().name == "feat/mine" && chosen().reason == nil)
+        // A cleared name goes back to the suggestion made from the text.
+        model.setDraftBranch(.newWorktree, name: "", projectID: rig.projectID)
+        #expect(chosen().name == "loom/work" && chosen().reason == nil)
+        #expect(model.canSendDraft(projectID: rig.projectID))
+    }
+
     @Test func aFirstMessageTooLongForAnArgumentIsRefusedBeforeAnythingStartsWithAClearMessage() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }

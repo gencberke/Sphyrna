@@ -61,13 +61,24 @@ struct NewSessionComposer: View {
     }
 }
 
-/// Shared sizes of the draft screen.
+/// Shared sizes of the draft screen (DESIGN §8; the reference's `.draftpage`). The page's rhythm, top to bottom: the folder line
+/// 16 under the question, the composer 30 under it, the keys line 14, the strip 26 and the presets 14. Type, colours and the
+/// optical values are `LoomTheme.Draft`.
 enum NewSessionLayout {
     static let column: CGFloat = 720
     static let sideInset: CGFloat = 40
+    /// The composer is 680 wide, centred in the column.
+    static let composerWidth: CGFloat = 680
     /// The question sits above the middle of the page (the preview's 70 pt of bottom padding).
     static let bottomLift: CGFloat = 70
-    static let popoverWidth: CGFloat = 320
+    static let folderTop: CGFloat = 16
+    static let composerTop: CGFloat = 30
+    static let keysTop: CGFloat = 14
+    static let stripTop: CGFloat = 26
+    static let presetsTop: CGFloat = 14
+    static let presetGap: CGFloat = 8
+    /// The name popover of a new branch or worktree.
+    static let popoverWidth: CGFloat = 280
     /// The draft's composer is the live one (D-58, D-59, V17): its text inset, top and chip spacing are the live composer's
     /// tokens, so the two cards look the same. `FixRoundLookTests` ties them.
     static let textInset: CGFloat = LoomTheme.Composer.textInsetH
@@ -76,9 +87,6 @@ enum NewSessionLayout {
     static let textMaximumHeight: CGFloat = 220
     static let chipHeight: CGFloat = 26
     static let chipSpacing: CGFloat = LoomTheme.Composer.chipGap
-    static let headlinePickHeight: CGFloat = 36
-    static let toneStripe = CGSize(width: 4, height: 17)
-    static let glyph: CGFloat = 12
 }
 
 /// Mode and model chips and Send: the bar of D-58 without a ring (no session yet) and without +, whose menus need a
@@ -141,7 +149,7 @@ private struct SendButton: View {
         let enabled = model.canSendDraft(projectID: projectID)
         ComposerSendButton(
             look: enabled ? .send : .disabled, label: "Start session",
-            help: enabled ? "Start the session (\u{21B5}). \u{2318}\u{21B5} starts it and opens a fresh draft" : "Nothing to start yet",
+            help: DraftWords.sendHelp(enabled: enabled),
             identifier: "draft-send") { _ in model.sendDraft(projectID: projectID) }
     }
 }

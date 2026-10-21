@@ -1,0 +1,149 @@
+import SwiftUI
+
+/// The strip under the keys line (DESIGN §8 Branch strip): a centred segmented control (§6) for where the session's files are,
+/// "Stay on <branch>", "New branch" or "New worktree". Either new choice asks for its name in a small popover from its segment,
+/// which then shows the name; a click on it opens the popover again. Git runs only at the first send.
+struct BranchStrip: View {
+    let model: CatalogModel
+    let projectID: UUID?
+    @State private var popover: BranchKind?
+
+    private var draft: SessionDraft { model.newSession.draft(for: projectID) ?? SessionDraft(projectID: projectID) }
+
+    var body: some View {
+        let segments = DraftWords.segments(
+            hasProject: projectID != nil, branch: model.newSession.branch(for: projectID), chosen: draft.branchKind,
+            name: model.draftBranchName(draft))
+        HStack(spacing: LoomTheme.Draft.segmentGap) {
+            ForEach(segments, id: \.kind) { segment in
+                StripSegment(segment: segment) { choose(segment.kind) }
+                    .popover(isPresented: open(segment.kind), arrowEdge: .bottom) {
+                        BranchNamePopover(model: model, projectID: projectID, kind: segment.kind) { popover = nil }
+                    }
+            }
+        }
+        .padding(LoomTheme.Draft.segmentPadding)
+        .background(RoundedRectangle(cornerRadius: LoomTheme.InkRadius.group).fill(LoomTheme.Surface.control))
+        .frame(height: LoomTheme.InkHeight.control)
+        .fixedSize()
+        .disabled(projectID == nil)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Branch, \(segments.first(where: \.isChosen)?.accessibilityLabel ?? "")")
+        .accessibilityIdentifier("draft-branch")
+    }
+
+    private func choose(_ kind: BranchKind) {
+        let next = DraftWords.afterClick(kind)
+        if draft.branchKind != next.chosen { model.setDraftBranch(next.chosen, projectID: projectID) }
+        popover = next.popover
+    }
+
+    private func open(_ kind: BranchKind) -> Binding<Bool> {
+        Binding(get: { popover == kind }, set: { shown in if !shown, popover == kind { popover = nil } })
+    }
+}
+
+/// One segment: 22 high inside the group's 2, radius 5. The chosen one is raised (Segment on, a strong hairline and a 1 pt drop).
+private struct StripSegment: View {
+    let segment: DraftWords.Segment
+    let action: () -> Void
+    @State private var hovering = false
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.isFocused) private var focused
+
+    private typealias D = LoomTheme.Draft
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: LoomTheme.InkRadius.groupInner)
+        let on = enabled && segment.isEnabled
+        Button(action: action) {
+            HStack(spacing: D.segmentGlyphGap) {
+                if segment.showsGlyph { Image(systemName: "arrow.triangle.branch").font(D.segmentGlyph) }
+                Text(segment.title).lineLimit(1).truncationMode(.tail)
+                    .frame(maxWidth: segment.showsGlyph ? D.segmentStayMaxWidth : nil)
+                if let name = segment.name {
+                    Text(name).draftType(D.segmentName).lineLimit(1).truncationMode(.tail)
+                        .frame(maxWidth: D.segmentNameMaxWidth)
+                        .foregroundStyle(segment.reason == nil ? AnyShapeStyle(LoomTheme.Text.secondaryStyle)
+                                         : AnyShapeStyle(LoomTheme.Status.failureLight))
+                        .padding(.leading, D.segmentNameGap - D.segmentGlyphGap)
+                }
+            }
+            .draftType(D.segment)
+            .foregroundStyle(segment.isChosen || (hovering && on) ? AnyShapeStyle(LoomTheme.Text.primary)
+                             : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
+            .padding(.horizontal, D.segmentPaddingH)
+            .frame(height: LoomTheme.InkHeight.control - 2 * D.segmentPadding)
+            .background {
+                if segment.isChosen {
+                    shape.fill(LoomTheme.Surface.segmentOn)
+                        .shadow(color: D.segmentDrop, radius: D.segmentDropRadius, x: 0, y: D.segmentDropY)
+                        .overlay(shape.strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
+                }
+            }
+            .controlFocusRing(
+                visible: ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),
+                radius: LoomTheme.InkRadius.groupInner)
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .disabled(!segment.isEnabled)
+        .opacity(on ? 1 : LoomTheme.Opacity.disabled)
+        .onHover { hovering = $0 }
+        .help(segment.reason ?? segment.help)
+        .accessibilityLabel(segment.accessibilityLabel)
+        .accessibilityValue(segment.reason ?? "")
+        .accessibilityAddTraits(segment.isChosen ? .isSelected : [])
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var identifier: String {
+        switch segment.kind {
+        case .stay: "draft-branch-stay"
+        case .newBranch: "draft-branch-new-branch"
+        case .newWorktree: "draft-branch-new-worktree"
+        }
+    }
+}
+
+/// The name of the branch or worktree a new choice creates, in a small popover from its segment. A name Git would refuse says
+/// why and keeps Send off (`canSendDraft`); closing the popover keeps the name, and the segment shows it.
+private struct BranchNamePopover: View {
+    let model: CatalogModel
+    let projectID: UUID?
+    let kind: BranchKind
+    let close: () -> Void
+    @State private var name = ""
+    @FocusState private var focused: Bool
+
+    private var draft: SessionDraft { model.newSession.draft(for: projectID) ?? SessionDraft(projectID: projectID) }
+    private var suggestion: String { NewSessionBranchNames.suggest(text: draft.text) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: LoomTheme.Draft.popoverGap) {
+            TextField(kind == .newWorktree ? "Worktree name" : "Branch name", text: $name, prompt: Text(suggestion))
+                .textFieldStyle(.roundedBorder).font(LoomTheme.TypeScale.mono)
+                .focused($focused)
+                .onSubmit { commit(); close() }
+                .onChange(of: name) { _, value in commit(value) }
+                .accessibilityIdentifier("draft-branch-name")
+            if let reason = DraftWords.nameReason(model.draftBranchName(draft)) {
+                Text(reason).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.OnPopover.failure)
+            }
+            Text(DraftWords.createsAtStart)
+                .font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.OnPopover.placeholder)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(LoomTheme.Draft.popoverPadding)
+        .frame(width: NewSessionLayout.popoverWidth)
+        .background(LoomTheme.Surface.popover)
+        .onAppear {
+            name = draft.branchName ?? ""
+            focused = true
+        }
+    }
+
+    private func commit() { commit(name) }
+
+    private func commit(_ value: String) { model.setDraftBranch(draft.branchKind, name: value, projectID: projectID) }
+}

@@ -246,7 +246,8 @@ struct UIFixRoundViewTests {
         let model = CatalogModel(catalog: catalog, events: SessionEventHub(), preferences: UIPreferencesStore(url: dir.appendingPathComponent("p.json")))
         await model.start()
         defer { model.stop() }
-        // Wide: one line. Narrow (the 780 pt window's pane): two lines, the picker and the question mark together.
+        // Wide: one line. Medium (the sentence fits, the whole question does not): two rows, the picker and the question mark
+        // together. Narrow (the 780 pt window's pane, 400 inside the side insets): the sentence shrinks, still two rows.
         func height(_ width: CGFloat) async -> CGFloat {
             let (window, hosting) = host(Headline(model: model, projectID: project.id).frame(width: width), width: width, height: 400)
             defer { window.contentView = nil; window.close() }
@@ -254,10 +255,14 @@ struct UIFixRoundViewTests {
             return hosting.fittingSize.height
         }
         let wide = await height(900)
+        let medium = await height(500)
         let narrow = await height(330)
-        // The old break (the sentence, the picker, then the "?") added two rows, about 76 pt; the question mark with
-        // the picker adds one, about 38 pt.
-        #expect(narrow > wide, "the narrow headline wraps (\(wide) -> \(narrow))")
-        #expect(narrow - wide < 60, "one extra row, not two (\(wide) -> \(narrow))")
+        // At 46 pt one row is about 52 pt and the gap between the two rows 8: the old break (the sentence, the picker, then the
+        // "?") added two rows, about 120 pt; the question mark with the picker adds one, about 60 pt.
+        let row = LoomTheme.Draft.question.size * 1.12
+        #expect(medium > wide, "the medium headline wraps (\(wide) -> \(medium))")
+        #expect(medium - wide < 2 * row, "one extra row, not two (\(wide) -> \(medium))")
+        // The shrunk sentence is a little shorter than the full one, never taller: still two rows, not three.
+        #expect(narrow > wide && narrow <= medium && narrow - wide < 2 * row, "the narrow headline shrinks its sentence, it does not add a row (\(medium) -> \(narrow))")
     }
 }
