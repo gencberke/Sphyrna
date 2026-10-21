@@ -185,6 +185,13 @@ CatalogModel.startConversation -> ConversationController.start (creates Terminal
     the hub drops an equal reason silently and clears it with a new run. A detach or the run's end keeps only a finished or failed
     turn's line (`.turnDone`, `.failure`) for the card nobody has read yet; an approval cannot be answered once the run is gone.
     A reason is dropped when it no longer holds for the activity (`StatusReason.holds`).
+    Reported choices (C6a, for the inspector's Overview): 2.1.300's UserPromptSubmit, PermissionRequest and Stop carry
+    `permission_mode` and `effort.level`; `ClaudeHookEvent` keeps them when they are the CLI's word for a mode Loom knows
+    (`ClaudePermissionMode.cliValue`) or a known level, and the adapter publishes a main-thread event's values as
+    `.reportedChoices` (a subagent may run in a mode of its own). `SessionViewState.permissionMode` and `.effort` keep the last
+    known value, so a terminal Shift+Tab shows at the next such hook; both are cleared by a new run and by its end, when the
+    stored launch choices are again what the next start passes. The CLI's version comes from the cached `--version` probe
+    (`SessionRuntime.toolchainVersion(for:)`, "2.1.300", either provider): no probe, no process, nil until a start resolved it.
     - *Needs you* comes from `PermissionRequest` (immediate). `Notification(permission_prompt)` arrives about 6 s later, or never
       when the dialog is answered first, so it changes nothing, with one exception: it is the backup for a lost PermissionRequest
       (the state is Working and no PermissionRequest was seen since the prompt), and then shows Needs approval with no reason. The

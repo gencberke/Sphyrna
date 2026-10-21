@@ -345,6 +345,12 @@ public actor ClaudeSessionAdapter {
         lastStatuses[activeSessionID] = status
         // The reason goes first, so a consumer that sees "needs approval" already has what for.
         await supervisor.events.publish(sessionID: activeSessionID, change: .reason(status.reason))
+        // The main thread's mode and effort as the CLI reports them; a subagent may run in a mode of its own.
+        if event.agentID == nil, event.permissionMode != nil || event.effort != nil {
+            await supervisor.events.publish(
+                sessionID: activeSessionID,
+                change: .reportedChoices(permissionMode: event.permissionMode, effort: event.effort))
+        }
         // A Chat-face run's work state is its driver's (see `driverRuns`).
         if !isDriverRun(envelope.managedRunID) {
             try await supervisor.updateProviderWorkState(

@@ -401,7 +401,16 @@ public struct ClaudeHookEvent: Equatable, Sendable {
     /// past parsing (`PermissionRequest`, `Stop`, `StopFailure`, an automatic `UserPromptSubmit`, an
     /// MCP elicitation). Nil for events that state none.
     public let reason: StatusReason?
+    /// The permission mode the CLI reports (`permission_mode`, 2.1.300's UserPromptSubmit and PermissionRequest), in its own
+    /// word (`default`, `acceptEdits`, `plan`, `auto`, `bypassPermissions`, `dontAsk`); nil when the event carries none or a
+    /// word Loom does not know.
+    public let permissionMode: String?
+    /// The effort level the CLI reports (`effort.level`: `low` to `max`); nil when the event carries none or an unknown one.
+    public let effort: String?
     public let kind: Kind
+
+    /// The CLI's words for the modes Loom knows.
+    static let knownPermissionModes = Set(ClaudePermissionMode.allCases.map(\.cliValue))
 
     public var isSubagentLifecycle: Bool {
         switch kind {
@@ -455,6 +464,9 @@ public struct ClaudeHookEvent: Equatable, Sendable {
         promptIsSynthetic = prompt.map(Self.isSyntheticPrompt) == true
         work = eventName == "Stop"
             ? BackgroundWork.parse(tasks: object["background_tasks"], scheduled: object["session_crons"]) : BackgroundWork()
+        permissionMode = (object["permission_mode"] as? String).flatMap { Self.knownPermissionModes.contains($0) ? $0 : nil }
+        effort = ((object["effort"] as? [String: Any])?["level"] as? String)
+            .flatMap { ClaudeTranscriptEffort.levels.contains($0) ? $0 : nil }
         switch eventName {
         case "PermissionRequest":
             reason = StatusReason.permission(toolName: object["tool_name"] as? String, toolInput: object["tool_input"])

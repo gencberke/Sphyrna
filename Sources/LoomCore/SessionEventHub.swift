@@ -164,6 +164,13 @@ public struct SessionViewState: Equatable, Sendable {
     /// cleared by a new run. A detach or the end of the run keeps the last line of a finished or failed turn
     /// (`.turnDone`, `.failure`) for the card that waits to be read, and drops any other reason.
     public var reason: StatusReason?
+    /// The live run's permission mode and effort as Claude last reported them at a hook of its main thread (a prompt, a
+    /// permission request), in the CLI's words (`ClaudeHookEvent.permissionMode`, `.effort`), so a terminal Shift+Tab or
+    /// `/effort` shows at the next such hook. A report without one, or with a word Loom does not know, keeps the last
+    /// known value. Nil until the run reports one (the stored launch choices hold until then); cleared by a new run and by
+    /// the end of the run, when the stored choices are again what the next start passes. Memory only, never logged.
+    public var permissionMode: String?
+    public var effort: String?
 
     public init(
         status: ProviderWorkState? = nil, lifecycle: SessionLifecycle? = nil,
@@ -172,8 +179,11 @@ public struct SessionViewState: Equatable, Sendable {
         stopFailure: String? = nil, unviewedCompletion: Bool = false,
         waitingAcknowledged: Bool = false, activePhase: ActivePhase = .inactive, issue: String? = nil,
         userRequests: [ProviderUserRequest] = [], subagents: [SubagentRecord] = [], reason: StatusReason? = nil,
-        runEndpoint: RunEndpointKind? = nil, pendingRequests: [ProviderPendingRequest] = []
+        runEndpoint: RunEndpointKind? = nil, pendingRequests: [ProviderPendingRequest] = [],
+        permissionMode: String? = nil, effort: String? = nil
     ) {
+        self.permissionMode = permissionMode
+        self.effort = effort
         self.runEndpoint = runEndpoint
         self.pendingRequests = pendingRequests
         self.status = status
@@ -242,6 +252,9 @@ public enum SessionEventChange: Equatable, Sendable {
     /// The reason for the conversation's status changed (a permission request, a stop, a failure, a
     /// prompt) or no longer holds. Published before the status it explains.
     case reason(StatusReason?)
+    /// The live run reported its permission mode or effort (see `SessionViewState.permissionMode`); nil leaves a value as
+    /// it was.
+    case reportedChoices(permissionMode: String?, effort: String?)
     /// The catalog moved this many conversations to `lifecycle` in one batch
     /// (aging). The frame carries no per-conversation entries: the catalog row
     /// is authoritative, and `catalogRevision` tells a consumer that skipped
@@ -351,12 +364,15 @@ public actor SessionEventHub {
             state.activePhase = .inactive
             state.subagents = []
             state.reason = nil
+            state.permissionMode = nil
+            state.effort = nil
         // A late event of an earlier run must not end a newer run.
         case let .runDetached(value):
             if state.runID == value {
                 state.runID = nil; state.status = nil; state.waitingAcknowledged = false; state.subagents = []
                 state.runEndpoint = nil; state.pendingRequests = []
                 state.activePhase = .inactive
+                state.permissionMode = nil; state.effort = nil
                 state.reason = state.reason.flatMap(Self.keptAfterRun)
             }
         case let .runEnded(value, _):
@@ -369,6 +385,8 @@ public actor SessionEventHub {
                 state.activePhase = .inactive
                 state.userRequests = []
                 state.subagents = []
+                state.permissionMode = nil
+                state.effort = nil
                 state.reason = state.reason.flatMap(Self.keptAfterRun)
             }
         case let .blockers(value): state.blockers = value
@@ -401,6 +419,11 @@ public actor SessionEventHub {
             // A late reason must not come back to a session whose run is over.
             guard state.runID != nil || value == nil else { return }
             state.reason = value
+        case let .reportedChoices(mode, effort):
+            // A late report must not bring values back to a session whose run is over.
+            guard state.runID != nil else { return }
+            if let mode { state.permissionMode = mode }
+            if let effort { state.effort = effort }
         case .catalogLifecycle, .conversationDeleted, .deletionIncomplete, .activityRecorded: return
         }
         // A pure state event that changes nothing wakes nobody and does not

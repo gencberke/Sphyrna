@@ -793,6 +793,14 @@ public actor SessionRuntime {
     /// What the runtime has cached for a provider (diagnostics read it; nothing resolves here).
     func cachedToolchain(for provider: ManagedSession.Provider) -> ProviderToolchain? { toolchains[provider] }
 
+    /// The version of a provider's CLI as its cached `--version` probe read it ("2.1.300"), for a session's details. No probe
+    /// runs and no process starts here: nil until a start of that provider resolved its toolchain in this process, or when
+    /// the answer held no version. The cache follows the executable on disk, so after a CLI update the next start's
+    /// version shows, also for a session that still runs the older one.
+    public func toolchainVersion(for provider: ManagedSession.Provider) -> String? {
+        toolchains[provider]?.capabilities.claudeVersion.map { $0.map(String.init).joined(separator: ".") }
+    }
+
     /// A start failed: read the CLI again before the next one.
     func invalidateToolchain(_ provider: ManagedSession.Provider) async {
         staleToolchains.insert(provider)
