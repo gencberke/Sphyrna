@@ -36,8 +36,10 @@ struct InspectorOverview: View {
     private var content: InspectorOverviewContent {
         let record = row.record
         let directory = record.session.workingDirectory
-        let composer = model.composer(of: row.id)?.state
         let launched = model.launchModels
+        let words = OverviewRunWords.pick(
+            composer: model.composer(of: row.id)?.state, live: row.live, launchedVersion: launched.claudeVersion,
+            launchedMode: launched.permissionMode(of: row.id), launchedEffort: launched.effort(of: row.id))
         let chip = model.headerChip(of: record)
         let provider = record.session.provider
         let readsEdits = model.capabilities(of: provider).readsTranscript
@@ -46,12 +48,9 @@ struct InspectorOverview: View {
         return InspectorOverviewContent(
             status: row.indicator.label ?? (record.lifecycle == .active ? "Not running" : "\u{2014}"),
             createdAt: record.createdAt, now: model.now, provider: provider,
-            claudeVersion: composer?.claudeCodeVersion ?? launched.claudeVersion,
-            model: model.modelContent(of: record)?.name,
-            reportedMode: composer?.permissionMode ?? row.live?.permissionMode,
-            launchedMode: composer?.choices.permissionMode ?? launched.permissionMode(of: row.id),
-            reportedEffort: composer?.reportedEffort ?? row.live?.effort,
-            launchedEffort: composer?.choices.effort ?? launched.effort(of: row.id),
+            claudeVersion: words.version, model: model.modelContent(of: record)?.name,
+            reportedMode: words.reportedMode, launchedMode: words.launchedMode,
+            reportedEffort: words.reportedEffort, launchedEffort: words.launchedEffort,
             project: model.projectName(for: record), branch: chip?.branch, base: base, directory: directory,
             edits: edits, readsEdits: readsEdits, subagents: model.agentRecords(for: row),
             waiting: SubagentWaiting.ids(in: row.live))

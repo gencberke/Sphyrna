@@ -1,4 +1,5 @@
 import Foundation
+import LoomChat
 import LoomCore
 import Testing
 @testable import LoomCatalogUI
@@ -64,6 +65,32 @@ struct InspectorOverviewTests {
         // Until the run reports, the stored choices hold.
         let stored = Self.content(launchedMode: "plan", launchedEffort: "low")
         #expect(stored.mode?.title == "Plan" && stored.effort == "low")
+    }
+
+    /// On the Chat face the composer's words win: the driver's version, the mode and effort the CLI reported, and the
+    /// choices it launched with. Without a composer, the hooks' words and the stored choices.
+    @Test func onTheChatFaceTheComposersWordsWinOverTheHooksAndTheStoredChoices() {
+        let live = SessionViewState(permissionMode: "acceptEdits", effort: "high")
+        var composer = ChatComposerState.idle(sessionID: UUID())
+        composer.claudeCodeVersion = "2.1.301"
+        composer.permissionMode = "plan"
+        composer.reportedEffort = "max"
+        composer.choices = ClaudeLaunchChoices(permissionMode: "bypassPermissions", effort: "xhigh")
+        let chat = OverviewRunWords.pick(composer: composer, live: live, launchedVersion: "2.1.300", launchedMode: "default",
+                                         launchedEffort: "low")
+        #expect(chat == OverviewRunWords(version: "2.1.301", reportedMode: "plan", launchedMode: "bypassPermissions",
+                                         reportedEffort: "max", launchedEffort: "xhigh"))
+
+        // A composer that knows nothing yet falls through to the hooks and the stored choices.
+        let early = OverviewRunWords.pick(composer: .idle(sessionID: UUID()), live: live, launchedVersion: "2.1.300",
+                                          launchedMode: "default", launchedEffort: "low")
+        #expect(early == OverviewRunWords(version: "2.1.300", reportedMode: "acceptEdits", launchedMode: "default",
+                                          reportedEffort: "high", launchedEffort: "low"))
+
+        let terminal = OverviewRunWords.pick(composer: nil, live: live, launchedVersion: nil, launchedMode: "default",
+                                             launchedEffort: "low")
+        #expect(terminal == OverviewRunWords(version: nil, reportedMode: "acceptEdits", launchedMode: "default",
+                                             reportedEffort: "high", launchedEffort: "low"))
     }
 
     @Test func aModeKeepsItsLookAndAWordLoomDoesNotKnowKeepsTheCLIsOwn() {

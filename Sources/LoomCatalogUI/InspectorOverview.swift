@@ -1,4 +1,5 @@
 import Foundation
+import LoomChat
 import LoomCore
 import SwiftUI
 
@@ -121,6 +122,27 @@ struct InspectorOverviewContent: Equatable {
         let rows = live + rest
         return Agents(running: live.count, rows: Array(rows.prefix(LoomTheme.Overview.maxAgents)),
                       more: max(0, rows.count - LoomTheme.Overview.maxAgents))
+    }
+}
+
+/// Where the Overview's run facts come from. On the Chat face the composer's own words win: the driver's version, the
+/// mode and effort the CLI reported, and the choices it launched with. A terminal session has the hooks' words
+/// (`SessionViewState`), then the stored launch choices and the runtime's toolchain probe.
+struct OverviewRunWords: Equatable {
+    let version: String?
+    let reportedMode: String?
+    let launchedMode: String?
+    let reportedEffort: String?
+    let launchedEffort: String?
+
+    static func pick(composer: ChatComposerState?, live: SessionViewState?, launchedVersion: String?,
+                     launchedMode: String?, launchedEffort: String?) -> OverviewRunWords {
+        OverviewRunWords(
+            version: composer?.claudeCodeVersion ?? launchedVersion,
+            reportedMode: composer?.permissionMode ?? live?.permissionMode,
+            launchedMode: composer?.choices.permissionMode ?? launchedMode,
+            reportedEffort: composer?.reportedEffort ?? live?.effort,
+            launchedEffort: composer?.choices.effort ?? launchedEffort)
     }
 }
 
