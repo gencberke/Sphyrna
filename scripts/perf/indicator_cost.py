@@ -28,6 +28,7 @@ def main():
     os.makedirs(d, exist_ok=True)
     if subprocess.run(['pgrep', '-f', app + '/Contents/MacOS/Loom Dev'], capture_output=True).stdout:
         raise SystemExit('Loom Dev already running')
+    perf_paths.seed_remora_off(data)
     subprocess.run(['open', '-n', '-a', app, '--args', '--evidence', d, '--data-root', data, '--fake-providers', str(fixtures)], check=True)
     end = time.time() + 30
     while not (pathlib.Path(d) / 'launched.json').exists():

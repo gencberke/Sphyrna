@@ -28,6 +28,8 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from perf_paths import seed_remora_off  # noqa: E402
 INTERVALS = ['LaunchToFirstPage', 'CatalogOpen', 'WindowShown', 'RuntimeStart', 'FirstPage']
 COLUMNS = INTERVALS + [name + '.endsAt' for name in INTERVALS]
 
@@ -78,6 +80,7 @@ def one_run(app, seed, settle):
     try:
         data = work / 'data'
         shutil.copytree(seed, data)
+        seed_remora_off(data)
         evidence = work / 'evidence'
         evidence.mkdir()
         since = datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')

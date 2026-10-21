@@ -144,6 +144,7 @@ def launch(driver):
         (cell / stale).unlink(missing_ok=True)
     if subprocess.run(['pgrep', '-f', '--', str(executable)], stdout=subprocess.DEVNULL).returncode == 0:
         sys.exit('this package is already running; use a package of your own')
+    perf_paths.seed_remora_off(data)
     log = (cell / 'app.log').open('ab')
     driver.log = log
     driver.process = subprocess.Popen([str(executable), '--evidence', str(cell), '--data-root', str(data),

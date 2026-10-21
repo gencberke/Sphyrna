@@ -152,6 +152,7 @@ def launch(project_name):
     global app_pid
     if subprocess.run(['pgrep', '-f', str(app / 'Contents/MacOS/Loom Dev')], stdout=subprocess.DEVNULL).returncode == 0:
         sys.exit('this package is already running')
+    perf_paths.seed_remora_off(data)
     subprocess.run(['open', '-n', '-a', str(app), '--args', '--evidence', str(evidence), '--data-root', str(data),
                     '--claude-config', str(CONFIG), '--codex-home', str(pathlib.Path.home() / '.loom-dev/codex-home'),
                     '--evidence-tokens', ','.join(TOKENS)], check=True)

@@ -27,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from perf_paths import command_channel, refuse_documents  # noqa: E402
+from perf_paths import command_channel, refuse_documents, seed_remora_off  # noqa: E402
 
 CHECKS = []
 
@@ -52,6 +52,7 @@ class Instance:
     def launch(self):
         self.since = datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')
         (self.dir / 'launched.json').unlink(missing_ok=True)
+        seed_remora_off(self.data)
         log = (self.dir / 'app.log').open('ab')
         self.process = subprocess.Popen(
             [str(self.app / 'Contents/MacOS/Loom Dev'), '--evidence', str(self.dir), '--data-root', str(self.data),

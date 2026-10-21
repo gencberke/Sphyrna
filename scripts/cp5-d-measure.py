@@ -28,7 +28,7 @@ import time
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'perf'))
-from perf_paths import command_channel  # evidence command channel name, shared with scripts/perf
+from perf_paths import command_channel, seed_remora_off  # shared with scripts/perf: the evidence channel name; Remora off
 
 # interactive keeps the PTY default ONLCR; the explicit CR is followed by CRLF.
 BANNER = b'Loom synthetic terminal. Type a line; Ctrl-D exits.\r\r\n> '
@@ -359,6 +359,7 @@ class Driver:
         # Path values converted above; no user profile/data root is used.
         manifest['parameters']['output'] = str(self.args.output) if self.args.output else None
         (self.directory / 'manifest.json').write_text(json.dumps(manifest, indent=2))
+        seed_remora_off(self.directory / 'data')
         command = [str(executable), '--evidence', str(self.directory), '--data-root', str(self.directory / 'data')]
         if self.args.material != 'system':
             command += ['--evidence-transparency', self.args.material]

@@ -65,6 +65,31 @@ def real_work_dir(claude_config, *parts):
     return path
 
 
+# What the end batch's launchers seed so Remora makes no call in a measured or real run: off, and the brief only on request.
+REMORA_OFF = {'isOn': False, 'briefMode': 'whenIAsk'}
+
+
+def seed_remora_off(data_root):
+    """Turns Remora off in a run's data root before the app launches: merges `remora` into `<data root>/ui-preferences.json`
+    (the app reads it before its model exists) and keeps every other key, so a root that already holds the appearance, the
+    tone or the window's frame keeps them. `RemoraHost.briefIfDue` then stops at Off, and When I ask is a second stop. There
+    is no launch argument for Remora, and a command sent after launch comes too late. Returns the file's path."""
+    root = refuse_documents('Data root', data_root)
+    if root in (DEV_ROOT.resolve(), (HOME / 'Library/Application Support/Loom').resolve()):
+        raise SystemExit(f"Data root '{data_root}' is a default data root; seed a run's own root")
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / 'ui-preferences.json'
+    stored = json.loads(path.read_text()) if path.exists() else {}
+    if not isinstance(stored, dict):
+        raise SystemExit(f"'{path}' does not hold a JSON object; not seeding over it")
+    remora = stored.get('remora') if isinstance(stored.get('remora'), dict) else {}
+    stored['remora'] = remora | REMORA_OFF
+    temporary = path.with_name(path.name + '.seeding')
+    temporary.write_text(json.dumps(stored, indent=2, sort_keys=True) + '\n')
+    os.replace(temporary, path)
+    return path
+
+
 def load_module(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)

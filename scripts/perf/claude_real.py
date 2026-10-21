@@ -77,6 +77,7 @@ app_pid = None
 try:
     if subprocess.run(['pgrep', '-f', str(app / 'Contents/MacOS/Loom Dev')], stdout=subprocess.DEVNULL).returncode == 0:
         raise SystemExit('already running')
+    perf_paths.seed_remora_off(data)
     subprocess.run(['open', '-n', '-a', str(app), '--args', '--evidence', str(evidence), '--data-root', str(data),
                     '--claude-config', str(PROBE / 'claude-config'), '--codex-home', str(pathlib.Path.home() / '.loom-dev/codex-home'),
                     '--evidence-tokens', ','.join(TOKENS)], check=True)
