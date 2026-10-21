@@ -90,7 +90,7 @@ extension CatalogModel {
 
     /// Drives the composer as the user does and reports what it holds (kinds and counts; the evidence driver decides whether
     /// titles may be written). `command`: `focus`, `type` (the text goes in through the text view, `\n` is a new line),
-    /// `clear`, `mode|model|effort` (a chip's choice), `ring` (`on|off`: the popover), `popover` (`mode|model|effort|off`: a picker's popover), `attach` (a file path), `paste` (a text of that many KB, as a paste), `state`.
+    /// `clear`, `mode|model|effort` (a chip's choice), `ring` (`on|off`: the popover), `popover` (`mode|model|effort|off`: a picker's popover; `model` and `effort` open the one model popover), `attach` (a file path), `paste` (a text of that many KB, as a paste), `state`.
     public func composerEvidence(session: UUID, command: String, argument: String) async -> [String: Any] {
         guard let composer = composer(of: session) else { return ["composer": false] }
         var applied: Bool?
@@ -112,11 +112,11 @@ extension CatalogModel {
             composer.environment.workingDirectory = { argument }
         case "ring": composer.ringPopoverOpen = argument != "off"
         case "popover":
-            // The bar's pickers (D-63): `mode`, `model` or `effort` opens that popover and closes the others; `off` closes all.
+            // The bar's pickers (D-63): `mode` opens the mode list; `model` and `effort` both open the one model popover (D-75:
+            // the models and the effort share it); each closes the others, and `off` closes all.
             composer.ringPopoverOpen = false
             composer.modePopoverOpen = argument == "mode"
-            composer.modelPopoverOpen = argument == "model"
-            composer.effortPopoverOpen = argument == "effort"
+            composer.modelPopoverOpen = argument == "model" || argument == "effort"
         case "paste": composer.addPastedText(String(repeating: "pasted line of text\n", count: max(1, (Int(argument) ?? 1) * 52)))
         default: break
         }

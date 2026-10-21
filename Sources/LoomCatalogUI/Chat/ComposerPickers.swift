@@ -1,8 +1,8 @@
 import LoomCore
 import SwiftUI
 
-// The composer bar's three pickers (D-63, after Codex's): the mode list, the model list and the effort slider. The draft's
-// composer and the session's own composer both draw them, with the same pieces and their own actions.
+// The composer bar's mode picker (D-63, after Codex's). The model chip with its one popover is `ComposerModelPopover.swift`.
+// The draft's composer and the session's own composer both draw them, with the same pieces and their own actions.
 
 // MARK: Look of a mode
 
@@ -22,15 +22,6 @@ enum ComposerModeLook {
     }
 
     static func color(forRaw raw: String?) -> Color { LoomTheme.Composer.ModeTone.color(forRaw: raw) }
-}
-
-// MARK: Chip parts
-
-extension View {
-    /// The shared pill under the pointer, for the bar's chips (the popovers' own rows draw it through `ComposerPickList`).
-    func composerChipHover(key: String? = nil) -> some View {
-        rowPill(radius: LoomTheme.Composer.chipRadius, key: key)
-    }
 }
 
 // MARK: Pick list
@@ -62,7 +53,7 @@ struct ComposerPickList: View {
         VStack(alignment: .leading, spacing: 0) {
             if let header {
                 Text(header).font(LoomTheme.Composer.pickHeaderFont).foregroundStyle(LoomTheme.OnPopover.placeholder)
-                    .padding(.horizontal, LoomTheme.Composer.pickRowPaddingH).frame(height: LoomTheme.Composer.pickHeaderHeight)
+                    .padding(.horizontal, LoomTheme.Composer.pickRowInsetH).frame(height: LoomTheme.Composer.pickHeaderHeight)
                     .accessibilityAddTraits(.isHeader)
             }
             ScrollView {
@@ -105,7 +96,7 @@ struct ComposerPickList: View {
         // The row draws the hover fill: its secondary text takes the lifted tone that holds 4.5:1 on it (`OnPopover`).
         let lit = row.isEnabled && (highlighted == index || LookEvidence.forcesHover("pick:\(row.id)"))
         return Button { if row.isEnabled { onPick(row.id) } } label: {
-            HStack(alignment: row.subtitle == nil ? .center : .top, spacing: LoomTheme.Space.requestPadding) {
+            HStack(alignment: row.subtitle == nil ? .center : .top, spacing: LoomTheme.Composer.modelColumnGap) {
                 if let symbol = row.symbol {
                     Image(systemName: symbol).font(LoomTheme.Composer.pickIcon)
                         .foregroundStyle(row.isEnabled ? row.tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(LoomTheme.OnPopover.secondary(lit: lit))
@@ -127,7 +118,8 @@ struct ComposerPickList: View {
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.horizontal, LoomTheme.Composer.pickRowPaddingH).padding(.vertical, LoomTheme.Composer.pickRowPaddingV)
+            .padding(.horizontal, LoomTheme.Composer.pickRowInsetH)
+            .padding(.top, LoomTheme.Composer.pickRowTop).padding(.bottom, LoomTheme.Composer.pickRowBottom)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RowHighlight(
                 state: .resolve(selected: false, hovering: lit, enabled: row.isEnabled),
@@ -164,16 +156,15 @@ struct ComposerModeChip: View {
     var body: some View {
         let tint = selected == nil ? LoomTheme.Composer.modeColor : ComposerModeLook.color(forRaw: selected)
         Button { isOpen.toggle() } label: {
-            ComposerChipLabel(symbol: ComposerModeLook.symbol(forRaw: selected), title: title, titleColor: tint)
+            ComposerChipLabel(symbol: ComposerModeLook.symbol(forRaw: selected), title: title)
         }
-        .buttonStyle(.plain)
-        .composerChipHover()
+        .buttonStyle(ComposerChipStyle(tint: tint, key: identifier))
         .help(help)
         .accessibilityLabel("Permission mode, \(title)")
         .accessibilityIdentifier(identifier)
         .popover(isPresented: $isOpen, arrowEdge: .top) {
             VStack(spacing: 0) {
-                ComposerPickList(header: "Permission mode", rows: Self.rows(selected: selected, askAllowed: askAllowed), identifier: "\(identifier)-list") { id in
+                ComposerPickList(header: "Mode", rows: Self.rows(selected: selected, askAllowed: askAllowed), identifier: "\(identifier)-list") { id in
                     isOpen = false
                     if let mode = ClaudePermissionMode(rawValue: id) { onPick(mode) }
                 }
@@ -185,7 +176,7 @@ struct ComposerModeChip: View {
                     }
                     .buttonStyle(.plain).font(LoomTheme.Composer.pickSubtitleFont).foregroundStyle(LoomTheme.OnPopover.accent)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, LoomTheme.Composer.pickInset + LoomTheme.Composer.pickRowPaddingH)
+                    .padding(.horizontal, LoomTheme.Composer.pickInset + LoomTheme.Composer.pickRowInsetH)
                     .padding(.vertical, LoomTheme.Composer.pickRowPaddingV)
                     .accessibilityIdentifier("\(identifier)-reset")
                 }
@@ -203,259 +194,5 @@ struct ComposerModeChip: View {
                 symbol: ComposerModeLook.symbol(forRaw: mode.rawValue), tint: ComposerModeLook.color(forRaw: mode.rawValue),
                 checked: selected == mode.rawValue, isEnabled: !blocked)
         }
-    }
-}
-
-// MARK: Model and effort chip
-
-/// What the model chip and its two popovers show, for the draft and the live session alike.
-struct ComposerModelPicker: Equatable {
-    /// The chip's name for the model, and the lighter word after it (nil: no effort known).
-    var modelTitle: String
-    var effortTitle: String?
-    /// The models after Default, and the model choice (nil or `default`: Default).
-    var rows: [ComposerBarText.ModelRow]
-    var chosenModel: String?
-    /// The effort levels the model takes, lowest first (empty: it has no effort), and the level chosen or reported.
-    var levels: [String]
-    var chosenLevel: String?
-    /// Reset is offered when the effort differs from what it would be without a choice of the user.
-    var canResetEffort: Bool
-    var resetHelp = "Back to the effort this session opened with"
-}
-
-/// The chip after the model's name: "Sonnet 5.5 High". The model's name opens the model list, the lighter effort word opens
-/// the effort slider, and the slider's own model name opens the list again.
-struct ComposerModelChip: View {
-    var picker: ComposerModelPicker
-    var identifier: String
-    var help: String
-    @Binding var modelOpen: Bool
-    @Binding var effortOpen: Bool
-    /// `nil`: Default.
-    var onPickModel: (String?) -> Void
-    var onPickEffort: (String) -> Void
-    var onResetEffort: () -> Void
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Button { modelOpen.toggle() } label: {
-                Text(picker.modelTitle).font(LoomTheme.Composer.barFont).foregroundStyle(LoomTheme.Composer.modelColor)
-                    .lineLimit(1).truncationMode(.tail)
-                    .padding(.leading, LoomTheme.Space.cardH).padding(.trailing, LoomTheme.Space.headerSpacing)
-                    .frame(minHeight: LoomTheme.Composer.controlSide)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).composerChipHover()
-            .help(help)
-            .accessibilityLabel("Model, \(picker.modelTitle)")
-            .accessibilityIdentifier(identifier)
-            .popover(isPresented: $modelOpen, arrowEdge: .top) { modelList }
-            Button { effortOpen.toggle() } label: {
-                HStack(spacing: LoomTheme.Space.headerSpacing) {
-                    Text(picker.effortTitle ?? "Effort").font(LoomTheme.Composer.barFont)
-                        .foregroundStyle(LoomTheme.Composer.effortColor).lineLimit(1)
-                    Image(systemName: "chevron.down").font(LoomTheme.Composer.chevron).foregroundStyle(LoomTheme.Text.faint)
-                }
-                .padding(.leading, LoomTheme.Space.headerSpacing).padding(.trailing, LoomTheme.Space.cardH)
-                .frame(minHeight: LoomTheme.Composer.controlSide)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).composerChipHover()
-            .help("Effort of \(picker.modelTitle)")
-            .accessibilityLabel(picker.effortTitle.map { "Effort, \($0)" } ?? "Effort, not set")
-            .accessibilityIdentifier("\(identifier)-effort")
-            .popover(isPresented: $effortOpen, arrowEdge: .top) { effortSlider }
-        }
-    }
-
-    private var modelList: some View {
-        ComposerPickList(header: "Select model", rows: Self.rows(picker), identifier: "\(identifier)-list",
-                         width: LoomTheme.Composer.pickWidth - 22) { id in
-            modelOpen = false
-            onPickModel(id == Self.defaultID ? nil : id)
-        }
-    }
-
-    private var effortSlider: some View {
-        ComposerEffortPopover(modelTitle: picker.modelTitle, levels: picker.levels, chosen: picker.chosenLevel,
-                              canReset: picker.canResetEffort, resetHelp: picker.resetHelp, identifier: "\(identifier)-slider",
-                              onPick: onPickEffort, onReset: onResetEffort) {
-            effortOpen = false
-            // The model list opens where the slider was, once the slider's popover is gone.
-            Task { @MainActor in modelOpen = true }
-        }
-    }
-
-    static let defaultID = "default"
-
-    /// Default ("Recommended") first, then the models; the chosen one is checked.
-    static func rows(_ picker: ComposerModelPicker) -> [ComposerPickRow] {
-        let defaultChosen = ComposerBarText.isDefaultModelChosen(picker.chosenModel)
-        var rows = [ComposerPickRow(id: defaultID, title: "Default", subtitle: "Recommended", checked: defaultChosen)]
-        rows += picker.rows.map { ComposerPickRow(id: $0.value, title: $0.title, checked: !defaultChosen && picker.chosenModel == $0.value) }
-        return rows
-    }
-}
-
-// MARK: Effort popover
-
-/// The effort popover: the level's name on top, the model's name with a chevron that opens the model list, a reset, and the
-/// slider.
-struct ComposerEffortPopover: View {
-    var modelTitle: String
-    var levels: [String]
-    var chosen: String?
-    var canReset: Bool
-    var resetHelp: String
-    var identifier: String
-    var onPick: (String) -> Void
-    var onReset: () -> Void
-    var onOpenModels: () -> Void
-    /// The level under the thumb while it is dragged.
-    @State private var preview: Int?
-
-    private var chosenIndex: Int? { chosen.flatMap(levels.firstIndex(of:)) }
-
-    var body: some View {
-        let shown = preview ?? chosenIndex
-        ZStack(alignment: .topTrailing) {
-            VStack(spacing: LoomTheme.Composer.effortSpacing) {
-                Text(levels.isEmpty ? "No effort setting" : shown.map { ComposerBarText.effortLabel(levels[$0]) } ?? "Default")
-                    .font(LoomTheme.Composer.effortNameFont).foregroundStyle(LoomTheme.Composer.effortNameColor)
-                    .accessibilityIdentifier("\(identifier)-name")
-                Button(action: onOpenModels) {
-                    HStack(spacing: 3) {
-                        Text(modelTitle)
-                        Image(systemName: "chevron.right").font(LoomTheme.Typography.chevron)
-                    }
-                    .font(LoomTheme.Composer.effortModelFont).foregroundStyle(LoomTheme.OnPopover.placeholder)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Model, \(modelTitle). Opens the model list")
-                .accessibilityIdentifier("\(identifier)-model")
-                if levels.isEmpty {
-                    Text("\(modelTitle) does not take an effort level.").font(LoomTheme.Composer.pickSubtitleFont)
-                        .foregroundStyle(LoomTheme.OnPopover.placeholder).multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true).padding(.vertical, LoomTheme.Space.requestPadding)
-                } else {
-                    ComposerEffortSlider(levels: levels, selected: chosenIndex, preview: $preview, identifier: identifier) { index in
-                        onPick(levels[index])
-                    }
-                }
-            }
-            if canReset {
-                Button(action: onReset) {
-                    Image(systemName: "arrow.counterclockwise").font(LoomTheme.Composer.effortResetIcon)
-                        .foregroundStyle(LoomTheme.OnPopover.placeholder)
-                        .frame(width: LoomTheme.Composer.effortResetSide, height: LoomTheme.Composer.effortResetSide)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain).composerChipHover()
-                .help(resetHelp)
-                .accessibilityLabel("Reset effort")
-                .accessibilityIdentifier("\(identifier)-reset")
-            }
-        }
-        .padding(LoomTheme.Composer.effortPadding)
-        .frame(width: LoomTheme.Composer.effortWidth)
-        .background(LoomTheme.Surface.popover)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(identifier)
-    }
-}
-
-/// Where the stops of the slider sit and which one a point is nearest to. Pure, so it is tested without a view.
-enum EffortSliderMath {
-    /// The x of each stop's centre, from the first to the last, in a track `width` wide with a thumb of `thumb`.
-    static func positions(count: Int, width: CGFloat, thumb: CGFloat, inset: CGFloat) -> [CGFloat] {
-        guard count > 0 else { return [] }
-        let first = inset + thumb / 2
-        let span = max(0, width - 2 * first)
-        guard count > 1 else { return [first + span / 2] }
-        return (0..<count).map { first + span * CGFloat($0) / CGFloat(count - 1) }
-    }
-
-    /// The stop nearest to `x`.
-    static func nearest(to x: CGFloat, in positions: [CGFloat]) -> Int? {
-        positions.indices.min { abs(positions[$0] - x) < abs(positions[$1] - x) }
-    }
-}
-
-/// The segmented track with a thumb: a click or a drag picks the nearest stop (the level is set when the pointer is
-/// released), and ← → step it from the keyboard. Each stop is a level the model takes.
-struct ComposerEffortSlider: View {
-    var levels: [String]
-    var selected: Int?
-    @Binding var preview: Int?
-    var identifier: String
-    var onCommit: (Int) -> Void
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        GeometryReader { proxy in
-            let side = LoomTheme.Composer.effortThumb
-            let inset = LoomTheme.Composer.effortTrackInset
-            let positions = EffortSliderMath.positions(count: levels.count, width: proxy.size.width, thumb: side, inset: inset)
-            let index = preview ?? selected
-            ZStack(alignment: .leading) {
-                Capsule().fill(LoomTheme.Composer.effortTrack)
-                if let index, positions.indices.contains(index) {
-                    Capsule().fill(LoomTheme.Composer.effortFill).frame(width: positions[index] + side / 2 + inset)
-                }
-                ForEach(Array(positions.enumerated()), id: \.offset) { stop, x in
-                    Circle().fill(index.map { stop <= $0 } == true ? LoomTheme.Composer.effortDotOnFill : LoomTheme.Composer.effortDotOffFill)
-                        .frame(width: LoomTheme.Composer.effortDot, height: LoomTheme.Composer.effortDot)
-                        .position(x: x, y: proxy.size.height / 2)
-                }
-                if let index, positions.indices.contains(index) {
-                    Circle().fill(LoomTheme.Composer.effortThumbFill).frame(width: side, height: side)
-                        .shadow(color: LoomTheme.Composer.effortThumbShadow, radius: LoomTheme.Composer.effortThumbShadowRadius, y: 1)
-                        .position(x: positions[index], y: proxy.size.height / 2)
-                }
-            }
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0)
-                .onChanged { value in preview = EffortSliderMath.nearest(to: value.location.x, in: positions) }
-                .onEnded { value in
-                    preview = nil
-                    if let stop = EffortSliderMath.nearest(to: value.location.x, in: positions) { onCommit(stop) }
-                })
-        }
-        .frame(height: LoomTheme.Composer.effortTrackHeight)
-        .focusable()
-        .focused($focused)
-        .focusEffectDisabled()
-        .onKeyPress(keys: [.leftArrow, .rightArrow, .home, .end]) { press in step(press.key) }
-        .onAppear { focused = true }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Effort")
-        .accessibilityValue(selected.map { ComposerBarText.effortLabel(levels[$0]) } ?? "Default")
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: move(by: 1)
-            case .decrement: move(by: -1)
-            @unknown default: break
-            }
-        }
-        .accessibilityIdentifier("\(identifier)-track")
-    }
-
-    private func step(_ key: KeyEquivalent) -> KeyPress.Result {
-        switch key {
-        case .leftArrow: move(by: -1)
-        case .rightArrow: move(by: 1)
-        case .home: onCommit(0)
-        case .end: onCommit(levels.count - 1)
-        default: return .ignored
-        }
-        return .handled
-    }
-
-    private func move(by delta: Int) {
-        guard !levels.isEmpty else { return }
-        let target = min(max((selected ?? (delta > 0 ? -1 : levels.count)) + delta, 0), levels.count - 1)
-        if target != selected { onCommit(target) }
     }
 }

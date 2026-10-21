@@ -39,6 +39,21 @@ struct ComposerAttachment: Identifiable, Equatable {
     }
 
     var isImage: Bool { if case .image = content { true } else { false } }
+
+    /// The chip's name, and the size after it in mono ("Pasted text", "48 KB"); an image has no size.
+    var title: String {
+        switch content {
+        case .pastedText: "Pasted text"
+        case .image: label
+        }
+    }
+
+    var detail: String? {
+        switch content {
+        case let .pastedText(text): ComposerPaste.sizeLabel(bytes: text.utf8.count)
+        case .image: nil
+        }
+    }
 }
 
 /// Large pastes and what they are called.

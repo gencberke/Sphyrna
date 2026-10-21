@@ -336,7 +336,7 @@ extension ChatComposerModel {
         return setEffort(target)
     }
 
-    /// What the model chip and its two popovers show now.
+    /// What the one model chip and its popover show now.
     var modelPicker: ComposerModelPicker {
         ComposerBarText.modelPicker(state, effortBaseline: effortBaseline, observedModel: environment.contextFallback()?.model)
     }

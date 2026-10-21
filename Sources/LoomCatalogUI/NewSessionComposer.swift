@@ -55,9 +55,7 @@ struct NewSessionComposer: View {
             }
             ComposerBar(model: model, projectID: projectID)
         }
-        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.xxl).fill(LoomTheme.Surface.card))
-        .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.xxl)
-            .strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
+        .composerCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("draft-composer-card")
     }
@@ -84,13 +82,12 @@ enum NewSessionLayout {
 }
 
 /// Mode and model chips and Send: the bar of D-58 without a ring (no session yet) and without +, whose menus need a
-/// session's commands. The chips and their popovers are the live composer's (`ComposerPickers`, D-63).
+/// session's commands. The chips and their popovers are the live composer's (`ComposerPickers`, D-63; the one model chip, D-75).
 private struct ComposerBar: View {
     let model: CatalogModel
     let projectID: UUID?
     @State private var modeOpen = false
     @State private var modelOpen = false
-    @State private var effortOpen = false
 
     var body: some View {
         let resolved = model.resolvedStart(for: projectID)
@@ -123,10 +120,12 @@ private struct ComposerBar: View {
             rows: NewSessionModels.all.map { ComposerBarText.ModelRow(value: $0.alias, title: $0.title) },
             chosenModel: resolved.model.value, levels: NewSessionModels.effortLevels, chosenLevel: resolved.effort.value,
             canResetEffort: (draft?.effortPick ?? .inherit) != .inherit,
-            resetHelp: "Back to the effort this project starts with")
+            resetHelp: "Back to the effort this project starts with",
+            // A build that cannot start Codex shows its group off, with the build's own words (DESIGN §8).
+            codexNote: model.newSessionUnavailableReason(.codex) ?? ComposerModelNotes.inNewSession)
         return ComposerModelChip(
-            picker: picker, identifier: "draft-model", help: "Model of the new session",
-            modelOpen: $modelOpen, effortOpen: $effortOpen,
+            picker: picker, identifier: "draft-model", help: "Model and effort of the new session",
+            isOpen: $modelOpen,
             onPickModel: { value in model.setDraftModel(value.map { .value($0) } ?? .claudeDefault, projectID: projectID) },
             onPickEffort: { model.setDraftEffort(.value($0), projectID: projectID) },
             onResetEffort: { model.setDraftEffort(.inherit, projectID: projectID) })

@@ -139,10 +139,10 @@ final class ChatComposerModel {
     var ringPopoverOpen = false
     /// The session is being moved to the terminal: sending waits, and the text stays where it is (V19).
     var handoverPending: String? { environment.handoverNotice() }
-    /// The bar's mode list, model list and effort slider are open (model properties so evidence can open them).
+    /// The bar's mode list and the one model popover (the models and the effort) are open (model properties so evidence can
+    /// open them).
     var modePopoverOpen = false
     var modelPopoverOpen = false
-    var effortPopoverOpen = false
     /// The effort this session had when its composer first knew one: what the slider's reset goes back to (the CLI has no
     /// "no effort"; an unset level cannot be told to it live).
     private(set) var effortBaseline: String?
@@ -379,7 +379,7 @@ final class ChatComposerModel {
         return [
             "mode": state.permissionMode ?? "none", "model": state.resolvedModel ?? "none", "effort": state.reportedEffort ?? "none",
             "contextTokens": state.contextTokens ?? -1, "contextWindow": state.contextWindow ?? -1, "ringOpen": ringPopoverOpen,
-            "modeOpen": modePopoverOpen, "modelOpen": modelPopoverOpen, "effortOpen": effortPopoverOpen,
+            "modeOpen": modePopoverOpen, "modelOpen": modelPopoverOpen,
             "modeTitle": ComposerBarText.modeTitle(permissionMode: state.permissionMode, choices: state.choices),
             "modelTitle": ComposerBarText.modelTitle(state), "effortTitle": ComposerBarText.effortTitle(state) ?? "none",
             "effortLevels": ComposerBarText.effortLevels(state), "noticeText": notice?.text ?? "", "choicesMode": state.choices.permissionMode ?? "none",
