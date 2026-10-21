@@ -7,7 +7,7 @@ struct LoomHook {
     static func main() {
         let arguments = Array(CommandLine.arguments.dropFirst())
         // Claude runs the helper with no arguments for a hook event. Any argument makes it the
-        // command agents use (`"$LOOM_CLI" open ...`); the hook path below is unchanged.
+        // command agents use (`"$LOOM_CLI" open ...` or `sessions ...`); the hook path below is unchanged.
         if !arguments.isEmpty {
             exit(OpenSessionCommand.run(
                 arguments: arguments, environment: ProcessInfo.processInfo.environment,

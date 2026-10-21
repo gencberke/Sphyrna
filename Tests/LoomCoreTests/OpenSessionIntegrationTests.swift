@@ -237,7 +237,7 @@ struct OpenSessionLaunchProfileTests {
         #expect(!skill.contains("--ticket") && !skill.contains("exists <") && !skill.contains("<KEY>"))
         #expect(!OpenSessionCommand.usage.contains("exists <"))
         #expect(OpenSessionCommand.usage.contains("--ticket <key>") && OpenSessionCommand.usage.contains("ignored"))
-        #expect(skill.contains("Loom does not look up existing sessions") && skill.contains("ask the user"))
+        #expect(skill.contains("`open` always starts a new session") && skill.contains("ask the user"))
         #expect(skill.contains("\(Int(OpenSessionLimits.serverReplyDelay)) seconds"))
         // An unchanged file is left alone; a changed one is put back.
         let written = try FileManager.default.attributesOfItem(atPath: skillFile.path)[.modificationDate] as? Date
@@ -347,7 +347,7 @@ struct OpenSessionCommandTests {
 
         let bare = await run(arguments, environment: [:], stdin: stdin)
         #expect(bare.code == 3)
-        #expect(bare.out.stdout.first?.hasPrefix("error: not running inside a Loom session") == true)
+        #expect(bare.out.stdout.first?.hasPrefix("error: not running inside a Sphyrna session") == true)
 
         var partial = environment(rig)
         partial["LOOM_MANAGED_RUN_ID"] = "not-a-uuid"
@@ -405,7 +405,7 @@ struct OpenSessionCommandTests {
         // invalid in Loom (unknown project): exit 2 with the reason.
         let unknown = await run(["open", "--title", "T", "--project", "nope", "--message", "-"], environment: env,
                                 stdin: Data("x".utf8))
-        #expect(unknown.code == 2 && unknown.out.stdout.first?.hasPrefix("error: no Loom project") == true)
+        #expect(unknown.code == 2 && unknown.out.stdout.first?.hasPrefix("error: no Sphyrna project") == true)
     }
 
     @Test func anOldAgentsTicketFlagStillExitsZeroAndChangesNothing() async throws {
@@ -444,8 +444,8 @@ struct OpenSessionCommandTests {
         let (code, out) = await run(["open", "--title", "Wait", "--message", "-"], environment: environment(rig),
                                     stdin: Data("hello".utf8))
         #expect(code == 0)
-        #expect(out.stdout.first?.hasPrefix("pending: approve or deny it in Loom") == true)
-        #expect(out.stdout.first?.contains("lost if Loom quits") == true)
+        #expect(out.stdout.first?.hasPrefix("pending: approve or deny it in Sphyrna") == true)
+        #expect(out.stdout.first?.contains("lost if Sphyrna quits") == true)
         #expect(await rig.coordinator.snapshot().count == 1, "the request stays")
     }
 
@@ -455,7 +455,7 @@ struct OpenSessionCommandTests {
         let (code, out) = await run(["open", "--title", "Wait", "--message", "-"], environment: environment(rig),
                                     stdin: Data("hello".utf8), timeout: 0.5)
         #expect(code == 3)
-        #expect(out.stdout.first?.hasPrefix("error: Loom could not be reached or did not answer") == true)
+        #expect(out.stdout.first?.hasPrefix("error: Sphyrna could not be reached or did not answer") == true)
         #expect(OpenSessionLimits.clientWait > OpenSessionLimits.serverReplyDelay)
     }
 
@@ -492,7 +492,7 @@ struct OpenSessionCommandTests {
         let help = try await runHelper(["open", "--help"], environment: [:])
         #expect(help.code == 0 && help.out.contains("usage:"))
         let outside = try await runHelper(["open", "--title", "T", "--message", "-"], environment: [:], stdin: Data("m".utf8))
-        #expect(outside.code == 3 && outside.out.hasPrefix("error: not running inside a Loom session"))
+        #expect(outside.code == 3 && outside.out.hasPrefix("error: not running inside a Sphyrna session"))
         let bad = try await runHelper(["open", "--title", "T"], environment: environment(rig))
         #expect(bad.code == 2 && bad.err.hasPrefix("error: "))
 

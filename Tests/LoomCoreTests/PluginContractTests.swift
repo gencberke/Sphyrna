@@ -55,12 +55,19 @@ import Testing
         let skill = try parse(String(contentsOf: root.appendingPathComponent("skills/open-session/SKILL.md"), encoding: .utf8))
         #expect(skill.fields["name"] == "open-session")
         // Today's text, character for character: a change to what every session lists is a decision, and changes this line.
-        let description = "Open another top-level Claude session in Loom with a first message; the user approves it in Loom first. "
-            + "Use when work should continue in its own separate session, for example a session that the project's rules ask for, "
-            + "rather than in a subagent. Only inside Loom, where $LOOM_CLI is set."
+        let description = "List the user's other Sphyrna sessions (read-only, no content) or open another top-level Claude session "
+            + "with a first message that the user approves in Sphyrna. Use when work should continue in its own session, "
+            + "or you need to find one. Only inside Sphyrna, where $LOOM_CLI is set."
         #expect(skill.fields["description"] == description)
         #expect(description.count <= 300, "the description is in every session's context: \(description.count) characters")
         #expect(skill.body.count <= 1_500, "the skill's body: \(skill.body.count) characters")
+        // One skill, both verbs, named in the app's name; the manifest says Sphyrna too.
+        #expect(description.contains("Sphyrna") && !description.contains("Loom"))
+        #expect(skill.body.contains("\"$LOOM_CLI\" sessions") && skill.body.contains("\"$LOOM_CLI\" open"))
+        #expect(skill.body.contains("no session content"))
+        let manifest = try #require(JSONSerialization.jsonObject(
+            with: Data(contentsOf: root.appendingPathComponent(".claude-plugin/plugin.json"))) as? [String: Any])
+        #expect((manifest["description"] as? String)?.contains("Sphyrna") == true)
 
         let style = try parse(String(contentsOf: root.appendingPathComponent("output-styles/ask.md"), encoding: .utf8))
         #expect(style.fields["name"] == "Ask")

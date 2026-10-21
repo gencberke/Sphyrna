@@ -61,9 +61,9 @@ public enum OpenSessionError: Error, CustomStringConvertible, Equatable, Sendabl
 
     public var description: String {
         switch self {
-        case .unknownRequest: "That request is no longer in Loom"
+        case .unknownRequest: "That request is no longer in Sphyrna"
         case .notWaiting: "That request is not waiting for an answer"
-        case .shuttingDown: "Loom is quitting; no new work is accepted"
+        case .shuttingDown: "Sphyrna is quitting; no new work is accepted"
         }
     }
 }
@@ -134,9 +134,9 @@ actor OpenSessionCoordinator {
     // MARK: From the agent
 
     func submit(_ call: OpenSessionCall) async -> OpenSessionReply {
-        guard !shutDown else { return Self.unavailable("Loom is quitting") }
+        guard !shutDown else { return Self.unavailable("Sphyrna is quitting") }
         guard let requesterID = await authorize(call.sessionID, call.managedRunID) else {
-            return Self.unavailable("this process is not part of a live Loom session")
+            return Self.unavailable("this process is not part of a live Sphyrna session")
         }
         let input: OpenSessionInput
         do {
@@ -158,18 +158,18 @@ actor OpenSessionCoordinator {
                 return OpenSessionReply(status: .invalid, detail: rejection.reason)
             }
         } catch {
-            return OpenSessionReply(status: .invalid, detail: "Loom could not read its catalog: \(error)")
+            return OpenSessionReply(status: .invalid, detail: "Sphyrna could not read its catalog: \(error)")
         }
 
         // Checked after the last suspension so two requests of one session cannot both pass.
-        guard !shutDown else { return Self.unavailable("Loom is quitting") }
+        guard !shutDown else { return Self.unavailable("Sphyrna is quitting") }
         guard !entries.contains(where: {
             $0.request.requesterID == requesterID && $0.request.isUndecided
         }) else {
             return OpenSessionReply(status: .invalid, detail: "a request from this session is already waiting")
         }
         guard entries.filter({ $0.request.isUndecided }).count < Self.maximumWaiting else {
-            return OpenSessionReply(status: .invalid, detail: "too many requests are waiting in Loom")
+            return OpenSessionReply(status: .invalid, detail: "too many requests are waiting in Sphyrna")
         }
         let id = UUID()
         let request = OpenSessionRequest(
@@ -189,6 +189,50 @@ actor OpenSessionCoordinator {
         }
     }
 
+    // MARK: Listing sessions (read-only)
+
+    /// The other sessions of a project, or of every project, newest activity first, from `directory`. The requester (the card the
+    /// run is on now) is left out. Authorized like `submit`; it creates no request and waits for no one.
+    func listSessions(_ call: SessionListCall, directory: SessionDirectory) async -> SessionListReply {
+        guard !shutDown else { return SessionListReply(status: .unavailable, detail: "Sphyrna is quitting") }
+        guard let requesterID = await authorize(call.sessionID, call.managedRunID) else {
+            return SessionListReply(status: .unavailable, detail: "this process is not part of a live Sphyrna session")
+        }
+        let limit = call.limit ?? SessionListLimits.defaultLimit
+        guard (1...SessionListLimits.maximumLimit).contains(limit) else {
+            return SessionListReply(status: .invalid, detail: "the limit must be a whole number from 1 to \(SessionListLimits.maximumLimit)")
+        }
+        guard !(call.all && call.project != nil) else {
+            return SessionListReply(status: .invalid, detail: "use either a project or all sessions, not both")
+        }
+        let requestedProject: String?
+        do { requestedProject = try OpenSessionInput.validatedProject(call.project) }
+        catch { return SessionListReply(status: .invalid, detail: String(describing: error)) }
+
+        do {
+            var projectID: UUID?
+            if !call.all {
+                let requester = try await catalog.session(id: requesterID)
+                if requestedProject == nil, requester?.projectID == nil {
+                    return SessionListReply(
+                        status: .invalid,
+                        detail: "this session is not in a Sphyrna project; use --all to list every project's sessions, or name one with --project"
+                    )
+                }
+                switch try await resolveProject(requestedProject, requester: requester) {
+                case let .success(found): projectID = found.id
+                case let .failure(rejection): return SessionListReply(status: .invalid, detail: rejection.reason)
+                }
+            }
+            let summaries = try await directory.summaries(
+                SessionQuery(project: projectID, limit: limit, excluding: [requesterID])
+            )
+            return SessionListReply.fitting(summaries)
+        } catch {
+            return SessionListReply(status: .invalid, detail: "Sphyrna could not read its catalog: \(error)")
+        }
+    }
+
     private func resolveProject(
         _ requested: String?, requester: CatalogSession?
     ) async throws -> Result<CatalogProject, OpenSessionRejection> {
@@ -197,7 +241,7 @@ actor OpenSessionCoordinator {
             guard let projectID = requester?.projectID,
                   let own = projects.first(where: { $0.id == projectID }) else {
                 return .failure(OpenSessionRejection(
-                    "this session is not in a Loom project; name one with --project"
+                    "this session is not in a Sphyrna project; name one with --project"
                 ))
             }
             return .success(own)
@@ -213,11 +257,11 @@ actor OpenSessionCoordinator {
         case 0:
             let known = projects.prefix(10).map(\.name).joined(separator: ", ")
             return .failure(OpenSessionRejection(
-                "no Loom project is named or located at \"\(requested)\"; Loom projects: \(known.isEmpty ? "none" : known)"
+                "no Sphyrna project is named or located at \"\(requested)\"; Sphyrna projects: \(known.isEmpty ? "none" : known)"
             ))
         default:
             return .failure(OpenSessionRejection(
-                "more than one Loom project matches \"\(requested)\"; use the project's full path"
+                "more than one Sphyrna project matches \"\(requested)\"; use the project's full path"
             ))
         }
     }
@@ -330,7 +374,7 @@ actor OpenSessionCoordinator {
         entries.removeAll()
         for entry in pending {
             entry.timeout?.cancel()
-            entry.waiter?.resume(returning: Self.unavailable("Loom is quitting"))
+            entry.waiter?.resume(returning: Self.unavailable("Sphyrna is quitting"))
         }
         publish()
         for continuation in subscribers.values { continuation.finish() }

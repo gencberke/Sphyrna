@@ -1,8 +1,8 @@
 import Darwin
 import Foundation
 
-// A session asks Loom to open another session (D-40). One request, one answer, on the control
-// socket next to the hook socket. This file holds the rules every side shares (limits and input
+// A session asks Loom to open another session (D-40), or to list the others (C5a). One request, one answer, on the
+// control socket next to the hook socket. This file holds the rules every side shares (limits and input
 // validation), the wire shapes, the blocking client the `loom-hook open` command uses, and the
 // server. What happens to a request (pending, approval, start) lives in OpenSessionCoordinator.
 
@@ -16,6 +16,8 @@ enum OpenSessionLimits {
     static let serverReplyDelay: TimeInterval = 85
     /// The client gives up after this long; it must outlast `serverReplyDelay`.
     static let clientWait: TimeInterval = 90
+    /// What the client reads of an answer.
+    static let replyByteLimit = 64 * 1024
 }
 
 public struct OpenSessionRejection: Error, CustomStringConvertible, Equatable, Sendable {
@@ -43,15 +45,7 @@ public struct OpenSessionInput: Equatable, Sendable {
             CharacterSet.controlCharacters.contains($0) || CharacterSet.newlines.contains($0)
         }) else { throw OpenSessionRejection("the title must be a single line") }
 
-        var projectName: String?
-        if let raw = project {
-            let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !value.isEmpty, value.count <= OpenSessionLimits.projectLimit,
-                  !value.unicodeScalars.contains(where: { $0.value == 0 }) else {
-                throw OpenSessionRejection("the project is empty or too long")
-            }
-            projectName = value
-        }
+        let projectName = try validatedProject(project)
 
         guard !message.unicodeScalars.contains(where: { $0.value == 0 }) else {
             throw OpenSessionRejection("the message contains a NUL character")
@@ -63,6 +57,17 @@ public struct OpenSessionInput: Equatable, Sendable {
             throw OpenSessionRejection("the message is larger than 64 KiB")
         }
         return OpenSessionInput(title: trimmedTitle, project: projectName, message: message)
+    }
+
+    /// A `--project` value (name or path) after the rules; nil stays nil. Shared by `open` and `sessions`.
+    public static func validatedProject(_ project: String?) throws -> String? {
+        guard let raw = project else { return nil }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value.count <= OpenSessionLimits.projectLimit,
+              !value.unicodeScalars.contains(where: { $0.value == 0 }) else {
+            throw OpenSessionRejection("the project is empty or too long")
+        }
+        return value
     }
 }
 
@@ -78,7 +83,7 @@ public struct OpenSessionReply: Codable, Equatable, Sendable {
         case failed
         /// The request itself is wrong (rule broken, project unknown, one already waiting).
         case invalid
-        /// Not a live Loom session, or Loom is quitting.
+        /// Not a live Sphyrna session, or Sphyrna is quitting.
         case unavailable
     }
 
@@ -111,7 +116,7 @@ public struct OpenSessionReply: Codable, Equatable, Sendable {
         switch status {
         case .started: return "started \(id) \(quoted)"
         case .pending:
-            return "pending: approve or deny it in Loom. Nothing has started yet, and the request is kept in memory only: it is lost if Loom quits."
+            return "pending: approve or deny it in Sphyrna. Nothing has started yet, and the request is kept in memory only: it is lost if Sphyrna quits."
         case .denied: return "denied"
         case .failed: return "error: the session could not be started: \(detail ?? "unknown reason")"
         case .invalid, .unavailable: return "error: \(detail ?? "the request was not accepted")"
@@ -158,6 +163,18 @@ enum OpenSessionClient {
         raw data: Data, socketPath: String, connectTimeout: TimeInterval = 2,
         replyTimeout: TimeInterval = OpenSessionLimits.clientWait
     ) throws -> OpenSessionReply {
+        let answer = try roundTrip(raw: data, socketPath: socketPath, connectTimeout: connectTimeout,
+                                   replyTimeout: replyTimeout)
+        guard let reply = try? JSONDecoder().decode(OpenSessionReply.self, from: answer) else {
+            throw ClaudeHookTransportError.malformedMessage
+        }
+        return reply
+    }
+
+    /// Sends the bytes, closes the write side and reads the whole answer (at most 64 KiB).
+    static func roundTrip(
+        raw data: Data, socketPath: String, connectTimeout: TimeInterval, replyTimeout: TimeInterval
+    ) throws -> Data {
         let descriptor = try LocalSocket.connect(path: socketPath, timeout: connectTimeout)
         defer { Darwin.close(descriptor) }
         try LocalSocket.writeAll(
@@ -166,14 +183,10 @@ enum OpenSessionClient {
         guard Darwin.shutdown(descriptor, SHUT_WR) == 0 else {
             throw ClaudeHookTransportError.system(operation: "shutdown", code: errno)
         }
-        let answer = try LocalSocket.readToEnd(
-            from: descriptor, limit: 64 * 1024,
+        return try LocalSocket.readToEnd(
+            from: descriptor, limit: OpenSessionLimits.replyByteLimit,
             deadline: ProcessInfo.processInfo.systemUptime + replyTimeout
         )
-        guard let reply = try? JSONDecoder().decode(OpenSessionReply.self, from: answer) else {
-            throw ClaudeHookTransportError.malformedMessage
-        }
-        return reply
     }
 }
 
@@ -184,10 +197,12 @@ enum OpenSessionClient {
 /// can hold it open until the request is decided.
 final class OpenSessionControlServer: @unchecked Sendable {
     typealias Handler = @Sendable (OpenSessionCall) async -> OpenSessionReply
+    typealias SessionsHandler = @Sendable (SessionListCall) async -> SessionListReply
 
     private let socketPath: String
     private let authenticationToken: String
     private let handler: Handler
+    private let sessionsHandler: SessionsHandler?
     // A session is waiting on this answer, so the queues do not run at utility priority: in a process that
     // is CPU-bound at higher priority (the full test target) utility work waited more than 10 s for a CPU.
     private let acceptQueue = DispatchQueue(label: "dev.loom.open-session.accept", qos: .userInitiated)
@@ -202,13 +217,15 @@ final class OpenSessionControlServer: @unchecked Sendable {
     /// Time a client has to send its request after connecting.
     private static let requestDeadline: TimeInterval = 5
 
-    init(socketPath: String, authenticationToken: String, handler: @escaping Handler) throws {
+    init(socketPath: String, authenticationToken: String, sessions: SessionsHandler? = nil,
+         handler: @escaping Handler) throws {
         guard !authenticationToken.isEmpty else {
             throw ClaudeHookTransportError.invalidConfiguration("empty authentication token")
         }
         self.socketPath = socketPath
         self.authenticationToken = authenticationToken
         self.handler = handler
+        sessionsHandler = sessions
         let descriptor = try LocalSocket.listen(at: socketPath)
         let source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: acceptQueue)
         source.setEventHandler { [weak self] in self?.acceptAvailable(descriptor: descriptor) }
@@ -257,7 +274,15 @@ final class OpenSessionControlServer: @unchecked Sendable {
     }
 
     private func finish(_ connection: Int32, _ reply: OpenSessionReply?) {
-        if let reply, let data = try? JSONEncoder().encode(reply) {
+        finish(connection, encoded: reply.flatMap { try? JSONEncoder().encode($0) })
+    }
+
+    private func finish(_ connection: Int32, _ reply: SessionListReply) {
+        finish(connection, encoded: try? SessionListCoding.encoder().encode(reply))
+    }
+
+    private func finish(_ connection: Int32, encoded: Data?) {
+        if let data = encoded {
             try? LocalSocket.writeAll(
                 data, to: connection, deadline: ProcessInfo.processInfo.systemUptime + 2
             )
@@ -278,13 +303,19 @@ final class OpenSessionControlServer: @unchecked Sendable {
         } catch {
             return finish(connection, nil)
         }
+        // Version 1 is `open` (what older helpers send); version 2 carries a `command`.
         guard let wire = try? JSONDecoder().decode(OpenSessionWireRequest.self, from: data),
               wire.version == OpenSessionWireRequest.protocolVersion else {
+            if let list = try? JSONDecoder().decode(SessionListWireRequest.self, from: data),
+               list.version == SessionListWireRequest.protocolVersion,
+               list.command == SessionListWireRequest.commandName {
+                return serve(connection: connection, list: list)
+            }
             return finish(connection, OpenSessionReply(status: .invalid, detail: "the request is malformed"))
         }
         guard secureEqual(wire.authenticationToken, authenticationToken) else {
             return finish(connection, OpenSessionReply(
-                status: .unavailable, detail: "this process is not part of a live Loom session"
+                status: .unavailable, detail: "this process is not part of a live Sphyrna session"
             ))
         }
         let call = OpenSessionCall(
@@ -292,6 +323,26 @@ final class OpenSessionControlServer: @unchecked Sendable {
             project: wire.project, message: wire.message
         )
         let handler = self.handler
+        Task.detached(priority: .userInitiated) { [self] in
+            finish(connection, await handler(call))
+        }
+    }
+
+    private func serve(connection: Int32, list: SessionListWireRequest) {
+        guard secureEqual(list.authenticationToken, authenticationToken) else {
+            return finish(connection, SessionListReply(
+                status: .unavailable, detail: "this process is not part of a live Sphyrna session"
+            ))
+        }
+        guard let handler = sessionsHandler else {
+            return finish(connection, SessionListReply(
+                status: .unavailable, detail: "this Sphyrna does not list sessions"
+            ))
+        }
+        let call = SessionListCall(
+            sessionID: list.sessionID, managedRunID: list.managedRunID, project: list.project,
+            all: list.all, limit: list.limit
+        )
         Task.detached(priority: .userInitiated) { [self] in
             finish(connection, await handler(call))
         }

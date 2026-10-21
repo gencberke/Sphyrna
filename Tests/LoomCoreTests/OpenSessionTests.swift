@@ -343,8 +343,8 @@ struct OpenSessionTests {
         let answer = try await rig.send(rig.wire(title: "Slow decision"))
         #expect(answer.status == .pending)
         #expect(answer.exitCode == 0)
-        #expect(answer.line.hasPrefix("pending: approve or deny it in Loom"))
-        #expect(answer.line.contains("lost if Loom quits"))
+        #expect(answer.line.hasPrefix("pending: approve or deny it in Sphyrna"))
+        #expect(answer.line.contains("lost if Sphyrna quits"))
 
         // The request is still there, still waiting, and still blocks a second one.
         let kept = try #require(await rig.coordinator.snapshot().first)
