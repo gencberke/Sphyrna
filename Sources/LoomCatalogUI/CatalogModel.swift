@@ -1636,7 +1636,7 @@ public final class CatalogModel {
     public var contextProjectID: UUID? { destination?.projectID ?? selectedRow?.record.projectID }
 
     public func startConversation(_ provider: ManagedSession.Provider, projectID: UUID?) {
-        guard actionsAvailable, startableProviders.contains(provider) else { return }
+        guard actionsAvailable, capabilities(of: provider).startable else { return }
         intents?.start(provider: provider, projectID: projectID)
         // The new card belongs to this project: show it.
         if let projectID, projects.first(where: { $0.id == projectID })?.collapsed == true {
@@ -1647,7 +1647,7 @@ public final class CatalogModel {
     public func resumeConversation(_ id: UUID) {
         guard actionsAvailable else { return }
         // A conversation of a provider this build cannot start is not resumed either (D-14, D-28).
-        if let provider = knownProvider(of: id), !startableProviders.contains(provider) { return }
+        if let provider = knownProvider(of: id), !capabilities(of: provider).startable { return }
         intents?.resume(sessionID: id)
     }
 
@@ -1666,13 +1666,18 @@ public final class CatalogModel {
     }
 
     public func canStart(_ provider: ManagedSession.Provider, projectID: UUID?) -> Bool {
-        actionsAvailable && startableProviders.contains(provider) && !isStarting(provider, projectID: projectID)
+        actionsAvailable && capabilities(of: provider).startable && !isStarting(provider, projectID: projectID)
     }
 
     public func canResume(_ row: SessionRowModel) -> Bool {
-        actionsAvailable && row.record.session.provider != .synthetic
-            && startableProviders.contains(row.record.session.provider)
+        actionsAvailable && capabilities(of: row.record.session.provider).startable
             && row.live?.runID == nil && busy[row.id] == nil && !isDeleting(row.id)
+    }
+
+    /// What the harness may do in this build identity (`startableProviders`): the one value the model layer asks instead of
+    /// the harness itself.
+    func capabilities(of provider: ManagedSession.Provider) -> HarnessCapabilities {
+        HarnessCapabilities.of(provider, startable: startableProviders)
     }
 
     /// The provider of a conversation the model has a row for.
@@ -1684,7 +1689,8 @@ public final class CatalogModel {
     /// that is not the reason (a busy or running conversation has its own state line).
     public func resumeUnavailableReason(_ row: SessionRowModel) -> String? {
         let provider = row.record.session.provider
-        guard provider != .synthetic, !startableProviders.contains(provider) else { return nil }
+        let capabilities = capabilities(of: provider)
+        guard capabilities.hasHarness, !capabilities.startable else { return nil }
         return "\(ProviderName.title(provider)) sessions can't be resumed in this version."
     }
 

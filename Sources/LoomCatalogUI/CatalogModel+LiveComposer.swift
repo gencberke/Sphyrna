@@ -41,7 +41,7 @@ extension CatalogModel {
         }
         environment.sessionCandidates = { [weak self, weak feed] in
             guard let self, let feed else { return [] }
-            return paletteSessions().filter { $0.provider == .claude && $0.id != feed.card }.map {
+            return paletteSessions().filter { capabilities(of: $0.provider).readsTranscript && $0.id != feed.card }.map {
                 ComposerSessionCandidate(id: $0.id, title: $0.title, project: $0.project, lastActivity: $0.lastActivityAt)
             }
         }

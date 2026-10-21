@@ -257,7 +257,7 @@ extension CatalogModel {
 
         let cutoff = Date().addingTimeInterval(-Self.projectPageWeekSlack)
         let identifiers = collected.filter { $0.lastActivityAt >= cutoff }.compactMap { record -> String? in
-            guard record.session.provider == .claude, let id = record.session.providerConversationID, !id.isEmpty else { return nil }
+            guard capabilities(of: record.session.provider).readsTranscript, let id = record.session.providerConversationID, !id.isEmpty else { return nil }
             return id
         }
         page.reads.usageLookups += 1
@@ -303,7 +303,7 @@ extension CatalogModel {
         let page = projectPage
         let id = record.session.id
         guard page.projectID != nil, page.projectID == record.projectID, page.lastLines[id] == nil,
-              !page.pendingLines.contains(id), record.session.provider == .claude,
+              !page.pendingLines.contains(id), capabilities(of: record.session.provider).readsTranscript,
               let conversation = record.session.providerConversationID, !conversation.isEmpty,
               let directory = claudeConfigDirectory, !Task.isCancelled else { return }
         page.pendingLines.insert(id)

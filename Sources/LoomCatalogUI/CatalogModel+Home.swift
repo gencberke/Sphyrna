@@ -183,7 +183,7 @@ extension CatalogModel {
     func canResumeFromHome(_ record: CatalogSession) -> Bool {
         let id = record.session.id
         let provider = record.session.provider
-        return actionsAvailable && provider != .synthetic && startableProviders.contains(provider)
+        return actionsAvailable && capabilities(of: provider).startable
             && liveStates[id]?.runID == nil && busy[id] == nil && !isDeleting(id)
     }
 
@@ -209,7 +209,7 @@ extension CatalogModel {
 
     /// Whether the sidebar's "New session" row works: only whether Claude can start at all. A start somewhere else does not
     /// matter, since the row opens a draft and starts nothing.
-    var newSessionRowAvailable: Bool { actionsAvailable && startableProviders.contains(.claude) }
+    var newSessionRowAvailable: Bool { actionsAvailable && capabilities(of: .claude).startable }
 
     /// The most recently used project, read from the catalog now (the project of the newest session that has one); the
     /// last known one or the first project when the read fails or finds none.

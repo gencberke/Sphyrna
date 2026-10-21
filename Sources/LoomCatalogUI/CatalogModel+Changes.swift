@@ -78,7 +78,7 @@ extension CatalogModel {
     private func readEdits(_ trigger: ChangesTrigger, scan: EditScan.Scope) async {
         let session = changes.session(for: trigger.session)
         guard let row = changesRow(trigger.session) else { return }
-        guard row.record.session.provider == .claude else {
+        guard capabilities(of: row.record.session.provider).readsTranscript else {
             session.setState(.off("Claude's file edits are read from Claude sessions"), for: trigger.scope)
             return
         }
@@ -247,7 +247,7 @@ extension CatalogModel {
     /// Comments go to Claude as a message in the session's Chat: a live Chat session, or a stopped one that the Chat
     /// face owns (the send resumes it, as the stopped composer does). A terminal-face session shows the diffs only.
     func changesSendAvailability(for sessionID: UUID) -> ChangesSendAvailability {
-        guard let row = changesRow(sessionID), row.record.session.provider == .claude else { return .notChat }
+        guard let row = changesRow(sessionID), capabilities(of: row.record.session.provider).structuredFace else { return .notChat }
         return liveChatDriver(for: sessionID) != nil || showsStoppedLiveChat(row) ? .ready : .notChat
     }
 

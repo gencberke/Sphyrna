@@ -24,7 +24,7 @@ extension CatalogModel {
     /// resumes it in that face. With the switch on Terminal it shows the terminal face's stopped screen. Needs the Chat
     /// host, no run of any kind, and an identity to resume by.
     func showsStoppedLiveChat(_ row: SessionRowModel) -> Bool {
-        guard chatSessions != nil, row.record.session.provider == .claude, !isRunning(row),
+        guard chatSessions != nil, capabilities(of: row.record.session.provider).structuredFace, !isRunning(row),
               newSessionFace == .chat else { return false }
         let identity = row.live?.conversationID ?? row.record.session.providerConversationID
         return identity?.isEmpty == false

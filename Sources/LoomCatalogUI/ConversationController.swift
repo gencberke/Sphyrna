@@ -248,7 +248,7 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
     /// the order they happen (`onReady` is awaited, so `.started` is told before the first message is sent).
     private func startInChat(projectID: UUID?, launch: NewSessionLaunch, focus: NewSessionFocus,
                              outcome: @escaping @MainActor (NewSessionOutcome) -> Void) {
-        guard let model, model.actionsAvailable, model.startableProviders.contains(.claude),
+        guard let model, model.actionsAvailable, model.capabilities(of: .claude).startable,
               let host = model.chatSessions else {
             outcome(.failed)
             return
@@ -296,7 +296,7 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
     /// window moves on to a fresh draft (⌘↵); `outcome` is told once whether the card exists.
     private func start(provider: ManagedSession.Provider, projectID: UUID?, draft: NewSessionLaunch?,
                        focus: NewSessionFocus, outcome: (@MainActor (NewSessionOutcome) -> Void)?) {
-        guard let model, model.actionsAvailable, model.startableProviders.contains(provider) else {
+        guard let model, model.actionsAvailable, model.capabilities(of: provider).startable else {
             outcome?(.failed)
             return
         }
@@ -350,7 +350,7 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
     public func resume(sessionID: UUID) {
         guard let model, model.actionsAvailable, model.busy[sessionID] == nil, model.handovers[sessionID] == nil else { return }
         let known = model.knownProvider(of: sessionID)
-        if let known, !model.startableProviders.contains(known) { return }
+        if let known, !model.capabilities(of: known).startable { return }
         model.setBusy(sessionID, .resuming)
         Task {
             defer { model.setBusy(sessionID, nil) }
@@ -361,9 +361,9 @@ public final class ConversationController: NewSessionIntents, HandoverIntents {
                 if provider == nil, let catalog = model.catalog {
                     provider = try await catalog.session(id: sessionID)?.session.provider
                     // The model has no row for this id (a direct call): the catalog decides, same rule.
-                    if let provider, !model.startableProviders.contains(provider) { return }
+                    if let provider, !model.capabilities(of: provider).startable { return }
                 }
-                if model.newSessionFace == .chat, provider == .claude, let host = model.chatSessions {
+                if model.newSessionFace == .chat, provider.map({ model.capabilities(of: $0).structuredFace }) == true, let host = model.chatSessions {
                     try await host.driver(for: sessionID).resume()
                     model.showStarted(sessionID)
                 } else {

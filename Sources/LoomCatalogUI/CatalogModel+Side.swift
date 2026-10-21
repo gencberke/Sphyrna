@@ -352,7 +352,7 @@ extension CatalogModel {
     /// A Claude session that has a provider conversation id, on either face. A side chat itself never has the tab (it is never
     /// selected), and Codex never does.
     func sideTabIsOffered(for row: SessionRowModel?) -> Bool {
-        guard let row, row.record.session.provider == .claude, !row.record.isSideChat else { return false }
+        guard let row, capabilities(of: row.record.session.provider).sideChats, !row.record.isSideChat else { return false }
         let identity = row.live?.conversationID ?? row.record.session.providerConversationID
         return identity?.isEmpty == false
     }

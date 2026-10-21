@@ -88,7 +88,7 @@ extension CatalogModel {
     /// that has no owner recorded yet, which counts as the terminal), with no start, stop, resume or handover under way.
     public func canContinue(in target: SessionFace, row: SessionRowModel) -> Bool {
         guard target == .terminal, actionsAvailable, intents is any HandoverIntents, chatSessions != nil,
-              row.record.session.provider == .claude, startableProviders.contains(.claude),
+              capabilities(of: row.record.session.provider).structuredFace, capabilities(of: .claude).startable,
               handovers[row.id] == nil, busy[row.id] == nil, !isDeleting(row.id) else { return false }
         let owner = owningFace(of: row) ?? .terminal
         return owner != target
