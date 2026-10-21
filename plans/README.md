@@ -1,37 +1,36 @@
-# Plans and history
+# Plans Index
 
-Checkpoint plans, slice records and experiment evidence. The active stage's plan is on the normal reading path (see STATUS); everything else is history, read when a task points to it. Files written before 6 Oct 2026 are in Turkish and stay as written. Current position: [STATUS.md](../STATUS.md); direction: [ROADMAP.md](../ROADMAP.md).
+Current position and handoff queue live in [STATUS.md](../STATUS.md). Product and behavioral rules live in [SPEC.md](../SPEC.md). Decisions live in [DECISIONS.md](../DECISIONS.md). Read historical plans under `archive/` only when a task explicitly points to one.
 
-| File | What it is | State |
+---
+
+## 1. Active Plan & Live Evidence
+
+| File / Directory | Purpose |
+| --- | --- |
+| [ACTIVE-PLAN.md](ACTIVE-PLAN.md) | **Canonical active execution plan** toward **Sphyrna 1.6.0** ([D-68](../DECISIONS.md), [D-83](../DECISIONS.md)): founding goals, acceptance criteria, closed Releases A–C summary, `sphyrna-ink` / `sphyrna-core` / `@opencode` slice status tables, the 11-step End Batch Runbook, and Post-1.6.0 roadmap. |
+| `~/Library/Caches/loom-v2/evidence/` | Track plans (`ink/PLAN.md`, `core/PLAN.md`), `core/END-BATCH-RUNBOOK.md`, `ink/evening-queue.md`, slice Briefs, resume notes (`ink/l3b-home-resume.md`), `@opencode` logs (`oc/`), and run evidence. |
+| [experiments/](experiments/) | Value-free benchmark baselines (`cp5-final-matrix-I-20261006.json`, `run1-F5-launch.json`, `run1-U4-tab-switch.json`, `run1-CP4E-real-deletion.json`), v2 spikes (`v2-spikes/S0`..`S9`), and planning scans (`v2-planning-scans/`). **Kept at `plans/experiments/` because measurement and acceptance scripts reference this path directly.** |
+
+---
+
+## 2. Archived Plans & Research (`plans/archive/`)
+
+All completed checkpoint plans, pre-1.6.0 stage logs, brainstorms, and pre-reorganization document snapshots are preserved in [archive/](archive/):
+
+| Archived Path | Era / Milestone | Notes |
 | --- | --- | --- |
-| [CHECKPOINT-1.md](CHECKPOINT-1.md) | CP1 process ownership and clean exit: plan, experiments, results | closed, history |
-| [CHECKPOINT-2.md](CHECKPOINT-2.md) | CP2 state and resume: plan and acceptance matrix (§18 describes an older shared Codex server; contract §3 now has one per session) | closed, history |
-| [CHECKPOINT-5.md](CHECKPOINT-5.md) | CP5 terminal engine and first window: goal, slices, acceptance map | closed 6 Oct 2026 |
-| [STAGE-L.md](STAGE-L.md) | Stage L: clean loom line (promote and build scripts, first daily `Loom.app` 0.1.0) | done; L-4 deferred (D-31) |
-| [RUN-1.md](RUN-1.md) | Multi-agent run 1: order, protocol, real-Claude ledger, evaluation recipe, decision points | done (0.2.0, [D-36](../DECISIONS.md)); its DP list is still the reference for open CP4 decisions |
-| [RC-0.2.0.md](RC-0.2.0.md) | Release candidate 0.2.0: the note for the user's decision | accepted 7 Oct ([D-36](../DECISIONS.md)), history |
-| [STAGE-F.md](STAGE-F.md), [f/](f/) | Stage F foundation hardening: plan and slice Briefs | done in run 1 |
-| [STAGE-I.md](STAGE-I.md), [i/](i/) | Stage I identity and UI system: plan and slice Briefs | done in run 1; I4 parked |
-| [STAGE-U.md](STAGE-U.md), [u/](u/) | Stage U daily-use UI features: plan and slice Briefs | done in run 1 |
-| [CHECKPOINT-4.md](CHECKPOINT-4.md), [cp4/](cp4/) | CP4 deletion and retention: plan and slice Briefs | built in run 1; the cleanup review waits for DP-CP4-2 |
-| [FEEDBACK-1.md](FEEDBACK-1.md) | Day-one feedback on 0.2.1: causes, changes, open points | done (0.3.0) |
-| [FEEDBACK-2.md](FEEDBACK-2.md) | Feedback round 2 on 0.3.0, and the plan for a session opening a session (D-40) | done (0.3.1, 0.3.2) |
-| [GLASS-TRIAL.md](GLASS-TRIAL.md) | Liquid Glass trial for the sidebar | done (0.3.3, [D-44](../DECISIONS.md)) |
-| [HARDENING-1.md](HARDENING-1.md) | Hardening round 1 after 0.3.3: slices, planner decisions, performance candidates, housekeeping | done (0.4.0, 0.4.1); open items in its Resume here |
-| [FEEDBACK-3.md](FEEDBACK-3.md) | Feedback round 3 on 0.4.1: Usage page, session header, workflow subagents | done (0.4.2); open items in its Resume here |
-| [FEEDBACK-4.md](FEEDBACK-4.md) | Feedback round 4 on 0.4.2: Stop flow and last screen, Active section, subagent panel, longer branch; then 0.4.4 and the public GitHub repository | done (0.4.3, then 0.4.4, the first public release); open items in its Resume here |
-| [CHECKPOINT-5-HISTORY.md](CHECKPOINT-5-HISTORY.md) | CP5 early decisions and slice A/B history (engine choice in §3.1) | history |
-| [cp5/C.md](cp5/C.md) | Slice C real-session operations: long review log | history |
-| [cp5/D.md](cp5/D.md) | Slice D input, view and combined acceptance plan | history |
-| [cp5/OWN.md](cp5/OWN.md) | Per-run ownership scope design and acceptance | history |
-| [cp5/HOLISTIC.md](cp5/HOLISTIC.md) | Strict-review findings of 2 Oct and fixes | history |
-| [cp5/FINAL-ACCEPTANCE.md](cp5/FINAL-ACCEPTANCE.md) | 3 Oct acceptance snapshot | superseded by PERF/UI results |
-| [cp5/PERF.md](cp5/PERF.md) | Loom overhead work, CPU40, final matrices (package H and I results at the end) | current results at the end |
-| [cp5/UI.md](cp5/UI.md) | 5–6 Oct UI round from user feedback; acceptance records | current results at the end |
-| [cp5/CLOSURE.md](cp5/CLOSURE.md) | CP5 closure log; optimizer passes 1–3 and the closure decision at the end | current results at the end |
-| [cp5/CODEX-BACKLOG.md](cp5/CODEX-BACKLOG.md) | Codex-only items deferred at CP5 closure | open, for when Codex returns |
-| [cp5/RESOURCE-BUDGET-PROPOSAL.md](cp5/RESOURCE-BUDGET-PROPOSAL.md) | Budget proposal waiting for the user (O-01); reference column predates package I | open |
-| [DEVELOPMENT-STARTUP-ISOLATION.md](DEVELOPMENT-STARTUP-ISOLATION.md) | Startup rc isolation idea, superseded by run scopes | history |
-| [experiments/](experiments/) | Raw evidence and measurement summaries (JSON, notes); `doc-audit-20261006/` is the documentation audit behind the 6 Oct doc baseline | evidence |
-
-In long logs, later entries supersede earlier ones; the newest result section of each file is the current one.
+| [archive/V2-PLAN.md](archive/V2-PLAN.md), [archive/v2/CHAT-SPEC.md](archive/v2/CHAT-SPEC.md) | Loom v2 Releases A, B, C & 1.6.0 log | Distilled into [ACTIVE-PLAN.md](ACTIVE-PLAN.md) and [SPEC.md](../SPEC.md). |
+| [archive/v2-research/](archive/v2-research/) | v2 Concept, Remora brainstorm (`LOMBOT-BRAINSTORM.md`), product studies | Pre-v2 research and brainstorms ([D-57](../DECISIONS.md) to [D-67](../DECISIONS.md)). |
+| [archive/CHECKPOINT-1.md](archive/CHECKPOINT-1.md) | CP1 Process ownership & launch | Closed Sep 2026. |
+| [archive/CHECKPOINT-2.md](archive/CHECKPOINT-2.md) | CP2 State & resume | Closed Sep 2026. |
+| [archive/CHECKPOINT-4.md](archive/CHECKPOINT-4.md), [archive/cp4/](archive/cp4/) | CP4 Deletion & retention (`A.md`–`G.md`) | Built in Run 1 ([D-37](../DECISIONS.md)). |
+| [archive/CHECKPOINT-5.md](archive/CHECKPOINT-5.md), [archive/CHECKPOINT-5-HISTORY.md](archive/CHECKPOINT-5-HISTORY.md), [archive/cp5/](archive/cp5/) | CP5 Terminal engine, CPU40, `CODEX-BACKLOG.md`, `RESOURCE-BUDGET-PROPOSAL.md` | Closed 6 Oct 2026 ([D-23](../DECISIONS.md)). |
+| [archive/STAGE-L.md](archive/STAGE-L.md) | Stage L Clean `loom` release tree (`0.1.0`) | Closed 7 Oct 2026 ([D-25](../DECISIONS.md)). |
+| [archive/RUN-1.md](archive/RUN-1.md), [archive/RC-0.2.0.md](archive/RC-0.2.0.md) | Multi-agent Run 1 (`0.2.0`) | Closed 7–8 Oct 2026 ([D-36](../DECISIONS.md)). |
+| [archive/STAGE-F.md](archive/STAGE-F.md), [archive/f/](archive/f/) | Stage F Foundation hardening (`F0`–`F6`, `OPT1`, `OPT2`) | Closed in Run 1. |
+| [archive/STAGE-I.md](archive/STAGE-I.md), [archive/i/](archive/i/) | Stage I Identity A (Night Fleece, `I1`–`I4`) | Superseded by Ink v3 ([D-74](../DECISIONS.md)). |
+| [archive/STAGE-U.md](archive/STAGE-U.md), [archive/u/](archive/u/) | Stage U Daily-use UI (`U0`–`U5`, `UD`) | Closed in Run 1. |
+| [archive/FEEDBACK-1.md](archive/FEEDBACK-1.md) .. [archive/FEEDBACK-4.md](archive/FEEDBACK-4.md), [archive/GLASS-TRIAL.md](archive/GLASS-TRIAL.md), [archive/HARDENING-1.md](archive/HARDENING-1.md) | Releases `0.3.0` to `0.4.4` | Closed 8–14 Oct 2026. |
+| [archive/DEVELOPMENT-STARTUP-ISOLATION.md](archive/DEVELOPMENT-STARTUP-ISOLATION.md) | Pre-CP1 startup rc note | Superseded by run scopes. |
+| [archive/pre-reorg-20261022/](archive/pre-reorg-20261022/) | Pre-reorganization snapshots | Exact copies of `LOOM-PRODUCT-CONTRACT.md`, `ROADMAP.md`, `design/UI-MAP.md`, and `agents/` before the 22 Oct 2026 documentation consolidation. |

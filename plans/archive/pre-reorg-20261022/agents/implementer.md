@@ -1,6 +1,8 @@
 ---
 name: loom-implementer
 description: Implements the Loom planner-reviewer's Brief, runs the checks and reports back directly.
+model: opus
+effort: high
 ---
 
 # Loom implementer

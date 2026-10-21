@@ -6,10 +6,10 @@
 
 **The reference.** [reference.html](reference.html) draws every surface as decided, live, in both appearances and every tone ([D-82](../DECISIONS.md), §1). Where the reference and this file differ, this file wins.
 
-The code still draws Night Fleece 2 until the Ink migration moves each surface ([V2-PLAN §13](../plans/V2-PLAN.md#13-the-ui-revision-ink), §18 below). Until then:
-- [UI-MAP.md](UI-MAP.md) says what the code draws today;
-- the Night Fleece contract is in git, as this file was before Ink (`git show 371aaf6:design/DESIGN.md`), for the migration only;
-- new work is designed in Ink. A change that ships before the Ink tokens land uses the existing tokens by role (canvas, raised, text tier, accent), so the migration can remap it, and never adds a Night Fleece value.
+The Ink token system (`I1`) and surface migrations (`Batch B`, `I2c`, `I6`, `I4-0`, `Batch D`, `I4`, `I4b`, `I4c`, `L3b Settings`, `I6b`) are landed in code ([ACTIVE-PLAN.md](../plans/ACTIVE-PLAN.md)):
+- [docs/ARCHITECTURE.md §11](../docs/ARCHITECTURE.md#11-ui-surface-to-code--evidence-index) maps every surface, view, accessibility ID, keyboard shortcut, and evidence key in code (replacing the former `design/UI-MAP.md`);
+- [SPEC.md](../SPEC.md) is the canonical product and behavioral specification;
+- remaining Ink slices (`L3b Home`, `L3c`, `I5` animated ASCII art, `I7` Sphyrna rename/icons/README renders, `I8` visual pass) are tracked in [STATUS.md](../STATUS.md) and [ACTIVE-PLAN.md](../plans/ACTIVE-PLAN.md).
 
 ## Ink in six rules
 
@@ -102,7 +102,7 @@ The window's structure stays; Ink redraws it.
 
 ## 3. Sizes and colours
 
-All sizes are points. Every token has an Ink value (dark) and a Paper value (light): one name with two values, as before (`LoomTheme.Adaptive`). The code moves to these values in the Ink migration; until then it draws Night Fleece 2's (UI-MAP → Design tokens in code). `scripts/check-theme-literals.sh` keeps colour, size and radius literals out of the views, as before.
+All sizes are points. Every token has an Ink value (dark) and a Paper value (light): one name with two values (`LoomTheme.Adaptive`). The code implements these values in `Sources/LoomCatalogUI/LoomTheme*.swift` ([docs/ARCHITECTURE.md §11.15](../docs/ARCHITECTURE.md#1115-design-tokens--evidence-snapshot-keys)). `scripts/check-theme-literals.sh` keeps colour, size and radius literals out of the views, as before.
 
 ### Surfaces, lines and fills
 
@@ -250,9 +250,9 @@ View tabs, segments and session tabs are not the pill (§6 Tabs).
 
 Each pair is checked in both appearances when its token lands, by `ThemeAppearanceTests`, `LoomThemeTests`, `HighlightTests` and `ProjectColorUITests`. The floors:
 - **Primary:** at least 7:1.
-- **Secondary and tertiary:** at least 4.5:1 on the canvas, both raised levels and the pill's hover and selected fills. A press is momentary, so the pressed fill sets no floor (V2-PLAN §14, under D-83).
+- **Secondary and tertiary:** at least 4.5:1 on the canvas, both raised levels and the pill's hover and selected fills. A press is momentary, so the pressed fill sets no floor ([DECISIONS.md](../DECISIONS.md) D-83).
 - **Status and accent as text:** in their text variants and the accent's high step, at least 4.5:1.
-- **Marks and the focus ring:** at least 3:1. The tree's turns are structure, like the hairlines: they carry no state (the row's mark does), so they keep the tree's colour with no floor (V2-PLAN §14, under D-83).
+- **Marks and the focus ring:** at least 3:1. The tree's turns are structure, like the hairlines: they carry no state (the row's mark does), so they keep the tree's colour with no floor ([DECISIONS.md](../DECISIONS.md) D-83).
 
 The figures above are estimates from the reference's values; the tests give the real ones.
 
@@ -275,14 +275,14 @@ The figures above are estimates from the reference's values; the tests give the 
 
 ## 4. Status language
 
-(User decisions: 5 Oct 2026, UI feedback package G, [UI plan](../plans/cp5/UI.md); 6 Oct 2026 for Reduce Motion; 20 Oct 2026 for the spinner, D-74.)
+(User decisions: 5 Oct 2026, UI feedback package G, [archived UI plan](../plans/archive/cp5/UI.md); 6 Oct 2026 for Reduce Motion; 20 Oct 2026 for the spinner, D-74.)
 
 - **One status column.** Every status surface draws the same marks in a 12 pt slot at the start of the row: the sidebar, the tabs, the header's pill, the inspector, Home, the palette and the menu bar. One glance down the left edge reads every session.
 - **Working: the braille spinner** `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
   - It is ten frames of one SF Mono braille cell, at 12 frames a second.
   - It is 14 pt in the 12 pt slot, in primary; in a subagent row it is 12.5 pt, in secondary.
   - In code it is a render-server layer animation of pre-drawn frames, a `CAKeyframeAnimation` over the frames' contents, so it costs the app no wakeups, as the chase did.
-  - It stands on its first frame when the window is hidden or inactive, and in the sidebar when the sidebar is collapsed ([contract §10](../LOOM-PRODUCT-CONTRACT.md#10-resource-and-performance-acceptance)).
+  - It stands on its first frame when the window is hidden or inactive, and in the sidebar when the sidebar is collapsed ([SPEC.md §12](../SPEC.md#12-resource-performance-subscription--context-budgets-d-07-d-83-c)).
   - It keeps moving under Reduce Motion (D-12), like the system's own small progress indicators.
   - It replaces the chase everywhere, the menu bar badge included (D-52's badge, D-74).
 - **The other marks.**
@@ -296,7 +296,7 @@ The figures above are estimates from the reference's values; the tests give the 
   | State unknown | A hollow 8 pt ring in faint |
   | Identity unclear | A hollow attention ring |
 
-  The exact mapping and derivation order are in [UI-MAP.md](UI-MAP.md#status-to-visual-mapping).
+  The exact mapping and derivation order are in [docs/ARCHITECTURE.md §11.4](../docs/ARCHITECTURE.md#114-status-to-visual-mapping).
 - **The header's state pill.** A 22 pt capsule carries the mark and the label (11.5 medium).
   - Working: primary on the selected fill.
   - Ready, Idle, Stale and State unknown: secondary on the hover fill, with no mark.
@@ -390,13 +390,15 @@ The figures above are estimates from the reference's values; the tests give the 
 - A requester that no longer exists reads "another session".
 - The detail facts add "Opened by".
 
-## 5. Open design items
+## 5. Settled design resolutions & remaining visual slices
 
+All visual design questions are settled ([DECISIONS.md §1.4](../DECISIONS.md#14-visual-design-system-ink-v3)):
 - **The previews are settled** (D-74 to D-81) and gathered in [the reference](reference.html) (D-82, §1). Its documents carry the decisions that came after each preview: the app named Sphyrna, the harness marks, the Rising icon, the remora with its disc, Animated art, the tones and Glass at 0.8, the sheets' one family and Title Case for commands.
 - **Settled by D-83:** the two readings the reference made in Settings, which §2 now holds as rules (Full access asks first; the cleanup's Delete), and the rename's open questions (O-14): the bundle id, the data folder and the repository keep Loom's names, and the wordmark is set in SF Pro (§6 Name and marks).
 - **The knot in code** is drawn (batch B): `ProviderIcon` draws the ChatGPT knot as a template image in the text colour, from `harness-codex-template.png`, which the app bundles; without it, the app falls back to `harness-codex.png`, the ChatGPT app icon.
-- **The art in the app** (§17): a native renderer within the budgets. A spike measures it before it is built.
-- **The README renders.** Their Night Fleece sources were removed on 21 Oct. `assets/readme/` keeps 0.4.4's pictures until I7 draws new sources (`design/readme/*.html`) in Ink, from the reference's documents, before 1.6.0's README.
+- **Remaining visual slices** ([ACTIVE-PLAN.md §3.1](../plans/ACTIVE-PLAN.md#31-track-sphyrna-ink--opencode-ui-slices)):
+  - **The art in the app (`I5`, §17):** a native renderer within the budgets; a spike measures it before it is built.
+  - **The README renders (`I7`):** Night Fleece sources were removed on 21 Oct; `assets/readme/` keeps 0.4.4's pictures until `I7` draws new sources (`design/readme/*.html`) in Ink from the reference's documents before 1.6.0's README.
 - **Settled by Ink:** the navbar's "more solid" layout (user feedback item 6, 5 Oct 2026). The header on the canvas, with its hairline, its two groups and one control family, is the answer; O-03 stays closed.
 - **Settled by D-69** (O-12):
   - the failure diamond under Differentiate without color, on a row's mark and a project's dot alike;
@@ -420,7 +422,7 @@ The figures above are estimates from the reference's values; the tests give the 
 | Shape and spacing | §3 Shape and rhythm. |
 | Materials | Opaque: one canvas, the raised levels and the popovers. Only the sidebar can be glass, and only in the Glass style (D-57): its canvas at 0.8 over the behind-window material, with Solid the default (D-81). There is no blur anywhere else. |
 | Header | (Rule 5; A3 and A4 in [the reference](reference.html#session).) The 52 pt header sits on the canvas with a hairline under it, with no band (O-03). It reads left to right: the harness's mark (13), the title (13 semibold, one line; about 90 pt of it at the detail pane's minimum of 480), what this is, and right after it **the state pill** (§4), how it is.<br><br>Everything you can do sits at the trailing edge, 8 apart, from the left:<br>- **The project chip.** 22 pt, radius 6: the mark (14) 4 pt from its edge, the name in 12 primary, a 1×12 hairline, the branch glyph and the branch in mono 11.5 secondary, on the tint of §6 Project colour.<br>- **The model segment** (D-69). A small context ring and the model's short name in 12 secondary, 6 apart. It shows only where the session has no composer bar.<br>- **A 1×16 hairline.**<br>- **The inspector toggle.** A 26 pt icon button (`sidebar.right`), on the selected fill while the inspector is open.<br>- **The control group.** 26 high, radius 7, with a strong-hairline edge. It holds a Stop segment while the run can be stopped (an 8×8 square with radius 1.5, and "Stop" in 12 medium), a hairline, and the ⋯ segment (30 wide), which is always there. A segment's hover is the hover fill.<br><br>**Transient texts** take the pill's place as secondary text: "Starting — complete any prompts in the terminal", "Continuing in Terminal when this turn ends", "Continuing in Chat when the session rests", "Moving to Chat…", "Deleting…" and the "Preparing…" notice.<br><br>**Narrow rows.** The title gives way first, down to 100 pt; then the model segment goes; then the chip gives up its branch; then the project name shortens (the chip never goes below 56). The pill and the group never shorten (`HeaderFlowPlan`).<br><br>**The branch** is a named branch or "Detached HEAD". Its tooltip is "Git branch", and a branch name is capped at 320 pt (FB4-6).<br><br>**Accessibility:** the chip reads "Project: <name>, branch <branch>". |
-| Tabs | (Rule 4; A5.) There are two kinds, never mixed.<br><br>**Session tabs** are things you hold open, so they are pills.<br>- They sit in the 36 pt tab row under the header, with a hairline under the row.<br>- Each is 26 high, radius 7, 4 apart, 8 from the row's edge, and at most 230 wide.<br>- A tab holds the project's mark (14), the status slot, the title (12.5, secondary; primary on hover and when open) and a 16 pt end slot. The slot shows the harness's mark (12) and turns into the close button on hover, on the open tab too (D-75).<br>- Tabs carry the project tint of §6 Project colour.<br>- A "+" icon button (24) ends the row.<br><br>**View tabs** switch what you look at, so they are underlined text. They are the inspector's (Overview, Changes, Agents, Side), a project page's and Settings'.<br>- Labels are 12.5 medium, secondary; primary on hover and when open.<br>- The open tab has a 1.5 pt accent underline on the bar's hairline.<br>- Counts are in mono 10.5 tertiary ("Changes 4").<br>- Tabs are 18 apart.<br>- There is no pill.<br><br>**A segment** is a choice inside a pane (Last turn · Whole session · Branch; Ink · Paper · Match system). It is a 26 pt group with radius 7 on the hover fill; the chosen segment is raised (Segment on, with a strong hairline and a 1 pt drop).<br><br>The session tab row and the inspector's tab bar share the 36 pt height, so they read as one line. The tab strip's behaviour (when it shows, overflow, pinning, closing) is unchanged (UI-MAP → Tab strip). |
+| Tabs | (Rule 4; A5.) There are two kinds, never mixed.<br><br>**Session tabs** are things you hold open, so they are pills.<br>- They sit in the 36 pt tab row under the header, with a hairline under the row.<br>- Each is 26 high, radius 7, 4 apart, 8 from the row's edge, and at most 230 wide.<br>- A tab holds the project's mark (14), the status slot, the title (12.5, secondary; primary on hover and when open) and a 16 pt end slot. The slot shows the harness's mark (12) and turns into the close button on hover, on the open tab too (D-75).<br>- Tabs carry the project tint of §6 Project colour.<br>- A "+" icon button (24) ends the row.<br><br>**View tabs** switch what you look at, so they are underlined text. They are the inspector's (Overview, Changes, Agents, Side), a project page's and Settings'.<br>- Labels are 12.5 medium, secondary; primary on hover and when open.<br>- The open tab has a 1.5 pt accent underline on the bar's hairline.<br>- Counts are in mono 10.5 tertiary ("Changes 4").<br>- Tabs are 18 apart.<br>- There is no pill.<br><br>**A segment** is a choice inside a pane (Last turn · Whole session · Branch; Ink · Paper · Match system). It is a 26 pt group with radius 7 on the hover fill; the chosen segment is raised (Segment on, with a strong hairline and a 1 pt drop).<br><br>The session tab row and the inspector's tab bar share the 36 pt height, so they read as one line. The tab strip's behaviour (when it shows, overflow, pinning, closing) is unchanged ([SPEC.md §6.3](../SPEC.md#63-detail-header--session-tabs-d-33-d-53-d-74) and [docs/ARCHITECTURE.md §11.5](../docs/ARCHITECTURE.md#115-detail-pane-header-tab-strip-banners-ended-screen--record)). |
 | Overview | (I2c; [the reference](reference.html#session)'s inspector.) The inspector's first tab, in five sections in this order:<br>- **Session:** the status mark and the pill's word. Started, the session's creation ("14:02 today", "Yesterday 09:12", else the date). The CLI and its version with the harness's mark ("Claude Code 2.1.300"), with no row while the version is unknown. The model and the effort in the CLI's lowercase word ("Opus 5.5 · high"; the composer's chip keeps "High"). The mode with the composer's icon and tone; a mode Sphyrna does not name keeps the CLI's word with the plain shield in secondary, and `dontAsk` takes Ask's look (D-63).<br>- **Context:** a 30 pt ring, "38% of the window" over "76.1K of 200K tokens".<br>- **Worktree:** the project's chip; "branch → base", the base read from the repository's files (origin's HEAD, else a local main or master), with no Git process; the folder cut in the middle ("~/…/a/b/c"), with a copy button for the whole path.<br>- **Changes · last turn:** up to six files with their + and −, and "Open ›" to the Changes tab on Last turn. An empty turn says "Claude has not edited files in the last turn.". This is the Changes tab's own last-turn read (§13), made only while the Overview is open: once when it opens, and again when a turn ends.<br>- **Agents · N running:** up to five rows and "Open ›" to the Agents tab. It is left out for a session that never had an agent.<br><br>There is no Why line and no Last activity row: the header's pill and reason line say the state, and the sidebar's row says the time. A Codex session shows the state, Started, Context's note and Worktree |
 | Controls | (Rule 4.)<br><br>**Buttons:**<br>- 26 high, radius 6, 12.5 medium.<br>- A page's main action is 30 high, radius 8, 13.<br>- A small button is 22 high, radius 5, 11.5.<br>- One fill, the accent with on-accent text, for the default or main action. The rest are secondary buttons with a strong-hairline edge, ghost buttons in secondary text, or a destructive button in the failure text with the failure wash on hover.<br>- Hover adds the hover fill. Disabled is 38 % opacity.<br><br>**Icon buttons:** 26 pt, radius 6, a 16 pt glyph in secondary until hovered.<br><br>**Fields:** 30 high, radius 8, with a strong hairline. Focus draws the accent edge and a 3 pt accent-wash halo, never a glow.<br><br>**Switches:** 28×16, accent when on.<br><br>**Focus:** Sphyrna's ring is the accent, 2 pt, 2 pt outside the control. Native text fields keep the system ring.<br><br>**Menus and pickers:** the popover level, radius 12, 6 pt inside. Rows are 28 with the pill (radius 8). A menu appears with opacity and a 3 pt rise over 160 ms, and closes at once.<br><br>**Callouts** carry a request above the terminal or the history view: a provider's request, or a session's request to open a session.<br>- The box: the attention wash (13 %), a 1 pt attention edge at 32 %, radius 12, 14×16 inside.<br>- The heading: the dot and a 13 semibold heading; the meta in mono.<br>- The text: 12.5 primary.<br>- The buttons sit at the trailing end.<br>- The orange is the edge and the dot, not a solid box.<br>- Return never answers a callout while a terminal is below it.<br><br>**The palette:** §3. |
 | Sheets | (D-78; [the reference](reference.html#review), The sheets.) Every question asked before something changes is a sheet of one family.<br><br>**Shape:**<br>- 420 wide, or 480 when it lists files; the popover surface, radius 12, 20 inside, with the popover's ring and shadow.<br>- It comes down under the window's header, centred, over the scrim (§3).<br>- The question is the title, in 14 semibold. The subject sits under it in 13 medium, cut at two lines: the session's name, or the message in quotes.<br>- Then the facts in 12.5, and the buttons at the trailing edge, Cancel first. A way out, such as Delete's Remove from Sphyrna Only, sits at the leading edge.<br><br>**Filled means Return:**<br>- The filled button is the sheet's default, and only a sheet that saves has one (Rename's Save).<br>- A sheet that removes or rewinds has none. Its button is tinted: the failure wash and text when it deletes (Delete Permanently, Remove, Discard), the accent wash and text for Rewind Files. Return does nothing there, Esc cancels, and the focus starts on Cancel.<br>- Remove from Sphyrna Only asks through the system's compact alert, with the app icon, and follows the same keys.<br><br>**Delete's facts** come as one lead sentence that ends "This can't be undone.", then two short lists under labels: "Removed" (the transcript and the subagent transcripts; file snapshots and session folders; then the count, size and folder in mono) and "Kept" (your prompts in Claude's shared prompt history; project files and worktrees; anything already sent to Anthropic). A blocked delete adds its note in the failure text. |
@@ -443,7 +445,7 @@ The figures above are estimates from the reference's values; the tests give the 
 
 ## 7. Chat view (V13)
 
-The stream of a Claude session read as chat (`Sources/LoomCatalogUI/Chat/`; the spec is `plans/v2/CHAT-SPEC.md`). It is drawn by `ChatTranscriptView`, read only for a stopped session and a live tail for a running terminal one. Values live in `LoomTheme+Chat.swift` (`LoomTheme.Chat`); the rules below are the ones a change must keep. Rules marked T3 follow T3 Code (MIT, Copyright 2026 T3 Tools Inc.); no T3 code is copied. Its Ink look is [the reference](reference.html#session)'s, accepted on 20 Oct 2026 (D-75); the code takes it in the chat's build step (V2-PLAN §13, I6). The rules below hold the behaviour and the look.
+The stream of a Claude session read as chat (`Sources/LoomCatalogUI/Chat/`; behavioral spec in [SPEC.md §7](../SPEC.md#7-native-chat-face-loomchat)). It is drawn by `ChatTranscriptView`, read only for a stopped session and a live tail for a running terminal one. Values live in `LoomTheme+Chat.swift` (`LoomTheme.Chat`); the rules below are the ones a change must keep. Rules marked T3 follow T3 Code (MIT, Copyright 2026 T3 Tools Inc.); no T3 code is copied. Its Ink look is [the reference](reference.html#session)'s, accepted on 20 Oct 2026 (D-75), and landed in slice I6 ([ACTIVE-PLAN.md](../plans/ACTIVE-PLAN.md)). The rules below hold the behaviour and the look.
 
 | Item | Rule |
 | --- | --- |
@@ -485,7 +487,7 @@ A project's new-session page (`DraftSessionView`, `Sources/LoomCatalogUI/`; N1, 
 
 The launch view (`HomeView`, `Sources/LoomCatalogUI/`). `LoomTheme.Home` (`LoomTheme+Home.swift`) holds its sizes. It is a summary of what Sphyrna already knows, and it starts nothing by itself. In Ink it says the state in one sentence, then lists what wants you ([the reference](reference.html#home)). It has no start box: sessions start from the sidebar's "New session" row (§8).
 
-The top band is Remora's (D-65; Lombot until D-77). Until Remora lands, the band holds:
+The top band (`HomeBand`) holds the live summary and Remora's section (D-65, D-77). The band's summary header holds:
 - the date and time in mono tertiary;
 - one sentence in statement type (§3), such as "Two sessions are working. One needs you.", where only "needs you" takes a colour, the attention text. "Needs you" counts what the Dock counts, both lists (§19): a session that finished while you were away needs you too;
 - a line of counts in secondary;
@@ -511,7 +513,7 @@ In the morning, Remora's brief takes the band: the heading, Remora's sentence an
 
 ## 10. Project page (V08)
 
-A project's page (`ProjectPageView`, `Sources/LoomCatalogUI/`). Tokens are `LoomTheme.ProjectPage` (`LoomTheme+ProjectPage.swift`). Its Ink look is [the reference](reference.html#project)'s, accepted on 20 Oct 2026 (D-76; A1–A8 and C1–C4 there); the code takes it in the build's pages step (V2-PLAN §13, I4). The page shows what Sphyrna already holds and starts nothing by itself: it reads the catalog, the usage index, the git files and CLAUDE.md once per visit, and lets them go when it closes.
+A project's page (`ProjectPageView`, `Sources/LoomCatalogUI/`). Tokens are `LoomTheme.ProjectPage` (`LoomTheme+ProjectPage.swift`). Its Ink look is [the reference](reference.html#project)'s, accepted on 20 Oct 2026 (D-76; A1–A8 and C1–C4 there), and landed in Batch D / I4 ([ACTIVE-PLAN.md](../plans/ACTIVE-PLAN.md)). The page shows what Sphyrna already holds and starts nothing by itself: it reads the catalog, the usage index, the git files and CLAUDE.md once per visit, and lets them go when it closes.
 
 | Item | Rule |
 | --- | --- |
@@ -531,7 +533,7 @@ A project's page (`ProjectPageView`, `Sources/LoomCatalogUI/`). Tokens are `Loom
 
 ## 11. Chat composer (V17, V24)
 
-One composer for the draft session and the live session (`ChatComposerView`, `ChatComposerDock`, `ComposerTextEditor` in `Sources/LoomCatalogUI/Chat/`; tokens in `LoomTheme+Composer.swift`; spec CHAT-SPEC → Composer; [D-58, D-59, D-62, D-63](../DECISIONS.md)); the chip and picker code is `ComposerPickers.swift`.
+One composer for the draft session and the live session (`ChatComposerView`, `ChatComposerDock`, `ComposerTextEditor` in `Sources/LoomCatalogUI/Chat/`; tokens in `LoomTheme+Composer.swift`; behavioral spec in [SPEC.md §7.3](../SPEC.md#73-composer-keys-queue--delivery-v17-v24); [D-58, D-59, D-62, D-63](../DECISIONS.md)); the chip and picker code is `ComposerPickers.swift`.
 
 | Item | Rule |
 | --- | --- |
@@ -552,7 +554,7 @@ One composer for the draft session and the live session (`ChatComposerView`, `Ch
 
 ## 12. Pinned cards (V18, V19)
 
-A live Chat session's requests (approvals, questions, plans) as one card at a time between the stream and the composer (`PinnedCards.swift`, `PinnedCardParts.swift`, `PinnedCardsModel.swift`, `PinnedApprovalContent.swift`, `PinnedKeys.swift` in `Sources/LoomCatalogUI/Chat/`; tokens in `LoomTheme+Pinned.swift`; spec CHAT-SPEC → Requests).
+A live Chat session's requests (approvals, questions, plans) as one card at a time between the stream and the composer (`PinnedCards.swift`, `PinnedCardParts.swift`, `PinnedCardsModel.swift`, `PinnedApprovalContent.swift`, `PinnedKeys.swift` in `Sources/LoomCatalogUI/Chat/`; tokens in `LoomTheme+Pinned.swift`; behavioral spec in [SPEC.md §8.1](../SPEC.md#81-pinned-request-cards-v18-v23-d-75)).
 
 | Item | Rule |
 | --- | --- |
@@ -675,32 +677,27 @@ Sphyrna's own code draws them; the idea comes from stackedlol/ascii-sharks.
 - **Home's loop** (D-79). Home's band has one hammerhead, always there, on one fixed loop of 180 seconds: a wide, flat ellipse, left along the top and back along the bottom, whose turns fall out of sight past the band's edges, so that its tail leaves one side as its head comes back on the other. It draws with no plankton and no wake. The loop repeats, so the app may work out its frames once and then only draw them; the art's spike (§5) measures which way is cheaper.
 - **Accessibility.** The art is hidden from VoiceOver. Increase Contrast leaves it as it is, because it carries no information. Reduce Transparency changes nothing.
 
-## 18. Moving from Night Fleece
+## 18. Retired Night Fleece patterns (do not re-introduce)
 
-**The plan.** The order and the slices are planned in [V2-PLAN §13](../plans/V2-PLAN.md#13-the-ui-revision-ink). Each step:
-- moves tokens or surfaces to Ink;
-- updates UI-MAP's entries for what it moved;
-- passes the contrast tests for its pairs in both appearances.
+The Ink token system (`LoomTheme*.swift`) and surface migrations are landed across the codebase ([ACTIVE-PLAN.md §3.1](../plans/ACTIVE-PLAN.md#31-track-sphyrna-ink--opencode-ui-slices), [docs/ARCHITECTURE.md §11](../docs/ARCHITECTURE.md#11-ui-surface-to-code--evidence-index)). Every new or modified surface must pass the contrast tests for its pairs in both appearances (`Ink` and `Paper`) and must **never** re-introduce retired Night Fleece patterns:
 
-**What goes:**
-- the navy sidebar;
-- the violet-grey panel family, with its six levels, and D-63's tones as the code has them (Night fleece, Workshop, Instrument); Ink's tones are Neutral, Warm and Cool (§3 Tones, D-81);
+**Retired (never re-introduce):**
+- the navy sidebar (`#101216`) or terracotta accent (`#D97757`);
+- the old violet-grey panel family and superseded D-63 tone names (`Night fleece`, `Workshop`, `Instrument`) — Ink's tones are **`Neutral`**, **`Warm`**, and **`Cool`** (§3 Tones, D-81);
 - the panel inset and border around the terminal;
-- the 3 pt project stripe;
-- the working chase;
+- the `3 pt` vertical project edge stripe (D-50, superseded by D-74);
+- the 8-dot working border chase (replaced everywhere by the 10-frame `BrailleSpinner`, D-74);
 - the subagent tree's hairline guide;
 - the old two-row card look and its trailing provider icon (the harness's mark now leads every title, D-75);
-- the composer's separate model and effort chips (one chip now, D-75);
-- the sidebar header's view buttons and ⋯ menu (the list's heading switches the view, D-75);
-- every Night Fleece value (the contract before Ink: `git show 371aaf6:design/DESIGN.md`).
+- the composer's separate model and effort chips (combined into one chip, D-75);
+- the sidebar header's view buttons and `⋯` menu (the list's heading switches the view, D-75).
 
-**What stays:**
-- the accent ramp;
+**Preserved across Ink:**
+- the periwinkle accent ramp;
 - the status hues (Paper's dots are lighter, §3);
-- the project tones and the mode tones;
-- the pill's behaviour;
-- every content and behaviour rule of §2, §4 and §7–§16;
-- the contrast floors and the motion limits.
+- the 8 project tones and the 5 permission mode tones;
+- the single `RowHighlight` pill behaviour;
+- every content and behaviour rule of §2, §4 and §7–§16, and the contrast floors and motion limits.
 
 ## 19. The edges
 
