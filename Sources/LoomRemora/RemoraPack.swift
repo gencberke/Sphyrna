@@ -11,10 +11,14 @@ public enum RemoraScope: Equatable, Sendable {
 public struct RemoraExchange: Equatable, Sendable {
     public var question: String
     public var answer: String
+    /// The sessions that pack read (`RemoraPack.readSessionIDs`), in its order: the follow-up reads them again, in the same
+    /// order, before any session of its own.
+    public var sessions: [UUID]
 
-    public init(question: String, answer: String) {
+    public init(question: String, answer: String, sessions: [UUID] = []) {
         self.question = question
         self.answer = answer
+        self.sessions = sessions
     }
 }
 
@@ -46,14 +50,21 @@ public struct RemoraPackSettings: Equatable, Sendable {
     }
 }
 
-/// The part of Remora's memory a pack carries (journal lines, project notes, `Remora.md`). L2 fills it; the builder puts
-/// `text` first in the pack, where it belongs in the stable prefix, and counts `projectNotes` for the footer.
+/// The part of Remora's memory a pack carries, in two parts because they change at different rates (D-85): a cached prefix
+/// is only as long as what comes before the first change, and one journal line is added after every call. L2 fills both.
 public struct RemoraMemoryShare: Equatable, Sendable {
+    /// The stable part: `Remora.md` and the project notes, which change when the user or Remora edits them. The builder puts
+    /// it first, in `<memory>`, in the pack's stable prefix.
     public var text: String
+    /// The recent part: today's and yesterday's journal lines, oldest first, newest last. It goes late, in its own
+    /// `<journal>` block just before `<previous>`, so a new line does not break the cache of anything before it.
+    public var recent: String
+    /// How many project notes `text` holds, for the footer ("read 6 sessions and 3 project notes").
     public var projectNotes: Int
 
-    public init(text: String = "", projectNotes: Int = 0) {
+    public init(text: String = "", recent: String = "", projectNotes: Int = 0) {
         self.text = text
+        self.recent = recent
         self.projectNotes = projectNotes
     }
 }
@@ -73,6 +84,8 @@ public struct RemoraPackLimits: Equatable, Sendable {
     public var keptWholeExcerpts = 3
     /// The brief's subject: this many projects that moved.
     public var briefProjects = 3
+    /// A follow-up reads at most this many sessions besides the ones the last pack read (only ones its words match).
+    public var followUpPicks = 3
 
     public static let standard = RemoraPackLimits()
 
@@ -98,10 +111,11 @@ public struct RemoraPackFacts: Equatable, Sendable {
 public struct RemoraPack: Equatable, Sendable {
     public var kind: RemoraKind
     public var text: String
-    /// The memory share and the self card's fixed lines: byte-identical between two packs built on the same day with the
-    /// same settings and memory, and the start of `text`.
+    /// `<memory>`, `<self>` and `<sessions>`, the start of `text`: byte-identical between two packs built on the same
+    /// catalog (the sessions listed, not what they are doing) with the same settings and stable memory, whoever asks (brief
+    /// or question), whatever the time.
     public var stablePrefix: String
-    /// The sessions whose excerpt is in the pack, most relevant first.
+    /// The sessions whose excerpt is in the pack, most relevant first (the excerpts are written in order of last activity).
     public var readSessionIDs: [UUID]
     /// Every session the pack names (index and excerpts): the ids an answer's block may cite.
     public var namedSessionIDs: Set<UUID>
@@ -117,10 +131,16 @@ public struct RemoraPack: Equatable, Sendable {
 
     public var stablePrefixTokens: Int { RemoraPack.estimate(stablePrefix) }
 
-    /// The call for this pack.
+    /// What follows the stable prefix.
+    public var afterStablePrefix: String { String(decoding: text.utf8.dropFirst(stablePrefix.utf8.count), as: UTF8.self) }
+
+    /// The call for this pack, in the layout L1c's probe kept (D-84): the stable prefix goes into the system prompt after
+    /// the rules (a file, `RemoraRequest.systemSuffix`), the rest is stdin. The API matches a cached prefix at a content
+    /// block boundary and the CLI sends stdin as one block, so a stable prefix inside stdin was never read back (842 of
+    /// 17,000 tokens); in the system prompt the next call on the same catalog reads it (4,193).
     public func request(model: String = "sonnet", effort: String = "low") -> RemoraRequest {
-        RemoraRequest(kind: kind, model: model, effort: effort, pack: text,
-                      knownSessionIDs: Set(namedSessionIDs.map(\.uuidString)))
+        RemoraRequest(kind: kind, model: model, effort: effort, pack: afterStablePrefix,
+                      knownSessionIDs: Set(namedSessionIDs.map(\.uuidString)), systemSuffix: stablePrefix)
     }
 
     static func estimate(_ text: String) -> Int { (text.utf8.count + 3) / 4 }

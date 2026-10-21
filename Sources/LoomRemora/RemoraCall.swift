@@ -18,14 +18,18 @@ public struct RemoraRequest: Sendable, Equatable {
     public var effort: String
     public var pack: String
     public var knownSessionIDs: Set<String>
+    /// Text that goes into the system prompt after the rules, through a file under `<data root>/remora/` (never on argv).
+    /// Empty: the system prompt is the rules alone and the whole pack is stdin.
+    public var systemSuffix: String
 
     public init(kind: RemoraKind, model: String = "sonnet", effort: String = "low", pack: String,
-                knownSessionIDs: Set<String> = []) {
+                knownSessionIDs: Set<String> = [], systemSuffix: String = "") {
         self.kind = kind
         self.model = model
         self.effort = effort
         self.pack = pack
         self.knownSessionIDs = knownSessionIDs
+        self.systemSuffix = systemSuffix
     }
 }
 
@@ -67,7 +71,8 @@ public struct RemoraFailure: Error, Equatable, Sendable, CustomStringConvertible
 }
 
 /// Remora's call: one `claude -p` child per call with the user's Claude Code login, no tools, no hooks, no MCP, no
-/// transcript, the pack on stdin (design/DESIGN.md §20; spike S10 on Claude Code 2.1.300). The child is an owned helper
+/// transcript, the pack on stdin and its stable prefix in the system prompt (design/DESIGN.md §20; spike S10 on Claude
+/// Code 2.1.300). The child is an owned helper
 /// of the supervisor (`ProcessSupervisor.streamHelper`): in the ledger, in a run scope when there is a launcher, one
 /// deadline, bounded output, ended by a cancel at once and by Quit.
 public struct RemoraCall: Sendable {
@@ -79,23 +84,40 @@ public struct RemoraCall: Sendable {
     /// The environment's keys, and the only ones a call's child gets. `CLAUDE_CONFIG_DIR` is set only for a profile that
     /// is not the home default (Claude names its stored login after an explicit config directory, so `~/.claude` is
     /// never passed explicitly, as for the plan-limits child); `USER` is required (without it the CLI says "Not logged in").
-    /// `DISABLE_PROMPT_CACHING=1` for every call: a brief runs once a day and is never read back, and two question packs
-    /// share only their first ~200–850 tokens (L1b), so the cache's 2× write would cost more than its reads save (L1a's
-    /// probe: a Haiku brief $0.0069 with the write, $0.0047 without).
+    /// `CLAUDE_CODE_PROMPT_CACHE_TTL=1h` for every call (D-84, D-85): Remora keeps prompt caching, and Sphyrna, not the
+    /// plan, chooses its lifetime. Claude Code 2.1.242 and later reads it for the main conversation, `-p` runs included.
+    /// An hour, because the user asks through the day with gaps over five minutes, and because on usage credits the
+    /// default drops to five minutes (an hour's write costs 2x the input price, a five-minute write 1.25x).
     public static let environmentKeys: Set<String> = [
         "HOME", "PATH", "USER", "LOGNAME", "TMPDIR", "LANG", "SHELL", "TERM", "CLAUDE_CONFIG_DIR",
-        "CLAUDE_CODE_DISABLE_AGENT_VIEW", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "DISABLE_PROMPT_CACHING",
+        "CLAUDE_CODE_DISABLE_AGENT_VIEW", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CLAUDE_CODE_PROMPT_CACHE_TTL",
     ]
 
     /// `claude`'s arguments for a model and an effort. No `--input-format` (the pack is plain text on stdin), no plugin
     /// directory, no `--settings` but the hooks switch, no tools, no setting sources (so no user or ancestor `CLAUDE.md`).
-    public static func arguments(model: String, effort: String) -> [String] {
+    /// The system prompt is the rules (`--system-prompt`), or, when the request has a `systemSuffix`, the file that holds
+    /// the rules and the suffix (`--system-prompt-file <path>`: a path on argv, never the text).
+    public static func arguments(model: String, effort: String, systemPromptFile: String? = nil) -> [String] {
         [
             "-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
             "--model", sanitizedModel(model), "--effort", sanitizedEffort(effort),
             "--settings", #"{"disableAllHooks":true}"#, "--strict-mcp-config", "--no-session-persistence",
-            "--tools", "", "--system-prompt", RemoraRules.text, "--setting-sources", "",
-        ]
+            "--tools", "",
+        ] + (systemPromptFile.map { ["--system-prompt-file", $0] } ?? ["--system-prompt", RemoraRules.text])
+            + ["--setting-sources", ""]
+    }
+
+    /// Writes the system prompt file of one call into `directory` (`<data root>/remora/`, made 0700): the rules, a blank
+    /// line, then the suffix; the file is 0600 and named for the call.
+    static func writeSystemPrompt(_ suffix: String, in directory: URL) throws -> URL {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        let file = directory.appendingPathComponent("system-\(UUID().uuidString).txt")
+        let text = RemoraRules.text + "\n\n" + suffix
+        guard FileManager.default.createFile(atPath: file.path, contents: Data(text.utf8), attributes: [.posixPermissions: 0o600]) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        return file
     }
 
     /// The child's environment out of the one sessions run with (`source`: the resolved toolchain's). Missing basics
@@ -114,7 +136,7 @@ public struct RemoraCall: Sendable {
         if let configDirectory { result["CLAUDE_CONFIG_DIR"] = configDirectory }
         result["CLAUDE_CODE_DISABLE_AGENT_VIEW"] = "1"
         result["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
-        result["DISABLE_PROMPT_CACHING"] = "1"
+        result["CLAUDE_CODE_PROMPT_CACHE_TTL"] = "1h"
         return result
     }
 
@@ -199,11 +221,19 @@ public struct RemoraCall: Sendable {
             continuation.finish(throwing: failure(.couldNotStart, "The working folder could not be made"))
             return
         }
+        var systemFile: URL?
+        if !request.systemSuffix.isEmpty {
+            do { systemFile = try Self.writeSystemPrompt(request.systemSuffix, in: workingDirectory.deletingLastPathComponent()) } catch {
+                continuation.finish(throwing: failure(.couldNotStart, "The system prompt file could not be written"))
+                return
+            }
+        }
+        defer { if let systemFile { try? FileManager.default.removeItem(at: systemFile) } }
         var reader = RemoraStreamReader(knownSessionIDs: request.knownSessionIDs)
         var delivered = false
         usage?.recordStart(request.kind)
         let child = supervisor.streamHelper(
-            executable, Self.arguments(model: request.model, effort: request.effort),
+            executable, Self.arguments(model: request.model, effort: request.effort, systemPromptFile: systemFile?.path),
             environment: environment.merging(additionalEnvironment) { _, extra in extra },
             workingDirectory: workingDirectory.path, input: Data(request.pack.utf8),
             timeout: request.kind == .question ? questionDeadline : briefDeadline,

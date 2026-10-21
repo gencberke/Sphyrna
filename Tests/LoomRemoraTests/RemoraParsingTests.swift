@@ -172,4 +172,27 @@ struct RemoraParsingTests {
         #expect(pieces.joined() == "Hi")
         #expect(reader.outcome != nil)
     }
+
+    @Test func theCacheSplitOfTheResultIsReadWhateverTheChunkingAndOnlyFromTheResult() {
+        var split = result(isError: false, text: "Hi")
+        split["usage"] = ["input_tokens": 3, "output_tokens": 2, "cache_creation_input_tokens": 900, "cache_read_input_tokens": 400,
+                          "cache_creation": ["ephemeral_5m_input_tokens": 700, "ephemeral_1h_input_tokens": 200]]
+        // A message_start frame carries a split of its own: only the result's counts.
+        let start: [String: Any] = ["type": "stream_event", "event": ["type": "message_start", "message": ["usage": [
+            "input_tokens": 1, "cache_creation": ["ephemeral_5m_input_tokens": 5, "ephemeral_1h_input_tokens": 6]]]]]
+        let data = lines([start, delta("Hi"), split])
+        for size in [1, 7, 64, 100_000] {
+            var reader = RemoraStreamReader(knownSessionIDs: [])
+            var rest = data[...]
+            while !rest.isEmpty { _ = reader.feed(Data(rest.prefix(size))); rest = rest.dropFirst(size) }
+            guard case let .answer(answer)? = reader.outcome else { Issue.record("no answer, chunk \(size)"); return }
+            #expect(answer.usage == RemoraTokenUsage(input: 3, cacheCreation: 900, cacheRead: 400, output: 2,
+                                                     cacheCreation5m: 700, cacheCreation1h: 200), "chunk \(size)")
+        }
+        // A result without the split (the fake provider, an older CLI) reads as zero.
+        var plain = RemoraStreamReader(knownSessionIDs: [])
+        _ = plain.feed(lines([result(isError: false, text: "Hi")]))
+        guard case let .answer(answer)? = plain.outcome else { Issue.record("no answer"); return }
+        #expect(answer.usage.cacheCreation5m == 0 && answer.usage.cacheCreation1h == 0)
+    }
 }

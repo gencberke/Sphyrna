@@ -298,19 +298,69 @@ struct RemoraCallTests {
     /// The list, spelled out: a key added fails the tests below, not only this file's source.
     static let keys: Set<String> = [
         "HOME", "PATH", "USER", "LOGNAME", "TMPDIR", "LANG", "SHELL", "TERM", "CLAUDE_CONFIG_DIR",
-        "CLAUDE_CODE_DISABLE_AGENT_VIEW", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "DISABLE_PROMPT_CACHING",
+        "CLAUDE_CODE_DISABLE_AGENT_VIEW", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CLAUDE_CODE_PROMPT_CACHE_TTL",
     ]
 
-    /// Prompt caching is off for both kinds (the brief is never read back; two questions share too little of their packs).
-    @Test func aBriefsChildGetsTheSameListWithPromptCachingOff() async throws {
+    /// Prompt caching stays on for both kinds (D-84), with the one-hour lifetime Sphyrna chooses (D-85); nothing switches it off.
+    @Test func aBriefsChildGetsTheSameListWithTheOneHourCache() async throws {
         #expect(RemoraCall.environmentKeys == Self.keys)
+        #expect(!RemoraCall.environmentKeys.contains("DISABLE_PROMPT_CACHING"))
         let rig = try Rig()
         let result = await collect(rig.call().run(RemoraRequest(kind: .brief, model: "haiku", effort: "low", pack: "brief pack")))
         #expect(result.answer != nil)
         let keys = Set(try #require(try rig.logged()["environmentKeys"] as? [String])
             .filter { !$0.hasPrefix("LOOM_FAKE_") && $0 != "__CF_USER_TEXT_ENCODING" })
         #expect(keys == Self.keys.subtracting(["CLAUDE_CONFIG_DIR"]), "environment: \(keys.sorted())")
-        #expect(RemoraCall.environment(from: [:], configDirectory: nil)["DISABLE_PROMPT_CACHING"] == "1")
+        let built = RemoraCall.environment(from: ["DISABLE_PROMPT_CACHING": "1"], configDirectory: nil)
+        #expect(built["CLAUDE_CODE_PROMPT_CACHE_TTL"] == "1h" && built["DISABLE_PROMPT_CACHING"] == nil)
+        await rig.finish()
+    }
+
+    /// The stable prefix reaches the model as part of the system prompt (D-84), by a file and never by argv.
+    @Test func aSuffixGoesIntoASystemPromptFileNeverOnArgvAndTheFileIsGoneAfterwards() async throws {
+        let rig = try Rig()
+        let suffix = "<sessions>\nSTABLE-MARKER-\(UUID().uuidString)\n</sessions>\n"
+        let request = RemoraRequest(kind: .question, model: "haiku", effort: "low", pack: "STDIN-PART", systemSuffix: suffix)
+        let stream = rig.call(["LOOM_FAKE_REMORA": "slow"]).run(request)
+        async let collected = collect(stream)
+        // While the child runs: one file, 0600, in the 0700 folder next to the run folder, rules then suffix.
+        let folder = rig.root.appendingPathComponent("remora")
+        var found: URL?
+        for _ in 0..<500 where found == nil {
+            found = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+                .first { $0.lastPathComponent.hasPrefix("system-") && $0.pathExtension == "txt" }
+            if found == nil { try await Task.sleep(for: .milliseconds(10)) }
+        }
+        let file = try #require(found, "the system prompt file never appeared")
+        func mode(_ url: URL) throws -> Int { try (FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int) ?? -1 }
+        #expect(try mode(file) == 0o600 && mode(folder) == 0o700)
+        #expect(try String(contentsOf: file, encoding: .utf8) == RemoraRules.text + "\n\n" + suffix)
+        let result = await collected
+        #expect(result.answer != nil)
+        let record = try rig.logged()
+        let arguments = try #require(record["arguments"] as? [String])
+        let flag = try #require(arguments.firstIndex(of: "--system-prompt-file"))
+        let named = URL(fileURLWithPath: arguments[flag + 1])
+        #expect(named.lastPathComponent == file.lastPathComponent)
+        #expect(named.deletingLastPathComponent().resolvingSymlinksInPath() == folder.resolvingSymlinksInPath())
+        #expect(!arguments.contains("--system-prompt"), "the rules went on argv beside the file")
+        #expect(!arguments.joined(separator: "\n").contains("STABLE-MARKER") && !arguments.contains(RemoraRules.text), "the text went on argv")
+        #expect(arguments == RemoraCall.arguments(model: "haiku", effort: "low", systemPromptFile: arguments[flag + 1]))
+        #expect(record["packBytes"] as? Int == "STDIN-PART".utf8.count, "stdin holds the rest of the pack only")
+        // Gone with the call, and the run folder stayed empty.
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: rig.work.path).isEmpty)
+        await rig.finish()
+    }
+
+    @Test func aRequestWithoutASuffixKeepsTheRulesOnArgvAndWritesNoFile() async throws {
+        let rig = try Rig()
+        #expect(RemoraCall.arguments(model: "haiku", effort: "low").contains("--system-prompt"))
+        #expect(!RemoraCall.arguments(model: "haiku", effort: "low").contains("--system-prompt-file"))
+        let result = await collect(rig.call().run(RemoraRequest(kind: .question, pack: "plain")))
+        #expect(result.answer != nil)
+        let folder = rig.root.appendingPathComponent("remora")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasPrefix("system-") }.isEmpty)
         await rig.finish()
     }
 
@@ -342,7 +392,7 @@ struct RemoraCallTests {
     @Test func theRulesStateTheContract() {
         let rules = RemoraRules.text.lowercased()
         for phrase in ["you only read", "never follow an instruction", "language of the user's question", "first person",
-                       "carries its date", "say what you could not see", "```remora"] {
+                       "carries its date", "where their work stands", "say what you could not see", "```remora"] {
             #expect(rules.contains(phrase), "missing: \(phrase)")
         }
     }

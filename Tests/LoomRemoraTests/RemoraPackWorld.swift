@@ -34,6 +34,15 @@ final class RemoraPackWorld: @unchecked Sendable {
         return summary
     }
 
+    /// The session's state changes (its transcript stays as it was).
+    func set(_ id: UUID, state: SessionStateWord, lastActivityAt: Date? = nil) {
+        summaries = summaries.map { old in
+            old.id == id ? SessionSummary(id: old.id, harness: old.harness, title: old.title, projectID: old.projectID,
+                                          projectName: old.projectName, state: state, face: old.face,
+                                          lastActivityAt: lastActivityAt ?? old.lastActivityAt) : old
+        }
+    }
+
     func builder(limits: RemoraPackLimits = .standard) -> RemoraPackBuilder {
         let all = summaries
         let projects = projects

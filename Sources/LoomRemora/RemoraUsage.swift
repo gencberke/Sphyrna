@@ -8,24 +8,34 @@ public struct RemoraTokenUsage: Equatable, Sendable {
     public var cacheCreation = 0
     public var cacheRead = 0
     public var output = 0
+    /// How `cacheCreation` splits by cache lifetime (`usage.cache_creation.ephemeral_5m_input_tokens` and
+    /// `ephemeral_1h_input_tokens`); zero when the CLI does not report the split.
+    public var cacheCreation5m = 0
+    public var cacheCreation1h = 0
 
-    public init(input: Int = 0, cacheCreation: Int = 0, cacheRead: Int = 0, output: Int = 0) {
+    public init(input: Int = 0, cacheCreation: Int = 0, cacheRead: Int = 0, output: Int = 0,
+                cacheCreation5m: Int = 0, cacheCreation1h: Int = 0) {
         self.input = input
         self.cacheCreation = cacheCreation
         self.cacheRead = cacheRead
         self.output = output
+        self.cacheCreation5m = cacheCreation5m
+        self.cacheCreation1h = cacheCreation1h
     }
 
-    init(_ usage: TokenUsage?) {
+    init(_ usage: TokenUsage?, cacheSplit: RemoraCacheSplit? = nil) {
         self.init(input: usage?.inputTokens ?? 0, cacheCreation: usage?.cacheCreationInputTokens ?? 0,
-                  cacheRead: usage?.cacheReadInputTokens ?? 0, output: usage?.outputTokens ?? 0)
+                  cacheRead: usage?.cacheReadInputTokens ?? 0, output: usage?.outputTokens ?? 0,
+                  cacheCreation5m: cacheSplit?.fiveMinutes ?? 0, cacheCreation1h: cacheSplit?.oneHour ?? 0)
     }
 
     public var total: Int { input + cacheCreation + cacheRead + output }
 
     static func + (left: Self, right: Self) -> Self {
         Self(input: left.input + right.input, cacheCreation: left.cacheCreation + right.cacheCreation,
-             cacheRead: left.cacheRead + right.cacheRead, output: left.output + right.output)
+             cacheRead: left.cacheRead + right.cacheRead, output: left.output + right.output,
+             cacheCreation5m: left.cacheCreation5m + right.cacheCreation5m,
+             cacheCreation1h: left.cacheCreation1h + right.cacheCreation1h)
     }
 }
 
