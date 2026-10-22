@@ -382,9 +382,23 @@ def check_b9b10():
     verdict('b9.firstTurnInTranscript', tr.get('file') and tr.get('toolUses', 0) >= 1 and tr.get('toolUsesWithoutResult') == 0 and any('ZEBRAKIWI' in t for t in assistant_texts(conv)), tr)
     shot('b9-chat-first-turn')
     # Stop, then type in the stopped composer and send.
+    # Since R5c a verified Stop closes the session's tab (ConversationController.stopSettled): `chat-state` then has no
+    # selected Chat. The Stop is over when its busy state is gone and the tab has left the strip; the session is then
+    # selected again, as a click on its card does, and its stopped driver (closing a tab keeps it) must read `stopped`.
     cmd(f'chat-stop:{session}')
-    until(lambda: (lambda st: st if st.get('phase') == 'stopped' else None)(chat_state('stopped')), 60, 'stopped')
-    verdict('b9.stopped', True, {'phase': chat_state('stopped2').get('phase')})
+    def stop_settled():
+        c = catalog('stopping')
+        busy = any(b.get('id') == session for b in c.get('busy', []))
+        return c if not busy and session not in c.get('preferences', {}).get('openTabs', []) else None
+    after_stop = until(stop_settled, 60, 'the Stop settled and the tab closed')
+    cmd(f'select:{session}')
+    stopped = until(lambda: (lambda st: st if st.get('sessionID') == session and st.get('phase') == 'stopped' else None)(
+        chat_state('stopped')), 30, 'stopped')
+    c = catalog('stopped-selected')
+    verdict('b9.stopped', stopped.get('driver') is True and c.get('selectedStopFailure') is None and c.get('errorMessage') is None,
+            {'phase': stopped.get('phase'), 'tabClosed': True, 'selectedAfterStop': after_stop.get('selectedSessionID') == session,
+             'stopFailure': c.get('selectedStopFailure') is not None, 'banner': c.get('errorMessage') is not None,
+             'route': c.get('route')})
     turn('B9 send from the stopped composer (resume)')
     cmd(f'composer-focus:{session}')
     cmd(f'composer-type:{session}:Reply with the single word: resumed')
