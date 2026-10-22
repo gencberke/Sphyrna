@@ -43,7 +43,8 @@ final class RemoraHomeRig {
     }
 
     static func make(projectNames: [String] = ["loom"], seeds: [Seed], preferences: RemoraPreferences = RemoraPreferences(),
-                     script: [String: String] = [:], withHost: Bool = true) async throws -> RemoraHomeRig {
+                     script: [String: String] = [:], withHost: Bool = true,
+                     scriptFor: (([UUID]) -> [String: String])? = nil) async throws -> RemoraHomeRig {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-remora-home-\(UUID().uuidString.prefix(8))", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
@@ -71,7 +72,8 @@ final class RemoraHomeRig {
         await model.stopAndWait()
         await model.settle()
         model.remora.install(preferences: preferences, persist: { _ in })
-        if withHost { rig.makeHost(seeds: seeds, preferences: preferences, script: script, now: now) }
+        // `scriptFor` writes the fake's script with the seeded sessions' ids (an answer that names one of them).
+        if withHost { rig.makeHost(seeds: seeds, preferences: preferences, script: scriptFor?(rig.sessions) ?? script, now: now) }
         return rig
     }
 

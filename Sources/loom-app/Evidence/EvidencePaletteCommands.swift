@@ -8,11 +8,13 @@ import LoomCatalogUI
 /// - `palette-open`: what ⌘K runs (it closes an open palette).
 /// - `palette-menu`: ⌘K as a key event through the real main menu (writes `ack-palette-menu-handled.json`).
 /// - `palette-type:<text>`: each character as a key event to the first responder.
-/// - `palette-key:<up|down|return|cmd-return|escape>`: that key as a native event.
+/// - `palette-key:<up|down|tab|return|cmd-return|escape>`: that key as a native event (⇥ changes Ask Remora's scope).
 /// - `palette-state:<label>`: writes `ack-palette-<label>.json` without doing anything.
 ///
 /// Every command writes `ack-palette-<label>.json` (the label is the argument's first word) with what the palette shows
-/// and which responder has the keyboard. Content is left out when the run redacts it.
+/// and which responder has the keyboard. Content is left out when the run redacts it. `remora` says what Ask Remora shows: whether it
+/// is offered, busy, its scope and the scopes ⇥ goes through, the answer's phase (`none`, `offered`, `working`, `answered`, `stopped`,
+/// `failed-<kind>`), the chips' session ids and whether ⌘↵ left an answer for Home (booleans, phases and ids only, never text).
 @MainActor
 extension DevelopmentEvidence {
     /// Returns false when `name` is not a palette command.
@@ -39,6 +41,7 @@ extension DevelopmentEvidence {
             switch argument {
             case "up": app.sendKeyForEvidence("\u{F700}", keyCode: 126, modifiers: [.numericPad, .function])
             case "down": app.sendKeyForEvidence("\u{F701}", keyCode: 125, modifiers: [.numericPad, .function])
+            case "tab": app.sendKeyForEvidence("\t", keyCode: 48, modifiers: [])
             case "return": app.sendKeyForEvidence("\r", keyCode: 36, modifiers: [])
             case "cmd-return": app.sendKeyForEvidence("\r", keyCode: 36, modifiers: [.command])
             case "escape": app.sendKeyForEvidence("\u{1b}", keyCode: 53, modifiers: [])
@@ -70,6 +73,7 @@ extension DevelopmentEvidence {
                 "firstResponderIsTextInput": responder is NSText,
                 "selectedSession": model.selectedSessionID?.uuidString ?? NSNull(),
                 "destination": String(describing: model.destination),
+                "remora": palette.remoraFacts,
             ])
         }
         return true

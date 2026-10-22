@@ -347,13 +347,7 @@ private struct HomeRemoraAnswerCard: View {
     /// The sessions the answer names that exist now, each a chip that opens the session; a draft sits beside its chip.
     @ViewBuilder
     private func chips(_ facts: HomeRemoraAnswerFacts) -> some View {
-        let excluded = model.remora.preferences.excludedProjects
-        let named = facts.chips.compactMap { chip -> (HomeRemoraSession, RemoraDraft?)? in
-            guard let id = UUID(uuidString: chip.sessionID), let record = reads.sessions[id], let session = model.homeRemoraSession(record)
-            else { return nil }
-            if let project = session.projectID, excluded.contains(project) { return nil }
-            return (session, facts.drafts.first { $0.sessionID == chip.sessionID })
-        }
+        let named = HomeRemoraAnswerChips.named(facts, model: model, reads: reads)
         if !named.isEmpty {
             FlowLayout(spacing: R.chipsGap, centered: false) {
                 ForEach(named, id: \.0.id) { session, draft in
@@ -392,15 +386,32 @@ private struct HomeRemoraAnswerCard: View {
     }
 }
 
-/// A session chip: the project's mark, the title and when, tinted with the project's tone; a click opens the session.
+/// The sessions an answer names that exist now and whose project Remora may name, each with its draft line if it has one. Home's
+/// answer and the palette's (⌘K) draw the same chips from it.
+enum HomeRemoraAnswerChips {
+    @MainActor
+    static func named(_ facts: HomeRemoraAnswerFacts, model: CatalogModel, reads: HomeRemoraReads) -> [(HomeRemoraSession, RemoraDraft?)] {
+        let excluded = model.remora.preferences.excludedProjects
+        return facts.chips.compactMap { chip -> (HomeRemoraSession, RemoraDraft?)? in
+            guard let id = UUID(uuidString: chip.sessionID), let record = reads.sessions[id], let session = model.homeRemoraSession(record)
+            else { return nil }
+            if let project = session.projectID, excluded.contains(project) { return nil }
+            return (session, facts.drafts.first { $0.sessionID == chip.sessionID })
+        }
+    }
+}
+
+/// A session chip: the project's mark, the title and when, tinted with the project's tone; a click opens the session (`open` when
+/// given: the palette closes first).
 struct HomeRemoraChip: View {
     let model: CatalogModel
     let session: HomeRemoraSession
+    var open: (@MainActor () -> Void)? = nil
     @State private var hovering = false
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: R.chipRadius)
-        Button { model.select(session.id) } label: {
+        Button { if let open { open() } else { model.select(session.id) } } label: {
             HStack(spacing: R.chipGap) {
                 if let name = session.projectName { ProjectMarkView(name: name, tone: session.tone, size: .chip) }
                 Text(session.title).homeType(R.chipText).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)

@@ -4,6 +4,8 @@ import LoomCore
 /// The command palette's rows and the groups they sit in. Plain values: the ranking builds them, the view
 /// draws them and the tests compare them.
 public enum PaletteSection: Int, CaseIterable, Sendable {
+    /// Ask Remora, when the text reads as a question (DESIGN §20 ⌘K): it heads the list.
+    case remora
     case needsYou
     case sessions
     case projects
@@ -36,6 +38,8 @@ public struct PaletteItem: Identifiable, Equatable, Sendable {
         case hit(UUID)
         /// "Search older sessions": runs the wider pass.
         case searchOlder
+        /// Ask Remora: asks the typed question in the scope ⇥ chose.
+        case askRemora
     }
 
     public let id: String
@@ -54,7 +58,7 @@ public struct PaletteItem: Identifiable, Equatable, Sendable {
     public var sessionID: UUID? {
         switch target {
         case .session(let id), .hit(let id): id
-        case .project, .action, .searchOlder: nil
+        case .project, .action, .searchOlder, .askRemora: nil
         }
     }
 }

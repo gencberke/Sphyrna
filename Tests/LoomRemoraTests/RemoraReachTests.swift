@@ -25,11 +25,12 @@ struct RemoraReachTests {
     static let unaskedCalls: [String: Int] = [model: 1]
     /// Calls of the model API's three entries (`askRemora(`, `briefRemora(` and `briefRemoraIfDue(`, summed for each file), where each is
     /// written. Home's calls are all in one file (L3b): the automatic brief when Home shows (1), Catch Me Up, Catch Me Up Anyway and Try Again
-    /// of a brief (1) and the field's question (1). The evidence command file counts too (`remora-brief`, `remora-ask`). ⌘K's Ask and the
-    /// new-session page's brief (L3c) will add their own.
+    /// of a brief (1) and the field's question (1). The evidence command file counts too (`remora-brief`, `remora-ask`). ⌘K's Ask Remora
+    /// (L3c) is one call, ↵ on its row (`PaletteRemoraCalls.ask`); the new-session page's brief has a list of its own.
     static let homeCalls = "Sources/LoomCatalogUI/HomeRemoraCalls.swift"
     static let evidenceCalls = "Sources/loom-app/Evidence/EvidenceRemoraCommands.swift"
-    static let modelAPICalls: [String: Int] = [homeCalls: 3, evidenceCalls: 2]
+    static let paletteCalls = "Sources/LoomCatalogUI/PaletteRemora.swift"
+    static let modelAPICalls: [String: Int] = [homeCalls: 3, evidenceCalls: 2, paletteCalls: 1]
 
     /// Names that would make something run by itself, in Remora's files.
     static let selfStarting = ["Timer", "DispatchSource", "NWPathMonitor", "FSEventStream", "NotificationCenter", "asyncAfter", "Task.sleep"]

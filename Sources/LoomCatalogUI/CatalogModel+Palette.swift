@@ -22,6 +22,18 @@ public final class PaletteState {
     /// Bumped each time the palette opens, so the view takes the keyboard again.
     public private(set) var openCount = 0
 
+    // Ask Remora (DESIGN §20 ⌘K; `PaletteRemora.swift`).
+    /// Where ⇥ is among the scopes offered (`remoraScopes`).
+    private(set) var remoraScopeIndex = 0
+    /// The question ↵ asked from here, while its answer shows in place of the list; nil while typing.
+    private(set) var remoraAsked: HomeRemoraUI.Asked?
+    /// What names the answer's chips: the sessions it cites that exist now (read once the answer is in).
+    private(set) var remoraReads: HomeRemoraReads?
+    /// The answer ⌘↵ took to Home: Home takes it as its field's Earlier line, then clears it.
+    var homeEarlier: HomeRemoraUI.Asked?
+    /// The call running now was asked here: Esc (and any close) stops it.
+    @ObservationIgnored private var remoraOwnsCall = false
+
     /// The Claude profile's `projects` folder, set by the app; nil means no conversation search.
     @ObservationIgnored public var transcriptsDirectory: URL?
     /// Settings → General → Search session text (the model keeps it in step). Off, no transcript is read: not to
@@ -93,6 +105,11 @@ public final class PaletteState {
     /// keyboard back to the view that had it.
     public func close() {
         guard isOpen else { return }
+        if remoraOwnsCall, model?.remora.phase == .asking { model?.stopRemora() }
+        remoraOwnsCall = false
+        remoraAsked = nil
+        remoraReads = nil
+        remoraScopeIndex = 0
         isOpen = false
         cancelSearch()
         resetSearch()
@@ -121,6 +138,9 @@ public final class PaletteState {
     public func setQuery(_ text: String) {
         guard isOpen, text != query else { return }
         query = text
+        // Typing again goes back to the list; a call still running goes on (the row says Remora is busy).
+        remoraAsked = nil
+        remoraReads = nil
         cancelSearch()
         resetSearch()
         rebuildLocal()
@@ -264,6 +284,9 @@ public final class PaletteState {
     /// form the last group. The selection stays on its row when the row is still there.
     private func recompose() {
         var composed = local
+        if remoraOffered {
+            composed.insert(PaletteGroup(section: .remora, title: PaletteRemoraText.header, items: [Self.askRemoraItem]), at: 0)
+        }
         if !olderRows.isEmpty {
             if let index = composed.firstIndex(where: { $0.section == .sessions }) {
                 composed[index].items += olderRows
@@ -316,14 +339,126 @@ public final class PaletteState {
             searchOlder()
             return
         }
+        if item.target == .askRemora {
+            askFromPalette()
+            return
+        }
         close()
         switch item.target {
         case .session(let session), .hit(let session):
             if inTab { model.openTab(session) } else { model.select(session) }
         case .project(let project): model.showProjectPage(project)
         case .action(let action): action.run(on: model)
-        case .searchOlder: break
+        case .searchOlder, .askRemora: break
         }
+    }
+
+    // MARK: Ask Remora
+
+    static let askRemoraItem = PaletteItem(id: "ask-remora", target: .askRemora, title: PaletteRemoraText.ask, detail: nil, trailing: nil,
+                                           indicator: nil, symbol: "questionmark.bubble", snippet: nil)
+
+    /// Ask Remora heads the list: Remora is on and the text reads as a question.
+    var remoraOffered: Bool {
+        guard let model, model.paletteOffersRemora else { return false }
+        return PaletteRemoraQuestion.readsAsQuestion(query)
+    }
+
+    /// The scopes ⇥ goes through, from where the palette was opened.
+    var remoraScopes: [PaletteRemoraScopeChoice] {
+        guard let model else { return [.allProjects] }
+        return PaletteRemoraScope.choices(model.paletteRemoraPlace, excluded: model.remora.preferences.excludedProjects)
+    }
+
+    var remoraScope: PaletteRemoraScopeChoice {
+        let scopes = remoraScopes
+        return scopes.indices.contains(remoraScopeIndex) ? scopes[remoraScopeIndex] : .allProjects
+    }
+
+    /// The palette's own question is still being answered.
+    var remoraInFlight: Bool { remoraOwnsCall && model?.remora.phase == .asking }
+
+    /// Remora is busy with a call this palette did not start (or one it started before the text changed).
+    var remoraBusy: Bool { model?.remora.isBusy == true && remoraAsked == nil }
+
+    /// The sessions the shown answer names, as chips.
+    var remoraChips: [HomeRemoraSession] {
+        guard let model, let asked = remoraAsked, let reads = remoraReads, let answer = model.remora.lastAnswer,
+              answer.question == asked.question else { return [] }
+        return HomeRemoraAnswerChips.named(HomeRemoraAnswerFacts(answer), model: model, reads: reads).map(\.0)
+    }
+
+    /// Where the keys are: the list (with Ask Remora or without) or the answer.
+    var remoraKeyStage: PaletteRemoraKeys.Stage {
+        if remoraAsked != nil { return .answer(inFlight: remoraInFlight, hasChip: !remoraChips.isEmpty) }
+        return .typing(offered: remoraOffered, askSelected: remoraOffered && selectedID == Self.askRemoraItem.id,
+                       busy: model?.remora.isBusy == true)
+    }
+
+    /// A key from the field: true when Ask Remora took it, false to leave it to the palette.
+    func handleRemoraKey(_ key: PaletteRemoraKeys.Key) -> Bool {
+        switch PaletteRemoraKeys.resolve(key, remoraKeyStage) {
+        case .passThrough: return false
+        case .nothing: break
+        case .cycleScope: remoraScopeIndex = PaletteRemoraScope.next(after: remoraScopeIndex, count: remoraScopes.count)
+        case .ask: askFromPalette()
+        case .openFirstChip: if let first = remoraChips.first { openRemoraChip(first.id) }
+        case .openOnHome: openRemoraAnswerOnHome()
+        case .stopAndClose, .close: close()
+        }
+        return true
+    }
+
+    /// ↵ on Ask Remora (or a click on it): one call, with the typed text and the scope. The answer shows in place of the list.
+    /// Nothing happens while Remora answers something else, or with Remora off.
+    func askFromPalette() {
+        guard isOpen, remoraOffered, let model, !model.remora.isBusy else { return }
+        let question = trimmedQuery
+        let scope = remoraScope.scope
+        let baseline = model.remora.lastUndo
+        guard PaletteRemoraCalls.ask(model, question, scope: scope) else { return }
+        remoraOwnsCall = true
+        remoraReads = HomeRemoraReads(baselineUndo: baseline)
+        remoraAsked = HomeRemoraUI.Asked(question: question, scope: scope, at: Date())
+    }
+
+    /// A chip: the palette closes and the session opens.
+    func openRemoraChip(_ id: UUID) {
+        guard let model else { return }
+        close()
+        model.select(id)
+    }
+
+    /// ⌘↵ on an answer that has ended: the palette closes and Home shows the question as its field's Earlier line.
+    func openRemoraAnswerOnHome() {
+        guard let model, let asked = remoraAsked, !remoraInFlight else { return }
+        close()
+        model.showHome()
+        homeEarlier = asked
+    }
+
+    /// Home took the answer.
+    func takeHomeEarlier() -> HomeRemoraUI.Asked? {
+        defer { homeEarlier = nil }
+        return homeEarlier
+    }
+
+    /// What the evidence run reports of Ask Remora: counts, booleans, phases and ids only, never text.
+    public var remoraFacts: [String: Any] {
+        let phase: String
+        if remoraAsked == nil {
+            phase = remoraOffered ? "offered" : "none"
+        } else if remoraInFlight {
+            phase = "working"
+        } else if let model, let failure = model.remora.lastFailure {
+            phase = "failed-\(failure)"
+        } else if model?.remora.stopped == .question {
+            phase = "stopped"
+        } else {
+            phase = "answered"
+        }
+        return ["offered": remoraOffered, "busy": remoraBusy, "scope": remoraScope.kind, "scopes": remoraScopes.map(\.kind),
+                "phase": phase, "chips": remoraChips.map(\.id.uuidString), "homeEarlier": homeEarlier != nil]
     }
 }
 

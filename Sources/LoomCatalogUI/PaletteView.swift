@@ -101,6 +101,15 @@ struct PalettePanel: View {
     }
 
     private func handle(_ press: KeyPress) -> KeyPress.Result {
+        // Ask Remora takes ⇥, ↵, ⌘↵ and Esc while it is offered or its answer shows (`PaletteRemoraKeys`).
+        let remoraKey: PaletteRemoraKeys.Key? = switch press.key {
+        case .tab where press.modifiers.isEmpty: .tab
+        case .return: press.modifiers.contains(.command) ? .commandReturn : .return
+        case .escape: .escape
+        case .upArrow, .downArrow: .arrow
+        default: nil
+        }
+        if let remoraKey, palette.handleRemoraKey(remoraKey) { return .handled }
         switch press.key {
         case .upArrow: palette.move(-1)
         case .downArrow: palette.move(1)
@@ -116,7 +125,17 @@ struct PalettePanel: View {
 
     // MARK: List
 
+    @ViewBuilder
     private var list: some View {
+        if let asked = palette.remoraAsked, let reads = palette.remoraReads {
+            PaletteRemoraAnswerView(model: model, palette: palette, asked: asked, reads: reads)
+                .environment(\.indicatorsAnimate, model.windowIsActive)
+        } else {
+            results
+        }
+    }
+
+    private var results: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -135,9 +154,16 @@ struct PalettePanel: View {
                             .frame(height: PaletteMetrics.headerHeight, alignment: .bottomLeading)
                             .accessibilityAddTraits(.isHeader)
                         ForEach(group.items) { item in
-                            PaletteRow(item: item, selected: item.id == palette.selectedID,
-                                       animates: model.windowIsActive) { palette.activate(item.id) }
+                            if item.target == .askRemora {
+                                PaletteRemoraRow(palette: palette, busy: palette.remoraBusy, selected: item.id == palette.selectedID) {
+                                    palette.activate(item.id)
+                                }
                                 .id(item.id)
+                            } else {
+                                PaletteRow(item: item, selected: item.id == palette.selectedID,
+                                           animates: model.windowIsActive) { palette.activate(item.id) }
+                                    .id(item.id)
+                            }
                         }
                     }
                 }
@@ -152,7 +178,20 @@ struct PalettePanel: View {
 
     // MARK: Footer
 
+    @ViewBuilder
     private var footer: some View {
+        if let asked = palette.remoraAsked {
+            PaletteRemoraAnswerFooter(model: model, palette: palette, asked: asked, hint: { AnyView(hint($0, $1)) })
+                .font(LoomTheme.Typography.caption)
+                .foregroundStyle(LoomTheme.Text.secondary)
+                .padding(.horizontal, PaletteMetrics.rowInset + 4)
+                .frame(height: PaletteMetrics.footerHeight)
+        } else {
+            listFooter
+        }
+    }
+
+    private var listFooter: some View {
         HStack(spacing: 14) {
             if palette.isSearching {
                 ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 14, height: 14)
@@ -165,8 +204,13 @@ struct PalettePanel: View {
             Spacer(minLength: 8)
             HStack(spacing: 14) {
                 hint("↑↓", "move")
-                hint("↵", "open")
-                hint("⌘↵", "open in a tab")
+                if palette.remoraOffered {
+                    hint("↵", palette.selectedID == PaletteState.askRemoraItem.id ? "ask" : "open")
+                    hint("⇥", "scope")
+                } else {
+                    hint("↵", "open")
+                    hint("⌘↵", "open in a tab")
+                }
                 hint("esc", "close")
             }
             .fixedSize()

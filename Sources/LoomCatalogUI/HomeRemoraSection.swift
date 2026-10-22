@@ -46,6 +46,10 @@ struct HomeRemoraSection: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Remora")
         .accessibilityIdentifier("home-remora")
+        // ⌘↵ on the palette's answer: Home keeps it as the field's Earlier line.
+        .onChange(of: model.palette.homeEarlier, initial: true) { _, handed in
+            if handed != nil, let asked = model.palette.takeHomeEarlier() { ui.earlier = asked }
+        }
     }
 }
 
