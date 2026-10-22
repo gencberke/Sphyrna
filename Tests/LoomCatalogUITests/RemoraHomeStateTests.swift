@@ -324,10 +324,12 @@ struct RemoraHomeStateTests {
 
     @Test func theSystemReadReturnsWithinItsBoundAndLeavesNothingRunning() async {
         // The first path of a real monitor, or nothing within the bound: either way it returns, and a second read is as good as the first.
+        // The limit is generous on purpose: under a full run's load the global queue that starts each read can lag for seconds
+        // (pool #1 on 22 Oct took 3.1 s for these two 400 ms reads); a read that never returned would still fail it.
         let started = ContinuousClock.now
         _ = await NetworkReach.firstStatus(bound: .milliseconds(400))
         _ = await NetworkReach.firstStatus(bound: .milliseconds(400))
-        #expect(ContinuousClock.now - started < .seconds(3))
+        #expect(ContinuousClock.now - started < .seconds(30))
     }
 
     // MARK: Put in Draft

@@ -120,10 +120,11 @@ struct InspectorWindowTests {
         #expect(labels.contains("Back to the list of agents"), "labels \(labels)")
         #expect(rig.model.inspector.tab == .agents)
 
-        // The back control returns to the list; the terminal does not move.
+        // The back control returns to the list, which keeps 328 while a transcript takes 556 (D-78): the terminal takes
+        // the width back in one resize, and the other session's terminal does not move.
         rig.model.closeSubagent()
         await rig.settle()
-        #expect(counts(rig).grids == after.grids)
+        #expect(counts(rig).grids == [after.grids[0], after.grids[1] + 1], "grid changes \(rig.spies.map(\.sizes))")
     }
 
     @Test func theHeaderToggleOpensTheAgentsTabWithTheSubagentsListed() async throws {
