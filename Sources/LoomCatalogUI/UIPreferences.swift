@@ -46,15 +46,16 @@ public enum CatalogViewMode: String, Codable, Sendable, CaseIterable {
 
 /// Settings → Theme → Sidebar (D-57; General until D-63). Solid, the opaque canvas, is the default (D-81); Glass is the canvas at
 /// 0.8 over the behind-window material. A stored choice is kept. Reduce Transparency draws Solid whatever this says.
+/// The cases are in the segment's order, Solid first (DESIGN §5); the raw values are what is stored.
 public enum SidebarStyle: String, Codable, Sendable, CaseIterable {
-    case glass
     case solid
+    case glass
 
     /// The label in Settings.
     public var title: String {
         switch self {
-        case .glass: "Glass"
         case .solid: "Solid"
+        case .glass: "Glass"
         }
     }
 }

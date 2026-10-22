@@ -6,7 +6,7 @@ import LoomTerminal
 import Testing
 @testable import LoomCatalogUI
 
-/// V01/V02: the Glass | Solid and launch-view preferences, the per-session inspector, and the detail route.
+/// V01/V02: the Solid | Glass and launch-view preferences, the per-session inspector, and the detail route.
 /// Files live in temporary folders that each test removes.
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(2)))
@@ -26,7 +26,14 @@ struct ShellSeamsTests {
         try JSONDecoder().decode(UIPreferences.self, from: Data(contentsOf: root.appendingPathComponent("ui-preferences.json")))
     }
 
-    // MARK: Glass | Solid
+    // MARK: Solid | Glass
+
+    /// DESIGN §5's Theme row: the segment reads Solid | Glass, the default first, and the stored raw values stay what they were.
+    @Test func theSidebarSegmentReadsSolidThenGlassAndKeepsItsStoredValues() throws {
+        #expect(SidebarStyle.allCases == [.solid, .glass])
+        #expect(SidebarStyle.allCases.map(\.title) == ["Solid", "Glass"])
+        #expect(SidebarStyle.allCases.map(\.rawValue) == ["solid", "glass"])
+    }
 
     @Test func theSidebarStylePersistsAndAppliesLive() throws {
         let root = try temporaryRoot()

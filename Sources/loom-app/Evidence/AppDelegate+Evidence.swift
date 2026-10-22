@@ -140,7 +140,7 @@ extension AppDelegate {
                     provider: provider, executable: fake,
                     capabilities: ProviderCapabilities(
                         version: "fixture",
-                        help: "--settings <settings> --session-id <id> --remote <ADDR> --effort <level> -n, --name <name> --plugin-dir <path> "
+                        help: "--settings <settings> --session-id <id> --fork-session --remote <ADDR> --effort <level> -n, --name <name> --plugin-dir <path> "
                             + "--permission-mode <mode> --model <model>",
                         serverHelp: "--listen <URL>"
                     ),

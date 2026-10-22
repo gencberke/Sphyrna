@@ -352,6 +352,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return window
     }
 
+    /// Native full screen auto-hides the main window's empty toolbar with the menu bar, so it does not cover the top of the pane
+    /// (`MainWindowFullScreen`). Only the main window has this delegate.
+    func window(_ window: NSWindow, willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions = [])
+        -> NSApplication.PresentationOptions {
+        MainWindowFullScreen.presentationOptions(proposed: proposedOptions)
+    }
+
     /// A conversation counts as viewed only while the window is visible, not
     /// occluded, key, and the application is active. The relative times tick
     /// whenever the window can be seen (visible, not occluded, not minimized, app

@@ -118,12 +118,14 @@ public struct SettingsView: View {
         .background(LoomTheme.Surface.canvas)
         .foregroundStyle(LoomTheme.Text.primary)
         .font(LoomTheme.InkType.body.font)
-        .ignoresSafeArea()
         .tint(LoomTheme.Accent.base)
         .environment(\.animatedArt, model.animatedArt)
         .sheetLayer(navigation.sheets, headerOffset: LoomTheme.Settings.bandHeight) { sheet in
             SettingsSheets.view(for: sheet, model: model, profile: about.claudeProfile, navigation: navigation)
         }
+        // After the sheet layer, so the page, the scrim and the sheet's 52 pt are all measured from the window's top, title strip
+        // included (DESIGN §6 Sheets, §3 scrim): before it, the layer sat under the title strip's safe area, which stayed undimmed.
+        .ignoresSafeArea()
     }
 }
 

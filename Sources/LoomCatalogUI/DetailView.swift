@@ -443,3 +443,19 @@ struct FadesIn: ViewModifier {
 extension View {
     func fadesIn() -> some View { modifier(FadesIn()) }
 }
+
+/// The main window in native full screen. Its toolbar is empty, there only so AppKit centres the window buttons in the 52 pt
+/// header; in full screen AppKit would draw it as an opaque strip over the top of the pane, which reaches under the title bar.
+/// Auto-hiding it detaches it from the window: it slides down with the menu bar at the screen's top edge and leaves the pane whole.
+/// The windowed layout is untouched: these options apply only while the window is in full screen.
+public enum MainWindowFullScreen {
+    /// The options for `window(_:willUseFullScreenPresentationOptions:)`: what AppKit proposes, with the toolbar auto-hidden. AppKit
+    /// accepts `.autoHideToolbar` only together with `.fullScreen` and `.autoHideMenuBar`, so both are set, and `.hideMenuBar`, which
+    /// cannot go with `.autoHideMenuBar`, is taken out. `.autoHideMenuBar` needs the Dock hidden or auto-hidden: proposed options
+    /// without either get `.autoHideDock` (AppKit raises on a combination it does not accept).
+    public static func presentationOptions(proposed: NSApplication.PresentationOptions) -> NSApplication.PresentationOptions {
+        var options = proposed.subtracting(.hideMenuBar).union([.fullScreen, .autoHideMenuBar, .autoHideToolbar])
+        if !options.contains(.hideDock) && !options.contains(.autoHideDock) { options.insert(.autoHideDock) }
+        return options
+    }
+}
