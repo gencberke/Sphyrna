@@ -1567,6 +1567,12 @@ public final class CatalogModel {
             for id in liveStates.keys where frame.sessions[id] == nil { setLive(id, nil) }
         }
         lastSequence = frame.sequence
+        // A parent's run that ended, on either face, retires its side chats (D-72). Runs move only in these frames; after
+        // missed frames the whole map is read again.
+        switch frame.change {
+        case .runStarted, .runEnded, .runDetached: noteSideParentRuns()
+        default: if !contiguous { noteSideParentRuns() }
+        }
         // Set when one row's patch accounts for the frame's move of the catalog revision.
         var revisionCovered = false
         if let id = frame.sessionID, rowModels[id] != nil {

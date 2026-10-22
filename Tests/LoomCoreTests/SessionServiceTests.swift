@@ -77,7 +77,15 @@ private final class FakeHost: StructuredFaceHost {
         }
     }
 
-    func resumeSession(sessionID: UUID) async throws { resumed.append(sessionID) }
+    /// Held by `resumeSession` until it opens, then thrown (a Stop that ended the wait for `initialize`).
+    var resumeHold: (gate: Gate, error: any Error)?
+
+    func resumeSession(sessionID: UUID) async throws {
+        resumed.append(sessionID)
+        guard let resumeHold else { return }
+        await resumeHold.gate.wait()
+        throw resumeHold.error
+    }
 
     func forget(sessionID: UUID) { forgotten.append(sessionID) }
 
@@ -293,6 +301,40 @@ struct SessionServiceTests {
         #expect(terminal.host.resumed.isEmpty && terminal.sinks.requested == 1 && terminal.sinks.failed == 1)
         #expect(terminal.told.failures == [.resumeFailed] && shown == [id])
         #expect(terminal.service.transitions.busy[id] == nil)
+    }
+
+    /// A Stop during a Chat-face Resume ends the resume's wait, with the face's stopping error or, by the order the face's
+    /// actors ran in, as a start that failed: neither is a failure to report, and busy holds through the Stop (its process
+    /// check) and is cleared after it, as for a plain Stop.
+    @Test(arguments: [true, false])
+    func aStopDuringAResumeReportsNothingAndBusyHoldsThroughTheStop(wordedAsStopping: Bool) async throws {
+        let rig = try await makeRig(runsIn: .chat)
+        defer { rig.context.cleanup() }
+        // A real run, so the Stop has processes to check.
+        await rig.service.start(provider: .claude, projectID: nil)?.value
+        let id = try #require(rig.sinks.adopted.first?.sessionID)
+        let gate = Gate()
+        rig.host.resumeHold = (gate, wordedAsStopping ? HostStopping() as any Error : HostFailure())
+        let resumeTask = rig.service.resume(sessionID: id, knownProvider: .claude, shown: { _ in })
+        let resume = try #require(resumeTask)
+        #expect(rig.service.transitions.busy[id] == .resuming)
+        var afterResumeEnded: ConversationBusy?
+        let stop = rig.service.stop(sessionID: id, liveRunID: nil, settled: { _ in
+            // The Stop ended the resume's wait; the resume is over while the Stop has not released busy.
+            gate.open()
+            await resume.value
+            afterResumeEnded = rig.service.transitions.busy[id]
+        })
+        #expect(rig.service.transitions.busy[id] == .stopping)
+        await stop?.value
+        // Never left waiting, whatever the Stop did.
+        gate.open()
+        await resume.value
+        #expect(rig.host.resumed == [id])
+        #expect(afterResumeEnded == .stopping, "the resume's end does not clear the Stop's busy")
+        #expect(rig.told.failures.isEmpty, "a resume a Stop ended is not a failure")
+        #expect(rig.service.transitions.busy[id] == nil)
+        _ = await rig.context.runtime.shutdown()
     }
 
     @Test func aResumeIsRefusedWhileTheSessionIsBusyOrItsHarnessCannotStart() async throws {
@@ -824,6 +866,32 @@ struct SessionServiceTests {
         // The same parent whose run card is not being moved was stopped.
         await rig.service.parentRunEnded(parent, runCard: UUID(), sideChats: [side])
         #expect(rig.host.closed == [side])
+    }
+
+    /// Told late, after the face let go of its handover state: a move is still not a stop, while the service's own move is
+    /// under way or once the card's terminal run is live.
+    @Test func aRunEndToldAfterTheFaceLetGoOfTheMoveIsStillNotAParentStop() async throws {
+        let rig = try await makeRig(runsIn: .chat)
+        defer { rig.context.cleanup() }
+        await rig.service.start(provider: .claude, projectID: nil)?.value
+        let card = try #require(rig.sinks.adopted.first?.sessionID)
+        let side = UUID()
+        rig.host.live = [side]
+        rig.host.settled = [side]
+        // The terminal runs the card (the move is done): nothing retires.
+        await rig.service.parentRunEnded(card, runCard: card, sideChats: [side])
+        #expect(rig.host.closed.isEmpty)
+        let stopTask = rig.service.stop(sessionID: card, liveRunID: nil, settled: { _ in })
+        await stopTask?.value
+        // The service's move is still under way: nothing retires either.
+        rig.service.transitions.setHandover(Handover(target: .terminal, phase: .switching), for: card)
+        await rig.service.parentRunEnded(card, runCard: card, sideChats: [side])
+        #expect(rig.host.closed.isEmpty)
+        // No move and no run: a stop.
+        rig.service.transitions.setHandover(nil, for: card)
+        await rig.service.parentRunEnded(card, runCard: card, sideChats: [side])
+        #expect(rig.host.closed == [side])
+        _ = await rig.context.runtime.shutdown()
     }
 
     @Test func aSideChatWithNoLiveRunIsLeftAlone() async throws {

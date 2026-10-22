@@ -606,6 +606,77 @@ struct SideChatFlowTests {
         await fixture.cleanup()
     }
 
+    // MARK: A terminal-face parent (D-72)
+
+    /// A parent the terminal runs: its terminal entry exists and its conversation id is known, so it can be forked.
+    private func terminalParent(_ fixture: Fixture, text: String) async throws -> UUID {
+        fixture.model.setNewSessionFace(.terminal)
+        let id = try await startFromDraft(fixture.model, text: text)
+        let catalog = await fixture.rig.runtime.catalog
+        #expect(await waitUntil { (try? await catalog.session(id: id)?.runEndpoint) == .terminal })
+        #expect(await waitUntil { (try? await catalog.session(id: id))?.session.providerConversationID?.isEmpty == false })
+        #expect(await waitUntil { fixture.controller.entries.values.contains { $0.owner == id } })
+        #expect(fixture.model.chatSessions?.existingDriver(for: id) == nil, "no Chat driver: nothing of the Chat face watches it")
+        return id
+    }
+
+    /// The side chat a first question forks from `parent`, once it answered.
+    private func sideChat(_ fixture: Fixture, of parent: UUID, _ question: String) async throws -> ChatSessionDriver {
+        let session = fixture.model.side.session(for: parent)
+        await ask(fixture.model, session, parent, question)
+        let driver = try driverOf(try #require(session.openID, "notice: \(String(describing: session.notice))"), fixture.model)
+        #expect(await idle(driver, prompts: 1))
+        return driver
+    }
+
+    @Test func aTerminalParentsStopRetiresItsSideChat() async throws {
+        let fixture = try await make()
+        let parent = try await terminalParent(fixture, text: "stopping in the terminal")
+        let side = try await sideChat(fixture, of: parent, "Side of the terminal's stop?")
+        fixture.model.stopConversation(parent)
+        #expect(await waitUntil { await phase(side) == .stopped })
+        #expect(await side.snapshot().processID == nil)
+        await fixture.cleanup()
+    }
+
+    @Test func aTerminalParentWhoseCLIExitsRetiresItsSideChat() async throws {
+        let fixture = try await make()
+        let parent = try await terminalParent(fixture, text: "exiting in the terminal")
+        let side = try await sideChat(fixture, of: parent, "Side of the exit?")
+        let entry = try #require(fixture.controller.entries.values.first { $0.owner == parent })
+        entry.surface.send(source: entry.surface.view, data: ArraySlice(Array("/exit\r".utf8)))
+        let supervisor = await fixture.rig.runtime.supervisor
+        #expect(await waitUntil { await supervisor.session(id: parent)?.currentRun == nil }, "the CLI exited by itself")
+        #expect(await waitUntil { await phase(side) == .stopped })
+        #expect(await side.snapshot().processID == nil)
+        await fixture.cleanup()
+    }
+
+    @Test func aMoveToTheTerminalRetiresNoSideChatAndTheTerminalsStopThenDoes() async throws {
+        let fixture = try await make()
+        let model = fixture.model
+        let (parent, _) = try await parent(fixture, text: "moving")
+        let side = try await sideChat(fixture, of: parent, "Side of the move?")
+        #expect(await waitUntil { model.rowModels[parent] != nil })
+        model.continueIn(.terminal, sessionID: parent)
+        #expect(model.handovers[parent] != nil, "the move began")
+        let catalog = await fixture.rig.runtime.catalog
+        #expect(await waitUntil { (try? await catalog.session(id: parent)?.runEndpoint) == .terminal && model.handovers[parent] == nil })
+        #expect(await waitUntil { fixture.controller.entries.values.contains { $0.owner == parent } })
+        try await Task.sleep(for: .milliseconds(900))
+        #expect(await phase(side) == .ready, "a move to the terminal is not a stop")
+        // The Chat run's end told late, after the face let go of its handover state: still not a stop.
+        let sideID = try #require(model.side.session(for: parent).openID)
+        await model.sessions?.parentRunEnded(parent, runCard: parent, sideChats: [sideID])
+        #expect(await phase(side) == .ready, "a move told late is not a stop either")
+
+        // The session goes on in the terminal: its Stop is the parent's.
+        model.stopConversation(parent)
+        #expect(await waitUntil { await phase(side) == .stopped })
+        #expect(await side.snapshot().processID == nil)
+        await fixture.cleanup()
+    }
+
     // MARK: A deleted session's holders
 
     /// ST-7: the quick question's panel (its `ask` holds the driver), the Changes state and the side holder lived as long as the

@@ -228,7 +228,8 @@ public final class SessionService {
         if let knownProvider, !capabilities(of: knownProvider).startable { return nil }
         transitions.setBusy(sessionID, .resuming)
         return Task {
-            defer { transitions.setBusy(sessionID, nil) }
+            // A Stop that came in meanwhile holds busy until it has checked the processes are gone: it clears it itself.
+            defer { if transitions.busy[sessionID] == .resuming { transitions.setBusy(sessionID, nil) } }
             do {
                 var provider = knownProvider
                 if provider == nil {
@@ -245,6 +246,9 @@ public final class SessionService {
                     try await resumeInTerminal(sessionID, shown: shown)
                 }
             } catch {
+                // Ended by a Stop while resuming: not a failure to report (as for a start). The face may word it as a
+                // start that failed rather than as stopping (its stop flag can be reset first), so a Stop under way counts too.
+                if structuredHost?.errorKind(of: error) == .stopping || transitions.busy[sessionID] == .stopping { return }
                 failureHandler(SessionFailure(.resumeFailed, error))
             }
         }
@@ -526,11 +530,14 @@ public final class SessionService {
         }
     }
 
-    /// The parent's run ended and `sideChats` are the ones the UI follows: each is retired, the open one too. `runCard` is the
-    /// card the parent's run is on (a `/clear` moves it off `parent`, the card the side chats were forked from). A run that
-    /// ended in a move to the terminal is not a stop and retires none.
+    /// The parent's run ended, on either face, and `sideChats` are the ones the UI follows: each is retired, the open one too.
+    /// `runCard` is the card the parent's run was on (a `/clear` moves it off `parent`, the card the side chats were forked
+    /// from). A run that ended in a move to the terminal is not a stop and retires none, whenever this is told: while the move
+    /// is under way (the service's handover or the face's), or after it, when the card's terminal run is live.
     public func parentRunEnded(_ parent: UUID, runCard: UUID, sideChats: [UUID]) async {
-        guard let host = structuredHost, await !host.isHandingOver(sessionID: runCard) else { return }
+        guard let host = structuredHost, !sideChats.isEmpty, transitions.handovers[runCard] == nil,
+              await !host.isHandingOver(sessionID: runCard),
+              await runtime.supervisor.session(id: runCard)?.currentRun == nil else { return }
         for id in sideChats { await retire(id, in: parent, evenIfOpen: true) }
     }
 
@@ -559,6 +566,8 @@ public final class SessionService {
         }
         if await host.isLiveAndSettled(sessionID: id) {
             retirements[id] = nil
+            // Shown again while the face was asked: it stays.
+            if !evenIfOpen, shownSideChats[parent] == id { return }
             if let error = await closeSideChat(id) { sideChatCloseFailed(parent, id, error) }
         } else {
             retirements[id] = SideChatRetirement(evenIfOpen: evenIfOpen)

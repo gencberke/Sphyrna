@@ -227,8 +227,10 @@ final class SideSession {
     @ObservationIgnored var onShown: (@MainActor (UUID?) -> Void)?
     /// Told when a followed side chat was read (its id).
     @ObservationIgnored var onRead: (@MainActor (UUID) -> Void)?
-    @ObservationIgnored private var parentDriver: ChatSessionDriver?
-    @ObservationIgnored private var parentWatch: Task<Void, Never>?
+    /// The parent's run as the live states last showed it, on either face (D-72): its id, nil while it has none.
+    @ObservationIgnored private var parentRun: UUID?
+    /// The card that run is on: the parent, or the one a `/clear` moved it to.
+    @ObservationIgnored private var parentRunCard: UUID?
 
     init(parentID: UUID) { self.parentID = parentID }
 
@@ -268,23 +270,29 @@ final class SideSession {
         return made
     }
 
-    /// Watches the parent's driver: `onStopped` runs when its run ends, by a Stop, by itself or in a move to the terminal (the
-    /// service tells the move from a stop), with the card the driver's run is on then (not the parent's own after a `/clear`).
-    /// One watch per driver.
-    func watchParent(_ driver: ChatSessionDriver, onStopped: @escaping @MainActor (_ runCard: UUID) async -> Void) {
-        guard parentDriver !== driver else { return }
-        parentWatch?.cancel()
-        parentDriver = driver
-        parentWatch = Task {
-            var wasLive = false
-            for await _ in await driver.updates() {
-                guard !Task.isCancelled else { return }
-                let live = await driver.liveState().phase.isLive
-                defer { wasLive = live }
-                guard wasLive, !live else { continue }
-                await onStopped(await driver.sessionID)
+    /// Reads the parent's run from the live states (the whole map, so a frame the model skipped loses nothing). The run is
+    /// followed onto the card a `/clear` moves it to. Returns the card the run was on when it ended, by a Stop, by itself or in
+    /// a move to the terminal (the service tells the move from a stop); nil while it runs or when it never ran. A run that is
+    /// gone while its card already has a new one (a move to the terminal that is done) did not end the parent: the new run is
+    /// the parent's from then on.
+    func parentRunEnded(in states: [UUID: SessionViewState]) -> UUID? {
+        let card = parentRunCard ?? parentID
+        guard let run = parentRun else {
+            for candidate in [parentID, card] {
+                guard let found = states[candidate]?.runID else { continue }
+                parentRun = found
+                parentRunCard = candidate
+                break
             }
+            return nil
         }
+        if states[card]?.runID == run { return nil }
+        if let moved = states.first(where: { $0.value.runID == run })?.key {
+            parentRunCard = moved
+            return nil
+        }
+        parentRun = states[card]?.runID
+        return parentRun == nil ? card : nil
     }
 
     func noteModel(for id: UUID) -> SideAnswerNotes {
@@ -302,11 +310,9 @@ final class SideSession {
         if discardFailures[id] != text { discardFailures[id] = text }
     }
 
-    /// The parent session is gone: the watch of its run and every follower stop.
+    /// The parent session is gone: every follower stops.
     func stopFollowing() {
-        parentWatch?.cancel()
-        parentWatch = nil
-        parentDriver = nil
+        parentRun = nil
         for live in lives.values { live.stop() }
         lives = [:]
     }
@@ -420,18 +426,29 @@ extension CatalogModel {
         return driver
     }
 
-    /// Follows a side chat's driver, and the parent's run once, so the session service learns when the parent's run ended and
-    /// when a side chat it is waiting for has settled (D-72).
+    /// Follows a side chat's driver, so the session service learns when a side chat it is waiting for has settled (D-72). The
+    /// parent's run is taken from the live states now, in case no frame comes before it ends.
     @discardableResult
     private func followSideChat(_ driver: ChatSessionDriver, id: UUID, in parent: UUID) -> SideChatLive {
         let session = side.session(for: parent)
-        if let parentDriver = chatSessions?.existingDriver(for: parent) {
-            session.watchParent(parentDriver) { [weak self, weak session] runCard in
-                guard let self, let session else { return }
-                await sessions?.parentRunEnded(parent, runCard: runCard, sideChats: Array(session.lives.keys))
-            }
+        let live = session.follow(driver, id: id)
+        noteParentRun(of: session)
+        return live
+    }
+
+    /// A frame moved a run (or the model missed frames): each parent whose run ended, on either face, has the session service
+    /// retire its side chats (D-72). A move to the terminal is told from a stop there.
+    func noteSideParentRuns() {
+        for session in side.sessions.values { noteParentRun(of: session) }
+    }
+
+    private func noteParentRun(of session: SideSession) {
+        guard let runCard = session.parentRunEnded(in: liveStates), !session.lives.isEmpty else { return }
+        let parent = session.parentID
+        let sideChats = Array(session.lives.keys)
+        Task { [weak self] in
+            await self?.sessions?.parentRunEnded(parent, runCard: runCard, sideChats: sideChats)
         }
-        return session.follow(driver, id: id)
     }
 
     /// The tab shows another side chat (or none): the service retires the one it showed (D-72).
