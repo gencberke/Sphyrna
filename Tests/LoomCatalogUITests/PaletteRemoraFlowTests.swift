@@ -168,4 +168,17 @@ struct PaletteRemoraFlowTests {
         await rig.model.remora.settle()
         #expect(rig.model.remora.usage?.today.questions ?? 0 <= 1)
     }
+
+    @Test func whileADraftIsReadingTheRowSaysSoAndReturnAsksNothing() async throws {
+        let rig = try await make()
+        defer { Task { await rig.finish() } }
+        // Draft Brief's call (the new-session page) keeps its own state, not `phase`: the palette's row is busy all the same.
+        rig.model.remora.draft = .reading(project: UUID(), reading: nil)
+        let palette = open(rig, question)
+        defer { palette.close() }
+        #expect(palette.remoraBusy && palette.groups.first?.section == .remora)
+        #expect(palette.handleRemoraKey(.return), "the key is taken")
+        #expect(palette.remoraAsked == nil && rig.model.remora.phase == .idle, "and nothing is asked")
+        rig.model.remora.draft = .idle
+    }
 }

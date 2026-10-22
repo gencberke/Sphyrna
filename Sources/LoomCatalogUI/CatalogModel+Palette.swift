@@ -378,8 +378,12 @@ public final class PaletteState {
     /// The palette's own question is still being answered.
     var remoraInFlight: Bool { remoraOwnsCall && model?.remora.phase == .asking }
 
+    /// A Remora call runs now, from any door: Home's question or brief, this palette's, or Draft Brief's on the new-session page
+    /// (which keeps its own state, `remora.draft`, not `phase`).
+    private var remoraCallRuns: Bool { model.map { $0.remora.isBusy || $0.remora.draft.isReading } ?? false }
+
     /// Remora is busy with a call this palette did not start (or one it started before the text changed).
-    var remoraBusy: Bool { model?.remora.isBusy == true && remoraAsked == nil }
+    var remoraBusy: Bool { remoraCallRuns && remoraAsked == nil }
 
     /// The sessions the shown answer names, as chips.
     var remoraChips: [HomeRemoraSession] {
@@ -392,7 +396,7 @@ public final class PaletteState {
     var remoraKeyStage: PaletteRemoraKeys.Stage {
         if remoraAsked != nil { return .answer(inFlight: remoraInFlight, hasChip: !remoraChips.isEmpty) }
         return .typing(offered: remoraOffered, askSelected: remoraOffered && selectedID == Self.askRemoraItem.id,
-                       busy: model?.remora.isBusy == true)
+                       busy: remoraCallRuns)
     }
 
     /// A key from the field: true when Ask Remora took it, false to leave it to the palette.
@@ -412,7 +416,7 @@ public final class PaletteState {
     /// ↵ on Ask Remora (or a click on it): one call, with the typed text and the scope. The answer shows in place of the list.
     /// Nothing happens while Remora answers something else, or with Remora off.
     func askFromPalette() {
-        guard isOpen, remoraOffered, let model, !model.remora.isBusy else { return }
+        guard isOpen, remoraOffered, !remoraCallRuns, let model else { return }
         let question = trimmedQuery
         let scope = remoraScope.scope
         let baseline = model.remora.lastUndo
