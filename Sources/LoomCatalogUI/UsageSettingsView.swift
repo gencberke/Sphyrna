@@ -11,7 +11,7 @@ struct UsageSettings: View {
             UsageContent(usage: usage, profile: profile)
         } else {
             SettingsNote(title: "Usage is not available",
-                         text: "Loom could not open its usage index, so no Claude usage is shown.")
+                         text: "Sphyrna could not open its usage index, so no Claude usage is shown.")
         }
     }
 }
@@ -48,13 +48,13 @@ private struct UsageContent: View {
         switch state {
         case .idle, .indexing:
             note(SettingsNote(title: "Reading Claude's usage",
-                              text: "Loom is reading the transcripts Claude keeps on this Mac. This happens once; after that only new lines are read."))
+                              text: "Sphyrna is reading the transcripts Claude keeps on this Mac. This happens once; after that only new lines are read."))
         case let .failed(message):
             note(SettingsNote(title: "Usage could not be read", text: message, retry: { usage.refresh(reason: .manual) }))
         case .ready:
             if !usage.hasHistory {
                 note(SettingsNote(title: "No Claude usage yet",
-                                  text: "Loom found no transcripts in this Claude profile. Usage appears after a session finishes its first turn.",
+                                  text: "Sphyrna found no transcripts in this Claude profile. Usage appears after a session finishes its first turn.",
                                   path: profile.map { SettingsPaths.display($0.appendingPathComponent("projects")) }))
             } else if let report = usage.report, report.period == usage.period {
                 SettingsPage {

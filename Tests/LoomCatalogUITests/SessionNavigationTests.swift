@@ -125,11 +125,11 @@ struct SessionNavigationRuleTests {
 
     @Test func quitAsksOnlyForAUserQuitWithWorkInFlight() throws {
         let prompt = try #require(QuitConfirmation.prompt(busySessions: 3, systemInitiated: false))
-        #expect(prompt.title == "Quit Loom and stop 3 working sessions?")
-        #expect(prompt.text == "Loom stops every session it started. You can resume each one later.")
+        #expect(prompt.title == "Quit Sphyrna and stop 3 working sessions?")
+        #expect(prompt.text == "Sphyrna stops every session it started. You can resume each one later.")
         #expect(prompt.confirmTitle == "Quit" && prompt.cancelTitle == "Cancel")
         #expect(QuitConfirmation.prompt(busySessions: 1, systemInitiated: false)?.title
-                == "Quit Loom and stop 1 working session?")
+                == "Quit Sphyrna and stop 1 working session?")
         #expect(QuitConfirmation.prompt(busySessions: 0, systemInitiated: false) == nil)
         // Logout, restart and shutdown never wait for an answer.
         #expect(QuitConfirmation.prompt(busySessions: 3, systemInitiated: true) == nil)

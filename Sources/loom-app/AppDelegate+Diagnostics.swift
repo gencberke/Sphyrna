@@ -12,7 +12,7 @@ extension AppDelegate {
     func makeDiagnosticsCollection() -> DiagnosticsCollection {
         DiagnosticsCollection(
             export: { [weak self] in
-                guard let self, let runtime = self.runtime else { throw LoomError.message("Loom is not ready yet") }
+                guard let self, let runtime = self.runtime else { throw LoomError.message("Sphyrna is not ready yet") }
                 let facts = await self.usage?.diagnosticsSnapshot()
                 return try await runtime.collectDiagnostics(
                     to: DiagnosticsExport.defaultFolder(dataRoot: runtime.catalog.dataRoot),

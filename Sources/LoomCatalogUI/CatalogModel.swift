@@ -1259,7 +1259,7 @@ public final class CatalogModel {
         do {
             let added = try await catalog.addProject(path: path)
             if added.alreadyPresent {
-                infoMessage = "“\(added.project.name)” is already in Loom."
+                infoMessage = "“\(added.project.name)” is already in Sphyrna."
                 if added.project.collapsed { try await catalog.setProjectCollapsed(id: added.project.id, collapsed: false) }
             } else { infoMessage = nil }
             errorMessage = nil
@@ -1436,7 +1436,7 @@ public final class CatalogModel {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.prompt = "Add Project"
-        panel.message = "Choose a project folder. Loom only remembers its path; nothing in the folder changes."
+        panel.message = "Choose a project folder. Sphyrna only remembers its path; nothing in the folder changes."
         let finish: @MainActor @Sendable (NSApplication.ModalResponse) -> Void = { [weak self, weak panel] response in
             guard let self else { return }
             self.folderPanelFinished(accepted: response == .OK, url: panel?.url)
@@ -1760,7 +1760,7 @@ public final class CatalogModel {
     func endStart(_ key: StartKey) { transitions.endStart(key) }
     func setBusy(_ id: UUID, _ value: ConversationBusy?) { transitions.setBusy(id, value) }
     func terminalsChanged() { terminalRevision &+= 1 }
-    func reportFailure(_ text: String) { errorMessage = text }
+    public func reportFailure(_ text: String) { errorMessage = text }
     func showInfo(_ text: String) { infoMessage = text }
 
     // MARK: Messages

@@ -19,7 +19,7 @@ struct ProjectPageView: View {
             if let project {
                 content(project)
             } else {
-                Message(symbol: "folder", title: "Project not found", text: "This project is no longer in Loom.")
+                Message(symbol: "folder", title: "Project not found", text: "This project is no longer in Sphyrna.")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

@@ -126,7 +126,7 @@ extension CatalogModel {
     public func deletionDisabledReason(for row: SessionRowModel) -> String? {
         switch row.record.session.provider {
         case .claude: break
-        case .codex: return "Codex sessions can't be deleted from Loom yet."
+        case .codex: return "Codex sessions can't be deleted from Sphyrna yet."
         case .synthetic: return "This is not a provider session."
         }
         if !actionsAvailable { return "Deleting isn't available right now." }
@@ -164,7 +164,7 @@ extension CatalogModel {
                 if case let SessionRuntimeError.deletionRefused(reason)? = error as? SessionRuntimeError {
                     phase = .unavailable(reason.last == "." ? reason : reason + ".")
                 } else {
-                    phase = .unavailable(Self.userMessage(for: error, context: "Loom could not check what deleting this session removes"))
+                    phase = .unavailable(Self.userMessage(for: error, context: "Sphyrna could not check what deleting this session removes"))
                 }
             }
             guard let confirmation, self?.deletions.confirmation === confirmation else { return }
@@ -234,7 +234,7 @@ extension CatalogModel {
             try await intents?.removeFromLoomOnly(sessionID: id)
             deletionFinished(id)
         } catch {
-            reportFailure(Self.userMessage(for: error, context: "The session could not be removed from Loom"))
+            reportFailure(Self.userMessage(for: error, context: "The session could not be removed from Sphyrna"))
             await refreshPendingDeletions()
         }
     }
@@ -306,8 +306,8 @@ public enum DeletionCopy {
         let sideChats = preview.sideChatCount
         let who = sideChats > 0 ? "it and its \(sideChats) side chat\(sideChats == 1 ? "" : "s")" : "it"
         let lead = preview.isRunning
-            ? "It is running now, so Loom stops it first, then removes \(who) from Loom and deletes Claude's local files for \(sideChats > 0 ? "them" : "it")"
-            : "Loom removes \(who) from Loom and deletes Claude's local files for \(sideChats > 0 ? "them" : "it")"
+            ? "It is running now, so Sphyrna stops it first, then removes \(who) from Sphyrna and deletes Claude's local files for \(sideChats > 0 ? "them" : "it")"
+            : "Sphyrna removes \(who) from Sphyrna and deletes Claude's local files for \(sideChats > 0 ? "them" : "it")"
         return "\(lead): the transcript, subagent transcripts, file snapshots and session folders "
             + "(\(files), \(size), in \(preview.configDirectory)). This can't be undone.\n\n"
             + "Not removed: your prompts in Claude's shared prompt history, project files and worktrees, "
@@ -315,42 +315,42 @@ public enum DeletionCopy {
     }
 
     /// The alert both "Remove from Loom Only" buttons ask for.
-    public static let removeTitle = "Remove this session from Loom?"
-    public static let removeMessage = "Loom forgets the session and its own data for it. Claude's files stay where they are, and Loom can't bring the session back."
+    public static let removeTitle = "Remove this session from Sphyrna?"
+    public static let removeMessage = "Sphyrna forgets the session and its own data for it. Claude's files stay where they are, and Sphyrna can't bring the session back."
     public static let removeButton = "Remove"
 
     public static func unreachableNote(_ folders: [String]) -> String {
-        "Deleting cannot finish: Loom cannot look inside \(folders.joined(separator: ", ")) (it is a link or on another disk), "
+        "Deleting cannot finish: Sphyrna cannot look inside \(folders.joined(separator: ", ")) (it is a link or on another disk), "
             + "so it cannot tell whether Claude keeps files for this session there. Nothing was removed. "
-            + "You can remove the session from Loom only; Claude's files stay where they are."
+            + "You can remove the session from Sphyrna only; Claude's files stay where they are."
     }
 
     /// What failed, in a sentence without a final period. `lastFailure` is the runtime's
     /// `category` or `category: file name`.
     public static func failureReason(_ lastFailure: String?) -> String {
-        guard let lastFailure, !lastFailure.isEmpty else { return "Loom stopped before it could finish" }
+        guard let lastFailure, !lastFailure.isEmpty else { return "Sphyrna stopped before it could finish" }
         let parts = lastFailure.split(separator: ":", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
         let category = parts.first ?? ""
         let file = parts.count > 1 && !parts[1].isEmpty ? parts[1] : nil
         switch category {
-        case "stop_failed": return "Loom could not stop the running session"
-        case "stop_unverified": return "Loom could not confirm that the session stopped"
+        case "stop_failed": return "Sphyrna could not stop the running session"
+        case "stop_unverified": return "Sphyrna could not confirm that the session stopped"
         case "live_session": return "A Claude process is still using this session"
-        case "unsafe_directory": return "Claude's data folder is not safe to change (its owner or permissions are not what Loom expects)"
-        case "partial_failure": return file.map { "Loom could not remove \($0)" } ?? "Loom could not remove some of Claude's files"
-        case "refused": return "Loom was refused when it tried to remove Claude's files"
-        case "plan_failed": return "Loom could not read Claude's data folder"
+        case "unsafe_directory": return "Claude's data folder is not safe to change (its owner or permissions are not what Sphyrna expects)"
+        case "partial_failure": return file.map { "Sphyrna could not remove \($0)" } ?? "Sphyrna could not remove some of Claude's files"
+        case "refused": return "Sphyrna was refused when it tried to remove Claude's files"
+        case "plan_failed": return "Sphyrna could not read Claude's data folder"
         case "unreachable_folder":
-            return "Loom cannot look inside \(file ?? "a folder of Claude's data") (it is a link or on another disk), "
+            return "Sphyrna cannot look inside \(file ?? "a folder of Claude's data") (it is a link or on another disk), "
                 + "so it cannot tell whether Claude keeps files for this session there"
-        case "catalog_row_remains": return "Loom's own record of the session could not be removed"
+        case "catalog_row_remains": return "Sphyrna's own record of the session could not be removed"
         case "provider_id_reappeared": return "Another session now uses the same Claude data"
         case "still_running": return "A process of this session is still running"
         case "leftover_files":
-            return file.map { "\($0) was still there after Loom removed it" } ?? "Some of Claude's files were still there after Loom removed them"
-        case "verify_failed": return "Loom could not check that Claude's files are gone"
-        case "forget_hook_failed": return "Loom could not clear its usage figures for this session"
-        case "unsupported_provider": return "Loom cannot delete this provider's files"
+            return file.map { "\($0) was still there after Sphyrna removed it" } ?? "Some of Claude's files were still there after Sphyrna removed them"
+        case "verify_failed": return "Sphyrna could not check that Claude's files are gone"
+        case "forget_hook_failed": return "Sphyrna could not clear its usage figures for this session"
+        case "unsupported_provider": return "Sphyrna cannot delete this provider's files"
         default:
             let readable = category.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
             return "A step failed" + (readable.isEmpty || readable == "step failed" ? "" : " (\(readable))")

@@ -715,7 +715,7 @@ struct ComposerWordsTests {
         #expect(ComposerQueueText.pause(.interrupted) == "Queue paused because you interrupted")
         #expect(ComposerQueueText.pause(.failedTurn) == "Queue paused because the turn failed")
         #expect(ComposerQueueText.pause(.processEnded) == "Queue paused because Claude ended")
-        #expect(ComposerQueueText.pause(.relaunch) == "Queue paused since Loom started again")
+        #expect(ComposerQueueText.pause(.relaunch) == "Queue paused since Sphyrna started again")
         #expect(ComposerQueueText.issue(nil) == nil)
         #expect(ComposerQueueText.issue(.notSaved("disk"))?.contains("could not be saved") == true)
         #expect(ComposerQueueText.issue(.unreadable(keptAs: "queue.1.json"))?.contains("queue.1.json") == true)

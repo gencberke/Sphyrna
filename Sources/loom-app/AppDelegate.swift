@@ -278,7 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             backing: .buffered, defer: false
         )
         window.identifier = NSUserInterfaceItemIdentifier("loom-main")
-        window.title = "Loom"
+        window.title = "Sphyrna"
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         // An empty toolbar makes AppKit give the titlebar the unified height and
@@ -378,7 +378,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let executable = launcher.hostBundle
             .appendingPathComponent("Contents/MacOS/\(RunScopeLauncher.hostExecutableName)")
         guard !FileManager.default.isExecutableFile(atPath: executable.path) else { return }
-        model?.ownershipNotice = "New sessions are turned off because Loom's process helper is missing. Without it Loom cannot make sure Stop and Quit end all of a session's background work. Reinstall Loom to fix this."
+        model?.ownershipNotice = "New sessions are turned off because Sphyrna's process helper is missing. Without it Sphyrna cannot make sure Stop and Quit end all of a session's background work. Reinstall Sphyrna to fix this."
     }
 
     /// AppKit gives the first text field of a freshly shown window the key focus, which put the caret in the
@@ -461,7 +461,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             Task { [weak self] in
                 let recovery = await PreviousRunRecovery.recover(runsDirectory: runsDirectory, current: directory)
                 guard !recovery.leftovers.isEmpty else { return }
-                self?.model?.ownershipNotice = "Work left by a previous Loom could not be fully stopped: "
+                self?.model?.ownershipNotice = "Work left by a previous Sphyrna could not be fully stopped: "
                     + recovery.leftovers.joined(separator: "; ")
             }
 
@@ -512,7 +512,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             )
             installDevelopmentTerminal(hub: hub, supervisor: supervisor, model: model)
         } catch {
-            showError("Loom could not start its process supervisor.", detail: String(describing: error))
+            showError("Sphyrna could not start its process supervisor.", detail: String(describing: error))
         }
     }
 
@@ -681,16 +681,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         // Timeout or remaining processes never count as a successful quit.
         NSApp.reply(toApplicationShouldTerminate: false)
-        model?.statusMessage = "Loom did not quit: it could not confirm that every session process stopped."
+        // A failure, not progress: the "Stopping…" status gives way to it.
+        model?.statusMessage = nil
+        model?.reportFailure("Sphyrna did not quit: it could not confirm that every session process stopped.")
         presentMainWindow(reason: "failed-quit")
         guard let window else { return }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Loom could not verify that its processes stopped."
+        alert.messageText = "Sphyrna could not verify that its processes stopped."
         let remaining = report.remainingCountVerified == false ? "unavailable" : String(report.remaining.count)
         alert.informativeText = QuitConfirmation.failedShutdownText(remaining: remaining, errors: report.errors)
         alert.addButton(withTitle: "Try Again")
-        alert.addButton(withTitle: "Keep Loom Open")
+        alert.addButton(withTitle: "Keep Sphyrna Open")
         alert.addButton(withTitle: "Quit Anyway").hasDestructiveAction = true
         quitAlert = alert
         alert.beginSheetModal(for: window) { [weak self] response in
@@ -724,6 +726,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     // MARK: Menus
 
     @objc func showSettings(_ sender: Any?) { showSettings(section: nil) }
+    /// About Sphyrna (the app menu): Settings on its About section.
+    @objc func showAbout(_ sender: Any?) { showSettings(section: .about) }
 
     func showSettings(section: SettingsSection?) {
         settingsController?.show(section: section)

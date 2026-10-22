@@ -18,7 +18,7 @@ import Testing
 
     @Test func theFactsAreALeadSentenceThenWhatIsRemovedAndWhatIsKept() {
         let facts = DeleteSessionFacts(preview(files: 1))
-        #expect(facts.lead == "Loom removes it from Loom and deletes Claude's local files for it. This can't be undone.")
+        #expect(facts.lead == "Sphyrna removes it from Sphyrna and deletes Claude's local files for it. This can't be undone.")
         #expect(facts.removed == ["The transcript and the subagent transcripts", "File snapshots and session folders"])
         #expect(facts.totals == "1 file · 0 bytes · in /tmp/claude-config")
         #expect(facts.kept == ["Your prompts in Claude's shared prompt history", "Project files and worktrees",
@@ -35,10 +35,10 @@ import Testing
 
     @Test func aRunningSessionAndItsSideChatsAreSaidInTheLead() {
         let running = DeleteSessionFacts(preview(running: true))
-        #expect(running.lead == "It is running now, so Loom stops it first, then removes it from Loom and deletes Claude's local files "
+        #expect(running.lead == "It is running now, so Sphyrna stops it first, then removes it from Sphyrna and deletes Claude's local files "
                 + "for it. This can't be undone.")
         let withSides = DeleteSessionFacts(preview(sideChats: 2))
-        #expect(withSides.lead == "Loom removes it and its 2 side chats from Loom and deletes Claude's local files for them. "
+        #expect(withSides.lead == "Sphyrna removes it and its 2 side chats from Sphyrna and deletes Claude's local files for them. "
                 + "This can't be undone.")
         #expect(withSides.removed == DeleteSheetText.removedItems, "one transcript per session, as the cleanup's Delete says")
         #expect(DeleteSessionFacts(preview(sideChats: 1)).lead.contains("its 1 side chat from"))
@@ -65,7 +65,7 @@ import Testing
         let confirmation = DeletionConfirmation(id: UUID(), title: "Port the sidebar to Ink tokens")
         confirmation.phase = .ready(preview(unreachable: ["shared-projects"]))
         let blocked = DeleteConversationSheet.buttons(for: confirmation, removeOnly: {}, delete: {})
-        #expect(blocked.leading?.id == "remove-from-loom" && blocked.leading?.title == "Remove from Loom Only")
+        #expect(blocked.leading?.id == "remove-from-loom" && blocked.leading?.title == "Remove from Sphyrna Only")
         #expect(blocked.leading?.isFilled == false)
         #expect(blocked.actions.first?.isEnabled == false, "Delete Permanently waits while a folder blocks it")
         confirmation.phase = .loading

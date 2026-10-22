@@ -500,7 +500,7 @@ struct CatalogModelTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let model = CatalogModel(
-            catalog: nil, startupError: "Catalog schema version 9 is newer than this Loom build supports",
+            catalog: nil, startupError: "Catalog schema version 9 is newer than this Sphyrna build supports",
             events: SessionEventHub(), preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json"))
         )
         await model.start()

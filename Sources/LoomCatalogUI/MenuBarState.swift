@@ -61,10 +61,10 @@ public struct MenuBarSummary: Equatable, Sendable {
     public var accessibilityLabel: String {
         func sessions(_ count: Int) -> String { count == 1 ? "1 session" : "\(count) sessions" }
         switch (needsYou, working) {
-        case (0, 0): return "Loom"
-        case (0, _): return "Loom, \(sessions(working)) working"
-        case (_, 0): return "Loom, \(sessions(needsYou)) \(needsYou == 1 ? "needs" : "need") you"
-        default: return "Loom, \(sessions(needsYou)) \(needsYou == 1 ? "needs" : "need") you, \(working) working"
+        case (0, 0): return "Sphyrna"
+        case (0, _): return "Sphyrna, \(sessions(working)) working"
+        case (_, 0): return "Sphyrna, \(sessions(needsYou)) \(needsYou == 1 ? "needs" : "need") you"
+        default: return "Sphyrna, \(sessions(needsYou)) \(needsYou == 1 ? "needs" : "need") you, \(working) working"
         }
     }
 }
@@ -186,10 +186,10 @@ public enum MenuBarMenu {
         }
         items.append(item(.separator, ""))
         items.append(item(.newSession, "New Claude Session", enabled: canStartSession, key: "⌘N"))
-        items.append(item(.openLoom, "Open Loom"))
+        items.append(item(.openLoom, "Open Sphyrna"))
         items.append(item(.separator, ""))
         items.append(item(.settings, "Settings…", key: "⌘,"))
-        items.append(item(.quit, "Quit Loom", key: "⌘Q"))
+        items.append(item(.quit, "Quit Sphyrna", key: "⌘Q"))
         return items
     }
 }

@@ -214,7 +214,7 @@ extension SessionRuntime {
             try await finishLoomSide(of: id, providerIDs: providerIDs)
         } catch let failure as DeletionStepFailure {
             throw SessionRuntimeError.deletionRefused(
-                "The session could not be removed from Loom (\(failure.failure.stored.replacingOccurrences(of: "_", with: " ")))"
+                "The session could not be removed from Sphyrna (\(failure.failure.stored.replacingOccurrences(of: "_", with: " ")))"
             )
         }
         await supervisor.events.publishDeletion(sessionID: id, change: .conversationDeleted)
@@ -342,7 +342,7 @@ extension SessionRuntime {
         case .unsafeDirectory: "The Claude data folder is not safe to change (owner or permissions)"
         case .liveSession: "A Claude process is still using this session"
         case .sessionRegistryUnreadable: "Claude's session registry cannot be read"
-        case .invalidSessionID: "The session has an identity Loom cannot match to files"
+        case .invalidSessionID: "The session has an identity Sphyrna cannot match to files"
         case nil: "The Claude data folder could not be inspected"
         }
     }

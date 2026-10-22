@@ -489,7 +489,7 @@ final class PinnedCardsModel {
     /// Resume on the card a dead process cut off.
     func resume() async {
         do { try await source.resume() } catch {
-            for request in cutOff { failures[request.id] = "Loom could not resume the session (\(LoomLog.category(of: error)))." }
+            for request in cutOff { failures[request.id] = "Sphyrna could not resume the session (\(LoomLog.category(of: error)))." }
         }
     }
 
@@ -517,7 +517,7 @@ final class PinnedCardsModel {
         case .stopping?: "The session is stopping."
         case .incompleteAnswer?: "Answer every question first."
         case .notOffered?: "The CLI does not offer that answer for this request."
-        default: "Loom could not send the answer (\(LoomLog.category(of: error)))."
+        default: "Sphyrna could not send the answer (\(LoomLog.category(of: error)))."
         }
     }
 

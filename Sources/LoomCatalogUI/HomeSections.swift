@@ -156,7 +156,7 @@ struct HomeUsage: View {
                                    updated: usage.limits.map { UsageText.time($0.fetchedAt, usage.timeZone) })
                 } else if limitsFailure != nil {
                     HomeSideCard(title: "Plan limits", identifier: "home-limits") {
-                        Text("Claude did not report plan limits, so Loom shows none.")
+                        Text("Claude did not report plan limits, so Sphyrna shows none.")
                             .homeType(LoomTheme.Home.reason).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -239,7 +239,7 @@ extension CatalogModel {
             figures.tokens = usage?.chip?.figure
             if let kinds = usage?.todayUsage, kinds.total > 0 { figures.kinds = kinds }
         case .empty?: figures.tokens = "0"
-        case .indexing?: figures.note = "Loom is reading Claude's usage for the first time."
+        case .indexing?: figures.note = "Sphyrna is reading Claude's usage for the first time."
         case nil: break
         }
         return figures.tokens == nil && figures.sessions == nil && figures.note == nil ? nil : figures

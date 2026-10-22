@@ -47,7 +47,7 @@ public actor ClaudeSessionAdapter {
     /// message trails the registry write by a few milliseconds; this only has to outlast that.
     let hookSilenceGrace: TimeInterval
     static let hookSilenceIssue =
-        "Loom is not receiving events from Claude, so this session's status may be wrong. The session itself is not affected."
+        "Sphyrna is not receiving events from Claude, so this session's status may be wrong. The session itself is not affected."
 
     func observeRegistry(runID: UUID, reader: ClaudeRegistryReader) async {
         stopRegistry(runID: runID, discardTracker: false)
@@ -171,7 +171,7 @@ public actor ClaudeSessionAdapter {
         // A hook may have arrived while the context was read.
         guard !hookArrivals.withLock({ $0.contains(runID) }) else { return }
         silenceIssues[runID] = Self.hookSilenceIssue
-        LoomLog.error(.claudeHooks, "No hook event reached Loom for run \(runID.uuidString.prefix(8)) although Claude reports a running turn")
+        LoomLog.error(.claudeHooks, "No hook event reached Sphyrna for run \(runID.uuidString.prefix(8)) although Claude reports a running turn")
         supervisor.journal?.record("hook_silence", ["run": .string(String(runID.uuidString.prefix(8)))])
         await supervisor.events.publish(sessionID: context.activeSessionID, change: .issue(Self.hookSilenceIssue))
     }
@@ -180,7 +180,7 @@ public actor ClaudeSessionAdapter {
     private func hookArrived(runID: UUID) async {
         silenceWatchdogs.removeValue(forKey: runID)?.cancel()
         guard let issue = silenceIssues.removeValue(forKey: runID) else { return }
-        LoomLog.notice(.claudeHooks, "Hook events reached Loom for run \(runID.uuidString.prefix(8)) after all")
+        LoomLog.notice(.claudeHooks, "Hook events reached Sphyrna for run \(runID.uuidString.prefix(8)) after all")
         guard let sessionID = await supervisor.activeSessionID(runID: runID) else { return }
         if await supervisor.events.snapshot().sessions[sessionID]?.issue == issue {
             await supervisor.events.publish(sessionID: sessionID, change: .issue(nil))

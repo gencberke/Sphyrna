@@ -57,14 +57,14 @@ public struct SettingsNotice: Equatable, Sendable {
 
     public static func notifications(_ authorization: NotificationAuthorization) -> SettingsNotice? {
         authorization == .denied
-            ? SettingsNotice(text: "Notifications for Loom are off in System Settings, so no banner will appear.",
+            ? SettingsNotice(text: "Notifications for Sphyrna are off in System Settings, so no banner will appear.",
                              buttonTitle: "Open System Settings")
             : nil
     }
 
     public static func loginItem(_ status: LoginItemStatus) -> SettingsNotice? {
         status == .requiresApproval
-            ? SettingsNotice(text: "Allow Loom in System Settings → General → Login Items.",
+            ? SettingsNotice(text: "Allow Sphyrna in System Settings → General → Login Items.",
                              buttonTitle: "Open Login Items")
             : nil
     }

@@ -303,7 +303,7 @@ extension ChatComposerModel {
         switch error as? ChatDriverError {
         case .requestWaiting: "Answer the waiting request first."
         case .modeNotChanged(staysInAsk: true): "The mode was not changed; the session stays in Ask."
-        case .askUnavailable: "Ask is not available: Loom's Ask style did not load. The mode was not changed."
+        case .askUnavailable: "Ask is not available: Sphyrna's Ask style did not load. The mode was not changed."
         default: "The mode was not changed."
         }
     }

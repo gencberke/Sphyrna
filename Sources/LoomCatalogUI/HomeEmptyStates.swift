@@ -14,13 +14,13 @@ struct HomeEmptyCopy: Equatable {
 
     /// Loom could not use a Claude CLI (the plan-limits ask found none): nothing can start until it can.
     static let noClaude = HomeEmptyCopy(
-        symbol: "exclamationmark.triangle", title: "Loom could not find Claude",
-        text: "Loom starts sessions with the claude command and could not use the one on your terminal's PATH. "
+        symbol: "exclamationmark.triangle", title: "Sphyrna could not find Claude",
+        text: "Sphyrna starts sessions with the claude command and could not use the one on your terminal's PATH. "
             + "Install Claude Code or fix the PATH, then choose Check Again. You can add a project now.")
 
     /// The same fact above a catalog that has sessions in it: they stay readable.
     static let noClaudeWithSessions = HomeEmptyCopy(
-        symbol: "exclamationmark.triangle", title: "Loom could not find Claude",
+        symbol: "exclamationmark.triangle", title: "Sphyrna could not find Claude",
         text: "New sessions cannot start until the claude command works from your terminal's PATH. "
             + "Sessions already listed stay readable.")
 }

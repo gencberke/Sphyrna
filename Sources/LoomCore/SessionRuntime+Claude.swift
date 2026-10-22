@@ -43,7 +43,7 @@ extension SessionRuntime {
         var plugin: String?
         if let directory = configuration.claudePluginDirectory {
             do { plugin = try ClaudeLoomPlugin.install(in: directory).path } catch {
-                Self.hookLog.error("Loom's Claude plugin could not be written: \(String(describing: error), privacy: .public)")
+                Self.hookLog.error("Sphyrna's Claude plugin could not be written: \(String(describing: error), privacy: .public)")
             }
         }
         let value = ClaudeHookLaunchConfiguration(

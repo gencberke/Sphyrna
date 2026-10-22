@@ -319,7 +319,7 @@ struct SessionServiceCapabilityTableTests {
 
         let codexLater = "Codex comes in a later version"
         let codexNoResume = "Codex sessions can't be resumed in this version."
-        let codexNoDelete = "Codex sessions can't be deleted from Loom yet."
+        let codexNoDelete = "Codex sessions can't be deleted from Sphyrna yet."
         var expected: [String: String] = [:]
         for identity in ["production", "development"] {
             // Claude is the same in both identities.

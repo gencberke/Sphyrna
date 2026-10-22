@@ -166,7 +166,7 @@ struct DetailContent: View {
         Group {
             switch route {
             case .startupError(let error):
-                Message(symbol: "exclamationmark.triangle", title: "Loom could not open its catalog",
+                Message(symbol: "exclamationmark.triangle", title: "Sphyrna could not open its catalog",
                         text: "\(error)\n\nThe catalog file was left untouched. Nothing was created or overwritten.")
             case .devTerminal:
                 if let terminal = model.devTerminal { TerminalHost(panel: terminal.panel) }

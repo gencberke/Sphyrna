@@ -72,7 +72,7 @@ struct EdgesViewTests {
         var sources = BannerSources()
         if count > 0 { sources.error = "Claude could not be started." }
         if count > 1 { sources.ownership = "New sessions are turned off." }
-        if count > 2 { sources.info = "“loom” is already in Loom." }
+        if count > 2 { sources.info = "“loom” is already in Sphyrna." }
         return sources
     }
 

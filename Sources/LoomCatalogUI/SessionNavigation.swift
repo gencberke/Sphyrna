@@ -175,8 +175,8 @@ public enum QuitConfirmation {
         guard !systemInitiated, busySessions > 0 else { return nil }
         let noun = busySessions == 1 ? "session" : "sessions"
         return Prompt(
-            title: "Quit Loom and stop \(busySessions) working \(noun)?",
-            text: "Loom stops every session it started. You can resume each one later.",
+            title: "Quit Sphyrna and stop \(busySessions) working \(noun)?",
+            text: "Sphyrna stops every session it started. You can resume each one later.",
             confirmTitle: "Quit", cancelTitle: "Cancel")
     }
 
@@ -206,7 +206,7 @@ public enum QuitConfirmation {
     /// reads as a success: it says what Loom does not know.
     public static func failedShutdownText(remaining: String, errors: [String]) -> String {
         "Remaining: \(remaining). Errors: \(errors.prefix(3).joined(separator: "; "))\n\n"
-            + "Quit Anyway ends Loom without confirming that every session process stopped. "
-            + "Processes Loom could not stop may keep running."
+            + "Quit Anyway ends Sphyrna without confirming that every session process stopped. "
+            + "Processes Sphyrna could not stop may keep running."
     }
 }

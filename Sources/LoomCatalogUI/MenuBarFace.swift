@@ -1,7 +1,7 @@
 import AppKit
 
 /// The face of the menu bar item (D-52): the mark, and in its lower right corner the working spinner or a
-/// status dot. Idle is a plain template image; with a badge the image is drawn by Loom
+/// status dot. Idle is a plain template image; with a badge the image is drawn by the app
 /// (`MenuBarArt`) so the mark still follows the bar's appearance. The spinner is a render-server layer
 /// animation on top of the image, added when the badge becomes working and removed in every other state:
 /// no timer, no polling, no image swaps per step, so the item costs the app no wakeups while it moves.
@@ -33,9 +33,8 @@ public final class MenuBarFace {
         ])
         let theme = LoomTheme.MenuBar.self
         let side = LoomTheme.Spinner.menuBarSide
-        spinner.frame = CGRect(x: theme.markOrigin.x + theme.chaseOrigin.x,
-                             y: theme.canvas.height - (theme.markOrigin.y + theme.chaseOrigin.y + side),
-                             width: side, height: side)
+        spinner.frame = CGRect(x: theme.chaseOrigin.x, y: theme.canvas.height - (theme.chaseOrigin.y + side),
+                               width: side, height: side)
         spinner.isHidden = true
         host.addSubview(spinner)
         host.onAppearanceChange = { [weak self] in self?.restyle() }

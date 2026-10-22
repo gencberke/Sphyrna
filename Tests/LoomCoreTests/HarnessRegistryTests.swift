@@ -24,7 +24,7 @@ struct HarnessRegistryTests {
         #expect(harnesses.claude.takesOpeningOrDraft)
         #expect(harnesses.claude.deletionRefusal == nil)
         #expect(!harnesses.codex.takesOpeningOrDraft)
-        #expect(harnesses.codex.deletionRefusal == "Codex sessions cannot be deleted from Loom yet")
+        #expect(harnesses.codex.deletionRefusal == "Codex sessions cannot be deleted from Sphyrna yet")
     }
 
     @Test func sideChatsAreClaudesAlone() {

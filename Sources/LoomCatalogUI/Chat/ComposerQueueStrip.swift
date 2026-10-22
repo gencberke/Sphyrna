@@ -13,7 +13,7 @@ enum ComposerQueueText {
         case .interrupted?: "Queue paused because you interrupted"
         case .failedTurn?: "Queue paused because the turn failed"
         case .processEnded?: "Queue paused because Claude ended"
-        case .relaunch?: "Queue paused since Loom started again"
+        case .relaunch?: "Queue paused since Sphyrna started again"
         case .handover?: "Queue paused because the session moved to the terminal"
         }
     }
@@ -23,7 +23,7 @@ enum ComposerQueueText {
         switch issue {
         case nil: nil
         case let .notSaved(category)?:
-            "The queue could not be saved (\(category)). It stays here until Loom can save it."
+            "The queue could not be saved (\(category)). It stays here until Sphyrna can save it."
         case let .unreadable(keptAs)?:
             "The saved queue could not be read." + (keptAs.map { " It was kept as \($0)." } ?? "")
         case let .notSent(category)?:

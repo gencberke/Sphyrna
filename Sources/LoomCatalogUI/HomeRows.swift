@@ -137,8 +137,8 @@ struct HomeContinue: View {
     let model: CatalogModel
     @State private var showsAll = false
 
-    static let lead = "These sessions were running when Loom quit."
-    static let leadSingle = "This session was running when Loom quit."
+    static let lead = "These sessions were running when Sphyrna quit."
+    static let leadSingle = "This session was running when Sphyrna quit."
 
     var body: some View {
         let entries = model.homeContinueEntries()

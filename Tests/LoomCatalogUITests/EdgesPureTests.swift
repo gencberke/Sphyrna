@@ -19,13 +19,13 @@ struct EdgesPureTests {
 
     private func everything() -> BannerSources {
         BannerSources(
-            error: "Claude could not be started.", sessionIssue: "Loom is not receiving events from Claude.",
+            error: "Claude could not be started.", sessionIssue: "Sphyrna is not receiving events from Claude.",
             recoveryFailure: "A deletion record could not be read.",
             deletions: [
                 BannerDeletion(id: first, title: "Port the sidebar", isDeleting: false, lastFailure: "files", canRetry: true, canRemove: true),
                 BannerDeletion(id: second, title: "Weekly vault", isDeleting: true, lastFailure: nil, canRetry: false, canRemove: false),
             ],
-            ownership: "New sessions are turned off.", info: "“loom” is already in Loom.", status: "Stopping sessions before quitting…")
+            ownership: "New sessions are turned off.", info: "“loom” is already in Sphyrna.", status: "Stopping sessions before quitting…")
     }
 
     @Test func bannersAreWeighedFailureThenAttentionThenNoteWithAFixedOrderInsideATone() {
@@ -180,7 +180,7 @@ struct EdgesPureTests {
         }
         #expect(Detail.notice(for: .failed(nil), provider: "Claude")?.text == "No details were provided.")
         #expect(Detail.notice(for: .identityUnclear, provider: "Claude")?.text
-            == "Loom could not tell which Claude session this is, so it changed nothing.")
+            == "Sphyrna could not tell which Claude session this is, so it changed nothing.")
         #expect(Set(withNotice.compactMap { Detail.notice(for: $0.0, provider: "Claude")?.symbol }).count == 3,
                 "the triangle, the question diamond and the check")
     }

@@ -198,7 +198,7 @@ public actor ControlChannel {
                 eventContinuation.yield(.request(request))
             case let .other(subtype, _):
                 let name = subtype ?? "unknown"
-                enqueue(ControlWire.errorLine(id: request.requestID, "Loom does not handle \(name) requests"))
+                enqueue(ControlWire.errorLine(id: request.requestID, "Sphyrna does not handle \(name) requests"))
                 eventContinuation.yield(.unsupported(requestID: request.requestID, subtype: subtype))
             }
         case let .controlProgress(requestID, status):
@@ -260,7 +260,7 @@ public actor ControlChannel {
         if case .enqueued = outgoingContinuation.yield(line) { return true }
         if !reportedFull {
             reportedFull = true
-            LoomLog.error(.lifecycle, "A Chat session's input queue is full; Loom refused a line instead of holding it")
+            LoomLog.error(.lifecycle, "A Chat session's input queue is full; Sphyrna refused a line instead of holding it")
         }
         return false
     }

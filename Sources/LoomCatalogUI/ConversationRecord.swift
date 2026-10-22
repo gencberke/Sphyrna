@@ -16,7 +16,7 @@ struct ConversationDetail: View {
 
     /// What Resume does, in the provider's own name.
     nonisolated static func resumeExplanation(provider: String) -> String {
-        "Resume continues this \(provider) session in its folder. If \(provider) no longer has it, Loom says so."
+        "Resume continues this \(provider) session in its folder. If \(provider) no longer has it, Sphyrna says so."
     }
     nonisolated static func showsResume(inChat: Bool, hasTerminal: Bool) -> Bool { !inChat || hasTerminal }
 
@@ -42,7 +42,7 @@ struct ConversationDetail: View {
             RecordNotice(tone: .failure, symbol: "exclamationmark.triangle", title: "This session has a problem", text: message)
         case .identityUnclear:
             RecordNotice(tone: .attention, symbol: "questionmark.diamond", title: "Session identity is not certain",
-                         text: "Loom could not tell which \(provider) session this is, so it changed nothing.")
+                         text: "Sphyrna could not tell which \(provider) session this is, so it changed nothing.")
         case .failed(let message):
             RecordNotice(tone: .failure, symbol: "exclamationmark.triangle", title: "\(provider) reported a failure",
                          text: message ?? "No details were provided.")

@@ -7,7 +7,7 @@ struct CodexHarness: Harness {
 
     var provider: ManagedSession.Provider { .codex }
     var takesOpeningOrDraft: Bool { false }
-    var deletionRefusal: String? { "Codex sessions cannot be deleted from Loom yet" }
+    var deletionRefusal: String? { "Codex sessions cannot be deleted from Sphyrna yet" }
 
     func startTerminal(in runtime: isolated SessionRuntime, _ start: HarnessTerminalStart) async throws -> RuntimeLaunch {
         let (server, coordinator) = try await runtime.ensureCodex(card: start.sessionID, toolchain: start.toolchain)

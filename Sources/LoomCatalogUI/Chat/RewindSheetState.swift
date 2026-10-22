@@ -45,11 +45,11 @@ struct RewindSheetContent: Equatable {
 enum RewindCopy {
     static let title = "Rewind files to before this message?"
     static let honestLabel = "Restores the files Claude changed with its file tools to how they were before this message. "
-        + "Changes made by shell commands and subagents stay. Loom keeps a copy of these files, so you can undo this."
+        + "Changes made by shell commands and subagents stay. Sphyrna keeps a copy of these files, so you can undo this."
     static let newestTurnNote = "This turn\u{2019}s file changes can only come back through Undo."
     static let nothingToChange = "No files would change."
     static let tooLarge = "These files are too large to keep a copy for Undo"
-    static let cannotCopy = "Loom cannot keep a copy of some of these files, so it does not rewind them"
+    static let cannotCopy = "Sphyrna cannot keep a copy of some of these files, so it does not rewind them"
 
     static func canKeep(_ verdict: ChatRewindStore.CopyVerdict) -> Bool {
         if case .ok = verdict { true } else { false }
@@ -72,9 +72,9 @@ enum RewindCopy {
         case .nothingToChange: nothingToChange
         case .tooLarge: tooLarge
         case .cannotCopy: cannotCopy
-        case .copyFailed: "Loom could not keep a copy of these files, so nothing was rewound"
+        case .copyFailed: "Sphyrna could not keep a copy of these files, so nothing was rewound"
         case let .failed(text): "Claude could not rewind the files, and nothing changed. \(text)"
-        case .noAnswer: "Claude did not answer the rewind, so some files may have changed. Undo on the marker puts back the copy Loom kept."
+        case .noAnswer: "Claude did not answer the rewind, so some files may have changed. Undo on the marker puts back the copy Sphyrna kept."
         case .undoUnavailable: "Undo is no longer available"
         case let .changedSince(files): "These files changed since the rewind: \(files.joined(separator: ", "))"
         case let .undoFailed(text): "Undo did not finish. \(text)"

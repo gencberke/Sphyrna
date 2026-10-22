@@ -158,7 +158,7 @@ extension SessionCatalog {
             closed += 1
         }
         if closed > 0 {
-            LoomLog.notice(.catalog, "Closed \(closed) run(s) an earlier Loom left open")
+            LoomLog.notice(.catalog, "Closed \(closed) run(s) an earlier Sphyrna left open")
         }
         return closed
     }

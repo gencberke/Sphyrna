@@ -6,7 +6,7 @@ extension PlanLimitsFailure.Category {
     /// A short reason for the Usage page; nil for a cancelled ask, which is not a failure.
     var reason: String? {
         switch self {
-        case .noToolchain: "Loom could not find Claude."
+        case .noToolchain: "Sphyrna could not find Claude."
         case .spawnFailed: "Claude could not be started."
         case .writeFailed: "Claude did not accept the request."
         case .timedOut: "Claude did not answer in time."

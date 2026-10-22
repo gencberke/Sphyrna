@@ -71,7 +71,7 @@ struct MenuBarModelTests {
         await live(rig, 1, .waitingForApproval)
         #expect(await waitUntil { rig.model.menuBarSummary.badge == .attention })
         #expect(rig.model.menuBarSummary.approvals == [rig.ids[1]])
-        #expect(summaries.last?.accessibilityLabel == "Loom, 1 session needs you, 1 working")
+        #expect(summaries.last?.accessibilityLabel == "Sphyrna, 1 session needs you, 1 working")
 
         // The same state again is not a change.
         let count = summaries.count

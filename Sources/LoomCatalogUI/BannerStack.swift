@@ -231,8 +231,8 @@ struct Banners: View {
         var actions = [BannerAction(id: "deletion-retry-\(suffix)", title: "Try Again", style: .accent, enabled: item.canRetry,
                                     perform: { Task { await model.retryDeletion(id) } })]
         if item.canRemove {
-            actions.append(BannerAction(id: "deletion-remove-\(suffix)", title: "Remove from Loom Only", style: .failure,
-                                        help: "Removes the session from Loom. Claude's files are not touched.",
+            actions.append(BannerAction(id: "deletion-remove-\(suffix)", title: "Remove from Sphyrna Only", style: .failure,
+                                        help: "Removes the session from Sphyrna. Claude's files are not touched.",
                                         perform: { model.requestRemoveFromLoomOnly(id) }))
         }
         return actions

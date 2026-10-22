@@ -56,7 +56,7 @@ struct DiagnosticsExportTests {
         defer { server.stop() }
         let before = HookDiagnostics.snapshot().rejectedToken
         do { try ClaudeHookClient.send(envelope, socketPath: live, authenticationToken: "wrong"); Issue.record("token accepted") }
-        catch { #expect(ClaudeHookClient.failureDescription(error) == "token rejected by Loom") }
+        catch { #expect(ClaudeHookClient.failureDescription(error) == "token rejected by Sphyrna") }
         #expect(HookDiagnostics.snapshot().rejectedToken == before + 1)
         for text in [ClaudeHookClient.failureDescription(ClaudeHookTransportError.timeout("connect")),
                      ClaudeHookClient.failureDescription(ClaudeHookTransportError.messageTooLarge)] {

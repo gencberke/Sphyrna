@@ -5,7 +5,7 @@ import Testing
 import LoomCore
 @testable import LoomCatalogUI
 
-/// D-69 point 11 (O-12): the failure mark under "Differentiate without color" and the Loom mark on the first-run Home.
+/// D-69 point 11 (O-12): the failure mark under "Differentiate without color" and the app icon on the first-run Home.
 /// Both are drawn off screen with `ImageRenderer`; nothing opens a window.
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(2)))
@@ -107,20 +107,6 @@ struct IdentityMarksTests {
             }
         }
         #expect(!ProjectAttention.drawsDiamond(nil, differentiateWithoutColor: true))
-    }
-
-    /// The mark is the menu bar's path data, scaled: it fills its frame's width, keeps the box's proportions and
-    /// paints part of the frame (a mark that came out empty or inverted fails here).
-    @Test func theLoomMarkIsTheMenuBarPathFittedToItsFrame() throws {
-        let width = LoomTheme.Layout.heroMarkWidth
-        let height = width / LoomMarkShape.aspect
-        let mark = try ink(LoomMarkShape().fill(Color.black).frame(width: width, height: height))
-        #expect(abs(mark.rect.width - width) < 1.5 && abs(mark.rect.height - height) < 1.5, "\(mark.rect)")
-        let coverage = mark.area / Double(width * height)
-        #expect(coverage > 0.35 && coverage < 0.95, "the mark covers \(coverage) of its box")
-        // The same path in the menu bar's own drawing covers the same share of its box.
-        let box = LoomTheme.MenuBar.markBox
-        #expect(abs(LoomMarkShape.aspect - box.width / box.height) < 0.0001)
     }
 
     @Test func onlyTheFirstRunCarriesTheMarkAndAMissingClaudeKeepsItsSymbol() {

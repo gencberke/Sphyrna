@@ -53,7 +53,7 @@ public struct UsageChipContent: Equatable, Sendable {
         case .indexing:
             return UsageChipContent(
                 kind: .indexing, lead: "Indexing…", figure: "", suffix: "", limit: nil,
-                tooltip: "Loom is reading Claude's local transcripts for the first time. Usage appears when it finishes. Click to open Usage.",
+                tooltip: "Sphyrna is reading Claude's local transcripts for the first time. Usage appears when it finishes. Click to open Usage.",
                 accessibilityLabel: "Claude usage, indexing")
         case .ready:
             guard let today else { return nil }

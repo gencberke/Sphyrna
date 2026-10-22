@@ -196,7 +196,7 @@ struct ChatDriftNotice: View {
     let dismiss: () -> Void
 
     var body: some View {
-        ChatNotice(message: "\(count) record\(count == 1 ? "" : "s") in this session \(count == 1 ? "has" : "have") a shape Loom does not know. They show as raw rows.",
+        ChatNotice(message: "\(count) record\(count == 1 ? "" : "s") in this session \(count == 1 ? "has" : "have") a shape Sphyrna does not know. They show as raw rows.",
                    dismiss: dismiss)
     }
 }

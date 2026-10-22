@@ -29,7 +29,7 @@ extension CatalogModel {
             } catch let error as ChatRewindError {
                 phase = .cannot(RewindCopy.message(for: error))
             } catch {
-                phase = .cannot("Loom could not check what a rewind would change")
+                phase = .cannot("Sphyrna could not check what a rewind would change")
             }
             guard let sheet, self?.rewinds.sheet === sheet else { return }
             sheet.phase = phase

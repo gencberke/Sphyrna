@@ -63,7 +63,7 @@ enum DraftWords {
     static let invalidName = "That is not a valid branch name."
     static let noGitFolder = "This folder is not a Git repository, so there is nothing to branch from."
     static let noProject = "Pick a project to choose where the session starts."
-    static let createsAtStart = "Loom creates it when the session starts, never before."
+    static let createsAtStart = "Sphyrna creates it when the session starts, never before."
 
     /// The reason a typed or suggested name cannot be used, or nil for a usable one.
     static func nameReason(_ name: String) -> String? {

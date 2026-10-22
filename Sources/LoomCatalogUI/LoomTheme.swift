@@ -567,37 +567,29 @@ enum LoomTheme {
         static let settingsSegmentHeight: CGFloat = 24
         // Indicators.
         static let indicatorSlot = CGSize(width: 12, height: 16)
-        /// The Loom mark over the first-run Home (D-69): its width; the height follows the mark's box.
-        static let heroMarkWidth: CGFloat = 36
         /// The failure mark under "Differentiate without color" (the identity proposal's diamond, corner to corner).
         static let failureDiamond: CGFloat = 7
     }
 
     // MARK: Menu bar item
 
-    /// The menu bar item and its menu (D-49, D-52; design/menu-bar-preview.html). Lengths are points in the
-    /// mark's own box (18 pt wide, the 408 x 376 box of `Loom-menubar.svg`), which sits in a square canvas
-    /// so the badge may reach past its lower right corner.
+    /// The menu bar item and its menu (D-49, D-52, D-77; design/DESIGN.md §6 Name and marks). Lengths are points in the
+    /// 20 pt canvas (y pointing down), which is also the space of the Front mark's path data
+    /// (`design/identity/menubar-front.svg`): the mark is 18 wide and the badge may reach its lower right corner.
     enum MenuBar {
         static let canvas = CGSize(width: 20, height: 20)
-        static let markWidth: CGFloat = 18
-        /// The mark's place in the canvas.
-        static let markOrigin = CGPoint(x: 1, y: 1.7)
-        /// The box of the SVG that the mark is fitted to (user space of the 512 x 512 viewBox).
-        static let markBox = CGRect(x: 104, y: 136, width: 408, height: 376)
-        static var markSize: CGSize { CGSize(width: markWidth, height: markWidth * markBox.height / markBox.width) }
 
-        // The badge slot, lower right. Working: the braille spinner. Needs you: one dot.
-        // The mark is cut away around the badge so it sits on the bar. Coordinates are in the mark's box.
-        static let chaseOrigin = CGPoint(x: 9.4, y: 8)
-        static let chaseCutoutCenter = CGPoint(x: 14.2, y: 12.8)
+        // The badge slot, lower right, where it was under the ram mark. Working: the braille spinner. Needs you: one
+        // dot. The mark is cut away around the badge so it sits on the bar.
+        static let chaseOrigin = CGPoint(x: 10.4, y: 9.7)
+        static let chaseCutoutCenter = CGPoint(x: 15.2, y: 14.5)
         static let chaseCutoutRadius: CGFloat = 7
         static let dotDiameter: CGFloat = 7
-        static let dotCenter = CGPoint(x: 15.2, y: 13.8)
+        static let dotCenter = CGPoint(x: 16.2, y: 15.5)
         static let dotCutoutRadius: CGFloat = 5.2
         /// Increase Contrast: a larger dot.
         static let dotDiameterIncreased: CGFloat = 8
-        static let dotCenterIncreased = CGPoint(x: 14.8, y: 13.4)
+        static let dotCenterIncreased = CGPoint(x: 15.8, y: 15.1)
         static let dotCutoutRadiusIncreased: CGFloat = 6
 
         /// The mark and the chase: white on a dark bar, black on a light one.

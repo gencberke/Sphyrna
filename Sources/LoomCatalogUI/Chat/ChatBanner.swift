@@ -95,13 +95,13 @@ enum ChatBanners {
         if wireDrift > 0, !wireDriftDismissed {
             items.append(ChatBannerItem(
                 kind: .wireDrift,
-                message: "Claude sent something this version of Loom does not expect. The session goes on; some of it may not show.",
+                message: "Claude sent something this version of Sphyrna does not expect. The session goes on; some of it may not show.",
                 actionTitle: nil))
         }
         if unknownRecords > 0, !recordsDismissed {
             items.append(ChatBannerItem(
                 kind: .unknownRecords,
-                message: "\(unknownRecords) record\(unknownRecords == 1 ? "" : "s") in this session \(unknownRecords == 1 ? "has" : "have") a shape Loom does not know. They show as raw rows.",
+                message: "\(unknownRecords) record\(unknownRecords == 1 ? "" : "s") in this session \(unknownRecords == 1 ? "has" : "have") a shape Sphyrna does not know. They show as raw rows.",
                 actionTitle: nil))
         }
         return ordered(items)

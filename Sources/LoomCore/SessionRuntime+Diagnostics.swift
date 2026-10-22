@@ -83,7 +83,7 @@ extension SessionRuntime {
             let closed = try await catalog.closeAbandonedRuns()
             if closed > 0 { journal.record("recovery_runs_closed", ["count": .int(closed)]) }
         } catch {
-            LoomLog.error(.recovery, key: "close-runs", "Open runs of an earlier Loom could not be closed (\(LoomLog.category(of: error)))")
+            LoomLog.error(.recovery, key: "close-runs", "Open runs of an earlier Sphyrna could not be closed (\(LoomLog.category(of: error)))")
         }
         await configuration.runsRecovered?()
     }

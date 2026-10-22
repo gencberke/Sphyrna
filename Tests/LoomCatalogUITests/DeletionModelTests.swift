@@ -304,7 +304,7 @@ struct DeletionModelTests {
         fixture.model.requestDeletion(id)
         #expect(await waitUntil { fixture.model.deletions.confirmation.map { $0.phase != .loading } == true })
         #expect(fixture.model.deletions.confirmation?.offersRemoveFromLoomOnly == true)
-        #expect(DeletionCopy.unreachableNote(["projects/-work-app"]).contains("remove the session from Loom only"))
+        #expect(DeletionCopy.unreachableNote(["projects/-work-app"]).contains("remove the session from Sphyrna only"))
         // The button asks for the alert; only the alert's Remove removes.
         fixture.model.requestRemoveFromLoomOnly(id)
         #expect(fixture.model.deletions.removalRequest == id)
@@ -323,7 +323,7 @@ struct DeletionModelTests {
     }
 
     @Test func bothRemoveFromLoomOnlyPathsAskTheSameQuestion() {
-        #expect(DeletionCopy.removeTitle == "Remove this session from Loom?")
+        #expect(DeletionCopy.removeTitle == "Remove this session from Sphyrna?")
         #expect(DeletionCopy.removeButton == "Remove")
         #expect(DeletionCopy.removeMessage.contains("Claude's files stay where they are"))
     }

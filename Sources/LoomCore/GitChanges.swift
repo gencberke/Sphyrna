@@ -361,7 +361,7 @@ public struct GitChanges: Sendable {
     private static func state(for error: any Error) -> GitChangesState {
         switch error {
         case LoomError.environmentTimeout: .timedOut
-        case LoomError.outputTooLarge: .failed("Git printed more than Loom reads")
+        case LoomError.outputTooLarge: .failed("Git printed more than Sphyrna reads")
         case let LoomError.helperExit(_, detail): .failed(detail.isEmpty ? "Git did not answer" : detail)
         default: .failed("Git did not answer")
         }

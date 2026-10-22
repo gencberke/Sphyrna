@@ -15,10 +15,10 @@ extension CatalogModel {
         case "failure":
             reportFailure("Claude could not be started. claude was not found on the PATH of your terminal environment (14 folders searched).")
         case "attention":
-            ownershipNotice = "New sessions are turned off because Loom's process helper is missing. Without it Loom cannot make sure "
-                + "Stop and Quit end all of a session's background work. Reinstall Loom to fix this."
+            ownershipNotice = "New sessions are turned off because Sphyrna's process helper is missing. Without it Sphyrna cannot make sure "
+                + "Stop and Quit end all of a session's background work. Reinstall Sphyrna to fix this."
         case "note":
-            showInfo("“loom” is already in Loom.")
+            showInfo("“loom” is already in Sphyrna.")
         case "progress":
             statusMessage = "Stopping sessions before quitting…"
         default:

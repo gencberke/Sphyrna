@@ -64,13 +64,13 @@ struct MenuBarTests {
         func label(_ needs: Int, _ working: Int) -> String {
             MenuBarSummary(badge: .none, needsYou: needs, working: working, approvals: []).accessibilityLabel
         }
-        #expect(label(0, 0) == "Loom")
-        #expect(label(0, 1) == "Loom, 1 session working")
-        #expect(label(0, 2) == "Loom, 2 sessions working")
-        #expect(label(1, 0) == "Loom, 1 session needs you")
-        #expect(label(3, 0) == "Loom, 3 sessions need you")
-        #expect(label(1, 2) == "Loom, 1 session needs you, 2 working")
-        #expect(label(2, 1) == "Loom, 2 sessions need you, 1 working")
+        #expect(label(0, 0) == "Sphyrna")
+        #expect(label(0, 1) == "Sphyrna, 1 session working")
+        #expect(label(0, 2) == "Sphyrna, 2 sessions working")
+        #expect(label(1, 0) == "Sphyrna, 1 session needs you")
+        #expect(label(3, 0) == "Sphyrna, 3 sessions need you")
+        #expect(label(1, 2) == "Sphyrna, 1 session needs you, 2 working")
+        #expect(label(2, 1) == "Sphyrna, 2 sessions need you, 1 working")
     }
 
     @Test func approvalsIncludeOnlySessionsAtNeedsApproval() {
@@ -102,7 +102,7 @@ struct MenuBarTests {
         #expect(more?.title == "and 2 more…" && more?.enabled == true && more?.sessionID == nil)
 
         let items = both.filter { [.newSession, .settings, .quit].contains($0.kind) }
-        #expect(items.map(\.title) == ["New Claude Session", "Settings…", "Quit Loom"])
+        #expect(items.map(\.title) == ["New Claude Session", "Settings…", "Quit Sphyrna"])
         #expect(items.map(\.key) == ["⌘N", "⌘,", "⌘Q"])
         #expect(MenuBarMenu.items(for: MenuBarState.derive([]), canStartSession: false).first { $0.kind == .newSession }?.enabled == false)
     }
@@ -160,18 +160,24 @@ struct MenuBarTests {
 
     // MARK: Mark
 
-    @Test func theParsedMarkFillsItsBoxAndTheFittedPathFillsTheMarkSize() {
-        let bounds = MenuBarMark.path.boundingBoxOfPath
-        let box = LoomTheme.MenuBar.markBox
-        // The box is the SVG's own symbol box: the mark touches its left, right and bottom edges.
-        #expect(abs(bounds.minX - box.minX) < 0.5 && abs(bounds.maxX - box.maxX) < 0.5)
-        #expect(abs(bounds.maxY - box.maxY) < 0.5 && bounds.minY >= box.minY && bounds.minY - box.minY < 5)
-        let size = LoomTheme.MenuBar.markSize
-        #expect(abs(size.width - 18) < 0.001 && abs(size.height - 16.59) < 0.01)
-        let fitted = MenuBarMark.fitted(origin: LoomTheme.MenuBar.markOrigin).boundingBoxOfPath
-        #expect(abs(fitted.minX - LoomTheme.MenuBar.markOrigin.x) < 0.1)
-        #expect(abs(fitted.maxX - (LoomTheme.MenuBar.markOrigin.x + size.width)) < 0.1)
-        #expect(fitted.maxY <= LoomTheme.MenuBar.canvas.height && fitted.maxX <= LoomTheme.MenuBar.canvas.width)
+    /// Front (D-77): the source's path data is the identity file's, in M, L, C and Z only, 18 wide and centred on the
+    /// 20 pt canvas, with an open eye hole at each tip of the hammer.
+    @Test func theFrontMarkIsTheIdentityFilesPathsEighteenWideOnTheCanvas() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let svg = try String(contentsOf: root.appendingPathComponent("design/identity/menubar-front.svg"), encoding: .utf8)
+        let identity = svg.matches(of: /<path d="([^"]+)"/).map { String($0.output.1) }
+        #expect(MenuBarMark.data == identity)
+        for data in MenuBarMark.data {
+            #expect(Set(data.filter(\.isLetter)).isSubset(of: ["M", "L", "C", "Z"]), "\(data.prefix(20))")
+        }
+        let bounds = MenuBarMark.bounds
+        let canvas = LoomTheme.MenuBar.canvas
+        #expect(abs(bounds.width - 18) < 0.15, "\(bounds)")
+        #expect(abs(bounds.midX - canvas.width / 2) < 0.01 && bounds.minY >= 0 && bounds.maxY <= canvas.height)
+        let hammer = MenuBarMark.paths[1]
+        #expect(!hammer.contains(CGPoint(x: 2.55, y: 8.8), using: .evenOdd), "the left eye is a hole")
+        #expect(!hammer.contains(CGPoint(x: 17.45, y: 8.8), using: .evenOdd), "the right eye is a hole")
+        #expect(hammer.contains(CGPoint(x: 5, y: 8.6), using: .evenOdd) && hammer.contains(CGPoint(x: 10, y: 8), using: .evenOdd))
     }
 
     @Test func theSVGPathParserReadsAbsoluteRelativeAndImplicitCommands() {
@@ -194,25 +200,66 @@ struct MenuBarTests {
         let theme = LoomTheme.MenuBar.self
         // Canvas origin in the evidence picture, then the dot's centre in canvas coordinates.
         let origin = CGPoint(x: (theme.barWidth - theme.canvas.width) / 2, y: (theme.barHeight - theme.canvas.height) / 2)
-        let dot = CGPoint(x: origin.x + theme.markOrigin.x + theme.dotCenter.x, y: origin.y + theme.markOrigin.y + theme.dotCenter.y)
+        let dot = CGPoint(x: origin.x + theme.dotCenter.x, y: origin.y + theme.dotCenter.y)
         for (darkBar, expected) in [(true, theme.dotRGB(.attention, darkBar: true, increasedContrast: false)),
                                     (false, theme.dotRGB(.attention, darkBar: false, increasedContrast: false))] {
             let png = try #require(MenuBarArt.evidencePNG(badge: .attention, darkBar: darkBar, increasedContrast: false))
             let color = try pixel(png, x: dot.x, y: dot.y)
             #expect(abs(Double(color.redComponent) - expected.red) < 0.04 && abs(Double(color.greenComponent) - expected.green) < 0.04
                     && abs(Double(color.blueComponent) - expected.blue) < 0.04, "dot colour on a \(darkBar ? "dark" : "light") bar")
-            // Just inside the cut-away ring, outside the dot, the bar shows through where the solid mark would be.
+            // Just inside the cut-away ring, outside the dot, the bar shows through.
             let ring = try pixel(png, x: dot.x - (theme.dotDiameter / 2 + 0.7), y: dot.y)
             let bar = (darkBar ? theme.barDarkRGB : theme.barLightRGB)
             #expect(abs(Double(ring.redComponent) - bar.red) < 0.06 && abs(Double(ring.blueComponent) - bar.blue) < 0.06)
         }
-        // The mark itself is white on a dark bar and black on a light one.
-        let markPoint = CGPoint(x: origin.x + theme.markOrigin.x + 6, y: origin.y + theme.markOrigin.y + 12)
+        // The mark itself is white on a dark bar and black on a light one (a point on the hammer).
+        let markPoint = CGPoint(x: origin.x + 5, y: origin.y + 8.6)
         let onDark = try pixel(try #require(MenuBarArt.evidencePNG(badge: .none, darkBar: true, increasedContrast: false)),
                                x: markPoint.x, y: markPoint.y)
         let onLight = try pixel(try #require(MenuBarArt.evidencePNG(badge: .none, darkBar: false, increasedContrast: false)),
                                 x: markPoint.x, y: markPoint.y)
         #expect(onDark.brightnessComponent > 0.9 && onLight.brightnessComponent < 0.1)
+    }
+
+    /// The badge's cut (5.2 around the 7 pt dot) takes the right pectoral fin's tip away; the eye holes show the bar.
+    @Test func theBadgeCutsTheFrontMarkAroundTheDotAndTheEyesShowTheBar() throws {
+        let theme = LoomTheme.MenuBar.self
+        let origin = CGPoint(x: (theme.barWidth - theme.canvas.width) / 2, y: (theme.barHeight - theme.canvas.height) / 2)
+        // A point whose whole 2x pixel lies on the fin, outside the dot and inside the cut.
+        let fin = CGPoint(x: 13.0, y: 12.6)
+        let distance = hypot(fin.x - theme.dotCenter.x, fin.y - theme.dotCenter.y)
+        #expect(distance > theme.dotDiameter / 2 + 0.2 && distance < theme.dotCutoutRadius - 0.2, "the point is in the cut ring")
+        #expect(MenuBarMark.paths[4].contains(fin, using: .evenOdd), "the point is on the fin")
+        for darkBar in [true, false] {
+            let bar = darkBar ? theme.barDarkRGB : theme.barLightRGB
+            let idle = try pixel(try #require(MenuBarArt.evidencePNG(badge: .none, darkBar: darkBar, increasedContrast: false)),
+                                 x: origin.x + fin.x, y: origin.y + fin.y)
+            let cut = try pixel(try #require(MenuBarArt.evidencePNG(badge: .attention, darkBar: darkBar, increasedContrast: false)),
+                                x: origin.x + fin.x, y: origin.y + fin.y)
+            #expect(darkBar ? idle.brightnessComponent > 0.9 : idle.brightnessComponent < 0.1, "the fin without a badge")
+            #expect(abs(Double(cut.redComponent) - bar.red) < 0.06 && abs(Double(cut.blueComponent) - bar.blue) < 0.06,
+                    "the cut shows the \(darkBar ? "dark" : "light") bar")
+            let eye = try pixel(try #require(MenuBarArt.evidencePNG(badge: .none, darkBar: darkBar, increasedContrast: false)),
+                                x: origin.x + 2.55, y: origin.y + 8.8)
+            #expect(abs(Double(eye.redComponent) - bar.red) < 0.06 && abs(Double(eye.blueComponent) - bar.blue) < 0.06, "an eye")
+        }
+    }
+
+    /// Writes the item idle and with each badge, on a dark and a light bar (and with Increase Contrast), at 4x, when
+    /// `LOOM_MENUBAR_RENDER_DIR` is set; otherwise only checks that every picture is made. The item's own drawing.
+    @Test func rendersTheFrontMarkInEveryStateOnBothBars() throws {
+        let directory = ProcessInfo.processInfo.environment["LOOM_MENUBAR_RENDER_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+        if let directory { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
+        let badges: [MenuBarBadge] = [.none, .working, .failure, .attention, .unviewed]
+        for badge in badges {
+            for darkBar in [true, false] {
+                for increased in [false, true] {
+                    let png = try #require(MenuBarArt.evidencePNG(badge: badge, darkBar: darkBar, increasedContrast: increased, scale: 4))
+                    let name = "menubar-\(badge == .none ? "idle" : badge.rawValue)-\(darkBar ? "dark" : "light")\(increased ? "-contrast" : "").png"
+                    if let directory { try png.write(to: directory.appendingPathComponent(name)) }
+                }
+            }
+        }
     }
 
     /// The working badge is the spinner's first frame, white on a dark bar and black on a light one, in the badge slot
@@ -276,12 +323,12 @@ struct MenuBarTests {
 
     @Test func aSettingsRowAddsALineOnlyWhereMacOSSaysSomethingIsWrong() {
         let denied = SettingsNotice.notifications(.denied)
-        #expect(denied?.text == "Notifications for Loom are off in System Settings, so no banner will appear.")
+        #expect(denied?.text == "Notifications for Sphyrna are off in System Settings, so no banner will appear.")
         #expect(denied?.buttonTitle == "Open System Settings")
         #expect(SettingsNotice.notifications(.authorized) == nil && SettingsNotice.notifications(.notDetermined) == nil)
 
         let approval = SettingsNotice.loginItem(.requiresApproval)
-        #expect(approval?.text == "Allow Loom in System Settings → General → Login Items.")
+        #expect(approval?.text == "Allow Sphyrna in System Settings → General → Login Items.")
         #expect(approval?.buttonTitle == "Open Login Items")
         #expect(SettingsNotice.loginItem(.enabled) == nil && SettingsNotice.loginItem(.notRegistered) == nil
                 && SettingsNotice.loginItem(.notFound) == nil)

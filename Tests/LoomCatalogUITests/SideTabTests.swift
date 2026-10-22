@@ -183,7 +183,7 @@ struct SideTabTests {
 
     @Test func theDiscardQuestionDefaultsToCancelSoReturnNeverDiscards() {
         #expect(SideDiscardRequest.defaultButton == .cancel)
-        #expect(SideText.discardMessage == "Loom deletes its copy of the session. The main session is not touched.")
+        #expect(SideText.discardMessage == "Sphyrna deletes its copy of the session. The main session is not touched.")
         #expect(SideText.discardCancel == "Cancel" && SideText.discardConfirm == "Discard")
     }
 
@@ -194,11 +194,11 @@ struct SideTabTests {
         }
         let none = DeletionCopy.confirmBody(preview(sideChats: 0))
         #expect(!none.contains("side chat"))
-        #expect(none.hasPrefix("Loom removes it from Loom and deletes Claude's local files for it:"), "unchanged without side chats")
+        #expect(none.hasPrefix("Sphyrna removes it from Sphyrna and deletes Claude's local files for it:"), "unchanged without side chats")
         let one = DeletionCopy.confirmBody(preview(sideChats: 1))
-        #expect(one.hasPrefix("Loom removes it and its 1 side chat from Loom and deletes Claude's local files for them:"), "\(one)")
+        #expect(one.hasPrefix("Sphyrna removes it and its 1 side chat from Sphyrna and deletes Claude's local files for them:"), "\(one)")
         let many = DeletionCopy.confirmBody(preview(sideChats: 3, running: true))
-        #expect(many.hasPrefix("It is running now, so Loom stops it first, then removes it and its 3 side chats from Loom"), "\(many)")
+        #expect(many.hasPrefix("It is running now, so Sphyrna stops it first, then removes it and its 3 side chats from Sphyrna"), "\(many)")
     }
 
     // MARK: Colours

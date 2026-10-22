@@ -43,7 +43,7 @@ public enum ClaudeHookTransportError: Error, CustomStringConvertible, Equatable,
         case .malformedMessage:
             "Claude hook message is malformed"
         case .rejected:
-            "Claude hook message was rejected by Loom"
+            "Claude hook message was rejected by Sphyrna"
         }
     }
 }
@@ -118,10 +118,10 @@ public enum ClaudeHookClient {
     public static func failureDescription(_ error: any Error) -> String {
         switch error {
         case let ClaudeHookTransportError.timeout(operation): return "\(operation) timed out"
-        case ClaudeHookTransportError.rejected: return "token rejected by Loom"
+        case ClaudeHookTransportError.rejected: return "token rejected by Sphyrna"
         case let ClaudeHookTransportError.system(operation, code):
             switch code {
-            case ECONNREFUSED: return "\(operation) refused (nothing is listening; Loom is not running or restarted)"
+            case ECONNREFUSED: return "\(operation) refused (nothing is listening; Sphyrna is not running or restarted)"
             case ENOENT: return "\(operation) failed: the socket does not exist"
             default: return "\(operation) failed (errno \(code))"
             }
@@ -340,7 +340,7 @@ public final class ClaudeHookServer: @unchecked Sendable {
               wire.envelope.version == ClaudeHookEnvelope.protocolVersion,
               wire.envelope.payload.count <= ClaudeHookClient.maximumPayloadByteCount else {
             HookDiagnostics.note(.malformedMessage)
-            LoomLog.error(.claudeHooks, key: "hook-malformed", "A hook connection sent a message this Loom cannot read")
+            LoomLog.error(.claudeHooks, key: "hook-malformed", "A hook connection sent a message this Sphyrna cannot read")
             return
         }
         guard secureEqual(wire.authenticationToken, authenticationToken) else {

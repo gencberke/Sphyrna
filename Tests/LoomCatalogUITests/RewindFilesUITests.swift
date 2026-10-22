@@ -115,7 +115,7 @@ struct RewindFilesUITests {
         #expect(content.canConfirm)
         #expect(RewindCopy.title == "Rewind files to before this message?")
         #expect(RewindCopy.honestLabel == "Restores the files Claude changed with its file tools to how they were before this message. "
-            + "Changes made by shell commands and subagents stay. Loom keeps a copy of these files, so you can undo this.")
+            + "Changes made by shell commands and subagents stay. Sphyrna keeps a copy of these files, so you can undo this.")
         #expect(RewindCopy.newestTurnNote == "This turn\u{2019}s file changes can only come back through Undo.")
     }
 
@@ -154,7 +154,7 @@ struct RewindFilesUITests {
         #expect(RewindCopy.message(for: .tooLarge) == "These files are too large to keep a copy for Undo")
         #expect(RewindCopy.message(for: .nothingToChange) == "No files would change.")
         #expect(RewindCopy.message(for: .failed("disk full")).contains("nothing changed"))
-        #expect(RewindCopy.message(for: .noAnswer).contains("Undo on the marker puts back the copy Loom kept"))
+        #expect(RewindCopy.message(for: .noAnswer).contains("Undo on the marker puts back the copy Sphyrna kept"))
     }
 
     // MARK: The marker

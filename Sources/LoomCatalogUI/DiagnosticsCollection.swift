@@ -55,6 +55,6 @@ public final class DiagnosticsCollection {
 
     /// The alert for a failed export: the error's category only, never a path or session content.
     nonisolated static func failureText(category: String) -> (title: String, detail: String) {
-        ("Loom could not collect diagnostics", "The export failed (\(category)).")
+        ("Sphyrna could not collect diagnostics", "The export failed (\(category)).")
     }
 }

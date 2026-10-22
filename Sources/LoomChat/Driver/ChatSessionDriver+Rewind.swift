@@ -224,7 +224,7 @@ extension ChatSessionDriver {
         } catch let error as ChatRewindError {
             throw error
         } catch {
-            LoomLog.error(.lifecycle, "A files rewind was not answered (\(LoomLog.category(of: error))); Loom kept its copy")
+            LoomLog.error(.lifecycle, "A files rewind was not answered (\(LoomLog.category(of: error))); Sphyrna kept its copy")
             // What the files hold now is what Undo compares against later.
             _ = try? await Task.detached { try store.finish(sessionID: card, rewindID: manifest.rewindID) }.value
             placeRewindMarker(rewindID: manifest.rewindID, card: card, title: messageTitle)

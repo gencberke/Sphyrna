@@ -53,7 +53,7 @@ struct DeleteSheetText: Equatable {
         return DeleteSheetText(
             title: "Delete \(count) \(one ? "session" : "sessions")?",
             names: rows.map(\.title).joined(separator: ", "),
-            lead: "Loom removes \(one ? "it" : "them") from Loom, and deletes Claude's local files for \(one ? "it" : "them"). This can't be undone.",
+            lead: "Sphyrna removes \(one ? "it" : "them") from Sphyrna, and deletes Claude's local files for \(one ? "it" : "them"). This can't be undone.",
             removed: removedItems,
             totals: totals(rows, folder: folder, size: size),
             kept: keptItems)

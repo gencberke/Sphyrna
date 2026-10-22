@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import SwiftUI
 
 /// A minimal SVG path reader for the menu bar mark: absolute and relative M, L, C and Z (and the
 /// implicit repeats of M and L), nothing else. The mark ships as path data in the source, not as an
@@ -56,59 +55,35 @@ enum SVGPathParser {
     }
 }
 
-/// The Loom mark for the menu bar (`assets/Loom-menubar.svg`, one colour): its path data, the box it is
-/// drawn in, and the path in that box.
+/// Front, the menu bar mark (D-77; `design/identity/menubar-front.svg`, one colour): the hammerhead seen from the front.
+/// Its path data is in the 20 pt canvas' own space (y pointing down), 18 wide; each path is filled on its own with
+/// the even-odd rule, as the SVG fills it, so the eye holes stay open and the overlapping parts stay filled.
 public enum MenuBarMark {
-    /// viewBox 0 0 512 512 under `translate(0 512) scale(.1 -.1)`.
-    static let data = """
-        M2794 3710 c-129 -33 -299 -135 -359 -214 -21 -28 -26 -42 -21 -63 9 -38 154 -178 199 -192 32 -11 41 -9 104 23
-        171 86 354 70 475 -43 150 -138 150 -379 0 -511 -107 -95 -278 -94 -386 2 l-46 40 -11 -29 c-16 -40 -14 -122 4
-        -164 60 -144 264 -222 452 -174 360 92 559 494 430 868 -36 103 -81 173 -175 267 -71 72 -100 93 -180 132 -52 26
-        -127 54 -167 62 -96 21 -230 20 -319 -4z M2183 3695 c-116 -32 -221 -108 -273 -199 -17 -28 -30 -54 -30 -58 0 -4
-        20 1 45 12 66 28 220 68 294 76 64 7 65 7 137 83 40 41 71 77 69 79 -2 2 -21 8 -42 13 -55 12 -140 10 -200 -6z
-        M2212 3388 c-159 -22 -390 -122 -559 -241 -299 -210 -585 -600 -609 -828 -12 -118 40 -251 125 -318 96 -76 178
-        -98 426 -116 110 -8 224 -21 254 -29 125 -34 230 -115 272 -211 11 -24 24 -81 30 -127 20 -170 65 -271 166 -374
-        34 -35 63 -65 63 -67 0 -1 -10 -27 -22 -57 -29 -76 -37 -259 -14 -350 42 -170 158 -318 311 -397 44 -23 98 -46
-        120 -52 22 -6 45 -14 51 -18 5 -5 15 -48 22 -96 6 -48 14 -92 17 -97 4 -6 415 -10 1131 -10 l1124 0 0 1584 0 1585
-        -55 -19 c-84 -29 -143 -68 -232 -154 l-83 -78 -54 49 c-111 102 -233 151 -391 160 -113 6 -199 -10 -298 -54 l-60
-        -27 -26 34 c-37 51 -120 134 -127 128 -3 -4 0 -34 7 -67 17 -89 7 -268 -21 -356 -103 -328 -377 -545 -688 -545
-        -161 0 -273 41 -373 137 -37 35 -66 75 -85 116 -79 173 -8 407 124 407 44 0 68 -14 117 -66 74 -78 167 -82 238 -9
-        60 62 72 147 33 231 -42 90 -120 130 -238 122 -50 -4 -85 -14 -131 -37 -89 -45 -122 -52 -176 -40 -92 20 -262 163
-        -302 253 -11 25 -21 45 -22 45 -1 -1 -30 -6 -65 -11z m-256 -505 c115 -88 129 -102 132 -131 2 -18 -2 -40 -9 -49
-        -7 -8 -69 -55 -138 -105 -103 -73 -130 -88 -151 -83 -35 8 -51 34 -48 74 3 31 12 42 83 92 44 31 80 61 82 66 1 4
-        -30 31 -69 58 -39 28 -77 56 -85 63 -18 19 -16 72 4 94 32 35 63 23 199 -79z m528 -88 c23 -24 28 -52 14 -82 l-13
-        -28 -141 -3 c-130 -2 -142 -1 -158 17 -23 26 -24 66 -1 91 16 18 32 20 151 20 105 0 136 -3 148 -15z
-        """
+    static let data: [String] = [
+        // The dorsal fin.
+        "M8.75 7.2C9.25 5.4 9.65 3.9 10 2.7C10.35 3.9 10.75 5.4 11.25 7.2Z",
+        // The hammer, with an eye hole at each tip.
+        "M.95 8.85C.95 7.85 1.6 7.3 2.5 7.25C5.2 7.05 7.6 6.5 10 6.5C12.4 6.5 14.8 7.05 17.5 7.25C18.4 7.3 19.05 7.85 19.05 8.85C19.05 9.9 18.35 10.45 17.45 10.35C14.75 10.05 12.6 9.75 10 9.75C7.4 9.75 5.25 10.05 2.55 10.35C1.65 10.45 .95 9.9 .95 8.85ZM3.3 8.8C3.3 9.214225 2.964225 9.55 2.55 9.55C2.1357749999999998 9.55 1.7999999999999998 9.214225 1.7999999999999998 8.8C1.7999999999999998 8.385775 2.1357749999999998 8.05 2.55 8.05C2.964225 8.05 3.3 8.385775 3.3 8.8ZM18.2 8.8C18.2 9.214225 17.864224999999998 9.55 17.45 9.55C17.035775 9.55 16.7 9.214225 16.7 8.8C16.7 8.385775 17.035775 8.05 17.45 8.05C17.864224999999998 8.05 18.2 8.385775 18.2 8.8Z",
+        // The jaw.
+        "M7.5 9.5C7.5 11.85 8.55 13.2 10 13.2C11.45 13.2 12.5 11.85 12.5 9.5Z",
+        // The left pectoral fin.
+        "M8.7 11C7.25 11.8 5.65 12.75 4.1 14.05C5.8 13.95 7.45 13.4 8.95 12.6Z",
+        // The right pectoral fin.
+        "M11.3 11C12.75 11.8 14.35 12.75 15.9 14.05C14.2 13.95 12.55 13.4 11.05 12.6Z",
+    ]
 
-    /// The mark in the SVG's own 512 x 512 space, y pointing down.
-    nonisolated(unsafe) static let path: CGPath = {
-        var flip = CGAffineTransform(a: 0.1, b: 0, c: 0, d: -0.1, tx: 0, ty: 512)
-        return SVGPathParser.parse(data).copy(using: &flip) ?? CGPath(rect: .zero, transform: nil)
-    }()
+    /// The parts, in canvas points.
+    nonisolated(unsafe) static let paths: [CGPath] = data.map(SVGPathParser.parse)
 
-    /// The mark fitted to `MenuBarMark` points: its box scaled to `LoomTheme.MenuBar.markWidth`, origin at
-    /// the top-left of the mark's box (y pointing down).
-    static func fitted(origin: CGPoint) -> CGPath {
-        let box = LoomTheme.MenuBar.markBox
-        let scale = LoomTheme.MenuBar.markWidth / box.width
-        var transform = CGAffineTransform(translationX: origin.x, y: origin.y)
-            .scaledBy(x: scale, y: scale).translatedBy(x: -box.minX, y: -box.minY)
-        return path.copy(using: &transform) ?? path
-    }
-}
+    /// The mark's box in the canvas.
+    static var bounds: CGRect { paths.reduce(CGRect.null) { $0.union($1.boundingBoxOfPath) } }
 
-/// The Loom mark as a SwiftUI shape: the menu bar mark's own path data (no second asset), fitted to the
-/// frame it is given and filled with the winding rule.
-struct LoomMarkShape: Shape {
-    /// The width-to-height ratio of the mark's box.
-    static var aspect: CGFloat { LoomTheme.MenuBar.markBox.width / LoomTheme.MenuBar.markBox.height }
-
-    func path(in rect: CGRect) -> Path {
-        let box = LoomTheme.MenuBar.markBox
-        let scale = min(rect.width / box.width, rect.height / box.height)
-        var transform = CGAffineTransform(translationX: rect.minX, y: rect.minY)
-            .scaledBy(x: scale, y: scale).translatedBy(x: -box.minX, y: -box.minY)
-        return Path(MenuBarMark.path.copy(using: &transform) ?? MenuBarMark.path)
+    /// Fills the mark in the context's current colour (its origin at the canvas' top-left, y pointing down).
+    static func fill(in context: CGContext) {
+        for path in paths {
+            context.addPath(path)
+            context.fillPath(using: .evenOdd)
+        }
     }
 }
 
@@ -135,7 +110,7 @@ public enum MenuBarArt {
         return image
     }
 
-    /// With a badge Loom draws the item itself: the handler runs with the bar's appearance (and the
+    /// With a badge the app draws the item itself: the handler runs with the bar's appearance (and the
     /// system's Increase Contrast setting) every time the image is drawn, so the mark stays black on a
     /// light bar and white on a dark one. The spinner, when there is one, is not drawn here.
     @MainActor
@@ -154,8 +129,7 @@ public enum MenuBarArt {
     static func spinnerRect() -> CGRect {
         let theme = LoomTheme.MenuBar.self
         let side = LoomTheme.Spinner.menuBarSide
-        return CGRect(x: theme.markOrigin.x + theme.chaseOrigin.x, y: theme.markOrigin.y + theme.chaseOrigin.y,
-                      width: side, height: side)
+        return CGRect(x: theme.chaseOrigin.x, y: theme.chaseOrigin.y, width: side, height: side)
     }
 
     /// The spinner on a bar: white on a dark one, black on a light one, as the mark is. Increase Contrast changes
@@ -187,16 +161,14 @@ public enum MenuBarArt {
             context.clip(using: .evenOdd)
         }
         context.setFillColor(theme.markRGB(darkBar: darkBar).cgColor)
-        context.addPath(MenuBarMark.fitted(origin: theme.markOrigin))
-        context.fillPath(using: .winding)
+        MenuBarMark.fill(in: context)
         context.restoreGState()
         // The badge.
         if let attention = badge.dotClass {
             let diameter = increasedContrast ? theme.dotDiameterIncreased : theme.dotDiameter
             let center = increasedContrast ? theme.dotCenterIncreased : theme.dotCenter
             context.setFillColor(theme.dotRGB(attention, darkBar: darkBar, increasedContrast: increasedContrast).cgColor)
-            context.fillEllipse(in: CGRect(x: theme.markOrigin.x + center.x - diameter / 2,
-                                           y: theme.markOrigin.y + center.y - diameter / 2,
+            context.fillEllipse(in: CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2,
                                            width: diameter, height: diameter))
         } else if badge == .working, let frame = spinnerFrame {
             BrailleFrames.draw(frame: frame, style: .menuBar, color: spinnerColor(darkBar: darkBar), in: context,
@@ -205,8 +177,7 @@ public enum MenuBarArt {
     }
 
     private static func circle(center: CGPoint, radius: CGFloat) -> CGRect {
-        CGRect(x: LoomTheme.MenuBar.markOrigin.x + center.x - radius, y: LoomTheme.MenuBar.markOrigin.y + center.y - radius,
-               width: radius * 2, height: radius * 2)
+        CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
     }
 
     /// Evidence: the item as it looks on a bar of the given appearance, at `scale`x, as PNG data. The spinner

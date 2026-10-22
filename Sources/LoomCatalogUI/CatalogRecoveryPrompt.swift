@@ -26,16 +26,16 @@ public struct CatalogRecoveryPrompt: Equatable, Sendable {
     ///   - backups: the catalog's backups, newest first (`CatalogRecovery.backups(forCatalogAt:)`).
     ///   - timeZone: how the backup's date is written.
     public static func make(backups: [CatalogBackupInfo], timeZone: TimeZone = .current) -> CatalogRecoveryPrompt {
-        let kept = "Loom keeps the damaged file next to it until a session is permanently deleted."
+        let kept = "Sphyrna keeps the damaged file next to it until a session is permanently deleted."
         guard let newest = backups.first else {
             return CatalogRecoveryPrompt(
-                title: "Loom could not open the session list",
+                title: "Sphyrna could not open the session list",
                 text: "The file that holds the session list is damaged, and no backup of it was found. \(kept) "
                     + "Start Fresh begins with an empty list; your Claude transcripts are not touched.",
                 buttons: [.init(title: "Start Fresh", choice: .startFresh), .init(title: "Quit", choice: .quit)])
         }
         return CatalogRecoveryPrompt(
-            title: "Loom could not open the session list",
+            title: "Sphyrna could not open the session list",
             text: "The file that holds the session list is damaged. \(kept) "
                 + "Restore Backup brings back the list as of \(date(newest.createdAt, timeZone)); sessions added after "
                 + "that are missing from it. Start Fresh begins with an empty list instead. Your Claude transcripts are not touched.",

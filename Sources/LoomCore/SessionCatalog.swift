@@ -192,9 +192,9 @@ public enum SessionCatalogError: Error, CustomStringConvertible, Sendable {
         case let .sqlite(operation, code, message):
             "Catalog \(operation) failed: \(message) (\(code))"
         case let .unsupportedSchema(version):
-            "Catalog schema version \(version) is newer than this Loom build supports"
+            "Catalog schema version \(version) is newer than this Sphyrna build supports"
         case let .foreignDatabase(applicationID):
-            "Catalog path contains a non-Loom SQLite database (application_id \(applicationID))"
+            "Catalog path contains a non-Sphyrna SQLite database (application_id \(applicationID))"
         case let .invalidRow(detail):
             "Catalog contains an invalid row: \(detail)"
         case let .projectNotFound(id):

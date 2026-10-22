@@ -151,7 +151,7 @@ struct UIFixRoundTests {
 
     @Test func theRecordViewSpeaksOfTheProviderByName() {
         let text = ConversationDetail.resumeExplanation(provider: "Claude")
-        #expect(text == "Resume continues this Claude session in its folder. If Claude no longer has it, Loom says so.")
+        #expect(text == "Resume continues this Claude session in its folder. If Claude no longer has it, Sphyrna says so.")
         #expect(!text.lowercased().contains("record") && !text.lowercased().contains("provider"))
     }
 }

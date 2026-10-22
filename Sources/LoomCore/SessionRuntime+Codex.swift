@@ -176,7 +176,7 @@ extension SessionRuntime {
             }
             let exited = await supervisor.runContext(runID: registered.runID) == nil
             await undoLaunch(registered, reason: shuttingDown
-                ? "Loom was quitting"
+                ? "Sphyrna was quitting"
                 : exited ? "Codex exited before it reported a session identity"
                 : "Codex did not report its session identity in time")
             if exited { throw LoomError.message("Codex exited before it reported a session identity") }
@@ -501,7 +501,7 @@ extension SessionRuntime {
         case .userInput:
             return "Codex asks a question. Answer it in the terminal."
         case let .other(method):
-            return "Codex sent a request Loom cannot answer (\(method)). Answer it in the terminal."
+            return "Codex sent a request Sphyrna cannot answer (\(method)). Answer it in the terminal."
         }
     }
 

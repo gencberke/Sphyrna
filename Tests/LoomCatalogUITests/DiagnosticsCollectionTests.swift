@@ -59,7 +59,7 @@ struct DiagnosticsCollectionTests {
         #expect(revealed == 0)
         #expect(!collection.isRunning && collection.canCollect)
         #expect(alerts.count == 1)
-        #expect(alerts[0].0 == "Loom could not collect diagnostics")
+        #expect(alerts[0].0 == "Sphyrna could not collect diagnostics")
         #expect(alerts[0].1 == "The export failed (LoomError.message).")
         #expect(!alerts[0].1.contains("secret"))
     }

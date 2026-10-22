@@ -74,7 +74,7 @@ struct InkSettingsSheetTests {
             folder: "~/.claude")
         #expect(text.title == "Delete 2 sessions?")
         #expect(text.names == "Try the old sidebar spacing, Rename the usage chip")
-        #expect(text.lead == "Loom removes them from Loom, and deletes Claude's local files for them. This can't be undone.")
+        #expect(text.lead == "Sphyrna removes them from Sphyrna, and deletes Claude's local files for them. This can't be undone.")
         #expect(text.removed == ["The transcripts and the subagent transcripts", "File snapshots and session folders"])
         #expect(text.kept == ["Your prompts in Claude's shared prompt history", "Project files and worktrees",
                               "Anything already sent to Anthropic"])
@@ -84,7 +84,7 @@ struct InkSettingsSheetTests {
     @Test func deleteSaysOneSessionInTheSingular() {
         let text = DeleteSheetText.make(rows: [row("Only one", files: 1, bytes: 2_048)], folder: "~/.claude")
         #expect(text.title == "Delete 1 session?")
-        #expect(text.lead == "Loom removes it from Loom, and deletes Claude's local files for it. This can't be undone.")
+        #expect(text.lead == "Sphyrna removes it from Sphyrna, and deletes Claude's local files for it. This can't be undone.")
         #expect(text.totals == "1 file · \(DeleteSheetText.size(2_048)) · in ~/.claude")
     }
 

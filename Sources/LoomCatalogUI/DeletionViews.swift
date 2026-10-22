@@ -21,8 +21,8 @@ struct DeleteSessionFacts: Equatable {
         let sideChats = preview.sideChatCount
         let who = sideChats > 0 ? "it and its \(sideChats) side chat\(sideChats == 1 ? "" : "s")" : "it"
         let theirs = sideChats > 0 ? "them" : "it"
-        let action = "removes \(who) from Loom and deletes Claude's local files for \(theirs)"
-        lead = (preview.isRunning ? "It is running now, so Loom stops it first, then \(action)" : "Loom \(action)")
+        let action = "removes \(who) from Sphyrna and deletes Claude's local files for \(theirs)"
+        lead = (preview.isRunning ? "It is running now, so Sphyrna stops it first, then \(action)" : "Sphyrna \(action)")
             + ". This can't be undone."
         removed = sideChats > 0 ? DeleteSheetText.removedItems : Self.removedItems
         let files = preview.fileCount == 1 ? "1 file" : "\(preview.fileCount) files"
@@ -44,7 +44,7 @@ struct DeleteConversationSheet: View {
     static func buttons(for confirmation: DeletionConfirmation, removeOnly: @escaping () -> Void,
                         delete: @escaping () -> Void) -> (leading: SheetAction?, actions: [SheetAction]) {
         let leading = confirmation.offersRemoveFromLoomOnly
-            ? SheetAction(id: "remove-from-loom", title: "Remove from Loom Only", perform: removeOnly)
+            ? SheetAction(id: "remove-from-loom", title: "Remove from Sphyrna Only", perform: removeOnly)
             : nil
         return (leading, [SheetAction(id: "delete-permanently", title: "Delete Permanently", tint: .failure,
                                       isEnabled: confirmation.canConfirm, perform: delete)])

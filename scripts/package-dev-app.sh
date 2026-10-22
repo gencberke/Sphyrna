@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds "Loom Dev.app" (local.loom.desktop.dev) from a release build (CHECKPOINT-5-HISTORY §5).
+# Builds "Loom Dev.app" (local.loom.desktop.dev), named Sphyrna Dev, from a release build (CHECKPOINT-5-HISTORY §5).
 # Usage: scripts/package-dev-app.sh [output-directory]
 #   default: ~/Library/Application Support/Loom-Dev/app. A directory under
 #   ~/Documents is refused: run hosts are separate TCC-responsible apps and
@@ -77,7 +77,16 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin/loom-app" "$app/Contents/MacOS/Loom Dev"
 # Helpers sit beside the main executable; the app resolves them there only.
 cp "$bin/loom-hook" "$bin/loom-test-child" "$app/Contents/MacOS/"
-cp assets/Loom.icns "$app/Contents/Resources/Loom.icns"
+# The icon, Rising (scripts/make-app-icon.sh): the compiled icon and its flattened copy.
+cp assets/icon/Assets.car assets/icon/Sphyrna.icns "$app/Contents/Resources/"
+# The name people read is Sphyrna Dev (D-83) while the file stays "Loom Dev.app". Finder takes a localized name only
+# while the plain CFBundleDisplayName is the file's name, so the plain one says "Loom Dev" and en.lproj (the one
+# localization, so every language reads it) says Sphyrna Dev for Finder, the Dock and the menu bar.
+mkdir -p "$app/Contents/Resources/en.lproj"
+cat > "$app/Contents/Resources/en.lproj/InfoPlist.strings" <<STRINGS
+"CFBundleName" = "Sphyrna Dev";
+"CFBundleDisplayName" = "Sphyrna Dev";
+STRINGS
 # Run scopes: LaunchServices starts one instance per run, each in a fresh
 # resource coalition (plans/cp5/OWN.md). It is its own TCC-responsible app.
 host="$app/Contents/Helpers/LoomRunHost.app"
@@ -89,8 +98,8 @@ cat > "$host/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>local.loom.desktop.dev.run-host</string>
-  <key>CFBundleName</key><string>Loom Dev Run Host</string>
-  <key>CFBundleDisplayName</key><string>Loom Dev Run Host</string>
+  <key>CFBundleName</key><string>Sphyrna Dev Run Host</string>
+  <key>CFBundleDisplayName</key><string>Sphyrna Dev Run Host</string>
   <key>CFBundleExecutable</key><string>loom-run-host</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSBackgroundOnly</key><true/>
@@ -110,10 +119,13 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>local.loom.desktop.dev</string>
-  <key>CFBundleName</key><string>Loom Dev</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleName</key><string>Sphyrna Dev</string>
   <key>CFBundleDisplayName</key><string>Loom Dev</string>
+  <key>LSHasLocalizedDisplayName</key><true/>
   <key>CFBundleExecutable</key><string>Loom Dev</string>
-  <key>CFBundleIconFile</key><string>Loom</string>
+  <key>CFBundleIconFile</key><string>Sphyrna</string>
+  <key>CFBundleIconName</key><string>Sphyrna</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.5.0</string>
   <key>CFBundleVersion</key><string>$build_number</string>

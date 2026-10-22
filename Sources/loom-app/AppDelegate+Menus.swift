@@ -11,11 +11,13 @@ extension AppDelegate {
         let main = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About Sphyrna", action: #selector(showAbout(_:)), keyEquivalent: "").target = self
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",").target = self
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide Loom", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Hide Sphyrna", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit Loom", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit Sphyrna", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         main.addItem(appItem)
 
@@ -142,7 +144,7 @@ extension AppDelegate {
             item.target = self
         }
         windowMenu.addItem(.separator())
-        windowMenu.addItem(withTitle: "Loom", action: #selector(showMainWindow), keyEquivalent: "").target = self
+        windowMenu.addItem(withTitle: "Sphyrna", action: #selector(showMainWindow), keyEquivalent: "").target = self
         windowItem.submenu = windowMenu
         main.addItem(windowItem)
 

@@ -121,7 +121,7 @@ public enum SessionRuntimeError: Error, CustomStringConvertible, Equatable, Send
     public var description: String {
         switch self {
         case .shuttingDown:
-            "Loom is quitting; no new work is accepted"
+            "Sphyrna is quitting; no new work is accepted"
         case .catalogUnavailable:
             "The session catalog is not available"
         case let .projectNotFound(id):
@@ -137,7 +137,7 @@ public enum SessionRuntimeError: Error, CustomStringConvertible, Equatable, Send
         case let .notRunning(id):
             "The session is not running: \(id)"
         case let .noProviderIdentity(provider):
-            "This \(provider.rawValue) session has no provider identity yet, so it cannot be resumed. Loom will not start a new session in its place."
+            "This \(provider.rawValue) session has no provider identity yet, so it cannot be resumed. Sphyrna will not start a new session in its place."
         case let .providerIdentityTimeout(provider):
             "\(provider.rawValue) did not report its session identity in time; the start was undone"
         case let .unsupportedProvider(provider):

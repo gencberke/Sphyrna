@@ -205,7 +205,7 @@ struct HomeRenderTests {
         let production = try await state([.claude])
         #expect(production.enabled == false, "listed, disabled")
         #expect(production.reason, "with the reason")
-        #expect(production.mark, "the first run carries the Loom mark")
+        #expect(production.mark, "the first run carries the app icon")
         let dev = try await state([.claude, .codex])
         #expect(dev.enabled == true && !dev.reason)
         // The warning state keeps its symbol.

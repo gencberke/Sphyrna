@@ -41,7 +41,7 @@ struct CatalogRecoveryPromptTests {
     @Test func theTextSaysWhatHappenedAndThatTheDamagedFileIsKept() {
         for backups in [[], [backup(1_791_374_400)]] {
             let prompt = CatalogRecoveryPrompt.make(backups: backups, timeZone: utc)
-            #expect(prompt.title == "Loom could not open the session list")
+            #expect(prompt.title == "Sphyrna could not open the session list")
             #expect(prompt.text.contains("damaged"))
             #expect(prompt.text.contains("keeps the damaged file next to it until a session is permanently deleted"))
             #expect(!prompt.text.lowercased().contains("conversation"))

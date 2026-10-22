@@ -5,7 +5,7 @@ import Testing
 
 /// H1 item 4: the notice above a live terminal shows the state's issue while it has one.
 struct SessionIssueNoticeTests {
-    private let watchdog = "Loom is not receiving events from Claude, so this session's status may be wrong. The session itself is not affected."
+    private let watchdog = "Sphyrna is not receiving events from Claude, so this session's status may be wrong. The session itself is not affected."
 
     @Test func theNoticeTextIsTheStatesIssueAndGoneWhenTheIssueClears() {
         var live = SessionViewState(runID: UUID(), issue: watchdog)

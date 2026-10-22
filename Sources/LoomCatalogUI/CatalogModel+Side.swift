@@ -31,7 +31,7 @@ enum SideText {
     static let noteSent = "Sent to the main session"
     static let notesNeedChat = "Notes go to Claude in a Chat session"
     static let discardTitle = "Discard this side chat?"
-    static let discardMessage = "Loom deletes its copy of the session. The main session is not touched."
+    static let discardMessage = "Sphyrna deletes its copy of the session. The main session is not touched."
     static let discardCancel = "Cancel"
     static let discardConfirm = "Discard"
     static let discarding = "Discarding this side chat…"

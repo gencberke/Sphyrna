@@ -31,14 +31,14 @@ public struct LaunchOptions: Equatable, Sendable {
     public func resolveDataRoot(defaultRoot: URL) -> DataRoot {
         let wantsEvidence = contains("--evidence"), wantsRoot = contains("--data-root")
         if wantsEvidence, evidenceDirectory == nil {
-            return .refused("--evidence needs a directory. Loom did not open its catalog.")
+            return .refused("--evidence needs a directory. Sphyrna did not open its catalog.")
         }
         if wantsRoot, value(after: "--data-root") == nil {
-            return .refused("--data-root needs a directory. Loom did not open its catalog.")
+            return .refused("--data-root needs a directory. Sphyrna did not open its catalog.")
         }
         guard let evidence = evidenceDirectory else {
             if wantsRoot {
-                return .refused("--data-root is only valid together with --evidence. Loom did not open its catalog.")
+                return .refused("--data-root is only valid together with --evidence. Sphyrna did not open its catalog.")
             }
             return .root(defaultRoot)
         }

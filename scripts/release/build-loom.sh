@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds the daily-use Loom.app (local.loom.desktop) from this tree and installs it.
+# Builds the daily-use Loom.app (local.loom.desktop), named Sphyrna, from this tree and installs it.
 # In loom-dev this file is scripts/release/build-loom.sh; promote.sh copies it
 # into the clean loom tree as ./build.sh. It must stay standalone: it reads only
 # files of the tree it sits in (Package.swift, VERSION, assets/) and git.
@@ -14,7 +14,7 @@
 # default is the local "Loom Dev Code Signing" identity. Ad-hoc signing is refused:
 # macOS privacy grants persist only while the stable identity, bundle id and
 # install path stay the same.
-# Exit codes: 1 error, 2 path under ~/Documents or bad arguments, 3 Loom is running.
+# Exit codes: 1 error, 2 path under ~/Documents or bad arguments, 3 Sphyrna is running.
 set -euo pipefail
 
 root=${0:A:h}
@@ -46,8 +46,9 @@ final_app=${target:A}
 given_app=${target:a}
 install_dir=${final_app:h}
 
-[[ -f "$root/VERSION" && -f "$root/Package.swift" && -f "$root/assets/Loom.icns" && -f "$root/THIRD-PARTY-NOTICES.md" ]] \
-  || { echo "This is not a promoted loom tree (VERSION, Package.swift, assets/Loom.icns or THIRD-PARTY-NOTICES.md missing): $root" >&2; exit 1; }
+[[ -f "$root/VERSION" && -f "$root/Package.swift" && -f "$root/assets/icon/Assets.car" && -f "$root/assets/icon/Sphyrna.icns" \
+   && -f "$root/THIRD-PARTY-NOTICES.md" ]] \
+  || { echo "This is not a promoted loom tree (VERSION, Package.swift, assets/icon/Assets.car, assets/icon/Sphyrna.icns or THIRD-PARTY-NOTICES.md missing): $root" >&2; exit 1; }
 version=$(<"$root/VERSION")
 version=${version//[[:space:]]/}
 version_re='^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
@@ -73,7 +74,7 @@ running_from_target() {
 }
 refuse_if_running() {
   if running_from_target; then
-    echo "Refusing to replace '$final_app': Loom is running. Quit it first." >&2
+    echo "Refusing to replace '$final_app': Sphyrna is running. Quit it first." >&2
     exit 3
   fi
 }
@@ -95,7 +96,7 @@ matches=(${(f)match_text})
 (( ${#matches} == 1 )) || { echo "Code-signing identity must match exactly one valid certificate: $requested (found ${#matches})" >&2; exit 1; }
 identity=$matches[1]
 
-echo "Loom $version (build $build_number, $revision) -> $final_app"
+echo "Sphyrna $version (build $build_number, $revision) -> $final_app"
 echo "Signing identity: $identity ($requested)"
 echo "Build scratch: $scratch"
 if (( check_only )); then
@@ -118,7 +119,16 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin/loom-app" "$app/Contents/MacOS/Loom"
 # Helpers sit beside the main executable; the app resolves them there only.
 cp "$bin/loom-hook" "$app/Contents/MacOS/"
-cp assets/Loom.icns "$app/Contents/Resources/Loom.icns"
+# The icon, Rising: the compiled icon and its flattened copy (made in loom-dev, so no Xcode is needed here).
+cp assets/icon/Assets.car assets/icon/Sphyrna.icns "$app/Contents/Resources/"
+# The name people read is Sphyrna (D-83) while the file stays Loom.app. Finder takes a localized name only while
+# the plain CFBundleDisplayName is the file's name, so the plain one says "Loom" and en.lproj (the one
+# localization, so every language reads it) says Sphyrna for Finder, the Dock and the menu bar.
+mkdir -p "$app/Contents/Resources/en.lproj"
+cat > "$app/Contents/Resources/en.lproj/InfoPlist.strings" <<STRINGS
+"CFBundleName" = "Sphyrna";
+"CFBundleDisplayName" = "Sphyrna";
+STRINGS
 # Run scopes: LaunchServices starts one host instance per run, each in a fresh
 # resource coalition. It is its own TCC-responsible app.
 host="$app/Contents/Helpers/LoomRunHost.app"
@@ -130,8 +140,8 @@ cat > "$host/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>local.loom.desktop.run-host</string>
-  <key>CFBundleName</key><string>Loom Run Host</string>
-  <key>CFBundleDisplayName</key><string>Loom Run Host</string>
+  <key>CFBundleName</key><string>Sphyrna Run Host</string>
+  <key>CFBundleDisplayName</key><string>Sphyrna Run Host</string>
   <key>CFBundleExecutable</key><string>loom-run-host</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSBackgroundOnly</key><true/>
@@ -150,10 +160,13 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>local.loom.desktop</string>
-  <key>CFBundleName</key><string>Loom</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleName</key><string>Sphyrna</string>
   <key>CFBundleDisplayName</key><string>Loom</string>
+  <key>LSHasLocalizedDisplayName</key><true/>
   <key>CFBundleExecutable</key><string>Loom</string>
-  <key>CFBundleIconFile</key><string>Loom</string>
+  <key>CFBundleIconFile</key><string>Sphyrna</string>
+  <key>CFBundleIconName</key><string>Sphyrna</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$build_number</string>
@@ -190,5 +203,5 @@ else
   mv "$app" "$final_app"
 fi
 codesign --verify --deep --strict "$final_app"
-echo "Installed $final_app (Loom $version, $revision)"
+echo "Installed $final_app (Sphyrna $version, $revision)"
 echo "Signing identity: $identity"

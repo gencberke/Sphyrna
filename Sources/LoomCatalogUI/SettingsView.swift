@@ -250,13 +250,13 @@ struct SystemSettingsCard: View {
         let loginNotice = SettingsNotice.loginItem(integration.loginItemStatus)
         SettingsGroup(label: "System") {
             SettingsRow(title: "Show in menu bar",
-                        detail: "Show Loom's mark in the menu bar, with the sessions that need you or are working.") {
+                        detail: "Show Sphyrna's mark in the menu bar, with the sessions that need you or are working.") {
                 SettingsSwitch(title: "Show in menu bar", isOn: Binding(
                     get: { model.showInMenuBar }, set: { model.setShowInMenuBar($0) }))
             }
             SettingsRowDivider()
             SettingsRow(title: "Notify when a session needs approval",
-                        detail: "A banner when Claude waits for your approval and Loom is not the active app. macOS asks for permission once.",
+                        detail: "A banner when Claude waits for your approval and Sphyrna is not the active app. macOS asks for permission once.",
                         notice: notifyNotice?.text) {
                 if let notifyNotice {
                     Button(notifyNotice.buttonTitle) { integration.openNotificationSettings() }
@@ -266,7 +266,7 @@ struct SystemSettingsCard: View {
                     get: { model.notifyApprovals }, set: { model.setNotifyApprovals($0) }))
             }
             SettingsRowDivider()
-            SettingsRow(title: "Open at login", detail: "Start Loom when you log in.", notice: loginNotice?.text) {
+            SettingsRow(title: "Open at login", detail: "Start Sphyrna when you log in.", notice: loginNotice?.text) {
                 if let loginNotice {
                     Button(loginNotice.buttonTitle) { integration.openLoginItems() }
                         .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
@@ -310,7 +310,7 @@ struct AboutSettings: View {
                     }
                     if let diagnostics {
                         SettingsRowDivider()
-                        SettingsRow(title: "Diagnostics", detail: "A folder with versions, counts and Loom's log. No session content.") {
+                        SettingsRow(title: "Diagnostics", detail: "A folder with versions, counts and Sphyrna's log. No session content.") {
                             Button(diagnostics.isRunning ? "Collecting…" : "Collect Diagnostics…") { diagnostics.collect() }
                                 .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
                                 .disabled(!diagnostics.canCollect)
@@ -339,7 +339,7 @@ struct AboutSettings: View {
                 }
                 .shadow(color: S.iconDrop, radius: 1.5, x: 0, y: 1)
                 .accessibilityHidden(true)
-            Text("Loom").projectType(LoomTheme.InkType.title).foregroundStyle(LoomTheme.Text.primary)
+            Text("Sphyrna").projectType(LoomTheme.InkType.title).foregroundStyle(LoomTheme.Text.primary)
                 .padding(.top, S.aboutNameTop)
             Text(about.version).projectType(LoomTheme.InkType.metaLarge).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .textSelection(.enabled).padding(.top, S.aboutVersionTop)
