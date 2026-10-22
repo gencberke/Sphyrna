@@ -42,6 +42,27 @@ struct HomeRemoraTileGrid: View {
     }
 }
 
+/// The tiles' places while Remora reads (the reference's `.tile.wait`): empty frames in the grid's columns, a hairline at the tile's
+/// radius and height with nothing inside, so the brief's tiles take their places without a jump. They take no click and VoiceOver
+/// does not see them.
+struct HomeRemoraReadingFrames: View {
+    let count: Int
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: LoomTheme.Radius.block)
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: R.tileGap, alignment: .top), count: R.tileColumns),
+                  alignment: .leading, spacing: R.tileGap) {
+            ForEach(0..<count, id: \.self) { _ in
+                shape.strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: R.readingFrameHeight)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 /// One tile: the project and the note's day, the session and how it ended, "Next:" from the note, Put in Draft and Open.
 struct HomeRemoraTileView: View {
     let model: CatalogModel

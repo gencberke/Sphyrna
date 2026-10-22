@@ -9,8 +9,9 @@ import LoomCatalogUI
 /// - `remora-script:<json>`: writes `remora-fixture.json` into the run's own Claude config folder (`answer`, `mode`, `delayMs`, `chips`,
 ///   `drafts`, `facts`). Refused unless the run uses `--fake-providers` and that folder is inside the run's data root
 ///   (`RemoraEvidenceFixture`). Writes `ack-remora-script.json`.
-/// - `remora-brief`: Catch Me Up (`briefRemora`). `remora-ask:<text>`: a question from the field, All projects (`askRemora`).
-///   `remora-stop`: Stop. Each writes `ack-remora-<name>.json` with whether the model took it.
+/// - `remora-brief`: Catch Me Up (`briefRemora`). `remora-ask:<text>`: a question to the model, All projects (`askRemora`), as ⌘K's
+///   ↵ asks it, not through Home's field: Home shows no answer card for it. `remora-stop`: Stop. Each writes
+///   `ack-remora-<name>.json` with whether the model took it.
 /// - `remora-draft:<project id>`: the new-session page's Draft Brief (`draftRemoraBrief`). Writes `ack-remora-draft.json` with whether
 ///   the call started.
 /// - `remora-pref:<on|mode|proposals|exclude|include>:<value>`: the Settings controls' model calls (`on` true or false; `mode`

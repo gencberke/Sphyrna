@@ -281,4 +281,198 @@ struct RemoraHomeRenderTests {
         #expect(identifiers(in: hosting.view).filter { $0 == "home-remora-tile" }.count == 1)
         #expect(!labels(in: hosting.view).contains { $0.contains("Rate limiter") || $0.contains("Needs a test") }, "the excluded project is never named")
     }
+
+    // MARK: Reading, and the answer under the field
+
+    /// Where the pictures go: `LOOM_HOME_RENDER_DIR`, as `home-remora-<reading|answer>-<ink|paper>.png`, to be set beside the
+    /// reference's `#brief` document. Without it the tests only check the tree and the frames.
+    private var renderDirectory: URL? {
+        ProcessInfo.processInfo.environment["LOOM_HOME_RENDER_DIR"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+    }
+
+    /// Any view in a window nobody sees, on the canvas, in Ink (dark) or Paper (light).
+    private func host<Content: View>(_ content: Content, size: CGSize, dark: Bool) -> (NSWindow, NSView) {
+        let hosting = NSHostingController(rootView: content.frame(width: size.width, height: size.height, alignment: .top)
+            .background(LoomTheme.Surface.canvas).environment(\.colorScheme, dark ? .dark : .light))
+        hosting.sizingOptions = []
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        window.contentViewController = hosting
+        window.setContentSize(size)
+        window.isReleasedWhenClosed = false
+        return (window, hosting.view)
+    }
+
+    private func picture(_ view: NSView, name: String, dark: Bool) throws {
+        guard let directory = renderDirectory else { return }
+        let rep = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: rep)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try #require(rep.representation(using: .png, properties: [:]))
+            .write(to: directory.appendingPathComponent("home-remora-\(name)-\(dark ? "ink" : "paper").png"))
+    }
+
+    /// The fake's morning brief over the rig's three sessions: a short sentence and a chip for each. It streams slowly enough that
+    /// Home is seen reading.
+    private func slowBriefScript(_ sessions: [UUID]) -> [String: String] {
+        let s = sessions.map(\.uuidString)
+        let whys = ["Waits for review", "Needs a test", "Draft is ready"]
+        let chips = (0..<3).map { "{\"session\":\"\(s[$0])\",\"why\":\"\(whys[$0])\"}" }.joined(separator: ",")
+        let answer = "You left off in **loom**, where the billing webhook waits for a review.\n\n```remora\n"
+            + "{\"cited\":[\"\(s[0])\"],\"chips\":[\(chips)],\"drafts\":[],\"facts\":[]}\n```\n"
+        return ["LOOM_FAKE_REMORA_ANSWER": answer, "LOOM_FAKE_REMORA_DELAY_MS": "40"]
+    }
+
+    /// A project note for each of the rig's first three projects whose one item names its session, so each brief tile has a one-line
+    /// "Next:" (the reference's tiles all have one).
+    private func writeNotes(_ rig: RemoraHomeRig) async throws {
+        let memory = try RemoraMemory(directory: rig.remoraDirectory, clock: { [base = rig.base] in base })
+        let nexts = ["the signature path.", "the burst test.", "the changelog."]
+        for index in 0..<3 {
+            try await memory.replaceNote(project: rig.projects[index].id, items: [RemoraNoteItem(text: nexts[index], sessions: [rig.sessions[index]])])
+        }
+    }
+
+    /// While Remora writes a brief Home shows three empty frames in the tiles' places, none of the catalog's tiles and none of an
+    /// older brief's (DESIGN §9 Reading and writing); the brief's own tiles then take the frames' places, and the field under them
+    /// does not move.
+    @Test(arguments: [false, true])
+    func readingShowsFramesAndTheBriefsTilesTakeTheirPlaces(olderBrief: Bool) async throws {
+        enableAccessibilityTree()
+        let rig = try await RemoraHomeRig.make(
+            projectNames: ["loom", "api", "docs"],
+            seeds: [.init(title: "Billing webhook", project: 0, ago: 7_200), .init(title: "Rate limiter", project: 1, ago: 9_000),
+                    .init(title: "Release notes", project: 2, ago: 12_000)],
+            preferences: RemoraPreferences(briefMode: .whenIAsk), scriptFor: slowBriefScript)
+        defer { Task { await rig.finish() } }
+        try await writeNotes(rig)
+        if olderBrief { try rig.keepBrief(text: "An older brief.", chips: [(0, "Older"), (1, "Older"), (2, "Older")], ago: 3_600) }
+        rig.model.showHome()
+        let (window, hosting) = hostHome(rig.model, width: 940, height: 900)
+        defer { window.close() }
+        try await settle(window) { self.identifiers(in: hosting.view).filter { $0 == "home-remora-tile" }.count >= 3 }
+        #expect(identifiers(in: hosting.view).filter { $0 == "home-remora-tile" }.count == 3, "the catalog's or the older brief's tiles")
+
+        #expect(HomeRemoraCalls.catchMeUp(rig.model, ui: HomeRemoraUI()))
+        try await settle(window) { self.identifiers(in: hosting.view).contains("home-remora-stop") }
+        #expect(rig.model.remora.phase == .briefing, "the brief is still being written")
+        let found = identifiers(in: hosting.view)
+        #expect(!found.contains("home-remora-tile") && !found.contains("home-remora-open"), "no tile while reading: \(found)")
+        let readingBar = try #require(frames(of: "home-remora-field-bar", in: hosting.view).first)
+        let sentence = try #require(frames(of: "home-remora-reading", in: hosting.view).first
+                                    ?? frames(of: "home-remora-sentence", in: hosting.view).first)
+        // The frames hold the tiles' room: the field stands a tile's height and the grid's top gap under the sentence's room.
+        #expect(sentence.maxY - readingBar.maxY >= LoomTheme.Remora.sentenceRoom + LoomTheme.Remora.tilesTop
+                + LoomTheme.Remora.readingFrameHeight, "the frames keep the tiles' room: \(sentence) \(readingBar)")
+
+        await rig.model.remora.settle()
+        try await settle(window) {
+            self.identifiers(in: hosting.view).filter { $0 == "home-remora-tile" }.count >= 3
+                && self.identifiers(in: hosting.view).filter { $0 == "home-remora-next" }.count >= 3
+        }
+        let landed = identifiers(in: hosting.view)
+        #expect(landed.filter { $0 == "home-remora-tile" }.count == 3 && landed.filter { $0 == "home-remora-next" }.count == 3,
+                "the brief's own tiles, each with its Next: \(landed)")
+        #expect(!spoken(in: hosting.view).contains { $0.contains("An older brief") }, "nothing of the older brief")
+        let tiles = frames(of: "home-remora-tile", in: hosting.view)
+        for tile in tiles {
+            #expect(abs(tile.height - LoomTheme.Remora.readingFrameHeight) < 1, "a frame is a tile's height: \(tile.height)")
+        }
+        let bar = try #require(frames(of: "home-remora-field-bar", in: hosting.view).first)
+        #expect(abs(bar.minY - readingBar.minY) < 1, "the field does not move when the tiles land: \(readingBar) → \(bar)")
+    }
+
+    /// The pictures of the reading frames, in Ink and Paper (the phase held, no call made).
+    @Test func theReadingFramesDrawInInkAndPaper() async throws {
+        enableAccessibilityTree()
+        let rig = try await RemoraHomeRig.make(
+            projectNames: ["loom", "api"],
+            seeds: [.init(title: "Billing webhook", project: 0, ago: 600), .init(title: "Rate limiter", project: 1, ago: 9_000)],
+            preferences: RemoraPreferences(briefMode: .whenIAsk))
+        defer { Task { await rig.finish() } }
+        rig.model.showHome()
+        rig.model.remora.phase = .briefing
+        rig.model.remora.reading = RemoraReading(sessions: 6, projectNotes: 3)
+        defer { rig.model.remora.phase = .idle }
+        for dark in [true, false] {
+            let (window, view) = host(HomeView(model: rig.model), size: CGSize(width: 1_100, height: 760), dark: dark)
+            defer { window.close() }
+            try await settle(window) { self.identifiers(in: view).contains("home-remora-reading") }
+            #expect(identifiers(in: view).contains("home-remora-reading") && !identifiers(in: view).contains("home-remora-tile"))
+            try picture(view, name: "reading", dark: dark)
+        }
+        #expect(!rig.ranAProcess)
+    }
+
+    /// Home's section as `HomeView` holds it, with the test's own `HomeRemoraUI`, reading for itself as Home does.
+    private struct SectionHost: View {
+        let model: CatalogModel
+        let ui: HomeRemoraUI
+        let reads: HomeRemoraReads
+
+        var body: some View {
+            ScrollView {
+                HomeRemoraSection(model: model, paneWidth: 1_100, ui: ui, reads: reads)
+            }
+            .task(id: model.homeRemoraReadKey) { await reads.read(model: model) }
+        }
+    }
+
+    private func answerRig() async throws -> RemoraHomeRig {
+        try await RemoraHomeRig.make(
+            projectNames: ["loom", "backend-api"],
+            seeds: [.init(title: "Migrate auth to JWT", project: 1, ago: 20_000), .init(title: "Port the sidebar to Ink tokens", project: 0, ago: 3_600)],
+            preferences: RemoraPreferences(briefMode: .whenIAsk),
+            scriptFor: { sessions in
+                let id = sessions[0].uuidString
+                return ["LOOM_FAKE_REMORA_ANSWER": "**Migrate auth to JWT** moved the token check into `middleware/auth.py` yesterday at 22:40; nothing in loom touched it.\n\n```remora\n{\"cited\":[\"\(id)\"],\"chips\":[{\"session\":\"\(id)\",\"why\":\"Moved the token check\"}],\"drafts\":[],\"facts\":[]}\n```\n"]
+            })
+    }
+
+    /// A question from Home's field (`HomeRemoraCalls.ask` with the section's `HomeRemoraUI`) is answered under the field: the card
+    /// with the answer's text and its chip (DESIGN §20 The answer under the field), in Ink and Paper.
+    @Test func aFieldQuestionIsAnsweredInTheCardWithItsChip() async throws {
+        enableAccessibilityTree()
+        let rig = try await answerRig()
+        defer { Task { await rig.finish() } }
+        rig.model.showHome()
+        let ui = HomeRemoraUI()
+        let reads = HomeRemoraReads(baselineUndo: rig.model.remora.lastUndo)
+        #expect(HomeRemoraCalls.ask(rig.model, ui: ui, "which session touched the auth middleware?"))
+        await rig.model.remora.settle()
+        #expect(rig.model.remora.lastAnswer?.question == "which session touched the auth middleware?")
+        for dark in [true, false] {
+            let (window, view) = host(SectionHost(model: rig.model, ui: ui, reads: reads), size: CGSize(width: 1_100, height: 760), dark: dark)
+            defer { window.close() }
+            try await settle(window) { self.identifiers(in: view).contains("home-remora-chip") }
+            let found = identifiers(in: view)
+            #expect(found.contains("home-remora-answer") && found.contains("home-remora-answer-text"), "\(found)")
+            #expect(found.contains("home-remora-chip") && labels(in: view).contains("Open Migrate auth to JWT"), "the answer's chip: \(found)")
+            #expect(found.contains("home-remora-answer-footer"))
+            #expect(spoken(in: view).contains { $0.contains("moved the token check into") }, "the answer's text")
+            let card = try #require(frames(of: "home-remora-answer", in: view).first)
+            let bar = try #require(frames(of: "home-remora-field-bar", in: view).first)
+            #expect(card.maxY <= bar.minY + 1, "the card stands under the field: \(card) \(bar)")
+            try picture(view, name: "answer", dark: dark)
+        }
+    }
+
+    /// A question asked through the model alone (⌘K's ↵, the evidence command `remora-ask`) is no question from Home's field: Home
+    /// draws no card for it.
+    @Test func aQuestionAskedOnlyThroughTheModelShowsNoCardOnHome() async throws {
+        enableAccessibilityTree()
+        let rig = try await answerRig()
+        defer { Task { await rig.finish() } }
+        rig.model.showHome()
+        let (window, hosting) = hostHome(rig.model, width: 940, height: 760)
+        defer { window.close() }
+        try await settle(window) { self.identifiers(in: hosting.view).contains("home-remora-field") }
+        #expect(rig.model.askRemora("which session touched the auth middleware?"))
+        await rig.model.remora.settle()
+        #expect(rig.model.remora.lastAnswer?.question == "which session touched the auth middleware?", "the model answered")
+        try await settle(window) { false }
+        let found = identifiers(in: hosting.view)
+        #expect(found.contains("home-remora-field"))
+        #expect(!found.contains("home-remora-answer") && !found.contains("home-remora-chip"), "no card for a model-only question: \(found)")
+    }
 }

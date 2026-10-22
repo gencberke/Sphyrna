@@ -234,6 +234,38 @@ struct RemoraHomeStateTests {
         #expect(tiles.allSatisfy { $0.draft == nil && $0.next == nil }, "Open only")
     }
 
+    /// While a brief is written the tiles' places hold empty frames, with or without an older brief kept; When I ask keeps the
+    /// catalog's tiles (DESIGN §9 Reading and writing, §20). Over a rig's catalog and model; the host is never called.
+    @Test(arguments: [false, true])
+    func readingGivesNoTilesButFramesAndWhenIAskKeepsTheCatalogs(kept: Bool) async throws {
+        let rig = try await RemoraHomeRig.make(
+            projectNames: ["loom", "api"],
+            seeds: [.init(title: "Billing webhook", project: 0, ago: 600), .init(title: "Rate limiter", project: 1, ago: 9_000)],
+            preferences: RemoraPreferences(briefMode: .whenIAsk))
+        defer { Task { await rig.finish() } }
+        if kept {
+            try rig.keepBrief(text: "You left off in loom and api.", chips: [(0, "Waits for review"), (1, "Needs a test")])
+            await rig.model.loadRemoraKeptBrief()
+            #expect(rig.model.remora.keptBrief != nil)
+        }
+        let reads = HomeRemoraReads(baselineUndo: nil)
+        await reads.read(model: rig.model)
+        let ui = HomeRemoraUI()
+
+        let before = HomeRemoraContext.make(model: rig.model, reads: reads, ui: ui)
+        #expect(before.state == (kept ? .brief : .whenIAsk))
+        #expect(before.tiles.count == 2 && before.readingFrames == 0)
+        #expect(before.tiles.allSatisfy(\.isCatalog) == !kept, "When I ask has the catalog's tiles, the brief its own")
+
+        rig.model.remora.phase = .briefing
+        let reading = HomeRemoraContext.make(model: rig.model, reads: reads, ui: ui)
+        #expect(reading.state == .reading)
+        #expect(reading.tiles.isEmpty, "no tile while a brief is written: \(reading.tiles.map(\.session.title))")
+        #expect(reading.readingFrames == LoomTheme.Remora.tileColumns && reading.further.isEmpty && reading.quiet.isEmpty)
+        rig.model.remora.phase = .idle
+        #expect(!rig.ranAProcess)
+    }
+
     @Test func quietProjectsAreThoseThatDidNotMoveSinceTheBrief() {
         let moved = HomeRemoraProject(id: UUID(), name: "moved", tone: nil)
         let still = HomeRemoraProject(id: UUID(), name: "still", tone: nil)

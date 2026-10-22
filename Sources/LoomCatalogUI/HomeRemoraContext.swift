@@ -7,8 +7,10 @@ import LoomRemora
 struct HomeRemoraContext {
     let state: HomeRemoraState
     let brief: HomeRemoraBrief?
-    /// The brief's tiles and lines when the state shows the brief; the catalog's tiles otherwise.
+    /// The brief's tiles and lines when the state shows the brief; none while Remora reads; the catalog's tiles otherwise.
     let tiles: [HomeRemoraTile]
+    /// The empty frames that stand in the tiles' places while Remora reads (DESIGN §9 Reading and writing); 0 in every other state.
+    let readingFrames: Int
     let further: [HomeRemoraFurther]
     let quiet: [HomeRemoraQuiet]
     let pickedUp: Int
@@ -44,9 +46,12 @@ struct HomeRemoraContext {
         let state = HomeRemoraState.choose(input)
 
         let showsBrief = state == .brief || state == .folded
-        let catalog = showsBrief ? [] : HomeRemoraTiles.catalog(recent: recent, excluded: excluded)
+        // While a brief is written the tiles' places hold empty frames, an older brief kept or not; the brief's tiles take them.
+        let reading = state == .reading
+        let catalog = showsBrief || reading ? [] : HomeRemoraTiles.catalog(recent: recent, excluded: excluded)
         return HomeRemoraContext(
-            state: state, brief: brief, tiles: showsBrief ? plan.tiles : catalog, further: showsBrief ? plan.further : [],
+            state: state, brief: brief, tiles: showsBrief ? plan.tiles : catalog,
+            readingFrames: reading ? LoomTheme.Remora.tileColumns : 0, further: showsBrief ? plan.further : [],
             quiet: showsBrief ? plan.quiet : [], pickedUp: picked, now: model.now)
     }
 

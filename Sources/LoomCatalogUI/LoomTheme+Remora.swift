@@ -54,6 +54,9 @@ extension LoomTheme {
         static let tileNextLineSpacing: CGFloat = 2
         static let tileActionsTop: CGFloat = 12
         static let tileActionsGap: CGFloat = 6
+        /// While Remora reads, an empty frame stands in each tile's place (the reference's `.tile.wait`: transparent, the hairline,
+        /// the content hidden): the height of a tile with a one-line "Next:", so the brief's tiles land without a jump.
+        static let readingFrameHeight: CGFloat = 142
         /// "In its composer, not sent" and its Open link: 22 high, 12 under.
         static let placedHeight: CGFloat = 22
         static let placedGap: CGFloat = 8

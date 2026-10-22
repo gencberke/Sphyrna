@@ -102,6 +102,8 @@ private struct HomeRemoraBriefBlock: View {
             if !context.tiles.isEmpty {
                 HomeRemoraTileGrid(model: model, ui: ui, reads: reads, tiles: context.tiles, now: context.now)
                     .padding(.top, R.tilesTop)
+            } else if context.readingFrames > 0 {
+                HomeRemoraReadingFrames(count: context.readingFrames).padding(.top, R.tilesTop)
             }
             ForEach(context.further) { line in
                 HomeRemoraFurtherLine(model: model, line: line).padding(.top, R.quietTop)
