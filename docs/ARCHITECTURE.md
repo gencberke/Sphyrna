@@ -823,6 +823,14 @@ This section maps every UI surface, control, accessibility identifier, keyboard 
 
 ---
 
+
+### 11.16 The Art (I5, DESIGN §17)
+
+- **Files & Types:**
+  - The engine (the spike, `e15ebc4`): `ArtEngine.swift` (the four sharks as plain values: a spine with its travelling wave and the silhouette; plankton and wake; a seeded generator and fixed 1/24 s steps, so a sea is the same for the same time), `ArtField.swift` (the silhouette filled into one cell per character; the ramp ` .:-=+*#%@`, eyes, spots, the remora's disc by facing), `ArtLoop.swift` (Home's 180 s loop as a pure function of time, 76 beats so it closes without a jump; `ArtLoopFrames`, the precomputed form the spike measured), `ArtClock.swift` (the rule: no timer off screen, hidden, minimised, occluded or in the background; one still frame with Animated art off; else the place's cap, 24 ambient, 12 in place and Home's loop, 60 for the arrival; `ArtTicker` follows it with a display link), `ArtDrawing.swift` (`ArtLayerView`, Core Text in the art colour under the place's mask; `ArtBackdrop`, the art over the faint grid; hidden from VoiceOver), `LoomTheme+Art.swift`.
+  - The places (`7e12db7`): `ArtPlaces.swift` (`ArtPlace`: every place art draws, with its sharks, alpha, rate kind, grid, weight, mask, plankton and wake: Home's band, the new-session page, first launch, About, the Changes tab reading the branch, the record pane while Starting… or Resuming…, the empty Agents, Changes and Side tabs, an empty project's page, Remora's arrival and resting remora), `ArtArrival.swift` (the arrival: 60 fps for 2.2 s, 12 while Remora reads with no text, then still), `HomeRemoraArt.swift` (Home's band gives its hammerhead up during the arrival and takes it back on the arrival's own clock).
+- **State Properties:** `UIPreferences.animatedArt` (default on; unreadable values read as on), `CatalogModel.animatedArt` / `setAnimatedArt(_:)`, the `\.animatedArt` environment value the window and Settings pass to the art; Settings → Theme's row under Appearance (`ThemeSettings.swift`). Reduce Motion is not an input of the clock's rule (D-79).
+- **Measurement:** `ArtMeasureTests` runs only with `LOOM_ART_MEASURE_DIR` set; `ArtRenderTests` writes renders with `LOOM_ART_RENDER_DIR`. Off-screen proxies (debug): Home's loop live 1.67 ms a frame, the new-session page 5.6 ms at 24 fps, first launch 6.7 ms at 24, the arrival 4.4 ms at 60 for 2.2 s; the on-screen numbers are the RC pool's (O-01).
 ## 12. Hard-Won Technical Gotchas & Source Guards
 
 Read these invariants before modifying UI, concurrency, terminal, or runtime code. Breaking any of them will either fail a source-guard test or reintroduce a subtle production bug.
