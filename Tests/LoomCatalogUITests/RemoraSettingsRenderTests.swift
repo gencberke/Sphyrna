@@ -144,4 +144,24 @@ struct RemoraSettingsRenderTests {
                                          dark: look.dark, tone: look.tone), "clear")
         }
     }
+
+    /// L3b follow-ups: the Journal tab with its folded weeks (the lines of 20 and 27 days ago, one line a week after the days).
+    @Test func theJournalTabDrawsItsDaysThenItsWeeksInEveryLook() async throws {
+        let rig = try await rig()
+        defer { rig.finish() }
+        let now = Date()
+        try await rig.seed(journal: [
+            RemoraJournalEntry(date: now.addingTimeInterval(-20 * 86_400), kind: .brief, answer: "The importer moved to async.",
+                               summary: "The importer moved to async; three sessions finished"),
+            RemoraJournalEntry(date: now.addingTimeInterval(-27 * 86_400), kind: .question, question: "What is half done?", answer: "Two."),
+        ], notes: [])
+        let memory = RemoraMemoryModel(catalog: rig.model)
+        await memory.load()
+        #expect(memory.groups.filter { $0.label.hasPrefix("Week of ") }.count == 2, "\(memory.groups.map(\.label))")
+        for look in looks {
+            let name = "memory-journal-weeks"
+            expectDrawn(try await render(settingsView(rig.model, sheet: .remoraMemory, tab: .journal), name: name, dark: look.dark,
+                                         tone: look.tone), name)
+        }
+    }
 }

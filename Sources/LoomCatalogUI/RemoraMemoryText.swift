@@ -80,6 +80,13 @@ struct RemoraJournalWeek: Equatable {
     let lines: [Line]
 }
 
+extension RemoraJournalWeek {
+    /// A week as the host folds it: a line for each folded day, its id the day (`YYYY-MM-DD`) the × removes it by.
+    init(summary: RemoraWeekSummary) {
+        self.init(start: summary.start, lines: summary.lines.map { Line(id: $0.id, text: $0.text) })
+    }
+}
+
 enum RemoraJournal {
     /// The days the journal keeps by day, and the weeks it keeps after them (design/DESIGN.md §20).
     static let keptDays = 14
@@ -110,6 +117,15 @@ enum RemoraJournal {
 
     /// The time of a line, "11:20".
     static func time(_ date: Date, calendar: Calendar) -> String { formatter("HH:mm", calendar: calendar).string(from: date) }
+
+    /// When the memory was written: "today 09:12", "yesterday 09:12", else the day, "19 October".
+    static func when(_ date: Date, now: Date, calendar: Calendar) -> String {
+        if calendar.isDate(date, inSameDayAs: now) { return "today " + time(date, calendar: calendar) }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
+            return "yesterday " + time(date, calendar: calendar)
+        }
+        return formatter("d MMMM", calendar: calendar).string(from: date)
+    }
 
     /// What a journal line says: a question with the first sentence of its answer, or the brief's one-line summary.
     static func text(of entry: RemoraJournalEntry) -> String {
@@ -160,6 +176,15 @@ enum RemoraNoteText {
     static func size(_ note: RemoraProjectNote) -> String {
         let limit = RemoraProjectNote.Limits.bytes / 1024
         return String(format: "%.1f of %d KB", Double(note.text.utf8.count) / 1024, limit)
+    }
+
+    /// A card's head: "rewritten 09:12 · 1.4 of 2 KB" (the reference's form for today), "rewritten yesterday 09:12 · …",
+    /// "rewritten 19 October · …"; the size alone when the time is not known.
+    static func meta(_ note: RemoraProjectNote, rewrittenAt: Date?, now: Date, calendar: Calendar) -> String {
+        guard let rewrittenAt else { return size(note) }
+        let when = calendar.isDate(rewrittenAt, inSameDayAs: now)
+            ? RemoraJournal.time(rewrittenAt, calendar: calendar) : RemoraJournal.when(rewrittenAt, now: now, calendar: calendar)
+        return "rewritten " + when + " · " + size(note)
     }
 
     /// The text to save for what the user left in the editor. A line that is still an item of the note as it was keeps the sessions it

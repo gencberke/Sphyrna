@@ -296,7 +296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         window.isOpaque = false
         window.backgroundColor = .clear
         window.delegate = self
-        let split = MainSplitViewController(model: model)
+        let split = MainSplitViewController(model: model, settingsNavigation: { [weak self] in self?.settingsController?.navigation })
         window.contentViewController = split
         // The last frame the user left (kept in ui-preferences.json of this data root, never in
         // the bundle's defaults) when it still fits a screen; otherwise the default, centered.

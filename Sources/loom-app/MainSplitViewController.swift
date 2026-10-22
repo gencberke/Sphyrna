@@ -16,12 +16,15 @@ final class MainSplitViewController: NSSplitViewController {
     /// The window's popover and menu host: the composer's pickers, the draft's, and the project menu open in it.
     private let inkHost: InkHost
 
-    init(model: CatalogModel) {
+    /// `settingsNavigation` is Home's way to Remora's memory sheet (⋯ → Memory… and the footer's Memory…): read each time a
+    /// door is used, so a Settings window made later is found.
+    init(model: CatalogModel, settingsNavigation: @escaping @MainActor () -> SettingsNavigation?) {
         self.model = model
         let host = InkHost()
         inkHost = host
         let sidebar = NSHostingController(rootView: SidebarView(model: model).inkHost(host))
-        let detail = NSHostingController(rootView: DetailView(model: model).inkHost(host))
+        let detail = NSHostingController(rootView: DetailView(model: model)
+            .remoraMemoryDoor(model: model, navigation: settingsNavigation).inkHost(host))
         sidebar.sizingOptions = []
         detail.sizingOptions = []
         sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)

@@ -32,9 +32,15 @@ final class RemoraMemoryModel {
         let name: String
         let tone: ProjectTone?
         let note: RemoraProjectNote
+        /// When the note's file was last written (the morning brief's rewrite, an Edit); nil when the host does not know.
+        var rewrittenAt: Date? = nil
 
         var text: String { RemoraNoteText.display(note) }
         var size: String { RemoraNoteText.size(note) }
+        /// "rewritten 09:12 · 1.4 of 2 KB".
+        func meta(now: Date, calendar: Calendar) -> String {
+            RemoraNoteText.meta(note, rewrittenAt: rewrittenAt, now: now, calendar: calendar)
+        }
     }
 
     /// A card that was removed here and can come back.
@@ -87,13 +93,17 @@ final class RemoraMemoryModel {
         await catalog.remoraMemoryChanged()
         var days: [(day: Date, entries: [RemoraJournalEntry])] = []
         for day in await catalog.remoraJournalDays() { days.append((day, await catalog.remoraJournal(on: day))) }
-        // The weeks the journal folds old days into are not in the model's API yet (reported as a need for core): none are shown.
-        groups = RemoraJournal.groups(days: days, weeks: [], now: now(), calendar: calendar)
+        let weeks = await catalog.remoraJournalWeeks().map(RemoraJournalWeek.init(summary:))
+        groups = RemoraJournal.groups(days: days, weeks: weeks, now: now(), calendar: calendar)
         cards = await catalog.remoraNotes().map {
-            NoteCard(id: $0.project, name: $0.name ?? "Project", tone: catalog.projectTone(forProject: $0.project), note: $0.note)
+            NoteCard(id: $0.project, name: $0.name ?? "Project", tone: catalog.projectTone(forProject: $0.project), note: $0.note,
+                     rewrittenAt: $0.rewrittenAt)
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         loaded = true
     }
+
+    /// "rewritten 09:12 · 1.4 of 2 KB" for a card, read against the sheet's clock.
+    func meta(of card: NoteCard) -> String { card.meta(now: now(), calendar: calendar) }
 
     /// The notes by name, a removed one in its place.
     var noteRows: [NoteRow] {
@@ -136,14 +146,15 @@ final class RemoraMemoryModel {
         if let id = editing, let card = cards.first(where: { $0.id == id }) { toggleEditing(card) }
     }
 
+    /// Remove: the card becomes a line with Undo. The Undo is this removal's own token, so a second removal (or a remembered fact)
+    /// made before the host answers cannot take its place.
     func removeNote(_ card: NoteCard) {
         if editing == card.id { editing = nil }
-        catalog.removeRemoraNote(project: card.id)
         removed[card.id] = RemovedCard(card: card)
         cards.removeAll { $0.id == card.id }
         Task {
-            await catalog.remoraMemoryChanged()
-            removed[card.id]?.token = catalog.remora.lastUndo
+            let token = await catalog.removeRemoraNoteWithUndo(project: card.id)
+            removed[card.id]?.token = token
         }
     }
 

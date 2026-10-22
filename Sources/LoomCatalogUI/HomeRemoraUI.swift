@@ -57,11 +57,30 @@ private struct OpenRemoraMemoryKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// Opens the memory sheet. Settings → Remora's slice owns the sheet; the app sets this once both land. While it is nil, Home draws
-    /// neither of its two doors (⋯ → Memory… and the footer's Memory…).
+    /// Opens the memory sheet (`remoraMemoryDoor(model:navigation:)` sets it). While it is nil, Home draws neither of its two doors
+    /// (⋯ → Memory… and the footer's Memory…).
     var openRemoraMemory: (@MainActor () -> Void)? {
         get { self[OpenRemoraMemoryKey.self] }
         set { self[OpenRemoraMemoryKey.self] = newValue }
+    }
+}
+
+/// Home's door to Remora's memory: Settings → Remora with the memory sheet over it, on the journal. The same path as the evidence
+/// command `remora-memory:open`: the window shows (`showSettings(.remora)`, which the app answers), then its navigation opens the
+/// sheet. Opening a sheet is not a model call.
+enum HomeRemoraMemoryDoor {
+    static func action(model: CatalogModel, navigation: @escaping @MainActor () -> SettingsNavigation?) -> @MainActor () -> Void {
+        {
+            model.showSettings(.remora)
+            navigation()?.openRemoraMemory(tab: .journal)
+        }
+    }
+}
+
+extension View {
+    /// Gives Home its two memory doors. `navigation` is the Settings window's, read each time a door is used.
+    public func remoraMemoryDoor(model: CatalogModel, navigation: @escaping @MainActor () -> SettingsNavigation?) -> some View {
+        environment(\.openRemoraMemory, HomeRemoraMemoryDoor.action(model: model, navigation: navigation))
     }
 }
 

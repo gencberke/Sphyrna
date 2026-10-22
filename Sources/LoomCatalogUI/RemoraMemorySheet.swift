@@ -205,7 +205,7 @@ private struct NoteCardView: View {
                 ProjectMarkView(name: card.name, tone: card.tone, size: .chip)
                 Text(card.name).projectType(M.noteHead).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
                 Spacer(minLength: 0)
-                Text(card.size).projectType(M.noteMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                Text(memory.meta(of: card)).projectType(M.noteMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle)
             }
             body(editing: editing).padding(.top, M.noteBodyTop)
             HStack(spacing: M.noteButtonsGap) {

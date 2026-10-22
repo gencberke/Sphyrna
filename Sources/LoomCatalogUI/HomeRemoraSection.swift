@@ -115,17 +115,9 @@ private struct HomeRemoraHeading: View {
     }
 
     private var items: [HomeRemoraMenuItem] {
-        var rows = [HomeRemoraMenuItem(id: "catch", title: HomeRemoraText.catchMeUp, mark: .symbol("arrow.clockwise"),
-                                       action: { catchMeUp() })]
-        if let openMemory {
-            rows.append(HomeRemoraMenuItem(id: "memory", title: HomeRemoraText.memory, mark: .symbol("book"), action: { openMemory() }))
-        }
-        rows.append(HomeRemoraMenuItem(id: "settings", title: HomeRemoraText.settings, mark: .symbol("gearshape"), dividerAbove: true,
-                                       action: { model.showSettings() }))
-        return rows
+        HomeRemoraMoreMenu.items(openMemory: openMemory, catchMeUp: { _ = HomeRemoraCalls.catchMeUp(model, ui: ui) },
+                                 settings: { model.showSettings() })
     }
-
-    private func catchMeUp() { HomeRemoraCalls.catchMeUp(model, ui: ui) }
 
     private var moreButton: some View {
         let isOpen = ui.binding(.more)
@@ -149,6 +141,20 @@ private struct HomeRemoraHeading: View {
                 HomeRemoraMenuView(items: items, width: R.moreMenuWidth, cursor: ui.cursor, hover: { ui.cursor = $0 },
                                    close: { isOpen.wrappedValue = false })
             })
+    }
+}
+
+/// The rows of ⋯: Catch Me Up, Memory… (only with a door to the memory) and Settings….
+enum HomeRemoraMoreMenu {
+    static func items(openMemory: (@MainActor () -> Void)?, catchMeUp: @escaping @MainActor () -> Void,
+                      settings: @escaping @MainActor () -> Void) -> [HomeRemoraMenuItem] {
+        var rows = [HomeRemoraMenuItem(id: "catch", title: HomeRemoraText.catchMeUp, mark: .symbol("arrow.clockwise"), action: catchMeUp)]
+        if let openMemory {
+            rows.append(HomeRemoraMenuItem(id: "memory", title: HomeRemoraText.memory, mark: .symbol("book"), action: openMemory))
+        }
+        rows.append(HomeRemoraMenuItem(id: "settings", title: HomeRemoraText.settings, mark: .symbol("gearshape"), dividerAbove: true,
+                                       action: settings))
+        return rows
     }
 }
 

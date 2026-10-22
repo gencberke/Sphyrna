@@ -119,10 +119,12 @@ enum RemoraSettingsLine {
         return parts.joined(separator: " · ")
     }
 
-    /// "14 days · 4 project notes"; nothing kept says so.
-    static func workingMemory(days: Int, notes: Int) -> String {
-        guard days > 0 || notes > 0 else { return "Nothing kept yet" }
-        return [plural(days, "day"), plural(notes, "project note")].joined(separator: " · ")
+    /// "14 days · 4 project notes · updated today 09:12"; nothing kept says so (the host gives no time for an empty memory).
+    static func workingMemory(days: Int, notes: Int, updated: Date? = nil, now: Date = Date(), calendar: Calendar = .current) -> String {
+        guard days > 0 || notes > 0 || updated != nil else { return "Nothing kept yet" }
+        var parts = [plural(days, "day"), plural(notes, "project note")]
+        if let updated { parts.append("updated " + RemoraJournal.when(updated, now: now, calendar: calendar)) }
+        return parts.joined(separator: " · ")
     }
 
     static func plural(_ count: Int, _ word: String) -> String { "\(count) \(word)\(count == 1 ? "" : "s")" }

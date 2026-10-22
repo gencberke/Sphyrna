@@ -9,7 +9,7 @@ struct RemoraSettingsView: View {
     let model: CatalogModel
     let navigation: SettingsNavigation
     /// What the working memory holds, read when the tab opens and again when a sheet closes.
-    @State private var counts = (days: 0, notes: 0)
+    @State private var counts: (days: Int, notes: Int, updated: Date?) = (0, 0, nil)
 
     private typealias S = LoomTheme.Settings
     private typealias R = LoomTheme.RemoraTab
@@ -78,7 +78,7 @@ struct RemoraSettingsView: View {
 
     private func readCounts() async {
         await model.remoraMemoryChanged()
-        counts = (await model.remoraJournalDays().count, await model.remoraNotes().count)
+        counts = (await model.remoraJournalDays().count, await model.remoraNotes().count, await model.remoraWorkingMemoryUpdatedAt())
     }
 
     // MARK: Rows
@@ -153,7 +153,7 @@ struct RemoraSettingsView: View {
 
     private var memoryRow: some View {
         SettingsRow(title: RemoraSettingsText.workingTitle,
-                    detail: RemoraSettingsLine.workingMemory(days: counts.days, notes: counts.notes), detailStyle: R.fact) {
+                    detail: RemoraSettingsLine.workingMemory(days: counts.days, notes: counts.notes, updated: counts.updated), detailStyle: R.fact) {
             Button(RemoraSettingsText.show) { navigation.sheets.present(.remoraMemory) }
                 .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
                 .disabled(!model.hasRemora)
