@@ -1,6 +1,6 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-22, 10:20
+- **Updated:** 2026-10-22, 10:25
 - **Stage:** Run toward **Sphyrna 1.6.0** (the first stable release, [D-83](DECISIONS.md)). Releases A, B, and C are closed (`cc54a17`); `0.4.4` remains the daily-use app and latest public GitHub release ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)) until `@user` authorizes 1.6.0's tag, promote, install, and release.
 - **State:** **waiting for implementation** — overnight round: wave 1, `L3a3`, pool #1 (2 test fixes, `946fa73`), the `L3b` follow-ups (`a16fdc9`), `L3c core` (`2701819`), a cleanup (`906f136`) all of `L3c` (⌘K `55ad1ac`, the Draft Brief row `08d852f`, the palette's busy fix), and wave 3 (the `I5` spike `e15ebc4`, `I7` `cbedff8`, the README `c5eadc3`, the `I5` surfaces `7e12db7`) are on `v2`: every 1.6.0 slice is in. Next: the RC pool, whose on-screen and heavy parts wait for `@user`'s word that the Mac is idle ([`plans/ACTIVE-PLAN.md` §3.3](plans/ACTIVE-PLAN.md#33-order-to-160-and-the-test-pool-d-90)).
 - **Blocker:** none.
@@ -59,6 +59,7 @@
 ## 4. Next Actions by Role (`@role` Handoff Queue)
 
 - **`@planner` (main session):** on `@user`'s idle word, the RC pool on `H` (End Batch runbook steps 0–10, `evidence/ink/evening-queue.md` items 1–18, the full gate with windows, C8, real Claude 9a–9d); then fixes with scoped re-checks and the closing `@optimizer` review.
+  - The pool's tools and references are ready off screen (22 Oct: items 14–18 have exact commands; the old reference folders were re-captured from `v2`'s reference). Screen time is about 9 h 30 min (items 0–8 and 10–18; item 9 drops when the full gate runs), so it splits over two idle windows: first the package, the full gate, the automated pairs and real Claude; then the holds by hand, VoiceOver and the art's motion and CPU cells. Not reachable by evidence commands: the plan-limit wait, the expanded fold, switching Animated art mid-run.
 - **`@implementer-ink` / `@implementer-core`:** idle until the pool turns up fixes.
 - **`@optimizer` (Claude Opus 5.5 `max` / `gpt-6-astra` `xhigh`):** stand by for the 1.6.0 release candidate.
 - **`@user`:** in the morning, read the night's summary. Pending decisions in [`DECISIONS.md` §3](DECISIONS.md#open): `O-01`, `O-09`, Remora's public-build default, the 1.6.0 eye checks and release word, and the disk cleanup.
