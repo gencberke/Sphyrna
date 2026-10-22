@@ -4,28 +4,37 @@ import SwiftUI
 
 /// A project's new-session draft (V07, D-59; DESIGN §8): an empty page with one question, "What should we work on in
 /// [project]?", whose project is the picker, the folder line, the session's composer, the keys line, the branch strip and the
-/// presets, on the faint radial grid. Nothing runs until the first send; `DetailContent` draws it for `.draft`.
+/// presets with Remora's brief row (D-80), on the faint radial grid. Nothing runs until the first send; `DetailContent` draws it
+/// for `.draft`.
 struct DraftSessionView: View {
     let model: CatalogModel
     let projectID: UUID?
 
     var body: some View {
+        let origin = model.draftRemoraOriginLine(projectID: projectID)
         ZStack {
             CanvasGrid(mask: .radial)
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
-                // Remora's brief row (DESIGN §8, D-80) goes under the presets, 18 below them, in a later slice.
                 VStack(spacing: 0) {
                     Headline(model: model, projectID: projectID)
+                    // Where the composer's text came from, while it is Remora's brief (DESIGN §8 Remora's brief).
+                    if let origin {
+                        DraftRemoraOriginView(model: model, projectID: projectID, line: origin)
+                            .frame(maxWidth: NewSessionLayout.composerWidth)
+                            .padding(.top, LoomTheme.Draft.originTop)
+                    }
                     NewSessionComposer(model: model, projectID: projectID)
                         .frame(maxWidth: NewSessionLayout.composerWidth)
-                        .padding(.top, NewSessionLayout.composerTop)
+                        .padding(.top, origin == nil ? NewSessionLayout.composerTop : LoomTheme.Draft.originComposerGap)
                     DraftKeysLine()
                         .padding(.top, NewSessionLayout.keysTop)
                     BranchStrip(model: model, projectID: projectID)
                         .padding(.top, NewSessionLayout.stripTop)
                     PresetRow(model: model, projectID: projectID)
                     DraftSourceNote(model: model, projectID: projectID)
+                    // Remora's brief row (DESIGN §8, D-80), 18 under the presets' line.
+                    DraftRemoraRowView(model: model, projectID: projectID)
                 }
                 .frame(maxWidth: NewSessionLayout.column)
                 .padding(.horizontal, NewSessionLayout.sideInset)
@@ -42,7 +51,10 @@ struct DraftSessionView: View {
             model.prepareNewSession()
             model.newSession.open(projectID: projectID)
             model.loadDraftBranch(projectID: projectID)
+            model.landRemoraDraft()
         }
+        // A brief that answered lands in its project's draft once, by Put in Draft's rule; nothing is sent.
+        .onChange(of: model.remora.draft) { _, _ in model.landRemoraDraft() }
     }
 }
 

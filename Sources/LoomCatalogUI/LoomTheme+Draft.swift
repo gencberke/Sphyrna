@@ -85,6 +85,22 @@ extension LoomTheme {
         static let labelExtraGap: CGFloat = 4
         /// The quiet line that says where mode and model came from.
         static let note = InkType.meta
+
+        // MARK: Remora's brief (§8, D-80; the reference's `.nrow` and `.ndraft`)
+
+        /// The row: 18 under the presets' line, 12.5 secondary words, the time in mono 11 tertiary, 10 between its pieces.
+        static let remoraTop: CGFloat = 18
+        static let remoraGap: CGFloat = 10
+        static let remoraText = InkStyle(size: 12.5)
+        static let remoraMeta = InkType.meta
+        /// The line above the composer: 22 under the folder line and 8 above the card, 18 in from the card's edges, "Remora's
+        /// draft" in 11.5 medium secondary, then mono 11 tertiary, 10 between its pieces.
+        static let originTop: CGFloat = 22
+        static let originComposerGap: CGFloat = 8
+        static let originInset: CGFloat = 18
+        static let originGap: CGFloat = 10
+        static let originTitle = InkStyle(size: 11.5, weight: .medium)
+        static let originDetail = InkType.meta
     }
 }
 

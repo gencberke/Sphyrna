@@ -31,6 +31,10 @@ struct RemoraReachTests {
     static let evidenceCalls = "Sources/loom-app/Evidence/EvidenceRemoraCommands.swift"
     static let paletteCalls = "Sources/LoomCatalogUI/PaletteRemora.swift"
     static let modelAPICalls: [String: Int] = [homeCalls: 3, evidenceCalls: 2, paletteCalls: 1]
+    /// Calls of Draft Brief's entry `draftRemoraBrief(` (L3c, D-80): the new-session page's row, on its click (1), and the evidence
+    /// command `remora-draft` (1).
+    static let draftRow = "Sources/LoomCatalogUI/DraftRemoraViews.swift"
+    static let draftAPICalls: [String: Int] = [draftRow: 1, evidenceCalls: 1]
 
     /// Names that would make something run by itself, in Remora's files.
     static let selfStarting = ["Timer", "DispatchSource", "NWPathMonitor", "FSEventStream", "NotificationCenter", "asyncAfter", "Task.sleep"]
@@ -109,6 +113,11 @@ struct RemoraReachTests {
         #expect(messages.isEmpty, "\(messages)")
     }
 
+    @Test func theDraftAPIIsCalledOnlyFromTheListedFiles() {
+        let messages = Self.differences("draftRemoraBrief(", found: Self.counts(of: "draftRemoraBrief"), allowed: Self.draftAPICalls)
+        #expect(messages.isEmpty, "\(messages)")
+    }
+
     @Test func nothingInRemorasFilesStartsByItself() {
         let own = Self.files.filter { $0.path.hasPrefix("Sources/LoomRemora/") || $0.path == Self.model }
         var found: [String: Int] = [:]
@@ -172,6 +181,18 @@ struct RemoraReachTests {
         let found = Self.counts(of: "briefIfDue", in: Self.files.filter { $0.path != Self.host } + [planted])
         let messages = Self.differences("briefIfDue(", found: found, allowed: Self.unaskedCalls)
         #expect(messages.count == 1 && messages[0].contains(Self.host) && messages[0].contains("has 1, the list allows 0"), "\(messages)")
+    }
+
+    @Test func aPlantedExtraDraftCallerFailsTheDraftList() {
+        let planted = SourceFile(path: "Sources/LoomCatalogUI/DraftPresets.swift", code: Matcher.code(of: """
+            func extra(_ model: CatalogModel, _ project: UUID) async { _ = await model.draftRemoraBrief(project: project) }
+            """))
+        let found = Self.counts(of: "draftRemoraBrief", in: Self.files.filter { $0.path != planted.path } + [planted])
+        let messages = Self.differences("draftRemoraBrief(", found: found, allowed: Self.draftAPICalls)
+        #expect(messages.count == 1 && messages[0].contains(planted.path) && messages[0].contains("has 1, the list allows 0"), "\(messages)")
+        // The row's own call, gone, fails it too.
+        let without = Self.counts(of: "draftRemoraBrief", in: Self.files.filter { $0.path != Self.draftRow })
+        #expect(Self.differences("draftRemoraBrief(", found: without, allowed: Self.draftAPICalls).count == 1)
     }
 }
 

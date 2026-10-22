@@ -52,6 +52,13 @@ public final class NewSessionState {
     public private(set) var storeNotice: String?
     @ObservationIgnored var store: NewSessionStore?
     @ObservationIgnored var clock: () -> Date = { Date() }
+    /// Remora's brief in each slot (DESIGN §8, D-80; `DraftRemoraModel.swift`), by `SessionDraft.id`: where the slot's text came
+    /// from, or that the brief was copied. Memory only; it goes with the slot's text (emptied, discarded, sent).
+    var remoraOrigins: [String: DraftRemoraOrigin] = [:]
+    /// When Draft Brief was clicked in each slot, for the time the row shows.
+    @ObservationIgnored var remoraStartedAt: [String: Date] = [:]
+    /// The drafted brief already put in (its `draftedAt`): a brief lands once.
+    @ObservationIgnored var remoraLanded: Date?
 
     public init() {}
 
@@ -130,6 +137,8 @@ public final class NewSessionState {
         draft.text = text
         draft.updatedAt = clock()
         drafts[projectID] = draft
+        // An emptied slot holds no brief of Remora's any more.
+        if !draft.hasText { remoraOrigins[SessionDraft.id(for: projectID)] = nil }
         persistDrafts()
     }
 
@@ -137,6 +146,7 @@ public final class NewSessionState {
     public func discard(projectID: UUID?) {
         drafts[projectID] = SessionDraft(projectID: projectID, updatedAt: clock())
         fullAccessConfirmed.remove(SessionDraft.id(for: projectID))
+        remoraOrigins[SessionDraft.id(for: projectID)] = nil
         persistDrafts()
     }
 
@@ -153,6 +163,8 @@ public final class NewSessionState {
         drafts[new] = moved
         if fullAccessConfirmed.remove(SessionDraft.id(for: old)) != nil { fullAccessConfirmed.insert(SessionDraft.id(for: new)) }
         drafts[old] = SessionDraft(projectID: old, updatedAt: clock())
+        // Remora's brief was about the old project: the moved text is no longer its draft there or here.
+        remoraOrigins[SessionDraft.id(for: old)] = nil
         persistDrafts()
     }
 
@@ -169,6 +181,7 @@ public final class NewSessionState {
     func handOver(_ projectID: UUID?) -> SessionDraft? {
         guard let draft = drafts[projectID] else { return nil }
         drafts[projectID] = SessionDraft(projectID: projectID, updatedAt: clock())
+        remoraOrigins[SessionDraft.id(for: projectID)] = nil
         persistDrafts()
         return draft
     }

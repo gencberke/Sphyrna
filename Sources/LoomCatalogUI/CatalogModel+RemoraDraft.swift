@@ -35,6 +35,16 @@ struct RemoraDraftTarget {
     var drafts: ChatDraftStore?
 }
 
+extension RemoraDraftTarget {
+    /// The new-session page's composer (DESIGN §8 Remora's brief): always a composer, whose text is the project's draft slot, so
+    /// the same rule holds: empty, the brief goes there; with text, the text stays and the brief is copied. `sessionID` carries the
+    /// project's id only to fill the field: with no draft store it is never read.
+    static func newSessionComposer(project: UUID, hasText: @escaping () -> Bool,
+                                   setText: @escaping (String) -> Void) -> RemoraDraftTarget {
+        RemoraDraftTarget(sessionID: project, opensInChat: true, composerHasContent: hasText, setComposerText: setText, drafts: nil)
+    }
+}
+
 /// Put in Draft's rule. Pure over a target.
 enum RemoraPutInDraft {
     static func plan(_ target: RemoraDraftTarget) -> RemoraDraftPlan {
