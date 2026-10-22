@@ -1,18 +1,18 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-22, 10:25
+- **Updated:** 2026-10-22, 22:35
 - **Stage:** Run toward **Sphyrna 1.6.0** (the first stable release, [D-83](DECISIONS.md)). Releases A, B, and C are closed (`cc54a17`); `0.4.4` remains the daily-use app and latest public GitHub release ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)) until `@user` authorizes 1.6.0's tag, promote, install, and release.
-- **State:** **waiting for implementation** — overnight round: wave 1, `L3a3`, pool #1 (2 test fixes, `946fa73`), the `L3b` follow-ups (`a16fdc9`), `L3c core` (`2701819`), a cleanup (`906f136`) all of `L3c` (⌘K `55ad1ac`, the Draft Brief row `08d852f`, the palette's busy fix), and wave 3 (the `I5` spike `e15ebc4`, `I7` `cbedff8`, the README `c5eadc3`, the `I5` surfaces `7e12db7`) are on `v2`: every 1.6.0 slice is in. Next: the RC pool, whose on-screen and heavy parts wait for `@user`'s word that the Mac is idle ([`plans/ACTIVE-PLAN.md` §3.3](plans/ACTIVE-PLAN.md#33-order-to-160-and-the-test-pool-d-90)).
-- **Blocker:** none.
+- **State:** **waiting for `@user`** — the RC pool ran on `H` = `c5b5dd3` in the evening's idle window, shortened on `@user`'s word (C8's tiers as one 18-cell list, ink's items 17–18 cut to their core; about 2 h of screen after the trim). Its real failures are fixed on `v2` and re-checked on the `rc2` package: `ab1d0c9` (Remora's reading frames, the answer card's tests) and `0461a54` (Settings' sheets cover the title strip, full screen auto-hides the empty toolbar, Solid | Glass, the evidence toolchain's fork flag). C8 fails acceptance 3: Chat's CPU is 3.8× the terminal's at 600 chars/s and 2.5× at 6,000 (C7 cut about 10 %).
+- **Blocker:** `@user`'s call on Chat's cost against acceptance 3, with `O-01`'s budgets (STATUS §4).
 
 ---
 
 ## 1. Current Operational Mode
 
 - **Planner:** the session "Sphyrna 1.6.0 release planlama" is `@planner` from 22 Oct 02:20 (`@user`'s word). The earlier planner session and the track sessions `sphyrna-ink` / `sphyrna-core` are idle; implementers run as the planner's own subagents and slices integrate straight onto `v2` (the `ink` and `core` track branches are not used).
-- **Day mode (22 Oct, `@user`):** off-screen work goes on; the RC pool's on-screen part runs only on `@user`'s word. The night's authority (D-91) is spent. `I7` waited on one approval prompt from 04:03 to 08:50 (a probe with `rm -rf` on a variable path): Briefs now tell implementers to avoid commands that ask for approval.
+- **Evening idle window (22 Oct, `@user`):** tests and development at the planner's judgment, with screen time kept short. The screen work ended at 22:19. The night's authority (D-91) is spent. Briefs tell implementers to avoid commands that ask for approval, and to wait on `evidence/tools/wait-measurements.sh` before any build while C8 measures.
 - **Test cadence ([D-90](DECISIONS.md), [DEVELOPMENT.md §3.1](DEVELOPMENT.md#31-test-cadence-slices-one-pooled-batch-fixes-scoped-re-checks-d-90-22-oct-2026)):** narrow off-screen checks per slice; the pool runs when enough has collected; fixes get scoped re-checks.
-- **Quota:** 5-hour window 5 % at 09:17 (resets 13:50), weekly 31 %.
+- **Quota:** 5-hour window 30 % at 22:20 (resets 23:50), weekly 45 %.
 
 ---
 
@@ -21,11 +21,10 @@
 | Role / Slice | Worktree Path | Branch | HEAD SHA | Working Tree Status |
 | --- | --- | --- | --- | --- |
 | Main repo (`loom-dev`) | `/Users/gencberke/Documents/github/loom-dev` | `swarm/1` | this board's commit | Planner docs |
-| Integration branch | `~/Library/Caches/loom-v2/wt/v2` | `v2` | this board's commit (after `55ad1ac`) | Clean; local only, never pushed |
-| Pool runner | `~/Library/Caches/loom-v2/wt/ink-idle` | detached | `a3f950d` (pool #1 fixes) | Clean; pool #1 done (`evidence/pool1/`) |
-| Free (README done) | `~/Library/Caches/loom-v2/wt/core-devguard` | `slice/i7c-readme` | `c5eadc3`'s slice | Clean (scratch `build/core-devguard`) |
-| Free (`I5` done) | `~/Library/Caches/loom-v2/wt/ink-remora-home` | `slice/i5-surfaces` | `7e12db7`'s slice | Clean (scratch `build/ink-remora-home`) |
-| Planner checks (free) | `~/Library/Caches/loom-v2/wt/oc-cleanup` | detached | `cbedff8` (`slice/i7-identity`) | Clean (scratch `build/oc`) |
+| Integration branch | `~/Library/Caches/loom-v2/wt/v2` | `v2` | this board's commit (after `0461a54`) | Clean; local only, never pushed |
+| RC packages | `wt/c8-candidate`, `wt/rc2-candidate` | detached | `c5b5dd3` (`H`), `0461a54` (the fixes) | Clean; packages `c8-*` (C8's numbers) and `rc2-*` (the re-check) under `Loom-Dev/packages/` |
+| Fix slices (done) | `wt/fix-remora-home`, `wt/fix-shell` | `slice/fix-remora-home`, detached | `dfe9bc1`, `0461a54` | Clean (scratches `build/fix-remora-home`, `build/fix-shell`) |
+| Free | `wt/core-devguard`, `wt/ink-remora-home`, `wt/oc-cleanup`, `wt/ink-idle` | — | earlier slices | Clean |
 | Track branches (inactive) | `wt/ink`, `wt/core` | `ink`, `core` | `8447550`, `e3941fb` | Clean, behind `v2` |
 
 ---
@@ -50,6 +49,10 @@
 15. **`I7` A and B** (`cbedff8`): the app is named Sphyrna wherever the user reads it (Loom stays for ids, folders, file names, the `loom` command); the wording guard fails on "Loom" in literals; Rising (`assets/icon/`, `scripts/make-app-icon.sh`) and Front; integrated check `check-20261022T092038-18996.log`.
 16. **README** (`c5eadc3`, `I7` part C): six Ink pictures built from the reference's documents with neutral names; README.release.md for 1.6.0 with a part for 0.4.4 users.
 17. **`I5` surfaces** (`7e12db7`): the sharks on every place of DESIGN §17 (`ArtPlace`), Remora's arrival, Settings → Theme's Animated art.
+18. **The RC pool on `H` = `c5b5dd3`** (`evidence/end-batch-c5b5dd3/`, the runbook's "trimmed window"): window tests, the C8 runner smoke, the full gate (`check-20261022T171127-67168.log`, 364 + 1,709 tests) and real Claude 9a–9d pass (9a after its script's fix; Haiku 9 of 10 turns); ink's pairs 2–18, with the by-hand rest listed for `@user`. Most differences were the tools' or the seeds' (the dev build offers Codex; no presets or transcripts seeded; a 1280×880 reference window); `ended-terminal` caught Chat because a stopped Claude session shows Chat under the Chat switch (SPEC §6.1).
+19. **C8, trimmed** (`evidence/core/budgets/BUDGETS-c5b5dd3.md`): idle CPU ≤ 0.3 % everywhere; the empty app 65 MiB (proposal ≤ 40); 100 open/close cycles leave nothing; launch to the first page 179–213 ms; Chat over 600 s +24 MiB, then flat. **Acceptance 3 fails:** Chat 23.3 % vs the terminal's 6.1 % at 600 chars/s (3.8×), 48.9 % vs 19.6 % at 6,000 (2.5×), Chat's peak 391 MiB vs 115. A profile (`evidence/core/c7/`, tonight's samples) puts half of the busy time in the display cycle: SwiftUI's focus bridge rebuilding the key-view loop (22 %), `.textSelection` (14 %), the measurer; memory is the one tall row per message (about 4 KB of backing store per character of the open message). The art costs 3–4.3 % CPU while visible, 0 hidden or off.
+20. **Fixes #2:** `ab1d0c9` (while a brief is written Home shows three empty frames, DESIGN §9; tests that draw the answer card for a field question and none for a model-only one); `0461a54` (Settings' scrim and sheet measured from the window's top; full screen auto-hides the empty toolbar with the menu bar, with a Dock option AppKit accepts; Solid | Glass; `--fork-session` in the evidence toolchain).
+21. **The re-check on `rc2` = `0461a54`** (`evidence/ink/recheck-queue.md`): the staged release tree builds with no evidence code (`check-20261022T222057-41042.log`); window tests 40 passed; the service smoke 12 of 12; the working indicator ≤ 0.02 % CPU in every row; the reading frames, the ended screen, Solid | Glass and both sheets pair; full screen leaves Home's date line and the session header uncovered. Left for a person: the menu bar's reveal over Home in full screen, and Cancel's focus ring with keyboard navigation on. The ended line over the read-only chat's kept-screen fallback has no Show Details (an edge case: a transcript normally shows there).
 
 ### Active File Locks
 - None: every slice is integrated. **`@planner`:** canonical docs.
@@ -58,8 +61,7 @@
 
 ## 4. Next Actions by Role (`@role` Handoff Queue)
 
-- **`@planner` (main session):** on `@user`'s idle word, the RC pool on `H` (End Batch runbook steps 0–10, `evidence/ink/evening-queue.md` items 1–18, the full gate with windows, C8, real Claude 9a–9d); then fixes with scoped re-checks and the closing `@optimizer` review.
-  - The pool's tools and references are ready off screen (22 Oct: items 14–18 have exact commands; the old reference folders were re-captured from `v2`'s reference). Screen time is about 9 h 30 min (items 0–8 and 10–18; item 9 drops when the full gate runs), so it splits over two idle windows: first the package, the full gate, the automated pairs and real Claude; then the holds by hand, VoiceOver and the art's motion and CPU cells. Not reachable by evidence commands: the plan-limit wait, the expanded fold, switching Animated art mid-run.
-- **`@implementer-ink` / `@implementer-core`:** idle until the pool turns up fixes.
-- **`@optimizer` (Claude Opus 5.5 `max` / `gpt-6-astra` `xhigh`):** stand by for the 1.6.0 release candidate.
-- **`@user`:** in the morning, read the night's summary. Pending decisions in [`DECISIONS.md` §3](DECISIONS.md#open): `O-01`, `O-09`, Remora's public-build default, the 1.6.0 eye checks and release word, and the disk cleanup.
+- **`@user`:** decide how 1.6.0 takes Chat's cost (acceptance 3): (A) ship with tonight's numbers recorded as budgets and a Chat performance slice after 1.6.0 (the planner's recommendation); (B) first slow the streaming flush from 80 to about 150 ms (about −40 % CPU, a choppier stream to judge by eye); (C) B plus no text selection while a message streams and the focus-loop trigger (a day or more). With it, `O-01`'s budgets (the empty app's footprint, Chat's growth, the art's CPU), `O-09`, Remora's public-build default, the 1.6.0 eye checks (the pool's by-hand list) and the release word.
+- **`@planner` (main session):** on `@user`'s call, record `O-01` in `DECISIONS.md` and run the chosen Chat work; then the closing `@optimizer` review on `v2`, once; then the release steps on `@user`'s word.
+- **`@implementer-ink` / `@implementer-core`:** idle.
+- **`@optimizer` (Claude Opus 5.5 `max` / `gpt-6-astra` `xhigh`):** stand by for the release candidate `v2` = `0461a54` plus the docs.
