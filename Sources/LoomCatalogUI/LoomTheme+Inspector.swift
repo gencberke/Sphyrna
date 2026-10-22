@@ -39,10 +39,6 @@ extension LoomTheme {
         // The Agents tab's list and transcript are `LoomTheme.Agents`. A subagent a subagent started is indented one step per level.
         static let agentIndent: CGFloat = 8
         static let agentMaxIndent = 2
-        // No longer drawn (the I6b Agents rows are `LoomTheme.Agents`); kept while `HighlightTests`' grid list names them.
-        static let agentPaddingV: CGFloat = 8
-        static let agentColumnGap: CGFloat = 8
-        static let agentLineGap: CGFloat = 4
     }
 }
 

@@ -509,10 +509,6 @@ enum LoomTheme {
         static let cardSpacing: CGFloat = 8
         static let cardLineSpacing: CGFloat = 4
         static let cardIndicatorTop: CGFloat = 1
-        /// The gap between a subagent's type and description in the inspector's Agents list.
-        static let subagentTextGap: CGFloat = 4
-        // The subagent panel's transcript (FB4-5).
-        static let transcriptInset: CGFloat = 16
         // Detail pane.
         static let detailInset: CGFloat = 16
         static let detailSpacing: CGFloat = 8

@@ -293,21 +293,8 @@ extension CatalogModel {
         }
     }
 
-    /// Deletes a project's note; `remora.lastUndo` restores it. Goes once the memory sheet uses `removeRemoraNoteWithUndo`:
-    /// a second removal or a remembered fact can replace `lastUndo` before the sheet reads it.
-    public func removeRemoraNote(project: UUID) {
-        guard let host = remora.host else { return }
-        track { state in
-            if let token = await host.removeNote(project: project) {
-                state.lastUndo = token
-                state.lastRemembered = nil
-            }
-            state.usage = await host.usage() ?? state.usage
-        }
-    }
-
     /// Deletes a project's note and returns this removal's own Undo token (nil when there was no note, or no host). A tracked
-    /// change like the others (`remoraMemoryChanged()` waits for it), and it sets `remora.lastUndo` as `removeRemoraNote` does,
+    /// change like the others (`remoraMemoryChanged()` waits for it), and it sets `remora.lastUndo` (and clears `lastRemembered`),
     /// so Home's single Undo still holds the newest token.
     public func removeRemoraNoteWithUndo(project: UUID) async -> RemoraUndoToken? {
         guard let host = remora.host else { return nil }

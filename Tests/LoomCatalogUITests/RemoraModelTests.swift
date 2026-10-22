@@ -241,7 +241,7 @@ struct RemoraModelTests {
         model.stopRemora()
         model.confirmRemoraFact("a fact")
         model.editRemoraNote(project: UUID(), text: "x")
-        model.removeRemoraNote(project: UUID())
+        #expect(await model.removeRemoraNoteWithUndo(project: UUID()) == nil)
         model.clearRemoraWorkingMemory()
         model.refreshRemoraUsage()
         #expect(await model.remoraNotes().isEmpty)
