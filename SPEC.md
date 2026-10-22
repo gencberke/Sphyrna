@@ -103,7 +103,7 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
 7. Report deletion complete only after verification succeeds.
 
 - **Shared data & explicit boundaries:** Shared `~/.claude/history.jsonl` is **never** rewritten (concurrent CLI appends could be lost) and `CLAUDE_CODE_SKIP_PROMPT_HISTORY` is **never** set (it disables transcript writing and breaks `--resume`). Project source code, git worktrees, and remote provider copies are never deleted by session deletion.
-- **`"Remove from Loom Only"` (`DP-CP4-7`, `D-69 (10)`):** When a deletion is blocked by an unreachable folder or fails verification, the user can choose `"Remove from Loom Only"`, which stops the run and removes all Sphyrna catalog rows, caches, and Remora memory entries while leaving Claude's files on disk.
+- **`"Remove from Sphyrna Only"` (`DP-CP4-7`, `D-69 (10)`):** When a deletion is blocked by an unreachable folder or fails verification, the user can choose `"Remove from Loom Only"`, which stops the run and removes all Sphyrna catalog rows, caches, and Remora memory entries while leaving Claude's files on disk.
 
 ### 5.2 Retention & Cleanup Review (`Settings → Sessions`, [D-69 (10)](DECISIONS.md))
 - Ships in every build; **nothing is ever deleted without user confirmation** (automatic silent deletion is off).

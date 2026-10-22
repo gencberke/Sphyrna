@@ -147,7 +147,7 @@ step "zsh -n scripts/**/*.sh" zsh_syntax
 step "py_compile scripts/**/*.py" python_syntax
 step "clang -Werror syntax (C sources)" c_syntax
 step "theme literals (LoomCatalogUI)" zsh scripts/check-theme-literals.sh
-step "user wording (session, not conversation)" zsh scripts/check-user-wording.sh
+step "user wording (session, not conversation; Sphyrna, not Loom)" zsh scripts/check-user-wording.sh
 if (( full )); then
   step "swift build -c release" slot swift build -c release --scratch-path "$scratch"
 else

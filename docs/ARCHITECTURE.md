@@ -620,7 +620,7 @@ This section maps every UI surface, control, accessibility identifier, keyboard 
   - `Sources/loom-app/MainSplitViewController.swift` (`CanvasSplitView`, `SplitViewItemCollapse`, `makePaletteOverlayView`)
   - `Sources/LoomCatalogUI/SidebarCollapseSync.swift` (`SidebarCollapseSync`)
   - `Sources/LoomCatalogUI/InkHost.swift`, `InkHostPlacement.swift`, `LoomTheme+Hosts.swift` (`InkHost`, `InkHostView`, `InkPlacement`, `InkOpeners`, `InkOpenState`, `.inkHost(_:)`, `.inkPopover(...)`, `LoomTheme.Host`)
-  - `Sources/loom-app/MenuBarController.swift`, `Sources/LoomCatalogUI/MenuBarState.swift` (`MenuBarSummary`, `MenuBarState`, `MenuBarMenu`), `MenuBarFace.swift`, `MenuBarMark.swift` (`SVGPathParser`, `MenuBarArt`, `LoomMarkShape`), `MenuBarRowText.swift`
+  - `Sources/loom-app/MenuBarController.swift`, `Sources/LoomCatalogUI/MenuBarState.swift` (`MenuBarSummary`, `MenuBarState`, `MenuBarMenu`), `MenuBarFace.swift`, `MenuBarMark.swift` (`SVGPathParser`, `MenuBarMark`: Front's five paths from `design/identity/menubar-front.svg` in canvas points, filled even-odd; `MenuBarArt`: the template image idle, drawn with the 7 pt badge slot otherwise), `MenuBarRowText.swift`
   - `Sources/loom-app/ApprovalNotifier.swift`, `SystemServices.swift` (`NotificationService`, `LoginItemService`), `Sources/LoomCatalogUI/ApprovalNotifications.swift` (`ApprovalNotificationPlanner`, `SettingsNotice`, `SystemIntegration`)
   - `Sources/LoomCatalogUI/SessionNavigation.swift` (`AttentionOrder`, `QuitConfirmation`, `SessionShortcut`, `DockBadge`, `SessionCommandText`)
 - **State Properties:**

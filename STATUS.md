@@ -1,8 +1,8 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-22, 04:00
+- **Updated:** 2026-10-22, 09:35
 - **Stage:** Run toward **Sphyrna 1.6.0** (the first stable release, [D-83](DECISIONS.md)). Releases A, B, and C are closed (`cc54a17`); `0.4.4` remains the daily-use app and latest public GitHub release ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)) until `@user` authorizes 1.6.0's tag, promote, install, and release.
-- **State:** **waiting for implementation** — overnight round: wave 1, `L3a3`, pool #1 (2 test fixes, `946fa73`), the `L3b` follow-ups (`a16fdc9`), `L3c core` (`2701819`), a cleanup (`906f136`) and all of `L3c` (⌘K `55ad1ac`, the Draft Brief row `08d852f`, the palette's busy fix) are on `v2`; running: wave 3, `I7` (the name and marks) and the `I5` art spike ([`plans/ACTIVE-PLAN.md` §3.3](plans/ACTIVE-PLAN.md#33-order-to-160-and-the-test-pool-d-90)).
+- **State:** **waiting for implementation** — overnight round: wave 1, `L3a3`, pool #1 (2 test fixes, `946fa73`), the `L3b` follow-ups (`a16fdc9`), `L3c core` (`2701819`), a cleanup (`906f136`) all of `L3c` (⌘K `55ad1ac`, the Draft Brief row `08d852f`, the palette's busy fix), the `I5` spike (`e15ebc4`) and `I7` A and B (`cbedff8`, the name and marks) are on `v2`; running: `I7` part C (README) and the `I5` surfaces. The RC pool's on-screen part waits for `@user`'s word (22 Oct morning) ([`plans/ACTIVE-PLAN.md` §3.3](plans/ACTIVE-PLAN.md#33-order-to-160-and-the-test-pool-d-90)).
 - **Blocker:** none.
 
 ---
@@ -10,10 +10,9 @@
 ## 1. Current Operational Mode
 
 - **Planner:** the session "Sphyrna 1.6.0 release planlama" is `@planner` from 22 Oct 02:20 (`@user`'s word). The earlier planner session and the track sessions `sphyrna-ink` / `sphyrna-core` are idle; implementers run as the planner's own subagents and slices integrate straight onto `v2` (the `ink` and `core` track branches are not used).
-- **Overnight run authority ([D-91](DECISIONS.md)):** work until morning, Claude implementers only (no `@opencode`), the pooled batch in the idle window, real-Claude test turns where a check needs them; a light eye on usage. Tag, promote, install, push and release wait for `@user`.
+- **Day mode (22 Oct, `@user`):** off-screen work goes on; the RC pool's on-screen part runs only on `@user`'s word. The night's authority (D-91) is spent. `I7` waited on one approval prompt from 04:03 to 08:50 (a probe with `rm -rf` on a variable path): Briefs now tell implementers to avoid commands that ask for approval.
 - **Test cadence ([D-90](DECISIONS.md), [DEVELOPMENT.md §3.1](DEVELOPMENT.md#31-test-cadence-slices-one-pooled-batch-fixes-scoped-re-checks-d-90-22-oct-2026)):** narrow off-screen checks per slice; the pool runs when enough has collected; fixes get scoped re-checks.
-- **Idle window:** `@user` is asleep; `caffeinate -dims` (pid 69498) holds the display and system awake until ~11:40.
-- **Quota:** 5-hour window 36 % at 03:58 (resets 07:10), weekly 30 %; about 25 %/h lately, so two implementers and no more until the reset.
+- **Quota:** 5-hour window 5 % at 09:17 (resets 13:50), weekly 31 %.
 
 ---
 
@@ -24,9 +23,9 @@
 | Main repo (`loom-dev`) | `/Users/gencberke/Documents/github/loom-dev` | `swarm/1` | this board's commit | Planner docs |
 | Integration branch | `~/Library/Caches/loom-v2/wt/v2` | `v2` | this board's commit (after `55ad1ac`) | Clean; local only, never pushed |
 | Pool runner | `~/Library/Caches/loom-v2/wt/ink-idle` | detached | `a3f950d` (pool #1 fixes) | Clean; pool #1 done (`evidence/pool1/`) |
-| Planner fix-ups (free) | `~/Library/Caches/loom-v2/wt/core-devguard` | `slice/palette-busy` | the busy fix | Clean (scratch `build/core-devguard`) |
-| `I5` art spike | `~/Library/Caches/loom-v2/wt/ink-remora-home` | detached | `55ad1ac` | Implementer running (scratch `build/ink-remora-home`) |
-| `I7` parts A and B | `~/Library/Caches/loom-v2/wt/oc-cleanup` | detached | `08d852f` | Implementer running (scratch `build/oc`) |
+| `I7` part C, README | `~/Library/Caches/loom-v2/wt/core-devguard` | detached | `cbedff8` | Implementer running (scratch `build/core-devguard`) |
+| `I5` surfaces | `~/Library/Caches/loom-v2/wt/ink-remora-home` | detached | `cbedff8` (`slice/i5-spike`) | Implementer running (scratch `build/ink-remora-home`) |
+| Planner checks (free) | `~/Library/Caches/loom-v2/wt/oc-cleanup` | detached | `cbedff8` (`slice/i7-identity`) | Clean (scratch `build/oc`) |
 | Track branches (inactive) | `wt/ink`, `wt/core` | `ink`, `core` | `8447550`, `e3941fb` | Clean, behind `v2` |
 
 ---
@@ -47,10 +46,12 @@
 11. **Docs:** the wave 2 pass (ARCHITECTURE §11 and the Remora bullets, SPEC §10, DEVELOPMENT §5's devguard and palette rows, the plan's statuses).
 12. **The Draft Brief row** (`08d852f`, `L3c` part B): offer, reading with Stop, drafted with the call's time and Draft Again, copied, failed, stopped, busy; Put in Draft's rule for the new-session composer; guard `draftRemoraBrief(`: the row 1, evidence 1.
 13. **The palette's busy fix** (planner): Ask Remora is busy while a draft reads; both doors' suites pass together (163 tests, `check-20261022T035758-4751.log`).
+14. **`I5` spike** (`e15ebc4`): the art's engine, clock and layer drawing in new files; off-screen proxies chose the layer and Home's loop live (`evidence/ink/i5/spike.md`).
+15. **`I7` A and B** (`cbedff8`): the app is named Sphyrna wherever the user reads it (Loom stays for ids, folders, file names, the `loom` command); the wording guard fails on "Loom" in literals; Rising (`assets/icon/`, `scripts/make-app-icon.sh`) and Front; integrated check `check-20261022T092038-18996.log`.
 
 ### Active File Locks (wave 3)
-- **`I7` A and B** (`wt/oc-cleanup`): user-visible strings across `Sources/**`, `Tests/**`, `MenuBarMark.swift`, `MenuBarFace.swift`, `LoomTheme.MenuBar`, `scripts/check-user-wording.sh` and `.allow`, `scripts/package-dev-app.sh`, `scripts/release/build-loom.sh` and `allowlist.sh`, `assets/` (Brief `evidence/ink/briefs/i7-identity.md`).
-- **`I5` spike** (`wt/ink-remora-home`): new files only (`Art*.swift`, `LoomTheme+Art.swift`, `Art*Tests.swift`).
+- **`I5` surfaces** (`wt/ink-remora-home`): the surfaces' view files, `ThemeSettings.swift` and the UI preferences for Animated art, `Art*.swift`, `LoomTheme+Art.swift`, their tests (Brief `evidence/ink/briefs/i5-surfaces.md`).
+- **`I7` part C** (`wt/core-devguard`): `README.md`, `scripts/release/README.release.md`, `design/readme/**`, `assets/readme/**` (Brief `evidence/ink/briefs/i7c-readme.md`).
 - **`@planner`:** canonical docs.
 
 ---
@@ -58,8 +59,8 @@
 ## 4. Next Actions by Role (`@role` Handoff Queue)
 
 - **`@planner` (main session):**
-  1. Review and integrate `I7` A and B and the `I5` spike as they report.
-  2. After the 07:10 reset: `I7` part C (README and its pictures, `evidence/ink/briefs/i7c-readme.md`), then the `I5` surfaces after `I7`; then the RC pool (End Batch runbook with `evidence/ink/evening-queue.md` items 14–16) and the closing `@optimizer` review.
-- **`@implementer-ink`:** `I7` A and B, and the `I5` spike, running.
+  1. Review and integrate `I7` part C and the `I5` surfaces as they report.
+  2. Then the RC pool's off-screen part (the full gate without windows, the release tree, the offscreen sweep); its on-screen part (End Batch runbook, `evidence/ink/evening-queue.md` items 1–18, real-Claude 9a–9d) on `@user`'s word; fixes with scoped re-checks; the closing `@optimizer` review.
+- **`@implementer-ink`:** `I7` part C and the `I5` surfaces, running.
 - **`@optimizer` (Claude Opus 5.5 `max` / `gpt-6-astra` `xhigh`):** stand by for the 1.6.0 release candidate.
 - **`@user`:** in the morning, read the night's summary. Pending decisions in [`DECISIONS.md` §3](DECISIONS.md#open): `O-01`, `O-09`, Remora's public-build default, the 1.6.0 eye checks and release word, and the disk cleanup.
