@@ -1,9 +1,9 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-22, 22:35
+- **Updated:** 2026-10-22, 23:05
 - **Stage:** Run toward **Sphyrna 1.6.0** (the first stable release, [D-83](DECISIONS.md)). Releases A, B, and C are closed (`cc54a17`); `0.4.4` remains the daily-use app and latest public GitHub release ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)) until `@user` authorizes 1.6.0's tag, promote, install, and release.
-- **State:** **waiting for `@user`** — the RC pool ran on `H` = `c5b5dd3` in the evening's idle window, shortened on `@user`'s word (C8's tiers as one 18-cell list, ink's items 17–18 cut to their core; about 2 h of screen after the trim). Its real failures are fixed on `v2` and re-checked on the `rc2` package: `ab1d0c9` (Remora's reading frames, the answer card's tests) and `0461a54` (Settings' sheets cover the title strip, full screen auto-hides the empty toolbar, Solid | Glass, the evidence toolchain's fork flag). C8 fails acceptance 3: Chat's CPU is 3.8× the terminal's at 600 chars/s and 2.5× at 6,000 (C7 cut about 10 %).
-- **Blocker:** `@user`'s call on Chat's cost against acceptance 3, with `O-01`'s budgets (STATUS §4).
+- **State:** **waiting for `@user`** — the RC pool is done and its fixes are re-checked (`ab1d0c9`, `0461a54`). `@user` chose to ship 1.6.0 with the measured numbers as its budgets and to study Chat's streaming cost after 1.6.0 with feedback from use ([D-92](DECISIONS.md), resolves `O-01`). `@user` is looking at the dev build (`rc2`) on a fake-data world; then the promote decision.
+- **Blocker:** `@user`'s word on promote (with acceptance 6's closing `@optimizer` review before the public release).
 
 ---
 
@@ -22,10 +22,10 @@
 | --- | --- | --- | --- | --- |
 | Main repo (`loom-dev`) | `/Users/gencberke/Documents/github/loom-dev` | `swarm/1` | this board's commit | Planner docs |
 | Integration branch | `~/Library/Caches/loom-v2/wt/v2` | `v2` | this board's commit (after `0461a54`) | Clean; local only, never pushed |
-| RC packages | `wt/c8-candidate`, `wt/rc2-candidate` | detached | `c5b5dd3` (`H`), `0461a54` (the fixes) | Clean; packages `c8-*` (C8's numbers) and `rc2-*` (the re-check) under `Loom-Dev/packages/` |
-| Fix slices (done) | `wt/fix-remora-home`, `wt/fix-shell` | `slice/fix-remora-home`, detached | `dfe9bc1`, `0461a54` | Clean (scratches `build/fix-remora-home`, `build/fix-shell`) |
-| Free | `wt/core-devguard`, `wt/ink-remora-home`, `wt/oc-cleanup`, `wt/ink-idle` | — | earlier slices | Clean |
-| Track branches (inactive) | `wt/ink`, `wt/core` | `ink`, `core` | `8447550`, `e3941fb` | Clean, behind `v2` |
+| RC package | `wt/rc2-candidate` | detached | `0461a54` | Clean; package `rc2-*` under `Loom-Dev/packages/` |
+| Package worktree | `wt/core` | `core` | `e3941fb` | Clean; `build-c8.sh` adds its worktrees from here |
+| Old worktrees | 35 under `wt/` (Release A–C era) | detached | various | Uncommitted changes, left for `@user` (`evidence/cleanup-20261022.md`) |
+| Track branches (inactive) | — (worktrees removed) | `ink`, `core` | `8447550`, `e3941fb` | Branches kept, behind `v2` |
 
 ---
 
@@ -53,6 +53,8 @@
 19. **C8, trimmed** (`evidence/core/budgets/BUDGETS-c5b5dd3.md`): idle CPU ≤ 0.3 % everywhere; the empty app 65 MiB (proposal ≤ 40); 100 open/close cycles leave nothing; launch to the first page 179–213 ms; Chat over 600 s +24 MiB, then flat. **Acceptance 3 fails:** Chat 23.3 % vs the terminal's 6.1 % at 600 chars/s (3.8×), 48.9 % vs 19.6 % at 6,000 (2.5×), Chat's peak 391 MiB vs 115. A profile (`evidence/core/c7/`, tonight's samples) puts half of the busy time in the display cycle: SwiftUI's focus bridge rebuilding the key-view loop (22 %), `.textSelection` (14 %), the measurer; memory is the one tall row per message (about 4 KB of backing store per character of the open message). The art costs 3–4.3 % CPU while visible, 0 hidden or off.
 20. **Fixes #2:** `ab1d0c9` (while a brief is written Home shows three empty frames, DESIGN §9; tests that draw the answer card for a field question and none for a model-only one); `0461a54` (Settings' scrim and sheet measured from the window's top; full screen auto-hides the empty toolbar with the menu bar, with a Dock option AppKit accepts; Solid | Glass; `--fork-session` in the evidence toolchain).
 21. **The re-check on `rc2` = `0461a54`** (`evidence/ink/recheck-queue.md`): the staged release tree builds with no evidence code (`check-20261022T222057-41042.log`); window tests 40 passed; the service smoke 12 of 12; the working indicator ≤ 0.02 % CPU in every row; the reading frames, the ended screen, Solid | Glass and both sheets pair; full screen leaves Home's date line and the session header uncovered. Left for a person: the menu bar's reveal over Home in full screen, and Cancel's focus ring with keyboard navigation on. The ended line over the read-only chat's kept-screen fallback has no Show Details (an edge case: a transcript normally shows there).
+22. **[D-92](DECISIONS.md)** (`@user`, 22:50): 1.6.0's budgets from C8, `O-01` resolved; Chat's parity after 1.6.0 ([ACTIVE-PLAN §5](plans/ACTIVE-PLAN.md#5-post-160-roadmap-items) item 4).
+23. **Cleanup** (`@user`'s word, `evidence/cleanup-20261022.md`): 23 build scratches and 40 old packages (22 GB) moved to `~/.Trash/loom-cleanup-20261022`; 36 clean worktrees removed (their commits stay in git); `build/v2`, `build/c8`, the `rc2` package, the 0.4.4 reference package, the evidence and every branch kept.
 
 ### Active File Locks
 - None: every slice is integrated. **`@planner`:** canonical docs.
@@ -61,7 +63,7 @@
 
 ## 4. Next Actions by Role (`@role` Handoff Queue)
 
-- **`@user`:** decide how 1.6.0 takes Chat's cost (acceptance 3): (A) ship with tonight's numbers recorded as budgets and a Chat performance slice after 1.6.0 (the planner's recommendation); (B) first slow the streaming flush from 80 to about 150 ms (about −40 % CPU, a choppier stream to judge by eye); (C) B plus no text selection while a message streams and the focus-loop trigger (a day or more). With it, `O-01`'s budgets (the empty app's footprint, Chat's growth, the art's CPU), `O-09`, Remora's public-build default, the 1.6.0 eye checks (the pool's by-hand list) and the release word.
-- **`@planner` (main session):** on `@user`'s call, record `O-01` in `DECISIONS.md` and run the chosen Chat work; then the closing `@optimizer` review on `v2`, once; then the release steps on `@user`'s word.
+- **`@user`:** look at the dev build (`rc2`, fake data; the planner closes it on your word); then the promote word: the tag `release/1.6.0`, `promote.sh`, the build and install over 0.4.4 in `/Applications` (the planner copies `~/Library/Application Support/Loom` first: the catalog migrates forward on open), the push and the GitHub release. Acceptance 6 wants the closing `@optimizer` review before the public release. Also open: `O-09`, Remora's public-build default, the eye checks (the pool's by-hand list), emptying `~/.Trash/loom-cleanup-20261022`, and the 35 old worktrees with uncommitted changes.
+- **`@planner` (main session):** on `@user`'s word, the steps above in order; then a Chat performance slice with feedback.
 - **`@implementer-ink` / `@implementer-core`:** idle.
 - **`@optimizer` (Claude Opus 5.5 `max` / `gpt-6-astra` `xhigh`):** stand by for the release candidate `v2` = `0461a54` plus the docs.

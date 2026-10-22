@@ -19,7 +19,7 @@
 
 1. **Visual fidelity:** Every surface matches its window in `design/reference.html` in both appearances (`Ink` and `Paper`) and all three tone casts (`Neutral`, `Warm`, `Cool`), and `docs/ARCHITECTURE.md` §11 matches what the code draws.
 2. **Full gate:** `scripts/check.sh --full --idle` passes on the integrated head: release build, staged release-tree symbol check, all test targets including window tests, ownership/Stop/Quit/deletion suites, and real-Claude checks.
-3. **Resource budgets & Chat stream parity:** `O-01` budgets are set from fresh C8 measurements and met; CPU40 holds (total `<= 40%` of one core at 1 MiB/s visible terminal output); and a visible Chat stream costs no more than the terminal for the same output at 600 and 6,000 chars/s.
+3. **Resource budgets & Chat stream parity:** `O-01` budgets are set from fresh C8 measurements and met; CPU40 holds (total `<= 40%` of one core at 1 MiB/s visible terminal output); and a visible Chat stream costs no more than the terminal for the same output at 600 and 6,000 chars/s. **[D-92](../DECISIONS.md):** the budgets are set from the RC pool's C8 and met; Chat's parity moves after 1.6.0 (3.8× and 2.5× the terminal today).
 4. **Session service:** One `SessionService` owns every session's lifecycle and transition state regardless of face or harness. No session is lost across face changes or app relaunches, and a session can list sessions (`"$LOOM_CLI" sessions`) and ask to open one (`"$LOOM_CLI" open`) with user approval.
 5. **Cost & context guards:** Every model call Sphyrna makes on its own (`get_usage`, `generate_session_title` capped at 2,000 chars, and Remora's one background brief per day) is listed, measured, and under its ceiling; a session's context holds only the contract's additions; automated guard tests fail if either grows.
 6. **Optimizer closure:** Mandatory closing review on Claude Opus 5.5 `max` / `gpt-6-astra` `xhigh` ([D-06](../DECISIONS.md)) is complete and all blocking findings are closed.
@@ -158,7 +158,10 @@ Source: `~/Library/Caches/loom-v2/evidence/core/END-BATCH-RUNBOOK.md` and `~/Lib
    - Build cross-session message delivery into existing sessions, read/wait verbs for agents, and Claude-to-Codex session hand-off/following on top of `"$LOOM_CLI" sessions` and `"$LOOM_CLI" open`.
 3. **Deferred CP5 Optimization Items (`O-07`, [D-21, D-69](../DECISIONS.md)):**
    - Finder file drop and links in terminal, occluded-window GPU cells, Metal terminal fast path in production builds (development-only today), and spinner layer split.
-4. **Post-v2 Feature Tracks by User Need ([D-69](../DECISIONS.md)):**
+4. **Chat's streaming cost ([D-92](../DECISIONS.md)), with feedback from use:**
+   - Today Chat costs 3.8× the terminal's CPU at 600 chars/s and 2.5× at 6,000, with a 391 MiB peak at 6,000. The profile (`evidence/core/budgets/run-c5b5dd3/`, against `evidence/core/c7/baseline/`) puts half of the busy time in the display cycle: SwiftUI's focus bridge rebuilding the key-view loop (22 %), `.textSelection` (14 %) and the row measurer; the memory is one tall row per message.
+   - Candidates, by cost: a slower or cost-aware flush than 80 ms (about −40 %, a choppier stream); no selection while a message streams, and what makes the focus bridge rebuild; rows of settled blocks instead of one row per message (memory; larger and riskier).
+5. **Post-v2 Feature Tracks by User Need ([D-69](../DECISIONS.md)):**
    - GitHub and Bitbucket PR & CI status chip.
    - Richer worktree management for general users.
    - Remote Control toggle.
