@@ -24,7 +24,7 @@ enum RemoraLanguage {
     static func ofLastQuestion(in memory: RemoraMemory) async -> String? {
         for day in await memory.journalDays().reversed() {
             let entries = await memory.journal(on: day)
-            if let question = entries.last(where: { $0.kind == .question && !($0.question ?? "").isEmpty })?.question {
+            if let question = entries.last(where: { $0.kind == .question && !$0.isDraft && !($0.question ?? "").isEmpty })?.question {
                 return detect(question)
             }
         }

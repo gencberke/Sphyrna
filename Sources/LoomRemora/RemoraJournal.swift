@@ -24,9 +24,13 @@ public struct RemoraJournalEntry: Equatable, Sendable, Identifiable {
     public var model: String?
     public var tokens: Int
     public var summary: String?
+    /// A Draft Brief's line: kind `question` (it ran as one), marked ` for=draft` after the kind, which a build that does not
+    /// know the mark ignores. Its question is "Draft Brief".
+    public var isDraft = false
 
     public init(id: String = RemoraJournalEntry.newID(), date: Date, kind: RemoraKind, question: String? = nil, answer: String,
-                sessions: [UUID] = [], model: String? = nil, tokens: Int = 0, summary: String? = nil) {
+                sessions: [UUID] = [], model: String? = nil, tokens: Int = 0, summary: String? = nil, isDraft: Bool = false) {
+        self.isDraft = isDraft
         self.id = id
         self.date = date
         self.kind = kind
@@ -41,13 +45,14 @@ public struct RemoraJournalEntry: Equatable, Sendable, Identifiable {
     /// An entry out of what a call produced: the question and the answer's first sentence masked and cut, the summary
     /// likewise, the sessions without repeats.
     public static func make(kind: RemoraKind, question: String?, answerText: String, sessions: [UUID], model: String?, tokens: Int,
-                            summary: String?, date: Date) -> Self {
+                            summary: String?, date: Date, isDraft: Bool = false) -> Self {
         var seen = Set<UUID>()
         let question = kind == .question ? question.map { RemoraText.line($0, limit: Limits.question) } : nil
         let summary = summary.map { RemoraText.line($0, limit: Limits.summary) }.flatMap { $0.isEmpty ? nil : $0 }
         return Self(
             date: date, kind: kind, question: question, answer: RemoraText.line(RemoraText.firstSentence(answerText), limit: Limits.answer),
-            sessions: sessions.filter { seen.insert($0).inserted }, model: model.map(Self.token), tokens: tokens, summary: summary)
+            sessions: sessions.filter { seen.insert($0).inserted }, model: model.map(Self.token), tokens: tokens, summary: summary,
+            isDraft: isDraft)
     }
 
     public static func newID() -> String { String(UUID().uuidString.lowercased().prefix(8)) }
@@ -64,6 +69,7 @@ public struct RemoraJournalEntry: Equatable, Sendable, Identifiable {
         calendar.timeZone = timeZone
         let parts = calendar.dateComponents([.hour, .minute], from: date)
         var line = String(format: "- %02d:%02d %@ %@", parts.hour ?? 0, parts.minute ?? 0, id, kind == .brief ? "brief" : "question")
+        if isDraft { line += " for=draft" }
         if let model, !model.isEmpty { line += " model=\(model)" }
         line += " tokens=\(tokens)"
         if !sessions.isEmpty { line += " sessions=" + sessions.map(\.uuidString).joined(separator: ",") }
@@ -86,8 +92,10 @@ public struct RemoraJournalEntry: Equatable, Sendable, Identifiable {
         var sessions: [UUID] = []
         var model: String?
         var tokens = 0
+        var isDraft = false
         for field in head.dropFirst(3) {
-            if field.hasPrefix("model=") { model = String(field.dropFirst(6)) }
+            if field == "for=draft" { isDraft = true }
+            else if field.hasPrefix("model=") { model = String(field.dropFirst(6)) }
             else if field.hasPrefix("tokens=") { tokens = Int(field.dropFirst(7)) ?? 0 }
             else if field.hasPrefix("sessions=") { sessions = field.dropFirst(9).split(separator: ",").compactMap { UUID(uuidString: String($0)) } }
         }
@@ -111,7 +119,7 @@ public struct RemoraJournalEntry: Equatable, Sendable, Identifiable {
         let start = day.start(in: calendar)
         self.init(id: head[1], date: calendar.date(bySettingHour: hour, minute: minute, second: 0, of: start) ?? start,
                   kind: head[2] == "brief" ? .brief : .question, question: question, answer: answer, sessions: sessions,
-                  model: model, tokens: tokens, summary: summary)
+                  model: model, tokens: tokens, summary: summary, isDraft: isDraft)
     }
 
     private static func quoted(_ text: String) -> String {

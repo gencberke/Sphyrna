@@ -136,6 +136,22 @@ public final class RemoraHost {
         return await runBrief(onStart: onStart, onReading: onReading, onText: onText)
     }
 
+    /// Draft Brief: an unsent brief for `project`'s next session, one call on the click.
+    public func draft(project: UUID, onReading: @escaping @MainActor (RemoraReading) -> Void = { _ in },
+                      onText: @escaping @MainActor (String) -> Void = { _ in }) async -> RemoraOutcome {
+        guard settings.isOn, !settings.excludedProjects.contains(project) else { return .off }
+        return await run(.draft(project: project), onReading: onReading, onText: onText)
+    }
+
+    /// Whether a Draft Brief for `project` may start now: Remora on, no call running, the project not excluded and with a
+    /// session in the catalog (one read of the catalog's maps; nothing starts).
+    public func canDraft(project: UUID) async -> Bool {
+        guard settings.isOn, running == nil, !settings.excludedProjects.contains(project) else { return false }
+        guard let maps = try? await readMaps() else { return false }
+        return settings.isOn && running == nil && !settings.excludedProjects.contains(project)
+            && maps.sessionProjects.values.contains(project)
+    }
+
     /// Ends the running call: its child gets SIGTERM, then SIGKILL; the call's `ask` or `brief` returns `.cancelled`.
     public func stop() { running?.cancel() }
 
@@ -177,7 +193,12 @@ public final class RemoraHost {
             let maps = try await readMaps()
             let excluded = settings.excludedProjects
             let scope: RemoraScope
-            if case let .question(_, asked, _) = request { scope = asked } else { scope = .allProjects }
+            switch request {
+            case let .question(_, asked, _): scope = asked
+            // A draft reads as a question about its project: the same share and index, so the two share the cached prefix.
+            case let .draft(project): scope = .project(project)
+            case .brief: scope = .allProjects
+            }
             let share = await memory.share(
                 for: scope, excludedProjects: excluded, sessionProjects: maps.sessionProjects,
                 projectNames: maps.namedProjects(excluding: excluded))
@@ -186,6 +207,10 @@ public final class RemoraHost {
             if request.kind == .brief {
                 language = settings.language
                 if language == nil { language = await RemoraLanguage.ofLastQuestion(in: memory) }
+            } else if request.isDraft {
+                // The draft's own rule is the language of the project's sessions (the pack tells it); Settings' brief language is
+                // the fallback when that cannot be told.
+                language = settings.language
             }
             let pack = try await builder.build(
                 request, settings: RemoraPackSettings(excludedProjects: excluded, model: settings.model, effort: settings.effort,

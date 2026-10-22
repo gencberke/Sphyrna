@@ -293,9 +293,10 @@ public actor RemoraMemory {
         sessions.removeAll { forgotten.contains($0) }
         var question: String?
         if case let .question(text, _, _) = request { question = text }
+        if request.isDraft { question = "Draft Brief" }
         let entry = RemoraJournalEntry.make(
             kind: request.kind, question: question, answerText: answer.text, sessions: sessions, model: answer.model,
-            tokens: answer.usage.total, summary: isBrief ? answer.summary : nil, date: clock())
+            tokens: answer.usage.total, summary: isBrief ? answer.summary : nil, date: clock(), isDraft: request.isDraft)
         if sessions.isEmpty, !named.isEmpty {
             // Nothing to write: every session this call rests on is gone.
         } else {

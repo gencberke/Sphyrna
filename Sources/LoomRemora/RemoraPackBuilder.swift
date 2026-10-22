@@ -87,6 +87,8 @@ public struct RemoraPackBuilder: Sendable {
             case let .project(id): project = id
             case let .session(id): only = id
             }
+        case let .draft(id):
+            project = id
         case .brief:
             break
         }
@@ -130,6 +132,9 @@ public struct RemoraPackBuilder: Sendable {
                 return (Array(earlier) + added, Set(added.map(\.id)))
             }
             return (scored.prefix(limits.pickedSessions).map(\.0), [])
+        case .draft:
+            // The project's most recent sessions (the candidates are only the project's, newest first).
+            return (Array(readable.prefix(limits.pickedSessions)), [])
         case let .brief(since):
             // The projects that moved, at most `briefProjects` of them (a session without a project is one group), newest first.
             let readable = readable.filter { $0.lastActivityAt >= since }

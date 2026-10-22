@@ -97,7 +97,7 @@ struct PackLayout {
             readSessionIDs: readIDs, namedSessionIDs: named,
             estimatedTokens: RemoraPack.estimate(rendered.text),
             facts: RemoraPackFacts(sessionsRead: readIDs.count, sessionsUnread: unread, projectNotes: memory.projectNotes),
-            droppedExcerpts: dropped, excerptBytes: cap, omittedIndexRows: omittedRows)
+            droppedExcerpts: dropped, excerptBytes: cap, omittedIndexRows: omittedRows, isDraft: request.isDraft)
     }
 
     // MARK: Writing
@@ -165,7 +165,7 @@ struct PackLayout {
         return """
         <now>
         Local time: \(stamps.weekday(now)) \(stamps.stamp(now)) (\(stamps.timeZone.identifier)).
-        Remora today: \(day.calls) calls (questions: \(day.questions), briefs: \(day.briefs)), \(day.tokens.total) tokens.
+        Remora today: \(day.calls) calls (questions: \(day.questions), briefs: \(day.briefs)\(day.drafts > 0 ? ", drafts: \(day.drafts)" : "")), \(day.tokens.total) tokens.
         </now>
 
         """
@@ -242,15 +242,30 @@ struct PackLayout {
             return "<request>\nWrite my morning brief for Home: what moved since \(stamps.stamp(since)), which sessions need me, "
                 + "and where I could pick up. Sessions in the index with an older last activity did not move. Keep it short.\n"
                 + languageLine() + "</request>\n"
+        case let .draft(project):
+            let name = picks.first { $0.summary.projectID == project }?.summary.projectName
+                ?? shown.first { $0.projectID == project }?.projectName
+            return "<request>\nWrite the brief for my next session in \(name.map { Self.line($0) } ?? "this project"): a session's "
+                + "brief, as the rules say, from this project's recent sessions and its note. It is the first message I may send in "
+                + "that session, and nothing is sent until I send it.\n" + languageLine(sessionsLanguage() ?? settings.language)
+                + "</request>\n"
         }
     }
 
     /// The brief's language, one short line in the request (the dynamic part, so the cached prefix never depends on it); none
     /// when no language is known.
-    private func languageLine() -> String {
-        guard let code = settings.language, !code.isEmpty else { return "" }
+    private func languageLine(_ language: String? = nil) -> String {
+        guard let code = language ?? settings.language, !code.isEmpty else { return "" }
         let name = Locale(identifier: "en").localizedString(forIdentifier: code) ?? code
         return "Write the brief in \(name) (\(code)).\n"
+    }
+
+    /// A draft's language: the one the user writes in across the sessions the pack read (their prompts only); nil when it
+    /// cannot be told.
+    private func sessionsLanguage() -> String? {
+        let prompts = kept.compactMap { picks[$0].excerpt }.flatMap(\.entries).filter { $0.hasPrefix("user: ") }
+            .map { String($0.dropFirst(6)) }
+        return prompts.isEmpty ? nil : RemoraLanguage.detect(prompts.joined(separator: "\n"))
     }
 
     // MARK: Text

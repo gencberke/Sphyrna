@@ -683,4 +683,93 @@ struct RemoraModelTests {
         #expect(model.remora.lastUndo == newest)
         await rig.finish()
     }
+
+    // MARK: L3c: Draft Brief
+
+    @Test func draftBriefIsRefusedWithoutAHostWhenOffForAnExcludedProjectOrOneWithNoSessionAndWhileACallRuns() async throws {
+        let none = try Rig(withHost: false)
+        defer { try? FileManager.default.removeItem(at: none.root) }
+        #expect(!(await none.model.draftRemoraBrief(project: UUID())))
+
+        let rig = try Rig(script: Self.slow)
+        let model = rig.model
+        #expect(!(await model.draftRemoraBrief(project: UUID())), "a project with no session")
+        model.setRemoraOn(false)
+        await model.remora.settle()
+        #expect(!(await model.draftRemoraBrief(project: rig.project)), "Remora is off")
+        model.setRemoraOn(true)
+        model.setRemoraExcluded(rig.project, true)
+        await model.remora.settle()
+        #expect(!(await model.draftRemoraBrief(project: rig.project)), "an excluded project")
+        #expect(!rig.ranAProcess && model.remora.draft == .idle)
+        model.setRemoraExcluded(rig.project, false)
+        await model.remora.settle()
+        // A question runs: no draft starts; a draft runs: no question or brief starts.
+        #expect(model.askRemora("What moved?"))
+        #expect(!(await model.draftRemoraBrief(project: rig.project)))
+        model.stopRemora()
+        await model.remora.settle()
+        #expect(await model.draftRemoraBrief(project: rig.project))
+        #expect(!model.askRemora("And now?") && !model.briefRemora() && !model.briefRemoraIfDue(homeShown: true))
+        #expect(!(await model.draftRemoraBrief(project: rig.project)), "a second draft while one runs")
+        model.stopRemora()
+        await model.remora.settle()
+        await rig.finish()
+    }
+
+    @Test func aDraftReadsThenLandsWithItsTextCitedIdsAndCountsAndLeavesHomesAnswerAlone() async throws {
+        // The fake's script file: the answer's text, its closing block built with the pack's own session ids.
+        let fixture = FileManager.default.temporaryDirectory.appendingPathComponent("loom-remora-draft-\(UUID().uuidString.prefix(8))")
+        try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixture) }
+        try Data(#"{"answer":"The goal is a clean importer.","mode":"slow","chips":[],"drafts":[]}"#.utf8)
+            .write(to: fixture.appendingPathComponent("remora-fixture.json"))
+        let rig = try Rig(script: ["CLAUDE_CONFIG_DIR": fixture.path])
+        let state = rig.model.remora
+        #expect(await rig.model.draftRemoraBrief(project: rig.project))
+        #expect(state.draft.isReading && state.phase == .idle)
+        _ = try #require(await rig.pid())
+        #expect(state.draft == .reading(project: rig.project,
+                                        reading: RemoraReading(sessions: 0, projectNotes: 0, project: .init(id: rig.project, name: "loom"))))
+        await state.settle()
+        guard case let .drafted(drafted) = state.draft else { Issue.record("not drafted: \(state.draft)"); await rig.finish(); return }
+        #expect(drafted.project == rig.project && drafted.text == "The goal is a clean importer.")
+        #expect(drafted.citedSessionIDs == [rig.session] && drafted.sessionsRead == 0)
+        #expect(abs(drafted.draftedAt.timeIntervalSinceNow) < 60)
+        #expect(state.lastAnswer == nil && state.streamedText.isEmpty, "the draft took Home's answer")
+        #expect(state.usage?.today.drafts == 1 && state.usage?.today.questions == 0)
+        let line = try #require(await rig.model.remoraJournal(on: Date()).last)
+        #expect(line.isDraft && line.kind == .question && line.sessions == [rig.session])
+        await rig.finish()
+    }
+
+    @Test func aDraftsFailureCarriesItsSentenceAndStopLeavesItStoppedAndDraftingAgainIsTheSameEntry() async throws {
+        let login = try Rig(script: ["LOOM_FAKE_REMORA": "login"])
+        #expect(await login.model.draftRemoraBrief(project: login.project))
+        await login.model.remora.settle()
+        #expect(login.model.remora.draft == .failed(project: login.project, failure: .notLoggedIn,
+                                                    sentence: "Remora uses your Claude Code login. Log in with claude in a terminal."))
+        #expect(login.model.remora.lastFailure == nil, "the draft's failure is not Home's")
+        await login.finish()
+
+        let error = try Rig(script: ["LOOM_FAKE_REMORA": "error"])
+        #expect(await error.model.draftRemoraBrief(project: error.project))
+        await error.model.remora.settle()
+        #expect(error.model.remora.draft == .failed(project: error.project, failure: .apiError,
+                                                    sentence: "Remora could not get an answer from Claude."))
+        await error.finish()
+
+        let slow = try Rig(script: Self.slow)
+        #expect(await slow.model.draftRemoraBrief(project: slow.project))
+        _ = try #require(await slow.pid())
+        slow.model.stopRemora()
+        await slow.model.remora.settle()
+        #expect(slow.model.remora.draft == .stopped(project: slow.project) && slow.model.remora.stopped == nil)
+        try? FileManager.default.removeItem(at: slow.pids)
+        #expect(await slow.model.draftRemoraBrief(project: slow.project))
+        #expect(slow.model.remora.draft.isReading)
+        await slow.model.remora.settle()
+        if case .drafted = slow.model.remora.draft {} else { Issue.record("drafting again did not draft: \(slow.model.remora.draft)") }
+        await slow.finish()
+    }
 }

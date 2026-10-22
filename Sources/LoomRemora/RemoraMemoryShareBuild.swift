@@ -96,6 +96,8 @@ extension RemoraMemoryShare {
         let parts = calendar.dateComponents([.hour, .minute], from: entry.date)
         let when = "\(RemoraDay(entry.date, calendar: calendar).short) " + String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
         switch entry.kind {
+        case .question where entry.isDraft:
+            return "- \(when) drafted a session's brief: \"\(entry.answer)\""
         case .question:
             return "- \(when) asked: \"\(entry.question ?? "")\" | answered: \"\(entry.answer)\""
         case .brief:

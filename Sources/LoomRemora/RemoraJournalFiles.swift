@@ -152,9 +152,11 @@ struct RemoraJournalFiles {
     private func foldDay(_ day: RemoraDay, into week: RemoraWeek) throws {
         let entries = entries(on: day)
         guard !entries.isEmpty else { return }
-        let questions = entries.filter { $0.kind == .question }.count
-        let text = entries.last(where: { $0.summary != nil })?.summary
-            ?? (questions == 0 ? "a brief" : "\(questions) question\(questions == 1 ? "" : "s")")
+        let questions = entries.filter { $0.kind == .question && !$0.isDraft }.count
+        let drafts = entries.filter(\.isDraft).count
+        let counted = [questions > 0 ? "\(questions) question\(questions == 1 ? "" : "s")" : nil,
+                       drafts > 0 ? "\(drafts) draft\(drafts == 1 ? "" : "s")" : nil].compactMap { $0 }
+        let text = entries.last(where: { $0.summary != nil })?.summary ?? (counted.isEmpty ? "a brief" : counted.joined(separator: ", "))
         var seen = Set<UUID>()
         let sessions = entries.flatMap(\.sessions).filter { seen.insert($0).inserted }
         let file = url(week.string)

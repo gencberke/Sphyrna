@@ -54,13 +54,15 @@ public final class RemoraUsage: Sendable {
         public var start: Date
         public var questions = 0
         public var briefs = 0
+        /// Draft Brief calls (they run as questions and are not in `questions`).
+        public var drafts = 0
         public var tokens = RemoraTokenUsage()
         public var costUSD = 0.0
         /// Calls in which the CLI ignored `CLAUDE_CODE_MESSAGES_PROMPT_CACHE_TTL=5m` (D-86): the one-hour cache write was
         /// more than `driftFactor` times the system prompt's estimated tokens, so the stdin was written under the hour
         /// too. A normal call writes about 1.7 times; an ignored key makes it ten times or more.
         public var cacheDriftCalls = 0
-        public var calls: Int { questions + briefs }
+        public var calls: Int { questions + briefs + drafts }
 
         var isEmpty: Bool { calls == 0 && tokens == RemoraTokenUsage() && costUSD == 0 && cacheDriftCalls == 0 }
     }
@@ -94,9 +96,10 @@ public final class RemoraUsage: Sendable {
         return current.history + (current.day.isEmpty ? [] : [current.day])
     }
 
-    func recordStart(_ kind: RemoraKind) {
+    func recordStart(_ kind: RemoraKind, isDraft: Bool = false) {
         update { state in
             switch kind {
+            case .question where isDraft: state.day.drafts += 1
             case .question: state.day.questions += 1
             case .brief: state.day.briefs += 1
             }
@@ -141,6 +144,8 @@ public final class RemoraUsage: Sendable {
         var day: String
         var questions: Int
         var briefs: Int
+        /// Absent in a file from before Draft Brief.
+        var drafts: Int?
         var inputTokens: Int
         var cacheCreationTokens: Int
         var cacheReadTokens: Int
@@ -159,7 +164,7 @@ public final class RemoraUsage: Sendable {
     private static func save(_ state: State, to file: URL, calendar: Calendar) {
         let days = (state.history + (state.day.isEmpty ? [] : [state.day])).map { day in
             StoredDay(day: RemoraDay(day.start, calendar: calendar).string, questions: day.questions, briefs: day.briefs,
-                      inputTokens: day.tokens.input, cacheCreationTokens: day.tokens.cacheCreation,
+                      drafts: day.drafts, inputTokens: day.tokens.input, cacheCreationTokens: day.tokens.cacheCreation,
                       cacheReadTokens: day.tokens.cacheRead, outputTokens: day.tokens.output,
                       cacheCreation5mTokens: day.tokens.cacheCreation5m, cacheCreation1hTokens: day.tokens.cacheCreation1h,
                       costUSD: day.costUSD, cacheDriftCalls: day.cacheDriftCalls)
@@ -177,7 +182,7 @@ public final class RemoraUsage: Sendable {
         for item in stored.days.sorted(by: { $0.day < $1.day }) {
             guard let day = RemoraDay(item.day) else { continue }
             let value = Day(
-                start: day.start(in: calendar), questions: item.questions, briefs: item.briefs,
+                start: day.start(in: calendar), questions: item.questions, briefs: item.briefs, drafts: item.drafts ?? 0,
                 tokens: RemoraTokenUsage(input: item.inputTokens, cacheCreation: item.cacheCreationTokens,
                                          cacheRead: item.cacheReadTokens, output: item.outputTokens,
                                          cacheCreation5m: item.cacheCreation5mTokens, cacheCreation1h: item.cacheCreation1hTokens),

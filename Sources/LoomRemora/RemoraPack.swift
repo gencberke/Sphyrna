@@ -26,12 +26,20 @@ public enum RemoraPackRequest: Equatable, Sendable {
     case question(String, scope: RemoraScope, previous: RemoraExchange?)
     /// The morning brief: what moved since `since`.
     case brief(since: Date)
+    /// Draft Brief (the new-session page, D-80): an unsent brief for the project's next session. It runs as a question (its
+    /// deadline, budget and journal kind) and is counted on its own (`RemoraUsage.Day.drafts`).
+    case draft(project: UUID)
 
     var kind: RemoraKind {
         switch self {
-        case .question: .question
+        case .question, .draft: .question
         case .brief: .brief
         }
+    }
+
+    var isDraft: Bool {
+        if case .draft = self { return true }
+        return false
     }
 }
 
@@ -132,6 +140,8 @@ public struct RemoraPack: Equatable, Sendable {
     public var excerptBytes: Int
     /// Index rows the budget (or the row limit) left out.
     public var omittedIndexRows: Int
+    /// A Draft Brief's pack (its call is counted as a draft).
+    public var isDraft = false
 
     public var stablePrefixTokens: Int { RemoraPack.estimate(stablePrefix) }
 
@@ -143,8 +153,10 @@ public struct RemoraPack: Equatable, Sendable {
     /// block boundary and the CLI sends stdin as one block, so a stable prefix inside stdin was never read back (842 of
     /// 17,000 tokens); in the system prompt the next call on the same catalog reads it (4,193).
     public func request(model: String = "sonnet", effort: String = "low") -> RemoraRequest {
-        RemoraRequest(kind: kind, model: model, effort: effort, pack: afterStablePrefix,
-                      knownSessionIDs: Set(namedSessionIDs.map(\.uuidString)), systemSuffix: stablePrefix)
+        var request = RemoraRequest(kind: kind, model: model, effort: effort, pack: afterStablePrefix,
+                                    knownSessionIDs: Set(namedSessionIDs.map(\.uuidString)), systemSuffix: stablePrefix)
+        request.isDraft = isDraft
+        return request
     }
 
     static func estimate(_ text: String) -> Int { (text.utf8.count + 3) / 4 }

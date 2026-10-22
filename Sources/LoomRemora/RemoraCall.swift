@@ -21,6 +21,8 @@ public struct RemoraRequest: Sendable, Equatable {
     /// Text that goes into the system prompt after the rules, through a file under `<data root>/remora/` (never on argv).
     /// Empty: the system prompt is the rules alone and the whole pack is stdin.
     public var systemSuffix: String
+    /// A Draft Brief (a question-kind call counted as a draft).
+    public var isDraft = false
 
     public init(kind: RemoraKind, model: String = "sonnet", effort: String = "low", pack: String,
                 knownSessionIDs: Set<String> = [], systemSuffix: String = "") {
@@ -244,7 +246,7 @@ public struct RemoraCall: Sendable {
         let systemTokens = Self.systemPromptTokens(for: request)
         var reader = RemoraStreamReader(knownSessionIDs: request.knownSessionIDs)
         var delivered = false
-        usage?.recordStart(request.kind)
+        usage?.recordStart(request.kind, isDraft: request.isDraft)
         let child = supervisor.streamHelper(
             executable, Self.arguments(model: request.model, effort: request.effort, systemPromptFile: systemFile?.path),
             environment: environment.merging(additionalEnvironment) { _, extra in extra },

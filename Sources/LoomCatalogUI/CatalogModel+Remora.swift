@@ -53,7 +53,12 @@ public final class RemoraModelState {
     /// here, which reload it.
     public internal(set) var keptBrief: RemoraKeptBrief?
 
+    /// Draft Brief's row on the new-session page (D-80): its own state, apart from Home's call. Idle until a draft starts.
+    public internal(set) var draft: DraftState = .idle
+
     @ObservationIgnored var host: RemoraHost?
+    /// A draft's checks are being made (the catalog read before it starts): nothing else starts meanwhile.
+    @ObservationIgnored var draftChecking = false
     @ObservationIgnored var persist: (@MainActor (RemoraPreferences) -> Void)?
     @ObservationIgnored var task: Task<Void, Never>?
     /// An automatic brief is being decided (no phase yet).
@@ -61,6 +66,25 @@ public final class RemoraModelState {
     @ObservationIgnored var pending: [Task<Void, Never>] = []
 
     public init() {}
+
+    /// What Draft Brief's row shows.
+    public enum DraftState: Equatable, Sendable {
+        case idle
+        /// The call runs. `reading` is what it reads ("Reading 3 sessions in loom and its note…"), set once its pack is
+        /// built; nil before that.
+        case reading(project: UUID, reading: RemoraReading?)
+        case drafted(RemoraDraftedBrief)
+        /// The call ended without a draft: the failure's kind and its sentence, worded as a question's failure on Home.
+        case failed(project: UUID, failure: RemoraFailure.Kind, sentence: String)
+        /// Stop (or Remora turned off, or the project excluded) ended it.
+        case stopped(project: UUID)
+
+        /// The draft's call is running.
+        public var isReading: Bool {
+            if case .reading = self { return true }
+            return false
+        }
+    }
 
     /// Whether a call runs (the UI offers Stop).
     public var isBusy: Bool { phase != .idle }
@@ -143,6 +167,36 @@ extension CatalogModel {
         return Double(window.remainingPercent) / 100
     }
 
+    // MARK: Draft Brief
+
+    /// Draft Brief (the new-session page's row, D-80): one call, on the click, that writes an unsent brief for `project`'s next
+    /// session into `remora.draft` (reading, then drafted, failed or stopped). Nothing is sent: placing the text in the composer
+    /// is the UI's (Put in Draft's rule). Returns once the call has started (true); false, with no child started, without a
+    /// host, while Remora is off, while another Remora call runs, for an excluded project and for one with no session (the
+    /// last is the catalog's answer, read here once). `stopRemora()` stops it; drafting again is this same entry.
+    @discardableResult
+    public func draftRemoraBrief(project: UUID) async -> Bool {
+        let state = remora
+        func free() -> Bool {
+            state.phase == .idle && !state.deciding && !state.draftChecking && !state.draft.isReading && state.preferences.isOn
+                && !state.preferences.excludedProjects.contains(project)
+        }
+        guard let host = state.host, free() else { return false }
+        state.draftChecking = true
+        let allowed = await host.canDraft(project: project)
+        state.draftChecking = false
+        guard allowed, free() else { return false }
+        state.draft = .reading(project: project, reading: nil)
+        state.task = Task {
+            let outcome = await host.draft(project: project, onReading: { reading in
+                if case .reading(project, _) = state.draft { state.draft = .reading(project: project, reading: reading) }
+            })
+            state.finishDraft(outcome, project: project)
+            if outcome.changesUsage { state.usage = await host.usage() ?? state.usage }
+        }
+        return true
+    }
+
     /// Stops the running call (its child ends); no-op when none runs.
     public func stopRemora() { remora.host?.stop() }
 
@@ -153,7 +207,8 @@ extension CatalogModel {
         _ body: @escaping @MainActor (RemoraHost, RemoraModelState, _ started: @escaping @MainActor () -> Void) async -> RemoraOutcome
     ) -> Bool {
         let state = remora
-        guard let host = state.host, state.phase == .idle, !state.deciding, state.preferences.isOn else { return false }
+        guard let host = state.host, state.phase == .idle, !state.deciding, !state.draftChecking, !state.draft.isReading,
+              state.preferences.isOn else { return false }
         let kind = phase ?? .briefing
         let begin: @MainActor () -> Void = {
             state.deciding = false
@@ -351,6 +406,42 @@ extension CatalogModel {
 
     /// The file `Remora.md` lives in: an absolute path the user chose, or nil for `<data root>/remora/Remora.md`.
     public func setRemoraNoteFile(_ url: URL?) { updateRemoraPreferences { $0.noteFilePath = url?.path } }
+}
+
+/// A Draft Brief that answered: the text the UI places in the composer (or copies), with what it rests on.
+public struct RemoraDraftedBrief: Equatable, Sendable {
+    public var project: UUID
+    /// The brief, plain paragraphs, without the closing block.
+    public var text: String
+    /// The sessions the brief cites (only ids its pack named).
+    public var citedSessionIDs: [UUID]
+    /// How many sessions its pack read ("from 3 sessions in loom").
+    public var sessionsRead: Int
+    public var draftedAt: Date
+}
+
+extension RemoraModelState {
+    /// A failed draft's sentence, worded as Home words a question's failure (design/DESIGN.md §20, States).
+    static func draftFailureSentence(_ kind: RemoraFailure.Kind) -> String {
+        kind == .notLoggedIn ? "Remora uses your Claude Code login. Log in with claude in a terminal."
+            : "Remora could not get an answer from Claude."
+    }
+
+    /// What a draft's outcome leaves in `draft`.
+    func finishDraft(_ outcome: RemoraOutcome, project: UUID) {
+        switch outcome {
+        case let .answered(answer):
+            draft = .drafted(RemoraDraftedBrief(
+                project: project, text: answer.answer.text, citedSessionIDs: answer.answer.cited.compactMap(UUID.init(uuidString:)),
+                sessionsRead: answer.readSessionIDs.count, draftedAt: Date()))
+        case let .failed(failure):
+            draft = .failed(project: project, failure: failure.kind, sentence: Self.draftFailureSentence(failure.kind))
+        case .cancelled:
+            draft = .stopped(project: project)
+        case .remembered, .notSaved, .busy, .off, .notDue:
+            draft = .idle
+        }
+    }
 }
 
 extension RemoraOutcome {
