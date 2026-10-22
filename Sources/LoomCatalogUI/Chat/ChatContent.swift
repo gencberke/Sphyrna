@@ -93,7 +93,7 @@ enum ChatContent {
         /// The characters of the tail's source (what a measure of the tail lays out).
         let tailCharacters: Int
         /// The head can be drawn and measured apart from the tail. False when it holds a code block that is still open (a fence
-        /// the splitter and the parser read differently): the message is then drawn and measured as one.
+        /// the splitter does not see, as one in a quote): the message is then drawn and measured as one.
         let isComposable: Bool
 
         var blocks: [MarkdownBlock] { tail.isEmpty ? head : head + tail }
@@ -128,6 +128,9 @@ enum ChatContent {
             let headText = String(text[..<text.utf8.index(text.utf8.startIndex, offsetBy: state.headEnd)])
             let hash = headText.hashValue
             let key = "\(id)#head#\(hash)#\(headText.utf8.count)" as NSString
+            // Only the newest head is kept: an older one of the same message is never asked for again.
+            if let old = state.headKey, old != key { blockCache.removeObject(forKey: old) }
+            state.headKey = key
             var blocks: [MarkdownBlock] = []
             if !headText.isEmpty {
                 if let cached = blockCache.object(forKey: key) {
@@ -181,12 +184,14 @@ enum ChatContent {
         /// The start of the first line that is not complete, and how far a line break was looked for.
         private var lineStart = 0
         private var searchedTo = 0
-        private var inFence = false
+        private var fence = SplitFence()
         private var previousBlank = false
         /// The end of the head (the offset of `stableSplit`), and the one the head blocks were made for.
         private(set) var headEnd = 0
         var builtHeadEnd = -1
         var head: HeadParts?
+        /// The `blockCache` key of the newest head; kept over a restart, so the next head still replaces it.
+        var headKey: NSString?
 
         func advance(to new: String) {
             if !Self.startsWith(new, prefix: text) { restart() }
@@ -200,11 +205,10 @@ enum ChatContent {
                 }
                 let first = utf8.index(utf8.startIndex, offsetBy: lineStart)
                 let line = new[first..<lineFeed]
-                let trimmed = line.drop(while: { $0 == " " })
-                if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") { inFence.toggle() }
-                let blank = trimmed.isEmpty
+                fence.read(line)
+                let blank = line.allSatisfy { $0 == " " }
                 cursor = utf8.index(after: lineFeed)
-                if blank, !previousBlank, !inFence { headEnd = utf8.distance(from: utf8.startIndex, to: cursor) }
+                if blank, !previousBlank, !fence.isOpen { headEnd = utf8.distance(from: utf8.startIndex, to: cursor) }
                 previousBlank = blank
                 lineStart = utf8.distance(from: utf8.startIndex, to: cursor)
             }
@@ -216,7 +220,7 @@ enum ChatContent {
             result = nil
             lineStart = 0
             searchedTo = 0
-            inFence = false
+            fence = SplitFence()
             previousBlank = false
             headEnd = 0
             builtHeadEnd = -1
@@ -243,19 +247,40 @@ enum ChatContent {
         return ChatMarkdown.parse(text)
     }
 
+    /// The code fence a split is inside, read line by line with the parser's own rules (`ChatMarkdown.openingFence` and
+    /// `isClosingFence`): a fence closes only on its own character, in a run at least as long, with nothing after it.
+    /// Unlike the parser, it opens at any indent, as a fence in a list item does; it closes within three columns of the
+    /// fence's own indent (the parser's rule when the fence sits at the item's content column or at the top level).
+    struct SplitFence {
+        private var open: ChatMarkdown.Fence?
+
+        var isOpen: Bool { open != nil }
+
+        mutating func read(_ line: Substring) {
+            let body = line.drop(while: { $0 == " " })
+            let indent = line.utf8.count - body.utf8.count
+            if let fence = open {
+                let base = min(indent, max(0, fence.indent - 3))
+                if ChatMarkdown.isClosingFence(line.dropFirst(base), fence: fence) { open = nil }
+            } else if var fence = ChatMarkdown.openingFence(body) {
+                fence.indent = indent
+                open = fence
+            }
+        }
+    }
+
     /// The index after the last paragraph break that is outside a code fence: everything before it is complete.
     static func stableSplit(_ text: String) -> String.Index {
-        var inFence = false
+        var fence = SplitFence()
         var lastBreak = text.startIndex
         var lineStart = text.startIndex
         var previousBlank = false
         while lineStart < text.endIndex {
             let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
             let line = text[lineStart..<lineEnd]
-            let trimmed = line.drop(while: { $0 == " " })
-            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") { inFence.toggle() }
-            let blank = trimmed.isEmpty
-            if blank, !previousBlank, !inFence, lineEnd < text.endIndex { lastBreak = text.index(after: lineEnd) }
+            fence.read(line)
+            let blank = line.allSatisfy { $0 == " " }
+            if blank, !previousBlank, !fence.isOpen, lineEnd < text.endIndex { lastBreak = text.index(after: lineEnd) }
             previousBlank = blank
             lineStart = lineEnd < text.endIndex ? text.index(after: lineEnd) : text.endIndex
         }

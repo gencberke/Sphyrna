@@ -257,14 +257,15 @@ enum ChatMarkdown {
         return line[index...]
     }
 
-    private struct Fence {
+    /// A code fence as the parser reads it; the streaming split reads fences by the same rules (`ChatContent.SplitFence`).
+    struct Fence {
         var character: Character
         var length: Int
         var indent: Int
         var language: String?
     }
 
-    private static func openingFence(_ line: Substring) -> Fence? {
+    static func openingFence(_ line: Substring) -> Fence? {
         let indent = leadingColumns(line)
         guard indent < 4 else { return nil }
         let body = line.drop(while: { $0 == " " })
@@ -277,7 +278,7 @@ enum ChatMarkdown {
         return Fence(character: character, length: length, indent: indent, language: language?.isEmpty == true ? nil : language)
     }
 
-    private static func isClosingFence(_ line: Substring, fence: Fence) -> Bool {
+    static func isClosingFence(_ line: Substring, fence: Fence) -> Bool {
         guard leadingColumns(line) < 4 else { return false }
         let body = line.drop(while: { $0 == " " })
         let run = body.prefix(while: { $0 == fence.character }).count

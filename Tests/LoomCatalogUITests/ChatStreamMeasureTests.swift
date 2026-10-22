@@ -427,8 +427,8 @@ extension ChatHosted {
                 settled.kind = .prose(entry, settled: true)
             }
             #expect(measurer.composedHeight(of: settled, width: 900) == nil, "a settled answer is measured whole")
-            // The splitter treats `~~~` inside a ``` fence as closing it; the parser does not: the head then holds an open block.
-            let odd = "```\ncode\n~~~\n\nnext\n\n"
+            // The splitter does not look into a quote; the parser opens a fence there: the head then holds an open block.
+            let odd = "> ```\n> code\n\nnext\n\n"
             #expect(!ChatContent.streamingBlocks(id: "whole-odd", text: odd).isComposable)
             #expect(measurer.composedHeight(of: Self.streamingRow(id: "whole-odd", text: odd), width: 900) == nil)
             #expect(measurer.composedHeight(of: ChatRow(id: "x", kind: .empty), width: 900) == nil)
@@ -478,6 +478,32 @@ extension ChatHosted {
             }
             print("BUDGET stream measure: incremental split against fresh: \(checked) cut points of \(texts.count) texts")
             #expect(checked > 2_000)
+        }
+
+        /// Fences the split once read apart from the parser: a four-backtick fence holding three-backtick ones (a README shown
+        /// whole), a tilde line in a backtick fence, and a code line that starts with three backticks and goes on. Streamed in
+        /// steps, the head never ends inside a block the parser has open, the head stays composable, and the split's blocks are
+        /// the whole parse.
+        @Test func theSplitReadsFencesByTheParsersRules() {
+            let texts = [
+                "Here is the file.\n\n````markdown\n# Title\n\n```swift\nlet a = 1\n\nlet b = 2\n```\n\nMore.\n````\n\nAfter.\n\nEnd.",
+                "Look:\n\n```sh\necho one\n~~~\n\necho two\n```\n\nAfter.\n\nEnd.",
+                "Look:\n\n```text\nfirst\n```not a close\n\nsecond\n```\n\nAfter.\n\nEnd.",
+            ]
+            for (number, text) in texts.enumerated() {
+                let characters = Array(text)
+                let id = "fence-rules-\(number)"
+                for cut in 0...characters.count {
+                    let prefix = String(characters.prefix(cut))
+                    let parts = ChatContent.streamingBlocks(id: id, text: prefix)
+                    let openInHead = parts.head.contains { if case .code(_, _, false) = $0 { true } else { false } }
+                    #expect(!openInHead, "text \(number), cut \(cut): the head ends inside an open fence")
+                    #expect(parts.isComposable, "text \(number), cut \(cut): the head is not composable")
+                    #expect(parts.blocks == ChatMarkdown.parse(prefix), "text \(number), cut \(cut): the split's blocks are not the whole parse")
+                }
+                // The head moved past the fence once it closed.
+                #expect(ChatContent.streamingBlocks(id: id, text: text).head.last == .paragraph("After."), "text \(number)")
+            }
         }
 
         @Test func theSplitStateKeepsFewMessages() {
