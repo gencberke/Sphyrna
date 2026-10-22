@@ -154,7 +154,8 @@ extension EnvironmentValues {
 }
 
 /// The art in a layer-backed view: it works a frame out on each tick of its clock and draws it with Core Text. It ticks
-/// only as `ArtClock` says, so off screen, in the background or under a hidden or occluded window it has no timer.
+/// only as `ArtClock` says, so off screen (scrolled out of its scroll view too), in the background or under a hidden, closing
+/// or occluded window it has no timer.
 @MainActor
 final class ArtLayerView: NSView {
     enum Source {
@@ -194,8 +195,12 @@ final class ArtLayerView: NSView {
     private(set) var loopTime = 0.0
     private let raster = ArtRaster()
     private var maskFactors: [Float]?
-    private lazy var ticker = ArtTicker(view: self) { [weak self] dt in self?.advance(by: dt) }
+    private var ticker: ArtTicker!
     private weak var observedWindow: NSWindow?
+    /// The clip view of the scroll view it sits in: a scroll can take it off screen or bring it back.
+    private weak var observedClip: NSClipView?
+    /// Whether it was on screen at the last reclock; a scroll reclocks only when this flips.
+    private var clockedOnScreen = false
     private var arrivalWaits = false
     private var wasSeen = false
     private var seenOnce = false
@@ -203,6 +208,9 @@ final class ArtLayerView: NSView {
     var requestedTime: Double? {
         didSet { if let requestedTime, source != nil { seek(to: requestedTime) } }
     }
+    /// For a test: the window's visibility and occlusion and the app's activity as given, in place of what AppKit says (a
+    /// test's window is never ordered front, and the test runner is not the active app); nil in the app.
+    var assumedShowing: Bool? { didSet { reclock() } }
 
     init(scene: ArtScene, cell: CGFloat, weight: NSFont.Weight = .regular, kind: ArtSurfaceKind, mask: ArtMask = .none,
          animatedArt: Bool = true) {
@@ -212,17 +220,21 @@ final class ArtLayerView: NSView {
         self.mask = mask
         self.animatedArt = animatedArt
         super.init(frame: .zero)
+        ticker = ArtTicker(view: self) { [weak self] dt in self?.advance(by: dt) }
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         let center = NotificationCenter.default
         for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification,
                      NSApplication.didHideNotification, NSApplication.didUnhideNotification] {
-            center.addObserver(self, selector: #selector(environmentChanged), name: name, object: nil)
+            center.addObserver(self, selector: #selector(environmentChanged(_:)), name: name, object: nil)
         }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    /// A link holds its target: a view freed with its link running would leave the link firing.
+    isolated deinit { ticker.stop() }
 
     // MARK: The clock
 
@@ -238,22 +250,29 @@ final class ArtLayerView: NSView {
         }
     }
 
-    var clockInput: ArtClockInput {
+    var clockInput: ArtClockInput { clockInput(closing: false) }
+
+    /// `closing`: the window is about to close (still visible to AppKit), so it counts as not showing.
+    private func clockInput(closing: Bool) -> ArtClockInput {
         let window = window
+        // `visibleRect` is not clipped to the view's own bounds when it does not clip to them (the default since macOS 14): in a
+        // scroll view it is the clip view's whole visible area, scrolled past or laid out to zero.
         return ArtClockInput(
-            viewOnScreen: window != nil && !isHiddenOrHasHiddenAncestor && !visibleRect.isEmpty,
-            windowVisible: window?.isVisible == true && window?.isMiniaturized == false,
-            windowUnoccluded: window?.occlusionState.contains(.visible) == true,
-            appActive: NSApp?.isActive == true && NSApp?.isHidden == false,
+            viewOnScreen: window != nil && !isHiddenOrHasHiddenAncestor && !visibleRect.intersection(bounds).isEmpty,
+            windowVisible: !closing && (assumedShowing ?? (window?.isVisible == true && window?.isMiniaturized == false)),
+            windowUnoccluded: assumedShowing ?? (window?.occlusionState.contains(.visible) == true),
+            appActive: assumedShowing ?? (NSApp?.isActive == true && NSApp?.isHidden == false),
             animatedArt: animatedArt, kind: drawnKind)
     }
 
     /// The ticker's state, for a test.
     var tickerRate: Double? { ticker.rate }
     var tickerRunning: Bool { ticker.isRunning }
+    /// The still frames a reclock has asked for, for a test.
+    private(set) var stillFrames = 0
 
-    func reclock() {
-        let input = clockInput
+    func reclock(closing: Bool = false) {
+        let input = clockInput(closing: closing)
         let seen = input.viewOnScreen && input.windowVisible && input.windowUnoccluded
         // About: each time its window shows again, the hammerhead crosses again.
         if replaysWhenShown, seen, !wasSeen, seenOnce, bounds.width > 0, bounds.height > 0 {
@@ -262,12 +281,47 @@ final class ArtLayerView: NSView {
         }
         if seen { seenOnce = true }
         wasSeen = seen
-        let tick = ArtClock.tick(input)
+        // Read again after a replay: the fresh crossing moves where the rested one stood still.
+        let now = clockInput(closing: closing)
+        clockedOnScreen = now.viewOnScreen
+        let tick = ArtClock.tick(now)
         ticker.apply(tick)
-        if tick == .still { needsDisplay = true }
+        if tick == .still {
+            stillFrames += 1
+            needsDisplay = true
+        }
     }
 
-    @objc private func environmentChanged() { reclock() }
+    @objc private func environmentChanged(_ notification: Notification) {
+        reclock(closing: notification.name == NSWindow.willCloseNotification)
+    }
+
+    /// A scroll (or the clip view's resize) reclocks only when it takes the view off screen or brings it back, so a still
+    /// frame is not drawn again on each event.
+    @objc private func clipChanged(_ notification: Notification) {
+        guard clockInput.viewOnScreen != clockedOnScreen else { return }
+        reclock()
+    }
+
+    /// Follows the scroll view the view sits in now; none outside a scroll view or a window.
+    private func observeClip() {
+        let clip = window == nil ? nil : enclosingScrollView?.contentView
+        guard clip !== observedClip else { return }
+        let center = NotificationCenter.default
+        if let old = observedClip {
+            for name in Self.clipNotifications { center.removeObserver(self, name: name, object: old) }
+        }
+        observedClip = clip
+        guard let clip else { return }
+        clip.postsBoundsChangedNotifications = true
+        clip.postsFrameChangedNotifications = true
+        for name in Self.clipNotifications {
+            center.addObserver(self, selector: #selector(clipChanged(_:)), name: name, object: clip)
+        }
+    }
+
+    private static let clipNotifications: [Notification.Name] = [
+        NSView.boundsDidChangeNotification, NSView.frameDidChangeNotification]
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -278,9 +332,16 @@ final class ArtLayerView: NSView {
         observedWindow = window
         if let window {
             for name in Self.windowNotifications {
-                center.addObserver(self, selector: #selector(environmentChanged), name: name, object: window)
+                center.addObserver(self, selector: #selector(environmentChanged(_:)), name: name, object: window)
             }
         }
+        observeClip()
+        reclock()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        observeClip()
         reclock()
     }
 
@@ -303,7 +364,9 @@ final class ArtLayerView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         let old = frame.size
         super.setFrameSize(newSize)
-        guard newSize != old, newSize.width > 0, newSize.height > 0 else { return }
+        guard newSize != old else { return }
+        // Laid out to nothing: no timer.
+        guard newSize.width > 0, newSize.height > 0 else { return reclock() }
         layOut(for: newSize)
         if let requestedTime { seek(to: requestedTime) }
         reclock()
