@@ -1,0 +1,31 @@
+<span class="o"> ▐▛███▜▌</span>   <span class="b">Claude Code</span> <span class="d">v2.1.300</span>
+<span class="o">▝▜█████▛▘</span>  <span class="d">Opus 5.5 · Claude Max</span>
+<span class="o">  ▘▘ ▝▝</span>    <span class="d">~/code/storefront</span>
+
+<span class="u">&gt; Add rate limiting to the checkout API: 20 requests a minute per customer,
+  with a Retry-After header. Add tests.</span>
+
+<span class="w">⏺</span> I'll read the checkout router and the auth middleware first.
+
+<span class="g">⏺</span> <span class="b">Read</span>(src/routes/checkout.ts)
+  <span class="d">⎿  Read 64 lines</span>
+
+<span class="g">⏺</span> <span class="b">Search</span>(pattern: "req\.customer", path: "src")
+  <span class="d">⎿  Found 6 files</span>
+
+<span class="g">⏺</span> <span class="b">Update</span>(src/routes/checkout.ts)
+  <span class="d">⎿  Updated src/routes/checkout.ts with 3 additions and 1 removal</span>
+      <span class="d"> 2</span> <span class="ad">+  import { checkoutLimit } from '../middleware/rateLimit';</span>
+      <span class="d"> 9</span> <span class="rm">-  router.use(auth);</span>
+      <span class="d"> 9</span> <span class="ad">+  router.use(auth, checkoutLimit);</span>
+      <span class="d">10</span> <span class="ad">+  // 20 requests a minute per customer, then 429.</span>
+
+<span class="g">⏺</span> <span class="b">Write</span>(src/middleware/rateLimit.ts)
+  <span class="d">⎿  Wrote 38 lines to src/middleware/rateLimit.ts</span>
+
+<span class="g">⏺</span> <span class="b">Bash</span>(npm test -- rateLimit)
+  <span class="d">⎿  Running…</span>
+
+<span class="o">✻ Threading…</span> <span class="d">(1m 12s · ↓ 3.4k tokens · esc to interrupt)</span>
+<span class="trule"></span><span class="u">&gt; </span><span class="cur"></span>
+<span class="trule"></span>  <span class="d">? for shortcuts</span>
