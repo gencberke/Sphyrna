@@ -1,8 +1,8 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-22, 02:55
+- **Updated:** 2026-10-22, 03:35
 - **Stage:** Run toward **Sphyrna 1.6.0** (the first stable release, [D-83](DECISIONS.md)). Releases A, B, and C are closed (`cc54a17`); `0.4.4` remains the daily-use app and latest public GitHub release ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)) until `@user` authorizes 1.6.0's tag, promote, install, and release.
-- **State:** **waiting for implementation + pool #1 running** — overnight round: wave 1 and `L3a3` are on `v2` (`82b01d8`); pool #1 (the full gate with window tests) runs on that head; wave 2 runs (`L3c core`, `L3b` follow-ups) ([`plans/ACTIVE-PLAN.md` §3.3](plans/ACTIVE-PLAN.md#33-order-to-160-and-the-test-pool-d-90)).
+- **State:** **waiting for implementation** — overnight round: wave 1, `L3a3`, pool #1 (2 test fixes, `946fa73`), the `L3b` follow-ups (`a16fdc9`) and `L3c core` (`2701819`) are on `v2`; running: `L3c` UI part A, the ⌘K door (ink), and a core cleanup (old `removeRemoraNote`, five stale tokens) ([`plans/ACTIVE-PLAN.md` §3.3](plans/ACTIVE-PLAN.md#33-order-to-160-and-the-test-pool-d-90)).
 - **Blocker:** none.
 
 ---
@@ -13,7 +13,7 @@
 - **Overnight run authority ([D-91](DECISIONS.md)):** work until morning, Claude implementers only (no `@opencode`), the pooled batch in the idle window, real-Claude test turns where a check needs them; a light eye on usage. Tag, promote, install, push and release wait for `@user`.
 - **Test cadence ([D-90](DECISIONS.md), [DEVELOPMENT.md §3.1](DEVELOPMENT.md#31-test-cadence-slices-one-pooled-batch-fixes-scoped-re-checks-d-90-22-oct-2026)):** narrow off-screen checks per slice; the pool runs when enough has collected; fixes get scoped re-checks.
 - **Idle window:** `@user` is asleep; `caffeinate -dims` (pid 69498) holds the display and system awake until ~11:40.
-- **Quota:** 5-hour window 15 % at 02:49 (resets 07:10), weekly 27 %. At most two implementers at once until the reset; `I5` and `I7` start after it.
+- **Quota:** 5-hour window 23 % at 03:30 (resets 07:10), weekly 28 %; about 12 %/h with two implementers.
 
 ---
 
@@ -22,10 +22,10 @@
 | Role / Slice | Worktree Path | Branch | HEAD SHA | Working Tree Status |
 | --- | --- | --- | --- | --- |
 | Main repo (`loom-dev`) | `/Users/gencberke/Documents/github/loom-dev` | `swarm/1` | `9f2988e` (+ this board) | Planner docs |
-| Integration branch | `~/Library/Caches/loom-v2/wt/v2` | `v2` | `82b01d8` | Clean; local only, never pushed |
-| Pool #1 runner | `~/Library/Caches/loom-v2/wt/ink-idle` | detached | `82b01d8` | `check.sh --full --idle --windows` running (scratch `build/ink-idle`; output `evidence/pool1/full-gate.out`) |
-| `L3c core` (core) | `~/Library/Caches/loom-v2/wt/core-devguard` | detached | `88a7dcc` (= `L3a3`; `slice/devguard`, `slice/l3a3`) | Implementer running |
-| `L3b` follow-ups (ink) | `~/Library/Caches/loom-v2/wt/ink-remora-home` | detached | `10ab0c5` (`slice/l3b-home` `15aab82`; backup `slice/l3b-home-wip`) | Implementer running |
+| Integration branch | `~/Library/Caches/loom-v2/wt/v2` | `v2` | `2701819` | Clean; local only, never pushed |
+| Pool runner | `~/Library/Caches/loom-v2/wt/ink-idle` | detached | `a3f950d` (pool #1 fixes) | Clean; pool #1 done (`evidence/pool1/`) |
+| Core cleanup | `~/Library/Caches/loom-v2/wt/core-devguard` | detached | `2701819` (`slice/devguard`, `slice/l3a3`, `slice/l3c-core`) | Implementer running |
+| `L3c` UI part A (ink) | `~/Library/Caches/loom-v2/wt/ink-remora-home` | detached | `a16fdc9` | Implementer running |
 | `I6b` part 2 (done) | `~/Library/Caches/loom-v2/wt/oc-cleanup` | `slice/i6b-rest` | `250f733` | Clean; idle |
 | Track branches (inactive) | `wt/ink`, `wt/core` | `ink`, `core` | `8447550`, `e3941fb` | Clean, behind `v2` |
 
@@ -39,10 +39,13 @@
 3. **`L3a3`** (`c50fa1b`): folded weeks read, note `rewrittenAt`, working-memory updated time, `removeRemoraNoteWithUndo` (the old `removeRemoraNote(project:)` goes when the sheet switches).
 4. **`L3b Home`** (`10ab0c5`): Remora on Home; guard lists `HomeRemoraCalls.swift: 3`, `EvidenceRemoraCommands.swift: 2`.
 5. **`I6b` part 2** (`82b01d8`): the Agents tab in Ink (556 transcript width wired), Changes' empty states, Delete's Removed/Kept lists, dead symbols removed.
+6. **Pool #1** (`check.sh --full --idle --windows` on `82b01d8`, `check-20261022T024827-80012.log`): release build and release tree pass; ~3,160 tests, 2 failures, both stale tests (a clock limit under load; the back control's resize under D-78's widths), fixed in `946fa73` and re-checked in scope (31 passed, `check-20261022T032147-90511.log`).
+7. **`L3b` follow-ups** (`a16fdc9`): Home's Memory… door (with a two-line loom-app seam) and the memory sheet on `L3a3`'s weeks, times and per-removal Undo.
+8. **`L3c core`** (`2701819`): `draftRemoraBrief(project:) async` and `remora.draft` (a question-kind call marked `isDraft`; same stable prefix as a project question; usage `drafts`; journal `for=draft`).
 
 ### Active File Locks (wave 2)
 - **`L3c core`** (`wt/core-devguard`): `Sources/LoomRemora/**`, `CatalogModel+Remora.swift`, `Tests/LoomRemoraTests/**` except `RemoraReachTests.swift`, additions to `RemoraModelTests.swift`.
-- **`L3b` follow-ups** (`wt/ink-remora-home`): `HomeRemora*.swift`, `HomeView.swift`, `RemoraMemoryModel.swift`, `RemoraMemoryText.swift`, `RemoraMemorySheet.swift`, `SettingsRemora*.swift`, `LoomTheme+Remora.swift`, `LoomTheme+Settings.swift` (new tokens only), their tests.
+- **`L3c` UI part A** (`wt/ink-remora-home`): `Palette*.swift`, `CatalogModel+Palette.swift`, `LoomTheme+Palette.swift`, `HomeRemora*.swift` (shared answer views), `CatalogModel+RemoraDraft.swift`, `LoomTheme+Remora.swift`, `Evidence/EvidenceRemoraCommands.swift` and the palette's evidence file, `RemoraReachTests.swift`, their tests.
 - **`@planner`:** canonical docs; `HighlightTests.swift` cleanup and the old `removeRemoraNote(project:)` removal are planner fix-ups after wave 2.
 
 ---
