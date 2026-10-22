@@ -95,17 +95,24 @@ private struct ProjectSessionList: View {
     }
 }
 
-/// An empty project: one line in the list's place. A small hammerhead swims over it in a later slice (DESIGN §17).
+/// An empty project: a small hammerhead swimming in place over one line in the list's place (DESIGN §10 Empty project, §17, D-76).
 struct ProjectEmptyList: View {
     static let line = "No sessions in this project yet. New session starts one."
 
     var body: some View {
-        Text(Self.line)
-            .projectType(LoomTheme.ProjectPage.emptyLine).foregroundStyle(LoomTheme.Text.secondaryStyle)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity)
-            .padding(.top, LoomTheme.ProjectPage.emptyTop).padding(.bottom, LoomTheme.ProjectPage.emptyBottom)
-            .accessibilityIdentifier("project-no-sessions")
+        VStack(spacing: 0) {
+            ArtSurface(place: .emptyProject)
+                .frame(maxWidth: .infinity).frame(height: LoomTheme.Art.projectBoxHeight)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            Text(Self.line)
+                .projectType(LoomTheme.ProjectPage.emptyLine).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.top, LoomTheme.Art.projectLineTop)
+                .accessibilityIdentifier("project-no-sessions")
+        }
+        .padding(.top, LoomTheme.ProjectPage.emptyTop).padding(.bottom, LoomTheme.ProjectPage.emptyBottom)
     }
 }
 

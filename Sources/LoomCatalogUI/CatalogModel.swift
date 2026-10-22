@@ -259,6 +259,8 @@ public final class CatalogModel {
     /// Settings → Theme → Appearance and Main pane (D-63). The app applies them through `onThemeChange`.
     public private(set) var appearance: AppearanceSetting
     public private(set) var paneTone: PaneTone
+    /// Settings → Theme → Animated art (DESIGN §17, D-79): the window hands it to the art as `\.animatedArt`. On by default.
+    public private(set) var animatedArt: Bool
     /// What the window opened on. Read once at launch: `home` opens Home, `lastSession` restores the saved destination.
     public let launchView: LaunchView
     public private(set) var sessionCounts: [UUID?: Int] = [:]
@@ -507,6 +509,7 @@ public final class CatalogModel {
         newSessionFace = preferences.current.newSessionFace
         appearance = preferences.current.appearance
         paneTone = preferences.current.paneTone
+        animatedArt = preferences.current.animatedArt
         inspector = InspectorState(open: preferences.current.inspectorOpen)
         tabs = ConversationTabs(pinned: preferences.current.openTabs)
         today = Calendar.current.startOfDay(for: now)
@@ -1347,6 +1350,13 @@ public final class CatalogModel {
         appearance = setting
         persist { $0.appearance = setting }
         onThemeChange?()
+    }
+
+    /// Settings → Theme → Animated art (D-79). Applies at once and is kept: off, every drawing stands still on one frame.
+    public func setAnimatedArt(_ enabled: Bool) {
+        guard enabled != animatedArt else { return }
+        animatedArt = enabled
+        persist { $0.animatedArt = enabled }
     }
 
     /// Settings → Theme → Tone (D-63, D-81). Applies at once and is kept: the tone is the terminal's background (the

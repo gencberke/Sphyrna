@@ -146,24 +146,32 @@ struct ArtMeasureTests {
                                     cell: LoomTheme.Art.ambientCell, kind: .ambient, mask: .calm)
         rows.append(try viewRow("view: layer, new-session sea (engine + draw)", view: layerSea, size: draft) { _ in layerSea.advance(by: 1 / 24) })
 
-        // The same frames through a SwiftUI Canvas of resolved text.
-        let bandColumns = bandMetrics.columns(band), draftColumns = draftMetrics.columns(draft)
-        let bandMask = ArtMask.band.factors(columns: bandColumns, rows: bandMetrics.rows(band), metrics: bandMetrics, size: band)
-        let draftMask = ArtMask.calm.factors(columns: draftColumns, rows: draftMetrics.rows(draft), metrics: draftMetrics, size: draft)
-        func canvas(_ cells: [UInt32], columns: Int, cell: CGFloat, metrics: ArtMetrics, mask: [Float]?) -> AnyView {
-            AnyView(ArtCanvasView(cells: cells, columns: columns, cell: cell, metrics: metrics, mask: mask).environment(\.colorScheme, .dark))
+        // The other surfaces (I5's surfaces slice), through the layer the app draws with.
+        func placeView(_ place: ArtPlace) -> ArtLayerView {
+            ArtLayerView(scene: place.scene, cell: place.cell, weight: place.weight, kind: place.kind, mask: place.mask)
         }
-        let bandHost = NSHostingView(rootView: canvas([], columns: bandColumns, cell: LoomTheme.Art.bandCell, metrics: bandMetrics, mask: bandMask))
-        rows.append(try viewRow("view: SwiftUI Canvas, Home's loop precomputed (draw)", view: bandHost, size: band) { k in
-            bandHost.rootView = canvas(Array(precomputed.cells(at: Double(k) / 12)), columns: bandColumns, cell: LoomTheme.Art.bandCell,
-                                       metrics: bandMetrics, mask: bandMask)
+        let first = placeView(.firstLaunch)
+        rows.append(try viewRow("view: layer, first launch (engine + draw)", view: first, size: draft) { _ in first.advance(by: 1 / 24) })
+        let about = placeView(.about)
+        let aboutSize = CGSize(width: LoomTheme.Settings.width, height: LoomTheme.Art.aboutHeight)
+        rows.append(try viewRow("view: layer, About's crossing (engine + draw)", view: about, size: aboutSize) { _ in about.advance(by: 1 / 24) })
+        let pane = CGSize(width: 340, height: LoomTheme.Agents.emptyArtHeight)
+        let waiting = placeView(.readingBranch)
+        rows.append(try viewRow("view: layer, a pane's hammerhead in place (engine + draw)", view: waiting, size: pane) { _ in
+            waiting.advance(by: 1 / 12)
         })
-        var sea3 = draftSea
-        let draftHost = NSHostingView(rootView: canvas([], columns: draftColumns, cell: LoomTheme.Art.ambientCell, metrics: draftMetrics, mask: draftMask))
-        rows.append(try viewRow("view: SwiftUI Canvas, new-session sea (engine + draw)", view: draftHost, size: draft) { _ in
-            sea3.advance(by: 1 / 24)
-            draftHost.rootView = canvas(sea3.frame(raster: raster).packed, columns: draftColumns, cell: LoomTheme.Art.ambientCell,
-                                        metrics: draftMetrics, mask: draftMask)
+        let side = placeView(.emptySide)
+        rows.append(try viewRow("view: layer, the Side tab's whale shark in place (engine + draw)", view: side,
+                                size: CGSize(width: 340, height: LoomTheme.Art.sideBoxHeight)) { _ in side.advance(by: 1 / 12) })
+        let lane = placeView(.remoraLane)
+        let laneSize = CGSize(width: band.width, height: LoomTheme.Remora.arrivalHeight)
+        lane.frame = NSRect(origin: .zero, size: laneSize)
+        lane.remora = ArtRemoraCue(rest: CGPoint(x: 200, y: 150), arrive: true, swimming: true)
+        rows.append(try viewRow("view: layer, Remora's arrival at 60 fps (engine + draw)", view: lane, size: laneSize) { k in
+            // The 60 fps part is the first 2.2 s: start again each time it would leave it.
+            if k % 120 == 0 { lane.remora = ArtRemoraCue(rest: CGPoint(x: 200, y: 150), arrive: false, swimming: true)
+                lane.remora = ArtRemoraCue(rest: CGPoint(x: 200, y: 150), arrive: true, swimming: true) }
+            lane.advance(by: 1 / 60)
         })
 
         // MARK: The report

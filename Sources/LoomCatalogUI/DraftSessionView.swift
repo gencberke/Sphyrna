@@ -13,7 +13,8 @@ struct DraftSessionView: View {
     var body: some View {
         let origin = model.draftRemoraOriginLine(projectID: projectID)
         ZStack {
-            CanvasGrid(mask: .radial)
+            // The page's art: two hammerheads crossing slowly behind the question with the whale shark deep below (§17).
+            ArtBackdrop(place: .draftPage, grid: .radial)
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
                 VStack(spacing: 0) {

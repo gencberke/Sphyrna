@@ -120,6 +120,7 @@ public struct SettingsView: View {
         .font(LoomTheme.InkType.body.font)
         .ignoresSafeArea()
         .tint(LoomTheme.Accent.base)
+        .environment(\.animatedArt, model.animatedArt)
         .sheetLayer(navigation.sheets, headerOffset: LoomTheme.Settings.bandHeight) { sheet in
             SettingsSheets.view(for: sheet, model: model, profile: about.claudeProfile, navigation: navigation)
         }
@@ -320,11 +321,21 @@ struct AboutSettings: View {
                 }
                 .padding(.top, S.aboutCardTop)
             }
+            // A hammerhead crosses once behind the icon each time About opens, then rests (DESIGN §2 item 5, §17): the art spans
+            // the page's width from its top, under the head; the card, lifted, stands over it.
+            .background(alignment: .top) {
+                ArtSurface(place: .about)
+                    .frame(height: LoomTheme.Art.aboutHeight)
+                    .padding(.horizontal, -S.bodyInset).padding(.top, -S.bodyTop)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
         }
     }
 
     /// The app's icon (the image already carries macOS's shape, so it is not rounded again) with a ring, a top highlight and a drop;
-    /// then the name and the version. The hammerhead behind them is I5's.
+    /// then the name and the version, over the crossing hammerhead.
     private var head: some View {
         let shape = RoundedRectangle(cornerRadius: S.iconRadius)
         return VStack(spacing: 0) {

@@ -118,7 +118,8 @@ struct HomeEmptyCatalog: View {
         .padding(.bottom, LoomTheme.Home.lift)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            if Self.showsMark(claudeMissing: missing) { CanvasGrid() }
+            // The school behind the first-run message (§9 Empty states, D-79); with no Claude CLI no shark swims.
+            if Self.showsMark(claudeMissing: missing) { ArtBackdrop(place: .firstLaunch, grid: .radial) }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(missing ? "home-no-claude" : "home-empty-catalog")

@@ -400,7 +400,7 @@ struct HomeRemoraFold: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: R.foldHeadGap) {
-                HomeRemoraArtPlace(identifier: "home-remora-fold-slot").frame(width: R.foldSlot.width, height: R.foldSlot.height)
+                HomeRemoraArtPlace(identifier: "home-remora-fold-slot", fold: true).frame(width: R.foldSlot.width, height: R.foldSlot.height)
                 Text("\(Text("Remora").font(R.foldHeadBold.font).foregroundStyle(LoomTheme.Text.primary))\(Text(foldTail).font(R.foldHead.font).foregroundStyle(LoomTheme.Text.secondaryStyle))")
                     .accessibilityIdentifier("home-remora-fold-head")
                 Spacer(minLength: 0)

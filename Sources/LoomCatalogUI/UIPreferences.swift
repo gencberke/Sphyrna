@@ -169,6 +169,9 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     public var appearance: AppearanceSetting
     /// Settings → Theme → Tone (D-63, D-81). A file written before the setting existed reads as Neutral.
     public var paneTone: PaneTone
+    /// Settings → Theme → Animated art (DESIGN §17, D-79). On, the art moves, under Reduce Motion too; off, every drawing stands
+    /// still on one frame. A file written before the setting existed reads as on.
+    public var animatedArt: Bool
     /// Remora's settings (LOMBOT §6.2); the defaults live in `RemoraPreferences`. A file written before Remora existed reads as
     /// those defaults, and so does any field of it that is missing or unreadable.
     public var remora: RemoraPreferences
@@ -190,7 +193,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
                 showInMenuBar: Bool = true, notifyApprovals: Bool = true, sidebarStyle: SidebarStyle = .solid,
                 launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = [],
                 searchSessionText: Bool = true, newSessionFace: SessionFace = .chat,
-                appearance: AppearanceSetting = .dark, paneTone: PaneTone = .neutral,
+                appearance: AppearanceSetting = .dark, paneTone: PaneTone = .neutral, animatedArt: Bool = true,
                 remora: RemoraPreferences = RemoraPreferences()) {
         self.viewMode = viewMode
         self.destination = destination ?? selectedSessionID.map(Destination.session)
@@ -209,6 +212,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         self.newSessionFace = newSessionFace
         self.appearance = appearance
         self.paneTone = paneTone
+        self.animatedArt = animatedArt
         self.remora = remora
     }
 
@@ -240,6 +244,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             newSessionFace: (try? container.decodeIfPresent(SessionFace.self, forKey: .newSessionFace)) ?? .chat,
             appearance: (try? container.decodeIfPresent(AppearanceSetting.self, forKey: .appearance)) ?? .dark,
             paneTone: (try? container.decodeIfPresent(PaneTone.self, forKey: .paneTone)) ?? .neutral,
+            animatedArt: (try? container.decodeIfPresent(Bool.self, forKey: .animatedArt)) ?? true,
             remora: (try? container.decodeIfPresent(RemoraPreferences.self, forKey: .remora)) ?? RemoraPreferences()
         )
     }
@@ -247,7 +252,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case viewMode, selectedSessionID, destination, sidebarWidth, sidebarCollapsed, terminalFontSize, openTabs
         case windowFrame, projectColors, showInMenuBar, notifyApprovals, sidebarStyle, launchView, inspectorOpen
-        case searchSessionText, newSessionFace, appearance, paneTone, remora
+        case searchSessionText, newSessionFace, appearance, paneTone, animatedArt, remora
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -270,6 +275,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         try container.encode(newSessionFace, forKey: .newSessionFace)
         try container.encode(appearance, forKey: .appearance)
         try container.encode(paneTone, forKey: .paneTone)
+        try container.encode(animatedArt, forKey: .animatedArt)
         try container.encode(remora, forKey: .remora)
     }
 

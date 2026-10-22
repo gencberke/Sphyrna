@@ -63,6 +63,7 @@ public struct DetailView: View {
         .ignoresSafeArea(.container, edges: .top)
         .tint(LoomTheme.Accent.base)
         .environment(\.indicatorsAnimate, model.windowIsActive)
+        .environment(\.animatedArt, model.animatedArt)
         .alert("Undo the rewind?", isPresented: Binding(
             get: { model.rewinds.undoPrompt != nil }, set: { if !$0 { model.cancelUndoPrompt() } }
         ), presenting: model.rewinds.undoPrompt) { _ in

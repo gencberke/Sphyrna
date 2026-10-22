@@ -3,8 +3,9 @@ import LoomRemora
 import SwiftUI
 
 /// Remora on Home (DESIGN §9 and §20; the reference's `#brief` document): the brief with its states, or the fold, then the field,
-/// the answer and the footer. It takes the band's place with Remora on, and it is one VoiceOver group named "Remora"; the places the
-/// art will fill (the 136 column, the fold's 84 × 30 slot and the arrival lane) are empty and hidden from VoiceOver.
+/// the answer and the footer. It takes the band's place with Remora on, and it is one VoiceOver group named "Remora"; its art (the
+/// band's hammerhead, the arrival's lane with the resting remora, and the remora of the fold's 84 × 30 slot, `HomeRemoraArt`) is
+/// hidden from VoiceOver.
 struct HomeRemoraSection: View {
     let model: CatalogModel
     let paneWidth: CGFloat
@@ -12,9 +13,13 @@ struct HomeRemoraSection: View {
     let reads: HomeRemoraReads
     @Environment(\.detailLeadingClearance) private var clearance
     @Environment(\.openRemoraMemory) private var openMemory
+    @Environment(\.animatedArt) private var animatedArt
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var art = HomeRemoraArt()
 
     var body: some View {
         let context = HomeRemoraContext.make(model: model, reads: reads, ui: ui)
+        let pose = HomeRemoraArtPose.of(context.state, sentenceStarted: !model.remora.streamedText.isEmpty)
         VStack(alignment: .leading, spacing: 0) {
             if context.state == .folded {
                 HomeRemoraFold(model: model, ui: ui, reads: reads, context: context)
@@ -34,15 +39,16 @@ struct HomeRemoraSection: View {
         .padding(.top, context.state == .folded ? LoomTheme.Remora.foldTop : LoomTheme.Remora.top)
         .padding(.bottom, context.state == .folded ? LoomTheme.Remora.foldBottom : LoomTheme.Remora.bottom)
         .frame(maxWidth: .infinity)
-        // The faint grid and the arrival's lane stand behind the brief. The lane is I5's: empty and hidden for now.
-        .background(alignment: .top) {
-            ZStack(alignment: .top) {
-                CanvasGrid(mask: .band).frame(height: LoomTheme.Canvas.bandHeight)
-                HomeRemoraArtPlace(identifier: "home-remora-arrival")
-                    .frame(height: LoomTheme.Remora.arrivalHeight)
-            }
-            .accessibilityHidden(true)
+        // The faint grid, the band's hammerhead and the arrival's lane stand behind the brief; the lane's remora rests in the
+        // place's column, beside the sentence and never behind it.
+        .background(alignment: .top) { HomeRemoraArtBackdrop(art: art, pose: pose) }
+        .coordinateSpace(.named(HomeRemoraArtLayout.space))
+        .environment(\.homeRemoraArt, art)
+        // A new brief being written brings the arrival (DESIGN §9 The arrival); Animated art off stops whatever is carried.
+        .onChange(of: HomeRemoraArtPose.arrives(context.state), initial: true) { _, arrives in
+            if arrives { art.arrival(animated: animatedArt, reduceMotion: reduceMotion) }
         }
+        .onChange(of: animatedArt) { _, on in if !on { art.stopMoving() } }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Remora")
         .accessibilityIdentifier("home-remora")
@@ -53,12 +59,18 @@ struct HomeRemoraSection: View {
     }
 }
 
-/// A place the art will fill (I5): nothing is drawn and VoiceOver does not see it.
+/// A place of the remora's: empty itself (the lane behind the section draws the resting remora there), or, with `fold`, the
+/// remora at the start of the folded line. It takes no click and VoiceOver does not see it.
 struct HomeRemoraArtPlace: View {
     let identifier: String
+    var fold = false
 
     var body: some View {
-        Color.clear.allowsHitTesting(false).accessibilityHidden(true).accessibilityIdentifier(identifier)
+        ZStack {
+            if fold { ArtSurface(place: .remoraFold) }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false).accessibilityHidden(true).accessibilityIdentifier(identifier)
     }
 }
 
@@ -70,6 +82,7 @@ private struct HomeRemoraBriefBlock: View {
     let ui: HomeRemoraUI
     let reads: HomeRemoraReads
     let context: HomeRemoraContext
+    @Environment(\.homeRemoraArt) private var art
     private typealias R = LoomTheme.Remora
 
     var body: some View {
@@ -80,6 +93,10 @@ private struct HomeRemoraBriefBlock: View {
                 HomeRemoraSentence(model: model, ui: ui, context: context)
                     .frame(maxWidth: R.sentenceMaxWidth, alignment: .topLeading)
                 Spacer(minLength: 0)
+            }
+            // The remora rests by this row: the lane behind the section reads where it is.
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(HomeRemoraArtLayout.space)) } action: { row in
+                art?.row = row
             }
             .padding(.top, R.lineTop)
             if !context.tiles.isEmpty {

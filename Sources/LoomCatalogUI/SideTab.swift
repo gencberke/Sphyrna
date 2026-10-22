@@ -118,9 +118,15 @@ struct SideEarlierMenu: View {
     }
 }
 
+/// The empty Side tab: the whale shark swimming in place (DESIGN §16, §17), then the line.
 struct SideEmptyState: View {
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
+            ArtSurface(place: .emptySide)
+                .frame(maxWidth: .infinity).frame(height: LoomTheme.Art.sideBoxHeight)
+                .padding(.top, LoomTheme.Art.sideBoxTop)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             Text(SideText.emptyState).font(LoomTheme.Side.emptyFont).lineSpacing(LoomTheme.Side.emptyLineSpacing)
                 .foregroundStyle(LoomTheme.Text.secondaryStyle).fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)

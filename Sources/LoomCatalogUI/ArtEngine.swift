@@ -108,6 +108,15 @@ struct ArtSharkSpec: Sendable, Equatable {
     var angle: Double = 0
     /// Centred in its box and shortened to fit it (a shark in place).
     var center = false
+    /// Where a roaming shark first comes in, as shares of the box, facing `angle` (the first launch's hammerhead, from the right);
+    /// after that it roams and comes back from either side.
+    var entry: CGPoint?
+    /// A shark that keeps to another of the sea (the first launch's remoras): the host's index and its spot by the host's flank,
+    /// along and across, as shares of the host's length.
+    var host: Int?
+    var spot: CGPoint = .zero
+    /// A shark that crosses once and rests (About's): it stops at this share of the box's width and swims no further.
+    var restsAt: Double?
 }
 
 /// A point of the spine: where it is, how far along the body (`s`) and the unit tangent, pointing to the head.
@@ -188,10 +197,25 @@ struct ArtShark: Sendable, Equatable {
     /// The half width at `s`, in points.
     func halfWidth(_ s: Double) -> Double { ArtKind.width(shape.profile, at: s) * length }
 
+    /// Lays a shark that crosses once where it rests, still (About with Animated art off, or once it has crossed).
+    mutating func layAtRest(size: CGSize) {
+        guard let rest = spec.restsAt else { return }
+        x = Double(size.width) * rest
+        speed = 0
+        layStraightTrail()
+    }
+
+    /// Whether a shark that crosses once has come to rest.
+    var hasRested: Bool { spec.restsAt != nil && speed == 0 }
+
     /// Lays the shark at its start: a fixed place, or (roaming) a side, a height and a heading, with a straight trail.
     mutating func spawn(initial: Bool, index: Int, size: CGSize, random: inout ArtRandom) {
         let w = Double(size.width), h = Double(size.height)
-        if let place = spec.place {
+        if initial, let entry = spec.entry {
+            x = w * Double(entry.x)
+            y = h * Double(entry.y)
+            heading = spec.angle
+        } else if let place = spec.place {
             if spec.center { length = min(spec.length, w * 0.82 / (shape.ext + 0.2)) }
             x = spec.center ? w / 2 + length * (shape.ext * 0.5 + 0.05) : w * Double(place.x)
             y = h * Double(place.y)
@@ -205,6 +229,57 @@ struct ArtShark: Sendable, Equatable {
                 : (right ? -length * 0.25 : w + length * 0.25)
         }
         layStraightTrail()
+    }
+
+    /// Lays the shark still at a pose: its head at (`x`, `y`) facing `heading`, its trail curving back by `bend` (the
+    /// reference's `poseShark`).
+    mutating func pose(x: Double, y: Double, heading: Double, bend: Double) {
+        self.x = x
+        self.y = y
+        self.heading = heading
+        trail = []
+        let d = 4.0, n = Int((length * shape.reach / d).rounded(.up))
+        var px = x, py = y, a = heading
+        for _ in 0...n {
+            trail.append(CGPoint(x: px, y: py))
+            a += bend * d / length
+            px -= cos(a) * d
+            py -= sin(a) * d
+        }
+    }
+
+    /// The spot by `host`'s flank this shark keeps to at time `t`, with a little drift (the reference's `follow`).
+    func spot(by host: ArtShark, at t: Double) -> CGPoint {
+        let c = cos(host.heading), s = sin(host.heading), drift = sin(t * 0.6 + seed) * 0.05
+        let along = Double(spec.spot.x) + drift, across = Double(spec.spot.y)
+        return CGPoint(x: host.x + c * along * host.length - s * across * host.length,
+                       y: host.y + s * along * host.length + c * across * host.length)
+    }
+
+    /// Joins `host` at `point`: facing as it does, with a straight trail.
+    mutating func join(_ point: CGPoint, host: ArtShark) {
+        x = Double(point.x)
+        y = Double(point.y)
+        heading = host.heading
+        layStraightTrail()
+    }
+
+    /// One step of a shark that keeps to `host`: far from its spot it turns to it and hurries; close by it swims with the host.
+    mutating func step(following host: ArtShark, dt: Double, time t: Double, size: CGSize) {
+        phase += dt * Double.pi * 2 * shape.beat
+        let target = spot(by: host, at: t), dx = Double(target.x) - x, dy = Double(target.y) - y, d = hypot(dx, dy)
+        if d > Double(size.width) * 0.6 {
+            join(target, host: host)
+            return
+        }
+        let near = min(1, d / (length * 1.5))
+        func turn(_ a: Double) -> Double { atan2(sin(a - heading), cos(a - heading)) }
+        let aim = near * turn(atan2(dy, dx)) + (1 - near) * turn(host.heading)
+        heading += max(-2 * dt, min(2 * dt, aim))
+        let v = max(4, host.speed) * (0.9 + 1.4 * near) * (1 + 0.1 * sin(phase))
+        x += cos(heading) * v * dt
+        y += sin(heading) * v * dt
+        follow()
     }
 
     mutating func layStraightTrail() {
@@ -222,8 +297,11 @@ struct ArtShark: Sendable, Equatable {
         phase += dt * Double.pi * 2 * shape.beat
         guard speed != 0 else { return }
         let w = Double(size.width), h = Double(size.height)
-        let n = sin(t * 0.13 + seed) * 0.6 + sin(t * 0.071 + seed * 1.7) * 0.4
-        heading += n * 0.12 * dt
+        // A shark that crosses once (About's) keeps its line behind the icon; the others wander.
+        if spec.restsAt == nil {
+            let n = sin(t * 0.13 + seed) * 0.6 + sin(t * 0.071 + seed * 1.7) * 0.4
+            heading += n * 0.12 * dt
+        }
         let c: Double = cos(heading) < 0 ? -1 : 1, m = h * 0.14
         if y < m { heading += 0.3 * dt * c }
         if y > h - m { heading -= 0.3 * dt * c }
@@ -231,6 +309,10 @@ struct ArtShark: Sendable, Equatable {
         x += cos(heading) * v * dt
         y += sin(heading) * v * dt
         follow()
+        if let rest = spec.restsAt, x > w * rest {
+            speed = 0
+            return
+        }
         let pad = length * (shape.ext + 0.3)
         if x < -pad || x > w + pad || y < -pad || y > h + pad { spawn(initial: false, index: 0, size: size, random: &random) }
     }

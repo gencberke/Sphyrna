@@ -10,7 +10,6 @@ struct ConversationDetail: View {
     /// terminal, the notice with Resume, so this screen leaves both out rather than draw them twice (a second
     /// request list would be a second Approve on the same question).
     var inChat = false
-    @Environment(\.indicatorsAnimate) private var indicatorsAnimate
 
     nonisolated static func showsRequests(inChat: Bool) -> Bool { !inChat }
 
@@ -23,6 +22,9 @@ struct ConversationDetail: View {
     /// The state line above the actions. It states what Loom knows: a pending
     /// start, resume or stop; no run; a run without a terminal here; or that
     /// actions are not available right now (for example while quitting).
+    /// The record waits for a run to start: Starting… or Resuming….
+    nonisolated static func showsStartingArt(busy: ConversationBusy?) -> Bool { busy == .starting || busy == .resuming }
+
     nonisolated static func runStateHeading(busy: ConversationBusy?, canResume: Bool, isRunning: Bool) -> String {
         switch busy {
         case .starting: "Starting…"
@@ -100,10 +102,16 @@ struct ConversationDetail: View {
         let record = row.record
         let busy = model.busy[row.id]
         return VStack(alignment: .leading, spacing: 0) {
+            // A session starting or resuming: a small hammerhead swims in place where the spinner would sit (DESIGN §17), in its
+            // own box above the heading, never behind the words.
+            if Self.showsStartingArt(busy: busy) {
+                ArtSurface(place: .sessionStarting)
+                    .frame(maxWidth: .infinity).frame(height: LoomTheme.Agents.emptyArtHeight)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .accessibilityIdentifier("record-starting-art")
+            }
             HStack(spacing: LoomTheme.Edges.stateHeadingGap) {
-                if busy == .resuming {
-                    BrailleSpinner(animating: indicatorsAnimate).frame(width: LoomTheme.Edges.spinnerSlot).accessibilityHidden(true)
-                }
                 Text(Self.runStateHeading(busy: busy, canResume: model.canResume(row), isRunning: row.live?.runID != nil))
                     .font(LoomTheme.Edges.stateHeading).foregroundStyle(LoomTheme.Text.primary)
             }

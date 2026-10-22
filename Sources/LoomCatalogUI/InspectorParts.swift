@@ -34,19 +34,24 @@ struct InspectorSection<Content: View>: View {
     }
 }
 
-/// An empty or waiting pane of the inspector (DESIGN §13 "Empty and waiting", §4 a stopped session's list): the art's place, then
-/// one sentence in 13 semibold, and an optional line in mono under it. The place stays empty until the art is drawn (slice I5,
-/// DESIGN §17); like the art, it is hidden from accessibility, so VoiceOver reads only the words.
+/// An empty or waiting pane of the inspector (DESIGN §13 "Empty and waiting", §4 a stopped session's list): the art's place with its
+/// small shark swimming in place (DESIGN §17), then one sentence in 13 semibold, and an optional line in mono under it. The art is
+/// hidden from accessibility, so VoiceOver reads only the words; with no `art` the place stays empty.
 struct InspectorEmptyState: View {
     let text: String
     var detail: String?
+    var art: ArtPlace?
     @Environment(\.inspectorOverlays) private var overlays
 
     var body: some View {
         VStack(spacing: 0) {
-            Color.clear.frame(height: LoomTheme.Agents.emptyArtHeight)
-                .accessibilityHidden(true)
-                .accessibilityIdentifier("inspector-art-place")
+            ZStack {
+                if let art { ArtSurface(place: art) }
+            }
+            .frame(maxWidth: .infinity).frame(height: LoomTheme.Agents.emptyArtHeight)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .accessibilityIdentifier("inspector-art-place")
             Text(verbatim: text).projectType(LoomTheme.Agents.emptyText).foregroundStyle(LoomTheme.Text.primary)
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 .padding(.top, LoomTheme.Agents.emptyTextTop)

@@ -287,6 +287,10 @@ struct ArtSea: Sendable {
         var alpha: Double
         var plankton = 26
         var wake = true
+        /// A shark with an entry comes in by it; false (Animated art off) lays it as any other roaming shark.
+        var entering = true
+        /// A shark that crosses once starts where it rests (Animated art off).
+        var atRest = false
     }
 
     /// The sea steps every 1/`stepRate` of a second, whatever rate it is drawn at.
@@ -309,7 +313,17 @@ struct ArtSea: Sendable {
         self.metrics = metrics
         self.options = options
         var random = ArtRandom(seed: seed)
-        sharks = specs.enumerated().map { ArtShark(spec: $0.element, index: $0.offset, size: size, random: &random) }
+        let laid = options.entering ? specs : specs.map { spec in
+            var spec = spec
+            spec.entry = nil
+            return spec
+        }
+        var sharks = laid.enumerated().map { ArtShark(spec: $0.element, index: $0.offset, size: size, random: &random) }
+        for i in sharks.indices {
+            if let host = Self.host(of: i, in: sharks) { sharks[i].join(sharks[i].spot(by: sharks[host], at: 0), host: sharks[host]) }
+            if options.atRest { sharks[i].layAtRest(size: size) }
+        }
+        self.sharks = sharks
         plankton = (0..<options.plankton).map { _ in
             ArtMote(width: Double(size.width), height: Double(size.height), fromBelow: false, random: &random)
         }
@@ -333,15 +347,34 @@ struct ArtSea: Sendable {
         size = newSize
         if old.width < 50 || old.height < 50 {
             for i in sharks.indices { sharks[i].spawn(initial: true, index: i, size: newSize, random: &random) }
+            for i in sharks.indices {
+                if let host = Self.host(of: i, in: sharks) { sharks[i].join(sharks[i].spot(by: sharks[host], at: time), host: sharks[host]) }
+                if options.atRest { sharks[i].layAtRest(size: newSize) }
+            }
             plankton = plankton.map { _ in ArtMote(width: Double(newSize.width), height: Double(newSize.height), fromBelow: false, random: &random) }
         } else {
             for i in sharks.indices where sharks[i].spec.center { sharks[i].spawn(initial: true, index: i, size: newSize, random: &random) }
         }
     }
 
+    /// The shark `i` keeps to, when it keeps to one that is not itself.
+    private static func host(of i: Int, in sharks: [ArtShark]) -> Int? {
+        guard let host = sharks[i].spec.host, host != i, sharks.indices.contains(host) else { return nil }
+        return host
+    }
+
+    /// Every shark that crosses once has come to rest (About's hammerhead): the sea has nothing left to move but tails.
+    var hasRested: Bool { sharks.contains { $0.spec.restsAt != nil } && sharks.allSatisfy { $0.spec.restsAt == nil || $0.hasRested } }
+
     private mutating func simulate(_ dt: Double) {
         time += dt
-        for i in sharks.indices { sharks[i].step(dt: dt, time: time, size: size, random: &random) }
+        for i in sharks.indices {
+            if let host = Self.host(of: i, in: sharks) {
+                sharks[i].step(following: sharks[host], dt: dt, time: time, size: size)
+            } else {
+                sharks[i].step(dt: dt, time: time, size: size, random: &random)
+            }
+        }
         let w = Double(size.width), h = Double(size.height)
         for i in plankton.indices {
             plankton[i].x += plankton[i].vx * dt + sin(time * plankton[i].f + plankton[i].p) * 3 * dt
