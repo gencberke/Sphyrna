@@ -78,6 +78,22 @@ struct RemoraModelTests {
         }
     }
 
+    // MARK: Tracked changes
+
+    @Test func aTrackedChangeLeavesThePendingListWhenItEnds() async throws {
+        let rig = try Rig()
+        let remora = rig.model.remora
+        rig.model.refreshRemoraUsage()
+        rig.model.setRemoraModel("haiku")
+        rig.model.setRemoraEffort("medium")
+        let running = remora.pending
+        #expect(running.count == 3)
+        for item in running { await item.value }
+        await Task.yield()
+        #expect(remora.pending.isEmpty, "\(remora.pending.count) ended changes are still held")
+        await rig.finish()
+    }
+
     // MARK: Calls
 
     @Test func theStateMovesFromIdleToAskingAndBackWithTheAnswerAndTheUse() async throws {

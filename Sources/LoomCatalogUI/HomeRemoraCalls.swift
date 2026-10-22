@@ -42,13 +42,19 @@ enum HomeRemoraCalls {
         let previous = ui.asked
         let showingAnswer = previous != nil && !ui.answerClosed
         let followUp = showingAnswer && !retry && model.remora.lastAnswer?.question != nil
-        guard model.askRemora(question, scope: ui.scope, followUp: followUp) else { return false }
+        guard model.askRemora(question, scope: ui.scope, followUp: followUp, door: .home) else { return false }
         if showingAnswer, !retry { ui.earlier = previous }
         ui.asked = HomeRemoraUI.Asked(question: question, scope: ui.scope, at: Date())
         ui.answerClosed = false
         ui.text = ""
         return true
     }
+}
+
+/// What makes Home's show task run again: its window became known, or Remora's host was installed.
+struct HomeRemoraShowKey: Equatable {
+    let windowAttached: Bool
+    let hasHost: Bool
 }
 
 /// The main window's state at the moment Home asks. The view holds its window weakly; nothing observes it.
@@ -111,8 +117,9 @@ final class HomeRemoraReads {
 
     init(baselineUndo: RemoraUndoToken?) { self.baselineUndo = baselineUndo }
 
+    /// Nothing is read with Remora off or without its host (the section is not shown then): no memory is opened, no folder made.
     func read(model: CatalogModel) async {
-        guard let catalog = model.catalog else { return }
+        guard let catalog = model.catalog, model.hasRemora, model.remora.preferences.isOn else { return }
         let state = model.remora
         var wanted: [UUID] = []
         func want(_ id: String) { if let id = UUID(uuidString: id) { wanted.append(id) } }
@@ -145,11 +152,14 @@ struct HomeRemoraReadKey: Equatable {
     let kept: RemoraKeptBrief?
     let answer: RemoraHostAnswer?
     let idle: Bool
+    /// Remora is on with its host: turning it on, or the host arriving, reads again.
+    let active: Bool
 }
 
 extension CatalogModel {
     var homeRemoraReadKey: HomeRemoraReadKey {
-        HomeRemoraReadKey(home: homeReadKey, kept: remora.keptBrief, answer: remora.lastAnswer, idle: !remora.isBusy)
+        HomeRemoraReadKey(home: homeReadKey, kept: remora.keptBrief, answer: remora.lastAnswer, idle: !remora.isBusy,
+                          active: hasRemora && remora.preferences.isOn)
     }
 
     /// A session as Home names it now: the live record when the model holds one, else what the catalog read gave. A session being

@@ -47,6 +47,9 @@ public enum RemoraSkipReason: Equatable, Sendable {
     /// No session moved since the last brief (or since the day before, when none ever ran).
     case nothingMoved
     case homeNotShown
+    /// The last brief found no Claude login: the automatic brief waits until the user asks, a setting changes or Sphyrna
+    /// relaunches (`RemoraHost`; never `decide`'s answer).
+    case notLoggedIn
 }
 
 public enum RemoraWaitReason: Equatable, Sendable {

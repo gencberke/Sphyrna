@@ -77,7 +77,9 @@ final class RemoraHomeRig {
         return rig
     }
 
-    private func makeHost(seeds: [Seed], preferences: RemoraPreferences, script: [String: String], now: Date) {
+    /// Makes the host and installs it (`make` does unless `withHost` is false; a test installs it later to stand for the app,
+    /// which shows Home before its runtime installs the host).
+    func makeHost(seeds: [Seed], preferences: RemoraPreferences, script: [String: String], now: Date) {
         var built: [SessionSummary] = []
         var sessionProjects: [UUID: UUID] = [:]
         var names: [UUID: String] = [:]

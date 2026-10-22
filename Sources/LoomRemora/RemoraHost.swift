@@ -27,14 +27,21 @@ public final class RemoraHost {
     private var lastBriefValue: Date?
     private let builder: RemoraPackBuilder
     private let readMaps: @Sendable () async throws -> RemoraCatalogMaps
+    /// The newest activity of a listed session outside the excluded projects: one narrow catalog read, what `briefIfDue` needs
+    /// of the catalog (the full maps are read only when a call runs).
+    private let readNewest: @Sendable (Set<UUID>) async throws -> Date?
     private let makeCall: @Sendable (RemoraUsage) async throws -> RemoraCall
     private let timeZone: TimeZone
     private let clock: @Sendable () -> Date
     private var running: Task<RemoraOutcome, Never>?
+    /// The last brief found no Claude login: the automatic brief waits until the user asks for one, a setting changes or the
+    /// app relaunches (memory only), so a logged-out user's Home shows start no call each.
+    private var waitsForLogin = false
 
     /// The app's host. `toolchain` resolves the Claude CLI when a call needs it (the app's toolchain slot, which waits for
-    /// the runtime's resolver); `profile` is the Claude profile usage reads, and its folder is where transcripts are found.
-    /// Making the host reads only the listing of `<data root>/remora/` (it removes stale system-prompt files).
+    /// the runtime's resolver); `profile` is the Claude profile usage reads. The call and its transcript lookups use the account
+    /// sessions use (`RemoraCall.configDirectory(toolchain:profile:)`): for the home default, the toolchain's own
+    /// `CLAUDE_CONFIG_DIR` when the login shell sets one. Making the host reads only the listing of `<data root>/remora/` (it removes stale system-prompt files).
     public convenience init(dataRoot: URL, supervisor: ProcessSupervisor, catalog: SessionCatalog, sessions: SessionDirectory,
                             toolchain: @escaping @Sendable () async throws -> ProviderToolchain,
                             profile: ClaudeProfileLayout, settings: RemoraPreferences = RemoraPreferences()) {
@@ -42,12 +49,13 @@ public final class RemoraHost {
         self.init(
             dataRoot: dataRoot, settings: settings,
             sessions: { try await sessions.summaries($0) },
-            transcript: RemoraPackBuilder.catalogTranscripts(catalog, configDirectory: profile.configDirectory),
+            transcript: Self.transcripts(catalog: catalog, toolchain: toolchain, profile: profile),
             maps: { try await RemoraCatalogMaps.read(from: catalog) },
+            newest: { try await catalog.newestListedActivity(excludingProjects: $0) },
             makeCall: { usage in
                 let resolved: ProviderToolchain
                 do { resolved = try await toolchain() } catch {
-                    throw RemoraFailure(kind: .couldNotStart, detail: "Claude could not be found", usage: nil)
+                    throw RemoraFailure(kind: .couldNotStart, detail: "Claude could not be found", beforeSpawn: true)
                 }
                 return RemoraCall(supervisor: supervisor, toolchain: resolved, profile: profile,
                                   workingDirectory: workingDirectory, usage: usage)
@@ -55,8 +63,10 @@ public final class RemoraHost {
             timeZone: .current, clock: { Date() })
     }
 
+    /// `newest` defaults to the maps' own newest activity (tests that have no catalog).
     init(dataRoot: URL, settings: RemoraPreferences, sessions: @escaping RemoraPackBuilder.Sessions,
          transcript: @escaping RemoraPackBuilder.Transcript, maps: @escaping @Sendable () async throws -> RemoraCatalogMaps,
+         newest: (@Sendable (Set<UUID>) async throws -> Date?)? = nil,
          makeCall: @escaping @Sendable (RemoraUsage) async throws -> RemoraCall,
          timeZone: TimeZone = .current, clock: @escaping @Sendable () -> Date = { Date() }) {
         let directory = dataRoot.appendingPathComponent("remora", isDirectory: true)
@@ -68,11 +78,23 @@ public final class RemoraHost {
         lastBriefFile = RemoraLastBrief(directory: directory)
         builder = RemoraPackBuilder(sessions: sessions, transcript: transcript)
         readMaps = maps
+        readNewest = newest ?? { try await maps().newestActivity(excluding: $0) }
         self.makeCall = makeCall
         self.timeZone = timeZone
         self.clock = clock
         // A call that was cut short (a crash, a kill) leaves its system-prompt file; nothing else is read at launch.
         RemoraCall.removeStaleSystemPrompts(in: directory)
+    }
+
+    /// Finds a session's transcript in the folder of the account the call uses (`RemoraCall.transcriptDirectory`), resolved
+    /// with the toolchain when a pack reads one; the profile's own folder while the toolchain cannot be resolved.
+    nonisolated static func transcripts(catalog: SessionCatalog, toolchain: @escaping @Sendable () async throws -> ProviderToolchain,
+                            profile: ClaudeProfileLayout) -> RemoraPackBuilder.Transcript {
+        { summary in
+            let directory = (try? await toolchain()).map { RemoraCall.transcriptDirectory(toolchain: $0, profile: profile) }
+                ?? profile.configDirectory
+            return await RemoraPackBuilder.catalogTranscripts(catalog, configDirectory: directory)(summary)
+        }
     }
 
     // MARK: Forgetting
@@ -106,6 +128,7 @@ public final class RemoraHost {
     public func brief(onReading: @escaping @MainActor (RemoraReading) -> Void = { _ in },
                       onText: @escaping @MainActor (String) -> Void = { _ in }) async -> RemoraOutcome {
         guard settings.isOn else { return .off }
+        waitsForLogin = false
         return await runBrief(onReading: onReading, onText: onText)
     }
 
@@ -124,10 +147,11 @@ public final class RemoraHost {
         // The cheap rules of `RemoraSchedule.decide`, in its order, before the catalog is read: after the day's brief that read
         // would be wasted on every Home view. Each answer is the one `decide` gives.
         if settings.briefMode != .automatic { return .notDue(.skip(.whenIAsk)) }
+        if waitsForLogin { return .notDue(.skip(.notLoggedIn)) }
         if let last = loadLastBrief(), last >= RemoraSchedule.dayStart(containing: clock(), in: timeZone) {
             return .notDue(.skip(.alreadyBriefedToday))
         }
-        let newest = (try? await readMaps())?.newestActivity(excluding: settings.excludedProjects)
+        let newest = try? await readNewest(settings.excludedProjects)
         let decision = RemoraSchedule.decide(RemoraScheduleInput(
             remoraOn: settings.isOn, briefMode: settings.briefMode, now: clock(), timeZone: timeZone,
             lastBrief: loadLastBrief(), newestActivity: newest, homeShown: homeShown,
@@ -156,7 +180,8 @@ public final class RemoraHost {
     public func stop() { running?.cancel() }
 
     /// A brief records the day's slot when it starts (a failed or stopped one is not retried the same day), and gives it back
-    /// when it never reached the model (`notLoggedIn`, `couldNotStart`).
+    /// only when it never reached the model (SPEC §10.2): `notLoggedIn`, or a failure before its child was spawned. A Quit, a
+    /// cancel or any other failure after the spawn keeps the slot. After `notLoggedIn` the automatic brief waits for the user.
     private func runBrief(onStart: @escaping @MainActor () -> Void = {}, onReading: @escaping @MainActor (RemoraReading) -> Void,
                           onText: @escaping @MainActor (String) -> Void) async -> RemoraOutcome {
         guard running == nil else { return .busy }
@@ -165,8 +190,9 @@ public final class RemoraHost {
         storeLastBrief(now)
         let since = RemoraSchedule.briefSince(now: now, lastBrief: previous, timeZone: timeZone)
         let outcome = await run(.brief(since: since), startedAt: now, onStart: onStart, onReading: onReading, onText: onText)
-        if case let .failed(failure) = outcome, failure.kind == .notLoggedIn || failure.kind == .couldNotStart {
+        if case let .failed(failure) = outcome, failure.kind == .notLoggedIn || failure.beforeSpawn {
             storeLastBrief(previous)
+            if failure.kind == .notLoggedIn { waitsForLogin = true }
         }
         return outcome
     }
@@ -255,7 +281,8 @@ public final class RemoraHost {
             return Task.isCancelled ? .cancelled : .failed(failure)
         } catch {
             if Task.isCancelled || error is CancellationError { return .cancelled }
-            return .failed(RemoraFailure(kind: .couldNotStart, detail: "Remora's memory or the session list could not be read", usage: nil))
+            return .failed(RemoraFailure(kind: .couldNotStart, detail: "Remora's memory or the session list could not be read",
+                                         beforeSpawn: true))
         }
     }
 
@@ -309,10 +336,10 @@ public final class RemoraHost {
 
     // MARK: Memory
 
-    /// Every project's note with its name, in project order of the memory's folder.
-    public func notes() async -> [RemoraHostNote] {
+    /// Every project's note, in project order of the memory's folder, named from `names` (the caller's projects; no catalog
+    /// read here).
+    public func notes(names: [UUID: String] = [:]) async -> [RemoraHostNote] {
         guard let memory = try? await box.open() else { return [] }
-        let names = (try? await readMaps())?.projectNames ?? [:]
         var result: [RemoraHostNote] = []
         for project in await memory.noteProjects() {
             if let note = await memory.note(for: project) {
@@ -395,6 +422,8 @@ public final class RemoraHost {
     /// reach are unchanged). A shrinking exclusion set or any other change leaves the call running.
     public func update(settings updated: RemoraPreferences) async {
         let old = settings
+        // Any change to a setting lets the automatic brief try the login again.
+        if updated != old { waitsForLogin = false }
         let added = updated.excludedProjects.subtracting(old.excludedProjects)
         let stopping = (old.isOn && !updated.isOn) || !added.isEmpty
         let inFlight = stopping ? running : nil

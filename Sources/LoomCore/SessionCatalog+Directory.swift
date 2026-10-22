@@ -50,4 +50,33 @@ extension SessionCatalog {
             return rows
         }
     }
+
+    /// The newest activity among the sessions the directory lists (the same predicate as `directoryRows`) outside the projects
+    /// in `excludingProjects` (a session without a project counts); nil when there is none. One query that stops at the first
+    /// row it can decode: Remora's automatic brief reads only this of the catalog before it decides.
+    public func newestListedActivity(excludingProjects: Set<UUID>) throws -> Date? {
+        var conditions = [Self.listed, "s.provider <> '\(ManagedSession.Provider.synthetic.rawValue)'"]
+        let bindings = excludingProjects.map(\.uuidString)
+        if !bindings.isEmpty {
+            conditions.append(
+                "(s.project_id IS NULL OR s.project_id NOT IN (\(Array(repeating: "?", count: bindings.count).joined(separator: ","))))")
+        }
+        let sql = """
+            SELECT \(Self.sessionColumns) FROM sessions s
+            WHERE \(conditions.joined(separator: " AND "))
+            ORDER BY \(Self.activityExpression) DESC, s.id DESC
+            """
+        return try database.withStatement(sql) { statement in
+            for (offset, value) in bindings.enumerated() {
+                try database.bind(value, at: Int32(offset + 1), to: statement)
+            }
+            var stepResult = sqlite3_step(statement)
+            while stepResult == SQLITE_ROW {
+                if let record = try decodeSessionOrSkip(statement) { return record.lastActivityAt }
+                stepResult = sqlite3_step(statement)
+            }
+            try database.requireDone(stepResult, operation: "read the newest listed activity")
+            return nil
+        }
+    }
 }

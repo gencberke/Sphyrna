@@ -211,7 +211,8 @@ struct RemoraMemoryTests {
     }
 
     @Test func aRemovedNoteCanComeBackAndAnEditedOneIsSavedWhereItStands() async throws {
-        let rig = try RemoraMemoryRig()
+        // A catalog with the project: the card's name is the model's project name (the notes read no catalog maps).
+        let rig = try await RemoraMemoryRig.withProjects(["loom"])
         defer { rig.finish() }
         try await rig.seed()
         let memory = RemoraMemoryModel(catalog: rig.model)

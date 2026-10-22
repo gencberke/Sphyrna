@@ -370,6 +370,8 @@ struct RemoraCallTests {
         let source = ["HOME": "/Users/x", "PATH": "/opt/bin:/usr/bin", "USER": "x", "LOGNAME": "x", "TMPDIR": "/tmp/x/",
                       "LANG": "tr_TR.UTF-8", "SHELL": "/bin/zsh", "TERM": "xterm", "ANTHROPIC_API_KEY": "secret",
                       "CLAUDE_CONFIG_DIR": "/elsewhere", "CLAUDE_CODE_OAUTH_TOKEN": "t", "OPENAI_API_KEY": "k"]
+        // The builder passes on no key of the source but the basics: the toolchain's `CLAUDE_CONFIG_DIR` reaches the child only
+        // through `configDirectory(toolchain:profile:)` (the plan-limits child's rule, tested below), and the API keys never.
         let home = RemoraCall.environment(from: source, configDirectory: nil)
         #expect(Set(home.keys) == Self.keys.subtracting(["CLAUDE_CONFIG_DIR"]))
         #expect(home["HOME"] == "/Users/x" && home["PATH"] == "/opt/bin:/usr/bin" && home["USER"] == "x")
@@ -382,6 +384,42 @@ struct RemoraCallTests {
         let bare = RemoraCall.environment(from: [:], configDirectory: nil)
         #expect(bare["USER"] == NSUserName() && bare["LOGNAME"] == NSUserName())
         #expect(bare["HOME"] != nil && bare["PATH"] != nil)
+    }
+
+    @Test func theCallsAccountIsTheSessionsByThePlanLimitsChildsRule() async throws {
+        let rig = try Rig()
+        let home = rig.root.appendingPathComponent("home", isDirectory: true)
+        let shell = rig.root.appendingPathComponent("shell-profile", isDirectory: true)
+        let pinned = rig.root.appendingPathComponent("pinned-profile", isDirectory: true)
+        for folder in [home, shell, pinned] { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
+        // The fake answers from `remora-fixture.json` in the CLAUDE_CONFIG_DIR it was given: the answer names the account.
+        for (folder, answer) in [(shell, "From the login shell's account."), (pinned, "From the pinned account.")] {
+            let script = try JSONSerialization.data(withJSONObject: ["answer": answer])
+            try script.write(to: folder.appendingPathComponent("remora-fixture.json"))
+        }
+        let toolchain = ProviderToolchain(
+            provider: .claude, executable: Self.fake, capabilities: ProviderCapabilities(version: "x", help: ""),
+            environment: ["PATH": "/usr/bin:/bin", "CLAUDE_CONFIG_DIR": shell.path, "ANTHROPIC_API_KEY": "secret"])
+        let homeDefault = ClaudeProfileLayout(profileDirectory: nil, environment: [:], home: home)
+        #expect(homeDefault.source == .homeDefault)
+        func answer(_ profile: ClaudeProfileLayout) async -> String? {
+            let call = RemoraCall(supervisor: rig.supervisor, toolchain: toolchain, profile: profile, workingDirectory: rig.work)
+            #expect(call.environment["ANTHROPIC_API_KEY"] == nil, "an API key reached the child")
+            return await collect(call.run(RemoraRequest(kind: .question, pack: "p"))).answer?.text
+        }
+        // The home default keeps the toolchain's CLAUDE_CONFIG_DIR, as sessions do; transcripts are looked up there too.
+        #expect(await answer(homeDefault)?.hasPrefix("From the login shell's account.") == true)
+        #expect(RemoraCall.transcriptDirectory(toolchain: toolchain, profile: homeDefault).lastPathComponent == "shell-profile")
+        // An explicit profile still wins.
+        let explicit = ClaudeProfileLayout(profileDirectory: pinned, environment: [:], home: home)
+        #expect(await answer(explicit)?.hasPrefix("From the pinned account.") == true)
+        #expect(RemoraCall.transcriptDirectory(toolchain: toolchain, profile: explicit) == explicit.configDirectory)
+        // A toolchain without one: no CLAUDE_CONFIG_DIR (Claude uses ~/.claude), and the profile's folder for transcripts.
+        let plain = ProviderToolchain(provider: .claude, executable: Self.fake, capabilities: ProviderCapabilities(version: "x", help: ""),
+                                      environment: ["PATH": "/usr/bin:/bin"])
+        #expect(RemoraCall.configDirectory(toolchain: plain, profile: homeDefault) == nil)
+        #expect(RemoraCall.transcriptDirectory(toolchain: plain, profile: homeDefault) == homeDefault.configDirectory)
+        await rig.finish()
     }
 
     @Test func modelAndEffortAreCheckedBeforeTheyReachArgv() {

@@ -68,6 +68,10 @@ public struct RemoraFailure: Error, Equatable, Sendable, CustomStringConvertible
     public var detail: String
     /// What the call used before it failed, when Claude reported it (a refusal is billed).
     public var usage: RemoraTokenUsage?
+    /// The call failed before its child was started (the working folder, the system prompt file, the toolchain, a child that
+    /// could not be spawned, Sphyrna already quitting), so it never reached the model. False for every failure after the spawn,
+    /// whatever its kind: a Quit or an unlisted error mid-call may have been billed (SPEC §10.2).
+    public var beforeSpawn = false
 
     public var description: String { detail.isEmpty ? kind.rawValue : "\(kind.rawValue): \(detail)" }
 }
@@ -83,9 +87,10 @@ public struct RemoraCall: Sendable {
     /// More than this on the child's stdout is not an answer.
     public static let outputLimit = 4 * 1024 * 1024
 
-    /// The environment's keys, and the only ones a call's child gets. `CLAUDE_CONFIG_DIR` is set only for a profile that
-    /// is not the home default (Claude names its stored login after an explicit config directory, so `~/.claude` is
-    /// never passed explicitly, as for the plan-limits child); `USER` is required (without it the CLI says "Not logged in").
+    /// The environment's keys, and the only ones a call's child gets. `CLAUDE_CONFIG_DIR` follows the plan-limits child's
+    /// rule (`configDirectory(toolchain:profile:)`): an explicit profile is pinned, and for the home default the resolved
+    /// toolchain's own value is kept, so the call draws on the account sessions use (Claude names its stored login after an
+    /// explicit config directory, so `~/.claude` is never passed explicitly); `USER` is required (without it the CLI says "Not logged in").
     /// `CLAUDE_CODE_PROMPT_CACHE_TTL=1h` for every call (D-84, D-85): Remora keeps prompt caching, and Sphyrna, not the
     /// plan, chooses its lifetime. Claude Code 2.1.242 and later reads it for the main conversation, `-p` runs included.
     /// An hour, because the user asks through the day with gaps over five minutes, and because on usage credits the
@@ -206,14 +211,31 @@ public struct RemoraCall: Sendable {
                 workingDirectory: URL, usage: RemoraUsage? = nil) {
         self.init(
             supervisor: supervisor, executable: toolchain.executable,
-            environment: Self.environment(
-                from: toolchain.environment,
-                configDirectory: profile.source == .homeDefault ? nil : profile.configDirectory.path),
+            environment: Self.environment(from: toolchain.environment,
+                                          configDirectory: Self.configDirectory(toolchain: toolchain, profile: profile)),
             workingDirectory: workingDirectory, usage: usage)
     }
 
+    /// The child's `CLAUDE_CONFIG_DIR`, by the plan-limits child's rule (`ClaudePlanLimitsFetcher.environment`): a profile
+    /// that is not the home default is pinned; for the home default, the one the login shell gave the resolved toolchain is
+    /// kept (sessions run with it); otherwise none, and Claude uses `~/.claude`.
+    public static func configDirectory(toolchain: ProviderToolchain, profile: ClaudeProfileLayout) -> String? {
+        guard profile.source == .homeDefault else { return profile.configDirectory.path }
+        return toolchain.environment["CLAUDE_CONFIG_DIR"].flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// Where the call's account keeps its transcripts: the folder `configDirectory(toolchain:profile:)` names when it is an
+    /// absolute path, else the profile's own (`~/.claude` for the home default).
+    public static func transcriptDirectory(toolchain: ProviderToolchain, profile: ClaudeProfileLayout) -> URL {
+        guard profile.source == .homeDefault, let value = configDirectory(toolchain: toolchain, profile: profile),
+              value.hasPrefix("/") else { return profile.configDirectory }
+        return ClaudeProfileLayout(profileDirectory: URL(fileURLWithPath: value, isDirectory: true), environment: [:],
+                                   home: FileManager.default.homeDirectoryForCurrentUser).configDirectory
+    }
+
     /// Runs one call. The stream yields the answer's text as it arrives and ends with `.finished`, or throws a
-    /// `RemoraFailure`. Cancelling the consuming task (or dropping the stream) ends the child at once (SIGTERM, SIGKILL
+    /// `RemoraFailure` (`beforeSpawn` says whether its child was ever started). The call counts in `usage` once its child
+    /// was started: a failure before the spawn is not a call. Cancelling the consuming task (or dropping the stream) ends the child at once (SIGTERM, SIGKILL
     /// after a short grace) and the stream ends without a further event.
     public func run(_ request: RemoraRequest) -> AsyncThrowingStream<RemoraEvent, any Error> {
         AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
@@ -228,25 +250,45 @@ public struct RemoraCall: Sendable {
         func failure(_ kind: RemoraFailure.Kind, _ detail: String = "", usage: RemoraTokenUsage? = nil) -> RemoraFailure {
             RemoraFailure(kind: kind, detail: detail, usage: usage)
         }
+        func notStarted(_ detail: String) -> RemoraFailure {
+            RemoraFailure(kind: .couldNotStart, detail: detail, beforeSpawn: true)
+        }
         do {
             try FileManager.default.createDirectory(
                 at: workingDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         } catch {
-            continuation.finish(throwing: failure(.couldNotStart, "The working folder could not be made"))
+            continuation.finish(throwing: notStarted("The working folder could not be made"))
             return
         }
         var systemFile: URL?
         if !request.systemSuffix.isEmpty {
             do { systemFile = try Self.writeSystemPrompt(request.systemSuffix, in: workingDirectory.deletingLastPathComponent()) } catch {
-                continuation.finish(throwing: failure(.couldNotStart, "The system prompt file could not be written"))
+                continuation.finish(throwing: notStarted("The system prompt file could not be written"))
                 return
             }
         }
         defer { if let systemFile { try? FileManager.default.removeItem(at: systemFile) } }
+        // What is known before the spawn: a child that cannot be spawned, and a Quit already under way (the stream helper
+        // would refuse to start). From here on, a Quit or an unknown error is taken as after the spawn: it keeps the day's
+        // brief slot, so a quit cut short at worst spends a slot and never leads to a second call.
+        guard FileManager.default.isExecutableFile(atPath: executable) else {
+            continuation.finish(throwing: notStarted("Claude could not be started"))
+            return
+        }
+        if await supervisor.isStopping() {
+            continuation.finish(throwing: notStarted("Sphyrna is quitting"))
+            return
+        }
         let systemTokens = Self.systemPromptTokens(for: request)
         var reader = RemoraStreamReader(knownSessionIDs: request.knownSessionIDs)
         var delivered = false
-        usage?.recordStart(request.kind, isDraft: request.isDraft)
+        var counted = false
+        /// The call counts once its child was started: at its first output, at its end, or at a failure after the spawn.
+        func countStart() {
+            guard !counted else { return }
+            counted = true
+            usage?.recordStart(request.kind, isDraft: request.isDraft)
+        }
         let child = supervisor.streamHelper(
             executable, Self.arguments(model: request.model, effort: request.effort, systemPromptFile: systemFile?.path),
             environment: environment.merging(additionalEnvironment) { _, extra in extra },
@@ -254,6 +296,7 @@ public struct RemoraCall: Sendable {
             timeout: request.kind == .question ? questionDeadline : briefDeadline,
             terminationGrace: terminationGrace, outputLimit: Self.outputLimit)
         func deliver(_ outcome: RemoraStreamReader.Outcome) {
+            countStart()
             delivered = true
             switch outcome {
             case let .answer(answer):
@@ -268,22 +311,32 @@ public struct RemoraCall: Sendable {
         }
         do {
             for try await chunk in child {
+                countStart()
                 for piece in reader.feed(chunk) { continuation.yield(.text(piece)) }
                 if let outcome = reader.outcome, !delivered {
                     deliver(outcome)
                     if case .failure = outcome { return }
                 }
             }
+            countStart()
             if !delivered {
                 continuation.finish(throwing: failure(.endedWithoutAnswer, "The call ended without a result"))
             } else {
                 continuation.finish()
             }
         } catch is CancellationError {
+            countStart()
             continuation.finish()
         } catch {
             // After the result nothing else matters (Claude exits 1 after an error result, and may be slow to leave).
             guard !delivered else { continuation.finish(); return }
+            // A run scope that could not be opened, or could not spawn the child, is the one failure of the stream known to
+            // come before the spawn.
+            if error is RunScopeError {
+                continuation.finish(throwing: notStarted(String(describing: error)))
+                return
+            }
+            countStart()
             if Task.isCancelled { continuation.finish(); return }
             switch error {
             case StreamHelperError.timedOut:

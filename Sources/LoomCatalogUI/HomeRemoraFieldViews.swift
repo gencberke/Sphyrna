@@ -215,9 +215,12 @@ struct HomeRemoraAnswerContent: Equatable {
     @MainActor
     static func make(model: CatalogModel, asked: HomeRemoraUI.Asked, baselineUndo: RemoraUndoToken?) -> HomeRemoraAnswerContent? {
         let remora = model.remora
-        if remora.phase == .asking { return HomeRemoraAnswerContent(body: .working(reading: remora.reading, text: remora.streamedText)) }
-        if let failure = remora.lastFailure { return HomeRemoraAnswerContent(body: .failed(failure)) }
-        if remora.stopped == .question { return HomeRemoraAnswerContent(body: .stopped(text: remora.streamedText)) }
+        // The call's progress, failure and stop show here only for Home's own question (a ⌘K question or a brief has its own place).
+        if remora.call == RemoraModelState.Call(kind: .question, door: .home) {
+            if remora.phase == .asking { return HomeRemoraAnswerContent(body: .working(reading: remora.reading, text: remora.streamedText)) }
+            if let failure = remora.lastFailure { return HomeRemoraAnswerContent(body: .failed(failure)) }
+            if remora.stopped == .question { return HomeRemoraAnswerContent(body: .stopped(text: remora.streamedText)) }
+        }
         if let answer = remora.lastAnswer, answer.question == asked.question {
             return HomeRemoraAnswerContent(body: .answered(HomeRemoraAnswerFacts(answer)))
         }

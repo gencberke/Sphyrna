@@ -292,7 +292,8 @@ struct RemoraHostTests {
 
         // The child could not be started: the same.
         let blocked = try RemoraHostRig()
-        let broken = blocked.makeHost(failToStart: RemoraFailure(kind: .couldNotStart, detail: "Claude could not be found", usage: nil))
+        let broken = blocked.makeHost(failToStart: RemoraFailure(kind: .couldNotStart, detail: "Claude could not be found",
+                                                                beforeSpawn: true))
         guard case let .failed(second) = await broken.briefIfDue(homeShown: true, windowRemainingShare: 1) else {
             Issue.record("expected a failure"); await blocked.finish(); return
         }
@@ -419,5 +420,106 @@ struct RemoraHostTests {
         #expect(maps.newestActivity(excluding: [project.id]) == nil, "an excluded project's sessions moved the brief")
         #expect(maps.namedProjects(excluding: [project.id]).isEmpty)
         #expect(maps.namedProjects(excluding: []) == [project.id: project.name])
+    }
+
+    // MARK: The closing review (1.6.0)
+
+    @Test func aQuitAfterTheBriefsChildSpawnedKeepsTheDaysSlot() async throws {
+        // SPEC §10.2: once a brief's call reached the model, the day's slot is spent even if Sphyrna quits under it.
+        let rig = try RemoraHostRig()
+        let host = rig.makeHost(script: ["LOOM_FAKE_REMORA": "slow"])
+        let running = Task { await host.briefIfDue(homeShown: true, windowRemainingShare: 1) }
+        _ = try #require(await rig.pid(), "the brief's child did not start")
+        try await Task.sleep(for: .milliseconds(500))
+        let report = await rig.supervisor.shutdown()
+        #expect(report.succeeded, "\(report.errors)")
+        guard case let .failed(failure) = await running.value else { Issue.record("expected a failure"); await rig.finish(); return }
+        #expect(!failure.beforeSpawn, "a Quit after the spawn was taken as never started")
+        #expect(try rig.lastBriefRecorded() == rig.clock.now.timeIntervalSince1970, "Quit gave the day's slot back")
+        rig.forgetProcesses()
+        #expect(await rig.makeHost().briefIfDue(homeShown: true, windowRemainingShare: 1) == .notDue(.skip(.alreadyBriefedToday)),
+                "a relaunch the same day would start a second call")
+        #expect(!rig.ranAProcess)
+        try? FileManager.default.removeItem(at: rig.root)
+    }
+
+    @Test func aChildThatCannotBeSpawnedGivesTheSlotBackAndCountsNoCall() async throws {
+        let rig = try RemoraHostRig()
+        let host = rig.makeHost(executable: rig.root.appendingPathComponent("no-such-claude").path)
+        guard case let .failed(failure) = await host.briefIfDue(homeShown: true, windowRemainingShare: 1) else {
+            Issue.record("expected a failure"); await rig.finish(); return
+        }
+        #expect(failure.kind == .couldNotStart && failure.beforeSpawn)
+        #expect(try rig.lastBriefRecorded() == nil, "a brief that never spawned kept the slot")
+        #expect(await host.usage()?.today.briefs == 0, "a call that never spawned was counted")
+        await rig.finish()
+    }
+
+    @Test func afterNotLoggedInTheAutomaticBriefWaitsForTheUserOrASettingsChange() async throws {
+        let rig = try RemoraHostRig()
+        let host = rig.makeHost(script: ["LOOM_FAKE_REMORA": "login"])
+        guard case let .failed(failure) = await host.briefIfDue(homeShown: true, windowRemainingShare: 1) else {
+            Issue.record("expected a failure"); await rig.finish(); return
+        }
+        #expect(failure.kind == .notLoggedIn)
+        #expect(try rig.lastBriefRecorded() == nil, "the slot is still given back")
+        rig.forgetProcesses()
+        // Two more Home shows: no call, no process.
+        #expect(await host.briefIfDue(homeShown: true, windowRemainingShare: 1) == .notDue(.skip(.notLoggedIn)))
+        #expect(await host.briefIfDue(homeShown: true, windowRemainingShare: 1) == .notDue(.skip(.notLoggedIn)))
+        #expect(!rig.ranAProcess, "a Home show after notLoggedIn started a call")
+        let briefs = await host.usage()?.today.briefs
+        #expect(briefs == 1, "the Use line counts \(briefs ?? -1) briefs")
+        // Catch Me Up still runs.
+        guard case .failed = await host.brief() else { Issue.record("Catch Me Up did not run"); await rig.finish(); return }
+        #expect(rig.ranAProcess, "Catch Me Up was held back")
+        // It failed the same way: the wait holds again until a setting changes.
+        rig.forgetProcesses()
+        #expect(await host.briefIfDue(homeShown: true, windowRemainingShare: 1) == .notDue(.skip(.notLoggedIn)))
+        var changed = host.settings
+        changed.windowThreshold = 0.2
+        await host.update(settings: changed)
+        _ = await host.briefIfDue(homeShown: true, windowRemainingShare: 1)
+        #expect(rig.ranAProcess, "a settings change did not let the automatic brief try again")
+        await rig.finish()
+    }
+
+    @Test func theNotesAreNamedByTheCallerAndReadNoCatalogMaps() async throws {
+        let rig = try RemoraHostRig()
+        let seed = try RemoraMemory(directory: rig.remora, timeZone: rig.zone, clock: { [clock = rig.clock] in clock.now })
+        try await seed.replaceNote(project: rig.project, items: [RemoraNoteItem(text: "Waits on review", sessions: [rig.session])])
+        let host = rig.makeHost()
+        let notes = await host.notes(names: [rig.project: "loom (model)"])
+        #expect(notes.map(\.project) == [rig.project])
+        #expect(notes.first?.name == "loom (model)")
+        #expect(rig.maps.readCount == 0, "notes() read the catalog's maps (up to 10,000 rows) only to name projects")
+        await rig.finish()
+    }
+
+    @Test func theNewestListedActivityIsOneNarrowReadThatSkipsExcludedProjectsAndSideChats() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-remora-newest-\(UUID().uuidString.prefix(8))")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
+        var projects: [UUID] = []
+        for name in ["a", "b"] {
+            let folder = root.appendingPathComponent(name, isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            projects.append(try await catalog.addProject(path: folder.path).project.id)
+        }
+        #expect(try await catalog.newestListedActivity(excludingProjects: []) == nil)
+        for (index, project) in projects.enumerated() {
+            let session = ManagedSession(provider: .claude, workingDirectory: root.path)
+            let when = Date(timeIntervalSince1970: 10_000 + Double(index) * 100)
+            try await catalog.insertSession(session, title: "S\(index)", createdAt: when, lastUsedAt: when, lifecycle: .idle,
+                                            projectID: project, lastActivityAt: when)
+        }
+        #expect(try await catalog.newestListedActivity(excludingProjects: []) == Date(timeIntervalSince1970: 10_100))
+        #expect(try await catalog.newestListedActivity(excludingProjects: [projects[1]]) == Date(timeIntervalSince1970: 10_000))
+        #expect(try await catalog.newestListedActivity(excludingProjects: Set(projects)) == nil)
+        let maps = try await RemoraCatalogMaps.read(from: catalog)
+        for excluded in [Set<UUID>(), [projects[0]], [projects[1]], Set(projects)] {
+            #expect(try await catalog.newestListedActivity(excludingProjects: excluded) == maps.newestActivity(excluding: excluded))
+        }
     }
 }

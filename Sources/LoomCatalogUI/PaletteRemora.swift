@@ -186,7 +186,7 @@ enum PaletteRemoraText {
 enum PaletteRemoraCalls {
     @discardableResult
     static func ask(_ model: CatalogModel, _ question: String, scope: RemoraScope) -> Bool {
-        model.askRemora(question, scope: scope)
+        model.askRemora(question, scope: scope, door: .palette)
     }
 }
 

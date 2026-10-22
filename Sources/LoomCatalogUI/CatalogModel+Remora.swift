@@ -20,6 +20,21 @@ public final class RemoraModelState {
         case brief
     }
 
+    /// Where a call was asked from. Draft Brief keeps its own state (`draft`) and never sets `phase`, `streamedText`,
+    /// `lastFailure` or `call`, so it is not one of these.
+    public enum Door: Equatable, Sendable {
+        /// Home: its field, Catch Me Up (and Try Again), and the automatic brief.
+        case home
+        /// ⌘K's Ask Remora (and the evidence command that asks as it does).
+        case palette
+    }
+
+    /// The call `phase`, `streamedText`, `lastFailure` and `stopped` belong to: what it is and which door asked it.
+    public struct Call: Equatable, Sendable {
+        public var kind: RemoraKind
+        public var door: Door
+    }
+
     public internal(set) var phase: Phase = .idle
     /// The visible answer so far; reset when a call starts.
     public internal(set) var streamedText = ""
@@ -27,6 +42,9 @@ public final class RemoraModelState {
     public internal(set) var lastAnswer: RemoraHostAnswer?
     /// The last call's failure kind; nil after a call that ended well, and while one runs.
     public internal(set) var lastFailure: RemoraFailure.Kind?
+    /// The call that runs, or the last one that started (set when it starts, kept after it ends): whose `phase`, stream,
+    /// failure and stop these are. Home shows only its own question's, and only a brief's failure in the brief's place.
+    public internal(set) var call: Call?
     /// Facts the last answer proposes, for "Remember this?"; a confirmed or dismissed one leaves the list.
     public internal(set) var proposedFacts: [String] = []
     /// What the calls used, with the drift count; refreshed after every call and every memory change.
@@ -56,14 +74,21 @@ public final class RemoraModelState {
     /// Draft Brief's row on the new-session page (D-80): its own state, apart from Home's call. Idle until a draft starts.
     public internal(set) var draft: DraftState = .idle
 
-    @ObservationIgnored var host: RemoraHost?
+    @ObservationIgnored var host: RemoraHost? {
+        didSet { hasHost = host != nil }
+    }
+    /// Whether the host is installed: the one observed sign of it, so Home asks again when the host arrives after Home showed
+    /// (the window is shown before the runtime installs the host).
+    public private(set) var hasHost = false
     /// A draft's checks are being made (the catalog read before it starts): nothing else starts meanwhile.
     @ObservationIgnored var draftChecking = false
     @ObservationIgnored var persist: (@MainActor (RemoraPreferences) -> Void)?
     @ObservationIgnored var task: Task<Void, Never>?
     /// An automatic brief is being decided (no phase yet).
     @ObservationIgnored var deciding = false
-    @ObservationIgnored var pending: [Task<Void, Never>] = []
+    /// The memory and settings changes under way; each leaves the list when it ends.
+    @ObservationIgnored private var tracked: [UUID: Task<Void, Never>] = [:]
+    var pending: [Task<Void, Never>] { Array(tracked.values) }
 
     public init() {}
 
@@ -98,7 +123,16 @@ public final class RemoraModelState {
     func settle() async {
         await task?.value
         for item in pending { await item.value }
-        pending.removeAll()
+    }
+
+    /// Runs `body` as a tracked change; it leaves `pending` when it ends.
+    func track(_ body: @escaping @MainActor (RemoraModelState) async -> Void) {
+        let id = UUID()
+        // The task runs on the main actor after this returns, so it is in the list before it can remove itself.
+        tracked[id] = Task { @MainActor in
+            await body(self)
+            self.tracked[id] = nil
+        }
     }
 }
 
@@ -120,17 +154,19 @@ extension CatalogModel {
 
     func installRemora(host: RemoraHost) { remora.host = host }
 
-    /// Whether Remora has a host (the Home views show nothing of Remora without one).
-    public var hasRemora: Bool { remora.host != nil }
+    /// Whether Remora has a host (the Home views show nothing of Remora without one). Observed: it turns true when the host is
+    /// installed.
+    public var hasRemora: Bool { remora.hasHost }
 
     // MARK: Calls
 
     /// A question. "Remember …" saves a fact and makes no call. Refused (false) without a host, while a call runs or with
-    /// Remora off. `followUp` carries the last answer's exchange.
+    /// Remora off. `followUp` carries the last answer's exchange; `door` is where it was asked (⌘K's unless Home says so).
     @discardableResult
-    public func askRemora(_ question: String, scope: RemoraScope = .allProjects, followUp: Bool = false) -> Bool {
+    public func askRemora(_ question: String, scope: RemoraScope = .allProjects, followUp: Bool = false,
+                          door: RemoraModelState.Door = .palette) -> Bool {
         let previous = followUp ? remora.lastAnswer?.exchange : nil
-        return startRemora(.asking) { host, state, _ in
+        return startRemora(.asking, door: door) { host, state, _ in
             await host.ask(question, scope: scope, previous: previous, onReading: { state.reading = $0 },
                            onText: { state.streamedText += $0 })
         }
@@ -139,7 +175,7 @@ extension CatalogModel {
     /// The brief the user asked for: runs whatever the schedule says.
     @discardableResult
     public func briefRemora() -> Bool {
-        startRemora(.briefing) { host, state, _ in
+        startRemora(.briefing, door: .home) { host, state, _ in
             await host.brief(onReading: { state.reading = $0 }, onText: { state.streamedText += $0 })
         }
     }
@@ -153,7 +189,7 @@ extension CatalogModel {
     public func briefRemoraIfDue(homeShown: Bool, isOnline: Bool = true) -> Bool {
         guard isOnline else { return false }
         let share = remainingFiveHourShare()
-        return startRemora(nil) { host, state, started in
+        return startRemora(nil, door: .home) { host, state, started in
             await host.briefIfDue(homeShown: homeShown, windowRemainingShare: share, onStart: started,
                                   onReading: { state.reading = $0 }, onText: { state.streamedText += $0 })
         }
@@ -203,7 +239,7 @@ extension CatalogModel {
     /// Starts a call as the model's one: `phase` shows at once, or (nil, the automatic brief) when the host says the brief
     /// started. `started` is what the host calls then.
     private func startRemora(
-        _ phase: RemoraModelState.Phase?,
+        _ phase: RemoraModelState.Phase?, door: RemoraModelState.Door,
         _ body: @escaping @MainActor (RemoraHost, RemoraModelState, _ started: @escaping @MainActor () -> Void) async -> RemoraOutcome
     ) -> Bool {
         let state = remora
@@ -213,6 +249,7 @@ extension CatalogModel {
         let begin: @MainActor () -> Void = {
             state.deciding = false
             state.phase = kind
+            state.call = RemoraModelState.Call(kind: kind == .asking ? .question : .brief, door: door)
             state.streamedText = ""
             state.lastFailure = nil
             state.notSavedReason = nil
@@ -237,9 +274,10 @@ extension CatalogModel {
     // MARK: The day's brief
 
     /// Reads the day's brief that Remora kept (the file is read when this runs, never at launch) into `remora.keptBrief`: the
-    /// brief of an earlier day is removed and leaves nil. Home calls it when it is first shown (and may call it again).
+    /// brief of an earlier day is removed and leaves nil. Home calls it when it is first shown (and may call it again). With
+    /// Remora off, or before the host is installed, nothing is read.
     public func loadRemoraKeptBrief() async {
-        guard let host = remora.host else { return }
+        guard let host = remora.host, remora.preferences.isOn else { return }
         remora.keptBrief = await host.keptBrief()
     }
 
@@ -270,8 +308,11 @@ extension CatalogModel {
 
     // MARK: Memory
 
-    /// The notes Remora keeps per project (reads the memory on first use).
-    public func remoraNotes() async -> [RemoraHostNote] { await remora.host?.notes() ?? [] }
+    /// The notes Remora keeps per project (reads the memory on first use), named from the model's projects.
+    public func remoraNotes() async -> [RemoraHostNote] {
+        guard let host = remora.host else { return [] }
+        return await host.notes(names: Dictionary(projects.map { ($0.id, $0.name) }) { first, _ in first })
+    }
 
     public func remoraJournalDays() async -> [Date] { await remora.host?.journalDays() ?? [] }
 
@@ -334,10 +375,7 @@ extension CatalogModel {
         track { state in state.usage = await host.usage() ?? state.usage }
     }
 
-    private func track(_ body: @escaping @MainActor (RemoraModelState) async -> Void) {
-        let state = remora
-        state.pending.append(Task { await body(state) })
-    }
+    private func track(_ body: @escaping @MainActor (RemoraModelState) async -> Void) { remora.track(body) }
 
     // MARK: Preferences
 

@@ -145,6 +145,6 @@ struct RemoraHomeGuardTests {
         let sites = sources.filter { $0.code.contains("briefRemoraIfDue(") }.map(\.path)
         #expect(sites == ["HomeRemoraCalls.swift"], "\(sites)")
         let view = try #require(sources.first { $0.path == "HomeView.swift" }).code
-        #expect(view.contains(".task(id: windowAttached)") && view.contains("HomeRemoraCalls.homeShown("), "Home's .task asks")
+        #expect(view.contains(".task(id: HomeRemoraShowKey(windowAttached: windowAttached, hasHost: model.hasRemora))") && view.contains("HomeRemoraCalls.homeShown("), "Home's .task asks")
     }
 }

@@ -133,10 +133,13 @@ extension LaunchEnvironment {
             }
             guard now() < deadline else { try endGently(); throw StreamHelperError.timedOut }
             if stdoutOpen {
-                // Wakes at once for output; the short timeout keeps cancellation, the deadline and the exit check prompt.
+                // Wakes at once for output; the 50 ms timeout keeps cancellation, Quit, the deadline and the exit check within
+                // one timeout without waking a hundred times a second for a whole call.
                 var watched = [pollfd(fd: output[0], events: Int16(POLLIN), revents: 0)]
                 if stderrOpen { watched.append(pollfd(fd: errors[0], events: Int16(POLLIN), revents: 0)) }
-                _ = poll(&watched, nfds_t(watched.count), 10)
+                // A pack larger than the pipe's buffer: wake as soon as the child has read some of it, not at the timeout.
+                if inputOpen, !pending.isEmpty { watched.append(pollfd(fd: stdin[1], events: Int16(POLLOUT), revents: 0)) }
+                _ = poll(&watched, nfds_t(watched.count), 50)
             } else {
                 usleep(5_000)
             }

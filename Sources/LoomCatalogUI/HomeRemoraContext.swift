@@ -36,8 +36,8 @@ struct HomeRemoraContext {
         input.isOn = remora.preferences.isOn
         input.hasSessions = model.sessionCounts.values.reduce(0, +) > 0
         input.phase = remora.phase
-        // A question that failed shows under the field; only a brief's failure takes the brief's place.
-        input.briefFailure = ui.asked == nil ? remora.lastFailure : nil
+        // A question that failed shows under the field (Home's own) or in ⌘K; only a brief's failure takes the brief's place.
+        input.briefFailure = remora.call?.kind == .brief ? remora.lastFailure : nil
         input.decision = remora.lastBriefDecision
         input.stopped = remora.stopped
         input.hasBrief = brief != nil

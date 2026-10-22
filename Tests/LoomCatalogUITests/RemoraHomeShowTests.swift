@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import Testing
 import LoomCore
 @testable import LoomRemora
@@ -93,4 +94,128 @@ struct RemoraHomeShowTests {
         await remora.settle()
         #expect(remora.lastAnswer?.answer.text == "A brief anyway." && remora.lastBriefDecision == nil)
     }
+
+    // MARK: The closing review (1.6.0)
+
+    @Test func aHostInstalledAfterHomeShowedAsksHomeAgainAndTheBriefIsAsked() async throws {
+        // The app shows its window (and a restored Home) before the runtime installs Remora's host.
+        let seeds: [RemoraHomeRig.Seed] = [.init(title: "Billing", project: 0, ago: 3_600)]
+        let script = ["LOOM_FAKE_REMORA_ANSWER": "You left off in loom, where billing waits."]
+        let rig = try await RemoraHomeRig.make(seeds: seeds, script: script, withHost: false)
+        defer { Task { await rig.finish() } }
+        let remora = rig.model.remora
+        await HomeRemoraCalls.homeShown(model: rig.model, window: visible, isOnline: { true })
+        #expect(!rig.ranAProcess && remora.keptBrief == nil, "nothing to ask without the host")
+        // Home's show task is keyed on what it observes: the host's arrival must change it, and be seen.
+        let before = HomeRemoraShowKey(windowAttached: true, hasHost: rig.model.hasRemora)
+        let changed = ObservedFlag()
+        withObservationTracking { _ = rig.model.hasRemora } onChange: { changed.set() }
+        rig.makeHost(seeds: seeds, preferences: RemoraPreferences(), script: script, now: rig.base)
+        #expect(changed.value, "installing the host was not observable: Home would not ask again")
+        #expect(HomeRemoraShowKey(windowAttached: true, hasHost: rig.model.hasRemora) != before)
+        // What Home's task then runs: the brief is asked once the host is there.
+        await HomeRemoraCalls.homeShown(model: rig.model, window: visible, isOnline: { true })
+        await remora.settle()
+        #expect(rig.ranAProcess, "the brief was not asked once the host arrived")
+        #expect(remora.keptBrief?.text.hasPrefix("You left off in loom") == true, "the day's brief was not kept and read back")
+    }
+
+    @Test func aKeptBriefLoadsOnceTheHostArrives() async throws {
+        let seeds: [RemoraHomeRig.Seed] = [.init(title: "Billing", project: 0, ago: 3_600)]
+        let rig = try await RemoraHomeRig.make(seeds: seeds, preferences: whenIAsk(), withHost: false)
+        defer { Task { await rig.finish() } }
+        try rig.keepBrief(text: "Kept from this morning.", chips: [(0, "Waits for review")])
+        await HomeRemoraCalls.homeShown(model: rig.model, window: visible, isOnline: { true })
+        #expect(rig.model.remora.keptBrief == nil)
+        rig.makeHost(seeds: seeds, preferences: whenIAsk(), script: [:], now: rig.base)
+        await HomeRemoraCalls.homeShown(model: rig.model, window: visible, isOnline: { true })
+        #expect(rig.model.remora.keptBrief?.text == "Kept from this morning.")
+        #expect(!rig.ranAProcess)
+    }
+
+    @Test func aFailedPaletteQuestionLeavesHomesBriefAndAHomeQuestionsFailureStaysUnderItsField() async throws {
+        let rig = try await RemoraHomeRig.make(seeds: [.init(title: "Billing", project: 0, ago: 3_600)], preferences: whenIAsk(),
+                                               script: ["LOOM_FAKE_REMORA": "error"])
+        defer { Task { await rig.finish() } }
+        let remora = rig.model.remora
+        try rig.keepBrief(text: "Billing moved.", chips: [(0, "Waits for review")])
+        await HomeRemoraCalls.homeShown(model: rig.model, window: visible)
+        let reads = HomeRemoraReads(baselineUndo: nil)
+        await reads.read(model: rig.model)
+        #expect(HomeRemoraContext.make(model: rig.model, reads: reads, ui: HomeRemoraUI()).state == .brief)
+
+        // ⌘K's question fails: Home still shows the day's brief.
+        #expect(PaletteRemoraCalls.ask(rig.model, "What moved in billing?", scope: .allProjects))
+        await remora.settle()
+        #expect(remora.lastFailure == .apiError)
+        #expect(HomeRemoraContext.make(model: rig.model, reads: reads, ui: HomeRemoraUI()).state == .brief,
+                "a ⌘K failure took the brief's place on Home")
+
+        // Home's own question fails, and the user leaves Home and comes back (a new HomeRemoraUI): the brief, not the failure.
+        let ui = HomeRemoraUI()
+        #expect(HomeRemoraCalls.ask(rig.model, ui: ui, "What moved in billing?"))
+        await remora.settle()
+        #expect(HomeRemoraAnswerContent.make(model: rig.model, asked: try #require(ui.asked), baselineUndo: nil)?.body == .failed(.apiError))
+        #expect(HomeRemoraContext.make(model: rig.model, reads: reads, ui: HomeRemoraUI()).state == .brief,
+                "a question's failure took the brief's place after Home came back")
+
+        // A brief's failure does take its place, and Try Again is a brief.
+        #expect(HomeRemoraCalls.catchMeUp(rig.model, ui: ui))
+        await remora.settle()
+        #expect(HomeRemoraContext.make(model: rig.model, reads: reads, ui: HomeRemoraUI()).state == .cannotAnswer(.generic(.apiError)))
+    }
+
+    @Test func homesAnswerCardDoesNotStreamAPaletteQuestion() async throws {
+        let rig = try await RemoraHomeRig.make(seeds: [.init(title: "Billing", project: 0, ago: 3_600)], preferences: whenIAsk(),
+                                               script: ["LOOM_FAKE_REMORA": "slow", "LOOM_FAKE_REMORA_ANSWER": "Billing waits for review."])
+        defer { Task { await rig.finish() } }
+        let remora = rig.model.remora
+        let ui = HomeRemoraUI()
+        #expect(HomeRemoraCalls.ask(rig.model, ui: ui, "What moved in billing?"))
+        let asked = try #require(ui.asked)
+        #expect(HomeRemoraAnswerContent.make(model: rig.model, asked: asked, baselineUndo: nil)?.body
+                    == .working(reading: remora.reading, text: remora.streamedText), "Home's own question streams into its card")
+        await remora.settle()
+        // ⌘K asks while Home's answer is open: its words stream elsewhere, never under Home's question.
+        #expect(PaletteRemoraCalls.ask(rig.model, "Anything else waiting?", scope: .allProjects))
+        for _ in 0..<300 where remora.streamedText.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(remora.phase == .asking && !remora.streamedText.isEmpty)
+        if case .working? = HomeRemoraAnswerContent.make(model: rig.model, asked: asked, baselineUndo: nil)?.body {
+            Issue.record("a ⌘K question streamed into Home's card")
+        }
+        rig.model.stopRemora()
+        await remora.settle()
+        if case .stopped? = HomeRemoraAnswerContent.make(model: rig.model, asked: asked, baselineUndo: nil)?.body {
+            Issue.record("a stopped ⌘K question showed as Home's")
+        }
+    }
+
+    @Test func withRemoraOffHomesReadsOpenNoMemoryAndMakeNoFolder() async throws {
+        let rig = try await RemoraHomeRig.make(seeds: [.init(title: "Billing", project: 0, ago: 3_600)],
+                                               preferences: RemoraPreferences(isOn: false))
+        defer { Task { await rig.finish() } }
+        try rig.keepBrief(text: "Kept from this morning.", chips: [(0, "Waits for review")])
+        await HomeRemoraCalls.homeShown(model: rig.model, window: visible, isOnline: { true })
+        let reads = HomeRemoraReads(baselineUndo: nil)
+        await reads.read(model: rig.model)
+        let host = try #require(rig.host)
+        #expect(!host.memoryIsOpen, "Home opened Remora's memory with Remora off")
+        for folder in ["journal", "projects"] {
+            #expect(!FileManager.default.fileExists(atPath: rig.remoraDirectory.appendingPathComponent(folder).path),
+                    "Home made remora/\(folder) with Remora off")
+        }
+        #expect(rig.model.remora.keptBrief == nil && !reads.hasRead && !rig.ranAProcess)
+        // Turning Remora on is a new read key: Home reads then.
+        let off = rig.model.homeRemoraReadKey
+        rig.model.setRemoraOn(true)
+        #expect(rig.model.homeRemoraReadKey != off)
+    }
+}
+
+/// A flag an observation's `onChange` sets (it may run off the main actor).
+private final class ObservedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = false
+    var value: Bool { lock.withLock { stored } }
+    func set() { lock.withLock { stored = true } }
 }

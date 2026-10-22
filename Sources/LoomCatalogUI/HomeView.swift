@@ -33,9 +33,10 @@ struct HomeView: View {
         .task(id: model.homeReadKey) {
             await model.refreshHome()
         }
-        // Each time Home shows (and once more when its window is known): the day's kept brief is read again and, with the brief on
-        // Automatic, the model decides the morning brief. This is the one place the automatic brief is asked.
-        .task(id: windowAttached) {
+        // Each time Home shows (and once more when its window is known, and when Remora's host arrives after Home showed, as on a
+        // launch that restores Home): the day's kept brief is read again and, with the brief on Automatic, the model decides the
+        // morning brief. This is the one place the automatic brief is asked.
+        .task(id: HomeRemoraShowKey(windowAttached: windowAttached, hasHost: model.hasRemora)) {
             await HomeRemoraCalls.homeShown(model: model, window: windowProbe.facts)
         }
         .task(id: model.homeRemoraReadKey) {

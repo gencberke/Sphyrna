@@ -169,6 +169,8 @@ struct RemoraHomeRenderTests {
         let (window, hosting) = hostHome(rig.model, width: 940, height: 700)
         defer { window.close() }
 
+        // The failures of a brief (Home's brief area shows only those).
+        rig.model.remora.call = RemoraModelState.Call(kind: .brief, door: .home)
         rig.model.remora.lastFailure = .notLoggedIn
         try await settle(window) { self.spoken(in: hosting.view).contains(HomeRemoraText.notLoggedIn) }
         #expect(spoken(in: hosting.view).contains(HomeRemoraText.notLoggedIn))
