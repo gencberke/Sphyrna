@@ -108,6 +108,12 @@ The build goes to `~/Library/Caches/loom-release-build`; `./build.sh --target <p
 
 Sphyrna keeps its catalog in `~/Library/Application Support/Loom` and its sockets in `~/.loom`. It reads Claude Code's own files on your Mac for state, subagents and usage, and never changes your Claude settings. Remora answers by sending short excerpts of your sessions to Claude through your own Claude Code login; its memory stays on your Mac, where you can see it and clear it. Sphyrna's logs carry ids and counts, never your prompts, titles or transcripts.
 
+## Reporting a problem
+
+Choose **Help → Collect Diagnostics…** (also in Settings → About). Sphyrna writes a folder and shows it in Finder: a summary, its event journal and the last three days of its log. The folder holds ids, counts, versions and error categories, never your prompts, messages, titles or transcripts, and nothing leaves your Mac unless you send it. Zip it and attach it to an [issue](https://github.com/gencberke/loom/issues), with a line on what happened and when.
+
+Sphyrna keeps its own diagnostic files for three days. macOS keeps the system log as it does for every app.
+
 ## How this repository works
 
 Sphyrna is developed in a separate repository together with its tests, design notes and tooling; its code still carries the name Loom. Each release is exported here as one commit and one `v<version>` tag, so this tree holds only what the app is built from: the Swift sources, the terminal engine ([SwiftTerm](https://github.com/migueldeicaza/SwiftTerm), vendored with local patches), the assets and `build.sh`. Codex support exists in the code but cannot be started in this version.

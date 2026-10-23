@@ -179,14 +179,55 @@ Rules: the daily `Loom.app` and its data are user data like the installed `Loom 
 
 ## 11. Logs and diagnostics
 
-Loom logs through unified logging, subsystem `local.loom.desktop`, one category per area: `Lifecycle`, `Catalog`, `ClaudeHooks`, `Registry`, `Toolchain`, `Scope`, `Usage`, `Recovery`, `Quit`, `Diagnostics`, and `HookClient` (the `loom-hook` helper). Notice and error entries are state transitions and failures; per-event detail is `debug`. Entries carry ids, counts, durations and error categories, never prompts, messages, titles or transcript text; user paths are private. Loom keeps no log files of its own.
+Sphyrna logs through unified logging (`LoomLog`, `Sources/LoomCore/LoomLog.swift`), subsystem `local.loom.desktop`, one category per area:
+
+- `Lifecycle`: runs, with a start line (session, face, new, resume or fork) and an end line (reason, exit);
+- `Session`: `SessionService`, the outcome of each start, resume, stop, handover, answer and open request, and side-chat retirement;
+- `Chat`: the Chat face's driver and host (ready latency, end causes, requests by kind and answer, undecoded output lines);
+- `Remora`: one end line per call (kind, model, duration, tokens, outcome or failure kind), the automatic brief's decision and the day's slot;
+- `Deletion`: each deletion's start, failed step and outcome, and the resume of interrupted ones;
+- `Catalog`, `ClaudeHooks`, `Registry`, `Toolchain`, `Scope`, `Usage`, `Recovery`, `Quit`, `Diagnostics`, `Sidebar`, and `HookClient` (the `loom-hook` helper).
+
+The rules, kept by every call site:
+
+- **Levels.** Notice is a state transition or an outcome, error a failure, debug per-event detail. There are no info lines.
+- **No content.** Entries carry ids, counts, durations, kinds, outcomes and error categories (`LoomLog.category(of:)`), never a prompt, message, title, question, answer, transcript, tool input, stderr or an error's description. User paths go through `path:` and stay private.
+- **Refs.** A line about a session carries `s:` and the first 8 hex digits of its id (`LoomLog.ref(_:)`), and its face where known. Run lines also carry the run's 8-character prefix, and an agent's open request is `r:`. The journal's `chat.*` events carry the same `session` ref, so one `grep s:7c41e0d2` follows a session through an export.
+- **Volume.** Nothing is logged per output chunk, frame or keystroke, and nothing above debug per Home show. A failure that can repeat goes through `LoomLog.error(_:key:_:)`, at most once a minute per key.
+
+`LoggingAndJournalTests` guards them: the category list, no `Logger(subsystem:` outside `LoomLog` and the signposts, and no error description or `.detail` inside a log message.
 
 ```
 /usr/bin/log show --last 1h --info --debug --predicate 'subsystem == "local.loom.desktop"'
-/usr/bin/log show --last 1h --predicate 'subsystem == "local.loom.desktop" && category == "Catalog"'
-/usr/bin/log stream --level debug --predicate 'subsystem == "local.loom.desktop" && category == "ClaudeHooks"'
+/usr/bin/log show --last 1h --predicate 'subsystem == "local.loom.desktop" && category == "Session"'
+/usr/bin/log stream --level debug --predicate 'subsystem == "local.loom.desktop" && category == "Chat"'
 ```
 
-Rare events also go to `<data root>/diagnostics/journal.jsonl` (rotated at 512 KB to `journal.1.jsonl`, two files kept): launch and quit summaries, `claude_cli` (version, detected options), `cli_compat_warning`, `hook_silence`, recovery, catalog backup and restore. One JSON object per line, so `jq -c . <data root>/diagnostics/journal.jsonl` reads it.
+**Retention.**
 
-`SessionRuntime.collectDiagnostics(to:)` writes a folder with `summary.json`, the journal files and `log.ndjson` (last 24 h of the subsystem from processes inside the running app's bundle only, at most 5 MB). It is built for sending to the developer: no session content, home paths shortened to `~`. At most 3 exports are kept under `<data root>/diagnostics/exports/`. Tests use temporary data roots only; the real `log show` is not run by tests (a stand-in executable is).
+- **The unified log.** macOS owns it: it keeps notice and error entries in its own store, which is capped by size and rotated by the system. Debug entries are not stored at all. An app cannot give its entries a time limit: Info.plist's `OSLogPreferences` has no such key (`man 5 os_log`).
+- **Sphyrna's own files** are kept 3 days (`DiagnosticRetention.maximumAge`, 72 h):
+  - the journal drops older entries the first time it is used after launch, and when it rotates;
+  - exports older than 3 days are removed at that same first use and at every new export.
+
+Rare events also go to `<data root>/diagnostics/journal.jsonl`:
+
+- launch and quit summaries;
+- `claude_cli` (version, detected options) and `cli_compat_warning`;
+- `hook_silence`, recovery, and catalog backup and restore;
+- the Chat face's `chat.*` events.
+
+It is rotated at 512 KB to `journal.1.jsonl`; two files are kept, and no entry older than 3 days. One JSON object per line, so `jq -c . <data root>/diagnostics/journal.jsonl` reads it.
+
+"Collect Diagnostics…" (the Help menu, or Settings → About) runs `SessionRuntime.collectDiagnostics(to:)`. It writes `<data root>/diagnostics/exports/loom-diagnostics-<stamp>/`, then shows it in Finder. The folder holds:
+
+- `summary.json`;
+- the journal files;
+- `log.ndjson`: the subsystem's last 72 h at notice and up, from processes inside the running app's bundle only, with a 30 s timeout. Past 5 MB only the newest 5 MB are kept, from a whole entry on: `log show` writes the oldest first, and a report is about the newest.
+
+It is built for sending to the developer: no session content, home paths shortened to `~`. At most 3 exports are kept, none older than 3 days.
+
+Tests use temporary data roots only. They never run the real `log show` (a stand-in executable does). Two read-back tests read the test process's own entries through `OSLogStore(scope: .currentProcessIdentifier)`:
+
+- a failed `SessionService` start writes one `Session` error with its ref;
+- a Remora call writes one `Remora` notice at its end.
