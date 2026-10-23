@@ -119,11 +119,13 @@ public final class SessionService {
                                        cardCreated: @escaping @MainActor (UUID) -> Void,
                                        notStarted: @escaping @MainActor () -> Void) -> Task<Void, Never>? {
         guard capabilities(of: .claude).startable else {
+            LoomLog.notice(.session, "Start refused (chat): Claude cannot be started")
             notStarted()
             return nil
         }
         let key = StartKey(provider: .claude, projectID: projectID)
         guard transitions.beginStart(key) else {
+            LoomLog.debug(.session, "Start refused (chat): the project's start is under way")
             notStarted()
             return nil
         }
@@ -143,9 +145,11 @@ public final class SessionService {
                 try await host.beginNewSession(projectID: projectID, sessionID: sessionID, draft: launch,
                                                onReady: { await MainActor.run { ready.fire() } })
                 ready.fire()
+                LoomLog.notice(.session, "Start \(LoomLog.ref(sessionID)) (chat): started")
             } catch {
                 // Cancelled by a Stop while starting: not a failure to report.
                 let stopped = host.errorKind(of: error) == .stopping
+                Self.logStartEnd(sessionID, face: .chat, stopped: stopped, afterCard: ready.fired, error: error)
                 // A start that failed before Ready keeps no driver (its card stays, as after a terminal start that
                 // failed): nothing shows a live Chat for a session that never answered.
                 if !ready.fired, !stopped { host.forget(sessionID: sessionID) }
@@ -162,15 +166,18 @@ public final class SessionService {
                       cardCreated: @escaping @MainActor (UUID) -> Void = { _ in },
                       notStarted: @escaping @MainActor () -> Void = {}) -> Task<Void, Never>? {
         guard capabilities(of: provider).startable else {
+            LoomLog.notice(.session, "Start refused (terminal): \(provider.rawValue) cannot be started")
             notStarted()
             return nil
         }
         let key = StartKey(provider: provider, projectID: projectID)
         guard transitions.beginStart(key) else {
+            LoomLog.debug(.session, "Start refused (terminal): the project's start is under way")
             notStarted()
             return nil
         }
         guard let sink = terminal?.newRunSink() else {
+            LoomLog.notice(.session, "Start refused (terminal): no terminal to run in")
             transitions.endStart(key)
             notStarted()
             return nil
@@ -206,7 +213,9 @@ public final class SessionService {
                     terminal?.adopt(launch, into: sink)
                     cardReady(launch)
                 }
+                LoomLog.notice(.session, "Start \(LoomLog.ref(launch.sessionID)) (terminal, \(provider.rawValue)): started")
             } catch {
+                Self.logStartEnd(pendingSessionID, face: .terminal, stopped: false, afterCard: reported, error: error)
                 terminal?.runFailedToStart(sink)
                 await terminal?.reconcile()
                 failureHandler(SessionFailure(.startFailed(provider), error))
@@ -224,20 +233,32 @@ public final class SessionService {
     public func resume(sessionID: UUID, knownProvider: ManagedSession.Provider?,
                        shown: @escaping @MainActor (UUID) -> Void) -> Task<Void, Never>? {
         // A session that is being moved to the terminal is not resumed: the move starts the terminal's run itself.
-        guard transitions.busy[sessionID] == nil, transitions.handovers[sessionID] == nil else { return nil }
-        if let knownProvider, !capabilities(of: knownProvider).startable { return nil }
+        let ref = LoomLog.ref(sessionID)
+        guard transitions.busy[sessionID] == nil, transitions.handovers[sessionID] == nil else {
+            LoomLog.debug(.session, "Resume \(ref) refused: the session is busy or being moved")
+            return nil
+        }
+        if let knownProvider, !capabilities(of: knownProvider).startable {
+            LoomLog.notice(.session, "Resume \(ref) refused: \(knownProvider.rawValue) cannot be started")
+            return nil
+        }
         transitions.setBusy(sessionID, .resuming)
         return Task {
             // A Stop that came in meanwhile holds busy until it has checked the processes are gone: it clears it itself.
             defer { if transitions.busy[sessionID] == .resuming { transitions.setBusy(sessionID, nil) } }
+            var face = SessionLiveFace.terminal
             do {
                 var provider = knownProvider
                 if provider == nil {
                     provider = try await runtime.catalog.session(id: sessionID)?.session.provider
                     // The UI has no row for this id (a direct call): the catalog decides, same rule.
-                    if let provider, !capabilities(of: provider).startable { return }
+                    if let provider, !capabilities(of: provider).startable {
+                        LoomLog.notice(.session, "Resume \(ref) refused: \(provider.rawValue) cannot be started")
+                        return
+                    }
                 }
                 if let provider, facePolicy.faceOfResume(capabilities(of: provider)) == .chat, let host = structuredHost {
+                    face = .chat
                     try await host.resumeSession(sessionID: sessionID)
                     shown(sessionID)
                 } else {
@@ -245,10 +266,15 @@ public final class SessionService {
                     // from the catalog (V16).
                     try await resumeInTerminal(sessionID, shown: shown)
                 }
+                LoomLog.notice(.session, "Resume \(ref) (\(face.rawValue)): resumed")
             } catch {
                 // Ended by a Stop while resuming: not a failure to report (as for a start). The face may word it as a
                 // start that failed rather than as stopping (its stop flag can be reset first), so a Stop under way counts too.
-                if structuredHost?.errorKind(of: error) == .stopping || transitions.busy[sessionID] == .stopping { return }
+                if structuredHost?.errorKind(of: error) == .stopping || transitions.busy[sessionID] == .stopping {
+                    LoomLog.notice(.session, "Resume \(ref) (\(face.rawValue)): cancelled by a Stop")
+                    return
+                }
+                LoomLog.error(.session, "Resume \(ref) (\(face.rawValue)) failed (\(LoomLog.category(of: error)))")
                 failureHandler(SessionFailure(.resumeFailed, error))
             }
         }
@@ -278,7 +304,11 @@ public final class SessionService {
     @discardableResult
     public func stop(sessionID: UUID, liveRunID: UUID?,
                      settled: @escaping @MainActor (SessionStopOutcome) async -> Void) -> Task<Void, Never>? {
-        guard transitions.busy[sessionID] != .stopping else { return nil }
+        let ref = LoomLog.ref(sessionID)
+        guard transitions.busy[sessionID] != .stopping else {
+            LoomLog.debug(.session, "Stop \(ref) refused: a Stop is under way")
+            return nil
+        }
         if transitions.handovers[sessionID] != nil { endHandover(sessionID) }
         transitions.setBusy(sessionID, .stopping)
         // What the user sees now is what stays: taken before any signal.
@@ -287,6 +317,11 @@ public final class SessionService {
             defer { transitions.setBusy(sessionID, nil) }
             do {
                 let report = try await runtime.stopConversation(sessionID: sessionID)
+                if report.succeeded {
+                    LoomLog.notice(.session, "Stop \(ref): verified in \(Int(report.elapsedSeconds * 1000)) ms")
+                } else {
+                    LoomLog.error(.session, "Stop \(ref): not verified (\(report.remaining.count) remaining, \(report.errors.count) error(s))")
+                }
                 if let stoppedRun {
                     // The run's end takes the capture; one that was not taken (a stop that failed) is let go.
                     if report.succeeded { await terminal?.reconcile() }
@@ -294,6 +329,7 @@ public final class SessionService {
                 }
                 await settled(SessionStopOutcome(report: report, run: stoppedRun))
             } catch {
+                LoomLog.error(.session, "Stop \(ref) failed (\(LoomLog.category(of: error)))")
                 if let stoppedRun { terminal?.releaseStopCapture(run: stoppedRun) }
                 failureHandler(SessionFailure(.stopFailed, error))
             }
@@ -323,8 +359,12 @@ public final class SessionService {
                          shown: @escaping @MainActor (UUID) -> Void,
                          cleared: @escaping @MainActor () -> Void) -> Task<Void, Never>? {
         guard target == .terminal, let host = structuredHost,
-              transitions.handovers[sessionID] == nil, transitions.busy[sessionID] == nil else { return nil }
+              transitions.handovers[sessionID] == nil, transitions.busy[sessionID] == nil else {
+            LoomLog.notice(.session, "Handover \(LoomLog.ref(sessionID)) to \(target.rawValue) refused")
+            return nil
+        }
         transitions.setHandover(Handover(target: target), for: sessionID)
+        LoomLog.notice(.session, "Handover \(LoomLog.ref(sessionID)) chat to terminal: waiting")
         let task = Task { [weak self] in
             guard let self else { return }
             await runHandover(sessionID: sessionID, host: host, terminalWillStart: terminalWillStart,
@@ -337,6 +377,7 @@ public final class SessionService {
     /// The user's Cancel: ends a wait that has not reached the point of no return.
     public func cancelHandover(sessionID: UUID) {
         guard transitions.handovers[sessionID]?.phase == .waiting else { return }
+        LoomLog.debug(.session, "Handover \(LoomLog.ref(sessionID)): Cancel asked")
         endHandover(sessionID)
     }
 
@@ -356,17 +397,24 @@ public final class SessionService {
                              terminalWillStart: @MainActor (UUID) -> Void,
                              shown: @MainActor (UUID) -> Void,
                              cleared: @MainActor () -> Void) async {
+        let ref = LoomLog.ref(sessionID)
         do {
             try await moveToTerminal(sessionID, host: host, terminalWillStart: terminalWillStart, shown: shown)
+            LoomLog.notice(.session, "Handover \(ref) chat to terminal: done")
         } catch {
             // The Chat run ended for a move that did not happen: the queue says it was interrupted, not moved.
+            let phase = transitions.handovers[sessionID]?.phase == .switching ? "switching" : "waiting"
             if transitions.handovers[sessionID]?.phase == .switching { await host.handoverFailed(sessionID: sessionID) }
             let refusal = host.handoverRefusal(of: error)
             if error is CancellationError || Task.isCancelled {
                 // The user ended the move (Cancel, Stop): the session goes on where it was, or stays stopped.
+                LoomLog.notice(.session, "Handover \(ref) chat to terminal: cancelled while \(phase)")
             } else if refusal == .cleared {
+                LoomLog.notice(.session, "Handover \(ref) chat to terminal: ended by a /clear while \(phase)")
                 cleared()
             } else {
+                let category = refusal.map { LoomLog.category(of: $0) } ?? LoomLog.category(of: error)
+                LoomLog.error(.session, "Handover \(ref) chat to terminal failed while \(phase) (\(category))")
                 failureHandler(SessionFailure(.handoverFailed, refusal.map { $0 as any Error } ?? error))
             }
         }
@@ -396,6 +444,7 @@ public final class SessionService {
     /// The wait is over: from here Cancel is not offered. (Tests hold the move here, to act at this phase.)
     private func passPointOfNoReturn(_ sessionID: UUID, to target: SessionLiveFace) async {
         transitions.setHandover(Handover(target: target, phase: .switching), for: sessionID)
+        LoomLog.notice(.session, "Handover \(LoomLog.ref(sessionID)) chat to \(target.rawValue): switching")
         await handoverGate?(sessionID, target)
     }
 
@@ -405,9 +454,12 @@ public final class SessionService {
     @discardableResult
     public func answer(sessionID: UUID, requestID: String, accept: Bool) -> Task<Void, Never> {
         Task {
+            let answer = accept ? "accept" : "decline"
             do {
                 try await runtime.respond(sessionID: sessionID, requestID: requestID, decision: accept ? .accept : .decline)
+                LoomLog.notice(.session, "Answer to a request of \(LoomLog.ref(sessionID)) delivered (\(answer))")
             } catch {
+                LoomLog.error(.session, "Answer to a request of \(LoomLog.ref(sessionID)) not delivered (\(answer); \(LoomLog.category(of: error)))")
                 failureHandler(SessionFailure(.answerNotDelivered, error))
             }
         }
@@ -418,7 +470,10 @@ public final class SessionService {
     /// box (the runtime keeps it as failed) and never retried. Refused while the request's approval is in flight.
     @discardableResult
     public func approveOpen(requestID: UUID) -> Task<Void, Never>? {
-        guard approving.insert(requestID).inserted else { return nil }
+        guard approving.insert(requestID).inserted else {
+            LoomLog.debug(.session, "Open request \(Self.requestRef(requestID)): approval already under way")
+            return nil
+        }
         if facePolicy.faceOfApprovedOpening(capabilities(of: .claude)) == .chat, let host = structuredHost {
             return approveOpenInStructuredFace(requestID: requestID, host: host)
         }
@@ -433,7 +488,9 @@ public final class SessionService {
                     requestID, rows: sink.rows, columns: sink.columns, outputSink: sink.output
                 )
                 terminal?.adopt(launch, into: sink)
+                LoomLog.notice(.session, "Open request \(Self.requestRef(requestID)) approved: \(LoomLog.ref(launch.sessionID)) started (terminal)")
             } catch {
+                LoomLog.error(.session, "Open request \(Self.requestRef(requestID)) approved, start failed (terminal; \(LoomLog.category(of: error)))")
                 terminal?.runFailedToStart(sink)
                 // A start that failed is on the request's box; only an answer that could not be given is a banner.
                 if error is OpenSessionError { failureHandler(SessionFailure(.openRequestNotAnswered, error)) }
@@ -452,8 +509,14 @@ public final class SessionService {
             do {
                 try await host.beginOpenedSession(requestID: requestID, sessionID: sessionID,
                                                   onReady: { await MainActor.run { ready.fire() } })
+                LoomLog.notice(.session, "Open request \(Self.requestRef(requestID)) approved: \(LoomLog.ref(sessionID)) started (chat)")
             } catch {
                 let kind = host.errorKind(of: error)
+                if kind == .stopping {
+                    LoomLog.notice(.session, "Open request \(Self.requestRef(requestID)) approved: \(LoomLog.ref(sessionID)) cancelled by a Stop (chat)")
+                } else {
+                    LoomLog.error(.session, "Open request \(Self.requestRef(requestID)) approved, \(LoomLog.ref(sessionID)) failed (chat; \(LoomLog.category(of: error)))")
+                }
                 if !ready.fired, kind != .stopping { host.forget(sessionID: sessionID) }
                 if error is OpenSessionError {
                     failureHandler(SessionFailure(.openRequestNotAnswered, error))
@@ -467,22 +530,34 @@ public final class SessionService {
     @discardableResult
     public func denyOpen(requestID: UUID) -> Task<Void, Never> {
         Task {
-            do { try await runtime.denyOpenRequest(requestID) }
-            catch { failureHandler(SessionFailure(.openRequestNotDenied, error)) }
+            do {
+                try await runtime.denyOpenRequest(requestID)
+                LoomLog.notice(.session, "Open request \(Self.requestRef(requestID)) denied")
+            } catch {
+                LoomLog.error(.session, "Open request \(Self.requestRef(requestID)) not denied (\(LoomLog.category(of: error)))")
+                failureHandler(SessionFailure(.openRequestNotDenied, error))
+            }
         }
     }
 
     @discardableResult
     public func dismissOpen(requestID: UUID) -> Task<Void, Never> {
         Task {
-            do { try await runtime.dismissOpenRequest(requestID) }
-            catch { failureHandler(SessionFailure(.openRequestNotDismissed, error)) }
+            do {
+                try await runtime.dismissOpenRequest(requestID)
+                LoomLog.notice(.session, "Open request \(Self.requestRef(requestID)) dismissed")
+            } catch {
+                LoomLog.error(.session, "Open request \(Self.requestRef(requestID)) not dismissed (\(LoomLog.category(of: error)))")
+                failureHandler(SessionFailure(.openRequestNotDismissed, error))
+            }
         }
     }
 
     /// The user looked at the session: its finished state is read.
     public func markViewed(sessionID: UUID) async {
-        try? await runtime.markViewed(sessionID: sessionID)
+        do { try await runtime.markViewed(sessionID: sessionID) } catch {
+            LoomLog.debug(.session, "\(LoomLog.ref(sessionID)) was not marked viewed (\(LoomLog.category(of: error)))")
+        }
     }
 
     // MARK: The session's own record
@@ -547,8 +622,10 @@ public final class SessionService {
         guard let host = structuredHost else { return nil }
         do {
             try await host.closeSession(sessionID: id)
+            LoomLog.notice(.session, "Side chat \(LoomLog.ref(id)) closed")
             return nil
         } catch {
+            LoomLog.error(.session, "Side chat \(LoomLog.ref(id)) could not be closed (\(LoomLog.category(of: error)))")
             return error
         }
     }
@@ -564,12 +641,18 @@ public final class SessionService {
             retirements[id] = nil
             return
         }
+        let why = evenIfOpen ? "its parent's run ended" : "no longer open"
         if await host.isLiveAndSettled(sessionID: id) {
             retirements[id] = nil
             // Shown again while the face was asked: it stays.
-            if !evenIfOpen, shownSideChats[parent] == id { return }
+            if !evenIfOpen, shownSideChats[parent] == id {
+                LoomLog.debug(.session, "Side chat \(LoomLog.ref(id)) of \(LoomLog.ref(parent)) kept: shown again")
+                return
+            }
+            LoomLog.notice(.session, "Side chat \(LoomLog.ref(id)) of \(LoomLog.ref(parent)) retired (\(why)): closing")
             if let error = await closeSideChat(id) { sideChatCloseFailed(parent, id, error) }
         } else {
+            LoomLog.notice(.session, "Side chat \(LoomLog.ref(id)) of \(LoomLog.ref(parent)) retired (\(why)): closing once it settles")
             retirements[id] = SideChatRetirement(evenIfOpen: evenIfOpen)
         }
     }
@@ -604,6 +687,25 @@ public final class SessionService {
 
     public func deleteSideChats(inProject projectID: UUID) async throws {
         try await runtime.deleteSideChats(inProject: projectID)
+    }
+
+    // MARK: Log lines
+
+    /// An agent's open request in a log line: `r:` and the first 8 hex digits of its id.
+    private static func requestRef(_ id: UUID) -> String {
+        "r:" + id.uuidString.prefix(8).lowercased()
+    }
+
+    /// The end of a start that did not succeed: a notice when a Stop cancelled it, else one error with its category.
+    private static func logStartEnd(_ sessionID: UUID?, face: SessionLiveFace, stopped: Bool, afterCard: Bool,
+                                    error: any Error) {
+        let ref = sessionID.map(LoomLog.ref) ?? "no card"
+        if stopped {
+            LoomLog.notice(.session, "Start \(ref) (\(face.rawValue)): cancelled by a Stop")
+        } else {
+            let when = afterCard ? "after its card" : "before its card"
+            LoomLog.error(.session, "Start \(ref) (\(face.rawValue)) failed \(when) (\(LoomLog.category(of: error)))")
+        }
     }
 }
 

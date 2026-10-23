@@ -104,6 +104,8 @@ extension ChatSessionDriver {
                                             unknownRecords: model.unknownRecordCount, time: clock(),
                                             generation: runStart.generation + 1)
         setPhase(.starting)
+        let began = clock()
+        let kind = isResume ? "resume" : "new"
         // The start holds the mode chain until the process is ready (and, for an Ask session, has Ask's layer on): a mode
         // picked meanwhile runs after it.
         await acquireMode()
@@ -122,9 +124,11 @@ extension ChatSessionDriver {
             if startCancelled {
                 startCancelled = false
                 setPhase(.stopped)
+                LoomLog.notice(.chat, "Chat \(self.logRef) start (\(kind)) cancelled by a Stop")
                 throw ChatDriverError.stopping
             }
             setPhase(.failed(.couldNotStart(LoomLog.category(of: error))))
+            LoomLog.error(.chat, "Chat \(self.logRef) could not start (\(kind); \(LoomLog.category(of: error)))")
             throw error
         }
         let channel = ControlChannel()
@@ -147,16 +151,24 @@ extension ChatSessionDriver {
         Task { for await _ in drain {} }
         run = current
         let runID = launched.runID
-        if let stored = try? await runtime.catalog.launchChoices(sessionID: sessionID) {
-            choices = stored
+        let runRef = runID.uuidString.prefix(8)
+        do {
+            choices = try await runtime.catalog.launchChoices(sessionID: sessionID)
             choicesLoaded = true
+        } catch {
+            LoomLog.error(.chat, "Chat \(self.logRef) run \(runRef): its launch choices could not be read (\(LoomLog.category(of: error)))")
         }
-        try? await runtime.supervisor.registerStopHooks(runID: runID, hooks: ManagedRunStopHooks(
-            prepare: {}, completed: {},
-            leave: { [weak self] request in await self?.leave(request) },
-            moved: { [weak self] card in await self?.followMove(to: card) }
-        ))
+        do {
+            try await runtime.supervisor.registerStopHooks(runID: runID, hooks: ManagedRunStopHooks(
+                prepare: {}, completed: {},
+                leave: { [weak self] request in await self?.leave(request) },
+                moved: { [weak self] card in await self?.followMove(to: card) }
+            ))
+        } catch {
+            LoomLog.error(.chat, "Chat \(self.logRef) run \(runRef): its stop hooks were not registered (\(LoomLog.category(of: error)))")
+        }
         if startCancelled {
+            LoomLog.notice(.chat, "Chat \(self.logRef) start (\(kind)) cancelled by a Stop")
             // The waiting Stop goes on now and stops the child in the verified order.
             finishStartWaiters(false)
             throw ChatDriverError.stopping
@@ -177,13 +189,18 @@ extension ChatSessionDriver {
                 }
             }
             setPhase(.ready)
+            LoomLog.notice(.chat, "Chat \(self.logRef) run \(runRef) ready in \(Self.millis(since: began, now: self.clock())) ms (\(kind))")
             await publish(.atPrompt)
             finishStartWaiters(true)
         } catch {
             finishStartWaiters(false)
             // A Stop during Starting: the start is cancelled, not failed.
-            if stopRequested || startCancelled || phase == .stopping { throw ChatDriverError.stopping }
+            if stopRequested || startCancelled || phase == .stopping {
+                LoomLog.notice(.chat, "Chat \(self.logRef) run \(runRef) start (\(kind)) cancelled by a Stop")
+                throw ChatDriverError.stopping
+            }
             if askFailed, run?.runID == runID {
+                LoomLog.error(.chat, "Chat \(self.logRef) run \(runRef) not started (\(kind)): Ask could not be turned on (\(LoomLog.category(of: error)))")
                 // Ask could not be turned on: the session does not run without it (a message would reach a Claude that may edit).
                 setPhase(.failed(.couldNotStart("ask")))
                 await runtime.supervisor.events.publish(sessionID: sessionID, change: .issue("Ask mode could not be turned on."))
@@ -193,15 +210,17 @@ extension ChatSessionDriver {
             guard run?.runID == runID else {
                 // The child ended before it was ready; `outputEnded` says why (it may still be reading stderr).
                 if phase == .starting { await waitForRunEnd() }
+                // Logged by `outputEnded` (the reason is the CLI's first stderr line: never logged).
                 if case let .failed(.couldNotStart(reason)) = phase { throw ChatDriverError.couldNotStart(reason) }
                 throw ChatDriverError.couldNotStart(LoomLog.category(of: error))
             }
             // The child lives but never answered: stop it, and say so.
             setPhase(.failed(.notReady))
+            LoomLog.error(.chat, "Chat \(self.logRef) run \(runRef) not started (\(kind)): no answer to initialize after \(Self.millis(since: began, now: self.clock())) ms (\(LoomLog.category(of: error)))")
             await runtime.supervisor.events.publish(
                 sessionID: sessionID, change: .issue("Claude did not answer in the Chat face.")
             )
-            journal?.record("chat.not_ready", ["error": .string(LoomLog.category(of: error))])
+            journalRecord("chat.not_ready", ["error": .string(LoomLog.category(of: error))])
             Task { try? await self.stopAfterFailure() }
             throw ChatDriverError.couldNotStart("no answer to initialize")
         }
@@ -257,6 +276,7 @@ extension ChatSessionDriver {
         current.writer?.cancel()
         // A card still waiting when the process ends: cancelled when Loom stopped it, else Claude stopped before the user
         // answered (the card stays, disabled, with Resume).
+        let requestsCut = requests.count
         for request in requests {
             let outcome: ChatSettledRequest.Outcome = stopRequested ? .cancelled : .processEnded
             let summary = stopRequested ? "Cancelled: \(request.subject)" : "Not answered, Claude stopped: \(request.subject)"
@@ -282,20 +302,25 @@ extension ChatSessionDriver {
         try? await runtime.supervisor.updateProviderWorkState(runID: current.runID,
                                                               state: ProviderWorkState(activity: .sessionEnded(nil)))
         await runtime.supervisor.events.publish(sessionID: sessionID, change: .pendingRequests([]))
+        let runRef = current.runID.uuidString.prefix(8)
+        let hadStderr = current.sink.standardErrorFirstLine != nil
         if stopRequested {
             // A child that never answered stays "not ready" while Loom stops it (never flashes "stopped" in between).
             if phase != .failed(.notReady) { setPhase(.stopped) }
+            LoomLog.notice(.chat, "Chat \(self.logRef) run \(runRef) ended: stopped by Sphyrna")
         } else if endedStarting {
             // An exit at once (a bad flag, a resume of a conversation the CLI cannot find): its first stderr line.
             let line = await firstErrorLine(of: current.sink)
             setPhase(.failed(.couldNotStart(line ?? "ended before it was ready")))
-            journal?.record("chat.ended_at_start", ["resume": .bool(current.isResume)])
+            LoomLog.error(.chat, "Chat \(self.logRef) run \(runRef) ended before it was ready (\(current.isResume ? "resume" : "new"), stderr \(line == nil ? "empty" : "present"))")
+            journalRecord("chat.ended_at_start", ["resume": .bool(current.isResume)])
             let issue = startFailureIssue(line: line, sink: current.sink, isResume: current.isResume)
             await runtime.supervisor.events.publish(sessionID: sessionID, change: .issue(issue))
         } else {
             setPhase(.failed(.ended))
+            LoomLog.error(.chat, "Chat \(self.logRef) run \(runRef): Claude ended unexpectedly (\(requestsCut) request(s) cut off, \(unread.count) message(s) unread, stderr \(hadStderr ? "present" : "empty"))")
             if !queue.isEmpty { pauseQueue(.processEnded) }
-            journal?.record("chat.ended", [:])
+            journalRecord("chat.ended", [:])
             await runtime.supervisor.events.publish(
                 sessionID: sessionID, change: .issue("Claude ended unexpectedly. Send a message to resume the session.")
             )
@@ -305,6 +330,10 @@ extension ChatSessionDriver {
         let waiters = runEndWaiters
         runEndWaiters.removeAll()
         for waiter in waiters { waiter.resume() }
+    }
+
+    static func millis(since start: Date, now: Date) -> Int {
+        max(0, Int(now.timeIntervalSince(start) * 1000))
     }
 
     private func waitForRunEnd() async {

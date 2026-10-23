@@ -55,6 +55,7 @@ public final class RemoraHost {
             makeCall: { usage in
                 let resolved: ProviderToolchain
                 do { resolved = try await toolchain() } catch {
+                    LoomLog.error(.remora, "Remora's call not started: Claude could not be found (\(LoomLog.category(of: error)))")
                     throw RemoraFailure(kind: .couldNotStart, detail: "Claude could not be found", beforeSpawn: true)
                 }
                 return RemoraCall(supervisor: supervisor, toolchain: resolved, profile: profile,
@@ -142,21 +143,29 @@ public final class RemoraHost {
     public func briefIfDue(homeShown: Bool, windowRemainingShare: Double?, onStart: @escaping @MainActor () -> Void = {},
                            onReading: @escaping @MainActor (RemoraReading) -> Void = { _ in },
                            onText: @escaping @MainActor (String) -> Void = { _ in }) async -> RemoraOutcome {
-        guard settings.isOn else { return .notDue(.skip(.remoraOff)) }
-        guard running == nil else { return .busy }
+        guard settings.isOn else { return Self.notDue(.skip(.remoraOff)) }
+        guard running == nil else {
+            LoomLog.debug(.remora, "Automatic brief: a call is running")
+            return .busy
+        }
         // The cheap rules of `RemoraSchedule.decide`, in its order, before the catalog is read: after the day's brief that read
         // would be wasted on every Home view. Each answer is the one `decide` gives.
-        if settings.briefMode != .automatic { return .notDue(.skip(.whenIAsk)) }
-        if waitsForLogin { return .notDue(.skip(.notLoggedIn)) }
+        if settings.briefMode != .automatic { return Self.notDue(.skip(.whenIAsk)) }
+        if waitsForLogin { return Self.notDue(.skip(.notLoggedIn)) }
         if let last = loadLastBrief(), last >= RemoraSchedule.dayStart(containing: clock(), in: timeZone) {
-            return .notDue(.skip(.alreadyBriefedToday))
+            return Self.notDue(.skip(.alreadyBriefedToday))
         }
-        let newest = try? await readNewest(settings.excludedProjects)
+        let newest: Date?
+        do { newest = try await readNewest(settings.excludedProjects) } catch {
+            LoomLog.error(.remora, key: "brief-newest", "Automatic brief: the newest activity could not be read (\(LoomLog.category(of: error)))")
+            newest = nil
+        }
         let decision = RemoraSchedule.decide(RemoraScheduleInput(
             remoraOn: settings.isOn, briefMode: settings.briefMode, now: clock(), timeZone: timeZone,
             lastBrief: loadLastBrief(), newestActivity: newest, homeShown: homeShown,
             windowRemainingShare: windowRemainingShare, windowThreshold: settings.windowThreshold))
-        guard decision == .run else { return .notDue(decision) }
+        guard decision == .run else { return Self.notDue(decision) }
+        LoomLog.notice(.remora, "Automatic brief: due, starting")
         return await runBrief(onStart: onStart, onReading: onReading, onText: onText)
     }
 
@@ -188,11 +197,16 @@ public final class RemoraHost {
         let now = clock()
         let previous = loadLastBrief()
         storeLastBrief(now)
+        LoomLog.notice(.remora, "The day's brief slot is taken")
         let since = RemoraSchedule.briefSince(now: now, lastBrief: previous, timeZone: timeZone)
         let outcome = await run(.brief(since: since), startedAt: now, onStart: onStart, onReading: onReading, onText: onText)
         if case let .failed(failure) = outcome, failure.kind == .notLoggedIn || failure.beforeSpawn {
             storeLastBrief(previous)
-            if failure.kind == .notLoggedIn { waitsForLogin = true }
+            LoomLog.notice(.remora, "The day's brief slot is given back (\(failure.kind.rawValue)\(failure.beforeSpawn ? ", before its child started" : ""))")
+            if failure.kind == .notLoggedIn {
+                waitsForLogin = true
+                LoomLog.notice(.remora, "Automatic brief: waits for a Claude login (until asked, a setting changes or a relaunch)")
+            }
         }
         return outcome
     }
@@ -243,6 +257,7 @@ public final class RemoraHost {
                                                       language: language),
                 memory: share, today: memory.usage.today, now: clock(), timeZone: timeZone)
             try Task.checkCancellation()
+            LoomLog.notice(.remora, "Remora \(Self.kindName(request)) (scope \(Self.scopeName(scope))): \(pack.facts.sessionsRead) session(s) and \(pack.facts.projectNotes) project note(s) read")
             onReading(Self.reading(of: pack, scope: scope, maps: maps))
             let call = try await makeCall(memory.usage)
             var finished: RemoraAnswer?
@@ -264,6 +279,7 @@ public final class RemoraHost {
                 facts = try await memory.apply(answer: answer, request: request, pack: pack,
                                                sessionProjects: maps.sessionProjects, excludedProjects: excluded)
             } catch {
+                LoomLog.error(.remora, "Remora's memory did not take the answer (\(LoomLog.category(of: error))); it is not journaled")
                 facts = answer.proposedFacts
                 journaled = false
             }
@@ -280,7 +296,11 @@ public final class RemoraHost {
         } catch let failure as RemoraFailure {
             return Task.isCancelled ? .cancelled : .failed(failure)
         } catch {
-            if Task.isCancelled || error is CancellationError { return .cancelled }
+            if Task.isCancelled || error is CancellationError {
+                LoomLog.notice(.remora, "Remora \(Self.kindName(request)) cancelled before its call")
+                return .cancelled
+            }
+            LoomLog.error(.remora, "Remora \(Self.kindName(request)) not started: its memory or the session list could not be read (\(LoomLog.category(of: error)))")
             return .failed(RemoraFailure(kind: .couldNotStart, detail: "Remora's memory or the session list could not be read",
                                          beforeSpawn: true))
         }
@@ -317,7 +337,10 @@ public final class RemoraHost {
     private func storeLastBrief(_ date: Date?) {
         lastBriefValue = date
         lastBriefLoaded = true
-        try? lastBriefFile.write(date)
+        // A lost write lets the day's brief run again after a relaunch.
+        do { try lastBriefFile.write(date) } catch {
+            LoomLog.error(.remora, "The day's brief slot could not be saved (\(LoomLog.category(of: error)))")
+        }
     }
 
     // MARK: Remora.md
@@ -328,8 +351,10 @@ public final class RemoraHost {
             let token = try await note.remember(fact)
             return .remembered(fact: fact, undo: token)
         } catch let refusal as RemoraDurableNote.Refusal {
+            LoomLog.notice(.remora, "Remora.md refused a fact (\(LoomLog.category(of: refusal)))")
             return .notSaved(refusal.reason)
         } catch {
+            LoomLog.error(.remora, "Remora.md could not be saved (\(LoomLog.category(of: error)))")
             return .notSaved("Remora.md could not be saved.")
         }
     }
@@ -339,7 +364,7 @@ public final class RemoraHost {
     /// Every project's note, in project order of the memory's folder, named from `names` (the caller's projects; no catalog
     /// read here).
     public func notes(names: [UUID: String] = [:]) async -> [RemoraHostNote] {
-        guard let memory = try? await box.open() else { return [] }
+        guard let memory = await openedMemory() else { return [] }
         var result: [RemoraHostNote] = []
         for project in await memory.noteProjects() {
             if let note = await memory.note(for: project) {
@@ -352,14 +377,20 @@ public final class RemoraHost {
 
     /// Edit: `text` is the note as the user left it. False when it could not be saved.
     public func editNote(project: UUID, text: String) async -> Bool {
-        guard let memory = try? await box.open() else { return false }
-        do { try await memory.editNote(project: project, text: text); return true } catch { return false }
+        guard let memory = await openedMemory() else { return false }
+        do { try await memory.editNote(project: project, text: text); return true } catch {
+            LoomLog.error(.remora, "A project note could not be saved (\(LoomLog.category(of: error)))")
+            return false
+        }
     }
 
     /// Deletes the note; the token restores it. Nil when there was none or it could not be removed.
     public func removeNote(project: UUID) async -> RemoraUndoToken? {
-        guard let memory = try? await box.open() else { return nil }
-        return try? await memory.removeNote(project: project)
+        guard let memory = await openedMemory() else { return nil }
+        do { return try await memory.removeNote(project: project) } catch {
+            LoomLog.error(.remora, "A project note could not be removed (\(LoomLog.category(of: error)))")
+            return nil
+        }
     }
 
     /// Undo of a removed note or of a remembered fact. False when the token is spent or unknown.
@@ -371,7 +402,7 @@ public final class RemoraHost {
 
     /// The days that have a journal file, oldest first.
     public func journalDays() async -> [Date] {
-        guard let memory = try? await box.open() else { return [] }
+        guard let memory = await openedMemory() else { return [] }
         return await memory.journalDays()
     }
 
@@ -379,37 +410,40 @@ public final class RemoraHost {
     /// it folds, which `removeJournalLine(id:)` takes). Like the days read, it returns what is on disk: an excluded project's
     /// lines stay there and are kept out of the share only.
     public func journalWeeks() async -> [RemoraWeekSummary] {
-        guard let memory = try? await box.open() else { return [] }
+        guard let memory = await openedMemory() else { return [] }
         return await memory.weeklySummaries()
     }
 
     /// When the journal or a project note was last written; nil when the working memory is empty.
     public func workingMemoryUpdatedAt() async -> Date? {
-        guard let memory = try? await box.open() else { return nil }
+        guard let memory = await openedMemory() else { return nil }
         return await memory.workingMemoryUpdatedAt()
     }
 
     public func journal(on date: Date) async -> [RemoraJournalEntry] {
-        guard let memory = try? await box.open() else { return [] }
+        guard let memory = await openedMemory() else { return [] }
         return await memory.journal(on: date)
     }
 
     /// The × on Home: one journal line by its id. False when none has the id.
     public func removeJournalLine(id: String) async -> Bool {
-        guard let memory = try? await box.open() else { return false }
-        return (try? await memory.removeJournalLine(id: id)) ?? false
+        guard let memory = await openedMemory() else { return false }
+        do { return try await memory.removeJournalLine(id: id) } catch {
+            LoomLog.error(.remora, "A journal line could not be removed (\(LoomLog.category(of: error)))")
+            return false
+        }
     }
 
     /// Settings' Clear: the journal, the notes and the day's brief go (use counters and `Remora.md` stay).
     public func clearWorkingMemory() async {
         box.removeKeptBrief()
-        guard let memory = try? await box.open() else { return }
+        guard let memory = await openedMemory() else { return }
         await memory.clearWorkingMemory()
     }
 
     /// Today's and the last days' use, with the drift count; nil when the memory cannot be opened.
     public func usage() async -> RemoraUsageSnapshot? {
-        guard let memory = try? await box.open() else { return nil }
+        guard let memory = await openedMemory() else { return nil }
         return RemoraUsageSnapshot(today: memory.usage.today, days: memory.usage.days)
     }
 
@@ -443,14 +477,66 @@ public final class RemoraHost {
         if !added.isEmpty {
             // The day's brief goes when a session it names belongs to a newly excluded project (a session the catalog no longer
             // knows has no project to match; when the catalog cannot be read at all, the brief goes).
-            let projects = (try? await readMaps())?.sessionProjects
+            let projects: [UUID: UUID]?
+            do { projects = try await readMaps().sessionProjects } catch {
+                LoomLog.error(.remora, "The catalog could not be read for a new exclusion; the day's brief goes (\(LoomLog.category(of: error)))")
+                projects = nil
+            }
             box.removeKeptBrief { brief in
                 guard let projects else { return true }
                 return brief.sessionIDs.contains { projects[$0].map(added.contains) ?? false }
             }
-            if let memory = try? await box.open() {
+            if let memory = await openedMemory() {
                 for project in added { await memory.excludeProject(project) }
             }
+        }
+    }
+
+    // MARK: Log lines
+
+    /// Remora's memory, opened on demand; a failure is logged (at most once a minute) and is nil, as a `try?` was.
+    private func openedMemory() async -> RemoraMemory? {
+        do { return try await box.open() } catch {
+            LoomLog.error(.remora, key: "memory-open", "Remora's memory could not be opened (\(LoomLog.category(of: error)))")
+            return nil
+        }
+    }
+
+    /// The automatic brief did not run: one debug line per Home show, never more.
+    private static func notDue(_ decision: RemoraBriefDecision) -> RemoraOutcome {
+        LoomLog.debug(.remora, "Automatic brief: not due (\(decisionName(decision)))")
+        return .notDue(decision)
+    }
+
+    static func decisionName(_ decision: RemoraBriefDecision) -> String {
+        switch decision {
+        case .run: "run"
+        case .wait(.windowLow): "wait, window low"
+        case let .skip(reason):
+            switch reason {
+            case .remoraOff: "skip, Remora off"
+            case .whenIAsk: "skip, when I ask"
+            case .alreadyBriefedToday: "skip, already briefed today"
+            case .nothingMoved: "skip, nothing moved"
+            case .homeNotShown: "skip, Home not shown"
+            case .notLoggedIn: "skip, not logged in"
+            }
+        }
+    }
+
+    static func kindName(_ request: RemoraPackRequest) -> String {
+        switch request {
+        case .question: "question"
+        case .brief: "brief"
+        case .draft: "draft"
+        }
+    }
+
+    static func scopeName(_ scope: RemoraScope) -> String {
+        switch scope {
+        case .allProjects: "all projects"
+        case .project: "project"
+        case .session: "session"
         }
     }
 

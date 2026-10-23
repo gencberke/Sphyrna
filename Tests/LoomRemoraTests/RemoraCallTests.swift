@@ -108,6 +108,34 @@ struct RemoraCallTests {
         await rig.finish()
     }
 
+    /// The unified log, read back as a diagnostics export reads it: the call's end is one notice in `Remora` with its kind,
+    /// model, tokens and outcome, and none of the pack or the answer.
+    @Test func aCallWritesOneRemoraNoticeAtItsEndWithItsKindAndOutcomeAndNoContent() async throws {
+        let rig = try Rig()
+        let since = Date()
+        let model = "logcheck-\(UUID().uuidString.prefix(8).lowercased())"
+        var request = RemoraRequest(kind: .brief, model: model, pack: "PRIVATE-PACK what moved in my secret project",
+                                    knownSessionIDs: ["s-one"])
+        request.systemSuffix = ""
+        let result = await collect(rig.call(["LOOM_FAKE_REMORA_ANSWER": "PRIVATE-ANSWER nothing moved."]).run(request))
+        #expect(result.answer != nil, "failure: \(String(describing: result.failure)) \(String(describing: result.other))")
+        let lines = try await LogReadBack.lines(category: .remora, since: since, containing: "model \(model)") {
+            $0.contains { $0.message.hasPrefix("Remora call ended") }
+        }
+        let ends = lines.filter { $0.message.hasPrefix("Remora call ended") }
+        #expect(ends.count == 1, "lines: \(lines.map(\.message))")
+        let end = try #require(ends.first)
+        #expect(end.level == .notice)
+        #expect(end.message.contains("(brief, model \(model)"))
+        #expect(end.message.hasSuffix("): answered"))
+        #expect(end.message.contains("tokens in 2 cache write 1200 cache read 0 out 64"))
+        #expect(lines.contains { $0.message.hasPrefix("Remora call started (brief, model \(model)") })
+        for line in lines {
+            #expect(!line.message.contains("PRIVATE") && !line.message.contains("secret"), "content in: \(line.message)")
+        }
+        await rig.finish()
+    }
+
     @Test func theBlockIsStrippedParsedAndItsUnknownSessionsDropped() async throws {
         let rig = try Rig()
         let answerText = """

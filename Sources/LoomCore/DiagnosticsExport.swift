@@ -135,8 +135,8 @@ public enum DiagnosticsLogResult: Equatable, Sendable {
     case failed(String)
 }
 
-/// Writes the diagnostics folder: `summary.json`, the journal files and the last day of Loom's
-/// unified log. It holds ids, counts, versions and error categories, never a prompt, message,
+/// Writes the diagnostics folder: `summary.json`, the journal files and the last `DiagnosticRetention.maximumAge` (3 days)
+/// of Sphyrna's unified log. It holds ids, counts, versions and error categories, never a prompt, message,
 /// title or transcript text, and it is written only where the caller points it; nothing leaves the
 /// machine by itself.
 public enum DiagnosticsExport {
@@ -146,7 +146,7 @@ public enum DiagnosticsExport {
     public static let logByteCap = 5 * 1024 * 1024
     public static let logTimeout: TimeInterval = 30
 
-    /// Writes the log's last 24 hours to the given file, within the cap and the timeout.
+    /// Writes the log's last `DiagnosticRetention.logWindow` to the given file, within the cap and the timeout.
     public typealias LogRunner = @Sendable (_ output: URL) async -> DiagnosticsLogResult
 
     /// Where an export goes when the caller has no better place: `<data root>/diagnostics/exports/`.
@@ -163,7 +163,7 @@ public enum DiagnosticsExport {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         let predicate = "subsystem == \"\(LoomSignposts.subsystem)\" && processImagePath BEGINSWITH \"\(prefix)\""
-        return ["show", "--last", "24h", "--predicate", predicate, "--style", "ndjson"]
+        return ["show", "--last", DiagnosticRetention.logWindow, "--predicate", predicate, "--style", "ndjson"]
     }
 
     /// The real `log show`, with a timeout and an output cap.
@@ -195,33 +195,39 @@ public enum DiagnosticsExport {
         }
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: watchdog)
         let reader = pipe.fileHandleForReading
-        var written = 0
+        // `log show` writes the oldest entries first, and a report is about the newest: past the cap, the last `cap` bytes
+        // are kept (at most twice the cap is held while reading).
+        var kept = Data()
         var truncated = false
         while true {
             let chunk = reader.availableData
             if chunk.isEmpty { break }
-            if truncated { continue }
-            let room = cap - written
-            if chunk.count >= room {
-                try? sink.write(contentsOf: chunk.prefix(room))
-                written += room
+            kept.append(chunk)
+            if kept.count > 2 * cap {
+                kept = Data(kept.suffix(cap))
                 truncated = true
-                if process.isRunning { process.terminate() }
-            } else {
-                try? sink.write(contentsOf: chunk)
-                written += chunk.count
             }
         }
         process.waitUntilExit()
         watchdog.cancel()
         if timedOut.withLock({ $0 }) { return .failed("timed out") }
-        if !truncated, process.terminationStatus != 0 { return .failed("log exited \(process.terminationStatus)") }
-        return .collected(bytes: written, truncated: truncated)
+        if process.terminationStatus != 0 { return .failed("log exited \(process.terminationStatus)") }
+        if kept.count > cap {
+            kept = Data(kept.suffix(cap))
+            truncated = true
+        }
+        // A cut file starts at a whole entry (one entry per line).
+        if truncated, let newline = kept.firstIndex(of: 0x0A), newline < kept.index(before: kept.endIndex) {
+            kept = Data(kept[kept.index(after: newline)...])
+        }
+        do { try sink.write(contentsOf: kept) } catch { return .failed("write log file") }
+        return .collected(bytes: kept.count, truncated: truncated)
     }
 
     /// Creates `folder` (it must not exist, or be empty) with `summary.json`, `journal.jsonl`,
     /// `journal.1.jsonl` and `log.ndjson`, then removes older exports beside it so at most
-    /// `keepCount` remain. Only folders carrying this function's marker file are ever removed.
+    /// `keepCount` remain, none older than `DiagnosticRetention.maximumAge`. Only folders carrying this function's marker
+    /// file are ever removed.
     @discardableResult
     public static func collect(
         to folder: URL, dataRoot: URL, summary: DiagnosticsSummary,
@@ -238,6 +244,7 @@ public enum DiagnosticsExport {
         do {
             try Data().write(to: folder.appendingPathComponent(markerName))
             let journal = DiagnosticJournal.forDataRoot(dataRoot)
+            journal.prepareForExport()
             for source in [journal.currentURL, journal.previousURL] where fileManager.fileExists(atPath: source.path) {
                 try fileManager.copyItem(at: source, to: folder.appendingPathComponent(source.lastPathComponent))
             }
@@ -258,6 +265,7 @@ public enum DiagnosticsExport {
             throw error
         }
         prune(beside: folder)
+        removeAged(in: folder.deletingLastPathComponent(), now: Date(), keeping: folder.lastPathComponent)
         LoomLog.notice(.diagnostics, "Diagnostics exported")
         DiagnosticJournal.forDataRoot(dataRoot).record("diagnostics_export", [:])
         return folder
@@ -273,6 +281,20 @@ public enum DiagnosticsExport {
         }.sorted(by: >)
         for stale in exports.dropFirst(keepCount) where stale != folder.lastPathComponent {
             try? FileManager.default.removeItem(at: parent.appendingPathComponent(stale))
+        }
+    }
+
+    /// Removes the exports in `parent` made more than `DiagnosticRetention.maximumAge` before `now`, by the time their marker
+    /// file was written (the export's creation); `keeping` is never removed. Only folders carrying the marker are touched.
+    static func removeAged(in parent: URL, now: Date, keeping: String? = nil) {
+        let fileManager = FileManager.default
+        guard let names = try? fileManager.contentsOfDirectory(atPath: parent.path) else { return }
+        let cutoff = now.addingTimeInterval(-DiagnosticRetention.maximumAge)
+        for name in names where name.hasPrefix(folderPrefix) && name != keeping {
+            let marker = parent.appendingPathComponent(name).appendingPathComponent(markerName)
+            guard let made = (try? fileManager.attributesOfItem(atPath: marker.path))?[.modificationDate] as? Date,
+                  made < cutoff else { continue }
+            try? fileManager.removeItem(at: parent.appendingPathComponent(name))
         }
     }
 }

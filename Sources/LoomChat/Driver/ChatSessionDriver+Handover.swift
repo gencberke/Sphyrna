@@ -116,13 +116,13 @@ extension ChatSessionDriver {
             permissionMode = child.wire
             modeBeforeAsk = child.before
             do { try await setPermissionMode(mode) } catch {
-                journal?.record("chat.held_mode_failed", ["error": .string(LoomLog.category(of: error))])
+                journalRecord("chat.held_mode_failed", ["error": .string(LoomLog.category(of: error))])
                 if let choice = child.choice { await recordChoices(ClaudeLaunchChoices(permissionMode: choice)) }
             }
         }
         if let name = held.model {
             do { try await setModel(name) } catch {
-                journal?.record("chat.held_model_failed", ["error": .string(LoomLog.category(of: error))])
+                journalRecord("chat.held_model_failed", ["error": .string(LoomLog.category(of: error))])
                 // The pick was recorded when it was made, and the child never took it: the choice, the chip and the catalog
                 // go back to what the child runs.
                 if let child = held.childModel {
@@ -138,7 +138,7 @@ extension ChatSessionDriver {
         do {
             if held.effortCleared { try await clearEffort() } else if let level = held.effort { try await setEffort(level) }
         } catch {
-            journal?.record("chat.held_effort_failed", ["error": .string(LoomLog.category(of: error))])
+            journalRecord("chat.held_effort_failed", ["error": .string(LoomLog.category(of: error))])
             if let child = held.childEffort {
                 choices.effort = child.choice
                 effortCleared = child.cleared

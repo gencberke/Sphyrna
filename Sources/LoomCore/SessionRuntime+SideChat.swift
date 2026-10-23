@@ -115,6 +115,7 @@ extension SessionRuntime {
 
     private func discardForCascade(_ id: UUID) async throws {
         guard try await discardSideChat(id: id) == .deleted else {
+            LoomLog.error(.deletion, "Side chat \(LoomLog.ref(id)) could not be deleted with its parent; the parent's deletion is refused")
             throw SessionRuntimeError.deletionRefused("A side chat of this session could not be deleted")
         }
     }

@@ -33,6 +33,7 @@ extension ChatSessionDriver {
             await afterRequestsChanged()
             throw ChatDriverError.noSuchRequest(requestID)
         }
+        LoomLog.notice(.chat, "Chat \(self.logRef): \(request.kind) request answered (\(Self.answerName(decision)))")
         // The CLI withdrew it while the answer was on its way: its "Cancelled" line stands, and no "Allowed once" joins it.
         guard requests.contains(where: { $0.requestID == requestID }) else { return }
         if let record { note(model.recordRequest(record, at: clock())) }
@@ -141,6 +142,7 @@ extension ChatSessionDriver {
             if decision != .ask, await answerByPolicy(pending, decision) { return }
         }
         requests.append(pending)
+        LoomLog.notice(.chat, "Chat \(self.logRef): \(pending.kind) request arrived (\(self.requests.count) waiting)")
         if tool.toolName == "ExitPlanMode", let id = tool.toolUseID, let plan = tool.input["plan"]?.string {
             note(model.updatePlan(toolUseID: id, markdown: plan, filePath: tool.input["planFilePath"]?.string))
         }
@@ -166,8 +168,10 @@ extension ChatSessionDriver {
         guard await current.channel.respond(to: pending.requestID, with: wire) else { return false }
         if case .allow = decision {
             policyAllowed += 1
+            LoomLog.debug(.chat, "Chat \(self.logRef): \(pending.kind) request allowed by policy")
         } else {
             policyRefusals += 1
+            LoomLog.notice(.chat, "Chat \(self.logRef): \(pending.kind) request denied by policy")
             let subject = pending.subject
             let line = subject == tool.toolName ? "Refused \(tool.toolName)" : "Refused \(tool.toolName) · \(subject)"
             note(model.recordRequest(RequestRecord(kind: .approval, summary: StatusReason.oneLine(line, limit: 240) ?? line), at: clock()))
@@ -180,8 +184,18 @@ extension ChatSessionDriver {
     func receiveCancel(_ requestID: String) async {
         guard let request = requests.first(where: { $0.requestID == requestID }) else { return }
         let summary = "Cancelled: \(request.subject)"
+        LoomLog.notice(.chat, "Chat \(self.logRef): \(request.kind) request cancelled by Claude")
         note(model.recordRequest(RequestRecord(kind: request.recordKind, summary: summary), at: clock()))
         await retire(requestID: requestID, as: .cancelled, summary: summary)
         await afterRequestsChanged()
+    }
+
+    /// How a request was answered, as a log line names it (never the answer's content).
+    static func answerName(_ decision: PermissionDecision) -> String {
+        switch decision {
+        case .allow: "allowed"
+        case .deny(_, true): "denied and stopped"
+        case .deny: "denied"
+        }
     }
 }

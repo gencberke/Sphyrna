@@ -432,6 +432,29 @@ struct SessionServiceTests {
         #expect(rig.service.transitions.startingKeys.isEmpty)
     }
 
+    /// The unified log, read back as a diagnostics export reads it: one error in `Session` with the session's ref and the
+    /// error's category, and nothing of the message or of the error's payload.
+    @Test func aStartThatFailsWritesOneSessionErrorWithItsRefAndCategoryAndNoContent() async throws {
+        let rig = try await makeRig()
+        defer { rig.context.cleanup() }
+        let since = Date()
+        rig.host.script = .failBeforeReady(LoomError.message("/Users/someone/Secret Project/prompt words"))
+        await rig.service.startSession(projectID: nil, launch: NewSessionLaunch(firstMessage: "my private first message"),
+                                       cardCreated: { rig.told.card($0) }, notStarted: { rig.told.none() })?.value
+        let session = try #require(rig.host.newSessions.first?.session)
+        let ref = LoomLog.ref(session)
+        #expect(ref.count == 10 && ref.hasPrefix("s:"))
+        let lines = try await LogReadBack.lines(category: .session, since: since, containing: ref)
+        let errors = lines.filter { $0.level == .error }
+        #expect(errors.count == 1, "lines: \(lines.map(\.message))")
+        let line = try #require(errors.first?.message)
+        #expect(line.contains("Start \(ref) (chat) failed"))
+        #expect(line.contains("LoomError.message"))
+        for content in ["Secret", "/Users", "prompt words", "private first message"] {
+            #expect(!line.contains(content), "\(content) in: \(line)")
+        }
+    }
+
     @Test func aStructuredStartThatFailsAfterReadyKeepsItsSessionAndOnlyReports() async throws {
         let rig = try await makeRig()
         defer { rig.context.cleanup() }

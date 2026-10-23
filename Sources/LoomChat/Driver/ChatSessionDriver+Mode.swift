@@ -130,8 +130,12 @@ extension ChatSessionDriver {
 
     /// Ask's rules and style again, read fresh (best effort: a failure leaves the CLI as it is).
     private func restoreAskRules(on channel: ControlChannel) async {
-        let rules = (try? await channel.request(.other(subtype: "list_permission_rules", fields: [:])))?.permissionRules ?? []
-        _ = try? await channel.request(.applyFlagSettings(ChatAskMode.enterSettings(mirroring: rules)))
+        let rules = await loggedTry("Ask's rules could not be read again") {
+            try await channel.request(.other(subtype: "list_permission_rules", fields: [:]))
+        }?.permissionRules ?? []
+        _ = await loggedTry("Ask's rules and style could not be put back") {
+            try await channel.request(.applyFlagSettings(ChatAskMode.enterSettings(mirroring: rules)))
+        }
     }
 
     /// The requests of Ask: the CLI's `dontAsk`, then the live rules and style. If the second fails, the rules are taken off
@@ -144,10 +148,15 @@ extension ChatSessionDriver {
             let rules = try await channel.request(.other(subtype: "list_permission_rules", fields: [:])).permissionRules
             _ = try await channel.request(.applyFlagSettings(ChatAskMode.enterSettings(mirroring: rules)))
         } catch {
-            _ = try? await channel.request(.applyFlagSettings(ChatAskMode.leaveSettings))
+            LoomLog.error(.chat, "Chat \(self.logRef): Ask's rules and style could not be turned on (\(LoomLog.category(of: error)))")
+            _ = await loggedTry("Ask's rules and style could not be taken off again") {
+                try await channel.request(.applyFlagSettings(ChatAskMode.leaveSettings))
+            }
             if let previous {
-                _ = try? await channel.request(.setPermissionMode(
-                    PermissionMode(rawValue: ClaudePermissionMode(rawValue: previous)?.cliValue ?? previous)))
+                _ = await loggedTry("the mode before Ask could not be put back") {
+                    try await channel.request(.setPermissionMode(
+                        PermissionMode(rawValue: ClaudePermissionMode(rawValue: previous)?.cliValue ?? previous)))
+                }
             }
             throw error
         }
@@ -240,7 +249,9 @@ extension ChatSessionDriver {
         defer { finishAskLayerPending() }
         await serialMode {
             guard isAsk, let current = run, phase.isLive else { return }
-            try? await applyAskLayer(on: current.channel)
+            _ = await loggedTry("Ask's layer could not be put back after a reset") {
+                try await applyAskLayer(on: current.channel)
+            }
         }
     }
 

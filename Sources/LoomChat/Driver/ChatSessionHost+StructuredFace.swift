@@ -47,8 +47,12 @@ extension ChatSessionHost: StructuredFaceHost {
         guard let driver = existingDriver(for: sessionID) else { return }
         var failure: (any Error)?
         do {
-            _ = try await driver.stop()
+            let report = try await driver.stop()
+            if !report.succeeded {
+                LoomLog.error(.chat, "Chat \(LoomLog.ref(sessionID)): its Close stop could not be verified (\(report.remaining.count) remaining)")
+            }
         } catch SessionRuntimeError.notRunning {
+            LoomLog.debug(.chat, "Chat \(LoomLog.ref(sessionID)): Close found no run")
         } catch {
             failure = error
         }

@@ -27,7 +27,7 @@ struct LoomHook {
               let sessionID = UUID(uuidString: sessionText),
               let runText = environment["LOOM_MANAGED_RUN_ID"],
               let managedRunID = UUID(uuidString: runText) else {
-            LoomLog.error(.hookClient, "Hook not sent: the Loom environment variables are missing or malformed")
+            LoomLog.error(.hookClient, "Hook not sent: Sphyrna's environment variables (LOOM_*) are missing or malformed")
             exit(1)
         }
         guard let payload = try? readStandardInput(), (try? ClaudeHookEvent(payload: payload)) != nil else {

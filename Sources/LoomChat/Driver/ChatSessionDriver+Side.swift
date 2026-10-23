@@ -87,7 +87,7 @@ extension ChatSessionDriver {
         func record(_ outcome: String) {
             let elapsed = started.duration(to: .now)
             let millis = Int(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
-            journal?.record("chat.sideQuestion", ["outcome": .string(outcome), "ms": .int(millis)])
+            journalRecord("chat.sideQuestion", ["outcome": .string(outcome), "ms": .int(millis)])
         }
         do {
             let reply = try await channel.request(.sideQuestion(text), timeout: sideQuestionWait)

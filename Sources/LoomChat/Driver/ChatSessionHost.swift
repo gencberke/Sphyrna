@@ -147,12 +147,16 @@ public final class ChatSessionHost {
         do {
             try await driver.startFork()
         } catch {
+            LoomLog.error(.chat, "Side chat \(LoomLog.ref(id)) of \(LoomLog.ref(parentSessionID)) could not start (\(LoomLog.category(of: error)))")
             // The runtime removed the card when the spawn failed; a fork that spawned and then did not become ready is stopped and
             // deleted through the same verified path as a discard. Best effort: the original failure is what the caller gets.
-            _ = try? await discardSideChat(id: id)
+            do { _ = try await discardSideChat(id: id) } catch {
+                LoomLog.error(.chat, "Side chat \(LoomLog.ref(id)): the failed start's fork could not be discarded (\(LoomLog.category(of: error)))")
+            }
             forget(sessionID: id)
             throw error
         }
+        LoomLog.notice(.chat, "Side chat \(LoomLog.ref(id)) of \(LoomLog.ref(parentSessionID)) started")
         return driver
     }
 
@@ -186,13 +190,13 @@ public final class ChatSessionHost {
         if let driver = drivers[sessionID] { driverForgotten(driver) }
         drivers[sessionID] = nil
         do { try queueStore.forget(sessionID: sessionID) } catch {
-            LoomLog.error(.lifecycle, "A deleted session's Chat queue could not be removed (\(LoomLog.category(of: error)))")
+            LoomLog.error(.chat, "A deleted session's Chat queue could not be removed (\(LoomLog.category(of: error)))")
         }
         do { try draftStore.forget(sessionID: sessionID) } catch {
-            LoomLog.error(.lifecycle, "A deleted session's Chat draft could not be removed (\(LoomLog.category(of: error)))")
+            LoomLog.error(.chat, "A deleted session's Chat draft could not be removed (\(LoomLog.category(of: error)))")
         }
         do { try rewindStore.forget(sessionID: sessionID) } catch {
-            LoomLog.error(.lifecycle, "A deleted session's rewind copies could not be removed (\(LoomLog.category(of: error)))")
+            LoomLog.error(.chat, "A deleted session's rewind copies could not be removed (\(LoomLog.category(of: error)))")
         }
     }
 
@@ -201,7 +205,13 @@ public final class ChatSessionHost {
     public func removeQueuesOfDeletedSessions() async {
         for id in queueStore.sessionIDs().union(draftStore.sessionIDs()).union(rewindStore.sessionIDs()) {
             // A catalog that cannot answer removes nothing.
-            guard (try? await runtime.catalog.session(id: id).map { _ in true } ?? false) == false else { continue }
+            let known: Bool
+            do { known = try await runtime.catalog.session(id: id) != nil } catch {
+                LoomLog.error(.chat, key: "orphan-files", "The Chat files of a session were kept: the catalog could not be read (\(LoomLog.category(of: error)))")
+                continue
+            }
+            guard !known else { continue }
+            LoomLog.notice(.chat, "The Chat files of \(LoomLog.ref(id)), a session the catalog no longer has, are removed")
             forget(sessionID: id)
         }
     }
@@ -223,7 +233,7 @@ final class ChatDriverRegistry: Sendable {
         state.withLock { drivers in
             guard let driver = drivers[from] else { return false }
             if let existing = drivers[to], existing !== driver {
-                LoomLog.error(.lifecycle, "A Chat driver was not re-keyed to its run's new card: another driver already has it")
+                LoomLog.error(.chat, "A Chat driver was not re-keyed to its run's new card: another driver already has it")
                 return false
             }
             drivers.removeValue(forKey: from)

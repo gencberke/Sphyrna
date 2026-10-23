@@ -260,7 +260,7 @@ public actor ControlChannel {
         if case .enqueued = outgoingContinuation.yield(line) { return true }
         if !reportedFull {
             reportedFull = true
-            LoomLog.error(.lifecycle, "A Chat session's input queue is full; Sphyrna refused a line instead of holding it")
+            LoomLog.error(.chat, "A Chat session's input queue is full; Sphyrna refused a line instead of holding it")
         }
         return false
     }

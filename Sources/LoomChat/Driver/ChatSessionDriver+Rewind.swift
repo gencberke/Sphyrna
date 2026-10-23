@@ -224,20 +224,20 @@ extension ChatSessionDriver {
         } catch let error as ChatRewindError {
             throw error
         } catch {
-            LoomLog.error(.lifecycle, "A files rewind was not answered (\(LoomLog.category(of: error))); Sphyrna kept its copy")
+            LoomLog.error(.chat, "A files rewind was not answered (\(LoomLog.category(of: error))); Sphyrna kept its copy")
             // What the files hold now is what Undo compares against later.
             _ = try? await Task.detached { try store.finish(sessionID: card, rewindID: manifest.rewindID) }.value
             placeRewindMarker(rewindID: manifest.rewindID, card: card, title: messageTitle)
-            journal?.record("chat.rewind_unanswered", ["files": .int(dry.files.count)])
+            journalRecord("chat.rewind_unanswered", ["files": .int(dry.files.count)])
             throw ChatRewindError.noAnswer
         }
         do {
             _ = try await Task.detached { try store.finish(sessionID: card, rewindID: manifest.rewindID) }.value
         } catch {
-            LoomLog.error(.lifecycle, "The files a rewind left could not be recorded (\(LoomLog.category(of: error)))")
+            LoomLog.error(.chat, "The files a rewind left could not be recorded (\(LoomLog.category(of: error)))")
         }
         placeRewindMarker(rewindID: manifest.rewindID, card: card, title: messageTitle)
-        journal?.record("chat.rewound", ["files": .int(dry.files.count), "insertions": .int(dry.insertions),
+        journalRecord("chat.rewound", ["files": .int(dry.files.count), "insertions": .int(dry.insertions),
                                          "deletions": .int(dry.deletions)])
         return RewindResult(rewindID: manifest.rewindID, files: dry.files, insertions: dry.insertions, deletions: dry.deletions)
     }
@@ -288,7 +288,7 @@ extension ChatSessionDriver {
             }
             let report = try await Task.detached { try store.restore(sessionID: card, rewindID: rewindID) }.value
             closeRewindUndo(to: .undone)
-            journal?.record("chat.rewind_undone", ["restored": .int(report.restored.count), "trashed": .int(report.trashed.count)])
+            journalRecord("chat.rewind_undone", ["restored": .int(report.restored.count), "trashed": .int(report.trashed.count)])
             return RewindUndoResult(restored: report.restored, trashed: report.trashed)
         } catch let error as ChatRewindError {
             throw error

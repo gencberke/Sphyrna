@@ -244,9 +244,12 @@ public struct RemoraCall: Sendable {
         }
     }
 
-    private func drive(_ request: RemoraRequest, _ continuation: AsyncThrowingStream<RemoraEvent, any Error>.Continuation) async {
+    private func drive(_ request: RemoraRequest, _ stream: AsyncThrowingStream<RemoraEvent, any Error>.Continuation) async {
         let clock = ContinuousClock()
         let began = clock.now
+        // Every way out of the call goes through `continuation`, which writes the call's one end line.
+        let continuation = RemoraCallLog(stream, request: request, clock: clock, began: began)
+        LoomLog.notice(.remora, "Remora call started (\(continuation.kindName), model \(Self.sanitizedModel(request.model)), effort \(Self.sanitizedEffort(request.effort)))")
         func failure(_ kind: RemoraFailure.Kind, _ detail: String = "", usage: RemoraTokenUsage? = nil) -> RemoraFailure {
             RemoraFailure(kind: kind, detail: detail, usage: usage)
         }
@@ -351,5 +354,62 @@ public struct RemoraCall: Sendable {
                 continuation.finish(throwing: failure(.couldNotStart, String(describing: error)))
             }
         }
+    }
+}
+
+/// A call's stream with its log: the call's end writes one line, with its kind, model, duration, tokens and outcome or failure
+/// kind. Never the pack, the answer or `RemoraFailure.detail` (it can hold the CLI's own error line). Used by one task only.
+final class RemoraCallLog: @unchecked Sendable {
+    private let stream: AsyncThrowingStream<RemoraEvent, any Error>.Continuation
+    private let model: String
+    private let clock: ContinuousClock
+    private let began: ContinuousClock.Instant
+    private var answer: RemoraAnswer?
+    private var ended = false
+    let kindName: String
+
+    init(_ stream: AsyncThrowingStream<RemoraEvent, any Error>.Continuation, request: RemoraRequest,
+         clock: ContinuousClock, began: ContinuousClock.Instant) {
+        self.stream = stream
+        model = RemoraCall.sanitizedModel(request.model)
+        self.clock = clock
+        self.began = began
+        kindName = request.isDraft ? "draft" : (request.kind == .brief ? "brief" : "question")
+    }
+
+    func yield(_ event: RemoraEvent) {
+        if case let .finished(finished) = event { answer = finished }
+        stream.yield(event)
+    }
+
+    func finish(throwing error: (any Error)? = nil) {
+        if !ended {
+            ended = true
+            log(error)
+        }
+        stream.finish(throwing: error)
+    }
+
+    private func log(_ error: (any Error)?) {
+        let elapsed = clock.now - began
+        let millis = Int(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
+        let reported = answer?.model.map { " (\(RemoraCall.sanitizedModel($0)))" } ?? ""
+        let head = "Remora call ended (\(kindName), model \(model)\(reported), \(millis) ms"
+        let answer = answer
+        if let failure = error as? RemoraFailure {
+            let spawn = failure.beforeSpawn ? ", before its child started" : ""
+            LoomLog.error(.remora, "\(head)\(Self.tokens(failure.usage))): failed, \(failure.kind.rawValue)\(spawn)")
+        } else if let error {
+            LoomLog.error(.remora, "\(head)): failed (\(LoomLog.category(of: error)))")
+        } else if let answer {
+            LoomLog.notice(.remora, "\(head)\(Self.tokens(answer.usage))): answered")
+        } else {
+            LoomLog.notice(.remora, "\(head)): cancelled")
+        }
+    }
+
+    private static func tokens(_ usage: RemoraTokenUsage?) -> String {
+        guard let usage else { return "" }
+        return ", tokens in \(usage.input) cache write \(usage.cacheCreation) cache read \(usage.cacheRead) out \(usage.output)"
     }
 }

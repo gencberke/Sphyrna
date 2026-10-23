@@ -10,12 +10,20 @@ extension ChatSessionDriver {
             lastActivity = at
             ingesting = true
             let activityBefore = model.activity
+            var undecoded = false
             for frame in frames {
                 guard case let .message(message) = frame else {
+                    if case .oversized = frame { undecodedLines.oversized += 1 } else { undecodedLines.malformed += 1 }
+                    undecoded = true
                     note(model.apply(frame, at: at))
                     continue
                 }
                 await ingest(message, at: at)
+            }
+            if undecoded {
+                let counts = undecodedLines
+                LoomLog.error(.chat, key: "undecoded:\(sessionID)",
+                              "Chat \(self.logRef): stdout lines not decoded so far: \(counts.malformed) malformed, \(counts.oversized) oversized")
             }
             if model.activity != activityBefore { streamActivityChanged = true }
             ingesting = false
@@ -192,7 +200,7 @@ extension ChatSessionDriver {
         // The draft file goes with the run, held messages included: the driver writes and releases them under the new card.
         if let draftStore {
             do { try draftStore.move(from: old, to: card) } catch {
-                LoomLog.error(.lifecycle, "A draft could not follow its run to the new card (\(LoomLog.category(of: error)))")
+                LoomLog.error(.chat, "A draft could not follow its run to the new card (\(LoomLog.category(of: error)))")
             }
         }
         var fresh = TurnModel(source: .live)
@@ -209,7 +217,7 @@ extension ChatSessionDriver {
         resetTrigger = nil
         if !ingesting { flushModelChanges() }
         onMoved(old, card)
-        journal?.record("chat.moved", [:])
+        journalRecord("chat.moved", [:])
         conversationID = await runtime.supervisor.session(id: card)?.providerConversationID ?? conversationID
         // The new card's hub entry: the run's requests and work state (the move's `runStarted` cleared them).
         await runtime.supervisor.events.publish(sessionID: card, change: .pendingRequests(requests.map(\.summary)))

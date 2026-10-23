@@ -30,11 +30,21 @@ public enum JournalValue: Equatable, Sendable, ExpressibleByStringLiteral, Expre
     }
 }
 
+/// How long Sphyrna keeps what it stores for diagnostics: the journal's entries, the exports, and the unified-log window an
+/// export asks `log show` for. One constant, read by `DiagnosticJournal` and `DiagnosticsExport`.
+public enum DiagnosticRetention {
+    public static let maximumAge: TimeInterval = 72 * 3600
+    /// `maximumAge` as `log show --last` takes it.
+    public static var logWindow: String { "\(Int(maximumAge / 3600))h" }
+}
+
 /// `<data root>/diagnostics/journal.jsonl`: rare events only (launch summary, quit report summary,
 /// recovery report, CLI compatibility warnings, catalog backup and restore), one JSON object per
 /// line, no content. At 512 KB the file becomes `journal.1.jsonl` and a new one starts; two files
-/// are kept and anything older is pruned on the write. It is read by the diagnostics export and by
-/// people; nothing reads it back to make a decision.
+/// are kept and anything older is pruned on the write. Entries older than `DiagnosticRetention.maximumAge` are dropped
+/// when the journal is first used in a process (launch) and when it rotates, never on every write; the exports beside it
+/// are aged out at the same first use. It is read by the diagnostics export and by people; nothing reads it back to make a
+/// decision.
 public final class DiagnosticJournal: @unchecked Sendable {
     public static let maximumFileBytes = 512 * 1024
     public static let currentName = "journal.jsonl"
@@ -42,7 +52,10 @@ public final class DiagnosticJournal: @unchecked Sendable {
 
     public let directory: URL
     private let maximumBytes: Int
+    private let now: @Sendable () -> Date
     private let lock = NSLock()
+    /// The age pruning of the first use in this process has run (under `lock`).
+    private var opened = false
 
     private static let registry = NSLock()
     nonisolated(unsafe) private static var shared: [String: DiagnosticJournal] = [:]
@@ -59,9 +72,11 @@ public final class DiagnosticJournal: @unchecked Sendable {
         }
     }
 
-    public init(directory: URL, maximumBytes: Int = DiagnosticJournal.maximumFileBytes) {
+    public init(directory: URL, maximumBytes: Int = DiagnosticJournal.maximumFileBytes,
+                now: @escaping @Sendable () -> Date = { Date() }) {
         self.directory = directory
         self.maximumBytes = max(maximumBytes, 1_024)
+        self.now = now
     }
 
     public var currentURL: URL { directory.appendingPathComponent(Self.currentName) }
@@ -75,20 +90,29 @@ public final class DiagnosticJournal: @unchecked Sendable {
         object["time"] = ISO8601DateFormatter.journalString(from: date)
         guard var line = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else { return }
         line.append(0x0A)
-        let failure: Int32? = lock.withLock { write(line) }
-        if let failure {
-            LoomLog.error(.diagnostics, key: "journal-write", "The diagnostic journal could not be written (errno \(failure))")
+        let failedErrno: Int32? = lock.withLock {
+            openIfNeeded()
+            return write(line)
+        }
+        if let failedErrno {
+            LoomLog.error(.diagnostics, key: "journal-write", "The diagnostic journal could not be written (errno \(failedErrno))")
         }
     }
 
     /// Both files' lines, oldest first (the previous file, then the current one).
     public func lines() -> [String] {
         lock.withLock {
-            [previousURL, currentURL].flatMap { url -> [String] in
+            openIfNeeded()
+            return [previousURL, currentURL].flatMap { url -> [String] in
                 guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
                 return text.split(separator: "\n").map(String.init)
             }
         }
+    }
+
+    /// Runs the first use's age pruning if it has not run, so an export copies no aged entry.
+    func prepareForExport() {
+        lock.withLock { openIfNeeded() }
     }
 
     /// Nil on success, the errno otherwise. Caller holds the lock.
@@ -102,6 +126,7 @@ public final class DiagnosticJournal: @unchecked Sendable {
         if size + line.count > maximumBytes, size > 0 {
             // rename replaces an existing previous file atomically.
             if rename(currentURL.path, previousURL.path) != 0 { return errno }
+            dropAgedEntries()
         }
         prune()
         let descriptor = open(currentURL.path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0o600)
@@ -109,6 +134,43 @@ public final class DiagnosticJournal: @unchecked Sendable {
         defer { close(descriptor) }
         let written = line.withUnsafeBytes { Darwin.write(descriptor, $0.baseAddress, $0.count) }
         return written == line.count ? nil : (errno == 0 ? EIO : errno)
+    }
+
+    /// The first use in this process: entries and exports older than `DiagnosticRetention.maximumAge` go. Caller holds the lock.
+    private func openIfNeeded() {
+        guard !opened else { return }
+        opened = true
+        dropAgedEntries()
+        DiagnosticsExport.removeAged(in: directory.appendingPathComponent("exports", isDirectory: true), now: now())
+    }
+
+    /// Drops the lines of both files whose time is older than the age limit (a line with no readable time too); a file
+    /// left empty is removed. Caller holds the lock.
+    private func dropAgedEntries() {
+        let cutoff = now().addingTimeInterval(-DiagnosticRetention.maximumAge)
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var dropped = 0
+        for url in [previousURL, currentURL] {
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            let lines = text.split(separator: "\n")
+            let kept = lines.filter { line in
+                guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                      let time = (object["time"] as? String).flatMap(parser.date(from:)) else { return false }
+                return time >= cutoff
+            }
+            guard kept.count < lines.count else { continue }
+            dropped += lines.count - kept.count
+            if kept.isEmpty {
+                try? FileManager.default.removeItem(at: url)
+            } else {
+                let data = Data((kept.joined(separator: "\n") + "\n").utf8)
+                // Atomic: a crash leaves the old file or the new one. The new file keeps the journal's mode.
+                guard (try? data.write(to: url, options: .atomic)) != nil else { continue }
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            }
+        }
+        if dropped > 0 { LoomLog.debug(.diagnostics, "The journal dropped \(dropped) entries older than its age limit") }
     }
 
     /// Only the two named files belong in this folder's journal set; a journal of an earlier layout

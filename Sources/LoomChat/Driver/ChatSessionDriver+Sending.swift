@@ -56,7 +56,7 @@ extension ChatSessionDriver {
         withdrawnDrafts.append(ChatReturnedDraft(messageID: messageID, text: message.text, attachments: message.attachments))
         if let draftStore {
             do { try draftStore.withdraw(text: message.text, attachments: message.attachments, sessionID: sessionID) } catch {
-                LoomLog.error(.lifecycle, "A message sent again could not be taken out of its draft (\(LoomLog.category(of: error)))")
+                LoomLog.error(.chat, "A message sent again could not be taken out of its draft (\(LoomLog.category(of: error)))")
             }
         }
         changed()
@@ -193,17 +193,26 @@ extension ChatSessionDriver {
 
     private func generateTitle(from text: String, card: UUID, on channel: ControlChannel) async {
         // Only an untitled session is named (a resumed one may carry the terminal's title or the user's own).
-        guard let record = try? await runtime.catalog.session(id: card) else { titleFailed(for: card); return }
+        let ref = LoomLog.ref(card)
+        let found: CatalogSession?
+        do { found = try await runtime.catalog.session(id: card) } catch {
+            LoomLog.error(.chat, "Chat \(ref): the title was not asked for, the session could not be read (\(LoomLog.category(of: error)))")
+            titleFailed(for: card)
+            return
+        }
+        guard let record = found else { titleFailed(for: card); return }
         guard (record.title ?? "").isEmpty, !record.titleIsCustom else { titleSettled(for: card); return }
         do {
             let reply = try await channel.request(.generateSessionTitle(description: ChatTitleDescription.capped(text)), timeout: .seconds(60))
             guard let title = reply.generatedTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
+                LoomLog.notice(.chat, "Chat \(ref): Claude gave no title")
                 titleFailed(for: card)
                 return
             }
             titleSettled(for: card)
             onTitle(card, title)
         } catch {
+            LoomLog.error(.chat, "Chat \(ref): the title request failed (\(LoomLog.category(of: error)))")
             titleFailed(for: card)
         }
     }
@@ -226,14 +235,14 @@ extension ChatSessionDriver {
     private func holdInDraft(_ row: String, _ message: ChatSentMessage) {
         guard let draftStore else { return }
         do { try draftStore.hold(id: row, text: message.text, attachments: message.attachments, sessionID: sessionID) } catch {
-            LoomLog.error(.lifecycle, "A message sent could not be kept in the draft until Claude reads it (\(LoomLog.category(of: error)))")
+            LoomLog.error(.chat, "A message sent could not be kept in the draft until Claude reads it (\(LoomLog.category(of: error)))")
         }
     }
 
     private func releaseFromDraft(_ rows: [String]) {
         guard let draftStore, !rows.isEmpty else { return }
         do { try draftStore.release(ids: rows, sessionID: sessionID) } catch {
-            LoomLog.error(.lifecycle, "A message Claude read could not be taken out of the draft (\(LoomLog.category(of: error)))")
+            LoomLog.error(.chat, "A message Claude read could not be taken out of the draft (\(LoomLog.category(of: error)))")
         }
     }
 
@@ -256,9 +265,11 @@ extension ChatSessionDriver {
             receipt = try await channel.request(.interrupt(cancelQueued: true), timeout: .seconds(seconds))
                 .interruptReceipt
         } catch ControlError.unsupported {
-            receipt = try? await channel.request(.interrupt(cancelQueued: false), timeout: .seconds(seconds))
-                .interruptReceipt
+            receipt = await loggedTry("an interrupt (without cancelling the queued) failed") {
+                try await channel.request(.interrupt(cancelQueued: false), timeout: .seconds(seconds))
+            }?.interruptReceipt
         } catch {
+            LoomLog.error(.chat, "Chat \(self.logRef): an interrupt failed (\(LoomLog.category(of: error)))")
             receipt = nil
         }
         var cancelledDrafts: [ChatReturnedDraft] = []
@@ -292,7 +303,7 @@ extension ChatSessionDriver {
                 let at = clock()
                 for index in kept.indices { kept[index].persistedAt = at }
             } catch {
-                LoomLog.error(.lifecycle, "Messages Claude did not read could not be saved as a draft (\(LoomLog.category(of: error)))")
+                LoomLog.error(.chat, "Messages Claude did not read could not be saved as a draft (\(LoomLog.category(of: error)))")
             }
         }
         returnedDrafts += kept

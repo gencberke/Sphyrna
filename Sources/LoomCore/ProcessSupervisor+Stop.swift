@@ -273,6 +273,7 @@ extension ProcessSupervisor {
             session.currentRun = nil
             sessions[runtime.activeSessionID] = session
         }
+        LoomLog.notice(.lifecycle, "Run \(runID.uuidString.prefix(8)) ended (\(LoomLog.ref(runtime.activeSessionID)), \(Self.faceName(pipe: runtime.endpoint.isPipe)), reason \(reason.rawValue), \(Self.exitName(runtime.run.exitStatus)))")
         await events.publish(sessionID: runtime.activeSessionID, change: .runEnded(runID, reason))
     }
 

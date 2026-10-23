@@ -158,6 +158,7 @@ extension SessionRuntime {
                 workingDirectory: candidate.workingDirectory
             )
         )
+        LoomLog.notice(.deletion, "Deletion \(LoomLog.ref(id)): started (\(candidate.plan.items.count + candidate.plan.temporaryItems.count) item(s))")
         return try await runDeletion(id)
     }
 
@@ -168,6 +169,7 @@ extension SessionRuntime {
         guard try await catalog.isDeletionPending(id) else { throw SessionRuntimeError.deletionNotPending(id) }
         guard deletionsInFlight.insert(id).inserted else { throw SessionRuntimeError.deletionInProgress(id) }
         defer { deletionsInFlight.remove(id) }
+        LoomLog.notice(.deletion, "Deletion \(LoomLog.ref(id)): retried")
         return try await runDeletion(id)
     }
 
@@ -207,16 +209,19 @@ extension SessionRuntime {
                 )
             )
         }
+        LoomLog.notice(.deletion, "Remove from Sphyrna only \(LoomLog.ref(id)): started")
         do {
             try await stopRun(of: id)
             try await catalog.deleteSessionRows(sessionID: id)
             try await dropRuntimeState(of: id, providerIDs: providerIDs)
             try await finishLoomSide(of: id, providerIDs: providerIDs)
         } catch let failure as DeletionStepFailure {
+            LoomLog.error(.deletion, "Remove from Sphyrna only \(LoomLog.ref(id)) failed (\(failure.failure.category))")
             throw SessionRuntimeError.deletionRefused(
                 "The session could not be removed from Sphyrna (\(failure.failure.stored.replacingOccurrences(of: "_", with: " ")))"
             )
         }
+        LoomLog.notice(.deletion, "Remove from Sphyrna only \(LoomLog.ref(id)): removed")
         await supervisor.events.publishDeletion(sessionID: id, change: .conversationDeleted)
     }
 
@@ -239,14 +244,18 @@ extension SessionRuntime {
         let records: [CatalogDeletion]
         do { records = try await catalog.pendingDeletions() }
         catch {
+            LoomLog.error(.deletion, "Interrupted deletions could not be read (\(LoomLog.category(of: error)))")
             deletionRecoveryIssue = "Interrupted deletions could not be read: \(error)"
             return
         }
+        if !records.isEmpty { LoomLog.notice(.deletion, "Resuming \(records.count) interrupted deletion(s)") }
         for record in records {
             guard !shuttingDown else { return }
             guard deletionsInFlight.insert(record.sessionID).inserted else { continue }
             defer { deletionsInFlight.remove(record.sessionID) }
-            _ = try? await runDeletion(record.sessionID)
+            do { _ = try await runDeletion(record.sessionID) } catch {
+                LoomLog.error(.deletion, "Deletion \(LoomLog.ref(record.sessionID)): its resume failed (\(LoomLog.category(of: error)))")
+            }
         }
     }
 
@@ -364,19 +373,26 @@ extension SessionRuntime {
     private func runDeletion(_ id: UUID) async throws -> ConversationDeletionOutcome {
         while true {
             guard let record = try await catalog.deletion(for: id) else { return .deleted }
-            guard !shuttingDown else { return .incomplete(pending(record, running: false)) }
+            guard !shuttingDown else {
+                LoomLog.notice(.deletion, "Deletion \(LoomLog.ref(id)): left at \(record.state.rawValue), Sphyrna is quitting")
+                return .incomplete(pending(record, running: false))
+            }
             do {
                 try deletionFailpoint?(record.state, .before)
                 let next = try await perform(record)
                 // The last step removes the record itself: nothing is left to fail after it.
                 guard let next else {
+                    LoomLog.notice(.deletion, "Deletion \(LoomLog.ref(id)): deleted")
                     await supervisor.events.publishDeletion(sessionID: id, change: .conversationDeleted)
                     return .deleted
                 }
                 try deletionFailpoint?(record.state, .after)
                 try await catalog.advanceDeletion(sessionID: id, to: next)
+                LoomLog.debug(.deletion, "Deletion \(LoomLog.ref(id)): \(record.state.rawValue) done, next \(next.rawValue)")
             } catch {
                 let failure = (error as? DeletionStepFailure)?.failure ?? CatalogDeletionFailure(category: "step_failed")
+                let cause = error is DeletionStepFailure ? failure.category : "\(failure.category), \(LoomLog.category(of: error))"
+                LoomLog.error(.deletion, "Deletion \(LoomLog.ref(id)): step \(record.state.rawValue) failed (\(cause)); left incomplete")
                 try await catalog.advanceDeletion(sessionID: id, to: record.state, error: failure)
                 guard let latest = try await catalog.deletion(for: id) else { return .deleted }
                 await supervisor.events.publishDeletion(sessionID: id, change: .deletionIncomplete)

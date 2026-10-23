@@ -1,6 +1,5 @@
 import AppKit
 import LoomCore
-import os
 
 /// The thing that really collapses the sidebar (the split view's sidebar item). It owns the truth; the
 /// catalog model only mirrors it.
@@ -49,8 +48,8 @@ public final class SplitViewItemCollapse: SidebarCollapsing {
 /// state is still being restored) nothing is written back to the preferences.
 @MainActor
 public final class SidebarCollapseSync {
-    /// Read with `log show --predicate 'subsystem == "local.loom.desktop" && category == "Sidebar"' --info`.
-    static let log = Logger(subsystem: LoomSignposts.subsystem, category: "Sidebar")
+    // Logged under `LoomLogCategory.sidebar`, at debug: read with
+    // `log stream --level debug --predicate 'subsystem == "local.loom.desktop" && category == "Sidebar"'`.
     private let model: CatalogModel
     private let source: any SidebarCollapsing
     private var active = false
@@ -89,14 +88,14 @@ public final class SidebarCollapseSync {
             // click because the first did nothing).
             let target = source.isCollapsed == running.target ? !running.target : running.target
             move = nil
-            Self.log.info("toggle during a move: target collapsed=\(target, privacy: .public)")
+            LoomLog.debug(.sidebar, "toggle during a move: target collapsed=\(target)")
             source.setCollapsedImmediately(target)
             reconcile()
             return
         }
         let target = !source.isCollapsed
         move = (current, target)
-        Self.log.info("toggle: target collapsed=\(target, privacy: .public)")
+        LoomLog.debug(.sidebar, "toggle: target collapsed=\(target)")
         source.setCollapsed(target) { [weak self] in self?.finish(generation: current, target: target) }
         reconcile()
     }
@@ -105,7 +104,8 @@ public final class SidebarCollapseSync {
         guard move?.generation == finished else { return }   // superseded by a later toggle
         move = nil
         if source.isCollapsed != target {
-            Self.log.info("move not carried out: collapsed=\(self.source.isCollapsed, privacy: .public), applying target collapsed=\(target, privacy: .public) without animation")
+            let collapsed = source.isCollapsed
+            LoomLog.debug(.sidebar, "move not carried out: collapsed=\(collapsed), applying target collapsed=\(target) without animation")
             source.setCollapsedImmediately(target)
         }
         reconcile()

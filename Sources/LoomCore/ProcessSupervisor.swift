@@ -500,7 +500,7 @@ public actor ProcessSupervisor {
         }
         await events.publish(sessionID: sessionID, change: .runStarted(runID))
         await events.publish(sessionID: sessionID, change: .runEndpoint(runID, endpointKind))
-        LoomLog.notice(.lifecycle, "Run \(runID.uuidString.prefix(8)) started")
+        LoomLog.notice(.lifecycle, "Run \(runID.uuidString.prefix(8)) started (\(LoomLog.ref(sessionID)), \(Self.faceName(pipe: endpoint.isPipe)), \(Self.startKind(arguments)))")
         markerInspected.insert(leaderIdentity)
         managedRunMarkers[leaderIdentity] = runID
 
@@ -719,5 +719,25 @@ public actor ProcessSupervisor {
             )
             await events.publishActivity(sessionID: runtime.activeSessionID)
         }
+    }
+}
+
+extension ProcessSupervisor {
+    /// The face a run's endpoint means, as log lines name it: a pipe run is the Chat face's.
+    static func faceName(pipe: Bool) -> String { pipe ? "chat" : "terminal" }
+
+    /// How a run starts its session, read from the CLI's own arguments (for the log line only): `fork`, `resume` or `new`.
+    static func startKind(_ arguments: [String]) -> String {
+        if arguments.contains("--fork-session") { return "fork" }
+        if arguments.contains("--resume") || arguments.first == "resume" { return "resume" }
+        return "new"
+    }
+
+    /// A run's wait status as a log line names it: `exit code 1`, `signal 9`, or `exit unknown`.
+    static func exitName(_ status: Int32?) -> String {
+        guard let status else { return "exit unknown" }
+        let signal = status & 0x7f
+        if signal == 0 { return "exit code \((status >> 8) & 0xff)" }
+        return signal == 0x7f ? "stopped (wait status \(status))" : "signal \(signal)"
     }
 }

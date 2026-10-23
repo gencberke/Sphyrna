@@ -94,7 +94,7 @@ extension ChatSessionDriver {
             if case .notSaved = queueIssue { queueIssue = nil }
         } catch {
             queueIssue = .notSaved(LoomLog.category(of: error))
-            LoomLog.error(.lifecycle, "The Chat queue could not be saved (\(LoomLog.category(of: error)))")
+            LoomLog.error(.chat, "The Chat queue could not be saved (\(LoomLog.category(of: error)))")
         }
         changed()
     }

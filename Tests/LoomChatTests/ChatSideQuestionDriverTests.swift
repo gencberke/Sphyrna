@@ -78,7 +78,7 @@ struct ChatSideQuestionDriverTests {
         // The journal has the outcome and the latency, never the question or the answer.
         let events = journalEvents(rig)
         #expect(events.count == 1 && events.first?["outcome"] as? String == "answered" && events.first?["ms"] is Int)
-        #expect(Set(events.first?.keys.map { $0 } ?? []) == ["event", "time", "outcome", "ms"])
+        #expect(Set(events.first?.keys.map { $0 } ?? []) == ["event", "time", "outcome", "ms", "session"])
         _ = try await driver.stop()
         await rig.finish()
     }

@@ -164,6 +164,8 @@ public actor ChatSessionDriver {
     private var streamDelta = ModelDelta()
     var streamActivityChanged = false
     var streamReplaced = false
+    /// Stdout lines the decoder could not take, since this driver was made (counted for the log, never kept).
+    var undecodedLines = (malformed: 0, oversized: 0)
     /// The number of the newest change handed to `modelChanges` readers, and the model's counts when it was made: the
     /// next growth is made against them.
     private var changeSequence = 0
@@ -314,7 +316,7 @@ public actor ChatSessionDriver {
         // Messages a run of an earlier Loom wrote and never confirmed read (a crash, a force quit) come back as the draft.
         if let draftStore {
             do { try draftStore.recoverHeld(sessionID: sessionID) } catch {
-                LoomLog.error(.lifecycle, "Messages Claude may not have read could not be restored to the draft (\(LoomLog.category(of: error)))")
+                LoomLog.error(.chat, "Messages Claude may not have read could not be restored to the draft (\(LoomLog.category(of: error)))")
             }
         }
         Task { [weak self] in await self?.loadStoredChoices() }
@@ -488,7 +490,7 @@ public actor ChatSessionDriver {
             let card = try await runtime.supervisor.adoptConversation(runID: runID, conversationID: id, transition: transition)
             await followMove(to: card)
         } catch {
-            LoomLog.error(.lifecycle, "A Chat session's identity was not recorded (\(LoomLog.category(of: error)))")
+            LoomLog.error(.chat, "A Chat session's identity was not recorded (\(LoomLog.category(of: error)))")
         }
     }
 
@@ -516,7 +518,7 @@ public actor ChatSessionDriver {
         }
         guard driftKeys.insert(key).inserted else { return }
         drift.append(signal)
-        journal?.record("chat.drift", fields)
+        journalRecord("chat.drift", fields)
         changed()
     }
 
@@ -574,5 +576,27 @@ extension ChatDriverSnapshot {
     public func isQuiet(at now: Date) -> Bool {
         guard turnRunning, requests.isEmpty, let lastActivity else { return false }
         return now.timeIntervalSince(lastActivity) >= ChatSessionDriver.quietAfter
+    }
+}
+
+extension ChatSessionDriver {
+    /// The session in a log line: `s:` and the first 8 hex digits of its card's id.
+    var logRef: String { LoomLog.ref(sessionID) }
+
+    /// Runs `body`; a throw is logged by its category under `what` (a fixed phrase, never content) and becomes nil, as a
+    /// `try?` would.
+    func loggedTry<T>(_ what: String, _ body: () async throws -> T) async -> T? {
+        do { return try await body() } catch {
+            LoomLog.error(.chat, "Chat \(self.logRef): \(what) (\(LoomLog.category(of: error)))")
+            return nil
+        }
+    }
+
+    /// A journal event about this session: it carries the session's short ref (never its content).
+    func journalRecord(_ event: String, _ fields: [String: JournalValue] = [:]) {
+        guard let journal else { return }
+        var fields = fields
+        fields["session"] = .string(logRef)
+        journal.record(event, fields)
     }
 }

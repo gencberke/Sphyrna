@@ -206,6 +206,32 @@ struct DiagnosticsExportTests {
         #expect(kept == Set(folders.suffix(3).map(\.lastPathComponent) + [foreign.lastPathComponent]))
     }
 
+    @Test func anExportOlderThanThreeDaysIsRemovedWhenAnExportIsMadeAndAYoungerOneStays() async throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let exports = root.appendingPathComponent("diagnostics/exports", isDirectory: true)
+        let summary = DiagnosticsSummary(
+            generatedAt: Date(), application: .init(version: "1", build: nil, macOS: "test"), claudeCLI: nil,
+            catalog: nil, usage: nil, planLimitsFailure: nil, hooks: HookCounterSnapshot(), log: nil)
+        let old = try await DiagnosticsExport.collect(
+            to: exports.appendingPathComponent("\(DiagnosticsExport.folderPrefix)old", isDirectory: true),
+            dataRoot: root, summary: summary, log: fakeLog)
+        let young = try await DiagnosticsExport.collect(
+            to: exports.appendingPathComponent("\(DiagnosticsExport.folderPrefix)young", isDirectory: true),
+            dataRoot: root, summary: summary, log: fakeLog)
+        // Made 73 h and 71 h ago, by their marker's time.
+        for (folder, hours) in [(old, 73.0), (young, 71.0)] {
+            try FileManager.default.setAttributes(
+                [.modificationDate: Date().addingTimeInterval(-hours * 3600)],
+                ofItemAtPath: folder.appendingPathComponent(DiagnosticsExport.markerName).path)
+        }
+        let newest = try await DiagnosticsExport.collect(
+            to: exports.appendingPathComponent("\(DiagnosticsExport.folderPrefix)newest", isDirectory: true),
+            dataRoot: root, summary: summary, log: fakeLog)
+        let kept = Set(try FileManager.default.contentsOfDirectory(atPath: exports.path))
+        #expect(kept == [young.lastPathComponent, newest.lastPathComponent])
+    }
+
     @Test func anExistingNonEmptyFolderIsRefusedAndNothingIsChanged() async throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -223,10 +249,11 @@ struct DiagnosticsExportTests {
 
     // MARK: The log run
 
-    @Test func theLogCommandIsTheSubsystemQueryOverTheLastDayForThisAppBundleOnly() {
+    @Test func theLogCommandIsTheSubsystemQueryOverTheLastThreeDaysForThisAppBundleOnly() {
         let arguments = DiagnosticsExport.logArguments(bundlePath: "/Applications/Loom Dev.app")
+        #expect(DiagnosticRetention.maximumAge == 72 * 3600)
         #expect(arguments == [
-            "show", "--last", "24h", "--predicate",
+            "show", "--last", "72h", "--predicate",
             "subsystem == \"local.loom.desktop\" && processImagePath BEGINSWITH \"/Applications/Loom Dev.app/\"",
             "--style", "ndjson",
         ])
@@ -245,11 +272,14 @@ struct DiagnosticsExportTests {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let output = root.appendingPathComponent("log.ndjson")
-        // 1 MB of output against a 4 KB cap.
+        // About 1 MB of numbered lines, oldest first, against a 4 KB cap: the newest lines are kept, from a whole line on.
         let capped = DiagnosticsExport.runLogShow(to: output, cap: 4_096, timeout: 10,
-            executable: "/bin/sh", arguments: ["-c", "head -c 1000000 /dev/zero | tr '\\\\0' 'x'"])
-        #expect(capped == .collected(bytes: 4_096, truncated: true))
-        #expect(try Data(contentsOf: output).count == 4_096)
+            executable: "/bin/sh", arguments: ["-c", "seq 1 150000"])
+        let kept = try String(contentsOf: output, encoding: .utf8)
+        #expect(capped == .collected(bytes: kept.utf8.count, truncated: true))
+        #expect(kept.utf8.count <= 4_096 && kept.utf8.count > 4_000)
+        let numbers = kept.split(separator: "\n").map { Int($0) }
+        #expect(numbers == Array((150_001 - numbers.count)...150_000).map(Optional.some))
         // A command that never ends is stopped.
         let began = ContinuousClock.now
         let hung = DiagnosticsExport.runLogShow(to: output, cap: 4_096, timeout: 0.4,

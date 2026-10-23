@@ -1,14 +1,16 @@
 import Foundation
 import os
 
-/// The categories of Loom's unified logging under `LoomSignposts.subsystem` (`local.loom.desktop`).
-/// Retention belongs to unified logging; Loom keeps no log files of its own for these.
+/// The categories of Sphyrna's unified logging under `LoomSignposts.subsystem` (`local.loom.desktop`).
+/// Retention belongs to unified logging; Sphyrna writes no log files for these (its rare events go to the
+/// diagnostics journal, `DiagnosticJournal`, a file of its own).
 ///
 /// Rules every call site follows:
 /// - notice and error levels are for state transitions and failures only; per-event detail is
 ///   `debug` (free unless somebody streams it);
 /// - never a prompt, a message, a title or transcript text: ids, counts, durations and error
 ///   categories are `.public`, a user path goes through `path:` and stays `.private`;
+/// - a line about a session carries `LoomLog.ref(_:)` (and its face, `terminal` or `chat`, where known);
 /// - an error that can repeat (a failing write on every event) goes through `error(_:key:_:)`,
 ///   which emits it at most once per minute per key.
 ///
@@ -27,6 +29,16 @@ public enum LoomLogCategory: String, CaseIterable, Sendable {
     case diagnostics = "Diagnostics"
     /// The `loom-hook` helper process (a short-lived process of its own, same subsystem).
     case hookClient = "HookClient"
+    /// `SessionService`: the outcome of each lifecycle operation, handovers and side-chat retirements.
+    case session = "Session"
+    /// The Chat face: LoomChat's driver and host.
+    case chat = "Chat"
+    /// Remora's calls, its automatic brief and the day's slot.
+    case remora = "Remora"
+    /// Permanent deletion of a session and its recovery.
+    case deletion = "Deletion"
+    /// The sidebar's collapse sync (LoomCatalogUI).
+    case sidebar = "Sidebar"
 }
 
 /// Lets an identical message through at most once per interval per key, counting what it held back.
@@ -64,6 +76,11 @@ public final class LogRateLimiter: @unchecked Sendable {
 
 public enum LoomLog {
     static let limiter = LogRateLimiter()
+
+    /// The short, public reference of a session in a log line: `s:` and the first 8 hex digits of its id.
+    public static func ref(_ id: UUID) -> String {
+        "s:" + id.uuidString.prefix(8).lowercased()
+    }
 
     public static func logger(_ category: LoomLogCategory) -> Logger {
         Logger(subsystem: LoomSignposts.subsystem, category: category.rawValue)
