@@ -1,9 +1,9 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-23, 01:20
-- **Stage:** Run toward **Sphyrna 1.6.0** (the first stable release, [D-83](DECISIONS.md)). Releases A, B, and C are closed (`cc54a17`); `0.4.4` remains the daily-use app and latest public GitHub release ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)) until `@user` authorizes 1.6.0's tag, promote, install, and release.
-- **State:** **waiting for `@user`** — the closing `@optimizer` review (acceptance 6, [D-06](DECISIONS.md)) is done: 3 Blocking and 9 Should-Fix findings, all fixed in four slices on `v2` (`af3f246`, `c41fe3e`, `5b13f09`, `1b974c4`) and re-checked in the night's screen time: the full gate passes (364 + 1,735 tests), the scoped C8 cells meet [D-92](DECISIONS.md) on the `rc3` package, and the service smoke passes 12 of 12. 1.6.0 is ready for `@user`'s promote word.
-- **Blocker:** `@user`'s word on the tag, promote, install, push and GitHub release ([D-83](DECISIONS.md), [D-16](DECISIONS.md)).
+- **Updated:** 2026-10-23, 17:40
+- **Stage:** **Sphyrna 1.6.0** (the first stable release, [D-83](DECISIONS.md)) is tagged, promoted and installed locally on `@user`'s word (23 Oct). Releases A, B, and C are closed (`cc54a17`). `0.4.4` remains the latest public GitHub release ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)) until `@user`'s push and release.
+- **State:** **1.6.0 is the daily app; the push and the GitHub release wait for `@user`** after some use. `release/1.6.0` is `v2` `678d5ab`: the closing review's fixes, plus the logging slice `f891a92` that `@user` asked into 1.6.0. It is promoted as the loom tree's `9da0467` (tag `v1.6.0`, local) and installed in `/Applications` as Sphyrna 1.6.0, build 10600. The 0.4.4 data was backed up first, to `~/Library/Application Support/Loom-backup-0.4.4-20261023T084919`.
+- **Blocker:** `@user`'s word on the push and the GitHub release ([D-83](DECISIONS.md), [D-16](DECISIONS.md)).
 
 ---
 
@@ -61,6 +61,19 @@
 25. **Fixes #3** on `v2`: `af3f246` (side chats stop with the parent's run on either face, read from the live states; a Stop during Resume is not a failure), `c41fe3e` (Chat's split reads fences by the parser's rules; only a message's newest head is cached), `5b13f09` (the art follows its scroll view, `visibleRect` within its bounds; About's crossing replays; a closing window, zero size and deinit stop the link), `1b974c4` (Remora: the slot is given back only before the spawn; Home asks once the host is in; the automatic brief waits after `notLoggedIn`; the sessions' account, by the plan-limits rule; Home shows only its own door's call; nothing read with Remora off; one narrow newest-activity query; the stream helper polls at 50 ms).
 26. **Re-checks on `1b974c4`** (`evidence/optimizer-160/RECHECK-PLAN.md`): the full gate passes (`check-20261023T000452-81677.log`, 364 + 1,735 tests, 32 min); C8 on `rc3` (`BUDGETS-1b974c4.md`): Chat 22.9 % at 600 and 48.2 % at 6,000, peak 399–442 MiB; idle 0.07–0.10 %; 100 cycles leave nothing; the service smoke 12 of 12 (`r5/smoke-1b974c4`). An A/B against `rc2` in the same machine state (`BUDGETS-ab-0461a54.md`) shows that the higher Chat peak (447.5 MiB on `rc2`) and an occasional +28 MiB after 100 cycles (1 run in 3–4 on both packages) are not the fixes'.
 
+27. **Logging** (`f891a92`, `@user`'s ask on 23 Oct, inside 1.6.0; [DEVELOPMENT §11](DEVELOPMENT.md#11-logs-and-diagnostics)):
+    - five new categories: `Session`, `Chat`, `Remora`, `Deletion`, `Sidebar`;
+    - every line about a session carries its `s:` ref;
+    - runs log their start and their end (reason, exit code or signal);
+    - `SessionService`, the Chat face, Remora and deletion log their outcomes and the errors `try?` used to swallow;
+    - never content, kept by source guards in `LoggingAndJournalTests`.
+
+    Retention: Sphyrna's own diagnostic files are kept 3 days (`DiagnosticRetention`). The export reads the last 72 h of the unified log and keeps its newest 5 MB. The unified log itself stays macOS's, capped by size, with no app time limit. Checks:
+    - the touched suites: `check-20261023T091345-9945.log`, `…091908-11375.log`, `…094048-18912.log`, `…095159-22177.log`;
+    - the suites that read the journal: `…170819-30026.log`;
+    - the release tree: `…094738-21143.log`, `…171055-31070.log`.
+28. **1.6.0 tagged, promoted and installed** (23 Oct, `@user`'s word): the 0.4.4 data backed up; `release/1.6.0` = `678d5ab`; the loom tree `9da0467` with `v1.6.0`, local; `/Applications/Loom.app` built by `build.sh` and its codesign checked (`evidence/release-1.6.0-build-2.log`). A first promote this evening ran from `swarm/1`, whose older `allowlist.sh` dropped LoomChat and LoomRemora (538 files instead of 618). It was caught before the build, undone, and promoted again from `v2`'s worktree ([DEVELOPMENT §10](DEVELOPMENT.md#10-loom-dev-and-the-clean-loom-tree)).
+
 ### Active File Locks
 - None: every slice is integrated. **`@planner`:** canonical docs.
 
@@ -68,7 +81,7 @@
 
 ## 4. Next Actions by Role (`@role` Handoff Queue)
 
-- **`@user`:** the promote word: the tag `release/1.6.0` on `v2`'s head, `promote.sh`, the build and install over 0.4.4 in `/Applications` (the planner copies `~/Library/Application Support/Loom` first: the catalog migrates forward on open), the push and the GitHub release (acceptance 6 is done). Feedback from use goes into slices after 1.6.0. Also open: the Remora account rule the planner chose (`FINDINGS.md`, Should-Fix 4), `O-09`, Remora's public-build default, the eye checks (the pool's by-hand list, and Home scrolled past the band with Animated art on), emptying `~/.Trash/loom-cleanup-20261022`, and the 35 old worktrees with uncommitted changes.
-- **`@planner` (main session):** on `@user`'s word, the steps above in order; the release notes get one line on a downgrade to 1.5.x (it drops Remora's settings, exclusions included). After 1.6.0: the Chat streaming study with feedback (D-92, now with the long-block cost and its C8 cells), the review's deferred notes (`FINDINGS.md`), and the occasional +20 MiB after 100 cycles.
+- **`@user`:** after some use, the word on the push and the GitHub release (`git -C ~/Documents/github/loom push origin main v1.6.0`, then the zip and `gh release`, DEVELOPMENT §10). Feedback from use goes into slices after 1.6.0. Also open: the Remora account rule the planner chose (`FINDINGS.md`, Should-Fix 4), `O-09`, Remora's public-build default, the eye checks (the pool's by-hand list, and Home scrolled past the band with Animated art on), emptying `~/.Trash/loom-cleanup-20261022`, and the 35 old worktrees with uncommitted changes.
+- **`@planner` (main session):** on `@user`'s word, the push and the release; the release notes get one line on a downgrade to 1.5.x (it drops Remora's settings, exclusions included). After 1.6.0: the Chat streaming study with feedback (D-92, now with the long-block cost and its C8 cells), the review's deferred notes (`FINDINGS.md`), and the occasional +20 MiB after 100 cycles.
 - **`@implementer-ink` / `@implementer-core`:** idle.
 - **`@optimizer`:** done for 1.6.0 (22–23 Oct).
