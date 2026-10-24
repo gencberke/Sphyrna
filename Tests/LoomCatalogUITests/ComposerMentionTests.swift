@@ -315,6 +315,29 @@ struct ComposerMentionTests {
         await fixture.rig.finish()
     }
 
+    /// Review fix: a pill added while a queued message was edited is a change. When the queue sent that message, the edit
+    /// counted as unchanged (the text was), and the composer's own draft came back without the pill.
+    @Test func aPillAddedWhileEditingAQueuedMessageStaysWhenTheQueueSendsIt() async throws {
+        let fixture = try await make(started: true)
+        let composer = fixture.composer
+        #expect(await idle(fixture))
+        try await fixture.driver.send("/scenario work 9000")
+        #expect(await working(fixture))
+        composer.setText("queued one")
+        composer.submit(secondary: true)
+        await composer.settled()
+        composer.interrupt()
+        #expect(await idle(fixture))
+        let id = try #require(composer.state.queue.items.first?.id)
+        composer.beginEdit(id)
+        composer.addMention(Self.login.id)
+        composer.resumeQueue()
+        #expect(await waitUntil { composer.editing == nil })
+        #expect(composer.mentions == [Self.login], "the pill stays in the composer")
+        #expect(composer.notice?.text.contains("Your changes are in the composer") == true, "\(composer.notice?.text ?? "no notice")")
+        await fixture.rig.finish()
+    }
+
     private func idle(_ fixture: Fixture) async -> Bool {
         await waitUntil { await fixture.composer.refresh(); return fixture.composer.state.phase == .ready && !fixture.composer.state.turnRunning }
     }

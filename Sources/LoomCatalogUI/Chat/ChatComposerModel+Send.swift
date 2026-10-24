@@ -276,8 +276,9 @@ extension ChatComposerModel {
     func endEditIfItemLeft() {
         guard let edit = editing, !state.queue.items.contains(where: { $0.id == edit.itemID }) else { return }
         // Clear and Remove from this composer end the edit themselves, so an item that left on its own was sent. The text
-        // stays in the composer only if the user changed it; otherwise their own draft comes back.
-        if currentText() == edit.originalText {
+        // stays in the composer only if the user changed it (its text, or a pill added: the edit began with none); otherwise
+        // their own draft comes back.
+        if currentText() == edit.originalText, mentions.isEmpty {
             endEdit(keepingComposer: false)
             show("That message was sent while you edited it.")
         } else {
