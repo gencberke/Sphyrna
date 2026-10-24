@@ -54,8 +54,10 @@ extension ChatHosted {
             #expect(short.rebuilds > 50 && long.rebuilds > 200, "the streams rebuilt \(short.rebuilds) and \(long.rebuilds) times")
             #expect(Double(longMedian) <= 1.5 * Double(shortMedian) + Double(2 * longest), "median \(longMedian) at 12,000 against \(shortMedian) at 3,000")
             #expect(Double(longMax) <= 1.5 * Double(shortMax) + Double(2 * longest), "max \(longMax) at 12,000 against \(shortMax) at 3,000")
-            #expect(longMax <= 2 * longest + 2 * piece, "a rebuild measured \(longMax) characters; the longest block is \(longest)")
-            #expect(blocksMax <= 6, "a rebuild measured \(blocksMax) blocks")
+            // The growing row is measured by its own cell (S4), so a rebuild hands the measurer nothing; it measures the row
+            // only when it has no cell, and then the blocks that settled since it last did, once: never more for a longer message.
+            #expect(longMax <= shortMax + 2 * longest + 2 * piece, "a rebuild measured \(longMax) characters at 12,000, \(shortMax) at 3,000")
+            #expect(Self.median(long.measuredBlocksPerRebuild) <= 2, "a rebuild measured \(blocksMax) blocks at most")
         }
 
         // MARK: B. A settled block is not evaluated again

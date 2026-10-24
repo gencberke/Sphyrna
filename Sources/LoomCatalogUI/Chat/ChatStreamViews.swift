@@ -99,19 +99,26 @@ final class ChatScroller: NSScroller {
 @MainActor
 final class ChatRowCell: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("ChatRowCell")
-    private let hosting: NSHostingView<ChatRowView>
+    /// A controller, not a bare hosting view: it can size its row for a proposed width (`height(width:context:)`).
+    private let hosting: NSHostingController<ChatRowView>
 
     init(context: ChatRowContext) {
-        hosting = NSHostingView(rootView: ChatRowView(row: ChatRow(id: "-", kind: .empty), context: context))
+        hosting = NSHostingController(rootView: ChatRowView(row: ChatRow(id: "-", kind: .empty), context: context))
         super.init(frame: .zero)
         identifier = Self.identifier
         hosting.sizingOptions = []
-        hosting.autoresizingMask = [.width, .height]
-        hosting.frame = bounds
-        addSubview(hosting)
+        hosting.view.autoresizingMask = [.width, .height]
+        hosting.view.frame = bounds
+        addSubview(hosting.view)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// The configured row's height at `width`, laid out by this cell's hosting view: its next layout at that width reuses it.
+    func height(width: CGFloat, context: ChatRowContext) -> CGFloat {
+        ChatRenderProbe.measured(hosting.rootView.row.id, in: context)
+        return max(1, ceil(hosting.sizeThatFits(in: CGSize(width: width, height: 100_000)).height))
+    }
 
     func configure(_ row: ChatRow, context: ChatRowContext, fadeIn: Bool) {
         ChatRenderProbe.configure(row.id, in: context)

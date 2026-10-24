@@ -271,7 +271,7 @@ final class ChatStreamController: NSObject {
                 continue
             }
             cell.configure(row, context: context, fadeIn: false)
-            let height = measurer.height(of: row, width: width)
+            let height = Self.measuresInCell(row) ? cell.height(width: width, context: context) : measurer.height(of: row, width: width)
             heights.store(row.id, width: width, height: height)
             if abs(height - table.rect(ofRow: index).height) > 0.5 { taller.insert(index) }
         }
@@ -280,6 +280,16 @@ final class ChatStreamController: NSObject {
             taller.formUnion(reload)
         }
         if !taller.isEmpty { table.noteHeightOfRows(withIndexesChanged: taller) }
+    }
+
+    /// Rows a flush changes while text streams (the growing answer, the live row) are measured by their own cell: the
+    /// measurer would lay them out again in a hosting controller of its own, and the cell lays them out anyway in the same
+    /// run-loop turn, at the width it was measured at, so its own layout is made once and reused.
+    static func measuresInCell(_ row: ChatRow) -> Bool {
+        switch row.kind {
+        case .prose, .live: true
+        default: false
+        }
     }
 
     struct Plan {
