@@ -22,10 +22,10 @@ struct SettingsWindowTests {
 }
 
 extension WindowEventTests {
-/// A click on a section tab switches it, and a page's own control answers its click, in the shown Settings window. The 1.6.0
-/// window moved by its background and swallowed these clicks; the evidence and the other tests switch tabs through
-/// `navigation.section`, so only a click in a shown window sees it (a synthesised click does not reach SwiftUI in a window that was
-/// never shown).
+/// A click on a section tab switches it, and a page's own control answers its click, in the shown Settings window. In 1.6.0 the
+/// page's scroll view reached up under the title strip, over the band, and took the tabs' clicks; the evidence and the other tests
+/// switch tabs through `navigation.section`, so only a click in a shown window sees it (a synthesised click does not reach SwiftUI
+/// in a window that was never shown).
 @MainActor
 @Suite(.timeLimit(.minutes(2)))
 struct SettingsWindowClickTests {
@@ -45,8 +45,8 @@ struct SettingsWindowClickTests {
         return nil
     }
 
-    /// Mouse-down and mouse-up at the centre of `element`'s frame, as the window server would deliver them. The mouse-up is also
-    /// queued first, so a window drag that starts on the mouse-down ends instead of waiting for it; what is left is discarded.
+    /// Mouse-down and mouse-up at the centre of `element`'s frame, sent as `SearchFocusAndHitTests` sends them. Nothing is posted to
+    /// the event queue: a queued event stopped the main run loop, and the test process then exited 0 in the middle of the test.
     private func click(_ element: AnyObject, in window: NSWindow) async throws {
         let frame = InkAX.frame(element)
         let point = window.convertPoint(fromScreen: NSPoint(x: frame.midX, y: frame.midY))
@@ -55,10 +55,8 @@ struct SettingsWindowClickTests {
                 with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
                 windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
         }
-        NSApp.postEvent(try event(.leftMouseUp), atStart: false)
         NSApp.sendEvent(try event(.leftMouseDown))
         NSApp.sendEvent(try event(.leftMouseUp))
-        NSApp.discardEvents(matching: .leftMouseUp, before: nil)
         try await settle(window)
     }
 
@@ -90,7 +88,9 @@ struct SettingsWindowClickTests {
         try await click(try await tab(.general, in: window), in: window)
         #expect(navigation.section == .general, "a click on General, from About, opens General")
 
-        // A page's own control: General's "Sessions run in".
+        // A page's own control: General's "Sessions run in", opened without a click so it is checked whatever the tabs do.
+        navigation.open(.general)
+        try await settle(window)
         let other: SessionFace = model.newSessionFace == .chat ? .terminal : .chat
         let group = try #require(await element(in: window) { InkAX.label($0) == "Sessions run in" }, "the segmented control is drawn")
         let segment = try #require(accessibilityElements(in: group).first { InkAX.label($0) == other.title }, "its \(other.title) segment")

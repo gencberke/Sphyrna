@@ -100,6 +100,8 @@ public struct SettingsView: View {
         VStack(spacing: 0) {
             SettingsBand(sections: SettingsSection.available(cleanupReview: model.cleanupReview != nil),
                          selection: navigation.section, onSelect: { navigation.section = $0 })
+                // Over the page for the pointer: the page's scroll view reaches up under the title strip and took the tabs' clicks.
+                .zIndex(1)
             switch navigation.section {
             case .general: GeneralSettings(model: model, sheets: navigation.sheets)
             case .theme: ThemeSettings(model: model)
