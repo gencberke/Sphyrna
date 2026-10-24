@@ -47,7 +47,7 @@ public struct RemoraPackBuilder: Sendable {
     /// one project folder Claude names after the working directory, and nowhere else (a miss is a miss: no folder is listed).
     public static func catalogTranscripts(_ catalog: SessionCatalog, configDirectory: URL) -> Transcript {
         { summary in
-            guard let record = try? await catalog.session(id: summary.id), record.session.provider == .claude,
+            guard let record = try? await catalog.session(id: summary.id), HarnessCapabilities.intrinsic(of: record.session.provider).readsTranscript,
                   let conversation = record.session.providerConversationID else { return nil }
             return ClaudeTranscriptLocator.locate(sessionID: conversation, configDirectory: configDirectory,
                                                   onlyIn: record.session.workingDirectory)
@@ -110,7 +110,7 @@ public struct RemoraPackBuilder: Sendable {
     /// The sessions whose transcript is read, most relevant first, and which of them a follow-up added to the last pack's.
     /// Codex sessions are listed, never read (D-28).
     private func pick(_ request: RemoraPackRequest, from candidates: [SessionSummary]) -> (picked: [SessionSummary], added: Set<UUID>) {
-        let readable = candidates.filter { $0.harness == .claude }
+        let readable = candidates.filter { $0.harness.capabilities.readsTranscript }
         switch request {
         case let .question(text, scope, previous):
             if case .session = scope { return (Array(readable.prefix(1)), []) }

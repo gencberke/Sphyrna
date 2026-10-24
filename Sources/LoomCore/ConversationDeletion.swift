@@ -189,7 +189,7 @@ extension SessionRuntime {
             providerIDs = record.plan.providerIDs
         } else {
             guard let record = try await catalog.session(id: id) else { throw SessionRuntimeError.sessionNotFound(id) }
-            guard record.session.provider == .claude else {
+            guard HarnessCapabilities.intrinsic(of: record.session.provider).deletes else {
                 throw SessionRuntimeError.deletionRefused("Only Claude sessions can be removed this way")
             }
             providerIDs = try await catalog.providerIDs(of: id)
@@ -437,7 +437,7 @@ extension SessionRuntime {
     }
 
     private func removeProviderData(_ record: CatalogDeletion) async throws {
-        guard record.plan.provider == .claude, let directory = record.plan.configDirectory else {
+        guard HarnessCapabilities.intrinsic(of: record.plan.provider).deletes, let directory = record.plan.configDirectory else {
             throw DeletionStepFailure("unsupported_provider")
         }
         switch Self.configFolderState(directory) {

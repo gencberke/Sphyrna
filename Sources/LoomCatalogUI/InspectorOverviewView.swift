@@ -42,7 +42,7 @@ struct InspectorOverview: View {
             launchedMode: launched.permissionMode(of: row.id), launchedEffort: launched.effort(of: row.id))
         let chip = model.headerChip(of: record)
         let provider = record.session.provider
-        let readsEdits = model.capabilities(of: provider).readsTranscript
+        let readsEdits = model.capabilities(of: provider).readsEdits
         let edits = readsEdits ? model.changes.session(for: row.id).state(.lastTurn).data?.files : nil
         let base = baseKey.flatMap { key in baseRead.flatMap { $0.key == key ? $0.name : nil } }
         return InspectorOverviewContent(
@@ -97,9 +97,9 @@ struct InspectorOverview: View {
                 }
                 OverviewFact("Started") { OverviewText(content.started, mono: true) }
                 if let claude = content.claudeCode {
-                    OverviewFact("Claude") {
+                    OverviewFact(model.capabilities(of: row.record.session.provider).displayName) {
                         HStack(spacing: LoomTheme.Overview.valueGap) {
-                            ProviderIcon(provider: .claude, size: LoomTheme.Overview.harnessMark)
+                            ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Overview.harnessMark)
                             OverviewText(claude, mono: true)
                         }
                     }
@@ -134,7 +134,7 @@ struct InspectorOverview: View {
     // MARK: Context
 
     @ViewBuilder private var context: some View {
-        if row.record.session.provider != .claude {
+        if !model.capabilities(of: row.record.session.provider).readsContext {
             note("The context is read for Claude sessions.")
         } else if let id = row.record.session.providerConversationID, let usage = model.usage?.contexts[id] {
             OverviewContext(usage: usage)

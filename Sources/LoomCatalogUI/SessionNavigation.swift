@@ -136,17 +136,24 @@ public enum SessionCommandText {
 }
 
 extension SessionRowModel {
-    /// The provider's id of a Claude session; nil for other providers and for a session that has none yet.
+    /// The provider's id of a session whose transcript Loom reads (a Claude session); nil for other providers and for a
+    /// session that has none yet.
     public var claudeSessionID: String? {
-        guard record.session.provider == .claude,
+        guard HarnessCapabilities.intrinsic(of: record.session.provider).readsTranscript,
               let id = record.session.providerConversationID, !id.isEmpty else { return nil }
         return id
     }
 
     /// What "Copy Resume Command" puts on the pasteboard.
     public var resumeCommand: String? {
-        claudeSessionID.map {
-            SessionCommandText.resumeCommand(directory: record.session.workingDirectory, providerConversationID: $0)
+        // The command is the harness's own CLI: one case per harness that has one.
+        switch record.session.provider {
+        case .claude:
+            claudeSessionID.map {
+                SessionCommandText.resumeCommand(directory: record.session.workingDirectory, providerConversationID: $0)
+            }
+        case .codex, .synthetic:
+            nil
         }
     }
 }

@@ -14,7 +14,7 @@ extension AppDelegate {
         let bar = MenuBarController(model: model, actions: .init(
             showSession: { [weak self] id in self?.showSession(id) },
             bringForward: { [weak self] in self?.bringLoomForward() },
-            canStartSession: { [weak model] in model?.canStart(.claude, projectID: model?.contextProjectID) ?? false },
+            canStartSession: { [weak model] in model?.canStart(.newSessionDefault, projectID: model?.contextProjectID) ?? false },
             newClaudeSession: { [weak self] in
                 self?.bringLoomForward()
                 self?.newClaudeFromMenu(nil) // the same action as File → New Claude Session

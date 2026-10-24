@@ -50,7 +50,7 @@ public enum ShellCommand: Int, CaseIterable, Sendable {
     @MainActor public func isEnabled(on model: CatalogModel) -> Bool {
         switch self {
         case .home, .commandPalette: true
-        case .newSession: model.canStart(.claude, projectID: model.contextProjectID)
+        case .newSession: model.canStart(.newSessionDefault, projectID: model.contextProjectID)
         case .showChat, .showTerminal: model.canChooseFace
         case .toggleInspector: model.selectedSessionID != nil
         }

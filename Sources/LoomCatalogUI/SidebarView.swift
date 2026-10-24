@@ -852,7 +852,7 @@ struct ClaudeStartEntry {
     }
 
     @MainActor private static func make(title: String, projectID: UUID?, on model: CatalogModel) -> ClaudeStartEntry? {
-        NewConversationAction.startable(on: model).first { $0.provider == .claude }
+        NewConversationAction.startable(on: model).first { $0.provider == .newSessionDefault }
             .map { ClaudeStartEntry(title: title, projectID: projectID, action: $0) }
     }
 
@@ -886,7 +886,7 @@ struct WithoutProjectStartButton: View {
     var body: some View {
         if let entry = ClaudeStartEntry.withoutProject(title: title, on: model) {
             Button { entry.perform(on: model) } label: {
-                HarnessMenuLabel(provider: .claude, title: entry.title)
+                HarnessMenuLabel(provider: .newSessionDefault, title: entry.title)
             }
             .disabled(!entry.isEnabled(on: model))
         }
@@ -898,7 +898,7 @@ struct NewConversationAction {
     let title: String
 
     private static let all = [
-        NewConversationAction(provider: .claude, title: "New Claude Session"),
+        NewConversationAction(provider: .newSessionDefault, title: "New Claude Session"),
         NewConversationAction(provider: .codex, title: "New Codex Session"),
     ]
 
@@ -920,9 +920,9 @@ struct NewConversationAction {
 
     @MainActor func perform(on model: CatalogModel, projectID: UUID?) {
         guard isEnabled(on: model, projectID: projectID) else { return }
-        // Claude starts from the draft (V07): a session exists only after its first send. Other providers keep
-        // their direct start.
-        if provider == .claude {
+        // A harness with a structured face starts from the draft (V07): a session exists only after its first send. Other
+        // providers keep their direct start.
+        if model.capabilities(of: provider).structuredFace {
             model.beginNewSession(projectID: projectID)
         } else {
             model.startConversation(provider, projectID: projectID)

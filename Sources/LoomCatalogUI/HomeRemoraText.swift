@@ -155,10 +155,13 @@ enum HomeRemoraText {
         }
     }
 
+    /// The harness `RemoraCopyReason.codex` names.
+    private static let codexName = HarnessCapabilities.intrinsic(of: .codex).displayName
+
     static func copyReason(_ reason: RemoraCopyReason) -> String {
         switch reason {
         case .terminal: "This session runs in the terminal, so the line is copied"
-        case .codex: "Sphyrna cannot open Codex sessions yet, so the line is copied"
+        case .codex: "Sphyrna cannot open \(codexName) sessions yet, so the line is copied"
         }
     }
 
@@ -167,7 +170,7 @@ enum HomeRemoraText {
         switch plan {
         case .place: "Goes below its composer's text, not sent, and the session opens"
         case .copy(.terminal): "It runs in the terminal, so this is copied"
-        case .copy(.codex): "Sphyrna cannot open Codex sessions yet, so this is copied"
+        case .copy(.codex): "Sphyrna cannot open \(codexName) sessions yet, so this is copied"
         }
     }
 

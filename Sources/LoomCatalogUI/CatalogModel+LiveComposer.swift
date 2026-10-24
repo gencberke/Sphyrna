@@ -58,11 +58,11 @@ extension CatalogModel {
         return environment
     }
 
-    /// What a mention's pill shows for a session a composer may mention (D-96): a Claude session the catalog lists, not a side
+    /// What a mention's pill shows for a session a composer may mention (D-96): a session whose transcript Loom reads, not a side
     /// chat and not one being deleted. Nil for any other.
     func composerMentionTarget(for id: UUID) -> ComposerMention? {
         guard let record = rowModels[id]?.record ?? liveRecords[id], !record.isSideChat, !isDeleting(id),
-              record.session.provider == .claude, capabilities(of: record.session.provider).readsTranscript else { return nil }
+              capabilities(of: record.session.provider).readsTranscript else { return nil }
         return ComposerMention(id: id, title: record.displayTitle(projectName: projectName(for: record)), provider: record.session.provider)
     }
 

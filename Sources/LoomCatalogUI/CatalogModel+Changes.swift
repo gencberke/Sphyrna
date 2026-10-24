@@ -21,7 +21,7 @@ extension CatalogModel {
     private func isOverviewReadingEdits(on sessionID: UUID) -> Bool {
         guard selectedSessionID == sessionID, inspector.isOpen(for: sessionID), shownInspectorTab == .overview,
               let provider = changesRow(sessionID)?.record.session.provider else { return false }
-        return capabilities(of: provider).readsTranscript
+        return capabilities(of: provider).readsEdits
     }
 
     /// What the tab reads for now, or nil while it is closed. The Overview reads the last turn whatever scope the tab shows.
@@ -92,7 +92,7 @@ extension CatalogModel {
     private func readEdits(_ trigger: ChangesTrigger, scan: EditScan.Scope) async {
         let session = changes.session(for: trigger.session)
         guard let row = changesRow(trigger.session) else { return }
-        guard capabilities(of: row.record.session.provider).readsTranscript else {
+        guard capabilities(of: row.record.session.provider).readsEdits else {
             session.setState(.off("Claude's file edits are read from Claude sessions"), for: trigger.scope)
             return
         }

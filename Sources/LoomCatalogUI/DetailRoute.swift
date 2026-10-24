@@ -93,7 +93,7 @@ extension CatalogModel {
     }
 
     /// A session's route: the live Chat when a pipe run drives it, or when it is stopped and the switch in Settings
-    /// says Chat (V19, D-69: its composer resumes it); then (with `readOnlyChatEnabled`, Claude sessions only) the read-only chat when
+    /// says Chat (V19, D-69: its composer resumes it); then (with `readOnlyChatEnabled`, sessions with a structured face only) the read-only chat when
     /// the user picked it, or by default when the session is stopped, then the live terminal, the
     /// kept screen and the record. A start, resume or stop under way is not "stopped": the record stays until
     /// the terminal arrives. Codex and synthetic sessions keep the old routes.
@@ -104,7 +104,7 @@ extension CatalogModel {
         // A stopped session the Chat face owns shows its live chat: the composer resumes it in that face.
         if showsStoppedLiveChat(row) { return .chat(sessionID: id) }
         let hasTerminal = terminalView(for: id) != nil
-        if faces.readOnlyChatEnabled, row.record.session.provider == .claude {
+        if faces.readOnlyChatEnabled, capabilities(of: row.record.session.provider).structuredFace {
             switch faces.choice(for: id) {
             case .chat: return .chat(sessionID: id)
             case .terminal: break
@@ -143,7 +143,7 @@ extension CatalogModel {
     /// switched on, that the Chat face does not run. A Chat-face run has no terminal to show, and a stopped session
     /// shows its live chat while the switch in Settings says Chat (D-69).
     public var canChooseFace: Bool {
-        guard readOnlyChatEnabled, let row = selectedRow, row.record.session.provider == .claude else { return false }
+        guard readOnlyChatEnabled, let row = selectedRow, capabilities(of: row.record.session.provider).structuredFace else { return false }
         return runEndpoint(of: row) != .pipe && !showsStoppedLiveChat(row)
     }
 

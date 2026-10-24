@@ -217,7 +217,7 @@ extension CatalogModel {
 
     /// Whether the sidebar's "New session" row works: only whether Claude can start at all. A start somewhere else does not
     /// matter, since the row opens a draft and starts nothing.
-    var newSessionRowAvailable: Bool { actionsAvailable && capabilities(of: .claude).startable }
+    var newSessionRowAvailable: Bool { actionsAvailable && capabilities(of: .newSessionDefault).startable }
 
     /// The most recently used project, read from the catalog now (the project of the newest session that has one); the
     /// last known one or the first project when the read fails or finds none.

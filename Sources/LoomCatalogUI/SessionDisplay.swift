@@ -154,11 +154,7 @@ public enum ProjectAttention: Int, Comparable, Sendable {
 
 public enum ProviderName {
     public static func title(_ provider: ManagedSession.Provider) -> String {
-        switch provider {
-        case .claude: "Claude"
-        case .codex: "Codex"
-        case .synthetic: "Synthetic"
-        }
+        HarnessCapabilities.intrinsic(of: provider).displayName
     }
 }
 

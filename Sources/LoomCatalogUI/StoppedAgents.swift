@@ -78,7 +78,7 @@ extension CatalogModel {
     /// What the Agents tab reads for now, or nil while it is closed, the session runs, or there is nothing to read from.
     var agentsTrigger: AgentsTrigger? {
         guard let row = selectedRow, inspector.isOpen(for: row.id), shownInspectorTab == .agents,
-              row.record.session.provider == .claude, claudeConfigDirectory != nil, row.live?.runID == nil, !isRunning(row),
+              capabilities(of: row.record.session.provider).subagents, claudeConfigDirectory != nil, row.live?.runID == nil, !isRunning(row),
               let conversation = row.live?.conversationID ?? row.record.session.providerConversationID,
               !conversation.isEmpty else { return nil }
         return AgentsTrigger(session: row.id, conversationID: conversation)
@@ -108,7 +108,7 @@ extension CatalogModel {
     /// A session with no run can list its folder: a Claude session whose conversation Loom knows, under the profile the app
     /// reads (none when its layout was refused).
     func agentsFolderIsReadable(_ row: SessionRowModel) -> Bool {
-        guard row.record.session.provider == .claude, claudeConfigDirectory != nil else { return false }
+        guard capabilities(of: row.record.session.provider).subagents, claudeConfigDirectory != nil else { return false }
         let conversation = row.live?.conversationID ?? row.record.session.providerConversationID
         return conversation?.isEmpty == false
     }

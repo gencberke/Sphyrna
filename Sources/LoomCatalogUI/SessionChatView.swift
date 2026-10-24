@@ -59,7 +59,7 @@ struct SessionChatView: View {
 
     /// The id Claude gave the session, from the live state first (a new session learns it from its first hook).
     private var claudeSessionID: String? {
-        guard row.record.session.provider == .claude else { return nil }
+        guard model.capabilities(of: row.record.session.provider).readsTranscript else { return nil }
         let id = row.live?.conversationID ?? row.record.session.providerConversationID
         return id?.isEmpty == false ? id : nil
     }

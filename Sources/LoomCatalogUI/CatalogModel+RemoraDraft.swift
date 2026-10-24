@@ -141,7 +141,9 @@ extension CatalogModel {
     /// Why Home's Put in Draft can only copy the line for this session; nil when its composer is filled.
     func remoraCopyReason(for record: CatalogSession) -> RemoraCopyReason? {
         guard !remoraSessionOpensInChat(record) else { return nil }
-        return record.session.provider == .codex ? .codex : .terminal
+        // A harness with no structured face (Codex) has no composer to fill at all; the rest run in the terminal.
+        let capabilities = capabilities(of: record.session.provider)
+        return capabilities.hasHarness && !capabilities.structuredFace ? .codex : .terminal
     }
 
     /// What Home's Put in Draft would do for this session now (its label and the hover popover's first line). Reads no file.

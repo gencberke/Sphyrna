@@ -624,7 +624,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         switch item.action {
         case #selector(newClaudeFromMenu(_:)):
-            return model.canStart(.claude, projectID: model.contextProjectID)
+            return model.canStart(.newSessionDefault, projectID: model.contextProjectID)
         case #selector(newCodexFromMenu(_:)):
             return model.canStart(.codex, projectID: model.contextProjectID)
         case #selector(resumeFromMenu(_:)):

@@ -124,10 +124,9 @@ extension CatalogModel {
 
     /// Why Delete is disabled for this row; nil when it is allowed.
     public func deletionDisabledReason(for row: SessionRowModel) -> String? {
-        switch row.record.session.provider {
-        case .claude: break
-        case .codex: return "Codex sessions can't be deleted from Sphyrna yet."
-        case .synthetic: return "This is not a provider session."
+        let capabilities = capabilities(of: row.record.session.provider)
+        guard capabilities.deletes else {
+            return capabilities.hasHarness ? "\(capabilities.displayName) sessions can't be deleted from Sphyrna yet." : "This is not a provider session."
         }
         if !actionsAvailable { return "Deleting isn't available right now." }
         if isDeleting(row.id) || deletions.pending[row.id] != nil { return "This session is already being deleted." }

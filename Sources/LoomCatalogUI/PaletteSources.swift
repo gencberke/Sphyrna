@@ -103,7 +103,7 @@ final class LivePaletteSources: PaletteSources {
         candidateReads += 1
         let recent = try await catalog.searchSessions(search: "", order: .recentActivity, groupLimit: maximumSessions)
         let refs: [PaletteSessionRef] = recent.sessions.compactMap { record in
-            guard record.session.provider == .claude, let conversation = record.session.providerConversationID else { return nil }
+            guard model.capabilities(of: record.session.provider).readsTranscript, let conversation = record.session.providerConversationID else { return nil }
             let project = model.projectName(for: record)
             return PaletteSessionRef(id: record.session.id, conversationID: conversation,
                                      workingDirectory: record.session.workingDirectory,

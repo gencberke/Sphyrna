@@ -116,7 +116,7 @@ extension CatalogModel {
     /// Overview, while the ring of its live Chat composer is on screen (V17), and while the header's model segment is
     /// (every face without the bar, fix round 3 F). These are the "visible sessions" of `UsageModel.trackContext`.
     var inspectorContextSessions: [String] {
-        guard let row = selectedRow, row.record.session.provider == .claude,
+        guard let row = selectedRow, capabilities(of: row.record.session.provider).readsContext,
               let conversationID = row.record.session.providerConversationID else { return [] }
         let inspectorShows = inspector.isOpen(for: row.id) && shownInspectorTab == .overview
         let headerShows = detailRoute.showsSessionHeader && headerShowsModelSegment(row)

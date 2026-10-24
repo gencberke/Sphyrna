@@ -73,13 +73,13 @@ struct InspectorOverviewContent: Equatable {
          project: String?, branch: String?, base: String?, directory: String,
          edits: [ChangesFile]?, readsEdits: Bool, subagents: [SubagentRecord]?, waiting: Set<String> = [],
          home: String = NSHomeDirectory(), calendar: Calendar = .current, locale: Locale = .current) {
-        let isClaude = provider == .claude
+        let reportsRun = HarnessCapabilities.intrinsic(of: provider).reportsRunSettings
         self.status = status
         started = LoomDateFormat.started(createdAt, now: now, calendar: calendar, locale: locale)
-        claudeCode = isClaude ? claudeVersion.flatMap { $0.isEmpty ? nil : "Claude Code \($0)" } : nil
-        self.model = isClaude ? model : nil
-        effort = isClaude ? Self.effortWord(reportedEffort ?? launchedEffort) : nil
-        mode = isClaude ? Self.mode(reportedMode ?? launchedMode) : nil
+        claudeCode = reportsRun ? claudeVersion.flatMap { $0.isEmpty ? nil : "Claude Code \($0)" } : nil
+        self.model = reportsRun ? model : nil
+        effort = reportsRun ? Self.effortWord(reportedEffort ?? launchedEffort) : nil
+        mode = reportsRun ? Self.mode(reportedMode ?? launchedMode) : nil
         self.project = project
         self.branch = branch
         self.base = GitBaseBranch.shown(base: base, branch: branch)

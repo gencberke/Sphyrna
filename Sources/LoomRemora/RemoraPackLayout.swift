@@ -207,7 +207,7 @@ struct PackLayout {
     /// Only what the session is, never what it is doing or what this call did with it: a Codex session says it is never
     /// read; a Claude session has an `<excerpt>` block when it was read.
     private func status(of summary: SessionSummary) -> String {
-        summary.harness == .claude ? "" : " | not read (\(summary.harness.rawValue) transcripts are never read)"
+        summary.harness.capabilities.readsTranscript ? "" : " | not read (\(summary.harness.rawValue) transcripts are never read)"
     }
 
     private func excerptBlock(_ pick: Pick) -> String {

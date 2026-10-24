@@ -325,7 +325,7 @@ private struct ProjectPresetRow: View {
                 }
                 if let alias = preset.model {
                     HStack(spacing: LoomTheme.ProjectPage.presetModelGap) {
-                        ProviderIcon(provider: .claude)
+                        ProviderIcon(provider: .newSessionDefault)
                         Text(NewSessionModels.title(of: alias)).projectType(LoomTheme.ProjectPage.presetModel)
                             .foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
                     }

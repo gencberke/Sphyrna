@@ -54,7 +54,7 @@ public enum DockMenu {
 extension CatalogModel {
     /// The Dock menu now (`DockMenu`). New Claude Session is enabled where ⌘N is.
     public func dockMenuItems() -> [MenuBarMenuItem] {
-        DockMenu.items(for: menuBarEntries(), canStartSession: canStart(.claude, projectID: contextProjectID))
+        DockMenu.items(for: menuBarEntries(), canStartSession: canStart(.newSessionDefault, projectID: contextProjectID))
     }
 }
 

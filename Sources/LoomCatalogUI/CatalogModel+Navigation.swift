@@ -84,6 +84,11 @@ extension CatalogModel {
         return (record.displayTitle(projectName: project), project)
     }
 
+    /// The name of the session's harness as a notification speaks it; the default harness's when its record is not known.
+    public func harnessName(of id: UUID) -> String {
+        capabilities(of: knownProvider(of: id) ?? liveRecords[id]?.session.provider ?? .newSessionDefault).displayName
+    }
+
     /// What the first request that waits for this session is (an approval, a question or a plan), whichever provider and
     /// face asked it: the notification's wording.
     public func firstWaitingRequestKind(of id: UUID) -> ProviderPendingRequest.Kind? {

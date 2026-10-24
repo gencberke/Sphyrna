@@ -266,9 +266,11 @@ public actor CleanupCoordinator: CleanupReviewing {
     // MARK: Internals
 
     private func makeReview(now: Date, withSizes: Bool) async throws -> CleanupReview {
-        // Only Claude conversations can be deleted (D-28 refuses Codex and synthetic ones), so
-        // only they are offered; listing a row that can only fail would mislead.
-        let stale = try await catalog.sessions().filter { $0.lifecycle == .stale && $0.session.provider == .claude }
+        // Only the harnesses Loom can delete are offered (D-28 refuses Codex and synthetic ones);
+        // listing a row that can only fail would mislead.
+        let stale = try await catalog.sessions().filter {
+            $0.lifecycle == .stale && HarnessCapabilities.intrinsic(of: $0.session.provider).deletes
+        }
         var candidates: [CleanupCandidate] = []
         // Sessions of a project share a working directory, so one verdict serves them all in this review.
         var verdicts: [String: CleanupWorktreeVerdict] = [:]
