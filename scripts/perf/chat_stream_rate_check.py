@@ -3,6 +3,7 @@
 mode (a temp profile and folder), reads its NDJSON, and compares the characters of text deltas with the rate over the whole
 run and over every 10 s window. Exit 0 when the total and each full window are within --tolerance (default 5 %).
 Usage: scripts/perf/chat_stream_rate_check.py --fixtures <dir with loom-fake-provider> [--seconds 60] [--rate 600]
+       [--variant fence300|nested-fence]   (the long-block streams of the cells chat-fence300-*, chat-nested-fence-*)
 Light (one small process), but run it like the other perf scripts: in the build slot, thermal state nominal.
 Output: one JSON object on stdout (no content, only counts)."""
 import argparse, json, os, pathlib, subprocess, sys, tempfile, threading, time, uuid
@@ -11,6 +12,7 @@ parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.R
 parser.add_argument('--fixtures', type=pathlib.Path, required=True)
 parser.add_argument('--seconds', type=float, default=60)
 parser.add_argument('--rate', type=int, default=600)
+parser.add_argument('--variant', choices=['fence300', 'nested-fence'], default=None)
 parser.add_argument('--window', type=float, default=10)
 parser.add_argument('--tolerance', type=float, default=0.05)
 args = parser.parse_args()
@@ -43,7 +45,7 @@ reader = threading.Thread(target=read, daemon=True)
 reader.start()
 try:
     sent = time.monotonic()
-    message = {'type': 'user', 'message': {'role': 'user', 'content': f'/scenario stream {args.seconds} {args.rate}'},
+    message = {'type': 'user', 'message': {'role': 'user', 'content': f'/scenario stream {args.seconds} {args.rate}' + (f' {args.variant}' if args.variant else '')},
                'parent_tool_use_id': None, 'uuid': str(uuid.uuid4()), 'origin': {'kind': 'human'}}
     child.stdin.write((json.dumps(message) + '\n').encode()); child.stdin.flush()
     deadline = time.monotonic() + args.seconds + 30
@@ -77,7 +79,7 @@ if abs(total_ratio - 1) > args.tolerance:
 record = result[0][1]
 if record.get('subtype') != 'success' or record.get('is_error') or record.get('terminal_reason') != 'completed':
     problems.append('the turn did not end with a normal result')
-print(json.dumps({'valid': not problems, 'invalidReasons': problems, 'requestedSeconds': args.seconds, 'requestedRate': args.rate,
+print(json.dumps({'valid': not problems, 'invalidReasons': problems, 'requestedSeconds': args.seconds, 'requestedRate': args.rate, 'variant': args.variant,
                   'characters': chars, 'ratioToRequested': round(total_ratio, 4), 'firstDeltaToResultSeconds': round(elapsed, 3),
                   'effectiveCharactersPerSecond': round(chars / max(1e-9, deltas[-1][0] - first), 1), 'deltas': len(deltas),
                   'toolCalls': len(tools), 'windows': buckets}, indent=1))

@@ -7,7 +7,7 @@ children, which that sampler counts as run leaders outside the pool, to the tota
 HEAVY: opens the app window for about two minutes per cell. Run it only when the user says the Mac is idle, inside the
 build slot, after the thermal gate, with Finder in front (the script runs `open -a Finder` for a visible cell):
   LOOM_SLOT_TIMEOUT=21600 scripts/with-build-slot.sh scripts/perf/chat_stream_cost.py --app <package>.app --fixtures <dir> \\
-      --run-dir <dir> --name chat-visible-600-r1 [--rate 600] [--hidden | --sessions 3 | --long]
+      --run-dir <dir> --name chat-visible-600-r1 [--rate 600] [--hidden | --sessions 3 | --long | --variant fence300]
 Modes (all at 1220x780):
   (default)    window visible and uncovered, one Chat session.
   --hidden     window closed, one Chat session (no layout, no timers expected).
@@ -18,6 +18,10 @@ Modes (all at 1220x780):
   --long       the seeded long session: a Chat session is made and stopped, scripts/perf/chat_long_session.py writes about
                10,000 records into its transcript, the app is quit and started again, the session is opened (cold open)
                and resumed, and the stream goes into it; window visible. The open times are recorded.
+  --variant V  long blocks in the stream (`/scenario stream <s> <rate> <V>`), window visible, one session: `fence300`
+               (cell chat-fence300-<rate>) a 300-line code fence after every third ordinary block; `nested-fence` (cell
+               chat-nested-fence-<rate>) a four-backtick fence holding three-backtick fences. The transcript check allows the
+               longer gap between assistant records that a long block makes (VARIANT_BLOCK_CHARACTERS).
 <fixtures> holds loom-fake-provider (and loom-test-child), outside ~/Documents. --app is a package under
 Loom-Dev/packages/<name> (never the installed app). The cell is run-dir/cells/<name>/ (result.json, samples.json,
 manifest.json, app.log, the app's evidence files and its isolated data/ root); an existing cell of that name is moved aside.
@@ -30,6 +34,9 @@ from perf_paths import REPO, load_module
 
 SIZE = (1220, 780)
 IDLE_TURN_SECONDS = 2
+# The variants' long block, in characters (an upper bound): a message cannot end inside it, so the gap between two assistant
+# records can grow by its streaming time.
+VARIANT_BLOCK_CHARACTERS = {'fence300': 12000, 'nested-fence': 4500}
 
 
 def summarize(run_dir):
@@ -60,6 +67,8 @@ parser.add_argument('--hidden', action='store_true')
 parser.add_argument('--sessions', type=int, default=1)
 parser.add_argument('--long', action='store_true')
 parser.add_argument('--idle', action='store_true', help='Chat sessions at rest after one short turn each')
+parser.add_argument('--variant', choices=sorted(VARIANT_BLOCK_CHARACTERS), default=None,
+                    help='a stream with long blocks (visible, one session)')
 parser.add_argument('--records', type=int, default=10000, help='transcript records of the long session')
 parser.add_argument('--screenshot', action='store_true',
                     help='after the window, while the stream goes on: Loom\'s own window-only capture (screenshot-window.window.png in the cell)')
@@ -76,6 +85,8 @@ if args.sessions < 1 or args.rate < 1 or min(args.warmup, args.duration, args.ta
     parser.error('sessions, rate, durations must be positive')
 if args.long and args.idle:
     parser.error('--long and --idle do not combine')
+if args.variant and (args.long or args.idle or args.hidden or args.sessions > 1):
+    parser.error('--variant is a visible, single-session stream cell')
 if args.sessions > 1 and not args.idle:
     args.hidden = True      # several streaming sessions are measured with the window hidden
 app, run_dir = perf_paths.resolve_common(argparse.Namespace(app=args.app, run_dir=args.run_dir), 'chat-stream')
@@ -90,6 +101,7 @@ measure = load_module('cp5_d_measure', REPO / 'scripts/cp5-d-measure.py')
 visibility = 'hidden' if args.hidden else 'visible'
 name = args.name or ((f'chat-idle-sessions{args.sessions}-{visibility}' if args.sessions > 1 else f'chat-idle-{visibility}')
                      if args.idle else 'chat-long-%d' % args.rate if args.long
+                     else f'chat-{args.variant}-{args.rate}' if args.variant
                      else f'chat-sessions{args.sessions}-{args.rate}' if args.sessions > 1 else f'chat-{visibility}-{args.rate}')
 cell = run_dir / 'cells' / name
 if cell.exists():
@@ -100,6 +112,8 @@ config = data / 'claude-config'
 project = cell / 'project'
 project.mkdir()
 stream_seconds = IDLE_TURN_SECONDS if args.idle else args.warmup + args.duration + args.tail + 4 * args.sessions
+stream_command = f'/scenario stream {stream_seconds} {args.rate}' + (f' {args.variant}' if args.variant else '')
+max_record_gap = 8 + VARIANT_BLOCK_CHARACTERS.get(args.variant, 0) / args.rate
 report = {'valid': False, 'invalidReasons': []}
 state = {'driver': None, 'cleaned': False}
 
@@ -261,9 +275,10 @@ def verify_stream(sid, since, expected_chars, window_start, window_end):
             tools += block.get('type') == 'tool_use'
     gaps = [b - a for a, b in zip(times, times[1:])]
     ratio = chars / expected_chars if expected_chars else None
-    ok = (bool(times) and ratio is not None and 0.95 <= ratio <= 1.05 and tools >= 1 and times[-1] >= window_end and max(gaps, default=0) <= 8)
+    ok = (bool(times) and ratio is not None and 0.95 <= ratio <= 1.05 and tools >= 1 and times[-1] >= window_end and max(gaps, default=0) <= max_record_gap)
     return {'session': sid, 'valid': ok, 'characters': chars, 'expectedCharacters': expected_chars, 'ratio': ratio,
             'toolCalls': tools, 'assistantRecords': len(times), 'maxGapSeconds': max(gaps, default=None),
+            'maxGapAllowedSeconds': max_record_gap,
             'firstRecordBeforeWindow': bool(times) and times[0] <= window_start,
             'lastRecordAfterWindow': bool(times) and times[-1] >= window_end}
 
@@ -374,7 +389,8 @@ def run_cell():
         time.sleep(2)
     driver = make_driver()
     state['driver'] = driver
-    manifest = {'cell': name, 'mode': {'visibility': visibility, 'sessions': args.sessions, 'long': args.long, 'idle': args.idle},
+    manifest = {'cell': name, 'mode': {'visibility': visibility, 'sessions': args.sessions, 'long': args.long, 'idle': args.idle,
+                                         'variant': args.variant},
                 'rate': args.rate, 'streamSeconds': stream_seconds, 'window': f'{SIZE[0]}x{SIZE[1]}',
                 'warmup': args.warmup, 'duration': args.duration, 'sampleEvery': args.sample_every,
                 'app': str(app), 'binarySHA256': hashlib.sha256(executable.read_bytes()).hexdigest(),
@@ -425,7 +441,7 @@ def run_cell():
         long_info['transcriptBytes'] = long_info['seed']['bytes']
         since = time.time()
         t1 = time.monotonic()
-        send(f'chat-send:{sid}:/scenario stream {stream_seconds} {args.rate}')
+        send(f'chat-send:{sid}:{stream_command}')
         def live():
             view = chat_view(sid, 'live')
             return view if view.get('feed') and 'running' in ' '.join(map(str, view.get('turns', []))).lower() else None
@@ -439,7 +455,7 @@ def run_cell():
     else:
         for i in range(args.sessions):
             since = time.time()
-            sid = start_chat(project_id, f'/scenario stream {stream_seconds} {args.rate}')
+            sid = start_chat(project_id, stream_command)
             sessions.append((sid, since))
             if args.idle:   # the turn has written, then ended (chat-state reports the newest session: this one)
                 until(lambda: transcript_path(sid), 30, 'the short turn wrote its transcript')
@@ -467,7 +483,7 @@ def run_cell():
         if not item.get('valid'):
             report['invalidReasons'].append(f"{'idle' if args.idle else 'stream'} of session {item['session'][:8]} not as asked: "
                                             f"{json.dumps(item)}")
-    report.update({'scenario': 'chat-idle' if args.idle else f'chat-stream-{args.rate}', 'cell': manifest['mode'] | {'name': name, 'rate': args.rate},
+    report.update({'scenario': 'chat-idle' if args.idle else f'chat-stream-{args.rate}' + (f'-{args.variant}' if args.variant else ''), 'cell': manifest['mode'] | {'name': name, 'rate': args.rate},
                    'sampleSeconds': samples[-1]['result']['uptime'] - samples[0]['result']['uptime'],
                    'warmupSeconds': args.warmup, 'sampleCount': len(samples), 'streamSeconds': stream_seconds,
                    'route': route, 'metrics': chat_metrics(samples), 'streamVerification': verification,
