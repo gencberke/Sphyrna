@@ -209,11 +209,73 @@ extension ChatHosted {
             expectRows(presentation, rig.stream, "after the work stopped")
         }
 
+        // MARK: A costly flush spaces the next one out
+
+        @Test func theIntervalStretchesWithTheLastFlushsCostUpToTheCeilingAndComesBackAtOnce() {
+            let rig = streamingPresentation(interval: ChatPresentation.streamingRowsInterval)
+            defer { rig.stream.controller.stop() }
+            let presentation = rig.presentation
+            func interval(costing milliseconds: Double) -> Duration? {
+                presentation.lastTimings = ChatPresentation.Timings(model: 0, derive: milliseconds / 2, stream: milliseconds / 2)
+                return presentation.streamingInterval
+            }
+            #expect(interval(costing: 0) == .milliseconds(80))
+            #expect(interval(costing: 16) == .milliseconds(80), "a cheap flush keeps the interval")
+            #expect(interval(costing: 24) == .milliseconds(120))
+            #expect(interval(costing: 32) == .milliseconds(160))
+            #expect(interval(costing: 400) == .milliseconds(160), "the ceiling")
+            #expect(interval(costing: 2) == .milliseconds(80), "one cheap flush brings it back at once")
+            presentation.rowsInterval = nil
+            #expect(interval(costing: 400) == nil, "no interval, no wait")
+        }
+
+        @Test func aCostlyFlushHoldsTheNextStreamingTextAndACheapOneDoesNot() {
+            // No interval of its own: only the cost holds the text, so what waits here waits for the cost alone.
+            var rig = streamingPresentation(interval: .zero)
+            defer { rig.stream.controller.stop() }
+            let presentation = rig.presentation
+            presentation.lastTimings = ChatPresentation.Timings(model: 0, derive: 10, stream: 30)
+            var before = presentation.rebuilds
+            _ = presentation.apply(rig.source.message(LiveScript.textDelta(0, "after a costly flush ")))
+            #expect(presentation.rebuilds == before && presentation.hasPendingRows, "a 40 ms flush holds the next text for 160 ms")
+            presentation.flushRows()
+            #expect(!presentation.hasPendingRows)
+            expectRows(presentation, rig.stream, "after the held text")
+            presentation.lastTimings = ChatPresentation.Timings()
+            before = presentation.rebuilds
+            _ = presentation.apply(rig.source.message(LiveScript.textDelta(0, "after a cheap one")))
+            #expect(presentation.rebuilds == before + 1 && !presentation.hasPendingRows, "after a cheap flush the text shows at once")
+        }
+
+        @Test func aChangeThatIsNotStreamingTextIsNeverHeldByTheCost() {
+            var rig = streamingPresentation(interval: ChatPresentation.streamingRowsInterval)
+            defer { rig.stream.controller.stop() }
+            let presentation = rig.presentation
+            let costly = ChatPresentation.Timings(model: 0, derive: 200, stream: 200)
+            presentation.lastTimings = costly
+            for index in 0..<5 { _ = presentation.apply(rig.source.message(LiveScript.textDelta(0, "word\(index) "))) }
+            #expect(presentation.hasPendingRows)
+            // The end of the block, a new block, the end of the work: each shows at once, whatever the last flush cost.
+            var before = presentation.rebuilds
+            _ = presentation.apply(rig.source.message(LiveScript.stop(0)))
+            #expect(presentation.rebuilds == before + 1 && !presentation.hasPendingRows)
+            presentation.lastTimings = costly
+            before = presentation.rebuilds
+            _ = presentation.apply(rig.source.message(LiveScript.block(1, ["type": "text", "text": ""])))
+            #expect(presentation.rebuilds == before + 1)
+            presentation.lastTimings = costly
+            before = presentation.rebuilds
+            presentation.setWorking(false)
+            #expect(presentation.rebuilds == before + 1)
+            expectRows(presentation, rig.stream, "after the work stopped")
+        }
+
         @Test func theFirstDeltaAfterAQuietIntervalIsShownAtOnce() async throws {
             var rig = streamingPresentation(interval: .milliseconds(60))
             defer { rig.stream.controller.stop() }
             let presentation = rig.presentation
-            try await Task.sleep(for: .milliseconds(150))
+            // Quiet for longer than the longest interval: the last rows' cost may stretch it up to `streamingRowsCeiling`.
+            try await Task.sleep(for: ChatPresentation.streamingRowsCeiling + .milliseconds(90))
             let before = presentation.rebuilds
             _ = presentation.apply(rig.source.message(LiveScript.textDelta(0, "first words")))
             #expect(presentation.rebuilds == before + 1, "after a quiet interval a delta is not made to wait")

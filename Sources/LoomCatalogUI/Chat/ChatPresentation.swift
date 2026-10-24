@@ -44,9 +44,10 @@ final class ChatPresentation {
     @ObservationIgnored private var refusedSequence = 0
     @ObservationIgnored private var store = ChatRowStore()
     /// Times the rows were derived for an attached stream so far, and what the last one spent in milliseconds: applying the change to the model, deriving
-    /// the rows (`ChatRowStore`), and updating the stream. For the budget tests and for measuring; not for logic.
+    /// the rows (`ChatRowStore`), and updating the stream. The last one's total also spaces the streaming flushes
+    /// (`streamingInterval`); tests set it to stand for a flush's cost.
     @ObservationIgnored private(set) var rebuilds = 0
-    @ObservationIgnored private(set) var lastTimings = Timings()
+    @ObservationIgnored var lastTimings = Timings()
     /// The attached stream has not been given rows yet: the first rows open where the reader was.
     @ObservationIgnored private var needsInitial = false
     /// Streaming text is shown at most once per this interval (nil: every change at once, as the tests and a transcript
@@ -56,6 +57,18 @@ final class ChatPresentation {
     @ObservationIgnored var rowsInterval: Duration?
     /// The interval a live chat shows streaming text at: well inside the 100 ms a reader takes for "now".
     static let streamingRowsInterval = Duration.milliseconds(80)
+    /// A flush that costs more than its share spaces the next one out: the wait is at least this many times the last rows'
+    /// cost (`lastTimings`), so a cheap flush (about 16 ms) keeps the interval and a costly one is not run back to back.
+    static let flushCostFactor = 5.0
+    /// The longest that cost stretches the interval to.
+    static let streamingRowsCeiling = Duration.milliseconds(160)
+
+    /// How long streaming text waits after the last rows now: `rowsInterval`, or `flushCostFactor` times the last rows' cost
+    /// up to `streamingRowsCeiling` when that is longer. One cheap flush brings it back to `rowsInterval`. Nil: no wait.
+    var streamingInterval: Duration? {
+        guard let base = rowsInterval else { return nil }
+        return max(base, min(.milliseconds(Self.flushCostFactor * lastTimings.total), Self.streamingRowsCeiling))
+    }
     /// The model grew by streaming text that the stream does not show yet, and what grew (for `ChatRowStore`).
     @ObservationIgnored private var pendingDelta: ModelDelta?
     @ObservationIgnored private var lastRowsAt: ContinuousClock.Instant?
@@ -70,6 +83,8 @@ final class ChatPresentation {
         var model = 0.0
         var derive = 0.0
         var stream = 0.0
+
+        var total: Double { model + derive + stream }
     }
 
     init(sessionID: String, workingDirectory: String?, isWorking: Bool = false) {
@@ -142,10 +157,10 @@ final class ChatPresentation {
     }
 
     /// Whether the rows of `change` wait for the interval: the stream is attached and shows rows, the change only grew the
-    /// text of blocks that are still streaming, and the last rows were derived less than an interval ago. The wait is
+    /// text of blocks that are still streaming, and the last rows were derived less than `streamingInterval` ago. The wait is
     /// recorded (`pendingDelta`) and ends in `flushRows`.
     private func defers(_ change: ModelChange) -> Bool {
-        guard let interval = rowsInterval, controller != nil, let last = lastRowsAt, Self.isStreamingTextOnly(change) else { return false }
+        guard let interval = streamingInterval, controller != nil, let last = lastRowsAt, Self.isStreamingTextOnly(change) else { return false }
         let due = last + interval
         guard ContinuousClock.now < due else { return false }
         pendingDelta = Self.merged(pendingDelta ?? ModelDelta(), change.delta)
