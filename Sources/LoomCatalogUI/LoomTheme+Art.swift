@@ -115,45 +115,9 @@ extension LoomTheme {
         static let projectBoxHeight: CGFloat = 110
         static let projectLineTop: CGFloat = 6
 
-        // MARK: The remora (the reference's `PAIR`, `DISC_AT` and `miniRemora()` in `docs/remora/remora.js`)
+        // MARK: Remora's face on Home
 
-        /// About 0.8, in semibold glyphs on a finer grid, because it is Remora's face (DESIGN §17 Quiet).
-        static let remoraCell: CGFloat = 6
-        static let remoraAlpha = 0.82
-        static let remoraWeight = NSFont.Weight.semibold
-        static let remoraLength = 110.0
-        /// At rest it rises toward its sentence (a heading of −0.3) with a slight bend, its tail beat where the reference stops it.
-        static let remoraRise = -0.3
-        static let remoraBend = -0.1
-        static let remoraRestPhase = 2.2
-        /// Its head is this far inside the place's trailing edge.
-        static let remoraRestInset: CGFloat = 6
-        /// The folded brief's line: level, 72 long, at 0.86 on a 5 pt grid, so that its disc shows.
-        static let foldCell: CGFloat = 5
-        static let foldAlpha = 0.86
-        static let foldLength = 72.0
-        static let foldHeading = -0.1
-        static let foldBend = -0.08
-
-        // MARK: Remora's arrival (the reference's `Arrival` and `TL`)
-
-        /// The host: the band's hammerhead, at 250 and depth 0.5 in the lane's grid; the remora rides at 0.34 of its length.
-        static let arrivalHostLength = 250.0
-        static let arrivalHostDepth = 0.5
-        static let arrivalRideAt = 0.34
-        /// The remora's way up to its place: a turn of 40 pt, the last 46 pt straight, and the host's lead of 50 pt.
-        static let arrivalTurn = 40.0
-        static let arrivalApproach = 46.0
-        static let arrivalLead = 50.0
-        /// The timeline: in until 1.3 s, the remora lets go and turns until 2.2 s, then settles over 0.6 s; once nothing makes it
-        /// swim, it slows to still over 0.5 s.
-        static let arrivalInEnd = 1.3
-        static let arrivalTurnEnd = 2.2
-        static let arrivalSettle = 0.6
-        static let arrivalSlow = 0.5
-        /// The band's hammerhead comes back along its loop's lower pass this long after the host left at the left.
-        static let bandBackDelay = 1.2
-        /// With Animated art off the arrival is the remora fading in at its place.
+        /// A new brief fades Remora's face in over this long (instantly under Reduce Motion).
         static let remoraFadeIn = 0.6
     }
 }

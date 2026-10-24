@@ -114,37 +114,6 @@ enum ArtScene: Sendable, Equatable {
     case sea(specs: [ArtSharkSpec], options: ArtSea.Options, seed: UInt64)
     /// Home's loop, drawn live or from its frames worked out once.
     case homeLoop(precomputed: Bool, seed: UInt64)
-    /// Home's Remora section: the arrival, then the remora at rest beside its sentence (`ArtRemoraCue` places it).
-    case remoraLane
-    /// The remora at the start of the folded brief's line.
-    case remoraFold
-}
-
-/// What Home's Remora section tells its lane.
-struct ArtRemoraCue: Equatable, Sendable {
-    /// The remora's head at rest, in the lane's points (y down); nil while the brief's place is not laid out, and then nothing
-    /// is drawn.
-    var rest: CGPoint?
-    /// An arrival is asked for (a new brief: the first Home of the day, Catch Me Up): it plays from its start once the lane has
-    /// its size and the remora its place, and the lane reports `.started` so the section can drop the ask.
-    var arrive = false
-    /// Remora reads and its sentence has not come in: the remora swims in place. Otherwise it holds still.
-    var swimming = false
-}
-
-/// What the lane tells the Remora section.
-enum ArtLaneEvent: Equatable, Sendable {
-    /// The arrival began (or, with Animated art off, the remora took its place at once).
-    case started
-    /// The band may have its hammerhead back: `bandBackDelay` after the host left at the left, or at once when the arrival
-    /// was cut short.
-    case bandBack
-}
-
-/// What the Remora section tells the band's loop: the arrival took its hammerhead, and how many times it came back.
-struct ArtBandCue: Equatable, Sendable {
-    var away = false
-    var backs = 0
 }
 
 extension EnvironmentValues {
@@ -162,34 +131,22 @@ final class ArtLayerView: NSView {
         case sea(ArtSea)
         case loop(ArtHomeLoop)
         case frames(ArtLoopFrames, ArtHomeLoop)
-        case lane(ArtArrival)
-        case fold
     }
 
     let scene: ArtScene
     let painter: ArtPainter
     let mask: ArtMask
-    /// The place's rate kind; what it draws at now is `drawnKind` (a rested crossing, the lane's stage, the band given up).
+    /// The place's rate kind; what it draws at now is `drawnKind` (a rested crossing stands still).
     var kind: ArtSurfaceKind { didSet { reclock() } }
     var animatedArt: Bool {
         didSet {
             guard animatedArt != oldValue else { return }
-            // Off mid-arrival: the remora takes its place at once.
-            if !animatedArt, case .lane(var lane)? = source, lane.stage != .resting {
-                lane.settle()
-                source = .lane(lane)
-                onLaneEvent?(.bandBack)
-            }
             reclock()
             needsDisplay = true
         }
     }
     /// A crossing comes back to its start each time its window shows again (About).
     var replaysWhenShown = false
-    var remora = ArtRemoraCue() { didSet { if remora != oldValue { remoraChanged(from: oldValue) } } }
-    var band = ArtBandCue() { didSet { if band != oldValue { bandChanged(from: oldValue) } } }
-    /// The lane's events (`ArtLaneEvent`).
-    var onLaneEvent: (@MainActor (ArtLaneEvent) -> Void)?
     private(set) var source: Source?
     /// Home's loop's clock.
     private(set) var loopTime = 0.0
@@ -201,7 +158,6 @@ final class ArtLayerView: NSView {
     private weak var observedClip: NSClipView?
     /// Whether it was on screen at the last reclock; a scroll reclocks only when this flips.
     private var clockedOnScreen = false
-    private var arrivalWaits = false
     private var wasSeen = false
     private var seenOnce = false
     /// A time to show once the view has its size (a render's still); nil in the app.
@@ -238,14 +194,10 @@ final class ArtLayerView: NSView {
 
     // MARK: The clock
 
-    /// The kind it draws at now: a crossing that rested, the folded remora and a band whose hammerhead the arrival took stand
-    /// still; the lane follows its stage.
+    /// The kind it draws at now: a crossing that rested stands still.
     var drawnKind: ArtSurfaceKind {
         switch source {
-        case .lane(let lane)?: return lane.kind
-        case .fold?: return .resting
         case .sea(let sea)? where sea.hasRested: return .resting
-        case .loop?, .frames?: return band.away ? .resting : kind
         default: return kind
         }
     }
@@ -388,49 +340,7 @@ final class ArtLayerView: NSView {
         case (.homeLoop(let precomputed, let seed), _):
             let loop = ArtHomeLoop(size: size, metrics: metrics, seed: seed)
             source = precomputed ? .frames(ArtLoopFrames(loop: loop), loop) : .loop(loop)
-        case (.remoraLane, _):
-            // A new size settles the remora at its place, even mid-arrival: an arrival cut short gives the band its hammerhead back.
-            if case .lane(let lane)? = source, lane.stage != .resting { onLaneEvent?(.bandBack) }
-            source = remora.rest.map { .lane(ArtArrival(size: size, metrics: metrics, rest: $0, arriving: false)) }
-            if arrivalWaits { startArrival() }
-        case (.remoraFold, _):
-            source = .fold
         }
-    }
-
-    private func remoraChanged(from old: ArtRemoraCue) {
-        guard case .remoraLane = scene else { return }
-        if remora.rest != old.rest, bounds.width > 0, bounds.height > 0 {
-            if case .lane(let lane)? = source, lane.stage != .resting {
-                // The arrival plays to the place it started for; a resize settles it.
-            } else {
-                source = remora.rest.map { .lane(ArtArrival(size: bounds.size, metrics: painter.metrics, rest: $0, arriving: false)) }
-                needsDisplay = true
-            }
-        }
-        if remora.arrive, !old.arrive || arrivalWaits { startArrival() }
-        reclock()
-    }
-
-    /// Plays the arrival from its start, once the lane has its size and the remora its place; with Animated art off the remora
-    /// is at its place at once (the section fades it in).
-    private func startArrival() {
-        guard let rest = remora.rest, bounds.width > 0, bounds.height > 0 else {
-            arrivalWaits = true
-            return
-        }
-        arrivalWaits = false
-        source = .lane(ArtArrival(size: bounds.size, metrics: painter.metrics, rest: rest, arriving: animatedArt))
-        reclock()
-        needsDisplay = true
-        onLaneEvent?(.started)
-    }
-
-    private func bandChanged(from old: ArtBandCue) {
-        // The hammerhead comes back in from the left along the loop's lower pass.
-        if band.backs > old.backs { loopTime = ArtHomeLoop.backTime }
-        reclock()
-        needsDisplay = true
     }
 
     /// Moves the art on by `dt` seconds and asks for a frame.
@@ -442,11 +352,7 @@ final class ArtLayerView: NSView {
             source = .sea(sea)
         case .loop?, .frames?:
             loopTime = (loopTime + dt).truncatingRemainder(dividingBy: ArtHomeLoop.period)
-        case .lane(var lane)?:
-            let left = lane.step(by: dt, swimming: remora.swimming)
-            source = .lane(lane)
-            if left { onLaneEvent?(.bandBack) }
-        case .fold?, nil: break
+        case nil: break
         }
         if drawnKind != before { reclock() }
         needsDisplay = true
@@ -456,10 +362,8 @@ final class ArtLayerView: NSView {
     func currentCells() -> [UInt32] {
         switch source {
         case .sea(let sea)?: sea.frame(raster: raster).packed
-        case .loop(let loop)?: band.away ? [] : loop.frame(at: loopTime, raster: raster).packed
-        case .frames(let frames, _)?: band.away ? [] : Array(frames.cells(at: loopTime))
-        case .lane(let lane)?: lane.frame(raster: raster).packed
-        case .fold?: ArtFoldRemora.frame(size: bounds.size, metrics: painter.metrics, raster: raster).packed
+        case .loop(let loop)?: loop.frame(at: loopTime, raster: raster).packed
+        case .frames(let frames, _)?: Array(frames.cells(at: loopTime))
         case nil: []
         }
     }
@@ -469,7 +373,6 @@ final class ArtLayerView: NSView {
         let color = LoomTheme.Art.colorPair[LoomTheme.Appearance(effectiveAppearance)]
         let columns = painter.metrics.columns(bounds.size)
         if case .frames(let frames, _)? = source {
-            guard !band.away else { return }
             painter.paint(frames.cells(at: loopTime), columns: columns, height: bounds.height, mask: maskFactors, color: color,
                           in: context)
         } else {
@@ -498,10 +401,7 @@ extension ArtLayerView {
             source = .sea(sea)
         case .loop?, .frames?:
             loopTime = t
-        case .lane(var lane)?:
-            while lane.time < t, lane.stage != .resting { lane.step(by: 1 / LoomTheme.Art.arrivalFPS, swimming: remora.swimming) }
-            source = .lane(lane)
-        case .fold?, nil: break
+        case nil: break
         }
         needsDisplay = true
     }
@@ -515,9 +415,6 @@ struct ArtSurface: NSViewRepresentable {
     let kind: ArtSurfaceKind
     var mask: ArtMask = .none
     var replaysWhenShown = false
-    var remora: ArtRemoraCue?
-    var band: ArtBandCue?
-    var onLaneEvent: (@MainActor (ArtLaneEvent) -> Void)?
     /// A time to show (a render's still); nil to start at the beginning.
     var time: Double?
 
@@ -532,13 +429,9 @@ struct ArtSurface: NSViewRepresentable {
     }
 
     /// The art of one of the app's places (`ArtPlace`).
-    init(place: ArtPlace, remora: ArtRemoraCue? = nil, band: ArtBandCue? = nil,
-         onLaneEvent: (@MainActor (ArtLaneEvent) -> Void)? = nil, time: Double? = nil) {
+    init(place: ArtPlace, time: Double? = nil) {
         self.init(scene: place.scene, cell: place.cell, weight: place.weight, kind: place.kind, mask: place.mask, time: time)
         replaysWhenShown = place.replaysWhenShown
-        self.remora = remora
-        self.band = band
-        self.onLaneEvent = onLaneEvent
     }
 
     func makeNSView(context: Context) -> ArtLayerView {
@@ -550,9 +443,6 @@ struct ArtSurface: NSViewRepresentable {
 
     func updateNSView(_ view: ArtLayerView, context: Context) {
         view.animatedArt = context.environment.animatedArt
-        view.onLaneEvent = onLaneEvent
-        if let remora { view.remora = remora }
-        if let band { view.band = band }
         if let time, view.requestedTime != time { view.requestedTime = time }
     }
 }
@@ -565,7 +455,6 @@ struct ArtBackdrop: View {
     let kind: ArtSurfaceKind
     var mask: ArtMask = .none
     var grid: LoomTheme.Canvas.Mask = .radial
-    var band: ArtBandCue?
     var time: Double?
 
     init(scene: ArtScene, cell: CGFloat, kind: ArtSurfaceKind, mask: ArtMask = .none, grid: LoomTheme.Canvas.Mask = .radial,
@@ -578,27 +467,17 @@ struct ArtBackdrop: View {
         self.time = time
     }
 
-    init(place: ArtPlace, grid: LoomTheme.Canvas.Mask, band: ArtBandCue? = nil, time: Double? = nil) {
+    init(place: ArtPlace, grid: LoomTheme.Canvas.Mask, time: Double? = nil) {
         self.init(scene: place.scene, cell: place.cell, kind: place.kind, mask: place.mask, grid: grid, time: time)
-        self.band = band
     }
 
     var body: some View {
         ZStack(alignment: .top) {
             CanvasGrid(mask: grid)
             ArtSurface(scene: scene, cell: cell, kind: kind, mask: mask, time: time)
-                .bandCue(band)
                 .frame(maxWidth: .infinity, maxHeight: grid == .band ? LoomTheme.Canvas.bandHeight : .infinity)
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-    }
-}
-
-private extension ArtSurface {
-    func bandCue(_ cue: ArtBandCue?) -> ArtSurface {
-        var copy = self
-        copy.band = cue
-        return copy
     }
 }

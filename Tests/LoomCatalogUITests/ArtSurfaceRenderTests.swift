@@ -127,7 +127,7 @@ struct ArtSurfaceRenderTests {
             let arts = Self.arts(in: view)
             #expect(arts.count == 1 && arts.first?.scene == ArtPlace.homeBand.scene, "\(arts.map(\.scene))")
             if let band = arts.first {
-                #expect(band.band == ArtBandCue() && band.drawnKind == .homeLoop, "the band keeps its loop")
+                #expect(band.drawnKind == .homeLoop, "the band keeps its loop")
             }
         }
         for dark in [true, false] {

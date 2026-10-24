@@ -68,7 +68,7 @@ struct ArtSwitchTests {
 
     // MARK: Off gives a still frame; Reduce Motion does not stop it
 
-    @Test func offEveryDrawingStandsStillOnOneFrameAndTheRemoraIsAtItsPlace() async throws {
+    @Test func offEveryDrawingStandsStillOnOneFrame() async throws {
         for animated in [true, false] {
             for place in ArtPlace.allCases {
                 try await withHostedArt(place, animated: animated) { view in
@@ -85,25 +85,6 @@ struct ArtSwitchTests {
                 }
             }
         }
-        // The arrival, asked for with Animated art off, is the remora at its place at once.
-        let lane = ArtLayerView(scene: .remoraLane, cell: LoomTheme.Art.remoraCell, weight: LoomTheme.Art.remoraWeight, kind: .arrival,
-                                animatedArt: false)
-        var events: [ArtLaneEvent] = []
-        lane.onLaneEvent = { events.append($0) }
-        lane.frame = NSRect(x: 0, y: 0, width: 1019, height: 320)
-        lane.remora = ArtRemoraCue(rest: CGPoint(x: 160, y: 140), arrive: true, swimming: true)
-        guard case .lane(let arrival)? = lane.source else { Issue.record("the lane has its remora"); return }
-        #expect(arrival.stage == .resting && lane.drawnKind == .resting && events == [.started])
-        // Turned off mid-arrival: the remora takes its place at once and the band gets its hammerhead back.
-        let moving = ArtLayerView(scene: .remoraLane, cell: LoomTheme.Art.remoraCell, kind: .arrival, animatedArt: true)
-        var cut: [ArtLaneEvent] = []
-        moving.onLaneEvent = { cut.append($0) }
-        moving.frame = lane.frame
-        moving.remora = ArtRemoraCue(rest: CGPoint(x: 160, y: 140), arrive: true, swimming: true)
-        #expect(moving.drawnKind == .arrival)
-        moving.advance(by: 0.5)
-        moving.animatedArt = false
-        #expect(moving.drawnKind == .resting && cut == [.started, .bandBack])
     }
 
     @Test func reduceMotionIsNotAnInputOfTheRule() {
@@ -148,15 +129,6 @@ struct ArtSwitchTests {
             view.isHidden = true
             #expect(!view.clockInput.viewOnScreen && !view.tickerRunning)
         }
-        let band = ArtLayerView(scene: ArtPlace.homeBand.scene, cell: LoomTheme.Art.bandCell, kind: .homeLoop)
-        band.frame = NSRect(x: 0, y: 0, width: 1019, height: LoomTheme.Canvas.bandHeight)
-        band.band = ArtBandCue(away: true, backs: 0)
-        #expect(band.drawnKind == .resting, "a band whose hammerhead the arrival took draws nothing and ticks never")
-        band.band = ArtBandCue(away: false, backs: 1)
-        #expect(band.drawnKind == .homeLoop && abs(band.loopTime - ArtHomeLoop.backTime) < 1e-9, "it comes back on the lower pass")
-        let fold = ArtLayerView(scene: .remoraFold, cell: LoomTheme.Art.foldCell, kind: .resting)
-        fold.frame = NSRect(x: 0, y: 0, width: 84, height: 30)
-        #expect(fold.drawnKind == .resting)
     }
 
     // MARK: Hosting
