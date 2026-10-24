@@ -126,6 +126,20 @@ struct ChatStreamScenarioTests {
         #expect(!blocks.contains { $0.paragraphText?.contains("```") == true })
     }
 
+    /// Streamed into Chat's split cut by cut, each fixture's head is the parse of its settled text and its tail the parse of
+    /// the rest; the 300-line fence settles in chunks, the nested one does not.
+    @Test func theStreamingSplitOfEachFixtureIsItsWholeParse() async throws {
+        for variant in ["plain", "fence300", "nested-fence"] {
+            let texts = try await streamedMessages("0.12 100000 \(variant)")
+            var chunked = 0
+            for (number, text) in texts.enumerated() {
+                chunked += ChatHosted.ChatStreamFenceTests.expectWholeParse(text, id: "fixture-\(variant)-\(number)-\(UUID().uuidString)", step: 41)
+            }
+            #expect(texts.joined().count >= 12_000, "\(variant)")
+            #expect((chunked > 0) == (variant == "fence300"), "\(variant): \(chunked) cuts in chunks")
+        }
+    }
+
     @Test func everyFenceIsClosedWhereverTheTimeEnds() async throws {
         var endings: [String] = []
         for (variant, totals) in [("nested-fence", Array(stride(from: 400, through: 3_000, by: 200))), ("fence300", [1_000, 5_000])] {

@@ -81,8 +81,10 @@ enum ChatContent {
 
     // MARK: Streaming
 
-    /// A streaming message as the settled head and the open tail: the head is what lies before the last blank line outside a
-    /// fence, parsed once and kept; the tail is parsed again by every call that sees new text.
+    /// A streaming message as the settled head and the open tail. The head is what lies before the last blank line outside a
+    /// fence; it is parsed a piece at a time as it grows (`SplitState.extendHead`) and kept. The tail is parsed again by every
+    /// call that sees new text. A long code fence open at the end settles in chunks (`OpenFence`); the tail then holds only the
+    /// blocks before it.
     struct StreamingBlocks {
         let head: [MarkdownBlock]
         /// Which head this is: equal tokens mean the same head, so a view of it need not compare its blocks.
@@ -90,16 +92,49 @@ enum ChatContent {
         /// The content hash of each head block, the key of its cached height (`ChatRowMeasurer`).
         let headHashes: [Int]
         let tail: [MarkdownBlock]
-        /// The characters of the tail's source (what a measure of the tail lays out).
+        /// The characters of the tail's source (what a measure of the tail lays out), an open fence's unsettled lines included.
         let tailCharacters: Int
         /// The head can be drawn and measured apart from the tail. False when it holds a code block that is still open (a fence
         /// the splitter does not see, as one in a quote): the message is then drawn and measured as one.
         let isComposable: Bool
+        /// The long code fence open at the end, drawn after the tail as one block; nil when there is none.
+        let fence: OpenFence?
 
-        var blocks: [MarkdownBlock] { tail.isEmpty ? head : head + tail }
+        var blocks: [MarkdownBlock] {
+            let open = fence.map { tail + [$0.block] } ?? tail
+            return open.isEmpty ? head : head + open
+        }
     }
 
-    /// The identity of a head: the row, how many blocks, and the hash of its text. Made once when the head grows.
+    /// A code fence open at the end of a streaming message that has grown past `fenceChunkLines` lines. Its complete lines settle
+    /// that many at a time, each chunk parsed once and kept; only the lines after the last chunk, the one still arriving
+    /// included, are parsed again. Drawn as one code block (`ChatCodeBlockView` with chunks).
+    struct OpenFence: Equatable {
+        let language: String?
+        let chunks: [String]
+        /// The content hash of each chunk, the key of its cached height.
+        let chunkHashes: [Int]
+        /// The code after the last chunk; nil while none of it has come.
+        let open: String?
+        /// The block's index among the message's top-level blocks (its wrap flag).
+        let index: Int
+
+        var code: String {
+            let settled = chunks.joined(separator: "\n")
+            guard let open else { return settled }
+            return settled + "\n" + open
+        }
+
+        var block: MarkdownBlock { .code(language: language, code: code, isClosed: false) }
+    }
+
+    /// The lines of a chunk of an open fence. A flush lays out and measures the lines after the last chunk, so the size bounds
+    /// that work: 40 lines of code are about 1,200 characters, a long paragraph's worth, which is what the open tail of prose
+    /// costs. A chunk settles about every 2 s at 600 characters/s and 5 times a second at 6,000, each time one measure of its
+    /// lines (kept) and one evaluation of the code block; smaller chunks would settle more often for little less per flush.
+    static let fenceChunkLines = 40
+
+    /// The identity of a head: the row, how many blocks, and a hash of its blocks' hashes. Made once when the head grows.
     struct HeadToken: Hashable {
         let rowID: String
         let count: Int
@@ -117,49 +152,92 @@ enum ChatContent {
             if splitStates.count >= splitLimit, let oldest = splitStates.min(by: { $0.value.stamp < $1.value.stamp })?.key {
                 splitStates[oldest] = nil
             }
-            state = SplitState()
+            state = SplitState(rowID: id)
             splitStates[id] = state
         }
         state.stamp = splitStamp
         if let result = state.result, state.text == text { return result }
         state.advance(to: text)
-
-        if state.headEnd != state.builtHeadEnd || state.head == nil {
-            let headText = String(text[..<text.utf8.index(text.utf8.startIndex, offsetBy: state.headEnd)])
-            let hash = headText.hashValue
-            let key = "\(id)#head#\(hash)#\(headText.utf8.count)" as NSString
-            // Only the newest head is kept: an older one of the same message is never asked for again.
-            if let old = state.headKey, old != key { blockCache.removeObject(forKey: old) }
-            state.headKey = key
-            var blocks: [MarkdownBlock] = []
-            if !headText.isEmpty {
-                if let cached = blockCache.object(forKey: key) {
-                    blocks = cached.value
-                } else {
-                    blocks = parse(headText, in: context)
-                    blockCache.setObject(Blocks(blocks), forKey: key, cost: headText.utf8.count * 4)
-                }
-            }
-            state.builtHeadEnd = state.headEnd
-            state.head = HeadParts(blocks: blocks, hashes: blocks.map { $0.hashValue },
-                                   token: HeadToken(rowID: id, count: blocks.count, hash: hash),
-                                   isComposable: !blocks.contains(where: hasOpenCode))
+        state.extendHead(text: text, in: context)
+        let tail: [MarkdownBlock]
+        let tailCharacters: Int
+        let fenced = openFence(state, text: text, in: context)
+        if let fenced {
+            tail = fenced.before
+            tailCharacters = fenced.characters
+        } else {
+            let tailText = String(text[text.utf8.index(text.utf8.startIndex, offsetBy: state.headEnd)...])
+            tail = tailText.isEmpty ? [] : parse(tailText, in: context)
+            tailCharacters = tailText.utf8.count
         }
-        let tailText = String(text[text.utf8.index(text.utf8.startIndex, offsetBy: state.headEnd)...])
-        let head = state.head!
-        let result = StreamingBlocks(head: head.blocks, headToken: head.token, headHashes: head.hashes,
-                                     tail: tailText.isEmpty ? [] : parse(tailText, in: context),
-                                     tailCharacters: tailText.utf8.count, isComposable: head.isComposable)
+        let result = StreamingBlocks(head: state.headBlocks, headToken: state.headToken, headHashes: state.headHashes, tail: tail,
+                                     tailCharacters: tailCharacters, isComposable: state.headOpenCode == 0, fence: fenced?.fence)
         state.text = text
         state.result = result
         return result
     }
 
-    private struct HeadParts {
-        let blocks: [MarkdownBlock]
-        let hashes: [Int]
-        let token: HeadToken
-        let isComposable: Bool
+    /// The chunks of the fence open at the end of `text`, when it has some and is a block of the tail's own list (a fence in a
+    /// list item is drawn as today), with the blocks before it in the tail. Nil when the tail is parsed as today.
+    private static func openFence(_ state: SplitState, text: String, in context: ChatRowContext?)
+        -> (before: [MarkdownBlock], fence: OpenFence, characters: Int)? {
+        guard let scan = state.fenceScan, let lastEnd = scan.chunkEnds.last else { return nil }
+        let utf8 = text.utf8
+        func slice(_ from: Int, _ to: Int) -> Substring {
+            text[utf8.index(utf8.startIndex, offsetBy: from)..<utf8.index(utf8.startIndex, offsetBy: to)]
+        }
+        var parts: FenceParts
+        if let known = state.fenceParts, known.openerStart == scan.openerStart {
+            parts = known
+        } else {
+            let lead = parse(String(slice(state.headEnd, scan.contentStart)), in: context)
+            let opener = String(slice(scan.openerStart, scan.contentStart))
+            if case let .code(language, code, false)? = lead.last, code.isEmpty {
+                parts = FenceParts(openerStart: scan.openerStart, opener: opener, before: Array(lead.dropLast()), language: language)
+            } else {
+                parts = FenceParts(openerStart: scan.openerStart, opener: opener, before: [], language: nil, isValid: false)
+            }
+        }
+        while parts.isValid, parts.chunks.count < scan.chunkEnds.count {
+            let index = parts.chunks.count
+            let from = index == 0 ? scan.contentStart : scan.chunkEnds[index - 1]
+            if let code = fenceCode(parts.opener + slice(from, scan.chunkEnds[index]), in: context) {
+                parts.chunks.append(code)
+                parts.hashes.append(code.hashValue)
+            } else {
+                parts.isValid = false
+            }
+        }
+        state.fenceParts = parts
+        guard parts.isValid else { return nil }
+        let rest = slice(lastEnd, utf8.count)
+        var open: String?
+        if !rest.isEmpty {
+            // The closing line still arriving closes the fence for the parser: the tail is then parsed as today.
+            guard let code = fenceCode(parts.opener + rest, in: context) else { return nil }
+            open = code
+        }
+        let fence = OpenFence(language: parts.language, chunks: parts.chunks, chunkHashes: parts.hashes, open: open,
+                              index: state.headBlocks.count + parts.before.count)
+        return (parts.before, fence, scan.contentStart - state.headEnd + rest.utf8.count)
+    }
+
+    /// The code of `text` when it is one open fence (its opening line and lines inside it), as the parser reads it.
+    private static func fenceCode(_ text: String, in context: ChatRowContext?) -> String? {
+        let blocks = parse(text, in: context)
+        guard blocks.count == 1, case let .code(_, code, false) = blocks[0] else { return nil }
+        return code
+    }
+
+    /// What `openFence` made of the fence that is open: its opening line, the tail's blocks before it, and the chunks so far.
+    private struct FenceParts {
+        let openerStart: Int
+        let opener: String
+        let before: [MarkdownBlock]
+        let language: String?
+        var isValid = true
+        var chunks: [String] = []
+        var hashes: [Int] = []
     }
 
     private static func hasOpenCode(_ block: MarkdownBlock) -> Bool {
@@ -177,6 +255,7 @@ enum ChatContent {
     /// does not start with the old one is scanned from the start. The offsets are UTF-8.
     @MainActor
     private final class SplitState {
+        let rowID: String
         var stamp = 0
         /// The text the state and its `result` are for.
         var text = ""
@@ -188,10 +267,32 @@ enum ChatContent {
         private var previousBlank = false
         /// The end of the head (the offset of `stableSplit`), and the one the head blocks were made for.
         private(set) var headEnd = 0
-        var builtHeadEnd = -1
-        var head: HeadParts?
-        /// The `blockCache` key of the newest head; kept over a restart, so the next head still replaces it.
-        var headKey: NSString?
+        private var builtHeadEnd = 0
+        /// The head's blocks, their hashes, its token, and how many of its blocks hold an open code block.
+        private(set) var headBlocks: [MarkdownBlock] = []
+        private(set) var headHashes: [Int] = []
+        private(set) var headToken: HeadToken
+        private(set) var headOpenCode = 0
+        /// Where the piece of the head that made its last blocks starts, and how many blocks it made.
+        private var lastPiece = (start: 0, count: 0)
+        /// The fence open at the end as the lines read it, when chunks may cover it (a run of three: a longer one holds shorter
+        /// fences, and is drawn as today).
+        private(set) var fenceScan: FenceScan?
+        var fenceParts: FenceParts?
+
+        struct FenceScan {
+            /// Where its opening line starts, and where the first line inside it does.
+            let openerStart: Int
+            let contentStart: Int
+            /// Its complete lines so far, and the end of every `fenceChunkLines`-th one.
+            var lines = 0
+            var chunkEnds: [Int] = []
+        }
+
+        init(rowID: String) {
+            self.rowID = rowID
+            headToken = HeadToken(rowID: rowID, count: 0, hash: 0)
+        }
 
         func advance(to new: String) {
             if !Self.startsWith(new, prefix: text) { restart() }
@@ -205,14 +306,52 @@ enum ChatContent {
                 }
                 let first = utf8.index(utf8.startIndex, offsetBy: lineStart)
                 let line = new[first..<lineFeed]
+                let wasOpen = fence.isOpen
                 fence.read(line)
                 let blank = line.allSatisfy { $0 == " " }
                 cursor = utf8.index(after: lineFeed)
-                if blank, !previousBlank, !fence.isOpen { headEnd = utf8.distance(from: utf8.startIndex, to: cursor) }
+                let next = utf8.distance(from: utf8.startIndex, to: cursor)
+                if !wasOpen, let opened = fence.current {
+                    fenceScan = opened.length == 3 ? FenceScan(openerStart: lineStart, contentStart: next) : nil
+                } else if wasOpen, !fence.isOpen {
+                    fenceScan = nil
+                    fenceParts = nil
+                } else if wasOpen, var scan = fenceScan {
+                    scan.lines += 1
+                    if scan.lines % ChatContent.fenceChunkLines == 0 { scan.chunkEnds.append(next) }
+                    fenceScan = scan
+                }
+                if blank, !previousBlank, !fence.isOpen { headEnd = next }
                 previousBlank = blank
-                lineStart = utf8.distance(from: utf8.startIndex, to: cursor)
+                lineStart = next
             }
             searchedTo = utf8.count
+        }
+
+        /// Brings the head blocks up to `headEnd`: the text settled since they were made is parsed alone and its blocks appended.
+        /// That is the parse of the whole head, because a blank line outside a fence ends every block but a list, which a blank
+        /// line and an item or an indented line go on with: the piece after a list is parsed together with the list's piece.
+        func extendHead(text: String, in context: ChatRowContext?) {
+            guard headEnd != builtHeadEnd else { return }
+            var start = builtHeadEnd
+            if lastPiece.count > 0, case .list = headBlocks.last {
+                start = lastPiece.start
+                for block in headBlocks.suffix(lastPiece.count) where ChatContent.hasOpenCode(block) { headOpenCode -= 1 }
+                headBlocks.removeLast(lastPiece.count)
+                headHashes.removeLast(lastPiece.count)
+                lastPiece.count = 0
+            }
+            let utf8 = text.utf8
+            let piece = String(text[utf8.index(utf8.startIndex, offsetBy: start)..<utf8.index(utf8.startIndex, offsetBy: headEnd)])
+            let blocks = piece.isEmpty ? [] : ChatContent.parse(piece, in: context)
+            if !blocks.isEmpty { lastPiece = (start, blocks.count) }
+            headBlocks += blocks
+            headHashes += blocks.map(\.hashValue)
+            headOpenCode += blocks.filter(ChatContent.hasOpenCode).count
+            builtHeadEnd = headEnd
+            var hasher = Hasher()
+            hasher.combine(headHashes)
+            headToken = HeadToken(rowID: rowID, count: headBlocks.count, hash: hasher.finalize())
         }
 
         private func restart() {
@@ -223,8 +362,14 @@ enum ChatContent {
             fence = SplitFence()
             previousBlank = false
             headEnd = 0
-            builtHeadEnd = -1
-            head = nil
+            builtHeadEnd = 0
+            headBlocks = []
+            headHashes = []
+            headToken = HeadToken(rowID: rowID, count: 0, hash: 0)
+            headOpenCode = 0
+            lastPiece = (0, 0)
+            fenceScan = nil
+            fenceParts = nil
         }
 
         private static func startsWith(_ string: String, prefix: String) -> Bool {
@@ -255,6 +400,7 @@ enum ChatContent {
         private var open: ChatMarkdown.Fence?
 
         var isOpen: Bool { open != nil }
+        var current: ChatMarkdown.Fence? { open }
 
         mutating func read(_ line: Substring) {
             let body = line.drop(while: { $0 == " " })

@@ -119,11 +119,15 @@ enum ChatRowEstimate {
 /// settled head's blocks (each measured once, kept under the row, the block's index, its content, the width and its wrap flag)
 /// and the open tail, which is measured with a hosting controller, plus the 12 pt between them. The unceiled sizes are summed
 /// and the total is ceiled once. A settled row, every other kind of row, and a message the composition does not cover are
-/// laid out whole, as before; `ChatStreamMeasureTests` pins the composition against the whole layout.
+/// laid out whole, as before; `ChatStreamMeasureTests` pins the composition against the whole layout. A long fence open at the
+/// end (`ChatContent.OpenFence`) is its card with the lines after its chunks, measured each time, plus the chunks' lines,
+/// each measured once and kept like a settled block: the card stacks them with no space between.
 @MainActor
 final class ChatRowMeasurer {
     private let host: NSHostingController<ChatRowView>
     private var markdownHost: NSHostingController<ChatMarkdownView>?
+    private var codeHost: NSHostingController<ChatCodeBlockView>?
+    private var linesHost: NSHostingController<ChatCodeLines>?
     private let context: ChatRowContext
     private(set) var measurements = 0
 
@@ -137,6 +141,8 @@ final class ChatRowMeasurer {
     }
 
     private var blockHeights: [String: [BlockKey: CGFloat]] = [:]
+    /// What a code card adds to its lines, by width and wrap flag (`codeChrome`).
+    private var chromeHeights: [String: CGFloat] = [:]
     /// Rows whose blocks are kept; a stream has one or two, and a block's height at a width the window left is dead weight.
     private static let rowsKept = 4
     private static let blocksKept = 4_096
@@ -181,13 +187,76 @@ final class ChatRowMeasurer {
             total += settledHeight(of: block, hash: parts.headHashes[index], index: index, row: row, width: content)
             count += 1
         }
+        if !parts.tail.isEmpty || parts.fence != nil {
+            ChatRenderProbe.measuredText(characters: parts.tailCharacters, blocks: parts.tail.count + (parts.fence == nil ? 0 : 1), in: context)
+        }
         if !parts.tail.isEmpty {
-            ChatRenderProbe.measuredText(characters: parts.tailCharacters, blocks: parts.tail.count, in: context)
             total += markdownHeight(ChatMarkdownView(blocks: parts.tail, flags: row.flags, rowID: row.id, isStreaming: true,
                                                      context: context, firstIndex: parts.head.count), width: content)
             count += 1
         }
+        if let fence = parts.fence {
+            total += fenceHeight(fence, row: row, width: content)
+            count += 1
+        }
         return total + LoomTheme.Chat.blockSpacing * CGFloat(max(0, count - 1))
+    }
+
+    /// An open fence: its card's chrome (header, hairline, padding) and its lines stacked as `ChatCodePieces` stacks them, from
+    /// the height of each chunk's lines, kept under the fence's index, the chunk's content, the width and the wrap flag, and
+    /// of the lines after the chunks.
+    private func fenceHeight(_ fence: ChatContent.OpenFence, row: ChatRow, width: CGFloat) -> CGFloat {
+        let wrapped = row.flags.contains("wrap:\(fence.index)")
+        // Unwrapped lines do not wrap at any width; wrapped ones wrap inside the card's padding.
+        let linesWidth = wrapped ? width - 2 * LoomTheme.Chat.codePaddingH : 100_000
+        var lines = 0
+        for (chunk, hash) in zip(fence.chunks, fence.chunkHashes) {
+            let key = BlockKey(index: fence.index, hash: hash, width: Int((linesWidth * 100).rounded()), wrapped: wrapped)
+            if let known = blockHeights[row.id]?[key] {
+                lines += ChatCodeLines.lines(height: known)
+                continue
+            }
+            ChatRenderProbe.measuredText(characters: chunk.utf8.count, blocks: 1, in: context)
+            let height = linesHeight(chunk, width: linesWidth)
+            keep(height, key, row: row)
+            lines += ChatCodeLines.lines(height: height)
+        }
+        if let open = fence.open { lines += ChatCodeLines.lines(height: linesHeight(open, width: linesWidth)) }
+        return codeChrome(width: width, wrapped: wrapped) + ChatCodeLines.height(lines: lines)
+    }
+
+    private func linesHeight(_ code: String, width: CGFloat) -> CGFloat {
+        fit(&linesHost, ChatCodeLines(code: code, selectable: true), width: width)
+    }
+
+    /// What a code card adds to its lines at this width: a one-line card less its line.
+    private func codeChrome(width: CGFloat, wrapped: Bool) -> CGFloat {
+        let key = "\(Int((width * 100).rounded()))#\(wrapped)"
+        if let known = chromeHeights[key] { return known }
+        // A context of its own: the card is not a block of the row, and no probe counts it.
+        let card = ChatCodeBlockView(language: nil, code: "x", isStreaming: true, wrapped: wrapped, context: ChatRowContext()) {}
+        let height = fit(&codeHost, card, width: width)
+            - linesHeight("x", width: wrapped ? width - 2 * LoomTheme.Chat.codePaddingH : 100_000)
+        if chromeHeights.count > 16 { chromeHeights.removeAll() }
+        chromeHeights[key] = height
+        return height
+    }
+
+    private func keep(_ height: CGFloat, _ key: BlockKey, row: ChatRow) {
+        if blockHeights[row.id] == nil, blockHeights.count >= Self.rowsKept { blockHeights.removeAll() }
+        if (blockHeights[row.id]?.count ?? 0) >= Self.blocksKept { blockHeights[row.id] = nil }
+        blockHeights[row.id, default: [:]][key] = height
+    }
+
+    private func fit<V: View>(_ host: inout NSHostingController<V>?, _ view: V, width: CGFloat) -> CGFloat {
+        let controller = host ?? {
+            let made = NSHostingController(rootView: view)
+            made.sizingOptions = []
+            return made
+        }()
+        host = controller
+        controller.rootView = view
+        return controller.sizeThatFits(in: CGSize(width: width, height: 100_000)).height
     }
 
     private func settledHeight(of block: MarkdownBlock, hash: Int, index: Int, row: ChatRow, width: CGFloat) -> CGFloat {
@@ -196,21 +265,12 @@ final class ChatRowMeasurer {
         ChatRenderProbe.measuredText(characters: ChatContent.characters(of: block), blocks: 1, in: context)
         let height = markdownHeight(ChatMarkdownView(blocks: [block], flags: row.flags, rowID: row.id, isStreaming: false,
                                                      context: context, firstIndex: index), width: width)
-        if blockHeights[row.id] == nil, blockHeights.count >= Self.rowsKept { blockHeights.removeAll() }
-        if (blockHeights[row.id]?.count ?? 0) >= Self.blocksKept { blockHeights[row.id] = nil }
-        blockHeights[row.id, default: [:]][key] = height
+        keep(height, key, row: row)
         return height
     }
 
     private func markdownHeight(_ view: ChatMarkdownView, width: CGFloat) -> CGFloat {
-        let host = markdownHost ?? {
-            let host = NSHostingController(rootView: view)
-            host.sizingOptions = []
-            markdownHost = host
-            return host
-        }()
-        host.rootView = view
-        return host.sizeThatFits(in: CGSize(width: width, height: 100_000)).height
+        fit(&markdownHost, view, width: width)
     }
 }
 

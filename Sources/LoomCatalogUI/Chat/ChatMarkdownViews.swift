@@ -50,7 +50,8 @@ struct ChatProseView: View {
 
 /// A streaming message: the settled head as one view that is drawn again only when the head or its wrap flags change, and the
 /// open tail, which is drawn every time. Laid out as one list of blocks: the head, the same 12 pt, the tail, and every
-/// block keeps the index it has in the whole message (the wrap flag and Copy use it).
+/// block keeps the index it has in the whole message (the wrap flag and Copy use it). A long fence open at the end follows
+/// the tail as one code block whose settled chunks are not drawn again (`ChatContent.OpenFence`).
 struct ChatStreamingMarkdownView: View {
     let parts: ChatContent.StreamingBlocks
     let flags: Set<String>
@@ -69,6 +70,9 @@ struct ChatStreamingMarkdownView: View {
                 if !parts.tail.isEmpty {
                     ChatMarkdownView(blocks: parts.tail, flags: flags, rowID: rowID, isStreaming: true, context: context,
                                      firstIndex: parts.head.count)
+                }
+                if let fence = parts.fence {
+                    ChatCodeBlockView(fence: fence, flags: flags, rowID: rowID, context: context)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -168,7 +172,7 @@ struct ChatMarkdownBlockView: View {
                 .chatTextSelection(!isStreaming)
         case let .code(language, code, closed):
             ChatCodeBlockView(language: language, code: code, isStreaming: isStreaming && isLast && !closed,
-                              wrapped: flags.contains("wrap:\(index)"), context: context, selectable: !isStreaming) {
+                              wrapped: flags.contains("wrap:\(index)"), index: index, context: context, selectable: !isStreaming) {
                 context.toggleFlag(rowID, "wrap:\(index)")
             }
         case let .list(ordered, start, items):
@@ -266,33 +270,67 @@ struct ChatMarkdownTableView: View {
 }
 
 /// A fenced code block (DESIGN §7): a card (raised 1, radius 8, a hairline) with a 30 pt header (the language in mono 11
-/// tertiary, a wrap toggle and Copy) over the code in 12.5 / 20; the code scrolls sideways unless it wraps.
+/// tertiary, a wrap toggle and Copy) over the code in 12.5 / 20; the code scrolls sideways unless it wraps. Copy is there once
+/// the block is no longer streaming. A long fence that is still open draws its settled chunks, each kept as it was drawn, and
+/// the lines after them as one text cut in pieces (`ChatCodePieces`); a settled block is one text.
 struct ChatCodeBlockView: View {
     let language: String?
-    let code: String
+    /// Settled chunks of the code, drawn before `code`; empty for a block drawn whole.
+    var chunks: [String] = []
+    /// The code, or the lines after the chunks; nil when none of them has come.
+    let code: String?
     let isStreaming: Bool
     let wrapped: Bool
+    let index: Int
     let context: ChatRowContext
     var selectable = true
     let toggleWrap: () -> Void
 
+    init(language: String?, chunks: [String] = [], code: String?, isStreaming: Bool, wrapped: Bool, index: Int = 0,
+         context: ChatRowContext, selectable: Bool = true, toggleWrap: @escaping () -> Void) {
+        self.language = language
+        self.chunks = chunks
+        self.code = code
+        self.isStreaming = isStreaming
+        self.wrapped = wrapped
+        self.index = index
+        self.context = context
+        self.selectable = selectable
+        self.toggleWrap = toggleWrap
+    }
+
+    /// The open fence of a streaming message, drawn in chunks.
+    init(fence: ChatContent.OpenFence, flags: Set<String>, rowID: String, context: ChatRowContext) {
+        self.init(language: fence.language, chunks: fence.chunks, code: fence.open, isStreaming: true,
+                  wrapped: flags.contains("wrap:\(fence.index)"), index: fence.index, context: context, selectable: false) {
+            context.toggleFlag(rowID, "wrap:\(fence.index)")
+        }
+    }
+
     var body: some View {
+        let _ = ChatSelectionProbe.codeBlockDrawn(index: index, chunks: chunks.count, offersCopy: !isStreaming, in: context)
         VStack(spacing: 0) {
             HStack(spacing: 2) {
                 Text(verbatim: language ?? "text").font(LoomTheme.Chat.timeMono).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 Spacer(minLength: 0)
                 ChatIconButton(symbol: wrapped ? "text.alignleft" : "arrow.turn.down.left",
                                label: wrapped ? "Do not wrap lines" : "Wrap lines", action: toggleWrap)
-                ChatCopyButton(text: code, context: context)
+                // Held in place while the block streams, so the header does not move when Copy comes.
+                if isStreaming {
+                    ChatCopyButton(text: "", context: context).hidden()
+                } else {
+                    ChatCopyButton(text: chunks.isEmpty ? code ?? "" : ([chunks.joined(separator: "\n")] + (code.map { [$0] } ?? [])).joined(separator: "\n"),
+                                   context: context)
+                }
             }
             .padding(.leading, LoomTheme.Chat.outputPaddingH).padding(.trailing, 4)
             .frame(height: LoomTheme.Chat.codeHeaderHeight)
             Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
             if wrapped {
-                codeText.padding(codePadding).frame(maxWidth: .infinity, alignment: .leading)
+                lines.padding(Self.codePadding).frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    codeText.padding(codePadding).fixedSize(horizontal: true, vertical: true)
+                    lines.padding(Self.codePadding).fixedSize(horizontal: true, vertical: true)
                 }
             }
         }
@@ -301,13 +339,36 @@ struct ChatCodeBlockView: View {
         .clipShape(RoundedRectangle(cornerRadius: LoomTheme.Chat.codeRadius))
     }
 
-    private var codePadding: EdgeInsets {
+    static var codePadding: EdgeInsets {
         EdgeInsets(top: LoomTheme.Chat.codePaddingTop, leading: LoomTheme.Chat.codePaddingH,
                    bottom: LoomTheme.Chat.codePaddingBottom, trailing: LoomTheme.Chat.codePaddingH)
     }
 
-    @ViewBuilder private var codeText: some View {
-        let colored = ChatHighlighter.highlighted(code, language: language, isStreaming: isStreaming)
+    @ViewBuilder private var lines: some View {
+        if chunks.isEmpty {
+            if let code {
+                ChatCodeLines(code: code, colored: ChatHighlighter.highlighted(code, language: language, isStreaming: isStreaming),
+                              selectable: selectable)
+            }
+        } else {
+            // An open fence's settled chunks are drawn as the open lines are (plain while it streams) and stay selectable.
+            ChatCodePieces {
+                ForEach(Array(chunks.enumerated()), id: \.offset) { _, chunk in
+                    ChatCodeLines(code: chunk, selectable: true).equatable()
+                }
+                if let code { ChatCodeLines(code: code, selectable: selectable) }
+            }
+        }
+    }
+}
+
+/// Lines of code in 12.5 / 20.
+struct ChatCodeLines: View, Equatable {
+    let code: String
+    var colored: AttributedString?
+    let selectable: Bool
+
+    var body: some View {
         Group {
             if let colored { Text(colored) } else { Text(verbatim: code) }
         }
@@ -317,6 +378,38 @@ struct ChatCodeBlockView: View {
         .chatTextSelection(selectable)
         // Line spacing falls between lines only; half of it above and below makes every line 20 high.
         .padding(.vertical, LoomTheme.Chat.codeLineSpacing / 2)
+    }
+
+    /// A text's line fragment is the font's line height rounded up, and the lines are that plus the spacing apart.
+    static let fragment = (LoomTheme.Chat.bodyLineHeight - LoomTheme.Chat.codeLineSpacing).rounded(.up)
+    static let pitch = fragment + LoomTheme.Chat.codeLineSpacing
+
+    /// The visual lines of a `ChatCodeLines` of this height: a text is as high as its lines, rounded up on its own.
+    static func lines(height: CGFloat) -> Int { max(1, Int((height / pitch).rounded())) }
+
+    /// The height of one `ChatCodeLines` holding these lines: what pieces of these heights stack to (`ChatCodePieces`).
+    static func height(lines: Int) -> CGFloat {
+        (CGFloat(lines) * fragment + CGFloat(lines - 1) * LoomTheme.Chat.codeLineSpacing).rounded(.up) + LoomTheme.Chat.codeLineSpacing
+    }
+}
+
+/// Pieces of one code text, stacked a line pitch apart from the lines they hold rather than by their own heights: each
+/// text's height is rounded up on its own, and the stack is as high as one text of all their lines, rounded once. So an
+/// open fence drawn in chunks is as high as the same lines in one text.
+struct ChatCodePieces: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil)) }
+        let lines = sizes.reduce(0) { $0 + ChatCodeLines.lines(height: $1.height) }
+        return CGSize(width: sizes.map(\.width).max() ?? 0, height: sizes.isEmpty ? 0 : ChatCodeLines.height(lines: lines))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for subview in subviews {
+            let size = subview.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+            subview.place(at: CGPoint(x: bounds.minX, y: y), anchor: .topLeading, proposal: ProposedViewSize(width: proposal.width, height: size.height))
+            y += CGFloat(ChatCodeLines.lines(height: size.height)) * ChatCodeLines.pitch
+        }
     }
 }
 
@@ -335,15 +428,30 @@ extension View {
     func chatTextSelection(_ enabled: Bool) -> some View { modifier(ChatTextSelection(enabled: enabled)) }
 }
 
-/// Whether the top-level blocks of the scope `ChatRenderProbe` watches were last drawn selectable, by `"<index>#<content hash>"`.
+/// For the scope `ChatRenderProbe` watches: whether its top-level blocks were last drawn selectable, by
+/// `"<index>#<content hash>"`, and how its code blocks were last drawn, by index.
 @MainActor
 enum ChatSelectionProbe {
+    struct CodeBlock: Equatable {
+        var chunks: Int
+        var offersCopy: Bool
+    }
+
     private(set) static var selectable: [String: Bool] = [:]
+    private(set) static var codeBlocks: [Int: CodeBlock] = [:]
 
     static func drawn(index: Int, block: MarkdownBlock, selectable value: Bool, in context: ChatRowContext?) {
         guard ChatRenderProbe.owns(context) else { return }
         selectable["\(index)#\(block.hashValue)"] = value
     }
 
-    static func reset() { selectable = [:] }
+    static func codeBlockDrawn(index: Int, chunks: Int, offersCopy: Bool, in context: ChatRowContext?) {
+        guard ChatRenderProbe.owns(context) else { return }
+        codeBlocks[index] = CodeBlock(chunks: chunks, offersCopy: offersCopy)
+    }
+
+    static func reset() {
+        selectable = [:]
+        codeBlocks = [:]
+    }
 }
