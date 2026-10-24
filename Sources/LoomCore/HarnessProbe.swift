@@ -203,9 +203,9 @@ public actor HarnessProbe {
         self.clock = clock
     }
 
-    /// The harnesses the probe can ask: one private place to say it, for the capability table to replace (`usageLimits`).
+    /// The harnesses the probe can ask: those whose capability reports usage and limits, and that have a source here.
     private func asks(_ provider: ManagedSession.Provider) -> Bool {
-        (provider == .claude || provider == .codex) && sources[provider] != nil
+        HarnessCapabilities.intrinsic(of: provider).usageLimits && sources[provider] != nil
     }
 
     /// The reading of `harness`: the last answer when it is younger than the floor, else a new ask (always, with `force`).

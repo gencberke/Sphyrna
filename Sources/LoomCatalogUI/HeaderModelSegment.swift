@@ -76,16 +76,16 @@ final class SessionLaunchModels {
 }
 
 extension CatalogModel {
-    /// Whether the header carries the model segment for a session: a Claude session on a face without the composer bar. A
-    /// live Chat run, and a stopped session the Chat face owns, have the bar (its model chip and ring).
+    /// Whether the header carries the model segment for a session: one whose context use Loom reads, on a face without the
+    /// composer bar. A live Chat run, and a stopped session the Chat face owns, have the bar (its model chip and ring).
     func headerShowsModelSegment(_ row: SessionRowModel) -> Bool {
-        row.record.session.provider == .claude && runEndpoint(of: row) != .pipe && !showsStoppedLiveChat(row)
+        capabilities(of: row.record.session.provider).readsContext && runEndpoint(of: row) != .pipe && !showsStoppedLiveChat(row)
     }
 
     /// What the segment and the inspector's Model fact say for a session, from the one source: the usage index's reading,
     /// else the launch choice. Reads only this session's entries.
     func modelContent(of record: CatalogSession) -> HeaderModelContent? {
-        guard record.session.provider == .claude else { return nil }
+        guard capabilities(of: record.session.provider).readsContext else { return nil }
         let reading = record.session.providerConversationID.flatMap { usage?.contexts[$0] }
         return HeaderModelContent(usage: reading, launchModel: launchModels.model(of: record.session.id))
     }

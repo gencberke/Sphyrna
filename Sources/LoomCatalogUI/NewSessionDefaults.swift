@@ -57,9 +57,10 @@ struct NewSessionSettings: Equatable, Sendable, Codable {
 }
 
 /// The model aliases the draft offers: the CLI takes the alias and decides which release it means. A session in the
-/// draft has not run yet, so the CLI's own model list (`initialize`) is not known; the aliases are the three families.
+/// draft has not run yet, so the CLI's own model list (`initialize`) is not known; the aliases are the three families, from
+/// Claude's model catalog.
 enum NewSessionModels {
-    static let all: [(alias: String, title: String)] = [("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku")]
+    static let all: [(alias: String, title: String)] = ModelCatalog.claude.map { (alias: $0.id, title: $0.title) }
 
     static func title(of alias: String) -> String {
         all.first { $0.alias == alias }?.title ?? alias

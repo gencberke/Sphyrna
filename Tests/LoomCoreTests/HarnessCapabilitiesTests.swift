@@ -59,14 +59,12 @@ struct HarnessCapabilitiesTests {
 
     // MARK: The guard (D-94)
 
-    /// The files that dispatch per provider on purpose: a launch profile built for one harness, the evidence tooling's choice of
-    /// the harness to fake, and the model segment (r6-probe turns it into a capability read). No other file asks which harness
-    /// a session has; it asks the table.
+    /// The files that dispatch per provider on purpose: a launch profile built for one harness, and the evidence tooling's choice
+    /// of the harness to fake. No other file asks which harness a session has; it asks the table.
     private static let dispatchFiles: Set<String> = [
         "Sources/LoomCore/ProviderResume.swift",
         "Sources/loom-app/Evidence/AppDelegate+Evidence.swift",
         "Sources/loom-app/Evidence/EvidenceCatalogCommands.swift",
-        "Sources/LoomCatalogUI/HeaderModelSegment.swift",
     ]
 
     /// A comparison with `.claude` (`provider == .claude`, `harness != .claude`), not a mention in a comment or a case label.
