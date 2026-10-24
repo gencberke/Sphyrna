@@ -4,7 +4,7 @@
 - **Integration branch:** `v2` in `~/Library/Caches/loom-v2/wt/v2` (cut from `swarm/1` at `24d8cfb` on 17 Oct; local only, never pushed). Note: `/Users/gencberke/Documents/github/loom-dev` is on `swarm/1` for canonical doc updates; all code edits, builds, and tests run in `wt/v2` and the slice worktrees below.
 - **Lanes (from 22 Oct):** one main planner session drives Claude implementers as its own subagents, each slice in its own worktree cut from `v2`'s head, and integrates accepted slices straight onto `v2`. The areas keep the tracks' split: **ink** owns `Sources/LoomCatalogUI`, UI files in `Sources/loom-app`, `assets/` and `Tests/LoomCatalogUITests`; **core** owns `Sources/LoomCore`, `LoomChat`, `LoomRemora`, `LoomLaunchOptions`, helper executables, `scripts/` and their tests. Docs are the planner's. The track sessions and branches of 21 Oct (`sphyrna-ink` on `ink`, `sphyrna-core` on `core`, plans in `~/Library/Caches/loom-v2/evidence/{ink,core}/PLAN.md`) are idle, and `opencode` ([D-89](../DECISIONS.md)) is not used this round (`@user`, 22 Oct).
 - **Canonical specs:** [SPEC.md](../SPEC.md) (product & behavioral specification), [design/DESIGN.md](../design/DESIGN.md) (Ink v3 visual system), [design/reference.html](../design/reference.html) (visual target), and [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) (system architecture & UI code index).
-- **Now (24 Oct):** round 5 works toward **1.6.1** (§0). The sections after §0 are 1.6.0's record.
+- **Now (25 Oct):** 1.6.1 is complete (§0); the roadmap after it is §0.1. The sections after §0.1 are 1.6.0's record.
 
 ---
 
@@ -41,6 +41,23 @@
 | FB5-10 S3–S5 | `r5-chat-cost` | Long blocks; one layout per flush; rows of blocks only if Q17 needs them | **Integrated** S3 `27af3f6`, S4 `4793e9b`, S2's whole-flush timing `618eb41`, no selection while streaming `23174ee` (`@user`'s trade). After S4: 19.2 % at 600 and 39.0 % at 6,000. Q17 is missed; S5 is not in 1.6.1 |
 | W1-e, part 2 | `r5-icon` | Top re-posed; the icon's sources, `make-app-icon.sh`, `assets/icon/*` and the `.icns` grid | **Integrated** `8161e80`; part 3, the reference's identity page and the README's icon, `7b6161a`. Left: DESIGN §6 and removing the old glyph files (docs pass) |
 | Close | planner | The pool (D-90), the optimizer (D-06) and the docs. The tag and the promote wait for `@user` | — |
+
+---
+
+## 0.1 Roadmap after 1.6.1 (25 Oct)
+
+1.6.1 closed with every Wave 1 and Wave 3 slice except Peek, and with Chat cost S0–S4. The next releases follow D-93.
+
+| Release | What | Source |
+| --- | --- | --- |
+| **1.6.2** | **Codex at parity, the infrastructure:** a parity matrix first (every surface × the data it needs → harness-neutral contracts); one capability table for every gate (no `provider == .claude`); a transcript reader contract with Claude and Codex readers (search, Remora, Changes' turn scopes, the project page, mentions); the model catalog read from the harness | FB5-9, D-94 |
+| 1.6.2 | **Usage after T3 Code**, per harness, with Codex's limits; **Settings → Connections** (health, Install and Sign In through a Sphyrna terminal, Deep Check; no credentials handled) | FB5-7 (D-99), FB5-8 (D-98) |
+| 1.6.2 | **Chat cost S5:** rows of settled blocks instead of one row per message, to reach Q17 (≤ 12 % at 600, ≤ 25 % at 6,000); 1.6.1 ends at 19.2 / 39.0 | FB5-10, D-92 (3) |
+| 1.6.2 | **Small leftovers:** Peek (hover a row for its last ask); a session dropped on a terminal pastes its transcript path; the review's notes (a malformed list-item fence streams differently, S2 can miss one stretched cycle, `fileExists` in a view body, a possible 1 pt jump when a row changes its measuring source); `scripts/README.md` gains `make-app-icon.sh` and `--variant` | round 5's review, RUN.md |
+| **1.7.0** | **The session channel and Codex's binding:** starting and resuming Codex, the Codex Chat driver (decided when 1.7.0 is planned), the channel | D-93, D-94 |
+| Later | Each with its own decision: split view and windows; an attention inbox (filters, levels, snooze); review memory in Changes; rows rich in status; sending the queue when a limit resets; quick entry; sessions started outside Sphyrna, as history | FB5-6 |
+
+**Hand checks on the installed 1.6.1** (`@user`, when convenient): real drags (tab strip, header zone, project heads, sessions onto the composer, files onto panes); the Dock menu; Open Folder in Editor, which may land in an app that cannot open folders; Keep Mac awake and the long-turn banner's Open; a long code block streaming across its 40-line seams; the Settings tabs.
 
 ---
 

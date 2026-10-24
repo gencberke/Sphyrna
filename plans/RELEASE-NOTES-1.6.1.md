@@ -37,7 +37,7 @@ Draft of 24 Oct 2026, for `@user`'s release (the push and the GitHub release wai
 
 ## Chat
 
-- **The stream costs less.** While a long answer arrives, Sphyrna lays it out once per update and spaces updates out when one costs a lot, up to 160 ms. A long code block settles in chunks while it streams, so it costs no more than prose; its Copy appears when the block closes. An answer's text can be selected once the answer finishes. TODO(planner): the measured drop.
+- **The stream costs less.** While a long answer arrives, Sphyrna lays it out once per update and spaces updates out when one costs a lot, up to 160 ms. A long code block settles in chunks while it streams, so it costs no more than prose; its Copy appears when the block closes. An answer's text can be selected once the answer finishes. A Chat answer streaming at 600 characters a second costs about 14 % less CPU than in 1.6.0, about 19 % less at 6,000, and a long code block about half.
 
 ## Going back to 1.6.0
 
