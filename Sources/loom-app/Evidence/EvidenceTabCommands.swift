@@ -5,6 +5,8 @@ import LoomCatalogUI
 /// Conversation tab commands (U4): the same model calls the strip, the context menus and the menu shortcuts make.
 ///
 /// - `tab-pin:<id>`: "Open in Tab" (pins the conversation and shows it).
+/// - `tab-pin-at:<id>:<index>`: a drop of the session on the strip, pinned at `index` of the pinned tabs (a pinned one moves).
+/// - `tab-move:<id>:<index>`: a tab dragged within the strip to `index` of the pinned tabs.
 /// - `tab-unpin:<id>`: unpins without changing what is shown (the selected tab turns transient).
 /// - `tab-select:<id|next|prev>`: a click on a tab, or Show Next / Previous Tab.
 /// - `tab-close:<id>`: the tab's close button (only unpins; never stops a run).
@@ -24,6 +26,8 @@ extension DevelopmentEvidence {
         let id = UUID(uuidString: String(argument.prefix(36)))
         switch name {
         case "tab-pin": if let id { model.openTab(id) }
+        case "tab-pin-at": if let id, let index = Self.tabIndex(argument) { model.openTab(id, at: index) }
+        case "tab-move": if let id, let index = Self.tabIndex(argument) { model.moveTab(id, to: index) }
         case "tab-unpin": if let id { model.unpinTab(id) }
         case "tab-select":
             switch argument {
@@ -36,6 +40,12 @@ extension DevelopmentEvidence {
         default: return false
         }
         return true
+    }
+
+    /// The `<index>` after `<id>:`.
+    private static func tabIndex(_ argument: String) -> Int? {
+        guard argument.count > 37 else { return nil }
+        return Int(argument.dropFirst(37))
     }
 }
 

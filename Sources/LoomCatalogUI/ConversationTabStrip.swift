@@ -64,6 +64,24 @@ struct TabStripLayout: Equatable {
         return nil
     }
 
+    /// The gap a drop at `x` (in the strip) lands in: the number of visible tabs whose middle is left of it, so 0 is before
+    /// the first tab and `count` after the last (also over the chevron and the "+" button).
+    func dropGap(atX x: CGFloat, scrollOffset: CGFloat) -> Int {
+        guard count > 0 else { return 0 }
+        let inList = x - LoomTheme.TabStrip.inset
+        guard inList < listWidth else { return count }
+        let step = tabWidth + LoomTheme.TabStrip.gap
+        let position = inList + (overflows ? scrollOffset : 0) - tabWidth / 2
+        return min(max(Int((position / step).rounded(.down)) + 1, 0), count)
+    }
+
+    /// Where the insertion mark of `gap` stands in the strip: in the middle of the space between two tabs, kept inside the list.
+    func insertionX(forGap gap: Int, scrollOffset: CGFloat) -> CGFloat {
+        let step = tabWidth + LoomTheme.TabStrip.gap
+        let inList = CGFloat(gap) * step - LoomTheme.TabStrip.gap / 2 - (overflows ? scrollOffset : 0)
+        return LoomTheme.TabStrip.inset + min(max(inList, 0), max(listWidth, 0))
+    }
+
     /// The strongest status among hidden tabs, the same priority as a project row.
     static func hiddenAttention(_ indicators: [SessionIndicator]) -> ProjectAttention? {
         ProjectAttention.strongest(of: indicators)
@@ -76,6 +94,8 @@ struct TabStripLayout: Equatable {
 struct ConversationTabStrip: View {
     let model: CatalogModel
     @State private var scrollOffset: CGFloat = 0
+    /// The gap a dragged session would land in, while one is over the strip.
+    @State private var dropGap: Int?
 
     var body: some View {
         let ids = model.visibleTabIDs
@@ -91,6 +111,15 @@ struct ConversationTabStrip: View {
             }
             .padding(.horizontal, LoomTheme.TabStrip.inset)
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
+            .overlay(alignment: .leading) {
+                if let dropGap {
+                    TabInsertionMark().offset(x: layout.insertionX(forGap: dropGap, scrollOffset: scrollOffset)
+                        - LoomTheme.Line.focusRing / 2)
+                }
+            }
+            .contentShape(Rectangle())
+            .onDrop(of: [SessionDrag.contentType], delegate: TabStripDropDelegate(
+                model: model, layout: layout, scrollOffset: scrollOffset, gap: $dropGap))
         }
         .frame(height: LoomTheme.TabStrip.height)
         .overlay(alignment: .bottom) {
@@ -98,6 +127,82 @@ struct ConversationTabStrip: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Session tabs")
+    }
+}
+
+/// Where a dragged session will land: an accent bar as tall as a tab, in the gap.
+private struct TabInsertionMark: View {
+    var body: some View {
+        Rectangle().fill(LoomTheme.Accent.base)
+            .frame(width: LoomTheme.Line.focusRing, height: LoomTheme.TabStrip.tabHeight)
+            .allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+/// The strip as a drop target: a session (from the sidebar, Home or a tab) opens pinned at the gap it is dropped in, or moves
+/// there when it is already pinned. Anything that is not a session is refused.
+struct TabStripDropDelegate: DropDelegate {
+    let model: CatalogModel
+    let layout: TabStripLayout
+    let scrollOffset: CGFloat
+    @Binding var gap: Int?
+
+    static func accepts(_ info: DropInfo) -> Bool { SessionDrag.accepts(info.itemProviders(for: [SessionDrag.contentType])) }
+
+    func validateDrop(info: DropInfo) -> Bool { Self.accepts(info) }
+
+    func dropEntered(info: DropInfo) {
+        guard Self.accepts(info) else { return }
+        model.setTabDropHover(.strip, true)
+        gap = layout.dropGap(atX: info.location.x, scrollOffset: scrollOffset)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard Self.accepts(info) else { return DropProposal(operation: .forbidden) }
+        let next = layout.dropGap(atX: info.location.x, scrollOffset: scrollOffset)
+        if gap != next { gap = next }
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        gap = nil
+        model.setTabDropHover(.strip, false)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let target = gap ?? layout.dropGap(atX: info.location.x, scrollOffset: scrollOffset)
+        gap = nil
+        model.setTabDropHover(.strip, false)
+        let providers = info.itemProviders(for: [SessionDrag.contentType])
+        guard !providers.isEmpty else { return false }
+        let model = model
+        Task { @MainActor in
+            guard let id = await SessionDrag.sessionID(from: providers) else { return }
+            model.dropOnTabs(id, gap: target)
+        }
+        return true
+    }
+}
+
+/// The header above the tab row while a session is dragged over it: the row shows as a drop zone (`showsTabDropZone`), even
+/// with fewer than two tabs, until the drag leaves both or ends.
+struct TabRowRevealDropDelegate: DropDelegate {
+    let model: CatalogModel
+
+    func validateDrop(info: DropInfo) -> Bool { TabStripDropDelegate.accepts(info) }
+    func dropEntered(info: DropInfo) { if TabStripDropDelegate.accepts(info) { model.setTabDropHover(.header, true) } }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .cancel) }
+    func dropExited(info: DropInfo) { model.setTabDropHover(.header, false) }
+    func performDrop(info: DropInfo) -> Bool {
+        model.setTabDropHover(.header, false)
+        return false
+    }
+}
+
+extension View {
+    /// Shows the tab row as a drop zone while a session is dragged over this view (the header).
+    func revealsTabRowOnSessionDrag(model: CatalogModel) -> some View {
+        onDrop(of: [SessionDrag.contentType], delegate: TabRowRevealDropDelegate(model: model))
     }
 }
 
@@ -206,6 +311,8 @@ struct ConversationTabItem: View {
         .contentShape(shape)
         .onHover { hovering = $0 }
         .onTapGesture { model.selectTab(id) }
+        // Dragged within the strip it reorders the tabs; dragged elsewhere it is the session (a mention in a composer).
+        .sessionDragSource(id, title: title)
         // A double click pins the transient tab (a pinned tab ignores it).
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.openTab(id) })
         .contextMenu {

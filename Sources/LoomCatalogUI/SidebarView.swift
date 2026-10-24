@@ -630,6 +630,8 @@ struct SessionCardView: View {
             key: "sidebar-card:\(row.id)", tint: tone))
         .focusEffectDisabled()
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.openTab(row.id, revealInList: false) })
+        // Dropped on the tab strip it opens there (U4).
+        .sessionDragSource(row.id, title: title)
         .contextMenu {
             Button("Rename…") { model.beginRename(row.id) }
             Button("Open in Tab") { model.openTab(row.id, revealInList: false) }.disabled(model.tabs.isPinned(row.id))

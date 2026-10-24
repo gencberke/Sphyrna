@@ -95,6 +95,7 @@ struct HomeEntryRow: View {
             .background(HomeRowFill(hot: hot))
             .contentShape(Rectangle())
             .onTapGesture { model.select(entry.id) }
+            .sessionDragSource(entry.id, title: entry.title)
             .onHover { hovering = $0 }
         }
         .accessibilityElement(children: .contain)
@@ -204,6 +205,7 @@ private struct HomeContinueRow: View {
             .padding(.vertical, LoomTheme.Home.rowOneLine)
             .padding(.horizontal, LoomTheme.Home.itemPadding)
             .background(HomeRowFill(hot: hot))
+            .sessionDragSource(entry.id, title: entry.title)
             .onHover { hovering = $0 }
         }
         .accessibilityElement(children: .contain)

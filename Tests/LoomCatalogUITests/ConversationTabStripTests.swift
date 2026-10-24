@@ -20,6 +20,45 @@ struct ConversationTabStripTests {
         #expect(TabStripLayout.isVisible(tabCount: 8))
     }
 
+    // MARK: Drops (W3-b)
+
+    @Test func aDropLandsInTheGapNearestThePointerAndTheMarkStandsInThatGap() {
+        let layout = TabStripLayout(count: 3, width: 904) // three 230 pt tabs, 4 pt apart, from x = 8
+        let inset = LoomTheme.TabStrip.inset, step = layout.tabWidth + LoomTheme.TabStrip.gap
+        #expect(layout.dropGap(atX: 0, scrollOffset: 0) == 0)
+        #expect(layout.dropGap(atX: inset + 100, scrollOffset: 0) == 0, "the first tab's left half")
+        #expect(layout.dropGap(atX: inset + 130, scrollOffset: 0) == 1, "its right half")
+        #expect(layout.dropGap(atX: inset + step + 200, scrollOffset: 0) == 2)
+        #expect(layout.dropGap(atX: inset + 2 * step + 200, scrollOffset: 0) == 3)
+        #expect(layout.dropGap(atX: 880, scrollOffset: 0) == 3, "past the tabs, over the + button: the end")
+        #expect(layout.insertionX(forGap: 0, scrollOffset: 0) == inset)
+        #expect(layout.insertionX(forGap: 1, scrollOffset: 0) == inset + step - LoomTheme.TabStrip.gap / 2)
+        #expect(layout.insertionX(forGap: 3, scrollOffset: 0) == inset + layout.listWidth)
+        // An empty strip shown as a drop zone takes the drop as its first tab.
+        #expect(TabStripLayout(count: 0, width: 904).dropGap(atX: 300, scrollOffset: 0) == 0)
+        // A scrolled strip counts the tabs scrolled out at the leading edge.
+        let scrolled = TabStripLayout(count: 8, width: 464)
+        let tab = scrolled.tabWidth + LoomTheme.TabStrip.gap
+        #expect(scrolled.dropGap(atX: inset + 10, scrollOffset: 2 * tab) == 2)
+    }
+
+    @Test func theStripTakesASessionAndRefusesAnythingElse() async throws {
+        let id = UUID()
+        let session = SessionDrag.itemProvider(for: id, title: "Fix the build")
+        #expect(SessionDrag.accepts([session]))
+        #expect(await SessionDrag.sessionID(from: [session]) == id)
+        // Text, even text that is a session's id, and a file are not sessions.
+        let text = NSItemProvider(object: id.uuidString as NSString)
+        let file = NSItemProvider(contentsOf: URL(fileURLWithPath: "/tmp"))!
+        for other in [text, file] {
+            #expect(!SessionDrag.accepts([other]))
+            #expect(await SessionDrag.sessionID(from: [other]) == nil)
+        }
+        #expect(!SessionDrag.accepts([]))
+        #expect(SessionDrag.accepts([text, session]))
+        #expect(await SessionDrag.sessionID(from: [text, session]) == id, "the session among other items")
+    }
+
     /// The room for tabs is the row without its "+" button and its gap.
     private let plus = TabStripLayout.plusReserve
 

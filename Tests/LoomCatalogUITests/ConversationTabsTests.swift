@@ -75,6 +75,66 @@ struct ConversationTabsTests {
         #expect(tabs.pinned == [new, all[2]])
     }
 
+    // MARK: Drops and reordering (W3-b)
+
+    @Test func pinAtPlacesANewTabAtTheStartTheMiddleAndTheEnd() {
+        let all = ids(3)
+        let (start, middle, end, far) = (UUID(), UUID(), UUID(), UUID())
+        let tabs = ConversationTabs(pinned: all)
+        #expect(tabs.pin(start, at: 0, canEvict: { _ in true }) == .pinned(evicted: nil))
+        #expect(tabs.pinned == [start] + all)
+        #expect(tabs.pin(middle, at: 2, canEvict: { _ in true }) == .pinned(evicted: nil))
+        #expect(tabs.pinned == [start, all[0], middle, all[1], all[2]])
+        #expect(tabs.pin(end, at: 5, canEvict: { _ in true }) == .pinned(evicted: nil))
+        #expect(tabs.pinned.last == end)
+        // Past the end, or before the start, clamps.
+        #expect(tabs.pin(far, at: 99, canEvict: { _ in true }) == .pinned(evicted: nil))
+        #expect(tabs.pinned.last == far && tabs.pinned.count == 7)
+    }
+
+    @Test func aPinnedSessionDroppedAgainMovesAndIsNeverDuplicated() {
+        let all = ids(4)
+        let tabs = ConversationTabs(pinned: all)
+        #expect(tabs.pin(all[3], at: 0, canEvict: { _ in true }) == .alreadyPinned)
+        #expect(tabs.pinned == [all[3], all[0], all[1], all[2]])
+        #expect(tabs.pin(all[3], at: -4, canEvict: { _ in true }) == .alreadyPinned)
+        #expect(tabs.pinned == [all[3], all[0], all[1], all[2]])
+        #expect(Set(tabs.pinned).count == 4)
+    }
+
+    @Test func pinAtOnAFullStripEvictsLikePinOrRefusesWithTheSameReason() {
+        let all = ids(ConversationTabs.capacity)
+        let tabs = ConversationTabs(pinned: all)
+        let extra = UUID()
+        guard case let .refused(reason) = tabs.pin(extra, at: 1, canEvict: { _ in false }) else {
+            Issue.record("expected a refusal"); return
+        }
+        #expect(tabs.pinned == all)
+        #expect(ConversationTabs(pinned: all).pin(extra, canEvict: { _ in false }) == .refused(reason))
+        // With room made by the oldest idle tab the new one lands where it was dropped.
+        #expect(tabs.pin(extra, at: 1, canEvict: { $0 == all[0] }) == .pinned(evicted: all[0]))
+        #expect(tabs.pinned == [all[1], extra] + all[2...])
+    }
+
+    @Test func moveReordersAndAGapMapsToTheTabsFinalPlace() {
+        let all = ids(4)
+        let tabs = ConversationTabs(pinned: all)
+        #expect(tabs.move(all[0], to: 2))
+        #expect(tabs.pinned == [all[1], all[2], all[0], all[3]])
+        #expect(!tabs.move(all[0], to: 2), "already there")
+        #expect(!tabs.move(UUID(), to: 0), "not pinned")
+        #expect(tabs.move(all[0], to: 99))
+        #expect(tabs.pinned.last == all[0])
+        // A tab moving right leaves its own place: dropped in the gap before visible tab 3 it ends at 2.
+        let order = ConversationTabs(pinned: all)
+        #expect(order.position(forGap: 3, of: all[0]) == 2)
+        #expect(order.position(forGap: 0, of: all[2]) == 0)
+        #expect(order.position(forGap: 1, of: all[1]) == 1 && order.position(forGap: 2, of: all[1]) == 1, "either side of itself")
+        // A new session, and any gap past the pinned tabs (the transient tab's), is the end.
+        #expect(order.position(forGap: 2, of: UUID()) == 2)
+        #expect(order.position(forGap: 9, of: UUID()) == 4)
+    }
+
     // MARK: Model over a real catalog
 
     struct Fixture {
@@ -140,6 +200,51 @@ struct ConversationTabsTests {
         #expect(reopened.visibleTabIDs == [a, b])
         // Titles come from the rows, which start() read for the tabs.
         #expect(reopened.tabRow(a).map { reopened.title(of: $0) } == "Row 0")
+    }
+
+    @Test func aDropPinsAtThePositionShowsTheSessionAndPersistsAndAMoveSurvivesAReload() async throws {
+        let fixture = try await makeFixture(rows: 5)
+        defer { cleanup(fixture) }
+        await fixture.model.start()
+        let ids = fixture.sessionIDs
+        fixture.model.openTab(ids[0])
+        fixture.model.openTab(ids[1])
+        // Dropped in the gap before the second tab.
+        #expect(fixture.model.dropOnTabs(ids[2], gap: 1) == .pinned(evicted: nil))
+        #expect(fixture.model.tabs.pinned == [ids[0], ids[2], ids[1]])
+        #expect(fixture.model.selectedSessionID == ids[2])
+        // A pinned tab dropped at the end moves; nothing is duplicated.
+        #expect(fixture.model.dropOnTabs(ids[0], gap: 3) == .alreadyPinned)
+        #expect(fixture.model.tabs.pinned == [ids[2], ids[1], ids[0]])
+        fixture.model.moveTab(ids[0], to: 0)
+        #expect(fixture.model.tabs.pinned == [ids[0], ids[2], ids[1]])
+        #expect(fixture.preferences.current.openTabs == [ids[0], ids[2], ids[1]])
+
+        let (reopened, store) = await reopen(fixture)
+        defer { reopened.stop() }
+        #expect(store.current.openTabs == [ids[0], ids[2], ids[1]])
+        #expect(reopened.tabs.pinned == [ids[0], ids[2], ids[1]])
+    }
+
+    @Test func aDropOnAFullStripOfRunningTabsIsRefusedWithTheFeedbackOfOpenTab() async throws {
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
+        let fixture = try await makeFixture(rows: 10, hub: supervisor.events)
+        defer { cleanup(fixture) }
+        await fixture.model.start()
+        let firstEight = Array(fixture.sessionIDs.prefix(ConversationTabs.capacity))
+        for id in firstEight { fixture.model.openTab(id) }
+        for id in firstEight {
+            try await publish(.runStarted(UUID()), for: id, on: fixture) { $0.live?.runID != nil }
+        }
+        let ninth = fixture.sessionIDs[8]
+        guard case let .refused(reason) = fixture.model.dropOnTabs(ninth, gap: 2) else {
+            Issue.record("expected a refusal"); return
+        }
+        #expect(fixture.model.infoMessage == reason)
+        #expect(fixture.model.tabs.pinned == firstEight)
+        #expect(fixture.model.selectedSessionID == ninth) // shown as the transient tab, as Open in Tab does
+        #expect(fixture.preferences.current.openTabs == firstEight)
+        #expect((await supervisor.shutdown()).succeeded)
     }
 
     @Test func selectingASidebarRowReplacesTheTransientTabWithoutPinning() async throws {

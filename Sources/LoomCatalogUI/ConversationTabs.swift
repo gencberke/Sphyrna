@@ -49,6 +49,37 @@ public final class ConversationTabs {
         return .pinned(evicted: evicted)
     }
 
+    /// Pins the conversation at `index` of the pinned tabs (clamped), as a drop on the strip does. An already pinned
+    /// conversation moves there instead; a full strip makes room as `pin(_:canEvict:)` does, or refuses.
+    public func pin(_ id: UUID, at index: Int, canEvict: (UUID) -> Bool) -> TabPinResult {
+        if pinned.contains(id) {
+            move(id, to: index)
+            return .alreadyPinned
+        }
+        let result = pin(id, canEvict: canEvict)
+        if case .pinned = result { move(id, to: index) }
+        return result
+    }
+
+    /// Moves a pinned tab so that it ends at `index` (clamped); returns whether the order changed.
+    @discardableResult
+    public func move(_ id: UUID, to index: Int) -> Bool {
+        guard let from = pinned.firstIndex(of: id) else { return false }
+        let to = min(max(index, 0), pinned.count - 1)
+        guard to != from else { return false }
+        pinned.remove(at: from)
+        pinned.insert(id, at: to)
+        return true
+    }
+
+    /// Where a tab dropped into the gap before visible tab `gap` ends among the pinned tabs: a tab that moves right
+    /// leaves its own place first, and a gap after the last pinned tab (by the transient tab) is the end.
+    public func position(forGap gap: Int, of id: UUID) -> Int {
+        let gap = min(max(gap, 0), pinned.count)
+        guard let from = pinned.firstIndex(of: id), gap > from else { return gap }
+        return gap - 1
+    }
+
     /// Removes the tab; returns whether it was pinned.
     @discardableResult
     public func unpin(_ id: UUID) -> Bool {

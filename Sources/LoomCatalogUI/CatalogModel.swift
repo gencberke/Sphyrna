@@ -1047,6 +1047,40 @@ public final class CatalogModel {
         return result
     }
 
+    /// A session dropped on the tab strip: pinned at `index` of the pinned tabs (a pinned one moves there, never twice) and
+    /// shown. A full strip of running or attention tabs refuses as `openTab(_:revealInList:)` does.
+    @discardableResult
+    public func openTab(_ id: UUID, at index: Int, revealInList: Bool = true) -> TabPinResult {
+        let before = tabs.pinned
+        let result = tabs.pin(id, at: index, canEvict: canEvictTab)
+        if tabs.pinned != before { persistTabs() }
+        if case let .refused(reason) = result { infoMessage = reason }
+        select(id, revealInList: revealInList)
+        return result
+    }
+
+    /// A session dropped into the gap before visible tab `gap` (`TabStripLayout.dropGap`).
+    @discardableResult
+    public func dropOnTabs(_ id: UUID, gap: Int) -> TabPinResult {
+        openTab(id, at: tabs.position(forGap: gap, of: id))
+    }
+
+    /// Reorders a pinned tab to `index`; the order persists as pinning does. Shows nothing new.
+    public func moveTab(_ id: UUID, to index: Int) {
+        if tabs.move(id, to: index) { persistTabs() }
+    }
+
+    /// Where a session being dragged is over the tab row or the header above it: the row is drawn as a drop zone
+    /// while this is not empty, even with fewer than two tabs.
+    public enum TabDropZone: Hashable, Sendable { case header, strip }
+    public private(set) var tabDropHover: Set<TabDropZone> = []
+    public var showsTabDropZone: Bool { !tabDropHover.isEmpty }
+
+    public func setTabDropHover(_ zone: TabDropZone, _ over: Bool) {
+        guard tabDropHover.contains(zone) != over else { return }
+        if over { tabDropHover.insert(zone) } else { tabDropHover.remove(zone) }
+    }
+
     /// Closing only unpins; a run stays alive. Closing the selected tab shows
     /// its right neighbor, else its left, else nothing.
     public func closeTab(_ id: UUID) {
