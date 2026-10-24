@@ -63,11 +63,38 @@ final class ChatPresentation {
     /// The longest that cost stretches the interval to.
     static let streamingRowsCeiling = Duration.milliseconds(160)
 
-    /// How long streaming text waits after the last rows now: `rowsInterval`, or `flushCostFactor` times the last rows' cost
+    /// How long streaming text waits after the last rows now: `rowsInterval`, or `flushCostFactor` times the last flush's cost
     /// up to `streamingRowsCeiling` when that is longer. One cheap flush brings it back to `rowsInterval`. Nil: no wait.
     var streamingInterval: Duration? {
         guard let base = rowsInterval else { return nil }
-        return max(base, min(.milliseconds(Self.flushCostFactor * lastTimings.total), Self.streamingRowsCeiling))
+        return max(base, min(.milliseconds(Self.flushCostFactor * lastFlushCost), Self.streamingRowsCeiling))
+    }
+
+    /// What the last flush cost the main thread, in milliseconds: from the start of its rebuild to the end of the run-loop
+    /// turn it ran in, after Core Animation committed it (SwiftUI's update, layout and display of the rows included), or
+    /// the rebuild alone (`lastTimings`) until that turn has ended.
+    var lastFlushCost: Double { max(lastTimings.total, lastTurnMs) }
+    @ObservationIgnored private(set) var lastTurnMs = 0.0
+    @ObservationIgnored private var turnObserver: CFRunLoopObserver?
+    /// After Core Animation's commit observer (order 2,000,000) in the same `beforeWaiting`.
+    private static let afterCommitOrder: CFIndex = 2_100_000
+
+    /// Times the run-loop turn of a rebuild that began at `began`, once: the first rebuild of a turn starts the clock, and a
+    /// one-shot observer that runs after Core Animation's commit stops it.
+    private func timeTurn(from began: ContinuousClock.Instant) {
+        guard turnObserver == nil else { return }
+        lastTurnMs = 0
+        let observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, Self.afterCommitOrder) {
+            [weak self] observer, _ in
+            if let observer { CFRunLoopObserverInvalidate(observer) }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.turnObserver = nil
+                self.lastTurnMs = Self.milliseconds(from: began, to: .now)
+            }
+        }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+        turnObserver = observer
     }
     /// The model grew by streaming text that the stream does not show yet, and what grew (for `ChatRowStore`).
     @ObservationIgnored private var pendingDelta: ModelDelta?
@@ -339,6 +366,7 @@ final class ChatPresentation {
         guard let controller else { return }
         rebuilds += 1
         lastRowsAt = began
+        timeTurn(from: began)
         let change = store.update(input, cause: cause)
         let derived = ContinuousClock.now
         switch change {

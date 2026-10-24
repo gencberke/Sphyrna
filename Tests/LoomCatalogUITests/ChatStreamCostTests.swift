@@ -247,6 +247,20 @@ extension ChatHosted {
             #expect(presentation.rebuilds == before + 1 && !presentation.hasPendingRows, "after a cheap flush the text shows at once")
         }
 
+        /// The cost is the whole flush: what runs after the rebuild in the same run-loop turn (SwiftUI's update, layout and
+        /// display of the rows, here a 30 ms stand-in) counts, read once Core Animation has committed.
+        @Test func aCostlyDisplayPassAfterTheRebuildStretchesTheInterval() {
+            let rig = streamingPresentation(interval: ChatPresentation.streamingRowsInterval)
+            defer { rig.stream.controller.stop() }
+            let presentation = rig.presentation
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            presentation.setWorking(false)
+            #expect(presentation.lastTimings.total < 16, "the rebuild alone is cheap: \(presentation.lastTimings.total) ms")
+            Thread.sleep(forTimeInterval: 0.03)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            #expect((presentation.streamingInterval ?? .zero) >= .milliseconds(150), "\(String(describing: presentation.streamingInterval))")
+        }
+
         @Test func aChangeThatIsNotStreamingTextIsNeverHeldByTheCost() {
             var rig = streamingPresentation(interval: ChatPresentation.streamingRowsInterval)
             defer { rig.stream.controller.stop() }
