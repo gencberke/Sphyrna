@@ -244,7 +244,7 @@ struct SessionHeaderRow: View {
                             .disabled(!model.canResume(row))
                         Button("Stop") { model.stopConversation(row.id) }
                             .disabled(!model.canStop(row))
-                        SessionLocationMenuItems(row: row)
+                        SessionLocationMenuItems(row: row, model: model)
                         DeletionMenuItems(model: model, row: row)
                     }
                 }

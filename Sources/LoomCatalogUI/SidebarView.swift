@@ -701,7 +701,7 @@ struct SessionCardView: View {
             Divider()
             Button("Resume") { model.resumeConversation(row.id) }.disabled(!model.canResume(row))
             Button("Stop") { model.stopConversation(row.id) }.disabled(!model.canStop(row))
-            SessionLocationMenuItems(row: row)
+            SessionLocationMenuItems(row: row, model: model)
             DeletionMenuItems(model: model, row: row)
         }
         .accessibilityElement(children: .combine)

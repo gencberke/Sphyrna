@@ -86,7 +86,7 @@ enum SessionLocationActions {
 
 /// Reveal in Finder, Open Folder in Editor, Open in Terminal, Copy Claude Session ID, Copy Resume Command and Copy Transcript Path:
 /// the group before the delete group in the card's context menu and the detail header's actions menu. It starts with its own
-/// divider. Copy Transcript Path needs the model (the Claude profile to look in); without it the item stays disabled.
+/// divider. Copy Transcript Path reads the Claude profile to look in from the model; without one the item stays disabled.
 struct SessionLocationMenuItems: View {
     let row: SessionRowModel
     var model: CatalogModel?
