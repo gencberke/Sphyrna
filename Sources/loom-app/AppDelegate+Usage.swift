@@ -8,9 +8,10 @@ import Synchronization
 extension AppDelegate {
     /// Creates the usage model and the Settings controller. Nothing is read here: the first scan
     /// starts when the catalog's first load completes (`CatalogModel.start`).
-    func installUsage(model: CatalogModel, root: URL, refused: Bool, catalog: SessionCatalog?) {
+    func installUsage(model: CatalogModel, root: URL, refused: Bool, catalog: SessionCatalog?, preferences: UIPreferencesStore) {
         let layout = usageProfileLayout(root: root)
         var usageModel: UsageModel?
+        var limitsFetcher: ClaudePlanLimitsFetcher?
         if !refused {
             // The side chats' ids (V22): a fork copies its parent's messages, which the index must keep the parent's.
             let index = ClaudeUsageIndex(
@@ -20,6 +21,7 @@ extension AppDelegate {
             let limits = ClaudePlanLimitsFetcher(
                 toolchain: { try await toolchain.claude() }, profile: layout,
                 workingDirectory: root.appendingPathComponent("usage-probe", isDirectory: true))
+            limitsFetcher = limits
             let created = UsageModel(index: index, limits: limits)
             usageModel = created
             // The numbers follow the transcripts on disk: the stream reports, the model decides
@@ -36,6 +38,7 @@ extension AppDelegate {
             usageWatcher = watcher
             ConversationForgetters.shared.register { _, ids in try await index.forget(sessionIDs: ids) }
         }
+        installHarness(model: model, preferences: preferences, root: root, limits: limitsFetcher)
         usage = usageModel
         model.usage = usageModel
         // One Claude profile for usage, the palette's session text search and the Chat view (nothing when refused),
@@ -81,9 +84,14 @@ final class ClaudeToolchainSlot: Sendable {
     }
 
     func claude(waitingUpTo seconds: Double = 30) async throws -> ProviderToolchain {
+        try await toolchain(for: .claude, waitingUpTo: seconds)
+    }
+
+    /// The toolchain of any provider, resolved as sessions get it (the harness probe asks for Codex's).
+    func toolchain(for provider: ManagedSession.Provider, waitingUpTo seconds: Double = 30) async throws -> ProviderToolchain {
         let deadline = ContinuousClock.now + .seconds(seconds)
         while true {
-            if let value = resolver.withLock({ $0 }) { return try await value(.claude) }
+            if let value = resolver.withLock({ $0 }) { return try await value(provider) }
             guard ContinuousClock.now < deadline else { throw CancellationError() }
             try await Task.sleep(for: .milliseconds(100))
         }

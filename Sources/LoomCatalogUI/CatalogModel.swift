@@ -320,6 +320,10 @@ public final class CatalogModel {
     @ObservationIgnored public var onShowSettings: ((SettingsSection?) -> Void)?
     /// Set once by the app before the first view exists; the sidebar footer and Settings read it.
     @ObservationIgnored public var usage: UsageModel?
+    /// The app's one harness probe and connect switch (D-94, D-98), set at install time. Nothing asks the probe on its own:
+    /// usage and connections decide when. Nil in a build with no app around the model.
+    @ObservationIgnored public var harnessProbe: HarnessProbe?
+    @ObservationIgnored public var harnessConnections: HarnessConnections?
     @ObservationIgnored public var onTerminalFontSizeChange: ((Double) -> Void)?
     @ObservationIgnored public var onToggleSidebar: (() -> Void)?
     /// The runtime may attach after the first page is shown (it starts alongside the model);
