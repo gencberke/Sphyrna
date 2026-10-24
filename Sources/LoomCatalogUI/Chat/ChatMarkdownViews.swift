@@ -150,6 +150,7 @@ struct ChatMarkdownBlockView: View {
 
     var body: some View {
         let _ = isTopLevel ? ChatRenderProbe.blockBody(index: index, block: block, in: context) : ()
+        let _ = isTopLevel ? ChatSelectionProbe.drawn(index: index, block: block, selectable: !isStreaming, in: context) : ()
         blockView(block, index: index, isLast: isLast)
     }
 
@@ -164,10 +165,10 @@ struct ChatMarkdownBlockView: View {
                 .padding(.top, 4)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
+                .chatTextSelection(!isStreaming)
         case let .code(language, code, closed):
             ChatCodeBlockView(language: language, code: code, isStreaming: isStreaming && isLast && !closed,
-                              wrapped: flags.contains("wrap:\(index)"), context: context) {
+                              wrapped: flags.contains("wrap:\(index)"), context: context, selectable: !isStreaming) {
                 context.toggleFlag(rowID, "wrap:\(index)")
             }
         case let .list(ordered, start, items):
@@ -188,7 +189,7 @@ struct ChatMarkdownBlockView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
         case let .table(table):
-            ChatMarkdownTableView(table: table, context: context)
+            ChatMarkdownTableView(table: table, context: context, selectable: !isStreaming)
         case .rule:
             Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline).padding(.vertical, 4)
         }
@@ -201,7 +202,7 @@ struct ChatMarkdownBlockView: View {
             .foregroundStyle(LoomTheme.Text.primary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .textSelection(.enabled)
+            .chatTextSelection(!isStreaming)
     }
 
     @ViewBuilder private func marker(ordered: Bool, number: Int, checked: Bool?) -> some View {
@@ -223,6 +224,7 @@ struct ChatMarkdownBlockView: View {
 struct ChatMarkdownTableView: View {
     let table: MarkdownTable
     let context: ChatRowContext
+    var selectable = true
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -256,7 +258,7 @@ struct ChatMarkdownTableView: View {
         return Text(ChatContent.inline(source, in: context))
             .font(header ? LoomTheme.Chat.linkLabel : LoomTheme.Chat.toolLabel)
             .foregroundStyle(header ? AnyShapeStyle(LoomTheme.Text.secondaryStyle) : AnyShapeStyle(LoomTheme.Text.primary))
-            .textSelection(.enabled)
+            .chatTextSelection(selectable)
             .padding(.horizontal, 14).padding(.vertical, 6)
             .frame(minWidth: 60, maxWidth: 320, minHeight: LoomTheme.Chat.tableRowHeight, alignment: alignment)
             .fixedSize(horizontal: false, vertical: true)
@@ -271,6 +273,7 @@ struct ChatCodeBlockView: View {
     let isStreaming: Bool
     let wrapped: Bool
     let context: ChatRowContext
+    var selectable = true
     let toggleWrap: () -> Void
 
     var body: some View {
@@ -311,8 +314,36 @@ struct ChatCodeBlockView: View {
         .font(LoomTheme.Chat.body)
         .lineSpacing(LoomTheme.Chat.codeLineSpacing)
         .foregroundStyle(LoomTheme.Chat.syntaxPlain)
-        .textSelection(.enabled)
+        .chatTextSelection(selectable)
         // Line spacing falls between lines only; half of it above and below makes every line 20 high.
         .padding(.vertical, LoomTheme.Chat.codeLineSpacing / 2)
     }
+}
+
+/// Text selection of a block's text: on for settled text, off for the open tail of a streaming message, which every flush
+/// draws again and which would otherwise build a second text layout of itself each time. Copy copies the source, so it does
+/// not depend on it. The enabled and disabled selections are different types, hence the branch.
+private struct ChatTextSelection: ViewModifier {
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled { content.textSelection(.enabled) } else { content.textSelection(.disabled) }
+    }
+}
+
+extension View {
+    func chatTextSelection(_ enabled: Bool) -> some View { modifier(ChatTextSelection(enabled: enabled)) }
+}
+
+/// Whether the top-level blocks of the scope `ChatRenderProbe` watches were last drawn selectable, by `"<index>#<content hash>"`.
+@MainActor
+enum ChatSelectionProbe {
+    private(set) static var selectable: [String: Bool] = [:]
+
+    static func drawn(index: Int, block: MarkdownBlock, selectable value: Bool, in context: ChatRowContext?) {
+        guard ChatRenderProbe.owns(context) else { return }
+        selectable["\(index)#\(block.hashValue)"] = value
+    }
+
+    static func reset() { selectable = [:] }
 }

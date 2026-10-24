@@ -299,11 +299,17 @@ enum ChatMarkdown {
         return (level, text)
     }
 
-    private static func isRule(_ line: Substring) -> Bool {
-        guard leadingColumns(line) < 4 else { return false }
-        let body = line.filter { $0 != " " && $0 != "\t" }
-        guard body.count >= 3, let first = body.first, first == "-" || first == "*" || first == "_" else { return false }
-        return body.allSatisfy { $0 == first }
+    /// Three or more of one of `-`, `*`, `_` and nothing else but spaces and tabs. Asked of every line (`startsBlock`,
+    /// `listMarker`), so it stops at the first character that rules a rule out instead of filtering the whole line.
+    static func isRule(_ line: Substring) -> Bool {
+        guard leadingColumns(line) < 4,
+              let first = line.first(where: { $0 != " " && $0 != "\t" }), first == "-" || first == "*" || first == "_" else { return false }
+        var count = 0
+        for character in line where character != " " && character != "\t" {
+            guard character == first else { return false }
+            count += 1
+        }
+        return count >= 3
     }
 
     private static func isQuote(_ line: Substring) -> Bool {

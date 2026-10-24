@@ -113,4 +113,35 @@ struct ChatMarkdownTests {
         let fenced = "Intro\n\n```\na\n\nb"
         #expect(String(fenced[..<ChatContent.stableSplit(fenced)]) == "Intro\n\n")
     }
+
+    /// `isRule` stops at the first character that rules a rule out; it answers exactly as the filter-the-whole-line version did.
+    @Test func isRuleAnswersAsTheWholeLineFilterDid() {
+        func reference(_ line: Substring) -> Bool {
+            var columns = 0
+            for character in line {
+                if character == " " { columns += 1 } else if character == "\t" { columns += 4 } else { break }
+            }
+            guard columns < 4 else { return false }
+            let body = line.filter { $0 != " " && $0 != "\t" }
+            guard body.count >= 3, let first = body.first, first == "-" || first == "*" || first == "_" else { return false }
+            return body.allSatisfy { $0 == first }
+        }
+        let rules = ["---", "***", "___", "- - -", " * * * ", "   ___", "-----------", "_ _ _ _", "--- ", "*\t*\t*", " -\t- -"]
+        let others = [
+            "", " ", "--", "**", "- -", "-- ", "    ---", "\t---", "  \t---", "-*-", "--*", "**_", "__-", "--- x", "x ---", "-a-",
+            "- item", "* item", "_emphasis_", "**bold**", "Plain text.", "## Heading", "> quote", "```swift", "1. first",
+            "|---|---|", "---|", "-–-", "———", "+++", "===", "~~~", " - - x", "***\u{00A0}", "-\n-\n-", "    ", "\t", "- - - -x",
+        ]
+        let generated = (0..<4_096).map { seed -> String in
+            let alphabet: [Character] = [" ", "\t", "-", "*", "_", "x"]
+            var value = seed, line = ""
+            for _ in 0..<6 { line.append(alphabet[value % alphabet.count]); value /= alphabet.count }
+            return line
+        }
+        for line in rules { #expect(ChatMarkdown.isRule(Substring(line)) && reference(Substring(line)), "\(line.debugDescription) is a rule") }
+        for line in others { #expect(!ChatMarkdown.isRule(Substring(line)) && !reference(Substring(line)), "\(line.debugDescription) is not a rule") }
+        let mismatches = generated.filter { ChatMarkdown.isRule(Substring($0)) != reference(Substring($0)) }
+        #expect(mismatches.isEmpty, "\(mismatches.prefix(5).map(\.debugDescription))")
+        #expect(generated.contains { ChatMarkdown.isRule(Substring($0)) } && generated.contains { !ChatMarkdown.isRule(Substring($0)) })
+    }
 }
