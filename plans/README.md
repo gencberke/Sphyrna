@@ -9,6 +9,8 @@ Current position and handoff queue live in [STATUS.md](../STATUS.md). Product an
 | File / Directory | Purpose |
 | --- | --- |
 | [ACTIVE-PLAN.md](ACTIVE-PLAN.md) | **Canonical active execution plan** toward **Sphyrna 1.6.0** ([D-68](../DECISIONS.md), [D-83](../DECISIONS.md)): founding goals, acceptance criteria, closed Releases A–C summary, `sphyrna-ink` / `sphyrna-core` / `@opencode` slice status tables, the 11-step End Batch Runbook, and Post-1.6.0 roadmap. |
+| [FEEDBACK-5.md](FEEDBACK-5.md) | **Round 5 on 1.6.0** (24 Oct 2026): `@user`'s notes, what the code says, the studies of other apps and of Chat's streaming cost, the decisions ([D-93](../DECISIONS.md) to [D-99](../DECISIONS.md)), and the plan for 1.6.1 and 1.6.2. Its slices move into [ACTIVE-PLAN.md](ACTIVE-PLAN.md) on `@user`'s go. |
+| [RELEASE-NOTES-1.6.1.md](RELEASE-NOTES-1.6.1.md) | **Release notes of Sphyrna 1.6.1** (draft, 24 Oct 2026): what the user gets, grouped as Fixes, Drag and drop, Flow, Look and Chat, with one line on going back to 1.6.0, which keeps one draft per project. Written for the GitHub release; the push waits for `@user`. |
 | `~/Library/Caches/loom-v2/evidence/` | Track plans (`ink/PLAN.md`, `core/PLAN.md`), `core/END-BATCH-RUNBOOK.md`, `ink/evening-queue.md`, slice Briefs, resume notes (`ink/l3b-home-resume.md`), `@opencode` logs (`oc/`), and run evidence. |
 | [experiments/](experiments/) | Value-free benchmark baselines (`cp5-final-matrix-I-20261006.json`, `run1-F5-launch.json`, `run1-U4-tab-switch.json`, `run1-CP4E-real-deletion.json`), v2 spikes (`v2-spikes/S0`..`S9`), and planning scans (`v2-planning-scans/`). **Kept at `plans/experiments/` because measurement and acceptance scripts reference this path directly.** |
 

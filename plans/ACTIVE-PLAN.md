@@ -4,6 +4,43 @@
 - **Integration branch:** `v2` in `~/Library/Caches/loom-v2/wt/v2` (cut from `swarm/1` at `24d8cfb` on 17 Oct; local only, never pushed). Note: `/Users/gencberke/Documents/github/loom-dev` is on `swarm/1` for canonical doc updates; all code edits, builds, and tests run in `wt/v2` and the slice worktrees below.
 - **Lanes (from 22 Oct):** one main planner session drives Claude implementers as its own subagents, each slice in its own worktree cut from `v2`'s head, and integrates accepted slices straight onto `v2`. The areas keep the tracks' split: **ink** owns `Sources/LoomCatalogUI`, UI files in `Sources/loom-app`, `assets/` and `Tests/LoomCatalogUITests`; **core** owns `Sources/LoomCore`, `LoomChat`, `LoomRemora`, `LoomLaunchOptions`, helper executables, `scripts/` and their tests. Docs are the planner's. The track sessions and branches of 21 Oct (`sphyrna-ink` on `ink`, `sphyrna-core` on `core`, plans in `~/Library/Caches/loom-v2/evidence/{ink,core}/PLAN.md`) are idle, and `opencode` ([D-89](../DECISIONS.md)) is not used this round (`@user`, 22 Oct).
 - **Canonical specs:** [SPEC.md](../SPEC.md) (product & behavioral specification), [design/DESIGN.md](../design/DESIGN.md) (Ink v3 visual system), [design/reference.html](../design/reference.html) (visual target), and [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) (system architecture & UI code index).
+- **Now (24 Oct):** round 5 works toward **1.6.1** (§0). The sections after §0 are 1.6.0's record.
+
+---
+
+## 0. Round 5: Sphyrna 1.6.1 (from 24 Oct, [D-93](../DECISIONS.md))
+
+**The go and the defaults.** `@user` gave the go on 24 Oct at about 12:50, with the Mac idle. The open questions take their defaults ([FEEDBACK-5](FEEDBACK-5.md#decisions)).
+
+**Where the details are.**
+- Each slice's content: [FEEDBACK-5](FEEDBACK-5.md#release-161-slices).
+- The Briefs: `~/Library/Caches/loom-v2/evidence/r5/<slice>/BRIEF.md`, with the shared rules in `r5/COMMON.md`.
+
+**How a slice runs.**
+- Each slice has its own worktree `wt/r5-<slice>`, on `slice/r5-<slice>` from `v2` `988256a`.
+- The implementer commits there.
+- The planner reviews the commits and cherry-picks them onto `v2` with `-x`.
+
+| Slice | Track | Content | Status |
+| --- | --- | --- | --- |
+| W1-a | `r5-settings` | Settings tabs switch on a click (a shown-window click test first) | **Integrated** `dfb90ba`; the click test's failing-first and passing runs wait for AC power |
+| W1-b | `r5-inspector` | A resizable inspector with three remembered widths | **Integrated** `2202fc6`; its window tests wait for AC power |
+| W1-c, FB5-11 | `r5-remora` | Put in Draft says what it does (D-95); Home's read key | **Integrated** `f133761` |
+| W3-b | `r5-drag` | The session drag source and payload; the tab strip's drop and reorder | **Integrated** `8e9475c`; its window test is fixed in `27b0831` and passes |
+| FB5-10 S0–S2 | `r5-chat-cost` | Long-block C8 cells; no selection on the open tail; a cost-aware interval | **Integrated** `7ccae36`, `ff13bf9`, `4dbf353`. Baseline `run-r5s0`: Chat 22.4 % at 600 and 48.3 % at 6,000; the 300-line fence 37.6 %. S1+S2 are measured together with S3 |
+| W1-f | `r5-drafts` | Several drafts per project; Draft Brief keeps the user's text | **Integrated** `1a593de`, `73e6b64`, `e0ada41` (Draft Brief goes into a new draft when the user's has text; nothing is copied) |
+| W1-e, part 1 | `r5-icon` | Icon candidates and a Dock strip for `@user`'s pick (D-97) | **Done** (`06c2546`, on the slice branch only); `@user` picked 5, Top, posed nearer the horizontal |
+| W1-d | `r5-remora`, step 2 | Remora's still face, and step 1's two leftovers | **Integrated** `37851a1`, `82ce829`; the arrival's dead code is removed in `2291efc`, `69bd12c` |
+| W3-g, keep awake | `r5-settings`, step 2 | Notify when a long turn finishes; keep the Mac awake while a session works | **Integrated** `188b331`, `150e92d`; the tab fix's real cause (the page lay over the band) in `01c14a5`, proven by the window click test |
+| W3-e | `r5-inspector`, step 2 | Drag a file out of Changes, as the `@path` text, never the file | **Integrated** `2b9dd3c`, `5dd11ef` |
+| W3-c, ⇧⌘T | `r5-drag`, step 2 | The header's drop zone; reorder projects by drag; reopen the closed tab | **Integrated** `be711f2`, `4fd009b`, `eeac5e9`, `27b0831`; the window suites pass on AC |
+| W3-a | `r5-pill` | The session mention pill (from `v2` `2202fc6`, on W3-b's payload) | **Integrated** `38717ad`, `9359193`. The terminal drop is left out: it needs the code that builds the terminal view |
+| W3-d | `r5-pill`, step 2 | Files and folders into every composer | **Integrated** `d81d7ae` |
+| W3-f | `r5-inspector`, step 3 | The Dock menu; the session menu's and the palette's additions. Peek (hover a row for its last ask) moves after 1.6.1 | **Integrated** `87bb851`, `911dc0d`, `48f60ea`, `f979c03` |
+| FB5-12 | `r5-remora`, step 4 | `loom-run-host`'s Security call off the main thread | **Integrated** `0840516`. Whether the fault is gone shows only in the installed app's log |
+| FB5-10 S3–S5 | `r5-chat-cost` | Long blocks; one layout per flush; rows of blocks only if Q17 needs them | S3 in progress; S4 is decided on the measurement after S3 |
+| W1-e, part 2 | `r5-icon` | Top re-posed; the icon's sources, `make-app-icon.sh`, `assets/icon/*` and the `.icns` grid | **Integrated** `8161e80`; part 3, the reference's identity page and the README's icon, `7b6161a`. Left: DESIGN §6 and removing the old glyph files (docs pass) |
+| Close | planner | The pool (D-90), the optimizer (D-06) and the docs. The tag and the promote wait for `@user` | — |
 
 ---
 
