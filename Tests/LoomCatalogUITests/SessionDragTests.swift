@@ -51,7 +51,7 @@ extension WindowEventTests {
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(2)))
 struct SessionDragSourceTests {
-    private func fixture() async throws -> (CatalogModel, URL, [UUID]) {
+    private func fixture(mode: CatalogViewMode = .activity) async throws -> (CatalogModel, URL, [UUID]) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-drag-\(UUID())")
         let folder = root.appendingPathComponent("proj", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -61,11 +61,11 @@ struct SessionDragSourceTests {
         let loose = ManagedSession(provider: .claude, workingDirectory: root.path)
         try await catalog.insertSession(inProject, title: "In project", lifecycle: .idle, projectID: project.id)
         try await catalog.insertSession(loose, title: "Loose", lifecycle: .idle)
-        let model = CatalogModel(catalog: catalog, events: SessionEventHub(),
-                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
+        let preferences = UIPreferencesStore(url: root.appendingPathComponent("p.json"))
+        try preferences.update { $0.viewMode = mode }
+        let model = CatalogModel(catalog: catalog, events: SessionEventHub(), preferences: preferences)
         model.branchReader = { _ in .unavailable }
         await model.start()
-        await model.stopAndWait()
         await model.settle()
         return (model, root, [inProject.id, loose.id])
     }
@@ -97,20 +97,26 @@ struct SessionDragSourceTests {
         }
     }
 
-    @Test func sidebarRowsAreDragSourcesAndKeepTheirClickDoubleClickAndAccessibility() async throws {
-        enableAccessibilityTree()
-        let (model, root, ids) = try await fixture()
+    @Test func activityCardsAreDragSources() async throws {
+        let (model, root, ids) = try await fixture(mode: .activity)
         defer { SessionDragProbe.stop(); model.stop(); try? FileManager.default.removeItem(at: root) }
         SessionDragProbe.watch()
         let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 320, height: 600))
         defer { window.orderOut(nil) }
-        for mode in [CatalogViewMode.activity, .projects] {
-            model.setViewMode(mode)
-            await model.settle()
-            SessionDragProbe.watch()
-            #expect(await waitUntil { hosting.view.layoutSubtreeIfNeeded(); return SessionDragProbe.sources.isSuperset(of: ids) },
-                    "both rows carry the drag in the \(mode) view")
-        }
+        #expect(await waitUntil { hosting.view.layoutSubtreeIfNeeded(); return SessionDragProbe.sources.isSuperset(of: ids) },
+                "both cards carry the drag in the activity view")
+    }
+
+    @Test func projectRowsAreDragSourcesAndKeepTheirClickDoubleClickAndAccessibility() async throws {
+        enableAccessibilityTree()
+        let (model, root, ids) = try await fixture(mode: .projects)
+        defer { SessionDragProbe.stop(); model.stop(); try? FileManager.default.removeItem(at: root) }
+        SessionDragProbe.watch()
+        let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 320, height: 600))
+        defer { window.orderOut(nil) }
+        func drawn() -> [String] { ["In project", "Loose"].filter { row($0, in: hosting.view) != nil } }
+        #expect(await waitUntil { hosting.view.layoutSubtreeIfNeeded(); return SessionDragProbe.sources.isSuperset(of: ids) },
+                "both rows carry the drag in the project view: \(SessionDragProbe.sources.count) of 2, rows drawn: \(drawn())")
 
         // Still one button each for VoiceOver, with its press selecting the session.
         let loose = try #require(row("Loose", in: hosting.view))
