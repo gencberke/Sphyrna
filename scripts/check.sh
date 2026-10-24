@@ -32,6 +32,7 @@ window_tests=(
   layerBackingStorePreservesPixelsOutsideTheDirtyRect            # TerminalPartialDrawTests
   hostedWorkingIndicatorRunsOnlyWhenTheEnvironmentAllowsIt       # SidebarStatusTests
   realSidebarRunsAWorkingRowOnlyForAnActiveWindowAndExpandedSidebar  # SidebarStatusTests
+  aClickOnATabSwitchesItAndAPageControlAnswersItsClick           # SettingsWindowClickTests
 )
 
 usage() { sed -n '2,/^set -euo/p' "$script_path" | sed '$d; s/^# \{0,1\}//' >&2; }

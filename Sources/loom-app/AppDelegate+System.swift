@@ -21,7 +21,7 @@ extension AppDelegate {
             },
             openSettings: { [weak self] in
                 NSApp.activate()
-                self?.showSettings(section: .general)
+                self?.showSettings(section: nil) // as ⌘, does: the tab already open stays
             },
             quit: { NSApp.terminate(nil) })) // the normal quit path, so the quit question still applies
         menuBar = bar

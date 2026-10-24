@@ -3,14 +3,10 @@ import LoomCatalogUI
 import LoomTerminal
 import SwiftUI
 
-/// The one Settings window: a fixed 680×520, reused by Cmd+, the gear and the usage chip.
-/// The title bar is transparent and carries an empty unified toolbar, so the close button sits on the same 26 pt
-/// centerline as the main window's controls and the section tabs draw in the 52 pt band; the window is built on first use
-/// and only hidden when closed.
+/// The one Settings window, reused by Cmd+, the gear and the usage chip. Its shape is `SettingsWindowConfiguration`'s; the window
+/// is built on first use and only hidden when closed.
 @MainActor
 final class SettingsWindowController {
-    static let contentSize = NSSize(width: 680, height: 520)
-
     let navigation = SettingsNavigation()
     private let model: CatalogModel
     private let usage: UsageModel?
@@ -41,32 +37,11 @@ final class SettingsWindowController {
     func close() { window?.close() }
 
     private func makeWindow() -> NSWindow {
-        let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: Self.contentSize),
-            styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.identifier = NSUserInterfaceItemIdentifier("loom-settings")
-        window.title = "Settings"
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        // An empty unified toolbar, as the main window has (`AppDelegate.makeWindow`): AppKit centres the close button in the
-        // unified titlebar height, on y = 26. No item or separator is shown.
-        window.toolbar = NSToolbar(identifier: NSToolbar.Identifier("loom-settings"))
-        window.toolbarStyle = .unified
-        window.titlebarSeparatorStyle = .none
-        window.isReleasedWhenClosed = false
-        window.isMovableByWindowBackground = true
-        // The window follows the app's appearance (Settings → Theme); its background is the main pane's panel.
-        window.backgroundColor = model.themePanelBackground
-        for kind in [NSWindow.ButtonType.miniaturizeButton, .zoomButton] {
-            window.standardWindowButton(kind)?.isHidden = true
-        }
-        let hosting = NSHostingController(
-            rootView: SettingsView(model: model, usage: usage, navigation: navigation, about: about,
-                                   diagnostics: diagnostics))
-        hosting.sizingOptions = []
-        window.contentViewController = hosting
-        window.setContentSize(Self.contentSize)
-        window.center()
+        // The shape is shared with the window tests (`SettingsWindowConfiguration`); the window follows the app's appearance
+        // (Settings → Theme) and its background is the main pane's panel.
+        let window = SettingsWindowConfiguration.makeWindow(
+            content: SettingsView(model: model, usage: usage, navigation: navigation, about: about, diagnostics: diagnostics),
+            background: model.themePanelBackground)
         observeVisibility(of: window)
         return window
     }
