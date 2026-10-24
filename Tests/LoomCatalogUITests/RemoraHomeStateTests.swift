@@ -7,7 +7,7 @@ import LoomCore
 @testable import LoomCatalogUI
 
 /// L3b, Home's Remora as plain values: the state chosen from the preferences and the last calls, the texts, the tiles, the field's
-/// keys, Put in Draft's rule, the automatic brief's `homeShown` rule and the one reachability read. No view, no process.
+/// keys, the automatic brief's `homeShown` rule and the one reachability read. No view, no process.
 @MainActor
 struct RemoraHomeStateTests {
     // MARK: Fixtures
@@ -145,7 +145,7 @@ struct RemoraHomeStateTests {
             == "Less than a tenth of your 5-hour limit is left, so the morning brief waits. Questions still run.")
     }
 
-    @Test func quietAndNoteDaysReadAsWordsAndPutInDraftSaysWhatHappened() {
+    @Test func quietAndNoteDaysReadAsWordsAndPutInDraftSaysWhereTheLineGoes() {
         let now = date("2026-10-21T10:00:00Z")
         #expect(HomeRemoraText.quietSince(date("2026-10-16T08:00:00Z"), now: now, zone: zone, locale: locale, calendar: calendar) == "quiet since Friday")
         #expect(HomeRemoraText.quietSince(date("2026-10-02T08:00:00Z"), now: now, zone: zone, locale: locale, calendar: calendar) == "quiet since 2 october")
@@ -153,10 +153,8 @@ struct RemoraHomeStateTests {
         #expect(HomeRemoraText.noteDay("2026-10-20", now: now, zone: zone, locale: locale, calendar: calendar) == "yesterday")
         #expect(HomeRemoraText.noteDay("2026-10-12", now: now, zone: zone, locale: locale, calendar: calendar) == "12 october")
         #expect(HomeRemoraText.noteDay("not a day", now: now) == nil)
-        #expect(HomeRemoraText.placed(.placed) == "In its composer, not sent")
-        #expect(HomeRemoraText.placed(.copiedHasDraft) == "Copied: it already has a draft")
-        #expect(HomeRemoraText.hoverWhere(.place) == "Put in its composer, not sent")
-        #expect(HomeRemoraText.hoverWhere(.copyHasDraft) == "Its composer has text, so this is copied instead")
+        #expect(HomeRemoraText.hoverWhere(.place) == "Goes below its composer's text, not sent, and the session opens")
+        #expect(HomeRemoraText.hoverWhere(.copy(.terminal)) == "It runs in the terminal, so this is copied")
     }
 
     // MARK: Tiles
@@ -362,72 +360,5 @@ struct RemoraHomeStateTests {
         _ = await NetworkReach.firstStatus(bound: .milliseconds(400))
         _ = await NetworkReach.firstStatus(bound: .milliseconds(400))
         #expect(ContinuousClock.now - started < .seconds(30))
-    }
-
-    // MARK: Put in Draft
-
-    private func store() throws -> (ChatDraftStore, URL) {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("loom-remora-drafts-\(UUID())", isDirectory: true)
-        return (ChatDraftStore(directory: directory), directory)
-    }
-
-    @Test func putInDraftLeavesTheLineInAnEmptyChatComposerAndNeverSends() {
-        var text = ""
-        var copied: [String] = []
-        let target = RemoraDraftTarget(sessionID: UUID(), opensInChat: true, composerHasContent: { !text.isEmpty },
-                                       setComposerText: { text = $0 }, drafts: nil)
-        #expect(RemoraPutInDraft.plan(target) == .place)
-        #expect(RemoraPutInDraft.perform(target, line: "Run the checks.", copy: { copied.append($0) }) == .placed)
-        #expect(text == "Run the checks." && copied.isEmpty)
-    }
-
-    @Test func aComposerWithTextKeepsItAndTheLineIsCopied() {
-        var text = "half a thought"
-        var copied: [String] = []
-        let target = RemoraDraftTarget(sessionID: UUID(), opensInChat: true, composerHasContent: { !text.isEmpty },
-                                       setComposerText: { text = $0 }, drafts: nil)
-        #expect(RemoraPutInDraft.plan(target) == .copyHasDraft)
-        #expect(RemoraPutInDraft.perform(target, line: "Run the checks.", copy: { copied.append($0) }) == .copiedHasDraft)
-        #expect(text == "half a thought" && copied == ["Run the checks."])
-    }
-
-    @Test func aTerminalSessionOnlyGetsTheLineCopied() {
-        var text = ""
-        var copied: [String] = []
-        let target = RemoraDraftTarget(sessionID: UUID(), opensInChat: false, composerHasContent: { false },
-                                       setComposerText: { text = $0 }, drafts: nil)
-        #expect(RemoraPutInDraft.plan(target) == .copyTerminal)
-        #expect(RemoraPutInDraft.perform(target, line: "Run the checks.", copy: { copied.append($0) }) == .copiedTerminal)
-        #expect(text.isEmpty && copied == ["Run the checks."])
-    }
-
-    @Test func aSessionWithNoLiveComposerGetsItsSavedDraftWrittenOnlyWhenThereIsNone() throws {
-        let (drafts, directory) = try store()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let id = UUID()
-        var copied: [String] = []
-        let target = RemoraDraftTarget(sessionID: id, opensInChat: true, composerHasContent: nil, setComposerText: nil, drafts: drafts)
-        #expect(RemoraPutInDraft.plan(target) == .place)
-        #expect(RemoraPutInDraft.perform(target, line: "First line.", copy: { copied.append($0) }) == .placed)
-        #expect(try drafts.load(sessionID: id)?.text == "First line." && copied.isEmpty)
-        // Now the draft has text: it stays, and the next line is copied.
-        #expect(RemoraPutInDraft.plan(target) == .copyHasDraft)
-        #expect(RemoraPutInDraft.perform(target, line: "Second line.", copy: { copied.append($0) }) == .copiedHasDraft)
-        #expect(try drafts.load(sessionID: id)?.text == "First line." && copied == ["Second line."])
-        // A draft with only blanks is no draft.
-        try drafts.save(ChatDraft(text: "  \n"), sessionID: id)
-        #expect(RemoraPutInDraft.plan(target) == .place)
-    }
-
-    @Test func aSavedDraftThatCannotBeReadIsKeptAndTheLineIsCopied() throws {
-        let (drafts, directory) = try store()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let id = UUID()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try Data("not json".utf8).write(to: drafts.url(for: id))
-        var copied: [String] = []
-        let target = RemoraDraftTarget(sessionID: id, opensInChat: true, composerHasContent: nil, setComposerText: nil, drafts: drafts)
-        #expect(RemoraPutInDraft.perform(target, line: "Line.", copy: { copied.append($0) }) == .copiedHasDraft)
-        #expect(copied == ["Line."])
     }
 }

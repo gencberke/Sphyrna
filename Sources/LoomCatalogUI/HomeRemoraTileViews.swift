@@ -121,35 +121,24 @@ struct HomeRemoraTileView: View {
         return RelativeTime.string(from: session.lastActivityAt, to: now)
     }
 
-    @ViewBuilder
     private func actions(_ session: HomeRemoraSession) -> some View {
-        if let result = ui.placed[tile.id] {
-            HStack(spacing: R.placedGap) {
-                Text(HomeRemoraText.placed(result)).homeType(R.placedBold).foregroundStyle(LoomTheme.Text.primary)
-                Spacer(minLength: 0)
-                HomeRemoraLink(title: "Open", identifier: "home-remora-open") { model.select(tile.id) }
-                    .homeType(R.placed)
+        HStack(spacing: R.tileActionsGap) {
+            if let draft = tile.draft {
+                HomeRemoraPutInDraft(model: model, ui: ui, reads: reads, sessionID: tile.id, line: draft)
             }
-            .frame(height: R.placedHeight)
-            .padding(.top, R.tileActionsTop)
-            .accessibilityIdentifier("home-remora-placed")
-        } else {
-            HStack(spacing: R.tileActionsGap) {
-                if let draft = tile.draft {
-                    HomeRemoraPutInDraft(model: model, ui: ui, reads: reads, sessionID: tile.id, line: draft)
-                }
-                Button("Open") { model.select(tile.id) }
-                    .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
-                    .accessibilityLabel("Open \(session.title)")
-                    .accessibilityIdentifier("home-remora-open")
-            }
-            .padding(.top, R.tileActionsTop)
+            Button("Open") { model.select(tile.id) }
+                .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
+                .accessibilityLabel("Open \(session.title)")
+                .accessibilityIdentifier("home-remora-open")
         }
+        .padding(.top, R.tileActionsTop)
     }
 }
 
-/// Put in Draft: a small secondary button. The pointer on it shows the whole line and where it will go; a click leaves the line in an
-/// empty Chat composer, or copies it, and never sends.
+/// Put in Draft (D-95): a small secondary button that says what it does. Where the session's composer can be filled it reads Put in
+/// Draft, and a click puts the line below the composer's text and opens the session; elsewhere it reads Copy to Clipboard, says why
+/// on its help tag, copies, and then reads Copied until Home's next read or a new line. The pointer on it shows the whole line and
+/// where it goes. It never sends.
 struct HomeRemoraPutInDraft: View {
     let model: CatalogModel
     let ui: HomeRemoraUI
@@ -159,18 +148,23 @@ struct HomeRemoraPutInDraft: View {
 
     var body: some View {
         let hover = ui.hoverBinding(sessionID)
-        Button("Put in Draft") {
+        let plan = reads.record(of: sessionID, model: model).map { model.remoraHomeDraftPlan(for: $0) } ?? .copy(.terminal)
+        let label = HomeRemoraText.draftButton(plan: plan, result: ui.placedResult(sessionID, line: line, read: reads.generation))
+        Button(label.title) {
             guard let record = reads.record(of: sessionID, model: model) else { return }
-            ui.placed[sessionID] = model.putRemoraLineInDraft(line, record: record)
             hover.wrappedValue = false
+            let read = reads.generation
+            ui.placed[sessionID] = HomeRemoraUI.Placed(result: model.putRemoraLineInDraft(line, record: record), line: line, read: read)
         }
         .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
         .onHover { hover.wrappedValue = $0 }
-        .accessibilityHint("Leaves the next step in the session's composer without sending it")
+        .help(label.help ?? "")
+        .accessibilityLabel(label.title)
+        .accessibilityHint(label.hint)
         .accessibilityIdentifier("home-remora-put-in-draft")
-        .inkPopover(isPresented: hover, id: "home-remora-draft", label: "Put in Draft", side: .above, alignment: .leading,
+        .inkPopover(isPresented: hover, id: "home-remora-draft", label: label.title, side: .above, alignment: .leading,
                     takesKeyboard: false, content: {
-            HomeRemoraDraftHover(line: line, plan: reads.record(of: sessionID, model: model).map { model.remoraDraftPlan(for: $0) } ?? .copyTerminal)
+            HomeRemoraDraftHover(line: line, plan: plan)
         })
     }
 }
@@ -178,7 +172,7 @@ struct HomeRemoraPutInDraft: View {
 /// The hover popover (330 wide): where the line goes, the line whole, and that the composer's own ↵ sends it.
 struct HomeRemoraDraftHover: View {
     let line: String
-    let plan: RemoraDraftPlan
+    let plan: RemoraHomeDraftPlan
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -503,8 +497,6 @@ private struct HomeRemoraFoldLine: View {
     private var trailing: some View {
         if pickedUp {
             Text(LoomDateFormat.time24(tile.session.lastActivityAt)).homeType(R.foldMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle)
-        } else if let result = ui.placed[tile.id] {
-            Text(HomeRemoraText.placed(result)).homeType(R.foldMeta).foregroundStyle(LoomTheme.Text.secondaryStyle)
         } else if let draft = tile.draft {
             HomeRemoraPutInDraft(model: model, ui: ui, reads: reads, sessionID: tile.id, line: draft)
         }

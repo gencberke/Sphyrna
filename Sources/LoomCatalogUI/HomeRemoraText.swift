@@ -137,21 +137,42 @@ enum HomeRemoraText {
 
     // MARK: Put in Draft
 
-    static func placed(_ result: RemoraDraftResult) -> String {
+    /// The button's title, its help tag and its accessibility hint (D-95): Put in Draft only where the line will be placed, Copy to
+    /// Clipboard where it can only be copied, and Copied once it was. The accessibility label is the title. Put in Draft has no help
+    /// tag: its hover popover says where the line goes.
+    static func draftButton(plan: RemoraHomeDraftPlan, result: RemoraHomeDraftResult?) -> (title: String, help: String?, hint: String) {
         switch result {
-        case .placed: "In its composer, not sent"
-        case .copiedHasDraft: "Copied: it already has a draft"
-        case .copiedTerminal: "Copied: it runs in a terminal"
-        case .copiedNotSaved: "Copied: the draft could not be saved"
+        case .copied(let reason): return ("Copied", copyReason(reason), copyReason(reason))
+        case .copiedNotSaved:
+            let why = "The session's draft could not be saved, so the line was copied"
+            return ("Copied", why, why)
+        case .placed, nil: break
+        }
+        switch plan {
+        case .place:
+            return ("Put in Draft", nil, "Puts the next step below the session's composer text without sending it, and opens the session")
+        case .copy(let reason): return ("Copy to Clipboard", copyReason(reason), copyReason(reason))
         }
     }
 
+    static func copyReason(_ reason: RemoraCopyReason) -> String {
+        switch reason {
+        case .terminal: "This session runs in the terminal, so the line is copied"
+        case .codex: "Sphyrna cannot open Codex sessions yet, so the line is copied"
+        }
+    }
+
+    /// What a tile's result says where a line stands in place of its button.
+    static func placed(_ placed: HomeRemoraUI.Placed) -> String {
+        placed.result == .placed ? "In its composer, not sent" : "Copied"
+    }
+
     /// The hover popover's first line, from what Put in Draft would do now.
-    static func hoverWhere(_ plan: RemoraDraftPlan) -> String {
+    static func hoverWhere(_ plan: RemoraHomeDraftPlan) -> String {
         switch plan {
-        case .place: "Put in its composer, not sent"
-        case .copyHasDraft: "Its composer has text, so this is copied instead"
-        case .copyTerminal: "It runs in a terminal, so this is copied instead"
+        case .place: "Goes below its composer's text, not sent, and the session opens"
+        case .copy(.terminal): "It runs in the terminal, so this is copied"
+        case .copy(.codex): "Sphyrna cannot open Codex sessions yet, so this is copied"
         }
     }
 

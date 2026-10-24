@@ -15,6 +15,13 @@ final class HomeRemoraUI {
         let at: Date
     }
 
+    /// What Put in Draft did for a tile, for the line it had and the read Home showed then: a new read, or a new line, clears it.
+    struct Placed: Equatable {
+        let result: RemoraHomeDraftResult
+        let line: String
+        let read: Int
+    }
+
     enum Popover: Equatable {
         case more
         case scope
@@ -35,7 +42,7 @@ final class HomeRemoraUI {
     var open: Popover?
     /// The session whose Put in Draft the pointer is on (the popover shows its line).
     var hoveredDraft: UUID?
-    var placed: [UUID: RemoraDraftResult] = [:]
+    var placed: [UUID: Placed] = [:]
     /// The field's menu or popover cursor.
     var cursor: Int?
 
@@ -43,6 +50,12 @@ final class HomeRemoraUI {
         Binding(get: { self.open == popover }, set: { shown in
             if shown { self.open = popover; self.cursor = nil } else if self.open == popover { self.open = nil }
         })
+    }
+
+    /// Put in Draft's result for the session while it stands: the same line, and no read since.
+    func placedResult(_ id: UUID, line: String, read: Int) -> RemoraHomeDraftResult? {
+        guard let placed = placed[id], placed.line == line, placed.read == read else { return nil }
+        return placed.result
     }
 
     func hoverBinding(_ id: UUID) -> Binding<Bool> {

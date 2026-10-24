@@ -112,6 +112,8 @@ final class HomeRemoraReads {
     private(set) var recent: [CatalogSession] = []
     private(set) var notes: [RemoraHostNote] = []
     private(set) var hasRead = false
+    /// How many reads ended: a result Put in Draft left on a tile stands until the next one.
+    private(set) var generation = 0
     /// The undo token the model held when Home showed: "Remembered" stands only for a fact saved since.
     let baselineUndo: RemoraUndoToken?
 
@@ -143,23 +145,32 @@ final class HomeRemoraReads {
         recent = page?.sessions.filter { !$0.isSideChat } ?? []
         notes = memory
         hasRead = true
+        generation += 1
     }
 }
 
-/// What makes Home read for Remora again.
+/// What makes Home read for Remora again. It changes once for each real change (FB5-11): a call's end sets its answer, the kept brief
+/// and the idle phase one after another, across awaits that can all land in one frame, so while a call runs the key holds nil for
+/// them and takes the settled values once, when the call is over.
 struct HomeRemoraReadKey: Equatable {
+    struct Settled: Equatable {
+        let kept: RemoraKeptBrief?
+        let answer: RemoraHostAnswer?
+    }
+
     let home: HomeReadKey
-    let kept: RemoraKeptBrief?
-    let answer: RemoraHostAnswer?
-    let idle: Bool
+    /// The kept brief and the last answer; nil while a call runs.
+    let settled: Settled?
     /// Remora is on with its host: turning it on, or the host arriving, reads again.
     let active: Bool
 }
 
 extension CatalogModel {
     var homeRemoraReadKey: HomeRemoraReadKey {
-        HomeRemoraReadKey(home: homeReadKey, kept: remora.keptBrief, answer: remora.lastAnswer, idle: !remora.isBusy,
-                          active: hasRemora && remora.preferences.isOn)
+        let state = remora
+        return HomeRemoraReadKey(home: homeReadKey,
+                                 settled: state.isBusy ? nil : HomeRemoraReadKey.Settled(kept: state.keptBrief, answer: state.lastAnswer),
+                                 active: hasRemora && state.preferences.isOn)
     }
 
     /// A session as Home names it now: the live record when the model holds one, else what the catalog read gave. A session being
