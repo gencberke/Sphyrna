@@ -1,6 +1,6 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-24 23:10
+- **Updated:** 2026-10-25
 - **Stage:** **Round 5: 1.6.1's slices are in progress** ([plans/ACTIVE-PLAN.md §0](plans/ACTIVE-PLAN.md#0-round-5-sphyrna-161-from-24-oct-d-93), [plans/FEEDBACK-5.md](plans/FEEDBACK-5.md)), from `@user`'s first notes on 1.6.0.
   - Sphyrna 1.6.0, the first stable release ([D-83](DECISIONS.md)), is tagged, promoted and installed locally (23 Oct).
   - `0.4.4` remains the latest public GitHub release ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)).
@@ -12,27 +12,25 @@
   - Round 5's causes are traced, Chat's streaming cost is studied (FB5-10), and the decisions are recorded as D-93 to D-99.
   - **`@user`'s go (24 Oct, about 12:50):** "mac boşta olacak. başlayabilirsin." The open questions take their defaults: Q2, Q3, Q6, Q7 and Q13 to Q17 in [FEEDBACK-5](plans/FEEDBACK-5.md#decisions). That is the planner's reading of the go; `@user` can change any of them.
   - The slices run as the planner's subagents, each in its own `wt/r5-*` worktree (§2).
-  - **Resumed 16:05** (`@user`: "devam. biraz testleri minimal tutmaya çalışalım"): one run of the changed suites per step, failing-first only for a new rule, one release-tree run and one full gate for the pool.
-  - **Every slice is on `v2`** (HEAD `7b7b9cb` at 23:05, local, unpushed): Wave 1, Wave 3 except Peek, FB5-10 S0–S4, FB5-12, `check.sh`'s summary rule, the docs (`06e31f1`), and the focused review's fixes.
-  - **Checks:**
-    - the full gate passed on `618eb41` (`check-20261024T165546-4426.log`: release build, release tree, 1,828 + 365 tests, windows included);
-    - the later commits passed their suites, and a combined check passed on `7b7b9cb` (151 tests);
-    - the focused closing review (D-06, `@user`'s choice) is done, and its Must-fix and Should-fixes are in.
-  - **Chat cost** (C8, visible, % of one core): 600 chars/s 22.4 → 19.2, 6,000 chars/s 48.3 → 39.0, a 300-line fence 37.6 → 19.1 (after S4). Q17's target (12 / 25) is missed. `@user` traded selection during the stream for cost (`23174ee`); it is still unmeasured.
-  - **Open:**
-    - the pool's lean C8 (`run-r5rc`, package `23174ee`) stopped because **the screen is locked**: visible cells cannot run. It resumes with the screen unlocked and the Mac idle (`evidence/r5/RUN.md` has the command);
-    - then D-92 (3)'s numbers and the release notes' TODO;
-    - then `@user`'s word on tag, promote, install and push.
-- **Blocker:** the locked screen, for the lean C8. The icon is picked (D-97). The tag, promote, push and GitHub release wait for `@user` ([D-16](DECISIONS.md), [D-83](DECISIONS.md)).
+  - **1.6.1 is tagged and promoted (25 Oct):** `release/1.6.1` is `v2` `c3bf1a8`, promoted as the loom tree's `39a5e4a` (tag `v1.6.1`, local, unpushed). `@user`: "sonuçlar okyse … ufak bir roadmap çizip burada version bumpını alalım".
+  - **Checks behind it:**
+    - the full gate on `618eb41` (1,828 + 365 tests, windows, release tree);
+    - each later commit's suites, a combined check on `7b7b9cb` (151 tests), and a release tree on the final code;
+    - the focused closing review (D-06), with its fixes in.
+    - The rest of the lean C8 was skipped on `@user`'s call (narrow checks, usage), as was the real-Claude check.
+  - **Chat cost after S4:** 600 chars/s 22.4 → 19.2, 6,000 chars/s 48.3 → 39.0, a long fence 37.6 → 19.1. These are D-92 (3)'s new budgets; Q17's target goes to S5, after 1.6.1.
+  - **The roadmap after 1.6.1** is [ACTIVE-PLAN §0.1](plans/ACTIVE-PLAN.md): 1.6.2 is Codex parity's infrastructure, usage and connections, Chat S5 and small leftovers; 1.7.0 is the session channel and Codex's binding.
+  - **Waiting for `@user`:**
+    - installing 1.6.1 (`~/Documents/github/loom/build.sh`, which replaces the daily 1.6.0 in `/Applications`);
+    - the push and the GitHub release (DEVELOPMENT §10);
+    - the hand checks in §0.1.
+- **Blocker:** none. The icon is picked (D-97). The tag, promote, push and GitHub release wait for `@user` ([D-16](DECISIONS.md), [D-83](DECISIONS.md)).
 
 ---
 
 ## 1. Current Operational Mode
 
-- **Next (24 Oct, 23:10):**
-  1. With the screen unlocked and the Mac idle, resume the lean C8 (`run-r5rc`; the command is in `~/Library/Caches/loom-v2/evidence/r5/RUN.md`; valid cells are skipped). Restart `caffeinate -d` first.
-  2. Write D-92 (3)'s new budgets from it (measured plus margin), and fill the release notes' `TODO(planner)`. Sync the docs to `v2` and commit there.
-  3. Stop for `@user`'s word on `release/1.6.1`, the promote, the install and the push (D-16).
+- **Next (25 Oct):** on `@user`'s word, install 1.6.1, then the push and the GitHub release. After that, 1.6.2 starts from ACTIVE-PLAN §0.1, planned with `@user`.
 - **Planner (24 Oct):** the session that wrote [FEEDBACK-5](plans/FEEDBACK-5.md) plans round 5 with `@user`. Before it, the session "Sphyrna 1.6.0 release planlama" was `@planner` from 22 Oct 02:20 (`@user`'s word). The earlier planner session and the track sessions `sphyrna-ink` / `sphyrna-core` are idle; implementers run as the planner's own subagents and slices integrate straight onto `v2` (the `ink` and `core` track branches are not used).
 - **Night window (22–23 Oct, `@user` at 23:41):** the Mac idle, on the adapter, the screen unlocked; the planner ran the screen work after the review's fixes (the full gate, `rc3`'s C8 cells and an A/B against `rc2`, the service smoke) without asking again. It ended at 01:10. Briefs tell implementers to avoid commands that ask for approval, and to wait on `evidence/tools/wait-measurements.sh` (a C8 run, or the `HOLD-BUILDS` file while `@user` uses the Mac) before any build.
 - **Test cadence ([D-90](DECISIONS.md), [DEVELOPMENT.md §3.1](DEVELOPMENT.md#31-test-cadence-slices-one-pooled-batch-fixes-scoped-re-checks-d-90-22-oct-2026)):** narrow off-screen checks per slice; the pool runs when enough has collected; fixes get scoped re-checks.
