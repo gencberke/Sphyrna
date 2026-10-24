@@ -48,7 +48,7 @@ extension ChatComposerModel {
     private func applyRestored(_ loaded: RestoredDraft) {
         draftLoaded = true
         // What was typed while the file was read is saved once it is known (saves waited for the file).
-        defer { if !text.isEmpty || !attachments.isEmpty { scheduleSave() } }
+        defer { if !text.isEmpty || !attachments.isEmpty || !mentions.isEmpty { scheduleSave() } }
         if let problem = loaded.problem {
             show(problem)
             return
@@ -59,6 +59,8 @@ extension ChatComposerModel {
         // What was typed while the file was read goes after the draft's text.
         let typed = text
         setAttachments(loaded.attachments + attachments)
+        // The pills' titles are the catalog's now; a session it no longer knows keeps its pill and is left out on send.
+        setMentions(draft.mentions.map { environment.mentionTarget($0) ?? .unavailable($0) } + mentions)
         setText(Self.join(draft.text, typed))
     }
 
@@ -76,7 +78,8 @@ extension ChatComposerModel {
     }
 
     /// What the draft file holds now: messages not accepted yet first (they were typed first), then the composer. While a
-    /// queued message is edited, the composer's own text is the saved one, never the item's.
+    /// queued message is edited, the composer's own text is the saved one, never the item's. The mentions are the pills'
+    /// session ids, the in-flight messages' first.
     func draftForSave() -> ChatDraft {
         var pieces = inFlight.map(\.text)
         var kept = inFlight.flatMap(\.attachments)
@@ -91,7 +94,9 @@ extension ChatComposerModel {
                 ChatDraft.Attachment(id: attachment.id, kind: .pastedText)
             }
         }
-        return ChatDraft(text: joined, attachments: listed)
+        var seen = Set<UUID>()
+        let mentioned = (inFlight.flatMap(\.mentions) + (editing?.savedMentions ?? mentions)).map(\.id).filter { seen.insert($0).inserted }
+        return ChatDraft(text: joined, attachments: listed, mentions: mentioned)
     }
 
     func scheduleSave() {
@@ -118,7 +123,9 @@ extension ChatComposerModel {
         // A session deleted through Loom never gets its draft file back from a late timer or a blur.
         guard let drafts, !forgotten, draftLoaded else { return }
         let draft = draftForSave()
-        if let last = lastSavedDraft, last.text == draft.text, last.attachments == draft.attachments { return }
+        if let last = lastSavedDraft, last.text == draft.text, last.attachments == draft.attachments, last.mentions == draft.mentions {
+            return
+        }
         do {
             try drafts.save(draft, sessionID: card)
             lastSavedDraft = draft

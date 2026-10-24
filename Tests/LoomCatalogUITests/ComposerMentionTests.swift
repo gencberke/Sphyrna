@@ -182,6 +182,150 @@ struct ComposerMentionTests {
         #expect(composer.mentions == [Self.docs])
         await fixture.rig.finish()
     }
+
+    // MARK: Persistence
+
+    @Test func pillsAreKeptInTheDraftAndComeBackAfterARelaunch() async throws {
+        let fixture = try await make()
+        let composer = fixture.composer
+        composer.addMention(Self.login.id)
+        composer.addMention(Self.docs.id)
+        composer.setText("half a thought")
+        composer.flushDraft()
+        let saved = try #require(try fixture.store.load(sessionID: fixture.id))
+        #expect(saved.mentions == [Self.login.id, Self.docs.id], "the ids only, in pill order")
+        #expect(saved.text == "half a thought", "no mention text in the draft's text")
+
+        // A relaunch: a new composer for the same session reads the draft. One session is gone meanwhile: its pill stays,
+        // and is left out on send.
+        let relaunched = try await make(id: fixture.id, rig: fixture.rig, mentions: [Self.docs])
+        #expect(relaunched.composer.mentions.map(\.id) == [Self.login.id, Self.docs.id])
+        #expect(relaunched.composer.mentions.last == Self.docs, "the title is the catalog's")
+        #expect(relaunched.composer.currentText() == "half a thought")
+
+        // Removing the pills empties the draft.
+        relaunched.composer.removeMention(Self.login.id)
+        relaunched.composer.removeMention(Self.docs.id)
+        relaunched.composer.setText("")
+        relaunched.composer.flushDraft()
+        #expect(try fixture.store.load(sessionID: fixture.id) == nil)
+        await fixture.rig.finish()
+    }
+
+    @Test func aDraftWithPillsOnlyIsKeptAndAnOlderDraftWithoutThemLoads() async throws {
+        let fixture = try await make()
+        fixture.composer.addMention(Self.login.id)
+        fixture.composer.flushDraft()
+        #expect(try fixture.store.load(sessionID: fixture.id)?.mentions == [Self.login.id], "a pill alone is worth keeping")
+
+        // A draft file written before mentions existed.
+        let other = UUID()
+        try FileManager.default.createDirectory(at: fixture.store.directory, withIntermediateDirectories: true)
+        try Data(#"{"attachments":[],"text":"an old draft","updatedAt":"2026-10-01T10:00:00Z"}"#.utf8)
+            .write(to: fixture.store.url(for: other))
+        let old = try await make(id: other, rig: fixture.rig)
+        #expect(old.composer.currentText() == "an old draft")
+        #expect(old.composer.mentions.isEmpty)
+        #expect(old.composer.notice == nil, "it read as a draft, not as an unreadable file")
+        await fixture.rig.finish()
+    }
+
+    @Test func pillsSurviveASwitchToAnotherSessionAndBack() async throws {
+        let rig = try await LiveRig.make()
+        let attachments = ChatAttachments()
+        let host = ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root, driverForgotten: { attachments.driverForgotten($0) })
+        let first = UUID(), second = UUID()
+        func composer(for id: UUID) -> ChatComposerModel {
+            let driver = host.driver(for: id)
+            return attachments.attachment(for: driver) {
+                var environment = ComposerEnvironment()
+                environment.draftDelay = .milliseconds(40)
+                environment.mentionTarget = { [Self.login.id: Self.login, Self.docs.id: Self.docs][$0] }
+                return ChatComposerModel(driver: driver, card: id, drafts: host.draftStore, environment: environment)
+            }
+        }
+        let a = composer(for: first)
+        await a.attachmentsRestored()
+        a.addMention(Self.login.id)
+        let b = composer(for: second)
+        await b.attachmentsRestored()
+        #expect(b.mentions.isEmpty, "the other session's composer has its own pills")
+        b.addMention(Self.docs.id)
+        let back = composer(for: first)
+        #expect(back === a)
+        #expect(back.mentions == [Self.login])
+        #expect(b.mentions == [Self.docs])
+        await rig.finish()
+    }
+
+    // MARK: Sending
+
+    @Test func sendingPutsTheMentionTextsBeforeTheTypedWordsAndClearsThePills() async throws {
+        let fixture = try await make(started: true)
+        let composer = fixture.composer
+        #expect(await idle(fixture))
+        composer.addMention(Self.login.id)
+        composer.addMention(Self.docs.id)
+        composer.setText("what changed?")
+        composer.submit(secondary: false)
+        #expect(composer.mentions.isEmpty)
+        #expect(!composer.hasContent)
+        await composer.settled()
+        #expect(await idle(fixture))
+        let expected = "[Another session, \"Fix the login bug\"] [Another session, \"Write the docs\"] what changed?"
+        #expect(await prompts(fixture) == [expected])
+        #expect(try fixture.store.load(sessionID: fixture.id) == nil, "the pills went with the send")
+        #expect(composer.notice == nil)
+        await fixture.rig.finish()
+    }
+
+    @Test func aPillWhoseSessionHasNoMentionIsSkippedWithANotice() async throws {
+        // The docs session is gone, or has no transcript: the catalog gives no mention text for it.
+        let fixture = try await make(started: true, texts: [Self.login.id: "[Another session, \"Fix the login bug\"]"])
+        let composer = fixture.composer
+        #expect(await idle(fixture))
+        composer.addMention(Self.login.id)
+        composer.addMention(Self.docs.id)
+        composer.setText("hi")
+        composer.submit(secondary: false)
+        await composer.settled()
+        #expect(await idle(fixture))
+        #expect(await prompts(fixture) == ["[Another session, \"Fix the login bug\"] hi"])
+        #expect(composer.notice?.text.hasPrefix("One mention was skipped") == true, "\(composer.notice?.text ?? "no notice")")
+        #expect(composer.mentions.isEmpty)
+        await fixture.rig.finish()
+    }
+
+    @Test func aMessageQueuedWhileClaudeWorksCarriesItsMentions() async throws {
+        let fixture = try await make(started: true)
+        let composer = fixture.composer
+        #expect(await idle(fixture))
+        try await fixture.driver.send("/scenario work 3000")
+        #expect(await working(fixture))
+        composer.addMention(Self.login.id)
+        composer.setText("after this")
+        #expect(composer.sendKind(commandHeld: true) == .afterTurn)
+        composer.submit(secondary: true)
+        await composer.settled()
+        await composer.refresh()
+        let expected = "[Another session, \"Fix the login bug\"] after this"
+        #expect(composer.state.queue.items.map(\.text) == [expected], "the queue strip shows the message as it will be sent")
+        #expect(composer.mentions.isEmpty)
+        #expect(await waitUntil(20) { await prompts(fixture).contains(expected) })
+        await fixture.rig.finish()
+    }
+
+    private func idle(_ fixture: Fixture) async -> Bool {
+        await waitUntil { await fixture.composer.refresh(); return fixture.composer.state.phase == .ready && !fixture.composer.state.turnRunning }
+    }
+
+    private func working(_ fixture: Fixture) async -> Bool {
+        await waitUntil { await fixture.composer.refresh(); return fixture.composer.state.turnRunning }
+    }
+
+    private func prompts(_ fixture: Fixture) async -> [String] {
+        await fixture.driver.snapshot().model.entries.compactMap { if case let .user(prompt) = $0.body { prompt.text } else { nil } }
+    }
 }
 
 /// A composer that is not the live one (the Side tab's, the quick question's, the new-session draft's): the protocol's default.

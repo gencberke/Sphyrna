@@ -38,6 +38,28 @@ struct ChatDraftStoreTests {
         #expect(try permissions(store.directory) == 0o700)
     }
 
+    /// D-96: the sessions a draft mentions are kept as ids, in order; a draft of mentions alone is kept; a draft written before
+    /// mentions loads with none.
+    @Test func aDraftKeepsItsMentionsAndAnOlderDraftLoadsWithout() throws {
+        let (store, root) = try store()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let id = UUID()
+        let mentioned = [UUID(), UUID()]
+        try store.save(ChatDraft(text: "", mentions: mentioned), sessionID: id)
+        #expect(try store.load(sessionID: id)?.mentions == mentioned)
+        // A held message written by the driver keeps the mentions, as it keeps the text.
+        try store.hold(id: "m1", text: "sent", attachments: [], sessionID: id)
+        #expect(try store.load(sessionID: id)?.mentions == mentioned)
+        let moved = UUID()
+        try store.move(from: id, to: moved)
+        #expect(try store.load(sessionID: moved)?.mentions == mentioned, "a /clear moves them with the draft")
+
+        let old = UUID()
+        try Data(#"{"attachments":[],"text":"old","updatedAt":"2026-10-01T10:00:00Z"}"#.utf8).write(to: store.url(for: old))
+        let loaded = try #require(try store.load(sessionID: old))
+        #expect(loaded.text == "old" && loaded.mentions.isEmpty)
+    }
+
     @Test func savingAnEmptyDraftRemovesItAndAnAttachmentTheDraftNoLongerListsGoes() throws {
         let (store, root) = try store()
         defer { try? FileManager.default.removeItem(at: root) }

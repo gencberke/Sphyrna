@@ -1,7 +1,7 @@
 import Foundation
 
-/// What the user had typed in a session's composer and not sent (CHAT-SPEC → Delivery and drafts): the text, and the
-/// attachments that wait with it (images, large pastes). Saved 300 ms after the last change, on blur, on send and on
+/// What the user had typed in a session's composer and not sent (CHAT-SPEC → Delivery and drafts): the text, the
+/// attachments that wait with it (images, large pastes) and the sessions it mentions (D-96). Saved 300 ms after the last change, on blur, on send and on
 /// Quit, so a crash or a relaunch loses at most the last 300 ms.
 public struct ChatDraft: Codable, Equatable, Sendable {
     public struct Attachment: Codable, Equatable, Sendable, Identifiable {
@@ -43,12 +43,17 @@ public struct ChatDraft: Codable, Equatable, Sendable {
 
     public var text: String
     public var attachments: [Attachment]
+    /// The sessions the composer's pills mention, in pill order: their ids only (the title and the mention text are built
+    /// when needed). A draft written before mentions has none.
+    public var mentions: [UUID]
     public var updatedAt: Date
     public var held: [Held]
 
-    public init(text: String = "", attachments: [Attachment] = [], updatedAt: Date = Date(), held: [Held] = []) {
+    public init(text: String = "", attachments: [Attachment] = [], mentions: [UUID] = [], updatedAt: Date = Date(),
+                held: [Held] = []) {
         self.text = text
         self.attachments = attachments
+        self.mentions = mentions
         self.updatedAt = updatedAt
         self.held = held
     }
@@ -57,13 +62,14 @@ public struct ChatDraft: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         text = try container.decode(String.self, forKey: .text)
         attachments = try container.decode([Attachment].self, forKey: .attachments)
+        mentions = try container.decodeIfPresent([UUID].self, forKey: .mentions) ?? []
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         held = try container.decodeIfPresent([Held].self, forKey: .held) ?? []
     }
 
-    /// Nothing worth keeping: a blank text, no attachment and no unread message.
+    /// Nothing worth keeping: a blank text, no attachment, no mention and no unread message.
     public var isEmpty: Bool {
-        attachments.isEmpty && held.isEmpty && text.allSatisfy(\.isWhitespace)
+        attachments.isEmpty && mentions.isEmpty && held.isEmpty && text.allSatisfy(\.isWhitespace)
     }
 
     /// Every attachment file the draft lists, the held messages' included.
@@ -176,7 +182,7 @@ public struct ChatDraftStore: Sendable {
         }
     }
 
-    /// Writes the composer's part of the draft: its text and attachments. The messages the driver holds unread stay as the
+    /// Writes the composer's part of the draft: its text, attachments and mentions. The messages the driver holds unread stay as the
     /// file has them (`draft.held` is not read). A draft with nothing in it, held messages included, removes its file and
     /// its attachments.
     public func save(_ draft: ChatDraft, sessionID: UUID) throws {

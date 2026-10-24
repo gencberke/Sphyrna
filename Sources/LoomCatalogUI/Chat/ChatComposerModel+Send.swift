@@ -51,19 +51,27 @@ extension ChatComposerModel {
             show("\(moving) Send it when the session is back in Chat, or cancel the move.")
             return
         }
-        let message = currentText()
+        let typed = currentText()
         let outgoing = attachments
+        let pills = mentions
         let working = state.turnRunning
         if secondary, working, !outgoing.isEmpty {
             show("A queued message carries text only. Remove the attachments, or press \u{21B5} to send now.")
             return
         }
+        // The pills become their mention texts in front of the typed words (D-96); a queued message carries them too.
+        let (message, skipped) = mentionedText(typed, mentions: pills)
+        guard !outgoing.isEmpty || message.contains(where: { !$0.isWhitespace }) else {
+            show(ComposerMentionText.skippedNotice(skipped) + " Nothing was sent.")
+            return
+        }
         let timing: ChatSendTiming = working && secondary ? .afterTurn : .next
-        let flight = ComposerInFlight(text: message, attachments: outgoing)
+        let flight = ComposerInFlight(text: typed, attachments: outgoing, mentions: pills)
         inFlight.append(flight)
         clearComposer()
         flushDraft()
-        history.append(message)
+        history.append(typed)
+        if skipped > 0 { show(ComposerMentionText.skippedNotice(skipped)) }
         // A message sent while the stack was held ends the typing guard: the cards show, and the text was not their note.
         cards?.composerSent()
         chain { [self] in
@@ -72,12 +80,19 @@ extension ChatComposerModel {
                 finish(flight)
             } catch {
                 // Back in the composer first (it writes the attachments' files again), then the in-flight copy goes: the
-                // draft never lists the message twice, and never loses its attachments.
-                putBack(message, outgoing)
+                // draft never lists the message twice, and never loses its attachments or its pills.
+                putBack(typed, outgoing, pills)
                 finish(flight)
                 show(Self.sendFailure(error, backInComposer: true))
             }
         }
+    }
+
+    /// The message as it goes out: each pill's mention text (`ComposerEnvironment.sessionMention`), in pill order, before the
+    /// typed words. A pill whose session is gone or has no transcript is left out, and counted.
+    func mentionedText(_ typed: String, mentions pills: [ComposerMention]) -> (text: String, skipped: Int) {
+        let texts = pills.compactMap { environment.sessionMention($0.id) }
+        return (ComposerMentionText.message(mentions: texts, text: typed), pills.count - texts.count)
     }
 
     private func finish(_ flight: ComposerInFlight) {
@@ -94,17 +109,20 @@ extension ChatComposerModel {
         }
     }
 
-    /// Empties the field and the attachments (not the draft file: the in-flight copy keeps it until the send is accepted).
+    /// Empties the field, the attachments and the pills (not the draft file: the in-flight copy keeps it until the send is
+    /// accepted).
     func clearComposer() {
         setAttachments([])
+        setMentions([])
         setText("")
         history.noteEdit()
     }
 
     /// A message that was not accepted comes back in front of what was typed since.
-    func putBack(_ message: String, _ outgoing: [ComposerAttachment]) {
+    func putBack(_ message: String, _ outgoing: [ComposerAttachment], _ pills: [ComposerMention] = []) {
         for attachment in outgoing { keepAttachmentFile(attachment) }
         setAttachments(outgoing + attachments)
+        setMentions(pills + mentions)
         setText(Self.join(message, text))
         flushDraft()
     }
@@ -190,10 +208,16 @@ extension ChatComposerModel {
     /// composer waits and comes back when the edit ends.
     func beginEdit(_ id: String) {
         guard let item = state.queue.items.first(where: { $0.id == id }) else { return }
-        let saved: (String, [ComposerAttachment])
-        if let current = editing { saved = (current.savedText, current.savedAttachments) } else { saved = (currentText(), attachments) }
-        setEditing(ComposerQueueEdit(itemID: id, savedText: saved.0, savedAttachments: saved.1, originalText: item.text))
+        let saved: (String, [ComposerAttachment], [ComposerMention])
+        if let current = editing {
+            saved = (current.savedText, current.savedAttachments, current.savedMentions)
+        } else {
+            saved = (currentText(), attachments, mentions)
+        }
+        setEditing(ComposerQueueEdit(itemID: id, savedText: saved.0, savedAttachments: saved.1, savedMentions: saved.2,
+                                     originalText: item.text))
         setAttachments([])
+        setMentions([])
         setText(item.text)
         flushDraft()
         editor?.focus()
@@ -204,7 +228,8 @@ extension ChatComposerModel {
     /// Update (↵ or the button while editing): the item takes the composer's text and the composer gets its own draft back.
     func updateQueuedMessage() {
         guard let edit = editing else { return }
-        let newText = currentText()
+        // Pills added while editing go into the item as on a send.
+        let newText = mentionedText(currentText(), mentions: mentions).text
         guard newText.contains(where: { !$0.isWhitespace }) else { return }
         // A queued message carries text only: nothing is dropped, and the attachments stay in the composer.
         guard attachments.isEmpty else {
@@ -237,9 +262,11 @@ extension ChatComposerModel {
         setEditing(nil)
         if keepingComposer {
             setAttachments(edit.savedAttachments + attachments)
+            setMentions(mentions + edit.savedMentions)
             setText(Self.join(text, edit.savedText))
         } else {
             setAttachments(edit.savedAttachments)
+            setMentions(edit.savedMentions)
             setText(edit.savedText)
         }
         flushDraft()

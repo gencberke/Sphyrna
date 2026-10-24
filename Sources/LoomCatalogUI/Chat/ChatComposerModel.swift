@@ -94,8 +94,10 @@ struct ComposerMenuState: Equatable {
 /// A message taken out of the field for a send the driver has not accepted yet.
 struct ComposerInFlight {
     let id = UUID()
+    /// The field's text, without the mention texts (the pills are kept as pills).
     var text: String
     var attachments: [ComposerAttachment]
+    var mentions: [ComposerMention] = []
 }
 
 /// A queued message being edited in the composer (CHAT-SPEC → Queue → Edit).
@@ -104,6 +106,7 @@ struct ComposerQueueEdit: Equatable {
     /// What the composer held before: it comes back when the edit ends.
     var savedText: String
     var savedAttachments: [ComposerAttachment]
+    var savedMentions: [ComposerMention] = []
     /// The item's text when the edit began: the edit is a change only if the composer reads differently.
     var originalText = ""
 }
@@ -363,7 +366,10 @@ final class ChatComposerModel {
         if hasContent != content { hasContent = content }
     }
 
+    /// Sets the pills; a session named twice keeps its first place.
     func setMentions(_ value: [ComposerMention]) {
+        var seen = Set<UUID>()
+        let value = value.filter { seen.insert($0.id).inserted }
         guard mentions != value else { return }
         mentions = value
         let content = hasContentNow

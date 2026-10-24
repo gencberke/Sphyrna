@@ -45,7 +45,7 @@ extension CatalogModel {
                 ComposerSessionCandidate(id: $0.id, title: $0.title, project: $0.project, lastActivity: $0.lastActivityAt)
             }
         }
-        environment.sessionMention = { [weak self] id in self?.sessionMentionText(for: id) }
+        environment.sessionMention = { [weak self] id in self?.sessionMentionText(for: id, requiringTranscript: true) }
         environment.mentionTarget = { [weak self, weak feed] id in
             guard let self, let feed, id != feed.card else { return nil }
             return composerMentionTarget(for: id)
@@ -67,21 +67,25 @@ extension CatalogModel {
     }
 
     /// The text that mentions another session: its title, the transcript's path and the first line of its last answer. The
-    /// read is bounded (`ProjectLastLine`); a session without a transcript is mentioned by its title alone.
-    func sessionMentionText(for id: UUID) -> String? {
+    /// read is bounded (`ProjectLastLine`); a session without a transcript is mentioned by its title alone, or with
+    /// `requiringTranscript` (a pill on send, D-96) not at all.
+    func sessionMentionText(for id: UUID, requiringTranscript: Bool = false) -> String? {
         guard let record = rowModels[id]?.record ?? liveRecords[id] else { return nil }
         let title = record.displayTitle(projectName: projectName(for: record))
         var parts = ["Another session, \"\(title)\""]
+        var hasTranscript = false
         if let conversation = record.session.providerConversationID, let directory = claudeConfigDirectory {
             if let file = ClaudeTranscriptLocator.locate(sessionID: conversation, configDirectory: directory,
                                                          workingDirectory: record.session.workingDirectory) {
                 parts.append("transcript \(file.path)")
+                hasTranscript = true
             }
             if let answer = ProjectLastLine.read(sessionID: conversation, configDirectory: directory,
                                                  workingDirectory: record.session.workingDirectory) {
                 parts.append("its last answer began: \(answer)")
             }
         }
+        if requiringTranscript, !hasTranscript { return nil }
         return "[" + parts.joined(separator: " \u{00B7} ") + "]"
     }
 
