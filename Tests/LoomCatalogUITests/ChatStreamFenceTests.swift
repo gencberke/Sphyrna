@@ -82,6 +82,29 @@ extension ChatHosted {
             #expect(chunked > 0, "the long fence after a paragraph settled in chunks")
         }
 
+        /// A fence in a list item ends with the item: a fence marker at column 0 opens a top-level fence, as the parser reads it,
+        /// and does not close the item's. A streamed message is then the blocks of the finished one.
+        @Test func aListItemFenceClosedAtColumnZeroIsReadAsTheParserReadsIt() {
+            let text = "- item\n  ```\n  code\n```\n\nafter\n\n- more\n\n"
+            let characters = Array(text)
+            for cut in 0...characters.count {
+                let prefix = String(characters.prefix(cut))
+                let parts = ChatContent.streamingBlocks(id: "item-fence-\(UUID().uuidString)", text: prefix)
+                let streamed = parts.head + parts.tail + (parts.fence.map { [$0.block] } ?? [])
+                #expect(streamed == (prefix.isEmpty ? [] : ChatMarkdown.parse(prefix)), "cut \(cut): the streamed blocks are not the parse")
+            }
+            // The fence the column-0 marker opened has no end: nothing after it settles.
+            #expect(ChatContent.stableSplit(text) == text.startIndex)
+            // A close at the item's own column still closes it, and what follows settles.
+            let closed = "- item\n  ```\n  code\n  ```\n\nafter\n\nend"
+            #expect(String(closed[..<ChatContent.stableSplit(closed)]).hasSuffix("after\n\n"))
+            // A lazy line (no blank line before it, not a block) stays in the item's fence.
+            let lazy = "- item\n  ```\n  code\nlazy\n  ```\n\nafter\n\nend"
+            #expect(String(lazy[..<ChatContent.stableSplit(lazy)]).hasSuffix("after\n\n"))
+            Self.expectWholeParse(closed, id: "item-closed-\(UUID().uuidString)")
+            Self.expectWholeParse(lazy, id: "item-lazy-\(UUID().uuidString)")
+        }
+
         // MARK: A long fence settles in chunks
 
         @Test func aLongOpenFenceSettlesInChunksOfCompleteLines() {

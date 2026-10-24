@@ -126,7 +126,7 @@ enum ChatMarkdown {
 
     // MARK: Lists
 
-    private struct Marker {
+    struct Marker {
         var indent: Int
         var ordered: Bool
         var number: Int
@@ -136,7 +136,7 @@ enum ChatMarkdown {
         var contentStart: Substring.Index
     }
 
-    private static func listMarker(_ line: Substring) -> Marker? {
+    static func listMarker(_ line: Substring) -> Marker? {
         var indent = 0
         var index = line.startIndex
         while index < line.endIndex, line[index] == " " || line[index] == "\t" {
@@ -323,7 +323,7 @@ enum ChatMarkdown {
         return body
     }
 
-    private static func startsBlock(_ line: Substring) -> Bool {
+    static func startsBlock(_ line: Substring) -> Bool {
         openingFence(line) != nil || headingParts(line) != nil || isRule(line) || isQuote(line) || listMarker(line) != nil
     }
 

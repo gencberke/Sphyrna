@@ -396,8 +396,17 @@ enum ChatContent {
     /// `isClosingFence`): a fence closes only on its own character, in a run at least as long, with nothing after it.
     /// Unlike the parser, it opens at any indent, as a fence in a list item does; it closes within three columns of the
     /// fence's own indent (the parser's rule when the fence sits at the item's content column or at the top level).
+    /// A fence in a list item ends with the item, as the parser ends it: at a non-blank line left of the item's content
+    /// column that follows a blank line or starts a block (a fence line included). That line is read again outside the
+    /// fence, so a fence marker at column 0 opens a top-level fence instead of closing the item's.
     struct SplitFence {
         private var open: ChatMarkdown.Fence?
+        /// The content column of the list item the open fence sits in (0 outside a list).
+        private var container = 0
+        /// The content column of the list item the last lines belong to (0 outside a list).
+        private var listContent = 0
+        /// Blank lines directly before the line being read.
+        private var blanks = 0
 
         var isOpen: Bool { open != nil }
         var current: ChatMarkdown.Fence? { open }
@@ -405,12 +414,27 @@ enum ChatContent {
         mutating func read(_ line: Substring) {
             let body = line.drop(while: { $0 == " " })
             let indent = line.utf8.count - body.utf8.count
+            if body.isEmpty {
+                blanks += 1
+                return
+            }
+            defer { blanks = 0 }
             if let fence = open {
-                let base = min(indent, max(0, fence.indent - 3))
-                if ChatMarkdown.isClosingFence(line.dropFirst(base), fence: fence) { open = nil }
-            } else if var fence = ChatMarkdown.openingFence(body) {
+                if indent >= container || (blanks == 0 && !ChatMarkdown.startsBlock(line)) {
+                    let base = min(indent, max(0, fence.indent - 3))
+                    if ChatMarkdown.isClosingFence(line.dropFirst(base), fence: fence) { open = nil }
+                    return
+                }
+                open = nil
+                listContent = 0
+            }
+            if indent < listContent, blanks > 0 || ChatMarkdown.startsBlock(line) { listContent = 0 }
+            if var fence = ChatMarkdown.openingFence(body) {
                 fence.indent = indent
                 open = fence
+                container = indent >= listContent ? listContent : 0
+            } else if let marker = ChatMarkdown.listMarker(line) {
+                listContent = marker.contentOffset
             }
         }
     }
