@@ -1,14 +1,14 @@
-/* ---------- the app icon: Rising, drawn once and shown everywhere on the page ---------- */
+/* ---------- the app icon: the hammerhead seen from above (D-97), drawn once and shown everywhere on the page ---------- */
 const iconCanvas = document.createElement('canvas'), layerCanvas = document.createElement('canvas');
 function paintIcon() {
-  const url = drawIcon(iconCanvas, { size: 1024 }).toDataURL('image/png');
+  const url = drawAppIcon(iconCanvas, { size: 1024 }).toDataURL('image/png');
   $$('img.appicon').forEach(i => { i.src = url; });
   // The pins follow the drawing: A1 above the upper eye, A2 on the body, A3 in the left margin.
   const k = 420 / 1024, g = iconCanvas.geo, eye = g.eyes.reduce((a, b) => (b.y < a.y ? b : a));
   const pin = (id, x, y) => Object.assign($(id).style, { left: Math.round(x * k - 11) + 'px', top: Math.round(y * k - 9) + 'px' });
   pin('#pinA1', eye.x, eye.y - 56); pin('#pinA2', g.mid.x, g.mid.y); pin('#pinA3', g.box.x0 / 2, 512);
-  $('#layerBg').src = drawIcon(layerCanvas, { size: 256, layer: 'bg' }).toDataURL('image/png');
-  $('#layerFg').src = drawIcon(layerCanvas, { size: 512, layer: 'fg' }).toDataURL('image/png');
+  $('#layerBg').src = drawAppIcon(layerCanvas, { size: 256, layer: 'bg' }).toDataURL('image/png');
+  $('#layerFg').src = drawAppIcon(layerCanvas, { size: 512, layer: 'fg' }).toDataURL('image/png');
 }
 paintIcon();
 

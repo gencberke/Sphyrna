@@ -100,7 +100,7 @@ SHOTS = {
     # Settings → Usage: the plan limits first, then where the tokens went; the window drawn taller to show the days
     'usage': dict(doc='settings', target='#winB', theme='dark', art=False, pad=28, steps=['#winB [data-stab=usage]'],
                   css='#winB{height:820px!important}'),
-    # the Rising icon as the identity page draws it, masked into macOS's rounded square
+    # the app icon (D-97) as the identity page draws it, masked into macOS's rounded square
     'icon': dict(doc='identity', target='#bigIcon', theme='dark', art=False, pad=0),
 }
 

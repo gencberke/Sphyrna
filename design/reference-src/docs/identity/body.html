@@ -6,7 +6,7 @@
   <section class="sec principles" id="rules">
   <div class="rules">
     <div class="rule"><div class="n">01</div><h3>One name</h3><p>Sphyrna is the hammerhead's genus, from the Greek <i>sphyra</i>, a hammer. One word, no pun, written the same in every language.</p></div>
-    <div class="rule"><div class="n">02</div><h3>The icon is the art</h3><p>The app's own ASCII engine draws the icon: the same field, ramp and eyes as Home's band and the new-session page, held still. Rising: the hammerhead climbing to the left on black.</p></div>
+    <div class="rule"><div class="n">02</div><h3>The icon is the art</h3><p>The app's own art engine draws the icon: the hammerhead of Home's band and the new-session page, seen from above and filled solid so it reads at 32 pt. It climbs to the left on deep ink-blue.</p></div>
     <div class="rule"><div class="n">03</div><h3>A mark for the menu bar</h3><p>Front, the hammerhead seen from the front: the hammer with an eye at each tip, the dorsal fin, the jaw and the pectoral fins, in one colour on a 20 pt canvas.</p></div>
     <div class="rule"><div class="n">04</div><h3>Remora arrives on Home</h3><p>Home's assistant is Remora. When Home opens with a new brief, the hammerhead brings the remora in, lets it go at the start of the brief and swims on. The remora stays there, beside its sentence.</p></div>
     <div class="rule"><div class="n">05</div><h3>One drawing everywhere</h3><p>First launch, About, the alerts, the Dock and the banners show the same hammerhead. The art keeps its rules: it never swims behind something you read.</p></div>
@@ -17,7 +17,7 @@
   <!-- ================= 01 THE ICON ================= -->
   <section class="sec" id="icon">
     <div class="sechead"><span class="num">01</span><h2>The app icon</h2>
-      <p>Rising: the hammerhead climbing to the left on black, in SF Mono Bold glyphs at 0.97 white, 0.7 of the square and centred on its outline, so the margins are even on every side. macOS masks the square into its rounded shape. Every icon on this page is this one.</p></div>
+      <p>The hammerhead seen from above, climbing to the left at the angle of Rising, the icon before it: the art engine's outline, filled solid at 0.97 white on a deep ink-blue gradient, with its box at 0.76 of the square and centred. macOS masks the square into its rounded shape. Every icon on this page is this one.</p></div>
     <div class="iconlab">
       <div class="ilstage">
         <div class="wall"></div>
@@ -42,19 +42,19 @@
         </div>
         <div class="ilbox pinhost"><span class="label">Layers for Icon Composer</span>
           <div class="layers">
-            <figure><div class="lv"><img id="layerBg" alt=""></div><figcaption><b>Ground.</b> Black.</figcaption></figure>
-            <figure><div class="lv ck"><img id="layerFg" alt=""></div><figcaption><b>Shark.</b> The glyphs alone, on transparency.</figcaption></figure>
+            <figure><div class="lv"><img id="layerBg" alt=""></div><figcaption><b>Ground.</b> Ink-blue, <span class="mono">#1D2445</span> to <span class="mono">#0B0E1D</span>.</figcaption></figure>
+            <figure><div class="lv ck"><img id="layerFg" alt=""></div><figcaption><b>Shark.</b> The solid figure alone, on transparency.</figcaption></figure>
           </div>
           <span class="pin" style="left:-8px;top:40px">A5</span>
         </div>
       </div>
     </div>
     <ol class="legend">
-      <li><b>A1</b>The eyes are the engine's own <span class="mono">o</span>, one at each tip of the hammer. They make it a hammerhead in every drawing.</li>
-      <li><b>A2</b>The glyphs are drawn at 0.97 white with more light toward the edges, so the faint outline characters (<span class="mono">. : - =</span>) read too. Density still picks the character, <span class="mono">.:-=+*#%@</span>, in SF Mono Bold.</li>
-      <li><b>A3</b>The shark is 0.7 of the square, and the box around its outline (the hammer, the fins and the tail) sits in the middle, so the margins are even left and right, and top and bottom.</li>
-      <li><b>A4</b>The Dock shows 64 and up, Finder's lists 16 and 32. The smaller shark keeps its outline down to 32; at 16 it is a bright stroke climbing to the left.</li>
-      <li><b>A5</b>The icon ships as two layers, so macOS can make its dark, clear and tinted versions from them. Black, not Ink's canvas, so it sits on any wallpaper.</li>
+      <li><b>A1</b>The hammer leads. It is drawn 1.3 times its size in the art, with an eye hole at each tip, so it still reads as a hammer at 32.</li>
+      <li><b>A2</b>One solid shape at 0.97 white: the engine's outline (the body, the hammer, the fins and the tail) with a thin stroke of the same white, so the slim body and fins keep their weight when macOS scales the icon down.</li>
+      <li><b>A3</b>The box around the outline is 0.76 of the square on its longer side and sits in the middle, so the margins are even and the hammer stays clear of the rounded corners.</li>
+      <li><b>A4</b>The Dock shows 64 and up, Finder's lists 16 and 32. The shark keeps its hammer, fins and tail down to 32; at 16 it is a white stroke climbing to the left.</li>
+      <li><b>A5</b>The icon ships as two layers, so macOS can make its dark, clear and tinted versions from them: the ground is the document's gradient fill and the shark one opaque layer. The ink-blue sets it apart from Terminal's black in the Dock.</li>
     </ol>
     <div class="lockups">
       <div class="lock"><span class="sq"><img class="appicon" alt=""></span><div><div class="wm">Sphyrna</div><small>SF Pro, as macOS writes the name in menus, the Dock and Finder</small></div></div>
@@ -157,7 +157,7 @@
       <li><b>Canvas</b>20 by 20 pt, the mark 18 wide, as <span class="mono">LoomTheme.MenuBar</span> draws the menu bar mark. The paths use only M, L, C and Z, the commands the app's own path reader takes.</li>
       <li><b>Badge</b>A 7 pt dot at the lower right, cut 5.2 around: needs you, finished or failed. Working draws the braille spinner in the same slot (§4).</li>
       <li><b>Colour</b>Idle, it is a template image and macOS tints it. With a badge the app draws it: white on a dark bar, black on a light one.</li>
-      <li><b>Not ASCII</b>At 16 pt a character cell is one or two pixels wide, so the menu bar gets a drawn mark; the art's characters start at the icon.</li>
+      <li><b>Not ASCII</b>At 16 pt a character cell is one or two pixels wide, so the menu bar gets a drawn mark, and the icon is a solid shape too; the art's characters stay in the windows.</li>
     </ol>
   </section>
 </div>
