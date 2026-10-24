@@ -5,6 +5,7 @@ import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
 @testable import LoomCore
+@testable import LoomRemora
 
 // W3-d: files and folders dropped into every composer (the live Chat one, the draft page's, Side's and Quick Question's) and
 // anywhere on the live stream or the draft page. A drop only edits a composer; nothing here sends.
@@ -90,6 +91,37 @@ struct ComposerFileDropTests {
         text.setString("plain words", forType: .string)
         #expect(!host.drop(text))
         #expect(!DraftComposerHost.dropOnPage(text, model: model, projectID: project.id))
+    }
+
+    /// Review fix: a draft being sent (↵ with a new worktree can take 30 s) is the session's now. A drop on its page or its
+    /// locked field, or a Draft Again brief, wrote into it and was discarded with it when the session started.
+    @Test func aDraftBeingSentTakesNoDropAndNoBrief() async throws {
+        let rig = try await ListRig.make(projects: 1, perProject: 1, unassigned: 0, mode: .activity)
+        defer { rig.cleanup() }
+        let project = rig.projects[0]
+        let folder = URL(fileURLWithPath: project.path)
+        try Data("x".utf8).write(to: folder.appendingPathComponent("notes.md"))
+        let model = rig.model
+        model.newSession.open(projectID: project.id)
+        model.remora.draft = .drafted(RemoraDraftedBrief(project: project.id, text: "Remora's brief.", citedSessionIDs: [],
+                                                         sessionsRead: 1, draftedAt: Date()))
+        #expect(model.landRemoraDraft() == .placed)
+        let sendingID = try #require(model.newSession.currentID(for: project.id))
+        model.newSession.beginSending(draft: sendingID)
+
+        let board = pasteboard([folder.appendingPathComponent("notes.md")])
+        defer { board.releaseGlobally() }
+        #expect(!ComposerPaneDrop(accepts: { !model.newSession.isSending(project.id) }) { _ in true }.accepts(),
+                "the page shows the not-allowed feedback")
+        #expect(!DraftComposerHost.dropOnPage(board, model: model, projectID: project.id))
+        #expect(!DraftComposerHost(model: model, projectID: project.id).drop(board), "the locked field takes none either")
+        #expect(model.newSession.draft(id: sendingID)?.text == "Remora's brief.")
+
+        // Draft Again lands in a new draft, as it does over the user's own text.
+        model.remora.draft = .drafted(RemoraDraftedBrief(project: project.id, text: "A second brief.", citedSessionIDs: [],
+                                                         sessionsRead: 1, draftedAt: Date().addingTimeInterval(10)))
+        #expect(model.landRemoraDraft() == .placedInNewDraft)
+        #expect(model.newSession.draft(id: sendingID)?.text == "Remora's brief.", "the sending draft keeps its text")
     }
 
     @Test func sideTakesAFileAndAFolderRelativeToTheParentSessionsFolder() async throws {

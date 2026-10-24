@@ -227,16 +227,19 @@ final class DraftComposerHost: ComposerEditorHost {
     func paste(_ pasteboard: NSPasteboard, plain: Bool) -> Bool { false }
 
     /// Files and folders as `@path` and `@folder/`, relative to the draft's project folder. The new session's first message
-    /// is text only, so an image file is a path too.
+    /// is text only, so an image file is a path too. Refused while the draft is being sent.
     func drop(_ pasteboard: NSPasteboard) -> Bool {
-        ComposerPasteboard.dropMentions(from: pasteboard, relativeTo: model.draftProject(projectID)?.path, into: editor,
+        guard !model.newSession.isSending(projectID) else { return false }
+        return ComposerPasteboard.dropMentions(from: pasteboard, relativeTo: model.draftProject(projectID)?.path, into: editor,
                                         text: modelText) { model.setDraftText($0, projectID: projectID) }
     }
 
     /// A drop anywhere on the draft page (`ComposerPaneDrop`): the files go after the draft's text. The page then gives the
-    /// field the keyboard (`NewSessionComposer.focusRequest`).
+    /// field the keyboard (`NewSessionComposer.focusRequest`). Refused while the draft is being sent: the started session
+    /// discards the draft, and what landed with it.
     static func dropOnPage(_ pasteboard: NSPasteboard, model: CatalogModel, projectID: UUID?) -> Bool {
-        ComposerPasteboard.dropMentions(from: pasteboard, relativeTo: model.draftProject(projectID)?.path, into: nil,
+        guard !model.newSession.isSending(projectID) else { return false }
+        return ComposerPasteboard.dropMentions(from: pasteboard, relativeTo: model.draftProject(projectID)?.path, into: nil,
                                         text: model.newSession.draft(for: projectID)?.text ?? "") {
             model.setDraftText($0, projectID: projectID)
         }

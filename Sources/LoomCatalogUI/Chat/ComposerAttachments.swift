@@ -292,11 +292,13 @@ extension ComposerPasteboard {
 /// A drop of files or folders anywhere on a pane (the live stream, the draft page) lands in its composer, as on its field
 /// (W3-d). The drag pasteboard is read as the drop lands. Only files are taken: text and sessions are not this target's.
 struct ComposerPaneDrop: DropDelegate {
+    /// Whether the composer takes a drop now (the draft page's is locked while its draft is being sent).
+    var accepts: @MainActor () -> Bool = { true }
     let land: @MainActor (NSPasteboard) -> Bool
 
-    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.fileURL]) }
+    func validateDrop(info: DropInfo) -> Bool { accepts() && info.hasItemsConforming(to: [.fileURL]) }
 
-    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .copy) }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: accepts() ? .copy : .forbidden) }
 
     func performDrop(info: DropInfo) -> Bool { land(NSPasteboard(name: .drag)) }
 }

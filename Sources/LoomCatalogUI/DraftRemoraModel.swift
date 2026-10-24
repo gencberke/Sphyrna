@@ -204,9 +204,9 @@ extension CatalogModel {
     }
 
     /// Puts a drafted brief in a draft of its project, once: in the draft Draft Brief was clicked in (else the one the project
-    /// shows) when that is empty or still holds Remora's last brief untouched (Draft Again replaces it); else in a new draft of the
-    /// project, which the page then shows, and the user's draft keeps every word. Returns what it did, or nil when there is no new
-    /// brief. Never sends.
+    /// shows) when that is empty or still holds Remora's last brief untouched (Draft Again replaces it) and is not being sent;
+    /// else in a new draft of the project, which the page then shows, and the user's draft keeps every word. Returns what it
+    /// did, or nil when there is no new brief. Never sends.
     @discardableResult
     func landRemoraDraft() -> RemoraDraftResult? {
         guard case let .drafted(brief) = remora.draft, newSession.remoraLanded != brief.draftedAt else { return nil }
@@ -220,7 +220,8 @@ extension CatalogModel {
         let holdsUserText = draft.hasText && state.remoraOrigins[asked]?.placedText != draft.text
         let target: UUID
         let result: RemoraDraftResult
-        if holdsUserText {
+        // A draft being sent is the session's now: the brief never replaces its text (the start would discard it).
+        if holdsUserText || state.isSending(draft: asked) {
             target = state.addDraft(projectID: project, text: brief.text)
             result = .placedInNewDraft
         } else {

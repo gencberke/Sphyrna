@@ -47,8 +47,9 @@ struct DraftSessionView: View {
             .padding(.bottom, NewSessionLayout.bottomLift)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Files or folders dropped anywhere on the page land in the draft's composer (W3-d); nothing is sent.
-        .onDrop(of: [.fileURL], delegate: ComposerPaneDrop { pasteboard in
+        // Files or folders dropped anywhere on the page land in the draft's composer (W3-d); nothing is sent. Not while the
+        // draft is being sent: the started session would discard what landed.
+        .onDrop(of: [.fileURL], delegate: ComposerPaneDrop(accepts: { !model.newSession.isSending(projectID) }) { pasteboard in
             guard DraftComposerHost.dropOnPage(pasteboard, model: model, projectID: projectID) else { return false }
             dropFocus += 1
             return true

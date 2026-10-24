@@ -268,16 +268,20 @@ struct ComposerTextEditor: NSViewRepresentable {
         }
 
         override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+            // A locked field (the draft being sent) takes no drop: what landed would be lost.
+            guard isEditable else { return [] }
             if let session = sessionDragOperation(sender.draggingPasteboard) { return session }
             return carriesAttachments(sender.draggingPasteboard) ? .copy : super.draggingEntered(sender)
         }
 
         override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+            guard isEditable else { return [] }
             if let session = sessionDragOperation(sender.draggingPasteboard) { return session }
             return carriesAttachments(sender.draggingPasteboard) ? .copy : super.draggingUpdated(sender)
         }
 
         override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+            guard isEditable else { return false }
             if let dropped = dropSession(sender.draggingPasteboard) { return dropped }
             if carriesAttachments(sender.draggingPasteboard), coordinator?.host.drop(sender.draggingPasteboard) == true {
                 return true
