@@ -400,4 +400,38 @@ struct ComposerMentionCatalogTests {
         #expect(model.composerMentionTarget(for: sideID) == nil, "a side chat is not mentioned")
         #expect(model.composerMentionTarget(for: UUID()) == nil, "a session the catalog does not know")
     }
+
+    /// Review fix: the mention text looked for the transcript with the unbounded locator, which lists every project folder on
+    /// the main actor when the transcript is not in the session's own folder. Only that folder is read now: a transcript
+    /// elsewhere is not found, and a pill for it is skipped on send.
+    @Test func theMentionTextLooksForTheTranscriptOnlyInTheSessionsOwnFolder() async throws {
+        let rig = try await ListRig.make(projects: 1, perProject: 0, unassigned: 0, mode: .activity)
+        defer { rig.cleanup() }
+        let model = rig.model
+        let config = rig.root.appendingPathComponent("claude-config", isDirectory: true)
+        model.claudeConfigDirectory = config
+        let id = UUID(), conversation = "conv-\(UUID().uuidString.lowercased())"
+        let work = rig.projects[0].path
+        try await rig.catalog.insertSession(
+            ManagedSession(id: id, provider: .claude, providerConversationID: conversation, workingDirectory: work),
+            title: "Elsewhere", createdAt: Date(), lastUsedAt: Date(), lifecycle: .active, projectID: rig.projects[0].id)
+        let run = UUID()
+        try await rig.feed(.runStarted(run), for: id)
+        try await rig.feed(.runEndpoint(run, .pipe), for: id)
+        for _ in 0..<300 where model.liveRecords[id] == nil && model.rowModels[id] == nil { try? await Task.sleep(for: .milliseconds(10)) }
+
+        // The transcript sits in another project's folder: not looked for there.
+        let projects = config.appendingPathComponent("projects", isDirectory: true)
+        let other = projects.appendingPathComponent("-somewhere-else", isDirectory: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try Data("{}\n".utf8).write(to: other.appendingPathComponent(conversation + ".jsonl"))
+        #expect(model.sessionMentionText(for: id, requiringTranscript: true) == nil, "a transcript elsewhere is not found")
+
+        // In the session's own folder it is.
+        let own = projects.appendingPathComponent(ClaudeTranscriptLocator.folderName(forWorkingDirectory: work), isDirectory: true)
+        try FileManager.default.createDirectory(at: own, withIntermediateDirectories: true)
+        try Data("{}\n".utf8).write(to: own.appendingPathComponent(conversation + ".jsonl"))
+        let text = try #require(model.sessionMentionText(for: id, requiringTranscript: true))
+        #expect(text.contains("transcript ") && text.contains(conversation + ".jsonl"))
+    }
 }

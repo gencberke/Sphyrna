@@ -66,9 +66,10 @@ extension CatalogModel {
         return ComposerMention(id: id, title: record.displayTitle(projectName: projectName(for: record)), provider: record.session.provider)
     }
 
-    /// The text that mentions another session: its title, the transcript's path and the first line of its last answer. The
-    /// read is bounded (`ProjectLastLine`); a session without a transcript is mentioned by its title alone, or with
-    /// `requiringTranscript` (a pill on send, D-96) not at all.
+    /// The text that mentions another session: its title, the transcript's path and the first line of its last answer. Both
+    /// reads are bounded: the transcript is looked for only in the folder Claude names after the session's working directory
+    /// (no other project folder is listed on the main actor), and `ProjectLastLine` reads a bounded tail. A session whose
+    /// transcript is not there is mentioned by its title alone, or with `requiringTranscript` (a pill on send, D-96) not at all.
     func sessionMentionText(for id: UUID, requiringTranscript: Bool = false) -> String? {
         guard let record = rowModels[id]?.record ?? liveRecords[id] else { return nil }
         let title = record.displayTitle(projectName: projectName(for: record))
@@ -76,7 +77,7 @@ extension CatalogModel {
         var hasTranscript = false
         if let conversation = record.session.providerConversationID, let directory = claudeConfigDirectory {
             if let file = ClaudeTranscriptLocator.locate(sessionID: conversation, configDirectory: directory,
-                                                         workingDirectory: record.session.workingDirectory) {
+                                                         onlyIn: record.session.workingDirectory) {
                 parts.append("transcript \(file.path)")
                 hasTranscript = true
             }
