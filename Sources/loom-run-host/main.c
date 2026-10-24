@@ -211,8 +211,9 @@ static void stop_orphaned_scope(void) {
  * where the host sits: a genuine host copied into another app keeps its TCC
  * identity, so the owner must be part of what its signature seals. With a
  * stable signing identity the requirement names Loom's certificate; ad-hoc
- * builds can only name Loom's identifier. Returns 1 for the owner. */
-static int peer_is_owner(int socket_fd) {
+ * builds can only name Loom's identifier. Returns 1 for the owner. Runs on
+ * the checker thread (`peer_is_owner`). */
+static int check_peer_is_owner(int socket_fd) {
     CFBundleRef bundle = CFBundleGetMainBundle();
     CFTypeRef text = bundle ? CFBundleGetValueForInfoDictionaryKey(bundle, CFSTR("LoomOwnerRequirement")) : NULL;
     if (text == NULL || CFGetTypeID(text) != CFStringGetTypeID()) { return 0; }
@@ -239,6 +240,29 @@ done:
     if (tokenData) { CFRelease(tokenData); }
     if (requirement) { CFRelease(requirement); }
     return verified;
+}
+
+struct owner_check {
+    int socket_fd;
+    int verified;
+};
+
+static void *owner_check_thread(void *argument) {
+    struct owner_check *check = argument;
+    check->verified = check_peer_is_owner(check->socket_fd);
+    return NULL;
+}
+
+/* The signature check runs on a thread of its own and the main thread waits
+ * for it: Security warns when SecCode calls run on the main thread (FB5-12),
+ * and nothing is served before the answer. A thread that cannot be started
+ * refuses the peer, as a failed check does. */
+static int peer_is_owner(int socket_fd) {
+    struct owner_check check = { socket_fd, 0 };
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, owner_check_thread, &check) != 0) { return 0; }
+    if (pthread_join(thread, NULL) != 0) { return 0; }
+    return check.verified;
 }
 
 static void close_on_exec_all(void) {
