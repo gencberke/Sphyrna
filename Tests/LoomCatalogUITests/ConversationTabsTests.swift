@@ -111,9 +111,14 @@ struct ConversationTabsTests {
         }
         #expect(tabs.pinned == all)
         #expect(ConversationTabs(pinned: all).pin(extra, canEvict: { _ in false }) == .refused(reason))
-        // With room made by the oldest idle tab the new one lands where it was dropped.
+        // With room made by the oldest idle tab the new one lands where it was dropped: before all[1], even though the
+        // evicted tab stood before that gap (it landed one place to the right).
         #expect(tabs.pin(extra, at: 1, canEvict: { $0 == all[0] }) == .pinned(evicted: all[0]))
-        #expect(tabs.pinned == [all[1], extra] + all[2...])
+        #expect(tabs.pinned == [extra] + all[1...])
+        // An evicted tab after the gap changes nothing.
+        let later = UUID()
+        #expect(tabs.pin(later, at: 1, canEvict: { $0 == all[5] }) == .pinned(evicted: all[5]))
+        #expect(tabs.pinned == [extra, later] + all[1...4] + all[6...])
     }
 
     @Test func moveReordersAndAGapMapsToTheTabsFinalPlace() {

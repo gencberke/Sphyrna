@@ -59,14 +59,18 @@ public final class ConversationTabs {
     }
 
     /// Pins the conversation at `index` of the pinned tabs (clamped), as a drop on the strip does. An already pinned
-    /// conversation moves there instead; a full strip makes room as `pin(_:canEvict:)` does, or refuses.
+    /// conversation moves there instead; a full strip makes room as `pin(_:canEvict:)` does, or refuses. `index` counts the
+    /// tabs before the eviction: a tab evicted before it shifts it one place left, so the new tab lands where it was aimed.
     public func pin(_ id: UUID, at index: Int, canEvict: (UUID) -> Bool) -> TabPinResult {
         if pinned.contains(id) {
             move(id, to: index)
             return .alreadyPinned
         }
+        let before = pinned
         let result = pin(id, canEvict: canEvict)
-        if case .pinned = result { move(id, to: index) }
+        guard case let .pinned(evicted) = result else { return result }
+        let shift = evicted.flatMap(before.firstIndex(of:)).map { $0 < index ? 1 : 0 } ?? 0
+        move(id, to: index - shift)
         return result
     }
 

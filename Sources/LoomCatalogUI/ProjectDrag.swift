@@ -3,7 +3,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The in-app drag of one project head in the sidebar's project view (W3-c): the project's id as UTF-8 text under its own type,
-/// so a session drag is never taken as a project and a project is never dropped as a session. Nothing is offered outside the app.
+/// so a session drag is never taken as a project and a project is never dropped as a session. The id is the only thing offered,
+/// under a type no other app reads: no name, no path.
 enum ProjectDrag {
     static let typeIdentifier = "local.loom.desktop.project-reference"
     static let contentType = UTType(exportedAs: typeIdentifier)
