@@ -162,11 +162,6 @@ enum HomeRemoraText {
         }
     }
 
-    /// What a tile's result says where a line stands in place of its button.
-    static func placed(_ placed: HomeRemoraUI.Placed) -> String {
-        placed.result == .placed ? "In its composer, not sent" : "Copied"
-    }
-
     /// The hover popover's first line, from what Put in Draft would do now.
     static func hoverWhere(_ plan: RemoraHomeDraftPlan) -> String {
         switch plan {

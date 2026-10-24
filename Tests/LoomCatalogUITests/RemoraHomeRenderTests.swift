@@ -459,6 +459,31 @@ struct RemoraHomeRenderTests {
         }
     }
 
+    /// An answer's chip with a draft always has the Put in Draft button, never a label that stands in for it: a result left from
+    /// before Home's read is gone, and the button says what it does (a session that runs in the terminal: Copy to Clipboard).
+    @Test func anAnswersChipKeepsItsButtonAfterAResult() async throws {
+        enableAccessibilityTree()
+        let rig = try await RemoraHomeRig.make(
+            projectNames: ["loom"], seeds: [.init(title: "Migrate auth to JWT", project: 0, ago: 3_600)],
+            preferences: RemoraPreferences(briefMode: .whenIAsk),
+            scriptFor: { sessions in
+                let id = sessions[0].uuidString
+                return ["LOOM_FAKE_REMORA_ANSWER": "**Migrate auth to JWT** waits.\n\n```remora\n{\"cited\":[\"\(id)\"],\"chips\":[{\"session\":\"\(id)\",\"why\":\"Waits\"}],\"drafts\":[{\"session\":\"\(id)\",\"text\":\"Run the checks.\"}],\"facts\":[]}\n```\n"]
+            })
+        defer { Task { await rig.finish() } }
+        rig.model.showHome()
+        let ui = HomeRemoraUI()
+        let reads = HomeRemoraReads(baselineUndo: rig.model.remora.lastUndo)
+        #expect(HomeRemoraCalls.ask(rig.model, ui: ui, "what waits?"))
+        await rig.model.remora.settle()
+        ui.placed[rig.sessions[0]] = HomeRemoraUI.Placed(result: .copied(.terminal), line: "Run the checks.", read: reads.generation)
+        let (window, view) = host(SectionHost(model: rig.model, ui: ui, reads: reads), size: CGSize(width: 1_100, height: 760), dark: true)
+        defer { window.close() }
+        try await settle(window) { self.identifiers(in: view).contains("home-remora-put-in-draft") }
+        #expect(identifiers(in: view).contains("home-remora-put-in-draft"), "the chip's button: \(identifiers(in: view))")
+        #expect(labels(in: view).contains("Copy to Clipboard"), "\(labels(in: view))")
+    }
+
     /// A question asked through the model alone (⌘K's ↵, the evidence command `remora-ask`) is no question from Home's field: Home
     /// draws no card for it.
     @Test func aQuestionAskedOnlyThroughTheModelShowsNoCardOnHome() async throws {

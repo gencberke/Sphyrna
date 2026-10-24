@@ -357,11 +357,7 @@ private struct HomeRemoraAnswerCard: View {
                     HStack(spacing: R.tileActionsGap) {
                         HomeRemoraChip(model: model, session: session)
                         if let draft {
-                            if let result = ui.placed[session.id] {
-                                Text(HomeRemoraText.placed(result)).homeType(R.chipWhen).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                            } else {
-                                HomeRemoraPutInDraft(model: model, ui: ui, reads: reads, sessionID: session.id, line: draft.text)
-                            }
+                            HomeRemoraPutInDraft(model: model, ui: ui, reads: reads, sessionID: session.id, line: draft.text)
                         }
                     }
                 }
