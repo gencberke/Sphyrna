@@ -106,7 +106,9 @@ struct ChatSettledBlocksView: View, Equatable {
     }
 
     var body: some View {
-        ChatMarkdownView(blocks: blocks, flags: flags, rowID: rowID, isStreaming: false, context: context)
+        // Not selectable while the answer streams: selectable text is a key view each, and the stream's every flush makes
+        // AppKit and SwiftUI walk them again for the key view loop. Selection returns when the answer finishes.
+        ChatMarkdownView(blocks: blocks, flags: flags, rowID: rowID, isStreaming: false, selectable: false, context: context)
     }
 }
 
@@ -116,6 +118,8 @@ struct ChatMarkdownView: View {
     let flags: Set<String>
     let rowID: String
     var isStreaming = false
+    /// Whether its text may be selected; an open (streaming) block never is.
+    var selectable = true
     let context: ChatRowContext
     /// The top-level block this list belongs to, for the wrap flag of a code block inside a list or a quote.
     var topIndex: Int?
@@ -129,7 +133,7 @@ struct ChatMarkdownView: View {
                 // The probe counts where a top-level block's view is built (once per evaluation of this list) and where its body runs.
                 let _ = topIndex == nil ? ChatRenderProbe.blockBuilt(index: firstIndex + position, block: block, in: context) : ()
                 ChatMarkdownBlockView(block: block, index: topIndex ?? (firstIndex + position), isLast: position == blocks.count - 1,
-                                      flags: flags, rowID: rowID, isStreaming: isStreaming, context: context,
+                                      flags: flags, rowID: rowID, isStreaming: isStreaming, selectable: selectable, context: context,
                                       isTopLevel: topIndex == nil)
             }
         }
@@ -148,15 +152,18 @@ struct ChatMarkdownBlockView: View {
     let flags: Set<String>
     let rowID: String
     let isStreaming: Bool
+    var selectable = true
     let context: ChatRowContext
     /// A block of the message's own list, not one inside a list item or a quote: the render probe counts its evaluations.
     var isTopLevel = false
 
     var body: some View {
         let _ = isTopLevel ? ChatRenderProbe.blockBody(index: index, block: block, in: context) : ()
-        let _ = isTopLevel ? ChatSelectionProbe.drawn(index: index, block: block, selectable: !isStreaming, in: context) : ()
+        let _ = isTopLevel ? ChatSelectionProbe.drawn(index: index, block: block, selectable: takesSelection, in: context) : ()
         blockView(block, index: index, isLast: isLast)
     }
+
+    private var takesSelection: Bool { selectable && !isStreaming }
 
     @ViewBuilder private func blockView(_ block: MarkdownBlock, index: Int, isLast: Bool) -> some View {
         switch block {
@@ -169,10 +176,10 @@ struct ChatMarkdownBlockView: View {
                 .padding(.top, 4)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .chatTextSelection(!isStreaming)
+                .chatTextSelection(takesSelection)
         case let .code(language, code, closed):
             ChatCodeBlockView(language: language, code: code, isStreaming: isStreaming && isLast && !closed,
-                              wrapped: flags.contains("wrap:\(index)"), index: index, context: context, selectable: !isStreaming) {
+                              wrapped: flags.contains("wrap:\(index)"), index: index, context: context, selectable: takesSelection) {
                 context.toggleFlag(rowID, "wrap:\(index)")
             }
         case let .list(ordered, start, items):
@@ -180,7 +187,7 @@ struct ChatMarkdownBlockView: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { position, item in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         marker(ordered: ordered, number: start + position, checked: item.checked)
-                        ChatMarkdownView(blocks: item.blocks, flags: flags, rowID: rowID, isStreaming: isStreaming, context: context,
+                        ChatMarkdownView(blocks: item.blocks, flags: flags, rowID: rowID, isStreaming: isStreaming, selectable: selectable, context: context,
                                          topIndex: index)
                     }
                 }
@@ -188,12 +195,12 @@ struct ChatMarkdownBlockView: View {
         case let .quote(inner):
             HStack(alignment: .top, spacing: 12) {
                 RoundedRectangle(cornerRadius: LoomTheme.Radius.barSlim).fill(LoomTheme.Chat.quoteBar).frame(width: LoomTheme.Chat.quoteBarWidth)
-                ChatMarkdownView(blocks: inner, flags: flags, rowID: rowID, isStreaming: isStreaming, context: context, topIndex: index)
+                ChatMarkdownView(blocks: inner, flags: flags, rowID: rowID, isStreaming: isStreaming, selectable: selectable, context: context, topIndex: index)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle)
             }
             .fixedSize(horizontal: false, vertical: true)
         case let .table(table):
-            ChatMarkdownTableView(table: table, context: context, selectable: !isStreaming)
+            ChatMarkdownTableView(table: table, context: context, selectable: takesSelection)
         case .rule:
             Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline).padding(.vertical, 4)
         }
@@ -206,7 +213,7 @@ struct ChatMarkdownBlockView: View {
             .foregroundStyle(LoomTheme.Text.primary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .chatTextSelection(!isStreaming)
+            .chatTextSelection(takesSelection)
     }
 
     @ViewBuilder private func marker(ordered: Bool, number: Int, checked: Bool?) -> some View {
@@ -351,10 +358,10 @@ struct ChatCodeBlockView: View {
                               selectable: selectable)
             }
         } else {
-            // An open fence's settled chunks are drawn as the open lines are (plain while it streams) and stay selectable.
+            // An open fence's settled chunks are drawn as the open lines are: plain, and not selectable while it streams.
             ChatCodePieces {
                 ForEach(Array(chunks.enumerated()), id: \.offset) { _, chunk in
-                    ChatCodeLines(code: chunk, selectable: true).equatable()
+                    ChatCodeLines(code: chunk, selectable: selectable).equatable()
                 }
                 if let code { ChatCodeLines(code: code, selectable: selectable) }
             }

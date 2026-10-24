@@ -4,9 +4,10 @@ import Testing
 import SwiftUI
 @testable import LoomCatalogUI
 
-/// The open tail of a streaming message is drawn without text selection (every flush draws it again, and selection builds a
-/// second text layout of it); the settled head and every finished message keep it. Seen through `ChatSelectionProbe`, which
-/// records what each top-level block's body chose when it ran in a hosted view.
+/// A streaming answer is drawn without text selection, its open tail (every flush draws it again, and selection builds a
+/// second text layout of it) and its settled head (each selectable text is a key view the flushes make AppKit and SwiftUI walk
+/// again); the same message once finished is selectable. Seen through `ChatSelectionProbe`, which records what each top-level
+/// block's body chose when it ran in a hosted view.
 @MainActor
 @Suite
 struct ChatStreamSelectionTests {
@@ -43,7 +44,7 @@ struct ChatStreamSelectionTests {
     static func key(_ index: Int, _ block: MarkdownBlock) -> String { "\(index)#\(block.hashValue)" }
 
     @Test(.renderProbe, arguments: ["The open tail is still being", "```swift\nlet open = 1\nlet more"])
-    func theStreamingTailHasNoSelectionAndTheSettledBlocksDo(tail: String) async {
+    func aStreamingAnswerTakesNoSelectionUntilItFinishes(tail: String) async {
         let scope = "selection-\(UUID().uuidString)"
         let context = ChatRowContext(probeScope: scope)
         RenderProbeExclusive.watchChat(scope: scope)
@@ -56,7 +57,7 @@ struct ChatStreamSelectionTests {
         await Self.draw(ChatStreamingMarkdownView(parts: parts, flags: [], rowID: id, context: context))
         let drawn = ChatSelectionProbe.selectable
         for (index, block) in parts.head.enumerated() {
-            #expect(drawn[Self.key(index, block)] == true, "settled block \(index) is selectable")
+            #expect(drawn[Self.key(index, block)] == false, "settled block \(index) of a streaming answer is not selectable")
         }
         #expect(drawn[Self.key(parts.head.count, parts.tail[0])] == false, "the open tail is not selectable")
 
