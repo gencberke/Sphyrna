@@ -20,6 +20,8 @@ public enum PaletteAction: String, CaseIterable, Sendable {
     case recentActivityView
     case projectView
     case settings
+    case addProject
+    case revealInFinder
 
     /// The menu command behind an action, when there is one.
     public var shellCommand: ShellCommand? {
@@ -51,6 +53,8 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         case .recentActivityView: "Show recent activity"
         case .projectView: "Group sessions by project"
         case .settings: "Settings…"
+        case .addProject: "Add project…"
+        case .revealInFinder: "Reveal in Finder"
         default: rawValue
         }
     }
@@ -58,7 +62,7 @@ public enum PaletteAction: String, CaseIterable, Sendable {
     /// Extra words the query can match, so "chat" finds Show Chat.
     public var keywords: [String] {
         switch self {
-        case .newSession: ["start", "create", "claude", "compose"]
+        case .newSession: ["start", "create", "claude", "compose", "draft", "write", "prompt"]
         case .home: ["overview", "start page"]
         case .showChat: ["messages", "transcript"]
         case .showTerminal: ["console", "claude code"]
@@ -73,6 +77,8 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         case .recentActivityView: ["list", "sort"]
         case .projectView: ["list", "folders"]
         case .settings: ["preferences", "options"]
+        case .addProject: ["folder", "repository", "repo", "import", "open"]
+        case .revealInFinder: ["finder", "folder", "show", "files", "directory"]
         }
     }
 
@@ -93,6 +99,8 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         case .recentActivityView: "clock"
         case .projectView: "folder"
         case .settings: "gearshape"
+        case .addProject: "folder.badge.plus"
+        case .revealInFinder: "folder"
         }
     }
 
@@ -131,6 +139,8 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         case .stopSession:
             return model.selectedRow.map { model.canStop($0) } ?? false
         case .askQuickQuestion: return model.canAskQuickQuestion
+        case .addProject: return model.isReady
+        case .revealInFinder: return model.revealInFinderTarget() != nil
         default: return false
         }
     }
@@ -145,6 +155,8 @@ public enum PaletteAction: String, CaseIterable, Sendable {
              .showTerminal:
             guard let row = model.selectedRow else { return nil }
             return "for " + model.title(of: row)
+        case .revealInFinder:
+            return model.revealInFinderTarget().map { "for " + $0.name }
         default: return nil
         }
     }
@@ -166,6 +178,9 @@ public enum PaletteAction: String, CaseIterable, Sendable {
         case .recentActivityView: model.setViewMode(.activity)
         case .projectView: model.setViewMode(.projects)
         case .settings: model.onShowSettings?(nil)
+        case .addProject: model.presentAddProject()
+        case .revealInFinder:
+            if let target = model.revealInFinderTarget() { SessionLocationActions.reveal(target.path) }
         default: break
         }
     }

@@ -57,3 +57,17 @@ extension CatalogModel {
         DockMenu.items(for: menuBarEntries(), canStartSession: canStart(.claude, projectID: contextProjectID))
     }
 }
+
+extension CatalogModel {
+    /// The palette's Reveal in Finder: the selected session's folder, else the folder of the project on screen (its page or its
+    /// draft), with the name the row's detail says. Nil when there is neither or the folder is gone.
+    func revealInFinderTarget(folderExists: (String) -> Bool = SessionLocationActions.directoryExists) -> (path: String, name: String)? {
+        if let row = selectedRow {
+            let path = row.record.session.workingDirectory
+            return folderExists(path) ? (path, title(of: row)) : nil
+        }
+        guard let id = contextProjectID, let project = projects.first(where: { $0.id == id }),
+              folderExists(project.path) else { return nil }
+        return (project.path, project.name)
+    }
+}
