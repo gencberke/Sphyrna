@@ -235,7 +235,7 @@ private struct ChangesFileList: View {
     }
 }
 
-/// One file of the list: a button that opens its diff (and drags the file out, `ChangesFileDrag`), and the "Open in editor"
+/// One file of the list: a button that opens its diff (and drags its `@path` out, `ChangesFileDrag`), and the "Open in editor"
 /// button in its own slot at the end.
 private struct ChangesFileRow: View {
     let model: CatalogModel
@@ -272,7 +272,7 @@ private struct ChangesFileRow: View {
             .focusEffectDisabled()
             .accessibilityLabel(ChangesFileList.accessibilityLabel(file: file, comments: comments))
             .accessibilityAddTraits(selected ? .isSelected : [])
-            .modifier(ChangesFileDragSource(file: file))
+            .modifier(ChangesFileDragSource(model: model, sessionID: sessionID, file: file))
             Button { NSWorkspace.shared.open(URL(fileURLWithPath: file.absolutePath)) } label: {
                 Image(systemName: "arrow.up.forward.square").font(LoomTheme.Changes.fileGlyph)
                     .frame(width: LoomTheme.Changes.openSlot, height: LoomTheme.Changes.fileRowHeight)

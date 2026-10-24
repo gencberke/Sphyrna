@@ -2,10 +2,11 @@ import AppKit
 import Foundation
 import SwiftUI
 import Testing
+import UniformTypeIdentifiers
 @testable import LoomCatalogUI
 
-/// W3-e: a changed file drags out of the Changes tab as its URL and its listed path; a file gone from disk offers no drag, and the
-/// rows keep their click.
+/// W3-e: a changed file drags out of the Changes tab as the composer's `@path` text, never as the file; a file gone from
+/// disk offers no drag, and the rows keep their click.
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(2)))
 struct ChangesFileDragTests {
@@ -20,14 +21,6 @@ struct ChangesFileDragTests {
                     status: status)
     }
 
-    private func loadURL(from provider: NSItemProvider) async -> URL? {
-        await withCheckedContinuation { continuation in
-            _ = provider.loadObject(ofClass: NSURL.self) { object, _ in
-                continuation.resume(returning: (object as? NSURL) as URL?)
-            }
-        }
-    }
-
     private func loadText(from provider: NSItemProvider) async -> String? {
         await withCheckedContinuation { continuation in
             _ = provider.loadObject(ofClass: NSString.self) { object, _ in
@@ -36,35 +29,43 @@ struct ChangesFileDragTests {
         }
     }
 
-    @Test func aModifiedFileDragsAsItsURLAndItsListedPath() async throws {
+    @Test func aModifiedFileDragsAsTheComposersMentionTextAndNeverAsAFile() async throws {
         let root = try folder()
         defer { try? FileManager.default.removeItem(at: root) }
         let changed = file("src/token service.py", in: root)
-        try Data("x\n".utf8).write(to: URL(fileURLWithPath: changed.absolutePath))
+        let url = URL(fileURLWithPath: changed.absolutePath)
+        try Data("x\n".utf8).write(to: url)
 
-        let provider = try #require(ChangesFileDrag.provider(for: changed))
-        #expect(provider.hasItemConformingToTypeIdentifier("public.file-url"))
-        #expect(provider.hasItemConformingToTypeIdentifier("public.utf8-plain-text"))
-        #expect(provider.suggestedName == "token service.py")
-        let url = try #require(await loadURL(from: provider))
-        #expect(url.isFileURL && url.standardizedFileURL.path == URL(fileURLWithPath: changed.absolutePath).standardizedFileURL.path)
-        #expect(await loadText(from: provider) == "src/token service.py")
+        let provider = try #require(ChangesFileDrag.provider(for: changed, folder: root.path))
+        // No file URL and no file representation: Finder cannot move or copy the project's file.
+        #expect(!provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier))
+        #expect(!provider.hasItemConformingToTypeIdentifier(UTType.url.identifier))
+        #expect(provider.registeredTypeIdentifiers.allSatisfy { UTType($0)?.conforms(to: .text) == true })
+        #expect(provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier))
 
-        // On a composer the URL wins over the text, and becomes the session-relative mention.
+        // The text is the composer's own mention of the file, as a file drop on it makes it.
+        let mention = ComposerPasteboard.mention(for: url, relativeTo: root.path)
+        #expect(mention == #"@"src/token service.py""#)
+        #expect(await loadText(from: provider) == mention)
+        let plain = try #require(ChangesFileDrag.provider(for: file("src/kept.py", in: root), folder: root.path,
+                                                          exists: { _ in true }))
+        #expect(await loadText(from: plain) == "@src/kept.py")
+
+        // On a composer that text is text, not a file.
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("loom-changes-drag-\(UUID())"))
         defer { pasteboard.releaseGlobally() }
         pasteboard.clearContents()
-        pasteboard.writeObjects([url as NSURL, changed.displayPath as NSString])
-        #expect(ComposerPasteboard.items(from: pasteboard) == [.otherFile(url)])
-        #expect(ComposerPasteboard.mention(for: url, relativeTo: root.path) == #"@"src/token service.py""#)
+        pasteboard.writeObjects([mention as NSString])
+        #expect(ComposerPasteboard.items(from: pasteboard) == [.text(mention)])
     }
 
     @Test func aFileGoneFromDiskOffersNoDrag() throws {
         let root = try folder()
         defer { try? FileManager.default.removeItem(at: root) }
-        #expect(ChangesFileDrag.provider(for: file("src/gone.py", in: root, status: .deleted)) == nil)
-        #expect(ChangesFileDrag.provider(for: file("src/gone.py", in: root, status: .modified)) == nil, "status aside, it is gone")
-        #expect(ChangesFileDrag.provider(for: file("src/here.py", in: root), exists: { _ in true }) != nil)
+        #expect(ChangesFileDrag.provider(for: file("src/gone.py", in: root, status: .deleted), folder: root.path) == nil)
+        #expect(ChangesFileDrag.provider(for: file("src/gone.py", in: root, status: .modified), folder: root.path) == nil,
+                "status aside, it is gone")
+        #expect(ChangesFileDrag.provider(for: file("src/here.py", in: root), folder: root.path, exists: { _ in true }) != nil)
     }
 
     @Test func theRowsStillOpenTheirDiffWithADragSourceOnThem() async throws {
