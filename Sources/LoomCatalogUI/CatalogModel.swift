@@ -1442,9 +1442,21 @@ public final class CatalogModel {
     }
 
     public func moveProject(_ id: UUID, by offset: Int) async {
-        guard let catalog, let index = projects.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = projects.firstIndex(where: { $0.id == id }) else { return }
+        await moveProject(id, to: index + offset)
+    }
+
+    /// A project head dropped into the gap before head `gap` of the project view (`ProjectDrag.gap`).
+    public func dropProject(_ id: UUID, gap: Int) async {
+        guard let from = projects.firstIndex(where: { $0.id == id }) else { return }
+        await moveProject(id, to: ProjectDrag.position(forGap: gap, from: from))
+    }
+
+    /// Moves a project to a zero-based position (clamped); `projects.sort_order` keeps it.
+    public func moveProject(_ id: UUID, to index: Int) async {
+        guard let catalog, projects.contains(where: { $0.id == id }) else { return }
         do {
-            try await catalog.moveProject(id: id, toIndex: index + offset)
+            try await catalog.moveProject(id: id, toIndex: index)
             errorMessage = nil
             await refreshProjects()
             await reloadVisibleLists()

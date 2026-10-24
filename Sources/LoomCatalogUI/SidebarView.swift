@@ -376,6 +376,8 @@ struct ProjectHeader: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @State private var hovering = false
     @FocusState private var focused: Control?
+    /// The edge a dragged project would land at, while one is over this head.
+    @State private var dropEdge: VerticalEdge?
 
     /// The head's own controls, for the focus that reveals them.
     enum Control: Hashable { case chevron, start, menu }
@@ -459,10 +461,68 @@ struct ProjectHeader: View {
         .onHover { hovering = $0 }
         .onTapGesture { model.showProjectPage(project.id) }
         .contextMenu { ProjectActionsMenu(model: model, project: project) }
+        // Dragged onto another head it moves the project there (W3-c); Move Up and Move Down stay in the menus.
+        .onDrag { ProjectDrag.itemProvider(for: project.id) }
+        .overlay(alignment: dropEdge == .bottom ? .bottom : .top) {
+            if dropEdge != nil { ProjectInsertionMark() }
+        }
+        .onDrop(of: [ProjectDrag.contentType], delegate: ProjectHeadDropDelegate(
+            model: model, projectID: project.id, collapsed: project.collapsed, edge: $dropEdge))
         .accessibilityElement(children: .contain)
         .help(project.path)
         // The gap above a head belongs to the list, not to the head's hover and click.
         .padding(.top, Self.topGap(isFirst: isFirst))
+    }
+}
+
+/// Where a dragged project will land: an accent line across the head's edge, as the tab strip's mark.
+private struct ProjectInsertionMark: View {
+    var body: some View {
+        Rectangle().fill(LoomTheme.Accent.base).frame(height: LoomTheme.Line.focusRing)
+            .padding(.leading, LoomTheme.Sidebar.headLeading).padding(.trailing, LoomTheme.Sidebar.headTrailing)
+            .allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+/// A project head as a drop target for another head: the project moves into the gap before it, or after it where nothing of the
+/// project follows the head. Anything that is not a project (a session too) is refused.
+struct ProjectHeadDropDelegate: DropDelegate {
+    let model: CatalogModel
+    let projectID: UUID
+    let collapsed: Bool
+    @Binding var edge: VerticalEdge?
+
+    private var index: Int? { model.projects.firstIndex { $0.id == projectID } }
+
+    private func gap(_ info: DropInfo) -> Int? {
+        guard let index else { return nil }
+        let canDropAfter = collapsed || index == model.projects.count - 1
+        return ProjectDrag.gap(onHead: index, y: info.location.y, height: LoomTheme.InkHeight.sidebarRow, canDropAfter: canDropAfter)
+    }
+
+    private func accepts(_ info: DropInfo) -> Bool { ProjectDrag.accepts(info.itemProviders(for: [ProjectDrag.contentType])) }
+
+    func validateDrop(info: DropInfo) -> Bool { accepts(info) }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard accepts(info), let index, let gap = gap(info) else { return DropProposal(operation: .forbidden) }
+        let next: VerticalEdge = gap > index ? .bottom : .top
+        if edge != next { edge = next }
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) { edge = nil }
+
+    func performDrop(info: DropInfo) -> Bool {
+        edge = nil
+        let providers = info.itemProviders(for: [ProjectDrag.contentType])
+        guard ProjectDrag.accepts(providers), let gap = gap(info) else { return false }
+        let model = model
+        Task { @MainActor in
+            guard let id = await ProjectDrag.projectID(from: providers) else { return }
+            await model.dropProject(id, gap: gap)
+        }
+        return true
     }
 }
 

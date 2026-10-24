@@ -29,6 +29,8 @@ extension DevelopmentEvidence {
         case "remove-project": if let id = id(argument) { await model.removeProject(id) }
         case "move-project":
             if let id = id(argument), let delta = Int(rest(argument)) { await model.moveProject(id, by: delta) }
+        case "move-project-to": // a head dragged to a zero-based position
+            if let id = id(argument), let index = Int(rest(argument)) { await model.moveProject(id, to: index) }
         case "toggle-project": if let id = id(argument) { await model.toggleCollapsed(id) }
         case "rename":
             if let id = id(argument) { try? await model.rename(sessionID: id, to: rest(argument)) }
