@@ -123,10 +123,27 @@ public final class NewSessionState {
         if currentID(for: projectID) == nil { makeCurrent(SessionDraft(projectID: projectID, updatedAt: clock())) }
     }
 
-    /// Makes one of a project's drafts the one it shows.
+    /// Makes one of a project's drafts the one it shows. An empty draft it showed before is dropped: it held nothing.
     func show(id: UUID) {
-        if let draft = drafts[id] { current[draft.projectKey] = id }
+        guard let draft = drafts[id] else { return }
+        if let previous = currentID(for: draft.projectID), previous != id, isDisposable(previous) { forget(previous) }
+        current[draft.projectKey] = id
     }
+
+    /// "New Session": the project shows an empty draft, the one it already has when there is one, else a new one. A draft with
+    /// text stays as it is and stays listed.
+    func openEmpty(projectID: UUID?) {
+        if let shown = currentID(for: projectID), isDisposable(shown) { return }
+        let key = SessionDraft.projectKey(for: projectID)
+        if let empty = drafts.values.first(where: { $0.projectKey == key && isDisposable($0.id) }) {
+            show(id: empty.id)
+        } else {
+            makeCurrent(SessionDraft(projectID: projectID, updatedAt: clock()))
+        }
+    }
+
+    /// An empty draft that is not being sent: nothing is lost when it goes, and it is the one "New Session" reuses.
+    private func isDisposable(_ id: UUID) -> Bool { (drafts[id].map { !$0.isVisible } ?? false) && !sending.contains(id) }
 
     /// Puts a draft in and makes it the one its project shows.
     private func makeCurrent(_ draft: SessionDraft) {
@@ -232,19 +249,15 @@ public final class NewSessionState {
         return draft
     }
 
-    /// A start that failed gives a handed-over draft back: as the project's shown draft when that is empty, else in front of
-    /// what was typed meanwhile. Nothing the user wrote is lost.
+    /// A start that failed gives a handed-over draft back as the draft it was: the one its project shows when that is empty,
+    /// else one more draft of the project beside what was typed meanwhile. Nothing the user wrote is lost or mixed.
     func restore(_ draft: SessionDraft) {
-        guard let current = self.draft(for: draft.projectID), current.isVisible else {
+        if let shown = currentID(for: draft.projectID), !isDisposable(shown) {
+            drafts[draft.id] = draft
+        } else {
             if let empty = currentID(for: draft.projectID) { forget(empty) }
             makeCurrent(draft)
-            persistDrafts()
-            return
         }
-        var merged = current
-        merged.text = draft.text + "\n\n" + current.text
-        merged.updatedAt = clock()
-        drafts[merged.id] = merged
         persistDrafts()
     }
 
@@ -314,9 +327,28 @@ extension CatalogModel {
         loadDraftBranch(projectID: projectID)
     }
 
-    /// "New Session" (⌘N, the menu bar item): the draft of the project the window is in. Nothing starts
-    /// until its first send.
-    public func beginNewSession(projectID: UUID?) { showDraft(projectID: projectID) }
+    /// "New Session" (⌘N, the sidebar's New session row, the project menus): an empty draft of the project, the one it already
+    /// has when there is one. Its drafts with text stay listed. Nothing starts until the first send.
+    public func beginNewSession(projectID: UUID?) {
+        prepareNewSession()
+        newSession.openEmpty(projectID: projectID)
+        navigate(to: .draft(projectID: projectID))
+        loadDraftBranch(projectID: projectID)
+    }
+
+    /// Shows one draft (the sidebar's row): it becomes the one its project shows.
+    public func showDraft(id: UUID) {
+        prepareNewSession()
+        guard let draft = newSession.draft(id: id) else { return }
+        newSession.show(id: id)
+        navigate(to: .draft(projectID: draft.projectID))
+        loadDraftBranch(projectID: draft.projectID)
+    }
+
+    /// Whether this draft is the page on screen.
+    public func isShownDraft(_ draft: SessionDraft) -> Bool {
+        destination == .draft(projectID: draft.projectID) && newSession.currentID(for: draft.projectID) == draft.id
+    }
 
     /// Opens the new-session file beside the catalog once; with no catalog the drafts stay in memory. The
     /// sidebar calls it before it lists `newSession.visibleDrafts` (one small read, nothing when the file is absent).
@@ -384,6 +416,9 @@ extension CatalogModel {
     }
 
     public func discardDraft(projectID: UUID?) { newSession.discard(projectID: projectID) }
+
+    /// The row's Discard: this draft only; the project's other drafts stay.
+    public func discardDraft(id: UUID) { newSession.discard(id: id) }
 
     /// Another project in the question: the draft follows when the other project's draft is empty.
     func chooseDraftProject(_ new: UUID?, from old: UUID?) {

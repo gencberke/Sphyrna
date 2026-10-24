@@ -44,8 +44,8 @@ struct DraftSessionView: View {
             .padding(.bottom, NewSessionLayout.bottomLift)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // One page per project: a draft of another project starts from a fresh field, strip and focus.
-        .id(projectID?.uuidString ?? "none")
+        // One page per draft: another draft, of this project or another, starts from a fresh field, strip and focus.
+        .id(model.newSession.currentID(for: projectID)?.uuidString ?? SessionDraft.projectKey(for: projectID))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("draft-session")
         .onAppear {

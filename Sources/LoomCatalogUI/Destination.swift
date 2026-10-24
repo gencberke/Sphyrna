@@ -7,7 +7,7 @@ import Observation
 public enum Destination: Equatable, Sendable {
     case home
     case session(UUID)
-    /// A project's new-session draft; `nil` is a draft with no project.
+    /// The new-session draft a project shows (`NewSessionState.currentID(for:)`); `nil` is a draft with no project.
     case draft(projectID: UUID?)
     case projectPage(UUID)
 

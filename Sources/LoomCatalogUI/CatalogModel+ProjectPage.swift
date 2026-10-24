@@ -349,10 +349,10 @@ extension CatalogModel {
 
     // MARK: Presets
 
-    /// A preset on the project page: the project's draft opens with the preset's message, mode and model in it.
+    /// A preset on the project page: the draft the project shows opens with the preset's message, mode and model in it.
     /// Nothing starts; the user sends (the same as a preset in the draft, D-59).
     func usePreset(_ preset: NewSessionPreset, projectID: UUID) {
-        beginNewSession(projectID: projectID)
+        showDraft(projectID: projectID)
         applyPreset(preset, projectID: projectID)
     }
 

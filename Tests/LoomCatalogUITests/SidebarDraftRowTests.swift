@@ -69,6 +69,32 @@ extension WindowEventTests {
             model.stop()
         }
 
+        @Test func twoDraftsOfOneProjectAreTwoRowsNewestFirstAndAnEmptyDraftHasNone() async throws {
+            let rig = try await rig()
+            defer { try? FileManager.default.removeItem(at: rig.root) }
+            let model = rig.model
+            var now = Date(timeIntervalSince1970: 1_000)
+            model.newSession.clock = { now }
+            model.beginNewSession(projectID: rig.api)
+            model.setDraftText("older idea", projectID: rig.api)
+            now += 60
+            model.beginNewSession(projectID: rig.api)
+            model.setDraftText("newer idea\nsecond line", projectID: rig.api)
+            now += 60
+            // The empty draft on screen is the page, not a row.
+            model.beginNewSession(projectID: rig.api)
+
+            let rows = DraftRows.drafts(in: .project(rig.api), of: model)
+            #expect(rows.map(DraftRow.title(of:)) == ["newer idea", "older idea"])
+            #expect(DraftRows.drafts(in: .all, of: model).count == 2)
+            #expect(!rows.contains { model.isShownDraft($0) })
+            try #require(rows.count == 2)
+            // A row opens its own draft.
+            model.showDraft(id: rows[1].id)
+            #expect(model.isShownDraft(rows[1]) && !model.isShownDraft(rows[0]))
+            model.stop()
+        }
+
         private func element(labelled text: String, in view: NSView) -> AnyObject? {
             accessibilityElements(in: view).first { ($0.accessibilityLabel?() ?? "") == text }
         }

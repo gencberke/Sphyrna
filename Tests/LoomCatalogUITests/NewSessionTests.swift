@@ -107,8 +107,8 @@ struct NewSessionTests {
         #expect(model.newSession.drafts.count == 2)
         #expect(model.visibleDrafts.map(\.projectID) == [rig.projectID])
         #expect(model.newSession.draft(for: rig.otherProjectID)?.isVisible == false)
-        // One slot per project: the draft with text is what its project opens.
-        model.beginNewSession(projectID: rig.projectID)
+        // The draft with text is what its project shows.
+        model.showDraft(projectID: rig.projectID)
         #expect(model.newSession.draft(for: rig.projectID)?.trimmedText == "fix the flaky test\nsecond line")
         #expect(model.newSession.drafts.count == 2)
     }
@@ -252,6 +252,88 @@ struct NewSessionTests {
         var firstPerProject: [UUID?: String] = [:]
         for draft in written where firstPerProject[draft.projectID] == nil { firstPerProject[draft.projectID] = draft.text }
         #expect(firstPerProject[project] == "older idea, edited")
+    }
+
+    // MARK: Several drafts per project: the window
+
+    @Test func newSessionOpensAnEmptyDraftAndReusesTheEmptyOneAProjectHas() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        model.beginNewSession(projectID: rig.projectID)
+        model.setDraftText("first idea", projectID: rig.projectID)
+        let first = try #require(model.newSession.currentID(for: rig.projectID))
+        model.showHome()
+
+        model.beginNewSession(projectID: rig.projectID)
+        #expect(model.destination == .draft(projectID: rig.projectID))
+        let empty = try #require(model.newSession.draft(for: rig.projectID))
+        #expect(empty.id != first && !empty.isVisible, "New Session opens an empty draft, not the one with text")
+        #expect(model.visibleDrafts.map(\.id) == [first], "the draft with text stays listed")
+        model.showHome()
+        model.beginNewSession(projectID: rig.projectID)
+        #expect(model.newSession.currentID(for: rig.projectID) == empty.id && model.newSession.drafts.count == 2,
+                "the project's empty draft is reused")
+        // From the draft with text, New Session again shows an empty draft, and empty drafts do not pile up.
+        model.showDraft(id: first)
+        model.beginNewSession(projectID: rig.projectID)
+        #expect(model.newSession.draft(for: rig.projectID)?.isVisible == false && model.newSession.drafts.count == 2)
+    }
+
+    @Test func theDraftAProjectShowsIsRememberedWhenTheWindowLeavesAndComesBack() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        model.beginNewSession(projectID: rig.projectID)
+        model.setDraftText("older idea", projectID: rig.projectID)
+        let older = try #require(model.newSession.draft(for: rig.projectID))
+        model.beginNewSession(projectID: rig.projectID)
+        model.setDraftText("newer idea", projectID: rig.projectID)
+
+        model.showDraft(id: older.id)
+        #expect(model.destination == .draft(projectID: rig.projectID) && model.isShownDraft(older))
+        model.showHome()
+        #expect(!model.isShownDraft(older))
+        model.showDraft(projectID: rig.projectID)
+        #expect(model.newSession.currentID(for: rig.projectID) == older.id)
+        #expect(model.newSession.draft(for: rig.projectID)?.text == "older idea")
+    }
+
+    @Test func sendingADraftRemovesThatDraftOnlyAndDiscardTakesOneDraft() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        var now = Date(timeIntervalSince1970: 1_000)
+        model.newSession.clock = { now }
+        await openDraft(model, rig.projectID)
+        var ids: [UUID] = []
+        for text in ["keep this", "drop this", "send this"] {
+            model.beginNewSession(projectID: rig.projectID)
+            model.setDraftText(text, projectID: rig.projectID)
+            ids.append(try #require(model.newSession.currentID(for: rig.projectID)))
+            now += 60
+        }
+        let (kept, dropped, sent) = (ids[0], ids[1], ids[2])
+
+        // Discard takes one draft; one that is not on screen goes without touching the page.
+        model.discardDraft(id: dropped)
+        #expect(model.visibleDrafts.map(\.id) == [sent, kept] && model.newSession.currentID(for: rig.projectID) == sent)
+
+        model.sendDraft(projectID: rig.projectID)
+        #expect(await waitUntil { rig.intents.sends.count == 1 })
+        #expect(rig.intents.sends.first?.launch.firstMessage == "send this")
+        rig.intents.sends.first?.outcome(.started(UUID()))
+        #expect(model.newSession.draft(id: sent) == nil, "the sent draft is gone")
+        #expect(model.visibleDrafts.map(\.id) == [kept], "the project's other draft stays")
+
+        model.discardDraft(id: kept)
+        #expect(model.visibleDrafts.isEmpty && model.newSession.draft(for: rig.projectID)?.isVisible == false)
     }
 
     // MARK: Defaults
@@ -912,11 +994,12 @@ struct NewSessionTests {
         #expect(fresh.text.isEmpty && fresh.modePick == .inherit && model.visibleDrafts.isEmpty)
         #expect(!model.newSession.isSending(rig.projectID))
 
-        // The start failed: the text comes back, in front of what was typed meanwhile.
+        // The start failed: the text comes back as its own draft, beside what was typed meanwhile.
         model.setDraftText("second idea", projectID: rig.projectID)
         sent.outcome(.failed)
-        #expect(model.newSession.draft(for: rig.projectID)?.text == "first idea\n\nsecond idea")
-        // And into an empty slot as it was.
+        #expect(model.newSession.draft(for: rig.projectID)?.text == "second idea")
+        #expect(Set(model.visibleDrafts.map(\.text)) == ["first idea", "second idea"])
+        // And into an empty draft as it was.
         model.discardDraft(projectID: rig.projectID)
         model.setDraftText("third", projectID: rig.projectID)
         model.sendDraft(projectID: rig.projectID, startsFreshDraft: true)

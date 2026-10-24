@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A new-session draft with text, as the sidebar lists it (CHAT-SPEC → Draft session, DESIGN §4): a one-line italic row in
+/// A new-session draft with text, as the sidebar lists it (a project may have several, each its own row) (CHAT-SPEC → Draft session, DESIGN §4): a one-line italic row in
 /// secondary under its project in the project view, and under "Drafts" at the top of the activity view, with no mark. A click
 /// opens the draft; Discard throws it away (the × while the pointer is on the row, the context menu, and an accessibility
 /// action). An empty draft never gets a row.
@@ -28,12 +28,12 @@ struct DraftRow: View {
 
     var body: some View {
         let _ = SidebarRenderProbe.draftRow(draft.id.uuidString, of: model)
-        let selected = model.destination == .draft(projectID: draft.projectID)
+        let selected = model.isShownDraft(draft)
         let title = Self.title(of: draft)
         let project = model.draftProject(draft.projectID)?.name
         HStack(spacing: LoomTheme.Space.cardSpacing) {
             Color.clear.frame(width: LoomTheme.Layout.indicatorSlot.width, height: LoomTheme.Layout.indicatorSlot.height)
-            Button { model.showDraft(projectID: draft.projectID) } label: {
+            Button { model.showDraft(id: draft.id) } label: {
                 HStack(spacing: LoomTheme.Space.cardSpacing) {
                     Text(title)
                         .font(selected ? LoomTheme.Sidebar.lineTitleSelected : LoomTheme.Sidebar.draftFont).italic()
@@ -46,9 +46,9 @@ struct DraftRow: View {
             .buttonStyle(RowButtonStyle()).focusEffectDisabled()
             .accessibilityLabel(Self.accessibilityLabel(title: title, project: project))
             .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
-            .accessibilityAction(named: "Discard") { model.discardDraft(projectID: draft.projectID) }
+            .accessibilityAction(named: "Discard") { model.discardDraft(id: draft.id) }
             if hovering {
-                Button { model.discardDraft(projectID: draft.projectID) } label: {
+                Button { model.discardDraft(id: draft.id) } label: {
                     Image(systemName: "xmark").font(LoomTheme.Typography.chevron)
                 }
                 .buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.projectMenuButton))
@@ -61,12 +61,12 @@ struct DraftRow: View {
         .rowPill(selected: selected, radius: LoomTheme.Highlight.radiusCompact, key: "sidebar-draft:\(draft.id)")
         .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusCompact))
         // The button is what the keyboard operates; a click anywhere on the row does the same.
-        .onTapGesture { model.showDraft(projectID: draft.projectID) }
+        .onTapGesture { model.showDraft(id: draft.id) }
         .onHover { hovering = $0 }
         .help(showsProject ? (project ?? "") : "")
         .contextMenu {
-            Button("Open Draft") { model.showDraft(projectID: draft.projectID) }
-            Button("Discard Draft") { model.discardDraft(projectID: draft.projectID) }
+            Button("Open Draft") { model.showDraft(id: draft.id) }
+            Button("Discard Draft") { model.discardDraft(id: draft.id) }
         }
         .accessibilityElement(children: .contain)
     }

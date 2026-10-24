@@ -7,7 +7,9 @@ import LoomCatalogUI
 /// - `face:<chat|terminal>`: the selected session's "Show Chat" / "Show Terminal" (the ⋯ menu and the View menu).
 /// - `new-session:<project id|none>`: what the sidebar's "+", the project menus and ⌘N do (`beginNewSession`).
 /// - `draft-text:<project id|none>:<text>`: the draft composer's text change.
-/// - `draft-discard:<project id|none>`: the draft row's Discard.
+/// - `draft-discard:<project id|none>`: Discard of the draft the project shows.
+/// - `draft-select:<draft id>` and `draft-discard-id:<draft id>`: one draft row's click and Discard (a project may hold several;
+///   the snapshot's `drafts` lists their ids). The project-id commands act on the draft the project shows.
 /// - `draft-branch:<project id|none>:<stay|newBranch|newWorktree>[:name]` and `draft-send:<project id|none>`: the strip and Send.
 /// - `draft-popover:<project id|none>:<model|mode|branch|off>`: the draft page's model, mode or branch-name popover, opened in the
 ///   window's host as a click on its chip or segment opens it (`off` closes it). The live composer's own are `composer-popover` and
@@ -45,6 +47,12 @@ extension DevelopmentEvidence {
         case "draft-discard":
             guard let id = project(argument) else { return false }
             model.discardDraft(projectID: id)
+        case "draft-select":
+            guard let id = UUID(uuidString: argument) else { return false }
+            model.showDraft(id: id)
+        case "draft-discard-id":
+            guard let id = UUID(uuidString: argument) else { return false }
+            model.discardDraft(id: id)
         case "draft-branch":
             // draft-branch:<project|none>:<stay|newBranch|newWorktree>[:name]
             guard let id = project(argument) else { return false }
