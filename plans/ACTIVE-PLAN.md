@@ -38,7 +38,7 @@
 | W3-d | `r5-pill`, step 2 | Files and folders into every composer | **Integrated** `d81d7ae` |
 | W3-f | `r5-inspector`, step 3 | The Dock menu; the session menu's and the palette's additions. Peek (hover a row for its last ask) moves after 1.6.1 | **Integrated** `87bb851`, `911dc0d`, `48f60ea`, `f979c03` |
 | FB5-12 | `r5-remora`, step 4 | `loom-run-host`'s Security call off the main thread | **Integrated** `0840516`. Whether the fault is gone shows only in the installed app's log |
-| FB5-10 S3–S5 | `r5-chat-cost` | Long blocks; one layout per flush; rows of blocks only if Q17 needs them | S3 in progress; S4 is decided on the measurement after S3 |
+| FB5-10 S3–S5 | `r5-chat-cost` | Long blocks; one layout per flush; rows of blocks only if Q17 needs them | **Integrated** S3 `27af3f6`, S4 `4793e9b`, S2's whole-flush timing `618eb41`, no selection while streaming `23174ee` (`@user`'s trade). After S4: 19.2 % at 600 and 39.0 % at 6,000. Q17 is missed; S5 is not in 1.6.1 |
 | W1-e, part 2 | `r5-icon` | Top re-posed; the icon's sources, `make-app-icon.sh`, `assets/icon/*` and the `.icns` grid | **Integrated** `8161e80`; part 3, the reference's identity page and the README's icon, `7b6161a`. Left: DESIGN §6 and removing the old glyph files (docs pass) |
 | Close | planner | The pool (D-90), the optimizer (D-06) and the docs. The tag and the promote wait for `@user` | — |
 

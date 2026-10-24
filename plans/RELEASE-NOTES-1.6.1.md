@@ -37,7 +37,7 @@ Draft of 24 Oct 2026, for `@user`'s release (the push and the GitHub release wai
 
 ## Chat
 
-- **The stream costs less.** While a long answer arrives, Sphyrna spaces its updates out when one costs a lot, up to 160 ms. The paragraph being written cannot be selected until it settles, and a long code block settles in chunks while it streams; its Copy appears when the block closes.
+- **The stream costs less.** While a long answer arrives, Sphyrna lays it out once per update and spaces updates out when one costs a lot, up to 160 ms. A long code block settles in chunks while it streams, so it costs no more than prose; its Copy appears when the block closes. An answer's text can be selected once the answer finishes. TODO(planner): the measured drop.
 
 ## Going back to 1.6.0
 

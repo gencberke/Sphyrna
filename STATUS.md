@@ -1,6 +1,6 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-24 15:00
+- **Updated:** 2026-10-24 23:10
 - **Stage:** **Round 5: 1.6.1's slices are in progress** ([plans/ACTIVE-PLAN.md §0](plans/ACTIVE-PLAN.md#0-round-5-sphyrna-161-from-24-oct-d-93), [plans/FEEDBACK-5.md](plans/FEEDBACK-5.md)), from `@user`'s first notes on 1.6.0.
   - Sphyrna 1.6.0, the first stable release ([D-83](DECISIONS.md)), is tagged, promoted and installed locally (23 Oct).
   - `0.4.4` remains the latest public GitHub release ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)).
@@ -12,32 +12,27 @@
   - Round 5's causes are traced, Chat's streaming cost is studied (FB5-10), and the decisions are recorded as D-93 to D-99.
   - **`@user`'s go (24 Oct, about 12:50):** "mac boşta olacak. başlayabilirsin." The open questions take their defaults: Q2, Q3, Q6, Q7 and Q13 to Q17 in [FEEDBACK-5](plans/FEEDBACK-5.md#decisions). That is the planner's reading of the go; `@user` can change any of them.
   - The slices run as the planner's subagents, each in its own `wt/r5-*` worktree (§2).
-  - **Paused at about 15:00 for the 5-hour usage limit** (`@user`: "düzgün şekilde duraklat … geri açılınca sağlıklı şekilde devam ederiz"). Each running agent writes `evidence/r5/<slice>/PAUSE.md` and leaves its uncommitted work in its worktree; nothing unverified is committed. The resume steps are in §1 below and in `evidence/r5/RUN.md`.
-  - **On `v2` at 15:00** (`27b0831`), on top of `988256a`, 26 commits:
-    - Settings' clicks `dfb90ba`; the icon `8161e80`, `7b6161a`; Put in Draft and the read key `f133761`;
-    - drag: `8e9475c`, `be711f2`, `4fd009b`, `eeac5e9`, `27b0831` (tab strip drop and reorder, header zone, projects by drag, ⇧⌘T);
-    - the inspector: `2202fc6` (widths), `2b9dd3c`, `5dd11ef` (drag out of Changes as `@path`);
-    - Remora's face and cleanup: `37851a1`, `82ce829`, `2291efc`, `69bd12c`;
-    - drafts: `1a593de`, `73e6b64`, `e0ada41` (several drafts; Draft Brief never overwrites);
-    - the mention pill: `38717ad`, `9359193`;
-    - Chat cost S0–S2: `7ccae36`, `ff13bf9`, `4dbf353`;
-    - FB5-12: `0840516`.
-  - A combined check on `v2` `9359193` passed (140 + 15 tests). Drag step 2's window suites passed on AC.
-  - **Paused mid-step:** Settings step 2 (`10a4973` committed; proof and keep awake open), the inspector's step 3 (`b8a5b0a` committed; the palette uncommitted), the pill's step 2 (uncommitted, after merging `v2` `9359193`), Chat cost S3 (uncommitted).
-  - **Chat cost baseline** (`run-r5s0`): Chat 22.4 % at 600 and 48.3 % at 6,000; the 300-line fence 37.6 %; terminal 5.1 / 20.7. S1+S2 are measured together with S3, after S3 lands.
-- **Blocker:** the usage limit (paused, §1). The icon is picked (D-97). The tag, promote, push and GitHub release wait for `@user` ([D-16](DECISIONS.md), [D-83](DECISIONS.md)).
+  - **Resumed 16:05** (`@user`: "devam. biraz testleri minimal tutmaya çalışalım"): one run of the changed suites per step, failing-first only for a new rule, one release-tree run and one full gate for the pool.
+  - **Every slice is on `v2`** (HEAD `7b7b9cb` at 23:05, local, unpushed): Wave 1, Wave 3 except Peek, FB5-10 S0–S4, FB5-12, `check.sh`'s summary rule, the docs (`06e31f1`), and the focused review's fixes.
+  - **Checks:**
+    - the full gate passed on `618eb41` (`check-20261024T165546-4426.log`: release build, release tree, 1,828 + 365 tests, windows included);
+    - the later commits passed their suites, and a combined check passed on `7b7b9cb` (151 tests);
+    - the focused closing review (D-06, `@user`'s choice) is done, and its Must-fix and Should-fixes are in.
+  - **Chat cost** (C8, visible, % of one core): 600 chars/s 22.4 → 19.2, 6,000 chars/s 48.3 → 39.0, a 300-line fence 37.6 → 19.1 (after S4). Q17's target (12 / 25) is missed. `@user` traded selection during the stream for cost (`23174ee`); it is still unmeasured.
+  - **Open:**
+    - the pool's lean C8 (`run-r5rc`, package `23174ee`) stopped because **the screen is locked**: visible cells cannot run. It resumes with the screen unlocked and the Mac idle (`evidence/r5/RUN.md` has the command);
+    - then D-92 (3)'s numbers and the release notes' TODO;
+    - then `@user`'s word on tag, promote, install and push.
+- **Blocker:** the locked screen, for the lean C8. The icon is picked (D-97). The tag, promote, push and GitHub release wait for `@user` ([D-16](DECISIONS.md), [D-83](DECISIONS.md)).
 
 ---
 
 ## 1. Current Operational Mode
 
-- **Resume after the pause (24 Oct):**
-  1. Read `~/Library/Caches/loom-v2/evidence/r5/RUN.md`'s last section and each `evidence/r5/<slice>/PAUSE.md` (settings, inspector, pill, chat-cost).
-  2. Check the worktrees `wt/r5-<slice>` with `git status`; never stash or reset. Read the logs of the checks that ran during the pause.
-  3. Resume each agent with SendMessage (ids in RUN.md). If one cannot be resumed, start a fresh `implementer` with its Brief plus PAUSE.md.
-  4. Keep the build slot's queue short: at most three agents building at once.
-  5. Then: review and integrate each step; build a C8 package from S3's commit and run the four Chat cells with `PROFILE=1`; decide S4; then the docs pass, the pool (D-90) and the closing review (D-06). Stop for `@user`'s word before tag, promote, install and push.
-  6. `caffeinate` is stopped during the pause; start it again for window tests and C8 runs.
+- **Next (24 Oct, 23:10):**
+  1. With the screen unlocked and the Mac idle, resume the lean C8 (`run-r5rc`; the command is in `~/Library/Caches/loom-v2/evidence/r5/RUN.md`; valid cells are skipped). Restart `caffeinate -d` first.
+  2. Write D-92 (3)'s new budgets from it (measured plus margin), and fill the release notes' `TODO(planner)`. Sync the docs to `v2` and commit there.
+  3. Stop for `@user`'s word on `release/1.6.1`, the promote, the install and the push (D-16).
 - **Planner (24 Oct):** the session that wrote [FEEDBACK-5](plans/FEEDBACK-5.md) plans round 5 with `@user`. Before it, the session "Sphyrna 1.6.0 release planlama" was `@planner` from 22 Oct 02:20 (`@user`'s word). The earlier planner session and the track sessions `sphyrna-ink` / `sphyrna-core` are idle; implementers run as the planner's own subagents and slices integrate straight onto `v2` (the `ink` and `core` track branches are not used).
 - **Night window (22–23 Oct, `@user` at 23:41):** the Mac idle, on the adapter, the screen unlocked; the planner ran the screen work after the review's fixes (the full gate, `rc3`'s C8 cells and an A/B against `rc2`, the service smoke) without asking again. It ended at 01:10. Briefs tell implementers to avoid commands that ask for approval, and to wait on `evidence/tools/wait-measurements.sh` (a C8 run, or the `HOLD-BUILDS` file while `@user` uses the Mac) before any build.
 - **Test cadence ([D-90](DECISIONS.md), [DEVELOPMENT.md §3.1](DEVELOPMENT.md#31-test-cadence-slices-one-pooled-batch-fixes-scoped-re-checks-d-90-22-oct-2026)):** narrow off-screen checks per slice; the pool runs when enough has collected; fixes get scoped re-checks.
