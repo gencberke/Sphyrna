@@ -56,8 +56,6 @@ extension LoomTheme {
         /// A shark in place and Home's loop: at most 12.
         static let inPlaceFPS = 12.0
         static let homeLoopFPS = 12.0
-        /// Remora's arrival, the one scripted motion: at most 60 for its 2.2 seconds.
-        static let arrivalFPS = 60.0
         /// The longest step the art takes after a late frame (the reference's 0.1 s clamp), so a pause does not jump.
         static let longestStep = 0.1
         /// Alphas are drawn in steps of 1/`alphaSteps` (the reference's buckets).

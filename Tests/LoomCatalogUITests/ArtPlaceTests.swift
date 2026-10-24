@@ -103,13 +103,18 @@ struct ArtPlaceTests {
         #expect(still.hasRested && still.sharks[0].x > size.width * 0.8)
     }
 
-    @Test func homesLoopGivesItsHammerheadBackAtTheLeftOnTheLowerPass() {
+    /// The band's hammerhead swims one closed loop: it reaches both edges of the band, crosses the left edge on the lower pass heading
+    /// right, and is where it started after one period.
+    @Test func homesLoopCrossesTheBandAndCloses() {
         let size = ArtEngineTests.band
         let loop = ArtHomeLoop(size: size, metrics: ArtMetrics.mono(cell: LoomTheme.Art.bandCell))
-        let back = loop.shark(at: ArtHomeLoop.backTime)
-        #expect(abs(back.x) < 2, "its head at the left edge: \(back.x)")
-        #expect(back.y > size.height * ArtHomeLoop.centre.y, "on the lower pass: \(back.y)")
-        #expect(cos(back.heading) > 0.5, "heading right: \(back.heading)")
+        let centreY = size.height * ArtHomeLoop.centre.y
+        let samples = (0..<3_600).map { loop.shark(at: Double($0) / 3_600 * ArtHomeLoop.period) }
+        #expect(samples.contains { $0.x < 2 } && samples.contains { $0.x > size.width - 2 }, "it reaches both edges")
+        #expect(samples.contains { abs($0.x) < 2 && $0.y > centreY && cos($0.heading) > 0.5 },
+                "its head crosses the left edge on the lower pass, heading right")
+        let start = loop.shark(at: 0), end = loop.shark(at: ArtHomeLoop.period)
+        #expect(abs(start.x - end.x) < 0.5 && abs(start.y - end.y) < 0.5, "the loop closes")
     }
 
     // MARK: Remora's face

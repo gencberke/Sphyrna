@@ -12,9 +12,7 @@ enum ArtSurfaceKind: Sendable, CaseIterable {
     case inPlace
     /// Home's band: at most 12.
     case homeLoop
-    /// Remora's arrival on Home, the one scripted motion: at most 60 for its 2.2 s.
-    case arrival
-    /// A drawing that never moves (the resting remora): one frame.
+    /// A drawing that never moves: one frame.
     case resting
 
     var maximumRate: Double? {
@@ -22,7 +20,6 @@ enum ArtSurfaceKind: Sendable, CaseIterable {
         case .ambient: LoomTheme.Art.ambientFPS
         case .inPlace: LoomTheme.Art.inPlaceFPS
         case .homeLoop: LoomTheme.Art.homeLoopFPS
-        case .arrival: LoomTheme.Art.arrivalFPS
         case .resting: nil
         }
     }

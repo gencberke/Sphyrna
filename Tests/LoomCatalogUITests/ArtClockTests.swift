@@ -19,12 +19,10 @@ struct ArtClockTests {
             (input(kind: .ambient), .rate(24)),
             (input(kind: .inPlace), .rate(12)),
             (input(kind: .homeLoop), .rate(12)),
-            (input(kind: .arrival), .rate(60)),
             (input(kind: .resting), .still),
             // Animated art off: one still frame, for every kind.
             (input(animated: false, kind: .ambient), .still),
             (input(animated: false, kind: .homeLoop), .still),
-            (input(animated: false, kind: .arrival), .still),
             // Nobody can see it: no timer, whatever else holds.
             (input(onScreen: false), .none),
             (input(visible: false), .none),
@@ -32,7 +30,7 @@ struct ArtClockTests {
             (input(active: false), .none),
             (input(onScreen: false, animated: false), .none),
             (input(unoccluded: false, kind: .homeLoop), .none),
-            (input(active: false, kind: .arrival), .none),
+            (input(active: false, kind: .inPlace), .none),
         ]
         for (given, expected) in rows { #expect(ArtClock.tick(given) == expected, "\(given)") }
     }
@@ -55,7 +53,6 @@ struct ArtClockTests {
                                     let cap: Double = switch kind {
                                     case .ambient: 24
                                     case .inPlace, .homeLoop: 12
-                                    case .arrival: 60
                                     case .resting: 0
                                     }
                                     #expect(rate <= cap, "\(given)")

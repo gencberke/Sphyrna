@@ -16,13 +16,6 @@ struct ArtHomeLoop: Sendable {
     /// Tail beats in one loop. The reference's 0.42 a second gives 75.6, so its loop jumps at the seam; a whole, even
     /// number (76: the fin's half-rate flap closes too) makes frame 0 follow the last.
     static let beatsPerLoop = 76.0
-    /// Where the loop is when its hammerhead comes back after Remora's arrival: its head at the band's left edge on the lower
-    /// pass, heading right (the reference's `TH_BACK`, D-80).
-    static var backTime: Double {
-        let th = Double.pi + acos(Double(centre.x) / Double(radii.width))
-        return (th - Double.pi / 2) / (Double.pi * 2) * period
-    }
-
     let size: CGSize
     let metrics: ArtMetrics
     let alpha: Double
