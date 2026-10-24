@@ -14,15 +14,16 @@ enum ChangesFileDrag {
     }
 }
 
-/// Makes a file's row a drag source. The drag starts past the system's threshold, so a click on the row stays a click; a file that
-/// is gone adds no drag at all.
+/// Makes a file's row a drag source. The drag starts past the system's threshold, so a click on the row stays a click. A deleted
+/// file (known from its status, no disk read here) adds no drag at all; one that vanished since is found when the drag starts
+/// (`ChangesFileDrag.provider`) and offers nothing.
 struct ChangesFileDragSource: ViewModifier {
     let model: CatalogModel
     let sessionID: UUID
     let file: ChangesFile
 
     @ViewBuilder func body(content: Content) -> some View {
-        if FileManager.default.fileExists(atPath: file.absolutePath) {
+        if file.status != .deleted {
             content.onDrag {
                 let folder = (model.rowModels[sessionID]?.record ?? model.liveRecords[sessionID])?.session.workingDirectory
                 return ChangesFileDrag.provider(for: file, folder: folder) ?? NSItemProvider()
