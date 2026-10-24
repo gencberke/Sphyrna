@@ -188,19 +188,28 @@ final class ChatPresentation {
     /// recorded (`pendingDelta`) and ends in `flushRows`.
     private func defers(_ change: ModelChange) -> Bool {
         guard let interval = streamingInterval, controller != nil, let last = lastRowsAt, Self.isStreamingTextOnly(change) else { return false }
-        let due = last + interval
-        guard ContinuousClock.now < due else { return false }
+        guard ContinuousClock.now < last + interval else { return false }
         pendingDelta = Self.merged(pendingDelta ?? ModelDelta(), change.delta)
         deferredChanges += 1
         if flushTask == nil {
+            // The due time is asked again on waking: the turn of the rebuild that this change came with has ended by then, and
+            // its cost (`lastTurnMs`, zero while it ran) stretches the wait it was scheduled without.
             flushTask = Task { [weak self] in
-                try? await Task.sleep(until: due, clock: .continuous)
+                while let due = self?.flushDue, ContinuousClock.now < due {
+                    try? await Task.sleep(until: due, clock: .continuous)
+                    if Task.isCancelled { return }
+                }
                 guard let self, !Task.isCancelled else { return }
                 flushTask = nil
                 flushRows()
             }
         }
         return true
+    }
+
+    /// When the waiting text is due: the last rows plus `streamingInterval` as it is now.
+    private var flushDue: ContinuousClock.Instant? {
+        lastRowsAt.map { $0 + (streamingInterval ?? .zero) }
     }
 
     private static func merged(_ first: ModelDelta, _ second: ModelDelta) -> ModelDelta {

@@ -261,6 +261,30 @@ extension ChatHosted {
             #expect((presentation.streamingInterval ?? .zero) >= .milliseconds(150), "\(String(describing: presentation.streamingInterval))")
         }
 
+        /// Holds the main thread (`Thread.sleep` is unavailable in an async test).
+        private static func stall(_ seconds: TimeInterval) { Thread.sleep(forTimeInterval: seconds) }
+
+        /// A change deferred in the same pass as a costly rebuild is scheduled before that turn's cost is known (it is zero while
+        /// the turn runs): when the timer wakes, it asks the interval again and waits the stretched one.
+        @Test func aChangeDeferredInTheTurnOfACostlyRebuildWaitsTheStretchedInterval() async throws {
+            var rig = streamingPresentation(interval: .milliseconds(80))
+            defer { rig.stream.controller.stop() }
+            let presentation = rig.presentation
+            try await Task.sleep(for: ChatPresentation.streamingRowsCeiling + .milliseconds(90))
+            let began = ContinuousClock.now
+            presentation.setWorking(false)
+            Self.stall(0.035)   // the display pass of the same turn: the stand-in for a costly flush
+            let before = presentation.rebuilds
+            _ = presentation.apply(rig.source.message(LiveScript.textDelta(0, "deferred in the costly turn ")))
+            #expect(presentation.rebuilds == before && presentation.hasPendingRows, "deferred")
+            // Past the base interval, inside the stretched one.
+            try await Task.sleep(until: began + .milliseconds(125), clock: .continuous)
+            #expect((presentation.streamingInterval ?? .zero) >= .milliseconds(150), "\(String(describing: presentation.streamingInterval))")
+            #expect(presentation.rebuilds == before && presentation.hasPendingRows, "the flush waits the stretched interval")
+            try await Task.sleep(until: began + .milliseconds(400), clock: .continuous)
+            #expect(presentation.rebuilds == before + 1 && !presentation.hasPendingRows, "and then comes")
+        }
+
         @Test func aChangeThatIsNotStreamingTextIsNeverHeldByTheCost() {
             var rig = streamingPresentation(interval: ChatPresentation.streamingRowsInterval)
             defer { rig.stream.controller.stop() }
