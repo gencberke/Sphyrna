@@ -58,6 +58,10 @@ extension AppDelegate {
                                         keyEquivalent: "w")
         closeTab.keyEquivalentModifierMask = [.command, .option]
         closeTab.target = self
+        let reopenTab = fileMenu.addItem(withTitle: "Reopen Closed Tab", action: #selector(reopenClosedTabFromMenu(_:)),
+                                         keyEquivalent: "t")
+        reopenTab.keyEquivalentModifierMask = [.command, .shift]
+        reopenTab.target = self
         fileMenu.addItem(withTitle: "Close Window", action: #selector(closeWindowFromMenu(_:)), keyEquivalent: "w").target = self
         fileItem.submenu = fileMenu
         main.addItem(fileItem)

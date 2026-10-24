@@ -135,6 +135,17 @@ struct ConversationTabsTests {
         #expect(order.position(forGap: 9, of: UUID()) == 4)
     }
 
+    @Test func theClosedTabsAreBoundedAndKeepOneEntryPerSession() {
+        let all = ids(ConversationTabs.closedCapacity + 3)
+        let tabs = ConversationTabs(pinned: all)
+        for id in all { tabs.noteClosed(id); tabs.unpin(id) }
+        #expect(tabs.closed.count == ConversationTabs.closedCapacity)
+        #expect(tabs.closed.map(\.id) == Array(all.suffix(ConversationTabs.closedCapacity)), "the oldest fall off")
+        tabs.noteClosed(all[5])
+        #expect(tabs.closed.filter { $0.id == all[5] }.count == 1 && tabs.closed.last?.id == all[5])
+        #expect(tabs.closed.count == ConversationTabs.closedCapacity)
+    }
+
     // MARK: Model over a real catalog
 
     struct Fixture {
@@ -245,6 +256,51 @@ struct ConversationTabsTests {
         #expect(fixture.model.selectedSessionID == ninth) // shown as the transient tab, as Open in Tab does
         #expect(fixture.preferences.current.openTabs == firstEight)
         #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    @Test func reopenBringsClosedTabsBackInReverseOrderAtTheirPlaces() async throws {
+        let fixture = try await makeFixture(rows: 4)
+        defer { cleanup(fixture) }
+        await fixture.model.start()
+        let ids = fixture.sessionIDs
+        let model = fixture.model
+        #expect(!model.canReopenClosedTab, "nothing closed yet")
+        for id in ids.prefix(4) { model.openTab(id) }
+        model.closeTab(ids[1])
+        model.closeTab(ids[2]) // was at place 1 once ids[1] had gone
+        #expect(model.tabs.pinned == [ids[0], ids[3]])
+        #expect(model.canReopenClosedTab)
+        #expect(model.reopenClosedTab())
+        #expect(model.tabs.pinned == [ids[0], ids[2], ids[3]])
+        #expect(model.selectedSessionID == ids[2])
+        #expect(model.reopenClosedTab())
+        #expect(model.tabs.pinned == [ids[0], ids[1], ids[2], ids[3]])
+        #expect(model.selectedSessionID == ids[1])
+        #expect(fixture.preferences.current.openTabs == [ids[0], ids[1], ids[2], ids[3]])
+        #expect(!model.canReopenClosedTab && !model.reopenClosedTab(), "nothing left to reopen")
+        // The last tab closed leaves no strip; Reopen still works.
+        for id in ids.prefix(4) { model.closeTab(id) }
+        #expect(!model.tabStripIsVisible && model.canReopenClosedTab)
+        #expect(model.reopenClosedTab() && model.tabs.pinned == [ids[3]])
+    }
+
+    @Test func reopenSkipsADeletedSessionAndOnePinnedAgain() async throws {
+        let fixture = try await makeFixture(rows: 4)
+        defer { cleanup(fixture) }
+        await fixture.model.start()
+        let ids = fixture.sessionIDs
+        let model = fixture.model
+        for id in ids.prefix(4) { model.openTab(id) }
+        model.closeTab(ids[0])
+        model.closeTab(ids[1])
+        model.closeTab(ids[2])
+        model.forget(sessionID: ids[2]) // deleted after it was closed
+        model.openTab(ids[1]) // pinned again by other means
+        #expect(model.canReopenClosedTab)
+        #expect(model.reopenClosedTab())
+        #expect(model.selectedSessionID == ids[0], "the deleted and the pinned-again sessions are skipped")
+        #expect(model.tabs.pinned == [ids[0], ids[3], ids[1]])
+        #expect(!model.canReopenClosedTab)
     }
 
     @Test func selectingASidebarRowReplacesTheTransientTabWithoutPinning() async throws {

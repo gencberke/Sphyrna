@@ -32,6 +32,19 @@ extension CatalogModel {
         return true
     }
 
+    /// Reopen Closed Tab (⇧⌘T) has a closed tab to bring back. It works with the strip hidden too: the last tab closed
+    /// leaves no strip.
+    public var canReopenClosedTab: Bool { tabs.canReopen }
+
+    /// Pins the most recently closed tab back at its old place (clamped) and shows it. A deleted session was already
+    /// dropped from the closed tabs (`forget(sessionID:)`), and one pinned again since is skipped.
+    @discardableResult
+    public func reopenClosedTab() -> Bool {
+        guard let entry = tabs.popClosed() else { return false }
+        openTab(entry.id, at: entry.index)
+        return true
+    }
+
     /// Closes the selected tab (Close Tab): only unpins, never stops a run.
     public func closeSelectedTab() {
         guard canCloseSelectedTab, let id = selectedSessionID else { return }

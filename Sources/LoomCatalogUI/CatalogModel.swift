@@ -1085,6 +1085,7 @@ public final class CatalogModel {
     /// its right neighbor, else its left, else nothing.
     public func closeTab(_ id: UUID) {
         let next = id == selectedSessionID ? tabs.neighbor(ofClosing: id, selected: selectedSessionID) : nil
+        if tabs.isPinned(id) || id == selectedSessionID { tabs.noteClosed(id) }
         if tabs.unpin(id) { persistTabs() }
         if id == selectedSessionID { select(next) }
     }
@@ -1098,6 +1099,7 @@ public final class CatalogModel {
         intents?.closeEndedScreen(sessionID: id)
         dropHolders(of: id)
         closeTab(id)
+        tabs.forget(id) // nor can Reopen Closed Tab bring it back
     }
 
     /// The quick question's panel (it holds the driver through its `ask`), the Changes state and the side holder of a deleted

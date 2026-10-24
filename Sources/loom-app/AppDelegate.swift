@@ -587,6 +587,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func showNextTab(_ sender: Any?) { model?.selectAdjacentTab(.next) }
     @objc func showPreviousTab(_ sender: Any?) { model?.selectAdjacentTab(.previous) }
     @objc func closeTabFromMenu(_ sender: Any?) { model?.closeSelectedTab() }
+    @objc func reopenClosedTabFromMenu(_ sender: Any?) { model?.reopenClosedTab() }
     /// Close Window (⌘W). A method of its own, so that the sheet rule can hold the key back while a question is open.
     @objc func closeWindowFromMenu(_ sender: Any?) { window?.performClose(nil) }
     @objc func jumpToNextAttention(_ sender: Any?) { jumpToAttention(item: .next) }
@@ -644,6 +645,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return model.canSelectAdjacentTab
         case #selector(closeTabFromMenu(_:)):
             return model.canCloseSelectedTab
+        case #selector(reopenClosedTabFromMenu(_:)):
+            return model.canReopenClosedTab
         case #selector(jumpToNextAttention(_:)), #selector(jumpToPreviousAttention(_:)):
             return model.canJumpToAttention
         case #selector(selectNextSession(_:)):

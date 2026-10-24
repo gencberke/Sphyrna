@@ -7,6 +7,7 @@ import LoomCatalogUI
 /// - `tab-pin:<id>`: "Open in Tab" (pins the conversation and shows it).
 /// - `tab-pin-at:<id>:<index>`: a drop of the session on the strip, pinned at `index` of the pinned tabs (a pinned one moves).
 /// - `tab-move:<id>:<index>`: a tab dragged within the strip to `index` of the pinned tabs.
+/// - `tab-reopen`: Reopen Closed Tab (the most recently closed tab, back at its place).
 /// - `tab-unpin:<id>`: unpins without changing what is shown (the selected tab turns transient).
 /// - `tab-select:<id|next|prev>`: a click on a tab, or Show Next / Previous Tab.
 /// - `tab-close:<id>`: the tab's close button (only unpins; never stops a run).
@@ -29,6 +30,7 @@ extension DevelopmentEvidence {
         case "tab-pin-at": if let id, let index = Self.tabIndex(argument) { model.openTab(id, at: index) }
         case "tab-move": if let id, let index = Self.tabIndex(argument) { model.moveTab(id, to: index) }
         case "tab-unpin": if let id { model.unpinTab(id) }
+        case "tab-reopen": model.reopenClosedTab()
         case "tab-select":
             switch argument {
             case "next": model.selectAdjacentTab(.next)
@@ -61,6 +63,8 @@ extension AppDelegate {
             "stripVisible": model.tabStripIsVisible,
             "canSelectAdjacent": model.canSelectAdjacentTab,
             "canClose": model.canCloseSelectedTab,
+            "canReopen": model.canReopenClosedTab,
+            "closed": model.tabs.closed.map { ["id": $0.id.uuidString, "index": $0.index] as [String: Any] },
             "rows": model.visibleTabIDs.map { id in
                 let row = model.tabRow(id)
                 return ["id": id.uuidString, "title": redactsContent ? "" : (row.map { model.title(of: $0) } ?? ""),

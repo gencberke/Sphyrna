@@ -9,6 +9,12 @@ public enum TabPinResult: Equatable, Sendable {
     case refused(String)
 }
 
+/// A closed tab Reopen Closed Tab can bring back: the session and the place it had among the pinned tabs.
+public struct ClosedTab: Equatable, Sendable {
+    public let id: UUID
+    public let index: Int
+}
+
 /// The pinned conversation tabs (D-33): an ordered, capped list of ids. The
 /// strip shows these plus the selected conversation as one transient tab.
 /// Pure presentation state: it never starts, stops or owns a run, and closing
@@ -18,6 +24,9 @@ public final class ConversationTabs {
     public static let capacity = UIPreferences.maxOpenTabs
 
     public private(set) var pinned: [UUID]
+    /// Recently closed tabs, the most recent last, at most `closedCapacity`. In memory only: a relaunch starts empty.
+    public private(set) var closed: [ClosedTab] = []
+    public static let closedCapacity = 10
 
     public init(pinned: [UUID] = []) {
         self.pinned = UIPreferences.normalizedTabs(pinned)
@@ -110,7 +119,30 @@ public final class ConversationTabs {
         return true
     }
 
-    /// Drops a conversation that no longer exists.
+    /// Drops a conversation that no longer exists, from the tabs and from the closed ones.
     @discardableResult
-    public func forget(_ id: UUID) -> Bool { unpin(id) }
+    public func forget(_ id: UUID) -> Bool {
+        closed.removeAll { $0.id == id }
+        return unpin(id)
+    }
+
+    /// Remembers a closed tab at the place it had (a transient tab's place is after the pinned ones). A session closed again
+    /// keeps only its latest entry; the oldest entries fall off past the bound.
+    public func noteClosed(_ id: UUID) {
+        let index = pinned.firstIndex(of: id) ?? pinned.count
+        closed.removeAll { $0.id == id }
+        closed.append(ClosedTab(id: id, index: index))
+        if closed.count > Self.closedCapacity { closed.removeFirst(closed.count - Self.closedCapacity) }
+    }
+
+    /// Whether a closed tab can come back: one that is not pinned again already.
+    public var canReopen: Bool { closed.contains { !pinned.contains($0.id) } }
+
+    /// Takes the most recent closed tab that is not pinned again; the entries above it are dropped.
+    public func popClosed() -> ClosedTab? {
+        while let last = closed.popLast() {
+            if !pinned.contains(last.id) { return last }
+        }
+        return nil
+    }
 }
