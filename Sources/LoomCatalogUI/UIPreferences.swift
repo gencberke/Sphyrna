@@ -184,6 +184,22 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     public var keepAwake: KeepAwakeSetting = .off
     /// Settings → General → Notify when a long turn finishes. A file written before the setting existed reads as off.
     public var notifyLongTurns = false
+    /// The connect switch of each harness (D-98), by provider name: `false` is off, and a harness with no entry is on. A file
+    /// written before the switch existed reads as all on. Off only stops Sphyrna's own use of the harness; the CLI is never
+    /// signed out and its config is never written. `HarnessConnections` is the model views and the probe read.
+    public var harnessConnections: [String: Bool] = [:]
+
+    public func isHarnessConnected(_ provider: ManagedSession.Provider) -> Bool { harnessConnections[provider.rawValue] ?? true }
+
+    /// The harnesses switched off, for `HarnessConnections(disconnected:)`.
+    public var disconnectedHarnesses: Set<ManagedSession.Provider> {
+        Set(harnessConnections.compactMap { $0.value ? nil : ManagedSession.Provider(rawValue: $0.key) })
+    }
+
+    /// An entry exists only for a harness that is off, so the default (on) is the file's absence of it.
+    public mutating func setHarnessConnected(_ provider: ManagedSession.Provider, _ connected: Bool) {
+        if connected { harnessConnections[provider.rawValue] = nil } else { harnessConnections[provider.rawValue] = false }
+    }
 
     /// The selected session, as every caller before destinations knew it; setting it sets the destination.
     /// The key is still written when the destination is a session, so an older build reads it too.
@@ -261,13 +277,14 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         )
         keepAwake = (try? container.decodeIfPresent(KeepAwakeSetting.self, forKey: .keepAwake)) ?? .off
         notifyLongTurns = (try? container.decodeIfPresent(Bool.self, forKey: .notifyLongTurns)) ?? false
+        harnessConnections = ((try? container.decodeIfPresent([String: Bool].self, forKey: .harnessConnections)) ?? nil) ?? [:]
     }
 
     private enum CodingKeys: String, CodingKey {
         case viewMode, selectedSessionID, destination, sidebarWidth, sidebarCollapsed, terminalFontSize, openTabs
         case windowFrame, projectColors, showInMenuBar, notifyApprovals, sidebarStyle, launchView, inspectorOpen
         case inspectorWidths, searchSessionText, newSessionFace, appearance, paneTone, animatedArt, remora
-        case keepAwake, notifyLongTurns
+        case keepAwake, notifyLongTurns, harnessConnections
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -295,6 +312,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         try container.encode(remora, forKey: .remora)
         try container.encode(keepAwake, forKey: .keepAwake)
         try container.encode(notifyLongTurns, forKey: .notifyLongTurns)
+        try container.encode(harnessConnections, forKey: .harnessConnections)
     }
 
     private struct Lossy<Value: Decodable>: Decodable {

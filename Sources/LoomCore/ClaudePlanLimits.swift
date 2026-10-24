@@ -112,7 +112,7 @@ public struct PlanPace: Equatable, Sendable {
 }
 
 /// The plan limits at one moment. Only the two windows the product shows are kept; nothing else
-/// the CLI answers (account and spend fields among it) is read.
+/// the CLI answers is read into it (the account goes to `PlanLimitsReading`, in memory, and spend is dropped).
 public struct PlanLimits: Equatable, Sendable {
     public var fiveHour: PlanLimitWindow?
     public var weekly: PlanLimitWindow?
@@ -153,6 +153,9 @@ public struct PlanLimits: Equatable, Sendable {
 /// not available (no plan limits for this account, no CLI, a timeout): nothing is shown then.
 public protocol PlanLimitsFetching: Sendable {
     func fetch() async -> PlanLimits?
+    /// The same ask, with the account the CLI named in the same exchange (in memory only: see `HarnessAccount`). A source
+    /// that does not see the account keeps the default.
+    func fetchReading() async -> PlanLimitsReading
     /// Why the last ask failed and when; nil when it succeeded or none failed. A source that
     /// does not track it keeps the default (nil).
     var lastFailure: PlanLimitsFailure? { get }
@@ -160,14 +163,29 @@ public protocol PlanLimitsFetching: Sendable {
 
 public extension PlanLimitsFetching {
     var lastFailure: PlanLimitsFailure? { nil }
+    func fetchReading() async -> PlanLimitsReading { PlanLimitsReading(limits: await fetch(), account: nil) }
+}
+
+/// What one plan-limits ask gave: the windows (nil when the ask failed) and, beside them, the account the CLI answered
+/// `initialize` or `get_usage` with. The account lives in memory for the length of a reading; it is never part of
+/// `PlanLimits`, which is what the usage model keeps and the diagnostics describe.
+public struct PlanLimitsReading: Equatable, Sendable {
+    public var limits: PlanLimits?
+    public var account: HarnessAccount?
+
+    public init(limits: PlanLimits?, account: HarnessAccount?) {
+        self.limits = limits
+        self.account = account
+    }
 }
 
 /// Asks the Claude CLI itself for the plan limits: a short headless `claude -p` process in
 /// stream-json mode, one `get_usage` control request, one answer. No model turn happens, no
 /// transcript is written, and Loom never touches credentials (the CLI uses its own). The process
 /// runs in a Loom-owned folder, with the same executable and Claude profile as usage, and lives
-/// for about a second; whatever it answers beyond the two windows is dropped unread and nothing
-/// is logged or stored.
+/// for about a second. It sends `initialize` before `get_usage`, only so the answer names the account
+/// (`PlanLimitsReading.account`, in memory). Whatever else it answers beyond the two windows is dropped
+/// unread, and nothing is logged or stored.
 /// Without the last three arguments the CLI would run the user's own SessionStart and SessionEnd
 /// hooks and start their MCP servers for every ask (seen with Claude Code 2.1.293).
 public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
@@ -219,7 +237,9 @@ public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
         return environment
     }
 
-    public func fetch() async -> PlanLimits? {
+    public func fetch() async -> PlanLimits? { await fetchReading().limits }
+
+    public func fetchReading() async -> PlanLimitsReading {
         let resolved: ProviderToolchain
         do { resolved = try await toolchain() } catch {
             return fail(.noToolchain)
@@ -228,24 +248,25 @@ public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
             executable: resolved.executable, environment: Self.environment(toolchain: resolved, profile: profile),
             workingDirectory: workingDirectory, timeout: timeout, grace: grace)
         let cancelled = CancelFlag()
-        let outcome: LimitsOutcome = await withTaskCancellationHandler {
+        let run: LimitsRun = await withTaskCancellationHandler {
             await Task.detached(priority: .utility) { exchange.run(cancelled: cancelled) }.value
         } onCancel: {
             cancelled.set()
         }
-        switch outcome {
-        case let .failure(category): return fail(category)
+        switch run.outcome {
+        case let .failure(category): return fail(category, account: run.account)
         case let .answer(answer):
-            guard answer.fiveHour != nil || answer.weekly != nil else { return fail(.notAvailable) }
+            guard answer.fiveHour != nil || answer.weekly != nil else { return fail(.notAvailable, account: run.account) }
             status.record(nil)
-            return PlanLimits(fiveHour: answer.fiveHour, weekly: answer.weekly, fetchedAt: clock())
+            return PlanLimitsReading(
+                limits: PlanLimits(fiveHour: answer.fiveHour, weekly: answer.weekly, fetchedAt: clock()), account: run.account)
         }
     }
 
-    private func fail(_ category: PlanLimitsFailure.Category) -> PlanLimits? {
+    private func fail(_ category: PlanLimitsFailure.Category, account: HarnessAccount? = nil) -> PlanLimitsReading {
         status.record(PlanLimitsFailure(category: category, at: clock()))
         LoomLog.error(.usage, key: "plan-limits", "Plan limits could not be read (\(category.rawValue))")
-        return nil
+        return PlanLimitsReading(limits: nil, account: account)
     }
 }
 
@@ -265,6 +286,41 @@ enum PlanLimitsLine: Equatable, Sendable {
 }
 
 enum PlanLimitsWire {
+    /// The first request of a Chat child, as `OutgoingControlRequest.initialize` sends it: no fields. Its answer names the
+    /// account; nothing else of it is read here.
+    static func initializeRequest(id: String) -> Data {
+        let object: [String: Any] = ["type": "control_request", "request_id": id, "request": ["subtype": "initialize"]]
+        var data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data()
+        data.append(0x0A)
+        return data
+    }
+
+    /// What a successful answer to one of `requestIDs` says about the account; nil for any other line, an error, or an answer
+    /// that names none. The email and plan are returned to the caller's memory and go nowhere else.
+    /// Whether `line` is the control response (success or error) to `requestID`.
+    static func answers(_ line: some Collection<UInt8>, requestID: String) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+              object["type"] as? String == "control_response",
+              let response = object["response"] as? [String: Any] else { return false }
+        return response["request_id"] as? String == requestID
+    }
+
+    static func account(_ line: some Collection<UInt8>, requestIDs: Set<String>) -> HarnessAccount? {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+              object["type"] as? String == "control_response",
+              let response = object["response"] as? [String: Any],
+              let id = response["request_id"] as? String, requestIDs.contains(id),
+              response["subtype"] as? String == "success",
+              let payload = response["response"] as? [String: Any],
+              let account = payload["account"] as? [String: Any] else { return nil }
+        func text(_ key: String) -> String? {
+            (account[key] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        }
+        let email = text("email"), plan = text("subscriptionType")
+        // An account with neither is not one this code knows how to name: it is left unknown, not guessed.
+        return email == nil && plan == nil ? nil : .subscription(email: email, plan: plan)
+    }
+
     static func request(id: String) -> Data {
         // Without `skip_behaviors` the CLI reads every transcript touched in the last seven days to build
         // its behavior statistics, on every ask; Loom reads only the limits.
@@ -316,6 +372,12 @@ enum LimitsOutcome: Equatable, Sendable {
     case failure(PlanLimitsFailure.Category)
 }
 
+/// An exchange's outcome and the account its answers named (known even when the limits are not available).
+struct LimitsRun: Sendable {
+    var outcome: LimitsOutcome
+    var account: HarnessAccount?
+}
+
 /// The blocking part: spawn, one request line, read until the answer, close, make sure it exits.
 private struct LimitsExchange: Sendable {
     let executable: String
@@ -327,7 +389,7 @@ private struct LimitsExchange: Sendable {
     /// More than this from the child is not an answer to a one-line request.
     private static let outputLimit = 4 * 1024 * 1024
 
-    func run(cancelled: CancelFlag) -> LimitsOutcome {
+    func run(cancelled: CancelFlag) -> LimitsRun {
         try? FileManager.default.createDirectory(
             at: workingDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let process = Process()
@@ -339,51 +401,72 @@ private struct LimitsExchange: Sendable {
         process.standardInput = input
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { return .failure(.spawnFailed) }
+        do { try process.run() } catch { return LimitsRun(outcome: .failure(.spawnFailed)) }
         // Only the child keeps the write end of its stdout, so EOF means it exited.
         try? output.fileHandleForWriting.close()
         let writer = input.fileHandleForWriting
         _ = fcntl(writer.fileDescriptor, F_SETNOSIGPIPE, 1)
         defer { finish(process, writer: writer) }
 
-        let requestID = UUID().uuidString
-        do { try writer.write(contentsOf: PlanLimitsWire.request(id: requestID)) } catch { return .failure(.writeFailed) }
-        return readAnswer(from: output.fileHandleForReading.fileDescriptor, requestID: requestID, cancelled: cancelled)
+        let requestID = UUID().uuidString, initializeID = UUID().uuidString
+        do {
+            try writer.write(contentsOf: PlanLimitsWire.initializeRequest(id: initializeID))
+            try writer.write(contentsOf: PlanLimitsWire.request(id: requestID))
+        } catch { return LimitsRun(outcome: .failure(.writeFailed)) }
+        return readAnswer(
+            from: output.fileHandleForReading.fileDescriptor, requestID: requestID, initializeID: initializeID,
+            cancelled: cancelled)
     }
 
-    private func readAnswer(from descriptor: Int32, requestID: String, cancelled: CancelFlag) -> LimitsOutcome {
+    /// How long to keep reading for the account once the limits are settled and `initialize` has not answered.
+    private static let accountGrace: TimeInterval = 1
+
+    private func readAnswer(from descriptor: Int32, requestID: String, initializeID: String, cancelled: CancelFlag) -> LimitsRun {
         let deadline = ProcessInfo.processInfo.systemUptime + timeout
         var pending: [UInt8] = []
         var total = 0
         var chunk = [UInt8](repeating: 0, count: 16_384)
+        var settled: LimitsOutcome?
+        var settledAt = deadline
+        var account: HarnessAccount?
+        var initializeAnswered = false
+        func finished(_ outcome: LimitsOutcome) -> LimitsRun { LimitsRun(outcome: outcome, account: account) }
         while !cancelled.isSet {
-            let remaining = deadline - ProcessInfo.processInfo.systemUptime
-            guard remaining > 0 else { return .failure(.timedOut) }
+            let now = ProcessInfo.processInfo.systemUptime
+            // The limits are in; `initialize` normally answered before them, and gets a moment more if it did not.
+            if let settled, initializeAnswered || now >= settledAt { return finished(settled) }
+            let remaining = deadline - now
+            guard remaining > 0 else { return finished(settled ?? .failure(.timedOut)) }
             var poller = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)
             // Short steps, so a cancelled fetch is noticed.
             let ready = poll(&poller, 1, Int32(min(remaining * 1_000, 200)))
-            if ready < 0 { if errno == EINTR { continue } else { return .failure(.endedWithoutAnswer) } }
+            if ready < 0 { if errno == EINTR { continue } else { return finished(settled ?? .failure(.endedWithoutAnswer)) } }
             if ready == 0 { continue }
             let count = read(descriptor, &chunk, chunk.count)
-            if count < 0 { if errno == EINTR { continue } else { return .failure(.endedWithoutAnswer) } }
-            if count == 0 { return .failure(.endedWithoutAnswer) } // the child ended without answering
+            if count < 0 { if errno == EINTR { continue } else { return finished(settled ?? .failure(.endedWithoutAnswer)) } }
+            if count == 0 { return finished(settled ?? .failure(.endedWithoutAnswer)) } // the child ended without answering
             total += count
-            guard total <= Self.outputLimit else { return .failure(.outputTooLarge) }
+            guard total <= Self.outputLimit else { return finished(settled ?? .failure(.outputTooLarge)) }
             pending.append(contentsOf: chunk[..<count])
             while let newline = pending.firstIndex(of: 0x0A) {
                 let line = pending[..<newline]
-                let judged = PlanLimitsWire.interpret(line, requestID: requestID)
-                pending.removeSubrange(...newline)
-                switch judged {
-                case .ignored: continue
-                case .unavailable: return .failure(.notAvailable)
-                case let .answer(answer): return .answer(answer)
+                // `initialize` names the account in full; `get_usage` only backs it up when `initialize` did not.
+                if let named = PlanLimitsWire.account(line, requestIDs: [initializeID]) { account = named }
+                else if account == nil, let named = PlanLimitsWire.account(line, requestIDs: [requestID]) { account = named }
+                if settled == nil {
+                    switch PlanLimitsWire.interpret(line, requestID: requestID) {
+                    case .ignored: break
+                    case .unavailable: settled = .failure(.notAvailable); settledAt = now + Self.accountGrace
+                    case let .answer(answer): settled = .answer(answer); settledAt = now + Self.accountGrace
+                    }
                 }
+                if PlanLimitsWire.answers(line, requestID: initializeID) { initializeAnswered = true }
+                pending.removeSubrange(...newline)
             }
             // A line that never ends is not JSON worth waiting for.
             if pending.count > 1_048_576 { pending.removeAll() }
         }
-        return .failure(.cancelled)
+        return finished(.failure(.cancelled))
     }
 
     /// Closes the child's input, gives it `grace` to leave, then terminates it by its pid.

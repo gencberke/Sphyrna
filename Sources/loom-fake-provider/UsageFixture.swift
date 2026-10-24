@@ -12,6 +12,9 @@ import Foundation
 //   stubborn      answers, then ignores the closed input (the caller must terminate it)
 //   hang          never answers and never exits (the caller must time out and terminate it)
 //   exit          exits non-zero without answering
+//   no-account    as ok, but `initialize` is read and never answered
+// An `initialize` before the `get_usage` is answered with an account (the real CLI names it there; the log records
+// `initialized`).
 // LOOM_FAKE_USAGE_FIVE / _WEEK are the used percent, LOOM_FAKE_USAGE_FIVE_RESET / _WEEK_RESET the
 // ISO-8601 reset times, LOOM_FAKE_USAGE_LOG a file that receives the arguments, config directory
 // and working directory (and, once the request is read, `skipBehaviors` and `scansTranscripts`: whether
@@ -41,11 +44,30 @@ func runFakeUsageProbe(arguments: [String]) -> Never {
     default:
         break
     }
-    guard let line = readLine(),
-          let request = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-          request["type"] as? String == "control_request",
-          (request["request"] as? [String: Any])?["subtype"] as? String == "get_usage",
-          let id = request["request_id"] as? String else { exit(2) }
+    // The CLI is asked `initialize` first (it names the account) and `get_usage` after; both are one line each. An `initialize`
+    // is answered with the account and the loop reads on for the `get_usage`.
+    func send(_ object: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: object) else { return }
+        FileHandle.standardOutput.write(data + Data([0x0A]))
+    }
+    var usageRequest: [String: Any]?
+    while usageRequest == nil, let line = readLine() {
+        guard let request = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+              request["type"] as? String == "control_request", let id = request["request_id"] as? String else { exit(2) }
+        switch (request["request"] as? [String: Any])?["subtype"] as? String {
+        case "initialize":
+            record["initialized"] = true
+            writeLog()
+            if mode != "no-account" {
+                send(["type": "control_response", "response": ["subtype": "success", "request_id": id, "response": [
+                    "account": ["email": "someone@example.invalid", "organization": "Example", "subscriptionType": "max",
+                                "apiProvider": "firstParty"], "pid": Int(getpid())] as [String: Any]]])
+            }
+        case "get_usage": usageRequest = request
+        default: exit(2)
+        }
+    }
+    guard let request = usageRequest, let id = request["request_id"] as? String else { exit(2) }
     // The real CLI reads every transcript touched in the last seven days (for its behavior statistics)
     // unless the request says `skip_behaviors:true`; the log says whether this one would have.
     let body = request["request"] as? [String: Any]
@@ -53,10 +75,6 @@ func runFakeUsageProbe(arguments: [String]) -> Never {
     record["scansTranscripts"] = body?["skip_behaviors"] as? Bool != true
     writeLog()
 
-    func send(_ object: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: object) else { return }
-        FileHandle.standardOutput.write(data + Data([0x0A]))
-    }
     func response(_ id: String, subtype: String, payload: [String: Any]) -> [String: Any] {
         let inner: [String: Any] = subtype == "success"
             ? ["subtype": subtype, "request_id": id, "response": payload]

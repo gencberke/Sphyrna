@@ -297,6 +297,12 @@ func runCodexServer(socketPath: String) -> Never {
                 connection.observerParamsValid = connection.observerParamsValid && Set(params.keys) == ["threadId"]
             }
         }
+        if let state {
+            // Every request a connection makes, in order: a probe's audit that it asked only to read (never a thread or a turn).
+            let url = state.appendingPathComponent("codex-methods.log")
+            let old = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            try? (old + "\(method)\n").write(to: url, atomically: true, encoding: .utf8)
+        }
         func reply(_ result: [String: Any]) { if let id { connection.send(["id": id, "result": result]) } }
         func failure(_ code: Int, _ text: String) {
             if let id { connection.send(["id": id, "error": ["code": code, "message": text]]) }
@@ -304,9 +310,52 @@ func runCodexServer(socketPath: String) -> Never {
         switch method {
         case "initialize":
             if ProcessInfo.processInfo.environment["LOOM_FAKE_OBSERVER_PREPARATION"] == "timeout" { return }
-            reply(["userAgent": "fake-codex-server"])
+            reply(["userAgent": "fake-codex-server/0.0.1 (fake)"])
         case "initialized":
             break
+        case "account/read", "account/rateLimits/read", "account/usage/read", "model/list":
+            // The reads a probe makes (D-94): fixed answers, no network. LOOM_FAKE_CODEX_PROBE steers them: hang (account/read
+            // never answers), signed-out, api-key, limits-error (account/rateLimits/read fails), paged (model/list in two pages).
+            let mode = ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_PROBE"] ?? "ok"
+            switch method {
+            case "account/read":
+                if mode == "hang" { return }
+                switch mode {
+                case "signed-out": reply(["account": NSNull(), "requiresOpenaiAuth": true])
+                case "api-key": reply(["account": ["type": "apiKey"], "requiresOpenaiAuth": false])
+                default: reply(["account": ["type": "chatgpt", "email": "probe@example.invalid", "planType": "pro"], "requiresOpenaiAuth": true])
+                }
+            case "account/rateLimits/read":
+                if mode == "limits-error" { failure(-32603, "private-provider-error-text"); return }
+                let codex: [String: Any] = [
+                    "limitId": "codex", "limitName": NSNull(), "planType": "pro",
+                    "primary": ["usedPercent": 23, "windowDurationMins": 300, "resetsAt": 1_791_482_400],
+                    "secondary": ["usedPercent": 61, "windowDurationMins": 10_080, "resetsAt": 1_791_795_600],
+                ]
+                let spark: [String: Any] = [
+                    "limitId": "codex_spark", "limitName": "Spark", "planType": "pro",
+                    "primary": ["usedPercent": 5, "windowDurationMins": 300, "resetsAt": 1_791_482_400], "secondary": NSNull(),
+                ]
+                reply(["rateLimits": codex, "rateLimitsByLimitId": ["codex": codex, "codex_spark": spark]])
+            case "account/usage/read":
+                reply(["summary": ["lifetimeTokens": 123_456_789, "peakDailyTokens": 3_400],
+                       "dailyUsageBuckets": [["startDate": "2026-10-23", "tokens": 1_200], ["startDate": "2026-10-24", "tokens": 3_400]]])
+            default:
+                func model(_ slug: String, _ name: String, hidden: Bool = false, isDefault: Bool = false) -> [String: Any] {
+                    ["id": slug, "model": slug, "displayName": name, "description": "", "hidden": hidden, "isDefault": isDefault,
+                     "defaultReasoningEffort": "medium",
+                     "supportedReasoningEfforts": ["low", "medium", "high"].map { ["reasoningEffort": $0, "description": ""] }]
+                }
+                let alpha = model("fake-codex-alpha", "Fake Codex Alpha", isDefault: true)
+                let hidden = model("fake-codex-hidden", "Fake Codex Hidden", hidden: true)
+                let beta = model("fake-codex-beta", "Fake Codex Beta")
+                if mode == "paged" {
+                    if (params["cursor"] as? String) == "page-2" { reply(["data": [beta], "nextCursor": NSNull()]) }
+                    else { reply(["data": [alpha, hidden], "nextCursor": "page-2"]) }
+                } else {
+                    reply(["data": [alpha, hidden, beta], "nextCursor": NSNull()])
+                }
+            }
         case "thread/start":
             let thread = FakeThread(id: UUID().uuidString.lowercased(), cwd: (params["cwd"] as? String) ?? FileManager.default.currentDirectoryPath)
             threads[thread.id] = thread

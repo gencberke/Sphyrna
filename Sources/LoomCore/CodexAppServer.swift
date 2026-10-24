@@ -206,6 +206,8 @@ public actor CodexAppServerClient {
     private var nextRequestID = 1
     private var sequence: UInt64 = 0
     private var terminalError: (any Error)?
+    /// The `userAgent` the server's `initialize` answered with (its name and version); nil until connected.
+    public private(set) var serverUserAgent: String?
 
     private init(
         transport: CodexWebSocketTransport, wireDiagnostics: CodexWireDiagnostics?,
@@ -267,7 +269,7 @@ public actor CodexAppServerClient {
             if !optOutNotificationMethods.isEmpty {
                 capabilities["optOutNotificationMethods"] = .array(optOutNotificationMethods.map(JSONValue.string))
             }
-            _ = try await client.request(
+            let initialized = try await client.request(
                 method: "initialize",
                 params: .object([
                     "clientInfo": .object([
@@ -276,6 +278,7 @@ public actor CodexAppServerClient {
                     "capabilities": .object(capabilities),
                 ]), timeout: timeout
             )
+            await client.noteServerUserAgent(initialized["userAgent"]?.string)
             try await client.notify(method: "initialized", params: .object([:]))
             return client
         } catch {
@@ -292,6 +295,48 @@ public actor CodexAppServerClient {
     }
 
     public func latestSequence() -> UInt64 { sequence }
+
+    private func noteServerUserAgent(_ value: String?) { serverUserAgent = value }
+
+    // MARK: Account reads
+
+    // What a probe asks of a server: who is signed in, the limit windows, the token totals and the model list. Each is a
+    // read of the account or the catalog; none starts a thread or a turn or calls a model. The answers stay raw `JSONValue`s,
+    // read by `HarnessProbeCodex`.
+
+    /// `account/read`: `{account: null | {type, ...}, requiresOpenaiAuth}`. No token refresh is asked for.
+    public func readAccount(timeout: TimeInterval = 5) async throws -> JSONValue {
+        try await request(method: "account/read", params: .object([:]), timeout: timeout)
+    }
+
+    /// `account/rateLimits/read`: the rate-limit snapshots, without the separate reset-credit lookup (a background read).
+    public func readRateLimits(timeout: TimeInterval = 5) async throws -> JSONValue {
+        try await request(
+            method: "account/rateLimits/read", params: .object(["excludeResetCreditDetails": .bool(true)]), timeout: timeout)
+    }
+
+    /// `account/usage/read`, account-wide: `{summary, dailyUsageBuckets}`.
+    public func readTokenUsage(timeout: TimeInterval = 5) async throws -> JSONValue {
+        try await request(method: "account/usage/read", params: .object([:]), timeout: timeout)
+    }
+
+    /// `model/list`: every page, hidden models left out by the server's own default. At most `maxPages` are followed.
+    public func listModels(timeout: TimeInterval = 5, maxPages: Int = 10) async throws -> [JSONValue] {
+        var models: [JSONValue] = []
+        var cursor: String?
+        for _ in 0..<maxPages {
+            var params: [String: JSONValue] = [:]
+            if let cursor { params["cursor"] = .string(cursor) }
+            let page = try await request(method: "model/list", params: .object(params), timeout: timeout)
+            guard let data = page["data"]?.array else {
+                throw CodexAppServerError.protocolViolation("model list has no data array")
+            }
+            models += data
+            guard let next = page["nextCursor"]?.string, !next.isEmpty else { break }
+            cursor = next
+        }
+        return models
+    }
 
     // Internal socket-pair entry point and lifecycle counters for deterministic
     // transport tests; the public connection still performs the WebSocket upgrade.
