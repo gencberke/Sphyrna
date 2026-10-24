@@ -8,11 +8,13 @@ enum BranchKind: String, Equatable, Sendable, Codable, CaseIterable {
     case newWorktree
 }
 
-/// One project's draft session (V07): the text, the picks made in the draft and the strip's branch choice.
-/// Nothing here starts anything; the first send turns it into a `NewSessionLaunch`.
+/// One draft session of a project (V07): the text, the picks made in the draft and the strip's branch choice. A project holds
+/// any number of drafts, each with its own id. Nothing here starts anything; the first send turns it into a `NewSessionLaunch`.
 public struct SessionDraft: Equatable, Identifiable, Sendable {
-    /// The project the draft belongs to; nil is a draft with no project.
-    public let projectID: UUID?
+    /// The draft's own id: what the side tables, the sidebar's row and the saved file know it by.
+    public let id: UUID
+    /// The project the draft belongs to; nil is a draft with no project. Picking another project in the question moves it.
+    public internal(set) var projectID: UUID?
     public var text: String { didSet { hasText = Self.containsContent(text) } }
     /// Whether the text holds anything but white space. Kept up to date when the text is set, so asking is free
     /// on every redraw; the scan stops at the first character that is not white space.
@@ -25,11 +27,13 @@ public struct SessionDraft: Equatable, Identifiable, Sendable {
     var branchName: String?
     public var updatedAt: Date
 
-    public var id: String { Self.id(for: projectID) }
+    /// The project as the per-project tables key it (what was last used, the current draft).
+    public var projectKey: String { Self.projectKey(for: projectID) }
 
-    public static func id(for projectID: UUID?) -> String { projectID?.uuidString ?? "none" }
+    public static func projectKey(for projectID: UUID?) -> String { projectID?.uuidString ?? "none" }
 
-    init(projectID: UUID?, text: String = "", updatedAt: Date = Date()) {
+    init(id: UUID = UUID(), projectID: UUID?, text: String = "", updatedAt: Date = Date()) {
+        self.id = id
         self.projectID = projectID
         self.text = text
         self.hasText = Self.containsContent(text)

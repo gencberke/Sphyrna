@@ -181,6 +181,79 @@ struct NewSessionTests {
         #expect(model.newSession.visibleDrafts.count == 2 && model.visibleDrafts.count == 1)
     }
 
+    // MARK: Several drafts per project: the file
+
+    private func writeDrafts(_ drafts: [SessionDraft], to url: URL) {
+        let store = NewSessionStore(url: url)
+        store.change { $0.drafts = drafts.map(StoredDraft.init) }
+        store.flush()
+    }
+
+    @Test func aFileFromBeforeDraftIDsLoadsEveryDraftWithAnIDOfItsOwn() throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("new-session.json")
+        let api = UUID(), billing = UUID()
+        writeDrafts([SessionDraft(projectID: api, text: "api work"), SessionDraft(projectID: billing, text: "billing work"),
+                     SessionDraft(projectID: nil, text: "loose idea")], to: url)
+        // The file as 1.6.0 wrote it: one draft per project and no ids.
+        var file = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        var drafts = try #require(file["drafts"] as? [[String: Any]])
+        #expect(drafts.allSatisfy { $0["id"] != nil }, "a write carries each draft's id")
+        for index in drafts.indices { drafts[index]["id"] = nil }
+        file["drafts"] = drafts
+        try JSONSerialization.data(withJSONObject: file).write(to: url)
+
+        let store = NewSessionStore(url: url)
+        let ids = store.file.drafts.compactMap(\.id)
+        #expect(ids.count == 3 && Set(ids).count == 3, "each old draft gets an id of its own")
+        let state = NewSessionState()
+        state.attach(store: store)
+        #expect(state.draft(for: api)?.text == "api work" && state.draft(for: billing)?.text == "billing work")
+        #expect(state.draft(for: nil)?.text == "loose idea")
+        #expect(Set(state.visibleDrafts.map(\.id)) == Set(ids))
+    }
+
+    @Test func twoDraftsOfOneProjectInTheFileAreBothKeptAndTheNewestIsShown() throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("new-session.json")
+        let project = UUID()
+        let older = SessionDraft(projectID: project, text: "older idea", updatedAt: Date(timeIntervalSince1970: 1_000))
+        let newer = SessionDraft(projectID: project, text: "newer idea", updatedAt: Date(timeIntervalSince1970: 2_000))
+        // Oldest first on purpose: the order read does not decide which is shown.
+        writeDrafts([older, newer], to: url)
+        let state = NewSessionState()
+        state.attach(store: NewSessionStore(url: url))
+        #expect(state.visibleDrafts.map(\.text) == ["newer idea", "older idea"], "neither draft is dropped")
+        #expect(state.draft(for: project)?.id == newer.id, "the project shows its newest draft")
+        #expect(state.draft(id: older.id)?.text == "older idea")
+    }
+
+    @Test func theFileListsTheNewestDraftFirstSoABuildThatKeepsOnePerProjectKeepsTheLatest() throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("new-session.json")
+        let project = UUID()
+        let older = SessionDraft(projectID: project, text: "older idea", updatedAt: Date(timeIntervalSince1970: 1_000))
+        let newer = SessionDraft(projectID: project, text: "newer idea", updatedAt: Date(timeIntervalSince1970: 2_000))
+        writeDrafts([newer, older], to: url)
+        let state = NewSessionState()
+        state.clock = { Date(timeIntervalSince1970: 3_000) }
+        let store = NewSessionStore(url: url)
+        state.attach(store: store)
+        // The older draft is edited: it is now the newest, and the file puts it first.
+        state.show(id: older.id)
+        state.setText("older idea, edited", for: project)
+        state.flush()
+        let written = NewSessionStore(url: url).file.drafts
+        #expect(written.map(\.id) == [older.id, newer.id])
+        // 1.6.0 keeps the first draft of each project in the file.
+        var firstPerProject: [UUID?: String] = [:]
+        for draft in written where firstPerProject[draft.projectID] == nil { firstPerProject[draft.projectID] = draft.text }
+        #expect(firstPerProject[project] == "older idea, edited")
+    }
+
     // MARK: Defaults
 
     @Test func theDefaultsFollowThePickThenTheFixedModeThenLastUsedThenTheCli() {

@@ -3,6 +3,8 @@ import LoomCore
 
 /// A draft with text as it is kept on disk. An empty draft is never written.
 struct StoredDraft: Equatable, Codable {
+    /// Absent in a file written before a project could hold several drafts (1.6.0): the file gives it one when it is read.
+    var id: UUID?
     var projectID: UUID?
     var text: String
     var modePick: DraftPick
@@ -14,6 +16,7 @@ struct StoredDraft: Equatable, Codable {
     var updatedAt: Date
 
     init(_ draft: SessionDraft) {
+        id = draft.id
         projectID = draft.projectID
         text = draft.text
         modePick = draft.modePick
@@ -25,7 +28,7 @@ struct StoredDraft: Equatable, Codable {
     }
 
     var draft: SessionDraft {
-        var value = SessionDraft(projectID: projectID, text: text, updatedAt: updatedAt)
+        var value = SessionDraft(id: id ?? UUID(), projectID: projectID, text: text, updatedAt: updatedAt)
         value.modePick = modePick
         value.modelPick = modelPick
         value.effortPick = effortPick ?? .inherit
@@ -41,12 +44,13 @@ struct LaunchedSession: Equatable, Codable {
     var choices: ClaudeLaunchChoices
 }
 
-/// The whole file: `<data root>/new-session.json`. Drafts with text, what was last used per project, the
+/// The whole file: `<data root>/new-session.json`. Drafts with text (newest first, so a build that keeps one draft per project,
+/// 1.6.0, keeps the one edited last), what was last used per project, the
 /// presets, and the start defaults of Loom's settings. `lastUsed` and `launched` are what older builds kept per project and
 /// per session: nothing writes them now (the catalog records both), and they are read once for the copy into the catalog.
 struct NewSessionFile: Equatable, Codable {
     var drafts: [StoredDraft] = []
-    /// Keyed by the project id (`SessionDraft.id(for:)`).
+    /// Keyed by the project id (`SessionDraft.projectKey(for:)`).
     var lastUsed: [String: ClaudeLaunchChoices] = [:]
     var presets: [NewSessionPreset] = []
     var settings = NewSessionSettings()
@@ -59,6 +63,8 @@ struct NewSessionFile: Equatable, Codable {
         // Unknown or missing keys, and one unreadable entry, fall back to empty.
         drafts = ((try? container.decodeIfPresent([Lossy<StoredDraft>].self, forKey: .drafts)) ?? nil)?
             .compactMap(\.value) ?? []
+        // A draft from a file of 1.6.0 or older has no id: it gets one now and is kept.
+        for index in drafts.indices where drafts[index].id == nil { drafts[index].id = UUID() }
         lastUsed = (try? container.decodeIfPresent([String: ClaudeLaunchChoices].self, forKey: .lastUsed)) ?? [:]
         presets = ((try? container.decodeIfPresent([Lossy<NewSessionPreset>].self, forKey: .presets)) ?? nil)?
             .compactMap(\.value) ?? []

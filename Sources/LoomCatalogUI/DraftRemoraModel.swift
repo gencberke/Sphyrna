@@ -7,7 +7,7 @@ import LoomRemora
 // and the states without a view. The one call is the row's (`DraftRemoraViews.swift`); nothing here calls Remora, and nothing
 // here sends: a brief goes to the draft's text or to the pasteboard (D-64).
 
-/// Where a slot's brief came from: kept while the slot's text is Remora's (`NewSessionState.remoraOrigins`).
+/// Where a draft's brief came from: kept while the draft's text is Remora's (`NewSessionState.remoraOrigins`, by draft id).
 struct DraftRemoraOrigin: Equatable {
     var project: UUID
     var draftedAt: Date
@@ -171,7 +171,7 @@ struct DraftRemoraOriginLine: Equatable {
 
 extension CatalogModel {
     private func remoraSlot(_ projectID: UUID?) -> (origin: DraftRemoraOrigin?, hasText: Bool) {
-        (newSession.remoraOrigins[SessionDraft.id(for: projectID)], newSession.draft(for: projectID)?.hasText ?? false)
+        (newSession.remoraOrigin(for: projectID), newSession.draft(for: projectID)?.hasText ?? false)
     }
 
     /// The row this page shows now; nil is no row.
@@ -196,11 +196,14 @@ extension CatalogModel {
 
     /// The row's click, before its call: the time it started, for the row's time.
     func noteRemoraDraftClick(projectID: UUID, at date: Date = Date()) {
-        newSession.remoraStartedAt[SessionDraft.id(for: projectID)] = date
+        newSession.open(projectID: projectID)
+        if let id = newSession.currentID(for: projectID) { newSession.remoraStartedAt[id] = date }
     }
 
     /// The call was refused: no time to keep.
-    func forgetRemoraDraftClick(projectID: UUID) { newSession.remoraStartedAt[SessionDraft.id(for: projectID)] = nil }
+    func forgetRemoraDraftClick(projectID: UUID) {
+        if let id = newSession.currentID(for: projectID) { newSession.remoraStartedAt[id] = nil }
+    }
 
     /// Puts a drafted brief in its project's draft by Put in Draft's rule, once: an empty composer takes it; a composer with text
     /// keeps it and the brief is copied. A composer that still holds Remora's last brief, untouched, counts as empty (Draft Again
@@ -210,9 +213,10 @@ extension CatalogModel {
         guard case let .drafted(brief) = remora.draft, newSession.remoraLanded != brief.draftedAt else { return nil }
         newSession.remoraLanded = brief.draftedAt
         let project = brief.project
-        let id = SessionDraft.id(for: project)
-        let previous = newSession.remoraOrigins[id]
         let state = newSession
+        state.open(projectID: project)
+        guard let id = state.currentID(for: project) else { return nil }
+        let previous = state.remoraOrigins[id]
         let target = RemoraDraftTarget.newSessionComposer(
             project: project,
             hasText: {
@@ -231,7 +235,7 @@ extension CatalogModel {
 
     /// Clear on the line above the composer: the brief leaves the composer, and the row offers Draft Brief again.
     func clearRemoraDraft(projectID: UUID) {
-        newSession.remoraOrigins[SessionDraft.id(for: projectID)] = nil
+        if let id = newSession.currentID(for: projectID) { newSession.remoraOrigins[id] = nil }
         setDraftText("", projectID: projectID)
     }
 
@@ -250,7 +254,7 @@ extension CatalogModel {
             result["project"] = brief.project.uuidString
             result["sessionsRead"] = brief.sessionsRead
             result["cited"] = brief.citedSessionIDs.count
-            if let origin = newSession.remoraOrigins[SessionDraft.id(for: brief.project)], origin.draftedAt == brief.draftedAt {
+            if let origin = newSession.remoraOrigin(for: brief.project), origin.draftedAt == brief.draftedAt {
                 result["landed"] = origin.result == .placed ? "placed" : "copied"
             } else {
                 result["landed"] = NSNull()

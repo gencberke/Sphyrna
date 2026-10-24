@@ -26,25 +26,27 @@ public enum NewSessionOutcome: Equatable, Sendable {
     case failed
 }
 
-/// The state of the new-session drafts (V07): one draft slot per project, the presets and what was last used in
-/// each project (read from the catalog, which records it for a start and for a live change). The slots live in memory; a slot with
-/// text is written to `<data root>/new-session.json` 300 ms after the last change, an empty one never is, so a
-/// draft costs nothing until it is typed in or sent. Logic that needs the catalog or the runtime is in
+/// The state of the new-session drafts (V07): any number of drafts per project, each with its own id, the one each project shows,
+/// the presets and what was last used in each project (read from the catalog, which records it for a start and for a live change).
+/// The drafts live in memory; a draft with text is written to `<data root>/new-session.json` 300 ms after the last change, an
+/// empty one never is, so a draft costs nothing until it is typed in or sent. Logic that needs the catalog or the runtime is in
 /// `CatalogModel+NewSession`.
 @MainActor @Observable
 public final class NewSessionState {
-    /// Every draft slot the window has opened, the empty ones included (an empty draft is reused, never listed).
-    public private(set) var drafts: [UUID?: SessionDraft] = [:]
+    /// Every draft the window has opened, by id, the empty ones included (an empty draft is reused, never listed).
+    public private(set) var drafts: [UUID: SessionDraft] = [:]
+    /// The draft each project shows, by `SessionDraft.projectKey`: leaving the page and coming back finds the same one.
+    private(set) var current: [String: UUID] = [:]
     public private(set) var presets: [NewSessionPreset] = []
-    /// The drafts whose first send is under way, by `SessionDraft.id`.
-    private(set) var sending: Set<String> = []
-    /// The drafts whose Full access was picked in this window run, by `SessionDraft.id`: a pick that came from
-    /// the file (a draft saved before a relaunch) or from a preset was not made on this screen.
-    private(set) var fullAccessConfirmed: Set<String> = []
+    /// The drafts whose first send is under way, by draft id.
+    private(set) var sending: Set<UUID> = []
+    /// The drafts whose Full access was picked in this window run, by draft id: a pick that came from the file (a draft saved
+    /// before a relaunch) or from a preset was not made on this screen.
+    private(set) var fullAccessConfirmed: Set<UUID> = []
     /// The Git branch of each project's folder, read when its draft opens.
     private(set) var branches: [String: GitBranch] = [:]
     private(set) var settings = NewSessionSettings()
-    /// The mode, model and effort each project's next draft starts with, by `SessionDraft.id` (the catalog's record,
+    /// The mode, model and effort each project's next draft starts with, by `SessionDraft.projectKey` (the catalog's record,
     /// `SessionCatalog.lastUsedLaunchChoices`): a live change in a session counts as well as a start.
     public private(set) var lastUsedChoices: [String: ClaudeLaunchChoices] = [:]
     /// What the user should know about the saved drafts, in plain words: a save that failed (what is typed is
@@ -52,11 +54,11 @@ public final class NewSessionState {
     public private(set) var storeNotice: String?
     @ObservationIgnored var store: NewSessionStore?
     @ObservationIgnored var clock: () -> Date = { Date() }
-    /// Remora's brief in each slot (DESIGN §8, D-80; `DraftRemoraModel.swift`), by `SessionDraft.id`: where the slot's text came
-    /// from, or that the brief was copied. Memory only; it goes with the slot's text (emptied, discarded, sent).
-    var remoraOrigins: [String: DraftRemoraOrigin] = [:]
-    /// When Draft Brief was clicked in each slot, for the time the row shows.
-    @ObservationIgnored var remoraStartedAt: [String: Date] = [:]
+    /// Remora's brief in each draft (DESIGN §8, D-80; `DraftRemoraModel.swift`), by draft id: where the draft's text came
+    /// from, or that the brief was copied. Memory only; it goes with the draft's text (emptied, discarded, sent).
+    var remoraOrigins: [UUID: DraftRemoraOrigin] = [:]
+    /// When Draft Brief was clicked in each draft, by draft id, for the time the row shows.
+    @ObservationIgnored var remoraStartedAt: [UUID: Date] = [:]
     /// The drafted brief already put in (its `draftedAt`): a brief lands once.
     @ObservationIgnored var remoraLanded: Date?
 
@@ -64,17 +66,18 @@ public final class NewSessionState {
 
     // MARK: Storage
 
-    /// Opens the file next to the catalog and takes what it holds: the drafts with text, the presets and the
-    /// defaults. Idempotent; a missing or unreadable file reads as empty.
+    /// Opens the file next to the catalog and takes what it holds: every draft with text, the presets and the defaults. Each
+    /// project shows its newest draft until another is picked. Idempotent; a missing or unreadable file reads as empty.
     func attach(store: NewSessionStore) {
         guard self.store == nil else { return }
         self.store = store
         store.draftsSnapshot = { [weak self] in self?.visibleDrafts.map(StoredDraft.init) ?? [] }
         store.onFailureChange = { [weak self] error in self?.setSaveFailure(error) }
         storeNotice = store.loadNotice
-        for stored in store.file.drafts where drafts[stored.projectID] == nil {
-            let draft = stored.draft
-            if draft.isVisible { drafts[draft.projectID] = draft }
+        for draft in store.file.drafts.map(\.draft).sorted(by: { $0.updatedAt > $1.updatedAt })
+        where draft.isVisible && drafts[draft.id] == nil {
+            drafts[draft.id] = draft
+            if current[draft.projectKey] == nil { current[draft.projectKey] = draft.id }
         }
         presets = store.file.presets
         settings = store.file.settings
@@ -100,71 +103,110 @@ public final class NewSessionState {
 
     // MARK: Drafts
 
-    /// The drafts with text, newest first: what the sidebar lists (with Discard).
+    /// The drafts with text, newest first: what the sidebar lists (with Discard), and the order of the file.
     public var visibleDrafts: [SessionDraft] {
         drafts.values.filter(\.isVisible).sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    /// The project's draft slot, nil until it was opened or typed in.
-    public func draft(for projectID: UUID?) -> SessionDraft? { drafts[projectID] }
+    /// The id of the draft the project shows, nil until one was opened or typed in.
+    public func currentID(for projectID: UUID?) -> UUID? {
+        current[SessionDraft.projectKey(for: projectID)].flatMap { drafts[$0] == nil ? nil : $0 }
+    }
 
-    /// Opens the project's slot: the draft it already has, else an empty one (in memory only).
+    /// The draft the project shows, nil until one was opened or typed in.
+    public func draft(for projectID: UUID?) -> SessionDraft? { currentID(for: projectID).flatMap { drafts[$0] } }
+
+    public func draft(id: UUID) -> SessionDraft? { drafts[id] }
+
+    /// Opens the project's draft: the one it shows, else an empty one (in memory only).
     func open(projectID: UUID?) {
-        if drafts[projectID] == nil { drafts[projectID] = SessionDraft(projectID: projectID, updatedAt: clock()) }
+        if currentID(for: projectID) == nil { makeCurrent(SessionDraft(projectID: projectID, updatedAt: clock())) }
+    }
+
+    /// Makes one of a project's drafts the one it shows.
+    func show(id: UUID) {
+        if let draft = drafts[id] { current[draft.projectKey] = id }
+    }
+
+    /// Puts a draft in and makes it the one its project shows.
+    private func makeCurrent(_ draft: SessionDraft) {
+        drafts[draft.id] = draft
+        current[draft.projectKey] = draft.id
+    }
+
+    /// The project's draft to edit: the one it shows, else a new empty one (not yet put in).
+    private func editable(_ projectID: UUID?) -> SessionDraft {
+        draft(for: projectID) ?? SessionDraft(projectID: projectID, updatedAt: clock())
     }
 
     func setFullAccessConfirmed(_ confirmed: Bool, for projectID: UUID?) {
-        let id = SessionDraft.id(for: projectID)
+        guard let id = currentID(for: projectID) else { return }
         if confirmed { fullAccessConfirmed.insert(id) } else { fullAccessConfirmed.remove(id) }
     }
 
-    func isFullAccessConfirmed(for projectID: UUID?) -> Bool { fullAccessConfirmed.contains(SessionDraft.id(for: projectID)) }
+    func isFullAccessConfirmed(for projectID: UUID?) -> Bool { currentID(for: projectID).map(fullAccessConfirmed.contains) ?? false }
+
+    /// The remora origin of the draft the project shows.
+    func remoraOrigin(for projectID: UUID?) -> DraftRemoraOrigin? { currentID(for: projectID).flatMap { remoraOrigins[$0] } }
 
     func update(_ projectID: UUID?, touching: Bool = true, _ edit: (inout SessionDraft) -> Void) {
-        var draft = drafts[projectID] ?? SessionDraft(projectID: projectID, updatedAt: clock())
+        var draft = editable(projectID)
         let before = draft
+        let isNew = drafts[draft.id] == nil
         edit(&draft)
-        guard draft != before || drafts[projectID] == nil else { return }
+        guard draft != before || isNew else { return }
         if touching { draft.updatedAt = clock() }
-        drafts[projectID] = draft
+        makeCurrent(draft)
         persistDrafts()
     }
 
     /// The text of a draft, typed or pasted: the one edit that happens on every keystroke, so it makes no
     /// comparison of whole drafts and builds nothing for the file (that happens when the save is due).
     func setText(_ text: String, for projectID: UUID?) {
-        var draft = drafts[projectID] ?? SessionDraft(projectID: projectID, updatedAt: clock())
+        var draft = editable(projectID)
         draft.text = text
         draft.updatedAt = clock()
-        drafts[projectID] = draft
-        // An emptied slot holds no brief of Remora's any more.
-        if !draft.hasText { remoraOrigins[SessionDraft.id(for: projectID)] = nil }
+        makeCurrent(draft)
+        // An emptied draft holds no brief of Remora's any more.
+        if !draft.hasText { remoraOrigins[draft.id] = nil }
         persistDrafts()
     }
 
-    /// Throws the draft away: the slot is empty again and the file forgets it.
+    /// Throws the project's shown draft away: the project shows an empty one, and the file forgets it.
     public func discard(projectID: UUID?) {
-        drafts[projectID] = SessionDraft(projectID: projectID, updatedAt: clock())
-        fullAccessConfirmed.remove(SessionDraft.id(for: projectID))
-        remoraOrigins[SessionDraft.id(for: projectID)] = nil
+        if let id = currentID(for: projectID) { discard(id: id) } else { open(projectID: projectID) }
+    }
+
+    /// Throws one draft away; the project's other drafts stay. When it was the one its project shows, an empty one takes its
+    /// place.
+    public func discard(id: UUID) {
+        guard let draft = drafts[id] else { return }
+        let wasCurrent = current[draft.projectKey] == id
+        forget(id)
+        if wasCurrent { makeCurrent(SessionDraft(projectID: draft.projectID, updatedAt: clock())) }
         persistDrafts()
     }
 
-    /// Moves a draft to another project's slot when that slot is empty (picking another project in the
-    /// question carries what was typed); a slot that has text of its own is shown as it is.
+    /// Takes a draft out with what was kept beside it.
+    private func forget(_ id: UUID) {
+        drafts[id] = nil
+        fullAccessConfirmed.remove(id)
+        remoraOrigins[id] = nil
+        remoraStartedAt[id] = nil
+    }
+
+    /// Moves a draft to another project when the draft that project shows is empty (picking another project in the question
+    /// carries what was typed); a project whose draft has text of its own shows it as it is.
     func move(from old: UUID?, to new: UUID?) {
-        guard old != new, let source = drafts[old], source.isVisible, !(drafts[new]?.isVisible ?? false) else { return }
-        var moved = SessionDraft(projectID: new, text: source.text, updatedAt: clock())
-        moved.modePick = source.modePick
-        moved.modelPick = source.modelPick
-        moved.effortPick = source.effortPick
-        moved.branchKind = source.branchKind
-        moved.branchName = source.branchName
-        drafts[new] = moved
-        if fullAccessConfirmed.remove(SessionDraft.id(for: old)) != nil { fullAccessConfirmed.insert(SessionDraft.id(for: new)) }
-        drafts[old] = SessionDraft(projectID: old, updatedAt: clock())
+        guard old != new, var moved = draft(for: old), moved.isVisible, !(draft(for: new)?.isVisible ?? false) else { return }
+        // The empty draft the other project showed gives way to the one that moves in.
+        if let empty = currentID(for: new), !sending.contains(empty) { forget(empty) }
+        moved.projectID = new
+        moved.updatedAt = clock()
+        makeCurrent(moved)
+        makeCurrent(SessionDraft(projectID: old, updatedAt: clock()))
         // Remora's brief was about the old project: the moved text is no longer its draft there or here.
-        remoraOrigins[SessionDraft.id(for: old)] = nil
+        remoraOrigins[moved.id] = nil
         persistDrafts()
     }
 
@@ -173,42 +215,48 @@ public final class NewSessionState {
 
     // MARK: A send
 
-    func beginSending(_ projectID: UUID?) { sending.insert(SessionDraft.id(for: projectID)) }
-    func endSending(_ projectID: UUID?) { sending.remove(SessionDraft.id(for: projectID)) }
-    func isSending(_ projectID: UUID?) -> Bool { sending.contains(SessionDraft.id(for: projectID)) }
+    func beginSending(draft id: UUID) { sending.insert(id) }
+    func endSending(draft id: UUID) { sending.remove(id) }
+    func isSending(draft id: UUID) -> Bool { sending.contains(id) }
+    /// Whether the draft the project shows is being sent.
+    func isSending(_ projectID: UUID?) -> Bool { currentID(for: projectID).map(sending.contains) ?? false }
 
-    /// Takes the draft out of its slot for a send that leaves the window on a fresh draft (⌘↵).
-    func handOver(_ projectID: UUID?) -> SessionDraft? {
-        guard let draft = drafts[projectID] else { return nil }
-        drafts[projectID] = SessionDraft(projectID: projectID, updatedAt: clock())
-        remoraOrigins[SessionDraft.id(for: projectID)] = nil
+    /// Takes a draft out for a send that leaves the window on a fresh draft of its project (⌘↵).
+    func handOver(draft id: UUID) -> SessionDraft? {
+        guard let draft = drafts[id] else { return nil }
+        let wasCurrent = current[draft.projectKey] == id
+        drafts[id] = nil
+        remoraOrigins[id] = nil
+        if wasCurrent { makeCurrent(SessionDraft(projectID: draft.projectID, updatedAt: clock())) }
         persistDrafts()
         return draft
     }
 
-    /// A start that failed gives a handed-over draft back: into its slot when that is empty, else in front of
+    /// A start that failed gives a handed-over draft back: as the project's shown draft when that is empty, else in front of
     /// what was typed meanwhile. Nothing the user wrote is lost.
     func restore(_ draft: SessionDraft) {
-        guard let current = drafts[draft.projectID], current.isVisible else {
-            drafts[draft.projectID] = draft
+        guard let current = self.draft(for: draft.projectID), current.isVisible else {
+            if let empty = currentID(for: draft.projectID) { forget(empty) }
+            makeCurrent(draft)
             persistDrafts()
             return
         }
         var merged = current
         merged.text = draft.text + "\n\n" + current.text
         merged.updatedAt = clock()
-        drafts[draft.projectID] = merged
+        drafts[merged.id] = merged
         persistDrafts()
     }
 
-    /// The session started: a draft that stayed in its slot (↵) is cleared. The project remembers what it was started with
-    /// in the catalog (the runtime records it when the card is made); the next draft shows it at once, and the catalog's own
-    /// record replaces this copy when it is read (`CatalogModel.refreshLastUsedChoices`).
+    /// The session started: a draft that stayed in (↵) is cleared. The project remembers what it was started with in the
+    /// catalog (the runtime records it when the card is made); the next draft shows it at once, and the catalog's own record
+    /// replaces this copy when it is read (`CatalogModel.refreshLastUsedChoices`).
     func started(_ draft: SessionDraft, choices: ClaudeLaunchChoices, clearsSlot: Bool) {
-        if clearsSlot { discard(projectID: draft.projectID) }
-        endSending(draft.projectID)
-        let updated = choices.remembered(over: lastUsedChoices[draft.id])
-        if !updated.isEmpty, updated != lastUsedChoices[draft.id] { lastUsedChoices[draft.id] = updated }
+        if clearsSlot { discard(id: draft.id) }
+        endSending(draft: draft.id)
+        let key = draft.projectKey
+        let updated = choices.remembered(over: lastUsedChoices[key])
+        if !updated.isEmpty, updated != lastUsedChoices[key] { lastUsedChoices[key] = updated }
         store?.flush()
     }
 
@@ -218,7 +266,7 @@ public final class NewSessionState {
         if merged != lastUsedChoices { lastUsedChoices = merged }
     }
 
-    func lastUsed(for projectID: UUID?) -> ClaudeLaunchChoices? { lastUsedChoices[SessionDraft.id(for: projectID)] }
+    func lastUsed(for projectID: UUID?) -> ClaudeLaunchChoices? { lastUsedChoices[SessionDraft.projectKey(for: projectID)] }
 
     /// What the older new-session file remembered: every launch (newest wins) and each project's last used choices, for the
     /// one-time copy into the catalog (`ConversationController.begin`). Nothing writes either list any more.
@@ -424,7 +472,7 @@ extension CatalogModel {
     /// Whether ↵ would start the draft now.
     public func canSendDraft(projectID: UUID?) -> Bool {
         guard draftSendBlock(projectID: projectID) == nil, actionsAvailable, capabilities(of: .claude).startable, !isStarting(.claude, projectID: projectID),
-              let draft = newSession.draft(for: projectID), draft.isVisible, !newSession.isSending(projectID),
+              let draft = newSession.draft(for: projectID), draft.isVisible, !newSession.isSending(draft: draft.id),
               intents is any NewSessionIntents else { return false }
         if draft.branchKind != .stay {
             guard draftProject(projectID) != nil, newSession.branch(for: projectID).map({ $0 != .unavailable }) ?? true,
@@ -440,13 +488,13 @@ extension CatalogModel {
     public func sendDraft(projectID: UUID?, startsFreshDraft: Bool = false) {
         guard canSendDraft(projectID: projectID), let intents = intents as? any NewSessionIntents,
               let snapshot = newSession.draft(for: projectID) else { return }
-        newSession.beginSending(projectID)
+        newSession.beginSending(draft: snapshot.id)
         let launch = self.launch(for: snapshot)
         let draft: SessionDraft
         if startsFreshDraft {
-            guard let handed = newSession.handOver(projectID) else { newSession.endSending(projectID); return }
+            guard let handed = newSession.handOver(draft: snapshot.id) else { newSession.endSending(draft: snapshot.id); return }
             draft = handed
-            newSession.endSending(projectID)
+            newSession.endSending(draft: snapshot.id)
         } else {
             draft = snapshot
         }
@@ -462,7 +510,7 @@ extension CatalogModel {
                     Task { [weak self] in await self?.expandProject(projectID) }
                 }
             case .failed:
-                if startsFreshDraft { self.newSession.restore(draft) } else { self.newSession.endSending(projectID) }
+                if startsFreshDraft { self.newSession.restore(draft) } else { self.newSession.endSending(draft: draft.id) }
             }
         }
     }

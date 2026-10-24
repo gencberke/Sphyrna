@@ -34,7 +34,7 @@ struct DraftRemoraRowView: View {
                     Text(time).draftType(D.remoraMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle).fixedSize()
                         .accessibilityIdentifier("draft-remora-time")
                 }
-                if row.showsSources, let origin = model.newSession.remoraOrigins[SessionDraft.id(for: projectID)] {
+                if row.showsSources, let origin = model.newSession.remoraOrigin(for: projectID) {
                     DraftRemoraSourcesLink(model: model, isOpen: $sourcesOpen, citedSessionIDs: origin.citedSessionIDs,
                                            sessionsRead: origin.sessionsRead, duration: origin.duration)
                         .draftType(D.remoraMeta)

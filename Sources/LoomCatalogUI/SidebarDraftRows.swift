@@ -27,7 +27,7 @@ struct DraftRow: View {
     }
 
     var body: some View {
-        let _ = SidebarRenderProbe.draftRow(draft.id, of: model)
+        let _ = SidebarRenderProbe.draftRow(draft.id.uuidString, of: model)
         let selected = model.destination == .draft(projectID: draft.projectID)
         let title = Self.title(of: draft)
         let project = model.draftProject(draft.projectID)?.name
