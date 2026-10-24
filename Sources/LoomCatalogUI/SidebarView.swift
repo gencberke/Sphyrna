@@ -689,6 +689,8 @@ struct SessionCardView: View {
             selected: selected, radius: oneLine ? LoomTheme.Highlight.radiusCompact : LoomTheme.Highlight.radius,
             key: "sidebar-card:\(row.id)", tint: tone))
         .focusEffectDisabled()
+        // Resting on the row peeks at its last ask and answer, in its tooltip.
+        .modifier(SidebarPeekHover(record: row.record, model: model))
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.openTab(row.id, revealInList: false) })
         // Dropped on the tab strip it opens there (U4).
         .sessionDragSource(row.id, title: title)

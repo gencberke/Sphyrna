@@ -1,4 +1,5 @@
 import Foundation
+import LoomChat
 import LoomCore
 import Synchronization
 
@@ -34,6 +35,46 @@ enum ProjectLastLine {
         return nil
     }
 
+    /// What the sidebar's Peek shows: the user's last ask and the first line of Claude's answer to it, each cut at `maxLength`.
+    struct Peek: Equatable, Sendable {
+        var ask: String?
+        var answer: String?
+
+        var isEmpty: Bool { ask == nil && answer == nil }
+    }
+
+    /// The last ask and the answer after it, from one bounded backward read (the same bounds and the same folder rule as
+    /// `read(sessionID:configDirectory:workingDirectory:)`). Nil when the transcript is missing or unreadable.
+    static func readPeek(sessionID: String, configDirectory: URL, workingDirectory: String) -> Peek? {
+        guard let file = ClaudeTranscriptLocator.locate(
+            sessionID: sessionID, configDirectory: configDirectory, onlyIn: workingDirectory),
+            let reader = ClaudeTranscriptReader(file: file) else { return nil }
+        defer { reader.close() }
+        return peek(from: reader)
+    }
+
+    /// Reads from the end: the first answer met is the last one, and the first ask met is the last one. An answer older than
+    /// the last ask belongs to an earlier turn and is not shown with it, so the read ends at the ask.
+    static func peek(from reader: ClaudeTranscriptReader) -> Peek {
+        var peek = Peek()
+        var answered = false
+        for _ in 0..<maxPages {
+            let page = reader.readBackward(pageBytes: pageBytes, maximumLineBytes: maxLineBytes)
+            for record in page.records.reversed() {
+                guard let bytes = record.bytes else { continue }
+                if !answered, let text = answer(in: bytes) {
+                    answered = true
+                    peek.answer = summary(of: text)
+                } else if let text = TranscriptLens.humanPromptText(in: bytes) {
+                    peek.ask = firstLine(of: text)
+                    return peek
+                }
+            }
+            if page.reachedStart { break }
+        }
+        return peek
+    }
+
     /// The text of the last text block of a main-thread assistant line; nil for any other line.
     static func answer(in line: Data) -> String? {
         guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
@@ -57,9 +98,22 @@ enum ProjectLastLine {
                 line.removeSubrange(mark)
             }
             guard !line.isEmpty else { continue }
-            return line.count > maxLength ? String(line.prefix(maxLength - 1)) + "\u{2026}" : line
+            return cut(line)
         }
         return nil
+    }
+
+    /// The first non-empty line of what the user typed, as it is, cut at `maxLength`.
+    static func firstLine(of text: String) -> String? {
+        for raw in text.split(whereSeparator: \.isNewline) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if !line.isEmpty { return cut(line) }
+        }
+        return nil
+    }
+
+    private static func cut(_ line: String) -> String {
+        line.count > maxLength ? String(line.prefix(maxLength - 1)) + "\u{2026}" : line
     }
 }
 

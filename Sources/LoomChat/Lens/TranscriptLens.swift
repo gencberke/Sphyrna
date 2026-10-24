@@ -272,4 +272,15 @@ public actor TranscriptLens {
         if case .prompt = TurnModel.promptKind(of: message) { return true }
         return false
     }
+
+    /// What the person typed in one session-transcript line: the text of a human prompt by `isHumanPrompt`'s own test (a slash
+    /// command reads as it was typed), or nil for any other line, a prompt with only images included. For a reader outside the
+    /// lens that wants the last ask (the sidebar's Peek) and must not keep a rule of its own.
+    public static func humanPromptText(in line: Data) -> String? {
+        guard let value = try? JSONDecoder().decode(JSONValue.self, from: line),
+              case let .user(message) = StreamMessage(json: value),
+              isHumanPrompt(message, source: .sessionTranscript),
+              case let .prompt(text, _) = TurnModel.promptKind(of: message), !text.isEmpty else { return nil }
+        return text
+    }
 }
