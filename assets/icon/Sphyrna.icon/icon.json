@@ -1,13 +1,26 @@
 {
   "fill" : {
-    "solid" : "srgb:0.00000,0.00000,0.00000,1.00000"
+    "linear-gradient" : [
+      "srgb:0.11373,0.14118,0.27059,1.00000",
+      "srgb:0.04314,0.05490,0.11373,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 1
+      }
+    }
   },
   "groups" : [
     {
       "layers" : [
         {
-          "image-name" : "glyphs.png",
-          "name" : "glyphs"
+          "image-name" : "figure.png",
+          "name" : "figure"
         }
       ],
       "shadow" : {

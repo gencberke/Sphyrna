@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sphyrna's app icon: layers</title>
+<!--
+  Draws the app icon's two 1,024 px layers and writes them as PNG data URLs, in JSON, into #out; draw.sh loads this
+  page in headless Chrome (--dump-dom) and writes figure-1024.png and ground-1024.png.
+  The icon (D-97) is the hammerhead seen from above, as the art engine draws it (its body, hammer, fins and tail from
+  Shark.geometry()), filled solid near-white and climbing to the left at Rising's angle (ICON_POSES.rising's heading
+  and bend). The hammer is drawn 1.3 times its art size and a stroke thickens the body, so that both hold at 32 px;
+  the eyes are holes at the hammer's tips. The ground is a deep ink-blue gradient under the accent's hue; icon.json
+  gives Icon Composer the same two colours as the document's fill.
+-->
+<pre id="out">pending</pre>
+<script>
+// The engine draws with Math.random only where a moving shark needs it; a fixed seed keeps the still reproducible.
+let seed = 7; Math.random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+</script>
+<script src="../../reference-src/shared/engine.js"></script>
+<script src="../../reference-src/shared/iconart.js"></script>
+<script>
+const S = 1024;
+const GROUND = ['#1D2445', '#0B0E1D'];  // top to bottom; the same as icon.json's fill
+const WHITE = '246,246,248';           // the icon's 0.97 white
+// fit: the outline's box on its longer side, as a share of the square; it keeps the hammer clear of the squircle.
+const POSE = { heading: Math.PI + .35, bend: .3, phase: 1.6, fit: .76, hammer: 1.3, bold: 22, eye: .014 };
+
+function canvas() { const c = document.createElement('canvas'); c.width = c.height = S; return c; }
+
+function ground(c) {
+  const ctx = c.getContext('2d'), g = ctx.createLinearGradient(0, 0, 0, S);
+  g.addColorStop(0, GROUND[0]); g.addColorStop(1, GROUND[1]);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
+  return c;
+}
+
+function figure(c, P = POSE) {
+  // The engine's outline at length L, with the hammer and the eyes grown about the head's point.
+  const outline = L => {
+    const o = stillOcean(c, S, 15, WHITE, 1, 700);
+    const s = new Shark(o, { kind: 'hammerhead', L: L * S, depth: 1, speed: 0, fx: .5, fy: .5 }, 0);
+    s.phase = P.phase;
+    poseShark(s, S / 2, S / 2, P.heading, P.bend);
+    const g = s.geometry(), h = s.spine(34)[0], grow = q => ({ x: h.x + (q.x - h.x) * P.hammer, y: h.y + (q.y - h.y) * P.hammer });
+    g.shapes[1] = g.shapes[1].map(grow); g.eyes = g.eyes.map(grow);
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const poly of g.shapes) for (const q of poly) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); }
+    return Object.assign(g, { x0, y0, x1, y1 });
+  };
+  let L = .62, g = outline(L);
+  L *= P.fit * S / Math.max(g.x1 - g.x0, g.y1 - g.y0); g = outline(L);
+  // Centred on the grown outline's box.
+  const ctx = c.getContext('2d'), fill = `rgb(${WHITE})`;
+  ctx.clearRect(0, 0, S, S);
+  ctx.save(); ctx.translate(S / 2 - (g.x0 + g.x1) / 2, S / 2 - (g.y0 + g.y1) / 2);
+  ctx.fillStyle = fill; ctx.beginPath();
+  for (const poly of g.shapes) { ctx.moveTo(poly[0].x, poly[0].y); for (const q of poly.slice(1)) ctx.lineTo(q.x, q.y); ctx.closePath(); }
+  ctx.fill('nonzero');
+  ctx.strokeStyle = fill; ctx.lineWidth = P.bold; ctx.lineJoin = 'round'; ctx.stroke();
+  ctx.globalCompositeOperation = 'destination-out';
+  for (const e of g.eyes) { ctx.beginPath(); ctx.arc(e.x, e.y, L * S * P.eye, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+  return c;
+}
+
+try {
+  $('#out').textContent = JSON.stringify({ figure: figure(canvas()).toDataURL('image/png'), ground: ground(canvas()).toDataURL('image/png') });
+} catch (e) { $('#out').textContent = 'error: ' + e; }
+</script>
