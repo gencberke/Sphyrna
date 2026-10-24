@@ -90,7 +90,7 @@ struct ArtSwitchTests {
                                 animatedArt: false)
         var events: [ArtLaneEvent] = []
         lane.onLaneEvent = { events.append($0) }
-        lane.frame = NSRect(x: 0, y: 0, width: 1019, height: LoomTheme.Remora.arrivalHeight)
+        lane.frame = NSRect(x: 0, y: 0, width: 1019, height: 320)
         lane.remora = ArtRemoraCue(rest: CGPoint(x: 160, y: 140), arrive: true, swimming: true)
         guard case .lane(let arrival)? = lane.source else { Issue.record("the lane has its remora"); return }
         #expect(arrival.stage == .resting && lane.drawnKind == .resting && events == [.started])
@@ -185,8 +185,7 @@ struct ArtSwitchTests {
 
     /// The place's art hosted alone with the switch as given, in a window nobody sees, open while `body` runs.
     private func withHostedArt(_ place: ArtPlace, animated: Bool, _ body: (ArtLayerView) throws -> Void) async throws {
-        let cue = place == .remoraLane ? ArtRemoraCue(rest: CGPoint(x: 160, y: 140), arrive: true, swimming: true) : nil
-        let (window, hosting) = host(ArtSurface(place: place, remora: cue).environment(\.animatedArt, animated),
+        let (window, hosting) = host(ArtSurface(place: place).environment(\.animatedArt, animated),
                                      size: CGSize(width: 600, height: 320))
         defer { window.close() }
         try await settle(window)

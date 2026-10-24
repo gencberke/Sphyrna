@@ -19,7 +19,7 @@ extension LoomTheme {
         static let when = InkStyle(size: 11, mono: true)
         static let headGap: CGFloat = 14
 
-        /// The remora's place (136 wide, empty for now) and the sentence, 14 apart and 12 under the heading. The sentence is 14.5 on a
+        /// Remora's place (136 wide, its face in it) and the sentence, 14 apart and 12 under the heading. The sentence is 14.5 on a
         /// 1.55 line, at most 780 wide, and keeps two lines' room.
         static let placeWidth: CGFloat = 136
         static let placeGap: CGFloat = 14
@@ -114,7 +114,7 @@ extension LoomTheme {
 
         // MARK: The fold
 
-        /// 34 above, 18 below; the head line 13 secondary, 12 apart; the remora's slot 84 × 30 at its start (empty for now).
+        /// 34 above, 18 below; the head line 13 secondary, 12 apart; Remora's face in an 84 × 30 slot at its start.
         static let foldTop: CGFloat = 34
         static let foldBottom: CGFloat = 18
         static let foldHeadGap: CGFloat = 12
@@ -139,10 +139,14 @@ extension LoomTheme {
         static let foldRingWidth: CGFloat = 1.3
         static let foldFieldTop: CGFloat = 14
 
-        // MARK: The art's places (I5 draws in them; they stay empty and hidden from VoiceOver)
+        // MARK: Remora's face (Front, the menu bar's mark, D-77; hidden from VoiceOver)
 
-        /// The arrival lane over the brief: the reference's 320 high canvas.
-        static let arrivalHeight: CGFloat = 320
+        /// In the brief's 136 wide place, about 64 wide, its trailing edge 6 inside the place's; in the fold's slot, about 36 wide.
+        /// One colour, the art's, at about 0.8.
+        static let faceWidth: CGFloat = 64
+        static let faceInset: CGFloat = 6
+        static let foldFaceWidth: CGFloat = 36
+        static let faceOpacity = 0.8
 
         // MARK: Answers
 

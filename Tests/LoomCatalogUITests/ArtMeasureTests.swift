@@ -163,16 +163,6 @@ struct ArtMeasureTests {
         let side = placeView(.emptySide)
         rows.append(try viewRow("view: layer, the Side tab's whale shark in place (engine + draw)", view: side,
                                 size: CGSize(width: 340, height: LoomTheme.Art.sideBoxHeight)) { _ in side.advance(by: 1 / 12) })
-        let lane = placeView(.remoraLane)
-        let laneSize = CGSize(width: band.width, height: LoomTheme.Remora.arrivalHeight)
-        lane.frame = NSRect(origin: .zero, size: laneSize)
-        lane.remora = ArtRemoraCue(rest: CGPoint(x: 200, y: 150), arrive: true, swimming: true)
-        rows.append(try viewRow("view: layer, Remora's arrival at 60 fps (engine + draw)", view: lane, size: laneSize) { k in
-            // The 60 fps part is the first 2.2 s: start again each time it would leave it.
-            if k % 120 == 0 { lane.remora = ArtRemoraCue(rest: CGPoint(x: 200, y: 150), arrive: false, swimming: true)
-                lane.remora = ArtRemoraCue(rest: CGPoint(x: 200, y: 150), arrive: true, swimming: true) }
-            lane.advance(by: 1 / 60)
-        })
 
         // MARK: The report
 

@@ -24,8 +24,6 @@ struct ArtPlaceTests {
         (.emptyChanges, [.thresher], 0.7, .inPlace),
         (.emptySide, [.whale], 0.7, .inPlace),
         (.emptyProject, [.hammerhead], 0.7, .inPlace),
-        (.remoraLane, [.hammerhead, .remora], 0.8, .arrival),
-        (.remoraFold, [.remora], 0.8, .resting),
     ]
 
     @Test func eachPlaceDrawsItsSharksAtItsAlphaAndItsRate() {
@@ -47,19 +45,15 @@ struct ArtPlaceTests {
         if case .homeLoop = ArtPlace.homeBand.scene {} else { Issue.record("the band draws its fixed loop") }
     }
 
-    @Test func noPlaceIsOverItsBudgetAndOnlyTheRemoraIsSemibold() {
+    @Test func noPlaceIsOverItsBudgetAndNoneIsRemorasFace() {
         for place in ArtPlace.allCases {
-            let cap: Double? = switch place {
+            let cap: Double = switch place {
             case .draftPage, .firstLaunch, .about: 24
             case .homeBand, .sessionStarting, .readingBranch, .emptyAgents, .emptyChanges, .emptySide, .emptyProject: 12
-            case .remoraLane: 60
-            case .remoraFold: nil
             }
             #expect(place.kind.maximumRate == cap, "\(place)")
-            #expect((place.weight == .semibold) == (place == .remoraLane || place == .remoraFold), "\(place)")
+            #expect(place.weight == .regular, "\(place)")
         }
-        // The remora's grid is finer than the other sharks'.
-        #expect(ArtPlace.remoraLane.cell < ArtPlace.homeBand.cell && ArtPlace.remoraFold.cell < ArtPlace.homeBand.cell)
     }
 
     // MARK: The first launch and About
@@ -118,81 +112,46 @@ struct ArtPlaceTests {
         #expect(cos(back.heading) > 0.5, "heading right: \(back.heading)")
     }
 
-    // MARK: The remora
+    // MARK: Remora's face
 
-    @Test func theRemoraSwimsOnlyWhileRemoraReadsWithNothingWrittenAndArrivesOnlyForANewBrief() {
-        let rows: [(HomeRemoraState, Bool, HomeRemoraArtPose)] = [
-            (.off, false, .none), (.beforeAnySession, false, .none),
-            (.reading, false, .swims), (.reading, true, .rests),
-            (.brief, true, .rests), (.whenIAsk, false, .rests), (.stoppedBrief, true, .rests),
-            (.cannotAnswer(.login), false, .rests), (.cannotAnswer(.wait), false, .rests),
-            (.folded, true, .fold),
+    @Test func theFaceShowsInTheBriefsPlaceOrTheFoldAndFadesInOnlyForANewBrief() {
+        let rows: [(HomeRemoraState, HomeRemoraArtPose)] = [
+            (.off, .none), (.beforeAnySession, .none), (.reading, .rests), (.brief, .rests), (.whenIAsk, .rests),
+            (.stoppedBrief, .rests), (.cannotAnswer(.login), .rests), (.cannotAnswer(.wait), .rests), (.folded, .fold),
         ]
-        for (state, started, pose) in rows {
-            #expect(HomeRemoraArtPose.of(state, sentenceStarted: started) == pose, "\(state) \(started)")
+        for (state, pose) in rows {
+            #expect(HomeRemoraArtPose.of(state) == pose, "\(state)")
             #expect(HomeRemoraArtPose.arrives(state) == (state == .reading), "\(state)")
         }
     }
 
-    private static let lane = CGSize(width: 1019, height: LoomTheme.Remora.arrivalHeight)
-    /// The place and its sentence as the brief lays them: the column starts at the 32 inset, 110 under the section's top.
-    private static let row = CGRect(x: 32, y: 110, width: 900, height: LoomTheme.Remora.sentenceRoom)
-
-    @Test func theArrivalPlaysAt60ThenSwimsAt12WhileRemoraReadsThenStandsStill() {
-        let metrics = ArtMetrics.mono(cell: LoomTheme.Art.remoraCell, weight: LoomTheme.Art.remoraWeight)
-        var arrival = ArtArrival(size: Self.lane, metrics: metrics, rest: HomeRemoraArtLayout.rest(row: Self.row), arriving: true)
-        #expect(arrival.kind == .arrival && arrival.sharks.count == 2, "it starts with the host carrying the remora")
-        #expect(arrival.host.x > Self.lane.width, "the host comes in from the right")
-        var left = 0, t = 0.0
-        let dt = 1 / 60.0
-        while t < LoomTheme.Art.arrivalTurnEnd - dt {
-            if arrival.step(by: dt, swimming: true) { left += 1 }
-            t += dt
-            #expect(arrival.kind == .arrival, "the 60 fps part lasts its 2.2 s: \(t)")
+    /// Front, the menu bar's mark, scaled from its own path data (never a copy of it) to about 64 and about 36, in the art's colour
+    /// at about 0.8.
+    @Test func theFaceIsTheMenuBarMarkAtTheTwoSizesInTheArtColour() {
+        let mark = MenuBarMark.bounds
+        for width in [LoomTheme.Remora.faceWidth, LoomTheme.Remora.foldFaceWidth] {
+            let parts = HomeRemoraFace.parts(width: width)
+            #expect(parts.count == MenuBarMark.paths.count, "every part of the mark")
+            let box = parts.reduce(CGRect.null) { $0.union($1.boundingBoxOfPath) }
+            #expect(abs(box.width - width) < 0.01 && abs(box.minX) < 0.01 && abs(box.minY) < 0.01, "\(box)")
+            #expect(abs(box.height - HomeRemoraFace.height(width: width)) < 0.01)
+            let scale = width / mark.width
+            for (part, source) in zip(parts, MenuBarMark.paths) {
+                let a = part.boundingBoxOfPath, b = source.boundingBoxOfPath
+                #expect(abs(a.width - b.width * scale) < 0.01 && abs(a.minX - (b.minX - mark.minX) * scale) < 0.01, "the same path, scaled")
+            }
         }
-        // On past 2.2 s: the remora is at its place, swimming at 12 while Remora reads.
-        for _ in 0..<60 {
-            if arrival.step(by: 1 / 12, swimming: true) { left += 1 }
-        }
-        #expect(arrival.kind == .inPlace && arrival.stage == .inPlace)
-        #expect(left == 1 && arrival.hostGone && arrival.bandReleased && arrival.sharks.count == 1,
-                "the host left at the left, and the band had its hammerhead back once")
-        // The sentence comes in: it slows and stands still, one frame and no timer.
-        var steps = 0
-        while arrival.stage != .resting && steps < 60 {
-            arrival.step(by: 1 / 12, swimming: false)
-            steps += 1
-        }
-        #expect(arrival.kind == .resting && Double(steps) / 12 <= LoomTheme.Art.arrivalSlow + 0.2, "\(steps) steps at 12")
-        // Where it ends is where a remora laid at rest is.
-        let raster = ArtRaster()
-        let resting = ArtArrival(size: Self.lane, metrics: metrics, rest: HomeRemoraArtLayout.rest(row: Self.row), arriving: false)
-        #expect(resting.kind == .resting)
-        let a = Set(arrival.frame(raster: raster).packed.map(ArtPackedCell.index))
-        let b = Set(resting.frame(raster: raster).packed.map(ArtPackedCell.index))
-        #expect(Double(a.symmetricDifference(b).count) <= Double(b.count) * 0.25, "the arrival ends at the rest pose")
+        #expect(abs(LoomTheme.Remora.faceWidth - 64) <= 4 && abs(LoomTheme.Remora.foldFaceWidth - 36) <= 4)
+        #expect(HomeRemoraFace.color == LoomTheme.Surface.art && abs(HomeRemoraFace.opacity - 0.8) <= 0.05)
     }
 
-    @Test func theRestingRemoraIsBesideItsSentenceNeverBehindIt() {
-        let metrics = ArtMetrics.mono(cell: LoomTheme.Art.remoraCell, weight: LoomTheme.Art.remoraWeight)
-        let rest = HomeRemoraArtLayout.rest(row: Self.row)
-        let resting = ArtArrival(size: Self.lane, metrics: metrics, rest: rest, arriving: false)
-        let frame = resting.frame(raster: ArtRaster())
-        let lit = frame.packed.map(ArtPackedCell.index)
-        #expect(lit.count > 60, "the remora is drawn: \(lit.count)")
-        let sentenceStarts = Double(Self.row.minX + LoomTheme.Remora.placeWidth + LoomTheme.Remora.placeGap)
-        let rightmost = lit.map { Double($0 % frame.columns + 1) * metrics.cellWidth }.max() ?? 0
-        #expect(rightmost <= sentenceStarts, "its cells end at \(rightmost), the sentence starts at \(sentenceStarts)")
-        let rows = lit.map { $0 / frame.columns }
-        let top = Double(rows.min() ?? 0) * metrics.cellHeight, bottom = Double((rows.max() ?? 0) + 1) * metrics.cellHeight
-        #expect(top < Double(Self.row.maxY) && bottom > Double(Self.row.minY), "it rises toward the sentence, in its row: \(top)…\(bottom)")
-        // Its disc shows: the plates are bars across the head.
-        let bars = [ArtGlyphs.barUpright, ArtGlyphs.barRising, ArtGlyphs.barLevel, ArtGlyphs.barFalling]
-        #expect(bars.map { frame.count(of: $0) }.reduce(0, +) > 4)
-        // The folded line's remora fits its slot.
-        let slot = CGSize(width: LoomTheme.Remora.foldSlot.width, height: LoomTheme.Remora.foldSlot.height)
-        let fold = ArtFoldRemora.frame(size: slot, metrics: ArtMetrics.mono(cell: LoomTheme.Art.foldCell, weight: LoomTheme.Art.remoraWeight),
-                                       raster: ArtRaster())
-        #expect(fold.packed.count > 30)
+    /// A new brief takes the face from 0 to 1 with an animation; nothing keeps ticking.
+    @Test func aNewBriefFadesTheFaceIn() async {
+        let art = HomeRemoraArt()
+        #expect(art.fade == 1)
+        art.arrival(reduceMotion: true)
+        #expect(art.fade == 0, "it starts unseen")
+        for _ in 0..<20 where art.fade != 1 { await Task.yield() }
+        #expect(art.fade == 1)
     }
 }

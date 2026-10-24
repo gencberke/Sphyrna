@@ -27,10 +27,6 @@ enum ArtPlace: String, CaseIterable, Sendable {
     case emptySide
     /// An empty project's page: a small hammerhead (§10, D-76).
     case emptyProject
-    /// Home's Remora section: the arrival, then the remora at rest beside its sentence (§9, §20).
-    case remoraLane
-    /// The start of the folded brief's line: the remora at rest, level (§9 Later).
-    case remoraFold
 
     private typealias A = LoomTheme.Art
 
@@ -42,8 +38,6 @@ enum ArtPlace: String, CaseIterable, Sendable {
         case .firstLaunch: [.hammerhead, .whale] + A.firstRemoras.map { _ in ArtKind.remora }
         case .emptyChanges: [.thresher]
         case .emptySide: [.whale]
-        case .remoraLane: [.hammerhead, .remora]
-        case .remoraFold: [.remora]
         }
     }
 
@@ -55,20 +49,16 @@ enum ArtPlace: String, CaseIterable, Sendable {
         case .firstLaunch: A.firstAlpha
         case .about: A.aboutAlpha
         case .sessionStarting, .readingBranch, .emptyAgents, .emptyChanges, .emptySide, .emptyProject: A.inPlaceAlpha
-        case .remoraLane: A.remoraAlpha
-        case .remoraFold: A.foldAlpha
         }
     }
 
-    /// Its frame-rate cap: ambient art 24, a shark in place and Home's loop 12, the arrival 60, the folded line none. About's
-    /// crossing is ambient and it rests on one frame; the lane plays the arrival, then 12, then none (`ArtArrival.kind`).
+    /// Its frame-rate cap: ambient art 24, a shark in place and Home's loop 12. About's crossing is ambient and it rests on one
+    /// frame. Remora's face on Home is no art place: it is a still drawing of the menu bar's mark (`HomeRemoraFace`).
     var kind: ArtSurfaceKind {
         switch self {
         case .homeBand: .homeLoop
         case .draftPage, .firstLaunch, .about: .ambient
         case .sessionStarting, .readingBranch, .emptyAgents, .emptyChanges, .emptySide, .emptyProject: .inPlace
-        case .remoraLane: .arrival
-        case .remoraFold: .resting
         }
     }
 
@@ -79,18 +69,11 @@ enum ArtPlace: String, CaseIterable, Sendable {
         case .firstLaunch: A.firstCell
         case .about: A.aboutCell
         case .sessionStarting, .readingBranch, .emptyAgents, .emptyChanges, .emptySide, .emptyProject: A.inPlaceCell
-        case .remoraLane: A.remoraCell
-        case .remoraFold: A.foldCell
         }
     }
 
-    /// The remora draws in semibold glyphs, because it is Remora's face; every other shark in regular ones.
-    var weight: NSFont.Weight {
-        switch self {
-        case .remoraLane, .remoraFold: A.remoraWeight
-        default: .regular
-        }
-    }
+    /// Every place draws in regular glyphs.
+    var weight: NSFont.Weight { .regular }
 
     var mask: ArtMask {
         switch self {
@@ -154,8 +137,6 @@ enum ArtPlace: String, CaseIterable, Sendable {
     var scene: ArtScene {
         switch self {
         case .homeBand: .homeLoop(precomputed: false, seed: 1)
-        case .remoraLane: .remoraLane
-        case .remoraFold: .remoraFold
         default: .sea(specs: specs, options: ArtSea.Options(alpha: alpha, plankton: plankton, wake: wake), seed: seed)
         }
     }

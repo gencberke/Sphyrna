@@ -41,11 +41,6 @@ struct ArtSurfaceRenderTests {
 
     private static func arts(in view: NSView) -> [ArtLayerView] { ArtSwitchTests.arts(in: view) }
 
-    private static func hasLane(_ art: ArtLayerView) -> Bool {
-        guard case .lane? = art.source else { return false }
-        return true
-    }
-
     /// Renders `content`, writes it when asked, and hands the hosting view to `check` while the window is open.
     private func render<Content: View>(_ content: Content, name: String, size: CGSize, dark: Bool,
                                        until: @escaping (NSView) -> Bool = { _ in true },
@@ -117,10 +112,9 @@ struct ArtSurfaceRenderTests {
         #expect(HomeEmptyCatalog.showsMark(claudeMissing: true) == false, "with no Claude CLI no shark swims")
     }
 
-    /// The brief with its tiles: the band's hammerhead and the remora resting beside the sentence; the fold: the remora at the
-    /// start of its line and no lane.
-    @Test func remorasBriefRestsTheRemoraBesideItsSentenceAndTheFoldAtItsLine() async throws {
-        enableAccessibilityTree()
+    /// The brief with its tiles, a brief being written, and the fold: the band's hammerhead on its own loop is the only art Home
+    /// draws; Remora's face is a still drawing with no art view and so no frame clock.
+    @Test func remorasBriefAndFoldDrawOnlyTheBandsLoop() async throws {
         let rig = try await RemoraHomeRig.make(
             projectNames: ["loom", "api"],
             seeds: [.init(title: "Billing webhook", project: 0, ago: 7_200), .init(title: "Rate limiter", project: 1, ago: 9_000)],
@@ -129,21 +123,22 @@ struct ArtSurfaceRenderTests {
         try rig.keepBrief(text: "You left off in **loom**, where the billing webhook waits for a review, and in api, where the rate limiter needs a test.",
                           chips: [(0, "Waits for review"), (1, "Needs a test")], ago: 600)
         rig.model.showHome()
-        for dark in [true, false] {
-            try await render(HomeView(model: rig.model), name: "remora-brief", size: CGSize(width: 1019, height: 760), dark: dark,
-                             until: { view in Self.arts(in: view).contains(where: Self.hasLane) }) { view in
-                let arts = artFrames(in: view)
-                let lane = try #require(arts.first { $0.0.scene == .remoraLane }, "the lane is drawn: \(arts.map(\.0.scene))")
-                guard case .lane(let arrival)? = lane.0.source else { Issue.record("the remora is in its lane"); return }
-                #expect(arrival.stage == .resting, "with a brief already written it rests, still")
-                #expect(arts.contains { $0.0.scene == ArtPlace.homeBand.scene }, "the band's hammerhead swims behind Remora too")
-                // The remora's head is in the place's column, before the sentence.
-                let sentence = try #require(id("home-remora-sentence", in: view))
-                let window = try #require(view.window)
-                let sentenceX = sentence.minX - window.frame.minX
-                #expect(Double(arrival.rest.x) < Double(sentenceX), "the remora rests before the sentence: \(arrival.rest.x) vs \(sentenceX)")
+        func onlyTheBand(_ view: NSView) {
+            let arts = Self.arts(in: view)
+            #expect(arts.count == 1 && arts.first?.scene == ArtPlace.homeBand.scene, "\(arts.map(\.scene))")
+            if let band = arts.first {
+                #expect(band.band == ArtBandCue() && band.drawnKind == .homeLoop, "the band keeps its loop")
             }
         }
+        for dark in [true, false] {
+            try await render(HomeView(model: rig.model), name: "remora-brief", size: CGSize(width: 1019, height: 760), dark: dark,
+                             until: { !Self.arts(in: $0).isEmpty }, check: onlyTheBand)
+        }
+        // A new brief being written: the face fades in, and still only the band ticks.
+        rig.model.remora.phase = .briefing
+        try await render(HomeView(model: rig.model), name: "remora-reading", size: CGSize(width: 1019, height: 760), dark: true,
+                         until: { !Self.arts(in: $0).isEmpty }, check: onlyTheBand)
+        rig.model.remora.phase = .idle
         // Folded: the brief began two hours ago and a session ran after it.
         let fold = try await RemoraHomeRig.make(
             projectNames: ["loom", "api"],
@@ -154,27 +149,7 @@ struct ArtSurfaceRenderTests {
         fold.model.showHome()
         for dark in [true, false] {
             try await render(HomeView(model: fold.model), name: "remora-fold", size: CGSize(width: 1019, height: 600), dark: dark,
-                             until: { view in Self.arts(in: view).contains { $0.scene == .remoraFold } }) { view in
-                let scenes = Self.arts(in: view).map(\.scene)
-                #expect(scenes.contains(.remoraFold) && !scenes.contains(.remoraLane), "\(scenes)")
-            }
-        }
-    }
-
-    /// The arrival's moments in the lane, as the reference's storyboard names them: swims in, lets go, turns, reads.
-    @Test func theArrivalsMoments() async throws {
-        let size = CGSize(width: 1019, height: LoomTheme.Remora.arrivalHeight)
-        let rest = HomeRemoraArtLayout.rest(row: CGRect(x: 32, y: 110, width: 900, height: LoomTheme.Remora.sentenceRoom))
-        for dark in [true, false] {
-            for t in [0.6, 1.3, 1.8, 2.9] {
-                let lane = ArtSurface(place: .remoraLane, remora: ArtRemoraCue(rest: rest, arrive: true, swimming: true), time: t)
-                try await render(ZStack(alignment: .top) { CanvasGrid(mask: .band).frame(height: LoomTheme.Canvas.bandHeight); lane },
-                                 name: "arrival-\(String(format: "%.1f", t))s", size: size, dark: dark, check: { view in
-                    let art = try #require(Self.arts(in: view).first)
-                    guard case .lane(let arrival)? = art.source else { Issue.record("the lane plays"); return }
-                    #expect(arrival.time >= t - 0.02 && (t < LoomTheme.Art.arrivalTurnEnd) == (arrival.kind == .arrival), "\(t)")
-                })
-            }
+                             until: { !Self.arts(in: $0).isEmpty }, check: onlyTheBand)
         }
     }
 
