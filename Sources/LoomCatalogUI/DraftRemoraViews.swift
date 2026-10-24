@@ -3,20 +3,19 @@ import SwiftUI
 
 // Remora's brief on the new-session page (DESIGN §8, D-80): the row under the presets and the line above the composer. The row's
 // click is the page's one call of the model's Draft Brief API (`RemoraReachTests` counts it here). Nothing here sends: the brief
-// lands in the draft's text by Put in Draft's rule (`CatalogModel.landRemoraDraft`), and only the composer's own ↵ starts the
-// session.
+// lands in a draft's text, a new draft when the user's has text of its own (`CatalogModel.landRemoraDraft`), and only the
+// composer's own ↵ starts the session.
 
 private typealias D = LoomTheme.Draft
 private typealias R = LoomTheme.Remora
 
 /// "Remora can write this session's brief from loom's recent work." with Draft Brief; then the reading line with the spinner and
-/// Stop; then "Remora drafted the brief above…" with the time and Draft Again. No row with Remora off, for an excluded project and
-/// before the project's first session.
+/// Stop; then "Remora drafted the brief above…" (or "…in a new draft…") with the time and Draft Again. No row with Remora off,
+/// for an excluded project and before the project's first session.
 struct DraftRemoraRowView: View {
     let model: CatalogModel
     let projectID: UUID?
     @Environment(\.indicatorsAnimate) private var indicatorsAnimate
-    @State private var sourcesOpen = false
 
     var body: some View {
         if let projectID, let row = model.draftRemoraRow(projectID: projectID) {
@@ -33,11 +32,6 @@ struct DraftRemoraRowView: View {
                 if let time = row.time {
                     Text(time).draftType(D.remoraMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle).fixedSize()
                         .accessibilityIdentifier("draft-remora-time")
-                }
-                if row.showsSources, let origin = model.newSession.remoraOrigin(for: projectID) {
-                    DraftRemoraSourcesLink(model: model, isOpen: $sourcesOpen, citedSessionIDs: origin.citedSessionIDs,
-                                           sessionsRead: origin.sessionsRead, duration: origin.duration)
-                        .draftType(D.remoraMeta)
                 }
                 Button(row.actionTitle) { act(row.action, projectID: projectID) }
                     .buttonStyle(ControlButtonStyle(kind: row.action == .draft ? .secondary : .ghost, size: .small))

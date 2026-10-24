@@ -120,8 +120,8 @@ struct DraftRemoraRenderTests {
         model.noteRemoraDraftClick(projectID: project, at: rig.base.addingTimeInterval(-6.2))
         model.remora.draft = .drafted(RemoraDraftedBrief(project: project, text: brief, citedSessionIDs: rig.sessions, sessionsRead: 3,
                                                          draftedAt: rig.base))
-        // Lands here (with a copy that would fail the test), so the page's own landing finds nothing new.
-        #expect(model.landRemoraDraft(copy: { _ in Issue.record("an empty composer copies nothing") }) == .placed)
+        // Lands here, so the page's own landing finds nothing new.
+        #expect(model.landRemoraDraft() == .placed)
         for dark in looks {
             let drafted = try await render(model, project: project, name: "drafted", dark: dark)
             #expect(drafted.ids.isSuperset(of: ["draft-remora", "draft-remora-again", "draft-remora-time", "draft-remora-origin",
@@ -130,6 +130,17 @@ struct DraftRemoraRenderTests {
             #expect(drafted.words.contains { $0.contains("from 3 sessions in \(name) \u{00B7} not sent") }, "\(drafted.words)")
         }
         #expect(model.newSession.draft(for: project)?.text == brief && !model.newSession.isSending(project) && !rig.ranAProcess)
+
+        // The user edits it; Draft Again's brief goes into a new draft, and the page says so.
+        model.setDraftText(brief + "\nAnd mine.", projectID: project)
+        model.noteRemoraDraftClick(projectID: project, at: rig.base.addingTimeInterval(4))
+        model.remora.draft = .drafted(RemoraDraftedBrief(project: project, text: "A second brief.", citedSessionIDs: rig.sessions,
+                                                         sessionsRead: 3, draftedAt: rig.base.addingTimeInterval(10)))
+        #expect(model.landRemoraDraft() == .placedInNewDraft)
+        let fresh = try await render(model, project: project, name: "new-draft", dark: false)
+        #expect(fresh.ids.isSuperset(of: ["draft-remora-again", "draft-remora-origin"]), "\(fresh.ids.sorted())")
+        #expect(fresh.words.contains { $0.contains("Remora drafted the brief in a new draft.") }, "\(fresh.words)")
+        #expect(model.visibleDrafts.contains { $0.text == brief + "\nAnd mine." }, "the user's draft is kept")
         await rig.finish()
     }
 
@@ -140,7 +151,7 @@ struct DraftRemoraRenderTests {
         model.showDraft(projectID: project)
         model.remora.draft = .drafted(RemoraDraftedBrief(project: project, text: "A brief.", citedSessionIDs: [], sessionsRead: 1,
                                                          draftedAt: rig.base))
-        model.landRemoraDraft(copy: { _ in })
+        model.landRemoraDraft()
         model.setRemoraOn(false)
         await model.remora.settle()
         let off = try await render(model, project: project, name: "off", dark: true)

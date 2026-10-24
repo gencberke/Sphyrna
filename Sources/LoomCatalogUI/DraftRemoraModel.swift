@@ -3,9 +3,9 @@ import LoomCore
 import LoomRemora
 
 // Remora's brief on the new-session page (DESIGN §8 "Remora's brief", §20 "A new session's brief", D-80): the row under the
-// presets, the line above the composer and Put in Draft's rule for the draft's composer. Plain values, so a test reads the words
-// and the states without a view. The one call is the row's (`DraftRemoraViews.swift`); nothing here calls Remora, and nothing
-// here sends: a brief goes to the draft's text or to the pasteboard (D-64).
+// presets, the line above the composer and where a brief lands. Plain values, so a test reads the words and the states without a
+// view. The one call is the row's (`DraftRemoraViews.swift`); nothing here calls Remora, and nothing here sends: a brief becomes a
+// draft's text, never the pasteboard, and never takes the place of what the user wrote.
 
 /// Where a draft's brief came from: kept while the draft's text is Remora's (`NewSessionState.remoraOrigins`, by draft id).
 struct DraftRemoraOrigin: Equatable {
@@ -13,10 +13,10 @@ struct DraftRemoraOrigin: Equatable {
     var draftedAt: Date
     var sessionsRead: Int
     var citedSessionIDs: [UUID]
-    /// `.placed` (the brief is the composer's text) or `.copiedHasDraft` (the composer kept its text).
+    /// `.placed` (the brief took the draft's place) or `.placedInNewDraft` (the user's draft kept its text, and this one is new).
     var result: RemoraDraftResult
-    /// The text put in the composer, so Draft Again can tell Remora's untouched brief from the user's own text. Memory only.
-    var placedText: String?
+    /// The text put in the draft, so Draft Again can tell Remora's untouched brief from the user's own text. Memory only.
+    var placedText: String
     /// How long the call took, from the click; nil when it did not start from the row.
     var duration: TimeInterval?
 }
@@ -30,8 +30,9 @@ enum DraftRemoraText {
     static let clear = "Clear"
     static let originTitle = "Remora's draft"
     static let drafted = "Remora drafted the brief above. Nothing is sent until you press \u{21B5}."
-    /// Put in Draft's rule when the composer has text (proposed: DESIGN names the rule, not the row's words).
-    static let copied = "Remora drafted the brief. The composer has text, so it was copied instead."
+    /// The draft on the page held the user's text: the brief went into a new draft, and theirs is kept (proposed: DESIGN is silent).
+    static let draftedInNewDraft = "Remora drafted the brief in a new draft. Your draft keeps its text, in the sidebar. "
+        + "Nothing is sent until you press \u{21B5}."
     /// While another Remora call runs (proposed: DESIGN is silent).
     static let busy = "Remora is busy with another call. Draft Brief waits until it ends."
     /// After Stop, in the words of Home's stopped brief ("Stopped. Catch Me Up writes the whole brief.").
@@ -74,7 +75,7 @@ struct DraftRemoraRow: Equatable {
         case busy
         case reading
         case drafted
-        case copied
+        case draftedInNewDraft
         case failed
         case stopped
     }
@@ -103,13 +104,11 @@ struct DraftRemoraRow: Equatable {
 
     var phase: Phase
     var text: String
-    /// The time after the words (drafted and copied).
+    /// The time after the words (drafted).
     var time: String?
     var action: Action
     var actionEnabled: Bool
     var showsSpinner: Bool { phase == .reading }
-    /// Sources sits in the row only when the brief was copied: a placed brief has it on the line above the composer.
-    var showsSources: Bool { phase == .copied }
     var actionTitle: String {
         switch action {
         case .draft: DraftRemoraText.draftBrief
@@ -139,21 +138,20 @@ struct DraftRemoraRow: Equatable {
             break
         }
         let free = !facts.remoraBusy && !otherDraftRuns
-        if let origin = facts.origin, origin.project == project {
+        if let origin = facts.origin, origin.project == project, facts.slotHasText {
             let time = DraftRemoraText.time(origin, zone: facts.zone)
-            if origin.result == .placed, facts.slotHasText {
-                return DraftRemoraRow(phase: .drafted, text: DraftRemoraText.drafted, time: time, action: .draftAgain, actionEnabled: free)
+            if origin.result == .placedInNewDraft {
+                return DraftRemoraRow(phase: .draftedInNewDraft, text: DraftRemoraText.draftedInNewDraft, time: time,
+                                      action: .draftAgain, actionEnabled: free)
             }
-            if origin.result != .placed {
-                return DraftRemoraRow(phase: .copied, text: DraftRemoraText.copied, time: time, action: .draftAgain, actionEnabled: free)
-            }
+            return DraftRemoraRow(phase: .drafted, text: DraftRemoraText.drafted, time: time, action: .draftAgain, actionEnabled: free)
         }
         if !free { return DraftRemoraRow(phase: .busy, text: DraftRemoraText.busy, time: nil, action: .draft, actionEnabled: false) }
         return DraftRemoraRow(phase: .offer, text: DraftRemoraText.offer(projectName: name), time: nil, action: .draft, actionEnabled: true)
     }
 }
 
-/// The line above the composer, as a value: shown while the slot's text is the brief Remora placed.
+/// The line above the composer, as a value: shown while the draft's text came from Remora's brief.
 struct DraftRemoraOriginLine: Equatable {
     var title: String
     var detail: String
@@ -162,7 +160,7 @@ struct DraftRemoraOriginLine: Equatable {
     var duration: TimeInterval?
 
     static func make(origin: DraftRemoraOrigin?, project: UUID?, projectName: String, slotHasText: Bool) -> DraftRemoraOriginLine? {
-        guard let origin, origin.project == project, origin.result == .placed, slotHasText else { return nil }
+        guard let origin, origin.project == project, slotHasText else { return nil }
         return DraftRemoraOriginLine(title: DraftRemoraText.originTitle,
                                      detail: DraftRemoraText.originDetail(sessionsRead: origin.sessionsRead, projectName: projectName),
                                      citedSessionIDs: origin.citedSessionIDs, sessionsRead: origin.sessionsRead, duration: origin.duration)
@@ -197,39 +195,42 @@ extension CatalogModel {
     /// The row's click, before its call: the time it started, for the row's time.
     func noteRemoraDraftClick(projectID: UUID, at date: Date = Date()) {
         newSession.open(projectID: projectID)
-        if let id = newSession.currentID(for: projectID) { newSession.remoraStartedAt[id] = date }
+        if let id = newSession.currentID(for: projectID) { newSession.noteRemoraClick(draft: id, at: date) }
     }
 
     /// The call was refused: no time to keep.
     func forgetRemoraDraftClick(projectID: UUID) {
-        if let id = newSession.currentID(for: projectID) { newSession.remoraStartedAt[id] = nil }
+        if let id = newSession.remoraClickedDraft(in: projectID) { newSession.remoraStartedAt[id] = nil }
     }
 
-    /// Puts a drafted brief in its project's draft by Put in Draft's rule, once: an empty composer takes it; a composer with text
-    /// keeps it and the brief is copied. A composer that still holds Remora's last brief, untouched, counts as empty (Draft Again
-    /// replaces it). Returns what it did, or nil when there is no new brief. Never sends.
+    /// Puts a drafted brief in a draft of its project, once: in the draft Draft Brief was clicked in (else the one the project
+    /// shows) when that is empty or still holds Remora's last brief untouched (Draft Again replaces it); else in a new draft of the
+    /// project, which the page then shows, and the user's draft keeps every word. Returns what it did, or nil when there is no new
+    /// brief. Never sends.
     @discardableResult
-    func landRemoraDraft(copy: (String) -> Void = RemoraPutInDraft.copyToPasteboard) -> RemoraDraftResult? {
+    func landRemoraDraft() -> RemoraDraftResult? {
         guard case let .drafted(brief) = remora.draft, newSession.remoraLanded != brief.draftedAt else { return nil }
         newSession.remoraLanded = brief.draftedAt
         let project = brief.project
         let state = newSession
         state.open(projectID: project)
-        guard let id = state.currentID(for: project) else { return nil }
-        let previous = state.remoraOrigins[id]
-        let target = RemoraDraftTarget.newSessionComposer(
-            project: project,
-            hasText: {
-                guard let draft = state.draft(for: project), draft.hasText else { return false }
-                return previous?.placedText.map { $0 != draft.text } ?? true
-            },
-            setText: { [weak self] text in self?.setDraftText(text, projectID: project) })
-        let result = RemoraPutInDraft.perform(target, line: brief.text, copy: copy)
-        let started = state.remoraStartedAt.removeValue(forKey: id)
-        state.remoraOrigins[id] = DraftRemoraOrigin(
+        guard let asked = state.remoraClickedDraft(in: project) ?? state.currentID(for: project),
+              let draft = state.draft(id: asked) else { return nil }
+        let started = state.remoraStartedAt.removeValue(forKey: asked)
+        let holdsUserText = draft.hasText && state.remoraOrigins[asked]?.placedText != draft.text
+        let target: UUID
+        let result: RemoraDraftResult
+        if holdsUserText {
+            target = state.addDraft(projectID: project, text: brief.text)
+            result = .placedInNewDraft
+        } else {
+            state.setText(brief.text, draft: asked)
+            target = asked
+            result = .placed
+        }
+        state.remoraOrigins[target] = DraftRemoraOrigin(
             project: project, draftedAt: brief.draftedAt, sessionsRead: brief.sessionsRead, citedSessionIDs: brief.citedSessionIDs,
-            result: result, placedText: result == .placed ? brief.text : nil,
-            duration: started.map { max(0, brief.draftedAt.timeIntervalSince($0)) })
+            result: result, placedText: brief.text, duration: started.map { max(0, brief.draftedAt.timeIntervalSince($0)) })
         return result
     }
 
@@ -255,7 +256,7 @@ extension CatalogModel {
             result["sessionsRead"] = brief.sessionsRead
             result["cited"] = brief.citedSessionIDs.count
             if let origin = newSession.remoraOrigin(for: brief.project), origin.draftedAt == brief.draftedAt {
-                result["landed"] = origin.result == .placed ? "placed" : "copied"
+                result["landed"] = origin.result == .placed ? "placed" : "newDraft"
             } else {
                 result["landed"] = NSNull()
             }

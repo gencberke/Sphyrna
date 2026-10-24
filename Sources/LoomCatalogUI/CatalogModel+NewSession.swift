@@ -189,6 +189,38 @@ public final class NewSessionState {
         persistDrafts()
     }
 
+    /// The text of one draft, whichever its project shows (Draft Brief's landing in the draft it was clicked in).
+    func setText(_ text: String, draft id: UUID) {
+        guard var draft = drafts[id] else { return }
+        draft.text = text
+        draft.updatedAt = clock()
+        drafts[id] = draft
+        if !draft.hasText { remoraOrigins[id] = nil }
+        persistDrafts()
+    }
+
+    /// One more draft of the project, with text, which the project then shows (Draft Brief over the user's own text).
+    func addDraft(projectID: UUID?, text: String) -> UUID {
+        let draft = SessionDraft(projectID: projectID, text: text, updatedAt: clock())
+        drafts[draft.id] = draft
+        show(id: draft.id)
+        persistDrafts()
+        return draft.id
+    }
+
+    /// Draft Brief was clicked in this draft: the brief lands here, and the row's time counts from now. One click per project.
+    func noteRemoraClick(draft id: UUID, at date: Date) {
+        guard let project = drafts[id]?.projectKey else { return }
+        for other in remoraStartedAt.keys where drafts[other]?.projectKey == project { remoraStartedAt[other] = nil }
+        remoraStartedAt[id] = date
+    }
+
+    /// The draft of the project Draft Brief was last clicked in, while it is still there.
+    func remoraClickedDraft(in projectID: UUID?) -> UUID? {
+        let key = SessionDraft.projectKey(for: projectID)
+        return remoraStartedAt.keys.first { drafts[$0]?.projectKey == key }
+    }
+
     /// Throws the project's shown draft away: the project shows an empty one, and the file forgets it.
     public func discard(projectID: UUID?) {
         if let id = currentID(for: projectID) { discard(id: id) } else { open(projectID: projectID) }

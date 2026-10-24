@@ -3,95 +3,18 @@ import Foundation
 import LoomChat
 import LoomCore
 
-/// What Draft Brief's landing will do (DESIGN §8 Remora's brief, D-64): leave the brief in an empty composer, or copy it. Home's
-/// Put in Draft has its own rule (`RemoraHomeDraft`, D-95).
-enum RemoraDraftPlan: Equatable {
-    /// The session's Chat composer, or its saved draft, is empty: the line goes there.
-    case place
-    /// The composer (or the saved draft) has text: it keeps it, and the line is copied.
-    case copyHasDraft
-    /// A terminal session has no draft: the line is copied.
-    case copyTerminal
-}
-
-/// What Draft Brief's landing did.
+/// What Draft Brief's landing did (DESIGN §8 Remora's brief): the brief always becomes a draft's text, unsent, and never takes the
+/// place of what the user wrote. Home's Put in Draft has its own rule (`RemoraHomeDraft`, D-95).
 enum RemoraDraftResult: Equatable {
+    /// The draft was empty, or still held Remora's last brief untouched: the brief is its text now.
     case placed
-    case copiedHasDraft
-    case copiedTerminal
-    /// The draft could not be written; the line was copied.
-    case copiedNotSaved
+    /// The draft held the user's text: it keeps it, and the brief went into a new draft of the same project, which the page shows.
+    case placedInNewDraft
 }
 
-/// Where a session's draft lives and how to reach it: the live composer when a view made one, else the saved draft file. Plain
-/// closures, so the rule is tested without a model. It never sends: nothing here reaches a driver.
-struct RemoraDraftTarget {
-    var sessionID: UUID
-    /// The session shows its Chat composer (a Chat run, or a stopped session the Chat face resumes).
-    var opensInChat: Bool
-    /// The live composer: whether it holds text or attachments, and the way to set its text. Nil without one.
-    var composerHasContent: (() -> Bool)?
-    var setComposerText: ((String) -> Void)?
-    /// The saved drafts, for a session with no live composer.
-    var drafts: ChatDraftStore?
-}
-
-extension RemoraDraftTarget {
-    /// The new-session page's composer (DESIGN §8 Remora's brief): always a composer, whose text is the project's draft slot, so
-    /// the same rule holds: empty, the brief goes there; with text, the text stays and the brief is copied. `sessionID` carries the
-    /// project's id only to fill the field: with no draft store it is never read.
-    static func newSessionComposer(project: UUID, hasText: @escaping () -> Bool,
-                                   setText: @escaping (String) -> Void) -> RemoraDraftTarget {
-        RemoraDraftTarget(sessionID: project, opensInChat: true, composerHasContent: hasText, setComposerText: setText, drafts: nil)
-    }
-}
-
-/// Draft Brief's landing rule. Pure over a target.
-enum RemoraPutInDraft {
-    static func plan(_ target: RemoraDraftTarget) -> RemoraDraftPlan {
-        guard target.opensInChat else { return .copyTerminal }
-        if let hasContent = target.composerHasContent {
-            return hasContent() ? .copyHasDraft : .place
-        }
-        guard let drafts = target.drafts else { return .copyTerminal }
-        // A draft that cannot be read is kept as it is (the store sets it aside); it counts as one.
-        let saved: ChatDraft?
-        do { saved = try drafts.load(sessionID: target.sessionID) } catch { return .copyHasDraft }
-        guard let saved else { return .place }
-        return saved.isEmpty ? .place : .copyHasDraft
-    }
-
-    /// Does what `plan` says. A line is never sent: it goes to a composer's text or a draft file, or to the pasteboard.
-    @discardableResult
-    static func perform(_ target: RemoraDraftTarget, line: String, copy: (String) -> Void) -> RemoraDraftResult {
-        switch plan(target) {
-        case .copyTerminal:
-            copy(line)
-            return .copiedTerminal
-        case .copyHasDraft:
-            copy(line)
-            return .copiedHasDraft
-        case .place:
-            if let setComposerText = target.setComposerText, target.composerHasContent != nil {
-                setComposerText(line)
-                return .placed
-            }
-            guard let drafts = target.drafts else {
-                copy(line)
-                return .copiedNotSaved
-            }
-            do {
-                try drafts.save(ChatDraft(text: line), sessionID: target.sessionID)
-                return .placed
-            } catch {
-                copy(line)
-                return .copiedNotSaved
-            }
-        }
-    }
-
-    /// The general pasteboard.
-    static func copyToPasteboard(_ line: String) {
+/// The general pasteboard, for a line Home's Put in Draft can only copy.
+enum RemoraPasteboard {
+    static func copy(_ line: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(line, forType: .string)
     }
@@ -229,7 +152,7 @@ extension CatalogModel {
     /// Home's Put in Draft: the line goes to the session's composer and the session opens, or the line is copied. Never sends.
     @discardableResult
     func putRemoraLineInDraft(_ line: String, record: CatalogSession,
-                              copy: (String) -> Void = RemoraPutInDraft.copyToPasteboard) -> RemoraHomeDraftResult {
+                              copy: (String) -> Void = RemoraPasteboard.copy) -> RemoraHomeDraftResult {
         RemoraHomeDraft.perform(remoraHomeDraftTarget(for: record), line: line, copy: copy)
     }
 }

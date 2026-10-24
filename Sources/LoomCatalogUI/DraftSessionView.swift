@@ -54,7 +54,7 @@ struct DraftSessionView: View {
             model.loadDraftBranch(projectID: projectID)
             model.landRemoraDraft()
         }
-        // A brief that answered lands in its project's draft once, by Put in Draft's rule; nothing is sent.
+        // A brief that answered lands once, in a draft of its project (a new one over the user's own text); nothing is sent.
         .onChange(of: model.remora.draft) { _, _ in model.landRemoraDraft() }
     }
 }
