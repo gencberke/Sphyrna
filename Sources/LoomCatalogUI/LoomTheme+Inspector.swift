@@ -10,6 +10,17 @@ extension LoomTheme {
         /// The overlaid inspector's shadow falls to its left, over the content, not downwards.
         static let overlayShadowX: CGFloat = -12
 
+        // The resize handle (W1-b): a strip inside the leading edge. While it is dragged only a guide follows the pointer; the
+        // column takes the width on release. Each width class has its own floor; the defaults are `Rhythm`'s.
+        static let resizeHandleWidth: CGFloat = 6
+        static let resizeGuideWidth: CGFloat = 2
+        static let resizeGuide = Accent.base
+        /// One step of the handle's adjustable action (VoiceOver's increment and decrement).
+        static let resizeStep: CGFloat = 16
+        static let minimumWidthNarrow: CGFloat = 280
+        static let minimumWidthSide: CGFloat = 280
+        static let minimumWidthReview: CGFloat = 440
+
         // View tabs (DESIGN §6 Tabs): underlined text on the 36 pt bar, 18 apart. The open tab has a 1.5 pt accent underline
         // that sits on the bar's hairline; a count (or the Side tab's dot) follows the label.
         static let tabBarHeight = InkHeight.tabRow

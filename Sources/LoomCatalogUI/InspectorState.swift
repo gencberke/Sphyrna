@@ -10,26 +10,28 @@ public enum InspectorTab: String, CaseIterable, Sendable {
     /// A session's side chats (V22). Only on a Claude session that has a provider conversation id (`CatalogModel.inspectorTabs`).
     case side
 
-    /// The column's width while this tab is open: review needs the wide column, a side chat a medium one, the others keep
-    /// the narrow one.
-    var width: CGFloat {
-        switch self {
-        case .changes: LoomTheme.Rhythm.inspectorWidthReview
-        case .side: LoomTheme.Rhythm.inspectorWidthSide
-        case .overview, .agents: LoomTheme.Rhythm.inspectorWidth
-        }
-    }
+    /// The column's default width while this tab is open: review needs the wide column, a side chat a medium one, the others
+    /// keep the narrow one. The width it is drawn at is its class's remembered one (`InspectorWidthClass`).
+    var width: CGFloat { InspectorWidthClass(tab: self, showsTranscript: false).defaultWidth }
 }
 
 /// Which sessions have their inspector open, and which tab it shows. Closed by default; the open choice is
 /// remembered per session in `UIPreferences.inspectorOpen` (written by `CatalogModel.setInspectorOpen`).
-/// The tab is not remembered: a relaunch opens on Overview.
+/// The tab is not remembered: a relaunch opens on Overview. Each width class's width is remembered too, in
+/// `UIPreferences.inspectorWidths` (written by `CatalogModel.setInspectorWidth`).
 @MainActor @Observable
 public final class InspectorState {
     public private(set) var openSessions: [UUID]
     public private(set) var tab: InspectorTab = .overview
+    public private(set) var widths: InspectorWidths
+    /// The drag on the resize handle, while there is one. Only the handle and its guide read it, so a drag step redraws them
+    /// and nothing else; the widths change once, on release (`CatalogModel+InspectorWidth`).
+    private(set) var resize: InspectorResize?
 
-    init(open: [UUID]) { openSessions = open }
+    init(open: [UUID], widths: InspectorWidths = InspectorWidths()) {
+        openSessions = open
+        self.widths = widths
+    }
 
     public func isOpen(for id: UUID?) -> Bool {
         id.map { openSessions.contains($0) } ?? false
@@ -44,6 +46,30 @@ public final class InspectorState {
             openSessions.removeAll { $0 == id }
         }
         return true
+    }
+
+    /// Returns whether the class's width changed.
+    func setWidth(_ width: CGFloat, for widthClass: InspectorWidthClass) -> Bool {
+        var updated = widths
+        updated[widthClass] = width
+        guard updated != widths else { return false }
+        widths = updated
+        return true
+    }
+
+    func beginResize(_ resize: InspectorResize) { self.resize = resize }
+
+    /// Moves the drag's edge; a step that lands on the same whole point changes nothing.
+    func moveResize(to width: CGFloat) {
+        guard var resize, resize.live != width else { return }
+        resize.live = width
+        self.resize = resize
+    }
+
+    /// Ends the drag and returns it.
+    func endResize() -> InspectorResize? {
+        defer { resize = nil }
+        return resize
     }
 
     /// Returns whether the tab changed.

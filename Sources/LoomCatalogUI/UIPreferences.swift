@@ -159,6 +159,9 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// The sessions whose inspector is open (V2: closed by default, remembered per session). Least recently
     /// opened first, de-duplicated and capped.
     public var inspectorOpen: [UUID]
+    /// The inspector's remembered width per class (W1-b), written once per release of its resize handle. A file written before
+    /// the setting existed reads as the defaults, and so does any class that is missing or unreadable.
+    public var inspectorWidths: InspectorWidths
     /// Settings → General → Search session text. Off, the command palette never reads a transcript. A file written
     /// before the setting existed reads as on.
     public var searchSessionText: Bool
@@ -193,7 +196,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
                 openTabs: [UUID] = [], windowFrame: WindowFrame? = nil, projectColors: Bool = true,
                 showInMenuBar: Bool = true, notifyApprovals: Bool = true, sidebarStyle: SidebarStyle = .solid,
                 launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = [],
-                searchSessionText: Bool = true, newSessionFace: SessionFace = .chat,
+                inspectorWidths: InspectorWidths = InspectorWidths(), searchSessionText: Bool = true,
+                newSessionFace: SessionFace = .chat,
                 appearance: AppearanceSetting = .dark, paneTone: PaneTone = .neutral, animatedArt: Bool = true,
                 remora: RemoraPreferences = RemoraPreferences()) {
         self.viewMode = viewMode
@@ -209,6 +213,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         self.sidebarStyle = sidebarStyle
         self.launchView = launchView
         self.inspectorOpen = Self.normalizedInspectors(inspectorOpen)
+        self.inspectorWidths = inspectorWidths
         self.searchSessionText = searchSessionText
         self.newSessionFace = newSessionFace
         self.appearance = appearance
@@ -241,6 +246,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             launchView: (try? container.decodeIfPresent(LaunchView.self, forKey: .launchView)) ?? .lastSession,
             inspectorOpen: ((try? container.decodeIfPresent([Lossy<UUID>].self, forKey: .inspectorOpen)) ?? nil)?
                 .compactMap(\.value) ?? [],
+            inspectorWidths: (try? container.decodeIfPresent(InspectorWidths.self, forKey: .inspectorWidths)) ?? InspectorWidths(),
             searchSessionText: (try? container.decodeIfPresent(Bool.self, forKey: .searchSessionText)) ?? true,
             newSessionFace: (try? container.decodeIfPresent(SessionFace.self, forKey: .newSessionFace)) ?? .chat,
             appearance: (try? container.decodeIfPresent(AppearanceSetting.self, forKey: .appearance)) ?? .dark,
@@ -253,7 +259,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case viewMode, selectedSessionID, destination, sidebarWidth, sidebarCollapsed, terminalFontSize, openTabs
         case windowFrame, projectColors, showInMenuBar, notifyApprovals, sidebarStyle, launchView, inspectorOpen
-        case searchSessionText, newSessionFace, appearance, paneTone, animatedArt, remora
+        case inspectorWidths, searchSessionText, newSessionFace, appearance, paneTone, animatedArt, remora
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -272,6 +278,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         try container.encode(sidebarStyle, forKey: .sidebarStyle)
         try container.encode(launchView, forKey: .launchView)
         try container.encode(inspectorOpen, forKey: .inspectorOpen)
+        try container.encode(inspectorWidths, forKey: .inspectorWidths)
         try container.encode(searchSessionText, forKey: .searchSessionText)
         try container.encode(newSessionFace, forKey: .newSessionFace)
         try container.encode(appearance, forKey: .appearance)

@@ -510,7 +510,7 @@ public final class CatalogModel {
         appearance = preferences.current.appearance
         paneTone = preferences.current.paneTone
         animatedArt = preferences.current.animatedArt
-        inspector = InspectorState(open: preferences.current.inspectorOpen)
+        inspector = InspectorState(open: preferences.current.inspectorOpen, widths: preferences.current.inspectorWidths)
         tabs = ConversationTabs(pinned: preferences.current.openTabs)
         today = Calendar.current.startOfDay(for: now)
         palette.searchesConversations = searchesSessionText
@@ -1419,6 +1419,13 @@ public final class CatalogModel {
         guard inspector.set(open, for: id) else { return }
         let ids = inspector.openSessions
         persist { $0.inspectorOpen = ids }
+    }
+
+    /// Remembers a width class's inspector width (`CatalogModel+InspectorWidth`): one write per release of the handle.
+    func setInspectorWidth(_ width: CGFloat, for widthClass: InspectorWidthClass) {
+        guard inspector.setWidth(width, for: widthClass) else { return }
+        let widths = inspector.widths
+        persist { $0.inspectorWidths = widths }
     }
 
     /// The Color menu: a tone, or nil for None. The projects are read again (the one project-change

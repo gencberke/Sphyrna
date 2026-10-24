@@ -81,20 +81,25 @@ enum AgentsTranscriptKeys {
 }
 
 extension InspectorAgents {
-    /// The inspector's width for a tab: an open transcript takes the review width, 556, as Changes does; the list keeps the tab's
-    /// own (328). The width follows the click that opens or closes the transcript, and never animates (a width change is a PTY resize).
+    /// The inspector's default width for a tab: an open transcript takes the review width, 556, as Changes does; the list keeps the
+    /// tab's own (328). The width follows the click that opens or closes the transcript, and never animates (a width change is a PTY
+    /// resize).
     nonisolated static func width(tab: InspectorTab, showsTranscript: Bool) -> CGFloat {
-        tab == .agents && showsTranscript ? LoomTheme.Rhythm.inspectorWidthReview : tab.width
+        InspectorWidthClass(tab: tab, showsTranscript: showsTranscript).defaultWidth
     }
 }
 
 extension CatalogModel {
-    /// The open inspector's width: the shown tab's, or the review width while the Agents tab shows the selected session's
-    /// subagent transcript.
-    var shownInspectorWidth: CGFloat {
+    /// The open inspector's width class: the shown tab's, or review while the Agents tab shows the selected session's subagent
+    /// transcript.
+    var inspectorWidthClass: InspectorWidthClass {
         let showsTranscript = viewedSubagent != nil && viewedSubagent?.sessionID == selectedSessionID && subagentPanel != nil
-        return InspectorAgents.width(tab: shownInspectorTab, showsTranscript: showsTranscript)
+        return InspectorWidthClass(tab: shownInspectorTab, showsTranscript: showsTranscript)
     }
+
+    /// The open inspector's width: its class's remembered one (the default until the user drags the edge). The pane may draw it
+    /// narrower (`InspectorLayout`).
+    var shownInspectorWidth: CGFloat { inspector.widths[inspectorWidthClass] }
 }
 
 /// The Agents tab: the session's subagents; a click on one reads its transcript in the list's place, under "‹ Agents".

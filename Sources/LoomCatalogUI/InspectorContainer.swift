@@ -4,11 +4,13 @@ import SwiftUI
 /// (`CatalogModel.inspector`). A tab bar, then the open tab: Overview, Changes, Agents or Side (V09, V20, V22).
 struct InspectorContainer: View {
     let model: CatalogModel
-    /// The column's width: the open tab's (`InspectorTab.width`), and no wider than the pane when it is drawn over it.
+    /// The column's width: the open class's (`InspectorWidthClass`), as the pane draws it (`InspectorLayout`).
     var width = LoomTheme.Rhythm.inspectorWidth
     /// Drawn over the content (a narrow pane): the popover surface and shadow, so it reads as above the content
     /// and not as part of it.
     var overlays = false
+    /// The widths the leading edge's resize handle may reach; nil draws no handle.
+    var resizeRange: ClosedRange<CGFloat>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,6 +33,11 @@ struct InspectorContainer: View {
                 .accessibilityHidden(true)
         }
         .frame(width: width)
+        .overlay(alignment: .leading) {
+            if let resizeRange {
+                InspectorResizeHandle(model: model, width: width, range: resizeRange)
+            }
+        }
         .modifier(OverlayShadow(overlays: overlays))
         .environment(\.inspectorOverlays, overlays)
         .accessibilityElement(children: .contain)
@@ -186,31 +193,40 @@ enum InspectorPlacement: Equatable {
         self == .column ? detailWidth - inspectorWidth : detailWidth
     }
 
-    /// The width the inspector is drawn at: the open tab's, but never wider than the pane it covers.
+    /// The width the inspector is drawn at: the open tab's, but never wider than the pane it covers, nor, as a column, wider than
+    /// what leaves the content its minimum.
     func inspectorWidth(detailWidth: CGFloat, tabWidth: CGFloat) -> CGFloat {
-        self == .overlay ? min(tabWidth, detailWidth) : tabWidth
+        switch self {
+        case .overlay: min(tabWidth, detailWidth)
+        case .column: min(tabWidth, detailWidth - LoomTheme.Inspector.minimumContent)
+        case .closed: tabWidth
+        }
     }
 }
 
 /// The inspector's layout for a detail pane this wide, as one value (pure, so a test reads it): where it goes, how wide it is drawn
 /// and what the content keeps. The width is the open one (`CatalogModel.shownInspectorWidth`): the tab's, or the review width while
-/// the Agents tab shows a transcript; the overlay rule takes that same width.
+/// the Agents tab shows a transcript; the overlay rule takes the class's default width, or the open one when that is narrower.
 struct InspectorLayout: Equatable {
     let placement: InspectorPlacement
     let inspectorWidth: CGFloat
     let contentWidth: CGFloat
 
-    init(open: Bool, detailWidth: CGFloat, openWidth: CGFloat) {
-        placement = InspectorPlacement.of(open: open, detailWidth: detailWidth, inspectorWidth: openWidth)
+    /// `defaultWidth` is the open class's: the overlay rule stays the one D-78 set for it, so a width dragged wider than the
+    /// default never turns a column into an overlay. It gives way to the content's minimum instead, and the stored width stays.
+    init(open: Bool, detailWidth: CGFloat, openWidth: CGFloat, defaultWidth: CGFloat? = nil) {
+        let fits = min(openWidth, defaultWidth ?? openWidth)
+        placement = InspectorPlacement.of(open: open, detailWidth: detailWidth, inspectorWidth: fits)
         inspectorWidth = placement.inspectorWidth(detailWidth: detailWidth, tabWidth: openWidth)
-        contentWidth = placement.contentWidth(detailWidth: detailWidth, inspectorWidth: openWidth)
+        contentWidth = placement.contentWidth(detailWidth: detailWidth, inspectorWidth: inspectorWidth)
     }
 }
 
 extension CatalogModel {
     /// The selected session's inspector layout in a detail pane `detailWidth` wide.
     func inspectorLayout(detailWidth: CGFloat) -> InspectorLayout {
-        InspectorLayout(open: inspector.isOpen(for: selectedSessionID), detailWidth: detailWidth, openWidth: shownInspectorWidth)
+        InspectorLayout(open: inspector.isOpen(for: selectedSessionID), detailWidth: detailWidth, openWidth: shownInspectorWidth,
+                        defaultWidth: inspectorWidthClass.defaultWidth)
     }
 }
 
@@ -230,16 +246,17 @@ extension View {
             let layout = model.inspectorLayout(detailWidth: proxy.size.width)
             let placement = layout.placement
             let width = layout.inspectorWidth
+            let range = model.inspectorResizeRange(detailWidth: proxy.size.width)
             HStack(spacing: 0) {
                 self.frame(width: layout.contentWidth)
                 if placement == .column {
-                    InspectorContainer(model: model, width: width).transition(.identity)
+                    InspectorContainer(model: model, width: width, resizeRange: range).transition(.identity)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
             .overlay(alignment: .trailing) {
                 if placement == .overlay {
-                    InspectorContainer(model: model, width: width, overlays: true).transition(.identity)
+                    InspectorContainer(model: model, width: width, overlays: true, resizeRange: range).transition(.identity)
                 }
             }
         }
