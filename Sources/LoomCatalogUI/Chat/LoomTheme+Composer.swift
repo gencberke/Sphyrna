@@ -119,6 +119,16 @@ extension LoomTheme {
         static let badgeFill = Color.black.opacity(0.6)
         static let badgeGlyphColor = Color.white
 
+        // MARK: Mention pills (D-96: a session in the chip row)
+
+        /// A pill is a file chip's shape at its height, with the harness mark (12, as on rows) before the title.
+        static let mentionHeight: CGFloat = attachmentHeight
+        static let mentionMark: CGFloat = Layout.harnessMarkRow
+        static let mentionPartGap: CGFloat = attachmentSpacing
+        static let mentionPaddingTrailing: CGFloat = attachmentPaddingLeading
+        /// The pill sits on a faint wash so it reads as a session, not a file; it follows the tone, so computed.
+        static var mentionFill: Color { Surface.raised1 }
+
         // MARK: Menus (`/` and `@`: the popover family, flat lists)
 
         static let menuWidth: CGFloat = 420

@@ -46,12 +46,24 @@ extension CatalogModel {
             }
         }
         environment.sessionMention = { [weak self] id in self?.sessionMentionText(for: id) }
+        environment.mentionTarget = { [weak self, weak feed] id in
+            guard let self, let feed, id != feed.card else { return nil }
+            return composerMentionTarget(for: id)
+        }
         environment.cycleView = { [weak feed] in feed?.presentation.cycleViewMode() }
         environment.handoverNotice = { [weak self, weak feed] in
             guard let self, let feed else { return nil }
             return composerHandoverNotice(of: feed.card)
         }
         return environment
+    }
+
+    /// What a mention's pill shows for a session a composer may mention (D-96): a Claude session the catalog lists, not a side
+    /// chat and not one being deleted. Nil for any other.
+    func composerMentionTarget(for id: UUID) -> ComposerMention? {
+        guard let record = rowModels[id]?.record ?? liveRecords[id], !record.isSideChat, !isDeleting(id),
+              record.session.provider == .claude, capabilities(of: record.session.provider).readsTranscript else { return nil }
+        return ComposerMention(id: id, title: record.displayTitle(projectName: projectName(for: record)), provider: record.session.provider)
     }
 
     /// The text that mentions another session: its title, the transcript's path and the first line of its last answer. The

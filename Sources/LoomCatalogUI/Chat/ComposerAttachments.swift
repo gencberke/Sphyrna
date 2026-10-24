@@ -1,6 +1,8 @@
 import AppKit
 import ImageIO
 import LoomChat
+import LoomCore
+import SwiftUI
 import UniformTypeIdentifiers
 
 /// One thing attached to the message being written (CHAT-SPEC → Attachments): an image, or a large paste that goes out
@@ -53,6 +55,73 @@ struct ComposerAttachment: Identifiable, Equatable {
         case let .pastedText(text): ComposerPaste.sizeLabel(bytes: text.utf8.count)
         case .image: nil
         }
+    }
+}
+
+/// A session the message mentions (D-96): a pill in the chip row, not text in the field. Only the session's id is kept with
+/// the draft; the title and the harness are the catalog's, and the mention text (`CatalogModel.sessionMentionText(for:)`) is
+/// built when the message goes out.
+struct ComposerMention: Identifiable, Equatable {
+    let id: UUID
+    var title: String
+    var provider: ManagedSession.Provider
+
+    /// What VoiceOver reads for the pill.
+    var accessibilityLabel: String { "Mentions session \(title)" }
+
+    /// The pill of a session the catalog no longer knows (a draft restored after the session went): left out on send.
+    static func unavailable(_ id: UUID) -> ComposerMention {
+        ComposerMention(id: id, title: "Session not found", provider: .claude)
+    }
+}
+
+/// How the mentions go into the message: each mention's text and a space, in pill order, before the user's text, as the `@`
+/// list inserted them before it made pills.
+enum ComposerMentionText {
+    /// The message as sent: the mention texts, then the user's words. A message of mentions alone ends with the last one.
+    static func message(mentions texts: [String], text: String) -> String {
+        guard !texts.isEmpty else { return text }
+        let joined = texts.map { $0 + " " }.joined() + text
+        return text.contains(where: { !$0.isWhitespace }) ? joined : joined.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The notice for mentions left out of a message.
+    static func skippedNotice(_ count: Int) -> String {
+        count == 1
+            ? "One mention was skipped: that session is gone or has no transcript."
+            : "\(count) mentions were skipped: those sessions are gone or have no transcript."
+    }
+}
+
+/// A mention's pill in the composer's chip row: the harness mark, the session's title and a remove button, in the file chips'
+/// shape. VoiceOver reads "Mentions session <title>" and offers Remove.
+struct ComposerMentionPill: View {
+    let mention: ComposerMention
+    let remove: () -> Void
+
+    var body: some View {
+        HStack(spacing: LoomTheme.Composer.mentionPartGap) {
+            ProviderIcon(provider: mention.provider, size: LoomTheme.Composer.mentionMark)
+            Text(mention.title).font(LoomTheme.Composer.attachmentFont).lineLimit(1).truncationMode(.tail)
+                .frame(maxWidth: LoomTheme.Composer.attachmentMaxLabelWidth, alignment: .leading).fixedSize(horizontal: true, vertical: false)
+            Button(action: remove) {
+                Image(systemName: "xmark").font(LoomTheme.Typography.chevron).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .frame(width: LoomTheme.Composer.queueIcon, height: LoomTheme.Composer.queueIcon).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).accessibilityLabel("Remove mention of \(mention.title)")
+        }
+        .foregroundStyle(LoomTheme.Text.primary)
+        .padding(.leading, LoomTheme.Composer.attachmentPaddingLeading).padding(.trailing, LoomTheme.Composer.mentionPaddingTrailing)
+        .frame(height: LoomTheme.Composer.mentionHeight)
+        .background(RoundedRectangle(cornerRadius: LoomTheme.Composer.attachmentRadius).fill(LoomTheme.Composer.mentionFill))
+        .overlay(RoundedRectangle(cornerRadius: LoomTheme.Composer.attachmentRadius)
+            .strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
+        .help(mention.title)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(mention.accessibilityLabel)
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityAction(named: "Remove", remove)
+        .accessibilityIdentifier("composer-mention")
     }
 }
 

@@ -95,6 +95,37 @@ extension ChatComposerModel {
         }
     }
 
+    // MARK: Mentions (D-96)
+
+    /// Whether `id` may be mentioned now: a session the catalog says this composer may mention (Claude, not a side chat), not
+    /// this composer's own, and not one a pill already names.
+    func canMention(_ id: UUID) -> Bool {
+        id != card && !mentions.contains { $0.id == id } && environment.mentionTarget(id) != nil
+    }
+
+    /// Adds a pill for the session (a drop, the `@` list). A refused one changes nothing. Returns whether a pill was added.
+    @discardableResult
+    func addMention(_ id: UUID) -> Bool {
+        guard id != card, !mentions.contains(where: { $0.id == id }), let target = environment.mentionTarget(id) else { return false }
+        setMentions(mentions + [target])
+        scheduleSave()
+        return true
+    }
+
+    func removeMention(_ id: UUID) {
+        setMentions(mentions.filter { $0.id != id })
+        scheduleSave()
+    }
+
+    /// A session dragged onto the field or the chip row (`ComposerEditorHost`).
+    @discardableResult
+    func takesSession(_ id: UUID, perform: Bool) -> Bool {
+        guard perform else { return canMention(id) }
+        guard addMention(id) else { return false }
+        editor?.focus()
+        return true
+    }
+
     // MARK: Paste and drop
 
     /// ⌘V (`plain` false) or ⌘⇧V (`plain` true). Returns false when the text view should paste as it does: plain text under

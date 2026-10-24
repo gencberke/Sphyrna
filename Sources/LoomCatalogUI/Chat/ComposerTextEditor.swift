@@ -21,6 +21,9 @@ protocol ComposerEditorHost: AnyObject {
     func editorFocusChanged(_ focused: Bool)
     func paste(_ pasteboard: NSPasteboard, plain: Bool) -> Bool
     func drop(_ pasteboard: NSPasteboard) -> Bool
+    /// A session dragged onto the field (`SessionDrag`): whether it may be dropped here and, with `perform`, drops it as a
+    /// mention (D-96). Only the live composer takes sessions; the others refuse them.
+    func takesSession(_ id: UUID, perform: Bool) -> Bool
     /// The text view came or went (the model drives it through the bridge while it is there).
     func editorAttached(_ bridge: (any ComposerEditorBridge)?)
     /// This text view went. Only the editor the host holds is let go: a newer one that took its place stays.
@@ -32,6 +35,8 @@ extension ComposerEditorHost {
 
     /// Only the live composer cares (its cards' typing guard); the draft's does not.
     func editorFocusChanged(_ focused: Bool) {}
+
+    func takesSession(_ id: UUID, perform: Bool) -> Bool { false }
 }
 
 /// The text field of a composer: plain text that grows with its lines, with the composer's keys (CHAT-SPEC → Composer →
@@ -74,7 +79,7 @@ struct ComposerTextEditor: NSViewRepresentable {
         textView.takesFocusOnAppearing = takesFocus
         textView.setAccessibilityIdentifier(accessibilityIdentifier)
         textView.setAccessibilityLabel(accessibilityLabel)
-        textView.registerForDraggedTypes([.fileURL, .png, .tiff])
+        textView.registerForDraggedTypes([.fileURL, .png, .tiff, SessionDrag.pasteboardType])
         let initial = host.modelText
         textView.string = initial
         context.coordinator.synced = initial
@@ -241,15 +246,39 @@ struct ComposerTextEditor: NSViewRepresentable {
             }
         }
 
+        /// The text view takes sessions too (a mention, D-96), whatever types it registers for itself.
+        override var acceptableDragTypes: [NSPasteboard.PasteboardType] {
+            super.acceptableDragTypes + [SessionDrag.pasteboardType]
+        }
+
+        /// What a drag of a session may do here: copy when the composer takes it, nothing (the not-allowed feedback) when it
+        /// refuses it. Nil when the drag carries no session, so the field treats it as before.
+        func sessionDragOperation(_ pasteboard: NSPasteboard) -> NSDragOperation? {
+            guard pasteboard.availableType(from: [SessionDrag.pasteboardType]) != nil else { return nil }
+            guard let id = SessionDrag.sessionID(from: pasteboard), coordinator?.host.takesSession(id, perform: false) == true else { return [] }
+            return .copy
+        }
+
+        /// Drops a dragged session as a mention. Nil when the drag carries no session. A session drop never inserts the
+        /// title the payload also carries as text, taken or refused.
+        func dropSession(_ pasteboard: NSPasteboard) -> Bool? {
+            guard pasteboard.availableType(from: [SessionDrag.pasteboardType]) != nil else { return nil }
+            guard let id = SessionDrag.sessionID(from: pasteboard) else { return false }
+            return coordinator?.host.takesSession(id, perform: true) ?? false
+        }
+
         override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-            carriesAttachments(sender.draggingPasteboard) ? .copy : super.draggingEntered(sender)
+            if let session = sessionDragOperation(sender.draggingPasteboard) { return session }
+            return carriesAttachments(sender.draggingPasteboard) ? .copy : super.draggingEntered(sender)
         }
 
         override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
-            carriesAttachments(sender.draggingPasteboard) ? .copy : super.draggingUpdated(sender)
+            if let session = sessionDragOperation(sender.draggingPasteboard) { return session }
+            return carriesAttachments(sender.draggingPasteboard) ? .copy : super.draggingUpdated(sender)
         }
 
         override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+            if let dropped = dropSession(sender.draggingPasteboard) { return dropped }
             if carriesAttachments(sender.draggingPasteboard), coordinator?.host.drop(sender.draggingPasteboard) == true {
                 return true
             }

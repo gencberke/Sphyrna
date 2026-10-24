@@ -14,8 +14,11 @@ struct ComposerEnvironment {
     /// The context the usage index holds, when the driver has no figure yet.
     var contextFallback: () -> ContextUsage? = { nil }
     var sessionCandidates: () -> [ComposerSessionCandidate] = { [] }
-    /// The text that mentions a session: its transcript and last answer.
+    /// The text that mentions a session: its transcript and last answer. Nil for a session that is gone or has no transcript.
     var sessionMention: (UUID) -> String? = { _ in nil }
+    /// What a mention's pill shows for a session this composer may mention; nil for one it may not (not Claude, a side chat,
+    /// gone). The composer refuses its own session itself.
+    var mentionTarget: (UUID) -> ComposerMention? = { _ in nil }
     /// ⌃O in the field: cycles the stream's view (V19).
     var cycleView: (() -> Void)?
     /// What the composer says while the session is being moved to the other face; nil when it is not. Sending waits.
@@ -131,6 +134,8 @@ final class ChatComposerModel {
     /// The driver's part: phase, queue, choices, models, commands, context. Replaced only when it differs.
     private(set) var state: ChatComposerState
     private(set) var attachments: [ComposerAttachment] = []
+    /// The sessions the message mentions, in pill order (D-96).
+    private(set) var mentions: [ComposerMention] = []
     private(set) var preparing = 0
     private(set) var menu: ComposerMenuState?
     private(set) var editing: ComposerQueueEdit?
@@ -148,7 +153,7 @@ final class ChatComposerModel {
     private(set) var effortBaseline: String?
     /// The user set an effort from this bar: what the driver holds from now on is theirs, not the baseline.
     var effortChanged = false
-    /// True when there is text (not only spaces) or an attachment: what Send needs.
+    /// True when there is text (not only spaces), an attachment or a mention: what Send needs.
     private(set) var hasContent = false
     /// No characters at all (the placeholder shows).
     private(set) var textIsEmpty = true
@@ -287,7 +292,7 @@ final class ChatComposerModel {
     }
 
     private var hasContentNow: Bool {
-        !attachments.isEmpty || text.contains { !$0.isWhitespace }
+        !attachments.isEmpty || !mentions.isEmpty || text.contains { !$0.isWhitespace }
     }
 
     /// The field's text, read from the field (once) when it is attached.
@@ -358,6 +363,13 @@ final class ChatComposerModel {
         if hasContent != content { hasContent = content }
     }
 
+    func setMentions(_ value: [ComposerMention]) {
+        guard mentions != value else { return }
+        mentions = value
+        let content = hasContentNow
+        if hasContent != content { hasContent = content }
+    }
+
     func beginPreparing() { preparing += 1 }
     func endPreparing() { preparing = max(0, preparing - 1) }
 
@@ -384,6 +396,7 @@ final class ChatComposerModel {
             "modelTitle": ComposerBarText.modelTitle(state), "effortTitle": ComposerBarText.effortTitle(state) ?? "none",
             "effortLevels": ComposerBarText.effortLevels(state), "noticeText": notice?.text ?? "", "choicesMode": state.choices.permissionMode ?? "none",
             "textLength": text.utf16.count, "attachments": attachments.map { $0.isImage ? "image" : "pastedText" },
+            "mentions": mentions.count,
             "menu": menu.map { String(describing: $0.kind) } ?? "none", "menuItems": menu?.items.count ?? 0,
             "editing": editing != nil, "queue": state.queue.items.count, "queuePaused": state.queue.paused?.rawValue ?? "none",
             "phase": String(describing: state.phase), "turnRunning": state.turnRunning, "sendKind": String(describing: sendKind(commandHeld: false)),

@@ -52,7 +52,7 @@ struct ChatComposerView: View {
                     .frame(height: height)
             }
             .padding(.horizontal, LoomTheme.Composer.textInsetH)
-            .padding(.top, model.attachments.isEmpty && model.preparing == 0
+            .padding(.top, model.attachments.isEmpty && model.mentions.isEmpty && model.preparing == 0
                      ? (compact ? LoomTheme.Composer.compactTextTop : LoomTheme.Composer.textTop) : LoomTheme.Composer.attachmentBottom)
             if let moving = model.handoverPending {
                 Text(moving).font(LoomTheme.Composer.noticeFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
@@ -163,12 +163,16 @@ extension ComposerBarText {
 // MARK: Attachments
 
 /// Thumbnails and chips above the text (56 × 42 thumbnails with a × badge, 42 high file chips), 16 in from the card's edge.
+/// Mention pills (D-96) come first; a session dropped on the row adds one.
 struct ComposerAttachmentsRow: View {
     let model: ChatComposerModel
 
     var body: some View {
-        if !model.attachments.isEmpty || model.preparing > 0 {
+        if !model.attachments.isEmpty || !model.mentions.isEmpty || model.preparing > 0 {
             FlowLayout(spacing: LoomTheme.Composer.attachmentSpacing, centered: false) {
+                ForEach(model.mentions) { mention in
+                    ComposerMentionPill(mention: mention) { model.removeMention(mention.id) }
+                }
                 ForEach(model.attachments) { attachment in chip(attachment) }
                 if model.preparing > 0 {
                     ProgressView().controlSize(.small).frame(width: LoomTheme.Composer.attachmentHeight,
@@ -179,6 +183,7 @@ struct ComposerAttachmentsRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("composer-attachments")
+            .onDrop(of: [SessionDrag.contentType], delegate: ComposerSessionDropDelegate(model: model))
         }
     }
 
@@ -233,6 +238,33 @@ struct ComposerAttachmentsRow: View {
             .strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("composer-attachment")
+    }
+}
+
+/// A session dropped on the chip row becomes a mention (D-96). The drag pasteboard is read while the drag is over the row, so
+/// a session the composer refuses shows the not-allowed feedback and drops nothing.
+struct ComposerSessionDropDelegate: DropDelegate {
+    let model: ChatComposerModel
+
+    private var draggedSession: UUID? { SessionDrag.sessionID(from: NSPasteboard(name: .drag)) }
+
+    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [SessionDrag.contentType]) }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: draggedSession.map(model.canMention) == true ? .copy : .forbidden)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        if let id = draggedSession { return model.takesSession(id, perform: true) }
+        // The drag pasteboard did not say: the session comes from the drop's providers.
+        let providers = info.itemProviders(for: [SessionDrag.contentType])
+        guard !providers.isEmpty else { return false }
+        let model = model
+        Task { @MainActor in
+            guard let id = await SessionDrag.sessionID(from: providers) else { return }
+            model.takesSession(id, perform: true)
+        }
+        return true
     }
 }
 

@@ -3,7 +3,8 @@ import Foundation
 import LoomChat
 
 /// The `/` and `@` menus (CHAT-SPEC → Menus): when they open, what they list, how they are driven and what a choice puts
-/// into the text. Plain text goes into the message (`@path`, `/name`); the menus only help to write it.
+/// into the text. Plain text goes into the message (`@path`, `/name`); the menus only help to write it. A session is the
+/// exception: it becomes a mention pill (D-96).
 extension ChatComposerModel {
     /// The most rows a menu shows.
     nonisolated static let menuLimit = 80
@@ -186,8 +187,11 @@ extension ChatComposerModel {
             dismissedTrigger = (current.kind, range.location)
             show("\(item.title) only runs in the terminal. Settings → General → Sessions run in sets the face.")
         case .session:
+            // A session becomes a pill (D-96): the typed `@query` leaves the field, and a session a pill names already adds none.
             guard let id = UUID(uuidString: String(item.id.dropFirst("session:".count))) else { return }
-            editor.replace(range, with: (environment.sessionMention(id) ?? "[session \(item.title)]") + " ")
+            editor.replace(range, with: "")
+            addMention(id)
+            editor.focus()
         default:
             editor.replace(range, with: item.insertion)
         }
