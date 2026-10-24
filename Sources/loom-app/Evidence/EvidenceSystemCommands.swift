@@ -97,13 +97,16 @@ extension AppDelegate {
             "unregistrations": fakeLoginItem?.unregistrations ?? 0,
             "settingsOpened": fakeLoginItem?.settingsOpened ?? 0,
         ]
-        return ["menuBar": menuBar, "notifications": notifications, "loginItem": loginItem]
+        // The live assertion: an evidence run that turns Keep Mac awake on holds off idle sleep while its fake session works.
+        let keepAwake: [String: Any] = ["held": self.keepAwake?.isHeld ?? false]
+        return ["menuBar": menuBar, "notifications": notifications, "loginItem": loginItem, "keepAwake": keepAwake]
     }
 
     var generalSettingsEvidence: [String: Any] {
         ["showInMenuBar": model?.showInMenuBar ?? NSNull(), "notifyApprovals": model?.notifyApprovals ?? NSNull(),
          "notificationAuthorization": model?.integration.notificationAuthorization.rawValue ?? NSNull(),
-         "loginItemStatus": model?.integration.loginItemStatus.rawValue ?? NSNull()]
+         "loginItemStatus": model?.integration.loginItemStatus.rawValue ?? NSNull(),
+         "keepAwake": model?.integration.keepAwake.rawValue ?? NSNull()]
     }
 }
 
@@ -114,7 +117,8 @@ extension AppDelegate {
 /// - `menubar-click:<session id|more|new|open|settings>`: the action of that item.
 /// - `screenshot-menubar:<label>`: the item's current drawing at 2x on a dark and a light bar, the chase on
 ///   its first frame (`screenshot-menubar-<label>-dark.png`, `-light.png`).
-/// - `settings-set:<menubar|notify|login>:<on|off>`: the three Settings → General switches.
+/// - `settings-set:<menubar|notify|login|awake>:<on|off>`: the Settings → General switches; `awake` is Keep Mac awake (on: While a
+///   session works).
 /// - `app-active:<on|off>`: the notifier treats Loom as the active app or not.
 /// - `notify-auth:<authorized|denied|notDetermined>`, `login-status:<enabled|requiresApproval|notRegistered>`: set the fakes.
 @MainActor
@@ -158,6 +162,7 @@ extension DevelopmentEvidence {
             case "menubar": model.setShowInMenuBar(on)
             case "notify": model.setNotifyApprovals(on)
             case "login": model.integration.setLoginItem(on)
+            case "awake": model.integration.setKeepAwake(on ? .whileWorking : .off)
             default: break
             }
             try? await Task.sleep(for: .milliseconds(150)) // the login item and permission calls are asynchronous

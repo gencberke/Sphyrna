@@ -32,14 +32,22 @@ extension AppDelegate {
         integration.openNotificationSettings = { services.notifications.openSettings() }
         integration.openLoginItems = { services.loginItem.openLoginItems() }
 
-        model.onMenuBarChange = { [weak bar, weak notifier] summary in
+        let keepAwake = KeepAwakeController(assertion: SystemIdleSleepAssertion())
+        self.keepAwake = keepAwake
+        model.onMenuBarChange = { [weak bar, weak notifier, weak keepAwake] summary in
             bar?.summaryChanged(summary)
             notifier?.approvalsChanged(summary.approvals)
+            keepAwake?.workingChanged(summary.working)
+        }
+        integration.onKeepAwakeChange = { [weak integration, weak keepAwake] in
+            keepAwake?.settingChanged(integration?.keepAwake ?? .off)
         }
         model.onShowInMenuBarChange = { [weak bar, weak model] in bar?.setVisible(model?.showInMenuBar ?? false) }
         model.onNotifyApprovalsChange = { [weak notifier] in notifier?.preferenceChanged() }
 
         bar.summaryChanged(model.menuBarSummary)
+        keepAwake.workingChanged(model.menuBarSummary.working)
+        keepAwake.settingChanged(integration.keepAwake)
         bar.setVisible(model.showInMenuBar)
         notifier.start()
         refreshSystemStatus()

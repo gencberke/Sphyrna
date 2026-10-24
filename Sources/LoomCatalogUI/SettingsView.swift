@@ -242,8 +242,8 @@ struct GeneralSettings: View {
     private static let lastUsedTag = "last-used"
 }
 
-/// How Loom reaches the user outside its window (D-49, D-52): the menu bar item, approval banners and
-/// Open at login. A row adds one line and a button only where macOS says something is wrong.
+/// How Loom reaches the user outside its window (D-49, D-52): the menu bar item, approval banners,
+/// Open at login and Keep Mac awake. A row adds one line and a button only where macOS says something is wrong.
 struct SystemSettingsCard: View {
     let model: CatalogModel
     let integration: SystemIntegration
@@ -276,6 +276,13 @@ struct SystemSettingsCard: View {
                 }
                 SettingsSwitch(title: "Open at login", isOn: Binding(
                     get: { integration.loginItemStatus.switchIsOn }, set: { integration.setLoginItem($0) }))
+            }
+            SettingsRowDivider()
+            SettingsRow(title: "Keep Mac awake",
+                        detail: "Hold off sleep while a session works, so a long turn is not cut short. The display still sleeps.") {
+                InkSegmented(values: KeepAwakeSetting.allCases, title: \.title, selection: integration.keepAwake,
+                             onSelect: { integration.setKeepAwake($0) })
+                    .accessibilityLabel("Keep Mac awake")
             }
         }
         // The system's side can change while Settings is closed or Loom is in the background.

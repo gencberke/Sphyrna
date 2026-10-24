@@ -78,12 +78,37 @@ public final class SystemIntegration {
     public internal(set) var notificationAuthorization: NotificationAuthorization = .notDetermined
     public internal(set) var loginItemStatus: LoginItemStatus = .notRegistered
 
+    /// Settings → General → Keep Mac awake. Kept in the preferences file the app hands over (`attach(preferences:)`).
+    public internal(set) var keepAwake: KeepAwakeSetting = .off
+
     @ObservationIgnored public var refresh: () -> Void = {}
     @ObservationIgnored public var setLoginItem: (Bool) -> Void = { _ in }
     @ObservationIgnored public var openNotificationSettings: () -> Void = {}
     @ObservationIgnored public var openLoginItems: () -> Void = {}
+    /// Keep Mac awake changed; the app reads `keepAwake`.
+    @ObservationIgnored public var onKeepAwakeChange: () -> Void = {}
+    @ObservationIgnored private var preferences: UIPreferencesStore?
 
     public init() {}
+
+    /// The preferences file the model writes: this card's options that are not the model's are read from it and written to it, beside
+    /// the other General switches. Before it is attached they keep their defaults and are not written.
+    public func attach(preferences: UIPreferencesStore) {
+        self.preferences = preferences
+        keepAwake = preferences.current.keepAwake
+    }
+
+    public func setKeepAwake(_ setting: KeepAwakeSetting) {
+        guard setting != keepAwake else { return }
+        keepAwake = setting
+        persist { $0.keepAwake = setting }
+        onKeepAwakeChange()
+    }
+
+    private func persist(_ change: (inout UIPreferences) -> Void) {
+        do { try preferences?.update(change) }
+        catch { LoomLog.error(.lifecycle, "Preferences could not be saved (\(LoomLog.category(of: error)))") }
+    }
 
     public func update(notifications: NotificationAuthorization? = nil, loginItem: LoginItemStatus? = nil) {
         if let notifications, notifications != notificationAuthorization { notificationAuthorization = notifications }

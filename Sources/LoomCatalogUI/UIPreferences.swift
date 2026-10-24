@@ -1,4 +1,5 @@
 import Foundation
+import LoomCore
 import LoomRemora
 
 /// The main window's frame in screen coordinates (AppKit, bottom-left origin).
@@ -179,6 +180,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// Remora's settings (LOMBOT §6.2); the defaults live in `RemoraPreferences`. A file written before Remora existed reads as
     /// those defaults, and so does any field of it that is missing or unreadable.
     public var remora: RemoraPreferences
+    /// Settings → General → Keep Mac awake. A file written before the setting existed reads as Off.
+    public var keepAwake: KeepAwakeSetting = .off
 
     /// The selected session, as every caller before destinations knew it; setting it sets the destination.
     /// The key is still written when the destination is a session, so an older build reads it too.
@@ -254,12 +257,14 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             animatedArt: (try? container.decodeIfPresent(Bool.self, forKey: .animatedArt)) ?? true,
             remora: (try? container.decodeIfPresent(RemoraPreferences.self, forKey: .remora)) ?? RemoraPreferences()
         )
+        keepAwake = (try? container.decodeIfPresent(KeepAwakeSetting.self, forKey: .keepAwake)) ?? .off
     }
 
     private enum CodingKeys: String, CodingKey {
         case viewMode, selectedSessionID, destination, sidebarWidth, sidebarCollapsed, terminalFontSize, openTabs
         case windowFrame, projectColors, showInMenuBar, notifyApprovals, sidebarStyle, launchView, inspectorOpen
         case inspectorWidths, searchSessionText, newSessionFace, appearance, paneTone, animatedArt, remora
+        case keepAwake
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -285,6 +290,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         try container.encode(paneTone, forKey: .paneTone)
         try container.encode(animatedArt, forKey: .animatedArt)
         try container.encode(remora, forKey: .remora)
+        try container.encode(keepAwake, forKey: .keepAwake)
     }
 
     private struct Lossy<Value: Decodable>: Decodable {

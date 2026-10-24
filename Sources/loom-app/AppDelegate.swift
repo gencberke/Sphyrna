@@ -50,6 +50,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     var systemServices: SystemServices?
     var menuBar: MenuBarController?
     var approvalNotifier: ApprovalNotifier?
+    /// Settings → General → Keep Mac awake: one assertion against idle system sleep while a session works.
+    var keepAwake: KeepAwakeController?
     private(set) var quitAlert: NSAlert?
     /// "Quit Loom and stop N working sessions?" while it is on screen.
     private(set) var quitQuestion: NSAlert?
@@ -127,11 +129,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 }
             }
         }
+        let preferences = UIPreferencesStore(url: root.appendingPathComponent("ui-preferences.json"))
         let model = CatalogModel(
-            catalog: catalog, startupError: catalogFailure, events: hub,
-            preferences: UIPreferencesStore(url: root.appendingPathComponent("ui-preferences.json")),
+            catalog: catalog, startupError: catalogFailure, events: hub, preferences: preferences,
             startableProviders: startableProviders
         )
+        model.integration.attach(preferences: preferences) // the General options the system side keeps
         configureEvidenceAtLaunch(model: model)
         self.model = model
         model.onShowSettings = { [weak self] section in self?.showSettings(section: section) }
@@ -418,6 +421,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     func applicationWillTerminate(_ notification: Notification) {
         NSApp.dockTile.badgeLabel = nil
         approvalNotifier?.stop()
+        keepAwake?.stop()
         usageWatcher?.stop()
         model?.flushPreferences()
     }
