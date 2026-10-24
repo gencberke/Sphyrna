@@ -36,6 +36,63 @@ public enum ApprovalNotificationPlanner {
     }
 }
 
+/// Long-turn notifications (opt-in): the sessions whose turn just finished after at least 30 s while they were not on screen (Sphyrna
+/// not the active app, or another session shown). A turn runs while the session works or waits for an approval in the middle of it;
+/// it finishes when the session is at its prompt again. A turn that ends in a request waiting for the user posts nothing: the
+/// needs-approval banner speaks for it. The watch follows the attention candidates on each menu bar change and keeps no timer.
+@MainActor
+public final class LongTurnWatch {
+    public static let minimumTurn: TimeInterval = 30
+    /// The notification's category and its one action: Open brings Sphyrna forward on the session, as a click on the banner does.
+    public static let categoryIdentifier = "loom-turn-finished"
+    public static let openActionIdentifier = "open"
+    public static let openActionTitle = "Open"
+
+    public struct Notice: Equatable, Sendable {
+        public let id: UUID
+        public let title: String
+        public let subtitle: String?
+    }
+
+    /// When each running turn was first seen.
+    private var started: [UUID: Date] = [:]
+
+    public init() {}
+
+    /// "<session title> finished".
+    public static func title(session: String) -> String { "\(session) finished" }
+
+    /// What the notifier posts after a menu bar change: one notice per long turn that just finished off screen, with the switch on.
+    public func finishedTurns(in model: CatalogModel, appIsActive: Bool, now: Date = Date()) -> [Notice] {
+        finishedTurns(model.attentionCandidates(), enabled: model.integration.notifyLongTurns, appIsActive: appIsActive,
+                      shown: model.selectedSessionID, now: now).compactMap { id in
+            model.titleAndProject(of: id).map { Notice(id: id, title: Self.title(session: $0.title), subtitle: $0.project) }
+        }
+    }
+
+    /// The decision itself. Turns are followed with the switch off too, so turning it on mid-turn counts the whole turn.
+    func finishedTurns(_ candidates: [AttentionCandidate], enabled: Bool, appIsActive: Bool, shown: UUID?, now: Date) -> [UUID] {
+        var finished: [UUID] = []
+        var seen = Set<UUID>()
+        for candidate in candidates {
+            let id = candidate.id
+            seen.insert(id)
+            switch candidate.indicator {
+            case .working, .waitingForApproval:
+                if started[id] == nil { started[id] = now }
+            case .unviewedCompletion, .ready:
+                guard let start = started.removeValue(forKey: id) else { continue }
+                let onScreen = appIsActive && shown == id
+                if enabled, !onScreen, now.timeIntervalSince(start) >= Self.minimumTurn { finished.append(id) }
+            default:
+                started[id] = nil // waiting for the user, failed, stopped: no finished turn
+            }
+        }
+        started = started.filter { seen.contains($0.key) }
+        return finished.sorted { $0.uuidString < $1.uuidString }
+    }
+}
+
 /// What the system says about Loom's notifications.
 public enum NotificationAuthorization: String, Equatable, Sendable {
     case authorized, denied, notDetermined
@@ -80,6 +137,8 @@ public final class SystemIntegration {
 
     /// Settings → General → Keep Mac awake. Kept in the preferences file the app hands over (`attach(preferences:)`).
     public internal(set) var keepAwake: KeepAwakeSetting = .off
+    /// Settings → General → Notify when a long turn finishes (opt-in), kept beside Keep Mac awake.
+    public internal(set) var notifyLongTurns = false
 
     @ObservationIgnored public var refresh: () -> Void = {}
     @ObservationIgnored public var setLoginItem: (Bool) -> Void = { _ in }
@@ -87,6 +146,8 @@ public final class SystemIntegration {
     @ObservationIgnored public var openLoginItems: () -> Void = {}
     /// Keep Mac awake changed; the app reads `keepAwake`.
     @ObservationIgnored public var onKeepAwakeChange: () -> Void = {}
+    /// Notify when a long turn finishes changed; the app reads `notifyLongTurns`.
+    @ObservationIgnored public var onNotifyLongTurnsChange: () -> Void = {}
     @ObservationIgnored private var preferences: UIPreferencesStore?
 
     public init() {}
@@ -96,6 +157,14 @@ public final class SystemIntegration {
     public func attach(preferences: UIPreferencesStore) {
         self.preferences = preferences
         keepAwake = preferences.current.keepAwake
+        notifyLongTurns = preferences.current.notifyLongTurns
+    }
+
+    public func setNotifyLongTurns(_ on: Bool) {
+        guard on != notifyLongTurns else { return }
+        notifyLongTurns = on
+        persist { $0.notifyLongTurns = on }
+        onNotifyLongTurnsChange()
     }
 
     public func setKeepAwake(_ setting: KeepAwakeSetting) {

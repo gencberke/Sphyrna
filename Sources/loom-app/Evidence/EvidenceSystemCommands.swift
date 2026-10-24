@@ -7,7 +7,8 @@ import LoomCore
 /// `UNUserNotificationCenter` or `SMAppService`: no system prompt, no real login item.
 @MainActor
 final class RecordingNotificationService: NotificationService {
-    struct Posted { let id: UUID; let title: String; let body: String }
+    /// `kind`: "approval" or "turnFinished" (the long-turn banner, whose body holds its subtitle and which carries Open).
+    struct Posted { let id: UUID; let title: String; let body: String; var kind = "approval" }
 
     var onActivate: ((UUID) -> Void)?
     var status = NotificationAuthorization.notDetermined
@@ -30,6 +31,12 @@ final class RecordingNotificationService: NotificationService {
     func remove(ids: [UUID]) { removed += ids }
     func removeAll() { removeAllCount += 1 }
     func openSettings() { settingsOpened += 1 }
+}
+
+extension RecordingNotificationService: FinishedTurnNotifying {
+    func postFinished(_ notice: LongTurnWatch.Notice) {
+        posted.append(Posted(id: notice.id, title: notice.title, body: notice.subtitle ?? "", kind: "turnFinished"))
+    }
 }
 
 @MainActor
@@ -84,8 +91,10 @@ extension AppDelegate {
         let notifications: [String: Any] = [
             "authorization": fake?.status.rawValue ?? NSNull(),
             "posted": (fake?.posted ?? []).map {
-                ["id": $0.id.uuidString, "title": redactsContent ? "" : $0.title, "body": redactsContent ? "" : $0.body]
+                ["id": $0.id.uuidString, "title": redactsContent ? "" : $0.title, "body": redactsContent ? "" : $0.body,
+                 "kind": $0.kind]
             },
+            "postedKinds": Dictionary((fake?.posted ?? []).map { ($0.kind, 1) }, uniquingKeysWith: +),
             "removed": (fake?.removed ?? []).map(\.uuidString),
             "removeAll": fake?.removeAllCount ?? 0,
             "authorizationRequests": fake?.authorizationRequests ?? 0,
@@ -106,7 +115,8 @@ extension AppDelegate {
         ["showInMenuBar": model?.showInMenuBar ?? NSNull(), "notifyApprovals": model?.notifyApprovals ?? NSNull(),
          "notificationAuthorization": model?.integration.notificationAuthorization.rawValue ?? NSNull(),
          "loginItemStatus": model?.integration.loginItemStatus.rawValue ?? NSNull(),
-         "keepAwake": model?.integration.keepAwake.rawValue ?? NSNull()]
+         "keepAwake": model?.integration.keepAwake.rawValue ?? NSNull(),
+         "notifyLongTurns": model?.integration.notifyLongTurns ?? NSNull()]
     }
 }
 
@@ -117,8 +127,8 @@ extension AppDelegate {
 /// - `menubar-click:<session id|more|new|open|settings>`: the action of that item.
 /// - `screenshot-menubar:<label>`: the item's current drawing at 2x on a dark and a light bar, the chase on
 ///   its first frame (`screenshot-menubar-<label>-dark.png`, `-light.png`).
-/// - `settings-set:<menubar|notify|login|awake>:<on|off>`: the Settings → General switches; `awake` is Keep Mac awake (on: While a
-///   session works).
+/// - `settings-set:<menubar|notify|turns|login|awake>:<on|off>`: the Settings → General switches; `turns` is Notify when a long
+///   turn finishes, `awake` is Keep Mac awake (on: While a session works).
 /// - `app-active:<on|off>`: the notifier treats Loom as the active app or not.
 /// - `notify-auth:<authorized|denied|notDetermined>`, `login-status:<enabled|requiresApproval|notRegistered>`: set the fakes.
 @MainActor
@@ -161,6 +171,7 @@ extension DevelopmentEvidence {
             switch parts[0] {
             case "menubar": model.setShowInMenuBar(on)
             case "notify": model.setNotifyApprovals(on)
+            case "turns": model.integration.setNotifyLongTurns(on)
             case "login": model.integration.setLoginItem(on)
             case "awake": model.integration.setKeepAwake(on ? .whileWorking : .off)
             default: break

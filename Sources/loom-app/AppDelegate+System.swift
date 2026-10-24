@@ -37,8 +37,10 @@ extension AppDelegate {
         model.onMenuBarChange = { [weak bar, weak notifier, weak keepAwake] summary in
             bar?.summaryChanged(summary)
             notifier?.approvalsChanged(summary.approvals)
+            notifier?.turnsChanged()
             keepAwake?.workingChanged(summary.working)
         }
+        integration.onNotifyLongTurnsChange = { [weak notifier] in notifier?.longTurnPreferenceChanged() }
         integration.onKeepAwakeChange = { [weak integration, weak keepAwake] in
             keepAwake?.settingChanged(integration?.keepAwake ?? .off)
         }

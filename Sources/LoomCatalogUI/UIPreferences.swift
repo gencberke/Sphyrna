@@ -182,6 +182,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     public var remora: RemoraPreferences
     /// Settings → General → Keep Mac awake. A file written before the setting existed reads as Off.
     public var keepAwake: KeepAwakeSetting = .off
+    /// Settings → General → Notify when a long turn finishes. A file written before the setting existed reads as off.
+    public var notifyLongTurns = false
 
     /// The selected session, as every caller before destinations knew it; setting it sets the destination.
     /// The key is still written when the destination is a session, so an older build reads it too.
@@ -258,13 +260,14 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             remora: (try? container.decodeIfPresent(RemoraPreferences.self, forKey: .remora)) ?? RemoraPreferences()
         )
         keepAwake = (try? container.decodeIfPresent(KeepAwakeSetting.self, forKey: .keepAwake)) ?? .off
+        notifyLongTurns = (try? container.decodeIfPresent(Bool.self, forKey: .notifyLongTurns)) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
         case viewMode, selectedSessionID, destination, sidebarWidth, sidebarCollapsed, terminalFontSize, openTabs
         case windowFrame, projectColors, showInMenuBar, notifyApprovals, sidebarStyle, launchView, inspectorOpen
         case inspectorWidths, searchSessionText, newSessionFace, appearance, paneTone, animatedArt, remora
-        case keepAwake
+        case keepAwake, notifyLongTurns
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -291,6 +294,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         try container.encode(animatedArt, forKey: .animatedArt)
         try container.encode(remora, forKey: .remora)
         try container.encode(keepAwake, forKey: .keepAwake)
+        try container.encode(notifyLongTurns, forKey: .notifyLongTurns)
     }
 
     private struct Lossy<Value: Decodable>: Decodable {

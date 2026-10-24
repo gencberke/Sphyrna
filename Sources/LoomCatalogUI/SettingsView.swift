@@ -242,7 +242,7 @@ struct GeneralSettings: View {
     private static let lastUsedTag = "last-used"
 }
 
-/// How Loom reaches the user outside its window (D-49, D-52): the menu bar item, approval banners,
+/// How Loom reaches the user outside its window (D-49, D-52): the menu bar item, approval and long-turn banners,
 /// Open at login and Keep Mac awake. A row adds one line and a button only where macOS says something is wrong.
 struct SystemSettingsCard: View {
     let model: CatalogModel
@@ -267,6 +267,12 @@ struct SystemSettingsCard: View {
                 }
                 SettingsSwitch(title: "Notify when a session needs approval", isOn: Binding(
                     get: { model.notifyApprovals }, set: { model.setNotifyApprovals($0) }))
+            }
+            SettingsRowDivider()
+            SettingsRow(title: "Notify when a long turn finishes",
+                        detail: "A silent banner when a turn of 30 seconds or more ends while you are elsewhere, with Open to go to the session.") {
+                SettingsSwitch(title: "Notify when a long turn finishes", isOn: Binding(
+                    get: { integration.notifyLongTurns }, set: { integration.setNotifyLongTurns($0) }))
             }
             SettingsRowDivider()
             SettingsRow(title: "Open at login", detail: "Start Sphyrna when you log in.", notice: loginNotice?.text) {
