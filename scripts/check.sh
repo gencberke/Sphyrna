@@ -114,10 +114,30 @@ c_syntax() {
   done
 }
 slot() { scripts/with-build-slot.sh "$@"; }
+# test_runs_passed: reads swift test's output; every "Test run started." has its "Test run with N tests … passed",
+# and there is one at least. XCTest's "Executed 0 tests" is no summary for Swift Testing.
+test_runs_passed() {
+  local line open=0 pairs=0
+  while IFS= read -r line; do
+    if [[ $line == *'Test run started.'* ]]; then
+      (( open )) && return 1
+      open=1
+    elif [[ $line =~ 'Test run with [0-9]+ tests? .*passed' ]]; then
+      (( open )) || return 1
+      open=0 pairs=$(( pairs + 1 ))
+    fi
+  done
+  (( !open && pairs > 0 ))
+}
 swift_test() { # <extra args...>
-  local plugin=()
+  local plugin=() start
   [[ -n $macro_plugin ]] && plugin=(-Xswiftc -load-plugin-library -Xswiftc $macro_plugin)
-  slot swift test --scratch-path "$scratch" "$@" $plugin
+  start=$(( $(wc -c < "$log") + 1 ))
+  slot swift test --scratch-path "$scratch" "$@" $plugin || return $?
+  # An exit 0 proves nothing without the runs' passing summaries: a test process can end early with status 0.
+  tail -c +$start "$log" | test_runs_passed && return 0
+  print -r -- "swift test exited 0, but a test run has no passing summary (the test process ended early)"
+  return 1
 }
 skip_args=()
 (( windows )) || for t in $window_tests; do skip_args+=(--skip $t); done
