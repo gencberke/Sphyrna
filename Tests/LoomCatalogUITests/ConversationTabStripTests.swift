@@ -164,6 +164,30 @@ struct ConversationTabStripTests {
         #expect(fittingHeight(ConversationTabStrip(model: fixture.model)) == 36 && LoomTheme.TabStrip.height == 36)
     }
 
+    /// A session dragged over the header (or the row it reveals) draws the row as a drop zone with 0 or 1 tabs; it goes when the
+    /// drag leaves both. Pages without a session header get no zone.
+    @Test func aSessionDraggedOverTheHeaderRevealsTheRowUntilItLeaves() async throws {
+        let fixture = try await makeFixture(rows: 2)
+        defer { cleanup(fixture) }
+        await fixture.model.start()
+        let model = fixture.model
+        #expect(model.visibleTabIDs.isEmpty)
+        #expect(!DetailHeader.drawsStrip(model: model, showsSessionHeader: true))
+        model.setTabDropHover(.header, true)
+        #expect(DetailHeader.drawsStrip(model: model, showsSessionHeader: true), "0 tabs: the zone")
+        #expect(!DetailHeader.drawsStrip(model: model, showsSessionHeader: false), "no session header: no zone")
+        #expect(!model.tabStripIsVisible, "the menu commands still see no strip")
+        model.select(fixture.ids[0])
+        #expect(DetailHeader.drawsStrip(model: model, showsSessionHeader: true), "1 tab: the zone")
+        // From the header into the row it revealed, in either order: the zone stays while one of them holds the drag.
+        model.setTabDropHover(.strip, true)
+        model.setTabDropHover(.header, false)
+        #expect(DetailHeader.drawsStrip(model: model, showsSessionHeader: true))
+        model.setTabDropHover(.strip, false)
+        #expect(!DetailHeader.drawsStrip(model: model, showsSessionHeader: true), "the drag left: no zone")
+        #expect(!model.showsTabDropZone)
+    }
+
     @Test func thePagesThatShowNoSessionDrawNoRowEvenWithTwoTabsOpen() async throws {
         let fixture = try await makeFixture(rows: 2)
         defer { cleanup(fixture) }

@@ -27,6 +27,7 @@ public struct DetailView: View {
                 DetailHeader(model: model, showsSessionHeader: route.showsSessionHeader, draft: route.draftHeader)
                     .background(route.surface)
                     .contentShape(Rectangle())
+                    .revealsTabRowOnSessionDrag(model: model)
                     .zIndex(2)
             }
             // The tab row belongs to the content column, so that the inspector, when it is a column, starts on the tab row's
@@ -88,9 +89,10 @@ struct DetailHeader: View {
     static let height = LoomTheme.Layout.headerHeight
 
     /// The tab row belongs to the page that shows a session (the route with the session header); the model's
-    /// `tabStripIsVisible` only says there are enough tabs.
+    /// `tabStripIsVisible` only says there are enough tabs. While a session is dragged over the header or the row, the row is
+    /// drawn as a drop zone even with fewer than two tabs.
     static func drawsStrip(model: CatalogModel, showsSessionHeader: Bool) -> Bool {
-        showsSessionHeader && model.tabStripIsVisible
+        showsSessionHeader && (model.tabStripIsVisible || model.showsTabDropZone)
     }
 
     /// The hairline under the header: a session's, and the development terminal's; the pages have none.
