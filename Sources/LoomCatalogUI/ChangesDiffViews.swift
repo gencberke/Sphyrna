@@ -89,6 +89,9 @@ struct ChangesDiffCard: View {
         }
         .padding(.horizontal, LoomTheme.Changes.cardHeaderInset)
         .frame(height: LoomTheme.Changes.cardHeaderHeight)
+        // The header drags the file out, as its row in the list does.
+        .contentShape(Rectangle())
+        .modifier(ChangesFileDragSource(file: file))
     }
 
     @ViewBuilder private var bodyView: some View {
