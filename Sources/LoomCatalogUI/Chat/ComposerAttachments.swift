@@ -258,6 +258,49 @@ enum ComposerPasteboard {
     }
 }
 
+extension ComposerPasteboard {
+    /// What a drop puts into a composer that sends text only (the draft page, Side, Quick Question): every file as `@path`, an
+    /// image file too, and every folder as `@folder/`, relative to `folder` when inside it, joined by spaces with one after.
+    /// Nil when the pasteboard carries no file (text, raw image data, a session). Only each item's kind is read.
+    static func textOnlyMentions(from pasteboard: NSPasteboard, relativeTo folder: String?) -> String? {
+        guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+              !urls.isEmpty else { return nil }
+        return urls.map { mention(for: $0, relativeTo: folder) }.joined(separator: " ") + " "
+    }
+
+    /// Drops files and folders into a text-only composer: at the caret of its field when the field is there (which then takes
+    /// the keyboard), else after the text it keeps. False when the drop carries no file; it never sends.
+    @MainActor
+    static func dropMentions(from pasteboard: NSPasteboard, relativeTo folder: String?, into bridge: (any ComposerEditorBridge)?,
+                             text: String, setText: (String) -> Void) -> Bool {
+        guard let mentions = textOnlyMentions(from: pasteboard, relativeTo: folder) else { return false }
+        if let bridge {
+            bridge.insertAtCaret(mentions)
+            bridge.focus()
+        } else {
+            setText(appending(mentions, to: text))
+        }
+        return true
+    }
+
+    /// `mentions` after `text`, a space between them when the text does not end in one.
+    static func appending(_ mentions: String, to text: String) -> String {
+        text.isEmpty || text.last?.isWhitespace == true ? text + mentions : text + " " + mentions
+    }
+}
+
+/// A drop of files or folders anywhere on a pane (the live stream, the draft page) lands in its composer, as on its field
+/// (W3-d). The drag pasteboard is read as the drop lands. Only files are taken: text and sessions are not this target's.
+struct ComposerPaneDrop: DropDelegate {
+    let land: @MainActor (NSPasteboard) -> Bool
+
+    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.fileURL]) }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .copy) }
+
+    func performDrop(info: DropInfo) -> Bool { land(NSPasteboard(name: .drag)) }
+}
+
 extension ComposerAttachment {
     /// An attachment an interrupt gave back, or a draft kept: the bytes are decoded again for the thumbnail.
     init(restoring outgoing: ChatOutgoingAttachment, id: String = UUID().uuidString.lowercased(), name: String? = nil) {

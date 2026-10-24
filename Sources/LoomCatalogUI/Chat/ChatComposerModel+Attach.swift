@@ -147,6 +147,17 @@ extension ChatComposerModel {
         handle(ComposerPasteboard.items(from: pasteboard), insertsSmallText: true)
     }
 
+    /// Files or folders dropped on the session's stream (`ComposerPaneDrop`): they land here as on the field, and the field
+    /// takes the keyboard. Anything without a file is refused.
+    @discardableResult
+    func dropOnPane(_ pasteboard: NSPasteboard) -> Bool {
+        guard ComposerPasteboard.items(from: pasteboard).contains(where: {
+            if case .imageFile = $0 { true } else if case .otherFile = $0 { true } else { false }
+        }), drop(from: pasteboard) else { return false }
+        editor?.focus()
+        return true
+    }
+
     private func handle(_ items: [ComposerPasteItem], insertsSmallText: Bool) -> Bool {
         guard !items.isEmpty else { return false }
         var mentions: [String] = []

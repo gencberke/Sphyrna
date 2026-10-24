@@ -8,9 +8,14 @@ import SwiftUI
 @MainActor
 final class QuickQuestionEditorHost: ComposerEditorHost {
     private let panel: QuickQuestionPanel
+    /// The session's folder: dropped paths inside it are relative.
+    private let workingDirectory: String?
     private weak var bridge: (any ComposerEditorBridge)?
 
-    init(panel: QuickQuestionPanel) { self.panel = panel }
+    init(panel: QuickQuestionPanel, workingDirectory: String? = nil) {
+        self.panel = panel
+        self.workingDirectory = workingDirectory
+    }
 
     var keyMode: ComposerKeys.Mode { .quick }
     var syncsByRevision: Bool { false }
@@ -41,7 +46,13 @@ final class QuickQuestionEditorHost: ComposerEditorHost {
     func textChanged(_ text: String) { panel.text = text }
     func editorEndedEditing() {}
     func paste(_ pasteboard: NSPasteboard, plain: Bool) -> Bool { false }
-    func drop(_ pasteboard: NSPasteboard) -> Bool { false }
+
+    /// Files and folders as `@path` and `@folder/`, relative to the session's folder. A quick question is text only, so an
+    /// image file is a path too.
+    func drop(_ pasteboard: NSPasteboard) -> Bool {
+        ComposerPasteboard.dropMentions(from: pasteboard, relativeTo: workingDirectory, into: bridge, text: panel.text) { panel.text = $0 }
+    }
+
     func editorAttached(_ bridge: (any ComposerEditorBridge)?) {
         self.bridge = bridge
         // The panel is there because the user asked for it (⌘;, the palette): its field takes the keyboard, also from the main
@@ -69,9 +80,9 @@ struct QuickQuestionPanelView: View {
     @State private var fieldHeight = LoomTheme.QuickQuestion.fieldMinimumHeight
     @Environment(\.indicatorsAnimate) private var animates
 
-    init(panel: QuickQuestionPanel) {
+    init(panel: QuickQuestionPanel, workingDirectory: String? = nil) {
         self.panel = panel
-        _host = State(initialValue: QuickQuestionEditorHost(panel: panel))
+        _host = State(initialValue: QuickQuestionEditorHost(panel: panel, workingDirectory: workingDirectory))
     }
 
     var body: some View {

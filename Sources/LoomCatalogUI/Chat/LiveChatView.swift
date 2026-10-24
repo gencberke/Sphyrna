@@ -2,6 +2,7 @@ import AppKit
 import LoomChat
 import Observation
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One view of a live chat (V16): its own stream (`ChatStreamController`: the scroll view, the table, the latch) over the
 /// session's `LiveChatFeed`. The stream is attached to the feed's presentation only while the view is on screen and its
@@ -152,6 +153,8 @@ struct LiveChatContent<Pinned: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             stream
+                // Files or folders dropped on the stream land in the session's composer, as on its field (W3-d).
+                .onDrop(of: [.fileURL], delegate: ComposerPaneDrop { composer?.dropOnPane($0) ?? false })
             // The stream gives way to what is under it: V18's card stack and the composer, up to the cards' share.
             VStack(spacing: 0) {
                 banner
@@ -212,7 +215,7 @@ struct LiveChatContent<Pinned: View>: View {
             let availability = composer.sideQuestionAvailability
             ZStack {
                 if quickQuestion.isOpen, availability == .available {
-                    QuickQuestionPanelView(panel: quickQuestion)
+                    QuickQuestionPanelView(panel: quickQuestion, workingDirectory: feed.workingDirectory)
                         .transition(reduceMotion ? .identity : .opacity)
                 }
             }

@@ -12,12 +12,15 @@ import SwiftUI
 struct NewSessionComposer: View {
     let model: CatalogModel
     let projectID: UUID?
+    /// Moves when a drop elsewhere on the page landed in the draft: the field takes the keyboard.
+    var focusRequest = 0
     @State private var height = NewSessionLayout.textMinimumHeight
     @State private var host: DraftComposerHost
 
-    init(model: CatalogModel, projectID: UUID?) {
+    init(model: CatalogModel, projectID: UUID?, focusRequest: Int = 0) {
         self.model = model
         self.projectID = projectID
+        self.focusRequest = focusRequest
         _host = State(initialValue: DraftComposerHost(model: model, projectID: projectID))
     }
 
@@ -34,6 +37,7 @@ struct NewSessionComposer: View {
             }
             card
         }
+        .onChange(of: focusRequest) { host.focusEditor() }
     }
 
     private var card: some View {
@@ -221,7 +225,23 @@ final class DraftComposerHost: ComposerEditorHost {
     func textChanged(_ text: String) { model.setDraftText(text, projectID: projectID) }
     func editorEndedEditing() { model.newSession.flush() }
     func paste(_ pasteboard: NSPasteboard, plain: Bool) -> Bool { false }
-    func drop(_ pasteboard: NSPasteboard) -> Bool { false }
+
+    /// Files and folders as `@path` and `@folder/`, relative to the draft's project folder. The new session's first message
+    /// is text only, so an image file is a path too.
+    func drop(_ pasteboard: NSPasteboard) -> Bool {
+        ComposerPasteboard.dropMentions(from: pasteboard, relativeTo: model.draftProject(projectID)?.path, into: editor,
+                                        text: modelText) { model.setDraftText($0, projectID: projectID) }
+    }
+
+    /// A drop anywhere on the draft page (`ComposerPaneDrop`): the files go after the draft's text. The page then gives the
+    /// field the keyboard (`NewSessionComposer.focusRequest`).
+    static func dropOnPage(_ pasteboard: NSPasteboard, model: CatalogModel, projectID: UUID?) -> Bool {
+        ComposerPasteboard.dropMentions(from: pasteboard, relativeTo: model.draftProject(projectID)?.path, into: nil,
+                                        text: model.newSession.draft(for: projectID)?.text ?? "") {
+            model.setDraftText($0, projectID: projectID)
+        }
+    }
+
     func editorAttached(_ bridge: (any ComposerEditorBridge)?) { editor = bridge }
 
     /// The draft's text takes the keyboard back (a popover closed).

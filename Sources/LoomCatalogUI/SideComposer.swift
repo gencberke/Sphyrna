@@ -52,7 +52,14 @@ final class SideComposerEditorHost: ComposerEditorHost {
 
     func editorEndedEditing() {}
     func paste(_ pasteboard: NSPasteboard, plain: Bool) -> Bool { false }
-    func drop(_ pasteboard: NSPasteboard) -> Bool { false }
+
+    /// Files and folders as `@path` and `@folder/`, relative to the parent session's folder. A side question is text only, so
+    /// an image file is a path too.
+    func drop(_ pasteboard: NSPasteboard) -> Bool {
+        let record = model.rowModels[parent]?.record ?? model.liveRecords[parent]
+        return ComposerPasteboard.dropMentions(from: pasteboard, relativeTo: record?.session.workingDirectory, into: bridge,
+                                               text: modelText) { textChanged($0) }
+    }
     func editorAttached(_ bridge: (any ComposerEditorBridge)?) { self.bridge = bridge }
 }
 

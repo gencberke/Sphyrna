@@ -1,6 +1,7 @@
 import AppKit
 import LoomCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// A project's new-session draft (V07, D-59; DESIGN §8): an empty page with one question, "What should we work on in
 /// [project]?", whose project is the picker, the folder line, the session's composer, the keys line, the branch strip and the
@@ -9,6 +10,8 @@ import SwiftUI
 struct DraftSessionView: View {
     let model: CatalogModel
     let projectID: UUID?
+    /// Moves when a drop on the page landed in the draft: its field takes the keyboard.
+    @State private var dropFocus = 0
 
     var body: some View {
         let origin = model.draftRemoraOriginLine(projectID: projectID)
@@ -25,7 +28,7 @@ struct DraftSessionView: View {
                             .frame(maxWidth: NewSessionLayout.composerWidth)
                             .padding(.top, LoomTheme.Draft.originTop)
                     }
-                    NewSessionComposer(model: model, projectID: projectID)
+                    NewSessionComposer(model: model, projectID: projectID, focusRequest: dropFocus)
                         .frame(maxWidth: NewSessionLayout.composerWidth)
                         .padding(.top, origin == nil ? NewSessionLayout.composerTop : LoomTheme.Draft.originComposerGap)
                     DraftKeysLine()
@@ -44,6 +47,12 @@ struct DraftSessionView: View {
             .padding(.bottom, NewSessionLayout.bottomLift)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Files or folders dropped anywhere on the page land in the draft's composer (W3-d); nothing is sent.
+        .onDrop(of: [.fileURL], delegate: ComposerPaneDrop { pasteboard in
+            guard DraftComposerHost.dropOnPage(pasteboard, model: model, projectID: projectID) else { return false }
+            dropFocus += 1
+            return true
+        })
         // One page per draft: another draft, of this project or another, starts from a fresh field, strip and focus.
         .id(model.newSession.currentID(for: projectID)?.uuidString ?? SessionDraft.projectKey(for: projectID))
         .accessibilityElement(children: .contain)
