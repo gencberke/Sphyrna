@@ -35,29 +35,15 @@ struct ComposerModelPicker: Equatable {
     static let defaultID = "default"
 }
 
-/// The words the popover owns. A model's note is keyed by its alias and is not read from LoomChat; a model the table does not
-/// know has none.
+/// The words the popover owns. A model's note is keyed by its alias and is read from `ModelCatalog` (LoomCore); a model the
+/// catalog does not know has none.
 enum ComposerModelNotes {
     static let thisSession = "this session"
     static let inNewSession = "in a new session"
     /// The tooltip of the other harness's group on a live session.
     static let keepsItsHarness = "A session keeps its harness: Codex models start a new Codex session"
 
-    static func note(forAlias alias: String) -> String? {
-        switch alias.lowercased() {
-        case "default": "Recommended"
-        case "opus": "Long agentic coding"
-        case "sonnet": "Fast, everyday work"
-        case "haiku": "Quick answers, no effort"
-        default: nil
-        }
-    }
-
-    /// Codex's rows are static and dimmed: a session cannot change its harness, and the new-session page cannot start Codex
-    /// yet. They are the reference's, not read from LoomCore.
-    static let codexModels: [(title: String, note: String)] = [
-        ("GPT-6 Astra", "Most capable"), ("GPT-6.1 Sol", "Near Astra, for less"), ("GPT-6 Luna", "Focused, high-volume work"),
-    ]
+    static func note(forAlias alias: String) -> String? { ModelCatalog.claudeNote(forAlias: alias) }
 }
 
 /// One harness in the popover: its mark, its name, its note in mono and its rows.
@@ -75,8 +61,9 @@ struct ComposerModelGroup: Equatable, Identifiable {
 
 extension ComposerModelPicker {
     /// The groups, the session's harness first. Claude Code is the only harness a session runs in this build, so its group is
-    /// live and Codex's is static and dimmed.
-    func groups() -> [ComposerModelGroup] {
+    /// live and Codex's is static and dimmed. Codex's rows are `codex`, the catalog's list (`ModelCatalog`): today's names
+    /// until a probe has read the real ones, and no group at all when the harness is switched off (an empty list).
+    func groups(codex: [ModelCatalogEntry] = ModelCatalog.codexFallback) -> [ComposerModelGroup] {
         let defaultChosen = ComposerBarText.isDefaultModelChosen(chosenModel)
         var claudeRows = [ComposerPickRow(id: Self.defaultID, title: "Default",
                                           subtitle: ComposerModelNotes.note(forAlias: Self.defaultID), checked: defaultChosen)]
@@ -84,14 +71,15 @@ extension ComposerModelPicker {
             ComposerPickRow(id: $0.value, title: $0.title, subtitle: ComposerModelNotes.note(forAlias: $0.value),
                             checked: !defaultChosen && chosenModel == $0.value)
         }
-        let codexRows = ComposerModelNotes.codexModels.map {
-            ComposerPickRow(id: "codex:\($0.title)", title: $0.title, subtitle: $0.note, checked: false, isEnabled: false)
+        let codexRows = codex.map {
+            ComposerPickRow(id: "codex:\($0.id)", title: $0.title, subtitle: $0.note, checked: false, isEnabled: false)
         }
-        return [
-            ComposerModelGroup(provider: .claude, name: "Claude Code", note: claudeNote, rows: claudeRows, isLive: true, help: nil),
-            ComposerModelGroup(provider: .codex, name: "Codex", note: codexNote, rows: codexRows, isLive: false,
-                               help: ComposerModelNotes.keepsItsHarness),
-        ]
+        var groups = [ComposerModelGroup(provider: .claude, name: "Claude Code", note: claudeNote, rows: claudeRows, isLive: true, help: nil)]
+        if !codexRows.isEmpty {
+            groups.append(ComposerModelGroup(provider: .codex, name: "Codex", note: codexNote, rows: codexRows, isLive: false,
+                                             help: ComposerModelNotes.keepsItsHarness))
+        }
+        return groups
     }
 }
 
@@ -219,7 +207,7 @@ struct ComposerModelPopover: View {
     /// The level under the thumb while it is dragged.
     @State private var preview: Int?
 
-    private var groups: [ComposerModelGroup] { picker.groups() }
+    private var groups: [ComposerModelGroup] { picker.groups(codex: ModelCatalog.shared.models(for: .codex)) }
     private var chosenIndex: Int? { Self.chosenIndex(picker) }
 
     private static func pickableIDs(_ picker: ComposerModelPicker) -> [String] {

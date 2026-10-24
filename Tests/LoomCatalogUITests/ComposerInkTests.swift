@@ -78,7 +78,7 @@ struct ComposerInkTests {
     /// arrow keys.
     @MainActor @Test func codexIsStaticAndItsRowsCannotBePicked() {
         let codex = picker(chosen: "sonnet").groups()[1]
-        #expect(codex.rows.count == ComposerModelNotes.codexModels.count && !codex.rows.isEmpty)
+        #expect(codex.rows.count == ModelCatalog.codexFallback.count && !codex.rows.isEmpty)
         #expect(codex.rows.allSatisfy { !$0.isEnabled && !$0.checked && $0.id.hasPrefix("codex:") })
         #expect(codex.help == ComposerModelNotes.keepsItsHarness)
         var later = picker()

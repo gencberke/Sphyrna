@@ -41,7 +41,7 @@ struct HeaderModelContent: Equatable {
     /// the session has not reported yet), the composer's wording for an id, the alias's title for an alias.
     static func launchTitle(_ chosen: String?) -> String? {
         guard let chosen, !chosen.isEmpty, chosen != "default" else { return nil }
-        return chosen.hasPrefix("claude-") ? ComposerBarText.prettyModel(chosen) : NewSessionModels.title(of: chosen)
+        return chosen.hasPrefix("claude-") ? ComposerBarText.prettyModel(chosen) : ModelCatalog.claudeTitle(of: chosen)
     }
 }
 
