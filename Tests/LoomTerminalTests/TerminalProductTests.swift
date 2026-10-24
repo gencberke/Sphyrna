@@ -36,6 +36,24 @@ struct TerminalProductTests {
         #expect(LoomTerminalView.quotedPaths([URL(string: "https://example.com")!]).isEmpty)
     }
 
+    @Test func aDroppedSessionPastesItsTranscriptPathAndRefusesWhenThereIsNone() async {
+        let surface = TerminalSurface()
+        let id = UUID()
+        #expect(!(await surface.view.insertDroppedSession(id)), "no resolver, nothing to paste")
+        let type = NSPasteboard.PasteboardType("local.loom.test.session")
+        var asked: [UUID] = []
+        var path: String? = "/tmp/it's a transcript.jsonl"
+        surface.view.sessionDrop = TerminalSessionDrop(
+            pasteboardType: type, sessionID: { UUID(uuidString: $0.string(forType: type) ?? "") },
+            accepts: { _ in true }, transcriptPath: { asked.append($0); return path })
+        #expect(surface.view.registeredDraggedTypes.contains(type))
+        #expect(surface.view.registeredDraggedTypes.contains(.fileURL))
+        #expect(await surface.view.insertDroppedSession(id))
+        path = nil
+        #expect(!(await surface.view.insertDroppedSession(id)), "a session without a transcript pastes nothing")
+        #expect(asked == [id, id])
+    }
+
     @Test func bufferDiagnosticsExposeExactBoundedCountsWithoutCopyingText() throws {
         let surface = TerminalSurface()
         let initial = surface.statistics

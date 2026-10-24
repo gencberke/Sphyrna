@@ -404,6 +404,28 @@ public final class ConversationController: NewSessionIntents, HandoverIntents, T
 
     public func releaseStopCapture(run: UUID) { stopCaptures[run] = nil }
 
+    /// A session dropped on a run's terminal pastes its transcript path. The owner is asked when the drag moves (a terminal
+    /// refuses its own session, also after `/clear`); the lookup stays in the one folder Claude names after the working
+    /// directory, off the main actor.
+    private func sessionDrop(run runID: UUID) -> TerminalSessionDrop {
+        TerminalSessionDrop(
+            pasteboardType: SessionDrag.pasteboardType,
+            sessionID: { SessionDrag.sessionID(from: $0) },
+            accepts: { [weak self] id in
+                guard let self, self.entries[runID]?.owner != id else { return false }
+                return self.model?.composerMentionTarget(for: id) != nil
+            },
+            transcriptPath: { [weak self] id in
+                guard let model = self?.model, let directory = model.claudeConfigDirectory,
+                      let record = model.rowModels[id]?.record ?? model.liveRecords[id],
+                      let conversation = record.session.providerConversationID else { return nil }
+                let folder = record.session.workingDirectory
+                return await Task.detached(priority: .userInitiated) {
+                    ClaudeTranscriptLocator.locate(sessionID: conversation, configDirectory: directory, onlyIn: folder)?.path
+                }.value
+            })
+    }
+
     private func adopt(_ launch: RuntimeLaunch, surface: TerminalSurface) {
         let runID = launch.runID
         // A new run of a session lets go of the screen its earlier run left behind.
@@ -415,6 +437,7 @@ public final class ConversationController: NewSessionIntents, HandoverIntents, T
         surface.onInputError = { [weak self] error in
             self?.model?.reportFailure(error.description)
         }
+        surface.view.sessionDrop = sessionDrop(run: runID)
         entries[runID] = Entry(
             runID: runID, surface: surface,
             container: TerminalContainerView(terminal: surface.view), owner: launch.sessionID

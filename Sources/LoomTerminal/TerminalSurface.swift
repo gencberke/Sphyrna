@@ -367,6 +367,27 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
     }
 }
 
+/// A session dragged onto the terminal pastes its transcript's path, like a file drop. `LoomTerminal` knows no catalog type:
+/// the app says what the drag carries and which session may be taken.
+public struct TerminalSessionDrop {
+    public var pasteboardType: NSPasteboard.PasteboardType
+    /// The session a drag pasteboard carries, or nil for anything else.
+    public var sessionID: (NSPasteboard) -> UUID?
+    /// Whether the session may be dropped here (cheap, asked while the drag moves): not this terminal's own session, and one
+    /// whose transcript can be read.
+    public var accepts: @MainActor (UUID) -> Bool
+    /// The session's transcript path, or nil when there is none. Called on drop; it must not block the main actor.
+    public var transcriptPath: @MainActor (UUID) async -> String?
+
+    public init(pasteboardType: NSPasteboard.PasteboardType, sessionID: @escaping (NSPasteboard) -> UUID?,
+                accepts: @escaping @MainActor (UUID) -> Bool, transcriptPath: @escaping @MainActor (UUID) async -> String?) {
+        self.pasteboardType = pasteboardType
+        self.sessionID = sessionID
+        self.accepts = accepts
+        self.transcriptPath = transcriptPath
+    }
+}
+
 /// Engine view with Loom's paste rule (CHECKPOINT-5-HISTORY §4.1): an image-only clipboard
 /// is forwarded as Ctrl+V for CLIs that read clipboard images themselves; and Loom's Option
 /// rule (see `keyDown`).
@@ -427,17 +448,42 @@ public final class LoomTerminalView: TerminalView {
         }.joined(separator: " ")
     }
 
+    /// Set, the terminal also takes a dragged session (`TerminalSessionDrop`).
+    public var sessionDrop: TerminalSessionDrop? {
+        didSet { registerForDraggedTypes([.fileURL] + (sessionDrop.map { [$0.pasteboardType] } ?? [])) }
+    }
+
     private func droppedFiles(_ sender: any NSDraggingInfo) -> [URL] {
         (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
 
+    /// The session a drag carries, when this terminal takes it.
+    private func droppedSession(_ sender: any NSDraggingInfo) -> UUID? {
+        guard let drop = sessionDrop, let id = drop.sessionID(sender.draggingPasteboard), drop.accepts(id) else { return nil }
+        return id
+    }
+
     public override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        droppedFiles(sender).isEmpty ? [] : .copy
+        droppedFiles(sender).isEmpty && droppedSession(sender) == nil ? [] : .copy
     }
 
     public override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-        insertDroppedFiles(droppedFiles(sender))
+        let files = droppedFiles(sender)
+        if !files.isEmpty { return insertDroppedFiles(files) }
+        guard let id = droppedSession(sender) else { return false }
+        // The path is looked up off the main actor; a session without a transcript pastes nothing.
+        Task { @MainActor [weak self] in
+            if await self?.insertDroppedSession(id) != true { NSSound.beep() }
+        }
+        return true
+    }
+
+    /// Pastes the session's transcript path, shell-quoted; false (nothing pasted) when there is none.
+    @discardableResult
+    public func insertDroppedSession(_ id: UUID) async -> Bool {
+        guard let drop = sessionDrop, let path = await drop.transcriptPath(id) else { return false }
+        return insertDroppedFiles([URL(fileURLWithPath: path)])
     }
 
     @discardableResult
