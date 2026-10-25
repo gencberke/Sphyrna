@@ -124,7 +124,6 @@
   - the next round's scope (ACTIVE-PLAN §0.1 "Next").
   - **Still open from before:**
     - the Remora account rule (`FINDINGS.md`, Should-Fix 4), `O-09`, and Remora's public-build default;
-    - emptying `~/.Trash/loom-cleanup-20261022`;
     - the 35 old worktrees with uncommitted changes.
 - **`@planner`:**
   - on `@user`'s word, the push and the release;
