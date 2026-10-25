@@ -1,36 +1,43 @@
 # Status (Live Relay Board)
 
 - **Updated:** 2026-10-25
-- **Stage:** **Round 5: 1.6.1's slices are in progress** ([plans/ACTIVE-PLAN.md §0](plans/ACTIVE-PLAN.md#0-round-5-sphyrna-161-from-24-oct-d-93), [plans/FEEDBACK-5.md](plans/FEEDBACK-5.md)), from `@user`'s first notes on 1.6.0.
-  - Sphyrna 1.6.0, the first stable release ([D-83](DECISIONS.md)), is tagged, promoted and installed locally (23 Oct).
+- **Stage:** **Round 6 is done: Sphyrna 1.6.2 is tagged, promoted and installed** ([plans/ACTIVE-PLAN.md §0.1](plans/ACTIVE-PLAN.md#01-roadmap-after-161-25-oct), round log `evidence/r6/RUN.md`).
+  - The release line follows [D-93](DECISIONS.md):
+    - 1.6.1 (round 5's fixes, identity, drag and drop, flow) and 1.6.2 (Codex parity's infrastructure, usage and connections) are built;
+    - **1.7.0** is next: the session channel and Codex's binding.
   - `0.4.4` remains the latest public GitHub release ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)).
-  - The release line is now **1.6.1**, then **1.6.2**, then **1.7.0** ([D-93](DECISIONS.md)):
-    - **1.6.1:** the round's fixes, identity, drag and drop, and flow.
-    - **1.6.2:** the app-wide infrastructure for Codex at parity ([D-94](DECISIONS.md)).
-    - **1.7.0:** the session channel and Codex's binding.
-- **State:** **1.6.0 is the daily app.** `release/1.6.0` is `v2` `678d5ab`, promoted as the loom tree's `9da0467` (tag `v1.6.0`, local, unpushed) and installed in `/Applications` as build 10600. The 0.4.4 data is backed up in `~/Library/Application Support/Loom-backup-0.4.4-20261023T084919`.
-  - Round 5's causes are traced, Chat's streaming cost is studied (FB5-10), and the decisions are recorded as D-93 to D-99.
-  - **`@user`'s go (24 Oct, about 12:50):** "mac boşta olacak. başlayabilirsin." The open questions take their defaults: Q2, Q3, Q6, Q7 and Q13 to Q17 in [FEEDBACK-5](plans/FEEDBACK-5.md#decisions). That is the planner's reading of the go; `@user` can change any of them.
-  - The slices run as the planner's subagents, each in its own `wt/r5-*` worktree (§2).
-  - **1.6.1 is tagged and promoted (25 Oct):** `release/1.6.1` is `v2` `c3bf1a8`, promoted as the loom tree's `39a5e4a` (tag `v1.6.1`, local, unpushed). `@user`: "sonuçlar okyse … ufak bir roadmap çizip burada version bumpını alalım".
+- **State:** **1.6.2 is the daily app (25 Oct, about 05:00).**
+  - **Where it is:**
+    - `release/1.6.2` is `v2` `6fdde18`, promoted as the loom tree's `9dc4342` (tag `v1.6.2`, local, unpushed).
+    - It is installed in `/Applications/Loom.app` as build 10602, signed, and `codesign --verify --deep --strict` passes. It was not launched by the planner.
+    - 1.6.0's data is backed up in `~/Library/Application Support/Loom-backup-1.6.0-20261025T045435`.
+    - 1.6.1 (`release/1.6.1` `c3bf1a8`, loom `39a5e4a`, tag `v1.6.1`) was promoted but never installed; 1.6.2 contains it.
+  - **`@user`'s overnight word (25 Oct, verbatim in RUN.md):** after the round, the closing `@optimizer`, its fixes with narrow tests, the version bump, the install, then the loom-dev cleanup and a docs check. The push and the GitHub release were not part of it.
+  - **What 1.6.2 adds** (ACTIVE-PLAN §0.1):
+    - the capability table (D-94);
+    - the Codex probe, the connect switch and the model catalog;
+    - Settings → Usage with Codex (D-99) and Settings → Connections (D-98);
+    - Peek, a session dropped on a terminal, and round 5's leftovers.
   - **Checks behind it:**
-    - the full gate on `618eb41` (1,828 + 365 tests, windows, release tree);
-    - each later commit's suites, a combined check on `7b7b9cb` (151 tests), and a release tree on the final code;
-    - the focused closing review (D-06), with its fixes in.
-    - The rest of the lean C8 was skipped on `@user`'s call (narrow checks, usage), as was the real-Claude check.
-  - **Chat cost after S4:** 600 chars/s 22.4 → 19.2, 6,000 chars/s 48.3 → 39.0, a long fence 37.6 → 19.1. These are D-92 (3)'s new budgets; Q17's target goes to S5, after 1.6.1.
-  - **The roadmap after 1.6.1** is [ACTIVE-PLAN §0.1](plans/ACTIVE-PLAN.md): 1.6.2 is Codex parity's infrastructure, usage and connections, Chat S5 and small leftovers; 1.7.0 is the session channel and Codex's binding.
+    - each package's own suites, and combined checks after each wave;
+    - the closing `@optimizer` (strict-reviewer, Opus 5.5 / max, `evidence/r6/optimizer/REPORT.md`): 11 findings, none Blocking; 7 applied with failing-first tests, and 4 recorded for later;
+    - **the full gate on `3cbbcfc`** (`check-20261025T041948-63221.log`: release build, release tree, 1,877 + 365 tests with windows);
+    - a real-CLI check of the plan-limits child's new `initialize` (Claude Code 2.1.300, isolated profile, no model call).
+    - **Not run:** C8 (Chat was not changed beyond the splitter's rule) and the real Codex (production does not start it; the probe is tested on the fake).
   - **Waiting for `@user`:**
-    - installing 1.6.1 (`~/Documents/github/loom/build.sh`, which replaces the daily 1.6.0 in `/Applications`);
-    - the push and the GitHub release (DEVELOPMENT §10);
-    - the hand checks in §0.1.
-- **Blocker:** none. The icon is picked (D-97). The tag, promote, push and GitHub release wait for `@user` ([D-16](DECISIONS.md), [D-83](DECISIONS.md)).
+    - the hand checks in ACTIVE-PLAN §0.1;
+    - the push (`git -C ~/Documents/github/loom push origin main v1.6.2`, and `v1.6.1` if wanted) and the GitHub release (DEVELOPMENT §10);
+    - whether to delete the round slices' build scratch (`~/Library/Caches/loom-v2/build/r5-*` and `r6-*` except `r6-v2`, about 24 GB; the disk is 85 % full).
+- **Blocker:** none. The push and the GitHub release wait for `@user` ([D-16](DECISIONS.md), [D-83](DECISIONS.md)).
 
 ---
 
 ## 1. Current Operational Mode
 
-- **Next (25 Oct):** on `@user`'s word, install 1.6.1, then the push and the GitHub release. After that, 1.6.2 starts from ACTIVE-PLAN §0.1, planned with `@user`.
+- **Next (25 Oct):**
+  1. `@user`'s hand checks on the installed 1.6.2.
+  2. On `@user`'s word, the push and the GitHub release.
+  3. Then the next round from ACTIVE-PLAN §0.1, planned with `@user`: the `@optimizer`'s later items, the rest of usage, Chat S5, or 1.7.0.
 - **Planner (24 Oct):** the session that wrote [FEEDBACK-5](plans/FEEDBACK-5.md) plans round 5 with `@user`. Before it, the session "Sphyrna 1.6.0 release planlama" was `@planner` from 22 Oct 02:20 (`@user`'s word). The earlier planner session and the track sessions `sphyrna-ink` / `sphyrna-core` are idle; implementers run as the planner's own subagents and slices integrate straight onto `v2` (the `ink` and `core` track branches are not used).
 - **Night window (22–23 Oct, `@user` at 23:41):** the Mac idle, on the adapter, the screen unlocked; the planner ran the screen work after the review's fixes (the full gate, `rc3`'s C8 cells and an A/B against `rc2`, the service smoke) without asking again. It ended at 01:10. Briefs tell implementers to avoid commands that ask for approval, and to wait on `evidence/tools/wait-measurements.sh` (a C8 run, or the `HOLD-BUILDS` file while `@user` uses the Mac) before any build.
 - **Test cadence ([D-90](DECISIONS.md), [DEVELOPMENT.md §3.1](DEVELOPMENT.md#31-test-cadence-slices-one-pooled-batch-fixes-scoped-re-checks-d-90-22-oct-2026)):** narrow off-screen checks per slice; the pool runs when enough has collected; fixes get scoped re-checks.
@@ -43,8 +50,8 @@
 | Role / Slice | Worktree Path | Branch | HEAD SHA | Working Tree Status |
 | --- | --- | --- | --- | --- |
 | Main repo (`loom-dev`) | `/Users/gencberke/Documents/github/loom-dev` | `swarm/1` | this board's commit | Planner docs |
-| Round 5 slices | `wt/r5-settings`, `wt/r5-inspector`, `wt/r5-remora`, `wt/r5-drag`, `wt/r5-chat-cost`, `wt/r5-drafts`, `wt/r5-icon` (done), `wt/r5-pill` | `slice/r5-*` | `988256a` at start (`r5-pill`: `2202fc6`) | In progress; Briefs in `evidence/r5/<slice>/BRIEF.md`, shared rules in `evidence/r5/COMMON.md`; implementers commit on their branch, the planner cherry-picks onto `v2` |
-| Integration branch | `~/Library/Caches/loom-v2/wt/v2` | `v2` | this board's commit (after `1b974c4`) | Clean; local only, never pushed |
+| Round 5 and 6 slices | worktrees removed (25 Oct, clean and integrated) | `slice/r5-*`, `slice/r6-*` | the slices' last commits | Branches kept; Briefs and logs in `evidence/r5/` and `evidence/r6/`; build scratch `build/r5-*`, `build/r6-*` left for `@user` |
+| Integration branch | `~/Library/Caches/loom-v2/wt/v2` | `v2` | this board's commit (after `6fdde18`, tag `release/1.6.2`) | Clean; local only, never pushed; scratch `build/r6-v2` |
 | RC package | `wt/rc3-candidate` | detached | `1b974c4` | Clean; package `rc3-*` under `Loom-Dev/packages/` (`rc2-*` at `0461a54` kept for the A/B) |
 | Fix slices (the review's) | `wt/fix-lifecycle`, `wt/fix-chat-fence`, `wt/fix-art`, `wt/fix-remora-review` | `slice/fix-*` | `cdaf588`, `140169c`, `a1db63f`, `6e6c884` | Clean; integrated by `cherry-pick -x`; kept until the release for follow-ups |
 | Package worktree | `wt/core` | `core` | `e3941fb` | Clean; `build-c8.sh` adds its worktrees from here |
@@ -109,16 +116,22 @@
 
 ## 4. Next Actions by Role (`@role` Handoff Queue)
 
-- **`@user` (round 5):**
-  - the power adapter, for the window tests and the C8 runs;
-  - the icon pick when the strip arrives;
-  - at the close, the word on the tag and the promote of 1.6.1.
-- **`@planner` (round 5):**
-  - review each slice's commits and cherry-pick them onto `v2`;
-  - after S0, package and measure the C8 baseline (on AC power);
-  - send each track its next step (ACTIVE-PLAN §0), and start `r5-pill` once `r5-drag`'s payload is on `v2`;
-  - then the pool (D-90), the optimizer (D-06) and the docs.
-- **`@implementer-ink` / `@implementer-core` (round 5):** the seven `r5-*` slices, from their Briefs.
-- **`@user` (earlier):** the word on the push and the GitHub release (`git -C ~/Documents/github/loom push origin main v1.6.0`, then the zip and `gh release`, DEVELOPMENT §10). Feedback from use goes into slices after 1.6.0. Also open: the Remora account rule the planner chose (`FINDINGS.md`, Should-Fix 4), `O-09`, Remora's public-build default, the eye checks (the pool's by-hand list, and Home scrolled past the band with Animated art on), emptying `~/.Trash/loom-cleanup-20261022`, and the 35 old worktrees with uncommitted changes.
-- **`@planner` (main session):** on `@user`'s word, the push and the release; the release notes get one line on a downgrade to 1.5.x (it drops Remora's settings, exclusions included). After 1.6.0: Chat's streaming cost, now FB5-10 in round 5; the review's deferred notes (`FINDINGS.md`), and the occasional +20 MiB after 100 cycles.
-- **`@optimizer`:** done for 1.6.0 (22–23 Oct).
+- **`@user` (after round 6):**
+  - the hand checks on the installed 1.6.2 (ACTIVE-PLAN §0.1);
+  - the word on the push and the GitHub release: `git -C ~/Documents/github/loom push origin main v1.6.2` (and `v1.6.1`), then the zip and `gh release` with `plans/RELEASE-NOTES-1.6.2.md` (DEVELOPMENT §10);
+  - whether to delete the round slices' build scratch (about 24 GB);
+  - the next round's scope (ACTIVE-PLAN §0.1 "Next").
+  - **Still open from before:**
+    - the Remora account rule (`FINDINGS.md`, Should-Fix 4), `O-09`, and Remora's public-build default;
+    - emptying `~/.Trash/loom-cleanup-20261022`;
+    - the 35 old worktrees with uncommitted changes.
+- **`@planner`:**
+  - on `@user`'s word, the push and the release;
+  - then plan the next round with `@user` from ACTIVE-PLAN §0.1:
+    - the `@optimizer`'s later items (`evidence/r6/optimizer/REPORT.md` 2, 4, 6, 10, 11);
+    - the rest of FB5-7;
+    - Chat S5 (Q17);
+    - the reference pages;
+    - 1.7.0.
+- **`@implementer-*`:** idle; the next slices come from the next round's Briefs.
+- **`@optimizer`:** done for 1.6.1 and 1.6.2 (25 Oct, `evidence/r6/optimizer/REPORT.md`).
