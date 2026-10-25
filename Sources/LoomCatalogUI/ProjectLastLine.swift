@@ -39,8 +39,6 @@ enum ProjectLastLine {
     struct Peek: Equatable, Sendable {
         var ask: String?
         var answer: String?
-
-        var isEmpty: Bool { ask == nil && answer == nil }
     }
 
     /// The last ask and the answer after it, from one bounded backward read (the same bounds and the same folder rule as

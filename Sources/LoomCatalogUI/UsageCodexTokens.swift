@@ -65,7 +65,7 @@ enum UsageCodexTokens {
     /// are two totals to put side by side.
     static func totalsLine(claude: Int64?, codex: Int64?, period: UsagePeriod) -> String? {
         guard let claude, let codex else { return nil }
-        return "Claude \(UsageFormat.tokens(claude)) · Codex \(UsageFormat.tokens(codex)) tokens, \(period.phrase)"
+        return "\(ProviderName.title(.claude)) \(UsageFormat.tokens(claude)) · \(ProviderName.title(.codex)) \(UsageFormat.tokens(codex)) tokens, \(period.phrase)"
     }
 }
 
@@ -83,13 +83,13 @@ struct UsageCodexCardView: View {
         switch card {
         case let .figures(figures, failure):
             VStack(alignment: .leading, spacing: S.limitCardGap) {
-                UsageCard(title: "Codex", meta: UsageCardText.periodTitle(period)) { content(figures) }
+                UsageCard(title: ProviderName.title(.codex), meta: UsageCardText.periodTitle(period)) { content(figures) }
                 if let failure {
                     Text(failure).projectType(LoomTheme.InkType.small).foregroundStyle(LoomTheme.Status.failureLight)
                 }
             }
         case let .message(message):
-            UsageCard(title: "Codex", meta: UsageCardText.periodTitle(period)) {
+            UsageCard(title: ProviderName.title(.codex), meta: UsageCardText.periodTitle(period)) {
                 VStack(alignment: .leading, spacing: S.limitCardGap) {
                     Text(message.title).projectType(S.limitLabel).foregroundStyle(LoomTheme.Text.primary)
                     if let detail = message.detail {

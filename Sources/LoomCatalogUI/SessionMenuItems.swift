@@ -61,13 +61,14 @@ enum SessionLocationActions {
                             copyTranscriptPath: folder && row.claudeSessionID != nil && configDirectory != nil)
     }
 
-    /// The session's transcript file, found as `sessionMentionText` finds it (`ClaudeTranscriptLocator`), off the main actor: the
-    /// lookup may list the profile's project folders.
+    /// The session's transcript file, found as `sessionMentionText` and the terminal drop find it: only in the folder Claude names
+    /// after the session's working directory (`ClaudeTranscriptLocator`, `onlyIn:`), so the three agree. Off the main actor, as a
+    /// file read.
     @MainActor static func transcriptPath(of row: SessionRowModel, configDirectory: URL) async -> String? {
         guard let id = row.claudeSessionID else { return nil }
         let folder = row.record.session.workingDirectory
         return await Task.detached(priority: .userInitiated) {
-            ClaudeTranscriptLocator.locate(sessionID: id, configDirectory: configDirectory, workingDirectory: folder)?.path
+            ClaudeTranscriptLocator.locate(sessionID: id, configDirectory: configDirectory, onlyIn: folder)?.path
         }.value
     }
 

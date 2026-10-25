@@ -90,6 +90,23 @@ struct SessionMenuItemsTests {
         #expect(pasteboard.string(forType: .string) == nil)
     }
 
+    @Test func copyTranscriptPathLooksOnlyInTheFolderNamedAfterTheWorkingDirectory() async throws {
+        let fixture = try await fixture()
+        defer { fixture.cleanup() }
+        // The transcript moves to another project folder: the mention and the terminal drop do not find it there, and neither
+        // does the copy.
+        let other = fixture.config.appendingPathComponent("projects/-elsewhere", isDirectory: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: fixture.transcript, to: other.appendingPathComponent("conv-1.jsonl"))
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("loom-session-menu-\(UUID())"))
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.clearContents()
+        #expect(await SessionLocationActions.transcriptPath(of: fixture.claude, configDirectory: fixture.config) == nil)
+        #expect(await SessionLocationActions.copyTranscriptPath(of: fixture.claude, configDirectory: fixture.config,
+                                                                to: pasteboard) == nil)
+        #expect(pasteboard.string(forType: .string) == nil)
+    }
+
     @Test func terminalIsTheSystemTerminalApp() {
         #expect(SessionLocationActions.terminalBundleID == "com.apple.Terminal")
         #expect(NSWorkspace.shared.urlForApplication(withBundleIdentifier: SessionLocationActions.terminalBundleID) != nil)

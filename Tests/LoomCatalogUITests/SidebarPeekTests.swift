@@ -80,7 +80,7 @@ struct SidebarPeekTests {
         try fixture.transcript("working", lines: [Self.ask("one"), Self.answer("Done one."), Self.ask("two"), Self.toolUse])
         #expect(fixture.peek("ask-only") == ProjectLastLine.Peek(ask: "hello", answer: nil))
         #expect(fixture.peek("answer-only") == ProjectLastLine.Peek(ask: nil, answer: "Hi there."))
-        #expect(fixture.peek("neither")?.isEmpty == true)
+        #expect(fixture.peek("neither") == ProjectLastLine.Peek())
         #expect(fixture.peek("working") == ProjectLastLine.Peek(ask: "two", answer: nil))
         #expect(fixture.peek("missing") == nil, "no transcript is not a peek")
         #expect(ProjectLastLine.readPeek(sessionID: "ask-only", configDirectory: fixture.config, workingDirectory: "/elsewhere") == nil,

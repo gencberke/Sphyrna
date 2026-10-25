@@ -7,13 +7,7 @@ import LoomCore
 // MARK: Words and choices
 
 enum UsageHarnessText {
-    static func name(_ harness: ManagedSession.Provider) -> String {
-        switch harness {
-        case .claude: "Claude"
-        case .codex: "Codex"
-        case .synthetic: "Test"
-        }
-    }
+    static func name(_ harness: ManagedSession.Provider) -> String { ProviderName.title(harness) }
 
     /// Why a read failed when the probe says no more than that it gave nothing new.
     static func didNotAnswer(_ harness: ManagedSession.Provider) -> String { "\(name(harness)) did not answer." }
@@ -23,22 +17,21 @@ enum UsageHarnessText {
 }
 
 /// Which harness the page shows: all the connected ones, or one of them.
-enum UsageHarnessFilter: Hashable, CaseIterable, Sendable {
-    case all, claude, codex
+enum UsageHarnessFilter: Hashable, Sendable {
+    case all
+    case harness(ManagedSession.Provider)
 
     var title: String {
         switch self {
         case .all: "All"
-        case .claude: "Claude"
-        case .codex: "Codex"
+        case let .harness(provider): ProviderName.title(provider)
         }
     }
 
     var provider: ManagedSession.Provider? {
         switch self {
         case .all: nil
-        case .claude: .claude
-        case .codex: .codex
+        case let .harness(provider): provider
         }
     }
 
@@ -47,6 +40,9 @@ enum UsageHarnessFilter: Hashable, CaseIterable, Sendable {
         guard let provider, connected.contains(provider) else { return connected }
         return [provider]
     }
+
+    /// Every choice: all, then one per harness the connect switch covers.
+    static var allCases: [UsageHarnessFilter] { [.all] + HarnessConnections.switchable.map(UsageHarnessFilter.harness) }
 
     /// The choices offered: only when more than one harness is connected.
     static func offered(among connected: [ManagedSession.Provider]) -> [UsageHarnessFilter] {

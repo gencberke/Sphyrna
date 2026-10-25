@@ -185,21 +185,21 @@ enum HomeLimitsText {
     static func groups(paces: [PlanPace], codex: [PlanPaceLine.Content], now: Date, timeZone: TimeZone) -> [HomeLimitGroup] {
         let claude = paces.map { PlanPaceLine.Content(pace: $0, now: now, timeZone: timeZone) }
         if codex.isEmpty { return [HomeLimitGroup(name: nil, lines: claude)] }
-        return (paces.isEmpty ? [] : [HomeLimitGroup(name: "Claude", lines: claude)]) + [HomeLimitGroup(name: "Codex", lines: codex)]
+        return (paces.isEmpty ? [] : [HomeLimitGroup(name: ProviderName.title(.claude), lines: claude)]) + [HomeLimitGroup(name: ProviderName.title(.codex), lines: codex)]
     }
 
     /// "Plan limits, 5-hour window 62% left, on pace. Codex, 5-hour 77% left, Weekly 39% left".
     static func spoken(paces: [PlanPace], codex: [PlanPaceLine.Content], now: Date, timeZone: TimeZone) -> String {
         let claude = PlanLimitsLine(paces: paces, now: now, timeZone: timeZone).spoken
         guard !codex.isEmpty else { return claude }
-        let codexText = "Codex, " + codex.map { "\($0.title) \($0.left)" }.joined(separator: ", ")
+        let codexText = "\(ProviderName.title(.codex)), " + codex.map { "\($0.title) \($0.left)" }.joined(separator: ", ")
         return paces.isEmpty ? "Plan limits, " + codexText : claude + ". " + codexText
     }
 
     /// Each window's sentence, Claude's first, Codex's under them with the harness name.
     static func tooltip(paces: [PlanPace], codex: [PlanPaceLine.Content], now: Date, timeZone: TimeZone) -> String {
         let claude = PlanLimitsLine(paces: paces, now: now, timeZone: timeZone).tooltip(paces: paces, now: now, timeZone: timeZone)
-        let lines = (paces.isEmpty ? [] : [claude]) + codex.map { "Codex \($0.tooltip)" }
+        let lines = (paces.isEmpty ? [] : [claude]) + codex.map { "\(ProviderName.title(.codex)) \($0.tooltip)" }
         return lines.joined(separator: "\n")
     }
 }

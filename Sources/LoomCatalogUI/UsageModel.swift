@@ -710,10 +710,7 @@ public final class UsageModel {
 
     /// The harnesses the page can show, Claude first: the connected ones that have a source. Without a probe only Claude.
     public var connectedHarnesses: [ManagedSession.Provider] {
-        var shown: [ManagedSession.Provider] = []
-        if isConnected(.claude) { shown.append(.claude) }
-        if harnessProbe != nil, isConnected(.codex) { shown.append(.codex) }
-        return shown
+        HarnessConnections.switchable.filter { isConnected($0) && ($0 == Self.planLimitsHarness || harnessProbe != nil) }
     }
 
     /// The reading the Limits section draws for `harness`: the probe's, or for Claude without a probe the one the plan-limits
@@ -748,7 +745,7 @@ public final class UsageModel {
     }
 
     private func readHarnesses(_ probe: HarnessProbe, askCodex: Bool, force: Bool) async {
-        for harness in [ManagedSession.Provider.claude, .codex] {
+        for harness in HarnessConnections.switchable {
             guard isConnected(harness) else {
                 forget(harness)
                 continue

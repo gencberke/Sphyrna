@@ -10,8 +10,14 @@ enum PlanPaceText {
         }
     }
 
-    static func remaining(_ pace: PlanPace) -> String {
-        "\(UsageFormat.percent(100 - Int((pace.usedFraction * 100).rounded()))) left"
+    static func remaining(_ pace: PlanPace) -> String { remaining(percent: 100 - Int((pace.usedFraction * 100).rounded())) }
+
+    /// `62% left`.
+    static func remaining(percent: Int) -> String { "\(UsageFormat.percent(percent)) left" }
+
+    /// `Resets 16:40`, or `Resets in 2h 14m` when `relative`.
+    static func reset(_ date: Date, now: Date, timeZone: TimeZone, relative: Bool = false) -> String {
+        relative ? "Resets in \(UsageFormat.untilReset(date, from: now))" : "Resets \(moment(date, now: now, timeZone: timeZone))"
     }
 
     /// `16:40`, or `Mon 09:00` when it is not today.
@@ -39,11 +45,9 @@ enum PlanPaceText {
     /// The whole second line: the reset time, then the verdict when there is one. `relative` says how long is left
     /// (`Resets in 2h 14m`, the Usage page) instead of when it is (`Resets 16:40`, Home and the tooltips).
     static func sentence(_ pace: PlanPace, now: Date, timeZone: TimeZone, relative: Bool = false) -> String {
-        let reset = relative
-            ? "Resets in \(UsageFormat.untilReset(pace.resetsAt, from: now))"
-            : "Resets \(moment(pace.resetsAt, now: now, timeZone: timeZone))"
-        guard let verdict = verdict(pace, now: now, timeZone: timeZone) else { return reset }
-        return "\(reset) · \(verdict)"
+        let resets = reset(pace.resetsAt, now: now, timeZone: timeZone, relative: relative)
+        guard let verdict = verdict(pace, now: now, timeZone: timeZone) else { return resets }
+        return "\(resets) · \(verdict)"
     }
 }
 
@@ -86,14 +90,12 @@ struct PlanPaceLine: View {
             }
             let remaining = Double(window.remainingPercent) / 100
             title = window.name
-            left = "\(UsageFormat.percent(window.remainingPercent)) left"
+            left = PlanPaceText.remaining(percent: window.remainingPercent)
             remainingFraction = remaining
             tickFraction = nil
-            isLow = (remaining * 100).rounded() < LoomTheme.PlanPaceLine.lowBelow * 100
-            sentence = window.resetsAt.map {
-                relative ? "Resets in \(UsageFormat.untilReset($0, from: now))"
-                    : "Resets \(PlanPaceText.moment($0, now: now, timeZone: timeZone))"
-            } ?? "No reset time reported"
+            isLow = PlanPaceLine.isLow(remainingFraction: remaining)
+            sentence = window.resetsAt.map { PlanPaceText.reset($0, now: now, timeZone: timeZone, relative: relative) }
+                ?? "No reset time reported"
             runsOut = false
         }
 
@@ -142,7 +144,10 @@ struct PlanPaceLine: View {
     nonisolated static func tickFraction(_ pace: PlanPace) -> Double { min(max(1 - pace.elapsedFraction, 0), 1) }
     /// Under 20 % left, in whole percent as the footer chip counts it: exactly 20 % left is not low (1 - 0.8 is 0.19999999999999996).
     nonisolated static func isLow(_ pace: PlanPace) -> Bool {
-        pace.status == .overPace || (remainingFraction(pace) * 100).rounded() < LoomTheme.PlanPaceLine.lowBelow * 100
+        pace.status == .overPace || isLow(remainingFraction: remainingFraction(pace))
+    }
+    nonisolated static func isLow(remainingFraction: Double) -> Bool {
+        (remainingFraction * 100).rounded() < LoomTheme.PlanPaceLine.lowBelow * 100
     }
 
     private var meter: some View {

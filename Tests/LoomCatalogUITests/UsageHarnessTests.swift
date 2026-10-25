@@ -156,12 +156,12 @@ struct UsageHarnessTests {
     @Test func theFilterHidesTheOtherHarnessAndFallsBackToAllWhenItsOwnIsOff() async {
         let rig = rig()
         await openPage(rig)
-        #expect(UsageHarnessFilter.offered(among: rig.usage.connectedHarnesses) == [.all, .claude, .codex])
-        #expect(groups(rig, .claude).map(\.heading) == ["Claude"])
-        #expect(groups(rig, .codex).map(\.heading) == ["Codex"])
+        #expect(UsageHarnessFilter.offered(among: rig.usage.connectedHarnesses) == [.all, .harness(.claude), .harness(.codex)])
+        #expect(groups(rig, .harness(.claude)).map(\.heading) == ["Claude"])
+        #expect(groups(rig, .harness(.codex)).map(\.heading) == ["Codex"])
         #expect(groups(rig, .all).map(\.heading) == ["Claude", "Codex"])
         rig.connections.setConnected(.codex, false)
-        #expect(groups(rig, .codex).map(\.heading) == ["Claude"], "a filter on a harness that is off shows what is connected")
+        #expect(groups(rig, .harness(.codex)).map(\.heading) == ["Claude"], "a filter on a harness that is off shows what is connected")
     }
 
     @Test func aSwitchedOffHarnessIsAbsentAndNeverAskedAndItsReadingGoes() async {
