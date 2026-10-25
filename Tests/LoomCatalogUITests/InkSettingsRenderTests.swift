@@ -116,19 +116,13 @@ struct InkSettingsRenderTests {
         VStack(spacing: 0) {
             SettingsBand(sections: SettingsSection.available(cleanupReview: true), selection: .usage, onSelect: { _ in })
             SettingsPage {
-                UsageReportView(report: report, limits: limits, limitsFailure: nil, linesNotUnderstood: 0,
-                                timeZone: TimeZone(identifier: "UTC")!, now: now)
+                UsageReportView(report: report, linesNotUnderstood: 0, timeZone: TimeZone(identifier: "UTC")!)
             }
             SettingsFooter { Text("Updated 17:20 · Prices as of Oct 7, 2026") } trailing: {
                 SettingsRefreshButton(label: "Update usage now") {}
             }
         }
         .background(LoomTheme.Surface.canvas)
-    }
-
-    private static var limits: PlanLimits {
-        PlanLimits(fiveHour: PlanLimitWindow(usedPercent: 38, resetsAt: now.addingTimeInterval(9_000)),
-                   weekly: PlanLimitWindow(usedPercent: 26, resetsAt: now.addingTimeInterval(4 * 86_400)), fetchedAt: now)
     }
 
     private static var report: UsageReport {

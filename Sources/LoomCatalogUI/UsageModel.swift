@@ -194,6 +194,14 @@ public final class UsageModel {
     /// Why the last plan-limits ask failed; nil after a success or before any ask. The page says
     /// "Plan limits unavailable" while it is set.
     public private(set) var limitsFailure: PlanLimitsFailure?
+    /// The last reading of each connected harness, from the probe (D-94): the windows the Limits section draws, and Codex's
+    /// token days. A harness switched off has none. Claude's is the reading `limits` is made from.
+    public private(set) var readings: [ManagedSession.Provider: HarnessReading] = [:]
+    /// Why the last ask of a harness gave nothing new (`Codex did not answer.`); absent after a good one. Claude's own
+    /// reason is `limitsFailure`.
+    public private(set) var readFailures: [ManagedSession.Provider: String] = [:]
+    /// The Usage page's section, kept in the preferences by whoever attached the harness.
+    public private(set) var section: UsageSection = .limits
     /// Transcript lines the scans could not understand since Loom started: the totals may be low.
     public private(set) var linesNotUnderstood = 0
     /// The context of each tracked session (`trackContext`), by session id. A session the index holds
@@ -205,6 +213,13 @@ public final class UsageModel {
     @ObservationIgnored private let cadence: PlanLimitsCadence
     @ObservationIgnored private var limitsTask: Task<Void, Never>?
     @ObservationIgnored private var lastLimitsAsk: Date?
+    /// The probe and the connect switch (`attachHarness`). Without a probe Claude's limits are asked of `limitsSource`
+    /// directly and no other harness is shown.
+    @ObservationIgnored private var harnessProbe: HarnessProbe?
+    @ObservationIgnored private var connections: HarnessConnections?
+    @ObservationIgnored private var onSectionChange: (@Sendable (UsageSection) -> Void)?
+    /// The pass that reads the probe's readings and asks Codex.
+    @ObservationIgnored private var harnessTask: Task<Void, Never>?
     /// The sessions whose context is kept current, the model windows known so far (`windowKey`)
     /// and the pass that reads them.
     @ObservationIgnored private var trackedSessions: [String] = []
@@ -322,6 +337,8 @@ public final class UsageModel {
         case .manual:
             start()
             fetchLimitsIfDue(after: cadence.afterPageOpened)
+            // Update on the page reads Codex again whatever its last answer said.
+            if usagePageVisible { refreshHarnesses(askCodex: true, force: true) }
         case .settingsOpened, .dayChanged:
             start()
         }
@@ -365,6 +382,8 @@ public final class UsageModel {
         guard active else { return }
         refresh(reason: .activation)
         fetchLimitsIfDue(after: cadence.afterShown)
+        // Codex is asked only while the page shows; Home reads what an earlier ask left.
+        refreshHarnesses(askCodex: usagePageVisible, force: false)
     }
 
     /// The Settings window shows or hides (closed, minimized or covered).
@@ -386,6 +405,7 @@ public final class UsageModel {
         // The page shows what the last chip-only refresh skipped: read it now.
         if reportOutdated { start() } else { refresh(reason: .activation) }
         fetchLimitsIfDue(after: cadence.afterPageOpened)
+        refreshHarnesses(askCodex: true, force: false)
     }
 
     /// The catalog model's minute tick while the window is active: the chip says "Today", so a new
@@ -404,6 +424,7 @@ public final class UsageModel {
         await refreshTask?.value
         await loadingPeriod?.value
         await limitsTask?.value
+        await harnessTask?.value
         await contextTask?.value
     }
 
@@ -625,21 +646,33 @@ public final class UsageModel {
     // MARK: Plan limits
 
     /// Asks the Claude CLI for the plan limits when someone can see them, none is being asked for
-    /// and the last ask is at least `minimumAge` seconds old.
+    /// and the last ask is at least `minimumAge` seconds old. With the probe attached the ask goes through it, forced:
+    /// the one `get_usage` child answers the account and the windows alike, and the probe's reading stays current for
+    /// Connections. A harness that is switched off is not asked.
     private func fetchLimitsIfDue(after minimumAge: TimeInterval) {
-        guard let limitsSource, observing, limitsTask == nil else { return }
+        guard let limitsSource, observing, limitsTask == nil, isConnected(.claude) else { return }
         if let last = lastLimitsAsk, clock().timeIntervalSince(last) < minimumAge { return }
         lastLimitsAsk = clock()
-        limitsTask = Task { [weak self] in
-            let fetched = await limitsSource.fetch()
+        limitsTask = Task { [weak self, harnessProbe] in
+            var fetched: PlanLimits?
+            var reading: HarnessReading?
+            if let harnessProbe {
+                reading = await harnessProbe.probe(harness: .claude, force: true)
+                fetched = reading.flatMap { PlanLimits(reading: $0) }
+            } else {
+                fetched = await limitsSource.fetch()
+            }
             guard let self, !Task.isCancelled else { return }
             self.limitsTask = nil
             self.lastLimitsAsk = self.clock()
             // A failed ask (offline after wake, a timeout) keeps the last answer; it carries its
-            // own "updated" time and ended windows drop out by themselves.
+            // own "updated" time and ended windows drop out by themselves. (The probe keeps the last good
+            // windows itself, so its reading is the last answer either way.)
             if let fetched, self.limits != fetched { self.limits = fetched }
-            // A success clears the failure; a cancelled ask is neither.
-            let failure = fetched == nil ? limitsSource.lastFailure : nil
+            if let reading, self.readings[.claude] != reading { self.readings[.claude] = reading }
+            // A success clears the failure; a cancelled ask is neither. Through the probe a failed ask still returns a
+            // reading, so the fetcher's own record says whether this one failed.
+            let failure = (harnessProbe != nil || fetched == nil) ? limitsSource.lastFailure : nil
             if failure?.category != .cancelled, self.limitsFailure != failure { self.limitsFailure = failure }
             self.rebuildChip()
         }
@@ -647,7 +680,115 @@ public final class UsageModel {
 
     /// The pace of each plan window at `now` (five-hour first): are you on track for the limit? Pure
     /// arithmetic over the last answer, so it needs no ask; the caller passes the time it draws at.
-    public func paces(at now: Date) -> [PlanPace] { limits?.paces(at: now) ?? [] }
+    public func paces(at now: Date) -> [PlanPace] { isConnected(.claude) ? limits?.paces(at: now) ?? [] : [] }
+
+    // MARK: Harnesses
+
+    /// Hands the model the probe and the connect switch, and the section the page opens on. `onSectionChange` is told each
+    /// choice so the app can keep it. Asks only happen on the events above; nothing is asked here.
+    public func attachHarness(
+        probe: HarnessProbe?, connections: HarnessConnections?, section: UsageSection = .limits,
+        onSectionChange: (@Sendable (UsageSection) -> Void)? = nil
+    ) {
+        harnessProbe = probe
+        self.connections = connections
+        self.section = section
+        self.onSectionChange = onSectionChange
+    }
+
+    public func selectSection(_ next: UsageSection) {
+        guard next != section else { return }
+        section = next
+        onSectionChange?(next)
+    }
+
+    /// Whether Sphyrna offers `harness` (the connect switch); on when no switch was attached.
+    public func isConnected(_ harness: ManagedSession.Provider) -> Bool { connections?.isConnected(harness) ?? true }
+
+    /// The harnesses the page can show, Claude first: the connected ones that have a source. Without a probe only Claude.
+    public var connectedHarnesses: [ManagedSession.Provider] {
+        var shown: [ManagedSession.Provider] = []
+        if isConnected(.claude) { shown.append(.claude) }
+        if harnessProbe != nil, isConnected(.codex) { shown.append(.codex) }
+        return shown
+    }
+
+    /// The reading the Limits section draws for `harness`: the probe's, or for Claude without a probe the one the plan-limits
+    /// ask made.
+    func limitsReading(of harness: ManagedSession.Provider) -> HarnessReading? {
+        if let reading = readings[harness] { return reading }
+        guard harness == .claude, let limits else { return nil }
+        return HarnessReading(
+            provider: .claude, windows: ClaudeProbeSource.windows(of: limits), readAt: limits.fetchedAt)
+    }
+
+    /// The groups of the Limits section for the harnesses shown, at `now`.
+    func limitGroups(shown: [ManagedSession.Provider], now: Date) -> [UsageLimitsGroup] {
+        var failures = readFailures
+        if let reason = limitsFailure?.category.reason { failures[.claude] = reason }
+        var found: [ManagedSession.Provider: HarnessReading] = [:]
+        for harness in shown { found[harness] = limitsReading(of: harness) }
+        return UsageLimitsPage.groups(harnesses: shown, readings: found, failures: failures, now: now, timeZone: timeZone)
+    }
+
+    /// Takes the probe's last readings, and with `askCodex` asks Codex too (the probe's five-minute floor holds unless
+    /// `force`). Claude is never asked here: its asks follow the plan-limits cadence. A harness that is switched off loses
+    /// its reading and is not asked. Runs one pass at a time, in order.
+    private func refreshHarnesses(askCodex: Bool, force: Bool) {
+        guard let harnessProbe else { return }
+        let previous = harnessTask
+        harnessTask = Task { [weak self] in
+            await previous?.value
+            guard let self, !Task.isCancelled else { return }
+            await self.readHarnesses(harnessProbe, askCodex: askCodex, force: force)
+        }
+    }
+
+    private func readHarnesses(_ probe: HarnessProbe, askCodex: Bool, force: Bool) async {
+        for harness in [ManagedSession.Provider.claude, .codex] {
+            guard isConnected(harness) else {
+                forget(harness)
+                continue
+            }
+            if harness == .codex, askCodex {
+                let before = readings[.codex]?.readAt
+                let reading = await probe.probe(harness: .codex, force: force)
+                applyCodex(reading, before: before, forced: force)
+            } else if let last = await probe.lastReading(of: harness) {
+                takeLast(last, of: harness)
+            }
+        }
+        rebuildChip()
+    }
+
+    /// What Codex's ask gave. The probe answers a failed ask with the last reading (or nothing), so "the ask ran and gave
+    /// nothing new" is a reading no newer than before, when an ask would have run: forced, or the last read is older than
+    /// the probe's floor.
+    private func applyCodex(_ reading: HarnessReading?, before: Date?, forced: Bool) {
+        guard isConnected(.codex) else { return forget(.codex) }
+        let asked = forced || before.map { clock().timeIntervalSince($0) >= HarnessProbe.defaultFloor } ?? true
+        if let reading, reading.readAt != before {
+            if readings[.codex] != reading { readings[.codex] = reading }
+            if readFailures[.codex] != nil { readFailures[.codex] = nil }
+            return
+        }
+        if let reading, readings[.codex] != reading { readings[.codex] = reading }
+        if asked { readFailures[.codex] = UsageHarnessText.didNotAnswer(.codex) }
+    }
+
+    /// A newer reading another surface's ask left in the probe (Claude's feeds the chip as well).
+    private func takeLast(_ reading: HarnessReading, of harness: ManagedSession.Provider) {
+        guard readings[harness].map({ $0.readAt < reading.readAt }) ?? true else { return }
+        readings[harness] = reading
+        if harness == .claude, let fresh = PlanLimits(reading: reading), limits != fresh { limits = fresh }
+    }
+
+    /// A harness switched off: its reading goes, and so do Claude's limits (the chip and Home stop showing them).
+    private func forget(_ harness: ManagedSession.Provider) {
+        if readings[harness] != nil { readings[harness] = nil }
+        if readFailures[harness] != nil { readFailures[harness] = nil }
+        if harness == .claude, limits != nil { limits = nil }
+    }
 
     /// The facts the diagnostics export carries from here: the index's scan report and the plan-limits failure.
     public func diagnosticsSnapshot() async -> (usage: UsageDiagnostics, planLimitsFailure: PlanLimitsFailure?) {

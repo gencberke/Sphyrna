@@ -201,18 +201,11 @@ extension LoomTheme {
         static let headMeta = InkType.meta
         static let headGap: CGFloat = 10
         static let headBottom: CGFloat = 12
-        /// Plan limits: a grid of 62, flexible, 64 and 118, 12 apart, 26 high; the meter is 6 high with radius 3.
-        static let limitColumns = (label: CGFloat(62), left: CGFloat(64), reset: CGFloat(118))
-        static let limitGap: CGFloat = 12
-        static let limitHeight: CGFloat = 26
+        /// The title of what a harness says instead of limit windows.
         static let limitLabel = InkStyle(size: 12.5)
-        static let limitLeft = InkStyle(size: 12, mono: true)
-        static let limitReset = InkType.metaLarge
-        static let meterHeight: CGFloat = 6
-        static let meterRadius: CGFloat = 3
-        /// The "Plan limits unavailable" line.
-        static let unavailableGap: CGFloat = 12
-        static let unavailableReason = InkType.small
+        /// The Limits section: groups 22 apart; inside a card the pace line and the read time are 8 apart.
+        static let limitGroupGap: CGFloat = 22
+        static let limitCardGap: CGFloat = 8
         /// The period card: 200 and the rest, 24 apart. The total is 30 semibold with tabular figures; captions 11.5; the cost 15
         /// semibold, 12 below the caption; the fine print 11 on 15, 10 below.
         static let summaryWidth: CGFloat = 200

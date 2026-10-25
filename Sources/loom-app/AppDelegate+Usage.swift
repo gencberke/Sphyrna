@@ -39,6 +39,13 @@ extension AppDelegate {
             ConversationForgetters.shared.register { _, ids in try await index.forget(sessionIDs: ids) }
         }
         installHarness(model: model, preferences: preferences, root: root, limits: limitsFetcher)
+        // The page and Claude's limits ask go through the probe (so one child answers the account and the windows); the
+        // page's section is kept in the preferences.
+        usageModel?.attachHarness(
+            probe: model.harnessProbe, connections: model.harnessConnections, section: preferences.current.usageSection
+        ) { section in
+            Task { @MainActor in try? preferences.update { $0.usageSection = section } }
+        }
         usage = usageModel
         model.usage = usageModel
         // One Claude profile for usage, the palette's session text search and the Chat view (nothing when refused),

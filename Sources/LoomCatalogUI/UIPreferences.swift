@@ -122,6 +122,12 @@ public enum LaunchView: String, Codable, Sendable, CaseIterable {
     case lastSession
 }
 
+/// The section the Usage page opens on (D-99): Claude's and Codex's limit windows, or their tokens.
+public enum UsageSection: String, Codable, Sendable, CaseIterable {
+    case limits
+    case tokens
+}
+
 /// Presentation preferences only. Conversation identity, provider state and
 /// lifecycle stay in the catalog and the supervisor.
 public struct UIPreferences: Codable, Equatable, Sendable {
@@ -188,6 +194,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// written before the switch existed reads as all on. Off only stops Sphyrna's own use of the harness; the CLI is never
     /// signed out and its config is never written. `HarnessConnections` is the model views and the probe read.
     public var harnessConnections: [String: Bool] = [:]
+    /// Settings → Usage: Limits or Tokens. A file written before the choice existed reads as Limits.
+    public var usageSection: UsageSection = .limits
 
     public func isHarnessConnected(_ provider: ManagedSession.Provider) -> Bool { harnessConnections[provider.rawValue] ?? true }
 
@@ -278,13 +286,14 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         keepAwake = (try? container.decodeIfPresent(KeepAwakeSetting.self, forKey: .keepAwake)) ?? .off
         notifyLongTurns = (try? container.decodeIfPresent(Bool.self, forKey: .notifyLongTurns)) ?? false
         harnessConnections = ((try? container.decodeIfPresent([String: Bool].self, forKey: .harnessConnections)) ?? nil) ?? [:]
+        usageSection = (try? container.decodeIfPresent(UsageSection.self, forKey: .usageSection)) ?? .limits
     }
 
     private enum CodingKeys: String, CodingKey {
         case viewMode, selectedSessionID, destination, sidebarWidth, sidebarCollapsed, terminalFontSize, openTabs
         case windowFrame, projectColors, showInMenuBar, notifyApprovals, sidebarStyle, launchView, inspectorOpen
         case inspectorWidths, searchSessionText, newSessionFace, appearance, paneTone, animatedArt, remora
-        case keepAwake, notifyLongTurns, harnessConnections
+        case keepAwake, notifyLongTurns, harnessConnections, usageSection
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -313,6 +322,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         try container.encode(keepAwake, forKey: .keepAwake)
         try container.encode(notifyLongTurns, forKey: .notifyLongTurns)
         try container.encode(harnessConnections, forKey: .harnessConnections)
+        try container.encode(usageSection, forKey: .usageSection)
     }
 
     private struct Lossy<Value: Decodable>: Decodable {

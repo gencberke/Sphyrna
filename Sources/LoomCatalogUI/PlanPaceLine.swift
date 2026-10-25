@@ -36,9 +36,12 @@ enum PlanPaceText {
         }
     }
 
-    /// The whole second line: the reset time, then the verdict when there is one.
-    static func sentence(_ pace: PlanPace, now: Date, timeZone: TimeZone) -> String {
-        let reset = "Resets \(moment(pace.resetsAt, now: now, timeZone: timeZone))"
+    /// The whole second line: the reset time, then the verdict when there is one. `relative` says how long is left
+    /// (`Resets in 2h 14m`, the Usage page) instead of when it is (`Resets 16:40`, Home and the tooltips).
+    static func sentence(_ pace: PlanPace, now: Date, timeZone: TimeZone, relative: Bool = false) -> String {
+        let reset = relative
+            ? "Resets in \(UsageFormat.untilReset(pace.resetsAt, from: now))"
+            : "Resets \(moment(pace.resetsAt, now: now, timeZone: timeZone))"
         guard let verdict = verdict(pace, now: now, timeZone: timeZone) else { return reset }
         return "\(reset) · \(verdict)"
     }
@@ -47,22 +50,76 @@ enum PlanPaceText {
 /// One plan window's pace: its name and what is left, a meter of what is left with a tick where an
 /// even pace would leave it, and whether the limit lasts. The caller passes the time it draws at (the
 /// model's minute tick), so the view itself never wakes.
+///
+/// A window the pace cannot be worked out for (a length that is not five hours or a week, or no reset time) draws the
+/// same line with no tick and no verdict.
 struct PlanPaceLine: View {
-    let pace: PlanPace
-    let now: Date
-    let timeZone: TimeZone
+    /// What the line says and draws, as plain data so a test can state it from fixture numbers.
+    struct Content: Equatable {
+        var title: String
+        /// `62% left`.
+        var left: String
+        /// What is left, 0...1.
+        var remainingFraction: Double
+        /// Where an even pace would leave the remainder now; nil when no pace is known.
+        var tickFraction: Double?
+        var isLow: Bool
+        /// The reset and the verdict: `Resets 16:40 · at this pace it lasts`.
+        var sentence: String
+        var runsOut: Bool
+
+        init(pace: PlanPace, title: String? = nil, now: Date, timeZone: TimeZone, relative: Bool = false) {
+            self.title = title ?? PlanPaceText.title(pace.kind)
+            left = PlanPaceText.remaining(pace)
+            remainingFraction = PlanPaceLine.remainingFraction(pace)
+            tickFraction = PlanPaceLine.tickFraction(pace)
+            isLow = PlanPaceLine.isLow(pace)
+            sentence = PlanPaceText.sentence(pace, now: now, timeZone: timeZone, relative: relative)
+            runsOut = pace.status == .overPace
+        }
+
+        /// A harness's window, measured at `measuredAt` (when it was read): with the pace when its length has one.
+        init(window: HarnessLimitWindow, measuredAt: Date, now: Date, timeZone: TimeZone, relative: Bool = false) {
+            if let pace = window.pace(at: now, measuredAt: measuredAt) {
+                self = Content(pace: pace, title: window.name, now: now, timeZone: timeZone, relative: relative)
+                return
+            }
+            let remaining = Double(window.remainingPercent) / 100
+            title = window.name
+            left = "\(UsageFormat.percent(window.remainingPercent)) left"
+            remainingFraction = remaining
+            tickFraction = nil
+            isLow = (remaining * 100).rounded() < LoomTheme.PlanPaceLine.lowBelow * 100
+            sentence = window.resetsAt.map {
+                relative ? "Resets in \(UsageFormat.untilReset($0, from: now))"
+                    : "Resets \(PlanPaceText.moment($0, now: now, timeZone: timeZone))"
+            } ?? "No reset time reported"
+            runsOut = false
+        }
+
+        /// For VoiceOver and the tooltips: `5-hour window, 62% left. Resets 16:40 · at this pace it lasts`.
+        var tooltip: String { "\(title), \(left). \(sentence)" }
+    }
+
+    let content: Content
+
+    init(pace: PlanPace, now: Date, timeZone: TimeZone) {
+        content = Content(pace: pace, now: now, timeZone: timeZone)
+    }
+
+    init(content: Content) { self.content = content }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(PlanPaceText.title(pace.kind)).homeType(LoomTheme.PlanPaceLine.name)
+                Text(content.title).homeType(LoomTheme.PlanPaceLine.name)
                     .foregroundStyle(LoomTheme.Text.primary)
                 Spacer(minLength: LoomTheme.Space.chipSplitGap)
-                Text(PlanPaceText.remaining(pace)).homeType(LoomTheme.PlanPaceLine.left).monospacedDigit()
+                Text(content.left).homeType(LoomTheme.PlanPaceLine.left).monospacedDigit()
                     .foregroundStyle(LoomTheme.Text.secondary)
             }
             meter.padding(.top, LoomTheme.PlanPaceLine.meterTop).padding(.bottom, LoomTheme.PlanPaceLine.meterBottom)
-            Text(PlanPaceText.sentence(pace, now: now, timeZone: timeZone))
+            Text(content.sentence)
                 .homeType(LoomTheme.PlanPaceLine.sentence)
                 .foregroundStyle(sentenceStyle)
                 // A long sentence ("Resets Monday 09:00 · at this pace it runs out Thursday 18:30") wraps in a narrow card
@@ -71,23 +128,18 @@ struct PlanPaceLine: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(PlanPaceText.title(pace.kind)), \(PlanPaceText.remaining(pace))")
-        .accessibilityValue(PlanPaceText.sentence(pace, now: now, timeZone: timeZone))
+        .accessibilityLabel("\(content.title), \(content.left)")
+        .accessibilityValue(content.sentence)
     }
 
     /// Neutral for a limit that lasts, orange for one that runs out, the quiet tone while there is no verdict.
-    private var sentenceStyle: Color {
-        switch pace.status {
-        case .tooEarly, .underPace, .onPace: LoomTheme.PlanPaceLine.lasts
-        case .overPace: LoomTheme.PlanPaceLine.runsOut
-        }
-    }
+    private var sentenceStyle: Color { content.runsOut ? LoomTheme.PlanPaceLine.runsOut : LoomTheme.PlanPaceLine.lasts }
 
     /// What is left: a fill from the leading edge, as the footer chip draws it, in the neutral tone; orange when the window runs
     /// out or little is left. The tick is where an even pace would leave the remainder now: a fill beyond it is a limit that
     /// lasts.
     nonisolated static func remainingFraction(_ pace: PlanPace) -> Double { min(max(1 - pace.usedFraction, 0), 1) }
-    static func tickFraction(_ pace: PlanPace) -> Double { min(max(1 - pace.elapsedFraction, 0), 1) }
+    nonisolated static func tickFraction(_ pace: PlanPace) -> Double { min(max(1 - pace.elapsedFraction, 0), 1) }
     /// Under 20 % left, in whole percent as the footer chip counts it: exactly 20 % left is not low (1 - 0.8 is 0.19999999999999996).
     nonisolated static func isLow(_ pace: PlanPace) -> Bool {
         pace.status == .overPace || (remainingFraction(pace) * 100).rounded() < LoomTheme.PlanPaceLine.lowBelow * 100
@@ -102,13 +154,15 @@ struct PlanPaceLine: View {
                 RoundedRectangle(cornerRadius: LoomTheme.PlanPaceLine.meterRadius).fill(LoomTheme.PlanPaceLine.track)
                     .frame(height: LoomTheme.PlanPaceLine.meterHeight)
                 RoundedRectangle(cornerRadius: LoomTheme.PlanPaceLine.meterRadius)
-                    .fill(Self.isLow(pace) ? LoomTheme.PlanPaceLine.fillOver : LoomTheme.PlanPaceLine.fill)
-                    .frame(width: width * Self.remainingFraction(pace), height: LoomTheme.PlanPaceLine.meterHeight)
-                Rectangle().fill(LoomTheme.PlanPaceLine.tick)
-                    .frame(width: LoomTheme.PlanPaceLine.tickWidth,
-                           height: LoomTheme.PlanPaceLine.meterHeight + 2 * LoomTheme.PlanPaceLine.tickOverhang)
-                    .offset(x: min(max(width * Self.tickFraction(pace) - LoomTheme.PlanPaceLine.tickWidth / 2, 0),
-                                   width - LoomTheme.PlanPaceLine.tickWidth))
+                    .fill(content.isLow ? LoomTheme.PlanPaceLine.fillOver : LoomTheme.PlanPaceLine.fill)
+                    .frame(width: width * content.remainingFraction, height: LoomTheme.PlanPaceLine.meterHeight)
+                if let tick = content.tickFraction {
+                    Rectangle().fill(LoomTheme.PlanPaceLine.tick)
+                        .frame(width: LoomTheme.PlanPaceLine.tickWidth,
+                               height: LoomTheme.PlanPaceLine.meterHeight + 2 * LoomTheme.PlanPaceLine.tickOverhang)
+                        .offset(x: min(max(width * tick - LoomTheme.PlanPaceLine.tickWidth / 2, 0),
+                                       width - LoomTheme.PlanPaceLine.tickWidth))
+                }
             }
             .frame(maxHeight: .infinity, alignment: .center)
         }

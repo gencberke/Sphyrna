@@ -1,7 +1,7 @@
 import SwiftUI
 import LoomCore
 
-/// The Usage section: this Claude profile's tokens by period, from the usage model only.
+/// The Usage section: the limit windows and the tokens of each connected harness, from the usage model only.
 struct UsageSettings: View {
     let usage: UsageModel?
     let profile: URL?
@@ -11,7 +11,16 @@ struct UsageSettings: View {
             UsageContent(usage: usage, profile: profile)
         } else {
             SettingsNote(title: "Usage is not available",
-                         text: "Sphyrna could not open its usage index, so no Claude usage is shown.")
+                         text: "Sphyrna could not open its usage index, so no usage is shown.")
+        }
+    }
+}
+
+extension UsageSection {
+    var title: String {
+        switch self {
+        case .limits: "Limits"
+        case .tokens: "Tokens"
         }
     }
 }
@@ -19,64 +28,116 @@ struct UsageSettings: View {
 private struct UsageContent: View {
     let usage: UsageModel
     let profile: URL?
+    /// Which harness the page shows; not kept (it is a look at one part, not a setting).
+    @State private var filter: UsageHarnessFilter = .all
 
     private typealias S = LoomTheme.Settings
 
     var body: some View {
+        let connected = usage.connectedHarnesses
+        let chosen = (filter.provider.map(connected.contains) ?? true) ? filter : .all
+        let shown = chosen.shown(among: connected)
         VStack(spacing: 0) {
-            content(for: usage.state)
+            if shown.isEmpty {
+                VStack(spacing: 0) {
+                    head(connected: connected, chosen: chosen, shown: shown)
+                        .padding(.horizontal, S.bodyInset).padding(.top, S.bodyTop)
+                    SettingsNote(title: "No harness is connected",
+                                 text: "Switch Claude or Codex on in Settings → Connections to see its usage.")
+                }
+            } else {
+                switch usage.section {
+                case .limits: limitsPage(connected: connected, chosen: chosen, shown: shown)
+                case .tokens: tokensPage(connected: connected, chosen: chosen, shown: shown)
+                }
+            }
             UsageFooter(usage: usage)
         }
         .onAppear { usage.setUsageSectionSelected(true) }
         .onDisappear { usage.setUsageSectionSelected(false) }
     }
 
-    /// "This Claude profile, all projects" and the periods; they are the page's first line and scroll with it.
-    private var periodLine: some View {
-        HStack(spacing: S.periodGap) {
-            Text("This Claude profile, all projects").projectType(S.periodText).foregroundStyle(LoomTheme.Text.secondaryStyle)
-            Spacer(minLength: 0)
-            InkSegmented(values: UsagePeriod.allCases, title: \.title, selection: usage.period,
-                         enabled: usage.state == .ready, onSelect: { usage.select($0) })
-                .accessibilityLabel("Period")
+    /// The page's first lines, which scroll with it: the section switch and the harness filter, and for Tokens the period
+    /// line (what the numbers cover, and the periods).
+    private func head(connected: [ManagedSession.Provider], chosen: UsageHarnessFilter,
+                      shown: [ManagedSession.Provider]) -> some View {
+        VStack(alignment: .leading, spacing: S.periodGap) {
+            HStack(spacing: S.periodGap) {
+                InkSegmented(values: UsageSection.allCases, title: \.title, selection: usage.section,
+                             onSelect: { usage.selectSection($0) })
+                    .accessibilityLabel("Section")
+                Spacer(minLength: 0)
+                let offered = UsageHarnessFilter.offered(among: connected)
+                if !offered.isEmpty {
+                    InkSegmented(values: offered, title: \.title, selection: chosen, onSelect: { filter = $0 })
+                        .accessibilityLabel("Harness")
+                }
+            }
+            if usage.section == .tokens { periodLine(shown: shown) }
         }
         .padding(.bottom, S.periodBottom)
     }
 
+    /// What the tokens cover and the periods.
+    private func periodLine(shown: [ManagedSession.Provider]) -> some View {
+        HStack(spacing: S.periodGap) {
+            Text(UsageCardText.coverage(of: shown)).projectType(S.periodText).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            Spacer(minLength: 0)
+            InkSegmented(values: UsagePeriod.allCases, title: \.title, selection: usage.period,
+                         enabled: usage.state == .ready || !shown.contains(.claude), onSelect: { usage.select($0) })
+                .accessibilityLabel("Period")
+        }
+    }
+
+    // Limits
+
+    private func limitsPage(connected: [ManagedSession.Provider], chosen: UsageHarnessFilter,
+                            shown: [ManagedSession.Provider]) -> some View {
+        SettingsPage {
+            VStack(alignment: .leading, spacing: 0) {
+                head(connected: connected, chosen: chosen, shown: shown)
+                UsageLimitsView(groups: usage.limitGroups(shown: shown, now: Date()))
+            }
+        }
+    }
+
+    // Tokens
+
     @ViewBuilder
-    private func content(for state: UsageState) -> some View {
-        switch state {
+    private func tokensPage(connected: [ManagedSession.Provider], chosen: UsageHarnessFilter,
+                            shown: [ManagedSession.Provider]) -> some View {
+        let top = head(connected: connected, chosen: chosen, shown: shown)
+        switch usage.state {
         case .idle, .indexing:
-            note(SettingsNote(title: "Reading Claude's usage",
-                              text: "Sphyrna is reading the transcripts Claude keeps on this Mac. This happens once; after that only new lines are read."))
+            note(top, SettingsNote(title: "Reading Claude's usage",
+                                    text: "Sphyrna is reading the transcripts Claude keeps on this Mac. This happens once; after that only new lines are read."))
         case let .failed(message):
-            note(SettingsNote(title: "Usage could not be read", text: message, retry: { usage.refresh(reason: .manual) }))
+            note(top, SettingsNote(title: "Usage could not be read", text: message, retry: { usage.refresh(reason: .manual) }))
         case .ready:
             if !usage.hasHistory {
-                note(SettingsNote(title: "No Claude usage yet",
-                                  text: "Sphyrna found no transcripts in this Claude profile. Usage appears after a session finishes its first turn.",
-                                  path: profile.map { SettingsPaths.display($0.appendingPathComponent("projects")) }))
+                note(top, SettingsNote(title: "No Claude usage yet",
+                                        text: "Sphyrna found no transcripts in this Claude profile. Usage appears after a session finishes its first turn.",
+                                        path: profile.map { SettingsPaths.display($0.appendingPathComponent("projects")) }))
             } else if let report = usage.report, report.period == usage.period {
                 SettingsPage {
                     VStack(alignment: .leading, spacing: 0) {
-                        periodLine
-                        UsageReportView(report: report, limits: usage.limits, limitsFailure: usage.limitsFailure,
-                                        linesNotUnderstood: usage.linesNotUnderstood, timeZone: usage.timeZone)
+                        top
+                        UsageReportView(report: report, linesNotUnderstood: usage.linesNotUnderstood, timeZone: usage.timeZone)
                     }
                 }
             } else {
                 VStack(spacing: 0) {
-                    periodLine.padding(.horizontal, S.bodyInset).padding(.top, S.bodyTop)
+                    top.padding(.horizontal, S.bodyInset).padding(.top, S.bodyTop)
                     Spacer(minLength: 0)
                 }
             }
         }
     }
 
-    /// A page state with the periods above it (disabled until a report is ready).
-    private func note(_ note: SettingsNote) -> some View {
+    /// A page state with the head above it (the periods disabled until a report is ready).
+    private func note(_ head: some View, _ note: SettingsNote) -> some View {
         VStack(spacing: 0) {
-            periodLine.padding(.horizontal, S.bodyInset).padding(.top, S.bodyTop)
+            head.padding(.horizontal, S.bodyInset).padding(.top, S.bodyTop)
             note
         }
     }

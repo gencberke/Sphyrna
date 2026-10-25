@@ -71,6 +71,15 @@ enum UsageFormat {
         return percent(fraction: Double(part) / Double(whole))
     }
 
+    /// How long until `date`, in two units at most, rounded up: `12m`, `3h 15m`, `2d 4h`; a past date reads `1m`.
+    static func untilReset(_ date: Date, from now: Date) -> String {
+        let minutes = max(1, Int((date.timeIntervalSince(now) / 60).rounded(.up)))
+        if minutes < 60 { return "\(minutes)m" }
+        let hours = minutes / 60
+        if hours < 24 { return minutes % 60 == 0 ? "\(hours)h" : "\(hours)h \(minutes % 60)m" }
+        return hours % 24 == 0 ? "\(hours / 24)d" : "\(hours / 24)d \(hours % 24)h"
+    }
+
     // MARK: Pieces
 
     /// The unit index and the value in that unit, rounded to three significant digits; a value

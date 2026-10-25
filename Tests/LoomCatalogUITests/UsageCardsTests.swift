@@ -65,52 +65,6 @@ struct UsageCardsTests {
         #expect(UsageCardText.models(3) == "3 models")
     }
 
-    /// Fix round 2, item 2: every plan meter fills the share still left, from the leading edge, with "N% left", as Home's line
-    /// and the footer chip do. The used share is the tooltip now.
-    @Test func aPlanLimitRowShowsTheRemainingShareAndKeepsTheUsedShareInItsTooltip() {
-        let window = PlanLimitWindow(usedPercent: 62, resetsAt: Self.now.addingTimeInterval(3_600))
-        let row = UsageCardText.planLimitRow(.fiveHour, window, now: Self.now, timeZone: Self.zone, measuredAt: Self.now)
-        #expect(row.title == "5-hour")
-        #expect(row.left == "38% left")
-        #expect(row.used == "62% used", "the tooltip")
-        #expect(row.remainingFraction == 0.38, "the fill is what is left, not what is used")
-        #expect(!row.isLow)
-        let reset = UsageText.time(Self.now.addingTimeInterval(3_600), Self.zone)
-        #expect(row.reset == "Resets \(reset)")
-        #expect(row.accessibilityLabel == "5-hour limit, 62 percent used, 38 percent remaining, resets \(reset)")
-        let weekly = UsageCardText.planLimitRow(.weekly, PlanLimitWindow(usedPercent: 31, resetsAt: nil),
-                                                now: Self.now, timeZone: Self.zone)
-        #expect(weekly.title == "Weekly" && weekly.reset == nil)
-        #expect(weekly.left == "69% left" && weekly.remainingFraction == 0.69)
-        #expect(weekly.accessibilityLabel == "Weekly limit, 31 percent used, 69 percent remaining")
-    }
-
-    /// The colour rules are Home's (`PlanPaceLine.isLow`): neutral, orange under 20 % left or when the window runs out before it
-    /// resets; nothing is green.
-    @Test func aPlanMeterTurnsOrangeUnderTwentyPercentLeftOrOverPaceAndIsNeutralOtherwise() {
-        func row(_ kind: PlanLimitKind, used: Int, resetsIn: TimeInterval?) -> UsagePlanLimitRowText {
-            UsageCardText.planLimitRow(kind, PlanLimitWindow(usedPercent: used, resetsAt: resetsIn.map { Self.now.addingTimeInterval($0) }),
-                                       now: Self.now, timeZone: Self.zone, measuredAt: Self.now)
-        }
-        // 38 % left, 80 % of the window gone: under pace.
-        #expect(!row(.fiveHour, used: 62, resetsIn: 3_600).isLow)
-        // 15 % left.
-        #expect(row(.fiveHour, used: 85, resetsIn: 600).isLow)
-        // Exactly 20 % left is not under 20.
-        #expect(!row(.fiveHour, used: 80, resetsIn: 600).isLow)
-        // 30 % left but 70 % used a tenth into the window: it runs out first.
-        #expect(row(.fiveHour, used: 70, resetsIn: 4.5 * 3_600).isLow)
-        // No reset time: only the share left says anything.
-        #expect(row(.weekly, used: 85, resetsIn: nil).isLow)
-        #expect(!row(.weekly, used: 50, resetsIn: nil).isLow)
-        // The meter and the Home line agree on every one of these.
-        for (used, resetsIn) in [(62, 3_600.0), (85, 600.0), (70, 4.5 * 3_600)] {
-            let window = PlanLimitWindow(usedPercent: used, resetsAt: Self.now.addingTimeInterval(resetsIn))
-            let pace = PlanPace(kind: .fiveHour, window: window, at: Self.now, measuredAt: Self.now)!
-            #expect(row(.fiveHour, used: used, resetsIn: resetsIn).isLow == PlanPaceLine.isLow(pace))
-        }
-    }
-
     @Test func theCostIsHiddenOnlyWhenItIsZeroBecauseAModelHasNoPrice() {
         func snapshot(cost: Double, unknown: [String]) -> UsageSnapshot {
             UsageSnapshotFactory.snapshot(output: 1_000, cost: cost, unknownModels: unknown)
@@ -144,27 +98,17 @@ struct UsageCardsTests {
         #expect(UsageCardText.activityTitle(.days90) == "Tokens per day")
     }
 
-    // MARK: Card order and plan-limit states
+    // MARK: Card order
 
-    @Test func thePlanLimitsComeFirstAndOnlyWhenThereIsSomethingToSay() {
-        let live = PlanLimits(fiveHour: PlanLimitWindow(usedPercent: 10, resetsAt: Self.now.addingTimeInterval(60)),
-                              weekly: nil, fetchedAt: Self.now)
-        let past = PlanLimits(fiveHour: PlanLimitWindow(usedPercent: 10, resetsAt: Self.now.addingTimeInterval(-60)),
-                              weekly: nil, fetchedAt: Self.now)
-        let withLimits = UsageCardText.planLimitsCard(limits: live, failureReason: nil, now: Self.now)
-        #expect(withLimits == .limits(notRefreshed: false))
-        #expect(UsageCardText.cards(for: withLimits) == [.planLimits, .period, .activity, .models])
-        // An earlier answer stays when the last ask failed, with a note.
-        #expect(UsageCardText.planLimitsCard(limits: live, failureReason: "x", now: Self.now) == .limits(notRefreshed: true))
-        // Nothing current and a failure: the unavailable text, still the first card.
-        let unavailable = UsageCardText.planLimitsCard(limits: past, failureReason: "Claude did not answer in time.", now: Self.now)
-        #expect(unavailable == .unavailable("Claude did not answer in time."))
-        #expect(UsageCardText.cards(for: unavailable).first == .planLimits)
-        // Neither: no card.
-        let none = UsageCardText.planLimitsCard(limits: nil, failureReason: nil, now: Self.now)
-        #expect(none == .none)
-        #expect(UsageCardText.cards(for: none) == [.period, .activity, .models])
-        #expect(UsageCardText.planLimitsCard(limits: past, failureReason: nil, now: Self.now) == .none)
+    /// The plan limits are the Limits section's now (`UsageHarnessTests`): the report holds the period, the activity and the models.
+    @Test func theReportHoldsThePeriodTheActivityAndTheModels() {
+        #expect(UsageCardText.cards == [.period, .activity, .models])
+    }
+
+    @Test func theTokensSayWhatTheyCover() {
+        #expect(UsageCardText.coverage(of: [.claude]) == "This Claude profile, all projects")
+        #expect(UsageCardText.coverage(of: [.codex]) == "This Codex account")
+        #expect(UsageCardText.coverage(of: [.claude, .codex]) == "This Claude profile and this Codex account")
     }
 
     // MARK: Contrast
@@ -211,16 +155,8 @@ struct UsageCardsTests {
         return UsageReport(period: period, snapshot: snapshot, bars: bars, cells: cells)
     }
 
-    private var limits: PlanLimits {
-        PlanLimits(fiveHour: PlanLimitWindow(usedPercent: 62, resetsAt: Self.now.addingTimeInterval(9_000)),
-                   weekly: PlanLimitWindow(usedPercent: 31, resetsAt: Self.now.addingTimeInterval(4 * 86_400)),
-                   fetchedAt: Self.now)
-    }
-
-    private func view(_ report: UsageReport, limits: PlanLimits?, failure: PlanLimitsFailure? = nil,
-                      skipped: Int = 0) -> UsageReportView {
-        UsageReportView(report: report, limits: limits, limitsFailure: failure, linesNotUnderstood: skipped,
-                        timeZone: Self.zone, now: Self.now)
+    private func view(_ report: UsageReport, skipped: Int = 0) -> UsageReportView {
+        UsageReportView(report: report, linesNotUnderstood: skipped, timeZone: Self.zone)
     }
 
     private var pageWidth: CGFloat { LoomTheme.Settings.width - 2 * LoomTheme.Settings.bodyInset }
@@ -252,41 +188,26 @@ struct UsageCardsTests {
             .sizeThatFits(in: CGSize(width: pageWidth, height: .greatestFiniteMagnitude))
     }
 
-    @Test func sevenDaysWithPlanLimitsRendersAtThePageWidthWithoutOverflow() throws {
+    @Test func sevenDaysRendersAtThePageWidthWithoutOverflow() throws {
         let tokens = UsageTokens(input: 1_900_000, output: 800_000, cacheWrite5m: 5_000_000, cacheWrite1h: 1_100_000,
                                  cacheRead: 39_400_000)
         let snap = snapshot(.days7, tokens: tokens, sessions: 41, cost: 312.4, models: [
             model("Opus 5.5", 38_100_000, cost: 281.2), model("Sonnet 5.5", 8_900_000, cost: 29.9),
             model("Haiku 5.5", 1_200_000, cost: 1.3)])
-        let page = view(report(.days7, snap), limits: limits, skipped: 3)
-        let size = try render(page, name: "7d-limits")
+        let page = view(report(.days7, snap), skipped: 3)
+        let size = try render(page, name: "7d")
         #expect(size.width == LoomTheme.Settings.width)
         #expect(size.height > 400)
         let asked = askedSize(page)
         #expect(asked.width <= pageWidth + 0.5, "the report asked for \(asked.width) pt of \(pageWidth)")
     }
 
-    @Test func twentyFourHoursWithoutPlanLimitsStartsWithThePeriodCard() throws {
+    @Test func twentyFourHoursRendersWithinThePageWidth() throws {
         let snap = snapshot(.hours24, tokens: UsageTokens(input: 12_000, output: 90_000, cacheRead: 2_400_000), sessions: 1,
                             cost: 4.2, models: [model("Sonnet 5.5", 2_502_000, cost: 4.2)])
-        let page = view(report(.hours24, snap), limits: nil)
+        let page = view(report(.hours24, snap))
         try render(page, name: "24h")
-        #expect(UsageCardText.cards(for: UsageCardText.planLimitsCard(limits: nil, failureReason: nil, now: Self.now))
-            .first == .period)
         #expect(askedSize(page).width <= pageWidth + 0.5)
-    }
-
-    @Test func unavailablePlanLimitsRenderTheirOwnCard() throws {
-        let snap = snapshot(.days7, tokens: UsageTokens(output: 4_000_000), sessions: 6, cost: 20,
-                            models: [model("Opus 5.5", 4_000_000, cost: 20)])
-        let failure = PlanLimitsFailure(category: .timedOut, at: Self.now)
-        let page = view(report(.days7, snap), limits: nil, failure: failure)
-        try render(page, name: "7d-limits-unavailable")
-        #expect(askedSize(page).width <= pageWidth + 0.5)
-        // An earlier answer stays with a note when the ask failed.
-        let kept = view(report(.days7, snap), limits: limits, failure: failure)
-        try render(kept, name: "7d-limits-not-refreshed")
-        #expect(askedSize(kept).width <= pageWidth + 0.5)
     }
 
     @Test func ninetyDaysWithFourModelsAndAnUnknownCostRenders() throws {
@@ -294,7 +215,7 @@ struct UsageCardsTests {
         let snap = snapshot(.days90, tokens: tokens, sessions: 312, cost: 1_840.5, unknown: ["claude-future"], models: [
             model("Opus 5.5", 380_000_000, cost: 1_600.2), model("Sonnet 5.5", 80_000_000, cost: 220.1),
             model("Haiku 5.5", 15_000_000, cost: 20.2), model("Claude Future", 10_000_000, cost: nil)])
-        let page = view(report(.days90, snap), limits: limits)
+        let page = view(report(.days90, snap))
         try render(page, name: "90d-four-models")
         #expect(askedSize(page).width <= pageWidth + 0.5)
     }
@@ -305,7 +226,7 @@ struct UsageCardsTests {
         let bars = full.bars.map { UsageBar(start: $0.start, tokens: 0, isCurrent: $0.isCurrent) }
         let cells = full.cells.map { UsageBar(start: $0.start, tokens: 0, isCurrent: $0.isCurrent) }
         let empty = UsageReport(period: .days30, snapshot: snap, bars: bars, cells: cells)
-        let page = view(empty, limits: nil)
+        let page = view(empty)
         try render(page, name: "30d-empty")
         #expect(askedSize(page).width <= pageWidth + 0.5)
     }

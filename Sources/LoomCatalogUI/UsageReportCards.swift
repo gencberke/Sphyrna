@@ -3,17 +3,9 @@ import LoomCore
 
 // MARK: Rules
 
-/// The cards of the Usage report, top to bottom.
+/// The cards of the Usage report, top to bottom. The plan limits are the Limits section's (`UsageLimitCards`).
 enum UsageCardKind: Hashable {
-    case planLimits, period, activity, models
-}
-
-/// What the plan-limits card shows: the windows (with a note when the last ask failed and the earlier
-/// answer stays), the unavailable text, or no card at all.
-enum UsagePlanLimitsCard: Equatable {
-    case limits(notRefreshed: Bool)
-    case unavailable(String)
-    case none
+    case period, activity, models
 }
 
 /// One token kind in the period card's ranked list.
@@ -27,20 +19,6 @@ struct UsageTokenKindRow: Equatable {
     var value: String { UsageFormat.tokens(tokens) }
 }
 
-/// A plan-limit row's texts and meter: the remaining share shows ("38% left", the same words and direction as Home's line and
-/// the footer chip), the used share is the tooltip. The meter fills what is left, from the leading edge; `isLow` turns it
-/// attention orange (under 20 % left, or the window runs out before it resets), as `PlanPaceLine` does.
-struct UsagePlanLimitRowText: Equatable {
-    let title: String
-    let used: String
-    let left: String
-    let remainingFraction: Double
-    let isLow: Bool
-    /// Capitalised, e.g. `Resets 14:20`; nil when the CLI did not say.
-    let reset: String?
-    let accessibilityLabel: String
-}
-
 /// The local five hours, as one row of the activity card.
 struct UsageLocalHoursText: Equatable {
     let label: String
@@ -51,35 +29,16 @@ struct UsageLocalHoursText: Equatable {
 
 /// The texts and orderings of the Usage report's cards, apart from the views so tests can pin them.
 enum UsageCardText {
-    static func planLimitsCard(limits: PlanLimits?, failureReason: String?, now: Date) -> UsagePlanLimitsCard {
-        if let limits, !limits.current(at: now).isEmpty { return .limits(notRefreshed: failureReason != nil) }
-        if let failureReason { return .unavailable(failureReason) }
-        return .none
-    }
+    /// The period, the activity and the models.
+    static let cards: [UsageCardKind] = [.period, .activity, .models]
 
-    /// Plan limits first, then the period, the activity and the models.
-    static func cards(for planLimits: UsagePlanLimitsCard) -> [UsageCardKind] {
-        (planLimits == .none ? [] : [.planLimits]) + [.period, .activity, .models]
-    }
-
-    static func planLimitsMeta(fetchedAt: Date, notRefreshed: Bool, timeZone: TimeZone) -> String {
-        "Updated \(UsageText.time(fetchedAt, timeZone))" + (notRefreshed ? " · could not refresh" : "")
-    }
-
-    /// `measuredAt` is when the used share was read (`PlanLimits.fetchedAt`), which the pace is measured at.
-    static func planLimitRow(_ kind: PlanLimitKind, _ window: PlanLimitWindow, now: Date, timeZone: TimeZone,
-                             measuredAt: Date? = nil) -> UsagePlanLimitRowText {
-        let reset = UsageChipContent.resetPhrase(window, now: now, timeZone: timeZone)
-        let remaining = Double(window.remainingPercent) / 100
-        // Over pace needs a reset time; without one only the share left says anything.
-        let isLow = PlanPace(kind: kind, window: window, at: now, measuredAt: measuredAt).map(PlanPaceLine.isLow)
-            ?? (remaining < LoomTheme.PlanPaceLine.lowBelow)
-        return UsagePlanLimitRowText(
-            title: kind.title, used: "\(UsageFormat.percent(window.usedPercent)) used", left: "\(UsageFormat.percent(window.remainingPercent)) left",
-            remainingFraction: remaining, isLow: isLow,
-            reset: reset?.capitalizedFirst,
-            accessibilityLabel: "\(kind.title) limit, \(window.usedPercent) percent used, "
-                + "\(window.remainingPercent) percent remaining" + (reset.map { ", " + $0 } ?? ""))
+    /// What the Tokens section's numbers cover, beside the periods.
+    static func coverage(of shown: [ManagedSession.Provider]) -> String {
+        switch (shown.contains(.claude), shown.contains(.codex)) {
+        case (true, true): "This Claude profile and this Codex account"
+        case (false, true): "This Codex account"
+        default: "This Claude profile, all projects"
+        }
     }
 
     /// "Last 7 days": the period's headline wording, capitalised.
@@ -203,18 +162,13 @@ private struct UsageMeterBar: View {
 /// The report of one period as cards, with the notice for records the scans could not read under them.
 struct UsageReportView: View {
     let report: UsageReport
-    let limits: PlanLimits?
-    let limitsFailure: PlanLimitsFailure?
     let linesNotUnderstood: Int
     let timeZone: TimeZone
-    var now = Date()
 
     var body: some View {
-        let planLimits = UsageCardText.planLimitsCard(limits: limits, failureReason: limitsFailure?.category.reason, now: now)
         VStack(alignment: .leading, spacing: S.cardGap) {
-            ForEach(UsageCardText.cards(for: planLimits), id: \.self) { kind in
+            ForEach(UsageCardText.cards, id: \.self) { kind in
                 switch kind {
-                case .planLimits: planLimitsCard(planLimits)
                 case .period: periodCard(report.snapshot)
                 case .activity: activityCard
                 case .models: modelsCard(report.snapshot)
@@ -224,59 +178,6 @@ struct UsageReportView: View {
                 Text(skipped).projectType(LoomTheme.InkType.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
             }
         }
-    }
-
-    // Plan limits
-
-    @ViewBuilder
-    private func planLimitsCard(_ state: UsagePlanLimitsCard) -> some View {
-        switch state {
-        case let .limits(notRefreshed):
-            if let limits {
-                UsageCard(title: "Plan limits",
-                          meta: UsageCardText.planLimitsMeta(fetchedAt: limits.fetchedAt, notRefreshed: notRefreshed,
-                                                             timeZone: timeZone)) {
-                    VStack(spacing: 0) {
-                        ForEach(limits.current(at: now), id: \.kind) { item in
-                            planLimitRow(UsageCardText.planLimitRow(item.kind, item.window, now: now, timeZone: timeZone,
-                                                                    measuredAt: limits.fetchedAt))
-                        }
-                    }
-                }
-            }
-        case let .unavailable(reason):
-            UsageCard(title: "Plan limits") {
-                HStack(spacing: S.unavailableGap) {
-                    Text("Plan limits unavailable").projectType(S.limitLabel).foregroundStyle(LoomTheme.Text.primary)
-                    Spacer(minLength: 0)
-                    Text(reason).projectType(S.unavailableReason).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                }
-                .accessibilityElement(children: .combine)
-            }
-        case .none:
-            EmptyView()
-        }
-    }
-
-    private func planLimitRow(_ text: UsagePlanLimitRowText) -> some View {
-        HStack(spacing: S.limitGap) {
-            Text(text.title).projectType(S.limitLabel).foregroundStyle(LoomTheme.Text.primary)
-                .frame(width: S.limitColumns.label, alignment: .leading)
-            UsageMeterBar(fraction: text.remainingFraction,
-                          fill: text.isLow ? LoomTheme.Status.attention : LoomTheme.Text.secondary,
-                          track: LoomTheme.Surface.strongHairline, height: S.meterHeight, radius: S.meterRadius)
-            Text(text.left).projectType(S.limitLeft)
-                .foregroundStyle(text.isLow ? LoomTheme.Status.attentionLight : LoomTheme.Text.primary)
-                .frame(width: S.limitColumns.left, alignment: .trailing)
-            // 118 wide, and wider when the phrase needs it ("Resets Sun 12:00 PM"), at the meter's cost.
-            Text(text.reset ?? "").projectType(S.limitReset).foregroundStyle(LoomTheme.Text.tertiaryStyle)
-                .lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                .frame(minWidth: S.limitColumns.reset, alignment: .trailing)
-        }
-        .frame(height: S.limitHeight)
-        .help(text.used)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(text.accessibilityLabel)
     }
 
     // The period
@@ -347,71 +248,10 @@ struct UsageReportView: View {
         return UsageCard(title: UsageCardText.activityTitle(report.period),
                          meta: UsageCardText.peak(bars, period: report.period, timeZone: timeZone)) {
             VStack(alignment: .leading, spacing: 0) {
-                chart(bars)
-                axisLabels(bars)
+                UsageBarsView(bars: bars, period: report.period, timeZone: timeZone)
                 localHours
             }
         }
-    }
-
-    private func chart(_ bars: [UsageBar]) -> some View {
-        let peak = bars.max { $0.tokens < $1.tokens }
-        return HStack(alignment: .bottom, spacing: S.barGap) {
-            ForEach(bars.indices, id: \.self) { index in
-                let bar = bars[index]
-                UnevenRoundedRectangle(topLeadingRadius: S.barRadius, topTrailingRadius: S.barRadius)
-                    .fill(bar.isCurrent ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Surface.strongerHairline))
-                    .frame(height: barHeight(bar, peak: peak?.tokens ?? 0))
-                    .frame(maxWidth: .infinity)
-                    .help("\(UsageText.bucket(bar.start, report.period, timeZone)), \(UsageFormat.tokens(bar.tokens)) tokens")
-            }
-        }
-        .frame(height: S.barsHeight, alignment: .bottom)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(chartDescription(bars))
-    }
-
-    private func barHeight(_ bar: UsageBar, peak: Int64) -> CGFloat {
-        guard bar.tokens > 0, peak > 0 else { return 0 }
-        return max(2, S.barsHeight * CGFloat(bar.tokens) / CGFloat(peak))
-    }
-
-    private func chartDescription(_ bars: [UsageBar]) -> String {
-        let total = bars.reduce(Int64(0)) { $0 + $1.tokens }
-        return "\(UsageCardText.activityTitle(report.period)), \(UsageFormat.spokenTokens(total)) tokens in total"
-    }
-
-    @ViewBuilder
-    private func axisLabels(_ bars: [UsageBar]) -> some View {
-        Group {
-            switch report.period {
-            case .days7:
-                HStack(spacing: S.barGap) {
-                    ForEach(bars.indices, id: \.self) { index in
-                        Text(UsageText.weekday(bars[index].start, timeZone)).frame(maxWidth: .infinity)
-                    }
-                }
-            case .hours24:
-                HStack(spacing: S.barGap) {
-                    ForEach(bars.indices, id: \.self) { index in
-                        // A blank line keeps the row's height; the label is wider than its bar and overlays it.
-                        Text(" ").frame(maxWidth: .infinity)
-                            .overlay { if UsageText.isLabelledHour(bars[index].start, timeZone) {
-                                Text(UsageText.hour(bars[index].start, timeZone)).fixedSize()
-                            } }
-                    }
-                }
-            case .days30, .days90:
-                HStack {
-                    Text(bars.first.map { UsageText.date($0.start, timeZone) } ?? "")
-                    Spacer()
-                    Text(bars.last.map { UsageText.date($0.start, timeZone) } ?? "")
-                }
-            }
-        }
-        .projectType(S.axis).foregroundStyle(LoomTheme.Text.tertiaryStyle)
-        .padding(.top, S.axisTop)
-        .accessibilityHidden(true)
     }
 
     /// The local five hours: the label, the five cells and their total on one row, the hour labels under the cells.
@@ -506,6 +346,81 @@ struct UsageReportView: View {
         HStack(spacing: S.modelGap) { row() }
             .frame(height: height)
             .overlay(alignment: .top) { if rule { SettingsRowDivider() } }
+    }
+}
+
+/// The bars of one period (an hour for 24 h, a calendar day otherwise) and the axis labels under them: the Claude activity card's
+/// chart, and Codex's daily line.
+struct UsageBarsView: View {
+    let bars: [UsageBar]
+    let period: UsagePeriod
+    let timeZone: TimeZone
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            chart
+            axisLabels
+        }
+    }
+
+    private var chart: some View {
+        let peak = bars.max { $0.tokens < $1.tokens }
+        return HStack(alignment: .bottom, spacing: S.barGap) {
+            ForEach(bars.indices, id: \.self) { index in
+                let bar = bars[index]
+                UnevenRoundedRectangle(topLeadingRadius: S.barRadius, topTrailingRadius: S.barRadius)
+                    .fill(bar.isCurrent ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Surface.strongerHairline))
+                    .frame(height: barHeight(bar, peak: peak?.tokens ?? 0))
+                    .frame(maxWidth: .infinity)
+                    .help("\(UsageText.bucket(bar.start, period, timeZone)), \(UsageFormat.tokens(bar.tokens)) tokens")
+            }
+        }
+        .frame(height: S.barsHeight, alignment: .bottom)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(chartDescription)
+    }
+
+    private func barHeight(_ bar: UsageBar, peak: Int64) -> CGFloat {
+        guard bar.tokens > 0, peak > 0 else { return 0 }
+        return max(2, S.barsHeight * CGFloat(bar.tokens) / CGFloat(peak))
+    }
+
+    private var chartDescription: String {
+        let total = bars.reduce(Int64(0)) { $0 + $1.tokens }
+        return "\(UsageCardText.activityTitle(period)), \(UsageFormat.spokenTokens(total)) tokens in total"
+    }
+
+    @ViewBuilder
+    private var axisLabels: some View {
+        Group {
+            switch period {
+            case .days7:
+                HStack(spacing: S.barGap) {
+                    ForEach(bars.indices, id: \.self) { index in
+                        Text(UsageText.weekday(bars[index].start, timeZone)).frame(maxWidth: .infinity)
+                    }
+                }
+            case .hours24:
+                HStack(spacing: S.barGap) {
+                    ForEach(bars.indices, id: \.self) { index in
+                        // A blank line keeps the row's height; the label is wider than its bar and overlays it.
+                        Text(" ").frame(maxWidth: .infinity)
+                            .overlay { if UsageText.isLabelledHour(bars[index].start, timeZone) {
+                                Text(UsageText.hour(bars[index].start, timeZone)).fixedSize()
+                            } }
+                    }
+                }
+            case .days30, .days90:
+                HStack {
+                    Text(bars.first.map { UsageText.date($0.start, timeZone) } ?? "")
+                    Spacer()
+                    Text(bars.last.map { UsageText.date($0.start, timeZone) } ?? "")
+                }
+            }
+        }
+        .projectType(S.axis).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+        .padding(.top, S.axisTop)
+        .accessibilityHidden(true)
     }
 }
 
