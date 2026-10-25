@@ -24,10 +24,12 @@
     - **the full gate on `3cbbcfc`** (`check-20261025T041948-63221.log`: release build, release tree, 1,877 + 365 tests with windows);
     - a real-CLI check of the plan-limits child's new `initialize` (Claude Code 2.1.300, isolated profile, no model call).
     - **Not run:** C8 (Chat was not changed beyond the splitter's rule) and the real Codex (production does not start it; the probe is tested on the fake).
+  - **Caches cleaned (25 Oct, `@user`: "bütün gereksiz cache'leri temizle"):** 44 GiB freed, the disk at 62 %.
+    - **Removed:** every build scratch except `build/r6-v2`, the old `loom-dev-build*` and `loom-release-build` scratch, the research clones (`loom-v2-research/repos`), the C8 candidate worktrees and packages, and the rounds' `/private/tmp/loom-*` files.
+    - **Kept:** the check logs, the evidence, `loom-run1`, the 0.4.4 reference package, and the 35 old worktrees with uncommitted changes.
   - **Waiting for `@user`:**
     - the hand checks in ACTIVE-PLAN §0.1;
     - the push (`git -C ~/Documents/github/loom push origin main v1.6.2`, and `v1.6.1` if wanted) and the GitHub release (DEVELOPMENT §10);
-    - whether to delete the round slices' build scratch (`~/Library/Caches/loom-v2/build/r5-*` and `r6-*` except `r6-v2`, about 24 GB; the disk is 85 % full).
 - **Blocker:** none. The push and the GitHub release wait for `@user` ([D-16](DECISIONS.md), [D-83](DECISIONS.md)).
 
 ---
@@ -50,9 +52,9 @@
 | Role / Slice | Worktree Path | Branch | HEAD SHA | Working Tree Status |
 | --- | --- | --- | --- | --- |
 | Main repo (`loom-dev`) | `/Users/gencberke/Documents/github/loom-dev` | `swarm/1` | this board's commit | Planner docs |
-| Round 5 and 6 slices | worktrees removed (25 Oct, clean and integrated) | `slice/r5-*`, `slice/r6-*` | the slices' last commits | Branches kept; Briefs and logs in `evidence/r5/` and `evidence/r6/`; build scratch `build/r5-*`, `build/r6-*` left for `@user` |
+| Round 5 and 6 slices | worktrees removed (25 Oct, clean and integrated) | `slice/r5-*`, `slice/r6-*` | the slices' last commits | Branches kept; Briefs and logs in `evidence/r5/` and `evidence/r6/`; their build scratch removed (25 Oct, `@user`) |
 | Integration branch | `~/Library/Caches/loom-v2/wt/v2` | `v2` | this board's commit (after `6fdde18`, tag `release/1.6.2`) | Clean; local only, never pushed; scratch `build/r6-v2` |
-| RC package | `wt/rc3-candidate` | detached | `1b974c4` | Clean; package `rc3-*` under `Loom-Dev/packages/` (`rc2-*` at `0461a54` kept for the A/B) |
+| C8 packages | worktrees `wt/*-candidate` and packages `r5*`, `rc2`, `rc3` removed (25 Oct, `@user`: "bütün gereksiz cache'leri temizle") | — | — | `build-c8.sh <sha>` rebuilds one; `Loom-Dev/packages/v2-base-044-reference` kept |
 | Fix slices (the review's) | `wt/fix-lifecycle`, `wt/fix-chat-fence`, `wt/fix-art`, `wt/fix-remora-review` | `slice/fix-*` | `cdaf588`, `140169c`, `a1db63f`, `6e6c884` | Clean; integrated by `cherry-pick -x`; kept until the release for follow-ups |
 | Package worktree | `wt/core` | `core` | `e3941fb` | Clean; `build-c8.sh` adds its worktrees from here |
 | Old worktrees | 35 under `wt/` (Release A–C era) | detached | various | Uncommitted changes, left for `@user` (`evidence/cleanup-20261022.md`) |
@@ -119,7 +121,6 @@
 - **`@user` (after round 6):**
   - the hand checks on the installed 1.6.2 (ACTIVE-PLAN §0.1);
   - the word on the push and the GitHub release: `git -C ~/Documents/github/loom push origin main v1.6.2` (and `v1.6.1`), then the zip and `gh release` with `plans/RELEASE-NOTES-1.6.2.md` (DEVELOPMENT §10);
-  - whether to delete the round slices' build scratch (about 24 GB);
   - the next round's scope (ACTIVE-PLAN §0.1 "Next").
   - **Still open from before:**
     - the Remora account rule (`FINDINGS.md`, Should-Fix 4), `O-09`, and Remora's public-build default;
