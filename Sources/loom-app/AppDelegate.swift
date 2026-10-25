@@ -287,8 +287,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // An empty toolbar makes AppKit give the titlebar the unified height and
         // center the window buttons in it natively (they are otherwise pinned to
         // a 32 pt strip); no item or separator is shown.
+        if !CommandLine.arguments.contains("--experiment-no-toolbar") {
         window.toolbar = NSToolbar(identifier: NSToolbar.Identifier("loom-main"))
         window.toolbarStyle = .unified
+        }
         window.titlebarSeparatorStyle = .none
         window.minSize = UIPreferences.windowMinimumSize
         window.isReleasedWhenClosed = false
