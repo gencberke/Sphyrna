@@ -1,7 +1,8 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-25
-- **Stage:** **Round 6 is done: Sphyrna 1.6.2 is tagged, promoted and installed** ([plans/ACTIVE-PLAN.md §0.1](plans/ACTIVE-PLAN.md#01-roadmap-after-161-25-oct), round log `evidence/r6/RUN.md`).
+- **Updated:** 2026-10-25 (evening)
+- **Now (25 Oct evening): the rescue.** [`plans/RESCUE-PLAN.md`](plans/RESCUE-PLAN.md) replaces the 1.7.0 line below. The chat is frozen and Sphyrna becomes a terminal-first session manager ([D-100](DECISIONS.md)); the process is one planner, one implementer, and a real measurement as the gate ([D-101](DECISIONS.md)). **Status: waiting for user decision** on the plan's open questions (§4) and the go for Phase A. Nothing in the code has changed yet.
+- **Stage (before the rescue):** **Round 6 is done: Sphyrna 1.6.2 is tagged, promoted and installed** ([plans/ACTIVE-PLAN.md §0.1](plans/ACTIVE-PLAN.md#01-roadmap-after-161-25-oct), round log `evidence/r6/RUN.md`).
   - The release line follows [D-93](DECISIONS.md):
     - 1.6.1 (round 5's fixes, identity, drag and drop, flow) and 1.6.2 (Codex parity's infrastructure, usage and connections) are built;
     - **1.7.0** is next: the session channel and Codex's binding.
