@@ -161,5 +161,7 @@ even (14.6 against 14.6 on `r7cand2`, 15.4 on `r7cand`).
   layout that touches tracking areas, wherever the pointer is. That was about a third of the typing cost with real key
   events and about 15 % of the main thread while a terminal streamed. **Open**; it would explain a hot UI on this Mac
   only if something laid out every frame.
+- **Installed 1.7.0 with the real profile** (app and its children, launched once and quit): launch 0.2 (max 6.8), Home at
+  rest 0.0, after re-activation 0.0; installed 1.6.2 read 1.8 (max 35.5), 1.0 and 1.3.
 - **The 118 was not reproduced**: not with fake providers, not with the installed 1.6.2 and the real profile, not with
   the pointer over the art, the composer or off the window.

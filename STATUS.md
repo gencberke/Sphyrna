@@ -1,46 +1,41 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-25 (evening)
-- **Now (25 Oct evening): the rescue.** [`plans/RESCUE-PLAN.md`](plans/RESCUE-PLAN.md) replaces the 1.7.0 line below. The chat is frozen and Sphyrna becomes a terminal-first session manager ([D-100](DECISIONS.md)); the process is one planner, one implementer, and a real measurement as the gate ([D-101](DECISIONS.md)). **Status: waiting for user decision** on the plan's open questions (§4) and the go for Phase A. Nothing in the code has changed yet.
-- **Stage (before the rescue):** **Round 6 is done: Sphyrna 1.6.2 is tagged, promoted and installed** ([plans/ACTIVE-PLAN.md §0.1](plans/ACTIVE-PLAN.md#01-roadmap-after-161-25-oct), round log `evidence/r6/RUN.md`).
-  - The release line follows [D-93](DECISIONS.md):
-    - 1.6.1 (round 5's fixes, identity, drag and drop, flow) and 1.6.2 (Codex parity's infrastructure, usage and connections) are built;
-    - **1.7.0** is next: the session channel and Codex's binding.
-  - `0.4.4` remains the latest public GitHub release ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)).
-- **State:** **1.6.2 is the daily app (25 Oct, about 05:00).**
+- **Updated:** 2026-10-26 (night)
+- **Now (26 Oct, about 03:30): Sphyrna 1.7.0, the rescue, is tagged, promoted and installed** ([`plans/RESCUE-PLAN.md`](plans/RESCUE-PLAN.md) §5, [D-100](DECISIONS.md) to [D-102](DECISIONS.md)). `@user`'s word on 25 Oct night: "bunları bu gece yapıyoruz … bu akşam implementasyon bitmiş ve minör version bump'ı almış olalım".
   - **Where it is:**
-    - `release/1.6.2` is `v2` `6fdde18`, promoted as the loom tree's `9dc4342` (tag `v1.6.2`, local, unpushed).
-    - It is installed in `/Applications/Loom.app` as build 10602, signed, and `codesign --verify --deep --strict` passes. It was not launched by the planner.
-    - 1.6.0's data is backed up in `~/Library/Application Support/Loom-backup-1.6.0-20261025T045435`.
-    - 1.6.1 (`release/1.6.1` `c3bf1a8`, loom `39a5e4a`, tag `v1.6.1`) was promoted but never installed; 1.6.2 contains it.
-  - **`@user`'s overnight word (25 Oct, verbatim in RUN.md):** after the round, the closing `@optimizer`, its fixes with narrow tests, the version bump, the install, then the loom-dev cleanup and a docs check. The push and the GitHub release were not part of it.
-  - **What 1.6.2 adds** (ACTIVE-PLAN §0.1):
-    - the capability table (D-94);
-    - the Codex probe, the connect switch and the model catalog;
-    - Settings → Usage with Codex (D-99) and Settings → Connections (D-98);
-    - Peek, a session dropped on a terminal, and round 5's leftovers.
+    - `release/1.7.0` is `v2` `b69a24c` (the slices ran on `slice/r7-rescue` in `wt/r7`, fast-forwarded onto `v2`), promoted as the loom tree's `3958797` (tag `v1.7.0`, 653 files, local, unpushed).
+    - It is installed in `/Applications/Loom.app` as build 10700, signed, and `codesign --verify --deep --strict` passes (`evidence/r7/install-170.log`). 1.6.2's data is backed up in `~/Library/Application Support/Loom-backup-1.6.2-20261026T025410`, and the data before the cleanup in `Loom-backup-before-r7-20261025T235812`.
+    - **Measured installed, with the real profile** (app and its children, `evidence/r7/real-app-170.json`): launch 0.2 (max 6.8), Home at rest 0.0, after re-activation 0.0; 1.6.2 read 1.8 (max 35.5), 1.0 and 1.3. The planner launched it once for this and quit it; the stored Glass sidebar now reads Transparent.
+    - `v2`'s working tree has one uncommitted change, `Package.resolved` (swift-png 4.5.1 → 4.5.2, written by a SwiftPM resolve during the checks). The release used the committed pin.
+  - **What 1.7.0 is** (ACTIVE-PLAN §0.1, `plans/RELEASE-NOTES-1.7.0.md`):
+    - every Claude session in its terminal, with the Chat face frozen;
+    - full model names, and quiet readers of unknown records;
+    - no art (Remora stays);
+    - Settings → Sessions → Storage, Claude's retention with consent, and usage per session;
+    - the sidebar from `@user`'s notes;
+    - the menu bar's working mark standing still.
   - **Checks behind it:**
-    - each package's own suites, and combined checks after each wave;
-    - the closing `@optimizer` (strict-reviewer, Opus 5.5 / max, `evidence/r6/optimizer/REPORT.md`): 11 findings, none Blocking; 7 applied with failing-first tests, and 4 recorded for later;
-    - **the full gate on `3cbbcfc`** (`check-20261025T041948-63221.log`: release build, release tree, 1,877 + 365 tests with windows);
-    - a real-CLI check of the plan-limits child's new `initialize` (Claude Code 2.1.300, isolated profile, no model call).
-    - **Not run:** C8 (Chat was not changed beyond the splitter's rule) and the real Codex (production does not start it; the probe is tested on the fake).
-  - **Caches cleaned (25 Oct, `@user`: "bütün gereksiz cache'leri temizle"):** 44 GiB freed, the disk at 62 %.
-    - **Removed:** every build scratch except `build/r6-v2`, the old `loom-dev-build*` and `loom-release-build` scratch, the research clones (`loom-v2-research/repos`), the C8 candidate worktrees and packages, and the rounds' `/private/tmp/loom-*` files.
-    - **Kept:** the check logs, the evidence, `loom-run1`, the 0.4.4 reference package, and the 35 old worktrees with uncommitted changes.
+    - each slice's narrow suites;
+    - `check.sh --release-tree --tests` on `d8b6352` (`check-20261026T022633-5571.log`): release tree, 984 + 1,875 + 365 + 195 + 57 + 8 tests. One failure, the capability guard (D-94) on `SidebarCardModels`, was fixed in `b69a24c` and re-checked in scope;
+    - Phase B's energy cells, `sample`s and screenshots (RESCUE-PLAN §5).
+    - **Not run:** the window tests of the full gate, C8, and a real Claude session in 1.7.0.
+  - **The cleanup (25 Oct, 23:58):** Sphyrna's 15 sessions are out of the catalog; their Claude files (336 MB) are in `~/.Trash/sphyrna-sessions-20261025` with a `RESTORE.md`. Emptying the Trash is `@user`'s.
+  - **Open (RESCUE-PLAN §5):** WindowServer at about 8 while Sphyrna is in front and a session works; the customized pointer's redraw cost; the 118 not reproduced; C4 (status truth).
   - **Waiting for `@user`:**
-    - the hand checks in ACTIVE-PLAN §0.1;
-    - the push (`git -C ~/Documents/github/loom push origin main v1.6.2`, and `v1.6.1` if wanted) and the GitHub release (DEVELOPMENT §10);
+    - the hand checks on the installed 1.7.0: the sidebar's look (Transparent at 0.8 is unverified on screen), the cards, project drag, Storage and retention, the Overview's Usage;
+    - the push (`git -C ~/Documents/github/loom push origin main v1.7.0`, with `v1.6.1` and `v1.6.2` if wanted) and the GitHub release (DEVELOPMENT §10);
+    - a macOS prompt on screen since about 01:13, "Claude is requesting to bypass the system private window picker…", raised by the planner's `screencapture`. The planner did not answer it.
+  - `0.4.4` remains the latest public GitHub release ([gencberke/loom](https://github.com/gencberke/loom), [D-56](DECISIONS.md)).
 - **Blocker:** none. The push and the GitHub release wait for `@user` ([D-16](DECISIONS.md), [D-83](DECISIONS.md)).
 
 ---
 
 ## 1. Current Operational Mode
 
-- **Next (25 Oct):**
-  1. `@user`'s hand checks on the installed 1.6.2.
+- **Next (26 Oct):**
+  1. `@user`'s hand checks on the installed 1.7.0.
   2. On `@user`'s word, the push and the GitHub release.
-  3. Then the next round from ACTIVE-PLAN §0.1, planned with `@user`: the `@optimizer`'s later items, the rest of usage, Chat S5, or 1.7.0.
+  3. Then RESCUE-PLAN's open items with `@user`: C4 (status truth) and the energy items of §5. Chat stays frozen (D-100).
 - **Planner (24 Oct):** the session that wrote [FEEDBACK-5](plans/FEEDBACK-5.md) plans round 5 with `@user`. Before it, the session "Sphyrna 1.6.0 release planlama" was `@planner` from 22 Oct 02:20 (`@user`'s word). The earlier planner session and the track sessions `sphyrna-ink` / `sphyrna-core` are idle; implementers run as the planner's own subagents and slices integrate straight onto `v2` (the `ink` and `core` track branches are not used).
 - **Night window (22–23 Oct, `@user` at 23:41):** the Mac idle, on the adapter, the screen unlocked; the planner ran the screen work after the review's fixes (the full gate, `rc3`'s C8 cells and an A/B against `rc2`, the service smoke) without asking again. It ended at 01:10. Briefs tell implementers to avoid commands that ask for approval, and to wait on `evidence/tools/wait-measurements.sh` (a C8 run, or the `HOLD-BUILDS` file while `@user` uses the Mac) before any build.
 - **Test cadence ([D-90](DECISIONS.md), [DEVELOPMENT.md §3.1](DEVELOPMENT.md#31-test-cadence-slices-one-pooled-batch-fixes-scoped-re-checks-d-90-22-oct-2026)):** narrow off-screen checks per slice; the pool runs when enough has collected; fixes get scoped re-checks.
@@ -54,7 +49,8 @@
 | --- | --- | --- | --- | --- |
 | Main repo (`loom-dev`) | `/Users/gencberke/Documents/github/loom-dev` | `swarm/1` | this board's commit | Planner docs |
 | Round 5 and 6 slices | worktrees removed (25 Oct, clean and integrated) | `slice/r5-*`, `slice/r6-*` | the slices' last commits | Branches kept; Briefs and logs in `evidence/r5/` and `evidence/r6/`; their build scratch removed (25 Oct, `@user`) |
-| Integration branch | `~/Library/Caches/loom-v2/wt/v2` | `v2` | this board's commit (after `6fdde18`, tag `release/1.6.2`) | Clean; local only, never pushed; scratch `build/r6-v2` |
+| Integration branch | `~/Library/Caches/loom-v2/wt/v2` | `v2` | this board's commit (after `b69a24c`, tag `release/1.7.0`) | `Package.resolved` modified by a resolve (above); local only, never pushed; scratch `build/r6-v2` |
+| The rescue | `~/Library/Caches/loom-v2/wt/r7` | `slice/r7-rescue` | same as `v2` | Clean; tools and logs in `evidence/r7/`; measurement packages `r7base`, `r7cand`, `r7cand2`..`4`, `r7exp` in `Loom-Dev/packages/` |
 | C8 packages | worktrees `wt/*-candidate` and packages `r5*`, `rc2`, `rc3` removed (25 Oct, `@user`: "bütün gereksiz cache'leri temizle") | — | — | `build-c8.sh <sha>` rebuilds one; `Loom-Dev/packages/v2-base-044-reference` kept |
 | Fix slices (the review's) | `wt/fix-lifecycle`, `wt/fix-chat-fence`, `wt/fix-art`, `wt/fix-remora-review` | `slice/fix-*` | `cdaf588`, `140169c`, `a1db63f`, `6e6c884` | Clean; integrated by `cherry-pick -x`; kept until the release for follow-ups |
 | Package worktree | `wt/core` | `core` | `e3941fb` | Clean; `build-c8.sh` adds its worktrees from here |
