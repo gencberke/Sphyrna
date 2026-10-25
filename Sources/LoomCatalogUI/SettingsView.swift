@@ -3,12 +3,13 @@ import LoomCore
 import SwiftUI
 
 public enum SettingsSection: CaseIterable, Identifiable, Hashable, Sendable {
-    case general, theme, usage, conversations, remora, about
+    case general, connections, theme, usage, conversations, remora, about
 
     public var id: Self { self }
     public var title: String {
         switch self {
         case .general: "General"
+        case .connections: "Connections"
         case .theme: "Theme"
         case .usage: "Usage"
         case .conversations: "Sessions"
@@ -78,7 +79,7 @@ public struct SettingsAbout: Equatable, Sendable {
     }
 }
 
-/// The Settings window's content: the 52 pt band with the section tabs (General, Theme, Usage, Sessions where offered, Remora, About), the open
+/// The Settings window's content: the 52 pt band with the section tabs (General, Connections, Theme, Usage, Sessions where offered, Remora, About), the open
 /// section under it, and the sheets over both. One fixed size (DESIGN §2 item 5; the window controller sets the size).
 public struct SettingsView: View {
     let model: CatalogModel
@@ -104,6 +105,7 @@ public struct SettingsView: View {
                 .zIndex(1)
             switch navigation.section {
             case .general: GeneralSettings(model: model, sheets: navigation.sheets)
+            case .connections: ConnectionsSettings(model: model)
             case .theme: ThemeSettings(model: model)
             case .usage: UsageSettings(usage: usage, profile: about.claudeProfile)
             case .remora: RemoraSettingsView(model: model, navigation: navigation)

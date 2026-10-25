@@ -31,6 +31,7 @@ extension AppDelegate {
             Task { @MainActor in ModelCatalog.shared.apply(reading) }
         })
         model.harnessConnections = connections
+        installConnections(model: model, root: root)
     }
 }
 

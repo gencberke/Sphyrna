@@ -1,4 +1,5 @@
 import AppKit
+import LoomCore
 import SwiftUI
 
 /// Values of the Settings window and About (DESIGN §2 item 5, §6; the reference's `settings.css`: `.swin`, `.stitle`, `.sbody`, `.slab`,
@@ -314,5 +315,62 @@ extension LoomTheme {
         static let aboutNameTop: CGFloat = 12
         static let aboutVersionTop: CGFloat = 4
         static let aboutCardTop: CGFloat = 36
+    }
+}
+
+// MARK: Connections
+
+extension LoomTheme {
+    /// Settings → Connections and Home's "Connect your agents" (D-98): the harness rows, the status dot, the setup command's field
+    /// and Deep Check's output. Sizes are Settings' own (a row is `Settings.rowMinHeight` high, its text 13 and 12).
+    enum Connect {
+        /// A harness row: the mark (13), 12 to the name and version, then the status dot (8), 8 from its headline, the switch last.
+        static let rowGap: CGFloat = 12
+        static let markSize = Layout.harnessMarkHeader
+        static let dot: CGFloat = 8
+        static let dotGap: CGFloat = 8
+        /// The name over its version in mono 11; the headline in 12 at most 250 wide.
+        static let name = InkType.body
+        static let version = InkType.meta
+        static let versionTop: CGFloat = 1
+        static let headline = InkType.small
+        static let headlineMaxWidth: CGFloat = 250
+        /// A picked row takes the control's hover fill, over the card's row inset.
+        static let pickedRadius = InkRadius.row
+        /// "Account changed" under the headline: mono 11 in the attention text.
+        static let changed = InkType.meta
+        static let note = InkType.small
+        static let noteTop: CGFloat = 8
+
+        /// The setup command: a field of radius 6 on the control fill, mono 12, 8 under the line above; Copy and Open Terminal 8 apart.
+        static let commandFont = Settings.path
+        static let commandPaddingH: CGFloat = 10
+        static let commandPaddingV: CGFloat = 7
+        static let commandRadius = InkRadius.control
+        static let commandGap: CGFloat = 8
+        static let commandTop: CGFloat = 10
+        static var commandFill: Color { Surface.control }
+        static let alternative = InkType.meta
+
+        /// Deep Check's output: mono 11.5, at most 220 high, scrolling, 10 inside a field like the command's.
+        static let deepFont = InkType.metaLarge
+        static let deepMaxHeight: CGFloat = 220
+        static let deepPadding: CGFloat = 10
+
+        /// The dot of a state: the accent when ready, the attention dot while something must be done, the failure dot when a
+        /// check could not tell, and quiet greys for a harness that is off or being checked.
+        static func dotColor(_ state: HarnessHealthState) -> Color {
+            switch state {
+            case .ready: Accent.base
+            case .install, .signIn: Status.attention
+            case .attention: Status.failure
+            case .checking: Text.tertiary
+            case .disabled: Surface.strongerHairline
+            }
+        }
+
+        /// The tab band's room for the section tabs: 680 less the same reserve at each side, where the close button sits at the
+        /// left (its 52 pt band centres the tabs between the window's edges).
+        static let tabsReserve: CGFloat = 96
     }
 }

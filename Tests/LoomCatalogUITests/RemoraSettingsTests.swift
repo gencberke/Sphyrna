@@ -18,8 +18,8 @@ struct RemoraSettingsTests {
     // MARK: The section
 
     @Test func remoraIsTheTabBeforeAbout() {
-        #expect(SettingsSection.allCases.map(\.title) == ["General", "Theme", "Usage", "Sessions", "Remora", "About"])
-        #expect(SettingsSection.available(cleanupReview: false).map(\.title) == ["General", "Theme", "Usage", "Remora", "About"])
+        #expect(SettingsSection.allCases.map(\.title) == ["General", "Connections", "Theme", "Usage", "Sessions", "Remora", "About"])
+        #expect(SettingsSection.available(cleanupReview: false).map(\.title) == ["General", "Connections", "Theme", "Usage", "Remora", "About"])
         let all = SettingsSection.available(cleanupReview: true)
         #expect(all.last == .about && all[all.count - 2] == .remora)
     }

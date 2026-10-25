@@ -661,8 +661,8 @@ struct ThemeAppearanceTests {
         #expect(try JSONDecoder().decode([PaneTone].self, from: Data(#"["workshop","cool","nightFleece"]"#.utf8)) == [.warm, .cool, .neutral])
     }
 
-    @Test func settingsHasAThemeSectionBetweenGeneralAndUsage() {
-        #expect(SettingsSection.available(cleanupReview: false).map(\.title) == ["General", "Theme", "Usage", "Remora", "About"])
+    @Test func settingsHasAThemeSectionBetweenConnectionsAndUsage() {
+        #expect(SettingsSection.available(cleanupReview: false).map(\.title) == ["General", "Connections", "Theme", "Usage", "Remora", "About"])
     }
 }
 
