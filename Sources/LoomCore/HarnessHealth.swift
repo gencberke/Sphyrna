@@ -32,7 +32,7 @@ public enum HarnessVersionStatus: Equatable, Sendable {
 public struct HarnessVersionTable: Equatable, Sendable {
     /// The oldest version the code's capability checks accept; nil where the checks read `--help` and never a version.
     public let minimum: [Int]?
-    /// The version 1.6.2 was built and checked against.
+    /// The version 1.7.0 was built and checked against.
     public let recommended: [Int]
 
     /// Claude Code: the 2.x series is the first with `--permission-mode` and `--model` (`claudeLaunchChoicesFloor`), the oldest
@@ -193,7 +193,7 @@ public struct HarnessHealth: Equatable, Sendable {
         }
         if status == .belowRecommended {
             health.headline += " · Update recommended"
-            health.note = "Sphyrna 1.6.2 was built against \(HarnessVersionTable.table(for: provider).map { HarnessVersionTable.text($0.recommended) } ?? ""). An update is not required."
+            health.note = "Sphyrna 1.7.0 was built against \(HarnessVersionTable.table(for: provider).map { HarnessVersionTable.text($0.recommended) } ?? ""). An update is not required."
         }
         return health
     }

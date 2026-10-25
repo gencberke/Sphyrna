@@ -6,10 +6,11 @@ Each cell runs WINDOW seconds (default 60) and records, for the app process: CPU
 The session processes the app started (run hosts, the fake provider) and WindowServer are recorded apart, so the app's own
 cost is never mixed with a provider's.
 
-Cells: home idle; the new-session page idle, with the sidebar solid and glass; typing on that page (the draft grows by one
+Cells: home idle; the new-session page idle; typing on that page (the draft grows by one
 character every 200 ms); one terminal session working silently; one terminal session streaming about 1 MiB/s; Home while
 another session's transcript grows. `--terminal-app` adds Terminal.app showing the same 1 MiB/s output, as the baseline a
-plain terminal sets.
+plain terminal sets. `--sidebar transparent` launches the app with the Transparent sidebar (the style is a launch flag,
+`--evidence-transparency`, not a command), and `--cells a,b` measures only the named cells.
 
 HEAVY (about 12 minutes per package on screen, launches the app, brings it to the front): run only when the user says the
 Mac is idle. Keeps the display awake with caffeinate while it runs.
@@ -24,6 +25,8 @@ parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.R
 parser.add_argument('fixtures', type=pathlib.Path)
 parser.add_argument('--label', default='energy')
 parser.add_argument('--terminal-app', action='store_true', help='also measure Terminal.app with the same output')
+parser.add_argument('--sidebar', choices=['solid', 'transparent'], default='solid')
+parser.add_argument('--cells', default='', help='comma-separated cell labels to measure (default: all)')
 perf_paths.add_common_arguments(parser, 'energy')
 args = parser.parse_args()
 app_path, run_dir = perf_paths.resolve_common(args, 'energy')
@@ -79,6 +82,8 @@ def cpu_seconds(pids):
 
 def measure(label, app_pid, d=None, during=None, window=None):
     window = window or WINDOW
+    if args.cells and label not in args.cells.split(','):
+        return None
     window_server = pids_of('/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer')
     children = session_pids({app_pid}) if app_pid else []
     watched = ([app_pid] if app_pid else []) + children + window_server
@@ -111,6 +116,11 @@ def measure(label, app_pid, d=None, during=None, window=None):
     return row
 
 
+def add(results, row):
+    if row:
+        results['rows'].append(row)
+
+
 def front(path):
     subprocess.run(['open', '-a', 'Finder'])
     time.sleep(1)
@@ -136,8 +146,8 @@ def sphyrna_cells(results):
     project = perf_paths.WORK_ROOT / f'{args.label}-project'
     project.mkdir(parents=True, exist_ok=True)
     subprocess.run(['git', 'init', '-q', str(project)], check=False)
-    subprocess.run(['open', '-n', '-a', app, '--args', '--evidence', d, '--data-root', data, '--fake-providers', str(fixtures)],
-                   check=True)
+    subprocess.run(['open', '-n', '-a', app, '--args', '--evidence', d, '--data-root', data, '--fake-providers', str(fixtures),
+                    '--evidence-transparency', args.sidebar], check=True)
     end = time.time() + 30
     while not (pathlib.Path(d) / 'launched.json').exists():
         if time.time() > end:
@@ -152,13 +162,10 @@ def sphyrna_cells(results):
         state = until(d, 'project', lambda s: len(s['catalog']['projects']) >= 1, 20)
         project_id = state['catalog']['projects'][0]['id']
         front(app)
-        send(d, 'opaque'); send(d, 'show-home'); time.sleep(5)
-        results['rows'].append(measure('home-idle-solid', pid, d))
+        send(d, 'show-home'); time.sleep(5)
+        add(results, measure('home-idle', pid, d))
         send(d, f'new-session:{project_id}'); time.sleep(5)
-        results['rows'].append(measure('newsession-idle-solid', pid, d))
-        send(d, 'glass'); time.sleep(3)
-        results['rows'].append(measure('newsession-idle-glass', pid, d))
-        send(d, 'opaque'); time.sleep(3)
+        add(results, measure('newsession-idle', pid, d))
 
         def typing(seconds):
             text = ''
@@ -169,7 +176,7 @@ def sphyrna_cells(results):
                 text += words[i % len(words)]; i += 1
                 send(d, f'draft-text:{project_id}:{text}')
                 time.sleep(0.2)
-        results['rows'].append(measure('newsession-typing-solid', pid, d, during=typing))
+        add(results, measure('newsession-typing', pid, d, during=typing))
         send(d, f'draft-discard:{project_id}')
         send(d, 'show-home'); time.sleep(2)
 
@@ -189,7 +196,7 @@ def sphyrna_cells(results):
                 with open(transcript, 'a') as handle:
                     while time.monotonic() < stop:
                         handle.write(line); handle.flush(); time.sleep(0.2)
-            results['rows'].append(measure('home-idle-transcript-growing', pid, d, during=grow))
+            add(results, measure('home-idle-transcript-growing', pid, d, during=grow))
         else:
             results['skipped'] = 'no projects folder in the run profile'
 
@@ -198,13 +205,13 @@ def sphyrna_cells(results):
                       and 'READY' in (s['conversationTerminals'][0]['screenTail'] or ''), 40)
         owner = state['conversationTerminals'][0]['owner']
         send(d, f'type:{owner}:/work 300000'); time.sleep(5)
-        results['rows'].append(measure('terminal-working-silent', pid, d))
+        add(results, measure('terminal-working-silent', pid, d))
         send(d, f'stop:{owner}'); time.sleep(4)
         send(d, f'resume:{owner}')
         until(d, 'live2', lambda s: len(s.get('conversationTerminals', [])) == 1
               and 'READY' in (s['conversationTerminals'][0]['screenTail'] or ''), 40)
         send(d, f'type:{owner}:/stream {WINDOW + 20}'); time.sleep(5)
-        results['rows'].append(measure('terminal-stream-1MiBps', pid, d))
+        add(results, measure('terminal-stream-1MiBps', pid, d))
     finally:
         send(d, 'quit')
         time.sleep(8)
@@ -226,7 +233,7 @@ def terminal_app_cells(results):
     time.sleep(4)
     terminal = pids_of('/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal')
     if terminal:
-        results['rows'].append(measure('terminalapp-stream-1MiBps', terminal[0]))
+        add(results, measure('terminalapp-stream-1MiBps', terminal[0]))
     time.sleep(20)
     subprocess.run(['osascript', '-e', 'tell application "Terminal" to close front window'], capture_output=True)
     if not was_running:
@@ -236,7 +243,7 @@ def terminal_app_cells(results):
 def main():
     root.mkdir(parents=True, exist_ok=True)
     awake = subprocess.Popen(['caffeinate', '-dimsu'])
-    results = {'app': app, 'windowSeconds': WINDOW, 'rows': []}
+    results = {'app': app, 'windowSeconds': WINDOW, 'sidebar': args.sidebar, 'rows': []}
     try:
         sphyrna_cells(results)
         if args.terminal_app:

@@ -72,6 +72,10 @@ enum BrailleFrames {
         animation.duration = Double(frames.count) / LoomTheme.Spinner.framesPerSecond
         animation.repeatCount = .infinity
         animation.isRemovedOnCompletion = false
+        // Without a rate the render server composites the window at the display's rate (up to 120 Hz) for a mark that
+        // changes 12 times a second; the window is not opaque, so each of those frames is a full blend (RESCUE-PLAN §5).
+        let rate = Float(LoomTheme.Spinner.framesPerSecond)
+        animation.preferredFrameRateRange = CAFrameRateRange(minimum: rate, maximum: rate, preferred: rate)
         return animation
     }
 
