@@ -173,12 +173,12 @@ public struct HarnessHealth: Equatable, Sendable {
             health.note = "This \(name) is older than Sphyrna can work with. Update it, then choose Check Again."
             return health
         }
-        switch (provider, reading?.account) {
-        case (_, HarnessAccount.none?):
+        switch reading?.account {
+        case HarnessAccount.none?:
             return health.signedOut()
-        case (.claude, nil) where reading?.windows.isEmpty == true, (_, nil) where reading == nil:
-            // A check that answered nothing, or Claude's that named no account, is unknown: only an explicit `.none` account
-            // says nobody is signed in, so a signed-in user is never told to sign in.
+        case nil where reading?.windows.isEmpty ?? true:
+            // A check that answered nothing, or one that named neither an account nor a window, is unknown: only an explicit
+            // `.none` account says nobody is signed in, so a signed-in user is never told to sign in.
             health.state = .attention
             health.headline = "Could not check"
             health.note = "Sphyrna could not read \(name)'s answer. Choose Check Again."
