@@ -139,21 +139,25 @@ struct HomeProjectTag: View {
 // MARK: Usage
 
 /// Home's usage as the previews draw it: a "Plan limits" card (both windows as meters, each with its reset and pace line)
-/// and a "Today" card under it (tokens, sessions and cache share). A card with nothing to say is left out.
+/// and a "Today" card under it (tokens, sessions and cache share). A card with nothing to say is left out. With Codex connected
+/// and read, its windows stand under Claude's, each group headed by the harness name.
 struct HomeUsage: View {
     let model: CatalogModel
 
     var body: some View {
         let usage = model.usage
         let paces = usage == nil ? [] : model.homePaces()
-        let limitsFailure = paces.isEmpty ? usage?.limitsFailure.flatMap { $0.category == .noToolchain ? nil : $0 } : nil
+        let codex = usage == nil ? [] : model.homeCodexLimits()
+        let limitsFailure = paces.isEmpty && codex.isEmpty && usage?.isConnected(.claude) != false
+            ? usage?.limitsFailure.flatMap { $0.category == .noToolchain ? nil : $0 } : nil
         let figures = model.homeTodayFigures()
         // Nothing at all when no card has something to say: an empty stack would still take a gap in the side column.
-        if !paces.isEmpty || limitsFailure != nil || figures != nil {
+        if !paces.isEmpty || !codex.isEmpty || limitsFailure != nil || figures != nil {
             VStack(alignment: .leading, spacing: LoomTheme.Home.blockGap) {
-                if let usage, !paces.isEmpty {
-                    HomePlanLimits(paces: paces, now: model.now, timeZone: usage.timeZone,
-                                   updated: usage.limits.map { UsageText.time($0.fetchedAt, usage.timeZone) })
+                if let usage, !paces.isEmpty || !codex.isEmpty {
+                    let readAt = paces.isEmpty ? usage.readings[.codex]?.readAt : usage.limits?.fetchedAt
+                    HomePlanLimits(paces: paces, codex: codex, now: model.now, timeZone: usage.timeZone,
+                                   updated: readAt.map { UsageText.time($0, usage.timeZone) })
                 } else if limitsFailure != nil {
                     HomeSideCard(title: "Plan limits", identifier: "home-limits") {
                         Text("Claude did not report plan limits, so Sphyrna shows none.")
@@ -169,26 +173,68 @@ struct HomeUsage: View {
     }
 }
 
+/// One harness's windows in the Plan limits card; the name is nil for Claude alone, which looks as it always did.
+struct HomeLimitGroup: Equatable {
+    let name: String?
+    let lines: [PlanPaceLine.Content]
+}
+
+/// The words of the Plan limits card with and without Codex: its groups, what VoiceOver reads and the tooltip. Plain data
+/// so a test can state them from fixture numbers.
+enum HomeLimitsText {
+    static func groups(paces: [PlanPace], codex: [PlanPaceLine.Content], now: Date, timeZone: TimeZone) -> [HomeLimitGroup] {
+        let claude = paces.map { PlanPaceLine.Content(pace: $0, now: now, timeZone: timeZone) }
+        if codex.isEmpty { return [HomeLimitGroup(name: nil, lines: claude)] }
+        return (paces.isEmpty ? [] : [HomeLimitGroup(name: "Claude", lines: claude)]) + [HomeLimitGroup(name: "Codex", lines: codex)]
+    }
+
+    /// "Plan limits, 5-hour window 62% left, on pace. Codex, 5-hour 77% left, Weekly 39% left".
+    static func spoken(paces: [PlanPace], codex: [PlanPaceLine.Content], now: Date, timeZone: TimeZone) -> String {
+        let claude = PlanLimitsLine(paces: paces, now: now, timeZone: timeZone).spoken
+        guard !codex.isEmpty else { return claude }
+        let codexText = "Codex, " + codex.map { "\($0.title) \($0.left)" }.joined(separator: ", ")
+        return paces.isEmpty ? "Plan limits, " + codexText : claude + ". " + codexText
+    }
+
+    /// Each window's sentence, Claude's first, Codex's under them with the harness name.
+    static func tooltip(paces: [PlanPace], codex: [PlanPaceLine.Content], now: Date, timeZone: TimeZone) -> String {
+        let claude = PlanLimitsLine(paces: paces, now: now, timeZone: timeZone).tooltip(paces: paces, now: now, timeZone: timeZone)
+        let lines = (paces.isEmpty ? [] : [claude]) + codex.map { "Codex \($0.tooltip)" }
+        return lines.joined(separator: "\n")
+    }
+}
+
 /// The "Plan limits" card: "updated 14:52" at the heading's right, then one `PlanPaceLine` per window (name and what is
 /// left, the meter, the reset and pace line). VoiceOver reads the card as one element with `PlanLimitsLine.spoken`; the
 /// tooltip carries each window's sentence. The windows' reset lines wrap, so a time a limit runs out is never cut.
 struct HomePlanLimits: View {
     let paces: [PlanPace]
+    var codex: [PlanPaceLine.Content] = []
     let now: Date
     let timeZone: TimeZone
     let updated: String?
 
     var body: some View {
-        let line = PlanLimitsLine(paces: paces, now: now, timeZone: timeZone)
+        let groups = HomeLimitsText.groups(paces: paces, codex: codex, now: now, timeZone: timeZone)
         HomeSideCard(title: "Plan limits", meta: updated.map { "updated " + $0 }, contentTop: LoomTheme.Home.paceGap,
-                     summary: line.spoken, identifier: "home-limits") {
-            VStack(alignment: .leading, spacing: LoomTheme.Home.paceGap) {
-                ForEach(Array(paces.enumerated()), id: \.offset) { _, pace in
-                    PlanPaceLine(pace: pace, now: now, timeZone: timeZone)
+                     summary: HomeLimitsText.spoken(paces: paces, codex: codex, now: now, timeZone: timeZone),
+                     identifier: "home-limits") {
+            VStack(alignment: .leading, spacing: codex.isEmpty ? LoomTheme.Home.paceGap : LoomTheme.Home.limitGroupGap) {
+                ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                    VStack(alignment: .leading, spacing: LoomTheme.Home.limitGroupHeadGap) {
+                        if let name = group.name {
+                            Text(name).homeType(LoomTheme.Home.limitGroup).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                        }
+                        VStack(alignment: .leading, spacing: LoomTheme.Home.paceGap) {
+                            ForEach(Array(group.lines.enumerated()), id: \.offset) { _, line in
+                                PlanPaceLine(content: line)
+                            }
+                        }
+                    }
                 }
             }
         }
-        .help(line.tooltip(paces: paces, now: now, timeZone: timeZone))
+        .help(HomeLimitsText.tooltip(paces: paces, codex: codex, now: now, timeZone: timeZone))
     }
 }
 

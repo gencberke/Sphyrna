@@ -565,7 +565,8 @@ public final class UsageModel {
     /// Replaced only when the text changes, so the footer redraws only then.
     private func rebuildChip() {
         let content = UsageChipContent.make(
-            state: state, today: today, hasHistory: hasHistory, limits: limits, now: clock(), timeZone: timeZone)
+            state: state, today: today, hasHistory: hasHistory, limits: limits,
+            codex: isConnected(.codex) ? readings[.codex] : nil, now: clock(), timeZone: timeZone)
         if content != chip { chip = content }
     }
 

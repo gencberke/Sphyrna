@@ -84,7 +84,7 @@ private struct UsageContent: View {
             Text(UsageCardText.coverage(of: shown)).projectType(S.periodText).foregroundStyle(LoomTheme.Text.secondaryStyle)
             Spacer(minLength: 0)
             InkSegmented(values: UsagePeriod.allCases, title: \.title, selection: usage.period,
-                         enabled: usage.state == .ready || !shown.contains(.claude), onSelect: { usage.select($0) })
+                         enabled: usage.state == .ready || shown.contains(.codex), onSelect: { usage.select($0) })
                 .accessibilityLabel("Period")
         }
     }
@@ -103,34 +103,91 @@ private struct UsageContent: View {
 
     // Tokens
 
+    /// Claude's report as it was (tokens, cost, models, shares) and, beside it, Codex's card; with both shown, one line above
+    /// them gives each harness's total for the period.
     @ViewBuilder
     private func tokensPage(connected: [ManagedSession.Provider], chosen: UsageHarnessFilter,
                             shown: [ManagedSession.Provider]) -> some View {
         let top = head(connected: connected, chosen: chosen, shown: shown)
-        switch usage.state {
-        case .idle, .indexing:
-            note(top, SettingsNote(title: "Reading Claude's usage",
-                                    text: "Sphyrna is reading the transcripts Claude keeps on this Mac. This happens once; after that only new lines are read."))
-        case let .failed(message):
-            note(top, SettingsNote(title: "Usage could not be read", text: message, retry: { usage.refresh(reason: .manual) }))
-        case .ready:
-            if !usage.hasHistory {
-                note(top, SettingsNote(title: "No Claude usage yet",
-                                        text: "Sphyrna found no transcripts in this Claude profile. Usage appears after a session finishes its first turn.",
-                                        path: profile.map { SettingsPaths.display($0.appendingPathComponent("projects")) }))
-            } else if let report = usage.report, report.period == usage.period {
-                SettingsPage {
-                    VStack(alignment: .leading, spacing: 0) {
-                        top
-                        UsageReportView(report: report, linesNotUnderstood: usage.linesNotUnderstood, timeZone: usage.timeZone)
-                    }
-                }
-            } else {
-                VStack(spacing: 0) {
-                    top.padding(.horizontal, S.bodyInset).padding(.top, S.bodyTop)
-                    Spacer(minLength: 0)
+        let codexCard = shown.contains(.codex) ? self.codexCard() : nil
+        if !shown.contains(.claude) {
+            SettingsPage {
+                VStack(alignment: .leading, spacing: 0) {
+                    top
+                    codexCard
                 }
             }
+        } else {
+            switch usage.state {
+            case .idle, .indexing:
+                claudeNote(top, codexCard, SettingsNote(
+                    title: "Reading Claude's usage",
+                    text: "Sphyrna is reading the transcripts Claude keeps on this Mac. This happens once; after that only new lines are read."),
+                           line: "Claude: Sphyrna is reading the transcripts Claude keeps on this Mac.")
+            case let .failed(message):
+                claudeNote(top, codexCard, SettingsNote(title: "Usage could not be read", text: message, retry: { usage.refresh(reason: .manual) }),
+                           line: "Claude's usage could not be read: \(message)")
+            case .ready:
+                if !usage.hasHistory {
+                    claudeNote(top, codexCard, SettingsNote(
+                        title: "No Claude usage yet",
+                        text: "Sphyrna found no transcripts in this Claude profile. Usage appears after a session finishes its first turn.",
+                        path: profile.map { SettingsPaths.display($0.appendingPathComponent("projects")) }),
+                               line: "No Claude usage yet.")
+                } else if let report = usage.report, report.period == usage.period {
+                    SettingsPage {
+                        VStack(alignment: .leading, spacing: 0) {
+                            top
+                            VStack(alignment: .leading, spacing: S.cardGap) {
+                                if let totals = totalsLine(report: report, shown: shown) {
+                                    Text(totals).projectType(S.periodText).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                                }
+                                UsageReportView(report: report, linesNotUnderstood: usage.linesNotUnderstood,
+                                                timeZone: usage.timeZone)
+                                codexCard
+                            }
+                        }
+                    }
+                } else {
+                    VStack(spacing: 0) {
+                        top.padding(.horizontal, S.bodyInset).padding(.top, S.bodyTop)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+        }
+    }
+
+    private func codexCard() -> UsageCodexCardView {
+        UsageCodexCardView(
+            card: UsageCodexTokens.card(reading: usage.readings[.codex], failure: usage.readFailures[.codex],
+                                        period: usage.period, now: Date(), timeZone: usage.timeZone),
+            period: usage.period, timeZone: usage.timeZone)
+    }
+
+    /// Each harness's total for the period, when both have one.
+    private func totalsLine(report: UsageReport, shown: [ManagedSession.Provider]) -> String? {
+        guard shown.contains(.codex), let reading = usage.readings[.codex] else { return nil }
+        let codex = UsageCodexPeriod.make(reading: reading, period: usage.period, now: Date(), timeZone: usage.timeZone)
+        guard !reading.tokenDays.isEmpty else { return nil }
+        return UsageCodexTokens.totalsLine(claude: report.snapshot.tokens.total, codex: codex.total, period: usage.period)
+    }
+
+    /// Claude's page state: with Codex's card beside it the state is a line above the card, alone it is the full note.
+    @ViewBuilder
+    private func claudeNote(_ head: some View, _ codexCard: UsageCodexCardView?, _ full: SettingsNote, line: String) -> some View {
+        if let codexCard {
+            SettingsPage {
+                VStack(alignment: .leading, spacing: 0) {
+                    head
+                    VStack(alignment: .leading, spacing: S.cardGap) {
+                        Text(line).projectType(S.periodText).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                        codexCard
+                    }
+                }
+            }
+        } else {
+            note(head, full)
         }
     }
 

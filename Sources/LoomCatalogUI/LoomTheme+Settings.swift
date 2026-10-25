@@ -206,6 +206,8 @@ extension LoomTheme {
         /// The Limits section: groups 22 apart; inside a card the pace line and the read time are 8 apart.
         static let limitGroupGap: CGFloat = 22
         static let limitCardGap: CGFloat = 8
+        /// Codex's card: the daily line is 14 below the total, and the lifetime row 14 under the line.
+        static let codexBarsTop: CGFloat = 14
         /// The period card: 200 and the rest, 24 apart. The total is 30 semibold with tabular figures; captions 11.5; the cost 15
         /// semibold, 12 below the caption; the fine print 11 on 15, 10 below.
         static let summaryWidth: CGFloat = 200

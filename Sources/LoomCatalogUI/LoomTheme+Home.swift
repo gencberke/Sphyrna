@@ -84,6 +84,11 @@ extension LoomTheme {
         static let sideHeadGap: CGFloat = 4
         /// A plan window's block is 14 under the one above it (and under the heading's 4).
         static let paceGap: CGFloat = 14
+        /// With two harnesses the Plan limits card heads each group with its name (the meta type, semibold), 8 above its first
+        /// window, and keeps the groups 18 apart.
+        static let limitGroup = InkStyle(size: 11, weight: .semibold)
+        static let limitGroupHeadGap: CGFloat = 8
+        static let limitGroupGap: CGFloat = 18
         /// Today's line is 8 under the heading.
         static let todayTop: CGFloat = 8
         static let sideTitle = InkType.header

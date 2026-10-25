@@ -42,9 +42,10 @@ public struct UsageChipContent: Equatable, Sendable {
     /// Tokens only; the narrow chip drops the meter first and then cuts these, never the limit.
     public var short: String { lead + figure + suffix }
 
-    /// nil hides the chip: no index, or a first scan that failed (Settings says why).
+    /// nil hides the chip: no index, or a first scan that failed (Settings says why). `codex` is Codex's last reading: its
+    /// windows are listed in the tooltip, and the chip's own number stays Claude's.
     static func make(
-        state: UsageState, today: UsageSnapshot?, hasHistory: Bool, limits: PlanLimits? = nil,
+        state: UsageState, today: UsageSnapshot?, hasHistory: Bool, limits: PlanLimits? = nil, codex: HarnessReading? = nil,
         now: Date = Date(), timeZone: TimeZone = .current
     ) -> UsageChipContent? {
         switch state {
@@ -79,6 +80,16 @@ public struct UsageChipContent: Equatable, Sendable {
                         + (resetPhrase(window, now: now, timeZone: timeZone).map { ", " + $0 } ?? "")
                 }
             }
+            if let codex {
+                let windows = codex.currentWindows(at: now)
+                if !windows.isEmpty {
+                    tooltip += "\nCodex limits, read \(UsageText.time(codex.readAt, timeZone)):"
+                    for window in windows {
+                        tooltip += "\n\(window.name): \(UsageFormat.percent(window.remainingPercent)) left"
+                            + (resetPhrase(window.resetsAt, now: now, timeZone: timeZone).map { ", " + $0 } ?? "")
+                    }
+                }
+            }
             tooltip += "\nClick to open Usage."
             return UsageChipContent(
                 kind: .today, lead: "", figure: UsageFormat.tokens(tokens.total), suffix: " today", limit: limit,
@@ -88,7 +99,11 @@ public struct UsageChipContent: Equatable, Sendable {
 
     /// `resets 16:30`, or `resets Mon 10:00` when it is not today; nil when the reset time is unknown.
     static func resetPhrase(_ window: PlanLimitWindow, now: Date, timeZone: TimeZone) -> String? {
-        guard let resets = window.resetsAt else { return nil }
+        resetPhrase(window.resetsAt, now: now, timeZone: timeZone)
+    }
+
+    static func resetPhrase(_ resetsAt: Date?, now: Date, timeZone: TimeZone) -> String? {
+        guard let resets = resetsAt else { return nil }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let day = calendar.isDate(resets, inSameDayAs: now) ? "" : UsageText.weekday(resets, timeZone) + " "

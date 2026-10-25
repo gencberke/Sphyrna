@@ -171,6 +171,16 @@ extension CatalogModel {
     /// drops out by itself. Pure arithmetic over the last answer: nothing is asked.
     func homePaces() -> [PlanPace] { usage?.paces(at: now) ?? [] }
 
+    /// Codex's limit windows for the Plan limits card, at the model's clock: empty unless Codex is connected and has been
+    /// read (by the Usage page or Connections; Home asks nothing itself). A window that has ended drops out by itself.
+    func homeCodexLimits() -> [PlanPaceLine.Content] {
+        guard let usage, usage.isConnected(.codex), let reading = usage.readings[.codex] else { return [] }
+        let current = now
+        return reading.currentWindows(at: current).map {
+            PlanPaceLine.Content(window: $0, measuredAt: reading.readAt, now: current, timeZone: usage.timeZone)
+        }
+    }
+
     // MARK: Continue
 
     /// The sessions Quit cut short that can be resumed now, newest first. A session whose run is live again

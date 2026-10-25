@@ -51,13 +51,14 @@ struct UsageHarnessTests {
     static let pro = HarnessAccount.subscription(email: "someone@example.invalid", plan: "pro")
 
     static func codexAnswer(
-        account: HarnessAccount? = pro, five: Int = 23, week: Int = 61, days: [HarnessTokenDay]? = nil, lifetime: Int64? = nil
+        account: HarnessAccount? = pro, five: Int = 23, week: Int = 61, days: [HarnessTokenDay]? = nil, lifetime: Int64? = nil,
+        at now: Date = start
     ) -> HarnessProbeAnswer {
         HarnessProbeAnswer(
             account: account,
             windows: account == HarnessAccount.apiKey || account == HarnessAccount.none ? [] : [
-                window("codex.primary", "5-hour", minutes: 300, used: five, resetsIn: 3 * 3_600),
-                window("codex.secondary", "Weekly", minutes: 10_080, used: week, resetsIn: 4 * 86_400)],
+                window("codex.primary", "5-hour", minutes: 300, used: five, resetsIn: 3 * 3_600, at: now),
+                window("codex.secondary", "Weekly", minutes: 10_080, used: week, resetsIn: 4 * 86_400, at: now)],
             lifetimeTokens: lifetime, tokenDays: days)
     }
 
@@ -85,11 +86,13 @@ struct UsageHarnessTests {
     }
 
     /// A usage model with the probe attached, Claude through a fetcher and Codex through a script.
-    func rig(codex answers: [HarnessProbeAnswer?] = [UsageHarnessTests.codexAnswer()], claudeAccount: HarnessAccount? = .subscription(email: nil, plan: "max"),
-             connections: HarnessConnections = HarnessConnections(), section: UsageSection = .limits) -> Rig {
-        let clock = TestClock(Self.start)
+    func rig(codex answers: [HarnessProbeAnswer?] = [UsageHarnessTests.codexAnswer()],
+             claudeAccount: HarnessAccount? = .subscription(email: nil, plan: "max"),
+             connections: HarnessConnections = HarnessConnections(), section: UsageSection = .limits,
+             start: Date = UsageHarnessTests.start) -> Rig {
+        let clock = TestClock(start)
         let claude = AccountFetcher()
-        claude.set(PlanLimitsReading(limits: Self.claudeLimits(), account: claudeAccount))
+        claude.set(PlanLimitsReading(limits: Self.claudeLimits(at: start), account: claudeAccount))
         let codex = Scripted(answers)
         let probe = HarnessProbe(
             connections: connections, sources: [.claude: ClaudeProbeSource(fetcher: claude), .codex: codex],
@@ -361,5 +364,145 @@ struct UsageHarnessTests {
         #expect(UsageFormat.untilReset(now.addingTimeInterval(3 * 3_600 + 14 * 60 + 10), from: now) == "3h 15m")
         #expect(UsageFormat.untilReset(now.addingTimeInterval(2 * 86_400 + 4 * 3_600), from: now) == "2d 4h")
         #expect(UsageFormat.untilReset(now.addingTimeInterval(-5), from: now) == "1m")
+    }
+
+    // MARK: Codex's tokens
+
+    /// `2026-10-07`-style text of the local day `offset` days before `now`, as Codex names its days.
+    static func dayText(_ offset: Int, from now: Date = start) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        let day = calendar.date(byAdding: .day, value: -offset, to: calendar.startOfDay(for: now))!
+        let parts = calendar.dateComponents([.year, .month, .day], from: day)
+        return String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
+    }
+
+    static var days: [HarnessTokenDay] {
+        [HarnessTokenDay(day: dayText(7), tokens: 9_000), HarnessTokenDay(day: dayText(6), tokens: 500),
+         HarnessTokenDay(day: dayText(1), tokens: 1_200), HarnessTokenDay(day: dayText(0), tokens: 3_400)]
+    }
+
+    @Test func codexsPeriodTotalIsSummedFromItsDaysForSevenDaysAndIsTodayForTwentyFourHours() {
+        let reading = HarnessReading(provider: .codex, account: Self.pro, lifetimeTokens: 123_456_789, tokenDays: Self.days,
+                                     readAt: Self.start)
+        let week = UsageCodexPeriod.make(reading: reading, period: .days7, now: Self.start, timeZone: Self.zone)
+        #expect(week.total == 5_100, "the day 7 days ago is outside the last 7 days")
+        #expect(week.bars.map(\.tokens) == [500, 0, 0, 0, 0, 1_200, 3_400], "oldest first, empty days included")
+        #expect(week.bars.map(\.isCurrent) == [false, false, false, false, false, false, true])
+        #expect(week.lifetime == 123_456_789)
+
+        let day = UsageCodexPeriod.make(reading: reading, period: .hours24, now: Self.start, timeZone: Self.zone)
+        #expect(day.total == 3_400, "24 h is today's total")
+        #expect(day.bars.isEmpty, "a day is the finest Codex reports")
+
+        #expect(UsageCodexPeriod.make(reading: reading, period: .days30, now: Self.start, timeZone: Self.zone).total == 14_100)
+        #expect(UsageCodexPeriod.make(reading: reading, period: .days90, now: Self.start, timeZone: Self.zone).bars.count == 90)
+        // A day written as a timestamp counts by its date.
+        let stamped = HarnessReading(provider: .codex, tokenDays: [HarnessTokenDay(day: Self.dayText(0) + "T00:00:00Z", tokens: 7)],
+                                     readAt: Self.start)
+        #expect(UsageCodexPeriod.make(reading: stamped, period: .hours24, now: Self.start, timeZone: Self.zone).total == 7)
+    }
+
+    @Test func codexsCardStatesAndTheLineThatSaysWhatIsNotThere() {
+        func card(_ reading: HarnessReading?, failure: String? = nil, period: UsagePeriod = .days7) -> UsageCodexCard {
+            UsageCodexTokens.card(reading: reading, failure: failure, period: period, now: Self.start, timeZone: Self.zone)
+        }
+        let read = HarnessReading(provider: .codex, account: Self.pro, lifetimeTokens: 99, tokenDays: Self.days, readAt: Self.start)
+        guard case let .figures(figures, failure) = card(read) else {
+            Issue.record("figures expected")
+            return
+        }
+        #expect(figures.total == 5_100 && failure == nil)
+        guard case let .figures(_, kept) = card(read, failure: "Codex did not answer.") else {
+            Issue.record("figures expected")
+            return
+        }
+        #expect(kept == "Could not read: Codex did not answer.", "the last days stay, with the reason")
+
+        #expect(card(nil) == .message(UsageLimitMessage(title: "Reading Codex's usage…", detail: nil)))
+        #expect(card(nil, failure: "Codex did not answer.")
+            == .message(UsageLimitMessage(title: "Codex's usage could not be read", detail: "Could not read: Codex did not answer.")))
+        let signedOut = HarnessReading(provider: .codex, account: HarnessAccount.none, readAt: Self.start)
+        #expect(card(signedOut) == .message(UsageLimitMessage(
+            title: "Not signed in", detail: "Sign in with the Codex CLI, then check Settings → Connections.")))
+        let empty = HarnessReading(provider: .codex, account: .apiKey, readAt: Self.start)
+        #expect(card(empty) == .message(UsageLimitMessage(
+            title: "No token totals", detail: "Codex reported no token totals for this account.")))
+
+        #expect(UsageCodexTokens.fineLine
+            == "Codex reports one total per day, with no split by type or model, so no cost is estimated.")
+    }
+
+    @Test func eachHarnesssTotalForThePeriodIsOneLineAboveTheCards() {
+        #expect(UsageCodexTokens.totalsLine(claude: 12_300_000, codex: 4_500_000, period: .days7)
+            == "Claude 12.3M · Codex 4.5M tokens, last 7 days")
+        #expect(UsageCodexTokens.totalsLine(claude: 900, codex: 5_100, period: .hours24)
+            == "Claude 900 · Codex 5.1K tokens, last 24 hours")
+        #expect(UsageCodexTokens.totalsLine(claude: nil, codex: 5, period: .days7) == nil)
+        #expect(UsageCodexTokens.totalsLine(claude: 5, codex: nil, period: .days7) == nil)
+    }
+
+    // MARK: Home and the chip
+
+    @Test func homesPlanLimitsCardListsCodexUnderClaudeOnlyWhenCodexIsConnectedAndRead() async throws {
+        let now = Date()
+        let rig = rig(codex: [Self.codexAnswer(at: now)], start: now)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-r6-usage-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = CatalogModel(catalog: nil, events: SessionEventHub(),
+                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
+        model.usage = rig.usage
+        #expect(model.homeCodexLimits().isEmpty, "not read yet")
+
+        await openPage(rig)
+        let codex = model.homeCodexLimits()
+        #expect(codex.map(\.title) == ["5-hour", "Weekly"])
+        let paces = model.homePaces()
+        #expect(paces.map(\.kind) == [.fiveHour, .weekly])
+
+        // With Claude alone the card is what it was: no group names, the same spoken line and tooltip.
+        let alone = HomeLimitsText.groups(paces: paces, codex: [], now: now, timeZone: Self.zone)
+        #expect(alone.map(\.name) == [nil] && alone[0].lines.map(\.title) == ["5-hour window", "Weekly"])
+        #expect(HomeLimitsText.spoken(paces: paces, codex: [], now: now, timeZone: Self.zone)
+            == PlanLimitsLine(paces: paces, now: now, timeZone: Self.zone).spoken)
+        #expect(HomeLimitsText.tooltip(paces: paces, codex: [], now: now, timeZone: Self.zone)
+            == PlanLimitsLine(paces: paces, now: now, timeZone: Self.zone).tooltip(paces: paces, now: now, timeZone: Self.zone))
+
+        // With Codex its windows stand under Claude's, each group headed by the harness name.
+        let both = HomeLimitsText.groups(paces: paces, codex: codex, now: now, timeZone: Self.zone)
+        #expect(both.map(\.name) == ["Claude", "Codex"])
+        #expect(both[1].lines.map(\.left) == ["77% left", "39% left"])
+        let spoken = HomeLimitsText.spoken(paces: paces, codex: codex, now: now, timeZone: Self.zone)
+        #expect(spoken.hasPrefix("Plan limits, 5-hour window 62% left") && spoken.hasSuffix(". Codex, 5-hour 77% left, Weekly 39% left"))
+        let tooltip = HomeLimitsText.tooltip(paces: paces, codex: codex, now: now, timeZone: Self.zone)
+        #expect(tooltip.contains("\nCodex 5-hour, 77% left. Resets "))
+        // Codex alone (Claude has no windows): its group alone, the card still says what it is.
+        let only = HomeLimitsText.groups(paces: [], codex: codex, now: now, timeZone: Self.zone)
+        #expect(only.map(\.name) == ["Codex"])
+        #expect(HomeLimitsText.spoken(paces: [], codex: codex, now: now, timeZone: Self.zone)
+            == "Plan limits, Codex, 5-hour 77% left, Weekly 39% left")
+
+        rig.connections.setConnected(.codex, false)
+        #expect(model.homeCodexLimits().isEmpty, "a harness switched off is not listed")
+    }
+
+    @Test func theChipsTooltipListsCodexsWindowsAndItsNumberStaysClaudes() {
+        let today = UsageSnapshotFactory.snapshot(range: .days(1), now: Self.start, output: 1_200_000, cost: 1)
+        let codex = HarnessReading(provider: .codex, account: Self.pro, windows: [
+            Self.window("codex.primary", "5-hour", minutes: 300, used: 23, resetsIn: 3 * 3_600),
+            Self.window("codex.secondary", "Weekly", minutes: 10_080, used: 61, resetsIn: 4 * 86_400)], readAt: Self.start)
+        let with = UsageChipContent.make(state: .ready, today: today, hasHistory: true, limits: Self.claudeLimits(), codex: codex,
+                                         now: Self.start, timeZone: Self.zone)
+        let without = UsageChipContent.make(state: .ready, today: today, hasHistory: true, limits: Self.claudeLimits(),
+                                            now: Self.start, timeZone: Self.zone)
+        #expect(with?.full == without?.full && with?.full.hasSuffix("5h 62%") == true, "the chip's own number is Claude's")
+        #expect(with?.tooltip.contains("Codex limits, read \(UsageText.time(Self.start, Self.zone)):") == true)
+        #expect(with?.tooltip.contains("\n5-hour: 77% left, resets ") == true)
+        #expect(with?.tooltip.contains("\nWeekly: 39% left, resets ") == true)
+        #expect(without?.tooltip.contains("Codex") == false)
+        // Codex's windows are listed even while Claude has none.
+        let alone = UsageChipContent.make(state: .ready, today: today, hasHistory: true, codex: codex, now: Self.start, timeZone: Self.zone)
+        #expect(alone?.limit == nil && alone?.tooltip.contains("\n5-hour: 77% left") == true)
     }
 }
