@@ -48,16 +48,42 @@
 
 1.6.1 closed with every Wave 1 and Wave 3 slice except Peek, and with Chat cost S0–S4. The next releases follow D-93.
 
+### 1.6.2 as built (round 6, 25 Oct)
+
+`@user` cut the scope to "visible and core" on 25 Oct. The round log is `evidence/r6/RUN.md`.
+
+| Built in 1.6.2 | Source |
+| --- | --- |
+| **The capability table** gates every surface (no raw `provider == .claude` outside the dispatch files; a source guard test) | FB5-9, D-94 |
+| **The Codex probe** (supervised `codex app-server`, no model call), Claude's account from the `get_usage` child, the **connect switch**, and the **model catalog** read from the harness | D-94, D-98, D-99 |
+| **Settings → Usage** after T3 Code: Limits per harness with Codex's windows, Tokens with Codex's daily totals (no cost: Codex reports one total per day) | FB5-7, D-99 |
+| **Settings → Connections:** health, versions, account, Deep Check; Install and Sign In as Copy plus Open Terminal; Home's "Connect your agents" | FB5-8, D-98 |
+| **Leftovers:** Peek (the row's tooltip), a session dropped on a terminal, the list-item fence, S2's due time, `fileExists` out of a view body, `scripts/README.md` | round 5's review |
+| **The closing `@optimizer`'s fixes** (D-06): internal sessions off the session hub, Deep Check's profile, an unknown Claude account reads "Could not check", dead members and copies removed | `evidence/r6/optimizer/REPORT.md` |
+
+### Next
+
 | Release | What | Source |
 | --- | --- | --- |
-| **1.6.2** | **Codex at parity, the infrastructure:** a parity matrix first (every surface × the data it needs → harness-neutral contracts); one capability table for every gate (no `provider == .claude`); a transcript reader contract with Claude and Codex readers (search, Remora, Changes' turn scopes, the project page, mentions); the model catalog read from the harness | FB5-9, D-94 |
-| 1.6.2 | **Usage after T3 Code**, per harness, with Codex's limits; **Settings → Connections** (health, Install and Sign In through a Sphyrna terminal, Deep Check; no credentials handled) | FB5-7 (D-99), FB5-8 (D-98) |
-| 1.6.2 | **Chat cost S5:** rows of settled blocks instead of one row per message, to reach Q17 (≤ 12 % at 600, ≤ 25 % at 6,000); 1.6.1 ends at 19.2 / 39.0 | FB5-10, D-92 (3) |
-| 1.6.2 | **Small leftovers:** Peek (hover a row for its last ask); a session dropped on a terminal pastes its transcript path; the review's notes (a malformed list-item fence streams differently, S2 can miss one stretched cycle, `fileExists` in a view body, a possible 1 pt jump when a row changes its measuring source); `scripts/README.md` gains `make-app-icon.sh` and `--variant` | round 5's review, RUN.md |
-| **1.7.0** | **The session channel and Codex's binding:** starting and resuming Codex, the Codex Chat driver (decided when 1.7.0 is planned), the channel | D-93, D-94 |
+| next | **The `@optimizer`'s later items:** one probe outcome (answered, failed or cached) through usage and health; one source for Claude's limits (a switched account keeps old limits on the chip until a check succeeds); per-harness facts beside the capability table, with the guard widened to `.codex`; `ModelCatalog.shared` and `SidebarPeekStore.shared` onto `CatalogModel`; `claudeVersion` renamed `cliVersion` | `evidence/r6/optimizer/REPORT.md` 2, 4, 6, 10, 11 |
+| next | **Usage, the rest of FB5-7:** Claude's model-scoped weekly windows; the in-session limits panel; the reset notification with Continue; a Codex transcript parser and a provider key in the usage index (token types, models, cost) | FB5-7, D-99 |
+| next | **Chat cost S5:** rows of settled blocks instead of one row per message, to reach Q17 (≤ 12 % at 600, ≤ 25 % at 6,000); 1.6.1 ends at 19.2 / 39.0 | FB5-10, D-92 (3) |
+| next | **The reference** (`design/reference-src`): the Connections page, the new Usage layout and "Connect your agents"; the possible 1 pt jump when a row changes its measuring source (needs a visual or C8 check) | round 6, round 5's review |
+| **1.7.0** | **The session channel and Codex's binding:** the transcript reader contract with Claude and Codex readers (moved from 1.6.2), harness-owned deletion, starting and resuming Codex, the Codex Chat driver (decided when 1.7.0 is planned), the channel | D-93, D-94 |
 | Later | Each with its own decision: split view and windows; an attention inbox (filters, levels, snooze); review memory in Changes; rows rich in status; sending the queue when a limit resets; quick entry; sessions started outside Sphyrna, as history | FB5-6 |
 
-**Hand checks on the installed 1.6.1** (`@user`, when convenient): real drags (tab strip, header zone, project heads, sessions onto the composer, files onto panes); the Dock menu; Open Folder in Editor, which may land in an app that cannot open folders; Keep Mac awake and the long-turn banner's Open; a long code block streaming across its 40-line seams; the Settings tabs.
+**Hand checks on the installed 1.6.2** (`@user`, when convenient):
+- the 1.6.1 list: real drags, the Dock menu, Open Folder in Editor, Keep Mac awake, a long code block streaming;
+- Settings → Connections:
+  - the rows, the switch, the detail and Deep Check;
+  - Copy and Open Terminal;
+  - that "Ready · Claude Pro" reads right;
+- Settings → Usage:
+  - Limits and Tokens, and the filter;
+  - Codex's cards, if `codex` is signed in;
+- Home's limits card with Codex;
+- Peek on a sidebar row;
+- a session dropped on a terminal session.
 
 ---
 
