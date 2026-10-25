@@ -227,9 +227,9 @@ enum ChatMarkdown {
 
     // MARK: Line tests
 
-    private static func isBlank(_ line: Substring) -> Bool { line.allSatisfy { $0 == " " || $0 == "\t" } }
+    static func isBlank(_ line: Substring) -> Bool { line.allSatisfy { $0 == " " || $0 == "\t" } }
 
-    private static func leadingColumns(_ line: Substring) -> Int {
+    static func leadingColumns(_ line: Substring) -> Int {
         var columns = 0
         for character in line {
             if character == " " { columns += 1 } else if character == "\t" { columns += 4 } else { break }
@@ -237,7 +237,7 @@ enum ChatMarkdown {
         return columns
     }
 
-    private static func dropColumns(_ line: Substring, _ count: Int) -> Substring {
+    static func dropColumns(_ line: Substring, _ count: Int) -> Substring {
         var columns = 0
         var index = line.startIndex
         while index < line.endIndex, columns < count {

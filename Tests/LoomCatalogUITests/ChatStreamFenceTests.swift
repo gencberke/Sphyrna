@@ -107,6 +107,18 @@ extension ChatHosted {
 
         // MARK: A long fence settles in chunks
 
+        @Test func aTabIsFourColumnsAndATabOnlyLineIsBlankInTheSplit() {
+            // The parser keeps this fence open through the tab-indented line (4 columns, inside the item's content column of 2),
+            // so the split must not close it there and cut after the paragraph break that follows.
+            let text = "- item\n\n  ```\n  a\n\n\tb\n\nc"
+            let split = ChatContent.stableSplit(text)
+            #expect(!String(text[..<split]).hasSuffix("\tb\n\n"), "the split sits outside the fence")
+            #expect(String(text[..<split]) == "- item\n\n", "only the break before the fence settled")
+            // A tab-only line is blank: it is a paragraph break, as the parser reads it.
+            let tabbed = "one\n\t\ntwo"
+            #expect(String(tabbed[..<ChatContent.stableSplit(tabbed)]) == "one\n\t\n")
+        }
+
         @Test func aLongOpenFenceSettlesInChunksOfCompleteLines() {
             let size = Self.chunk
             #expect(ChatContent.fenceChunkLines == size)

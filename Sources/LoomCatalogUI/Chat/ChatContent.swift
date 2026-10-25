@@ -308,7 +308,7 @@ enum ChatContent {
                 let line = new[first..<lineFeed]
                 let wasOpen = fence.isOpen
                 fence.read(line)
-                let blank = line.allSatisfy { $0 == " " }
+                let blank = ChatMarkdown.isBlank(line)
                 cursor = utf8.index(after: lineFeed)
                 let next = utf8.distance(from: utf8.startIndex, to: cursor)
                 if !wasOpen, let opened = fence.current {
@@ -412,9 +412,9 @@ enum ChatContent {
         var current: ChatMarkdown.Fence? { open }
 
         mutating func read(_ line: Substring) {
-            let body = line.drop(while: { $0 == " " })
-            let indent = line.utf8.count - body.utf8.count
-            if body.isEmpty {
+            let body = line.drop(while: { $0 == " " || $0 == "\t" })
+            let indent = ChatMarkdown.leadingColumns(line)
+            if ChatMarkdown.isBlank(line) {
                 blanks += 1
                 return
             }
@@ -422,7 +422,7 @@ enum ChatContent {
             if let fence = open {
                 if indent >= container || (blanks == 0 && !ChatMarkdown.startsBlock(line)) {
                     let base = min(indent, max(0, fence.indent - 3))
-                    if ChatMarkdown.isClosingFence(line.dropFirst(base), fence: fence) { open = nil }
+                    if ChatMarkdown.isClosingFence(ChatMarkdown.dropColumns(line, base), fence: fence) { open = nil }
                     return
                 }
                 open = nil
@@ -449,7 +449,7 @@ enum ChatContent {
             let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
             let line = text[lineStart..<lineEnd]
             fence.read(line)
-            let blank = line.allSatisfy { $0 == " " }
+            let blank = ChatMarkdown.isBlank(line)
             if blank, !previousBlank, !fence.isOpen, lineEnd < text.endIndex { lastBreak = text.index(after: lineEnd) }
             previousBlank = blank
             lineStart = lineEnd < text.endIndex ? text.index(after: lineEnd) : text.endIndex
