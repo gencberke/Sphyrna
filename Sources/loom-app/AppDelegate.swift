@@ -87,17 +87,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         conversations?.applyTerminalTheme()
         settingsController?.window?.backgroundColor = model.themePanelBackground
-        applyWindowOpacity()
-    }
-
-    /// Solid has nothing to show through the main window, so the window is opaque in the canvas colour; only Transparent
-    /// needs it clear. A clear window costs WindowServer a blend over what is behind it for every update, which made a
-    /// working spinner cost about 8 on its energy score (RESCUE-PLAN §5).
-    func applyWindowOpacity() {
-        guard let model, let window else { return }
-        let opaque = model.sidebarStyle == .solid
-        window.isOpaque = opaque
-        window.backgroundColor = opaque ? model.themePanelBackground : .clear
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -163,7 +152,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         installSystemIntegration(model: model)
         let window = makeWindow(model: model)
         self.window = window
-        applyWindowOpacity()
         traceWindowCall("launch-before-show")
         window.makeKeyAndOrderFront(nil)
         if let openingFrame { window.setFrame(openingFrame, display: true) }
@@ -308,6 +296,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // bundle identifier only, so it would carry one data root's frame into another.
         window.isRestorable = false
         // No appearance of its own: the window follows `NSApp.appearance` (Settings → Theme → Appearance).
+        window.isOpaque = false
+        window.backgroundColor = .clear
         window.delegate = self
         let split = MainSplitViewController(model: model, settingsNavigation: { [weak self] in self?.settingsController?.navigation })
         window.contentViewController = split
