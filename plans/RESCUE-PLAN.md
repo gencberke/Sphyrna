@@ -107,3 +107,59 @@ Phase B's script runs again.
 2. Is it acceptable that old sessions are read by resuming them in the terminal, with no separate reader?
 3. Are Phase B's gate numbers acceptable?
 4. Is Phase B approved on the installed app, and when is the Mac idle?
+
+## 5. Status (26 Oct, the overnight run)
+
+`@user`'s word on 25 Oct night: "bunları bu gece yapıyoruz … bu akşam implementasyon bitmiş ve minör version bump'ı
+almış olalım". The answers to §4: the art is removed and Remora stays on ([D-102](../DECISIONS.md)); old sessions
+need no reader, and all of them were cleaned up; the gate numbers were not discussed, so Phase B reports them.
+
+| Slice | Commit on `slice/r7-rescue` | What it holds |
+| --- | --- | --- |
+| A (A1–A3, D-102) | `b650339` | `ChatFreeze.isFrozen`; full model names from `resolvedModel`; the tolerant usage reader; no art |
+| B1 | `da900fb` | `scripts/perf/real_energy.py`: the scenarios as Activity Monitor's energy score (`top`'s `power`) |
+| C1, C2 | `9a24641` | Settings → Sessions → Storage, Claude's retention with consent, usage per session in the Overview |
+| C3 | `7c7100a` | the sidebar heading, three-layer cards, project drag, Transparent instead of Glass |
+| B3 | `94a053a`, `752fe46` | `real_energy.py`'s Transparent cell as a launch flag; the menu bar's working mark stands still (three measured attempts on the window's spinners are reverted in between) |
+
+- **The cleanup (25 Oct, 23:58):** Sphyrna's 15 sessions were removed from the catalog, and their 52 Claude paths
+  (336 MB) were moved to `~/.Trash/sphyrna-sessions-20261025`, with a `RESTORE.md` that says how to put them back.
+  Sphyrna's data was backed up first, to `~/Library/Application Support/Loom-backup-before-r7-20261025T235812`. The
+  Trash is `@user`'s to empty.
+- **C4 (status truth)** waits.
+
+### Phase B, measured (26 Oct night)
+
+`scripts/perf/real_energy.py`, 60 s cells, fake providers, one 1220×780 window in front, on the planner's Mac. The
+score is `top`'s `power`, the number Activity Monitor's Energy tab shows. 1.6.2 is package `r7base` (`e8c451b`); 1.7.0
+is `r7cand` (`7c7100a`) and `r7cand2` (`94a053a`).
+
+| Cell | 1.6.2 app | 1.7.0 app | 1.7.0 WindowServer | Note |
+| --- | --- | --- | --- | --- |
+| Home, idle | 3.1 | **0.0** | 1.4 | footprint 53 → 39 MiB |
+| New session, idle (Solid / Transparent) | 6.2 | **0.0 / 0.0** | 1.8 / 1.3 | footprint 111 → 44 MiB; 1.6.2's "glass" cell measured Solid (the style is a launch flag) |
+| New session, the draft grows 5 chars/s | 9.0 | **6.4** | 4.8 | about a third is macOS redrawing the customized pointer (below) |
+| Home, another transcript grows | 3.3 | **0.0** | 1.3 | |
+| Terminal, working silently | 0.0 | 0.0 | 8.6 | the spinners (below) |
+| Terminal, 1 MiB/s | 14.8 | 15.4 / 14.6 | 10.0 | Terminal.app with the same output: 14.6, WindowServer 1.6 |
+
+**Proposed gates:** idle pages ≤ 1 pass; typing ≤ 5 does not (6.4); Sphyrna ≤ Terminal.app for the same output is
+even (14.6 against 14.6 on `r7cand2`, 15.4 on `r7cand`).
+
+**What the samples showed** (`sample`, `evidence/r7/*_sample.py`, `ws_probe.py`, `cursor_probe.py`):
+
+- **The menu bar spinner cost WindowServer about 8 for as long as any session worked**, with the window in the
+  background too: 9.4 with the item on, 1.6 with it off. **Fixed** in `752fe46`: the menu bar's working mark stands
+  still; the same case then read 1.9.
+- **The window's own spinners** cost WindowServer about 7 while Sphyrna is in front and a session works (8.1 active, 1.8
+  inactive, where they stop). Three changes did not move it, so they were reverted: a frame rate range on the keyframe
+  animation, one 12 fps clock in the app (which made the menu bar case worse), and an opaque window in Solid. Removing
+  the toolbar did not move it either. Any update of the window at about 10 Hz or more seems to cost this much; Claude
+  Code's own spinner in a visible terminal does the same. **Open.**
+- **A customized pointer** (Accessibility → Display → Pointer colours; `cursorIsCustomized = 1` on this Mac) makes
+  every `NSCursor set` redraw the pointer from its PDF with a blur, about 9 ms each. AppKit sets the cursor after every
+  layout that touches tracking areas, wherever the pointer is. That was about a third of the typing cost with real key
+  events and about 15 % of the main thread while a terminal streamed. **Open**; it would explain a hot UI on this Mac
+  only if something laid out every frame.
+- **The 118 was not reproduced**: not with fake providers, not with the installed 1.6.2 and the real profile, not with
+  the pointer over the art, the composer or off the window.

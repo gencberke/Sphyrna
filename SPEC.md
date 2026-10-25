@@ -17,6 +17,7 @@ This document is the single authoritative specification of what Sphyrna (interna
 
 ### 1.2 Core Experience & Scope ([D-01](DECISIONS.md), [D-57](DECISIONS.md), [D-69](DECISIONS.md), [D-77](DECISIONS.md), [D-83](DECISIONS.md))
 - **Core experience contract:** *The live session is always the user's own unmodified Claude Code CLI in a process Sphyrna owns, in its terminal or in its structured mode, with one owner at a time. One app-wide switch in Settings chooses which; the terminal is always one of the choices. Codex runs in its terminal.*
+- **Since 1.7.0, terminal-first ([D-100](DECISIONS.md), [RESCUE-PLAN](plans/RESCUE-PLAN.md)):** the Chat face is frozen (`ChatFreeze.isFrozen`). Every Claude start, resume and approved opening runs in the real terminal; a stopped session shows its kept screen or record, never a chat; the "Sessions run in" switch is hidden and a stored Chat reads as Terminal. Sections §6.1 (the switch), §7 and §8.1, §8.3, §8.5, §8.6 describe the frozen code, which stays in the tree with its tests but is unreachable in the product. No surface draws the art ([D-102](DECISIONS.md)); Remora is unchanged.
 - **Platform:** Native macOS 27 and later (`Swift 6`, `SwiftUI` + `AppKit`, vendored `SwiftTerm` with local patches, `SQLite` catalog).
 - **Name & bundle identity (`D-77`, `D-83`):** User-facing app name is **Sphyrna**; assistant name is **Remora**. To preserve macOS TCC permissions and user data, the production bundle ID remains `local.loom.desktop` (`~/Library/Application Support/Loom`, sockets in `~/.loom`), and the development bundle ID remains `local.loom.desktop.dev` (`~/Library/Application Support/Loom-Dev`, sockets in `~/.loom-dev`).
 - **Harnesses in 1.6.0 (`D-08`, `D-28`, `D-69 (5)`):** Claude Code is active in both faces. Codex code remains in the tree and its UI entries stay visible on first-run Home and in new-session model menus (`"Codex comes in a later version"`), but Codex is **non-startable** in the production build (`BuildIdentity.startableProviders = [.claude]`).
@@ -116,16 +117,25 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
 - **Review triggers:** A cleanup review is due **30 days** after the last review (configurable), or immediately when the app reopens after a **≥ 45-day absence** or when **> 10 eligible sessions** accumulate.
 - **Protected exceptions (never selected for automatic cleanup):** Pinned sessions, sessions whose git worktree has uncommitted changes or unpushed commits (`CleanupWorktreeProtection`), and sessions involved in an unfinished authorized cross-session task.
 
+### 5.3 Storage (`Settings → Sessions → Storage`, 1.7.0, RESCUE C1)
+- Lists Sphyrna's sessions (side chats go with their parent) with each one's disk size, largest first, by project with each project's total and an overall total. A session's size is what step 4's allowlist would delete for its provider ids (one dry run, `runtime.deletionPreviews`); links count by their own size and are never followed. Measured off the main actor, only while the section shows, kept until a deletion or a refresh. The whole profile's `projects` folder is shown as context ("including sessions started outside Sphyrna").
+- Checked sessions are deleted through the seven steps of §5.1, with the review's confirmation; a running session cannot be checked and is refused again by the coordinator.
+- **Claude's retention:** "Claude deletes transcripts older than N days" (`cleanupPeriodDays` in the profile's `settings.json`, 30 when absent). Change… asks for confirmation, then writes that one key and nothing else: in place or as the first member, atomically, keeping the file's mode and every other byte, through a link to the real file; an unreadable file, a non-object or an edit that would not parse back to the same object is refused with its reason. This is the only write Sphyrna makes to a Claude profile's settings.
+
 ---
 
 ## 6. Faces, Studio Shell, Sidebar & Navigation
 
 ### 6.1 App-Wide Face Switch & Handover ([D-57](DECISIONS.md), [D-69 (1)](DECISIONS.md), `R1`)
+
+> **Frozen since 1.7.0 ([D-100](DECISIONS.md)):** the switch is hidden and every Claude session runs in the terminal; the handover below is unreachable.
 - **App-wide switch:** `Settings → General → Sessions run in` chooses **`Chat`** (default) or **`Terminal`**.
 - **Start & Resume (`FacePolicy`):** Starting or resuming a Claude session uses the current Settings switch. A running session keeps its current face until it stops. While the switch is `Chat`, a stopped Claude session displays its interactive Chat view (keeping its composer so sending a message resumes it in place). Codex always uses the terminal face.
 - **One-way Chat → Terminal handover (`V19`, `R1`):** Per-session face switches in the header, `⋯` menu, and `/` menu are gone, and Terminal → Chat handover is removed (`R1`). Only the Chat policy banner's **`"Switch to Terminal"`** action performs a live handover: it sets Settings to `Terminal`, waits for any active turn to finish (refusing if a request card or background task waits), stops the pipe run after a point of no return (pausing any queued messages with `"Queue paused because the session moved to the terminal"`), and resumes the session in `TerminalSurface`.
 
 ### 6.2 Window Chrome & Sidebar (`V04`, [D-74](DECISIONS.md), [D-75](DECISIONS.md), [D-81](DECISIONS.md))
+
+- **1.7.0 (RESCUE C3):** the sidebar's heading shows the current view's title once with that view's action (Projects: Add Project…; Activity: New Session) and a separate two-button view picker; a right-click on empty sidebar space offers Add Project…, New Session and a session without a project. Cards have three layers in both views: Activity shows project / title / branch, harness and model; Projects shows harness and model / title / branch. The model is the session's main model by its full name ("Opus 5.5"): the stored release id, else the latest main-thread message's, else the launch alias. Dragging a project's head onto another head takes that head's place, and the order persists. Settings → Theme → Sidebar is **Solid | Transparent**: Transparent is the sidebar colour at 0.8 straight over what is behind the window, with no material and no blur (a stored `glass` reads as Transparent); Reduce Transparency forces Solid.
 - **One window (`1220×780` initial, `780×500` min):** Sidebar (`300 pt` default, `220–520 pt` draggable, collapsible via `⌃⌘S`) beside the main detail pane (`≥ 480 pt`).
 - **Top rows:**
   1. **`Search`** door (`28 pt`): clicking it (or pressing `⌘K` / `⌘F`) opens the Command Palette (there is no inline sidebar filter).
@@ -189,6 +199,8 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
 
 ## 7. Native Chat Face (`LoomChat`)
 
+> **Frozen since 1.7.0 ([D-100](DECISIONS.md)):** this section describes code that stays in the tree, unreachable in the product. Model names everywhere are the full release names from the CLI's `initialize` list ("Opus 5.5").
+
 ### 7.1 Stream-JSON Protocol, Turn Model & Cold Open (`V12`, `V15`, `V16`)
 - **Wire framing (`StreamJSONDecoder`):** Reads NDJSON over `SPAWN_STDIO` pipes in arbitrary chunk sizes with a `64 MiB` line limit (oversized or unknown records become visible raw/marker frames, never fatal crashes).
 - **Chronological entries & turns (`TurnModel`):** User messages, assistant prose, thinking blocks, in-place tool calls (`tool_use` + `tool_result`), subagent cards (`--forward-subagent-text`), plan cards, settled request lines, and hairline markers. Every row has a stable ID (`message uuid + block index` or `tool_use_id`) so streaming deltas update only the active row. A turn runs from a user prompt to the main thread's `result` (subagent completion never ends the parent turn).
@@ -246,6 +258,8 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
 ## 8. Pinned Request Cards & Inspector Surfaces
 
 ### 8.1 Pinned Request Cards (`V18`, `V23`, [D-75](DECISIONS.md))
+
+> **Frozen since 1.7.0 ([D-100](DECISIONS.md)),** with Rewind (§8.3), Quick Question (§8.5) and the Side tab (§8.6).
 - **Safety invariants:**
   1. **Zero self-answers:** `ChatSessionDriver` never answers a `can_use_tool` request on its own in any mode (except policy-enforced denials in `Ask` and `SideChat`).
   2. **`1.5 s` typing guard:** A request arriving within `1.5 s` of user keystrokes in the composer stays collapsed as `"1 request waiting"` until typing pauses for `1.5 s`, focus leaves, or the message is sent—preventing a prompt meant for Claude from accidentally submitting as a denial note.
@@ -258,6 +272,8 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
   - **Plan Review (`ExitPlanMode`):** Renders plan document card in stream and a pinned decision card offering **`Approve`** with a build-mode picker (`Ask before edits` preselected, `Accept edits`, `Auto`—or `"Stays in Ask"` when in Ask mode—passed via `updatedPermissions` `setMode` so the turn continues without restarting) and **`Keep Planning`** (`deny` with composer feedback).
 
 ### 8.2 Inspector: `Overview` & `Changes` Tabs (`I2c`, `V20`, [D-78](DECISIONS.md))
+
+- **Usage (1.7.0, RESCUE C2):** the Overview shows the session's input, cache write, cache read and output tokens for Main, Subagents and Total, and the API equivalent (`UsagePricing`; "—" when a part has no price). The split comes from the transcript path the usage index stores (`<session>/subagents/*.jsonl` is Subagents); the session's own transcripts are tailed before a read, when the tab shows and when the session leaves Working, never on a timer.
 - **Inspector container (`⌥⌘B`):** Three width classes, each with a remembered width: **narrow** (`Overview` and the `Agents` list, `328 pt` by default), **side** (`Side`, `392 pt`) and **review** (`Changes` and an `Agents` transcript, `556 pt`). Docks as a column while main content keeps `≥ 480 pt`, otherwise overlays on `Popover` surface; width transitions are **instant (`0 ms`)** so terminal PTYs resize at most once.
 - **Resizable inspector ([D-78](DECISIONS.md) as amended, FB5-1, W1-b):**
   - A `6 pt` handle inside the inspector's leading edge (column-resize pointer) sets the width of the class that is open. **While the pointer drags, only an accent guide line (`2 pt`) follows it**; the inspector and its content keep their width and do not re-lay out. **On release the class takes the guide's width once**, so a terminal resizes once and Chat re-measures once (D-78's rule holds).
@@ -349,7 +365,7 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
 ## 11. macOS System Integration ([D-45](DECISIONS.md), [D-49](DECISIONS.md), [D-52](DECISIONS.md), [D-79](DECISIONS.md))
 
 - **Dock badge:** Counts the exact set of sessions that need the user (`AttentionOrder`: failed unread, waiting for approval/input/open-request, and finished unread)—matching the sidebar `Home` badge and the menu bar's count.
-- **Menu bar item (`Settings → General → Show in menu bar`, default on):** Displays the `20 pt` `Front` hammerhead mark (`D-77`) with a lower-right badge slot where the strongest status dot (failure > attention > unviewed) wins over the working braille spinner. Clicking opens a menu with **`Needs you`** (up to 5 rows, failures first, then `"and N more…"`), **`Working`** (up to 5 rows with static first spinner frame), `New Claude Session`, `Open Sphyrna`, `Settings…`, and `Quit Sphyrna`. When nothing is working or waiting, shows disabled `"Nothing is working or waiting."`
+- **Menu bar item (`Settings → General → Show in menu bar`, default on):** Displays the `20 pt` `Front` hammerhead mark (`D-77`) with a lower-right badge slot where the strongest status dot (failure > attention > unviewed) wins over the working mark, the braille spinner's first frame standing still (since 1.7.0: an animation in the menu bar cost WindowServer about 8 on its energy score for as long as a session worked, RESCUE-PLAN §5). Clicking opens a menu with **`Needs you`** (up to 5 rows, failures first, then `"and N more…"`), **`Working`** (up to 5 rows with static first spinner frame), `New Claude Session`, `Open Sphyrna`, `Settings…`, and `Quit Sphyrna`. When nothing is working or waiting, shows disabled `"Nothing is working or waiting."`
 - **Dock menu (W3-f):** Right-clicking the Dock icon lists **`Needs you`** (the sessions with a request waiting: approvals first, then questions and plans, most recent first), then **`Working`**, at most 5 rows each (title and project), then **`New Claude Session`** (what `⌘N` does). A session row brings Sphyrna forward with that session selected. The menu is built when the Dock asks, from the menu bar's in-memory entries; nothing is read.
 - **Approval notifications (`Settings → General → Notify when a session needs approval`, default on):** Fires a silent macOS notification (no sound, **no action buttons**; title = session title, body = project + reason) **only** when a session transitions into waiting for an approval, question, or plan while Sphyrna is not the active app. Clicking brings Sphyrna forward on that session; the notification is removed immediately when the session stops waiting, at quit, and at launch.
 - **Long-turn notifications (`Settings → General → Notify when a long turn finishes`, opt-in, default off; [D-49](DECISIONS.md) as amended):** Posts one silent banner, `"<session title> finished"` with the project as its subtitle, **with one action, `Open`**, when a turn that ran for **at least 30 s** ends while its session is **not on screen**: Sphyrna is not the active app, or another session is shown. A turn runs while the session works, or waits for an approval in the middle of it, and ends when the session is at its prompt again (finished or ready); a turn that ends in a request waiting for the user, in a failure or in a stop posts nothing (the approval banner speaks for the first). `Open` and a click on the banner both bring Sphyrna forward on the session. Turns are followed from the menu bar's changes with no timer, also while the switch is off, so turning it on mid-turn counts the whole turn. macOS asks for permission once. This is the one banner with a button; the approval banner stays button-free.
@@ -362,7 +378,7 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
 
 ### 12.1 Resource & Performance Guarantees
 - **CPU40 ceiling (`D-07`, `D-19`):** At 1 MiB/s visible terminal output over 60 s, total CPU across Sphyrna app + fixture + run-scope hosts must not exceed **40 % of one logical core** (Package I baseline: app `23.8–24.0 %`, total `25.4–25.6 %`; hidden stream `3.5 %`; input-to-draw p95 `~20 ms`; reduced-motion indicator `~0.005 %`; idle observer with 1 real Claude `0.044 %`).
-- **Visible Chat stream parity (`C7`, `D-70`, `D-83`):** A visible Chat stream at `600` and `6,000` chars/s must cost no more CPU than the terminal face for the same output.
+- **Visible Chat stream parity (`C7`, `D-70`, `D-83`; frozen with the Chat face, [D-100](DECISIONS.md)):** A visible Chat stream at `600` and `6,000` chars/s must cost no more CPU than the terminal face for the same output.
 - **Zero hidden/idle waste:**
   - Hidden, occluded, or unselected terminals suspend rendering (`suspendsRenderingWhenNotVisible = true`) and retain dirty signals without waking `@MainActor` (SwiftTerm Patch 11).
   - The working braille spinner and ASCII shark animations stop all timers and wakeups when the window is hidden, inactive, or off-screen.

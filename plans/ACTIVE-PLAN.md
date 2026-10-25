@@ -4,7 +4,7 @@
 - **Integration branch:** `v2` in `~/Library/Caches/loom-v2/wt/v2` (cut from `swarm/1` at `24d8cfb` on 17 Oct; local only, never pushed). Note: `/Users/gencberke/Documents/github/loom-dev` is on `swarm/1` for canonical doc updates; all code edits, builds, and tests run in `wt/v2` and the slice worktrees below.
 - **Lanes (from 22 Oct):** one main planner session drives Claude implementers as its own subagents, each slice in its own worktree cut from `v2`'s head, and integrates accepted slices straight onto `v2`. The areas keep the tracks' split: **ink** owns `Sources/LoomCatalogUI`, UI files in `Sources/loom-app`, `assets/` and `Tests/LoomCatalogUITests`; **core** owns `Sources/LoomCore`, `LoomChat`, `LoomRemora`, `LoomLaunchOptions`, helper executables, `scripts/` and their tests. Docs are the planner's. The track sessions and branches of 21 Oct (`sphyrna-ink` on `ink`, `sphyrna-core` on `core`, plans in `~/Library/Caches/loom-v2/evidence/{ink,core}/PLAN.md`) are idle, and `opencode` ([D-89](../DECISIONS.md)) is not used this round (`@user`, 22 Oct).
 - **Canonical specs:** [SPEC.md](../SPEC.md) (product & behavioral specification), [design/DESIGN.md](../design/DESIGN.md) (Ink v3 visual system), [design/reference.html](../design/reference.html) (visual target), and [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) (system architecture & UI code index).
-- **Now (25 Oct):** 1.6.1 is complete (§0); the roadmap after it is §0.1. The sections after §0.1 are 1.6.0's record.
+- **Now (26 Oct):** 1.7.0, the rescue, is built ([RESCUE-PLAN.md](RESCUE-PLAN.md), [D-100](../DECISIONS.md)–[D-102](../DECISIONS.md)); it is §0.1's first entry. 1.6.1 is §0. The sections after §0.1 are 1.6.0's record.
 
 ---
 
@@ -61,13 +61,27 @@
 | **Leftovers:** Peek (the row's tooltip), a session dropped on a terminal, the list-item fence, S2's due time, `fileExists` out of a view body, `scripts/README.md` | round 5's review |
 | **The closing `@optimizer`'s fixes** (D-06): internal sessions off the session hub, Deep Check's profile, an unknown Claude account reads "Could not check", dead members and copies removed | `evidence/r6/optimizer/REPORT.md` |
 
+### 1.7.0 as built (the rescue, 26 Oct)
+
+[RESCUE-PLAN.md](RESCUE-PLAN.md) replaced D-93's 1.7.0 line (the session channel and Codex's binding wait). The slices
+ran on `slice/r7-rescue` with one planner and one implementer ([D-101](../DECISIONS.md)); the plan's §5 has the commits.
+
+| Built in 1.7.0 | Source |
+| --- | --- |
+| **Chat frozen:** every Claude session in its terminal; no read-only chat, no "Sessions run in", Quick Question or Show Chat (`ChatFreeze.isFrozen`) | D-100, RESCUE A1 |
+| **Full model names** from the CLI's `resolvedModel`; the usage reader skips unknown records | RESCUE A2, A3 |
+| **No art** on any surface; Remora stays on | D-102 |
+| **Settings → Sessions → Storage** and Claude's retention with consent; usage per session in the Overview | RESCUE C1, C2 |
+| **The sidebar:** one heading with its view's action, three-layer cards, project drag, Transparent instead of Glass | RESCUE C3 |
+| **`scripts/perf/real_energy.py`:** the user's scenarios as Activity Monitor's energy score | RESCUE B1 |
+
 ### Next
 
 | Release | What | Source |
 | --- | --- | --- |
 | next | **The `@optimizer`'s later items:** one probe outcome (answered, failed or cached) through usage and health; one source for Claude's limits (a switched account keeps old limits on the chip until a check succeeds); per-harness facts beside the capability table, with the guard widened to `.codex`; `ModelCatalog.shared` and `SidebarPeekStore.shared` onto `CatalogModel`; `claudeVersion` renamed `cliVersion` | `evidence/r6/optimizer/REPORT.md` 2, 4, 6, 10, 11 |
 | next | **Usage, the rest of FB5-7:** Claude's model-scoped weekly windows; the in-session limits panel; the reset notification with Continue; a Codex transcript parser and a provider key in the usage index (token types, models, cost) | FB5-7, D-99 |
-| next | **Chat cost S5:** rows of settled blocks instead of one row per message, to reach Q17 (≤ 12 % at 600, ≤ 25 % at 6,000); 1.6.1 ends at 19.2 / 39.0 | FB5-10, D-92 (3) |
+| frozen (D-100) | **Chat cost S5:** rows of settled blocks instead of one row per message, to reach Q17 (≤ 12 % at 600, ≤ 25 % at 6,000); 1.6.1 ends at 19.2 / 39.0 | FB5-10, D-92 (3) |
 | next | **The reference** (`design/reference-src`): the Connections page, the new Usage layout and "Connect your agents"; the possible 1 pt jump when a row changes its measuring source (needs a visual or C8 check) | round 6, round 5's review |
 | **1.7.0** | **The session channel and Codex's binding:** the transcript reader contract with Claude and Codex readers (moved from 1.6.2), harness-owned deletion, starting and resuming Codex, the Codex Chat driver (decided when 1.7.0 is planned), the channel | D-93, D-94 |
 | Later | Each with its own decision: split view and windows; an attention inbox (filters, levels, snooze); review memory in Changes; rows rich in status; sending the queue when a limit resets; quick entry; sessions started outside Sphyrna, as history | FB5-6 |
