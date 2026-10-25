@@ -1378,11 +1378,13 @@ public final class CatalogModel {
         persist { $0.searchSessionText = enabled }
     }
 
-    /// Settings → General → Sidebar (D-57). Applies at once: the sidebar's background reads `sidebarStyle`.
+    /// Settings → Theme → Sidebar (D-57). Applies at once: the sidebar's background reads `sidebarStyle`, and the app makes
+    /// the window opaque or clear through `onThemeChange`.
     public func setSidebarStyle(_ style: SidebarStyle) {
         guard style != sidebarStyle else { return }
         sidebarStyle = style
         persist { $0.sidebarStyle = style }
+        onThemeChange?()
     }
 
     /// Settings → General → Sessions run in (V19, D-69): the face of every Claude session as it starts or resumes. A
