@@ -1,10 +1,10 @@
 import AppKit
 
-/// The face of the menu bar item (D-52): the mark, and in its lower right corner the working spinner or a
+/// The face of the menu bar item (D-52): the mark, and in its lower right corner the working mark or a
 /// status dot. Idle is a plain template image; with a badge the image is drawn by the app
-/// (`MenuBarArt`) so the mark still follows the bar's appearance. The spinner is a render-server layer
-/// animation on top of the image, added when the badge becomes working and removed in every other state:
-/// no timer, no polling, no image swaps per step, so the item costs the app no wakeups while it moves.
+/// (`MenuBarArt`) so the mark still follows the bar's appearance. The working mark is the spinner's first
+/// frame, standing still: an animation in the menu bar made WindowServer's energy score read about 8 for as
+/// long as any session worked, the window hidden or not (RESCUE-PLAN §5).
 @MainActor
 public final class MenuBarFace {
     private let button: NSStatusBarButton
@@ -15,7 +15,7 @@ public final class MenuBarFace {
     public private(set) var summary = MenuBarSummary.idle
 
     public var badge: MenuBarBadge { summary.badge }
-    /// Evidence: whether the spinner animation is installed on the item (the evidence key is still "chaseRunning").
+    /// Evidence: whether the spinner moves on the item (the evidence key is still "chaseRunning"); it never does.
     public var isChaseRunning: Bool { badge == .working && spinner.isRunning }
     public var spinnerFrame: Int? { spinner.presentedFrame }
     public var appearanceName: String { button.effectiveAppearance.name.rawValue }
@@ -61,8 +61,8 @@ public final class MenuBarFace {
         button.setAccessibilityLabel(summary.accessibilityLabel)
         let working = summary.badge == .working
         spinner.isHidden = !working
-        if working, !wasWorking { restyle() } // a running spinner is left alone while it keeps working
-        spinner.setAnimating(working)
+        if working, !wasWorking { restyle() } // the mark is left alone while it keeps working
+        spinner.setAnimating(false)
     }
 
     /// The layer colours follow the bar's appearance and Increase Contrast.

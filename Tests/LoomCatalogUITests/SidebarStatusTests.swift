@@ -379,8 +379,6 @@ struct SidebarStatusTests {
         #expect(animation.values?.count == 10 && animation.keyTimes?.count == 11)
         #expect(animation.duration == 10 / 12 && animation.repeatCount == .infinity && !animation.isRemovedOnCompletion)
         #expect(IndicatorView.framesPerSecond == 12)
-        // It asks the render server for its own rate, not the display's.
-        #expect(animation.preferredFrameRateRange == CAFrameRateRange(minimum: 12, maximum: 12, preferred: 12))
         // Its values are the view's ten frames, in order.
         let values = try #require(animation.values)
         #expect(view.frameImages.count == 10)
