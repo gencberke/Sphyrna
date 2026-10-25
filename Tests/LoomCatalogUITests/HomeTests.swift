@@ -534,7 +534,7 @@ struct HomeTests {
     }
 
     @Test func theFirstRunWordsSayWhatHappenedAndWhatToDo() {
-        let copies: [HomeEmptyCopy] = [.noProjects, .noClaude, .noClaudeWithSessions]
+        let copies: [HomeEmptyCopy] = [.noProjects, .connect]
         for copy in copies {
             let words = copy.title + " " + copy.text
             #expect(!words.contains("!") && !words.lowercased().contains("oops"), "no exclamation marks, no Oops")
@@ -543,10 +543,9 @@ struct HomeTests {
             #expect(copy.text.hasSuffix("."))
         }
         #expect(HomeEmptyCopy.noProjects.text.contains("Add the folder"))
-        #expect(HomeEmptyCopy.noClaude.text.contains("Check Again") && HomeEmptyCopy.noClaude.text.contains("claude"))
-        // With sessions in the catalog the notice does not offer to add a project; they stay readable.
-        #expect(HomeEmptyCopy.noClaudeWithSessions.text.contains("stay readable"))
-        #expect(!HomeEmptyCopy.noClaudeWithSessions.text.contains("project"))
+        // Over sessions the compact card does not offer to add a project; they stay readable.
+        #expect(HomeConnect.noticeSuffix.contains("stay readable"))
+        #expect(!HomeConnect.noticeSuffix.contains("project"))
     }
 
     private func usageModel(_ limits: FakeLimits, clock: TestClock) -> UsageModel {
@@ -554,44 +553,8 @@ struct HomeTests {
                    timeZone: TimeZone(identifier: "UTC")!, debounce: .milliseconds(40), activationCooldown: .zero)
     }
 
-    @Test func noClaudeIsReadFromThePlanLimitsAskAndClearsWhenItWorks() async throws {
-        let root = try temporaryRoot()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let model = CatalogModel(catalog: nil, events: SessionEventHub(),
-                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
-        let clock = TestClock()
-        let limits = FakeLimits()
-        let usage = usageModel(limits, clock: clock)
-        model.usage = usage
-        #expect(!model.homeClaudeCLIMissing, "nothing was asked yet")
-
-        limits.setFailure(PlanLimitsFailure(category: .noToolchain, at: clock.now))
-        usage.refresh(reason: .launch)
-        await usage.settle()
-        #expect(model.homeClaudeCLIMissing)
-        let asks = limits.asks
-
-        // Another failure is not "no Claude".
-        clock.advance(60)
-        limits.setFailure(PlanLimitsFailure(category: .timedOut, at: clock.now))
-        model.recheckClaude()
-        await usage.settle()
-        #expect(limits.asks > asks && !model.homeClaudeCLIMissing)
-
-        // The CLI works now: "Check Again" asks once more and the notice goes.
-        clock.advance(60)
-        limits.setFailure(PlanLimitsFailure(category: .noToolchain, at: clock.now))
-        model.recheckClaude()
-        await usage.settle()
-        #expect(model.homeClaudeCLIMissing)
-        clock.advance(60)
-        limits.setFailure(nil)
-        limits.setAnswer(PlanLimits(fiveHour: PlanLimitWindow(usedPercent: 10, resetsAt: clock.now.addingTimeInterval(3 * 3_600)),
-                                    weekly: nil, fetchedAt: clock.now))
-        model.recheckClaude()
-        await usage.settle()
-        #expect(!model.homeClaudeCLIMissing)
-    }
+    // Home's "Connect your agents" (the health of each harness replaced the plan-limits proxy for a missing Claude) is tested
+    // in ConnectionsTests.
 
     // MARK: Today
 

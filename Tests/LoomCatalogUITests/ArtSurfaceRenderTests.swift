@@ -109,7 +109,7 @@ struct ArtSurfaceRenderTests {
                 #expect(arts.count == 1 && arts.first?.scene == ArtPlace.firstLaunch.scene && arts.first?.mask == .firstLaunch)
             }
         }
-        #expect(HomeEmptyCatalog.showsMark(claudeMissing: true) == false, "with no Claude CLI no shark swims")
+        #expect(HomeEmptyCatalog.showsMark(connectCards: true) == false, "over the Connect your agents cards no shark swims")
     }
 
     /// The brief with its tiles, a brief being written, and the fold: the band's hammerhead on its own loop is the only art Home

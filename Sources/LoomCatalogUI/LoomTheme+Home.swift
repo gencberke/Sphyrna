@@ -127,6 +127,20 @@ extension LoomTheme {
         static let codexNoteGap: CGFloat = 6
         static let codexNote = InkStyle(size: 11)
 
+        // MARK: Connect your agents
+
+        /// The first run's cards: one per harness, 10 apart, 480 wide, 14 inside; the mark (13), the name over its headline, and a
+        /// word for the state at the trailing edge (mono 11). The cards sit 18 under the text.
+        static let connectWidth: CGFloat = 480
+        static let connectGap: CGFloat = 10
+        static let connectPadding: CGFloat = 14
+        static let connectRowGap: CGFloat = 10
+        static let connectCardsTop: CGFloat = 18
+        static let connectName = InkType.header
+        static let connectHeadline = InkType.small
+        static let connectWord = InkType.meta
+        static let connectSetupTop: CGFloat = 12
+
         /// The icon's drop: `0 12px 30px` at 40 % black, in both appearances.
         static let iconDepth: AdaptiveDepth = {
             let depth = Depth(ring: nil, insetHighlight: nil,

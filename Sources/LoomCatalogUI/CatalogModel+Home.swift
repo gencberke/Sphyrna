@@ -263,16 +263,16 @@ extension CatalogModel {
         isReady && projects.isEmpty && list(for: .activity).rows.isEmpty && !isSearching
     }
 
-    /// Loom could not find a Claude CLI to start sessions with. Read from the plan-limits ask Loom already
-    /// makes on launch (its failure `noToolchain`: no Claude CLI could be resolved), so Home starts no
-    /// process to find out. False until that ask has failed that way, and again after one succeeds.
+    /// Sphyrna could not find the Claude CLI to start sessions with: the harness health says "Not found" for Claude (D-98), read
+    /// from the check Connections makes, so Home starts no process to find out. False until a check has said so, and again
+    /// once one finds it.
     var homeClaudeCLIMissing: Bool {
-        usage?.limitsFailure?.category == .noToolchain
+        harnessHealth?.health(of: .claude).state == .install
     }
 
-    /// "Check Again" on the missing-CLI notice: asks for the plan limits again, which resolves the Claude CLI
-    /// again. The user's own action; nothing runs by itself.
-    func recheckClaude() { usage?.refresh(reason: .manual) }
+    /// "Check Again" for Claude: asks the harness health again, past the 5-minute floor. The user's own action; nothing runs
+    /// by itself. (Home's own button asks every connected harness: `recheckHarnesses`.)
+    func recheckClaude() { harnessHealth?.checkAgain(.claude) }
 
     // MARK: Reading the catalog
 

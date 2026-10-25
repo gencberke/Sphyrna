@@ -101,7 +101,7 @@ struct HomeRenderTests {
             #expect(found.contains(id), "\(id) is on Home at \(Int(size.width)) pt")
         }
         #expect(!found.contains("home-start"), "Home has no start box any more (V19)")
-        #expect(!found.contains("home-nothing-waiting") && !found.contains("home-no-claude") && !found.contains("home-empty-catalog"))
+        #expect(!found.contains("home-nothing-waiting") && !found.contains("home-connect-notice") && !found.contains("home-empty-catalog"))
         let said = labels(in: hosting.view)
         #expect(said.contains("Needs you, 1") && said.contains("Finished, not read, 1"))
         #expect(said.contains { $0.hasPrefix("Plan limits, 5-hour window") && $0.contains("Weekly") }, "the plan limits card is one element")
@@ -200,7 +200,7 @@ struct HomeRenderTests {
             let codex = accessibilityElements(in: hosting.view).first { $0.accessibilityIdentifier?() == "home-new-codex-session" }
             let reason = accessibilityElements(in: hosting.view).first { $0.accessibilityIdentifier?() == "home-new-codex-reason" }
             return (codex.flatMap { $0.isAccessibilityEnabled?() }, reason != nil, // the words are `CatalogModel.codexLaterReason`, checked in SidebarStatusTests
-                    HomeEmptyCatalog.showsMark(claudeMissing: model.homeClaudeCLIMissing))
+                    HomeEmptyCatalog.showsMark(connectCards: model.homeConnect.showsCards))
         }
         let production = try await state([.claude])
         #expect(production.enabled == false, "listed, disabled")
@@ -208,8 +208,8 @@ struct HomeRenderTests {
         #expect(production.mark, "the first run carries the app icon")
         let dev = try await state([.claude, .codex])
         #expect(dev.enabled == true && !dev.reason)
-        // The warning state keeps its symbol.
-        #expect(!HomeEmptyCatalog.showsMark(claudeMissing: true))
+        // The cards take the mark's place.
+        #expect(!HomeEmptyCatalog.showsMark(connectCards: true))
     }
 
     @Test func theFirstRunPanelIsHomeWithItsEmptyStateNotTheOldStartScreen() async throws {
@@ -240,7 +240,7 @@ struct HomeRenderTests {
         #expect(!labels(in: hosting.view).contains("Add a project to begin"))
     }
 
-    @Test func withoutClaudeAnEmptyCatalogSaysSoAndOffersCheckAgain() async throws {
+    @Test func withoutClaudeAnEmptyCatalogSaysConnectYourAgentsAndOffersSetupAndCheckAgain() async throws {
         enableAccessibilityTree()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-home-noclaude-\(UUID())", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -248,12 +248,10 @@ struct HomeRenderTests {
         let model = CatalogModel(catalog: try SessionCatalog(url: root.appendingPathComponent("c.sqlite3")),
                                  events: SessionEventHub(),
                                  preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
-        let limits = FakeLimits()
-        limits.setFailure(PlanLimitsFailure(category: .noToolchain, at: Date()))
-        let usage = UsageModel(index: FakeUsageIndex(), limits: limits, timeZone: TimeZone(identifier: "UTC")!)
-        model.usage = usage
-        usage.refresh(reason: .launch)
-        await usage.settle()
+        let rig = ConnectionsTests.Rig(claude: nil, claudeFound: false, codex: nil, codexFound: false)
+        model.installHarnessHealth(rig.model)
+        rig.model.checkAll()
+        await rig.model.settle()
         await model.start()
         await model.stopAndWait()
         await model.settle()
@@ -262,27 +260,29 @@ struct HomeRenderTests {
         defer { window.close(); model.stop() }
         try await settle(window) { self.identifiers(in: hosting.view).contains("home-check-again") }
         let found = Set(identifiers(in: hosting.view))
+        #expect(found.contains("home-connect") && found.contains("home-connect-claude") && found.contains("home-connect-codex"))
         #expect(found.contains("home-check-again") && found.contains("home-add-project"))
-        #expect(!found.contains("home-new-session") && !found.contains("home-start"))
+        #expect(found.contains("setup-copy-claude") && found.contains("setup-open-terminal-claude"), "the command, with Copy and Open Terminal")
+        #expect(!found.contains("home-new-session") && !found.contains("home-start") && !found.contains("home-app-icon"))
+        let said = labels(in: hosting.view)
+        #expect(said.contains("Claude, Install, Not found"), "\(said.filter { $0.contains("Claude") })")
     }
 
-    @Test func withSessionsButNoClaudeTheStartBoxGivesWayToTheNotice() async throws {
+    @Test func withSessionsButNoClaudeACompactCardGivesWayToTheOldNotice() async throws {
         enableAccessibilityTree()
         let rig = try await ListRig.make(projects: 1, perProject: 2, unassigned: 0, mode: .activity)
         defer { rig.cleanup() }
-        let limits = FakeLimits()
-        limits.setFailure(PlanLimitsFailure(category: .noToolchain, at: Date()))
-        let usage = UsageModel(index: FakeUsageIndex(), limits: limits, timeZone: TimeZone(identifier: "UTC")!)
-        rig.model.usage = usage
-        usage.refresh(reason: .launch)
-        await usage.settle()
+        let health = ConnectionsTests.Rig(claude: nil, claudeFound: false, codex: ConnectionsTests.max, codexFound: true)
+        rig.model.installHarnessHealth(health.model)
+        health.model.checkAll()
+        await health.model.settle()
         rig.model.showHome()
         let (window, hosting) = hostHome(rig.model, width: 940, height: 740)
         defer { window.close() }
-        try await settle(window) { self.identifiers(in: hosting.view).contains("home-no-claude") }
+        try await settle(window) { self.identifiers(in: hosting.view).contains("home-connect-notice") }
         let found = Set(identifiers(in: hosting.view))
-        #expect(found.contains("home-no-claude") && found.contains("home-check-again"))
-        #expect(!found.contains("home-start") && !found.contains("home-add-project"))
+        #expect(found.contains("home-connect-notice") && found.contains("home-check-again") && found.contains("home-connect-set-up"))
+        #expect(!found.contains("home-start") && !found.contains("home-add-project") && !found.contains("home-connect"))
     }
 
     /// A picture of Home on the panel colour, written when `LOOM_HOME_RENDER_DIR` is set (a quick look while

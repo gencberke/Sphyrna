@@ -50,7 +50,7 @@ struct HomeView: View {
     }
 }
 
-/// Home with something in the catalog: the band, the notice when Claude is missing, and the blocks.
+/// Home with something in the catalog: the band, the notice while a connected agent needs attention, and the blocks.
 private struct HomeBoardView: View {
     let model: CatalogModel
     let reads: HomeRemoraReads
@@ -63,7 +63,7 @@ private struct HomeBoardView: View {
                 VStack(spacing: 0) {
                     HomeTop(model: model, paneWidth: paneWidth, reads: reads, remoraUI: remoraUI)
                     VStack(alignment: .leading, spacing: LoomTheme.Home.blockGap) {
-                        if model.homeClaudeCLIMissing { HomeNoClaudeNotice(model: model) }
+                        if model.homeConnect.showsNotice { HomeConnectNotice(model: model) }
                         if HomeLayout.isWide(paneWidth: paneWidth) {
                             HStack(alignment: .top, spacing: LoomTheme.Home.columnGap) {
                                 HomeLists(model: model).frame(maxWidth: .infinity, alignment: .topLeading)

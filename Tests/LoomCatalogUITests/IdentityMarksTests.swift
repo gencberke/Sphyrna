@@ -109,9 +109,9 @@ struct IdentityMarksTests {
         #expect(!ProjectAttention.drawsDiamond(nil, differentiateWithoutColor: true))
     }
 
-    @Test func onlyTheFirstRunCarriesTheMarkAndAMissingClaudeKeepsItsSymbol() {
-        #expect(HomeEmptyCatalog.showsMark(claudeMissing: false))
-        #expect(!HomeEmptyCatalog.showsMark(claudeMissing: true))
-        #expect(HomeEmptyCopy.noClaude.symbol == "exclamationmark.triangle")
+    @Test func onlyTheFirstRunCarriesTheMarkAndConnectYourAgentsTakesItsPlace() {
+        #expect(HomeEmptyCatalog.showsMark(connectCards: false))
+        #expect(!HomeEmptyCatalog.showsMark(connectCards: true))
+        #expect(HomeEmptyCopy.connect.symbol == "link")
     }
 }
