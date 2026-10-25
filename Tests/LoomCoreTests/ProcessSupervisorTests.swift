@@ -1314,6 +1314,24 @@ struct ProcessSupervisorTests {
         #expect((await supervisor.shutdown()).succeeded)
     }
 
+    @Test func internalServiceRunStaysOffTheSessionHub() async throws {
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
+        let service = ManagedSession(provider: .synthetic, workingDirectory: FileManager.default.temporaryDirectory.path)
+        try await supervisor.createInternalSession(service)
+        let base = await supervisor.events.snapshot().sequence
+        let environment = LaunchEnvironment.make(
+            path: "/usr/bin:/bin", runID: supervisor.ownershipRunID, sessionID: service.id)
+        let launch = try await supervisor.launch(
+            sessionID: service.id, executable: childPath, arguments: ["stubborn"], environment: environment)
+        _ = try await ready(terminal: launch.terminal)
+        #expect((try await supervisor.stop(sessionID: service.id, graceSeconds: 0.2)).succeeded)
+        let hub = await supervisor.events.snapshot()
+        #expect(hub.sessions[service.id] == nil, "an app-owned helper has no live state on the hub")
+        #expect(hub.sequence == base, "no frame was published for it, so no consumer reads the catalog again")
+        try await supervisor.discardInternalSession(service.id)
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
     @Test func sameProviderConversationCannotBeOpenedTwice() async throws {
         let supervisor = try ProcessSupervisor(
             ledger: OwnershipLedger()

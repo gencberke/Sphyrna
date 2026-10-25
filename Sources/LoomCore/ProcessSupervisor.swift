@@ -53,7 +53,7 @@ public actor ProcessSupervisor {
     /// A late provider event naming one must not recreate the conversation; the set
     /// lives as long as the supervisor and is bounded by what the user deleted.
     var deletedProviderIDs: Set<String> = []
-    private var internalSessionIDs: Set<UUID> = []
+    var internalSessionIDs: Set<UUID> = []
     var runtimes: [UUID: Runtime] = [:]
     var reservedSessions: Set<UUID> = []
     var markerInspected: Set<ProcessIdentity> = []
@@ -494,12 +494,15 @@ public actor ProcessSupervisor {
         runRegistered = true
         // The owning face is a fact of the session, kept with it before anyone is told the run started: the row a
         // frame makes the UI read again already names the face (V19: a stopped session resumes in it).
-        let endpointKind: RunEndpointKind = endpoint.isPipe ? .pipe : .terminal
-        do { try await catalog?.setRunEndpoint(endpointKind, sessionID: sessionID) } catch {
-            LoomLog.error(.catalog, "The run's endpoint could not be recorded (\(LoomLog.category(of: error)))")
+        // An app-owned helper is no session of the user's: it has no row to record the face on and tells the hub nothing.
+        if !internalSessionIDs.contains(sessionID) {
+            let endpointKind: RunEndpointKind = endpoint.isPipe ? .pipe : .terminal
+            do { try await catalog?.setRunEndpoint(endpointKind, sessionID: sessionID) } catch {
+                LoomLog.error(.catalog, "The run's endpoint could not be recorded (\(LoomLog.category(of: error)))")
+            }
+            await events.publish(sessionID: sessionID, change: .runStarted(runID))
+            await events.publish(sessionID: sessionID, change: .runEndpoint(runID, endpointKind))
         }
-        await events.publish(sessionID: sessionID, change: .runStarted(runID))
-        await events.publish(sessionID: sessionID, change: .runEndpoint(runID, endpointKind))
         LoomLog.notice(.lifecycle, "Run \(runID.uuidString.prefix(8)) started (\(LoomLog.ref(sessionID)), \(Self.faceName(pipe: endpoint.isPipe)), \(Self.startKind(arguments)))")
         markerInspected.insert(leaderIdentity)
         managedRunMarkers[leaderIdentity] = runID
