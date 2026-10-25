@@ -363,40 +363,33 @@ struct SidebarStatusTests {
         }
     }
 
-    /// The spinner steps on the shared clock at 12 frames a second, setting pre-drawn frames: nothing is drawn per step, and
-    /// no Core Animation animation runs (one made the render server composite the window at the display's rate, RESCUE-PLAN §5).
-    /// The clock is shared with any other test's spinner, so only this test's views are checked.
-    @MainActor @Test func theSpinnerStepsItsTenFramesOnTheSharedClockAtTwelveFramesASecond() async throws {
+    /// The animation is the render server's: one discrete keyframe animation over `contents` at 12 frames a second,
+    /// installed on the layer and never rebuilt per step (no timer, no redraw while it runs).
+    @MainActor @Test func theSpinnerIsOneDiscreteKeyframeAnimationAtTwelveFramesASecond() async throws {
         let view = BrailleSpinner.LayerView(style: .status)
-        let other = BrailleSpinner.LayerView(style: .status)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 80, height: 40), styleMask: [.borderless],
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 40, height: 40), styleMask: [.borderless],
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { window.close() }
-        let content = NSView(frame: window.contentLayoutRect)
-        content.addSubview(view)
-        content.addSubview(other)
-        window.contentView = content
+        window.contentView = view
         #expect(!view.isRunning, "a spinner that is not asked to move stands on its first frame")
-        #expect(view.presentedFrame == 0)
-        #expect(IndicatorView.framesPerSecond == 12)
         view.setAnimating(true)
-        other.setAnimating(true)
-        #expect(view.isRunning && BrailleClock.shared.isTicking)
-        #expect(view.layer?.sublayers?.allSatisfy { $0.animationKeys() == nil } == true, "no animation in the render server")
-        // Running costs no drawing: the frames are drawn once, and the clock moves through them.
+        let animation = try #require(view.animation as? CAKeyframeAnimation)
+        #expect(animation.keyPath == "contents" && animation.calculationMode == .discrete)
+        #expect(animation.values?.count == 10 && animation.keyTimes?.count == 11)
+        #expect(animation.duration == 10 / 12 && animation.repeatCount == .infinity && !animation.isRemovedOnCompletion)
+        #expect(IndicatorView.framesPerSecond == 12)
+        // It asks the render server for its own rate, not the display's.
+        #expect(animation.preferredFrameRateRange == CAFrameRateRange(minimum: 12, maximum: 12, preferred: 12))
+        // Its values are the view's ten frames, in order.
+        let values = try #require(animation.values)
+        #expect(view.frameImages.count == 10)
+        for (value, frame) in zip(values, view.frameImages) { #expect(CFEqual(value as CFTypeRef, frame)) }
+        // Running costs no drawing: the frames are drawn once.
         let drawn = view.renderCount
-        var seen = Set<Int>()
-        for _ in 0..<12 {
-            try await Task.sleep(for: .milliseconds(100))
-            if let frame = view.presentedFrame { seen.insert(frame) }
-            #expect(view.presentedFrame == other.presentedFrame, "every spinner shows the same frame")
-        }
-        #expect(seen.count >= 5, "about 12 steps in 1.2 s; saw \(seen.sorted())")
-        #expect(view.renderCount == drawn && view.frameImages.count == 10)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(view.renderCount == drawn && view.isRunning)
         view.setAnimating(false)
-        #expect(!view.isRunning && view.presentedFrame == 0 && other.isRunning)
-        other.setAnimating(false)
-        #expect(!other.isRunning)
+        #expect(!view.isRunning)
     }
 }
