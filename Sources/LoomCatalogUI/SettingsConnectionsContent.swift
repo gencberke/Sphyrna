@@ -47,7 +47,7 @@ enum ConnectionsContent {
         let canDeepCheck: Bool
     }
 
-    static let switchHelp = "Off, Sphyrna does not offer this agent for new sessions, check it or read its usage. Sessions that exist keep working. "
+    static let switchHelp = "Off, Sphyrna stops checking this agent and reading its usage and models. Sessions that exist keep working. "
         + "Sphyrna never signs the CLI out or changes its settings."
 
     static func row(for health: HarnessHealth, connected: Bool, startNote: String?) -> Row {

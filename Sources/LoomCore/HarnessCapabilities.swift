@@ -1,7 +1,7 @@
 import Foundation
 
 /// What a session's harness may do in this build, as one value. The UI asks these, never `provider == .claude`: a later
-/// harness (Codex returning, others) changes this table and nothing else (D-94). `HarnessCapabilitiesGuardTests` keeps it so.
+/// harness (Codex returning, others) changes this table and nothing else (D-94). `HarnessCapabilitiesTests` keeps it so.
 public struct HarnessCapabilities: Equatable, Sendable {
     /// A real harness stands behind the session (not a test fixture): the UI names it and says why it cannot start.
     public let hasHarness: Bool

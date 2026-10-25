@@ -112,6 +112,5 @@ struct IdentityMarksTests {
     @Test func onlyTheFirstRunCarriesTheMarkAndConnectYourAgentsTakesItsPlace() {
         #expect(HomeEmptyCatalog.showsMark(connectCards: false))
         #expect(!HomeEmptyCatalog.showsMark(connectCards: true))
-        #expect(HomeEmptyCopy.connect.symbol == "link")
     }
 }

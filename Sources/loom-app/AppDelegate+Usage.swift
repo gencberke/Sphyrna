@@ -17,7 +17,7 @@ extension AppDelegate {
             let index = ClaudeUsageIndex(
                 databaseURL: root.appendingPathComponent("usage-index.sqlite3"), profile: layout,
                 sideChats: { (try? await catalog?.sideChatProviderIDs()) ?? [] })
-            let toolchain = claudeToolchain
+            let toolchain = toolchainSlot
             let limits = ClaudePlanLimitsFetcher(
                 toolchain: { try await toolchain.claude() }, profile: layout,
                 workingDirectory: root.appendingPathComponent("usage-probe", isDirectory: true))
@@ -80,10 +80,10 @@ extension AppDelegate {
     }
 }
 
-/// The Claude toolchain the runtime resolves for sessions (executable, environment). The runtime
+/// The toolchains (Claude's and Codex's) the runtime resolves for sessions (executable, environment). The runtime
 /// hands its resolver over when it starts; a plan-limits request that comes earlier waits for it,
 /// for a bounded time, and gives up when the runtime never starts.
-final class ClaudeToolchainSlot: Sendable {
+final class ToolchainSlot: Sendable {
     private let resolver = Mutex<ProviderToolchainResolver?>(nil)
 
     func provide(_ value: @escaping ProviderToolchainResolver) {

@@ -8,16 +8,11 @@ public struct ModelCatalogEntry: Equatable, Sendable, Identifiable {
     public var title: String
     /// The line after the title in the popover; nil for none.
     public var note: String?
-    public var isDefault: Bool
-    /// The effort levels it takes (empty: not known, or none).
-    public var efforts: [String]
 
-    public init(id: String, title: String, note: String? = nil, isDefault: Bool = false, efforts: [String] = []) {
+    public init(id: String, title: String, note: String? = nil) {
         self.id = id
         self.title = title
         self.note = note
-        self.isDefault = isDefault
-        self.efforts = efforts
     }
 }
 
@@ -58,11 +53,6 @@ public final class ModelCatalog {
         probedCodex = reading.models.map(Self.entry(of:))
     }
 
-    /// Back to today's names: the harness's account changed.
-    public func forgetProbed(_ provider: ManagedSession.Provider) {
-        if provider == .codex { probedCodex = nil }
-    }
-
     // MARK: The fixed parts
 
     /// Claude Code's models: the aliases the CLI takes, and what each is for.
@@ -92,8 +82,6 @@ public final class ModelCatalog {
     ]
 
     private nonisolated static func entry(of model: HarnessModel) -> ModelCatalogEntry {
-        ModelCatalogEntry(
-            id: model.id, title: model.displayName, note: model.isDefault ? "Default" : nil, isDefault: model.isDefault,
-            efforts: model.efforts)
+        ModelCatalogEntry(id: model.id, title: model.displayName, note: model.isDefault ? "Default" : nil)
     }
 }

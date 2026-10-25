@@ -173,8 +173,7 @@ public struct CodexProbeSource: HarnessProbeSource {
             let efforts = (value["supportedReasoningEfforts"]?.array ?? []).compactMap { $0["reasoningEffort"]?.string }
             return HarnessModel(
                 id: id, displayName: value["displayName"]?.string.flatMap { $0.isEmpty ? nil : $0 } ?? id,
-                isDefault: value["isDefault"]?.bool ?? false, efforts: efforts,
-                defaultEffort: value["defaultReasoningEffort"]?.string)
+                isDefault: value["isDefault"]?.bool ?? false, efforts: efforts)
         }
     }
 }

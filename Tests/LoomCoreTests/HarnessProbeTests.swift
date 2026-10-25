@@ -51,8 +51,8 @@ struct HarnessProbeTests {
         #expect(answer.lifetimeTokens == 123_456_789)
         #expect(answer.tokenDays == [HarnessTokenDay(day: "2026-10-23", tokens: 1_200), HarnessTokenDay(day: "2026-10-24", tokens: 3_400)])
         #expect(answer.models == [
-            HarnessModel(id: "fake-codex-alpha", displayName: "Fake Codex Alpha", isDefault: true, efforts: ["low", "medium", "high"], defaultEffort: "medium"),
-            HarnessModel(id: "fake-codex-beta", displayName: "Fake Codex Beta", isDefault: false, efforts: ["low", "medium", "high"], defaultEffort: "medium"),
+            HarnessModel(id: "fake-codex-alpha", displayName: "Fake Codex Alpha", isDefault: true, efforts: ["low", "medium", "high"]),
+            HarnessModel(id: "fake-codex-beta", displayName: "Fake Codex Beta", isDefault: false, efforts: ["low", "medium", "high"]),
         ], "the hidden model is dropped")
 
         // Never a thread, never a turn: the connection made exactly the handshake and the four reads.
@@ -152,7 +152,6 @@ struct HarnessProbeTests {
         catalog.apply(reading)
         #expect(catalog.models(for: .codex).map(\.title) == ["Fake Codex Alpha", "Fake Codex Beta"], "hidden models are not offered")
         #expect(catalog.models(for: .codex).map(\.note) == ["Default", nil])
-        #expect(catalog.models(for: .codex)[0].efforts == ["low", "medium", "high"])
 
         // A reading with no models (their ask failed) leaves the list; another harness's reading changes nothing.
         catalog.apply(HarnessReading(provider: .codex, readAt: Date()))
@@ -162,8 +161,6 @@ struct HarnessProbeTests {
         connections.setConnected(.codex, false)
         #expect(catalog.models(for: .codex).isEmpty, "a switched-off harness offers no models")
         connections.setConnected(.codex, true)
-        catalog.forgetProbed(.codex)
-        #expect(catalog.models(for: .codex) == ModelCatalog.codexFallback)
         #expect(catalog.models(for: .synthetic).isEmpty)
         #expect((await context.runtime.shutdown()).succeeded)
     }

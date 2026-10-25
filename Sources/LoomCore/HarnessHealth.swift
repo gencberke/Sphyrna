@@ -176,7 +176,7 @@ public struct HarnessHealth: Equatable, Sendable {
         switch (provider, reading?.account) {
         case (_, HarnessAccount.none?):
             return health.signedOut()
-        case (_, nil) where reading == nil || (provider == .claude && reading?.windows.isEmpty == true):
+        case (.claude, nil) where reading?.windows.isEmpty == true, (_, nil) where reading == nil:
             // A check that answered nothing, or Claude's that named no account, is unknown: only an explicit `.none` account
             // says nobody is signed in, so a signed-in user is never told to sign in.
             health.state = .attention

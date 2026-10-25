@@ -35,7 +35,7 @@ public actor HarnessHealthChecker {
     }
 
     /// The last check of `provider`, with no ask; nil when none was made or the harness is switched off.
-    public func lastHealth(of provider: ManagedSession.Provider) -> HarnessHealth? {
+    func lastHealth(of provider: ManagedSession.Provider) -> HarnessHealth? {
         connections.isConnected(provider) ? checked[provider] : nil
     }
 

@@ -8,7 +8,7 @@ import LoomCore
 extension AppDelegate {
     func installConnections(model: CatalogModel, root: URL) {
         guard let probe = model.harnessProbe, let connections = model.harnessConnections else { return }
-        let slot = claudeToolchain
+        let slot = toolchainSlot
         let toolchain: @Sendable (ManagedSession.Provider) async throws -> ProviderToolchain = { provider in
             try await slot.toolchain(for: provider)
         }

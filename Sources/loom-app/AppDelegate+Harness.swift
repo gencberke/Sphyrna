@@ -18,13 +18,13 @@ extension AppDelegate {
         // The runtime, and so the supervisor, comes after the window: the Codex source looks for it when it is asked.
         let info = Bundle.main.infoDictionary
         let build = info?["LoomRevision"] as? String ?? info?["CFBundleVersion"] as? String ?? "dev"
-        let slot = claudeToolchain
+        let slot = toolchainSlot
         sources[.codex] = DeferredCodexSource(
             supervisor: { [weak self] in await MainActor.run { self?.supervisor } },
             toolchain: { try await slot.toolchain(for: .codex) },
             socketDirectory: FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(identity.socketDirectoryName, isDirectory: true),
-            workingDirectory: FileManager.default.homeDirectoryForCurrentUser.path, clientVersion: "loom-\(build)")
+            workingDirectory: root.appendingPathComponent("harness-probe", isDirectory: true).path, clientVersion: "loom-\(build)")
 
         // Codex's models reach the composer's lists through the catalog.
         model.harnessProbe = HarnessProbe(connections: connections, sources: sources, onReading: { reading in
@@ -45,6 +45,9 @@ private struct DeferredCodexSource: HarnessProbeSource {
 
     func read() async -> HarnessProbeAnswer? {
         guard let supervisor = await supervisor() else { return nil }
+        // Sphyrna's own folder for the server's internal session, made when a probe first needs it (never a project, never home).
+        try? FileManager.default.createDirectory(
+            atPath: workingDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         return await CodexProbeSource(
             supervisor: supervisor, toolchain: toolchain, workingDirectory: workingDirectory,
             socketDirectory: socketDirectory, clientVersion: clientVersion).read()

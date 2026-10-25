@@ -79,6 +79,9 @@ public struct HarnessDeepCheck: Sendable {
         ([HarnessHealth.command(provider)] + arguments(for: provider)).joined(separator: " ")
     }
 
+    /// How long a Deep Check may run before it is stopped, in seconds.
+    public static let defaultTimeout: TimeInterval = 30
+
     /// The longest output kept: a doctor's report is a page, not a log.
     static let outputLimit = 256 * 1024
     static let keptCharacters = 20_000
@@ -89,7 +92,7 @@ public struct HarnessDeepCheck: Sendable {
     private let timeout: TimeInterval
 
     public init(supervisor: ProcessSupervisor, toolchain: @escaping @Sendable (ManagedSession.Provider) async throws -> ProviderToolchain,
-                workingDirectory: URL, timeout: TimeInterval = 30) {
+                workingDirectory: URL, timeout: TimeInterval = HarnessDeepCheck.defaultTimeout) {
         self.supervisor = supervisor
         self.toolchain = toolchain
         self.workingDirectory = workingDirectory

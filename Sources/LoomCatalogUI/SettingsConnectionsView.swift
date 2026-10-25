@@ -158,7 +158,7 @@ private struct ConnectionDeepCheck: View {
         let progress = health.deepChecks[provider]
         VStack(spacing: 0) {
             SettingsRow(title: "Deep Check",
-                        detail: "Runs \(detail.deepCheckCommand) and shows what it says. It runs only when you choose it, and stops after 30 seconds.") {
+                        detail: "Runs \(detail.deepCheckCommand) and shows what it says. It runs only when you choose it, and stops after \(Int(HarnessDeepCheck.defaultTimeout)) seconds.") {
                 Button(progress == .running ? "Running…" : "Deep Check") { health.runDeepCheck(provider) }
                     .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
                     .disabled(!health.offersDeepCheck || !detail.canDeepCheck || progress == .running)

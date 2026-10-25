@@ -162,7 +162,7 @@ struct ConnectionsTests {
     // MARK: Setup and the re-check
 
     @Test func copyAndOpenTerminalShowTheCommandAndTheNextActivationChecksAgainOnce() async {
-        let rig = Rig(claude: nil, claudeFound: true)
+        let rig = Rig(claude: HarnessProbeAnswer(account: HarnessAccount.none, windows: []), claudeFound: true)
         var copied: [String] = []
         var opened = 0
         rig.model.copyToPasteboard = { copied.append($0) }
@@ -211,6 +211,7 @@ struct ConnectionsTests {
     @Test func theSwitchHelpSaysSessionsKeepWorkingAndNamesSphyrna() {
         #expect(ConnectionsContent.switchHelp.contains("Sessions that exist keep working") && !ConnectionsContent.switchHelp.contains("Loom"))
         #expect(ConnectionsContent.switchHelp.contains("never signs the CLI out"))
+        #expect(!ConnectionsContent.switchHelp.contains("new sessions"), "the switch gates checks, reading and models, not new-session entries")
     }
 
     // MARK: Seven tabs

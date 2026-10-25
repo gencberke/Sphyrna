@@ -3,17 +3,16 @@ import SwiftUI
 
 /// What Home says in each first-run case. Plain values so a test reads the words without a view.
 struct HomeEmptyCopy: Equatable {
-    let symbol: String
     let title: String
     let text: String
 
     /// A catalog with nothing in it: the way on is to add a project.
     static let noProjects = HomeEmptyCopy(
-        symbol: "folder.badge.plus", title: "No projects yet",
+        title: "No projects yet",
         text: "Add the folder you work in. Its Claude sessions then appear in the sidebar and here, and new sessions start inside it.")
 
     /// A connected agent needs setting up (D-98): the cards stand under these words.
-    static let connect = HomeEmptyCopy(symbol: "link", title: HomeConnect.title, text: HomeConnect.firstRunText)
+    static let connect = HomeEmptyCopy(title: HomeConnect.title, text: HomeConnect.firstRunText)
 }
 
 /// The words of Check Again while it asks (DESIGN §9 Empty states).

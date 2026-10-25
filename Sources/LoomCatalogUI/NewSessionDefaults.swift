@@ -56,16 +56,8 @@ struct NewSessionSettings: Equatable, Sendable, Codable {
     }
 }
 
-/// The model aliases the draft offers: the CLI takes the alias and decides which release it means. A session in the
-/// draft has not run yet, so the CLI's own model list (`initialize`) is not known; the aliases are the three families, from
-/// Claude's model catalog.
+/// What the draft offers besides Claude's model aliases (`ModelCatalog.claude`).
 enum NewSessionModels {
-    static let all: [(alias: String, title: String)] = ModelCatalog.claude.map { (alias: $0.id, title: $0.title) }
-
-    static func title(of alias: String) -> String {
-        all.first { $0.alias == alias }?.title ?? alias
-    }
-
     /// The effort levels the CLI takes (`--effort`, `claude --help` on 2.1.300). Before a session runs no model's own list
     /// is known, and the current aliases (default, opus, sonnet, haiku) all list the five, so the draft offers them.
     static let effortLevels = ["low", "medium", "high", "xhigh", "max"]
@@ -93,7 +85,7 @@ struct ResolvedStart: Equatable, Sendable {
 
     /// The model as the bar names it: the chosen one, else "Default model" (the CLI decides which).
     var modelTitle: String {
-        model.value.map(NewSessionModels.title(of:)) ?? NewSessionDefaults.defaultModelTitle
+        model.value.map(ModelCatalog.claudeTitle(of:)) ?? NewSessionDefaults.defaultModelTitle
     }
 
     /// The effort as the bar names it, in the lighter word after the model; nil when none is chosen.

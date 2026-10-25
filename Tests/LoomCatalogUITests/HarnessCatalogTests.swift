@@ -45,9 +45,7 @@ struct HarnessCatalogTests {
 
     // MARK: The lists
 
-    @Test func claudeIsTheCatalogsListAndTheDraftsAliasesAgreeWithIt() {
-        #expect(ModelCatalog.claude.map(\.id) == NewSessionModels.all.map(\.alias))
-        #expect(ModelCatalog.claude.map(\.title) == NewSessionModels.all.map(\.title))
+    @Test func claudeIsTheCatalogsList() {
         #expect(ModelCatalog.claudeTitle(of: "sonnet") == "Sonnet" && ModelCatalog.claudeTitle(of: "fable") == "fable")
         #expect(HeaderModelContent.launchTitle("haiku") == "Haiku")
         let claude = picker().groups()[0]
@@ -55,7 +53,7 @@ struct HarnessCatalogTests {
     }
 
     @Test func codexRowsComeFromTheGivenListAndTheGroupIsLeftOutWhenThereIsNone() {
-        let probed = [ModelCatalogEntry(id: "fake-alpha", title: "Fake Alpha", note: "Default", isDefault: true),
+        let probed = [ModelCatalogEntry(id: "fake-alpha", title: "Fake Alpha", note: "Default"),
                       ModelCatalogEntry(id: "fake-beta", title: "Fake Beta")]
         let codex = picker().groups(codex: probed)[1]
         #expect(codex.rows.map(\.title) == ["Fake Alpha", "Fake Beta"])

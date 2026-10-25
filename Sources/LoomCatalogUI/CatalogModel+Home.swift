@@ -270,10 +270,6 @@ extension CatalogModel {
         harnessHealth?.health(of: .claude).state == .install
     }
 
-    /// "Check Again" for Claude: asks the harness health again, past the 5-minute floor. The user's own action; nothing runs
-    /// by itself. (Home's own button asks every connected harness: `recheckHarnesses`.)
-    func recheckClaude() { harnessHealth?.checkAgain(.claude) }
-
     // MARK: Reading the catalog
 
     /// Reads what only the catalog knows, once per Home opening (and again when `HomeReadKey` changes): the

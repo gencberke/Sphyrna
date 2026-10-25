@@ -260,7 +260,7 @@ enum ProjectPresetText {
     static func summary(_ preset: NewSessionPreset) -> String {
         [preset.projectID == nil ? "All projects" : nil,
          preset.permissionMode.map(ClaudePermissionMode.title(forRaw:)),
-         preset.model.map(NewSessionModels.title(of:))]
+         preset.model.map(ModelCatalog.claudeTitle(of:))]
             .compactMap { $0 }.joined(separator: " \u{00B7} ")
     }
 
@@ -326,7 +326,7 @@ private struct ProjectPresetRow: View {
                 if let alias = preset.model {
                     HStack(spacing: LoomTheme.ProjectPage.presetModelGap) {
                         ProviderIcon(provider: .newSessionDefault)
-                        Text(NewSessionModels.title(of: alias)).projectType(LoomTheme.ProjectPage.presetModel)
+                        Text(ModelCatalog.claudeTitle(of: alias)).projectType(LoomTheme.ProjectPage.presetModel)
                             .foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
                     }
                     .fixedSize()

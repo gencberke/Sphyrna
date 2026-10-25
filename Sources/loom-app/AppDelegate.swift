@@ -34,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// "Collect Diagnostics…" for the Help menu and Settings → About; created with the Settings window.
     var diagnostics: DiagnosticsCollection?
     /// The Claude toolchain sessions use, handed over by the runtime; plan limits read it too.
-    let claudeToolchain = ClaudeToolchainSlot()
+    let toolchainSlot = ToolchainSlot()
     private(set) var model: CatalogModel?
     private(set) var splitController: MainSplitViewController?
     /// The development flavor's synthetic terminal; always nil in the release flavor.
@@ -486,7 +486,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 )
                 // Remora's host, with its forgetter registered before `start()`: a deletion that start recovers reaches Remora's
                 // memory too. It starts nothing and reads only a folder listing; nothing calls Remora until the UI does.
-                let slot = claudeToolchain
+                let slot = toolchainSlot
                 await model.installRemora(runtime: created, dataRoot: root, toolchain: { try await slot.claude() },
                                           profile: usageProfileLayout(root: root))
                 try await created.start()
@@ -540,7 +540,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let system = SystemProviderToolchains(supervisor: supervisor, origin: origin)
         let evidence = evidenceToolchains(root: root, supervisor: supervisor, origin: origin)
         let toolchains: ProviderToolchainResolver = evidence ?? { provider in try await system.toolchain(for: provider) }
-        claudeToolchain.provide(toolchains)
+        toolchainSlot.provide(toolchains)
         // A delete targets the folder the login shell names (DP-CP4-8); an acceptance run has fixture providers. It shares
         // the toolchains' capture, so a launch runs the login shell once.
         var loginEnvironment: (@Sendable () async throws -> [String: String])?

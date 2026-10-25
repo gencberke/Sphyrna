@@ -64,7 +64,7 @@ enum ComposerBarText {
             if let resolved = option.resolvedModel, !resolved.isEmpty { return prettyModel(resolved) }
             if let name = option.displayName, !name.isEmpty { return name }
         }
-        return chosen.hasPrefix("claude-") ? prettyModel(chosen) : NewSessionModels.title(of: chosen)
+        return chosen.hasPrefix("claude-") ? prettyModel(chosen) : ModelCatalog.claudeTitle(of: chosen)
     }
 
     /// "Opus 5.5" from `claude-opus-5-5`, "Sonnet 3.5" from `claude-3-5-sonnet-20241022`, "Opus 5.5 1M" from
@@ -126,10 +126,10 @@ enum ComposerBarText {
     /// The models to offer after Default: the aliases the CLI listed (an id is left out), else Loom's three.
     static func modelRows(_ state: ChatComposerState) -> [ModelRow] {
         let listed = state.models.filter { $0.value != "default" && !$0.value.hasPrefix("claude-") && !$0.value.contains("[") }
-        guard !listed.isEmpty else { return NewSessionModels.all.map { ModelRow(value: $0.alias, title: $0.title) } }
+        guard !listed.isEmpty else { return ModelCatalog.claude.map { ModelRow(value: $0.id, title: $0.title) } }
         return listed.map { option in
             ModelRow(value: option.value,
-                     title: option.resolvedModel.map(prettyModel) ?? option.displayName ?? NewSessionModels.title(of: option.value))
+                     title: option.resolvedModel.map(prettyModel) ?? option.displayName ?? ModelCatalog.claudeTitle(of: option.value))
         }
     }
 

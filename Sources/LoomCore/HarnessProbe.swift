@@ -85,14 +85,12 @@ public struct HarnessModel: Equatable, Sendable, Identifiable {
     public var isDefault: Bool
     /// The effort levels it takes, in the order the harness lists them (empty: none, or none said).
     public var efforts: [String]
-    public var defaultEffort: String?
 
-    public init(id: String, displayName: String, isDefault: Bool, efforts: [String], defaultEffort: String? = nil) {
+    public init(id: String, displayName: String, isDefault: Bool, efforts: [String]) {
         self.id = id
         self.displayName = displayName
         self.isDefault = isDefault
         self.efforts = efforts
-        self.defaultEffort = defaultEffort
     }
 }
 
