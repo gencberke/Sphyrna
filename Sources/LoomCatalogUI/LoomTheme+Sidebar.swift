@@ -47,7 +47,7 @@ extension LoomTheme {
         static let badgePadding: CGFloat = 4
         static let badgeFont = InkStyle(size: 10.5, weight: .semibold, mono: true).font
 
-        // MARK: The list's heading: the view's name, and the switch "projects · activity"
+        // MARK: The list's heading: the view's name and its action, and the view picker (RESCUE C3)
 
         static let headingInset: CGFloat = 16
         static let headingTop: CGFloat = 16
@@ -55,8 +55,10 @@ extension LoomTheme {
         static let headingBottom: CGFloat = 8
         static let headingLabel = InkType.label
         static let switchGap: CGFloat = 4
-        static let switchFont = InkType.meta.font
-        static let switchFontChosen = Font.system(size: 11, weight: .medium, design: .monospaced)
+        /// The heading's action and the picker's icons: chrome buttons a size under the toolbar's.
+        static let headingButton = CGSize(width: 22, height: 20)
+        static let headingGlyph = Font.system(size: 11.5, weight: .medium)
+        static let headingActionGap: CGFloat = 4
 
         // MARK: A project head (28 pt): its mark, its name, the attention dot; chevron, + and ⋯ on hover
 
@@ -98,6 +100,8 @@ extension LoomTheme {
         /// The harness mark's box is trimmed 2 pt on the left and 1 pt on the right (`.srow .hm`, `.scard .c1 .hm`).
         static let markTrimLeading: CGFloat = 2
         static let markTrimTrailing: CGFloat = 1
+        /// The column the harness's mark (trimmed) takes on a card; a card's project mark stands in the same column (RESCUE C3).
+        static var markSlot: CGFloat { Layout.harnessMarkRow - markTrimLeading - markTrimTrailing }
         /// Where a title starts, from the row's leading inset: the status slot, the trimmed mark and two gaps (37).
         static var titleIndent: CGFloat {
             Layout.indicatorSlot.width + Layout.harnessMarkRow - markTrimLeading - markTrimTrailing + 2 * Space.cardSpacing

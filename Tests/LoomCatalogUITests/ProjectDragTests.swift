@@ -30,6 +30,38 @@ struct ProjectDragTests {
         #expect(ProjectDrag.position(forGap: 3, from: 0) == 2)
         #expect(ProjectDrag.position(forGap: 0, from: 2) == 0)
         #expect(ProjectDrag.position(forGap: 1, from: 1) == 1 && ProjectDrag.position(forGap: 2, from: 1) == 1)
+        // With the dragged project's place known it takes the head's place, whichever half it is dropped on.
+        #expect(ProjectDrag.gap(onHead: 2, y: 4, height: row, canDropAfter: false, from: 0) == 3)
+        #expect(ProjectDrag.gap(onHead: 2, y: row - 4, height: row, canDropAfter: true, from: 3) == 2)
+    }
+
+    /// RESCUE C3: dragging a project onto the next expanded project's head did nothing, since the drop landed in the gap the
+    /// project already stood in. It takes that head's place now, down as well as up, and the order persists.
+    @Test func aProjectDroppedOnTheNextExpandedHeadTakesItsPlace() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-projects-\(UUID())", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("catalog.sqlite3")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let catalog = try SessionCatalog(url: url)
+        var ids: [UUID] = []
+        for name in ["a", "b", "c"] {
+            let folder = root.appendingPathComponent(name, isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            ids.append(try await catalog.addProject(path: folder.path).project.id)
+        }
+        let model = CatalogModel(catalog: catalog, events: SessionEventHub(),
+                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
+        defer { model.stop() }
+        await model.start()
+        #expect(model.projects.allSatisfy { !$0.collapsed })
+        let row = LoomTheme.InkHeight.sidebarRow
+        // a onto b's head, upper half: a, b, c → b, a, c.
+        await model.dropProject(ids[0], onHead: ids[1], y: 4)
+        #expect(model.projects.map(\.id) == [ids[1], ids[0], ids[2]])
+        // c onto a's head, lower half: b, a, c → b, c, a.
+        await model.dropProject(ids[2], onHead: ids[0], y: row - 4)
+        #expect(model.projects.map(\.id) == [ids[1], ids[2], ids[0]])
+        #expect(try await SessionCatalog(url: url).projects().map(\.id) == [ids[1], ids[2], ids[0]])
     }
 
     @Test func movingAProjectToTheStartTheMiddleAndTheEndPersistsAcrossAReload() async throws {

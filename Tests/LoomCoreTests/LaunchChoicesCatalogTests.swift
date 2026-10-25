@@ -31,6 +31,26 @@ struct LaunchChoicesCatalogTests {
             == ClaudeLaunchChoices(permissionMode: "plan", model: "haiku", effort: "high"))
     }
 
+    /// RESCUE C3: the sidebar reads the stored models of its sessions in one go; one without a model, or unknown, is left out.
+    @Test func theStoredModelsOfManySessionsReadInOneGo() async throws {
+        let (root, catalog) = try Self.temporaryCatalog()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var ids: [UUID] = []
+        for index in 0..<503 {
+            let session = ManagedSession(provider: .claude, workingDirectory: root.path)
+            try await catalog.insertSession(session)
+            if index % 2 == 0 {
+                try await catalog.recordLaunchChoices(ClaudeLaunchChoices(model: index == 502 ? "claude-opus-5-5" : "opus"),
+                                                      sessionID: session.id)
+            }
+            ids.append(session.id)
+        }
+        let models = try await catalog.launchModels(sessionIDs: ids + [UUID()])
+        #expect(models.count == 252)
+        #expect(models[ids[0]] == "opus" && models[ids[1]] == nil && models[ids[502]] == "claude-opus-5-5")
+        #expect(try await catalog.launchModels(sessionIDs: []).isEmpty)
+    }
+
     @Test func theOldLaunchedListFillsOnlySessionsWithoutStoredChoices() async throws {
         let (root, catalog) = try Self.temporaryCatalog()
         defer { try? FileManager.default.removeItem(at: root) }

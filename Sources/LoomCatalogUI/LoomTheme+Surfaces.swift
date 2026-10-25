@@ -98,10 +98,10 @@ extension LoomTheme.Surface {
     /// A card is raised 1.
     static var card: Color { raised1 }
 
-    /// The dark tone over the sidebar material for a style (D-57): Glass is 0.6, Solid is opaque.
+    /// The sidebar canvas's opacity for a style (D-57, RESCUE C3): Transparent is 0.8, Solid is opaque.
     static func sidebarTintOpacity(for style: SidebarStyle) -> Double {
         switch style {
-        case .glass: sidebarTintOpacity
+        case .transparent: sidebarTintOpacity
         case .solid: 1
         }
     }

@@ -234,6 +234,8 @@ public final class UsageModel {
     /// The sessions whose context is kept current, the model windows known so far (`windowKey`)
     /// and the pass that reads them.
     @ObservationIgnored private var trackedSessions: [String] = []
+    /// Called on the main actor after each scan that read the transcripts (the sidebar's cards read their models again).
+    @ObservationIgnored public var onScanned: (@MainActor () -> Void)?
     @ObservationIgnored private var contextWindows: [String: Int64] = [:]
     @ObservationIgnored private var contextTask: Task<Void, Never>?
     /// The latest samples behind `contexts`, kept so a newly known window applies without a read.
@@ -515,6 +517,7 @@ public final class UsageModel {
                 updatedAt = clock()
                 setState(.ready)
                 await reloadContexts()
+                onScanned?()
             } catch is CancellationError {
                 break
             } catch {
@@ -622,6 +625,13 @@ public final class UsageModel {
         if sample.contextTokens <= plain { return plain }
         if let extended, sample.contextTokens <= extended { return extended }
         return nil
+    }
+
+    /// The model of each session's latest main-thread message (the sidebar card's model, RESCUE C3): one indexed lookup per
+    /// session in the index's own database, nothing scanned. Empty when the index cannot be read.
+    public func latestMainModels(sessions: [String]) async -> [String: String] {
+        guard !sessions.isEmpty, let found = try? await index.latestMainMessages(sessions: sessions) else { return [:] }
+        return found.compactMapValues { $0.model.isEmpty ? nil : $0.model }
     }
 
     private func reloadContexts() async {

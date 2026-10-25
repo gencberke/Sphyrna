@@ -82,10 +82,13 @@ extension WindowEventTests {
 
 @MainActor
 struct SidebarInkLayoutTests {
-    @Test func theListHeadingWritesTheViewsAndTheSwitchOffersBoth() {
+    /// RESCUE C3: the view's name once, its own action beside it, and the picker apart (no "PROJECTS projects · activity").
+    @Test func theListHeadingNamesTheViewOnceWithItsActionAndThePickerOffersBoth() {
         #expect(SidebarListHeading.name(of: .projects) == "Projects" && SidebarListHeading.name(of: .activity) == "Activity")
-        #expect(SidebarListHeading.word(of: .projects) == "projects" && SidebarListHeading.word(of: .activity) == "activity")
-        #expect(SidebarListHeading.options == [.projects, .activity])
+        #expect(SidebarListHeading.action(of: .projects) == .addProject && SidebarListHeading.action(of: .activity) == .newSession)
+        #expect(SidebarListHeading.Action.addProject.title == "Add Project…")
+        #expect(SidebarListHeading.options == [.activity, .projects])
+        #expect(Set(SidebarListHeading.options.map(SidebarListHeading.symbol(of:))).count == 2, "an icon each")
     }
 
     @Test func theRowsAreInksHeightsAndRadii() {

@@ -3,7 +3,7 @@ import Testing
 @testable import LoomCatalogUI
 
 /// Ink's values as data (WCAG 2.x relative luminance): the contrast math, the tokens that hold their RGB data, the type,
-/// radius and height scale, and the sidebar's Glass | Solid tint. The floors per appearance and tone are in
+/// radius and height scale, and the sidebar's Transparent | Solid tint. The floors per appearance and tone are in
 /// `ThemeAppearanceTests`. The sidebar is a translucent tint over a material, so it is checked over the darkest and the
 /// lightest backdrop and as the opaque Reduce Transparency color. The lightest backdrop is what the dark `.sidebar`
 /// material passes of a pure white window behind it: measured 0.38-0.51 per sRGB channel on macOS 27 (12 Oct 2026,
@@ -132,17 +132,17 @@ struct LoomThemeTests {
                 && LoomTheme.Rhythm.inspectorWidthSide == 392)
     }
 
-    // MARK: Glass | Solid (D-57)
+    // MARK: Transparent | Solid (D-57, RESCUE C3)
 
-    @Test func theSidebarTintIsTheCanvasAtEightTenthsForGlassAndOpaqueForSolid() {
-        #expect(LoomTheme.Surface.sidebarTintOpacity(for: .glass) == 0.8)
+    @Test func theSidebarTintIsTheCanvasAtEightTenthsForTransparentAndOpaqueForSolid() {
+        #expect(LoomTheme.Surface.sidebarTintOpacity(for: .transparent) == 0.8)
         #expect(LoomTheme.Surface.sidebarTintOpacity(for: .solid) == 1)
     }
 
     @Test func reduceTransparencyDrawsSolidWhateverTheStyleIs() {
         typealias Background = SidebarBackground
-        #expect(Background.effectiveStyle(.glass, reduceTransparency: false) == .glass)
-        #expect(Background.effectiveStyle(.glass, reduceTransparency: true) == .solid)
+        #expect(Background.effectiveStyle(.transparent, reduceTransparency: false) == .transparent)
+        #expect(Background.effectiveStyle(.transparent, reduceTransparency: true) == .solid)
         #expect(Background.effectiveStyle(.solid, reduceTransparency: false) == .solid)
         #expect(Background.effectiveStyle(.solid, reduceTransparency: true) == .solid)
     }

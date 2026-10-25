@@ -27,7 +27,11 @@ final class MainSplitViewController: NSSplitViewController {
             .remoraMemoryDoor(model: model, navigation: settingsNavigation).inkHost(host))
         sidebar.sizingOptions = []
         detail.sizingOptions = []
-        sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
+        // A plain item, not `sidebarWithViewController`: a sidebar item puts AppKit's own blurred sidebar material behind the
+        // view, and Transparent is the canvas straight over what is behind the window (RESCUE C3). The holding priority is the one a
+        // sidebar item has, so a window resize goes to the detail pane.
+        sidebarItem = NSSplitViewItem(viewController: sidebar)
+        sidebarItem.holdingPriority = NSLayoutConstraint.Priority(260)
         collapseSync = SidebarCollapseSync(model: model, source: SplitViewItemCollapse(item: sidebarItem))
         let contentItem = NSSplitViewItem(viewController: detail)
         super.init(nibName: nil, bundle: nil)

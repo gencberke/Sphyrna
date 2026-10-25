@@ -6,7 +6,7 @@ import LoomTerminal
 import Testing
 @testable import LoomCatalogUI
 
-/// V01/V02: the Solid | Glass and launch-view preferences, the per-session inspector, and the detail route.
+/// V01/V02: the Solid | Transparent and launch-view preferences, the per-session inspector, and the detail route.
 /// Files live in temporary folders that each test removes.
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(2)))
@@ -26,13 +26,18 @@ struct ShellSeamsTests {
         try JSONDecoder().decode(UIPreferences.self, from: Data(contentsOf: root.appendingPathComponent("ui-preferences.json")))
     }
 
-    // MARK: Solid | Glass
+    // MARK: Solid | Transparent
 
-    /// DESIGN §5's Theme row: the segment reads Solid | Glass, the default first, and the stored raw values stay what they were.
-    @Test func theSidebarSegmentReadsSolidThenGlassAndKeepsItsStoredValues() throws {
-        #expect(SidebarStyle.allCases == [.solid, .glass])
-        #expect(SidebarStyle.allCases.map(\.title) == ["Solid", "Glass"])
-        #expect(SidebarStyle.allCases.map(\.rawValue) == ["solid", "glass"])
+    /// DESIGN §5's Theme row (RESCUE C3): the segment reads Solid | Transparent, the default first; a stored `glass` reads as
+    /// Transparent and is written back as `transparent`.
+    @Test func theSidebarSegmentReadsSolidThenTransparentAndAStoredGlassReadsAsTransparent() throws {
+        #expect(SidebarStyle.allCases == [.solid, .transparent])
+        #expect(SidebarStyle.allCases.map(\.title) == ["Solid", "Transparent"])
+        #expect(SidebarStyle.allCases.map(\.rawValue) == ["solid", "transparent"])
+        let decoder = JSONDecoder()
+        #expect(try decoder.decode(SidebarStyle.self, from: Data(#""glass""#.utf8)) == .transparent)
+        #expect(try decoder.decode(SidebarStyle.self, from: Data(#""transparent""#.utf8)) == .transparent)
+        #expect(String(data: try JSONEncoder().encode(SidebarStyle.transparent), encoding: .utf8) == #""transparent""#)
     }
 
     @Test func theSidebarStylePersistsAndAppliesLive() throws {
@@ -43,9 +48,9 @@ struct ShellSeamsTests {
 
         // The sidebar's background reads the style itself (`SidebarBackground(style:)`); there is no bridge
         // through Reduce Transparency any more.
-        model.setSidebarStyle(.glass)
-        #expect(model.sidebarStyle == .glass)
-        #expect(try stored(root).sidebarStyle == .glass)
+        model.setSidebarStyle(.transparent)
+        #expect(model.sidebarStyle == .transparent)
+        #expect(try stored(root).sidebarStyle == .transparent)
         #expect(model.preferencesSnapshot.projectColors, "nothing else changed")
 
         model.setSidebarStyle(.solid)
@@ -53,13 +58,13 @@ struct ShellSeamsTests {
         #expect(try stored(root).sidebarStyle == .solid)
 
         // A new window reads what was saved.
-        model.setSidebarStyle(.glass)
+        model.setSidebarStyle(.transparent)
         let again = self.model(at: root)
-        #expect(again.sidebarStyle == .glass)
+        #expect(again.sidebarStyle == .transparent)
     }
 
     /// DESIGN §2 item 2 (D-81): the sidebar is Solid for a fresh or missing preference, and a stored choice is kept. A user who
-    /// chose Glass keeps Glass; nobody is moved by the new default.
+    /// chose Glass keeps it, as Transparent; nobody is moved by the new default.
     @Test func aFreshOrMissingSidebarPreferenceIsSolidAndAStoredChoiceIsKept() throws {
         #expect(UIPreferences().sidebarStyle == .solid)
         #expect(try JSONDecoder().decode(UIPreferences.self, from: Data("{}".utf8)).sidebarStyle == .solid)
@@ -71,7 +76,7 @@ struct ShellSeamsTests {
         defer { for root in [fresh, stored] { try? FileManager.default.removeItem(at: root) } }
         #expect(model(at: fresh).sidebarStyle == .solid, "no file at all")
         try Data(#"{"sidebarStyle": "glass"}"#.utf8).write(to: stored.appendingPathComponent("ui-preferences.json"))
-        #expect(model(at: stored).sidebarStyle == .glass, "a stored Glass stays Glass")
+        #expect(model(at: stored).sidebarStyle == .transparent, "a stored Glass reads as Transparent")
         try Data(#"{"sidebarStyle": "solid"}"#.utf8).write(to: stored.appendingPathComponent("ui-preferences.json"))
         #expect(model(at: stored).sidebarStyle == .solid)
     }
@@ -81,10 +86,10 @@ struct ShellSeamsTests {
         func tint(_ style: SidebarStyle, _ reduce: Bool) -> Double {
             LoomTheme.Surface.sidebarTintOpacity(for: SidebarBackground.effectiveStyle(style, reduceTransparency: reduce))
         }
-        #expect(tint(.glass, false) == LoomTheme.Surface.sidebarTintOpacity && LoomTheme.Surface.sidebarTintOpacity == 0.8,
-                "Glass is the canvas at 0.8 over the material")
+        #expect(tint(.transparent, false) == LoomTheme.Surface.sidebarTintOpacity && LoomTheme.Surface.sidebarTintOpacity == 0.8,
+                "Transparent is the canvas at 0.8 over what is behind the window")
         #expect(tint(.solid, false) == 1)
-        #expect(tint(.glass, true) == 1 && tint(.solid, true) == 1)
+        #expect(tint(.transparent, true) == 1 && tint(.solid, true) == 1)
     }
 
     @Test func preferencesRoundTripAndAnOldOrOddFileReadsAsTheDefaults() throws {

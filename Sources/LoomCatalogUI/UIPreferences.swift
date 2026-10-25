@@ -45,19 +45,31 @@ public enum CatalogViewMode: String, Codable, Sendable, CaseIterable {
     case projects
 }
 
-/// Settings → Theme → Sidebar (D-57; General until D-63). Solid, the opaque canvas, is the default (D-81); Glass is the canvas at
-/// 0.8 over the behind-window material. A stored choice is kept. Reduce Transparency draws Solid whatever this says.
+/// Settings → Theme → Sidebar (D-57; General until D-63). Solid, the opaque canvas, is the default (D-81); Transparent is the
+/// canvas at partial opacity over what is behind the window, with no blur (RESCUE C3, which replaced Glass). A stored choice is
+/// kept, and a stored `glass` reads as Transparent. Reduce Transparency draws Solid whatever this says.
 /// The cases are in the segment's order, Solid first (DESIGN §5); the raw values are what is stored.
 public enum SidebarStyle: String, Codable, Sendable, CaseIterable {
     case solid
-    case glass
+    case transparent
 
     /// The label in Settings.
     public var title: String {
         switch self {
         case .solid: "Solid"
-        case .glass: "Glass"
+        case .transparent: "Transparent"
         }
+    }
+
+    /// The raw value Glass was stored under before Transparent replaced it.
+    static let glassRawValue = "glass"
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        guard let style = raw == Self.glassRawValue ? .transparent : SidebarStyle(rawValue: raw) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown sidebar style \(raw)"))
+        }
+        self = style
     }
 }
 
@@ -159,7 +171,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// Settings → General → Notify when a session needs approval. A file written before the setting
     /// existed reads as on. (Open at login is not a preference: the system holds it.)
     public var notifyApprovals: Bool
-    /// Settings → General → Sidebar: Glass or Solid (D-57). A file written before the setting existed reads as Solid (D-81).
+    /// Settings → Theme → Sidebar: Solid or Transparent (D-57, RESCUE C3). A file written before the setting existed reads as Solid (D-81).
     public var sidebarStyle: SidebarStyle
     /// What the window opens on. A file written before the setting existed reads as the last session.
     public var launchView: LaunchView

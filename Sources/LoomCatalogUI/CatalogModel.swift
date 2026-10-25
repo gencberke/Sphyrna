@@ -251,7 +251,7 @@ public final class CatalogModel {
     public private(set) var notifyApprovals: Bool
     /// Settings → General → Search session text: whether the command palette may read transcripts (default on).
     public private(set) var searchesSessionText: Bool
-    /// Settings → Theme → Sidebar: Glass or Solid (D-57).
+    /// Settings → Theme → Sidebar: Solid or Transparent (D-57, RESCUE C3).
     public private(set) var sidebarStyle: SidebarStyle
     /// Settings → General → Sessions run in (V19, D-69): the app-wide face of a Claude session as it starts or resumes. Chat by
     /// default. The stored key keeps its old name, so an older file reads the same.
@@ -319,7 +319,13 @@ public final class CatalogModel {
     /// Opens the one Settings window; nil keeps the section it shows (the gear), a section jumps to it (the usage chip).
     @ObservationIgnored public var onShowSettings: ((SettingsSection?) -> Void)?
     /// Set once by the app before the first view exists; the sidebar footer and Settings read it.
-    @ObservationIgnored public var usage: UsageModel?
+    @ObservationIgnored public var usage: UsageModel? {
+        // A scan can bring a session's first or newer main-thread model: the cards read theirs again.
+        didSet { usage?.onScanned = { [weak self] in self?.refreshCardModels() } }
+    }
+    /// The models the sidebar's cards name (`SidebarCardModels`) and the read that fills them.
+    @ObservationIgnored let cardModels = SidebarCardModels()
+    @ObservationIgnored var cardModelTask: Task<Void, Never>?
     /// The app's one harness probe and connect switch (D-94, D-98), set at install time. Nothing asks the probe on its own:
     /// usage and connections decide when. Nil in a build with no app around the model.
     @ObservationIgnored public var harnessProbe: HarnessProbe?
@@ -804,6 +810,7 @@ public final class CatalogModel {
         updateAttentionCount()
         pruneOrigins()
         pruneBranches()
+        refreshCardModels()
         statistics.rowModels = rowModels.count
         statistics.loadedRows = lists.values.reduce(0) { $0 + $1.rows.count }
     }
@@ -1459,6 +1466,20 @@ public final class CatalogModel {
     public func dropProject(_ id: UUID, gap: Int) async {
         guard let from = projects.firstIndex(where: { $0.id == id }) else { return }
         await moveProject(id, to: ProjectDrag.position(forGap: gap, from: from))
+    }
+
+    /// A project head dropped on the head of `headID` at height `y` within it (`ProjectDrag.gap`, with the dragged project's place).
+    public func dropProject(_ id: UUID, onHead headID: UUID, y: CGFloat) async {
+        guard let gap = projectDropGap(onHead: headID, y: y, dragged: id) else { return }
+        await dropProject(id, gap: gap)
+    }
+
+    /// The gap a drop on a head lands in, or nil when the head is gone. `dragged` is the project being moved, when known.
+    func projectDropGap(onHead headID: UUID, y: CGFloat, dragged: UUID?) -> Int? {
+        guard let index = projects.firstIndex(where: { $0.id == headID }) else { return nil }
+        let canDropAfter = projects[index].collapsed || index == projects.count - 1
+        let from = dragged.flatMap { id in projects.firstIndex { $0.id == id } }
+        return ProjectDrag.gap(onHead: index, y: y, height: LoomTheme.InkHeight.sidebarRow, canDropAfter: canDropAfter, from: from)
     }
 
     /// Moves a project to a zero-based position (clamped); `projects.sort_order` keeps it.

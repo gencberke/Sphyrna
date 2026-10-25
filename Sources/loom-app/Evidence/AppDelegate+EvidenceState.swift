@@ -33,7 +33,8 @@ extension AppDelegate {
             ] as [String: Any] } ?? NSNull(),
             "renderer": evidenceMode && arguments.contains("--metal") ? "metal" : "coregraphics",
             // The setting on its own (Settings → General → Sidebar), the system's Reduce Transparency on its own,
-            // and what the sidebar draws: opaque in Solid or under Reduce Transparency, else glass (D-57).
+            // and what the sidebar draws: opaque in Solid or under Reduce Transparency, else see-through (Transparent; the value
+            // keeps the word `glass` the measuring script reads, D-57).
             "sidebarStyle": model?.sidebarStyle.rawValue ?? "unknown",
             "systemReduceTransparency": NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
             "sidebarMaterial": model.map {

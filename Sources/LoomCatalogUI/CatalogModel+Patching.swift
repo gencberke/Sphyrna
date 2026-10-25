@@ -48,6 +48,7 @@ extension CatalogModel {
             guard let record, applyPatch(record) else { scheduleRefresh(); return }
             statistics.rowPatches += 1
         }
+        refreshCardModels() // a live change of model is stored on the session
     }
 
     /// Puts the record into the row and the visible lists; false when a list cannot take it in place.

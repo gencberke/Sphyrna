@@ -31,7 +31,7 @@ public struct SidebarView: View {
 }
 
 /// The 52 pt header row (DESIGN §2 item 1): the clearance for the native window buttons (none in full screen) and the sidebar
-/// toggle at the trailing end. Nothing else: the view switch is the list's heading, Add Project is in the footer's `+` menu.
+/// toggle at the trailing end. Nothing else: the view's title, its action and the view picker are the list's heading.
 struct SidebarHeader: View {
     let model: CatalogModel
 
@@ -182,7 +182,7 @@ struct SidebarList: View {
                     .padding(.bottom, LoomTheme.Space.listBottom)
                     .frame(maxWidth: .infinity, minHeight: viewport.size.height, alignment: .topLeading)
                     .contentShape(Rectangle())
-                    .contextMenu { WithoutProjectStartButton(model: model, title: ClaudeStartEntry.withoutProjectTitle) }
+                    .contextMenu { SidebarEmptySpaceMenu(model: model) }
                 }
                 .scrollContentBackground(.hidden)
                 // The selection moved by something other than a click here (a tab, a shortcut, "Show Session"):
@@ -460,14 +460,15 @@ struct ProjectHeader: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture { model.showProjectPage(project.id) }
+        // Dragged onto another head it takes that head's place (W3-c, RESCUE C3); Move Up and Move Down stay in the menus. The drag
+        // source sits under the right-click menu, as on a session card.
+        .onDrag { ProjectDrag.beginDrag(project.id) }
         .contextMenu { ProjectActionsMenu(model: model, project: project) }
-        // Dragged onto another head it moves the project there (W3-c); Move Up and Move Down stay in the menus.
-        .onDrag { ProjectDrag.itemProvider(for: project.id) }
         .overlay(alignment: dropEdge == .bottom ? .bottom : .top) {
             if dropEdge != nil { ProjectInsertionMark() }
         }
         .onDrop(of: [ProjectDrag.contentType], delegate: ProjectHeadDropDelegate(
-            model: model, projectID: project.id, collapsed: project.collapsed, edge: $dropEdge))
+            model: model, projectID: project.id, edge: $dropEdge))
         .accessibilityElement(children: .contain)
         .help(project.path)
         // The gap above a head belongs to the list, not to the head's hover and click.
@@ -484,28 +485,25 @@ private struct ProjectInsertionMark: View {
     }
 }
 
-/// A project head as a drop target for another head: the project moves into the gap before it, or after it where nothing of the
-/// project follows the head. Anything that is not a project (a session too) is refused.
+/// A project head as a drop target for another head: a project dragged from elsewhere takes the head's place, the mark on the
+/// edge it lands at (`CatalogModel.projectDropGap`). Anything that is not a project (a session too) is refused.
 struct ProjectHeadDropDelegate: DropDelegate {
     let model: CatalogModel
     let projectID: UUID
-    let collapsed: Bool
     @Binding var edge: VerticalEdge?
-
-    private var index: Int? { model.projects.firstIndex { $0.id == projectID } }
-
-    private func gap(_ info: DropInfo) -> Int? {
-        guard let index else { return nil }
-        let canDropAfter = collapsed || index == model.projects.count - 1
-        return ProjectDrag.gap(onHead: index, y: info.location.y, height: LoomTheme.InkHeight.sidebarRow, canDropAfter: canDropAfter)
-    }
 
     private func accepts(_ info: DropInfo) -> Bool { ProjectDrag.accepts(info.itemProviders(for: [ProjectDrag.contentType])) }
 
     func validateDrop(info: DropInfo) -> Bool { accepts(info) }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        guard accepts(info), let index, let gap = gap(info) else { return DropProposal(operation: .forbidden) }
+        guard accepts(info), let index = model.projects.firstIndex(where: { $0.id == projectID }),
+              let gap = model.projectDropGap(onHead: projectID, y: info.location.y, dragged: ProjectDrag.current)
+        else { return DropProposal(operation: .forbidden) }
+        if ProjectDrag.current == projectID {
+            if edge != nil { edge = nil }
+            return DropProposal(operation: .move)
+        }
         let next: VerticalEdge = gap > index ? .bottom : .top
         if edge != next { edge = next }
         return DropProposal(operation: .move)
@@ -516,11 +514,12 @@ struct ProjectHeadDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         edge = nil
         let providers = info.itemProviders(for: [ProjectDrag.contentType])
-        guard ProjectDrag.accepts(providers), let gap = gap(info) else { return false }
-        let model = model
+        guard ProjectDrag.accepts(providers) else { return false }
+        let model = model, head = projectID, y = info.location.y
+        ProjectDrag.current = nil
         Task { @MainActor in
             guard let id = await ProjectDrag.projectID(from: providers) else { return }
-            await model.dropProject(id, gap: gap)
+            await model.dropProject(id, onHead: head, y: y)
         }
         return true
     }
@@ -569,7 +568,7 @@ struct EmptyListHint: View {
     }
 }
 
-/// A card (activity view) or a one-line row (project view) with the subagents of its session below it (D-39).
+/// A session's card with the subagents of its session below it (D-39).
 /// A session without subagents draws exactly the card: the stack holds no second view and adds no space.
 struct SessionListEntry: View {
     let row: SessionRowModel
@@ -580,7 +579,7 @@ struct SessionListEntry: View {
             SessionCardView(row: row, model: model)
                 .overlay {
                     // A card is taller than a 28 pt row: its line leaves the status mark inside it (DESIGN §4).
-                    if !subagents.isEmpty, !SessionCardView.isOneLine(mode: model.viewMode) {
+                    if !subagents.isEmpty {
                         SubagentTrunkShape()
                             .stroke(LoomTheme.Surface.tree, style: StrokeStyle(lineWidth: LoomTheme.Branches.lineWidth))
                             .allowsHitTesting(false)
@@ -635,8 +634,6 @@ struct SessionCardView: View {
     /// card first. The projectless "Sessions" group exists only in the project view, so the mode alone decides.
     static func projectLabel(mode: CatalogViewMode, name: String?) -> String? { mode == .activity ? name : nil }
     static func repeatsProject(mode: CatalogViewMode) -> Bool { mode == .activity }
-    /// The project view lists its sessions as calm one-line rows; the activity view keeps the card.
-    static func isOneLine(mode: CatalogViewMode) -> Bool { mode == .projects }
 
     /// What Pin promises. "Out of cleanup" is true only where the cleanup review exists (development
     /// builds); the daily app has none, and pinning never blocks a manual delete.
@@ -666,7 +663,6 @@ struct SessionCardView: View {
         let indicator = row.indicator
         let selected = row.isSelected
         let mode = model.viewMode
-        let oneLine = Self.isOneLine(mode: mode)
         let title = model.title(of: row, repeatsProject: Self.repeatsProject(mode: mode))
         let projectName = model.projectName(for: row.record)
         let origin = model.origin(of: row)
@@ -675,19 +671,14 @@ struct SessionCardView: View {
         let onTint = selected && tone != nil
         // The reason is read from the row's own property: only this card depends on it.
         // Only a card of the Active section says it; `inActiveSection` is held per row, like the selection.
-        let reasonLine = row.inActiveSection && !oneLine ? SessionReasonLine(row.reason) : nil
+        let reasonLine = row.inActiveSection ? SessionReasonLine(row.reason) : nil
         // A click in the list never scrolls it (the card is already under the pointer).
         Button { model.selectFromList(row.id) } label: {
-            if oneLine {
-                lineLabel(title: title, indicator: indicator, selected: selected, onTint: onTint)
-            } else {
-                cardLabel(title: title, indicator: indicator, selected: selected, mode: mode, projectName: projectName,
-                          origin: origin, reasonLine: reasonLine, onTint: onTint)
-            }
+            cardLabel(title: title, indicator: indicator, selected: selected, mode: mode, projectName: projectName,
+                      origin: origin, reasonLine: reasonLine, onTint: onTint)
         }
-        .buttonStyle(RowButtonStyle(
-            selected: selected, radius: oneLine ? LoomTheme.Highlight.radiusCompact : LoomTheme.Highlight.radius,
-            key: "sidebar-card:\(row.id)", tint: tone))
+        .buttonStyle(RowButtonStyle(selected: selected, radius: LoomTheme.Highlight.radius,
+                                    key: "sidebar-card:\(row.id)", tint: tone))
         .focusEffectDisabled()
         // Resting on the row peeks at its last ask and answer, in its tooltip.
         .modifier(SidebarPeekHover(record: row.record, model: model))
@@ -713,10 +704,12 @@ struct SessionCardView: View {
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 
-    // MARK: Activity view: the card
+    // MARK: The card, in three layers (RESCUE C3)
 
-    /// Line 1 is the status column, the harness's mark, the title and the time. Line 2, only in the Active section, is the reason.
-    /// Line 3 is the fixed bottom row. Lines 2 and 3 start under the title.
+    /// Top: the status column, then in the activity view the project (its colour mark while project colours are on) and in the
+    /// project view the harness's mark and the model, then the time. Middle: the title, and only in the Active section the reason
+    /// under it. Bottom: the branch (or the origin) and the pin, and in the activity view the harness's mark and the model at the
+    /// trailing end. Every line after the status column starts at the same indent.
     @ViewBuilder
     private func cardLabel(title: String, indicator: SessionIndicator, selected: Bool, mode: CatalogViewMode,
                            projectName: String?, origin: SessionOrigin?, reasonLine: SessionReasonLine?,
@@ -725,14 +718,22 @@ struct SessionCardView: View {
         VStack(alignment: .leading, spacing: LoomTheme.Space.cardLineSpacing) {
             HStack(spacing: LoomTheme.Space.cardSpacing) {
                 IndicatorView(indicator: indicator)
-                HarnessMark(provider: row.record.session.provider)
-                titleText(title, indicator: indicator, selected: selected)
+                Group {
+                    if mode == .activity {
+                        projectLine(name: SessionCardView.projectLabel(mode: mode, name: projectName))
+                    } else {
+                        CardModelLabel(row: row, model: model, spacing: LoomTheme.Space.cardSpacing)
+                    }
+                }
+                .foregroundStyle(quiet)
                 Spacer(minLength: LoomTheme.Space.headerSpacing)
                 CardTimeLabel(row: row, model: model, onTint: onTint)
             }
+            titleText(title, indicator: indicator, selected: selected)
+                .padding(.leading, LoomTheme.Sidebar.cardTextIndent)
             if let reasonLine {
-                // What the session waits for or did last: its own line between the title and the fixed bottom row
-                // (D-69), so the card is one line taller while it needs the user. A command is mono.
+                // What the session waits for or did last: its own line under the title (D-69), so the card is one line taller
+                // while it needs the user. A command is mono.
                 reasonText(reasonLine)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)
                     .truncationMode(.tail)
@@ -740,30 +741,13 @@ struct SessionCardView: View {
                     .help(reasonLine.help)
             }
             HStack(spacing: LoomTheme.Sidebar.metaSpacing) {
-                if let origin, origin.replacesBranch {
-                    // Same branch as the session that opened this one: the origin says more than the branch.
-                    Label(origin.cardLabel, systemImage: "arrow.turn.down.right")
-                        .font(LoomTheme.Sidebar.metaFont).lineLimit(1)
-                        .help(origin.tooltip)
-                } else {
-                    Label {
-                        Text((model.branches[row.record.session.workingDirectory] ?? .unavailable).label)
-                            .font(LoomTheme.Sidebar.metaMonoFont)
-                    } icon: {
-                        Image(systemName: "arrow.triangle.branch").font(LoomTheme.Sidebar.metaGlyph)
-                    }
-                    .lineLimit(1)
-                    .help(origin.map { "Git branch. " + $0.tooltip } ?? "Git branch")
-                }
+                branchLabel(origin: origin)
                 if row.record.pinned {
                     Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
                         .help(Self.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
                 }
                 Spacer(minLength: LoomTheme.Space.headerSpacing)
-                if let projectName = SessionCardView.projectLabel(mode: mode, name: projectName) {
-                    ProjectMarkView(name: projectName, tone: model.projectTone(forProject: row.record.projectID), size: .card)
-                    Text(projectName).font(LoomTheme.Sidebar.metaFont).lineLimit(1)
-                }
+                if mode == .activity { CardModelLabel(row: row, model: model) }
             }
             .foregroundStyle(quiet)
             .padding(.leading, LoomTheme.Sidebar.cardTextIndent)
@@ -771,6 +755,43 @@ struct SessionCardView: View {
         .padding(.leading, LoomTheme.Sidebar.rowLeading).padding(.trailing, LoomTheme.Space.cardH)
         .padding(.top, LoomTheme.Sidebar.cardTop).padding(.bottom, LoomTheme.Sidebar.cardBottom)
         .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radius))
+    }
+
+    /// The activity card's top line: the project's colour mark (while project colours are on) and its name; nothing for a
+    /// session without a project.
+    @ViewBuilder
+    private func projectLine(name: String?) -> some View {
+        HStack(spacing: LoomTheme.Space.cardSpacing) {
+            if let name {
+                // The mark stands in the harness's column, so the name starts where the title does.
+                Group {
+                    if model.projectColorsEnabled {
+                        ProjectMarkView(name: name, tone: model.projectTone(forProject: row.record.projectID), size: .card)
+                    }
+                }
+                .frame(width: LoomTheme.Sidebar.markSlot, alignment: .leading)
+                Text(name).font(LoomTheme.Sidebar.metaFont).lineLimit(1)
+            }
+        }
+    }
+
+    /// The branch of the session's folder, or the origin where it says more (the same branch as the session that opened it).
+    @ViewBuilder
+    private func branchLabel(origin: SessionOrigin?) -> some View {
+        if let origin, origin.replacesBranch {
+            Label(origin.cardLabel, systemImage: "arrow.turn.down.right")
+                .font(LoomTheme.Sidebar.metaFont).lineLimit(1)
+                .help(origin.tooltip)
+        } else {
+            Label {
+                Text((model.branches[row.record.session.workingDirectory] ?? .unavailable).label)
+                    .font(LoomTheme.Sidebar.metaMonoFont)
+            } icon: {
+                Image(systemName: "arrow.triangle.branch").font(LoomTheme.Sidebar.metaGlyph)
+            }
+            .lineLimit(1)
+            .help(origin.map { "Git branch. " + $0.tooltip } ?? "Git branch")
+        }
     }
 
     private func titleText(_ title: String, indicator: SessionIndicator, selected: Bool) -> some View {
@@ -788,29 +809,6 @@ struct SessionCardView: View {
                 Text(line.text).font(LoomTheme.Sidebar.reasonFont)
             }
         }
-    }
-
-    // MARK: Project view: the one-line row
-
-    /// Status column, the harness's mark, title, pin and time on one 28 pt line. The branch, the origin and the reason are not
-    /// drawn here: the header and the Active section carry them, and the project page lists the rest.
-    @ViewBuilder
-    private func lineLabel(title: String, indicator: SessionIndicator, selected: Bool, onTint: Bool) -> some View {
-        HStack(spacing: LoomTheme.Space.cardSpacing) {
-            IndicatorView(indicator: indicator)
-            HarnessMark(provider: row.record.session.provider)
-            titleText(title, indicator: indicator, selected: selected)
-            if row.record.pinned {
-                Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
-                    .foregroundStyle(onTint ? LoomTheme.Text.secondaryStyle : LoomTheme.Text.tertiaryStyle)
-                    .help(Self.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
-            }
-            Spacer(minLength: LoomTheme.Space.headerSpacing)
-            CardTimeLabel(row: row, model: model, onTint: onTint)
-        }
-        .padding(.leading, LoomTheme.Sidebar.rowLeading).padding(.trailing, LoomTheme.Space.cardH)
-        .frame(height: LoomTheme.Sidebar.lineRowHeight)
-        .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusCompact))
     }
 }
 

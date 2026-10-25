@@ -399,8 +399,8 @@ struct SidebarRenderTests {
         #expect(SidebarRenderProbe.cardTotal == 0, "card bodies evaluated by a minute tick: \(SidebarRenderProbe.cardTotal)")
     }
 
-    /// The project view lists its sessions as one 28 pt line; the activity view keeps the two-row card.
-    @Test func theProjectViewDrawsOneLineRowsAndTheActivityViewDrawsTwoRowCards() async throws {
+    /// RESCUE C3: both views draw the three-layer card (top line, title, bottom row), the same height.
+    @Test func bothViewsDrawTheThreeLayerCard() async throws {
         enableAccessibilityTree()
         func rowHeight(mode: CatalogViewMode) async throws -> CGFloat {
             let hosted = try await host(cards: 5, mode: mode)
@@ -409,9 +409,9 @@ struct SidebarRenderTests {
             let row = try #require(label(hosted, hasPrefix: "Card 1, "))
             return try #require(row.element.accessibilityFrame?()).height
         }
-        let line = try await rowHeight(mode: .projects)
+        let projects = try await rowHeight(mode: .projects)
         let card = try await rowHeight(mode: .activity)
-        #expect(abs(line - LoomTheme.Sidebar.lineRowHeight) < 1.5, "one-line row height \(line)")
-        #expect(card >= LoomTheme.Rhythm.sessionCardRow - 4, "card height \(card)")
+        #expect(card > LoomTheme.Rhythm.sessionCardRow, "three-layer card height \(card)")
+        #expect(abs(projects - card) < 1.5, "project view card height \(projects), activity \(card)")
     }
 }

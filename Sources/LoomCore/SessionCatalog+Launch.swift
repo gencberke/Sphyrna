@@ -51,6 +51,33 @@ extension SessionCatalog {
         }
     }
 
+    /// The stored model of each given session that has one (the sidebar's cards, RESCUE C3): one query per 500 sessions.
+    /// A session without a stored model, or one this catalog does not have, is left out.
+    public func launchModels(sessionIDs: [UUID]) throws -> [UUID: String] {
+        var result: [UUID: String] = [:]
+        var start = 0
+        while start < sessionIDs.count {
+            let chunk = Array(sessionIDs[start..<min(start + 500, sessionIDs.count)])
+            start += chunk.count
+            let marks = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            try database.withStatement("SELECT id, model FROM sessions WHERE model IS NOT NULL AND id IN (\(marks))") { statement in
+                for (offset, id) in chunk.enumerated() {
+                    try database.bind(id.uuidString, at: Int32(offset + 1), to: statement)
+                }
+                var step = sqlite3_step(statement)
+                while step == SQLITE_ROW {
+                    if let id = UUID(uuidString: try database.text(statement, column: 0)),
+                       let model = database.optionalText(statement, column: 1), !model.isEmpty {
+                        result[id] = model
+                    }
+                    step = sqlite3_step(statement)
+                }
+                try database.requireDone(step, operation: "read launch models")
+            }
+        }
+        return result
+    }
+
     /// The key of the sessions that belong to no project in `lastUsedLaunchChoices`.
     public static let noProjectKey = "none"
     private static let lastUsedKey = "launch.last-used"

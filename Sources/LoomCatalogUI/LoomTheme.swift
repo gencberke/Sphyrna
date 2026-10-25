@@ -45,8 +45,8 @@ enum LoomTheme {
     // MARK: Color
 
     enum Surface {
-        /// The tint over the sidebar material in Glass: the canvas at 0.8 over the behind-window material (DESIGN §2 item 2);
-        /// Solid is opaque (`sidebarTintOpacity(for:)`). The tint's colour is the tone's canvas (`LoomTheme+Surfaces`).
+        /// The sidebar's opacity in Transparent: the canvas at 0.8 straight over what is behind the window, no material and no
+        /// blur (DESIGN §2 item 2, RESCUE C3); Solid is opaque (`sidebarTintOpacity(for:)`). The colour is the tone's canvas.
         static let sidebarTintOpacity = 0.8
 
         // Lines, white in Ink and the ink `#1E1C1A` in Paper (DESIGN §3 Surfaces, lines and fills).

@@ -27,10 +27,10 @@ extension AppDelegate {
         if value(after: "--fake-providers") == nil, value(after: "--claude-config") == nil {
             model.holdRemoraOff()
         }
-        // The flag sets the sidebar style (Glass | Solid) in the isolated data root; the system's Reduce
-        // Transparency still forces Solid, and no OS setting is changed.
+        // The flag sets the sidebar style (Transparent | Solid) in the isolated data root; the system's Reduce
+        // Transparency still forces Solid, and no OS setting is changed. `glass` stays the measuring script's word for Transparent.
         switch value(after: "--evidence-transparency") {
-        case "glass": model.setSidebarStyle(.glass)
+        case "glass", "transparent": model.setSidebarStyle(.transparent)
         case "opaque": model.setSidebarStyle(.solid)
         default: break
         }

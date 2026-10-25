@@ -18,7 +18,7 @@ struct ThemeSettings: View {
                 ToneRow(selection: model.paneTone, onSelect: { model.setPaneTone($0) })
                 SettingsRowDivider()
                 SettingsRow(title: "Sidebar",
-                            detail: "Solid is opaque. Glass lets the desktop show through softly. Reduce Transparency in System Settings always shows Solid.") {
+                            detail: "Solid is opaque. Transparent lets what is behind the window show through. Reduce Transparency in System Settings always shows Solid.") {
                     InkSegmented(values: SidebarStyle.allCases, title: \.title, selection: model.sidebarStyle,
                                  onSelect: { model.setSidebarStyle($0) })
                         .accessibilityLabel("Sidebar")
