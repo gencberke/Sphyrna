@@ -109,10 +109,6 @@ struct HomeEmptyCatalog: View {
         }
         .padding(.bottom, LoomTheme.Home.lift)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            // The school behind the first-run message (§9 Empty states, D-79); over the cards no shark swims.
-            if Self.showsMark(connectCards: connect) { ArtBackdrop(place: .firstLaunch, grid: .radial) }
-        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(connect ? "home-connect" : "home-empty-catalog")
     }

@@ -95,21 +95,16 @@ private struct ProjectSessionList: View {
     }
 }
 
-/// An empty project: a small hammerhead swimming in place over one line in the list's place (DESIGN §10 Empty project, §17, D-76).
+/// An empty project: one line in the list's place (DESIGN §10 Empty project, D-76).
 struct ProjectEmptyList: View {
     static let line = "No sessions in this project yet. New session starts one."
 
     var body: some View {
         VStack(spacing: 0) {
-            ArtSurface(place: .emptyProject)
-                .frame(maxWidth: .infinity).frame(height: LoomTheme.Art.projectBoxHeight)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
             Text(Self.line)
                 .projectType(LoomTheme.ProjectPage.emptyLine).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
-                .padding(.top, LoomTheme.Art.projectLineTop)
                 .accessibilityIdentifier("project-no-sessions")
         }
         .padding(.top, LoomTheme.ProjectPage.emptyTop).padding(.bottom, LoomTheme.ProjectPage.emptyBottom)
@@ -256,11 +251,12 @@ private struct ProjectCardText: View {
 
 /// The words of a preset row's tooltip and label: "Accept edits · Sonnet 5.5", then the message; "All projects" leads for a preset
 /// every project shares.
+@MainActor
 enum ProjectPresetText {
     static func summary(_ preset: NewSessionPreset) -> String {
         [preset.projectID == nil ? "All projects" : nil,
          preset.permissionMode.map(ClaudePermissionMode.title(forRaw:)),
-         preset.model.map(ModelCatalog.claudeTitle(of:))]
+         preset.model.map(ModelCatalog.shared.claudeTitle(of:))]
             .compactMap { $0 }.joined(separator: " \u{00B7} ")
     }
 
@@ -326,7 +322,7 @@ private struct ProjectPresetRow: View {
                 if let alias = preset.model {
                     HStack(spacing: LoomTheme.ProjectPage.presetModelGap) {
                         ProviderIcon(provider: .newSessionDefault)
-                        Text(ModelCatalog.claudeTitle(of: alias)).projectType(LoomTheme.ProjectPage.presetModel)
+                        Text(ModelCatalog.shared.claudeTitle(of: alias)).projectType(LoomTheme.ProjectPage.presetModel)
                             .foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
                     }
                     .fixedSize()

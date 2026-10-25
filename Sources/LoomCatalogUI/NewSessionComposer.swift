@@ -154,7 +154,7 @@ private struct ComposerBar: View {
         let draft = model.newSession.draft(for: projectID)
         let picker = ComposerModelPicker(
             modelTitle: resolved.modelTitle, effortTitle: resolved.effortTitle,
-            rows: ModelCatalog.claude.map { ComposerBarText.ModelRow(value: $0.id, title: $0.title) },
+            rows: ModelCatalog.shared.claudeModels.map { ComposerBarText.ModelRow(value: $0.id, title: $0.title) },
             chosenModel: resolved.model.value, levels: NewSessionModels.effortLevels, chosenLevel: resolved.effort.value,
             canResetEffort: (draft?.effortPick ?? .inherit) != .inherit,
             resetHelp: "Back to the effort this project starts with",

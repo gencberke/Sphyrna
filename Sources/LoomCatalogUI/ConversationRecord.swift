@@ -102,15 +102,6 @@ struct ConversationDetail: View {
         let record = row.record
         let busy = model.busy[row.id]
         return VStack(alignment: .leading, spacing: 0) {
-            // A session starting or resuming: a small hammerhead swims in place where the spinner would sit (DESIGN §17), in its
-            // own box above the heading, never behind the words.
-            if Self.showsStartingArt(busy: busy) {
-                ArtSurface(place: .sessionStarting)
-                    .frame(maxWidth: .infinity).frame(height: LoomTheme.Agents.emptyArtHeight)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-                    .accessibilityIdentifier("record-starting-art")
-            }
             HStack(spacing: LoomTheme.Edges.stateHeadingGap) {
                 Text(Self.runStateHeading(busy: busy, canResume: model.canResume(row), isRunning: row.live?.runID != nil))
                     .font(LoomTheme.Edges.stateHeading).foregroundStyle(LoomTheme.Text.primary)

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings → Theme (D-63): the appearance, Animated art (§17, D-79), the tone, the sidebar and the project colours, in one card. Every
+/// Settings → Theme (D-63): the appearance, the tone, the sidebar and the project colours, in one card. Every
 /// choice applies at once and is kept in `UIPreferences`.
 struct ThemeSettings: View {
     let model: CatalogModel
@@ -13,12 +13,6 @@ struct ThemeSettings: View {
                     InkSegmented(values: AppearanceSetting.allCases, title: \.title, selection: model.appearance,
                                  onSelect: { model.setAppearance($0) })
                         .accessibilityLabel("Appearance")
-                }
-                SettingsRowDivider()
-                SettingsRow(title: "Animated art",
-                            detail: "The drawings on Home, empty pages and waiting panes move, also when Reduce Motion is on. Off, each stands still on one frame.") {
-                    SettingsSwitch(title: "Animated art", isOn: Binding(
-                        get: { model.animatedArt }, set: { model.setAnimatedArt($0) }))
                 }
                 SettingsRowDivider()
                 ToneRow(selection: model.paneTone, onSelect: { model.setPaneTone($0) })

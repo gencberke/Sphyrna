@@ -132,6 +132,7 @@ struct ChatStreamWidthTests {
         model.intents = Intents()
         model.setClaudeConfigDirectory(config)
         await model.start()
+        model.readOnlyChatEnabled = true // the frozen Chat face's read-only chat (D-100)
         model.select(session.id)
         _ = await inspectorWaitUntil { model.selectedRow?.id == session.id }
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height), styleMask: [.titled],

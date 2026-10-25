@@ -362,7 +362,8 @@ struct ComposerBarTextTests {
         #expect(ComposerBarText.modelTitle(state { $0.resolvedModel = "claude-opus-5-5[1m]" }) == "Opus 5.5 1M")
         #expect(ComposerBarText.modelTitle(state { $0.choices.model = "sonnet" }) != "Default model")
         let option = ModelOption(value: "opus", resolvedModel: "claude-opus-5-5", displayName: "Opus", supportedEffortLevels: [])
-        #expect(ComposerBarText.modelTitle(state { $0.resolvedModel = "claude-opus-5-5"; $0.models = [option] }) == "Opus")
+        #expect(ComposerBarText.modelTitle(state { $0.resolvedModel = "claude-opus-5-5"; $0.models = [option] }) == "Opus 5.5",
+                "the release's full name, not the CLI's short display name")
     }
 
     @Test func aStoppedSessionsChipNamesTheModelItLastRanOn() {

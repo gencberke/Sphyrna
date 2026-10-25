@@ -1,4 +1,5 @@
 import Foundation
+@testable import LoomChat
 import LoomCore
 import Testing
 @testable import LoomCatalogUI
@@ -50,6 +51,32 @@ struct HarnessCatalogTests {
         #expect(HeaderModelContent.launchTitle("haiku") == "Haiku")
         let claude = picker().groups()[0]
         #expect(claude.rows.map(\.id) == ["default"] + ModelCatalog.claude.map(\.id))
+    }
+
+    /// Full model names (D-100 round): a Claude alias is named by the release the probe said it resolves to; an id not shaped
+    /// like a release falls back to the CLI's display name.
+    @Test func claudeAliasesTakeTheFullNamesOfTheirReleases() {
+        let catalog = ModelCatalog()
+        #expect(catalog.claudeTitle(of: "opus") == "Opus", "before a probe answered: the fixed short title")
+        catalog.apply(HarnessReading(provider: .claude, models: [
+            HarnessModel(id: "default", displayName: "Default", isDefault: true, efforts: [], resolvedModel: "claude-opus-5-5"),
+            HarnessModel(id: "opus", displayName: "Opus", isDefault: false, efforts: [], resolvedModel: "claude-opus-5-5"),
+            HarnessModel(id: "sonnet", displayName: "Sonnet", isDefault: false, efforts: [], resolvedModel: "claude-sonnet-5-5"),
+            HarnessModel(id: "haiku", displayName: "Haiku", isDefault: false, efforts: [], resolvedModel: "claude-haiku-5-5-20260901"),
+            HarnessModel(id: "fable", displayName: "Fable", isDefault: false, efforts: [], resolvedModel: "claude-fable-5-1"),
+            HarnessModel(id: "mystery", displayName: "Mystery Model", isDefault: false, efforts: [], resolvedModel: "m-7"),
+            HarnessModel(id: "opus[1m]", displayName: "Opus 1M", isDefault: false, efforts: [], resolvedModel: "claude-opus-5-5[1m]"),
+        ], readAt: Date()))
+        #expect(catalog.claudeModels.map(\.id) == ["opus", "sonnet", "haiku", "fable", "mystery"])
+        #expect(catalog.claudeModels.map(\.title) == ["Opus 5.5", "Sonnet 5.5", "Haiku 5.5", "Fable 5.1", "Mystery Model"])
+        #expect(catalog.claudeTitle(of: "sonnet") == "Sonnet 5.5" && catalog.claudeTitle(of: "unknown") == "unknown")
+        #expect(ModelCatalog.claudeFullName(resolvedModel: "claude-3-5-sonnet-20241022", displayName: nil) == "Sonnet 3.5")
+        // The live composer's chip: the release's full name, not the CLI's short display name.
+        var state = ChatComposerState.idle(sessionID: UUID())
+        state.resolvedModel = "claude-opus-5-5"
+        state.models = [ModelOption(value: "opus", resolvedModel: "claude-opus-5-5", displayName: "Opus",
+                                    supportedEffortLevels: [])]
+        #expect(ComposerBarText.modelTitle(state) == "Opus 5.5")
     }
 
     @Test func codexRowsComeFromTheGivenListAndTheGroupIsLeftOutWhenThereIsNone() {

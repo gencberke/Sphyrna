@@ -20,6 +20,7 @@ struct InspectorTabBarTests {
         let rig = try await InspectorRig.make()
         defer { rig.cleanup() }
         let model = rig.model
+        model.readOnlyChatEnabled = true // the Side tab is the frozen Chat face's (D-100)
         model.select(rig.ids[0])
         #expect(model.inspectorTabs == InspectorTab.allCases, "a Claude session with a conversation id has all four tabs")
         #expect(LoomTheme.Inspector.tabBarHeight == 36)

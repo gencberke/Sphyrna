@@ -45,8 +45,11 @@ extension AppDelegate {
         stop.target = self
         // V22: a one-shot question over the selected Chat session's context (⌘;). Off, with its reason under it, unless the
         // session is a running Chat one; the command palette has the same action for layouts where ";" needs Shift.
-        fileMenu.addItem(withTitle: "Ask a Quick Question…", action: #selector(askQuickQuestionFromMenu(_:)),
-                         keyEquivalent: ";").target = self
+        // D-100: left out while the Chat face is frozen (`ChatFreeze`).
+        if !ChatFreeze.isFrozen {
+            fileMenu.addItem(withTitle: "Ask a Quick Question…", action: #selector(askQuickQuestionFromMenu(_:)),
+                             keyEquivalent: ";").target = self
+        }
         fileMenu.addItem(.separator())
         let delete = fileMenu.addItem(withTitle: "Delete Permanently…", action: #selector(deleteFromMenu(_:)),
                                       keyEquivalent: "\u{8}")
@@ -88,9 +91,12 @@ extension AppDelegate {
         // The same path as the Hide and Show buttons (SidebarCollapseSync), not AppKit's own toggle.
         addShellItem(.home, to: viewMenu)
         addShellItem(.commandPalette, to: viewMenu)
-        viewMenu.addItem(.separator())
-        addShellItem(.showChat, to: viewMenu)
-        addShellItem(.showTerminal, to: viewMenu)
+        // D-100: no face to choose while the Chat face is frozen (`ChatFreeze`).
+        if !ChatFreeze.isFrozen {
+            viewMenu.addItem(.separator())
+            addShellItem(.showChat, to: viewMenu)
+            addShellItem(.showTerminal, to: viewMenu)
+        }
         viewMenu.addItem(.separator())
         let sidebar = viewMenu.addItem(withTitle: "Toggle Sidebar", action: #selector(toggleSidebarFromMenu(_:)),
                                        keyEquivalent: "s")

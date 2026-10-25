@@ -115,9 +115,10 @@ struct StudioNavigationTests {
         model.showProjectPage(rig.projectID)
         #expect(model.detailRoute == .projectPage(projectID: rig.projectID) && !model.detailRoute.showsSessionHeader)
 
+        model.readOnlyChatEnabled = true // the frozen Chat face's read-only chat (D-100)
         await select(rig.claude, in: model)
         #expect(model.destination == .session(rig.claude) && model.selectedSessionID == rig.claude)
-        // A stopped Claude session opens as Chat by default; the flag is the kill switch.
+        // A stopped Claude session opens as Chat with the flag on; the flag is the kill switch.
         #expect(model.detailRoute == .chat(sessionID: rig.claude) && model.detailRoute.showsSessionHeader)
         model.readOnlyChatEnabled = false
         #expect(model.detailRoute == .record(sessionID: rig.claude))
@@ -152,8 +153,7 @@ struct StudioNavigationTests {
         let rig = try await rig(root: root)
         let model = rig.model
         defer { model.stop() }
-        #expect(model.readOnlyChatEnabled, "on by default")
-        model.readOnlyChatEnabled = false // the kill switch
+        #expect(!model.readOnlyChatEnabled, "off by default while the Chat face is frozen (D-100)")
         await select(rig.claude, in: model)
         #expect(model.detailRoute == .record(sessionID: rig.claude))
 
@@ -613,7 +613,8 @@ struct StudioNavigationTests {
         #expect(model.destination == .draft(projectID: rig.projectID) && brought.value == 3)
         #expect(rig.intents.starts.isEmpty, "a draft starts nothing")
 
-        // A selected Claude session turns on the rest.
+        // A selected Claude session turns on the rest (the faces with the frozen Chat face's flag on, D-100).
+        model.readOnlyChatEnabled = true
         await select(rig.claude, in: model)
         menu.update()
         for command in ShellCommand.allCases { #expect(try item(command).isEnabled, "\(command.title)") }

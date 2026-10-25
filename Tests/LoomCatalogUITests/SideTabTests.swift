@@ -60,6 +60,7 @@ struct SideTabTests {
             let model = CatalogModel(catalog: catalog, events: SessionEventHub(),
                                      preferences: UIPreferencesStore(url: root.appendingPathComponent("prefs.json")))
             await model.start()
+            model.readOnlyChatEnabled = true // the Side tab is the frozen Chat face's (D-100)
             return Fixture(root: root, model: model, claude: claude, noIdentity: noIdentity, codex: codex)
         }
 

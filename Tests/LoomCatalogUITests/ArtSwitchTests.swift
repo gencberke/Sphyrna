@@ -5,8 +5,8 @@ import SwiftUI
 import Testing
 @testable import LoomCatalogUI
 
-/// Settings → Theme → Animated art (DESIGN §17 The budget, §2 items 5 and 8, D-12, D-79): on by default and kept with the other UI
-/// preferences; off, every drawing stands still on one frame and the arrival is the remora at its place; Reduce Motion does not
+/// The art's switch (DESIGN §17 The budget, §2 items 5 and 8, D-12, D-79), kept in the preferences although no surface draws the art
+/// since the rescue (D-100) and Settings → Theme no longer shows its row: on by default and kept with the other UI preferences; off, every drawing stands still on one frame and the arrival is the remora at its place; Reduce Motion does not
 /// stop it. And the clock's wiring: a surface nobody can see has no ticker.
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(3)))
@@ -48,24 +48,6 @@ struct ArtSwitchTests {
         #expect(self.model(at: root).animatedArt)
     }
 
-    @Test func theThemeSectionOffersItUnderAppearance() async throws {
-        enableAccessibilityTree()
-        let root = try temporaryRoot()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let model = model(at: root)
-        let (window, hosting) = host(ThemeSettings(model: model), size: CGSize(width: LoomTheme.Settings.width, height: 520))
-        defer { window.close() }
-        try await settle(window)
-        let spoken = accessibilityElements(in: hosting.view).compactMap { element -> String? in
-            let label = element.accessibilityLabel?() ?? ""
-            return label.isEmpty ? nil : label
-        }
-        let appearance = try #require(spoken.firstIndex(of: "Appearance"), "\(spoken)")
-        let art = try #require(spoken.firstIndex(of: "Animated art"), "\(spoken)")
-        let tone = try #require(spoken.firstIndex(of: "Tone"), "\(spoken)")
-        #expect(appearance < art && art < tone, "Animated art sits under Appearance: \(spoken)")
-    }
-
     // MARK: Off gives a still frame; Reduce Motion does not stop it
 
     @Test func offEveryDrawingStandsStillOnOneFrame() async throws {
@@ -97,22 +79,6 @@ struct ArtSwitchTests {
         // The view reads the switch alone, whatever macOS says about motion.
         let view = ArtLayerView(scene: ArtPlace.draftPage.scene, cell: LoomTheme.Art.ambientCell, kind: .ambient, animatedArt: true)
         #expect(view.clockInput.animatedArt)
-    }
-
-    @Test func settingsHandsTheSwitchToAboutsArt() async throws {
-        let root = try temporaryRoot()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let model = model(at: root)
-        let about = SettingsAbout(version: "Version 1.6.0", dataFolder: root, claudeProfile: nil)
-        let view = SettingsView(model: model, usage: nil, navigation: SettingsNavigation(section: .about), about: about)
-        let (window, hosting) = host(view, size: CGSize(width: LoomTheme.Settings.width, height: LoomTheme.Settings.height))
-        defer { window.close() }
-        try await settle(window)
-        let art = try #require(Self.arts(in: hosting.view).first, "About draws its hammerhead")
-        #expect(art.animatedArt && art.replaysWhenShown)
-        model.setAnimatedArt(false)
-        try await settle(window)
-        #expect(!art.animatedArt, "the switch reaches the art at once")
     }
 
     // MARK: The clock's wiring

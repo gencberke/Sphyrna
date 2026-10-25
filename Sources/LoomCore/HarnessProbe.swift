@@ -85,12 +85,15 @@ public struct HarnessModel: Equatable, Sendable, Identifiable {
     public var isDefault: Bool
     /// The effort levels it takes, in the order the harness lists them (empty: none, or none said).
     public var efforts: [String]
+    /// The release an alias stands for (Claude's `initialize` names it, e.g. `claude-opus-5-5`); nil when not said.
+    public var resolvedModel: String?
 
-    public init(id: String, displayName: String, isDefault: Bool, efforts: [String]) {
+    public init(id: String, displayName: String, isDefault: Bool, efforts: [String], resolvedModel: String? = nil) {
         self.id = id
         self.displayName = displayName
         self.isDefault = isDefault
         self.efforts = efforts
+        self.resolvedModel = resolvedModel
     }
 }
 
@@ -119,8 +122,8 @@ public struct HarnessProbeAnswer: Equatable, Sendable {
     }
 }
 
-/// A harness as the probe last knew it. Claude's reading has no token days and no models (the usage index and the model
-/// catalog own those); Codex's has all of it.
+/// A harness as the probe last knew it. Claude's reading has no token days (the usage index owns those), and its models are
+/// the aliases `initialize` listed with their releases; Codex's has all of it.
 public struct HarnessReading: Equatable, Sendable {
     public var provider: ManagedSession.Provider
     /// Nil when no ask has named the account (a failed ask, or a harness that does not say).
@@ -177,7 +180,7 @@ public protocol HarnessProbeSource: Sendable {
 ///   ask, so a broken CLI is not started again and again. There are no timers: callers decide when to ask.
 /// - A failed or partial ask keeps the last good parts of the reading, unless it names another account.
 /// - Concurrent asks for one harness share one run.
-/// - `onReading` is told each reading an ask updated (the app hands Codex's models to `ModelCatalog` through it).
+/// - `onReading` is told each reading an ask updated (the app hands the models to `ModelCatalog` through it).
 public actor HarnessProbe {
     /// How long an answer stands without a forced ask.
     public static let defaultFloor: TimeInterval = 5 * 60

@@ -112,6 +112,7 @@ struct SideChatRealCLITests {
         await controller.begin()
         await model.start()
         model.installChatSessions(runtime: runtime, dataRoot: root)
+        model.useFrozenChatFace()
         model.setClaudeConfigDirectory(config)
         let host = try #require(model.chatSessions)
         defer {

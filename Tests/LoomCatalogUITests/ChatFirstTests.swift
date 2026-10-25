@@ -33,6 +33,7 @@ struct ChatFirstTests {
         await controller.begin()
         await model.start()
         model.installChatSessions(runtime: rig.runtime, dataRoot: rig.root)
+        model.useFrozenChatFace()
         model.setClaudeConfigDirectory(rig.profile)
         return Fixture(rig: rig, model: model, controller: controller)
     }
@@ -201,17 +202,19 @@ struct ChatFirstTests {
         await fixture.cleanup()
     }
 
-    @Test func theSettingIsKeptAndAnOlderFileReadsAsChat() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-face-pref-\(UUID())", isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        #expect(UIPreferences().newSessionFace == .chat)
+    /// D-100: while the Chat face is frozen, a new file, an older file and a stored Chat all read as Terminal, and a stopped
+    /// session's read-only chat is off.
+    @Test func whileTheChatFaceIsFrozenEveryPreferenceReadsAsTerminal() throws {
+        #expect(ChatFreeze.isFrozen)
+        #expect(UIPreferences().newSessionFace == .terminal)
         let old = try JSONDecoder().decode(UIPreferences.self, from: Data(#"{"viewMode":"activity"}"#.utf8))
-        #expect(old.newSessionFace == .chat)
-        let store = UIPreferencesStore(url: root.appendingPathComponent("p.json"))
-        try store.update { $0.newSessionFace = .terminal }
-        try store.flush()
-        #expect(UIPreferencesStore(url: root.appendingPathComponent("p.json")).current.newSessionFace == .terminal)
+        #expect(old.newSessionFace == .terminal)
+        let chat = try JSONDecoder().decode(UIPreferences.self, from: Data(#"{"newSessionFace":"chat"}"#.utf8))
+        #expect(chat.newSessionFace == .terminal, "a stored Chat reads as Terminal")
+        #expect(!SessionFaces().readOnlyChatEnabled)
+        // Even with a host, a Claude start from the frozen preference never picks the pipe face.
+        let policy = FacePolicy(runsIn: chat.newSessionFace == .chat ? .chat : .terminal, structuredHostAvailable: true)
+        #expect(policy.faceOfStart(HarnessCapabilities.of(.claude, startable: [.claude])) == .terminal)
     }
 
     // MARK: A stopped Chat session
@@ -670,6 +673,7 @@ struct ChatFirstTests {
 
         // Loom starts again: a new host, and a driver and composer made on the data the first left.
         model.installChatSessions(runtime: fixture.rig.runtime, dataRoot: fixture.rig.root)
+        model.useFrozenChatFace()
         let host = try #require(model.chatSessions)
         let fresh = host.driver(for: id)
         let row = try #require(model.selectedRow)

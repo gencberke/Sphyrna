@@ -55,6 +55,7 @@ extension ChatHosted {
             model.intents = intents
             model.setClaudeConfigDirectory(config)
             await model.start()
+            model.readOnlyChatEnabled = true // the frozen Chat face's read-only chat (D-100)
             model.select(session.id)
             _ = await waitUntil { model.selectedRow?.id == session.id }
             return Rig(root: root, config: config, hub: hub, intents: intents, model: model, sessionID: session.id, claudeID: claudeID)

@@ -211,6 +211,7 @@ struct ShellSeamsTests {
         await model.start()
         #expect(model.detailRoute == .noSelection, "sessions exist, none selected")
 
+        model.readOnlyChatEnabled = true // the frozen Chat face's read-only chat (D-100)
         model.select(session.id)
         #expect(await waitUntil { model.selectedRow != nil })
         #expect(model.detailRoute == .chat(sessionID: session.id), "a stopped Claude session opens as Chat")

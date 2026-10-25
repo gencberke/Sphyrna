@@ -43,6 +43,7 @@ struct SessionServiceFaceTableTests {
         await controller.begin()
         await model.start()
         model.installChatSessions(runtime: rig.runtime, dataRoot: rig.root)
+        model.useFrozenChatFace()
         model.setClaudeConfigDirectory(rig.profile)
         return Fixture(rig: rig, model: model, controller: controller, projectID: project.id)
     }
@@ -264,6 +265,7 @@ struct SessionServiceCapabilityTableTests {
         model.intents = intents
         await model.start()
         model.installChatSessions(runtime: runtime, dataRoot: root)
+        model.useFrozenChatFace()
         return Fixture(root: root, model: model, runtime: runtime, intents: intents, claude: claude, codex: codex)
     }
 

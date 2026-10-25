@@ -153,10 +153,11 @@ struct HarnessProbeTests {
         #expect(catalog.models(for: .codex).map(\.title) == ["Fake Codex Alpha", "Fake Codex Beta"], "hidden models are not offered")
         #expect(catalog.models(for: .codex).map(\.note) == ["Default", nil])
 
-        // A reading with no models (their ask failed) leaves the list; another harness's reading changes nothing.
+        // A reading with no models (their ask failed) leaves the list; Claude's reading changes Claude's list only.
         catalog.apply(HarnessReading(provider: .codex, readAt: Date()))
+        #expect(catalog.models(for: .claude) == ModelCatalog.claude, "before a Claude reading: the fixed three")
         catalog.apply(HarnessReading(provider: .claude, models: [HarnessModel(id: "x", displayName: "X", isDefault: false, efforts: [])], readAt: Date()))
-        #expect(catalog.models(for: .codex).count == 2 && catalog.models(for: .claude) == ModelCatalog.claude)
+        #expect(catalog.models(for: .codex).count == 2 && catalog.models(for: .claude).map(\.title) == ["X"])
 
         connections.setConnected(.codex, false)
         #expect(catalog.models(for: .codex).isEmpty, "a switched-off harness offers no models")

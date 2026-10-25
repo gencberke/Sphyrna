@@ -37,9 +37,7 @@ struct HomeRemoraSection: View {
         .padding(.top, context.state == .folded ? LoomTheme.Remora.foldTop : LoomTheme.Remora.top)
         .padding(.bottom, context.state == .folded ? LoomTheme.Remora.foldBottom : LoomTheme.Remora.bottom)
         .frame(maxWidth: .infinity)
-        // The faint grid and the band's hammerhead stand behind the brief; Remora's face sits in the place's column, beside the
-        // sentence and never behind it.
-        .background(alignment: .top) { HomeRemoraArtBackdrop() }
+        // Remora's face sits in the place's column, beside the sentence and never behind it. No art behind the brief.
         .environment(\.homeRemoraArt, art)
         // A new brief being written fades the face in (DESIGN §9 The arrival).
         .onChange(of: HomeRemoraArtPose.arrives(context.state), initial: true) { _, arrives in

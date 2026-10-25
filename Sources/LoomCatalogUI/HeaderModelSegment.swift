@@ -18,7 +18,7 @@ struct HeaderModelContent: Equatable {
     let accessibilityLabel: String
 
     /// Nil when there is nothing to show: no reading and no model picked at launch.
-    init?(usage: ContextUsage?, launchModel: String?) {
+    @MainActor init?(usage: ContextUsage?, launchModel: String?) {
         let reported = usage.map(\.model).flatMap { $0.isEmpty ? nil : $0 }
         let launched = Self.launchTitle(launchModel)
         let title = reported.map(ComposerBarText.prettyModel) ?? launched
@@ -39,9 +39,9 @@ struct HeaderModelContent: Equatable {
 
     /// The name of the model a session was launched with: nothing for "no choice" and for Default (the CLI then picks one
     /// the session has not reported yet), the composer's wording for an id, the alias's title for an alias.
-    static func launchTitle(_ chosen: String?) -> String? {
+    @MainActor static func launchTitle(_ chosen: String?) -> String? {
         guard let chosen, !chosen.isEmpty, chosen != "default" else { return nil }
-        return chosen.hasPrefix("claude-") ? ComposerBarText.prettyModel(chosen) : ModelCatalog.claudeTitle(of: chosen)
+        return chosen.hasPrefix("claude-") ? ComposerBarText.prettyModel(chosen) : ModelCatalog.shared.claudeTitle(of: chosen)
     }
 }
 

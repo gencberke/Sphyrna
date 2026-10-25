@@ -182,12 +182,15 @@ struct GeneralSettings: View {
         SettingsPage {
             VStack(alignment: .leading, spacing: LoomTheme.Settings.groupGap) {
                 SettingsGroup(label: "Sessions") {
-                    SettingsRow(title: "Sessions run in", detail: Self.sessionFaceDetail) {
-                        InkSegmented(values: SessionFace.allCases, title: \.title, selection: model.newSessionFace,
-                                     onSelect: { model.setNewSessionFace($0) })
-                            .accessibilityLabel("Sessions run in")
+                    // D-100: no face to choose while the Chat face is frozen (`ChatFreeze`).
+                    if !ChatFreeze.isFrozen {
+                        SettingsRow(title: "Sessions run in", detail: Self.sessionFaceDetail) {
+                            InkSegmented(values: SessionFace.allCases, title: \.title, selection: model.newSessionFace,
+                                         onSelect: { model.setNewSessionFace($0) })
+                                .accessibilityLabel("Sessions run in")
+                        }
+                        SettingsRowDivider()
                     }
-                    SettingsRowDivider()
                     SettingsRow(title: "Mode of new sessions", detail: Self.startModeDetail) { modePicker }
                     SettingsRowDivider()
                     SettingsRow(title: "Terminal font size", detail: "Applies to existing and new terminals.") {
@@ -339,16 +342,6 @@ struct AboutSettings: View {
                     }
                 }
                 .padding(.top, S.aboutCardTop)
-            }
-            // A hammerhead crosses once behind the icon each time About opens, then rests (DESIGN §2 item 5, §17): the art spans
-            // the page's width from its top, under the head; the card, lifted, stands over it.
-            .background(alignment: .top) {
-                ArtSurface(place: .about)
-                    .frame(height: LoomTheme.Art.aboutHeight)
-                    .padding(.horizontal, -S.bodyInset).padding(.top, -S.bodyTop)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
             }
         }
     }

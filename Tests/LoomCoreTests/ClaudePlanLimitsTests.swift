@@ -237,6 +237,19 @@ struct ClaudePlanLimitsTests {
             + "\"response\":{\"account\":\(account)}}}").utf8)
     }
 
+    /// `initialize` lists the aliases with the release each resolves to; the draft's full names come from them.
+    @Test func theModelsOfAnInitializeAnswerKeepTheirReleases() throws {
+        let line = Array(("{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"r1\","
+            + "\"response\":{\"models\":[{\"value\":\"default\",\"displayName\":\"Default (recommended)\"},"
+            + "{\"value\":\"opus\",\"displayName\":\"Opus\",\"resolvedModel\":\"claude-opus-5-5\","
+            + "\"supportedEffortLevels\":[\"low\",\"high\"]},{\"displayName\":\"no value\"}]}}}").utf8)
+        let models = try #require(PlanLimitsWire.models(line, requestIDs: ["r1"]))
+        #expect(models.map(\.id) == ["default", "opus"])
+        #expect(models[1].resolvedModel == "claude-opus-5-5" && models[1].efforts == ["low", "high"] && models[0].isDefault)
+        #expect(PlanLimitsWire.models(line, requestIDs: ["other"]) == nil)
+        #expect(PlanLimitsWire.models(initializeAnswer(account: "{}"), requestIDs: ["r1"]) == nil)
+    }
+
     /// The real CLI's `initialize` account (Claude Code 2.1.300): the plan is its own words, "Claude Pro".
     @Test func theAccountOfAnInitializeAnswerIsASubscriptionAnApiKeyOrUnknown() {
         func account(_ json: String) -> HarnessAccount? { PlanLimitsWire.account(initializeAnswer(account: json), requestIDs: ["r1"]) }

@@ -85,7 +85,7 @@ private struct ChangesBody: View {
                 ChangesNote(text: "The changes could not be read. \(message)", retry: { model.retryChanges(for: sessionID) })
             case let .ready(data):
                 if data.files.isEmpty {
-                    InspectorEmptyState(text: ChangesBodyWords.emptyText(scope: scope, data: data), art: .emptyChanges)
+                    InspectorEmptyState(text: ChangesBodyWords.emptyText(scope: scope, data: data))
                 } else {
                     ChangesFileList(model: model, sessionID: sessionID, session: session, data: data)
                     if let file = session.selected[scope].flatMap({ id in data.files.first { $0.id == id } }) {
@@ -158,7 +158,7 @@ private struct ChangesBranchReading: View {
     var body: some View {
         TimelineView(.periodic(from: start, by: 1)) { context in
             InspectorEmptyState(text: ChangesBodyWords.readingBranch,
-                                detail: ChangesBodyWords.readingLine(elapsed: context.date.timeIntervalSince(start)), art: .readingBranch)
+                                detail: ChangesBodyWords.readingLine(elapsed: context.date.timeIntervalSince(start)))
         }
         .accessibilityIdentifier("changes-reading-branch")
     }

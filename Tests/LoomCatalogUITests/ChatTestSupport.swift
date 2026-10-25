@@ -165,3 +165,12 @@ extension ChatFixture {
         return model
     }
 }
+
+extension CatalogModel {
+    /// D-100: the Chat face is frozen in the product (`ChatFreeze`). A test of the frozen code installs its own host and then
+    /// picks the Chat face here: starts and resumes in Chat, a stopped session's read-only chat on.
+    func useFrozenChatFace() {
+        setNewSessionFace(.chat)
+        readOnlyChatEnabled = true
+    }
+}

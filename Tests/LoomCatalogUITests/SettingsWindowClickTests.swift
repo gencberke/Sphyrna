@@ -88,14 +88,11 @@ struct SettingsWindowClickTests {
         try await click(try await tab(.general, in: window), in: window)
         #expect(navigation.section == .general, "a click on General, from About, opens General")
 
-        // A page's own control: General's "Sessions run in", opened without a click so it is checked whatever the tabs do.
+        // D-100: while the Chat face is frozen General has no "Sessions run in" switch.
         navigation.open(.general)
         try await settle(window)
-        let other: SessionFace = model.newSessionFace == .chat ? .terminal : .chat
-        let group = try #require(await element(in: window) { InkAX.label($0) == "Sessions run in" }, "the segmented control is drawn")
-        let segment = try #require(accessibilityElements(in: group).first { InkAX.label($0) == other.title }, "its \(other.title) segment")
-        try await click(segment, in: window)
-        #expect(model.newSessionFace == other, "a click on \(other.title) picks it")
+        #expect(try await element(in: window) { InkAX.label($0) == "Sessions run in" } == nil, "no face to choose")
+        #expect(model.newSessionFace == .terminal)
         #expect(window.frame.origin == origin, "a still click does not move the window")
     }
 }

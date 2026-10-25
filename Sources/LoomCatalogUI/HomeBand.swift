@@ -122,8 +122,8 @@ enum HomeLayout {
 
 // MARK: The view
 
-/// The top band of Home: the date line, the sentence in statement type and the counts line, over the faint grid and the band's
-/// one hammerhead. It is one
+/// The top band of Home: the date line, the sentence in statement type and the counts line (no art since the rescue, D-100).
+/// It is one
 /// replaceable unit (Remora takes the band later, DESIGN §9): it draws edge to edge and holds its own column, so the page
 /// below it only sees its height.
 struct HomeBand: View {
@@ -167,9 +167,6 @@ struct HomeBand: View {
         .padding(.horizontal, LoomTheme.Home.sideInset)
         .padding(.top, LoomTheme.Home.bandAbove).padding(.bottom, LoomTheme.Home.bandBelow)
         .frame(maxWidth: .infinity)
-        // The grid and the band's hammerhead on its loop are 300 high from the band's top, behind the text, and as wide as the
-        // pane (DESIGN §9, §17 Home's loop).
-        .background(alignment: .top) { ArtBackdrop(place: .homeBand, grid: .band).frame(height: LoomTheme.Canvas.bandHeight) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home-band")
     }

@@ -52,6 +52,8 @@ enum ComposerBarText {
     /// "Default model" (the Release A review found two pickers reading "Claude's default").
     static func modelTitle(_ state: ChatComposerState, observed: String? = nil) -> String {
         if let resolved = runningModel(state, observed: observed) {
+            // The full name of the release ("Opus 5.5"), not the CLI's short display name ("Opus").
+            if let full = ModelCatalog.prettyClaudeID(resolved) { return full }
             if let option = state.models.first(where: { $0.resolvedModel == resolved }), let name = option.displayName,
                !name.isEmpty, !option.value.isEmpty, option.value != "default" {
                 return name

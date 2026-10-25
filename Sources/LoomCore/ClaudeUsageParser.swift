@@ -44,9 +44,14 @@ struct ClaudeUsageParser {
             return .ignored
         }
         guard line.count <= maximumLineBytes else { return .malformed }
-        guard let wire = try? decoder.decode(Line.self, from: Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: base),
-                                                                    count: line.count, deallocator: .none))
-        else { return .malformed }
+        let data = Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: base), count: line.count, deallocator: .none)
+        guard let wire = try? decoder.decode(Line.self, from: data) else {
+            // A record of another type (one Claude Code added, `system/permission_check_status` and the like) is not a usage
+            // line, whatever shape its fields have: skipped silently. Only an assistant line, or one that is not JSON, is not
+            // understood.
+            if let kind = try? decoder.decode(Kind.self, from: data), kind.type != "assistant" { return .ignored }
+            return .malformed
+        }
         guard wire.type == "assistant" else { return .ignored }
         // API errors and synthetic placeholders carry no real usage.
         if wire.isApiErrorMessage == true { return .ignored }
@@ -137,6 +142,18 @@ struct ClaudeUsageParser {
                 self = .invalid
             }
         }
+    }
+
+    /// A line's record type alone.
+    private struct Kind: Decodable {
+        let type: String?
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            type = try? container.decodeIfPresent(String.self, forKey: .type)
+        }
+
+        private enum CodingKeys: String, CodingKey { case type }
     }
 
     private struct Line: Decodable {

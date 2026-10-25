@@ -71,6 +71,7 @@ struct ApprovedOpeningFaceTests {
         await controller.begin()
         await model.start()
         model.installChatSessions(runtime: rig.runtime, dataRoot: rig.root)
+        model.useFrozenChatFace()
         model.setClaudeConfigDirectory(rig.profile)
         model.setNewSessionFace(.terminal)
         var started: UUID?

@@ -2,7 +2,8 @@ import Foundation
 
 /// Claude Code's side of the probe: the plan-limits child that already exists (`ClaudePlanLimitsFetcher`), its `PlanLimits`
 /// mapped to the neutral windows, and the account its `initialize` answer named, which `PlanLimitsReading` carries in
-/// memory beside them. No token days and no models: the usage index and the model catalog own those for Claude.
+/// memory beside them, and the models the same answer listed (the model catalog's full names, D-100 round). No token days:
+/// the usage index owns those for Claude.
 public struct ClaudeProbeSource: HarnessProbeSource {
     private let fetcher: any PlanLimitsFetching
 
@@ -17,7 +18,8 @@ public struct ClaudeProbeSource: HarnessProbeSource {
     /// The neutral answer for one reading. A failed ask gives no windows (not empty ones), so the probe keeps the last good
     /// ones; an ask that succeeded gives the windows it found.
     static func answer(_ reading: PlanLimitsReading) -> HarnessProbeAnswer {
-        HarnessProbeAnswer(account: reading.account, windows: reading.limits.map(windows(of:)))
+        HarnessProbeAnswer(account: reading.account, windows: reading.limits.map(windows(of:)),
+                           models: reading.models.isEmpty ? nil : reading.models)
     }
 
     /// The five-hour and weekly windows of `limits`, five-hour first, with the ids and lengths the Claude plan has.

@@ -134,7 +134,7 @@ struct InspectorAgents: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: LoomTheme.Agents.sectionGap) {
                 if content.isEmpty, records != nil {
-                    InspectorEmptyState(text: Self.emptyText(isRunning: model.isRunning(row), readsFolder: readsFolder), art: .emptyAgents)
+                    InspectorEmptyState(text: Self.emptyText(isRunning: model.isRunning(row), readsFolder: readsFolder))
                 }
                 if !content.running.isEmpty {
                     InspectorSection(title: InspectorAgentsContent.runningTitle, note: "\(content.running.count)",

@@ -83,9 +83,10 @@ struct ResolvedStart: Equatable, Sendable {
         mode.value.map(ClaudePermissionMode.title(forRaw:)) ?? ClaudePermissionMode.askBeforeEdits.title
     }
 
-    /// The model as the bar names it: the chosen one, else "Default model" (the CLI decides which).
-    var modelTitle: String {
-        model.value.map(ModelCatalog.claudeTitle(of:)) ?? NewSessionDefaults.defaultModelTitle
+    /// The model as the bar names it: the chosen one by its full name ("Opus 5.5", once the probe said which release the alias
+    /// means), else "Default model" (the CLI decides which).
+    @MainActor var modelTitle: String {
+        model.value.map(ModelCatalog.shared.claudeTitle(of:)) ?? NewSessionDefaults.defaultModelTitle
     }
 
     /// The effort as the bar names it, in the lighter word after the model; nil when none is chosen.

@@ -41,6 +41,7 @@ struct MergeSeamTests {
         await controller.begin()
         await model.start()
         model.installChatSessions(runtime: rig.runtime, dataRoot: rig.root)
+        model.useFrozenChatFace()
         model.setClaudeConfigDirectory(rig.profile)
         return Fixture(rig: rig, model: model, controller: controller)
     }

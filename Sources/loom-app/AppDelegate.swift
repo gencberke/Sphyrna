@@ -491,8 +491,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                                           profile: usageProfileLayout(root: root))
                 try await created.start()
                 // The one session service: it holds the Chat host (made with the model's closures), the controller keeps the
-                // terminals for it, and the model reads its state and the host through it.
-                let chatHost = model.makeChatSessionHost(runtime: created, dataRoot: root)
+                // terminals for it, and the model reads its state and the host through it. D-100: while the Chat face is
+                // frozen (`ChatFreeze`) there is no host, so every Claude session runs in the terminal.
+                let chatHost = ChatFreeze.isFrozen ? nil : model.makeChatSessionHost(runtime: created, dataRoot: root)
                 let sessions = SessionService(runtime: created, startableProviders: startableProviders,
                                               structuredHost: chatHost)
                 let conversations = ConversationController(service: sessions, model: model)

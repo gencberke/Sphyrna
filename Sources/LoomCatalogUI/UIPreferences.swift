@@ -174,7 +174,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     public var searchSessionText: Bool
     /// Settings → General → Sessions run in (V19, D-69). The face of every Claude session as it starts or resumes; a
     /// running session keeps its face until it stops. The key keeps its old name. A file written before the setting
-    /// existed reads as Chat.
+    /// existed reads as Chat; while the Chat face is frozen (D-100, `ChatFreeze`) every file reads as Terminal.
     public var newSessionFace: SessionFace
     /// Settings → Theme → Appearance (D-63). A file written before the setting existed reads as Dark.
     public var appearance: AppearanceSetting
@@ -226,7 +226,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
                 showInMenuBar: Bool = true, notifyApprovals: Bool = true, sidebarStyle: SidebarStyle = .solid,
                 launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = [],
                 inspectorWidths: InspectorWidths = InspectorWidths(), searchSessionText: Bool = true,
-                newSessionFace: SessionFace = .chat,
+                newSessionFace: SessionFace = ChatFreeze.readFace(nil),
                 appearance: AppearanceSetting = .dark, paneTone: PaneTone = .neutral, animatedArt: Bool = true,
                 remora: RemoraPreferences = RemoraPreferences()) {
         self.viewMode = viewMode
@@ -277,7 +277,9 @@ public struct UIPreferences: Codable, Equatable, Sendable {
                 .compactMap(\.value) ?? [],
             inspectorWidths: (try? container.decodeIfPresent(InspectorWidths.self, forKey: .inspectorWidths)) ?? InspectorWidths(),
             searchSessionText: (try? container.decodeIfPresent(Bool.self, forKey: .searchSessionText)) ?? true,
-            newSessionFace: (try? container.decodeIfPresent(SessionFace.self, forKey: .newSessionFace)) ?? .chat,
+            // D-100: while the Chat face is frozen a stored Chat reads as Terminal (`ChatFreeze`).
+            newSessionFace: ChatFreeze.readFace(
+                (try? container.decodeIfPresent(SessionFace.self, forKey: .newSessionFace)) ?? nil),
             appearance: (try? container.decodeIfPresent(AppearanceSetting.self, forKey: .appearance)) ?? .dark,
             paneTone: (try? container.decodeIfPresent(PaneTone.self, forKey: .paneTone)) ?? .neutral,
             animatedArt: (try? container.decodeIfPresent(Bool.self, forKey: .animatedArt)) ?? true,

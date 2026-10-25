@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 /// A project's new-session draft (V07, D-59; DESIGN §8): an empty page with one question, "What should we work on in
 /// [project]?", whose project is the picker, the folder line, the session's composer, the keys line, the branch strip and the
-/// presets with Remora's brief row (D-80), on the faint radial grid. Nothing runs until the first send; `DetailContent` draws it
+/// presets with Remora's brief row (D-80). Nothing runs until the first send; `DetailContent` draws it
 /// for `.draft`.
 struct DraftSessionView: View {
     let model: CatalogModel
@@ -16,8 +16,6 @@ struct DraftSessionView: View {
     var body: some View {
         let origin = model.draftRemoraOriginLine(projectID: projectID)
         ZStack {
-            // The page's art: two hammerheads crossing slowly behind the question with the whale shark deep below (§17).
-            ArtBackdrop(place: .draftPage, grid: .radial)
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
                 VStack(spacing: 0) {

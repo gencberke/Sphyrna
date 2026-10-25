@@ -12,6 +12,7 @@ import Testing
 struct InspectorResizeTests {
     private func openRig() async throws -> InspectorRig {
         let rig = try await InspectorRig.make()
+        rig.model.readOnlyChatEnabled = true // the Side tab is the frozen Chat face's (D-100)
         rig.model.select(rig.ids[0])
         rig.model.setInspector(open: true, for: rig.ids[0])
         return rig

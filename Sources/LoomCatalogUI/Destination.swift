@@ -93,9 +93,9 @@ public enum SessionFace: String, Codable, CaseIterable, Equatable, Sendable {
 /// persisted fact (`CatalogSession.runEndpoint`).
 @MainActor @Observable
 public final class SessionFaces {
-    /// On since the stream view (V13) is routed. A kill switch: with it off no route is `.chat`, and a Claude
-    /// session shows its terminal, kept screen or record as in 0.4.4.
-    public var readOnlyChatEnabled = true
+    /// A kill switch: with it off no route is `.chat`, and a Claude session shows its terminal, kept screen or record as in
+    /// 0.4.4. Off while the Chat face is frozen (D-100, `ChatFreeze`); tests of the frozen code turn it on.
+    public var readOnlyChatEnabled = !ChatFreeze.isFrozen
     public private(set) var choices: [UUID: SessionFace] = [:]
 
     public init() {}

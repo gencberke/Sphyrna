@@ -38,7 +38,7 @@ struct SettingsLayoutTests {
                 let text = InkAX.value(element) ?? InkAX.label(element)
                 if !text.isEmpty { frames[text] = element.accessibilityFrame() }
             }
-            if frames[GeneralSettings.sessionFaceDetail] != nil, frames["Applies to existing and new terminals."] != nil { break }
+            if frames[GeneralSettings.startModeDetail] != nil, frames["Applies to existing and new terminals."] != nil { break }
         }
         return frames
     }
@@ -47,7 +47,8 @@ struct SettingsLayoutTests {
     /// from the window's edge under the page's 32. It started 16 inside the card before.
     @Test func aRowsTextStartsThirtyTwoInsideItsCard() async throws {
         let frames = try await textFrames()
-        let title = try #require(frames["Sessions run in"])
+        // The first row since the Chat face was frozen (D-100) is "Mode of new sessions".
+        let title = try #require(frames["Mode of new sessions"])
         let S = LoomTheme.Settings.self
         #expect(S.rowsInsetLeading + S.rowPaddingH == 32 && S.rowsInsetTrailing + S.rowPaddingH == 24)
         #expect(abs(title.minX - (S.bodyInset + S.rowsInsetLeading + S.rowPaddingH)) <= 1, "the title starts at \(title.minX)")
@@ -155,13 +156,12 @@ struct SettingsLayoutTests {
     /// needs at its width.
     @Test func everyGeneralDescriptionShowsInFull() async throws {
         let frames = try await textFrames()
-        let face = try #require(frames[GeneralSettings.sessionFaceDetail], "the first row's description is on the page")
+        #expect(frames[GeneralSettings.sessionFaceDetail] == nil, "no Sessions run in row while the Chat face is frozen (D-100)")
         let mode = try #require(frames[GeneralSettings.startModeDetail], "the second row's description is on the page")
         let font = try #require(frames["Applies to existing and new terminals."], "the third row's description is on the page")
         let line = NSLayoutManager().defaultLineHeight(for: NSFont.systemFont(ofSize: LoomTheme.InkType.small.size))
         #expect(font.height < 1.5 * line, "a description that fits one line is one line high")
-        #expect(face.height > 1.5 * line, "\"\(GeneralSettings.sessionFaceDetail.prefix(20))…\" is \(face.height) pt high, one line is \(line)")
         #expect(mode.height > 1.5 * line, "\"\(GeneralSettings.startModeDetail.prefix(20))…\" is \(mode.height) pt high, one line is \(line)")
-        #expect(face.width <= LoomTheme.Settings.helpMaxWidth + 1, "a description is at most \(LoomTheme.Settings.helpMaxWidth) wide")
+        #expect(mode.width <= LoomTheme.Settings.helpMaxWidth + 1, "a description is at most \(LoomTheme.Settings.helpMaxWidth) wide")
     }
 }

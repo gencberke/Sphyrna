@@ -172,10 +172,13 @@ public extension PlanLimitsFetching {
 public struct PlanLimitsReading: Equatable, Sendable {
     public var limits: PlanLimits?
     public var account: HarnessAccount?
+    /// The models the same `initialize` answer listed (aliases with the release each resolves to); empty when it listed none.
+    public var models: [HarnessModel]
 
-    public init(limits: PlanLimits?, account: HarnessAccount?) {
+    public init(limits: PlanLimits?, account: HarnessAccount?, models: [HarnessModel] = []) {
         self.limits = limits
         self.account = account
+        self.models = models
     }
 }
 
@@ -184,7 +187,8 @@ public struct PlanLimitsReading: Equatable, Sendable {
 /// transcript is written, and Loom never touches credentials (the CLI uses its own). The process
 /// runs in a Loom-owned folder, with the same executable and Claude profile as usage, and lives
 /// for about a second. It sends `initialize` before `get_usage`, only so the answer names the account
-/// (`PlanLimitsReading.account`, in memory). Whatever else it answers beyond the two windows is dropped
+/// (`PlanLimitsReading.account`, in memory) and lists the models (`PlanLimitsReading.models`: aliases and the releases
+/// they resolve to, for the model names). Whatever else it answers beyond the two windows is dropped
 /// unread, and nothing is logged or stored.
 /// Without the last three arguments the CLI would run the user's own SessionStart and SessionEnd
 /// hooks and start their MCP servers for every ask (seen with Claude Code 2.1.293).
@@ -254,19 +258,23 @@ public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
             cancelled.set()
         }
         switch run.outcome {
-        case let .failure(category): return fail(category, account: run.account)
+        case let .failure(category): return fail(category, account: run.account, models: run.models)
         case let .answer(answer):
-            guard answer.fiveHour != nil || answer.weekly != nil else { return fail(.notAvailable, account: run.account) }
+            guard answer.fiveHour != nil || answer.weekly != nil else {
+                return fail(.notAvailable, account: run.account, models: run.models)
+            }
             status.record(nil)
             return PlanLimitsReading(
-                limits: PlanLimits(fiveHour: answer.fiveHour, weekly: answer.weekly, fetchedAt: clock()), account: run.account)
+                limits: PlanLimits(fiveHour: answer.fiveHour, weekly: answer.weekly, fetchedAt: clock()), account: run.account,
+                models: run.models)
         }
     }
 
-    private func fail(_ category: PlanLimitsFailure.Category, account: HarnessAccount? = nil) -> PlanLimitsReading {
+    private func fail(_ category: PlanLimitsFailure.Category, account: HarnessAccount? = nil,
+                      models: [HarnessModel] = []) -> PlanLimitsReading {
         status.record(PlanLimitsFailure(category: category, at: clock()))
         LoomLog.error(.usage, key: "plan-limits", "Plan limits could not be read (\(category.rawValue))")
-        return PlanLimitsReading(limits: nil, account: account)
+        return PlanLimitsReading(limits: nil, account: account, models: models)
     }
 }
 
@@ -324,6 +332,26 @@ enum PlanLimitsWire {
         return email == nil && plan == nil ? nil : .subscription(email: email, plan: plan)
     }
 
+    /// The models a successful answer to one of `requestIDs` lists (`initialize`'s `models`: `value`, `displayName`,
+    /// `resolvedModel`, `supportedEffortLevels`); nil for any other line or an answer that lists none. An entry it cannot
+    /// read is skipped.
+    static func models(_ line: some Collection<UInt8>, requestIDs: Set<String>) -> [HarnessModel]? {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+              object["type"] as? String == "control_response",
+              let response = object["response"] as? [String: Any],
+              let id = response["request_id"] as? String, requestIDs.contains(id),
+              response["subtype"] as? String == "success",
+              let payload = response["response"] as? [String: Any],
+              let list = payload["models"] as? [[String: Any]] else { return nil }
+        let models = list.compactMap { entry -> HarnessModel? in
+            guard let value = entry["value"] as? String, !value.isEmpty else { return nil }
+            let resolved = (entry["resolvedModel"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            return HarnessModel(id: value, displayName: entry["displayName"] as? String ?? value, isDefault: value == "default",
+                                efforts: entry["supportedEffortLevels"] as? [String] ?? [], resolvedModel: resolved)
+        }
+        return models.isEmpty ? nil : models
+    }
+
     static func request(id: String) -> Data {
         // Without `skip_behaviors` the CLI reads every transcript touched in the last seven days to build
         // its behavior statistics, on every ask; Loom reads only the limits.
@@ -379,6 +407,8 @@ enum LimitsOutcome: Equatable, Sendable {
 struct LimitsRun: Sendable {
     var outcome: LimitsOutcome
     var account: HarnessAccount?
+    /// The models `initialize` listed; empty when it did not answer or listed none.
+    var models: [HarnessModel] = []
 }
 
 /// The blocking part: spawn, one request line, read until the answer, close, make sure it exits.
@@ -432,8 +462,9 @@ private struct LimitsExchange: Sendable {
         var settled: LimitsOutcome?
         var settledAt = deadline
         var account: HarnessAccount?
+        var models: [HarnessModel] = []
         var initializeAnswered = false
-        func finished(_ outcome: LimitsOutcome) -> LimitsRun { LimitsRun(outcome: outcome, account: account) }
+        func finished(_ outcome: LimitsOutcome) -> LimitsRun { LimitsRun(outcome: outcome, account: account, models: models) }
         while !cancelled.isSet {
             let now = ProcessInfo.processInfo.systemUptime
             // The limits are in; `initialize` normally answered before them, and gets a moment more if it did not.
@@ -456,6 +487,8 @@ private struct LimitsExchange: Sendable {
                 // `initialize` names the account in full; `get_usage` only backs it up when `initialize` did not.
                 if let named = PlanLimitsWire.account(line, requestIDs: [initializeID]) { account = named }
                 else if account == nil, let named = PlanLimitsWire.account(line, requestIDs: [requestID]) { account = named }
+                // The same answer lists the models with the release each alias resolves to (the draft's full names).
+                if let listed = PlanLimitsWire.models(line, requestIDs: [initializeID]) { models = listed }
                 if settled == nil {
                     switch PlanLimitsWire.interpret(line, requestID: requestID) {
                     case .ignored: break

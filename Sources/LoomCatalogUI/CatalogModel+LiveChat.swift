@@ -34,14 +34,15 @@ extension CatalogModel {
 
     /// What installing the host does besides holding it: the Changes tab's git reader, and the removal of the files of sessions
     /// deleted while no host ran. Once, in the app.
-    public func chatSessionsInstalled(runtime: SessionRuntime, host: ChatSessionHost) {
+    /// Without a host (the Chat face is frozen, `ChatFreeze`) only the git reader is installed.
+    public func chatSessionsInstalled(runtime: SessionRuntime, host: ChatSessionHost?) {
         // The Changes tab's Branch scope reads git through the runtime's supervisor, so the helper is owned and stopped by Quit.
         Task { [weak self] in
             let supervisor = await runtime.supervisor
             self?.changes.reader = ChangesReader.live(git: GitChanges.live(supervisor: supervisor))
         }
         // Queues of sessions deleted while no host ran (launch recovery) hold the user's text: they go.
-        Task { await host.removeQueuesOfDeletedSessions() }
+        if let host { Task { await host.removeQueuesOfDeletedSessions() } }
     }
 
     /// The Chat-face driver whose run is on this card (it follows the run to a new card on `/clear`).
