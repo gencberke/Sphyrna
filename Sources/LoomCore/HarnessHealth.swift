@@ -150,6 +150,12 @@ public struct HarnessHealth: Equatable, Sendable {
         plan.prefix(1).uppercased() + plan.dropFirst()
     }
 
+    /// The plan as the headline says it: the CLI's own word with the harness's name before it ("Claude Max" from `max`), and not
+    /// said twice when the CLI already names the product ("Claude Pro").
+    static func planTitle(_ plan: String, harness name: String) -> String {
+        plan.lowercased().hasPrefix(name.lowercased()) ? planName(plan) : "\(name) \(planName(plan))"
+    }
+
     /// The health of a CLI that was found, from what the toolchain says of it and the probe's `reading` (nil: the ask gave
     /// nothing). Pure: `HarnessHealthChecker` supplies the inputs.
     public static func evaluate(provider: ManagedSession.Provider, toolchain: ProviderToolchain, reading: HarnessReading?,
@@ -169,11 +175,10 @@ public struct HarnessHealth: Equatable, Sendable {
         }
         switch (provider, reading?.account) {
         case (_, HarnessAccount.none?):
-            return health.signedOut(name)
-        case (.claude, nil) where reading == nil || reading?.windows.isEmpty == true:
-            // Claude's ask names the account or, when nobody is signed in, answers nothing: a silent ask reads as signed out.
-            return health.signedOut(name, silent: true)
-        case (.codex, nil) where reading == nil:
+            return health.signedOut()
+        case (_, nil) where reading == nil || (provider == .claude && reading?.windows.isEmpty == true):
+            // A check that answered nothing, or Claude's that named no account, is unknown: only an explicit `.none` account
+            // says nobody is signed in, so a signed-in user is never told to sign in.
             health.state = .attention
             health.headline = "Could not check"
             health.note = "Sphyrna could not read \(name)'s answer. Choose Check Again."
@@ -183,7 +188,7 @@ public struct HarnessHealth: Equatable, Sendable {
         }
         switch reading?.account {
         case .apiKey?: health.headline = "Ready · API key"
-        case let .subscription(_, plan?)?: health.headline = "Ready · \(name) \(planName(plan))"
+        case let .subscription(_, plan?)?: health.headline = "Ready · \(planTitle(plan, harness: name))"
         default: break
         }
         if status == .belowRecommended {
@@ -193,14 +198,10 @@ public struct HarnessHealth: Equatable, Sendable {
         return health
     }
 
-    private func signedOut(_ name: String, silent: Bool = false) -> HarnessHealth {
+    private func signedOut() -> HarnessHealth {
         var health = self
         health.state = .signIn
         health.headline = "Not signed in"
-        health.account = silent ? nil : account
-        health.note = silent
-            ? "Sphyrna could not read an account from \(name). If you are signed in, choose Check Again."
-            : nil
         return health
     }
 

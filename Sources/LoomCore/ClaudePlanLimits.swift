@@ -295,8 +295,6 @@ enum PlanLimitsWire {
         return data
     }
 
-    /// What a successful answer to one of `requestIDs` says about the account; nil for any other line, an error, or an answer
-    /// that names none. The email and plan are returned to the caller's memory and go nowhere else.
     /// Whether `line` is the control response (success or error) to `requestID`.
     static func answers(_ line: some Collection<UInt8>, requestID: String) -> Bool {
         guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
@@ -305,6 +303,8 @@ enum PlanLimitsWire {
         return response["request_id"] as? String == requestID
     }
 
+    /// What a successful answer to one of `requestIDs` says about the account; nil for any other line, an error, or an answer
+    /// that names none. The email and plan are returned to the caller's memory and go nowhere else.
     static func account(_ line: some Collection<UInt8>, requestIDs: Set<String>) -> HarnessAccount? {
         guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
               object["type"] as? String == "control_response",
@@ -316,6 +316,9 @@ enum PlanLimitsWire {
         func text(_ key: String) -> String? {
             (account[key] as? String).flatMap { $0.isEmpty ? nil : $0 }
         }
+        // A login through another provider (Bedrock, Vertex, Foundry) has no subscription: the provider's own credentials stand
+        // for it.
+        if let provider = text("apiProvider"), provider != "firstParty" { return .apiKey }
         let email = text("email"), plan = text("subscriptionType")
         // An account with neither is not one this code knows how to name: it is left unknown, not guessed.
         return email == nil && plan == nil ? nil : .subscription(email: email, plan: plan)

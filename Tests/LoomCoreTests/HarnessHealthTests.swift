@@ -134,7 +134,8 @@ struct HarnessHealthTests {
         #expect(signedOut.state == .signIn && signedOut.headline == "Not signed in" && signedOut.note == nil)
         let claudeQuiet = Rig(claude: [nil])
         let silent = await claudeQuiet.checker.check(.claude)
-        #expect(silent.state == .signIn && silent.note?.contains("Check Again") == true, "a silent Claude reads as signed out, and says how to be sure")
+        #expect(silent.state == .attention && silent.headline == "Could not check", "a Claude that named no account is unknown, not signed out")
+        #expect(silent.note?.contains("Check Again") == true)
 
         // Attention: the probe failed for Codex; the CLI would not answer; below the minimum.
         let failed = Rig(codex: [nil])
@@ -272,6 +273,33 @@ struct HarnessHealthTests {
             }
         }
         #expect(HarnessSetupCommand.command(for: .synthetic, state: .install) == nil)
+    }
+
+    @Test func theHeadlineNamesThePlanOnceWhateverFormTheCliGivesIt() async {
+        func headline(_ plan: String) async -> String {
+            await Rig(claude: [subscription("a@example.invalid", plan)]).checker.check(.claude).headline
+        }
+        #expect(await headline("max") == "Ready · Claude Max", "a lower-case plan word follows the harness's name")
+        #expect(await headline("Claude Pro") == "Ready · Claude Pro", "the CLI's own words are not said twice")
+    }
+
+    @Test func deepCheckPinsTheProfileOnlyWhereTheToolchainHasOne() {
+        func toolchain(_ provider: ManagedSession.Provider, profile: URL?, environment: [String: String] = [:]) -> ProviderToolchain {
+            ProviderToolchain(provider: provider, executable: "/opt/fake/bin/\(HarnessHealth.command(provider))",
+                              capabilities: ProviderCapabilities(version: "", help: ""),
+                              environment: ["PATH": "/usr/bin:/bin"].merging(environment) { $1 }, profileDirectory: profile)
+        }
+        let home = HarnessDeepCheck.environment(for: .claude, toolchain: toolchain(.claude, profile: nil))
+        #expect(home["CLAUDE_CONFIG_DIR"] == nil, "the default profile is never pinned to ~/.claude")
+        #expect(home["NO_COLOR"] == "1" && home["PATH"] == "/usr/bin:/bin")
+        let shell = HarnessDeepCheck.environment(
+            for: .claude, toolchain: toolchain(.claude, profile: nil, environment: ["CLAUDE_CONFIG_DIR": "/Users/a/.claude-work"]))
+        #expect(shell["CLAUDE_CONFIG_DIR"] == "/Users/a/.claude-work", "a folder the login shell names stays as it is")
+        let profile = URL(fileURLWithPath: "/Users/a/profiles/work", isDirectory: true)
+        let explicit = HarnessDeepCheck.environment(for: .claude, toolchain: toolchain(.claude, profile: profile))
+        #expect(explicit["CLAUDE_CONFIG_DIR"] == profile.path, "an explicit profile is pinned")
+        let codex = HarnessDeepCheck.environment(for: .codex, toolchain: toolchain(.codex, profile: nil))
+        #expect(codex["CODEX_HOME"]?.hasSuffix("/.codex") == true && codex["CLAUDE_CONFIG_DIR"] == nil)
     }
 
     @Test func deepCheckNamesTheClisOwnDoctorCommand() {

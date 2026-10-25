@@ -60,7 +60,7 @@ func runFakeUsageProbe(arguments: [String]) -> Never {
             writeLog()
             if mode != "no-account" {
                 send(["type": "control_response", "response": ["subtype": "success", "request_id": id, "response": [
-                    "account": ["email": "someone@example.invalid", "organization": "Example", "subscriptionType": "max",
+                    "account": ["email": "someone@example.invalid", "organization": "Example", "subscriptionType": "Claude Max",
                                 "apiProvider": "firstParty"], "pid": Int(getpid())] as [String: Any]]])
             }
         case "get_usage": usageRequest = request

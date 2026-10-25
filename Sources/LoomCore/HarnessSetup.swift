@@ -60,6 +60,20 @@ public struct HarnessDeepCheck: Sendable {
         provider == .codex ? ["doctor", "--no-color"] : ["doctor"]
     }
 
+    /// The child's environment: the toolchain's, without colour. Codex's profile folder is always pinned. Claude's is pinned only
+    /// when the toolchain has a profile of its own: for the default profile the variable stays as the login shell had it, and is
+    /// never set to `~/.claude` (Claude names its stored login after an explicit config folder; see `ClaudePlanLimitsFetcher`).
+    static func environment(for provider: ManagedSession.Provider, toolchain: ProviderToolchain) -> [String: String] {
+        var environment = toolchain.environment
+        if provider == .codex {
+            environment["CODEX_HOME"] = HarnessHealth.profileDirectory(of: toolchain).path
+        } else if toolchain.profileDirectory != nil {
+            environment["CLAUDE_CONFIG_DIR"] = HarnessHealth.profileDirectory(of: toolchain).path
+        }
+        environment["NO_COLOR"] = "1"
+        return environment
+    }
+
     /// The command as the person reads it: "claude doctor".
     public static func display(for provider: ManagedSession.Provider) -> String {
         ([HarnessHealth.command(provider)] + arguments(for: provider)).joined(separator: " ")
@@ -88,9 +102,7 @@ public struct HarnessDeepCheck: Sendable {
             let resolved = try await toolchain(provider)
             try FileManager.default.createDirectory(
                 at: workingDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            var environment = resolved.environment
-            environment[provider == .codex ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR"] = HarnessHealth.profileDirectory(of: resolved).path
-            environment["NO_COLOR"] = "1"
+            let environment = Self.environment(for: provider, toolchain: resolved)
             // A fixed script with the folder and the command as its arguments: nothing is spliced into the shell's text. Standard
             // error joins the output, and the status is printed, so a command that fails still shows what it said.
             let script = #"cd "$1" || exit 1; shift; "$@" 2>&1 </dev/null; printf '\n[exit status %s]\n' "$?""#

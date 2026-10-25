@@ -334,7 +334,7 @@ struct HarnessProbeTests {
         let (fetcher, root) = try claudeFetcher(mode: "ok")
         defer { try? FileManager.default.removeItem(at: root) }
         let reading = await fetcher.fetchReading()
-        #expect(reading.account == .subscription(email: "someone@example.invalid", plan: "max"))
+        #expect(reading.account == .subscription(email: "someone@example.invalid", plan: "Claude Max"))
         #expect(reading.limits?.weekly?.usedPercent == 82)
         // The exchange sent `initialize` before `get_usage`.
         let record = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("request.json"))) as? [String: Any])
@@ -347,12 +347,12 @@ struct HarnessProbeTests {
             HarnessLimitWindow(id: "seven_day", name: "Weekly", durationMinutes: 10_080, usedPercent: 82,
                                resetsAt: ISO8601DateFormatter().date(from: "2026-10-12T09:00:00Z")),
         ])
-        #expect(answer.account == .subscription(email: "someone@example.invalid", plan: "max"))
+        #expect(answer.account == .subscription(email: "someone@example.invalid", plan: "Claude Max"))
         #expect(answer.tokenDays == nil && answer.models == nil, "the usage index and the model catalog own those for Claude")
         // Through the probe: the reading holds them in memory beside the windows.
         let probe = HarnessProbe(connections: HarnessConnections(), sources: [.claude: ClaudeProbeSource(fetcher: fetcher)])
         let kept = await probe.probe(harness: .claude)
-        #expect(kept?.account == .subscription(email: "someone@example.invalid", plan: "max") && kept?.windows.count == 2)
+        #expect(kept?.account == .subscription(email: "someone@example.invalid", plan: "Claude Max") && kept?.windows.count == 2)
     }
 
     @Test func claudeWhoseLimitsAreUnavailableStillNamesTheAccountAndKeepsNoWindows() async throws {
@@ -360,7 +360,7 @@ struct HarnessProbeTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let reading = await fetcher.fetchReading()
         #expect(reading.limits == nil)
-        #expect(reading.account == .subscription(email: "someone@example.invalid", plan: "max"))
+        #expect(reading.account == .subscription(email: "someone@example.invalid", plan: "Claude Max"))
         let answer = try #require(await ClaudeProbeSource(fetcher: fetcher).read())
         #expect(answer.windows == nil, "unread, not empty: the last good windows stay")
     }

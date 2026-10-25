@@ -232,6 +232,23 @@ struct ClaudePlanLimitsTests {
         #expect(value.weekly?.resetsAt != nil)
     }
 
+    private func initializeAnswer(account: String) -> [UInt8] {
+        Array(("{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"r1\","
+            + "\"response\":{\"account\":\(account)}}}").utf8)
+    }
+
+    /// The real CLI's `initialize` account (Claude Code 2.1.300): the plan is its own words, "Claude Pro".
+    @Test func theAccountOfAnInitializeAnswerIsASubscriptionAnApiKeyOrUnknown() {
+        func account(_ json: String) -> HarnessAccount? { PlanLimitsWire.account(initializeAnswer(account: json), requestIDs: ["r1"]) }
+        #expect(account(#"{"email":"a@example.invalid","subscriptionType":"Claude Pro","organization":"Org","apiProvider":"firstParty"}"#)
+                == .subscription(email: "a@example.invalid", plan: "Claude Pro"))
+        #expect(account(#"{"subscriptionType":"max"}"#) == .subscription(email: nil, plan: "max"))
+        #expect(account(#"{"email":"a@example.invalid","apiProvider":"bedrock"}"#) == .apiKey, "another provider's credentials stand for the login")
+        #expect(account(#"{"apiProvider":"vertex"}"#) == .apiKey)
+        #expect(account(#"{"apiProvider":"firstParty"}"#) == nil, "nothing usable is unknown, not guessed")
+        #expect(account("{}") == nil)
+    }
+
     @Test func otherLinesAndOtherRequestsAreIgnoredAndBadAnswersAreUnavailable() {
         #expect(judge("not json") == .ignored)
         #expect(judge(#"{"type":"system","subtype":"init"}"#) == .ignored)

@@ -60,6 +60,27 @@ struct HomeConnectTests {
         #expect(both.cards[0].startNote == nil && both.cards[1].startNote == CatalogModel.codexLaterReason)
     }
 
+    @Test func aClaudeThatCouldNotBeCheckedRaisesNoSetupCard() async throws {
+        let (model, root) = try catalogModel()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // A failed first check: the probe answered nothing, and nobody is said to be signed out.
+        let rig = Rig(claude: nil, codex: ConnectionsTests.max, codexFound: true)
+        model.installHarnessHealth(rig.model)
+        rig.model.checkAll()
+        await rig.model.settle()
+        let claude = rig.model.health(of: .claude)
+        #expect(claude.state == .attention && claude.headline == "Could not check")
+        #expect(!model.homeConnect.showsNotice && !model.homeConnect.showsCards, "no card asks a signed-in user to run claude auth login")
+
+        let plan = HomeConnect.plan(
+            healths: [health(.claude, .attention, "Could not check"), health(.codex, .ready, "Ready")], startable: [.claude, .codex])
+        #expect(!plan.showsCards && !plan.showsNotice)
+        // A CLI below the minimum still asks for an update.
+        var old = health(.claude, .attention, "Update needed")
+        old.versionStatus = .belowMinimum
+        #expect(HomeConnect.plan(healths: [old], startable: [.claude]).showsNotice)
+    }
+
     @Test func withSessionsOneCompactCardShowsWhileAConnectedHarnessNeedsAttention() async throws {
         let (model, root) = try catalogModel()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -79,8 +100,6 @@ struct HomeConnectTests {
         model.recheckHarnesses()
         await rig.model.settle()
         #expect(rig.codex.asks == asks + 1)
-        model.recheckClaude()
-        await rig.model.settle()
         #expect(rig.claude.asks == 0, "a CLI that is not found is not asked")
 
         // Everything ready: no card.

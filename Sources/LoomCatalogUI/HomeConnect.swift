@@ -22,7 +22,7 @@ enum HomeConnect {
     struct Plan: Equatable {
         /// The first run's cards: every connected harness, and only while one of them needs setting up.
         var cards: [Card] = []
-        /// The connected harnesses the build can start that need attention (not found, not signed in, could not be checked).
+        /// The connected harnesses the build can start that need attention (not found, not signed in, too old).
         var attention: [Card] = []
 
         var showsCards: Bool { !cards.isEmpty }
@@ -38,12 +38,18 @@ enum HomeConnect {
     @MainActor static func plan(healths: [HarnessHealth], startable: Set<ManagedSession.Provider>) -> Plan {
         let connected = healths.filter { $0.state != .disabled }
         let cards = connected.map { card(for: $0, startable: startable) }
-        let attention = cards.filter { needsSetup($0.health.state) && startable.contains($0.health.provider) }
+        let attention = cards.filter { needsSetup($0.health) && startable.contains($0.health.provider) }
         return Plan(cards: attention.isEmpty ? [] : cards, attention: attention)
     }
 
-    static func needsSetup(_ state: HarnessHealthState) -> Bool {
-        state == .install || state == .signIn || state == .attention
+    /// Not found, not signed in, or too old. A check that could not tell (also `.attention`) is not setup: it waits on Check
+    /// Again in Connections and says nothing here, so a signed-in user is never sent to sign in.
+    static func needsSetup(_ health: HarnessHealth) -> Bool {
+        switch health.state {
+        case .install, .signIn: true
+        case .attention: health.versionStatus == .belowMinimum
+        default: false
+        }
     }
 
     @MainActor static func card(for health: HarnessHealth, startable: Set<ManagedSession.Provider>) -> Card {
