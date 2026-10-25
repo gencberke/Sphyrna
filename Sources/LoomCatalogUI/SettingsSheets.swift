@@ -9,6 +9,10 @@ public enum SettingsSheet: Hashable, Sendable {
     case fullAccess
     /// "Delete N sessions?": the checked sessions of the cleanup review.
     case delete
+    /// "Delete N sessions?": the checked sessions of the Storage part.
+    case deleteStored
+    /// "Change Claude's retention?" with the days to write.
+    case retention
     /// Remora's memory, 560 wide (DESIGN §20).
     case remoraMemory
     /// "Clear Remora's working memory?" from Settings' Clear… or the memory sheet's button; from the sheet, Cancel and the answer
@@ -88,6 +92,14 @@ enum SettingsSheets {
         case .delete:
             if let review = model.cleanupReview {
                 DeleteSessionsSheet(review: review, catalog: model, profile: profile, presenter: presenter)
+            }
+        case .deleteStored:
+            if let review = model.cleanupReview {
+                DeleteStoredSessionsSheet(storage: review.storage, catalog: model, profile: profile, presenter: presenter)
+            }
+        case .retention:
+            if let review = model.cleanupReview {
+                RetentionSheet(storage: review.storage, profile: profile, presenter: presenter)
             }
         case .remoraMemory:
             RemoraMemorySheet(catalog: model, navigation: navigation)

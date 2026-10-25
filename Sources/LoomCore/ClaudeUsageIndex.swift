@@ -452,6 +452,73 @@ public actor ClaudeUsageIndex {
             messageCount: total.messages, sessionCount: used)
     }
 
+    /// What one session used over its whole life, split into its main thread and its subagents (the inspector's Usage block).
+    /// A row belongs to the subagents when the transcript it was read from is one of the session's `subagents/*.jsonl` files
+    /// (the path the index already stores); everything else is the main thread. With `refresh`, the session's own transcripts
+    /// (the ones the index knows, and the files in its `subagents` folder) are tailed first, so a finished turn is counted;
+    /// nothing else of the profile is walked. Only aggregates are read: no content, nothing stored.
+    public func sessionUsage(session: String, refresh: Bool = false) async throws -> SessionUsage {
+        if refresh {
+            let paths = (try? sessionTranscriptPaths(session)) ?? []
+            if !paths.isEmpty { try await self.refresh(paths: paths) }
+        }
+        do {
+            return try sessionUsageOnce(session)
+        } catch let error as ClaudeUsageIndexError where error.isCorruption {
+            discardDatabase()
+            return try sessionUsageOnce(session)
+        }
+    }
+
+    /// The session's transcripts: the files the index holds for it, and the `.jsonl` files of `<session>/subagents` beside
+    /// its main transcript (a subagent that started since the last scan). Listed without following links.
+    private func sessionTranscriptPaths(_ session: String) throws -> [URL] {
+        let database = try openDatabase()
+        var paths = Set<String>()
+        for text in Set([session, session.lowercased()]) { paths.formUnion(try database.filePaths(session: text)) }
+        for path in paths where (path as NSString).lastPathComponent.lowercased() == session.lowercased() + ".jsonl" {
+            let folder = ((path as NSString).deletingLastPathComponent as NSString)
+                .appendingPathComponent(String((path as NSString).lastPathComponent.dropLast(".jsonl".count)))
+            let subagents = (folder as NSString).appendingPathComponent("subagents")
+            var info = stat()
+            guard lstat(subagents, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { continue }
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: subagents)) ?? []
+            for name in names where UsageTranscriptWalker.isTranscriptName(name) {
+                paths.insert((subagents as NSString).appendingPathComponent(name))
+            }
+        }
+        return paths.sorted().map { URL(fileURLWithPath: $0) }
+    }
+
+    private func sessionUsageOnce(_ session: String) throws -> SessionUsage {
+        let database = try openDatabase()
+        var main = Accumulator()
+        var subagents = Accumulator()
+        var prices: [Int64: UsageModelPrice?] = [:]
+        let candidates = session == session.lowercased() ? [session] : [session, session.lowercased()]
+        var seen: Set<Int64> = []
+        for text in candidates {
+            guard let symbol = try database.symbolID(text), seen.insert(symbol).inserted else { continue }
+            for (group, isSubagent) in try database.sessionSplitAggregates(session: symbol) {
+                if prices[group.model] == nil {
+                    prices[group.model] = .some(UsagePricing.price(forModel: try database.symbolText(group.model) ?? ""))
+                }
+                let cost = Self.cost(price: prices[group.model] ?? nil, tokens: group.tokens, flags: group.flags,
+                                     legacy: group.hasLegacyCost ? group.legacyCost : nil)
+                if isSubagent {
+                    subagents.add(tokens: group.tokens, cost: cost, messages: group.messages)
+                } else {
+                    main.add(tokens: group.tokens, cost: cost, messages: group.messages)
+                }
+            }
+        }
+        func part(_ accumulator: Accumulator) -> SessionUsage.Part {
+            SessionUsage.Part(tokens: accumulator.tokens, estimatedCostUSD: accumulator.hasUnknownCost ? nil : accumulator.cost,
+                              messageCount: accumulator.messages)
+        }
+        return SessionUsage(main: part(main), subagents: part(subagents))
+    }
+
     private func bucketsOnce(size: UsageBucketSize, count: Int, now: Date, timeZone: TimeZone) throws -> [UsageBucket] {
         let database = try openDatabase()
         var calendar = Calendar(identifier: .gregorian)
@@ -1439,6 +1506,53 @@ final class UsageDatabase {
                         cacheWrite5m: sqlite3_column_int64(statement, 6), cacheWrite1h: sqlite3_column_int64(statement, 7),
                         cacheRead: sqlite3_column_int64(statement, 8), webSearches: sqlite3_column_int64(statement, 9)),
                     messages: Int(sqlite3_column_int64(statement, 10))))
+            }
+            return result
+        }
+    }
+
+    /// One session's totals over its whole life, grouped as `sessionAggregatesSQL` groups them and by whether the row was
+    /// read from a subagent transcript (`…/subagents/…` in the file's stored path). Only `session` is in both tables, so the
+    /// flag columns stay unqualified.
+    static let sessionSplitAggregatesSQL = """
+        SELECT m.model, \(queryFlagsSQL),
+               m.cost IS NOT NULL, SUM(COALESCE(m.cost, 0)),
+               SUM(m.input), SUM(m.output), SUM(m.cw5), SUM(m.cw1), SUM(m.cr), SUM(m.web), COUNT(*),
+               instr(f.path, '/subagents/') > 0
+        FROM msg m JOIN file f ON f.id = m.file_id
+        WHERE m.session = ?1 AND m.session IS NOT NULL GROUP BY 1, 2, 3, 12
+        """
+
+    func sessionSplitAggregates(session: Int64) throws -> [(UsageAggregate, Bool)] {
+        try cached(Self.sessionSplitAggregatesSQL) { statement in
+            bind(session, 1, statement)
+            var result: [(UsageAggregate, Bool)] = []
+            while true {
+                let step = sqlite3_step(statement)
+                if step == SQLITE_DONE { break }
+                guard step == SQLITE_ROW else { throw error("session split aggregate", step) }
+                let aggregate = UsageAggregate(
+                    bucket: 0, model: sqlite3_column_int64(statement, 0),
+                    flags: sqlite3_column_int64(statement, 1), hasLegacyCost: sqlite3_column_int(statement, 2) != 0,
+                    legacyCost: sqlite3_column_double(statement, 3),
+                    tokens: UsageTokens(
+                        input: sqlite3_column_int64(statement, 4), output: sqlite3_column_int64(statement, 5),
+                        cacheWrite5m: sqlite3_column_int64(statement, 6), cacheWrite1h: sqlite3_column_int64(statement, 7),
+                        cacheRead: sqlite3_column_int64(statement, 8), webSearches: sqlite3_column_int64(statement, 9)),
+                    messages: Int(sqlite3_column_int64(statement, 10)))
+                result.append((aggregate, sqlite3_column_int(statement, 11) != 0))
+            }
+            return result
+        }
+    }
+
+    /// The stored paths of a session's transcripts (its own file and its subagents').
+    func filePaths(session: String) throws -> [String] {
+        try cached("SELECT path FROM file WHERE session = ?1") { statement in
+            bind(session, 1, statement)
+            var result: [String] = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                if let text = sqlite3_column_text(statement, 0) { result.append(String(cString: text)) }
             }
             return result
         }

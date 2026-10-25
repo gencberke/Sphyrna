@@ -135,6 +135,29 @@ public protocol CleanupReviewing: Sendable {
     func setSettings(_ settings: CleanupSettings) async throws
     /// Forgets the user's numbers and returns the defaults now in force.
     func resetSettings() async throws -> CleanupSettings
+    /// Settings → Sessions → Storage: every deletable session with what deleting it frees, from one scan of the profile.
+    func storage(now: Date) async throws -> SessionStorageReport
+    /// Deletes these sessions one by one through the verified deletion; a running one, or one that is gone, is skipped.
+    func deleteFromStorage(ids: [UUID], progress: @escaping @Sendable (UUID, CleanupRowResult) async -> Void) async
+        -> [UUID: CleanupRowResult]
+    /// Claude's own retention (`cleanupPeriodDays` of the profile's `settings.json`).
+    func retention() async -> ClaudeRetention
+    /// Writes `cleanupPeriodDays` and nothing else (`ClaudeRetentionFile.write`).
+    func setRetention(days: Int) async throws
+}
+
+/// What a stand-in without storage answers.
+extension CleanupReviewing {
+    public func storage(now: Date) async throws -> SessionStorageReport {
+        SessionStorageReport(generatedAt: now, rows: [], configDirectory: nil, projectsFolderBytes: nil)
+    }
+
+    public func deleteFromStorage(ids: [UUID], progress: @escaping @Sendable (UUID, CleanupRowResult) async -> Void) async
+        -> [UUID: CleanupRowResult] { [:] }
+
+    public func retention() async -> ClaudeRetention { .unreadable("Claude's settings are not available here") }
+
+    public func setRetention(days: Int) async throws { throw ClaudeRetentionError.unreadable("Claude's settings are not available here") }
 }
 
 // MARK: Coordinator
@@ -151,17 +174,21 @@ public actor CleanupCoordinator: CleanupReviewing {
         /// that cannot be previewed has no entry.
         public var previews: @Sendable ([UUID]) async -> [UUID: ConversationDeletionPreview]
         public var delete: @Sendable (UUID) async throws -> ConversationDeletionOutcome
+        /// The Claude profile's folder (its `projects` and `settings.json`); nil where there is none.
+        public var configDirectory: @Sendable () async -> URL?
 
         public init(
             isRunning: @escaping @Sendable (UUID) async -> Bool,
             worktree: @escaping @Sendable (String) async -> CleanupWorktreeVerdict,
             previews: @escaping @Sendable ([UUID]) async -> [UUID: ConversationDeletionPreview],
-            delete: @escaping @Sendable (UUID) async throws -> ConversationDeletionOutcome
+            delete: @escaping @Sendable (UUID) async throws -> ConversationDeletionOutcome,
+            configDirectory: @escaping @Sendable () async -> URL? = { nil }
         ) {
             self.isRunning = isRunning
             self.worktree = worktree
             self.previews = previews
             self.delete = delete
+            self.configDirectory = configDirectory
         }
     }
 
@@ -188,7 +215,8 @@ public actor CleanupCoordinator: CleanupReviewing {
                 },
                 worktree: { await protection.verdict(workingDirectory: $0) },
                 previews: { await runtime.deletionPreviews(ids: $0) },
-                delete: { try await runtime.deleteConversation(id: $0) }
+                delete: { try await runtime.deleteConversation(id: $0) },
+                configDirectory: { await runtime.claudeConfigDirectory() }
             ),
             policy: policy
         )
@@ -261,6 +289,71 @@ public actor CleanupCoordinator: CleanupReviewing {
     public func resetSettings() async throws -> CleanupSettings {
         try await catalog.resetCleanupSettings()
         return try await settings()
+    }
+
+    // MARK: Storage
+
+    public func storage(now: Date) async throws -> SessionStorageReport {
+        // Every session Sphyrna can delete, side chats aside (they go with their parent).
+        let sessions = try await catalog.sessions().filter {
+            HarnessCapabilities.intrinsic(of: $0.session.provider).deletes && !$0.isSideChat
+        }
+        let previews = sessions.isEmpty ? [:] : await host.previews(sessions.map(\.session.id))
+        var rows: [SessionStorageRow] = []
+        for record in sessions {
+            let preview = previews[record.session.id]
+            let running = await host.isRunning(record.session.id)
+            rows.append(SessionStorageRow(record: record, byteCount: preview?.byteCount, fileCount: preview?.fileCount,
+                                          isRunning: running))
+        }
+        let config = await host.configDirectory()
+        let folder = previews.values.first?.configDirectory ?? config?.path
+        let projects: Int64? = if let config {
+            await Task.detached(priority: .utility) { ClaudeDataInventory.projectsFolderBytes(configDirectory: config) }.value
+        } else { nil }
+        return SessionStorageReport(generatedAt: now, rows: rows, configDirectory: folder, projectsFolderBytes: projects)
+    }
+
+    public func deleteFromStorage(ids: [UUID], progress: @escaping @Sendable (UUID, CleanupRowResult) async -> Void) async
+        -> [UUID: CleanupRowResult] {
+        var results: [UUID: CleanupRowResult] = [:]
+        for id in ids {
+            let result: CleanupRowResult
+            if await host.isRunning(id) {
+                // As in the review: a running session is never deleted from Settings.
+                result = .skipped(.running)
+            } else if (try? await catalog.session(id: id)) == nil {
+                result = .failed("The session is no longer in Sphyrna")
+            } else {
+                do {
+                    switch try await host.delete(id) {
+                    case .deleted: result = .deleted
+                    case .incomplete(let pending):
+                        result = .incomplete(pending.lastFailure ?? "stopped at \(pending.state.rawValue)")
+                    }
+                } catch {
+                    result = .failed(Self.describe(error))
+                }
+            }
+            results[id] = result
+            await progress(id, result)
+        }
+        return results
+    }
+
+    public func retention() async -> ClaudeRetention {
+        guard let config = await host.configDirectory() else { return .unreadable("Sphyrna does not know Claude's profile") }
+        return await Task.detached(priority: .utility) { ClaudeRetentionFile.read(ClaudeRetentionFile.url(configDirectory: config)) }
+            .value
+    }
+
+    public func setRetention(days: Int) async throws {
+        guard let config = await host.configDirectory() else {
+            throw ClaudeRetentionError.unreadable("Sphyrna does not know Claude's profile")
+        }
+        try await Task.detached(priority: .utility) {
+            try ClaudeRetentionFile.write(days: days, to: ClaudeRetentionFile.url(configDirectory: config))
+        }.value
     }
 
     // MARK: Internals

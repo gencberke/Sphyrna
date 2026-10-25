@@ -62,6 +62,9 @@ struct InspectorOverview: View {
             VStack(alignment: .leading, spacing: LoomTheme.Inspector.sectionGap) {
                 sessionSection(content)
                 OverviewSection(title: "Context") { context }
+                if let conversationID = usageConversationID {
+                    OverviewSection(title: "Usage") { usageBlock(conversationID) }
+                }
                 worktreeSection(content)
                 if let lastTurn = content.lastTurn { changesSection(lastTurn) }
                 if let agents = content.agents { agentsSection(agents) }
@@ -70,6 +73,11 @@ struct InspectorOverview: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .loadsLaunchModel(model, row: row)
+        // The session's use is read when the tab shows and again each time a turn ends (the indicator leaves Working).
+        .task(id: UsageReadKey(conversationID: usageConversationID, working: row.indicator == .working)) {
+            guard let id = usageConversationID, row.indicator != .working else { return }
+            await model.usage?.loadSessionUsage(conversationID: id)
+        }
         // The runtime's toolchain probe is read again when a run begins: a start is what resolves it.
         .task(id: row.live?.runID) { await model.launchModels.loadClaudeVersion(from: model.intents) }
         .task(id: baseKey) {
@@ -140,6 +148,30 @@ struct InspectorOverview: View {
             OverviewContext(usage: usage)
         } else {
             note("No reading yet. It appears after the session's first reply.")
+        }
+    }
+
+    // MARK: Usage
+
+    private struct UsageReadKey: Equatable {
+        let conversationID: String?
+        let working: Bool
+    }
+
+    /// A Claude session with an id has a Usage block.
+    private var usageConversationID: String? {
+        guard model.capabilities(of: row.record.session.provider).readsContext, model.usage != nil,
+              let id = row.record.session.providerConversationID, !id.isEmpty else { return nil }
+        return id
+    }
+
+    @ViewBuilder private func usageBlock(_ conversationID: String) -> some View {
+        if let usage = model.usage?.sessionUsages[conversationID], !usage.isEmpty {
+            OverviewUsageTable(text: OverviewUsageText(usage))
+        } else if model.usage?.sessionUsageFailures.contains(conversationID) == true {
+            note(OverviewUsageText.failed)
+        } else {
+            note(OverviewUsageText.none)
         }
     }
 
@@ -322,6 +354,46 @@ private struct OverviewCopyButton: View {
         .help("Copy the folder's path")
         .accessibilityLabel("Copy the folder's path")
         .accessibilityIdentifier("overview-copy-folder")
+    }
+}
+
+/// The Usage block: a row per kind of token and the API equivalent, a column each for Main, Subagents and Total.
+private struct OverviewUsageTable: View {
+    let text: OverviewUsageText
+    @Environment(\.inspectorOverlays) private var overlays
+
+    var body: some View {
+        Grid(alignment: .trailing, horizontalSpacing: LoomTheme.Overview.columnGap, verticalSpacing: LoomTheme.Overview.rowGap) {
+            GridRow {
+                Text(verbatim: "").gridColumnAlignment(.leading)
+                ForEach(text.columns, id: \.title) { column in label(column.title) }
+            }
+            line("Input", \.input)
+            line("Cache write", \.cacheWrite)
+            line("Cache read", \.cacheRead)
+            line("Output", \.output)
+            line(OverviewUsageText.costLabel, \.cost)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
+        .accessibilityIdentifier("overview-usage")
+    }
+
+    private func line(_ name: String, _ value: KeyPath<OverviewUsageText.Column, String>) -> some View {
+        GridRow {
+            label(name).gridColumnAlignment(.leading)
+            ForEach(text.columns, id: \.title) { column in
+                Text(verbatim: column[keyPath: value]).inspectorType(LoomTheme.Overview.machine)
+                    .foregroundStyle(column.title == "Total" ? AnyShapeStyle(LoomTheme.Text.primary)
+                                     : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func label(_ text: String) -> some View {
+        Text(verbatim: text).inspectorType(LoomTheme.Inspector.factLabel)
+            .foregroundStyle(LoomTheme.Inspector.quiet(overlays: overlays))
     }
 }
 

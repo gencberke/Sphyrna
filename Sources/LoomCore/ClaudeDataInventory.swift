@@ -147,6 +147,18 @@ extension ClaudeDataInventory {
     }
 }
 
+extension ClaudeDataInventory {
+    /// The size of the profile's whole `projects` folder (every transcript Claude keeps, also of sessions started outside
+    /// Sphyrna), measured without following links. Nil when it is absent or cannot be opened safely.
+    public static func projectsFolderBytes(configDirectory: URL) -> Int64? {
+        let projects = configDirectory.appendingPathComponent("projects", isDirectory: true).path
+        var info = stat()
+        // A `projects` that is a link is not measured: its target is not the profile's.
+        guard lstat(projects, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { return nil }
+        return ClaudeDataFiles.directoryBytes(projects)
+    }
+}
+
 public enum ClaudeDataDeleter {
     /// Removes the planned items, re-validating every one; never throws. Absent items count as
     /// done, one failing item does not stop the others, and a re-run finishes what is left.
@@ -328,6 +340,13 @@ enum ClaudeDataFiles {
             } else { total += Int64(info.st_size) }
         }
         return total
+    }
+
+    /// Bytes under a directory measured as a deletion plan measures a folder: regular files, links and other entries by their
+    /// own size, never through a link and never onto another device. Nil when the directory cannot be opened safely.
+    static func directoryBytes(_ path: String) -> Int64? {
+        guard let root = try? openRoot(path) else { return nil }
+        return treeSize(root.fd, device: root.device, depth: 0)
     }
 
     private static func item(_ parent: Int32, _ name: String, _ path: [String], id: String,

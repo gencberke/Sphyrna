@@ -45,6 +45,7 @@ struct CleanupReviewView: View {
                 if !snapshot.eligible.isEmpty { eligibleSection(snapshot) }
                 if !snapshot.excluded.isEmpty { keptSection(snapshot) }
                 CleanupSettingsSection(review: review)
+                StorageSection(storage: review.storage, catalog: catalog, sheets: sheets)
                 if case .failed(let message) = review.phase {
                     Text(message).projectType(LoomTheme.InkType.small).foregroundStyle(LoomTheme.Status.failureLight)
                         .textSelection(.enabled)

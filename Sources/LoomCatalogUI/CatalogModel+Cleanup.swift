@@ -54,7 +54,13 @@ public final class CleanupReviewModel {
     @ObservationIgnored private let reviewing: any CleanupReviewing
     @ObservationIgnored var currentDate: @Sendable () -> Date = { Date() }
 
-    public init(reviewing: any CleanupReviewing) { self.reviewing = reviewing }
+    /// The Storage part of the page (RESCUE C1), on the same coordinator.
+    public let storage: SessionStorageModel
+
+    public init(reviewing: any CleanupReviewing) {
+        self.reviewing = reviewing
+        storage = SessionStorageModel(reviewing: reviewing)
+    }
 
     public var isBusy: Bool { phase == .loading || phase == .deleting }
     public var hasResults: Bool { !results.isEmpty }

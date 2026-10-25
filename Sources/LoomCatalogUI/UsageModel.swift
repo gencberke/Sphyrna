@@ -22,6 +22,8 @@ public protocol UsageIndexing: Sendable {
     func latestMainMessages(sessions: [String]) async throws -> [String: SessionContextSample]
     /// What the given sessions (a project's) used in the range, from the index's own database (the project page).
     func projectUsage(sessions: [String], range: UsageRange, now: Date, timeZone: TimeZone) async throws -> ProjectUsage
+    /// One session's whole use, its main thread and its subagents apart; `refresh` tails its transcripts first (the inspector).
+    func sessionUsage(session: String, refresh: Bool) async throws -> SessionUsage
 }
 
 /// What a stand-in without its own bucket query gets: the same answers from per-interval snapshots.
@@ -45,6 +47,8 @@ extension UsageIndexing {
     public func projectUsage(sessions: [String], range: UsageRange, now: Date, timeZone: TimeZone) async throws -> ProjectUsage {
         .empty
     }
+
+    public func sessionUsage(session: String, refresh: Bool) async throws -> SessionUsage { .empty }
 
     public func buckets(size: UsageBucketSize, count: Int, endingAt now: Date, timeZone: TimeZone) async throws -> [UsageBucket] {
         var calendar = Calendar(identifier: .gregorian)
@@ -209,6 +213,11 @@ public final class UsageModel {
     /// The context of each tracked session (`trackContext`), by session id. A session the index holds
     /// no main-thread message of has no entry.
     public private(set) var contexts: [String: ContextUsage] = [:]
+    /// Each shown session's whole use, main thread and subagents apart (the Overview's Usage block), by provider id. Read when
+    /// the tab shows and when the session's turn ends (`loadSessionUsage`); never on a timer.
+    public private(set) var sessionUsages: [String: SessionUsage] = [:]
+    /// Sessions whose use could not be read the last time.
+    public private(set) var sessionUsageFailures: Set<String> = []
 
     @ObservationIgnored private let index: any UsageIndexing
     @ObservationIgnored private let limitsSource: (any PlanLimitsFetching)?
@@ -633,6 +642,21 @@ public final class UsageModel {
             ContextUsage(sample: sample, window: window(for: sample))
         }
         if next != contexts { contexts = next }
+    }
+
+    // MARK: Session
+
+    /// Reads one session's use: its own transcripts are tailed first (so the turn that just ended counts), then the index's
+    /// aggregates. Off the main actor (the index is an actor); nothing else of the profile is walked.
+    public func loadSessionUsage(conversationID: String) async {
+        guard !conversationID.isEmpty else { return }
+        do {
+            let usage = try await index.sessionUsage(session: conversationID, refresh: true)
+            if sessionUsages[conversationID] != usage { sessionUsages[conversationID] = usage }
+            sessionUsageFailures.remove(conversationID)
+        } catch {
+            if !Task.isCancelled { sessionUsageFailures.insert(conversationID) }
+        }
     }
 
     // MARK: Project

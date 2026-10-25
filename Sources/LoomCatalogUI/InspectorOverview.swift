@@ -159,6 +159,34 @@ enum OverviewContextText {
     }
 }
 
+/// The words of the Overview's Usage block (RESCUE C2): a session's tokens by kind for its main thread and its subagents,
+/// their total, and the price table's API equivalent (never a share of the plan).
+struct OverviewUsageText: Equatable {
+    struct Column: Equatable {
+        let title: String
+        let input: String
+        let cacheWrite: String
+        let cacheRead: String
+        let output: String
+        let cost: String
+    }
+
+    let columns: [Column]
+
+    init(_ usage: SessionUsage) {
+        func column(_ title: String, _ part: SessionUsage.Part) -> Column {
+            Column(title: title, input: UsageFormat.tokens(part.tokens.input), cacheWrite: UsageFormat.tokens(part.tokens.cacheWrite),
+                   cacheRead: UsageFormat.tokens(part.tokens.cacheRead), output: UsageFormat.tokens(part.tokens.output),
+                   cost: part.estimatedCostUSD.map(UsageFormat.cost) ?? "\u{2014}")
+        }
+        columns = [column("Main", usage.main), column("Subagents", usage.subagents), column("Total", usage.total)]
+    }
+
+    static let costLabel = "API equivalent"
+    static let none = "No usage recorded for this session yet."
+    static let failed = "The usage could not be read."
+}
+
 /// The folder as the Overview shows it: under the home folder as "~", and long paths cut in the middle ("~/…/loom-v2/wt/ink").
 enum OverviewFolderText {
     /// The last folders kept after the "…".
