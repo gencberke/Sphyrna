@@ -20,14 +20,14 @@ final class SidebarCardModels {
         return stored
     }
 
-    /// The full name a card shows ("Opus 5.5"): a release id spelled out, an alias by what the probe said it resolves to.
-    static func fullName(of source: String, provider: ManagedSession.Provider) -> String {
-        guard provider == .claude else { return source }
-        return ModelCatalog.prettyClaudeID(source) ?? ModelCatalog.shared.claudeTitle(of: source)
+    /// The full name a card shows ("Opus 5.5"): a Claude release id spelled out, a Claude alias by what the probe said it
+    /// resolves to. Any other harness's name is neither, so it shows as it is (as in the header's `launchTitle`).
+    static func fullName(of source: String) -> String {
+        ModelCatalog.prettyClaudeID(source) ?? ModelCatalog.shared.claudeTitle(of: source)
     }
 
-    func name(of id: UUID, provider: ManagedSession.Provider) -> String? {
-        Self.source(stored: stored[id], reported: reported[id]).map { Self.fullName(of: $0, provider: provider) }
+    func name(of id: UUID) -> String? {
+        Self.source(stored: stored[id], reported: reported[id]).map(Self.fullName(of:))
     }
 
     /// Replaces both maps, each only when it changed, so a read that finds the same models redraws nothing.
@@ -76,7 +76,7 @@ struct CardModelLabel: View {
         let provider = row.record.session.provider
         HStack(spacing: spacing) {
             HarnessMark(provider: provider)
-            if let name = model.cardModels.name(of: row.id, provider: provider) {
+            if let name = model.cardModels.name(of: row.id) {
                 Text(name).font(LoomTheme.Sidebar.metaFont).lineLimit(1)
             }
         }
