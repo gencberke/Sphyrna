@@ -191,6 +191,8 @@ public final class UsageModel {
     public private(set) var todayUsage: UsageToday?
     /// The Claude plan limits, nil while unknown or unavailable.
     public private(set) var limits: PlanLimits?
+    /// The harness whose plan limits `limits` holds: the one the plan-limits fetcher asks.
+    private static let planLimitsHarness: ManagedSession.Provider = .claude
     /// Why the last plan-limits ask failed; nil after a success or before any ask. The page says
     /// "Plan limits unavailable" while it is set.
     public private(set) var limitsFailure: PlanLimitsFailure?
@@ -718,9 +720,9 @@ public final class UsageModel {
     /// ask made.
     func limitsReading(of harness: ManagedSession.Provider) -> HarnessReading? {
         if let reading = readings[harness] { return reading }
-        guard harness == .claude, let limits else { return nil }
+        guard harness == Self.planLimitsHarness, let limits else { return nil }
         return HarnessReading(
-            provider: .claude, windows: ClaudeProbeSource.windows(of: limits), readAt: limits.fetchedAt)
+            provider: harness, windows: ClaudeProbeSource.windows(of: limits), readAt: limits.fetchedAt)
     }
 
     /// The groups of the Limits section for the harnesses shown, at `now`.
@@ -781,14 +783,14 @@ public final class UsageModel {
     private func takeLast(_ reading: HarnessReading, of harness: ManagedSession.Provider) {
         guard readings[harness].map({ $0.readAt < reading.readAt }) ?? true else { return }
         readings[harness] = reading
-        if harness == .claude, let fresh = PlanLimits(reading: reading), limits != fresh { limits = fresh }
+        if harness == Self.planLimitsHarness, let fresh = PlanLimits(reading: reading), limits != fresh { limits = fresh }
     }
 
     /// A harness switched off: its reading goes, and so do Claude's limits (the chip and Home stop showing them).
     private func forget(_ harness: ManagedSession.Provider) {
         if readings[harness] != nil { readings[harness] = nil }
         if readFailures[harness] != nil { readFailures[harness] = nil }
-        if harness == .claude, limits != nil { limits = nil }
+        if harness == Self.planLimitsHarness, limits != nil { limits = nil }
     }
 
     /// The facts the diagnostics export carries from here: the index's scan report and the plan-limits failure.
