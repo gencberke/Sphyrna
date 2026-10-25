@@ -324,6 +324,9 @@ public final class CatalogModel {
     /// usage and connections decide when. Nil in a build with no app around the model.
     @ObservationIgnored public var harnessProbe: HarnessProbe?
     @ObservationIgnored public var harnessConnections: HarnessConnections?
+    /// The harnesses' health (D-98): Settings → Connections and Home's "Connect your agents" read it. Set once at install; nil
+    /// in a build with no app around it.
+    @ObservationIgnored public internal(set) var harnessHealth: HarnessHealthModel?
     @ObservationIgnored public var onTerminalFontSizeChange: ((Double) -> Void)?
     @ObservationIgnored public var onToggleSidebar: (() -> Void)?
     /// The runtime may attach after the first page is shown (it starts alongside the model);
