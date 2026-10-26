@@ -73,15 +73,15 @@ public struct NewSessionPreset: Equatable, Identifiable, Sendable, Codable {
 
 /// Names for the branch a draft may create: from the first words of the message.
 enum NewSessionBranchNames {
-    /// `loom/fix-the-flaky-test`; never empty.
+    /// `sphyrna/fix-the-flaky-test`; never empty.
     static func suggest(text: String, now: Date = Date()) -> String {
         // Only the first line is ever used, so only it is read: this runs on every redraw of a draft with a branch choice.
         let words = slug(firstLine(of: text), words: 4, limit: 32)
-        if !words.isEmpty { return "loom/\(words)" }
+        if !words.isEmpty { return "sphyrna/\(words)" }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyMMdd-HHmm"
-        return "loom/session-\(formatter.string(from: now))"
+        return "sphyrna/session-\(formatter.string(from: now))"
     }
 
     /// The first line with something on it, found by scanning up to its end and no further.

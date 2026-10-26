@@ -252,7 +252,7 @@ public actor CodexAppServerClient {
     /// `optOutNotificationMethods` defaults to none so diagnostic and probe
     /// connections keep seeing everything the server sends.
     public static func connect(
-        socketPath: String, clientName: String = "loom",
+        socketPath: String, clientName: String = "sphyrna",
         clientVersion: String, timeout: TimeInterval = 5,
         wireDiagnostics: CodexWireDiagnostics? = nil,
         optOutNotificationMethods: [String] = [],

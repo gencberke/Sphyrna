@@ -677,7 +677,7 @@ struct NewSessionTests {
         let sent = try #require(rig.intents.sends.first, "the send did not wait for a check")
         #expect(rig.intents.sends.count == 1)
         #expect(sent.launch.firstMessage == "PAY-418 add the note")
-        #expect(sent.launch.workspace == .newBranch("loom/pay-418-add-the"), "the only suggestion is loom/<words>")
+        #expect(sent.launch.workspace == .newBranch("sphyrna/pay-418-add-the"), "the only suggestion is sphyrna/<words>")
         sent.outcome(.started(UUID()))
         #expect(model.newSession.draft(for: rig.projectID)?.isVisible == false)
     }
@@ -753,7 +753,7 @@ struct NewSessionTests {
         draft.text = "PAY-418 add the note\r\nmore"
         #expect(DraftRow.title(of: draft) == "PAY-418 add the note")
         #expect(NewSessionBranchNames.suggest(text: "\nPAY-418 add the note\nsecond line about other things")
-            == "loom/pay-418-add-the")
+            == "sphyrna/pay-418-add-the")
     }
 
     // MARK: A save that goes wrong
@@ -806,7 +806,7 @@ struct NewSessionTests {
         #expect(sent.projectID == rig.projectID && sent.focus == .session)
         #expect(sent.launch.firstMessage == "PAY-418 Add the reverse-charge note\nThe wording is in the doc.")
         #expect(sent.launch.choices == ClaudeLaunchChoices(permissionMode: "plan", model: "haiku"))
-        #expect(sent.launch.workspace == .newBranch("loom/pay-418-add-the"))
+        #expect(sent.launch.workspace == .newBranch("sphyrna/pay-418-add-the"))
         // The draft keeps its words until the session exists.
         #expect(model.newSession.draft(for: rig.projectID)?.isVisible == true)
         sent.outcome(.started(UUID()))
@@ -834,9 +834,9 @@ struct NewSessionTests {
         #expect(await waitUntil { rig.intents.sends.count == 2 })
         #expect(rig.intents.sends[1].launch.workspace == .newWorktree("feat/mine"))
         // The suggestion is made from the first words.
-        #expect(NewSessionBranchNames.suggest(text: "Fix the flaky test in billing, please") == "loom/fix-the-flaky-test")
-        #expect(NewSessionBranchNames.suggest(text: "PAY-418 İşlem düzeltme") == "loom/pay-418-islem-duzeltme")
-        #expect(NewSessionBranchNames.suggest(text: "???", now: Date(timeIntervalSince1970: 0)).hasPrefix("loom/session-"))
+        #expect(NewSessionBranchNames.suggest(text: "Fix the flaky test in billing, please") == "sphyrna/fix-the-flaky-test")
+        #expect(NewSessionBranchNames.suggest(text: "PAY-418 İşlem düzeltme") == "sphyrna/pay-418-islem-duzeltme")
+        #expect(NewSessionBranchNames.suggest(text: "???", now: Date(timeIntervalSince1970: 0)).hasPrefix("sphyrna/session-"))
     }
 
     @Test func aBadBranchNameOrAFolderWithoutGitStopsTheSendBeforeAnythingStarts() async throws {
@@ -856,7 +856,7 @@ struct NewSessionTests {
         #expect(!model.canSendDraft(projectID: rig.projectID))
         model.setDraftBranch(.stay, projectID: rig.projectID)
         #expect(model.canSendDraft(projectID: rig.projectID))
-        for good in ["feat/PAY-418-x", "loom/a", "a.b"] { #expect(NewSessionBranchNames.isPlausible(good)) }
+        for good in ["feat/PAY-418-x", "sphyrna/a", "a.b"] { #expect(NewSessionBranchNames.isPlausible(good)) }
         for bad in ["", "-x", "a b", "a..b", "x~1", "x^", "a:b", "a?", "a*", "a[", "a\\b", "a/", "/a", "a.lock", "a.", "a//b", "a@{b"] {
             #expect(!NewSessionBranchNames.isPlausible(bad), "\(bad)")
         }
@@ -888,7 +888,7 @@ struct NewSessionTests {
         #expect(chosen().name == "feat/mine" && chosen().reason == nil)
         // A cleared name goes back to the suggestion made from the text.
         model.setDraftBranch(.newWorktree, name: "", projectID: rig.projectID)
-        #expect(chosen().name == "loom/work" && chosen().reason == nil)
+        #expect(chosen().name == "sphyrna/work" && chosen().reason == nil)
         #expect(model.canSendDraft(projectID: rig.projectID))
     }
 

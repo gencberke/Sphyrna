@@ -7,3 +7,7 @@
 "conversationTerminals"
 # The data folders keep Loom's names (~/Library/Application Support/Loom and Loom-Dev, D-83).
 dataDirectoryName
+# A project's own name in the evidence banner's sample text, and Codex's `originator` value that sessions started by 1.7.0 and
+# earlier carry (a data value read back from Codex, not a name the user reads).
+CatalogModel\+EvidenceBanners\.swift:[0-9]+:.*“loom” is already in Sphyrna
+CodexRoutingDiagnostics\.swift:[0-9]+:.*case "loom": "loom"

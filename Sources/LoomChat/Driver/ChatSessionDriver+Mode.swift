@@ -64,7 +64,7 @@ extension ChatSessionDriver {
 
     /// Turns Ask on: remembers the mode it replaces (Full access included: `bypassPermissions` leaves Bash open), then
     /// sets `dontAsk`, the deny rules and the style. No relaunch, no turn needed (spike S9). Refused while a tool approval
-    /// waits (the driver never answers a request itself) and when the CLI has no `loom:Ask` style (the plugin is missing).
+    /// waits (the driver never answers a request itself) and when the CLI has no `sphyrna:Ask` style (the plugin is missing).
     private func enterAsk() async throws {
         let before = permissionMode ?? choices.permissionMode
         guard let current = pickableRun else {

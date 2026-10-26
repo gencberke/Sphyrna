@@ -292,7 +292,7 @@ struct SystemSettingsCard: View {
             }
             SettingsRowDivider()
             SettingsRow(title: "Keep Mac awake",
-                        detail: "Hold off sleep while a session works, so a long turn is not cut short. The display still sleeps.") {
+                        detail: "Hold off sleep while a session works, so a long turn is not cut short. The display still sleeps. Activity Monitor lists Claude Code's own energy under \"Sphyrna Run Host\".") {
                 InkSegmented(values: KeepAwakeSetting.allCases, title: \.title, selection: integration.keepAwake,
                              onSelect: { integration.setKeepAwake($0) })
                     .accessibilityLabel("Keep Mac awake")

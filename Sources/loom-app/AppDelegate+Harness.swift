@@ -24,7 +24,7 @@ extension AppDelegate {
             toolchain: { try await slot.toolchain(for: .codex) },
             socketDirectory: FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(identity.socketDirectoryName, isDirectory: true),
-            workingDirectory: root.appendingPathComponent("harness-probe", isDirectory: true).path, clientVersion: "loom-\(build)")
+            workingDirectory: root.appendingPathComponent("harness-probe", isDirectory: true).path, clientVersion: "sphyrna-\(build)")
 
         // Codex's models reach the composer's lists through the catalog.
         model.harnessProbe = HarnessProbe(connections: connections, sources: sources, onReading: { reading in

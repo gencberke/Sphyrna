@@ -60,7 +60,7 @@ public struct SessionRuntimeConfiguration: Sendable {
         toolchains: @escaping ProviderToolchainResolver, hookHelperPath: String,
         socketDirectory: URL,
         homeDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path,
-        clientVersion: String = "loom", idlePolicy: SessionIdlePolicy = SessionIdlePolicy(),
+        clientVersion: String = "sphyrna", idlePolicy: SessionIdlePolicy = SessionIdlePolicy(),
         codexIdentityTimeout: TimeInterval = 10, codexServerStartupTimeout: TimeInterval = 8,
         resumeDiagnosticsWindow: TimeInterval = 15,
         claudeTemporaryRoot: URL? = ClaudeDataInventory.defaultTemporaryRoot,

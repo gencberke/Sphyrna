@@ -40,7 +40,7 @@ extension SessionRuntime {
         ) { call in await requests.submit(call) }
         // The skill that tells the agent about that command (D-42) and Ask's output style (D-63): every Claude start passes the
         // plugin, also without the control socket (the style needs none). A failure to write it costs the skill and Ask:
-        // the CLI then lists no `loom:Ask` style and the Chat driver refuses to turn Ask on.
+        // the CLI then lists no `sphyrna:Ask` style and the Chat driver refuses to turn Ask on.
         var plugin: String?
         if let directory = configuration.claudePluginDirectory {
             do { plugin = try ClaudeLoomPlugin.install(in: directory).path } catch {

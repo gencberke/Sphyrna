@@ -214,7 +214,7 @@ struct DiagnosticsExportTests {
             generatedAt: Date(), application: .init(version: "1", build: nil, macOS: "test"), claudeCLI: nil,
             catalog: nil, usage: nil, planLimitsFailure: nil, hooks: HookCounterSnapshot(), log: nil)
         let old = try await DiagnosticsExport.collect(
-            to: exports.appendingPathComponent("\(DiagnosticsExport.folderPrefix)old", isDirectory: true),
+            to: exports.appendingPathComponent("\(DiagnosticsExport.earlierFolderPrefix)old", isDirectory: true), // a folder of 1.7.0 ages out too
             dataRoot: root, summary: summary, log: fakeLog)
         let young = try await DiagnosticsExport.collect(
             to: exports.appendingPathComponent("\(DiagnosticsExport.folderPrefix)young", isDirectory: true),

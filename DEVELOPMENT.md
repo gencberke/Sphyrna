@@ -185,7 +185,7 @@ Rules: the daily `Loom.app` and its data are user data like the installed `Loom 
 
 Sphyrna logs through unified logging (`LoomLog`, `Sources/LoomCore/LoomLog.swift`), subsystem `local.loom.desktop`, one category per area:
 
-- `Lifecycle`: runs, with a start line (session, face, new, resume or fork) and an end line (reason, exit);
+- `Lifecycle`: runs, with a start line (session, face, new, resume or fork) and an end line (reason, exit); an app-owned helper run (the Codex usage probe) reads "Helper run … started (codex app-server, …)" with no session ref;
 - `Session`: `SessionService`, the outcome of each start, resume, stop, handover, answer and open request, and side-chat retirement;
 - `Chat`: the Chat face's driver and host (ready latency, end causes, requests by kind and answer, undecoded output lines);
 - `Remora`: one end line per call (kind, model, duration, tokens, outcome or failure kind), the automatic brief's decision and the day's slot;
@@ -223,7 +223,7 @@ Rare events also go to `<data root>/diagnostics/journal.jsonl`:
 
 It is rotated at 512 KB to `journal.1.jsonl`; two files are kept, and no entry older than 3 days. One JSON object per line, so `jq -c . <data root>/diagnostics/journal.jsonl` reads it.
 
-"Collect Diagnostics…" (the Help menu, or Settings → About) runs `SessionRuntime.collectDiagnostics(to:)`. It writes `<data root>/diagnostics/exports/loom-diagnostics-<stamp>/`, then shows it in Finder. The folder holds:
+"Collect Diagnostics…" (the Help menu, or Settings → About) runs `SessionRuntime.collectDiagnostics(to:)`. It writes `<data root>/diagnostics/exports/sphyrna-diagnostics-<stamp>/` (folders of 1.7.0, `loom-diagnostics-…`, are still pruned and aged out), then shows it in Finder. The folder holds:
 
 - `summary.json`;
 - the journal files;

@@ -141,7 +141,10 @@ public enum DiagnosticsLogResult: Equatable, Sendable {
 /// machine by itself.
 public enum DiagnosticsExport {
     public static let keepCount = 3
-    public static let folderPrefix = "loom-diagnostics-"
+    public static let folderPrefix = "sphyrna-diagnostics-"
+    /// The prefix before 1.7.1: its folders are still pruned and aged out.
+    static let earlierFolderPrefix = "loom-diagnostics-"
+    static func isExportName(_ name: String) -> Bool { name.hasPrefix(folderPrefix) || name.hasPrefix(earlierFolderPrefix) }
     static let markerName = ".loom-diagnostics-export"
     public static let logByteCap = 5 * 1024 * 1024
     public static let logTimeout: TimeInterval = 30
@@ -276,7 +279,7 @@ public enum DiagnosticsExport {
         let parent = folder.deletingLastPathComponent()
         let names = (try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? []
         let exports = names.filter { name in
-            name.hasPrefix(folderPrefix)
+            isExportName(name)
                 && FileManager.default.fileExists(atPath: parent.appendingPathComponent(name).appendingPathComponent(markerName).path)
         }.sorted(by: >)
         for stale in exports.dropFirst(keepCount) where stale != folder.lastPathComponent {
@@ -290,7 +293,7 @@ public enum DiagnosticsExport {
         let fileManager = FileManager.default
         guard let names = try? fileManager.contentsOfDirectory(atPath: parent.path) else { return }
         let cutoff = now.addingTimeInterval(-DiagnosticRetention.maximumAge)
-        for name in names where name.hasPrefix(folderPrefix) && name != keeping {
+        for name in names where isExportName(name) && name != keeping {
             let marker = parent.appendingPathComponent(name).appendingPathComponent(markerName)
             guard let made = (try? fileManager.attributesOfItem(atPath: marker.path))?[.modificationDate] as? Date,
                   made < cutoff else { continue }

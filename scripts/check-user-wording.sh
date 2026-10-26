@@ -3,7 +3,8 @@
 # 1. Text the user reads says "session", never "conversation": a literal under Sources/LoomCatalogUI or
 #    Sources/loom-app that contains "conversation" or "Conversation" as a word fails.
 # 2. The app is named Sphyrna (D-77, D-83): a literal under Sources/LoomCatalogUI, loom-app, LoomCore, LoomChat,
-#    LoomLaunchOptions or LoomRemora that contains the word "Loom" fails, multi-line literals included. Paths,
+#    LoomLaunchOptions or LoomRemora that contains the word "Loom" (or, from 1.7.1, a lowercase "loom" that is a
+#    word of its own: a plugin or style name, a branch prefix, a client name) fails, multi-line literals included. Paths,
 #    ids and code names keep Loom (Loom.app, Loom-Dev, LoomRunHost.app, local.loom.desktop): a path to a bundle
 #    and a hyphened or longer name are not the word.
 # A hit passes when its "path:line:code" text matches an extended regex in scripts/check-user-wording.allow
@@ -36,7 +37,7 @@ echo "wording guard: no \"conversation\" in user-visible literals"
 name_dirs=(Sources/LoomCatalogUI Sources/loom-app Sources/LoomCore Sources/LoomChat Sources/LoomLaunchOptions Sources/LoomRemora)
 files=(${(f)"$(find $name_dirs -name '*.swift' -type f | sort)"})
 names=$(perl -e '
-  my $word = qr{(?<![\w./])Loom(?![\w-]|\.app| Dev\.app)};
+  my $word = qr{(?<![\w./])Loom(?![\w-]|\.app| Dev\.app)|(?<![\w./-])loom(?![\w.-])};
   for my $file (@ARGV) {
     open(my $in, "<", $file) or die "$file: $!";
     my $block = 0;
@@ -73,4 +74,4 @@ if [[ -n $names ]]; then
   print -r -- "$names" >&2
   exit 1
 fi
-echo "wording guard: no \"Loom\" in user-visible literals"
+echo "wording guard: no \"Loom\" or lowercase \"loom\" word in user-visible literals"
