@@ -372,6 +372,8 @@ item 4 and the two pinned assertions change. Text under the state mark is reject
 2. The head becomes a plain row with `.onTapGesture` and the button trait; only the chevron, `+` and `⋯` stay buttons; `.onDrag`
    is on the row.
 3. Both build scripts declare the two types under `UTExportedTypeDeclarations`.
+   *Reverted in 1.7.2 (26 Oct):* declared as `public.data`, AppKit made the drag a file promise, `NSFilePromiseReceiver` raised
+   during it and the window stopped answering clicks (`@user`'s first project drag on the installed 1.7.1). The types stay undeclared.
 4. A project's whole block (head, drafts, cards, note) is the target; the insertion line goes before or after the block.
 5. One model-level `activeDrag` (kind and id), set at drag start and cleared on mouse-up, so every target can show one of three
    looks:

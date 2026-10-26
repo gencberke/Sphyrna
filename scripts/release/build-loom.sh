@@ -175,19 +175,9 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>LoomRevision</key><string>$revision</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
-  <key>UTExportedTypeDeclarations</key>
-  <array>
-    <dict>
-      <key>UTTypeIdentifier</key><string>local.loom.desktop.project-reference</string>
-      <key>UTTypeDescription</key><string>Sphyrna project reference</string>
-      <key>UTTypeConformsTo</key><array><string>public.data</string></array>
-    </dict>
-    <dict>
-      <key>UTTypeIdentifier</key><string>local.loom.desktop.session-reference</string>
-      <key>UTTypeDescription</key><string>Sphyrna session reference</string>
-      <key>UTTypeConformsTo</key><array><string>public.data</string></array>
-    </dict>
-  </array>
+  <!-- No UTExportedTypeDeclarations for the in-app drag types (project-reference, session-reference): declared as
+       public.data, AppKit turns a SwiftUI drag into a file promise and NSFilePromiseReceiver raises during the drag,
+       which leaves the window refusing clicks (1.7.1, FEEDBACK-6 FB6-4). Undeclared, they stay in-app data. -->
 </dict>
 </plist>
 PLIST
