@@ -1476,18 +1476,18 @@ public final class CatalogModel {
         await moveProject(id, to: ProjectDrag.position(forGap: gap, from: from))
     }
 
-    /// A project head dropped on the head of `headID` at height `y` within it (`ProjectDrag.gap`, with the dragged project's place).
-    public func dropProject(_ id: UUID, onHead headID: UUID, y: CGFloat) async {
-        guard let gap = projectDropGap(onHead: headID, y: y, dragged: id) else { return }
+    /// A project dropped on the block of `blockID` (its head, drafts, cards and note) takes the block's place (`ProjectDrag.gap`).
+    public func dropProject(_ id: UUID, onBlock blockID: UUID) async {
+        guard let gap = projectDropGap(onBlock: blockID, dragged: id) else { return }
         await dropProject(id, gap: gap)
     }
 
-    /// The gap a drop on a head lands in, or nil when the head is gone. `dragged` is the project being moved, when known.
-    func projectDropGap(onHead headID: UUID, y: CGFloat, dragged: UUID?) -> Int? {
-        guard let index = projects.firstIndex(where: { $0.id == headID }) else { return nil }
-        let canDropAfter = projects[index].collapsed || index == projects.count - 1
+    /// The gap a drop on a block lands in, or nil when nothing moves (the block is gone, or it is the dragged project's own).
+    /// `dragged` is the project being moved, when known.
+    func projectDropGap(onBlock blockID: UUID, dragged: UUID?) -> Int? {
+        guard let index = projects.firstIndex(where: { $0.id == blockID }) else { return nil }
         let from = dragged.flatMap { id in projects.firstIndex { $0.id == id } }
-        return ProjectDrag.gap(onHead: index, y: y, height: LoomTheme.InkHeight.sidebarRow, canDropAfter: canDropAfter, from: from)
+        return ProjectDrag.gap(onBlock: index, from: from)
     }
 
     /// Moves a project to a zero-based position (clamped); `projects.sort_order` keeps it.

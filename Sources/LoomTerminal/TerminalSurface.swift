@@ -453,6 +453,53 @@ public final class LoomTerminalView: TerminalView {
         didSet { registerForDraggedTypes([.fileURL] + (sessionDrop.map { [$0.pasteboardType] } ?? [])) }
     }
 
+    /// The look of a drop the terminal takes: the wash over its screen. `LoomTerminal` knows no theme; the app says how it looks.
+    public struct DropWash {
+        public var fill: NSColor
+        public var edge: NSColor
+        public var edgeWidth: CGFloat
+        public var radius: CGFloat
+
+        public init(fill: NSColor, edge: NSColor, edgeWidth: CGFloat, radius: CGFloat) {
+            self.fill = fill
+            self.edge = edge
+            self.edgeWidth = edgeWidth
+            self.radius = radius
+        }
+    }
+
+    /// Set, a drag the terminal takes (files, or a session it accepts) washes it while it is over it.
+    public var dropWash: DropWash?
+    /// Told when a drag the terminal takes enters it and when it leaves, dropped or not.
+    public var onDropHover: ((Bool) -> Void)?
+    private var washView: DropWashView?
+
+    private final class DropWashView: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
+    private func setDropHighlight(_ on: Bool) {
+        if on, let look = dropWash {
+            let wash = washView ?? DropWashView(frame: bounds)
+            if wash.superview == nil {
+                wash.autoresizingMask = [.width, .height]
+                wash.wantsLayer = true
+                addSubview(wash)
+                washView = wash
+            }
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                wash.layer?.backgroundColor = look.fill.cgColor
+                wash.layer?.borderColor = look.edge.cgColor
+            }
+            wash.layer?.borderWidth = look.edgeWidth
+            wash.layer?.cornerRadius = look.radius
+            wash.frame = bounds
+        } else {
+            washView?.removeFromSuperview()
+        }
+        onDropHover?(on)
+    }
+
     private func droppedFiles(_ sender: any NSDraggingInfo) -> [URL] {
         (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
@@ -465,10 +512,23 @@ public final class LoomTerminalView: TerminalView {
     }
 
     public override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        droppedFiles(sender).isEmpty && droppedSession(sender) == nil ? [] : .copy
+        let takes = !droppedFiles(sender).isEmpty || droppedSession(sender) != nil
+        setDropHighlight(takes)
+        return takes ? .copy : []
+    }
+
+    public override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        setDropHighlight(false)
+        super.draggingExited(sender)
+    }
+
+    public override func draggingEnded(_ sender: any NSDraggingInfo) {
+        setDropHighlight(false)
+        super.draggingEnded(sender)
     }
 
     public override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        setDropHighlight(false)
         let files = droppedFiles(sender)
         if !files.isEmpty { return insertDroppedFiles(files) }
         guard let id = droppedSession(sender) else { return false }

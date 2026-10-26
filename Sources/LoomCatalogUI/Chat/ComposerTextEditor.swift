@@ -267,22 +267,65 @@ struct ComposerTextEditor: NSViewRepresentable {
             return coordinator?.host.takesSession(id, perform: true) ?? false
         }
 
+        /// The wash over the field while a drag it takes is over it (FB6-5, `LoomTheme.Drag`); the sources dim while it is off.
+        private func showsDropWash(_ on: Bool) {
+            if on {
+                wantsLayer = true
+                effectiveAppearance.performAsCurrentDrawingAppearance {
+                    layer?.backgroundColor = LoomTheme.Drag.washNS.cgColor
+                    layer?.borderColor = LoomTheme.Drag.edgeNS.cgColor
+                }
+                layer?.borderWidth = LoomTheme.Drag.edgeWidth
+                layer?.cornerRadius = LoomTheme.Drag.washRadius
+                DragActivity.shared.enter(DragActivity.composerField)
+            } else if layer?.borderWidth != 0 || layer?.backgroundColor != nil {
+                layer?.backgroundColor = nil
+                layer?.borderColor = nil
+                layer?.borderWidth = 0
+                DragActivity.shared.leave(DragActivity.composerField)
+            }
+        }
+
         override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
             // A locked field (the draft being sent) takes no drop: what landed would be lost.
             guard isEditable else { return [] }
-            if let session = sessionDragOperation(sender.draggingPasteboard) { return session }
-            return carriesAttachments(sender.draggingPasteboard) ? .copy : super.draggingEntered(sender)
+            if let session = sessionDragOperation(sender.draggingPasteboard) {
+                showsDropWash(!session.isEmpty)
+                return session
+            }
+            if carriesAttachments(sender.draggingPasteboard) {
+                showsDropWash(true)
+                return .copy
+            }
+            return super.draggingEntered(sender)
         }
 
         override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
             guard isEditable else { return [] }
-            if let session = sessionDragOperation(sender.draggingPasteboard) { return session }
+            if let session = sessionDragOperation(sender.draggingPasteboard) {
+                showsDropWash(!session.isEmpty)
+                return session
+            }
             return carriesAttachments(sender.draggingPasteboard) ? .copy : super.draggingUpdated(sender)
         }
 
+        override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+            showsDropWash(false)
+            super.draggingExited(sender)
+        }
+
+        override func draggingEnded(_ sender: any NSDraggingInfo) {
+            showsDropWash(false)
+            super.draggingEnded(sender)
+        }
+
         override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+            showsDropWash(false)
             guard isEditable else { return false }
-            if let dropped = dropSession(sender.draggingPasteboard) { return dropped }
+            if let dropped = dropSession(sender.draggingPasteboard) {
+                DragActivity.shared.end(why: "dropped on composer")
+                return dropped
+            }
             if carriesAttachments(sender.draggingPasteboard), coordinator?.host.drop(sender.draggingPasteboard) == true {
                 return true
             }

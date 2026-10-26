@@ -9,13 +9,13 @@ enum ProjectDrag {
     static let typeIdentifier = "local.loom.desktop.project-reference"
     static let contentType = UTType(exportedAs: typeIdentifier)
 
-    /// The project this app is dragging right now, so a head can show where the drop lands before the payload is read. Set when
-    /// the drag starts, cleared when it is dropped; a stale value only shifts the mark, the drop itself reads the payload.
-    @MainActor static var current: UUID?
+    /// The project this app is dragging right now (`DragActivity`), so a block can show where the drop lands before the payload is
+    /// read. Cleared when it is dropped or the mouse button is up.
+    @MainActor static var current: UUID? { DragActivity.shared.project }
 
     /// What a head's drag offers; notes the project as the one being dragged. SwiftUI asks for it on the main thread.
     static func beginDrag(_ id: UUID) -> NSItemProvider {
-        MainActor.assumeIsolated { current = id }
+        MainActor.assumeIsolated { DragActivity.shared.begin(.project, id) }
         return itemProvider(for: id)
     }
 
@@ -42,13 +42,13 @@ enum ProjectDrag {
         return data.flatMap { String(data: $0, encoding: .utf8) }.flatMap { UUID(uuidString: $0) }
     }
 
-    /// The gap a drop on head `index` lands in. A project dragged from another place takes that head's place: from above it lands
-    /// after the head, from below before it (RESCUE C3; before this, a drop on the next expanded head landed in the gap the project
-    /// already stood in and nothing moved). With the source unknown: before the head in its upper half; after it in its lower half
-    /// only where nothing of the project follows the head (a collapsed project, or the last one, so a project can reach the end).
-    static func gap(onHead index: Int, y: CGFloat, height: CGFloat, canDropAfter: Bool, from: Int? = nil) -> Int {
-        if let from, from != index { return from < index ? index + 1 : index }
-        return canDropAfter && y > height / 2 ? index + 1 : index
+    /// The gap a drop on the block of project `index` lands in, or nil when nothing moves. A project dragged from another place
+    /// takes that block's place: from above it lands after the block, from below before it (RESCUE C3; before this, a drop on the
+    /// next expanded project landed in the gap the project already stood in and nothing moved). With the source unknown: before.
+    static func gap(onBlock index: Int, from: Int?) -> Int? {
+        guard let from else { return index }
+        if from == index { return nil }
+        return from < index ? index + 1 : index
     }
 
     /// Where a project dropped into gap `gap` ends: a project that moves down leaves its own place first.

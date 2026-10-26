@@ -183,6 +183,7 @@ struct ComposerAttachmentsRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("composer-attachments")
+            .dragWash(DragActivity.composerChips)
             .onDrop(of: [SessionDrag.contentType], delegate: ComposerSessionDropDelegate(model: model))
         }
     }
@@ -251,10 +252,15 @@ struct ComposerSessionDropDelegate: DropDelegate {
     func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [SessionDrag.contentType]) }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: draggedSession.map(model.canMention) == true ? .copy : .forbidden)
+        let takes = draggedSession.map(model.canMention) == true
+        if takes { DragActivity.shared.enter(DragActivity.composerChips) } else { DragActivity.shared.leave(DragActivity.composerChips) }
+        return DropProposal(operation: takes ? .copy : .forbidden)
     }
 
+    func dropExited(info: DropInfo) { DragActivity.shared.leave(DragActivity.composerChips) }
+
     func performDrop(info: DropInfo) -> Bool {
+        DragActivity.shared.end(why: "dropped on composer")
         if let id = draggedSession { return model.takesSession(id, perform: true) }
         // The drag pasteboard did not say: the session comes from the drop's providers.
         let providers = info.itemProviders(for: [SessionDrag.contentType])

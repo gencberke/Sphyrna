@@ -4,7 +4,7 @@ import Testing
 import LoomCore
 @testable import LoomCatalogUI
 
-/// W3-c: project heads reordered by drag. The payload refuses sessions, the gap maps to the project's final place, and the
+/// W3-c: projects reordered by drag; FB6-4: the whole block of a project is the target. The payload refuses sessions, the gap maps to the project's final place, and the
 /// model's move persists in the catalog's order.
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(2)))
@@ -21,23 +21,20 @@ struct ProjectDragTests {
         #expect(!SessionDrag.accepts([project]), "and a project is not a session")
     }
 
-    @Test func aDropOnAHeadLandsBeforeItOrAfterItOnlyWhereNothingFollows() {
-        let row = LoomTheme.InkHeight.sidebarRow
-        #expect(ProjectDrag.gap(onHead: 2, y: 4, height: row, canDropAfter: true) == 2)
-        #expect(ProjectDrag.gap(onHead: 2, y: row - 4, height: row, canDropAfter: true) == 3)
-        #expect(ProjectDrag.gap(onHead: 2, y: row - 4, height: row, canDropAfter: false) == 2, "an expanded head: before it")
+    @Test func aDropOnABlockTakesItsPlaceWhicheverPartOfItItLandsOn() {
+        #expect(ProjectDrag.gap(onBlock: 2, from: 0) == 3, "from above: after the block")
+        #expect(ProjectDrag.gap(onBlock: 2, from: 3) == 2, "from below: before it")
+        #expect(ProjectDrag.gap(onBlock: 2, from: 2) == nil, "its own block: nothing moves")
+        #expect(ProjectDrag.gap(onBlock: 2, from: nil) == 2, "with the source unknown: before it")
         // A project moving down leaves its own place first.
         #expect(ProjectDrag.position(forGap: 3, from: 0) == 2)
         #expect(ProjectDrag.position(forGap: 0, from: 2) == 0)
         #expect(ProjectDrag.position(forGap: 1, from: 1) == 1 && ProjectDrag.position(forGap: 2, from: 1) == 1)
-        // With the dragged project's place known it takes the head's place, whichever half it is dropped on.
-        #expect(ProjectDrag.gap(onHead: 2, y: 4, height: row, canDropAfter: false, from: 0) == 3)
-        #expect(ProjectDrag.gap(onHead: 2, y: row - 4, height: row, canDropAfter: true, from: 3) == 2)
     }
 
     /// RESCUE C3: dragging a project onto the next expanded project's head did nothing, since the drop landed in the gap the
     /// project already stood in. It takes that head's place now, down as well as up, and the order persists.
-    @Test func aProjectDroppedOnTheNextExpandedHeadTakesItsPlace() async throws {
+    @Test func aProjectDroppedOnTheNextExpandedProjectTakesItsPlace() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-projects-\(UUID())", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("catalog.sqlite3")
@@ -54,12 +51,13 @@ struct ProjectDragTests {
         defer { model.stop() }
         await model.start()
         #expect(model.projects.allSatisfy { !$0.collapsed })
-        let row = LoomTheme.InkHeight.sidebarRow
-        // a onto b's head, upper half: a, b, c → b, a, c.
-        await model.dropProject(ids[0], onHead: ids[1], y: 4)
+        // a onto b's block, from above: a, b, c → b, a, c.
+        await model.dropProject(ids[0], onBlock: ids[1])
         #expect(model.projects.map(\.id) == [ids[1], ids[0], ids[2]])
-        // c onto a's head, lower half: b, a, c → b, c, a.
-        await model.dropProject(ids[2], onHead: ids[0], y: row - 4)
+        // c onto a's block, from below: b, a, c → b, c, a.
+        await model.dropProject(ids[2], onBlock: ids[0])
+        // A project on its own block stays where it is.
+        await model.dropProject(ids[2], onBlock: ids[2])
         #expect(model.projects.map(\.id) == [ids[1], ids[2], ids[0]])
         #expect(try await SessionCatalog(url: url).projects().map(\.id) == [ids[1], ids[2], ids[0]])
     }

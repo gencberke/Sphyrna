@@ -175,6 +175,19 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>LoomRevision</key><string>$revision</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>UTExportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key><string>local.loom.desktop.project-reference</string>
+      <key>UTTypeDescription</key><string>Sphyrna project reference</string>
+      <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key><string>local.loom.desktop.session-reference</string>
+      <key>UTTypeDescription</key><string>Sphyrna session reference</string>
+      <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+    </dict>
+  </array>
 </dict>
 </plist>
 PLIST

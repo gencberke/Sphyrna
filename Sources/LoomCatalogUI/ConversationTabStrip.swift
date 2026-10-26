@@ -114,7 +114,7 @@ struct ConversationTabStrip: View {
             .overlay(alignment: .leading) {
                 if let dropGap {
                     TabInsertionMark().offset(x: layout.insertionX(forGap: dropGap, scrollOffset: scrollOffset)
-                        - LoomTheme.Line.focusRing / 2)
+                        - LoomTheme.Drag.lineWidth / 2)
                 }
             }
             .contentShape(Rectangle())
@@ -134,7 +134,7 @@ struct ConversationTabStrip: View {
 private struct TabInsertionMark: View {
     var body: some View {
         Rectangle().fill(LoomTheme.Accent.base)
-            .frame(width: LoomTheme.Line.focusRing, height: LoomTheme.TabStrip.tabHeight)
+            .frame(width: LoomTheme.Drag.lineWidth, height: LoomTheme.TabStrip.tabHeight)
             .allowsHitTesting(false).accessibilityHidden(true)
     }
 }
@@ -154,6 +154,7 @@ struct TabStripDropDelegate: DropDelegate {
     func dropEntered(info: DropInfo) {
         guard Self.accepts(info) else { return }
         model.setTabDropHover(.strip, true)
+        DragActivity.shared.enter(DragActivity.tabs)
         gap = layout.dropGap(atX: info.location.x, scrollOffset: scrollOffset)
     }
 
@@ -167,12 +168,14 @@ struct TabStripDropDelegate: DropDelegate {
     func dropExited(info: DropInfo) {
         gap = nil
         model.setTabDropHover(.strip, false)
+        DragActivity.shared.leave(DragActivity.tabs)
     }
 
     func performDrop(info: DropInfo) -> Bool {
         let target = gap ?? layout.dropGap(atX: info.location.x, scrollOffset: scrollOffset)
         gap = nil
         model.setTabDropHover(.strip, false)
+        DragActivity.shared.end(why: "dropped on tabs")
         let providers = info.itemProviders(for: [SessionDrag.contentType])
         guard !providers.isEmpty else { return false }
         let model = model

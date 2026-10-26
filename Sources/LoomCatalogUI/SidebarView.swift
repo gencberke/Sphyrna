@@ -292,9 +292,10 @@ struct ProjectList: View {
             ProjectHeader(model: model, project: project, isFirst: project.id == model.projects.first?.id)
             let list = model.list(for: .project(project.id))
             if !project.collapsed {
-                DraftRows(model: model, scope: .project(project.id))
+                DraftRows(model: model, scope: .project(project.id), dropsOnProject: project.id, endsBlock: list.rows.isEmpty)
                 ForEach(list.rows) { row in
                     SessionListEntry(row: row, model: model)
+                        .projectBlockDrop(model: model, projectID: project.id, isTail: row.id == list.rows.last?.id)
                         .id(row.id)
                         .onAppear { if row.id == list.rows.last?.id { model.loadMore(.project(project.id)) } }
                 }
@@ -327,6 +328,8 @@ private struct NoSessionsNote: View {
             Text("No sessions")
                 .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                 .padding(.horizontal, LoomTheme.Space.emptyNoteInset).padding(.vertical, LoomTheme.Space.emptyNoteVertical)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .projectBlockDrop(model: model, projectID: projectID, isTail: true)
         }
     }
 }
@@ -376,9 +379,6 @@ struct ProjectHeader: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @State private var hovering = false
     @FocusState private var focused: Control?
-    /// The edge a dragged project would land at, while one is over this head.
-    @State private var dropEdge: VerticalEdge?
-
     /// The head's own controls, for the focus that reveals them.
     enum Control: Hashable { case chevron, start, menu }
 
@@ -408,25 +408,24 @@ struct ProjectHeader: View {
         let key = "sidebar-project:\(project.id)"
         let showsControls = Self.showsControls(hovering: hovering || LookEvidence.forcesHover(key), focused: focused != nil)
         HStack(spacing: 0) {
-            // The row's own button is what the keyboard and VoiceOver operate; a mouse click anywhere
-            // on the padded row (the tap gesture below) does the same.
-            Button { model.showProjectPage(project.id) } label: {
-                HStack(spacing: LoomTheme.Sidebar.headSpacing) {
-                    ProjectMarkView(name: project.name, tone: model.projectTone(forProject: project.id), size: .head)
-                    Text(project.name).font(LoomTheme.Sidebar.headName)
-                        .foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
-                    Spacer(minLength: LoomTheme.Space.headerSpacing)
-                    // The dot itself is drawn by the overlay below; its room keeps the name from running under it.
-                    if attention != nil {
-                        Color.clear.frame(width: LoomTheme.StatusMark.dot, height: LoomTheme.StatusMark.dot)
-                    }
+            // The name is plain content, not a button: a button takes the mouse-down a drag starts with (FB6-4). A click anywhere
+            // on the row (the tap gesture below) opens the page, and VoiceOver operates it as a button.
+            HStack(spacing: LoomTheme.Sidebar.headSpacing) {
+                ProjectMarkView(name: project.name, tone: model.projectTone(forProject: project.id), size: .head)
+                Text(project.name).font(LoomTheme.Sidebar.headName)
+                    .foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
+                Spacer(minLength: LoomTheme.Space.headerSpacing)
+                // The dot itself is drawn by the overlay below; its room keeps the name from running under it.
+                if attention != nil {
+                    Color.clear.frame(width: LoomTheme.StatusMark.dot, height: LoomTheme.StatusMark.dot)
                 }
-                .contentShape(Rectangle())
             }
-            .buttonStyle(RowButtonStyle()).focusEffectDisabled()
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(project.name + (attention.map { ", \($0.label)" } ?? ""))
             .accessibilityHint("Opens the project page")
-            .accessibilityAddTraits(selected ? [.isHeader, .isSelected] : .isHeader)
+            .accessibilityAddTraits(selected ? [.isButton, .isHeader, .isSelected] : [.isButton, .isHeader])
+            .accessibilityAction { model.showProjectPage(project.id) }
             Button { Task { await model.toggleCollapsed(project.id) } } label: {
                 Image(systemName: expanded ? "chevron.down" : "chevron.right").font(LoomTheme.Typography.chevron)
             }
@@ -460,68 +459,16 @@ struct ProjectHeader: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture { model.showProjectPage(project.id) }
-        // Dragged onto another head it takes that head's place (W3-c, RESCUE C3); Move Up and Move Down stay in the menus. The drag
-        // source sits under the right-click menu, as on a session card.
+        // Dragged onto another project's block it takes that block's place (W3-c, RESCUE C3, FB6-4); Move Up and Move Down stay in
+        // the menus. The drag source sits under the right-click menu, as on a session card.
         .onDrag { ProjectDrag.beginDrag(project.id) }
+        .dragSourceDimming(project.id)
         .contextMenu { ProjectActionsMenu(model: model, project: project) }
-        .overlay(alignment: dropEdge == .bottom ? .bottom : .top) {
-            if dropEdge != nil { ProjectInsertionMark() }
-        }
-        .onDrop(of: [ProjectDrag.contentType], delegate: ProjectHeadDropDelegate(
-            model: model, projectID: project.id, edge: $dropEdge))
+        .projectBlockDrop(model: model, projectID: project.id, isHead: true, isTail: project.collapsed)
         .accessibilityElement(children: .contain)
         .help(project.path)
         // The gap above a head belongs to the list, not to the head's hover and click.
         .padding(.top, Self.topGap(isFirst: isFirst))
-    }
-}
-
-/// Where a dragged project will land: an accent line across the head's edge, as the tab strip's mark.
-private struct ProjectInsertionMark: View {
-    var body: some View {
-        Rectangle().fill(LoomTheme.Accent.base).frame(height: LoomTheme.Line.focusRing)
-            .padding(.leading, LoomTheme.Sidebar.headLeading).padding(.trailing, LoomTheme.Sidebar.headTrailing)
-            .allowsHitTesting(false).accessibilityHidden(true)
-    }
-}
-
-/// A project head as a drop target for another head: a project dragged from elsewhere takes the head's place, the mark on the
-/// edge it lands at (`CatalogModel.projectDropGap`). Anything that is not a project (a session too) is refused.
-struct ProjectHeadDropDelegate: DropDelegate {
-    let model: CatalogModel
-    let projectID: UUID
-    @Binding var edge: VerticalEdge?
-
-    private func accepts(_ info: DropInfo) -> Bool { ProjectDrag.accepts(info.itemProviders(for: [ProjectDrag.contentType])) }
-
-    func validateDrop(info: DropInfo) -> Bool { accepts(info) }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        guard accepts(info), let index = model.projects.firstIndex(where: { $0.id == projectID }),
-              let gap = model.projectDropGap(onHead: projectID, y: info.location.y, dragged: ProjectDrag.current)
-        else { return DropProposal(operation: .forbidden) }
-        if ProjectDrag.current == projectID {
-            if edge != nil { edge = nil }
-            return DropProposal(operation: .move)
-        }
-        let next: VerticalEdge = gap > index ? .bottom : .top
-        if edge != next { edge = next }
-        return DropProposal(operation: .move)
-    }
-
-    func dropExited(info: DropInfo) { edge = nil }
-
-    func performDrop(info: DropInfo) -> Bool {
-        edge = nil
-        let providers = info.itemProviders(for: [ProjectDrag.contentType])
-        guard ProjectDrag.accepts(providers) else { return false }
-        let model = model, head = projectID, y = info.location.y
-        ProjectDrag.current = nil
-        Task { @MainActor in
-            guard let id = await ProjectDrag.projectID(from: providers) else { return }
-            await model.dropProject(id, onHead: head, y: y)
-        }
-        return true
     }
 }
 

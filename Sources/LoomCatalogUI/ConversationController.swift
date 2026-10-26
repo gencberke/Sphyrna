@@ -438,6 +438,11 @@ public final class ConversationController: NewSessionIntents, HandoverIntents, T
             self?.model?.reportFailure(error.description)
         }
         surface.view.sessionDrop = sessionDrop(run: runID)
+        surface.view.dropWash = .init(fill: LoomTheme.Drag.washNS, edge: LoomTheme.Drag.edgeNS,
+                                      edgeWidth: LoomTheme.Drag.edgeWidth, radius: LoomTheme.Drag.washRadius)
+        surface.view.onDropHover = { over in
+            if over { DragActivity.shared.enter(DragActivity.terminal) } else { DragActivity.shared.leave(DragActivity.terminal) }
+        }
         entries[runID] = Entry(
             runID: runID, surface: surface,
             container: TerminalContainerView(terminal: surface.view), owner: launch.sessionID

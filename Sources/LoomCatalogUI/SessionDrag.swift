@@ -76,7 +76,13 @@ private struct SessionDragSource: ViewModifier {
 
     func body(content: Content) -> some View {
         let _ = SessionDragProbe.source(id)
-        content.onDrag { SessionDrag.itemProvider(for: id, title: title) }
+        let id = id
+        content
+            .onDrag {
+                MainActor.assumeIsolated { DragActivity.shared.begin(.session, id) }
+                return SessionDrag.itemProvider(for: id, title: title)
+            }
+            .dragSourceDimming(id)
     }
 }
 

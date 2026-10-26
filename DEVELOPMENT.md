@@ -190,7 +190,7 @@ Sphyrna logs through unified logging (`LoomLog`, `Sources/LoomCore/LoomLog.swift
 - `Chat`: the Chat face's driver and host (ready latency, end causes, requests by kind and answer, undecoded output lines);
 - `Remora`: one end line per call (kind, model, duration, tokens, outcome or failure kind), the automatic brief's decision and the day's slot;
 - `Deletion`: each deletion's start, failed step and outcome, and the resume of interrupted ones;
-- `Catalog`, `ClaudeHooks`, `Registry`, `Toolchain`, `Scope`, `Usage`, `Recovery`, `Quit`, `Diagnostics`, `Sidebar`, and `HookClient` (the `loom-hook` helper).
+- `Catalog`, `ClaudeHooks`, `Registry`, `Toolchain`, `Scope`, `Usage`, `Recovery`, `Quit`, `Diagnostics`, `Sidebar` (also a drag's debug lines: `beginDrag <kind> <id8>`, `validateDrop project <id8> accepts=…`, `performDrop project <id8> accepts=…`, `endDrag <why>`; ids only), and `HookClient` (the `loom-hook` helper).
 
 The rules, kept by every call site:
 
