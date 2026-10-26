@@ -1,6 +1,11 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-26 (night)
+- **Updated:** 2026-10-26 (evening)
+- **Now (26 Oct, evening): round 6, Sphyrna 1.7.1, is planned and handed to an implementer session** ([`plans/FEEDBACK-6.md`](plans/FEEDBACK-6.md), [D-103](DECISIONS.md)). `@user` used 1.7.0 for 5 to 6 hours in two sessions, sent 23 notes and asked for a health check; they accepted the plan and every default, added FB6-24 (the open request as an Ink card), and asked for 1.7.1 to be built in a separate session on Sonnet at high effort with narrow tests, back to the planner for the final review.
+  - **Where it is:** the implementer works on `slice/r8-171` in `wt/r8` from `v2` (FEEDBACK-6 "1.7.1 implementation brief"); no tag, promote or install until the planner's review and `@user`'s word.
+  - **Health check (26 Oct):** no crash and no error in the log; both sessions' hooks answered in 10 to 41 ms; the ~25 short runs a day are the Codex probe; Activity Monitor lists Claude Code's energy under LoomRunHost because `claude` is its child. Details in FEEDBACK-6 "Health check".
+  - **Still waiting for `@user` from 1.7.0:** the push and the GitHub release; the macOS prompt raised by `screencapture`.
+- **Before (26 Oct, about 03:30):** the state below.
 - **Now (26 Oct, about 03:30): Sphyrna 1.7.0, the rescue, is tagged, promoted and installed** ([`plans/RESCUE-PLAN.md`](plans/RESCUE-PLAN.md) §5, [D-100](DECISIONS.md) to [D-102](DECISIONS.md)). `@user`'s word on 25 Oct night: "bunları bu gece yapıyoruz … bu akşam implementasyon bitmiş ve minör version bump'ı almış olalım".
   - **Where it is:**
     - `release/1.7.0` is `v2` `b69a24c` (the slices ran on `slice/r7-rescue` in `wt/r7`, fast-forwarded onto `v2`), promoted as the loom tree's `3958797` (tag `v1.7.0`, 653 files, local, unpushed).
